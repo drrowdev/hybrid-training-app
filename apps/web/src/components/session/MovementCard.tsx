@@ -32,6 +32,9 @@ import { SwapMovementModal } from "./SwapMovementModal";
 import { MovementHowToButton } from "./MovementHowToButton";
 import { DisclosureArrow } from "./DisclosureArrow";
 import { MetricHelp } from "@/components/ui/MetricHelp";
+import { AddSetAfterCompletion } from "./AddSetAfterCompletion";
+import { loggedSetKindForItemKind } from "@/lib/sessions/set-kind";
+import type { SetKind } from "@/lib/sessions/set-kind-labels";
 import type { PlateInventoryItem } from "./plate-math";
 import type { LastSetHint } from "./SessionLogClient";
 import { formatHintDate } from "@/lib/sessions/format-hint-date";
@@ -589,7 +592,12 @@ export function MovementCard({
 
       {!collapsed && readOnly && (
         <div className="cp-reveal" style={{ padding: "0 14px 14px", display: "grid", gap: 12 }}>
-          <ReadOnlySetList group={group} loggedSets={loggedSets} sessionId={sessionId} />
+          <CompletedSetsPanel
+            group={group}
+            loggedSets={loggedSets}
+            sessionId={sessionId}
+            addStrengthSet={addStrengthSet}
+          />
         </div>
       )}
 
@@ -665,11 +673,74 @@ export function MovementCard({
 }
 
 /**
+ * Expanded body of a movement card on a COMPLETED session: the per-set
+ * breakdown plus the affordance to add a set the prescription never had a slot
+ * for.
+ *
+ * This is the destination of the Today/Plan drawer's ✎ Edit for a finished
+ * session (`PlanRedesign` → `/app/sessions/<completedSessionId>`), so it has to
+ * carry both halves of "edit a finished workout": correct a logged set (the
+ * per-row Edit links in `ReadOnlySetList`) and record a missing one
+ * (`AddSetAfterCompletion`).
+ *
+ * Read-only remains the DEFAULT posture — nothing here is an input until the
+ * user opens the disclosure.
+ *
+ * Exported so the contract can be pinned in isolation: a read-only
+ * `<MovementCard>` renders collapsed, so a static render of the card alone
+ * cannot see this body.
+ */
+export function CompletedSetsPanel({
+  group,
+  loggedSets,
+  sessionId,
+  addStrengthSet,
+}: {
+  group: MovementGroup;
+  loggedSets: FocusLoggedSet[];
+  sessionId: string;
+  addStrengthSet: (fd: FormData) => Promise<{ error?: string; ok?: true }>;
+}) {
+  return (
+    <>
+      <ReadOnlySetList group={group} loggedSets={loggedSets} sessionId={sessionId} />
+      <AddSetAfterCompletion
+        sessionId={sessionId}
+        movementId={group.movementId}
+        movementName={group.movementName}
+        addStrengthSet={addStrengthSet}
+        defaultSetKind={defaultPostHocSetKind(group)}
+      />
+    </>
+  );
+}
+
+/**
+ * Best guess at the kind a post-hoc set should default to: the last prescribed
+ * non-warm-up slot for this movement. Set kind is not cosmetic — only `main` /
+ * `back_off` rows feed PR detection and training-max recalibration — so we
+ * default to what the movement was actually programmed as rather than always
+ * "main". The user can still change it.
+ *
+ * Exported for its unit test.
+ */
+export function defaultPostHocSetKind(group: MovementGroup): SetKind {
+  for (let i = group.items.length - 1; i >= 0; i--) {
+    const kind = loggedSetKindForItemKind(group.items[i]?.kind);
+    if (kind !== "warmup") return kind;
+  }
+  return "main";
+}
+
+/**
  * Read-only per-set breakdown shown when a *completed* session's
  * movement card is expanded for a deeper dive. Lists each logged set
  * (weight × reps, or distance / duration for carries / time work) plus
- * its RPE, and flags skipped slots. No inputs, no actions — the session
- * is locked once finished.
+ * its RPE, and flags skipped slots.
+ *
+ * No inline inputs — but a finished session is no longer LOCKED: each
+ * non-skipped row links to the set-edit page, and `CompletedSetsPanel` pairs
+ * this list with an add-a-set disclosure.
  *
  * Exported so the presentational contract can be pinned in isolation.
  */

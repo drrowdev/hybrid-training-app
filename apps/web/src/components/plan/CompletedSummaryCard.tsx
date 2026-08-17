@@ -3,12 +3,16 @@
 /**
  * CompletedSummaryCard — the "how did it go" view shown in the plan/Today drawer
  * for a COMPLETED session, in place of the prescription instructions. Compact
- * performance stats fetched on demand, with a link to the full session page (the
- * same "Workout complete!" view the Recent activity list opens).
+ * performance stats fetched on demand.
+ *
+ * It used to also render a full-width "View full session →" link. That link is
+ * gone: the drawer's ✎ Edit button now navigates to exactly the same place
+ * (`SessionDrawer` → `completedSessionHref`), and two buttons to one URL inside
+ * one short drawer is a worse affordance than one button in the action row where
+ * every other session action already lives.
  */
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import {
   getCompletedSessionSummary,
   type CompletedSessionSummary,
@@ -116,18 +120,9 @@ export function CompletedSummaryCard({ sessionId }: { sessionId: string }) {
 
       {!loading && stats.length === 0 && (
         <div style={{ fontSize: 13, color: "var(--cp-text-muted)" }}>
-          Logged. Open the full session for the details.
+          Logged. Tap ✎ Edit session above for the details.
         </div>
       )}
-
-      <Link
-        href={`/app/sessions/${sessionId}`}
-        className="cp-btn"
-        data-testid="plan-drawer-view-session"
-        style={{ width: "100%", justifyContent: "center", minHeight: 44 }}
-      >
-        View full session →
-      </Link>
     </section>
   );
 }

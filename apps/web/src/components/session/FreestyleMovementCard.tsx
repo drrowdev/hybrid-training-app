@@ -48,6 +48,7 @@ import {
   type SetKind,
 } from "@/lib/sessions/set-kind-labels";
 import { DisclosureArrow } from "./DisclosureArrow";
+import { AddSetAfterCompletion } from "./AddSetAfterCompletion";
 
 export type { SetKind };
 
@@ -402,8 +403,18 @@ export function FreestyleMovementCard({
       )}
 
       {!collapsed && readOnly && (
-        <div style={{ padding: "0 14px 14px" }}>
+        <div style={{ padding: "0 14px 14px", display: "grid", gap: 12 }}>
           <FreestyleReadOnlySets movementId={movement.id} loggedSets={loggedSets} />
+          {/* Same post-completion affordance as the prescribed card — a
+              freestyle movement is exactly the case where "the app didn't let
+              me add a set" is most likely. */}
+          <AddSetAfterCompletion
+            sessionId={sessionId}
+            movementId={movement.id}
+            movementName={movement.display_name}
+            addStrengthSet={addStrengthSet}
+            defaultSetKind={lastLoggedSetKind(loggedSets)}
+          />
         </div>
       )}
 
@@ -596,10 +607,23 @@ function pillStyle(color: string): React.CSSProperties {
 }
 
 /**
+ * Kind to pre-select when adding a set to this movement after the session was
+ * finished: whatever the user last logged here, falling back to Main. Set kind
+ * drives PR detection (`main` / `back_off` only), so guessing badly is not
+ * cosmetic — the value is validated against `SET_KINDS` because
+ * `LoggedSet.set_kind` is a bare string.
+ */
+function lastLoggedSetKind(loggedSets: LoggedSet[]): SetKind {
+  const last = loggedSets[loggedSets.length - 1]?.set_kind;
+  return SET_KINDS.includes(last as SetKind) ? (last as SetKind) : "main";
+}
+
+/**
  * Read-only per-set breakdown for a freestyle movement on a completed
- * (locked) session. Mirrors the prescribed card's read-only list:
- * weight × reps (or distance / duration), RPE, and skipped flags — no
- * inputs, no actions.
+ * session. Mirrors the prescribed card's read-only list: weight × reps (or
+ * distance / duration), RPE, and skipped flags — no inline inputs. The session
+ * is no longer LOCKED though: the card pairs this list with an add-a-set
+ * disclosure (`AddSetAfterCompletion`).
  */
 function FreestyleReadOnlySets({
   movementId,

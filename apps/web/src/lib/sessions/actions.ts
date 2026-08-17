@@ -37,6 +37,7 @@ import {
 } from "@hta/domain";
 import type { Prescription, PrescriptionItem, PrescribedSnapshot } from "@hta/db";
 import { loggedSetKindForItemKind } from "./set-kind";
+import { recomputeAfterCompletedSessionSetChange } from "./post-completion-recompute";
 import { resolveBarWeightKg } from "./bar-kind";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
@@ -418,13 +419,46 @@ export async function addStrengthSet(
     console.error("applyBwSetSideEffects failed:", e);
   }
 
-  // NOTE: intentionally NO `revalidatePath` here. The client holds an optimistic
-  // overlay of the session's logged sets (with the real id returned below), so a
-  // per-set full-page rebuild is wasted work — it re-ran ~15 queries just to
-  // record one row. The overlay is the source of truth during the session; the
-  // server snapshot refreshes (and the overlay reconciles) at the meaningful
-  // points that still revalidate: finish, fill-from-plan, swap, edit, delete, or
-  // a navigation/reload. See lib/sessions/optimistic-log.ts + SessionWorkArea.
+  // A set added to an ALREADY-COMPLETED session (the drawer's ✎ Edit → full
+  // session view → "＋ Add a set" flow) has to re-stamp the derived state that
+  // was frozen at completion: the actual-ESL stamp and the region ledger. The
+  // helper gates itself on `completed_at`, so an in-flight session pays exactly
+  // one indexed `sessions` lookup and nothing else — the live-logging hot path
+  // below is unchanged. Skipped on a duplicate offline replay (no new row, so
+  // nothing derived moved).
+  let postCompletionRecompute = false;
+  if (isNewRow) {
+    try {
+      const { recomputed } = await recomputeAfterCompletedSessionSetChange({
+        supabase,
+        sessionId: parsed.data.sessionId,
+        userId: user.id,
+      });
+      postCompletionRecompute = recomputed;
+    } catch (e) {
+      console.error("post-completion recompute (addStrengthSet) failed:", e);
+    }
+  }
+
+  // NOTE: intentionally NO `revalidatePath` on the LIVE-session path. The client
+  // holds an optimistic overlay of the session's logged sets (with the real id
+  // returned below), so a per-set full-page rebuild is wasted work — it re-ran
+  // ~15 queries just to record one row. The overlay is the source of truth
+  // during the session; the server snapshot refreshes (and the overlay
+  // reconciles) at the meaningful points that still revalidate: finish,
+  // fill-from-plan, swap, edit, delete, or a navigation/reload. See
+  // lib/sessions/optimistic-log.ts + SessionWorkArea.
+  //
+  // A post-completion add is the opposite case: it is a rare, deliberate write
+  // with NO overlay (the overlay only covers prescription-linked logs), and the
+  // recompute above just moved `planned_sessions.effective_stress_load`, which
+  // Today and Plan both read. Revalidate those.
+  if (postCompletionRecompute) {
+    revalidatePath("/app");
+    revalidatePath("/app/plan");
+    revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+  }
+
   return {
     ok: true,
     set: {
@@ -1134,10 +1168,32 @@ export async function editSet(formData: FormData): Promise<void> {
     .eq("id", parsed.data.id);
 
   if (error) throw new Error(error.message);
+  // A completed session's logged rows are editable from the read-only card
+  // (`ReadOnlySetList` → this route), which is exactly the flow the drawer's
+  // ✎ Edit now funnels users into. Correcting a set on a FINISHED session moves
+  // both the actual-ESL stamp and the region ledger, so re-stamp via the shared
+  // post-completion helper. On an in-flight session it is a single indexed read
+  // that returns without touching either — same no-op posture as the previous
+  // `requireCompleted` default.
   try {
-    if (sessionId) await recomputeActualSessionLoad({ supabase, sessionId });
+    if (sessionId) {
+      const {
+        data: { user },
+      } = await getAuthUser();
+      if (user) {
+        const { recomputed } = await recomputeAfterCompletedSessionSetChange({
+          supabase,
+          sessionId,
+          userId: user.id,
+        });
+        if (recomputed) {
+          revalidatePath("/app");
+          revalidatePath("/app/plan");
+        }
+      }
+    }
   } catch (e) {
-    console.error("recomputeActualSessionLoad (editSet) failed:", e);
+    console.error("post-completion recompute (editSet) failed:", e);
   }
   if (sessionId) revalidatePath(`/app/sessions/${sessionId}`);
   redirect(`/app/sessions/${sessionId}`);
