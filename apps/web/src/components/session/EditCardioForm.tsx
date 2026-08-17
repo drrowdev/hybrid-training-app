@@ -28,6 +28,16 @@ import {
 
 export type EditCardioMode =
   | { kind: "prescription-only" } // Quick workout, no metrics logged yet
+  /**
+   * Imported from an external provider (`cardio_logs.external_source` set).
+   * Held read-only so the record stays a faithful copy of what the device or
+   * service measured — nobody hand-edits a heart-rate average after the fact.
+   *
+   * This deliberately survives the removal of the Strava integration: the rows
+   * are still imported measurements, so the reason to freeze them is unchanged.
+   * Only the copy changed — there is no longer an upstream to "re-sync" from.
+   */
+  | { kind: "imported-readonly" }
   | { kind: "full" }; // normal edit (logged or completed)
 
 export type EditCardioBlock = {
@@ -62,6 +72,9 @@ export function EditCardioForm({
   const initialDurationMin = secondsToMinutes(block.duration_sec) ?? "";
   const initialPace = formatSecPerKmToPace(block.avg_pace_sec_per_km, units);
   const initialDistance = block.distance_km ?? "";
+  const readOnly = mode.kind === "imported-readonly";
+  // Imported rows show the same metric set as a full edit, just frozen.
+  const showAllMetrics = mode.kind === "full" || readOnly;
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -109,6 +122,15 @@ export function EditCardioForm({
       <input type="hidden" name="id" value={block.id} />
       <input type="hidden" name="sessionId" value={sessionId} />
 
+      {readOnly && (
+        <p
+          data-testid="edit-cardio-imported-note"
+          className="text-xs text-foreground/70 rounded-md border border-foreground/15 p-2"
+        >
+          Imported from an external activity — kept exactly as recorded.
+        </p>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <Field
           name="durationMin"
@@ -119,9 +141,10 @@ export function EditCardioForm({
           max="600"
           required
           defaultValue={initialDurationMin}
+          readOnly={readOnly}
         />
 
-        {mode.kind === "full" ? (
+        {showAllMetrics ? (
           <>
             <Field
               name="distanceKm"
@@ -130,14 +153,16 @@ export function EditCardioForm({
               step="0.1"
               inputMode="decimal"
               defaultValue={initialDistance}
-                />
+              readOnly={readOnly}
+            />
             <Field
               name="avgHrBpm"
               label="Avg HR (bpm)"
               type="number"
               inputMode="numeric"
               defaultValue={block.avg_hr_bpm ?? ""}
-                />
+              readOnly={readOnly}
+            />
             <Field
               name="avgPace"
               label={`Pace (${paceUnitLabel(units)})`}
@@ -145,7 +170,8 @@ export function EditCardioForm({
               inputMode="numeric"
               placeholder="6:00"
               defaultValue={initialPace}
-                  aria-describedby={paceError ? errId : undefined}
+              readOnly={readOnly}
+              aria-describedby={paceError ? errId : undefined}
             />
             <Field
               name="rpe"
@@ -156,7 +182,8 @@ export function EditCardioForm({
               max="10"
               inputMode="decimal"
               defaultValue={block.rpe ?? ""}
-                />
+              readOnly={readOnly}
+            />
           </>
         ) : null}
       </div>
@@ -182,18 +209,21 @@ export function EditCardioForm({
           rows={2}
           maxLength={400}
           defaultValue={block.notes ?? ""}
+          readOnly={readOnly}
           className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2 text-sm"
         />
       </div>
 
-      <button
-        type="submit"
-        data-testid="edit-cardio-submit"
-        disabled={pending}
-        className="w-full rounded-md bg-foreground text-background py-2 text-sm font-medium hover:opacity-90 disabled:opacity-60"
-      >
-        {pending ? "Saving…" : "Save changes"}
-      </button>
+      {!readOnly && (
+        <button
+          type="submit"
+          data-testid="edit-cardio-submit"
+          disabled={pending}
+          className="w-full rounded-md bg-foreground text-background py-2 text-sm font-medium hover:opacity-90 disabled:opacity-60"
+        >
+          {pending ? "Saving…" : "Save changes"}
+        </button>
+      )}
     </form>
   );
 }

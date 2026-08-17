@@ -661,3 +661,10 @@ editable.
 Test suite: 382 files / 4305 tests → 365 files / 4152 tests
 (−151 from 18 deleted test files, −5 net from in-place edits, +3 from a new
 `lib/cardio/__tests__/modality-region.test.ts`).
+
+## [2026-08-17] decision | Drop the orphaned Strava tables and re-freeze imported cardio
+Two follow-ups to the integration removal, both owner-approved.
+
+Migration 0130 drops `strava_connections` and `strava_event_log`. Neither has had a reader or writer since the integration was deleted. The first held per-user OAuth access and refresh tokens — dead credentials that can no longer be exchanged for anything but were still live-format third-party secrets sitting in the database with no owner and no expiry-driven cleanup; the second held raw webhook bodies containing athlete identifiers. The rollback is documented inline in the migration rather than as a sibling down-file, because the drift guard requires every SQL file under drizzle to carry a journal entry and only forward migrations are journalled. It restores structure, not rows, so a dump should be taken first. Training history is untouched: every retained cardio and session column stays, and inferred kind still feeds effective stress load. The orphaned schema definition, its re-export and the export route's excluded-secrets declaration are removed now that the tables are gone.
+
+Externally-imported cardio rows are read-only again. The removal had made them editable on the grounds that the "edit upstream and re-sync" instruction was a dead end, which was true of the instruction but not of the reason: an imported row is a faithful copy of what a device measured, so hand-editing a recorded heart-rate average silently corrupts the record. The freeze is now keyed on import provenance rather than on any particular provider, and the copy states that the row is kept as recorded without naming an upstream that no longer exists.

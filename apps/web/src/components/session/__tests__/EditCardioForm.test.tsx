@@ -126,4 +126,40 @@ describe("EditCardioForm", () => {
     expect(html).toContain('data-testid="edit-cardio-submit"');
     expect(html).toContain("Save changes");
   });
+
+  it("imported-readonly freezes every field and offers no save button", () => {
+    // Externally-imported rows are a faithful copy of what a device measured,
+    // so hand-editing an imported HR average would corrupt the record. This
+    // outlives the Strava integration that first produced such rows — the
+    // reason to freeze them is that they are imported measurements, not that
+    // any particular provider owned them.
+    const html = renderToStaticMarkup(
+      <EditCardioForm
+        sessionId="s"
+        block={makeBlock({
+          duration_sec: 1800,
+          distance_km: 5,
+          avg_hr_bpm: 150,
+          avg_pace_sec_per_km: 360,
+          rpe: 7,
+        })}
+        units="metric"
+        mode={{ kind: "imported-readonly" }}
+        action={noop}
+      />,
+    );
+    expect(html).toContain('data-mode="imported-readonly"');
+    // Same metric set as a full edit — visible, just not editable.
+    expect(html).toContain("Distance (km)");
+    expect(html).toContain("Avg HR (bpm)");
+    expect(html).toContain('name="rpe"');
+    // Every input is frozen and there is nothing to submit.
+    expect(html).not.toContain('data-testid="edit-cardio-submit"');
+    expect(html).not.toContain("Save changes");
+    expect(html).toContain('data-testid="edit-cardio-imported-note"');
+    expect(html).toContain("kept exactly as recorded");
+    // The dead upstream must not be named — there is nothing to re-sync from.
+    expect(html).not.toMatch(/strava/i);
+    expect(html).not.toMatch(/re-?sync/i);
+  });
 });
