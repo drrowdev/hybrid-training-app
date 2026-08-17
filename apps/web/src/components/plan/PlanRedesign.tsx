@@ -2318,6 +2318,16 @@ export function SessionDrawer({
   const [cardioDoneError, setCardioDoneError] = useState<string | null>(null);
   const [cardioDonePending, setCardioDonePending] = useState(false);
   const isToday = session.date === today;
+  /**
+   * Where "edit what actually happened" lives for a FINISHED session: the full
+   * session view keyed by the logged session this plan slot produced. Null for
+   * anything still unfinished (and for the rare done-but-unlinked slot), which
+   * keeps the in-drawer prescription editor as the Edit behaviour there.
+   */
+  const completedSessionHref =
+    session.done && session.completedSessionId
+      ? `/app/sessions/${session.completedSessionId}`
+      : null;
   const overdue = isOverdue(sessionToOverdueCandidate(session), today);
   const overdueDayCount = overdue
     ? overdueDays(sessionToOverdueCandidate(session), today)
@@ -2693,15 +2703,43 @@ export function SessionDrawer({
             >
               ⇄ Swap day
             </button>
-            <button
-              type="button"
-              className="cp-btn"
-              onClick={() => setEditing((v) => !v)}
-              data-testid="plan-drawer-edit"
-              aria-pressed={editing}
-            >
-              ✎ {editing ? "Done editing" : "Edit"}
-            </button>
+            {/* ✎ Edit means two different things depending on where the session
+                is in its life.
+
+                UNFINISHED — the thing worth editing is the PRESCRIPTION, so the
+                button toggles the in-drawer `MovementEditList` (change sets/reps,
+                remove a movement) exactly as before.
+
+                FINISHED — editing the prescription is meaningless (the work is
+                already logged), which is what made this button useless on a
+                completed session. It now navigates to the full session view,
+                where the user can correct an individual logged set or add one
+                the app never gave them a slot for. That view is the single home
+                for "edit what actually happened".
+
+                This replaces `CompletedSummaryCard`'s old "View full session →"
+                link: one destination, one affordance, in the action row where
+                every other session action already lives. A done session with no
+                `completedSessionId` (nothing to open) keeps the toggle. */}
+            {completedSessionHref ? (
+              <Link
+                href={completedSessionHref}
+                className="cp-btn"
+                data-testid="plan-drawer-edit"
+              >
+                ✎ Edit session
+              </Link>
+            ) : (
+              <button
+                type="button"
+                className="cp-btn"
+                onClick={() => setEditing((v) => !v)}
+                data-testid="plan-drawer-edit"
+                aria-pressed={editing}
+              >
+                ✎ {editing ? "Done editing" : "Edit"}
+              </button>
+            )}
             {/* "Mark done" and "Skip" only make sense for an un-logged session —
                 hide them once the workout is complete. */}
             {!session.done && (
@@ -2828,7 +2866,11 @@ export function SessionDrawer({
             </form>
           )}
 
-          {editing ? (
+          {/* Defensive guard: `editing` can only be set by the toggle button,
+              which is not rendered when `completedSessionHref` is set — but if
+              the drawer is ever re-opened onto a session that completed while
+              open, the prescription editor must not appear for finished work. */}
+          {editing && !completedSessionHref ? (
             <MovementEditList
               plannedSessionId={session.id}
               items={session.items}

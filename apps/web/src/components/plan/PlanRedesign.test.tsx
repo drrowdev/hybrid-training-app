@@ -594,6 +594,133 @@ describe("SessionDrawer — drag handle + sheet markup", () => {
   });
 });
 
+describe("SessionDrawer — ✎ Edit on a COMPLETED session opens the full session view", () => {
+  /**
+   * Owner report: "The edit button in the drawer for a finished session doesn't
+   * really do anything smart. It offers me to edit the sets but that doesn't
+   * make sense to do after a workout is already complete."
+   *
+   * Editing a PRESCRIPTION after the work is logged is meaningless, so for a
+   * completed slot ✎ Edit navigates to the logged session
+   * (`/app/sessions/<completedSessionId>`) — the single home (plan §6.9) for
+   * "edit what actually happened".
+   */
+  const base = {
+    today: "2026-05-26",
+    weeks: 4,
+    logHrefBase: "/app/sessions/start",
+    onClose: () => {},
+    moveAction: noop,
+    skipAction: noop,
+    unskipAction: noop,
+    updateNotesAction: async () => ({ ok: true as const }),
+    startSessionAction: noop,
+  };
+  const COMPLETED_ID = "c0ffee00-0000-4000-8000-000000000001";
+
+  /** The single `<a …data-testid="plan-drawer-edit">` tag, or null. */
+  function editAnchorTag(html: string): string | null {
+    const m = html.match(/<a\s[^>]*data-testid="plan-drawer-edit"[^>]*>/);
+    return m ? m[0] : null;
+  }
+
+  it("renders Edit as a link to the logged session, not a prescription-editor toggle", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session({ done: true, completedSessionId: COMPLETED_ID })}
+        {...base}
+      />,
+    );
+    // The Edit control ITSELF is the anchor to the full session view.
+    const anchor = editAnchorTag(html);
+    expect(anchor).not.toBeNull();
+    expect(anchor).toContain(`href="/app/sessions/${COMPLETED_ID}"`);
+    expect(html).not.toMatch(/<button[^>]*data-testid="plan-drawer-edit"/);
+  });
+
+  it("never renders the in-drawer prescription editor for a completed session", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session({ done: true, completedSessionId: COMPLETED_ID })}
+        {...base}
+      />,
+    );
+    // MovementEditList's root — the "edit the sets" surface the owner rejected.
+    expect(html).not.toContain('data-testid="plan-drawer-edit-movements"');
+    // …and Edit is not even a toggle that could reveal it: no aria-pressed.
+    expect(html).not.toMatch(/data-testid="plan-drawer-edit"[^>]*aria-pressed/);
+    expect(html).not.toMatch(/aria-pressed="[^"]*"[^>]*data-testid="plan-drawer-edit"/);
+  });
+
+  it("keeps exactly ONE affordance pointing at the full session view", async () => {
+    // `CompletedSummaryCard` used to render its own "View full session →"
+    // button to the same URL. Two buttons to one destination in one short
+    // drawer is a worse affordance than one in the action row, so the card's
+    // link was removed when ✎ Edit took over the destination.
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session({ done: true, completedSessionId: COMPLETED_ID })}
+        {...base}
+      />,
+    );
+    expect(html).not.toContain('data-testid="plan-drawer-view-session"');
+    const hrefCount = html.split(`href="/app/sessions/${COMPLETED_ID}"`).length - 1;
+    expect(hrefCount).toBe(1);
+  });
+
+  it("leaves an UNFINISHED session on the in-drawer prescription editor toggle", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer session={session()} {...base} />,
+    );
+    expect(html).toMatch(
+      /<button[^>]*data-testid="plan-drawer-edit"[^>]*aria-pressed="false"/,
+    );
+    expect(html).not.toContain("Edit session");
+  });
+
+  it("keeps the toggle for a done slot that has no logged session to open", async () => {
+    // `done` without `completedSessionId` (e.g. a slot marked done off-app):
+    // there is no session view to navigate to, so today's behaviour stands.
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer session={session({ done: true })} {...base} />,
+    );
+    expect(html).toMatch(
+      /<button[^>]*data-testid="plan-drawer-edit"[^>]*aria-pressed="false"/,
+    );
+  });
+
+  it("keeps Plan's review-only stance intact (allowLogging=false)", async () => {
+    // DC-K4 — navigation is not a mutation. Plan already exposed this
+    // destination via the summary card, so the link adds no new capability;
+    // the logging actions must still be absent.
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session({ done: true, completedSessionId: COMPLETED_ID })}
+        {...base}
+        allowLogging={false}
+      />,
+    );
+    const anchor = editAnchorTag(html);
+    expect(anchor).not.toBeNull();
+    expect(anchor).toContain(`href="/app/sessions/${COMPLETED_ID}"`);
+    expect(html).not.toContain('data-testid="plan-drawer-mark-done"');
+    expect(html).not.toContain('data-testid="plan-drawer-edit-movements"');
+
+    const unfinished = renderToStaticMarkup(
+      <SessionDrawer session={session()} {...base} allowLogging={false} />,
+    );
+    expect(unfinished).toMatch(
+      /<button[^>]*data-testid="plan-drawer-edit"[^>]*aria-pressed="false"/,
+    );
+  });
+});
+
 describe("shouldDismissSwipe — pointer-release threshold", () => {
   it("dismisses on a long downward pull (>100px)", async () => {
     const { shouldDismissSwipe } = await import("./PlanRedesign");
