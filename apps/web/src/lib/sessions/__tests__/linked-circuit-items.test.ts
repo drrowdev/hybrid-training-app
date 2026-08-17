@@ -11,6 +11,7 @@ import {
   circuitSuppressesRest,
   firstOpenCircuitMovementId,
   firstOpenMovementId,
+  firstOpenOptionalCircuitMovementId,
   isCircuitItemIndex,
   nextOpenItemIndex,
   participatingItemIndices,
@@ -245,5 +246,101 @@ describe("incomplete circuits", () => {
     // Optional sets are never required work.
     expect(soloItemIndices(solo, undefined)).toEqual([0, 1, 2]);
     expect(nextOpenItemIndex(solo, new Set([0]))).toBe(1);
+  });
+});
+
+describe("optional sets stay inside the superset rotation", () => {
+  // A 3–5 set superset has three REQUIRED rounds; sets 4 and 5 are optional.
+  // They belong to the same link, so they must keep alternating. Previously the
+  // rotation ended with the required rounds and the logger fell through to
+  // `advance()`, which walks forward from the CURRENT movement — so finishing
+  // the round on station B handed the lifter B again instead of returning to A.
+  const build = () => {
+    const a = mainLiftGroup({
+      movementId: "pullup",
+      position: 0,
+      startIndex: 0,
+      warmups: 0,
+      working: 3,
+      optionalTail: 2,
+    });
+    const b = mainLiftGroup({
+      movementId: "overhead-press",
+      position: 1,
+      startIndex: 10,
+      warmups: 0,
+      working: 3,
+      optionalTail: 2,
+    });
+    return { groups: [a, b], membership: buildLinkedCircuitByMovementId([a, b]) };
+  };
+
+  it("returns to the first station once the required rounds are done", () => {
+    const { groups, membership } = build();
+    // All three required rounds of both members are logged.
+    const covered = new Set([0, 1, 2, 10, 11, 12]);
+    expect(
+      firstOpenCircuitMovementId("link-1", groups, membership, covered),
+    ).toBeNull();
+    expect(
+      firstOpenOptionalCircuitMovementId("link-1", groups, membership, covered),
+    ).toBe("pullup");
+  });
+
+  it("alternates through the optional rounds rather than draining one station", () => {
+    const { groups, membership } = build();
+    const covered = new Set([0, 1, 2, 10, 11, 12]);
+    const next = (c: Set<number>) =>
+      firstOpenOptionalCircuitMovementId("link-1", groups, membership, c);
+
+    expect(next(covered)).toBe("pullup");
+    covered.add(3); // pull-up optional 1
+    expect(next(covered)).toBe("overhead-press");
+    covered.add(13); // press optional 1
+    expect(next(covered)).toBe("pullup");
+    covered.add(4); // pull-up optional 2
+    expect(next(covered)).toBe("overhead-press");
+    covered.add(14); // press optional 2
+    expect(next(covered)).toBeNull();
+  });
+
+  it("skips a station whose optional work was declined", () => {
+    const { groups, membership } = build();
+    const covered = new Set([0, 1, 2, 10, 11, 12]);
+    expect(
+      firstOpenOptionalCircuitMovementId(
+        "link-1",
+        groups,
+        membership,
+        covered,
+        new Set(["pullup"]),
+      ),
+    ).toBe("overhead-press");
+  });
+
+  it("offers nothing when the circuit has no optional work", () => {
+    const a = mainLiftGroup({
+      movementId: "a",
+      position: 0,
+      startIndex: 0,
+      warmups: 0,
+      working: 3,
+    });
+    const b = mainLiftGroup({
+      movementId: "b",
+      position: 1,
+      startIndex: 10,
+      warmups: 0,
+      working: 3,
+    });
+    const membership = buildLinkedCircuitByMovementId([a, b]);
+    expect(
+      firstOpenOptionalCircuitMovementId(
+        "link-1",
+        [a, b],
+        membership,
+        new Set([0, 1, 2, 10, 11, 12]),
+      ),
+    ).toBeNull();
   });
 });
