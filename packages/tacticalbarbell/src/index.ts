@@ -15,6 +15,7 @@ export {
   activationPhaseForSession,
   activationCustomizationKey,
   activationPhaseForWeek,
+  isSupplementalSlot,
   type ActivationPhaseKey,
   type TbTemplate,
   type TbWeekScheme,

@@ -242,6 +242,37 @@ export function activationCustomizationKey(
   return phase ? `activation.${phase}.${session.id}` : null;
 }
 
+/**
+ * Whether a session's program slot is SUPPLEMENTAL rather than a main lift.
+ *
+ * Two independent signals, both owned by the template:
+ *   - a prescription rule that re-kinds the movement (`itemKind: "supplemental"`),
+ *     which is how Activation's Armor days demote pull-ups and the overhead
+ *     press; and
+ *   - a peak day, where only `peakMovements` are tested and everything else
+ *     drops to the lighter `support` prescription.
+ *
+ * Exposed because the program wizard has to tell main from supplemental to
+ * decide whether linking a lift deserves the heavy-rest warning, and it has only
+ * the template to go on — the prescription itself does not exist until deploy.
+ */
+export function isSupplementalSlot(
+  session: TbWeeklySession,
+  sourceMovement: string,
+): boolean {
+  const reKinded = (session.prescriptionRules ?? []).some(
+    (rule) =>
+      rule.itemKind === "supplemental" &&
+      (rule.movements?.includes(sourceMovement) ?? false),
+  );
+  if (reKinded) return true;
+  return (
+    session.peakMovements != null &&
+    session.support != null &&
+    !session.peakMovements.includes(sourceMovement)
+  );
+}
+
 export function activationPhaseForWeek(
   week: number,
 ): ActivationPhaseKey | null {

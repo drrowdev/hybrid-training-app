@@ -19,6 +19,7 @@ import {
   ACTIVATION_PHASE_LABELS,
   TB_TEMPLATES,
   activationCustomizationKey,
+  isSupplementalSlot,
   activationPhaseForSession,
 } from "@hta/tacticalbarbell";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
@@ -220,6 +221,9 @@ export default async function ProgramPickerPage({
         movements: (session.fixedMovements ?? t.defaultCluster).map(
           (movement) => movement.movement,
         ),
+        supplementalMovements: (session.fixedMovements ?? t.defaultCluster)
+          .map((movement) => movement.movement)
+          .filter((movement) => isSupplementalSlot(session, movement)),
         movementKinds: Object.fromEntries(
           (session.fixedMovements ?? t.defaultCluster)
             .filter((movement) => movement.kind != null)
@@ -258,6 +262,9 @@ export default async function ProgramPickerPage({
                 movements: (session.fixedMovements ?? []).map(
                   (movement) => ({
                     sourceMovement: movement.movement,
+                    role: isSupplementalSlot(session, movement.movement)
+                      ? ("supplemental" as const)
+                      : ("main" as const),
                     ...(movement.kind ? { kind: movement.kind } : {}),
                   }),
                 ),

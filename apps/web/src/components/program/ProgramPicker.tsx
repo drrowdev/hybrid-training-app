@@ -141,6 +141,12 @@ export interface PickerTbTemplate {
     key: string;
     label: string;
     movements: string[];
+    /**
+     * Movements the template prescribes as supplemental rather than main work
+     * (Zulu's overhead press, barbell row and back extension). Drives the
+     * main-lift superset warning, which must not fire on accessory work.
+     */
+    supplementalMovements?: string[];
     movementKinds?: Record<
       string,
       "barbell" | "weighted-bw" | "bodyweight" | "unanchored"
@@ -160,6 +166,7 @@ export interface PickerActivationPhase {
     defaultDay: number;
     movements: Array<{
       sourceMovement: string;
+      role?: "main" | "supplemental";
       kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
     }>;
   }>;
@@ -174,6 +181,7 @@ function sessionSeriesFor(template: PickerTbTemplate): NonNullable<
         key: `slot-${index + 1}`,
         label: `Day ${index + 1}`,
         movements: template.defaultCluster.map((entry) => entry.movement),
+        supplementalMovements: [],
         movementKinds: Object.fromEntries(
           template.defaultCluster
             .filter((entry) => entry.kind != null)
@@ -517,6 +525,14 @@ const AB_TRIAD_SOURCES = [
   "toes-to-bar",
 ] as const;
 const AB_TRIAD_SOURCE_SET: ReadonlySet<string> = new Set(AB_TRIAD_SOURCES);
+/**
+ * Picker row identity for the AB Triad group.
+ *
+ * Deliberately not one of the triad's own movements: the row stands for all
+ * three, and reusing a member's key would make that member's name resolve to
+ * "AB Triad" everywhere a link is displayed member by member.
+ */
+const AB_TRIAD_GROUP_KEY = "group:tb-ab-triad";
 
 function movementLabel(key: string): string {
   return MOVEMENT_LABEL[key] ?? key;
@@ -1379,10 +1395,17 @@ export function ProgramPicker({
    * movement is substituted. The AB Triad is offered as ONE entry rather than
    * three: it is a single engine-owned circuit, so supersetting something "with
    * the AB Triad" means a four-station circuit, not picking its parts.
+   *
+   * A lift counts as MAIN unless it is a user-added accessory (`catalog:`) or
+   * the template prescribes it as supplemental — Zulu's overhead press and
+   * barbell row are template lifts but not main work, and warning about them
+   * would make the main-lift warning meaningless.
    */
   const linkableMovementsFor = (
     movementKeys: readonly string[],
+    supplemental: readonly string[] = [],
   ): LinkableMovement[] => {
+    const isSupplemental = new Set(supplemental);
     const triad = AB_TRIAD_MOVEMENTS as readonly string[];
     const completeTriad = triad.every((m) => movementKeys.includes(m));
     const out: LinkableMovement[] = [];
@@ -1392,17 +1415,20 @@ export function ProgramPicker({
         if (triadEmitted) continue;
         triadEmitted = true;
         out.push({
-          key: triad[0]!,
+          key: AB_TRIAD_GROUP_KEY,
           label: AB_TRIAD_LABEL,
           isMain: false,
-          expandsTo: triad,
+          expandsTo: triad.map((movement) => ({
+            key: movement,
+            label: customMovementLabel(movement),
+          })),
         });
         continue;
       }
       out.push({
         key,
         label: customMovementLabel(key),
-        isMain: !key.startsWith("catalog:"),
+        isMain: !key.startsWith("catalog:") && !isSupplemental.has(key),
       });
     }
     return out;
@@ -4127,6 +4153,7 @@ export function ProgramPicker({
                                 labelOf: customMovementLabel,
                                 builtinCircuitSources: AB_TRIAD_SOURCES,
                                 builtinCircuitLabel: AB_TRIAD_LABEL,
+                                builtinCircuitKey: AB_TRIAD_GROUP_KEY,
                               })}
                               links={sessionLinks[session.key] ?? []}
                               onChange={setLinksForSeries}
@@ -4523,6 +4550,7 @@ export function ProgramPicker({
                           seriesKey={series.key}
                           movements={linkableMovementsFor(
                             customSessionMovements[series.key] ?? [],
+                            series.supplementalMovements ?? [],
                           )}
                           links={sessionLinks[series.key] ?? []}
                           onChange={setLinksForSeries}
@@ -4728,7 +4756,10 @@ export function ProgramPicker({
                   </header>
                   <SessionLinkEditor
                     seriesKey={series.key}
-                    movements={linkableMovementsFor(series.movements)}
+                    movements={linkableMovementsFor(
+                      series.movements,
+                      series.supplementalMovements ?? [],
+                    )}
                     links={sessionLinks[series.key] ?? []}
                     onChange={setLinksForSeries}
                   />

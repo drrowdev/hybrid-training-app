@@ -3,7 +3,7 @@
  * official template-collection spreadsheet against drift.
  */
 import { describe, it, expect } from "vitest";
-import { TB_TEMPLATES, getTbTemplate } from "./templates";
+import { TB_TEMPLATES, getTbTemplate, isSupplementalSlot } from "./templates";
 
 describe("TB templates — structural integrity", () => {
   it("ships the seven canonical templates plus TB3 Activation", () => {
@@ -162,5 +162,52 @@ describe("TB templates — structural integrity", () => {
       [21, "Vertex (Breacher)"],
       [24, "Final retest"],
     ]);
+  });
+});
+
+describe("isSupplementalSlot", () => {
+  // The program wizard has only the template to go on when deciding whether a
+  // superset deserves the main-lift warning: the prescription does not exist
+  // until deploy. Assuming every Activation slot was a main lift warned about
+  // pull-ups and the overhead press, which are explicitly supplemental.
+  const activation = getTbTemplate("activation")!;
+  const session = (id: string) =>
+    activation.weeklySessions!.find((s) => s.id === id)!;
+
+  it("reads the supplemental prescription rule on an Armor day", () => {
+    const armorB1 = session("armor-b1");
+    expect(isSupplementalSlot(armorB1, "bench")).toBe(false);
+    expect(isSupplementalSlot(armorB1, "barbell-row")).toBe(false);
+    expect(isSupplementalSlot(armorB1, "pullup")).toBe(true);
+    expect(isSupplementalSlot(armorB1, "overhead-press")).toBe(true);
+  });
+
+  it("treats a peak day's non-tested lifts as supplemental only when they drop to support", () => {
+    const peak = TB_TEMPLATES.flatMap((t) => t.weeklySessions ?? []).find(
+      (s) => s.peakMovements != null && s.support != null,
+    )!;
+    const tested = peak.peakMovements![0]!;
+    expect(isSupplementalSlot(peak, tested)).toBe(false);
+    const other = (peak.fixedMovements ?? [])
+      .map((m) => m.movement)
+      .find((m) => !peak.peakMovements!.includes(m))!;
+    expect(isSupplementalSlot(peak, other)).toBe(true);
+  });
+
+  it("reads the supplemental prescription rule on a weekly Zulu day", () => {
+    // The same warning fires in the weekly builder, so the weekly projection
+    // needs the split too: Zulu's press and row are template lifts, not main work.
+    const zulu = getTbTemplate("zulu")!;
+    const p1a = zulu.weeklySessions!.find((s) => s.id === "p1a")!;
+    expect(isSupplementalSlot(p1a, "overhead-press")).toBe(true);
+    expect(isSupplementalSlot(p1a, "bench")).toBe(false);
+    const p1b = zulu.weeklySessions!.find((s) => s.id === "p1b")!;
+    expect(isSupplementalSlot(p1b, "barbell-row")).toBe(true);
+    expect(isSupplementalSlot(p1b, "back-extension")).toBe(true);
+    expect(isSupplementalSlot(p1b, "deadlift")).toBe(false);
+  });
+
+  it("calls a plain slot a main lift", () => {
+    expect(isSupplementalSlot(session("armor-a2"), "squat")).toBe(false);
   });
 });

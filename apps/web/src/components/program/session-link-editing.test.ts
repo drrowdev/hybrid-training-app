@@ -20,6 +20,8 @@ import {
   pruneMovementFromLinks,
   removeLink,
   selectableMovements,
+  slotLabels,
+  slotsOf,
   toggleSelection,
   type LinkableMovement,
 } from "./session-link-editing";
@@ -206,15 +208,18 @@ describe("activationLinkableMovements", () => {
   const label = (key: string) => `LBL:${key}`;
 
   const build = (
-    slots: string[],
+    slots: Array<string | { sourceMovement: string; role: "main" | "supplemental" }>,
     selected: Record<string, string | null>,
   ) =>
     activationLinkableMovements({
-      slots: slots.map((sourceMovement) => ({ sourceMovement })),
+      slots: slots.map((slot) =>
+        typeof slot === "string" ? { sourceMovement: slot } : slot,
+      ),
       selected,
       labelOf: label,
       builtinCircuitSources: TRIAD,
       builtinCircuitLabel: "AB Triad",
+      builtinCircuitKey: "group:tb-ab-triad",
     });
 
   it("keys members by the canonical slot, not the movement filling it", () => {
@@ -236,9 +241,41 @@ describe("activationLinkableMovements", () => {
     expect(out.map((m) => m.key)).toEqual(["bench", "pullup"]);
   });
 
-  it("treats every Activation slot as a main lift, so linking one warns", () => {
+  it("takes main-vs-supplemental from the slot's role, not the phase", () => {
+    // Activation's Armor days mix both: bench is tested, the overhead press and
+    // pull-ups are supplemental. Assuming every Activation slot is a main lift
+    // warned about supersets that carry no main lift at all.
+    const out = build(
+      [
+        { sourceMovement: "bench", role: "main" },
+        { sourceMovement: "overhead-press", role: "supplemental" },
+        { sourceMovement: "pullup", role: "supplemental" },
+      ],
+      { bench: "bench", "overhead-press": "overhead-press", pullup: "pullup" },
+    );
+    expect(out.map((m) => m.isMain)).toEqual([true, false, false]);
+    const link = addLink([], out, ["overhead-press", "pullup"]);
+    expect(linksIncludeMainLift(link, out)).toBe(false);
+  });
+
+  it("treats a slot with no stated role as a main lift", () => {
     const out = build(["bench"], { bench: "bench" });
     expect(out[0]!.isMain).toBe(true);
+  });
+
+  it("does not warn for the AB Triad — it is accessory core work", () => {
+    const slots = ["back-extension", ...TRIAD];
+    const selected = Object.fromEntries(slots.map((s) => [s, s]));
+    const out = build(
+      slots.map((sourceMovement) => ({
+        sourceMovement,
+        role: "supplemental" as const,
+      })),
+      selected,
+    );
+    const link = addLink([], out, ["back-extension", "group:tb-ab-triad"]);
+    expect(link[0]!.members).toHaveLength(4);
+    expect(linksIncludeMainLift(link, out)).toBe(false);
   });
 
   it("offers the complete AB Triad as ONE entry, not three", () => {
@@ -249,8 +286,34 @@ describe("activationLinkableMovements", () => {
     const out = build(slots, selected);
     expect(out.map((m) => m.label)).toEqual(["LBL:back-extension", "AB Triad"]);
     const triadEntry = out[1]!;
-    expect(triadEntry.expandsTo).toEqual(TRIAD);
+    expect(triadEntry.expandsTo?.map((slot) => slot.key)).toEqual(TRIAD);
     expect(triadEntry.lockedReason).toBeUndefined();
+  });
+
+  it("gives every expanded triad slot its own name", () => {
+    // The link is displayed member by member, so a slot without a label shows
+    // its raw id ("toes-to-bar") next to a sibling wearing the group's name.
+    const slots = ["back-extension", ...TRIAD];
+    const selected = Object.fromEntries(slots.map((s) => [s, s]));
+    const out = build(slots, selected);
+    expect(slotLabels(out)).toEqual(
+      new Map([
+        ["back-extension", "LBL:back-extension"],
+        ["hanging-leg-raise", "LBL:hanging-leg-raise"],
+        ["hanging-knee-raise", "LBL:hanging-knee-raise"],
+        ["toes-to-bar", "LBL:toes-to-bar"],
+      ]),
+    );
+  });
+
+  it("labels a triad slot by the movement now filling it", () => {
+    const slots = ["back-extension", ...TRIAD];
+    const selected: Record<string, string | null> = Object.fromEntries(
+      slots.map((s) => [s, s]),
+    );
+    selected["toes-to-bar"] = "catalog:77";
+    const out = build(slots, selected);
+    expect(slotLabels(out).get("toes-to-bar")).toBe("LBL:catalog:77");
   });
 
   it("lists the triad's movements individually when it is incomplete", () => {
@@ -288,14 +351,32 @@ describe("activationLinkableMovements", () => {
 
 describe("group entries expand into their slots", () => {
   const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"];
+  const GROUP_KEY = "group:tb-ab-triad";
   const WITH_GROUP: LinkableMovement[] = [
     { key: "back-extension", label: "Back Extension", isMain: true },
-    { key: TRIAD[0]!, label: "AB Triad", expandsTo: TRIAD },
+    {
+      key: GROUP_KEY,
+      label: "AB Triad",
+      expandsTo: [
+        { key: TRIAD[0]!, label: "Hanging Leg Raise" },
+        { key: TRIAD[1]!, label: "Hanging Knee Raise" },
+        { key: TRIAD[2]!, label: "Toes to Bar" },
+      ],
+    },
     { key: "catalog:1", label: "Barbell curl" },
   ];
 
+  it("keys the group row separately from its members", () => {
+    // Reusing a member's id as the row id made that member render as "AB Triad"
+    // while its siblings fell back to raw slugs.
+    expect(slotsOf(WITH_GROUP[1]!)).toEqual(TRIAD);
+    expect(slotsOf(WITH_GROUP[1]!)).not.toContain(GROUP_KEY);
+    expect(slotLabels(WITH_GROUP).get(TRIAD[0]!)).toBe("Hanging Leg Raise");
+    expect(slotLabels(WITH_GROUP).has(GROUP_KEY)).toBe(false);
+  });
+
   it("links a lift with the whole triad as one circuit", () => {
-    const out = addLink([], WITH_GROUP, ["back-extension", TRIAD[0]!]);
+    const out = addLink([], WITH_GROUP, ["back-extension", GROUP_KEY]);
     expect(out[0]!.members).toEqual(["back-extension", ...TRIAD]);
     // Four stations -> a giant set, not a "superset".
     expect(out[0]!.name).toBe("Giant set");
@@ -303,11 +384,11 @@ describe("group entries expand into their slots", () => {
 
   it("counts expanded slots against the member cap", () => {
     // Two picks, four resulting stations — still valid.
-    expect(canCreateLink(["back-extension", TRIAD[0]!], [], WITH_GROUP)).toBe(
+    expect(canCreateLink(["back-extension", GROUP_KEY], [], WITH_GROUP)).toBe(
       true,
     );
     // A single pick is never a link, even when it expands to three.
-    expect(canCreateLink([TRIAD[0]!], [], WITH_GROUP)).toBe(false);
+    expect(canCreateLink([GROUP_KEY], [], WITH_GROUP)).toBe(false);
   });
 
   it("withholds the group once any of its slots is linked", () => {
@@ -317,8 +398,15 @@ describe("group entries expand into their slots", () => {
     ]);
   });
 
+  it("keeps a link whose members live inside a group row", () => {
+    // Pruning matches SLOTS; matching row keys would have dissolved every link
+    // that contains the triad the moment the movement list was re-derived.
+    const links = [link("link-1", ["back-extension", ...TRIAD], "Giant set")];
+    expect(pruneLinksToMovements(links, WITH_GROUP)).toEqual(links);
+  });
+
   it("expands in slot order regardless of pick order", () => {
-    const out = addLink([], WITH_GROUP, [TRIAD[0]!, "back-extension"]);
+    const out = addLink([], WITH_GROUP, [GROUP_KEY, "back-extension"]);
     expect(out[0]!.members).toEqual(["back-extension", ...TRIAD]);
   });
 });
