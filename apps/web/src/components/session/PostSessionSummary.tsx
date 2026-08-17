@@ -20,7 +20,7 @@ import { updateSessionNotes } from "@/lib/sessions/actions";
 import type { ProgressionKind } from "@/lib/progression/suggest-next";
 import type { DiagnosticResult } from "@/lib/planner/bw-diagnostics";
 import { useUnits } from "@/lib/units/context";
-import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
+import { type WeightUnit } from "@/lib/stats/units";
 import {
   formatDistance,
   formatSecPerKmToPace,
@@ -171,19 +171,14 @@ export function PostSessionSummary({
       }}
     >
       <div>
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--cp-accent)",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            fontWeight: 700,
-          }}
+        {/* One heading, not two. The uppercase eyebrow used to sit above an h2
+            saying the same words ("SESSION COMPLETE" / "Session complete!"),
+            which spent the card's most prominent line restating itself. */}
+        <h2
+          style={{ fontSize: 24, margin: 0, letterSpacing: "-0.01em" }}
+          data-testid="summary-heading"
         >
           {cardioOnly ? "Workout complete" : "Session complete"}
-        </div>
-        <h2 style={{ fontSize: 24, margin: "4px 0 0", letterSpacing: "-0.01em" }}>
-          {cardioOnly ? "Workout complete!" : "Session complete!"}
         </h2>
       </div>
 
@@ -197,11 +192,13 @@ export function PostSessionSummary({
             gap: 10,
           }}
         >
-          <SummaryStat
-            label="Tonnage"
-            value={summary.totalTonnageKg > 0 ? `${formatKg(displayWeight(summary.totalTonnageKg, units))} ${weightUnitLabel(units)}` : "—"}
-            testId="summary-tonnage"
-          />
+          {/* Tonnage was removed deliberately. It summed weight × reps over
+              non-warm-up sets, so bodyweight, timed holds and carries scored a
+              flat 0 (see `summariseSessionSets`) — a calisthenics-heavy session
+              under-reported badly — and it weighted light high-rep work the
+              same as heavy work. `totalTonnageKg` is still computed and still
+              feeds the `hasStrength` check below; it just isn't a headline
+              number any more. */}
           <SummaryStat
             label="Duration"
             value={summary.durationMin != null ? `${summary.durationMin} min` : "—"}
@@ -216,12 +213,18 @@ export function PostSessionSummary({
             }
             testId="summary-sets"
           />
-          <SummaryStat
-            label="PRs"
-            value={`${summary.prCount}`}
-            highlight={summary.prCount > 0}
-            testId="summary-prs"
-          />
+          {/* PRs only when there ARE PRs. A permanently-rendered tile whose
+              usual value is "0" spends a fifth of the row saying nothing
+              happened; when it does fire it deserves the emphasis it already
+              had. */}
+          {summary.prCount > 0 && (
+            <SummaryStat
+              label="PRs"
+              value={`${summary.prCount}`}
+              highlight
+              testId="summary-prs"
+            />
+          )}
           {effortValue != null && (
             <SummaryStat
               label="Effort"
@@ -829,12 +832,6 @@ function SummaryStat({
       </div>
     </div>
   );
-}
-
-function formatKg(n: number): string {
-  if (n >= 10_000) return `${Math.round(n / 100) / 10}k`;
-  if (Math.abs(n - Math.round(n)) < 0.05) return String(Math.round(n));
-  return n.toFixed(1);
 }
 
 function progressionKindGlyph(kind: ProgressionKind): string {

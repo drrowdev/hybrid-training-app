@@ -181,4 +181,21 @@ describe("fidelitySummaryLine", () => {
     // Reflection, not instruction.
     expect(line).not.toMatch(/should|consider|try|recommend/i);
   });
+
+  it("leads with what landed as prescribed, not just the deviations", () => {
+    // 3 exact sets, 1 light, 1 heavy. Reporting only "1 under · 1 above" made a
+    // mostly-on-plan session read as a list of misses, and hid the denominator.
+    const line = fidelitySummaryLine(
+      rollupFidelity([
+        onPlan,
+        onPlan,
+        onPlan,
+        { ...onPlan, weightKg: 90 },
+        { ...onPlan, weightKg: 110 },
+      ]),
+    )!;
+    expect(line).toMatch(/^3 of 5 sets as prescribed/);
+    expect(line).toContain("1 set under target");
+    expect(line).toContain("1 set above target");
+  });
 });
