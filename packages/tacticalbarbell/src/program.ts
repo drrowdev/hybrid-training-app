@@ -226,6 +226,10 @@ function sessionLifts(
             instance.armorSupplementalA === "reverse-hyper"
               ? "reverse-hyper"
               : "back-extension",
+          // Prescribed by effort, not off a training max — rebuilding the entry
+          // has to carry the kind or the substitution silently re-anchors it to
+          // a percentage and demands a 1RM nobody tests.
+          kind: "unanchored",
           // Keep the canonical slot identity through the substitution. Callers
           // that key off `sourceMovement ?? movement` (peak detection, AB Triad,
           // user-authored links) must still resolve this to `back-extension`

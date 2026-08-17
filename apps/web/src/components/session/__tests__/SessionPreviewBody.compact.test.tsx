@@ -289,3 +289,62 @@ describe("SessionPreviewBody (full / Preview page) — variant defaults preserve
     expect(html).toContain("65% 1RM × 8–10");
   });
 });
+
+describe("compact hero — user-authored links", () => {
+  // The hero condenses each movement to one row, but a link still has to show:
+  // it is the surface most sessions are started from, and a superset changes
+  // how the session is performed. Previously only accessory ROWS were
+  // bracketed, so a link across main/supplemental lifts was invisible here.
+  const linked = (
+    movementId: string,
+    movementName: string,
+    position: number,
+    over: Partial<PrescriptionItem> = {},
+  ): PrescriptionItem =>
+    ({
+      kind: "supplemental",
+      movementId,
+      movementName,
+      percentTm: 75,
+      reps: 8,
+      sets: 3,
+      circuit: { id: "link-1", name: "Superset", position, size: 2, rounds: 3 },
+      ...over,
+    }) as unknown as PrescriptionItem;
+
+  it("brackets two linked supplemental lifts", () => {
+    const html = renderCompact([
+      main({ movementId: "m-bench", movementName: "Bench Press" }),
+      linked("m-pullup", "Pull-up", 0),
+      linked("m-press", "Overhead Press", 1),
+    ]);
+    expect(html).toContain('data-superset-group="link-1"');
+    expect(html).toContain("Superset");
+    expect(html).toContain("Pull-up");
+    expect(html).toContain("Overhead Press");
+  });
+
+  it("uses the link's own name so a tri-set does not read as a superset", () => {
+    const html = renderCompact([
+      linked("m-a", "Lift A", 0, {
+        circuit: { id: "link-2", name: "Tri-set", position: 0, size: 3, rounds: 3 },
+      }),
+      linked("m-b", "Lift B", 1, {
+        circuit: { id: "link-2", name: "Tri-set", position: 1, size: 3, rounds: 3 },
+      }),
+      linked("m-c", "Lift C", 2, {
+        circuit: { id: "link-2", name: "Tri-set", position: 2, size: 3, rounds: 3 },
+      }),
+    ]);
+    expect(html).toContain("Tri-set");
+  });
+
+  it("leaves unlinked movements unbracketed", () => {
+    const html = renderCompact([
+      main({ movementId: "m-bench", movementName: "Bench Press" }),
+      main({ movementId: "m-row", movementName: "Barbell Row" }),
+    ]);
+    expect(html).not.toContain("data-superset-group");
+  });
+});
+

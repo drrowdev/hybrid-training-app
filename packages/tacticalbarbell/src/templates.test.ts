@@ -207,7 +207,25 @@ describe("isSupplementalSlot", () => {
     expect(isSupplementalSlot(p1b, "deadlift")).toBe(false);
   });
 
-  it("calls a plain slot a main lift", () => {
-    expect(isSupplementalSlot(session("armor-a2"), "squat")).toBe(false);
+  it("calls a plain slot a main lift", () => {    expect(isSupplementalSlot(session("armor-a2"), "squat")).toBe(false);
+  });
+});
+
+describe("supplemental lifts that carry no training max", () => {
+  // Nobody one-rep-maxes a back extension, so anchoring it to a percentage
+  // demanded a number that does not exist and put it in the starting-max list.
+  const activation = getTbTemplate("activation")!;
+  const slot = (id: string, movement: string) =>
+    activation
+      .weeklySessions!.find((s) => s.id === id)!
+      .fixedMovements!.find((m) => m.movement === movement)!;
+
+  it("marks the Armor supplemental-A hyperextensions unanchored", () => {
+    expect(slot("armor-a1", "back-extension").kind).toBe("unanchored");
+    expect(slot("armor-a2", "back-extension").kind).toBe("unanchored");
+  });
+
+  it("keeps the loaded supplementals anchored", () => {
+    expect(slot("armor-b1", "overhead-press").kind).toBeUndefined();
   });
 });

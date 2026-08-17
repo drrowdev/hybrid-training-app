@@ -487,44 +487,68 @@ function CondensedStrengthCard({
   label: string;
   testId: string;
 }) {
+  // The hero condenses each movement to one row, but a link still has to be
+  // visible here: this is the surface most sessions are started from, and a
+  // superset the lifter authored changes how the session is performed.
+  const segments = segmentSupersetSections(sections);
   return (
     <section data-testid={testId} style={cardStyle}>
       <div className="mono" style={eyebrowStyle}>
         {label}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {sections.map((sec) => (
-          <div
-            key={sec.rowKey}
-            data-testid={`session-preview-movement-${sec.rowKey}`}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-              gap: 12,
-              padding: "8px 0",
-              borderBottom: "1px solid var(--cp-border)",
-            }}
-          >
-            <span
-              style={{ fontSize: 14, fontWeight: 600, color: "var(--cp-text)" }}
+        {segments.map((seg) =>
+          seg.kind === "solo" ? (
+            <CondensedStrengthRow key={seg.section.rowKey} section={seg.section} />
+          ) : (
+            <SupersetCluster
+              key={seg.groupId}
+              groupId={seg.groupId}
+              name={seg.name}
+              size={seg.sections.length}
             >
-              {sec.movementName}
-            </span>
-            <span
-              className="mono"
-              style={{
-                fontSize: 13,
-                color: "var(--cp-text-muted)",
-                textAlign: "right",
-              }}
-            >
-              {condensedStrengthSummary(sec) || "—"}
-            </span>
-          </div>
-        ))}
+              {seg.sections.map((sec) => (
+                <CondensedStrengthRow key={sec.rowKey} section={sec} />
+              ))}
+            </SupersetCluster>
+          ),
+        )}
       </div>
     </section>
+  );
+}
+
+function CondensedStrengthRow({
+  section: sec,
+}: {
+  section: import("@/lib/plan/prescription-grouping").MovementPrescriptionSection;
+}) {
+  return (
+    <div
+      data-testid={`session-preview-movement-${sec.rowKey}`}
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "baseline",
+        gap: 12,
+        padding: "8px 0",
+        borderBottom: "1px solid var(--cp-border)",
+      }}
+    >
+      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--cp-text)" }}>
+        {sec.movementName}
+      </span>
+      <span
+        className="mono"
+        style={{
+          fontSize: 13,
+          color: "var(--cp-text-muted)",
+          textAlign: "right",
+        }}
+      >
+        {condensedStrengthSummary(sec) || "—"}
+      </span>
+    </div>
   );
 }
 
