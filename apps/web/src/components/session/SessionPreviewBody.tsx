@@ -764,7 +764,7 @@ function SupersetCluster({
           paddingTop: 6,
         }}
       >
-        {label} · alternate, rest once
+        {label}
       </div>
       {children}
     </div>

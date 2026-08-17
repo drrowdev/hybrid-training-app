@@ -10,7 +10,7 @@
  *
  * The subtitle copy adapts to `variant`:
  *   - "planned":  "Start something off-plan"
- *   - "rest":     "Got energy? Start something light"
+ *   - "rest":     "Start something light"
  *
  * On rest days the planned hero is a one-row "Rest day" banner, so the
  * card sits below it without competing visually — the user is still
@@ -50,7 +50,7 @@ export function QuickWorkoutCard({
   const [open, setOpen] = useState(false);
   const subtitle =
     variant === "rest"
-      ? "Got energy? Start something light"
+      ? "Start something light"
       : "Start something off-plan";
 
   return (

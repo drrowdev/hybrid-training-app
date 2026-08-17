@@ -981,10 +981,7 @@ function sameLoggedSets(previous: LoggedSet[], next: LoggedSet[]): boolean {
 }
 
 /**
- * ADR 0026 P5b — bracket around an antagonist superset pair in the logger.
- * Wraps the two paired accessory cards with a left accent rule + a "Superset ·
- * alternate, rest once" caption so the lifter does them back-to-back and rests
- * a single time per round. Internal A1/A2 slot codes are NOT surfaced.
+ * Heading rule above a group of movement cards, with an optional help affordance.
  */
 function SectionDivider({
   label,

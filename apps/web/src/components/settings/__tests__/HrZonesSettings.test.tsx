@@ -135,7 +135,7 @@ describe("HrZonesSettings — static render", () => {
       initial: { hrMethod: "max", hrMax: 190, hrResting: null, hrLthr: null, hrPercents: {} },
       age: 30,
     });
-    expect(maxHtml).toContain("Simplest method. Just needs your max HR");
+    expect(maxHtml).toContain("Requires your max HR");
 
     const hrrHtml = render({
       initial: { hrMethod: "hrr", hrMax: 195, hrResting: 55, hrLthr: null, hrPercents: {} },

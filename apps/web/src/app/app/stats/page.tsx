@@ -167,7 +167,7 @@ export default async function StatsOverviewPage({
     <div style={{ display: "grid", gap: 18 }}>
       <PageHeader
         title="Stats"
-        subtitle="Your training at a glance — where strength and endurance are trending, how recovered you are, and whether you're showing up."
+        subtitle="Where strength and endurance are trending, how recovered you are, and whether you're showing up."
       />
 
       <StatsCommandCenter

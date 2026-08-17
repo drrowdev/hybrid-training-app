@@ -206,7 +206,7 @@ export function SessionLinkEditor({
                     color: "var(--muted, #79836f)",
                   }}
                 >
-                  {`Rest after ${lastLabel}, then start the next round.`}
+                  {`Rest after ${lastLabel}.`}
                 </p>
               </div>
             );

@@ -143,7 +143,7 @@ export function composeStrengthProgress(
       detail:
         classifiable.length === 0
           ? `No main lift has ≥${STRENGTH_MIN_POINTS_PER_LIFT} logged sets in the last ${windowDays}d yet.`
-          : `Only ${classifiable.length} main lift has enough history to trend — keep logging to unlock the body verdict.`,
+          : `Only ${classifiable.length} main lift has enough history to trend.`,
     };
   }
 
@@ -215,7 +215,7 @@ export async function getStrengthProgress(
       direction: "building",
       perLift: [],
       windowDays,
-      detail: "No main lifts set up yet — add training maxes to unlock the body verdict.",
+      detail: "No main lifts set up yet — add training maxes.",
     };
   }
 

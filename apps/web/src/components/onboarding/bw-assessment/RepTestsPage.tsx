@@ -77,8 +77,8 @@ export function RepTestsPage({ values, onChange }: RepTestsPageProps) {
           lineHeight: 1.55,
         }}
       >
-        Strict reps to failure. Skip any field you don&apos;t know — we&apos;ll start
-        you at a safe default for that movement and adjust as you log sessions.
+        Strict reps to failure. Skip any field you don&apos;t know — it seeds a
+        conservative default and adjusts as you log sessions.
       </p>
 
       <div style={{ display: "grid", gap: 10 }}>

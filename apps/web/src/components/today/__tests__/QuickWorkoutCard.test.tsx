@@ -29,7 +29,7 @@ describe("QuickWorkoutCard", () => {
     expect(html).toContain('data-testid="quick-workout-card"');
     expect(html).toContain('data-variant="planned"');
     expect(html).toContain("Start something off-plan");
-    expect(html).not.toContain("Got energy?");
+    expect(html).not.toContain("Start something light");
     expect(html).toContain("Quick workout");
   });
 
@@ -46,7 +46,7 @@ describe("QuickWorkoutCard", () => {
       />,
     );
     expect(html).toContain('data-variant="rest"');
-    expect(html).toContain("Got energy? Start something light");
+    expect(html).toContain("Start something light");
     expect(html).not.toContain("off-plan");
   });
 

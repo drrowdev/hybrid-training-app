@@ -190,8 +190,8 @@ function detailFor(
     case "mixed":
       return "Strength and endurance disagree — pick the one that matters most this block and protect it.";
     case "holding":
-      return "Both signals are flat — neither growing nor slipping. Holding is fine; nudge volume if you want a new PR.";
+      return "Both signals are flat — neither growing nor slipping.";
     case "building":
-      return `Not enough history yet (strength: ${s.direction}, endurance: ${e.direction}). Keep logging — bands populate over the next few weeks.`;
+      return `Not enough history yet (strength: ${s.direction}, endurance: ${e.direction}).`;
   }
 }

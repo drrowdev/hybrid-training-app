@@ -133,7 +133,7 @@ export function parseZonePct(s: string): number | null {
 export function hrMethodHelpText(method: HrMethod): string {
   switch (method) {
     case "max":
-      return "Simplest method. Just needs your max HR (or auto-calculated from age).";
+      return "Requires your max HR (or auto-calculated from age).";
     case "hrr":
       return "More accurate. Uses both max HR and resting HR for a wider range.";
     case "lthr":
