@@ -257,7 +257,7 @@ const PROG_INFO: Record<string, ProgInfo> = {
   "green-protocol": {
     kick: "Tactical Barbell \u00B7 Green Protocol",
     title: "Green Protocol",
-    body: "Tactical Barbell\u2019s bigger sibling, for people who need serious endurance on top of strength \u2014 think military selection, tactical roles, or any hybrid athlete chasing an ultra-runner\u2019s engine with real barbell strength.\n\nInstead of just programming your lifts, it programs your running and rucking too: you build a wide aerobic base first, then ramp up intensity toward a goal. It runs in longer phases \u2014 Hybrid is the everyday baseline you can stay on indefinitely, while blocks like Capacity, Velocity and Outcome peak you for a specific event.\n\nThe guiding idea is to build the foundation gradually: the wider the base, the higher the peak. Your lifting plan is shown here in the app; your runs and rucks are tracked through Strava. Best when endurance matters as much as strength.",
+    body: "Tactical Barbell\u2019s bigger sibling, for people who need serious endurance on top of strength \u2014 think military selection, tactical roles, or any hybrid athlete chasing an ultra-runner\u2019s engine with real barbell strength.\n\nInstead of just programming your lifts, it programs your running and rucking too: you build a wide aerobic base first, then ramp up intensity toward a goal. It runs in longer phases \u2014 Hybrid is the everyday baseline you can stay on indefinitely, while blocks like Capacity, Velocity and Outcome peak you for a specific event.\n\nThe guiding idea is to build the foundation gradually: the wider the base, the higher the peak. Your lifting plan is shown here in the app; you log your runs and rucks yourself. Best when endurance matters as much as strength.",
     meta: ["Strength + endurance", "Event & selection prep"],
   },
   hybrid: {
@@ -269,7 +269,7 @@ const PROG_INFO: Record<string, ProgInfo> = {
   hyrox: {
     kick: "Hybrid Racing",
     title: "HYROX",
-    body: "Race-specific training for HYROX \u2014 the standardised fitness race of eight 1 km runs alternating with eight functional stations (ski erg, sled push & pull, burpee broad jumps, row, farmers carry, sandbag lunges and wall balls).\n\nThe plan periodises toward race day: a Base block builds your aerobic engine and a strength foundation, Build adds heavy strength and threshold running, Race-prep sharpens the signature \u201Ccompromised running\u201D (running hard on legs pre-fatigued by the stations) plus station circuits and a simulation or two, then a Taper leaves you fresh for the start line.\n\nYour running and ergs are tracked through Strava; the loaded stations log against the standardised division weights. Pick your experience level (it sets a 10\u201316 week build), your division (Open / Pro / Doubles) and how many days a week you can train. Best if you\u2019re targeting a HYROX event.",
+    body: "Race-specific training for HYROX \u2014 the standardised fitness race of eight 1 km runs alternating with eight functional stations (ski erg, sled push & pull, burpee broad jumps, row, farmers carry, sandbag lunges and wall balls).\n\nThe plan periodises toward race day: a Base block builds your aerobic engine and a strength foundation, Build adds heavy strength and threshold running, Race-prep sharpens the signature \u201Ccompromised running\u201D (running hard on legs pre-fatigued by the stations) plus station circuits and a simulation or two, then a Taper leaves you fresh for the start line.\n\nYou log your running and ergs yourself; the loaded stations log against the standardised division weights. Pick your experience level (it sets a 10\u201316 week build), your division (Open / Pro / Doubles) and how many days a week you can train. Best if you\u2019re targeting a HYROX event.",
     meta: ["Run + stations", "Event-targeted \u00B7 10\u201316 weeks"],
   },
 };
@@ -318,7 +318,7 @@ const PROGRAM_LOADOUT: Record<string, ProgramLoadoutMeta> = {
     title: "Configure your Green Protocol block",
     sub: "Green Protocol runs in two phases. Foundation builds your base from the ground up; Continuation is your flexible long-term baseline once that base is in place. New to this? Start with Capacity.",
     structLabel: "Conditioning",
-    struct: "Prescribed in-app \u00B7 runs & rucks logged via Strava",
+    struct: "Prescribed in-app \u00B7 runs & rucks logged by you",
     grouped: true,
   },
   hyrox: {

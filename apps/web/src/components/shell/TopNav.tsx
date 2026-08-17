@@ -64,14 +64,10 @@ export function TopNav({
   signOutAction,
   displayName,
   email,
-  hasStravaConnection,
-  lastSyncedAt,
 }: {
   signOutAction: () => Promise<void>;
   displayName: string | null;
   email: string | null;
-  hasStravaConnection: boolean;
-  lastSyncedAt: string | null;
 }) {
   const pathname = usePathname() ?? "/app";
 
@@ -191,8 +187,6 @@ export function TopNav({
             signOutAction={signOutAction}
             displayName={displayName}
             email={email}
-            hasStravaConnection={hasStravaConnection}
-            lastSyncedAt={lastSyncedAt}
           />
         </div>
       </div>

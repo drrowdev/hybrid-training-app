@@ -12,7 +12,7 @@
  * Contract:
  *   strengthEsl = (non-warmup, non-skipped logged sets) × modality_mult
  *   cardioEsl   = Σ per cardio_log (
- *                   inferred_kind ? eslFor(kind, min)   // Strava
+ *                   inferred_kind ? eslFor(kind, min)   // classified
  *                                 : durationMin × mode_multiplier      // internal fallback
  *                 )
  *   effectiveStressLoad = round2(strengthEsl + cardioEsl)
@@ -43,7 +43,7 @@ import {
 import {
   cardioEslFromKind,
   type ClassifiedCardioKind,
-} from "@/lib/integrations/strava/classify-cardio";
+} from "@/lib/cardio/classify-cardio";
 import { isCountableSet } from "./set-load";
 
 /** Logged strength set, post-filter friendly (the helper double-checks). */
@@ -57,13 +57,12 @@ export type SetLogRow = {
 };
 
 /**
- * Logged cardio block. `inferredKind` comes from the Strava classifier
+ * Logged cardio block. `inferredKind` comes from the cardio classifier
  * (cardio_logs.inferred_kind). The schema does NOT carry a stored
  * cardio_logs.inferred_esl column — ESL is always re-derived from
- * (kind, durationMin) here via `cardioEslFromKind`, which mirrors
- * link-external-cardio.ts's value. If a caller has a pre-computed ESL
- * (e.g. classifier output during a write path), pass it via
- * `precomputedEsl` to skip the re-derivation.
+ * (kind, durationMin) here via `cardioEslFromKind`. If a caller has a
+ * pre-computed ESL (e.g. classifier output during a write path), pass it
+ * via `precomputedEsl` to skip the re-derivation.
  */
 export type CardioLogRow = {
   movementId: string | null;
@@ -73,8 +72,8 @@ export type CardioLogRow = {
   /** cardio_logs.inferred_kind — null on pre-classified or internal logs. */
   inferredKind: ClassifiedCardioKind | string | null;
   /**
-   * Pre-computed ESL (rare; only some Strava-link write paths produce
-   * one). Null = re-derive from inferredKind or fall back.
+   * Pre-computed ESL (rare; only the manual activity-link write path
+   * produces one). Null = re-derive from inferredKind or fall back.
    */
   precomputedEsl?: number | null;
 };
@@ -86,7 +85,7 @@ export type ActualLoadInput = {
   cardioLogs: ReadonlyArray<CardioLogRow>;
 };
 
-export type CardioSource = "strava-classified" | "duration-modality" | "none";
+export type CardioSource = "kind-classified" | "duration-modality" | "none";
 
 export type ActualLoadOutput = {
   /** Round-2 value to write to planned_sessions.effective_stress_load. */
@@ -248,7 +247,7 @@ export function computeActualSessionLoad(
 
     if (c.precomputedEsl != null && Number.isFinite(c.precomputedEsl)) {
       cardioEsl += Math.max(0, c.precomputedEsl);
-      if (cardioSource === "none") cardioSource = "strava-classified";
+      if (cardioSource === "none") cardioSource = "kind-classified";
       continue;
     }
 
@@ -264,13 +263,13 @@ export function computeActualSessionLoad(
         c.inferredKind as ClassifiedCardioKind,
         Math.max(1, Math.round(durationMin)),
       );
-      if (cardioSource === "none") cardioSource = "strava-classified";
+      if (cardioSource === "none") cardioSource = "kind-classified";
       continue;
     }
 
     const mode = cardioMode(null, c.modality);
     cardioEsl += durationMin * internalCardioModalityMultiplier(mode);
-    if (cardioSource !== "strava-classified") cardioSource = "duration-modality";
+    if (cardioSource !== "kind-classified") cardioSource = "duration-modality";
   }
 
   // Strength + cardio components are already scaled (modality multiplier

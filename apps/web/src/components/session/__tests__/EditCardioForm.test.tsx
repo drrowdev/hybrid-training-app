@@ -8,7 +8,6 @@
  *   - Pace field rendered in M:SS (not s/km).
  *   - Prescription-only mode (Quick cardio, no logged metrics) hides
  *     Distance / Avg HR / Pace / RPE — only Duration + Notes remain.
- *   - Strava-imported mode is read-only and shows the re-sync note.
  */
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -100,29 +99,6 @@ describe("EditCardioForm", () => {
     expect(html).not.toContain("Avg HR");
     expect(html).not.toContain("Pace (");
     expect(html).not.toContain('name="rpe"');
-  });
-
-  it("strava-readonly mode renders all fields read-only with a re-sync note", () => {
-    const html = renderToStaticMarkup(
-      <EditCardioForm
-        sessionId="s"
-        block={makeBlock({
-          duration_sec: 1800,
-          distance_km: 6.4,
-          avg_hr_bpm: 165,
-          avg_pace_sec_per_km: 280,
-          rpe: 7,
-        })}
-        units="metric"
-        mode={{ kind: "strava-readonly" }}
-        action={noop}
-      />,
-    );
-    expect(html).toContain("Synced from Strava");
-    expect(html).toContain('data-mode="strava-readonly"');
-    expect(html).toContain("readonly");
-    // No submit button in read-only mode.
-    expect(html).not.toContain('data-testid="edit-cardio-submit"');
   });
 
   it("full mode renders every metric field with a save button", () => {

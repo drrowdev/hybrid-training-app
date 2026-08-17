@@ -391,7 +391,7 @@ describe("startQuickStrengthSession", () => {
 describe("repeatRecentSession", () => {
   it("copies strength movements from the source but NOT set_logs or cardio", async () => {
     // A source cardio block must NOT be cloned — quick workouts are
-    // strength-only; ad-hoc cardio lives in Strava.
+    // strength-only; ad-hoc cardio is logged through the cardio surfaces.
     store.cardioLogs.push({
       session_id: SOURCE_SESSION,
       movement_id: null,

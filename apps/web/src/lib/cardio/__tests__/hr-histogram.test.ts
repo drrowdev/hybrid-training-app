@@ -1,49 +1,8 @@
 import { describe, it, expect } from "vitest";
-import {
-  histogramFromStream,
-  zonesFromHistogram,
-  type HrHistogram,
-} from "../hr-histogram";
+import { zonesFromHistogram, type HrHistogram } from "../hr-histogram";
 import type { ZoneBands } from "@/lib/stats/hr-zones";
 
 const BANDS: ZoneBands = { z1Max: 121, z2Max: 142, z3Max: 163, z4Max: 183 };
-
-describe("histogramFromStream", () => {
-  it("returns null for empty / mismatched streams", () => {
-    expect(histogramFromStream({ hrStream: null, timeStream: [0, 1] })).toBeNull();
-    expect(histogramFromStream({ hrStream: [], timeStream: [] })).toBeNull();
-    expect(histogramFromStream({ hrStream: [0, -1], timeStream: [0, 1] })).toBeNull();
-  });
-
-  it("buckets seconds by integer bpm using inter-sample deltas", () => {
-    // first sample → 1s @120; then +60s @150; then +60s @150.
-    const h = histogramFromStream({
-      hrStream: [120, 150, 150],
-      timeStream: [0, 60, 120],
-    })!;
-    expect(h["120"]).toBe(1);
-    expect(h["150"]).toBe(120);
-  });
-
-  it("caps a single pathological gap at 60s", () => {
-    const h = histogramFromStream({
-      hrStream: [130, 140],
-      timeStream: [0, 3600],
-    })!;
-    // first sample 1s @130, then gap capped at 60s @140.
-    expect(h["130"]).toBe(1);
-    expect(h["140"]).toBe(60);
-  });
-
-  it("rounds fractional bpm to the nearest integer key", () => {
-    const h = histogramFromStream({
-      hrStream: [149.6, 150.2],
-      timeStream: [0, 10],
-    })!;
-    expect(Object.keys(h).sort()).toEqual(["150"]);
-    expect(h["150"]).toBe(11); // 1 (first) + 10
-  });
-});
 
 describe("zonesFromHistogram", () => {
   it("returns null without bands or histogram", () => {

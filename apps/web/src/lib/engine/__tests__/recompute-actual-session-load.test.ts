@@ -1,7 +1,7 @@
 /**
  * Integration coverage for `recomputeActualSessionLoad` — Finding 1
  * fix's DB-write side. Pattern mirrors
- * `integrations/strava/__tests__/link-external-cardio.test.ts`:
+ * the retired external-cardio link tests:
  * hand-rolled chainable supabase mock that captures the planned_sessions
  * UPDATE call.
  */

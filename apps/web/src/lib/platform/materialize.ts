@@ -86,7 +86,7 @@ export interface MaterializeOptions {
   /**
    * Optional weekdays (0 = Monday … 6 = Sunday) on which to add an OPEN cardio
    * day — a reserved `cardio_external` placeholder the user fills by logging any
-   * cardio (or which auto-links a Strava activity when the block is
+   * cardio (or which links an already-logged activity when the block is
    * `cardio_source='external'`). One placeholder is emitted per listed weekday in
    * every materialised program-week. Used by strength-only programs (5/3/1, TB)
    * where cardio isn't engine-owned; the concurrent programs (Hybrid, Green
@@ -639,7 +639,7 @@ export function materializeProgram<I>(
 /**
  * The single placeholder item for an OPEN cardio day. `movementId: ""` is the
  * app's `cardio_external` sentinel; the read side classifies a session as cardio
- * when every item is `cardio_*`, and the Strava matcher links a same-day activity
+ * when every item is `cardio_*`, and the user links a same-day logged activity
  * to a `cardio_external` placeholder (block `cardio_source='external'`).
  */
 function openCardioItem(label = "Cardio"): PrescriptionItem {
@@ -647,6 +647,6 @@ function openCardioItem(label = "Cardio"): PrescriptionItem {
     movementId: "",
     kind: "cardio_external",
     intensityLabel: label,
-    protocolNote: `Open ${label.toLowerCase()} — log any run, row, ride or other cardio. Auto-fills from Strava if connected.`,
+    protocolNote: `Open ${label.toLowerCase()} — log any run, row, ride or other cardio. Log it here, or link an activity you already recorded externally.`,
   };
 }

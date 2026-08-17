@@ -148,13 +148,6 @@ export default async function SettingsPage() {
           testId="settings-hub-training"
         />
         <SettingsHubCard
-          href="/app/settings/integrations"
-          icon={<SettingsIcon name="integrations" />}
-          title="Integrations"
-          description="Connect and manage Strava."
-          testId="settings-hub-integrations"
-        />
-        <SettingsHubCard
           href="/app/settings/hr-zones"
           icon={<SettingsIcon name="hr-zones" />}
           title="Heart-rate zones"

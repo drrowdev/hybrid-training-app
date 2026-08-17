@@ -147,7 +147,10 @@ self-describing.
 Exporting these would defeat at-rest encryption, so they never leave their
 subsystem:
 
-- `strava_connections` — Strava OAuth access/refresh tokens.
+- `strava_connections` — dead Strava OAuth access/refresh tokens. The Strava
+  integration was removed (Strava now charges for API access); the table is
+  orphaned but still present pending an owner-approved drop migration, so it
+  remains declared here until that lands.
 
 ### Derived / recomputable (omitted for clarity)
 

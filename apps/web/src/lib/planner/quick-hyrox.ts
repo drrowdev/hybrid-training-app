@@ -184,7 +184,7 @@ function cardioItem(
 /**
  * Build the quick HYROX session items for the chosen format. Returns one
  * classified cardio item (NOT `cardio_external` — that's external-program /
- * Strava-gated and can't be completed off-plan). A classified `cardio_*` kind
+ * gated and can't be completed off-plan). A classified `cardio_*` kind
  * makes the session page render the in-app cardio log form, so the user logs one
  * block (duration + RPE) and finishes.
  */
@@ -306,7 +306,7 @@ function loadedStationsView(
  * Build the structured HYROX completion view for a quick session — the same
  * shape a planned HYROX session feeds to `HyroxCompletionForm`: a "what to do"
  * structure (rounds + per-station amounts) + the loaded stations to confirm. The
- * user reads it, marks complete (one time + RPE) and/or syncs Strava — no generic
+ * user reads it and marks complete (one time + RPE) — no generic
  * cardio logger.
  */
 export function buildQuickHyroxView(args: AssembleQuickHyroxArgs): QuickHyroxView {

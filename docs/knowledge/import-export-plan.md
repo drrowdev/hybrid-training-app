@@ -10,10 +10,10 @@ Two distinct features that share infrastructure but solve different problems:
 - **Export**: deterministic snapshot of the user's data in JSON + (optional) per-table CSV. GDPR-style "give me everything", plus a few targeted exports (session log only, bodyweight history only) for quick spreadsheet work.
 - **Import**: tiered into three independent surfaces, each with its own UX and engineering shape:
   1. **Self re-import** — round-trip of our own export format. No AI.
-  2. **Third-party app adapters** — Strava / Hevy / Strong / Garmin / etc. Deterministic ETL per source. No AI.
+  2. **Third-party app adapters** — Hevy / Strong / Garmin / etc. Deterministic ETL per source. No AI. *(Strava is off the table since 2026-08-17: paid API, integration removed — any future Strava path must be file-upload based, not OAuth.)*
   3. **Unstructured import** — text notes, screenshots, free-form spreadsheets. **This is where an LLM earns its place** — extract → preview → human-edit → commit. Never silent.
 
-Phasing: ship Export first, then self-import, then one third-party adapter (Strava deepening since we already have the OAuth wired), then ramp into AI-assisted import only after the structured paths are battle-tested.
+Phasing: ship Export first, then self-import, then one third-party adapter, then ramp into AI-assisted import only after the structured paths are battle-tested.
 
 ---
 
@@ -114,10 +114,10 @@ Proposed adapters, ranked by likely user demand:
 
 | Source | Format | Notes |
 |---|---|---|
-| **Strava** | API (OAuth already wired) | Cardio sessions: GPX/TCX → `cardio_blocks`. We have the connection; deepen the import. |
+| ~~**Strava**~~ | ~~API (OAuth already wired)~~ | **Dead 2026-08-17** — paid API, integration removed and OAuth deleted. Any revival must be a user-supplied GPX/TCX/FIT file upload. |
 | **Hevy** | CSV export | Set logs. Reasonable export quality. |
 | **Strong** | CSV export | Set logs. Quirky column headers, well-documented. |
-| **Garmin Connect** | TCX / FIT | Cardio + HR. Overlap with Strava for most users. |
+| **Garmin Connect** | TCX / FIT | Cardio + HR. Now the most likely first cardio adapter, since Strava is gone. |
 | **MyFitnessPal** | — | NOT scoped here — body comp / nutrition is a separate concern. |
 | **Polar Flow / Suunto** | TCX | Niche. |
 
@@ -187,9 +187,9 @@ Triggers:
 |---|---|---|---|
 | **P1** | Export (JSON + 2 CSV) | small | Foundation for everything else; testable in isolation. |
 | **P2** | Self re-import (JSON) | small | Round-trip validates the export format. |
-| **P3** | Strava deepening | medium | Already have OAuth; pull historic GPX/TCX into `cardio_blocks`. |
+| ~~**P3**~~ | ~~Strava deepening~~ | — | **Cancelled 2026-08-17** — OAuth removed, API is paid. |
 | **P4** | Hevy + Strong CSV adapters | medium | Two of the most common requests. Establishes the adapter pattern. |
-| **P5** | Garmin TCX/FIT | medium-large | Defer if Strava is good enough for most users. |
+| **P5** | Garmin TCX/FIT | medium-large | Promoted in practice now that Strava is gone. |
 | **P6** | AI unstructured import — text | large | Behind a feature flag for early users. |
 | **P7** | AI unstructured import — image / PDF | large | Vision model. Higher cost; gated behind text first. |
 
@@ -199,7 +199,7 @@ Each phase is independently shippable and visible.
 
 ## Cross-cutting concerns
 
-- **Brand purity (DC-Q6)**: adapter source names (Strava, Hevy, etc.) are NOT external strength program names — they're integrations. Fine to use literally. The grep-guard is for methodology names (`wendler`, `5/3/1`, etc.).
+- **Brand purity (DC-Q6)**: adapter source names (Hevy, Garmin, etc.) are NOT external strength program names — they're integrations. Fine to use literally. The grep-guard is for methodology names (`wendler`, `5/3/1`, etc.).
 - **Privacy / PII**: exports should default to NOT including email; user can opt-in to "include account email" if they're transferring to a new env.
 - **Schema versioning**: every export carries `schema_version: 1`. Self-import migrates older versions forward.
 - **Idempotency**: every importable item should have a stable client-supplied UUID. Re-running the same import = no-op.
@@ -222,7 +222,7 @@ Each phase is independently shippable and visible.
 
 - Bodyweight export shape: `packages/db/src/schema/bw-progress.ts`, `bw-progression-events.ts`, `bw-diagnostics-snapshots.ts`
 - Session log shape: `packages/db/src/schema/sessions.ts`, `set-logs.ts`
-- Strava existing integration: `apps/web/src/lib/strava/*`
+- ~~Strava existing integration: `apps/web/src/lib/integrations/strava/*`~~ — **deleted 2026-08-17.** The general-purpose cardio logic that lived there now sits in `apps/web/src/lib/cardio/*` (`classify-cardio.ts`, `modality-region.ts`, `hr-histogram.ts`).
 - Movement catalog: `packages/db/seeds/movements-part{1,2}.ts`
 - Equipment-aware accessory filter (similar fuzzy-match pattern reusable for Tier 2): `apps/web/src/lib/planner/equipment-requirements.ts`
 

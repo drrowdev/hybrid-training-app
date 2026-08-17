@@ -575,3 +575,89 @@ Tonnage is removed from the completed-session card. It summed weight times reps 
 The personal-record tile now renders only when there is a record to report; a permanently visible tile whose usual value is zero spent a fifth of the row saying nothing happened. The card also had an uppercase eyebrow directly above a heading repeating the same words, so the eyebrow is gone and one heading remains.
 
 The prescription-fidelity line now leads with what landed as written. Reporting only deviations made a near-perfect session read as a list of misses and left the denominator to be inferred, which is exactly how it was misread in practice.
+
+## [2026-08-17] decision | Strava integration removed — paid API, permanently dead
+
+Strava now charges for API access and the owner will not subscribe, so the
+integration can never sync again. It was removed rather than left dormant: a
+dead OAuth surface invites users to connect an account that will never work,
+and every Strava-gated branch was a permanent false condition sitting in live
+code paths.
+
+**Deleted — ingestion.** The whole `apps/web/src/lib/integrations/strava/`
+tree (`actions.ts`, `client.ts`, `import-history.ts`,
+`link-external-cardio.ts`, `match.ts`, `sync-row.ts`, `sync.ts`,
+`webhook-handler.ts`, `write-activity.ts`, `zones-from-stream.ts`,
+`zones-from-summary.ts` and their tests); the OAuth callback
+`app/api/strava/callback/route.ts`; the push-subscription webhook
+`app/api/integrations/strava/webhook/route.ts`; and the two subscription CLI
+scripts (`apps/web/scripts/strava-subscribe.ts`,
+`strava-list-subscriptions.ts`) plus their `package.json` entries.
+
+**Deleted — UI.** `app/app/settings/strava/page.tsx`; the entire
+`app/app/settings/integrations/` sub-hub (it contained exactly one card, so a
+zero-integration hub had no reason to exist) and its tile on the settings hub;
+`StravaPoweredBadge`, `StravaStaleSyncTrigger`, `StravaAutofillBanner`,
+`StravaConnectionActions`, `StravaImportHistory`, `StravaSyncPill`,
+`StravaConnectStep` and their tests; the top-bar sync indicator in
+`TopBarRight` (its only data source was `strava_connections.last_synced_at`);
+the cmd-K Strava page entry; the autofill/finish server actions
+(`applyStravaAutofill`, `finishStravaAppliedSession`) and their branches in
+`CardioLogForm`; the HYROX activity matcher (`findMatchingStravaActivity` and
+the `HyroxStravaMatch` plumbing) — HYROX completion is now manual-only; and
+the onboarding "Connect Strava" step, which takes the wizard from 6 steps to
+5 (Welcome → Profile → Equipment → Training maxes → Start training).
+
+**Deleted — analytics, by explicit owner decision.** The three Strava-gated
+cards `HrZonesCard`, `PacePRsCard`, `RunPlanAdherenceCard` and their data
+modules `lib/stats/pace-prs.ts` and `lib/stats/run-plan-adherence.ts`, plus
+their call sites in `StatsCommandCenter` and the stats routes. Not re-homed,
+not preserved.
+
+**Relocated, not deleted.** `lib/integrations/strava/` was never
+self-contained; three of its modules were general-purpose cardio domain logic
+with non-Strava consumers. They now live in `apps/web/src/lib/cardio/`:
+
+- `classify-cardio.ts` — `cardioEslFromKind` drives cardio **effective stress
+  load** (`lib/engine/actual-session-load.ts`), and `classifyCardio` powers the
+  manual "link an already-logged activity to a planned cardio slot" feature
+  (`lib/sessions/link-activity.ts`, PR #640). Logic unchanged.
+- `modality-region.ts` (was `mapping.ts`) — `MODALITY_REGION` attributes
+  cardio load to regions for `cardio_logs` rows with no `movement_id`
+  (`lib/engine/region-ledger.ts`, `lib/hyrox/materialize-actuals` tests). The
+  Strava-only exports (`MAP`, `mapStravaActivity`, `categorizeSkip`, the
+  `SKIPPED_*` sets) were dropped.
+- `hr-histogram.ts` — `zonesFromHistogram` re-buckets the retained
+  `cardio_logs.hr_histogram` when the user changes HR bands
+  (`lib/settings/hr-zones-actions.ts`). This is a live engine path over
+  retained history, so `hr-zones-actions.ts` and `HrZonesSettings.tsx` were
+  **kept**, contrary to the brief's tentative deletion. `histogramFromStream`
+  was dropped — no stream will ever be fetched again.
+
+`lib/stats/hr-zones.ts` was also **kept** despite being listed for deletion: it
+is the shared HR-band math behind the Endurance-progress card, the HR-zones
+settings page, cardio classification and cardio summaries — a different
+surface from the deleted `HrZonesCard`. Its `strava_connections` gate and its
+`{ kind: "no-strava" }` state were removed; users with no HR data now fall
+through to `no-hr-data` instead of being told to connect an account.
+
+**Deliberately retained — no destructive migration was written.** All Strava
+DB columns stay: `cardio_logs.strava_activity_id`, `external_source`,
+`hr_histogram`, `hr_zones`, `inferred_kind`, `inferred_confidence`, and
+`sessions.strava_activity_id`. This is the owner's real training history, and
+`inferred_kind` still feeds effective stress load for every historical cardio
+row. The `strava_connections` and `strava_event_log` tables are now orphaned
+but were **not** dropped; a drop migration (with its down-migration) is
+proposed for separate owner approval. `strava_connections` holds dead OAuth
+access/refresh tokens — a standing privacy consideration even though they can
+no longer be exchanged for anything.
+
+One judgement call worth flagging: `EditCardioForm`'s `strava-readonly` mode
+was removed rather than retained. It forced externally-imported cardio rows to
+be read-only with a "edit in Strava and re-sync" instruction — a dead end now
+that the upstream can never exist. Those historical rows are now normally
+editable.
+
+Test suite: 382 files / 4305 tests → 365 files / 4152 tests
+(−151 from 18 deleted test files, −5 net from in-place edits, +3 from a new
+`lib/cardio/__tests__/modality-region.test.ts`).

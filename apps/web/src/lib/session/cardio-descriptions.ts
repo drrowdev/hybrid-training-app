@@ -74,7 +74,7 @@ export const GENERIC_CARDIO_ONE_LINER =
  * note started driving the description).
  */
 export const EXTERNAL_CARDIO_DISPLAY_NOTE =
-  "Display-only — log the actual session (Strava / your tracker) so the engine can account for the load.";
+  "Display-only — log the actual session so the engine can account for the load.";
 
 /**
  * Resolve a description for any prescription item kind. Returns the

@@ -10,8 +10,6 @@ import { CardioModalitySettings } from "@/components/settings/CardioModalitySett
 import type { PreferredCardioModality } from "@/lib/planner/preferred-cardio-modality";
 import { BwAssessmentStep } from "@/components/onboarding/bw-assessment/BwAssessmentStep";
 import type { BwAssessmentPayload } from "@/components/onboarding/bw-assessment/BwAssessmentStep";
-import { StravaConnectStep } from "@/components/onboarding/StravaConnectStep";
-import type { ImportSummary } from "@/lib/integrations/strava/import-history";
 import {
   hasLoadableMainLift,
   PRESET_BY_KEY,
@@ -78,7 +76,6 @@ export const STEPS = [
   "Profile",
   "Equipment",
   "Training maxes",
-  "Connect Strava",
   "Start training",
 ] as const;
 type StepLabel = (typeof STEPS)[number];
@@ -95,15 +92,11 @@ export function OnboardingWizard({
   hasEquipmentRow,
   initialCardioModalities,
   roleCandidates,
-  initialStravaConnected,
-  stravaIsConfigured,
   initialStep,
   saveProfileAction,
   saveEquipmentAction,
   saveTmsAction,
   submitBwAssessmentAction,
-  connectStravaAction,
-  importStravaHistoryAction,
   finishAction,
   skipAction,
 }: {
@@ -114,16 +107,7 @@ export function OnboardingWizard({
   hasEquipmentRow: boolean;
   initialCardioModalities: PreferredCardioModality[];
   roleCandidates: RoleCandidates[];
-  /** True when the user already has a `strava_connections` row — either
-   *  set in a previous session or by completing the OAuth round-trip
-   *  during this onboarding flow. Drives whether the Strava step opens
-   *  in connect or import mode. */
-  initialStravaConnected: boolean;
-  /** Whether the Strava OAuth env vars are present in this environment.
-   *  Disables the connect CTA when false (the wizard still advances). */
-  stravaIsConfigured: boolean;
-  /** Optional starting step index — used to land on the Strava step
-   *  after the OAuth round-trip strips the in-memory wizard state. */
+  /** Optional starting step index. */
   initialStep?: number;
   saveProfileAction: (fd: FormData) => Promise<OnboardingResult>;
   saveEquipmentAction: (fd: FormData) => Promise<void>;
@@ -131,15 +115,6 @@ export function OnboardingWizard({
   submitBwAssessmentAction: (
     payload: BwAssessmentPayload,
   ) => Promise<OnboardingResult>;
-  connectStravaAction: (fd: FormData) => Promise<void>;
-  importStravaHistoryAction: (input: {
-    startDate: string;
-    endDate?: string;
-    autoLinkToPlanned?: boolean;
-  }) => Promise<
-    | { ok: true; summary: ImportSummary }
-    | { ok: false; error: string }
-  >;
   finishAction: () => Promise<OnboardingResult>;
   skipAction: () => Promise<void>;
 }) {
@@ -276,11 +251,6 @@ export function OnboardingWizard({
           return "Enter or seed a 1RM for at least one lift, or skip them all.";
         return null;
       }
-      case "Connect Strava":
-        // Optional step: always advanceable. Connect/import are
-        // value-add opt-ins; the wizard's Continue button doesn't gate
-        // on either.
-        return null;
       case "Start training":
         return null;
     }
@@ -540,19 +510,9 @@ export function OnboardingWizard({
           />
         )}
 
-        {currentLabel === "Connect Strava" && (
-          <StravaConnectStep
-            connected={initialStravaConnected}
-            connectAction={connectStravaAction}
-            importAction={importStravaHistoryAction}
-            isConfigured={stravaIsConfigured}
-            kicker="Step 5"
-          />
-        )}
-
         {currentLabel === "Start training" && (
           <div style={{ display: "grid", gap: 12 }}>
-            <Heading kicker="Step 6" title="Setup complete" />
+            <Heading kicker="Step 5" title="Setup complete" />
             <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.6 }}>
               Pick your first program. You can switch or rebuild any time from
               the program picker.

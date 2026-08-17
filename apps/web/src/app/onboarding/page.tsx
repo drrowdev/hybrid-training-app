@@ -8,11 +8,7 @@ import {
 } from "@/lib/onboarding/actions";
 import { submitBwAssessment } from "@/lib/onboarding/bw-assessment";
 import { updateEquipmentV2 } from "@/lib/settings/equipment-actions";
-import {
-  connectStrava,
-  importStravaHistoryAction,
-} from "@/lib/integrations/strava/actions";
-import { OnboardingWizard, STEPS, type RoleCandidates } from "@/components/onboarding/OnboardingWizard";
+import { OnboardingWizard, type RoleCandidates } from "@/components/onboarding/OnboardingWizard";
 import {
   STRENGTH_ROLE_CANDIDATES,
   STRENGTH_ROLE_LABELS,
@@ -24,19 +20,14 @@ import { sanitizePreferredModalities } from "@/lib/planner/preferred-cardio-moda
 
 const MAIN_ROLES: StrengthRole[] = ["squat", "horizontal_press", "deadlift", "vertical_press"];
 
-export default async function OnboardingPage({
-  searchParams,
-}: {
-  searchParams?: Promise<Record<string, string | undefined>>;
-}) {
-  const params = (await searchParams) ?? {};
+export default async function OnboardingPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { count: tmCount }, { data: stravaConnection }] = await Promise.all([
+  const [{ data: profile }, { count: tmCount }] = await Promise.all([
     supabase
       .from("profiles")
       .select(
@@ -48,11 +39,6 @@ export default async function OnboardingPage({
       .from("training_maxes")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id),
-    supabase
-      .from("strava_connections")
-      .select("athlete_id")
-      .eq("user_id", user.id)
-      .maybeSingle(),
   ]);
 
   // If the user is already done, don't trap them in onboarding.
@@ -91,19 +77,6 @@ export default async function OnboardingPage({
     profile?.preferred_cardio_modalities as readonly unknown[] | null,
   );
 
-  const stravaIsConfigured =
-    Boolean(process.env.STRAVA_CLIENT_ID) &&
-    Boolean(process.env.STRAVA_CLIENT_SECRET) &&
-    Boolean(process.env.STRAVA_REDIRECT_URI);
-
-  // When the OAuth callback bounces back here it appends
-  // `?strava_connected=1`. Jump the wizard straight to the Strava
-  // step so the import UI is the first thing the user sees on
-  // return, instead of dumping them back at Welcome. From there a
-  // single Continue lands them on the final "Start training" step.
-  const justConnectedStrava = params.strava_connected === "1";
-  const initialStep = justConnectedStrava ? STEPS.indexOf("Connect Strava") : undefined;
-
   return (
     <OnboardingWizard
       initialDisplayName={profile?.display_name ?? ""}
@@ -113,15 +86,10 @@ export default async function OnboardingPage({
       hasEquipmentRow={hasEquipmentRow}
       initialCardioModalities={initialCardioModalities}
       roleCandidates={roleCandidates}
-      initialStravaConnected={Boolean(stravaConnection)}
-      stravaIsConfigured={stravaIsConfigured}
-      initialStep={initialStep}
       saveProfileAction={saveOnboardingProfile}
       saveEquipmentAction={updateEquipmentV2}
       saveTmsAction={saveOnboardingTms}
       submitBwAssessmentAction={submitBwAssessment}
-      connectStravaAction={connectStrava}
-      importStravaHistoryAction={importStravaHistoryAction}
       finishAction={finishOnboardingNoBlock}
       skipAction={skipOnboarding}
     />

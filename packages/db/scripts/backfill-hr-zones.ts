@@ -8,7 +8,7 @@
  * `profiles.intake.hrMax`), then update the row.
  *
  * Why this exists: PR A (audit I3) starts populating `hr_zones` on
- * every NEW Strava import. Rows imported BEFORE that change are
+ * every NEW imported row. Rows imported BEFORE that change are
  * orphaned with `hr_zones = null`. This script catches them up. It is
  * NOT auto-run by the sync — invoke manually so future, better
  * methods (streams endpoint) aren't overwritten by this summary-based
@@ -24,9 +24,10 @@
  *   - NEXT_PUBLIC_SUPABASE_URL
  *   - SUPABASE_SERVICE_ROLE_KEY
  *
- * APPROXIMATED FROM SUMMARY. For finer accuracy, use Strava streams
- * (future work). Mirrors the algorithm in
- * `apps/web/src/lib/integrations/strava/zones-from-summary.ts`.
+ * APPROXIMATED FROM SUMMARY. A finer per-second-stream estimator once
+ * existed alongside the retired activity integration; it was removed on
+ * 2026-08-17 and there is no upstream to re-fetch from, so this
+ * summary-based approximation is now the only path for orphaned rows.
  */
 import "dotenv/config";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";

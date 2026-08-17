@@ -132,9 +132,9 @@ export type CardioInput = {
   /**
    * Optional time-in-zone (seconds per HR zone). When present, drives the
    * intensity scalar via `cardioIntensityScalar`; otherwise we fall back
-   * to the legacy `clamp(rpe/10)` heuristic. Populated by Strava sync
-   * (`integrations/strava/zones-from-summary.ts`) — null on rows pre-PR
-   * #162 / non-Strava cardio. See audit I3.
+   * to the legacy `clamp(rpe/10)` heuristic. Historically populated by the
+   * (now removed) external-activity import; null on rows pre-PR #162 and on
+   * manually logged cardio without HR. See audit I3.
    */
   hrZones?: HrZones | null;
 };

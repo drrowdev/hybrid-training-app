@@ -6,6 +6,8 @@ This is a read-only audit. The goal is to describe — without flattery — what
 
 ---
 
+> **2026-08-17 — Strava integration removed.** Strava now charges for API access; the integration was deleted and can never sync again. Everything below that describes a *live* Strava code path is now historical. The retained data (`cardio_logs.hr_zones` / `hr_histogram` / `inferred_kind` / `external_source` / `strava_activity_id`, `sessions.strava_activity_id`) and all engine math that reads it are unchanged. See `log.md` (2026-08-17).
+
 ## 1. Actual session load — how a completed session turns into ESL
 
 `apps/web/src/lib/engine/actual-session-load.ts` is the source of truth. `computeActualSessionLoad()` is called server-side from `completeSession`, and also from `editSet` / `deleteSet` / `editCardio` / `deleteCardio` (only when the session is already completed) via the wrapper `recompute-actual-session-load.ts`.
@@ -72,9 +74,9 @@ The "freshness" rendered on the UI today is the *bucket* freshness (5 buckets), 
 
 Shipped by **PR #167** (`feat(engine): HR-aware cardio bucket + region load when zones available`). The engine has weighted by *time-in-zone* (not "one zone per session") since #167 — the doc previously claimed otherwise; corrected per **ADR 0009** ("Correction of the record"). What ADR 0009 changed in May 2026 is the *source* of those `hr_zones` seconds, not the engine math:
 
-* **Webhook path (`syncStravaSingle`) + historical import (`importStravaHistory`)** — both fetch the per-second HR stream via `fetchActivityStreams` and compute true time-in-zone via `zones-from-stream.ts` (`MAX_GAP_SEC = 60` caps a single inter-sample interval, heuristic CP-1). Best-effort: a `null` from the streams call (no stream, rate-limited, network error) silently falls back to the summary leak-model. *(History import was originally summary-only per ADR 0009 Decision 4; the 2026-06-16 addendum (#558) extended it to streams, since `fetchActivityStreams` never throws so a bulk import degrades gracefully.)*
-* **Bulk `syncStrava`** — stays summary-only by design (one extra streams call per new activity, never per row). These rows keep using `estimateZonesFromSummary` (leak model from avg + max HR).
-* **Band-independent histogram (`cardio_logs.hr_histogram`, migration 0109, #559)** — when a stream is fetched, a compact `bpm → seconds` histogram is persisted alongside `hr_zones` (`hr-histogram.ts`). On an HR-zone settings change, `updateHrZones` re-buckets every stored activity's `hr_zones` from its histogram (`zonesFromHistogram`) against the new bands and refreshes the cached `region_state` ledger — **no Strava re-fetch**. ESL is not recomputed (reads `inferred_kind` + duration, not `hr_zones`). See ADR 0009 addendum.
+* *(Removed 2026-08-17.)* **Webhook path (`syncStravaSingle`) + historical import (`importStravaHistory`)** — both fetched the per-second HR stream via `fetchActivityStreams` and compute true time-in-zone via `zones-from-stream.ts` (`MAX_GAP_SEC = 60` caps a single inter-sample interval, heuristic CP-1). Best-effort: a `null` from the streams call (no stream, rate-limited, network error) silently falls back to the summary leak-model. *(History import was originally summary-only per ADR 0009 Decision 4; the 2026-06-16 addendum (#558) extended it to streams, since `fetchActivityStreams` never throws so a bulk import degrades gracefully.)*
+* *(Removed 2026-08-17.)* **Bulk `syncStrava`** — stayed summary-only by design (one extra streams call per new activity, never per row). These rows keep using `estimateZonesFromSummary` (leak model from avg + max HR).
+* **Band-independent histogram (`cardio_logs.hr_histogram`, migration 0109, #559)** — when a stream is fetched, a compact `bpm → seconds` histogram is persisted alongside `hr_zones` (`hr-histogram.ts`). On an HR-zone settings change, `updateHrZones` re-buckets every stored activity's `hr_zones` from its histogram (`zonesFromHistogram`) against the new bands and refreshes the cached `region_state` ledger — **no re-fetch**. *(Still live: `zonesFromHistogram` moved to `apps/web/src/lib/cardio/hr-histogram.ts`; `hr_histogram` is now written only by retained history, never by a new import.)* ESL is not recomputed (reads `inferred_kind` + duration, not `hr_zones`). See ADR 0009 addendum.
 * **`cardioIntensityScalar` is unchanged** — pinned byte-identical for a fixed `hr_zones` input. The interference scalar and freshness pipelines get truer inputs, not new math.
 
 ## 6. Recovery — per-session GRM (the daily wellness multiplier was removed)
@@ -177,9 +179,9 @@ So the engine now has a modality-aware continuous interference model (per-modali
   * **14-day retro-window** cap on `startSessionDirect` (PR #174 description): a user cannot back-date a session more than 14 days. Older planned sessions can't be retroactively claimed.
 * Range selector (`adherence-range.ts`): 12 weeks, 26 weeks, or "all".
 
-## 13. Cardio classifier — Strava + manual cardio into a kind
+## 13. Cardio classifier — logged cardio into a kind
 
-`apps/web/src/lib/integrations/strava/classify-cardio.ts`:
+`apps/web/src/lib/cardio/classify-cardio.ts` *(relocated 2026-08-17 from `lib/integrations/strava/classify-cardio.ts`; unchanged logic. Consumers: `lib/engine/actual-session-load.ts` for cardio ESL, `lib/sessions/link-activity.ts` for manual activity→slot linking)*:
 
 * **ESL per kind** (`classify-cardio.ts:73-89`): `cardio_z2` = `0.5 × min`, `cardio_threshold` = `1.3 × min`, `cardio_vo2` = `2.0 × min`, `cardio_alactic` = `1.0 × min`, `cardio_mixed` = `1.0 × min`.
 * **Kind picker** (`classify-cardio.ts:101-128`):

@@ -306,7 +306,7 @@ describe("adaptSessionPrescription — strength", () => {
     const cardio = prescription.items[0]!;
     expect(cardio.kind).toBe("cardio_external");
     expect(cardio.notes).toBeUndefined();
-    expect(cardio.protocolNote).toMatch(/Strava|external/i);
+    expect(cardio.protocolNote).toMatch(/log the actual session/i);
   });
 
   it("passes a structured cardioPlan through to the stored cardio item", () => {

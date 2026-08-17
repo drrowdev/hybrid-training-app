@@ -32,7 +32,10 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
  * opaque catalog UUIDs.
  *
  * ── What's intentionally excluded (and why) ──────────────────────────
- *   - Strava OAuth tokens (`strava_connections`) never leave their subsystem.
+ *   - Dead Strava OAuth tokens (`strava_connections`) never leave their
+ *     subsystem. The integration was retired (Strava now charges for API
+ *     access), but the table is still present pending an owner-approved
+ *     drop migration, so it stays declared here until that lands.
  *   - Derived / recomputable snapshots are omitted to keep the export to
  *     authored data: `tm_suggestions`, `region_state_history`,
  *     `muscle_state_history`, `bw_diagnostics_snapshots`.

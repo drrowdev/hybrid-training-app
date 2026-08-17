@@ -2,8 +2,8 @@
  * EmptyState — shared empty-card primitive.
  *
  * "Explain what unlocks this card": every empty surface
- * should tell the user the answer ("no data"), the action ("connect
- * Strava"), and the reason ("…with HR streams populate this card") in
+ * should tell the user the answer ("no data"), the action ("log a run"),
+ * and the reason ("…with heart-rate data populate this card") in
  * one short block. This component is the canonical render for that
  * pattern across the app.
  *

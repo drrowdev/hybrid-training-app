@@ -465,7 +465,7 @@ export type Prescription = {
      * The structured HYROX completion view for a quick-generated session, stored
      * at generation time so the session page can render the same
      * `HyroxCompletionForm` a planned HYROX session uses (structured "what to do"
-     * + confirm-weights + Mark complete / Strava), without a program instance.
+     * + confirm-weights + Mark complete), without a program instance.
      */
     hyroxQuickView?: {
       title: string;

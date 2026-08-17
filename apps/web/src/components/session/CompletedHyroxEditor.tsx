@@ -16,7 +16,7 @@ export function CompletedHyroxEditor({
   formProps,
   children,
 }: {
-  formProps: Omit<HyroxCompletionFormProps, "editMode" | "onCancel" | "stravaMatch">;
+  formProps: Omit<HyroxCompletionFormProps, "editMode" | "onCancel">;
   children: React.ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
@@ -25,7 +25,6 @@ export function CompletedHyroxEditor({
     return (
       <HyroxCompletionForm
         {...formProps}
-        stravaMatch={null}
         editMode
         onCancel={() => setEditing(false)}
       />

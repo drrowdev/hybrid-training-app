@@ -31,7 +31,7 @@ describe("conditioning vocabulary", () => {
     expect(peggy.note).toMatch(/NOT a sprint/i);
   });
 
-  it("flags continuous runs/rucks as Strava-trackable and circuits as not", () => {
+  it("flags continuous runs/rucks as watch-trackable and circuits as not", () => {
     expect(getConditioningSession("lss")!.trackable).toBe(true);
     expect(getConditioningSession("ruck")!.trackable).toBe(true);
     // Strength-endurance circuits aren't a GPS activity → manual completion.

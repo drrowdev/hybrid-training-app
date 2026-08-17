@@ -312,7 +312,7 @@ export async function getPriorBestsForMovements(
  * is noise — the goal is "do what I did last Tuesday", not archaeology.
  *
  * Quick workouts are strength-only, so this returns only sessions that
- * logged at least one strength set (pure-cardio sessions — e.g. Strava
+ * logged at least one strength set (pure-cardio sessions — e.g. a logged
  * imports — are filtered out; repeating clones strength movements only).
  *
  * Returns up to `limit` rows ordered by `performed_at` desc, with a

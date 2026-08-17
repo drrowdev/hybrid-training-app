@@ -2,7 +2,7 @@
 
 /**
  * LinkActivityControl — "Link a logged activity" affordance on a planned cardio
- * session drawer. Lets the user attach an already-logged run (e.g. a Strava
+ * session drawer. Lets the user attach an already-logged run (e.g. an
  * activity that synced before the day was swapped, or any internal-cardio plan
  * the auto-linker skips) to this planned slot, with full HYROX load attribution
  * via `linkActivityToPlanned`.
@@ -116,7 +116,7 @@ export function LinkActivityControl({
           )}
           {!loading && items != null && items.length === 0 && (
             <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-              No unlinked activities in the last 3 weeks. Logged runs sync from Strava.
+              No unlinked activities in the last 3 weeks. Log a run to link it here.
             </div>
           )}
           {!loading &&

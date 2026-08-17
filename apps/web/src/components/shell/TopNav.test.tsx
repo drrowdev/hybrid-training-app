@@ -31,8 +31,6 @@ describe("TopNav — mobile (<768px) cleanup", () => {
       signOutAction={async () => {}}
       displayName="Test User"
       email="test@example.com"
-      hasStravaConnection={false}
-      lastSyncedAt={null}
     />,
   );
 

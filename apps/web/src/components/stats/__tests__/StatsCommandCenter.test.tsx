@@ -88,7 +88,7 @@ export function bucket(overrides: Partial<StatsRangeBucket> = {}): StatsRangeBuc
       sampleRuns: 9,
       droppedRuns: 1,
       totalRuns: 12,
-      timeInZone: { kind: "no-strava" },
+      timeInZone: { kind: "no-zones" },
       weeklyPace: [330, 326, 321, 316, 312],
       detail: "Easy pace improving ~2s/km per week.",
       windowDays: 90,
@@ -254,9 +254,9 @@ describe("StatsCommandCenter - cold-start state", () => {
       sampleRuns: 0,
       droppedRuns: 0,
       totalRuns: 0,
-      timeInZone: { kind: "no-strava" },
+      timeInZone: { kind: "no-zones" },
       weeklyPace: [],
-      detail: "Connect Strava or log runs to see pace and zone trends.",
+      detail: "Log runs to see pace and zone trends.",
       windowDays: 30,
     },
     verdict: { verdict: "building", label: "Building baseline", proofChips: [], detail: "Not enough data yet." },
@@ -423,7 +423,7 @@ describe("EnduranceDrawer - pace trend + time-in-zone", () => {
     const open = renderToStaticMarkup(
       <EnduranceDrawer open onClose={() => {}} data={bucket().endurance} range="90d" />,
     );
-    expect(open).toContain("Connect Strava to see time-in-zone");
+    expect(open).toContain("Set your HR zones in Settings to see time-in-zone");
   });
 
   it("renders nothing when closed", () => {

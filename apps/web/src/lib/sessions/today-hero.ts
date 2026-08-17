@@ -7,7 +7,7 @@ import type { PlannedSlot } from "@/lib/planner/slot";
  * The day is only "fully logged" when at least one session was completed
  * today AND every PLANNED session for today is settled (completed or skipped). We check
  * per-session completion rather than comparing counts: an extra standalone
- * activity — e.g. an easy Strava run auto-synced on a day that also has a
+ * activity — e.g. an easy run logged on a day that also has a
  * prescribed session — must NOT mask a still-pending planned session.
  * Counting it would hide the planned card the user still needs to act on.
  *

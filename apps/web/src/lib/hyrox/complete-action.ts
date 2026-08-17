@@ -51,7 +51,7 @@ const completeHyroxSchema = z
     confirmedWeights: z.record(z.string(), z.coerce.number().min(0).max(500)).optional(),
     notes: z.string().max(2000).optional(),
     avgHrBpm: z.coerce.number().int().min(20).max(260).optional(),
-    /** JSON object of zone → seconds (from a linked Strava activity). */
+    /** JSON object of zone → seconds (from a linked cardio activity). */
     hrZones: z.record(z.string(), z.coerce.number().min(0)).optional(),
   })
   .strict();

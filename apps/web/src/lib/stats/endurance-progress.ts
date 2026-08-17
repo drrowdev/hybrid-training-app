@@ -14,8 +14,8 @@
  *   - modality is "run"
  *   - it has a non-null `avg_pace_sec_per_km`
  *   - EITHER `inferred_kind === "cardio_z2"` (the easy/Z2 class produced
- *     by `lib/integrations/strava/classify-cardio.ts` on Strava import,
- *     which is the system's canonical "easy" label)
+ *     by `lib/cardio/classify-cardio.ts`, which is the system's
+ *     canonical "easy" label)
  *   - OR `avg_hr_bpm` is present AND falls inside the user's Z1∪Z2
  *     bands per `lib/stats/hr-zones.ts` (we fetch the same band config
  *     `getHrZones` uses, so the two cards stay coherent).

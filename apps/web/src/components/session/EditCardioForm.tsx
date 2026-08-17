@@ -10,8 +10,6 @@
  *     Notes — the user is editing what they INTEND to do, not logging
  *     actual values; those land via the `<CardioLogForm>` after the
  *     workout.
- *   - In "Strava-imported" mode renders the form as read-only and
- *     points the user back at Strava → re-sync.
  *
  * Conversion lives in `@/lib/cardio/units` (also covers Distance
  * km↔mi if/when we expose unit-aware distance editing here).
@@ -30,7 +28,6 @@ import {
 
 export type EditCardioMode =
   | { kind: "prescription-only" } // Quick workout, no metrics logged yet
-  | { kind: "strava-readonly" } // imported from Strava — edit upstream
   | { kind: "full" }; // normal edit (logged or completed)
 
 export type EditCardioBlock = {
@@ -65,8 +62,6 @@ export function EditCardioForm({
   const initialDurationMin = secondsToMinutes(block.duration_sec) ?? "";
   const initialPace = formatSecPerKmToPace(block.avg_pace_sec_per_km, units);
   const initialDistance = block.distance_km ?? "";
-
-  const readOnly = mode.kind === "strava-readonly";
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -114,15 +109,6 @@ export function EditCardioForm({
       <input type="hidden" name="id" value={block.id} />
       <input type="hidden" name="sessionId" value={sessionId} />
 
-      {mode.kind === "strava-readonly" && (
-        <p
-          data-testid="edit-cardio-strava-note"
-          className="text-xs text-foreground/70 rounded-md border border-foreground/15 p-2"
-        >
-          Synced from Strava — edit in Strava and re-sync.
-        </p>
-      )}
-
       <div className="grid grid-cols-2 gap-3">
         <Field
           name="durationMin"
@@ -133,10 +119,9 @@ export function EditCardioForm({
           max="600"
           required
           defaultValue={initialDurationMin}
-          readOnly={readOnly}
         />
 
-        {mode.kind === "full" || mode.kind === "strava-readonly" ? (
+        {mode.kind === "full" ? (
           <>
             <Field
               name="distanceKm"
@@ -145,16 +130,14 @@ export function EditCardioForm({
               step="0.1"
               inputMode="decimal"
               defaultValue={initialDistance}
-              readOnly={readOnly}
-            />
+                />
             <Field
               name="avgHrBpm"
               label="Avg HR (bpm)"
               type="number"
               inputMode="numeric"
               defaultValue={block.avg_hr_bpm ?? ""}
-              readOnly={readOnly}
-            />
+                />
             <Field
               name="avgPace"
               label={`Pace (${paceUnitLabel(units)})`}
@@ -162,8 +145,7 @@ export function EditCardioForm({
               inputMode="numeric"
               placeholder="6:00"
               defaultValue={initialPace}
-              readOnly={readOnly}
-              aria-describedby={paceError ? errId : undefined}
+                  aria-describedby={paceError ? errId : undefined}
             />
             <Field
               name="rpe"
@@ -174,8 +156,7 @@ export function EditCardioForm({
               max="10"
               inputMode="decimal"
               defaultValue={block.rpe ?? ""}
-              readOnly={readOnly}
-            />
+                />
           </>
         ) : null}
       </div>
@@ -201,21 +182,18 @@ export function EditCardioForm({
           rows={2}
           maxLength={400}
           defaultValue={block.notes ?? ""}
-          readOnly={readOnly}
           className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2 text-sm"
         />
       </div>
 
-      {!readOnly && (
-        <button
-          type="submit"
-          data-testid="edit-cardio-submit"
-          disabled={pending}
-          className="w-full rounded-md bg-foreground text-background py-2 text-sm font-medium hover:opacity-90 disabled:opacity-60"
-        >
-          {pending ? "Saving…" : "Save changes"}
-        </button>
-      )}
+      <button
+        type="submit"
+        data-testid="edit-cardio-submit"
+        disabled={pending}
+        className="w-full rounded-md bg-foreground text-background py-2 text-sm font-medium hover:opacity-90 disabled:opacity-60"
+      >
+        {pending ? "Saving…" : "Save changes"}
+      </button>
     </form>
   );
 }

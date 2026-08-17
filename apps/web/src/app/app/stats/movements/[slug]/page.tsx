@@ -44,11 +44,6 @@ import {
   type Range,
 } from "@/lib/stats/range";
 import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
-import { HrZonesCard } from "@/components/cardio/HrZonesCard";
-import { PacePRsCard } from "@/components/cardio/PacePRsCard";
-import { getHrZones } from "@/lib/stats/hr-zones";
-import { getPacePrs } from "@/lib/stats/pace-prs";
-import { getUserTimezone } from "@/lib/planner/queries";
 import type { TmChangeReason } from "@hta/db";
 import { formatDate as fmtDate } from "@/lib/format/datetime";
 import {
@@ -152,18 +147,6 @@ export default async function MovementDeepDivePage({
 
   const tmHistoryRows = tmHistoryRowsRes.data ?? [];
 
-  // Cardio movements get the Strava-gated HR-zones + pace-PR cards on
-  // top of the strength deep-dive. Pattern check keeps these off the
-  // strength surfaces (where they'd be empty by construction).
-  const isCardio = meta?.pattern === "cardio";
-  const cardioTz = isCardio ? await getUserTimezone(user.id) : null;
-  const [hrZones, pacePrs] = isCardio
-    ? await Promise.all([
-        getHrZones(supabase, user.id, cardioTz ?? "UTC"),
-        getPacePrs(supabase, user.id, cardioTz ?? "UTC"),
-      ])
-    : [null, null];
-
   return (
     <div style={{ display: "grid", gap: 18 }} data-testid="stats-movement-page">
       {/* ── A · Header ────────────────────────────────────────────── */}
@@ -229,13 +212,6 @@ export default async function MovementDeepDivePage({
           formatProfile={profile}
         />
       </div>
-
-      {isCardio && hrZones && pacePrs && (
-        <>
-          <HrZonesCard state={hrZones} />
-          <PacePRsCard state={pacePrs} />
-        </>
-      )}
 
       {/* ── F · Swap history ─────────────────────────────────────── */}
       <SwapHistoryCard events={swapEvents} formatProfile={profile} />

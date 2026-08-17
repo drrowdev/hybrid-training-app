@@ -109,7 +109,7 @@ export interface HyroxSession {
    */
   perMovementLog: boolean;
   /**
-   * Continuous GPS/erg-trackable activity a watch/Strava import can fulfil whole.
+   * Continuous GPS/erg-trackable activity a single logged effort can fulfil whole.
    * Interval/circuit/strength sessions need manual session-level completion.
    */
   trackable: boolean;

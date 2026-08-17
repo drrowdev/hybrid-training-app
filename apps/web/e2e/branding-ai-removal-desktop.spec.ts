@@ -27,11 +27,14 @@ test("uses the compact mark and exposes no AI surfaces", async ({
   await seedStrengthTms(admin, freshUser.userId);
   await signInAs(context, freshUser, seedConfig, url);
 
-  await page.goto("/app/settings/integrations");
-  await expect(
-    page.getByTestId("settings-hub-integrations-strava"),
-  ).toBeVisible();
+  // The Integrations sub-hub was retired with its only integration; the
+  // settings hub must no longer advertise it (or AI providers).
+  await page.goto("/app/settings");
+  await expect(page.getByTestId("settings-hub-integrations")).toHaveCount(0);
   await expect(page.getByText(/AI providers/i)).toHaveCount(0);
+
+  await page.goto("/app/settings/integrations");
+  await expect(page.getByText("404")).toBeVisible();
 
   await page.goto("/app/settings/ai");
   await expect(page.getByText("404")).toBeVisible();

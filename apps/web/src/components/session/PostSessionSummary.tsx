@@ -101,7 +101,7 @@ export function PostSessionSummary({
   bwDiagnostics?: DiagnosticResult[];
   /**
    * Aggregated cardio metrics for sessions that logged cardio blocks
-   * (e.g. a Strava run). When present, the card shows cardio-relevant
+   * (e.g. a logged run). When present, the card shows cardio-relevant
    * stats — distance, HR, pace, time-in-zone — instead of (pure cardio)
    * or alongside (hybrid) the strength tiles. Null/omitted for
    * strength-only sessions, which render byte-identically to before.
@@ -146,7 +146,7 @@ export function PostSessionSummary({
 
   // A session counts as having strength content when it logged working
   // sets, accrued tonnage, or prescribed strength sets. Pure-cardio
-  // sessions (a Strava run) have none of these, so we suppress the
+  // sessions (a logged run) have none of these, so we suppress the
   // strength tiles entirely; hybrid sessions show both blocks.
   const hasStrength =
     summary.workingSetCount > 0 ||

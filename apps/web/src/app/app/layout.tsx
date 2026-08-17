@@ -46,17 +46,6 @@ export default async function AppLayout({
   // the client filters in-memory without a per-keystroke round trip.
   const paletteIndices = await loadPaletteIndices(supabase, user.id);
 
-  // Top-bar Strava sync indicator — best-effort: a missing/borked row
-  // never blocks the layout (the indicator just hides).
-  const { data: strava } = await supabase
-    .from("strava_connections")
-    .select("last_synced_at")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  const hasStravaConnection = !!strava;
-  const lastSyncedAt = strava?.last_synced_at ?? null;
-
   return (
     <CommandPaletteProvider indices={paletteIndices}>
       <PullToRefresh />
@@ -64,8 +53,6 @@ export default async function AppLayout({
         signOutAction={signOut}
         displayName={profile?.display_name ?? null}
         email={user.email ?? null}
-        hasStravaConnection={hasStravaConnection}
-        lastSyncedAt={lastSyncedAt}
         hapticsEnabled={(profile?.haptics_enabled as boolean | null) ?? true}
         buildSha={process.env.NEXT_PUBLIC_BUILD_SHA ?? "dev"}
       >

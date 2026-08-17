@@ -3,8 +3,9 @@
  *
  * The bucket-load / region-ledger / muscle-freshness pipelines historically
  * derived cardio intensity from `clamp(rpe / 10)`. After PR #162 we now
- * populate `cardio_logs.hr_zones` (seconds-per-HR-zone) on Strava import via
- * `lib/integrations/strava/zones-from-summary.ts`. When zones are available
+ * populate `cardio_logs.hr_zones` (seconds-per-HR-zone) — historically on
+ * external-activity import, now from `lib/cardio/hr-histogram.ts` whenever HR
+ * bands change. When zones are available
  * we can derive a time-in-zone weighted intensity that's much truer to the
  * physiological cost of the session (a 60-min Z2 ride and a 60-min Z5 VO2
  * session should not produce identical load just because the user logged

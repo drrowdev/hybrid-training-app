@@ -137,7 +137,7 @@ export function adaptSessionPrescription(
     const appKind = STRENGTH_KIND_MAP[it.kind];
     if (!appKind) {
       // Conditioning / cardio → a display-only external cardio item. Green
-      // Protocol's cardio is fulfilled by the logged run (Strava etc.), not an
+      // Protocol's cardio is fulfilled by the logged run, not an
       // in-app set-by-set workout (see green-cardio-materialisation-design.md),
       // so it maps to the app's `cardio_external` kind — the day is reserved and
       // the engine's target is shown, but the actual load comes from the logged

@@ -84,8 +84,8 @@
 **UX sketch.**
 - Tabs: Month · Timeline · List.
 - Filter chips: All · Strength · Cardio (multi-select).
-- Legend below: Strength done · Strength planned · Cardio done · Cardio planned · Past unfulfilled (tap to link to Strava session) · Strava badge.
-- Tapping a past unfulfilled day opens a "Did this happen?" modal with quick-log + Strava-match options.
+- Legend below: Strength done · Strength planned · Cardio done · Cardio planned · Past unfulfilled (tap to link to a logged session). *(The Strava badge is gone — integration removed 2026-08-17.)*
+- Tapping a past unfulfilled day opens a "Did this happen?" modal with quick-log + link-a-logged-activity options.
 
 **Dependencies.**
 - Calendar heatmap PR (in current wave) lays groundwork but this is a separate, more interactive view.

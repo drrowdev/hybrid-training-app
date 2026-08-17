@@ -9,8 +9,6 @@ export function AppShell({
   signOutAction,
   displayName,
   email,
-  hasStravaConnection = false,
-  lastSyncedAt = null,
   hapticsEnabled = true,
   // `buildSha` is still accepted for backwards-compat with the layout
   // wiring but is no longer rendered (the SHA chip was retired earlier).
@@ -19,8 +17,6 @@ export function AppShell({
   signOutAction: () => Promise<void>;
   displayName?: string | null;
   email?: string | null;
-  hasStravaConnection?: boolean;
-  lastSyncedAt?: string | null;
   hapticsEnabled?: boolean;
   buildSha?: string;
 }) {
@@ -30,8 +26,6 @@ export function AppShell({
         signOutAction={signOutAction}
         displayName={displayName ?? null}
         email={email ?? null}
-        hasStravaConnection={hasStravaConnection}
-        lastSyncedAt={lastSyncedAt}
       />
 
       <main className="cp-main">{children}</main>

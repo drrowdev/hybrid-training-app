@@ -11,7 +11,7 @@ import { signInAs } from "./fixtures/auth";
  *    assessment (no "your main-lift maxes" copy) — the bw-routing
  *    intent is preserved.
  *  - Onboarding no longer creates a block. After the bodyweight
- *    assessment + Connect Strava, the final "Start training" step
+ *    assessment, the final "Start training" step
  *    marks onboarding complete and hands the user off to the platform
  *    program picker at /app/program — with NO training_blocks row
  *    created during onboarding.
@@ -64,12 +64,8 @@ test.describe("@desktop onboarding · bodyweight-only path", () => {
     await page.getByTestId("bw-assessment-next").click();
     await page.getByTestId("bw-assessment-next").click();
 
-    // Connect Strava → Start training (final step).
-    await expect(
-      page.getByRole("button", { name: /continue|next/i }).first(),
-    ).toBeVisible();
-    await page.getByRole("button", { name: /continue|next/i }).first().click();
-
+    // The bw assessment's onComplete advances straight to the final
+    // "Start training" step (the third-party connect step was removed).
     // Final step: hand off to the platform program picker.
     const choose = page.getByRole("button", { name: /choose your program/i });
     await expect(choose).toBeVisible();

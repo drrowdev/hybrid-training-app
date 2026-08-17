@@ -2,14 +2,15 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
-**Last updated:** 2026-08-06 (AI/MCP retirement + compact S×C mark; migrations through 0121)
+**Last updated:** 2026-08-17 (Strava integration removal; migrations through 0129 — no new migration)
 
 ## Where we are
 
 **Phase:** Production. Beyond Phase 1. The app (consumer brand **S×C**,
-live at <https://getsxc.app>) is multi-user, has a full mobile UX,
-end-to-end Strava integration (OAuth + webhook + history import) and a
-science-grounded prescription engine. **Programs, not archetypes:** the
+live at <https://getsxc.app>) is multi-user, has a full mobile UX and a
+science-grounded prescription engine. Cardio is user-logged (manual entry
+or linking an already-logged activity to a planned slot) — the Strava
+integration was removed on 2026-08-17. **Programs, not archetypes:** the
 user picks a program — 5/3/1, Tactical Barbell, Green Protocol, HYROX, or
 **Hybrid** (the build-your-own concurrent generator) — via the program
 wizard (ADR 0046 retired the five standalone archetypes; Hybrid is now
@@ -25,10 +26,10 @@ just one program among equals). The wizard owns block-scoped inputs
   `/app/stats`, `/app/recovery` (Limitations live at
   `/app/recovery/injuries`), `/app/races`, `/app/profile`
 - Settings hub: `/app/settings` — route tiles including
-  `/app/settings/integrations` (Strava), `/app/settings/equipment`,
-  `/app/settings/hr-zones`, `/app/settings/profile`, `/app/settings/events`,
+  `/app/settings/equipment`, `/app/settings/hr-zones`,
+  `/app/settings/profile`, `/app/settings/events`,
   `/app/settings/preferences`, `/app/settings/training`, …
-- Strava webhook: `/api/integrations/strava/webhook`
+  (`/app/settings/integrations` was retired with its only integration)
 - Privacy / Terms: `/privacy`, `/terms`
 
 **External services:**
@@ -40,12 +41,40 @@ just one program among equals). The wizard owns block-scoped inputs
 - Supabase: project URL + keys in `apps/web/.env.local` (gitignored).
   Region `eu-west-1`. Schema currently at migration **0109** (110 files in
   `packages/db/drizzle/`).
-- Strava: app registered; one push-subscription per environment.
-  Subscription ID is stored in `STRAVA_WEBHOOK_SUBSCRIPTION_ID` (env
-  var; not committed). The webhook handler rejects events whose
-  `subscription_id` doesn't match. Re-subscribe with
-  `pnpm --filter @hta/web run strava:subscribe`; list with
-  `pnpm --filter @hta/web run strava:list-subscriptions`.
+- Strava: **removed 2026-08-17.** Strava now charges for API access and
+  the owner will not subscribe, so the integration can never sync again.
+  No OAuth app, webhook subscription or `STRAVA_*` env var is required or
+  read anywhere. The `strava_connections` and `strava_event_log` tables
+  are orphaned but intentionally **not dropped** — a drop migration is
+  proposed and awaiting owner approval (see the 2026-08-17 entry in
+  `docs/knowledge/log.md`). `strava_connections` still holds dead OAuth
+  tokens, which is a standing privacy consideration.
+
+## Since 2026-08-06 — Strava integration removal
+
+- **Strava removed end-to-end (2026-08-17).** Ingestion (OAuth callback,
+  webhook route, sync/import/match/write modules), every UI surface
+  (settings page + Integrations sub-hub, connect/import components,
+  sync pill, autofill banner, onboarding step, cmd-K entry) and the
+  subscription CLI scripts are gone. Onboarding is now **5 steps**
+  (Welcome → Profile → Equipment → Training maxes → Start training).
+  HYROX completion is manual-only (the activity matcher was removed).
+- **Three Strava-gated analytics cards deleted** by owner decision:
+  HR zones, Pace PRs, Run-plan adherence (+ `lib/stats/pace-prs.ts`,
+  `run-plan-adherence.ts`). `lib/stats/hr-zones.ts` **survives** — it is
+  the shared HR-band math used by the Endurance progress card, the
+  HR-zones settings page, cardio classification and cardio summaries.
+- **General-purpose cardio logic relocated out of the integration
+  folder** into `apps/web/src/lib/cardio/`: `classify-cardio.ts`
+  (`cardioEslFromKind` drives cardio ESL; `classifyCardio` powers manual
+  activity linking), `modality-region.ts` (`MODALITY_REGION` feeds the
+  region ledger) and `hr-histogram.ts` (`zonesFromHistogram` re-buckets
+  retained `hr_histogram` when HR bands change).
+- **All Strava DB columns retained** — `cardio_logs.strava_activity_id`,
+  `external_source`, `hr_histogram`, `hr_zones`, `inferred_kind`,
+  `inferred_confidence` and `sessions.strava_activity_id`. This is the
+  owner's real training history and `inferred_kind` still feeds ESL.
+  No destructive migration was written.
 
 ## Since 2026-05-21 (last doc refresh)
 
@@ -212,9 +241,6 @@ breakdown and `docs/adr/0020`–`0050` for decisions. Highlights:
   service-role grants as per their migrations.
 - `curl https://getsxc.app/api/health` returns
   `{"ok":true, ...}`.
-- Strava webhook reachable + verified end-to-end (webhook event →
-  `strava_event_log` row → activity sync → autofill banner on the
-  matched session).
 - MCP `initialize` round-trip green from a Streamable HTTP client
   through the OAuth bridge.
 
@@ -234,16 +260,20 @@ breakdown and `docs/adr/0020`–`0050` for decisions. Highlights:
   ±1 set / +4 early-rep / ±1 RIR numbers in `effort-preference.ts` are
   directional, not data-calibrated — revisit once `effort_preference` ×
   outcome rows exist.
-- **Wheelchair / Handcycle / Snowboard Strava cardio mapping.** Explicit
-  accessibility gap, deferred by owner choice.
+- **Wheelchair / Handcycle / Snowboard cardio modalities.** Explicit
+  accessibility gap, deferred by owner choice. (Was previously scoped to
+  the retired activity-import mapping; still unaddressed for manual
+  logging.)
+- **Orphaned `strava_connections` + `strava_event_log` tables.** Drop
+  migration drafted but NOT applied — needs owner approval because it
+  destroys user rows. `strava_connections` holds dead OAuth tokens.
 
 ## Sensitive files (never commit)
 
 - `apps/web/.env.local` — Supabase URL + publishable key + service-role
-  key + `DATABASE_URL` (transaction pooler) + `NEXT_PUBLIC_SITE_URL` +
-  Strava credentials (`STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`,
-  `STRAVA_WEBHOOK_VERIFY_TOKEN`, `STRAVA_WEBHOOK_CALLBACK_URL`,
-  `STRAVA_WEBHOOK_SUBSCRIPTION_ID`).
+  key + `DATABASE_URL` (transaction pooler) + `NEXT_PUBLIC_SITE_URL`.
+  (The `STRAVA_*` credentials are no longer read by any code and can be
+  deleted from local/Vercel envs.)
 - `packages/db/.env.local` — `DATABASE_URL` (session pooler for
   migrations).
 

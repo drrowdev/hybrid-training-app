@@ -10,7 +10,7 @@ const pending = { completedAt: null };
 
 describe("isTodayFullyLogged", () => {
   it("is false when a planned session is still pending, even if an unrelated activity was logged", () => {
-    // The bug: an easy Strava run completes a standalone session while the
+    // The bug: an easy logged run completes a standalone session while the
     // prescribed Station Intervals stays pending. The day is NOT fully logged.
     expect(
       isTodayFullyLogged({ completedTodayCount: 1, plannedToday: [pending] }),

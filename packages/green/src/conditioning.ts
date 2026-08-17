@@ -41,7 +41,7 @@ export interface ConditioningSession {
   loaded?: boolean;
   /**
    * Whether the session is a continuous GPS-trackable activity (run/ruck) that a
-   * Strava import can fulfil automatically, vs. an interval/circuit that needs
+   * single logged effort can fulfil, vs. an interval/circuit that needs
    * manual completion logging.
    */
   trackable?: boolean;

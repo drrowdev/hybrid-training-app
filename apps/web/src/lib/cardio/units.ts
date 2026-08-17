@@ -3,7 +3,7 @@
  * storage units used by `cardio_logs` (seconds + s/km).
  *
  * Extracted as a standalone module so the edit-cardio page,
- * (future) Strava-import dialog, and other surfaces that touch the
+ * cardio log forms, and other surfaces that touch the
  * same fields can all share one parser.
  *
  * Conventions:

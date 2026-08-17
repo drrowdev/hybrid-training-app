@@ -272,7 +272,7 @@ function buildAerobic(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[]
         { label: "Cool-down", detail: "~5 min easy" },
       ],
       effort: "Comfortably hard (RPE 7–8) — breathing hard but in control, a pace you could just about hold to the finish.",
-      logHint: "Log it from your watch or Strava when you're done.",
+      logHint: "Log it from your watch when you're done.",
     };
   } else {
     const longest = sess.id === "long-run";
@@ -284,7 +284,7 @@ function buildAerobic(sess: HyroxSession, args: PrescribeArgs): PrescribedItem[]
           : "Easy aerobic run — the steady mileage that builds the engine carrying roughly half the race.",
       meta: `~${dur} min`,
       effort: "Easy Zone 2 (RPE 4–5) — conversational the whole way. If you can't talk in full sentences, slow down.",
-      logHint: "Log it from your watch or Strava when you're done.",
+      logHint: "Log it from your watch when you're done.",
     };
   }
 
@@ -321,7 +321,7 @@ function buildIntervals(sess: HyroxSession, args: PrescribeArgs): PrescribedItem
         { label: "Cool-down", detail: "~5 min easy" },
       ],
       effort: "Hard on the reps (RPE 8–9) — controlled, repeatable, not a sprint. Easy on the recoveries.",
-      logHint: "Log it from your watch or Strava when you're done.",
+      logHint: "Log it from your watch when you're done.",
     };
   } else {
     const blocks = stationBlocksForWeek(sess.id, args.week ?? 1, sess.movements);
@@ -682,7 +682,7 @@ export function deloadPrescription(): SessionPrescription {
     summary: "Deload week — keep it light so accumulated fatigue clears and your recent training pays off.",
     meta: "optional · ~20 min",
     effort: "Very easy Zone 2 (RPE 3–4) movement only — run, ski, row or bike. Skip it entirely if you're beat.",
-    logHint: "Optional — log it from your watch or Strava if you do it.",
+    logHint: "Optional — log it from your watch if you do it.",
   };
   return {
     items: [

@@ -1,8 +1,8 @@
 /**
  * Shared "does this session prescribe strength?" predicate, used by:
- *   - logCardioSession + applyStravaAutofill (operate on STARTED sessions
+ *   - logCardioSession (operates on STARTED sessions
  *     with rows in `session_items`) — see PR #208 / #209
- *   - importStravaHistory auto-link (operates on PLANNED sessions where
+ *   - linkActivityToSession (operates on PLANNED sessions where
  *     the prescription lives as JSON on the planned_sessions row) — PR #211
  *
  * Both surfaces previously had their own implementation. PR #211 review

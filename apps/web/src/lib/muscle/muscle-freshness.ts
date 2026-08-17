@@ -297,7 +297,7 @@ export async function deriveMuscleLoadEvents(
     if (fanout.length === 0) continue;
     const duration = Number(row.duration_sec ?? 0);
     if (duration <= 0) continue;
-    // HR-zone weighted intensity when Strava sync populated `hr_zones`
+    // HR-zone weighted intensity when `hr_zones` is populated
     // (audit B2); legacy fall-back is clamp(rpe/10) so rows without HR
     // data keep their historical load values.
     const rpeRaw = row.rpe == null ? null : Number(row.rpe);

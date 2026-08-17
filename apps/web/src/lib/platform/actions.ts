@@ -1246,7 +1246,7 @@ async function createForeignProgramInstance(
       status: "active",
       days_per_week: write.daysPerWeek,
       day_index_overrides: write.dayIndexOverrides,
-      // Open cardio days are external-logged (Strava auto-link), so flag the block
+      // Open cardio days are logged by the user after the fact, so flag the block
       // external when any are present; otherwise keep the strength-only default.
       cardio_source: cardioWeekdays && cardioWeekdays.length > 0 ? "external" : "internal",
       // Per-block antagonist-superset choice (migration 0111, wizard Schedule

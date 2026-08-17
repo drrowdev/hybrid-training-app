@@ -1,7 +1,7 @@
 /**
  * Pure aggregation of a session's `cardio_logs` rows into the shape the
  * post-session summary card renders. A session usually holds a single
- * cardio block (one Strava run), but planned cardio days can carry a
+ * cardio block (one logged run), but planned cardio days can carry a
  * warm-up + intervals, so the helper aggregates across blocks:
  *
  *   - durationSec / distanceKm : summed

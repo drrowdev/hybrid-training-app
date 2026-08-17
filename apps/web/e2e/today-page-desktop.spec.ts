@@ -86,17 +86,6 @@ test.describe("@desktop today page (Phase 1)", () => {
       })
       .eq("id", seed.todayPlannedId);
     expect(prescriptionError).toBeNull();
-    const { error: stravaError } = await admin
-      .from("strava_connections")
-      .insert({
-        user_id: freshUser.userId,
-        athlete_id: 9_990_000 + Math.floor(Math.random() * 9_000),
-        access_token: "today-e2e-access-token",
-        refresh_token: "today-e2e-refresh-token",
-        expires_at: new Date(Date.now() + 6 * 60 * 60_000).toISOString(),
-        last_synced_at: new Date(Date.now() - 72 * 60 * 60_000).toISOString(),
-      });
-    expect(stravaError).toBeNull();
     await signInAs(context, freshUser, seedConfig, url);
 
     await page.goto("/app");
@@ -124,7 +113,6 @@ test.describe("@desktop today page (Phase 1)", () => {
     await expect(
       hero.getByTestId("session-preview-section-supplemental"),
     ).toContainText("SUPPLEMENTAL LIFTS");
-    await expect(page.getByText(/Strava · Stale/i)).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByTestId("today-eyebrow-mobile")).toContainText(
       /WEEK 1 OF 4/i,
