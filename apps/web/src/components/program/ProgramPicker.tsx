@@ -909,7 +909,16 @@ export function relevantBenchmarkKeysFor(
     return roleKeys.filter((key) => CANONICAL_BENCH_KEYS.has(key));
   }
   return cluster
-    .filter((entry) => entry.kind !== "bodyweight" && available.has(entry.movement))
+    .filter(
+      (entry) =>
+        // Bodyweight and unanchored lifts are prescribed by effort, not off a
+        // training max, so asking for one would ask for a number that does not
+        // exist. `unanchored` is the same signal the engine uses to skip the
+        // percentage (see `prescribe`), so the two can never disagree.
+        entry.kind !== "bodyweight" &&
+        entry.kind !== "unanchored" &&
+        available.has(entry.movement),
+    )
     .map((entry) => entry.movement)
     .concat(template.requiredBenchmarkKeys ?? [])
     .filter((key, index, all) => all.indexOf(key) === index)
@@ -929,7 +938,6 @@ export function startScheduleFor(
 
 export function activationRequiredBenchmarkKeysFor(
   startWeekIndex: number,
-  armorSupplementalA: "back-extension" | "reverse-hyper",
 ): string[] {
   if (startWeekIndex <= 4) return [];
   if (startWeekIndex <= 7) {
@@ -940,7 +948,6 @@ export function activationRequiredBenchmarkKeysFor(
       "barbell-row",
       "rack-pull",
       "overhead-press",
-      armorSupplementalA,
     ];
   }
   if (startWeekIndex <= 19) {
@@ -1658,21 +1665,9 @@ export function ProgramPicker({
         .sort((a, b) => roleKeys.indexOf(a) - roleKeys.indexOf(b));
     }
     const base = relevantBenchmarkKeysFor(activeTbTemplate, cluster, benchRoles);
-    if (!isActivation) return base;
-    return base
-      .filter(
-        (key) => key !== "back-extension" && key !== "reverse-hyper",
-      )
-      .concat(armorSupplementalA)
-      .filter((key, index, all) => all.indexOf(key) === index)
-      .sort(
-        (a, b) =>
-          benchRoles.findIndex((role) => role.engineKey === a) -
-          benchRoles.findIndex((role) => role.engineKey === b),
-      );
+    return base;
   }, [
     activeTbTemplate,
-    armorSupplementalA,
     benchRoles,
     cluster,
     isActivation,
@@ -1697,10 +1692,7 @@ export function ProgramPicker({
       ? missingRelevantBenchKeys.length === 0
       : hasUsableTms);
   const activationStartRequiredBenchKeys = isActivation
-    ? activationRequiredBenchmarkKeysFor(
-       startWeekIndex,
-       armorSupplementalA,
-      )
+    ? activationRequiredBenchmarkKeysFor(startWeekIndex)
     : [];
   const missingActivationStartBenchKeys =
     activationStartRequiredBenchKeys.filter(
@@ -3183,7 +3175,7 @@ export function ProgramPicker({
         : "Your strength cluster"
       : "Your benchmarks";
     const sub = isActivation
-      ? "Optional when starting from Base. Its test week establishes the main lifts; add the selected Supp A 1RM before Armor. A direct Armor start requires every loaded Armor max now."
+      ? "Optional when starting from Base. Its test week establishes the main lifts. A direct Armor start requires every loaded Armor max now; supplemental A is prescribed by effort and needs no max."
       : isCluster
       ? "Pick the main lifts for your cluster. Enter a 1-rep max for each, or estimate it from a recent set."
       : "Enter a 1-rep max for each lift, switch the variant, or estimate from a recent set.";

@@ -236,25 +236,20 @@ describe("defaultClusterFor", () => {
 
   describe("activationRequiredBenchmarkKeysFor", () => {
     it("lets Base and its test week establish the later maxes", () => {
-      expect(
-        activationRequiredBenchmarkKeysFor(0, "back-extension"),
-      ).toEqual([]);
-      expect(
-        activationRequiredBenchmarkKeysFor(4, "back-extension"),
-      ).toEqual([]);
+      expect(activationRequiredBenchmarkKeysFor(0)).toEqual([]);
+      expect(activationRequiredBenchmarkKeysFor(4)).toEqual([]);
     });
 
     it("requires the exact loaded Armor movements for a direct Armor start", () => {
-      expect(
-        activationRequiredBenchmarkKeysFor(5, "reverse-hyper"),
-      ).toEqual([
+      // Supplemental A (back extension / reverse hyper) is prescribed by effort,
+      // not off a max, so it is deliberately absent.
+      expect(activationRequiredBenchmarkKeysFor(5)).toEqual([
         "squat",
         "bench",
         "deadlift",
         "barbell-row",
         "rack-pull",
         "overhead-press",
-        "reverse-hyper",
       ]);
     });
   });

@@ -816,8 +816,12 @@ const A = {
   barbellRow: { movement: "barbell-row" },
   pendlayRow: { movement: "pendlay-row" },
   rackPull: { movement: "rack-pull" },
-  backExtension: { movement: "back-extension" },
-  reverseHyper: { movement: "reverse-hyper" },
+  backExtension: { movement: "back-extension", kind: "unanchored" },
+  reverseHyper: { movement: "reverse-hyper", kind: "unanchored" },
+  // ^ Prescribed by effort, not off a training max. The supplemental WAVE still
+  // carries a percentage so that swapping a barbell lift into this slot anchors
+  // normally (see the Activation replacement test); `kind` is what suppresses it
+  // for the hyperextension movements themselves, which nobody one-rep-maxes.
   powerClean: { movement: "power-clean" },
   pushPress: { movement: "push-press" },
   jumpSquat: { movement: "jump-squat", kind: "unanchored" },

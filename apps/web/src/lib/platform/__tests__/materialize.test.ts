@@ -405,10 +405,16 @@ describe("materializeProgram — TB3 Activation", () => {
     expect(itemsFor(a1, "back-extension", "back_off")).toHaveLength(5);
     expect(itemsFor(a1, "back-extension", "back_off").filter((item) => item.optional)).toHaveLength(2);
     expect(itemsFor(a1, "back-extension", "back_off")[0]).toMatchObject({
-      percentTm: 65,
       setRange: { min: 3, max: 5 },
       repRange: { min: 8, max: 10 },
     });
+    // Prescribed by effort: the dose survives materialisation, the percentage
+    // never existed, so no training max is ever demanded for it.
+    expect(
+      itemsFor(a1, "back-extension", "back_off").every(
+        (item) => item.percentTm == null,
+      ),
+    ).toBe(true);
     for (const movement of ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"]) {
       const items = itemsFor(a1, movement, "back_off");
       expect(items).toHaveLength(3);

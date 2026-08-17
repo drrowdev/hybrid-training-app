@@ -58,7 +58,11 @@ import {
   type MovementPrescriptionSection,
   type PrescriptionMovementRow,
 } from "@/lib/plan/prescription-grouping";
-import { segmentSupersetRows } from "@/lib/plan/superset-grouping";
+import {
+  circuitNameOfRow,
+  segmentSupersetRows,
+  segmentSupersetSections,
+} from "@/lib/plan/superset-grouping";
 import { LinkActivityControl } from "@/components/plan/LinkActivityControl";
 import { CompletedSummaryCard } from "@/components/plan/CompletedSummaryCard";
 import { CardioPlanView } from "@/components/session/CardioPlanView";
@@ -2849,9 +2853,7 @@ export function SessionDrawer({
                   accent
                 />
               )}
-              {sections.movements.map((sec) => (
-                <DrawerMovement key={sec.rowKey} section={sec} editing={false} />
-              ))}
+              <DrawerMovementSections sections={sections.movements} />
 
               {sections.accessories.length > 0 && (
                 <DrawerRowSection
@@ -3779,6 +3781,98 @@ const editBtnStyle: React.CSSProperties = {
   minHeight: 32,
 };
 
+/**
+ * Bracket around a set of linked movements or rows.
+ *
+ * Shared by the drawer's accessory rows and its main/supplemental movement
+ * cards so a link looks the same wherever it appears. Falls back to a
+ * size-derived name only when the link carries none.
+ */
+function DrawerSupersetCluster({
+  groupId,
+  name,
+  size,
+  children,
+}: {
+  groupId: string;
+  name?: string | null;
+  size?: number;
+  children: React.ReactNode;
+}) {
+  const label =
+    name && name.length > 0
+      ? name
+      : size != null && size > 3
+        ? "Giant set"
+        : size === 3
+          ? "Tri-set"
+          : "Superset";
+  return (
+    <div
+      data-testid="superset-cluster"
+      data-superset-group={groupId}
+      style={{
+        borderLeft: "2px solid var(--cp-accent, var(--cp-text-muted))",
+        paddingLeft: 8,
+        margin: "2px 0",
+      }}
+    >
+      <div
+        className="mono"
+        style={{
+          fontSize: 10,
+          letterSpacing: "0.08em",
+          textTransform: "uppercase",
+          color: "var(--cp-accent, var(--cp-text-muted))",
+          fontWeight: 600,
+        }}
+      >
+        {label} · alternate, rest once
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The drawer's main + supplemental movement cards, with linked movements
+ * bracketed together.
+ *
+ * Exported so the bracketing is reachable from a test: the drawer itself only
+ * opens through interaction, which is how it shipped rendering user-authored
+ * links as plain, unrelated cards.
+ */
+export function DrawerMovementSections({
+  sections,
+}: {
+  sections: readonly MovementPrescriptionSection[];
+}) {
+  return (
+    <>
+      {segmentSupersetSections(sections).map((seg) =>
+        seg.kind === "solo" ? (
+          <DrawerMovement
+            key={seg.section.rowKey}
+            section={seg.section}
+            editing={false}
+          />
+        ) : (
+          <DrawerSupersetCluster
+            key={seg.groupId}
+            groupId={seg.groupId}
+            name={seg.name}
+            size={seg.sections.length}
+          >
+            {seg.sections.map((sec) => (
+              <DrawerMovement key={sec.rowKey} section={sec} editing={false} />
+            ))}
+          </DrawerSupersetCluster>
+        ),
+      )}
+    </>
+  );
+}
+
 function DrawerRowSection({
   label,
   hint,
@@ -3811,30 +3905,14 @@ function DrawerRowSection({
       inner.push(<DrawerAccessoryRow key={r.rowKey} prefix={prefix} num={num} row={r} />);
     }
     rendered.push(
-      <div
+      <DrawerSupersetCluster
         key={seg.groupId}
-        data-testid="superset-cluster"
-        data-superset-group={seg.groupId}
-        style={{
-          borderLeft: "2px solid var(--cp-accent, var(--cp-text-muted))",
-          paddingLeft: 8,
-          margin: "2px 0",
-        }}
+        groupId={seg.groupId}
+        name={circuitNameOfRow(seg.rows[0]!)}
+        size={seg.rows.length}
       >
-        <div
-          className="mono"
-          style={{
-            fontSize: 10,
-            letterSpacing: "0.08em",
-            textTransform: "uppercase",
-            color: "var(--cp-accent, var(--cp-text-muted))",
-            fontWeight: 600,
-          }}
-        >
-          Superset · alternate, rest once
-        </div>
         {inner}
-      </div>,
+      </DrawerSupersetCluster>,
     );
   }
   return (

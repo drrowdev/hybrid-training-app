@@ -604,14 +604,10 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
           item.repsMax,
           item.percentOfTm,
         ])).toEqual([
-          [
-            "Back Extension",
-            3,
-            5,
-            8,
-            10,
-            source.supplementalPercent,
-          ],
+          // Same dose as the loaded supplemental wave, but no percentage: back
+          // extensions and reverse hypers are prescribed by effort, exactly like
+          // the Pull-up slot on the B days below.
+          ["Back Extension", 3, 5, 8, 10, undefined],
           ["Hanging Leg Raise", 3, undefined, 5, undefined, undefined],
           ["Hanging Knee Raise", 3, undefined, 5, undefined, undefined],
           ["Toes-to-Bar", 3, undefined, 5, undefined, undefined],
@@ -672,8 +668,11 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
       setsMax: 5,
       reps: 8,
       repsMax: 10,
-      percentOfTm: 0.65,
     });
+    // Reverse hyper keeps the slot's dose but carries no percentage — it is
+    // prescribed by effort, so it never demands a training max.
+    expect(itemsOfKind(a1, "supplemental")[0]?.percentOfTm).toBeUndefined();
+    expect(itemsOfKind(a1, "supplemental")[0]?.weightKg).toBeUndefined();
     expect(itemsOfKind(b1, "supplemental")[0]).toMatchObject({
       sets: 3,
       setsMax: 5,
