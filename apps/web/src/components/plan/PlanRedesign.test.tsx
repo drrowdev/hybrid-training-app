@@ -366,10 +366,15 @@ describe("PlanRedesign — phase and week hierarchy", () => {
     expect(html).toContain("Upcoming");
   });
 
-  it("marks unfinished weeks for attention after the program window ends", () => {
+  it("marks an unfinished past week neutrally, with no attention warning", () => {
+    // Missing a session carries no penalty, so a behind-you week is reported
+    // plainly rather than flagged: no amber rail, no "Needs attention" tag.
     const html = render({ currentWeekIndex: 4 });
     expect(html).toContain("Program window complete");
-    expect(html).toContain('class="plan-week attention"');
+    expect(html).toContain('class="plan-week past"');
+    expect(html).toContain("Past");
+    expect(html).not.toContain("Needs attention");
+    expect(html).not.toContain("attention");
     expect(html).not.toContain('class="plan-week current"');
   });
 

@@ -28,12 +28,12 @@ import { defaultLinkName, type SessionLink } from "@/lib/platform/session-links"
 import {
   addLink,
   canCreateLink,
-  expandSelection,
   linkHasMainLift,
   linksIncludeMainLift,
   moveMember,
   removeLink,
   selectableMovements,
+  selectedStations,
   slotLabels,
   toggleSelection,
   type LinkableMovement,
@@ -72,6 +72,9 @@ export function SessionLinkEditor({
   onChange,
 }: SessionLinkEditorProps) {
   const [selected, setSelected] = useState<string[]>([]);
+  // `<details>` owns its open state in the DOM, so the summary's +/− marker has
+  // to be mirrored into React or it stays "+" while the panel is open.
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const selectable = selectableMovements(movements, links);
   const lockedNote = movements.find((m) => m.lockedReason)?.lockedReason;
@@ -212,8 +215,12 @@ export function SessionLinkEditor({
       )}
 
       {selectable.length >= 2 && (
-        <details>
+        <details
+          open={pickerOpen}
+          onToggle={(event) => setPickerOpen(event.currentTarget.open)}
+        >
           <summary
+            data-testid={`link-picker-toggle-${seriesKey}`}
             style={{
               border: "1px solid var(--line2, #384230)",
               borderRadius: "var(--wradius, 6px)",
@@ -225,7 +232,17 @@ export function SessionLinkEditor({
               listStyle: "none",
             }}
           >
-            {links.length > 0 ? "+ Link more lifts" : "+ Link lifts"}
+            <span
+              aria-hidden="true"
+              style={{
+                display: "inline-block",
+                width: "1em",
+                fontWeight: 700,
+              }}
+            >
+              {pickerOpen ? "\u2212" : "+"}
+            </span>
+            {links.length > 0 ? "Link more lifts" : "Link lifts"}
           </summary>
           <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
             {selectable.map((m) => (
@@ -288,7 +305,7 @@ export function SessionLinkEditor({
             >
               {selected.length >= 2
                 ? `Link as ${defaultLinkName(
-                    expandSelection(movements, selected).length,
+                    selectedStations(movements, selected).length,
                   ).toLowerCase()}`
                 : "Select 2 or more"}
             </button>

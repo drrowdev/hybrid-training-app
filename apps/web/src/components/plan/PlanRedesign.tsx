@@ -203,8 +203,14 @@ export function sessionToOverdueCandidate(s: PlanSessionInput) {
   };
 }
 
-export type PlanWeekState = "completed" | "current" | "attention" | "upcoming";
+export type PlanWeekState = "completed" | "current" | "past" | "upcoming";
 
+/**
+ * A week is `past` — not "needs attention" — when it is behind the current week
+ * with sessions left unsettled. Missing a session is normal and carries no
+ * penalty, so the state is styled neutrally and reported without alarm; the
+ * settled count on the row already says exactly what happened.
+ */
 export function resolvePlanWeekState(args: {
   weekIndex: number;
   currentWeekIndex: number;
@@ -214,7 +220,7 @@ export function resolvePlanWeekState(args: {
   if (args.weekIndex === args.currentWeekIndex) return "current";
   if (args.total > 0 && args.settled === args.total) return "completed";
   if (args.currentWeekIndex >= 0 && args.weekIndex < args.currentWeekIndex) {
-    return "attention";
+    return "past";
   }
   return "upcoming";
 }
@@ -725,8 +731,8 @@ export function PlanRedesign(props: PlanRedesignProps) {
                         ? "Completed"
                         : state === "current"
                           ? "Current"
-                          : state === "attention"
-                            ? "Needs attention"
+                          : state === "past"
+                            ? "Past"
                             : "Upcoming";
                     const weekStart = addDaysToYmd(
                       startedOn,
@@ -1182,7 +1188,6 @@ export function PlanRedesign(props: PlanRedesignProps) {
         .plan-week:last-child { border-bottom: 0; }
         .plan-week.completed { box-shadow: inset 4px 0 0 var(--cp-success); }
         .plan-week.current { box-shadow: inset 5px 0 0 var(--cp-accent); }
-        .plan-week.attention { box-shadow: inset 4px 0 0 var(--cp-warning); }
         .plan-week-head {
           min-height: 78px;
           display: grid;
@@ -1199,8 +1204,8 @@ export function PlanRedesign(props: PlanRedesignProps) {
         .plan-week.current > .plan-week-head {
           background: color-mix(in srgb, var(--cp-accent) 22%, var(--cp-surface));
         }
-        .plan-week.attention > .plan-week-head {
-          background: color-mix(in srgb, var(--cp-warning) 10%, var(--cp-surface));
+        .plan-week.past > .plan-week-head {
+          background: var(--cp-surface-soft);
         }
         .plan-week.upcoming > .plan-week-head {
           background: var(--cp-bg-elevated);
@@ -1240,9 +1245,10 @@ export function PlanRedesign(props: PlanRedesignProps) {
           color: var(--cp-accent);
           background: var(--cp-accent-soft);
         }
-        .plan-week-tag.attention {
-          color: var(--cp-warning);
-          background: color-mix(in srgb, var(--cp-warning) 12%, transparent);
+        .plan-week-tag.past {
+          color: var(--cp-text-muted);
+          border: 1px solid var(--cp-border);
+          background: var(--cp-surface-soft);
         }
         .plan-week-tag.upcoming {
           color: var(--cp-text-muted);
