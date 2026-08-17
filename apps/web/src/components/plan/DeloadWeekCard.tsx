@@ -146,7 +146,7 @@ export function DeloadWeekCard({
       ) : (
         <>
           <div style={{ fontSize: 13, color: "var(--cp-text)", lineHeight: 1.5 }}>
-            Feeling beat up? Insert a <strong>recovery week</strong> — a lighter week
+            Insert a <strong>recovery week</strong> — a lighter week
             now (mains at 40/50/60&nbsp;%, easy conditioning, no accessories), then
             resume <strong>exactly</strong> the week you were about to do. Nothing is
             skipped; your block just runs a week longer.

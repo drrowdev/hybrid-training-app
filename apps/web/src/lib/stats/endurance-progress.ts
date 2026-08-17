@@ -195,7 +195,7 @@ function detailFor(
       : `Logged ${totalRuns} run${totalRuns === 1 ? "" : "s"} but none could be classed as easy (no effort tag or heart-rate), so there's no pace trend yet.`;
   }
   if (direction === "building") {
-    return `Only ${sampleRuns} easy run${sampleRuns === 1 ? "" : "s"} so far — keep logging easy efforts to see a trend.`;
+    return `Only ${sampleRuns} easy run${sampleRuns === 1 ? "" : "s"} so far.`;
   }
   if (slope == null) return "Easy pace is holding steady.";
   const absRound = Math.round(Math.abs(slope));

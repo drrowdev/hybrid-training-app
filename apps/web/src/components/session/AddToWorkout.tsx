@@ -169,9 +169,6 @@ export function AddToWorkout({
             >
               Pick movements to start logging
             </span>
-            <span style={{ fontSize: 12, color: "var(--cp-accent)" }}>
-              Tap to add your first movement
-            </span>
           </button>
         </div>
       );

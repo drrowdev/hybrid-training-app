@@ -152,7 +152,7 @@ function subtextFor(
     case "productive":
       return "You're building — and your output is keeping up, so the load is being absorbed, not just accumulated.";
     case "pushing-tolerated":
-      return "Loading hard, but output is holding and effort is steady. Watch it, don't panic.";
+      return "Loading hard, but output is holding and effort is steady.";
     case "watch":
       return "Load looks ok on paper, but effort is rising and output is slipping — mild overreach, ease the next session.";
     case "overreaching":

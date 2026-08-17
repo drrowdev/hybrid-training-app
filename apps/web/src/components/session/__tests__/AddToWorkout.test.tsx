@@ -48,7 +48,6 @@ describe("AddToWorkout", () => {
     // empty-state copy instead of the small pill.
     expect(html).toContain('data-testid="add-to-workout-open"');
     expect(html).toContain("Pick movements to start logging");
-    expect(html).toContain("Tap to add your first movement");
     expect(html).not.toContain("+ Add to workout");
   });
 });

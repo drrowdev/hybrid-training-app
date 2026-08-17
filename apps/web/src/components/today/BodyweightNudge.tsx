@@ -90,7 +90,7 @@ export function BodyweightNudge({
         }}
       >
         <span style={{ color: "var(--cp-success)", fontWeight: 700 }}>✓</span>
-        Bodyweight logged for today — thanks. We&apos;ll ask again next week.
+        Bodyweight logged for today. We&apos;ll ask again next week.
       </div>
     );
   }

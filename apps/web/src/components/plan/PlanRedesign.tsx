@@ -3827,7 +3827,7 @@ function DrawerSupersetCluster({
           fontWeight: 600,
         }}
       >
-        {label} · alternate, rest once
+        {label}
       </div>
       {children}
     </div>

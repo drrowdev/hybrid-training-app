@@ -1755,7 +1755,7 @@ function ThisWeek({ streak }: { streak: Streak }) {
         </div>
         <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)", marginTop: 2 }}>
           {remaining === 0
-            ? "Week target met — nice work"
+            ? "Week target met"
             : `${remaining} session${remaining === 1 ? "" : "s"} to go to keep the streak`}
         </div>
       </div>

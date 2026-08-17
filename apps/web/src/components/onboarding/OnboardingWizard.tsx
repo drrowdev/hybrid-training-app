@@ -552,10 +552,10 @@ export function OnboardingWizard({
 
         {currentLabel === "Start training" && (
           <div style={{ display: "grid", gap: 12 }}>
-            <Heading kicker="Step 6" title="You're all set" />
+            <Heading kicker="Step 6" title="Setup complete" />
             <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.6 }}>
-              Pick your first program and we&apos;ll build your plan. You can
-              switch or rebuild any time from the program picker.
+              Pick your first program. You can switch or rebuild any time from
+              the program picker.
             </p>
           </div>
         )}
@@ -621,9 +621,8 @@ function WelcomeStep() {
         </h1>
       </div>
       <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.6 }}>
-        We&apos;ll capture a bit about you, your equipment, and your main-lift maxes, then hand
-        you off to pick your first program. Takes about three minutes. Skip any step
-        you&apos;re not ready for — your progress is saved as you go.
+        Your profile, equipment and main-lift maxes, then the program picker.
+        Skip any step — progress is saved as you go.
       </p>
     </>
   );
@@ -760,8 +759,8 @@ function TmStep({
     <>
       <Heading kicker="Step 4" title="Your main-lift maxes" />
       <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.55 }}>
-        Enter your 1RM for each of the four main lifts, pick a conservative seed if you&apos;re
-        not sure, or skip a lift entirely. You can update everything later in Settings.
+        Enter your 1RM for each of the four main lifts, seed conservatively, or
+        skip a lift entirely. Editable later in Settings.
       </p>
 
       <div style={{ display: "grid", gap: 12 }}>
