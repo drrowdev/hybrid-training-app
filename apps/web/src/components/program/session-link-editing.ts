@@ -13,7 +13,14 @@ import {
 } from "@/lib/platform/session-links";
 
 export interface LinkableMovement {
-  /** Canonical slot identity — must match the engine's `sourceMovement ?? movement`. */
+  /**
+   * Identity of this ROW in the picker.
+   *
+   * For a single lift this is the canonical slot — the engine's
+   * `sourceMovement ?? movement`. For a GROUP row it is a synthetic key
+   * (`group:<id>`) that is deliberately NOT one of its members, so a member's
+   * own name is never shadowed by the group's name.
+   */
   key: string;
   label: string;
   /** Main lifts warn when linked (DC-K4 — override and warn, never block). */
@@ -28,15 +35,41 @@ export interface LinkableMovement {
    * lift "with the AB Triad" is really a four-station circuit, so the triad is
    * offered as one row that expands to its three slots — you pick the triad, not
    * its parts. Absent ⇒ the entry contributes just its own `key`.
+   *
+   * Each slot carries its own label because once the link exists it is displayed
+   * member by member: a bare slot id would surface raw slugs
+   * ("hanging-knee-raise") in the link's A1/A2/A3 rows.
    */
-  expandsTo?: readonly string[];
+  expandsTo?: ReadonlyArray<{ key: string; label: string }>;
 }
 
 /** The canonical slots an entry contributes to a link. */
 export function slotsOf(movement: LinkableMovement): readonly string[] {
   return movement.expandsTo && movement.expandsTo.length > 0
-    ? movement.expandsTo
+    ? movement.expandsTo.map((slot) => slot.key)
     : [movement.key];
+}
+
+/**
+ * Display name for every canonical slot the offered movements can contribute,
+ * including the members hidden inside a group row.
+ *
+ * The editor renders links member by member, and a link's members are SLOTS, so
+ * a map keyed by row identity alone leaves every expanded group member without
+ * a name.
+ */
+export function slotLabels(
+  movements: readonly LinkableMovement[],
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const movement of movements) {
+    if (movement.expandsTo && movement.expandsTo.length > 0) {
+      for (const slot of movement.expandsTo) out.set(slot.key, slot.label);
+    } else {
+      out.set(movement.key, movement.label);
+    }
+  }
+  return out;
 }
 
 /** Every movement already claimed by a link in this slot. */
@@ -182,13 +215,18 @@ export function toggleSelection(
   return [...selected, key];
 }
 
-/** True when any link in this slot contains a main lift — drives the warning. */
+/**
+ * True when any link in this slot contains a main lift — drives the warning.
+ *
+ * Matched against SLOTS, not row keys: a group row's key is synthetic and never
+ * appears in a link's members.
+ */
 export function linksIncludeMainLift(
   links: readonly SessionLink[],
   movements: readonly LinkableMovement[],
 ): boolean {
   const mains = new Set(
-    movements.filter((m) => m.isMain).map((m) => m.key),
+    movements.filter((m) => m.isMain).flatMap((m) => slotsOf(m)),
   );
   return links.some((link) => link.members.some((m) => mains.has(m)));
 }
@@ -226,7 +264,7 @@ export function pruneLinksToMovements(
   links: readonly SessionLink[],
   movements: readonly LinkableMovement[],
 ): SessionLink[] {
-  const present = new Set(movements.map((m) => m.key));
+  const present = new Set(movements.flatMap((m) => slotsOf(m)));
   return links
     .map((link) => ({
       ...link,
@@ -248,7 +286,16 @@ export function pruneLinksToMovements(
  * complete, since an item carries at most one circuit.
  */
 export function activationLinkableMovements(args: {
-  slots: ReadonlyArray<{ sourceMovement: string }>;
+  slots: ReadonlyArray<{
+    sourceMovement: string;
+    /**
+     * Whether the slot is a main lift. Supplied by the server projection from
+     * the template (peak/support split, plus supplemental prescription rules) —
+     * Activation days mix main and supplemental work, so this cannot be assumed.
+     * Absent ⇒ treated as main, matching a template that says nothing.
+     */
+    role?: "main" | "supplemental";
+  }>;
   /** Canonical slot -> the movement filling it, or null when removed. */
   selected: Readonly<Record<string, string | null>>;
   labelOf: (movementKey: string) => string;
@@ -256,6 +303,8 @@ export function activationLinkableMovements(args: {
   builtinCircuitSources: readonly string[];
   /** Display name for the built-in group, e.g. "AB Triad". */
   builtinCircuitLabel: string;
+  /** Synthetic key for the group row; never one of its members. */
+  builtinCircuitKey: string;
 }): LinkableMovement[] {
   const {
     slots,
@@ -263,6 +312,7 @@ export function activationLinkableMovements(args: {
     labelOf,
     builtinCircuitSources,
     builtinCircuitLabel,
+    builtinCircuitKey,
   } = args;
   const inBuiltin = new Set(builtinCircuitSources);
   // The built-in circuit only stands as a unit when all of its slots are present
@@ -284,18 +334,21 @@ export function activationLinkableMovements(args: {
       if (builtinEmitted) continue;
       builtinEmitted = true;
       out.push({
-        key: builtinCircuitSources[0]!,
+        key: builtinCircuitKey,
         label: builtinCircuitLabel,
-        isMain: true,
-        expandsTo: builtinCircuitSources,
+        // The triad is accessory core work; linking it warrants no warning.
+        isMain: false,
+        expandsTo: builtinCircuitSources.map((source) => ({
+          key: source,
+          label: labelOf(selected[source] ?? source),
+        })),
       });
       continue;
     }
     out.push({
       key: slot.sourceMovement,
       label: labelOf(movement),
-      // Activation's slots are all prescribed program lifts, not accessories.
-      isMain: true,
+      isMain: slot.role !== "supplemental",
     });
   }
   return out;

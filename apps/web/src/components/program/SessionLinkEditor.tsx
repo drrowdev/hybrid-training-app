@@ -34,6 +34,7 @@ import {
   moveMember,
   removeLink,
   selectableMovements,
+  slotLabels,
   toggleSelection,
   type LinkableMovement,
 } from "./session-link-editing";
@@ -75,7 +76,7 @@ export function SessionLinkEditor({
   const selectable = selectableMovements(movements, links);
   const lockedNote = movements.find((m) => m.lockedReason)?.lockedReason;
   const showWarning = linksIncludeMainLift(links, movements);
-  const byKey = new Map(movements.map((m) => [m.key, m.label]));
+  const byKey = slotLabels(movements);
 
   if (movements.length < 2) return null;
 
