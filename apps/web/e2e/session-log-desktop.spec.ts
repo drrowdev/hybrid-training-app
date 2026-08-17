@@ -310,12 +310,15 @@ test.describe("@desktop session log", () => {
 
     const summary = page.getByTestId("post-session-summary");
     await expect(summary).toBeVisible();
-    // Tonnage = 150 × 5 = 750 kg.
-    await expect(page.getByTestId("summary-tonnage")).toContainText(/750/);
+    // Tonnage was removed from the summary: it scored bodyweight, timed and
+    // carry work as 0, so it under-reported unloaded sessions.
+    await expect(page.getByTestId("summary-tonnage")).toHaveCount(0);
     await expect(page.getByTestId("summary-sets")).toContainText(
       /Sets\s*1\s*\/\s*3$/,
     );
-    // The 150kg set beats the saved 100kg 1RM → at least one PR recorded.
+    // The 150kg set beats the saved 100kg 1RM → at least one PR recorded, so
+    // the PRs tile renders at all (it is hidden entirely when the count is 0).
+    await expect(page.getByTestId("summary-prs")).toBeVisible();
     await expect(page.getByTestId("summary-prs")).not.toContainText(/^\s*0\s*$/);
 
     // 4) Navigating back to the same session shows the same summary at the top
@@ -816,9 +819,11 @@ test.describe("@desktop session log", () => {
     await expect(page.getByTestId("summary-sets")).toContainText(
       /Sets\s*14\s*\/\s*14$/,
     );
-    await expect(page.getByTestId("summary-tonnage")).toContainText(
-      /Tonnage\s*—$/,
-    );
+    // This session is all unloaded work — the old Tonnage tile rendered a bare
+    // "—" for it, which is precisely why the tile is gone.
+    await expect(page.getByTestId("summary-tonnage")).toHaveCount(0);
+    // No PRs from unloaded sets, so the PRs tile is absent rather than "0".
+    await expect(page.getByTestId("summary-prs")).toHaveCount(0);
 
     await page.reload();
     await expect(page.getByTestId("summary-sets")).toContainText(

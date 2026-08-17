@@ -189,7 +189,14 @@ export function fidelitySummaryLine(r: FidelityRollup): string | null {
     return `Logged as prescribed${tail}`;
   }
 
+  // Lead with what landed as written. Listing only the deviations made a
+  // near-perfect session read as a list of misses ("1 set under target · 2 sets
+  // above target" says nothing about the 29 that were exact), and left the
+  // reader to work out the denominator themselves.
   const parts: string[] = [];
+  if (r.comparableSets > 0) {
+    parts.push(`${r.onPlanSets} of ${sets(r.comparableSets)} as prescribed`);
+  }
   if (r.easedSets > 0) parts.push(`${sets(r.easedSets)} under target`);
   if (r.pushedSets > 0) parts.push(`${sets(r.pushedSets)} above target`);
   if (r.skippedRequired > 0) parts.push(`${sets(r.skippedRequired)} skipped`);
