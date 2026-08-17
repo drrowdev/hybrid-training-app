@@ -5,10 +5,8 @@ import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import {
   addCardioBlock,
   addStrengthSet,
-  applyStravaAutofill,
   deleteCardio,
   fillSessionFromPlan,
-  finishStravaAppliedSession,
   logCardioSession,
   markExternalCardioComplete,
   swapPrescriptionItem,
@@ -40,10 +38,7 @@ import { PostSessionSummary, type HyroxSummary } from "@/components/session/Post
 import { CompletedHyroxEditor } from "@/components/session/CompletedHyroxEditor";
 import { stationKeyForSlug } from "@/lib/hyrox/materialize-actuals";
 import { UnitsProvider } from "@/lib/units/context";
-import { StravaAutofillBanner, type StravaAutofillMatch } from "@/components/session/StravaAutofillBanner";
 import { MODALITY_LABEL } from "@/lib/planner/session-modality";
-import { findMatchingStravaActivity } from "@/lib/integrations/strava/match";
-import { syncStravaForSession } from "@/lib/integrations/strava/actions";
 import { GRM_RECOMMEND_THRESHOLD, applyGrmToPercent, computeGrm, grmLabel } from "@/lib/engine/grm";
 import { PR_KIND_LABEL } from "@/lib/engine/pr";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
@@ -271,11 +266,10 @@ export default async function SessionDetailPage({
       user.id,
       planned.block_id as string,
       programRef,
-      session.performed_at as string | null,
       readStationOverrides(plannedPrescription),
     );
   }
-  // For a COMPLETED HYROX session we resolve the same view (no Strava banner) so
+  // For a COMPLETED HYROX session we resolve the same view so
   // the post-session summary can offer an "Edit workout" affordance that re-opens
   // the completion form prefilled — re-completing re-materializes (idempotent).
   let hyroxEditView: Awaited<ReturnType<typeof resolveHyroxCompletionView>> = null;
@@ -285,14 +279,13 @@ export default async function SessionDetailPage({
       user.id,
       planned.block_id as string,
       programRef,
-      null,
       readStationOverrides(plannedPrescription),
     );
   }
   // Quick HYROX (off-plan): no program instance, but the generator stored the
   // structured completion view on the prescription. Render the SAME
   // HyroxCompletionForm a planned HYROX session uses (structure + confirm-weights
-  // + Mark complete / Strava) — never the generic cardio logger.
+  // + Mark complete) — never the generic cardio logger.
   if (!hyroxView && !isComplete) {
     const quickView = (
       plannedPrescription as
@@ -322,7 +315,6 @@ export default async function SessionDetailPage({
         loadedStations: quickView.loadedStations,
         isBenchmark: false,
         divisionLabel: quickView.divisionLabel,
-        stravaMatch: null,
       };
     }
   }
@@ -698,8 +690,6 @@ export default async function SessionDetailPage({
   // relevant. The diagnostics module is read-only of session data
   // and never writes back to bw_progress.
   //
-  // This (isComplete-guarded) read and the Strava autofill read below are
-  // mutually independent, so both run together in the Batch 2 join.
   const bwSessionDiagnosticsPromise: Promise<
     import("@/lib/planner/bw-diagnostics").DiagnosticResult[] | undefined
   > = (async () => {
@@ -721,48 +711,7 @@ export default async function SessionDetailPage({
     return filtered.length > 0 ? filtered.slice(0, 2) : undefined;
   })();
 
-  // Phase 2 C1 — Strava autofill match. Only relevant when the session
-  // is still open (post-completion the cardio is presumably already
-  // logged). Silently no-op when the user has no Strava connection or
-  // no in-window activity. The connection lookup gates the activity match,
-  // so those two stay sequential inside this promise.
-  const stravaPromise = (async () => {
-    const { data: connRow } = await supabase
-      .from("strava_connections")
-      .select("user_id, last_synced_at")
-      .eq("user_id", user.id)
-      .maybeSingle();
-    const stravaConnected = !!connRow;
-    const stravaLastSyncedAt =
-      (connRow?.last_synced_at as string | null | undefined) ?? null;
-    let stravaMatch: StravaAutofillMatch | null = null;
-    if (!isComplete && stravaConnected) {
-      const candidate = await findMatchingStravaActivity(
-        supabase,
-        user.id,
-        session.performed_at,
-        { excludeSessionId: id },
-      );
-      if (candidate) {
-        stravaMatch = {
-          cardioLogId: candidate.cardioLogId,
-          stravaActivityId: candidate.stravaActivityId,
-          modality: candidate.modality,
-          durationSec: candidate.durationSec,
-          distanceKm: candidate.distanceKm,
-          avgHrBpm: candidate.avgHrBpm,
-        };
-      }
-    }
-    return { stravaConnected, stravaLastSyncedAt, stravaMatch };
-  })();
-
-  // Batch 2 join — run the bodyweight diagnostics and Strava autofill reads
-  // together.
-  const [
-    bwSessionDiagnostics,
-    { stravaConnected, stravaLastSyncedAt, stravaMatch },
-  ] = await Promise.all([bwSessionDiagnosticsPromise, stravaPromise]);
+  const bwSessionDiagnostics = await bwSessionDiagnosticsPromise;
 
   // feat/logging-works — which prescription items have been satisfied
   // by ≥1 logged set, and the canonical set_logs.id for each (so the
@@ -830,7 +779,7 @@ export default async function SessionDetailPage({
   // in-app cardio capture was removed carries no prescription; its intent
   // (modality + target duration) lives on the session row. Treat it as cardio
   // so the manual CardioLogForm opens (GPS live tracking has been removed —
-  // cardio capture now happens in Strava). New quick workouts are
+  // cardio capture now happens against a planned cardio slot). New quick workouts are
   // strength-only, so these columns stay NULL going forward.
   const quickCardioModality =
     (session as { quick_cardio_modality?: string | null }).quick_cardio_modality ?? null;
@@ -1030,16 +979,6 @@ export default async function SessionDetailPage({
           rest timer + set logger stay visible without the phone
           auto-locking. Best-effort; no-ops where unsupported. */}
       <SessionWakeLock active={!isComplete} />
-
-      {!isComplete && stravaConnected && hasCardio && (
-        <StravaAutofillBanner
-          sessionId={id}
-          match={stravaMatch}
-          applyAction={applyStravaAutofill}
-          syncAction={syncStravaForSession.bind(null, id)}
-          lastSyncedAt={stravaLastSyncedAt}
-        />
-      )}
 
       {isComplete && summary && (
         hyroxEditForm ? (
@@ -1380,7 +1319,6 @@ export default async function SessionDetailPage({
           loadedStations={hyroxView.loadedStations}
           isBenchmark={hyroxView.isBenchmark}
           divisionLabel={hyroxView.divisionLabel}
-          stravaMatch={hyroxView.stravaMatch}
         />
       )}
 
@@ -1630,11 +1568,6 @@ export default async function SessionDetailPage({
                 }
                 units={userUnits}
                 action={logCardioSession}
-                stravaApplied={
-                  Array.isArray(cardio) &&
-                  cardio[0]?.external_source === "strava"
-                }
-                stravaFinishAction={finishStravaAppliedSession}
               />
             </div>
           )}

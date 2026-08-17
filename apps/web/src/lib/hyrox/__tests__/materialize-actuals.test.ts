@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { HYROX_SESSIONS, getHyroxSession } from "@hta/hyrox";
-import { MODALITY_REGION } from "@/lib/integrations/strava/mapping";
+import { MODALITY_REGION } from "@/lib/cardio/modality-region";
 import {
   buildHyroxActuals,
   buildHyroxActualsById,
@@ -53,7 +53,7 @@ describe("HYROX actuals — cardio log", () => {
     expect(sessionCardioModality("se-circuit")).toBe("other_cardio");
   });
 
-  it("carries HR data when supplied (Strava import path)", () => {
+  it("carries HR data when supplied (imported-activity path)", () => {
     const { cardioLogs } = buildHyroxActualsById("sim-half", {
       ...baseInput,
       avgHrBpm: 168,

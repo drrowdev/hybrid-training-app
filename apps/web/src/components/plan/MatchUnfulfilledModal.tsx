@@ -2,28 +2,28 @@
 
 /**
  * MatchUnfulfilledModal — UI shell for matching a past planned
- * session to a Strava activity (or quick-logging / marking skipped).
+ * session to an already-logged activity (or quick-logging / marking skipped).
  *
  * Scope of this PR: UI shell + the link action that updates
  * `planned_sessions.completed_session_id` to a chosen session row.
- * The actual Strava-matching backend (importing an activity and
+ * The actual matching backend (attaching an activity and
  * surfacing it as a session) is a follow-up — see the PR description
  * for the full plan.
  *
  * The modal accepts a pre-resolved planned row + a list of unlinked
- * Strava-sourced session candidates from the same day. If the user
+ * session candidates from the same day. If the user
  * picks one, we call the `linkAction` server action with
  * `{ plannedId, sessionId }`; the page revalidates.
  */
 import { useState } from "react";
 import { formatDate, type ProfileForFormat } from "@/lib/format/datetime";
 
-export type StravaCandidate = {
+export type ActivityCandidate = {
   sessionId: string;
   title: string;
   modality: string | null;
   durationMin: number | null;
-  stravaActivityId: string | null;
+  externalActivityId: string | null;
 };
 
 function formatHeaderDate(iso: string, profile: ProfileForFormat): string {
@@ -41,7 +41,7 @@ export type MatchUnfulfilledModalProps = {
     title: string;
     summary?: string;
   } | null;
-  candidates: StravaCandidate[];
+  candidates: ActivityCandidate[];
   /** Server action linking a planned row to a logged session. */
   onLink?: (formData: FormData) => Promise<void> | void;
   /** Server action marking a planned row as skipped. */

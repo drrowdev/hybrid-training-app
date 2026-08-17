@@ -27,7 +27,6 @@ export type SettingsIconName =
   | "limitations"
   | "events"
   | "preferences"
-  | "integrations"
   | "hr-zones";
 
 export function SettingsIcon({ name }: { name: SettingsIconName }): ReactNode {
@@ -87,12 +86,6 @@ export function SettingsIcon({ name }: { name: SettingsIconName }): ReactNode {
           <path d="M4 7h10M18 7h2M4 17h2M10 17h10" />
           <circle cx="16" cy="7" r="2" />
           <circle cx="8" cy="17" r="2" />
-        </svg>
-      );
-    case "integrations": // plug
-      return (
-        <svg {...base}>
-          <path d="M9 2v5M15 2v5M7 7h10v3a5 5 0 0 1-10 0V7zM12 15v5" />
         </svg>
       );
     case "hr-zones": // heart

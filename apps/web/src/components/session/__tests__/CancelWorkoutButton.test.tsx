@@ -1,7 +1,7 @@
 /**
  * CancelWorkoutButton — static render + action-routing smoke tests.
  *
- * Mirrors the AddToWorkout / StravaAutofillBanner pattern: we render
+ * Mirrors the AddToWorkout pattern: we render
  * the closed state to static markup (the Node-only test env can't
  * exercise click handlers), and we directly invoke the underlying
  * server action mock to prove the wrapper still routes through

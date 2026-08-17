@@ -195,7 +195,7 @@ const linkPlannedSchema = z.object({
 /**
  * Link a past planned_session to an already-logged sessions row. Used
  * by the past-unfulfilled match modal in the calendar views: when the
- * user identifies a Strava-imported activity (or any logged session
+ * user identifies an already-logged activity (or any logged session
  * on the same calendar day) as the realisation of a planned slot, we
  * point `completed_session_id` at it. RLS + the inner-join through
  * training_blocks ensures only the owning user can mutate the row.

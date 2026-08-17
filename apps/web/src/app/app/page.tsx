@@ -15,7 +15,6 @@ import { hasTwoADaySlotPair } from "@/lib/planner/slot";
 import { getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { findHeavyOnRecoveringConflictWithMuscles } from "@/lib/muscle/muscle-conflict";
-import { StravaStaleSyncTrigger } from "@/components/StravaStaleSyncTrigger";
 import { BodyweightOnlyBanner } from "@/components/banners/BodyweightOnlyBanner";
 import { dismissBwBanner } from "@/lib/profile/actions";
 import { ProgramRecommendationsBanner } from "@/components/today/ProgramRecommendationsBanner";
@@ -164,7 +163,6 @@ export default async function TodayPage() {
   );
   const [
     pendingSuggestions,
-    stravaConn,
     nextEvent,
     { movementRegionById, movementSlugById },
     muscleFreshnessRows,
@@ -238,14 +236,6 @@ export default async function TodayPage() {
       });
     })(),
 
-    // Group B — Strava connection presence. Sync status stays background-only.
-    supabase
-      .from("strava_connections")
-      .select("user_id")
-      .eq("user_id", userId)
-      .maybeSingle()
-      .then((r) => r.data),
-
     // Group C — next priority event (drives the taper recommendation).
     supabase
       .from("priority_events")
@@ -286,7 +276,6 @@ export default async function TodayPage() {
     getMuscleFreshness(supabase, userId, { tz: profile?.timezone ?? "UTC" }),
   ]);
 
-  const hasStravaConnection = Boolean(stravaConn);
   const taper = computeTaperRecommendation(
     nextEvent
       ? {
@@ -751,8 +740,6 @@ export default async function TodayPage() {
               generateHyrox={generateQuickHyroxSession}
               hyroxStationDefaults={hyroxStationDefaults}
             />
-
-            {hasStravaConnection && <StravaStaleSyncTrigger />}
           </div>
 
           <aside
@@ -829,7 +816,7 @@ function ActivitySection({
         <EmptyState
           variant="inline"
           title="No sessions yet"
-          body="Sessions you log or import from Strava appear here, grouped by date."
+          body="Sessions you log appear here, grouped by date."
         />
       </section>
     );
@@ -1003,7 +990,7 @@ function TodaySessionCard({
   if (isTodayFullyLogged({ completedTodayCount: completedToday.length, plannedToday })) {
     // Every planned slot for today is actually completed (linked or logged).
     // NB: we check per-session completion, not a count comparison — an extra
-    // standalone activity (e.g. an easy Strava run auto-synced on a day that
+    // standalone activity (e.g. an extra easy run logged on a day that
     // also has a prescribed session) must NOT mask a still-pending planned
     // session. It surfaces under "Recent activity"; the planned card stays.
     return (

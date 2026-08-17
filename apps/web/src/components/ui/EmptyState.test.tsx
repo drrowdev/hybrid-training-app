@@ -50,11 +50,11 @@ describe("EmptyState", () => {
   it("renders title and body", () => {
     const el = EmptyState({
       title: "No HR-zone data",
-      body: "Strava-imported runs with a heart-rate stream populate this card.",
+      body: "Logged cardio with a heart-rate histogram populates this card.",
     }) as AnyEl;
     expect(textOf(findByTestId(el, "empty-state-title"))).toBe("No HR-zone data");
     expect(textOf(findByTestId(el, "empty-state-body"))).toMatch(
-      /Strava-imported runs/,
+      /heart-rate histogram/,
     );
   });
 
@@ -77,12 +77,12 @@ describe("EmptyState", () => {
 
   it("action href is forwarded to the Link", () => {
     const el = EmptyState({
-      title: "No integrations",
-      body: "Connect Strava to populate this card.",
-      action: { label: "Connect Strava", href: "/app/settings/integrations" },
+      title: "No heart-rate zones",
+      body: "Set your zone bands to populate this card.",
+      action: { label: "Set HR zones", href: "/app/settings/hr-zones" },
     }) as AnyEl;
     const cta = findByTestId(el, "empty-state-action");
-    expect(cta?.props?.href).toBe("/app/settings/integrations");
+    expect(cta?.props?.href).toBe("/app/settings/hr-zones");
   });
 
   it("inline variant has no border", () => {

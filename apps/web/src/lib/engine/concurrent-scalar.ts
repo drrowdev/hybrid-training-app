@@ -47,7 +47,7 @@ import {
  * interference cost per cardio minute.
  *
  * Canonical keys match the `cardio_logs.modality` enum used across
- * `mapStravaActivity` (`run | bike | swim | walk | row | ski |
+ * the cardio modality vocabulary (`run | bike | swim | walk | row | ski |
  * other_cardio`). Additional aliases (`ski_erg`, `ruck`, `other`)
  * are accepted defensively so callers that aggregate from
  * user-authored events / hand-entered modalities still resolve.
@@ -81,7 +81,7 @@ export const MODALITY_INTERFERENCE: Record<string, number> = {
   // CP-3 heuristic — loaded walking: axial loading + eccentric
   // step-down; sits between walk and run.
   ruck: 0.8,
-  // CP-3 heuristic — unclassified Strava activities and freeform
+  // CP-3 heuristic — unclassified imported activities and freeform
   // event modalities; conservative-moderate default.
   other_cardio: 0.7,
   // CP-3 heuristic — alias matching the `events.modality = "other"`

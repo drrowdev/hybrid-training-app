@@ -112,7 +112,7 @@ describe("computeActualSessionLoad", () => {
     });
     expect(out.breakdown.cardioEsl).toBe(45);
     expect(out.effectiveStressLoad).toBe(45);
-    expect(out.breakdown.cardioSource).toBe("strava-classified");
+    expect(out.breakdown.cardioSource).toBe("kind-classified");
   });
 
   it("pure cardio Z2 — inferredKind drives the duration × multiplier path", () => {
@@ -125,7 +125,7 @@ describe("computeActualSessionLoad", () => {
     expect(out.breakdown.cardioEsl).toBe(22.5);
     expect(out.effectiveStressLoad).toBe(22.5);
     expect(out.sessionModality).toBe("pure_z2_aerobic");
-    expect(out.breakdown.cardioSource).toBe("strava-classified");
+    expect(out.breakdown.cardioSource).toBe("kind-classified");
   });
 
   it("cardio VO2 — high-intensity kind picks up vo2 mult", () => {

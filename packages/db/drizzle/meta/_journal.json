@@ -911,6 +911,13 @@
       "when": 1786838400000,
       "tag": "0129_drop_superset_accessories",
       "breakpoints": false
+    },
+    {
+      "idx": 130,
+      "version": "7",
+      "when": 1786924800000,
+      "tag": "0130_drop_strava_tables",
+      "breakpoints": false
     }
   ]
 }

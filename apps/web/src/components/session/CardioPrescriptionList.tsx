@@ -40,7 +40,7 @@ type SwapAction = typeof swapPrescriptionItem;
 
 /**
  * Phase 2 — classification of an external cardio session inferred
- * from Strava HR + duration data. Optional: when present and the
+ * from HR + duration data. Optional: when present and the
  * matching cardio_external card is rendered, replaces the "Logged via
  * Runna" placeholder with the inferred kind + reason.
  */
@@ -59,7 +59,7 @@ export type CardioListItem = {
   /** Index inside the parent `prescription.items` array (NOT the filtered list). */
   itemIndex: number;
   item: PrescriptionItem;
-  /** Phase 2 — Strava classifier output for `cardio_external` rows. */
+  /** Phase 2 — cardio classifier output for `cardio_external` rows. */
   classification?: CardioClassification | null;
   /**
    * Display label for the implementing modality (e.g. "Run", "Bike",
@@ -198,7 +198,7 @@ function ExternalCardioRow({
   const title = programName.length > 0 && programName !== "External program"
     ? programName
     : "External cardio";
-  // Body line: Phase 2 — when the Strava classifier returned a kind,
+  // Body line: Phase 2 — when the cardio classifier returned a kind,
   // surface that instead of the placeholder. Otherwise prefer the
   // engine's own prescription note (`notes` — what the user is meant to
   // do this session), then the protocol hint, then the generic fallback.

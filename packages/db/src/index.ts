@@ -33,7 +33,6 @@ export * from "./schema/program-instances";
 export * from "./schema/program-recommendations";
 export * from "./schema/training-seasons";
 export * from "./client";
-export * from "./schema/strava-connections";
 export * from "./schema/priority-events";
 export * from "./schema/prescription-modifications";
 export * from "./schema/engine-override-events";

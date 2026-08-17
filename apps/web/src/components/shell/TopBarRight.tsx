@@ -6,9 +6,7 @@
  * Renders, left → right:
  *   1. Search button (magnifier + label + ⌘K/Ctrl K kbd chip). Clicking
  *      opens the quick-jump palette.
- *   2. Strava sync indicator (dot + label). Hidden when the user has
- *      no `strava_connections` row.
- *   3. User-initials avatar with a Settings / Account & data / Sign out
+ *   2. User-initials avatar with a Settings / Account & data / Sign out
  *      dropdown. (Profile / Limitations / Events live under the
  *      settings hub now — one click from Settings.)
  *
@@ -22,19 +20,8 @@
 
 import Link from "next/link";
 import type { CSSProperties } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useCommandPalette } from "@/components/cmd-k/CommandPaletteProvider";
-
-type SyncState = "fresh" | "stale";
-
-function computeSyncState(lastSyncedAt: string | null): SyncState {
-  if (!lastSyncedAt) return "stale";
-  const ts = Date.parse(lastSyncedAt);
-  if (!Number.isFinite(ts)) return "stale";
-  const ageMs = Date.now() - ts;
-  // Spec: < 24h → "Up to date", otherwise "Stale".
-  return ageMs <= 24 * 60 * 60 * 1000 ? "fresh" : "stale";
-}
 
 function initialsFrom(name: string | null, email: string | null): string {
   const source = (name ?? "").trim() || (email ?? "").trim();
@@ -48,19 +35,6 @@ function initialsFrom(name: string | null, email: string | null): string {
   const parts = source.split(/\s+/).filter(Boolean);
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return ((parts[0]![0] ?? "") + (parts[parts.length - 1]![0] ?? "")).toUpperCase();
-}
-
-function formatRelative(iso: string): string {
-  const ts = Date.parse(iso);
-  if (!Number.isFinite(ts)) return "";
-  const diff = Date.now() - ts;
-  const mins = Math.round(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  return `${days}d ago`;
 }
 
 // Shared shapes — pulled out so the avatar / search buttons share the same
@@ -87,19 +61,6 @@ const styles = {
     transition: "background 0.12s, color 0.12s, border-color 0.12s",
     font: "inherit",
   },
-  sync: {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    height: 30,
-    padding: "0 10px",
-    borderRadius: 8,
-    border: "1px solid var(--cp-border)",
-    background: "transparent",
-    color: "var(--cp-text-muted)",
-    fontSize: 13,
-    lineHeight: 1,
-  },
   kbd: {
     fontFamily: "var(--font-mono, Consolas, monospace)",
     fontSize: 10,
@@ -110,13 +71,6 @@ const styles = {
     color: "var(--cp-text-muted)",
     letterSpacing: "0.02em",
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: "50%",
-    display: "inline-block",
-  },
-  syncLabel: { fontWeight: 500 },
   popWrap: { position: "relative" },
   summary: { listStyle: "none", cursor: "pointer" },
   avatar: {
@@ -230,8 +184,6 @@ export function TopBarRight({
   signOutAction,
   displayName,
   email,
-  hasStravaConnection,
-  lastSyncedAt,
   // `buildSha` is still accepted for backwards-compat with AppShell and
   // the /app layout's env wiring, but the SHA chip itself is no longer
   // rendered. The prop is intentionally not destructured.
@@ -239,8 +191,6 @@ export function TopBarRight({
   signOutAction: () => Promise<void>;
   displayName: string | null;
   email: string | null;
-  hasStravaConnection: boolean;
-  lastSyncedAt: string | null;
   buildSha?: string;
 }) {
   const palette = useCommandPalette();
@@ -262,14 +212,6 @@ export function TopBarRight({
       // Fall back to the default.
     }
   }, []);
-
-  const syncState = useMemo(
-    () => computeSyncState(lastSyncedAt),
-    [lastSyncedAt],
-  );
-  const syncLabel = syncState === "fresh" ? "Up to date" : "Stale";
-  const syncDotColor =
-    syncState === "fresh" ? "var(--cp-accent)" : "var(--cp-text-muted)";
 
   const initials = initialsFrom(displayName, email);
 
@@ -318,27 +260,6 @@ export function TopBarRight({
           {isMac ? "⌘K" : "Ctrl K"}
         </kbd>
       </button>
-
-      {/* 2. Sync indicator */}
-      {hasStravaConnection && (
-        <div
-          className="cp-tbr-sync"
-          data-testid="topbar-sync"
-          data-state={syncState}
-          title={
-            lastSyncedAt
-              ? `Last sync ${formatRelative(lastSyncedAt)}`
-              : "Never synced"
-          }
-          style={styles.sync}
-        >
-          <span
-            aria-hidden
-            style={{ ...styles.dot, background: syncDotColor }}
-          />
-          <span style={styles.syncLabel}>{syncLabel}</span>
-        </div>
-      )}
 
       {/* User-initials avatar + dropdown */}
       <details

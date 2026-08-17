@@ -32,7 +32,6 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
  * opaque catalog UUIDs.
  *
  * ── What's intentionally excluded (and why) ──────────────────────────
- *   - Strava OAuth tokens (`strava_connections`) never leave their subsystem.
  *   - Derived / recomputable snapshots are omitted to keep the export to
  *     authored data: `tm_suggestions`, `region_state_history`,
  *     `muscle_state_history`, `bw_diagnostics_snapshots`.
@@ -140,7 +139,7 @@ export async function GET() {
     region_state: regionState.data ?? [],
     custom_movements: customMovements.data ?? [],
     excluded: {
-      secrets: ["strava_connections"],
+      secrets: [],
       derived: [
         "tm_suggestions",
         "region_state_history",

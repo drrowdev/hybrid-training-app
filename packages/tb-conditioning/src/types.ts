@@ -75,7 +75,7 @@ export interface TbNamedSession {
   loaded?: boolean;
   /**
    * Whether the session is a continuous GPS-trackable activity (run/ruck) a
-   * Strava import can fulfil automatically. Most metcons/circuits are false —
+   * single logged effort can fulfil. Most metcons/circuits are false —
    * they need manual completion logging.
    */
   trackable?: boolean;

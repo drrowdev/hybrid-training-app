@@ -2,7 +2,7 @@
 
 /**
  * Manual "link a logged activity to a planned session" (ADR follow-up to the
- * Strava auto-linker). The auto-linker (`classifyAndLinkExternalCardio`) only
+ * automatic linker). The retired auto-linker only
  * fires for `cardio_source='external'` blocks and only at sync time, so a HYROX
  * (internal-cardio) plan — or any case where the activity synced before the day
  * was swapped — has no way to attach an already-logged run to its planned cardio
@@ -18,7 +18,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { classifyCardio } from "@/lib/integrations/strava/classify-cardio";
+import { classifyCardio } from "@/lib/cardio/classify-cardio";
 import { readZoneConfig } from "@/lib/stats/hr-zones";
 import { prescriptionItemsHaveStrength } from "@/lib/sessions/strength-prescribed";
 
@@ -29,7 +29,6 @@ export type LinkableActivity = {
   durationMin: number | null;
   distanceKm: number | null;
   avgHrBpm: number | null;
-  stravaActivityId: string | null;
 };
 
 /** Days back to surface as link candidates. */
@@ -65,14 +64,13 @@ export async function getLinkableActivities(): Promise<LinkableActivity[]> {
   // Cardio logs for those sessions (a session is "linkable" only if it has one).
   const { data: logs } = await supabase
     .from("cardio_logs")
-    .select("session_id, duration_sec, distance_km, avg_hr_bpm, strava_activity_id")
+    .select("session_id, duration_sec, distance_km, avg_hr_bpm")
     .in("session_id", sessionIds);
   type CardioLogRow = {
     session_id: string;
     duration_sec: number | null;
     distance_km: string | number | null;
     avg_hr_bpm: number | null;
-    strava_activity_id: string | null;
   };
   const logBySession = new Map<string, CardioLogRow>();
   for (const l of (logs ?? []) as CardioLogRow[]) {
@@ -106,7 +104,6 @@ export async function getLinkableActivities(): Promise<LinkableActivity[]> {
         (log.duration_sec != null ? Math.round((log.duration_sec as number) / 60) : null),
       distanceKm: log.distance_km != null ? Number(log.distance_km) : null,
       avgHrBpm: (log.avg_hr_bpm as number | null) ?? null,
-      stravaActivityId: (log.strava_activity_id as string | null) ?? null,
     });
   }
   return out.slice(0, 10);
@@ -119,7 +116,7 @@ const linkSchema = z.object({
 
 /**
  * Link an existing logged session to a planned cardio slot, attributing its load
- * the same way the Strava auto-linker does (modality + ESL from HR).
+ * the same way the retired auto-linker did (modality + ESL from HR).
  */
 export async function linkActivityToPlanned(
   formData: FormData,

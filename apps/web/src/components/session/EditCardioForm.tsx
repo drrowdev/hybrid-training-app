@@ -10,8 +10,6 @@
  *     Notes — the user is editing what they INTEND to do, not logging
  *     actual values; those land via the `<CardioLogForm>` after the
  *     workout.
- *   - In "Strava-imported" mode renders the form as read-only and
- *     points the user back at Strava → re-sync.
  *
  * Conversion lives in `@/lib/cardio/units` (also covers Distance
  * km↔mi if/when we expose unit-aware distance editing here).
@@ -30,7 +28,16 @@ import {
 
 export type EditCardioMode =
   | { kind: "prescription-only" } // Quick workout, no metrics logged yet
-  | { kind: "strava-readonly" } // imported from Strava — edit upstream
+  /**
+   * Imported from an external provider (`cardio_logs.external_source` set).
+   * Held read-only so the record stays a faithful copy of what the device or
+   * service measured — nobody hand-edits a heart-rate average after the fact.
+   *
+   * This deliberately survives the removal of the Strava integration: the rows
+   * are still imported measurements, so the reason to freeze them is unchanged.
+   * Only the copy changed — there is no longer an upstream to "re-sync" from.
+   */
+  | { kind: "imported-readonly" }
   | { kind: "full" }; // normal edit (logged or completed)
 
 export type EditCardioBlock = {
@@ -65,8 +72,9 @@ export function EditCardioForm({
   const initialDurationMin = secondsToMinutes(block.duration_sec) ?? "";
   const initialPace = formatSecPerKmToPace(block.avg_pace_sec_per_km, units);
   const initialDistance = block.distance_km ?? "";
-
-  const readOnly = mode.kind === "strava-readonly";
+  const readOnly = mode.kind === "imported-readonly";
+  // Imported rows show the same metric set as a full edit, just frozen.
+  const showAllMetrics = mode.kind === "full" || readOnly;
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -114,12 +122,12 @@ export function EditCardioForm({
       <input type="hidden" name="id" value={block.id} />
       <input type="hidden" name="sessionId" value={sessionId} />
 
-      {mode.kind === "strava-readonly" && (
+      {readOnly && (
         <p
-          data-testid="edit-cardio-strava-note"
+          data-testid="edit-cardio-imported-note"
           className="text-xs text-foreground/70 rounded-md border border-foreground/15 p-2"
         >
-          Synced from Strava — edit in Strava and re-sync.
+          Imported from an external activity — kept exactly as recorded.
         </p>
       )}
 
@@ -136,7 +144,7 @@ export function EditCardioForm({
           readOnly={readOnly}
         />
 
-        {mode.kind === "full" || mode.kind === "strava-readonly" ? (
+        {showAllMetrics ? (
           <>
             <Field
               name="distanceKm"

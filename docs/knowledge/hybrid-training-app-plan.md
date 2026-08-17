@@ -278,7 +278,7 @@ The hybrid story is the moat.
 - Multi-bucket load model: per-bucket pressure + recovery multiplier + region caps + ceiling equation per v2 §3, with per-modality interference costs from `new` §1.2
 - Race-week taper suggestions (rule-based, not AI)
 - Modality-aware scheduling: scheduler knows running has higher interference cost than cycling per `new` §1.2 and proposes substitutions when interference would block a high-priority strength session
-- Strava integration: pull cardio activities, match to planned slots
+- ~~Strava integration: pull cardio activities, match to planned slots~~ **(shipped, then removed 2026-08-17 — paid API. Replaced by manual cardio logging + link-an-existing-activity.)**
 - Garmin integration (later — Connect API is annoying)
 
 ### Phase 4 — AI layer (backlog until Phase 3 is solid)
@@ -297,7 +297,7 @@ Only build this when the foundation is reliable.
 ### Phase 5 — Monetization (only if there's demand)
 
 - Free tier: log strength + cardio + wellness + 1 program at a time, no AI
-- Pro tier (~€5–9/mo): unlimited programs, AI access (with monthly token cap), Strava sync, advanced analytics, data export to PDF / CSV
+- Pro tier (~€5–9/mo): unlimited programs, AI access (with monthly token cap), advanced analytics, data export to PDF / CSV
 - Annual discount
 - Stripe Checkout + Customer Portal
 - Family / team plans only if requested

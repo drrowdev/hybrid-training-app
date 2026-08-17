@@ -8,7 +8,6 @@
  *   - Pace field rendered in M:SS (not s/km).
  *   - Prescription-only mode (Quick cardio, no logged metrics) hides
  *     Distance / Avg HR / Pace / RPE — only Duration + Notes remain.
- *   - Strava-imported mode is read-only and shows the re-sync note.
  */
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -102,29 +101,6 @@ describe("EditCardioForm", () => {
     expect(html).not.toContain('name="rpe"');
   });
 
-  it("strava-readonly mode renders all fields read-only with a re-sync note", () => {
-    const html = renderToStaticMarkup(
-      <EditCardioForm
-        sessionId="s"
-        block={makeBlock({
-          duration_sec: 1800,
-          distance_km: 6.4,
-          avg_hr_bpm: 165,
-          avg_pace_sec_per_km: 280,
-          rpe: 7,
-        })}
-        units="metric"
-        mode={{ kind: "strava-readonly" }}
-        action={noop}
-      />,
-    );
-    expect(html).toContain("Synced from Strava");
-    expect(html).toContain('data-mode="strava-readonly"');
-    expect(html).toContain("readonly");
-    // No submit button in read-only mode.
-    expect(html).not.toContain('data-testid="edit-cardio-submit"');
-  });
-
   it("full mode renders every metric field with a save button", () => {
     const html = renderToStaticMarkup(
       <EditCardioForm
@@ -149,5 +125,41 @@ describe("EditCardioForm", () => {
     expect(html).toContain('name="rpe"');
     expect(html).toContain('data-testid="edit-cardio-submit"');
     expect(html).toContain("Save changes");
+  });
+
+  it("imported-readonly freezes every field and offers no save button", () => {
+    // Externally-imported rows are a faithful copy of what a device measured,
+    // so hand-editing an imported HR average would corrupt the record. This
+    // outlives the Strava integration that first produced such rows — the
+    // reason to freeze them is that they are imported measurements, not that
+    // any particular provider owned them.
+    const html = renderToStaticMarkup(
+      <EditCardioForm
+        sessionId="s"
+        block={makeBlock({
+          duration_sec: 1800,
+          distance_km: 5,
+          avg_hr_bpm: 150,
+          avg_pace_sec_per_km: 360,
+          rpe: 7,
+        })}
+        units="metric"
+        mode={{ kind: "imported-readonly" }}
+        action={noop}
+      />,
+    );
+    expect(html).toContain('data-mode="imported-readonly"');
+    // Same metric set as a full edit — visible, just not editable.
+    expect(html).toContain("Distance (km)");
+    expect(html).toContain("Avg HR (bpm)");
+    expect(html).toContain('name="rpe"');
+    // Every input is frozen and there is nothing to submit.
+    expect(html).not.toContain('data-testid="edit-cardio-submit"');
+    expect(html).not.toContain("Save changes");
+    expect(html).toContain('data-testid="edit-cardio-imported-note"');
+    expect(html).toContain("kept exactly as recorded");
+    // The dead upstream must not be named — there is nothing to re-sync from.
+    expect(html).not.toMatch(/strava/i);
+    expect(html).not.toMatch(/re-?sync/i);
   });
 });

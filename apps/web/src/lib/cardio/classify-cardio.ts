@@ -1,7 +1,12 @@
 /**
- * Phase 2 — pure classifier that turns a Strava activity summary
- * (avg HR + max HR + duration) into a cardio kind, an effective stress
- * load (ESL) value, and a confidence score. No DB access.
+ * Pure classifier that turns a cardio activity summary (avg HR + max HR +
+ * duration) into a cardio kind, an effective stress load (ESL) value, and
+ * a confidence score. No DB access.
+ *
+ * Consumers: `lib/engine/actual-session-load.ts` (`cardioEslFromKind`
+ * drives cardio ESL) and `lib/sessions/link-activity.ts` (`classifyCardio`
+ * powers the manual "link a logged activity to a planned cardio slot"
+ * flow).
  *
  * Heuristic uses %-of-max-HR thresholds. The user's hrMax is the
  * primary signal; if absent we fall back to the rough 220-age formula

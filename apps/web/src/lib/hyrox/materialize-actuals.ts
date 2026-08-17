@@ -16,7 +16,7 @@
  *      duration = total time, rpe = session RPE, modality = a raw MODALITY_REGION
  *      key (run/ski/row/bike/other_cardio) so the region-ledger + 2-factor
  *      load/interference engine (sRPE×duration — Foster 2001) attribute it. HR-zone
- *      data from a Strava import sharpens the intensity downstream.
+ *      data from a linked cardio log sharpens the intensity downstream.
  *   2. One `set_logs` row per LOADED station physically performed (sled push/pull,
  *      farmers carry, sandbag lunge, wall ball) at the confirmed weight + the
  *      station's standardized reps/distance + the session RPE. These add the
@@ -30,19 +30,19 @@
  */
 import { getHyroxSession, getStation, type HyroxSession } from "@hta/hyrox";
 
-/** HR-zone distribution shape Strava import produces (seconds per zone). */
+/** HR-zone distribution shape stored on cardio logs (seconds per zone). */
 export type HrZones = Record<string, number>;
 
 export interface HyroxCompletionInput {
-  /** Total session time in seconds (manual entry or Strava-filled). */
+  /** Total session time in seconds (manual entry or filled from a log). */
   totalDurationSec: number;
   /** Session-level RPE, 1–10. */
   sessionRpe: number;
   /** Confirmed/adjusted loaded-station weights (engine station key → kg). */
   confirmedWeightsKg?: Record<string, number>;
-  /** Optional HR-zone distribution from a linked Strava activity. */
+  /** Optional HR-zone distribution from a linked cardio activity. */
   hrZones?: HrZones;
-  /** Optional average HR from a linked Strava activity. */
+  /** Optional average HR from a linked cardio activity. */
   avgHrBpm?: number;
 }
 
@@ -75,7 +75,7 @@ export interface HyroxActuals {
  * Per-session conditioning modality → a raw `MODALITY_REGION` key (run / ski / row
  * / bike / other_cardio), so the region-ledger (and the 2-factor load/interference
  * engine that reads it) attributes the aerobic load correctly. This matches how
- * the app stores `cardio_logs.modality` everywhere else (Strava → run/bike/row).
+ * the app stores `cardio_logs.modality` everywhere else (run/bike/row).
  *
  * Muscle-grid specificity comes from the loaded-station set_logs below (their
  * movement muscle tags), not from this cardio modality — consistent with the

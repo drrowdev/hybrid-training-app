@@ -33,16 +33,6 @@ vi.mock("next/navigation", () => ({
 const noopProfile = async () => ({ ok: true as const });
 const noopEquipment = async () => undefined;
 const noopBw = async () => ({ ok: true as const });
-const noopConnect = async () => undefined;
-const noopImport = async () => ({
-  ok: true as const,
-  summary: {
-    imported: 0,
-    skipped: { strength: 0, sport: 0, other: 0, duplicates: 0, unknown: 0 },
-    matchedToPlanned: 0,
-    errors: [],
-  },
-});
 
 function render(preset: typeof HOME_GYM_PRESET | typeof BODYWEIGHT_ONLY_PRESET) {
   return renderToStaticMarkup(
@@ -54,14 +44,10 @@ function render(preset: typeof HOME_GYM_PRESET | typeof BODYWEIGHT_ONLY_PRESET) 
       hasEquipmentRow={true}
       initialCardioModalities={[]}
       roleCandidates={[]}
-      initialStravaConnected={false}
-      stravaIsConfigured={false}
       saveProfileAction={noopProfile}
       saveEquipmentAction={noopEquipment}
       saveTmsAction={noopProfile}
       submitBwAssessmentAction={noopBw}
-      connectStravaAction={noopConnect}
-      importStravaHistoryAction={noopImport}
       finishAction={noopProfile}
       skipAction={async () => {}}
     />,
@@ -71,19 +57,19 @@ function render(preset: typeof HOME_GYM_PRESET | typeof BODYWEIGHT_ONLY_PRESET) 
 describe("OnboardingWizard equipment-aware routing", () => {
   it("home_gym preset surfaces a 'Training maxes' progress pill", () => {
     const html = render(HOME_GYM_PRESET);
-    expect(html).toMatch(/aria-label="Step 4 of 6: Training maxes"/);
+    expect(html).toMatch(/aria-label="Step 4 of 5: Training maxes"/);
     expect(html).not.toMatch(/Bodyweight assessment/);
   });
 
   it("bodyweight_only preset renames the slot to 'Bodyweight assessment'", () => {
     const html = render(BODYWEIGHT_ONLY_PRESET);
-    expect(html).toMatch(/aria-label="Step 4 of 6: Bodyweight assessment"/);
-    expect(html).not.toMatch(/Step 4 of 6: Training maxes/);
+    expect(html).toMatch(/aria-label="Step 4 of 5: Bodyweight assessment"/);
+    expect(html).not.toMatch(/Step 4 of 5: Training maxes/);
   });
 
-  it("includes a Connect Strava pill as the second-to-last step", () => {
+  it("ends on Start training with no third-party connect step", () => {
     const html = render(HOME_GYM_PRESET);
-    expect(html).toMatch(/aria-label="Step 5 of 6: Connect Strava"/);
-    expect(html).toMatch(/aria-label="Step 6 of 6: Start training"/);
+    expect(html).toMatch(/aria-label="Step 5 of 5: Start training"/);
+    expect(html).not.toMatch(/strava/i);
   });
 });

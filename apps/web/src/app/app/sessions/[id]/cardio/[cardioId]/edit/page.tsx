@@ -23,7 +23,7 @@ export default async function EditCardioPage({
   const { data: block } = await supabase
     .from("cardio_logs")
     .select(
-      "id, modality, duration_sec, distance_km, avg_hr_bpm, avg_pace_sec_per_km, rpe, notes, external_source, strava_activity_id, movement:movements(display_name)",
+      "id, modality, duration_sec, distance_km, avg_hr_bpm, avg_pace_sec_per_km, rpe, notes, external_source, movement:movements(display_name)",
     )
     .eq("id", cardioId)
     .eq("session_id", id)
@@ -50,7 +50,6 @@ export default async function EditCardioPage({
   const isComplete = !!session?.completed_at;
 
   // What "mode" is the form in?
-  //   - strava-readonly: imported from Strava, never editable here.
   //   - prescription-only: a Quick-cardio session BEFORE the user has
   //     logged anything (no HR, no distance, no RPE, no notes). The
   //     `duration_sec` value is always populated because creating the
@@ -58,16 +57,25 @@ export default async function EditCardioPage({
   //     something." Surface only Duration + Notes; the rest lands via
   //     CardioLogForm after the workout.
   //   - full: anything else (completed, partially logged, etc.)
-  const fromStrava =
-    block.external_source === "strava" || block.strava_activity_id != null;
+  //
+  // Externally-imported rows (`external_source` set) are held READ-ONLY. They
+  // are a faithful copy of what a device or service measured, so hand-editing
+  // an imported heart-rate average would silently corrupt the record. This
+  // outlives the Strava integration that first produced such rows: the reason
+  // to freeze them is that they are imported measurements, not that a
+  // particular provider owned them. There is simply no longer an upstream to
+  // re-sync from, so the copy no longer offers one.
+  const isImported =
+    typeof block.external_source === "string" &&
+    block.external_source.trim() !== "";
   const hasLoggedMetrics =
     block.avg_hr_bpm != null ||
     block.distance_km != null ||
     block.avg_pace_sec_per_km != null ||
     block.rpe != null ||
     (block.notes != null && String(block.notes).trim() !== "");
-  const mode: EditCardioMode = fromStrava
-    ? { kind: "strava-readonly" }
+  const mode: EditCardioMode = isImported
+    ? { kind: "imported-readonly" }
     : !isComplete && !hasLoggedMetrics
       ? { kind: "prescription-only" }
       : { kind: "full" };

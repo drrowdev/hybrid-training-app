@@ -1,11 +1,12 @@
 /**
- * Time-in-HR-zones — Strava-gated intensity-distribution card.
+ * Time-in-HR-zones — intensity-distribution analytics over logged cardio.
  *
- * v1 simplification: we don't yet have per-second HR streams, only the
- * `avg_hr_bpm` rollup persisted per cardio_logs row. We bucket the
- * entire activity into whichever zone the average HR falls into. This
- * over-credits Z2 and under-credits transient spikes — flagged as
- * "approximated from session average" in the card footnote.
+ * v1 simplification: we don't have per-second HR streams, only the
+ * `avg_hr_bpm` rollup persisted per cardio_logs row (plus, on historical
+ * rows, a stored `hr_zones` distribution). We bucket the entire activity
+ * into whichever zone the average HR falls into when no stored
+ * distribution exists. This over-credits Z2 and under-credits transient
+ * spikes — flagged as "approximated from session average".
  *
  * Zone thresholds:
  *   - If the user has saved zones in `profiles.intake.hrZones`, use those.
@@ -246,8 +247,8 @@ export function bucketByZone(
 /**
  * Coerce a free-form `cardio_logs.hr_zones` jsonb value into per-zone
  * seconds as `ZoneTotals`, or null if unusable. Accepts the lowercase
- * `z1`..`z5` shape written by `zones-from-stream` / `zones-from-summary`
- * (also tolerates capitalised keys); missing keys count as 0 seconds.
+ * `z1`..`z5` shape persisted on historical rows (also tolerates
+ * capitalised keys); missing keys count as 0 seconds.
  */
 export function coerceStoredZones(value: unknown): ZoneTotals | null {
   if (!value || typeof value !== "object") return null;
@@ -348,7 +349,6 @@ export function polarisedSplit(totals: ZoneTotals): PolarisedSplit {
 }
 
 export type HrZoneState =
-  | { kind: "no-strava" }
   | { kind: "no-zones" }
   | { kind: "no-hr-data" }
   | {
@@ -401,13 +401,6 @@ export async function getHrZones(
   tz: string,
   windowDays = 28,
 ): Promise<HrZoneState> {
-  const { data: strava } = await supabase
-    .from("strava_connections")
-    .select("user_id")
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (!strava) return { kind: "no-strava" };
-
   const { data: profile } = await supabase
     .from("profiles")
     .select("intake")
@@ -421,7 +414,7 @@ export async function getHrZones(
   const { data: logs } = await supabase
     .from("cardio_logs")
     .select(
-      "duration_sec, avg_hr_bpm, hr_zones, external_source, session:sessions!inner(performed_at, deleted_at, user_id)",
+      "duration_sec, avg_hr_bpm, hr_zones, session:sessions!inner(performed_at, deleted_at, user_id)",
     )
     .eq("session.user_id", userId)
     .is("session.deleted_at", null)

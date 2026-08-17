@@ -9,7 +9,7 @@
  *   set_load_kg = sets × reps × weight × rpe_multiplier
  *   region_load = set_load_kg × {1.0 primary | 0.5 secondary}
  *
- * Cardio falls back to duration × rpe-derived load until a Strava
+ * Cardio falls back to duration × rpe-derived load until an
  * integration provides per-modality interference math.
  *
  * Cost: O(sets) per recompute. Fine for personal-project tier.
@@ -18,7 +18,7 @@ import { finalEwma } from "@hta/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeSetLoad, isCountableSet, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT, CARDIO_LOAD_SCALAR } from "./set-load";
 import { cardioIntensityScalar, normaliseHrZones } from "./cardio-intensity";
-import { MODALITY_REGION } from "@/lib/integrations/strava/mapping";
+import { MODALITY_REGION } from "@/lib/cardio/modality-region";
 import { todayYmd } from "@/lib/dates";
 
 const REGIONS = [
@@ -95,7 +95,7 @@ export async function recomputeRegionState(
   if (setError) throw new Error(setError.message);
 
   // Cardio falls back to duration × rpe-derived load. Pulls `hr_zones` so
-  // we can use a time-in-zone weighted intensity when Strava sync has
+  // we can use a time-in-zone weighted intensity when HR zones have
   // populated it (PR #162 + audit I3).
   const { data: cardioRaw, error: cardioError } = await supabase
     .from("cardio_logs")
@@ -146,7 +146,7 @@ export async function recomputeRegionState(
   }
 
   // Cardio falls back to duration_min × rpe-derived load. When the row
-  // has no movement (e.g. Strava import) we use the modality string to
+  // has no movement (e.g. an imported activity) we use the modality string to
   // recover the region attribution. Intensity is HR-zone weighted via
   // `cardioIntensityScalar` when hr_zones is populated, else falls back
   // to the legacy clamp(rpe/10) heuristic — preserving prior behaviour
@@ -211,7 +211,7 @@ function normaliseMovement(m: unknown): RegionRefs {
 
 /**
  * Returns a synthetic RegionRefs derived from a cardio modality string,
- * used when the cardio_logs row has no movement_id (Strava import).
+ * used when the cardio_logs row has no movement_id (imported activity).
  */
 function modalityFallback(modality: string | null): RegionRefs {
   if (!modality) return null;

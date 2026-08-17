@@ -6,18 +6,14 @@
  * Renders the prescribed structure of a HYROX run/erg/interval/circuit/compromised/
  * simulation, lets the athlete confirm the loaded-station weights, enter one total
  * time + one session RPE, and complete — materializing the prescription into actual
- * log rows via `completeHyroxSession`. When a Strava activity is already linked, an
- * orange banner offers to fill the time + intensity (enrich, never auto-complete);
- * otherwise a manual "import from Strava" action triggers a session sync.
+ * log rows via `completeHyroxSession`.
  *
  * Matches the approved mock (hyrox-completion-mock): structured list, confirm-weight
- * inputs for loaded stations only, time + RPE, Strava-orange linked banner XOR the
- * manual import button.
+ * inputs for loaded stations only, time + RPE.
  */
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { completeHyroxSession } from "@/lib/hyrox/complete-action";
-import { syncStravaForSession, type StravaSessionCandidate } from "@/lib/integrations/strava/actions";
 import { CardioPlanView, type CardioPlanShape } from "@/components/session/CardioPlanView";
 
 export interface HyroxStructureRow {
@@ -40,13 +36,6 @@ export interface HyroxLoadedStation {
   amount?: string;
 }
 
-export interface HyroxStravaMatch {
-  durationSec: number;
-  avgHrBpm: number | null;
-  /** Short summary, e.g. "Strava activity found · 1:08:12". */
-  label: string;
-}
-
 export interface HyroxCompletionFormProps {
   sessionId: string;
   title: string;
@@ -62,7 +51,6 @@ export interface HyroxCompletionFormProps {
   loadedStations: HyroxLoadedStation[];
   isBenchmark?: boolean;
   divisionLabel?: string;
-  stravaMatch?: HyroxStravaMatch | null;
   /**
    * Edit mode (ADR-less follow-up): re-opening a COMPLETED HYROX session to fix
    * the logged values. Prefills the form and relabels the CTA. `onCancel` returns
@@ -91,25 +79,6 @@ function parseMmSs(v: string): number | null {
   return Number(m[1]) * 60 + Number(m[2]);
 }
 
-/** Local clock time (e.g. "18:42") for a Strava activity's start. */
-function fmtClock(iso: string): string {
-  const t = Date.parse(iso);
-  if (!Number.isFinite(t)) return "";
-  return new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-/** One-line summary of a candidate activity: "Morning Workout · 18:42 · 34 min · 156 bpm". */
-function candidateLabel(c: StravaSessionCandidate): string {
-  const parts = [
-    c.name?.trim() || c.typeLabel,
-    fmtClock(c.performedAt),
-    `${Math.round(c.durationSec / 60)} min`,
-  ];
-  if (c.distanceKm != null) parts.push(`${c.distanceKm.toFixed(1)} km`);
-  if (c.avgHrBpm != null) parts.push(`${c.avgHrBpm} bpm`);
-  return parts.join(" · ");
-}
-
 export function HyroxCompletionForm({
   sessionId,
   title,
@@ -119,7 +88,6 @@ export function HyroxCompletionForm({
   loadedStations,
   isBenchmark,
   divisionLabel,
-  stravaMatch,
   editMode,
   onCancel,
   initialDurationSec,
@@ -129,7 +97,6 @@ export function HyroxCompletionForm({
 }: HyroxCompletionFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [syncing, startSync] = useTransition();
   const [durationStr, setDurationStr] = useState(
     initialDurationSec != null && initialDurationSec > 0 ? fmtMmSs(initialDurationSec) : "",
   );
@@ -144,64 +111,9 @@ export function HyroxCompletionForm({
     ),
   );
   const [error, setError] = useState<string | null>(null);
-  const [matchUsed, setMatchUsed] = useState(false);
-  // Feedback after a manual "import from Strava" tap, and the avg-HR from a
-  // manually-imported match (the prop `stravaMatch` is null on that path).
-  const [notice, setNotice] = useState<{ kind: "ok" | "info"; text: string } | null>(null);
-  const [importedAvgHr, setImportedAvgHr] = useState<number | null>(null);
-  // Same-day Strava activities to choose from when the tight auto-match misses.
-  const [candidates, setCandidates] = useState<StravaSessionCandidate[]>([]);
 
   const durationSec = parseMmSs(durationStr);
   const canSubmit = durationSec != null && durationSec > 0 && rpe != null && !pending;
-
-  function useStravaMatch() {
-    if (!stravaMatch) return;
-    setDurationStr(fmtMmSs(stravaMatch.durationSec));
-    setMatchUsed(true);
-  }
-
-  function pickCandidate(c: StravaSessionCandidate) {
-    setDurationStr(fmtMmSs(c.durationSec));
-    setImportedAvgHr(c.avgHrBpm);
-    setMatchUsed(true);
-    setCandidates([]);
-    setNotice({
-      kind: "ok",
-      text: `Using your ${c.name?.trim() || c.typeLabel} from ${fmtClock(c.performedAt)} — time filled in. Set your RPE and complete.`,
-    });
-  }
-
-  function manualImport() {
-    setError(null);
-    setNotice(null);
-    setCandidates([]);
-    startSync(async () => {
-      const res = await syncStravaForSession(sessionId);
-      if (!res.ok) {
-        setError(res.error || "Couldn't reach Strava.");
-        return;
-      }
-      if (res.match) {
-        setDurationStr(fmtMmSs(res.match.durationSec));
-        setImportedAvgHr(res.match.avgHrBpm);
-        setMatchUsed(true);
-        setNotice({ kind: "ok", text: "Found your Strava activity — time filled in. Set your RPE and complete." });
-      } else if (res.candidates.length > 0) {
-        setCandidates(res.candidates);
-        setNotice({
-          kind: "info",
-          text: "Couldn't auto-match. Pick the activity you did from Strava:",
-        });
-      } else {
-        setNotice({
-          kind: "info",
-          text: "Synced, but no Strava activity was found near this workout's time. Enter your time under \u201CHow it went\u201D.",
-        });
-      }
-      router.refresh();
-    });
-  }
 
   function submit() {
     setError(null);
@@ -211,7 +123,6 @@ export function HyroxCompletionForm({
       const n = Number(weights[s.key]);
       if (Number.isFinite(n) && n > 0) confirmedWeights[s.key] = n;
     }
-    const avgHrBpm = matchUsed ? (importedAvgHr ?? stravaMatch?.avgHrBpm ?? null) : null;
     startTransition(async () => {
       const res = await completeHyroxSession({
         sessionId,
@@ -219,7 +130,6 @@ export function HyroxCompletionForm({
         sessionRpe: rpe,
         ...(Object.keys(confirmedWeights).length > 0 ? { confirmedWeights } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
-        ...(avgHrBpm != null ? { avgHrBpm } : {}),
       });
       if (!res.ok) {
         setError(res.error || "Couldn't complete the session.");
@@ -244,24 +154,6 @@ export function HyroxCompletionForm({
           {divisionLabel ? <Tag>{divisionLabel}</Tag> : null}
         </div>
       </div>
-
-      {stravaMatch && !matchUsed ? (
-        <div
-          style={{
-            display: "flex", alignItems: "center", gap: 11, padding: "10px 12px", borderRadius: 12,
-            background: "rgba(252,76,2,.12)", border: "1px solid rgba(252,76,2,.45)",
-          }}
-        >
-          <StravaGlyph size={15} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{stravaMatch.label}</div>
-            <div style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-              {stravaMatch.avgHrBpm ? `avg HR ${stravaMatch.avgHrBpm} · ` : ""}fills your time below
-            </div>
-          </div>
-          <button type="button" onClick={useStravaMatch} style={stravaBtn}>Use it</button>
-        </div>
-      ) : null}
 
       <div>
         <Label>Structured workout</Label>
@@ -358,72 +250,7 @@ export function HyroxCompletionForm({
       </div>
 
       {error ? <div style={{ color: "var(--cp-danger)", fontSize: 13 }}>{error}</div> : null}
-      {notice ? (
-        <div
-          role="status"
-          data-testid="strava-import-notice"
-          style={{
-            fontSize: 13,
-            lineHeight: 1.45,
-            padding: "10px 12px",
-            borderRadius: 10,
-            color: notice.kind === "ok" ? "var(--cp-text)" : "var(--cp-text-muted)",
-            background: notice.kind === "ok" ? "rgba(252,76,2,.10)" : "var(--cp-surface)",
-            border: `1px solid ${notice.kind === "ok" ? "rgba(252,76,2,.40)" : "var(--cp-border)"}`,
-          }}
-        >
-          {notice.text}
-        </div>
-      ) : null}
-      {candidates.length > 0 ? (
-        <div data-testid="strava-candidates" style={{ display: "grid", gap: 6 }}>
-          {candidates.map((c) => (
-            <button
-              key={c.stravaActivityId}
-              type="button"
-              onClick={() => pickCandidate(c)}
-              data-testid={`strava-candidate-${c.stravaActivityId}`}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                textAlign: "left",
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid var(--cp-border)",
-                background: "var(--cp-surface)",
-                color: "var(--cp-text)",
-                fontSize: 13,
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              <StravaGlyph size={13} />
-              <span style={{ flex: 1 }}>{candidateLabel(c)}</span>
-              <span style={{ fontSize: 12, color: "var(--cp-accent)", fontWeight: 600 }}>Use</span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-
       <div style={{ display: "grid", gap: 10 }}>
-        {!stravaMatch && !matchUsed ? (
-          <button
-            type="button"
-            onClick={manualImport}
-            disabled={syncing}
-            style={{ ...ghostBtn, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}
-          >
-            {syncing ? (
-              "Checking Strava…"
-            ) : (
-              <>
-                <StravaGlyph size={14} />
-                {candidates.length > 0 ? "Re-sync Strava" : "Import session data from Strava"}
-              </>
-            )}
-          </button>
-        ) : null}
         <button type="button" onClick={submit} disabled={!canSubmit} style={{ ...primaryBtn, opacity: canSubmit ? 1 : 0.5 }}>
           {pending ? (editMode ? "Saving…" : "Completing…") : editMode ? "Save changes" : "Complete session"}
         </button>
@@ -439,22 +266,6 @@ export function HyroxCompletionForm({
         </div>
       </div>
     </section>
-  );
-}
-
-/** The Strava brand mark, rendered in Strava orange (replaces the OS ⌚ emoji). */
-function StravaGlyph({ size = 14 }: { size?: number }) {
-  return (
-    <svg
-      aria-hidden
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="#fc4c02"
-      style={{ flex: "none" }}
-    >
-      <path d="M15.387 17.944l-2.089-4.116h-3.065L15.387 24l5.15-10.172h-3.066m-7.008-5.599l2.836 5.598h4.172L10.463 0l-7 13.828h4.169" />
-    </svg>
   );
 }
 
@@ -506,9 +317,4 @@ const ghostBtn: React.CSSProperties = {
   borderRadius: 12, padding: 14, fontFamily: "var(--cp-font-display)", fontWeight: 600,
   letterSpacing: ".06em", textTransform: "uppercase", fontSize: 14, textAlign: "center",
   background: "transparent", color: "var(--cp-text-soft)", border: "1px solid var(--cp-border-strong)", cursor: "pointer",
-};
-const stravaBtn: React.CSSProperties = {
-  flex: "none", fontFamily: "var(--cp-font-display)", fontWeight: 600, letterSpacing: ".04em", fontSize: 12,
-  textTransform: "uppercase", color: "#fff", background: "#fc4c02", border: "1px solid #fc4c02",
-  borderRadius: 8, padding: "6px 12px", cursor: "pointer",
 };

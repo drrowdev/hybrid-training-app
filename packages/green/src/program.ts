@@ -10,7 +10,7 @@
  *   - PROGRAM-OWNED: the phase grid, the conditioning prescriptions, deload
  *     placement, and the phase/benchmark recommendations.
  *   - PLATFORM-OWNED: the canonical 1RM strength state (ctx.oneRepMaxes, consumed
- *     by the delegated TB engine) and the logged cardio (Strava etc.) that
+ *     by the delegated TB engine) and the logged cardio that
  *     fulfils conditioning prescriptions. Nothing is auto-applied.
  */
 import type {

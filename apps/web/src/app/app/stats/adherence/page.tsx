@@ -33,12 +33,6 @@ import {
   parseAdherenceRange,
   type AdherenceRange,
 } from "@/lib/stats/adherence-range";
-import { RunPlanAdherenceCard } from "@/components/cardio/RunPlanAdherenceCard";
-import { HrZonesCard } from "@/components/cardio/HrZonesCard";
-import { PacePRsCard } from "@/components/cardio/PacePRsCard";
-import { getRunPlanAdherence } from "@/lib/stats/run-plan-adherence";
-import { getHrZones } from "@/lib/stats/hr-zones";
-import { getPacePrs } from "@/lib/stats/pace-prs";
 import {
   AdherenceRangeView,
   type AdherenceByRange,
@@ -71,16 +65,12 @@ export default async function StatsAdherencePage({
 
   // Pre-fetch the dashboard for every range in one Promise.all so the
   // client toggle flips locally. Audit F3 measured 1.3–1.4s per click
-  // under the old `<Link href="?range=…">` pattern. The cardio cards
-  // (run plan / HR zones / pace PRs) are range-invariant.
+  // under the old `<Link href="?range=…">` pattern.
   const RANGES: AdherenceRange[] = ["12w", "26w", "all"];
-  const [d12w, d26w, dAll, runPlan, hrZones, pacePrs, breakdown] = await Promise.all([
+  const [d12w, d26w, dAll, breakdown] = await Promise.all([
     getAdherenceDashboard(supabase, user.id, tz, "12w"),
     getAdherenceDashboard(supabase, user.id, tz, "26w"),
     getAdherenceDashboard(supabase, user.id, tz, "all"),
-    getRunPlanAdherence(supabase, user.id, tz),
-    getHrZones(supabase, user.id, tz),
-    getPacePrs(supabase, user.id, tz),
     getAdherenceForWindow(supabase, user.id, tz, null),
   ]);
   void RANGES;
@@ -98,16 +88,6 @@ export default async function StatsAdherencePage({
         title="Consistency"
         subtitle="Sessions completed vs planned, the weekdays you train best, and how skipped sessions accumulate. Skipped counts as missed for every % we report."
       />
-
-      <RunPlanAdherenceCard
-        weeks={runPlan.weeks}
-        hasPlan={runPlan.hasPlan}
-        hasStravaConnection={runPlan.hasStravaConnection}
-      />
-
-      <HrZonesCard state={hrZones} />
-
-      <PacePRsCard state={pacePrs} />
 
       {/* Range toggle + range-dependent cards are client-owned so
           flipping range is a state swap instead of a 1.3–1.4s server

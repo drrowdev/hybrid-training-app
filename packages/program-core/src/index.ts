@@ -160,7 +160,7 @@ export interface CardioPlan {
   stations?: CardioPlanStation[];
   /** Effort / intensity guidance, e.g. "Hard but repeatable — RPE 7–8, race pace not max." */
   effort: string;
-  /** How this session is logged, e.g. "Log it from your watch or Strava when you're done." */
+  /** How this session is logged, e.g. "Log it from your watch when you're done." */
   logHint?: string;
 }
 

@@ -1,11 +1,10 @@
 /**
  * Settings hub structural contract.
  *
- * Asserts at source-text level that the top-level Settings page mounts
- * the Integrations tile. Strava lives under the Integrations sub-hub and
- * never had its own top-level tile. The Integrations sub-hub at
- * /app/settings/integrations is exercised separately in its own
- * `__tests__/page.test.tsx`.
+ * Asserts at source-text level that the top-level Settings page does not
+ * regress the tile reshuffle. The Integrations sub-hub was removed with
+ * the Strava integration (2026-08-17) — it had exactly one card and zero
+ * remaining integrations.
  *
  * A full render of `SettingsPage` would require mocking six Supabase
  * queries plus auth; the structural assertion here is enough to catch
@@ -24,21 +23,17 @@ const SETTINGS_PAGE = path.resolve(
 describe("settings hub — tile contract", () => {
   const source = readFileSync(SETTINGS_PAGE, "utf8");
 
-  it("mounts the new Integrations hub tile", () => {
-    expect(source).toContain('testId="settings-hub-integrations"');
-    expect(source).toContain('href="/app/settings/integrations"');
-  });
-
   it("does not expose a retired AI settings tile", () => {
     expect(source).not.toContain('testId="settings-hub-ai"');
     expect(source).not.toMatch(/href="\/app\/settings\/ai"/);
     expect(source).not.toContain("AI providers");
   });
 
-  it("no longer mounts a top-level Strava tile", () => {
-    // Belt-and-suspenders: spec calls out removing Strava + AI tiles.
-    // Strava lives under the Integrations sub-hub.
+  it("no longer mounts a Strava tile or an Integrations sub-hub tile", () => {
     expect(source).not.toContain('testId="settings-hub-strava"');
+    expect(source).not.toContain('testId="settings-hub-integrations"');
+    expect(source).not.toMatch(/href="\/app\/settings\/integrations"/);
+    expect(source).not.toMatch(/strava/i);
   });
 
   it("uses plain-language copy on the Heart-rate zones tile", () => {

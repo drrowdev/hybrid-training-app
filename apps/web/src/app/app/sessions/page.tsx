@@ -54,7 +54,7 @@ export default async function SessionsListPage() {
       {(!sessions || sessions.length === 0) && (
         <EmptyState
           title="No sessions yet"
-          body="Tap +New session or sync from Strava and your logged training appears here, newest first."
+          body="Tap +New session and your logged training appears here, newest first."
           action={{ label: "Log a session →", href: "/app/sessions/new" }}
         />
       )}

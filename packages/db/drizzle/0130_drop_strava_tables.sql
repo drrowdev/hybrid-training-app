@@ -1,0 +1,89 @@
+-- 0130_drop_strava_tables.sql
+--
+-- Drops the two tables left orphaned by the Strava integration removal.
+--
+-- Strava began charging for API access and the owner will not subscribe, so the
+-- integration was deleted end-to-end in the preceding release. Since that
+-- commit neither table has a single reader or writer anywhere in the codebase.
+--
+--   strava_connections  — per-user OAuth access/refresh tokens. These are DEAD
+--                         CREDENTIALS: they can no longer be exchanged for
+--                         anything, but they are still live-format third-party
+--                         secrets sitting in the database with no owner and no
+--                         expiry-driven cleanup. Removing them is the point of
+--                         this migration.
+--   strava_event_log    — webhook delivery/idempotency ledger. Its `payload`
+--                         column holds raw Strava webhook bodies, which contain
+--                         athlete identifiers.
+--
+-- DELIBERATELY NOT TOUCHED — this migration does not go near training history:
+--   cardio_logs.strava_activity_id, external_source, hr_histogram, hr_zones,
+--   inferred_kind, inferred_confidence
+--   sessions.strava_activity_id
+-- Those columns hold the owner's real training data. `inferred_kind` still
+-- feeds effective stress load for every historical cardio row, and
+-- `hr_histogram` is still re-bucketed by `recomputeStoredHrZones` when HR bands
+-- change. They are retained on purpose.
+--
+-- Deploy ORDER MATTERS: ship the application release that removed the
+-- integration FIRST. Running this against an older build breaks the OAuth
+-- callback, the webhook route and every `strava_connections` gate.
+--
+-- DROP TABLE removes the dependent indexes, RLS policies and grants with it.
+-- `sessions_strava_activity_unique_idx` lives on `sessions`, not on either of
+-- these tables, and is unaffected.
+--
+-- ROLLBACK (schema only — the dropped rows are intentionally discarded; take a
+-- pg_dump of both tables first if the values matter):
+--
+--   CREATE TABLE public.strava_connections (
+--     user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+--     athlete_id bigint,
+--     access_token text,
+--     refresh_token text,
+--     expires_at timestamptz,
+--     scopes text,
+--     connected_at timestamptz NOT NULL DEFAULT now(),
+--     last_synced_at timestamptz,
+--     last_sync_error text
+--   );
+--   ALTER TABLE public.strava_connections ENABLE ROW LEVEL SECURITY;
+--   CREATE POLICY strava_connections_select_self ON public.strava_connections
+--     FOR SELECT USING (auth.uid() = user_id);
+--   CREATE POLICY strava_connections_insert_self ON public.strava_connections
+--     FOR INSERT WITH CHECK (auth.uid() = user_id);
+--   CREATE POLICY strava_connections_update_self ON public.strava_connections
+--     FOR UPDATE USING (auth.uid() = user_id);
+--   CREATE POLICY strava_connections_delete_self ON public.strava_connections
+--     FOR DELETE USING (auth.uid() = user_id);
+--
+--   CREATE TABLE public.strava_event_log (
+--     id bigserial PRIMARY KEY,
+--     subscription_id bigint,
+--     owner_id bigint,
+--     object_id bigint,
+--     object_type text,
+--     aspect_type text,
+--     event_time bigint,
+--     received_at timestamptz NOT NULL DEFAULT now(),
+--     payload jsonb
+--   );
+--   CREATE UNIQUE INDEX strava_event_log_dedup_idx
+--     ON public.strava_event_log (subscription_id, event_time, object_id, aspect_type);
+--   CREATE INDEX strava_event_log_owner_idx
+--     ON public.strava_event_log (owner_id, received_at DESC);
+--   ALTER TABLE public.strava_event_log ENABLE ROW LEVEL SECURITY;
+--   REVOKE ALL ON public.strava_event_log FROM PUBLIC, anon, authenticated;
+--   GRANT SELECT, INSERT, UPDATE ON public.strava_event_log TO service_role;
+--
+-- Rolling the schema back does NOT restore the integration — the application
+-- code that read these tables was deleted in the previous release, so reverting
+-- the app is what would re-activate it (and it would still be unable to sync
+-- without a paid API subscription).
+--
+-- Kept inline rather than as a sibling `.down.sql`: the migration-drift guard
+-- requires every .sql file under drizzle/ to have a `_journal.json` entry, and
+-- drizzle only journals forward migrations.
+
+DROP TABLE IF EXISTS public.strava_event_log;
+DROP TABLE IF EXISTS public.strava_connections;

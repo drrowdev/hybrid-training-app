@@ -28,7 +28,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";import {
   type ZonePercents,
 } from "@/lib/stats/hr-zones";
 import { mergeIntake, type HrPercents, type HrZoneIntake } from "@/lib/profile/intake";
-import { zonesFromHistogram } from "@/lib/integrations/strava/hr-histogram";
+import { zonesFromHistogram } from "@/lib/cardio/hr-histogram";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { getUserTimezone } from "@/lib/planner/queries";
 
@@ -176,9 +176,9 @@ export async function performUpdateHrZones(
 
 /**
  * Re-bucket every stored cardio activity's `hr_zones` against fresh
- * bands, using the band-independent `hr_histogram` captured at import.
+ * bands, using the band-independent `hr_histogram` retained on the row.
  * This makes a zone-config change self-healing: past activities reflect
- * the new zones immediately, with NO Strava stream re-fetch.
+ * the new zones immediately, with no re-import of any kind.
  *
  * Best-effort and scoped to the user's own rows (RLS-safe via the
  * cookie-bound client). Rows without a histogram (legacy / manual) are
@@ -229,7 +229,7 @@ export async function updateHrZones(
   });
 
   // Re-bucket past activities against the new bands from their stored
-  // histograms (no Strava re-fetch). When any zones actually changed,
+  // histograms (no re-import). When any zones actually changed,
   // refresh the cached region ledger too — cardio's contribution is
   // time-in-zone weighted (cardioIntensityScalar), so stale zones would
   // otherwise leave the region-freshness math reflecting the old bands.

@@ -190,7 +190,9 @@ describe("GET /api/me/export", () => {
 
   it("declares the remaining excluded secret + derived tables", async () => {
     const body = await (await GET()).json();
-    expect(body.excluded.secrets).toEqual(["strava_connections"]);
+    // No secret tables remain to exclude: `strava_connections` was the only
+    // entry and it was dropped in migration 0130 with the Strava removal.
+    expect(body.excluded.secrets).toEqual([]);
     expect(body.excluded.derived).toEqual(
       expect.arrayContaining([
         "tm_suggestions",

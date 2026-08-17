@@ -2,7 +2,7 @@
 
 Science-informed hybrid training with adaptive load management — a public-ready, multi-user training app for serious recreational athletes who train across strength + endurance.
 
-**Status:** Production. Multi-user, mobile-ready, with end-to-end Strava integration and a five-archetype engine rebalanced through ADRs 0004–0006. See `HANDOFF.md` for the current-state snapshot and `CHANGELOG.md` for the running cycle log.
+**Status:** Production. Multi-user, mobile-ready, with a five-archetype engine rebalanced through ADRs 0004–0006. Cardio is logged manually or linked from an already-recorded activity (the Strava integration was retired — Strava now charges for API access). See `HANDOFF.md` for the current-state snapshot and `CHANGELOG.md` for the running cycle log.
 
 ---
 
@@ -48,10 +48,6 @@ You'll need a `.env.local` in `apps/web/` (and one in `packages/db/` for migrati
 - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` — Supabase project credentials.
 - `DATABASE_URL` — Drizzle migration target.
 - `NEXT_PUBLIC_SITE_URL` — canonical public URL used by Supabase Auth redirects.
-- `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` — Strava OAuth app credentials.
-- `STRAVA_WEBHOOK_VERIFY_TOKEN` — opaque string Strava echoes back during webhook verification.
-- `STRAVA_WEBHOOK_CALLBACK_URL` — public URL of `/api/integrations/strava/webhook`.
-- `STRAVA_WEBHOOK_SUBSCRIPTION_ID` — numeric id returned by Strava after `strava:subscribe`; the webhook handler rejects any event whose `subscription_id` doesn't match.
 
 ## Stack
 
@@ -66,22 +62,27 @@ You'll need a `.env.local` in `apps/web/` (and one in `packages/db/` for migrati
 | Data fetching | TanStack Query |
 | Forms | React Hook Form + Zod |
 | Hosting | Vercel (web) + Supabase (DB) |
-| Cardio | Strava integration — OAuth + push-subscription webhook + history import |
+| Cardio | Logged in-app (manual entry, or link an activity you already recorded elsewhere) |
 | Errors / analytics | Sentry + PostHog (Phase 0 stub) |
 
 ## MVP scope
 
-See [`docs/knowledge/design-constraints.md` § U](./docs/knowledge/design-constraints.md). Headline: pre-session 2-slider check-in (fatigue + soreness), Strava-pulled cardio, derived region freshness from logged training, structured `limitations` table for injuries. No HRV, no AI, no daily symptom self-report in v1.
+See [`docs/knowledge/design-constraints.md` § U](./docs/knowledge/design-constraints.md). Headline: pre-session 2-slider check-in (fatigue + soreness), user-logged cardio, derived region freshness from logged training, structured `limitations` table for injuries. No HRV, no AI, no daily symptom self-report in v1.
 
-## Strava push-subscription (webhook)
+## Cardio logging
 
-Cardio sessions auto-refresh via Strava's webhook API. One-time setup per environment, after the webhook route is deployed and reachable:
+Cardio is entered in-app: log it directly on a planned cardio slot, or use
+**Link activity** to attach a run/ride you already logged in the app to an
+unfulfilled planned slot. Heart-rate zone distribution (`cardio_logs.hr_zones`)
+drives intensity in the engine; HR bands are set in Settings → HR zones and
+re-bucketing retained history is handled by `lib/cardio/hr-histogram.ts`.
 
-1. Set the four env vars in `apps/web/.env.example`: `STRAVA_CLIENT_ID`, `STRAVA_CLIENT_SECRET`, `STRAVA_WEBHOOK_VERIFY_TOKEN` (any opaque string), and `STRAVA_WEBHOOK_CALLBACK_URL` (the public URL of `/api/integrations/strava/webhook`).
-2. Register the subscription: `pnpm --filter @hta/web run strava:subscribe`. Strava replies with a numeric subscription id — paste it into `STRAVA_WEBHOOK_SUBSCRIPTION_ID` and redeploy. The webhook handler rejects events whose `subscription_id` doesn't match.
-3. Inspect / clean up existing subscriptions with `pnpm --filter @hta/web run strava:list-subscriptions`.
-
-Idempotency is enforced by the `strava_event_log` table (UNIQUE on `(subscription_id, event_time, object_id, aspect_type)`) — duplicate redeliveries are silently dropped.
+The third-party activity-sync integration was removed in 2026-08 because the
+upstream provider began charging for API access. Historical imported rows and
+their columns (`cardio_logs.strava_activity_id`, `external_source`,
+`hr_histogram`, `hr_zones`, `inferred_kind`, `inferred_confidence`,
+`sessions.strava_activity_id`) are **retained** — `inferred_kind` still feeds
+effective stress load. See `docs/knowledge/log.md` (2026-08-17).
 
 ## Contributing / agent handoff
 

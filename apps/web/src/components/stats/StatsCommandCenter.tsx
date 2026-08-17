@@ -977,11 +977,9 @@ function EnduranceTile({
 function ZoneBars({ zones }: { zones: EnduranceProgress["timeInZone"] }) {
   if (zones.kind !== "ok") {
     const note =
-      zones.kind === "no-strava"
-        ? "Connect Strava to see time-in-zone."
-        : zones.kind === "no-zones"
-          ? "Set HR zones to see time-in-zone."
-          : "No HR-stream data yet.";
+      zones.kind === "no-zones"
+        ? "Set HR zones to see time-in-zone."
+        : "No heart-rate data yet.";
     return (
       <div style={{ marginTop: 12, fontSize: 11, color: "var(--cp-text-muted)" }}>{note}</div>
     );
@@ -1105,11 +1103,9 @@ export function EnduranceDrawer({
           <div style={{ fontSize: 12.5, fontWeight: 600 }}>Time in zone</div>
           {z.kind !== "ok" ? (
             <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
-              {z.kind === "no-strava"
-                ? "Connect Strava to see time-in-zone."
-                : z.kind === "no-zones"
-                  ? "Set your HR zones in Settings to see time-in-zone."
-                  : "No HR-stream data in this window yet."}
+              {z.kind === "no-zones"
+                ? "Set your HR zones in Settings to see time-in-zone."
+                : "No heart-rate data in this window yet."}
             </p>
           ) : (
             <>

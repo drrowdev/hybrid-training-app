@@ -149,7 +149,7 @@ describe("cardioIntensityScalar — RPE fall-back path (no hr_zones)", () => {
 });
 
 describe("normaliseHrZones", () => {
-  it("accepts lowercase keys (the Strava sync shape)", () => {
+  it("accepts lowercase keys (the historical import shape)", () => {
     const z = normaliseHrZones({ z1: 60, z2: 1200, z3: 300, z4: 200, z5: 40 });
     expect(z).toEqual({ z1: 60, z2: 1200, z3: 300, z4: 200, z5: 40 });
   });
@@ -257,7 +257,7 @@ describe("cardioBucketLoad — HR-aware path differs from RPE fall-back", () => 
   });
 
   it("Z5 work flips the neural premium even at low logged RPE", () => {
-    // Strava can write low rpe (suffer_score/20) for short hard intervals;
+    // Imported rows can carry a low rpe for short hard intervals;
     // when HR zones say Z5, the neural premium should still trigger.
     const z5 = cardioBucketLoad({
       durationSec: 1200,

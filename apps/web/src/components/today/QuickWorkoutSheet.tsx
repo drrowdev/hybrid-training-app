@@ -7,8 +7,7 @@
  * completed strength workouts the user can clone with one tap.
  *
  * Cardio is intentionally NOT a quick-workout option. In-app cardio
- * capture (GPS live tracking) was removed — cardio is logged in Strava
- * and flows in via the Strava integration, or is entered manually on a
+ * capture (GPS live tracking) was removed — cardio is entered manually on a
  * planned cardio session. Steering ad-hoc cardio out of the quick-workout
  * picker keeps that mental model clean.
  *
