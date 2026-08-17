@@ -19,10 +19,19 @@ import { test, expect, type Page } from "@playwright/test";
 
 const PREVIEW = "/dev/logger-preview";
 
+/**
+ * The devices this app is actually used on. Not a generic responsive matrix —
+ * there is one user, on an iPhone 17.
+ *
+ * Width matters more than height here: every bug this file guards against is a
+ * thumb-reach or overflow problem, and a wider viewport hides overflow rather
+ * than revealing it. So the overflow test below stresses the CTA label instead
+ * of relying on the fixture's (short) movement names, which is what let a real
+ * off-screen navigator trigger ship unnoticed.
+ */
 const PHONES = [
-  { name: "iPhone SE", width: 375, height: 667 },
-  { name: "iPhone 14", width: 390, height: 844 },
-  { name: "iPhone 15 Pro Max", width: 430, height: 932 },
+  { name: "iPhone 17", width: 402, height: 874 },
+  { name: "iPhone 17 Pro Max", width: 440, height: 956 },
 ] as const;
 
 async function openNavigator(page: Page) {
@@ -108,7 +117,7 @@ test.describe("@mobile logger ergonomics", () => {
   test("movement navigation is always available, including without rehab", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 402, height: 874 });
 
     // A day WITHOUT rehab previously rendered no section navigation at all.
     await page.goto(`${PREVIEW}?variant=norehab`);
@@ -144,7 +153,7 @@ test.describe("@mobile logger ergonomics", () => {
   });
 
   test("supplemental work is addressable as its own section", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 402, height: 874 });
     await page.goto(PREVIEW);
     await gotoMovement(page, /Romanian Deadlift/);
     await expect(page.getByTestId("focus-strip-logger")).toContainText(
@@ -156,7 +165,7 @@ test.describe("@mobile logger ergonomics", () => {
   test("linked superset work is bracketed rather than listed as unrelated rows", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 402, height: 874 });
     await page.goto(PREVIEW);
     await openNavigator(page);
     // The bracket id is the LINK's own id (a user superset, or the engine's
@@ -171,7 +180,7 @@ test.describe("@mobile logger ergonomics", () => {
   });
 
   test("every interactive control meets the 44px touch floor", async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 667 });
+    await page.setViewportSize({ width: 402, height: 874 });
     await page.goto(PREVIEW);
 
     const tooSmall = await page.evaluate(() => {
@@ -212,7 +221,7 @@ test.describe("@mobile logger ergonomics", () => {
   test("the rest timer and the primary action never occupy the same pixels", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 402, height: 874 });
     await page.goto(PREVIEW);
     // Log a working set so a rest countdown fires (warm-ups intentionally
     // do not rest, so drive the main lift's first working slot).
@@ -233,8 +242,77 @@ test.describe("@mobile logger ergonomics", () => {
     expect(overlap, "rest timer overlaps the CTA").toBe(false);
   });
 
+  test("nothing in the dock is pushed off-screen horizontally", async ({
+    page,
+  }) => {
+    // The dock's CTA label does not wrap ("Log set · 72.5 kg × 3"). Grid and
+    // flex items default to `min-width: auto`, so that label set the dock's
+    // minimum width, widened it past the viewport and pushed the navigator
+    // trigger off the right edge — the movement overview became unreachable
+    // mid-session. The pre-existing checks only measured the CTA vertically,
+    // so a purely horizontal overflow went unnoticed.
+    for (const phone of PHONES) {
+      await page.setViewportSize({ width: phone.width, height: phone.height });
+      await page.goto(PREVIEW);
+      await gotoMovement(page, /Back Squat/);
+      await page.getByTestId("movement-dot-3").click();
+      await page.getByTestId("movement-focus-log-button").click();
+      await expect(page.getByTestId("rest-timer-shell")).toBeVisible({
+        timeout: 5000,
+      });
+
+      // Stress the label well past the real worst case: the accessory must
+      // survive any CTA text, not just the fixture's.
+      await page.evaluate(() => {
+        const cta = document.querySelector(
+          '[data-testid="movement-focus-log-button"]',
+        );
+        if (cta) cta.textContent = "Log set · 137.5 kg × 12 @ RPE 9.5 (paused)";
+        const ctx = document.querySelector('[data-testid="rest-timer-context"]');
+        if (ctx)
+          ctx.textContent = "next Standing Banded Hip Adduction (left, tempo)";
+      });
+
+      const geo = await page.evaluate(() => {
+        const vw = window.innerWidth;
+        const dock = document.querySelector<HTMLElement>(
+          '[data-testid="session-dock"]',
+        );
+        const acc = document.querySelector<HTMLElement>(
+          '[data-testid="movement-navigator-open"]',
+        );
+        const a = acc?.getBoundingClientRect();
+        const hittable = (() => {
+          if (!acc || !a) return false;
+          const t = document.elementFromPoint(
+            a.left + a.width / 2,
+            a.top + a.height / 2,
+          );
+          return !!t && (t === acc || acc.contains(t));
+        })();
+        return {
+          dockOverflow: dock ? dock.scrollWidth - dock.clientWidth : null,
+          docOverflow: document.documentElement.scrollWidth - vw,
+          accInside: !!a && a.left >= 0 && a.right <= vw + 0.5,
+          accHittable: hittable,
+        };
+      });
+
+      expect(geo.dockOverflow, `${phone.name} · dock overflows`).toBe(0);
+      expect(geo.docOverflow, `${phone.name} · page scrolls sideways`).toBe(0);
+      expect(
+        geo.accInside,
+        `${phone.name} · navigator trigger fully on-screen`,
+      ).toBe(true);
+      expect(
+        geo.accHittable,
+        `${phone.name} · navigator trigger is tappable`,
+      ).toBe(true);
+    }
+  });
+
   test("editing a logged set is an explicit, cancellable mode", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 402, height: 874 });
     await page.goto(PREVIEW);
 
     // Rehab sets 1 and 2 are pre-logged in the fixture.
@@ -287,7 +365,7 @@ test.describe("@mobile logger ergonomics", () => {
   test("an unprescribed accessory opens at last session's load, not zero", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 402, height: 874 });
     await page.goto(PREVIEW);
     await gotoMovement(page, /Leg Press/);
 
@@ -304,7 +382,7 @@ test.describe("@mobile logger ergonomics", () => {
   test("the dock owns the bottom region and the exit is explicit", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 375, height: 667 });
+    await page.setViewportSize({ width: 402, height: 874 });
     await page.goto(PREVIEW);
 
     // Two stacked fixed bars cost 133px of a 667px screen, and a mis-tap on
@@ -326,7 +404,7 @@ test.describe("@mobile logger ergonomics", () => {
   });
 
   test("a just-logged set can be undone from the dock", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 402, height: 874 });
     await page.goto(PREVIEW);
     await gotoMovement(page, /Front Plank/);
 
@@ -340,7 +418,7 @@ test.describe("@mobile logger ergonomics", () => {
   });
 
   test("the dock never lets its rows cover the primary action", async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 667 });
+    await page.setViewportSize({ width: 402, height: 874 });
     await page.goto(PREVIEW);
     await gotoMovement(page, /Back Squat/);
     await page.getByTestId("movement-dot-3").click();
@@ -365,3 +443,4 @@ test.describe("@mobile logger ergonomics", () => {
     expect(clear?.topmost).toBe(true);
   });
 });
+

@@ -32,6 +32,7 @@ import {
   circuitSuppressesRest,
   firstOpenCircuitMovementId,
   firstOpenMovementId,
+  firstOpenOptionalCircuitMovementId,
   isCircuitItemIndex,
   nextOpenItemIndex,
 } from "@/lib/sessions/linked-circuit";
@@ -720,6 +721,15 @@ export function FocusStripLogger({
                       groups,
                       linkedCircuitByMovementId,
                       projected,
+                    ) ??
+                    // The required rounds are done, but a 3–5 set superset
+                    // still alternates on its optional sets.
+                    firstOpenOptionalCircuitMovementId(
+                      activeCircuit.id,
+                      groups,
+                      linkedCircuitByMovementId,
+                      projected,
+                      declinedOptionalIds,
                     )
                   : null;
                 if (circuitNext) {

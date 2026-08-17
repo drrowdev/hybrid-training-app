@@ -305,6 +305,62 @@ export function firstOpenMovementId(
   return groups[0] ? movementGroupKey(groups[0]) : "";
 }
 
+/**
+ * Optional slots of this group, in display order.
+ *
+ * Kept separate from the rotation proper: `rounds` is derived from the REQUIRED
+ * set count, so a 3–5 set superset has three rounds and the 4th/5th sets are
+ * optional. They are still part of the same superset though, which is why they
+ * get their own rotation below rather than being logged solo.
+ */
+function optionalItemIndices(group: MovementGroup): number[] {
+  const out: number[] = [];
+  group.items.forEach((item, slot) => {
+    const itemIndex = group.itemIndices[slot];
+    if (itemIndex == null) return;
+    if (!item.optional) return;
+    out.push(itemIndex);
+  });
+  return out;
+}
+
+/**
+ * First member with an open OPTIONAL set, in round-major order.
+ *
+ * Once the required rounds are done the superset is not over: a 3–5 set link
+ * still alternates on sets 4 and 5. Without this the logger fell through to
+ * `advance()`, which walks forward from the CURRENT movement and therefore
+ * parked on the last station's optional sets instead of returning to the first
+ * — the lifter finished the round on movement B and was handed B again.
+ *
+ * Members whose optional work the lifter has explicitly declined ("End
+ * movement") are skipped, so declining still ends that station.
+ */
+export function firstOpenOptionalCircuitMovementId(
+  circuitId: string,
+  groups: readonly MovementGroup[],
+  membership: ReadonlyMap<string, LinkedCircuitInfo>,
+  coveredItemIndices: ReadonlySet<number>,
+  declinedGroupKeys: ReadonlySet<string> = new Set(),
+): string | null {
+  const members = orderedMembers(groups, membership, circuitId).filter(
+    (member) => !declinedGroupKeys.has(movementGroupKey(member)),
+  );
+  const deepest = members.reduce(
+    (max, member) => Math.max(max, optionalItemIndices(member).length),
+    0,
+  );
+  for (let round = 0; round < deepest; round += 1) {
+    for (const member of members) {
+      const itemIndex = optionalItemIndices(member)[round];
+      if (itemIndex != null && !coveredItemIndices.has(itemIndex)) {
+        return movementGroupKey(member);
+      }
+    }
+  }
+  return null;
+}
+
 export function circuitMembersFor(
   groupKey: string,
   groups: readonly MovementGroup[],
