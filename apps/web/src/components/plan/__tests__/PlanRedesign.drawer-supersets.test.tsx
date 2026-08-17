@@ -48,6 +48,44 @@ function render(items: PrescriptionItem[]) {
 }
 
 describe("plan drawer — movement sections", () => {
+  it("groups by role so main lifts read at a glance", () => {
+    const html = render([
+      item("m-bench", "Bench Press"),
+      item("m-row", "Barbell Row"),
+      linked("m-pullup", "Pull-up", 0, {
+        id: "link-1",
+        name: "Superset",
+        size: 2,
+      }),
+      linked("m-press", "Overhead Press", 1, {
+        id: "link-1",
+        name: "Superset",
+        size: 2,
+      }),
+    ]);
+    expect(html).toContain('data-testid="plan-drawer-section-main"');
+    expect(html).toContain('data-testid="plan-drawer-section-supplemental"');
+    expect(html).toContain("Main lifts");
+    expect(html).toContain("Supplemental lifts");
+    // Role is stated once per group, not repeated inside every movement card.
+    expect(html).not.toContain(">Main lift<");
+    expect(html).not.toContain(">Supplemental lift<");
+    // Main lifts come first, so the answer to "what am I lifting today" is at
+    // the top rather than interleaved with accessory work.
+    expect(html.indexOf("Main lifts")).toBeLessThan(
+      html.indexOf("Supplemental lifts"),
+    );
+  });
+
+  it("omits the headings when only one role is present", () => {
+    const html = render([
+      item("m-bench", "Bench Press"),
+      item("m-row", "Barbell Row"),
+    ]);
+    expect(html).toContain("Bench Press");
+    expect(html).not.toContain("Main lifts");
+  });
+
   it("brackets two linked supplemental lifts", () => {
     const html = render([
       item("m-bench", "Bench Press"),

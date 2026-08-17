@@ -3103,6 +3103,17 @@ export function SessionDrawer({
             color: var(--cp-text-muted);
             font-weight: 600;
           }
+          .plan-drawer .group-head {
+            margin: 22px 0 4px;
+            padding-top: 10px;
+            border-top: 1px solid var(--cp-border);
+            font-family: var(--cp-font-mono);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--cp-text);
+            font-weight: 700;
+          }
           .plan-drawer .swap-form {
             display: flex;
             gap: 8px;
@@ -3260,7 +3271,6 @@ function DrawerMovement({
   editing: boolean;
 }) {
   if (section.sets.length === 0 && section.warmups.length === 0) return null;
-  const supplementalOnly = isSupplementalOnlySection(section);
   return (
     <div data-testid={`plan-drawer-movement-${section.rowKey}`}>
       <div className="movement-head">
@@ -3281,13 +3291,15 @@ function DrawerMovement({
       )}
       {section.sets.length > 0 && (
         <>
-          <div className="section">
-            {supplementalOnly
-              ? "Supplemental lift"
-              : section.sets.length > 1
-                ? "Main lift"
-                : "Main"}
-          </div>
+          {/*
+            Only a separator from the warm-up ramp above. The lift's ROLE is
+            stated once by the group heading, so repeating it per movement was
+            noise that pushed the answer to "what are today's main lifts?" down
+            the page.
+          */}
+          {section.warmups.length > 0 && (
+            <div className="section">Working sets</div>
+          )}
           {section.sets.map((row, i) => (
             <SetRow
               key={`m-${i}`}
@@ -3835,20 +3847,57 @@ function DrawerSupersetCluster({
 }
 
 /**
- * The drawer's main + supplemental movement cards, with linked movements
- * bracketed together.
+ * The drawer's main + supplemental movement cards, grouped by role and with
+ * linked movements bracketed together.
  *
- * Exported so the bracketing is reachable from a test: the drawer itself only
- * opens through interaction, which is how it shipped rendering user-authored
- * links as plain, unrelated cards.
+ * Role leads. Previously every card opened with the movement name and buried
+ * "Main lift" / "Supplemental lift" as a dim divider halfway down, repeated per
+ * movement, so answering "what are today's main lifts?" meant reading the whole
+ * drawer. This mirrors the Today hero, which groups under one heading per role.
+ *
+ * Exported so the grouping is reachable from a test: the drawer itself only
+ * opens through interaction.
  */
 export function DrawerMovementSections({
   sections,
 }: {
   sections: readonly MovementPrescriptionSection[];
 }) {
+  const main = sections.filter((s) => !isSupplementalOnlySection(s));
+  const supplemental = sections.filter(isSupplementalOnlySection);
+  // With one role present the heading carries no information the movement
+  // cards don't already give, so it is dropped rather than stated for its own
+  // sake.
+  const showHeadings = main.length > 0 && supplemental.length > 0;
   return (
     <>
+      <DrawerMovementGroup
+        sections={main}
+        label={showHeadings ? "Main lifts" : null}
+        testId="plan-drawer-section-main"
+      />
+      <DrawerMovementGroup
+        sections={supplemental}
+        label={showHeadings ? "Supplemental lifts" : null}
+        testId="plan-drawer-section-supplemental"
+      />
+    </>
+  );
+}
+
+function DrawerMovementGroup({
+  sections,
+  label,
+  testId,
+}: {
+  sections: readonly MovementPrescriptionSection[];
+  label: string | null;
+  testId: string;
+}) {
+  if (sections.length === 0) return null;
+  return (
+    <div data-testid={testId}>
+      {label && <div className="group-head">{label}</div>}
       {segmentSupersetSections(sections).map((seg) =>
         seg.kind === "solo" ? (
           <DrawerMovement
@@ -3869,7 +3918,7 @@ export function DrawerMovementSections({
           </DrawerSupersetCluster>
         ),
       )}
-    </>
+    </div>
   );
 }
 
