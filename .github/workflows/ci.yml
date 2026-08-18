@@ -211,7 +211,6 @@ jobs:
             echo "configured=false" >> "$GITHUB_OUTPUT"
             echo "::notice::E2E secrets not configured — Playwright tests will self-skip."
           fi
-
       - name: Install Playwright browsers
         run: pnpm --filter @hta/web exec playwright install --with-deps chromium
 
@@ -251,6 +250,48 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
         run: pnpm --filter @hta/web exec playwright test
+
+      # A self-skipped Playwright run reports the same green check as a fully
+      # executing one, which is how 83 of 102 tests stayed dormant unnoticed.
+      # Surface the real execution ratio on every run.
+      - name: Report e2e execution coverage
+        if: always()
+        run: |
+          REPORT=apps/web/playwright-report/results.json
+          if [ ! -f "$REPORT" ]; then
+            echo "::warning::No Playwright JSON report produced — cannot report coverage."
+            exit 0
+          fi
+          node -e '
+            const r = require("./apps/web/playwright-report/results.json");
+            const counts = { expected: 0, skipped: 0, unexpected: 0, flaky: 0 };
+            const walk = (suite) => {
+              for (const spec of suite.specs ?? [])
+                for (const test of spec.tests ?? [])
+                  counts[test.status] = (counts[test.status] ?? 0) + 1;
+              for (const child of suite.suites ?? []) walk(child);
+            };
+            for (const suite of r.suites ?? []) walk(suite);
+            const total = Object.values(counts).reduce((a, b) => a + b, 0);
+            const ran = total - counts.skipped;
+            const pct = total ? Math.round((ran / total) * 100) : 0;
+            const lines = [];
+            if (counts.skipped > 0) {
+              lines.push("## ⚠️ e2e ran " + ran + " of " + total + " tests (" + pct + "%)");
+              lines.push("");
+              lines.push(counts.skipped + " tests self-skipped because the E2E Supabase secrets are not configured.");
+              lines.push("");
+              lines.push("Set `E2E_SUPABASE_URL`, `E2E_SUPABASE_SERVICE_ROLE_KEY` and");
+              lines.push("`E2E_SUPABASE_ANON_KEY` (pointing at a DEDICATED test project, never prod)");
+              lines.push("to turn these back on. See `apps/web/e2e/README.md`.");
+            } else {
+              lines.push("## ✅ e2e ran all " + total + " tests");
+            }
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+            if (counts.skipped > 0) {
+              console.log("::warning::e2e executed only " + ran + " of " + total + " tests — " + counts.skipped + " self-skipped (E2E secrets not configured).");
+            }
+          '
 
       - name: Stop web
         if: always()

@@ -36,7 +36,14 @@ export default defineConfig({
   retries: isCI ? 2 : 0,
   workers: isCI ? 1 : undefined,
   reporter: isCI
-    ? [["html", { open: "never" }], ["github"]]
+    ? [
+        ["html", { open: "never" }],
+        ["github"],
+        // Machine-readable counts so CI can report how much of the suite
+        // actually EXECUTED. Without this a fully self-skipped run is
+        // indistinguishable from a fully passing one in the checks UI.
+        ["json", { outputFile: "playwright-report/results.json" }],
+      ]
     : [["list"]],
   use: {
     baseURL,
@@ -61,6 +68,22 @@ export default defineConfig({
         viewport: { width: 375, height: 812 },
         isMobile: false,
         hasTouch: true,
+      },
+    },
+    // Catch-all for specs that don't declare a viewport in their filename.
+    // Without this a spec named `foo.spec.ts` matches NEITHER project above
+    // and is silently dropped — not run, not skipped, not reported. Twelve
+    // specs (14 tests) had been invisible this way. Runs at the desktop
+    // viewport, which is what an undeclared spec implicitly assumed.
+    // `e2e-spec-coverage.test.ts` fails if this ever stops covering
+    // everything.
+    {
+      name: "chromium",
+      testMatch: /.*\.spec\.ts$/,
+      testIgnore: /.*-(desktop|mobile)\.spec\.ts$/,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1280, height: 720 },
       },
     },
   ],
