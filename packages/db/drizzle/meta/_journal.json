@@ -925,6 +925,13 @@
       "when": 1787011200000,
       "tag": "0131_drop_body_comp_phase",
       "breakpoints": false
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1787097600000,
+      "tag": "0132_split_rack_pull_from_block_pull",
+      "breakpoints": false
     }
   ]
 }

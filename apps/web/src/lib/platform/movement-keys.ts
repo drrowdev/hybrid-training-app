@@ -76,7 +76,7 @@ export const STATIC_ENGINE_MOVEMENTS: Record<
   "ab-triad": { slug: "hanging-knee-raise", displayName: "AB Triad" },
   "barbell-row": { slug: "bb-row-overhand", displayName: "Barbell Row" },
   "pendlay-row": { slug: "pendlay-row" },
-  "rack-pull": { slug: "block-pull-deadlift", displayName: "Rack Pull" },
+  "rack-pull": { slug: "rack-pull" },
   "back-extension": { slug: "back-extension-45", displayName: "Back Extension" },
   "reverse-hyper": { slug: "reverse-hyper", displayName: "Reverse Hyperextension" },
   "weighted-pullup": { slug: "weighted-pull-up", displayName: "Weighted Pull-up" },

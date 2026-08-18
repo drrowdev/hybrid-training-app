@@ -124,7 +124,7 @@ export async function buildPlatformContext(
   // Canonical strength roles may have several catalog variants with saved
   // maxes. Pick deterministically using the same candidate order as the picker;
   // never let query row order decide whether (for example) Push Press overwrites
-  // Overhead Press or Rack Pull overwrites conventional Deadlift.
+  // Overhead Press or Block Pull Deadlift overwrites conventional Deadlift.
   const tmBySlug = new Map(
     tmRows.flatMap((row) => {
       const movement = row.movement;

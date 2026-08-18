@@ -287,7 +287,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     for (const tm of [
       ...STRENGTH_TMS,
       { slug: "bb-row-overhand", oneRmKg: 100 },
-      { slug: "block-pull-deadlift", oneRmKg: 200 },
+      { slug: "rack-pull", oneRmKg: 200 },
     ]) {
       const { data: movement } = await admin
         .from("movements")
@@ -505,7 +505,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
       (session) => session.week_index === 0 && session.day_index === 1,
     )!;
 
-    expect(strengthItems(armorA1, "block-pull-deadlift", "main")).toHaveLength(4);
+    expect(strengthItems(armorA1, "rack-pull", "main")).toHaveLength(4);
     const reverseHyper = strengthItems(armorA1, "reverse-hyper", "back_off");
     expect(reverseHyper).toHaveLength(5);
     expect(reverseHyper[0]).toMatchObject({

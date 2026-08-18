@@ -456,6 +456,18 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
     cues: ["Bar stays close to the legs.", "Finish with locked hips and knees."],
   },
   {
+    slug: "rack-pull",
+    summary: "Deadlift from rack pins (bar raised) to overload the lockout and top half.",
+    setup: "Set the pins so the bar starts at or just above the knee; set up as a normal deadlift.",
+    steps: [
+      "Brace and take the slack out of the bar.",
+      "Push the floor away and drive the hips through to lockout.",
+      "Lower to the pins under control.",
+    ],
+    cues: ["Bar stays close to the legs.", "Finish with locked hips and knees."],
+    commonMistakes: ["Bouncing the bar off the pins to start the next rep."],
+  },
+  {
     slug: "cable-pull-through",
     summary: "Hip hinge against a low cable from between the legs — glute and hamstring tension with a light spine load.",
     setup: "Face away from a low cable, rope between your legs, step forward to load it.",
