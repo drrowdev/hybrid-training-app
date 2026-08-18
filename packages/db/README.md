@@ -59,6 +59,36 @@ and skip the migration entirely. ADR required for any new top-level column.
    protected `Production` environment, and verifies the migration journal
    against the live database before succeeding.
 
+   It also **refuses to run until Vercel has successfully deployed that exact
+   commit** (see "Deploy order" below), so waiting for the deploy to finish is
+   enforced rather than remembered.
+
+### Deploy order: app first, database second
+
+This repo deploys the app automatically on merge to `main`, and applies
+migrations later by dispatching the job above. The database is therefore
+always *behind* the running app for a window, which has two consequences:
+
+- **Every migration on `main` must be backwards-compatible with the build
+  already serving traffic.** Additive changes are safe by construction as long
+  as the new code tolerates the column being absent.
+- **A destructive change (`DROP COLUMN` / `DROP TABLE`) is only safe once the
+  release that stopped reading the dropped object is live.** Ship the code
+  removal first, let it deploy, then migrate. Migration `0131` (dropping
+  `profiles.body_comp_phase`) is the reference example: the previous build
+  `SELECT`s those columns by name and 500s the moment they disappear.
+
+The `prod-migrate` job enforces this by requiring a **successful `Production`
+deployment record for the commit being migrated** before it touches the
+database. Those records come from the Vercel GitHub integration, so no extra
+secret is involved. If the deploy is still building, failed, or was superseded,
+the job stops with an explanation instead of migrating.
+
+The escape hatch is `-f allow_undeployed=true`, which skips the check. It is
+only correct when the currently live build already tolerates the pending
+migrations (a purely additive change), or when the repo has no Vercel
+integration at all. It logs a warning in the job summary when used.
+
 ### Out-of-band path (Supabase dashboard) — discouraged
 
 Sometimes — usually for emergency hotfixes — a migration is run by hand
