@@ -1042,6 +1042,21 @@ html.cp-session-live .cp-bottom-tabbar { display: none !important; }
   }
 }
 
+/* ── Training profile — always-open setting cards ─────────────────
+   Two columns on desktop, one on mobile. `align-items: start` keeps the
+   short Units card from stretching to the tall Calibration card. */
+.settings-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .settings-profile-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ── TopBarRight — rules that can't be inlined ────────────────────
    1. Hide the native <details> disclosure triangle on the avatar menu.
    2. Hide the search button label + kbd chip < 640px (icon stays).

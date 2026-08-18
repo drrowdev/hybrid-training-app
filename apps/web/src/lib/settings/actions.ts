@@ -11,9 +11,6 @@ import { recordOverrideEvent } from "@/lib/engine/overrides";
 const profileSchema = z.object({
   displayName: z.string().trim().max(60).optional().nullable(),
   units: z.enum(["metric", "imperial"]).optional(),
-  bodyCompPhase: z.enum(["gain", "maintain", "lean_out"]).optional(),
-  phaseStartedAt: z.string().date().optional().nullable(),
-  phaseTargetWeeks: z.coerce.number().int().min(1).max(52).optional().nullable(),
   trainingDaysPerWeek: z.coerce.number().int().min(2).max(7).optional(),
   trainingExperience: z
     .enum([
@@ -33,9 +30,6 @@ export async function updateProfile(formData: FormData): Promise<void> {
   const parsed = profileSchema.safeParse({
     displayName: formData.get("displayName") || undefined,
     units: formData.get("units") || undefined,
-    bodyCompPhase: formData.get("bodyCompPhase") || undefined,
-    phaseStartedAt: formData.get("phaseStartedAt") || undefined,
-    phaseTargetWeeks: formData.get("phaseTargetWeeks") || undefined,
     trainingDaysPerWeek: formData.get("trainingDaysPerWeek") || undefined,
     trainingExperience: formData.get("trainingExperience") || undefined,
     effortPreference: formData.get("effortPreference") || undefined,
@@ -70,9 +64,6 @@ export async function updateProfile(formData: FormData): Promise<void> {
   const updates: Record<string, unknown> = {};
   if (parsed.data.displayName !== undefined) updates.display_name = parsed.data.displayName || null;
   if (parsed.data.units !== undefined) updates.units = parsed.data.units;
-  if (parsed.data.bodyCompPhase !== undefined) updates.body_comp_phase = parsed.data.bodyCompPhase;
-  if (parsed.data.phaseStartedAt !== undefined) updates.phase_started_at = parsed.data.phaseStartedAt || null;
-  if (parsed.data.phaseTargetWeeks !== undefined) updates.phase_target_weeks = parsed.data.phaseTargetWeeks ?? null;
   if (parsed.data.trainingDaysPerWeek !== undefined) updates.training_days_per_week = parsed.data.trainingDaysPerWeek;
   if (parsed.data.trainingExperience !== undefined) updates.training_experience = parsed.data.trainingExperience;
   if (parsed.data.effortPreference !== undefined) updates.effort_preference = parsed.data.effortPreference;

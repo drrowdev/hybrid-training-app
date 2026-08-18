@@ -72,11 +72,11 @@ export const hybridMeta: ProgramMeta = {
 
 /**
  * Hybrid's UNIQUE setup input (wizard step 2 "Loadout"). Hybrid has no template
- * "flavour" to choose like 5/3/1 or TB, so the Loadout step collects its only
- * personalisation: focus muscles (optionally bias accessory volume toward up to
- * two groups). The COMMON inputs — training days/week + start date — are owned by
- * the shared wizard Schedule step (the weekday picker) and must NOT be re-collected
- * here. `daysPerWeek` is supplied to `setup` by the deploy path from the chosen
+ * "flavour" to choose like 5/3/1 or TB, so the Loadout step collects its own
+ * personalisation: focus muscles, training-max %, and accessory volume. The
+ * COMMON inputs — training days/week + start date — are owned by the shared
+ * wizard Schedule step (the weekday picker) and must NOT be re-collected here.
+ * `daysPerWeek` is supplied to `setup` by the deploy path from the chosen
  * weekdays.
  */
 export function describeHybridSetup(): SetupSchema {
@@ -111,6 +111,28 @@ export function describeHybridSetup(): SetupSchema {
           { value: "95", label: "95% — heavier, peaking" },
         ],
         help: "Sets your training max as a % of your 1RM. Higher = heavier main lifts.",
+      },
+      {
+        // ADR 0024 — per-block accessory volume. Scales HOW MUCH optional
+        // accessory work a strength day carries without changing its character:
+        // the level rides on top of the archetype's own accessory profile, so it
+        // shifts the amount only. `high` is bounded by the ADR 0020 duration
+        // governor, which descends the ladder until the session fits its time
+        // budget — "Harder" can never blow out the session length.
+        //
+        // `medium` is the byte-identical default and the recommendation for a
+        // balanced concurrent block (see `recommendedAccessoryVolume`): it keeps
+        // both the strength and the cardio days manageable.
+        key: "accessoryVolume",
+        label: "Accessory volume",
+        type: "select",
+        defaultValue: "medium",
+        options: [
+          { value: "low", label: "Minimal — main lifts and essentials only" },
+          { value: "medium", label: "Balanced (recommended)" },
+          { value: "high", label: "More — extra muscle-building work" },
+        ],
+        help: "How much optional accessory work your strength days carry. Your main lifts, supplemental work and cardio are unchanged.",
       },
     ],
   };
@@ -159,6 +181,13 @@ export function setupHybrid(
     daysPerWeek: v.daysPerWeek,
     dayIndexOverrides,
     focusMuscles: v.focusMuscles,
+    // ADR 0024 — per-block accessory volume from the Loadout step. Omitted when
+    // the client sends nothing (legacy instances, Season deploys built before
+    // the field), which leaves `createBlockSchema`'s optional unset and the
+    // engine on its byte-identical `medium` default.
+    ...(typeof v.accessoryVolume === "string"
+      ? { accessoryVolume: v.accessoryVolume }
+      : {}),
     // ADR 0052 — Season generator bias, threaded from the activation deploy.
     // Absent for every non-Season Hybrid deploy ⇒ byte-identical.
     ...(v.seasonBias === "strength" || v.seasonBias === "endurance"

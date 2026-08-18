@@ -33,8 +33,6 @@ function sampleData(): BlockReviewData {
     athlete: {
       experienceTier: "intermediate_2y_5y",
       bodyweightKg: 82,
-      bodyCompPhase: "maintain",
-      phaseTargetWeeks: null,
       trainingDaysPerWeek: 4,
       allowsTwoADays: false,
       equipment: ["preset: full_gym", "bars (2)"],

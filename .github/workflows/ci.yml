@@ -12,6 +12,13 @@ on:
         required: false
         default: false
         type: boolean
+      allow_undeployed:
+        description: >-
+          Skip the deploy-order guard. Only for a migration the CURRENTLY LIVE
+          build already tolerates, or a repo with no Vercel integration.
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -151,14 +158,19 @@ jobs:
             {
               echo "## ⚠️ This PR adds a new migration"
               echo ""
-              echo "The repo does not auto-apply migrations. After merging, dispatch:"
+              echo "The repo does not auto-apply migrations. After merging, WAIT for"
+              echo "the Vercel production deploy to go green, then dispatch:"
               echo ""
               echo "    gh workflow run ci.yml --ref main -f migrate_production=true"
+              echo ""
+              echo "That job refuses to run until the commit has deployed"
+              echo "successfully, so a destructive migration can't land while"
+              echo "production is still serving code that reads the dropped object."
               echo ""
               echo "**New files:**"
               echo "$NEW_SQL" | sed 's/^/- /'
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::New migration files in this PR. Dispatch the production migration workflow after merge."
+            echo "::warning::New migration files in this PR. Dispatch the production migration workflow after the deploy is green."
           fi
 
   e2e:
@@ -308,11 +320,133 @@ jobs:
     environment: Production
     permissions:
       contents: read
+      # Read the Vercel integration's GitHub Deployment records so the
+      # deploy-order guard below can prove the app is already live.
+      deployments: read
     concurrency:
       group: production-database-migrations
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v5
+
+      - name: Require a successful production app deploy for this commit
+        # DEPLOY ORDER GUARD.
+        #
+        # This repo's model is app-first, database-second: Vercel deploys on
+        # merge to main, migrations are applied later by dispatching this job.
+        # Every migration on main must therefore be backwards-compatible with
+        # the build that is ALREADY serving traffic (AGENTS.md), and a
+        # destructive one (DROP COLUMN / DROP TABLE) is only safe once the
+        # release that stopped reading the dropped object is live.
+        #
+        # Nothing used to enforce that. `needs: ci` only proves the code is
+        # green, not that Vercel finished shipping it — so dispatching while a
+        # deploy was still building, or after one had failed and rolled back,
+        # would drop columns out from under the running app. Migration 0131
+        # (drop body_comp_phase) is exactly that shape: the old build SELECTs
+        # the columns by name and 500s the moment they disappear.
+        #
+        # So: refuse to migrate unless VERCEL has recorded a SUCCESSFUL
+        # Production deployment for this exact commit. No new secret —
+        # `vercel[bot]` writes standard GitHub Deployment records, readable
+        # with the workflow token.
+        #
+        # TWO SUBTLETIES, both learned the hard way on the first real run:
+        #
+        #  1. This job itself declares `environment: Production`, so GitHub
+        #     creates its OWN Production deployment record for it. Querying
+        #     "newest Production deployment for this SHA" therefore found THIS
+        #     JOB, mid-run, in state `in_progress`, and failed — which then
+        #     marked its own record `failure`. The guard could never pass.
+        #     Hence: only consider records created by `vercel[bot]`.
+        #
+        #  2. A commit can have several Vercel Production deployments (a
+        #     redeploy, a promote). A later duplicate failing does NOT unship
+        #     the earlier successful one — a failed build never replaces live
+        #     code. So the question is "has this commit EVER deployed
+        #     successfully", not "did the most recent attempt succeed".
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
+        run: |
+          set -euo pipefail
+
+          if [ "${ALLOW_UNDEPLOYED}" = "true" ]; then
+            {
+              echo "## ⚠️ Deploy-order guard BYPASSED"
+              echo ""
+              echo "\`allow_undeployed\` was set, so migrations are being applied"
+              echo "without proving the app for \`${SHA}\` is live. Only correct for"
+              echo "a migration you know the running build tolerates."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::Deploy-order guard bypassed via allow_undeployed."
+            exit 0
+          fi
+
+          echo "Looking for a Vercel Production deployment of ${SHA}…"
+          # `vercel[bot]` only — see subtlety (1) above.
+          DEPLOY_IDS=$(gh api --paginate \
+            "repos/${REPO}/deployments?sha=${SHA}&environment=Production&per_page=100" \
+            --jq '.[] | select(.creator.login == "vercel[bot]") | .id')
+
+          if [ -z "${DEPLOY_IDS}" ]; then
+            {
+              echo "## ❌ No Vercel production deployment for this commit"
+              echo ""
+              echo "Commit \`${SHA}\` has no \`Production\` deployment from"
+              echo "\`vercel[bot]\`, so the app running in production is NOT this"
+              echo "code. Applying migrations now can break the live build."
+              echo ""
+              echo "**Wait for the Vercel deploy of \`main\` to finish, then re-dispatch.**"
+              echo ""
+              echo "If this repo genuinely has no Vercel integration, re-dispatch with"
+              echo "\`allow_undeployed=true\` — but only if the running build tolerates"
+              echo "the pending migrations."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::No Vercel Production deployment found for ${SHA}."
+            exit 1
+          fi
+
+          # Any successful attempt is enough — see subtlety (2) above.
+          SUCCESS_ID=""
+          SEEN=""
+          for id in ${DEPLOY_IDS}; do
+            state=$(gh api "repos/${REPO}/deployments/${id}/statuses?per_page=100" \
+              --jq '[.[].state] | if any(. == "success") then "success" else (.[0] // "unknown") end')
+            echo "  deployment ${id}: ${state}"
+            SEEN="${SEEN}- \`${id}\` → \`${state}\`"$'\n'
+            if [ "${state}" = "success" ] && [ -z "${SUCCESS_ID}" ]; then
+              SUCCESS_ID="${id}"
+            fi
+          done
+
+          if [ -z "${SUCCESS_ID}" ]; then
+            {
+              echo "## ❌ No successful production deploy for this commit"
+              echo ""
+              echo "Vercel has Production deployment(s) for \`${SHA}\`, but none"
+              echo "reached \`success\`:"
+              echo ""
+              echo "${SEEN}"
+              echo "If a deploy is still building, wait and re-dispatch. If it FAILED,"
+              echo "production is still serving older code — fix the deploy first,"
+              echo "because migrating now would break the live build."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::No Vercel Production deployment of ${SHA} reached 'success'."
+            exit 1
+          fi
+
+          {
+            echo "## ✅ Deploy-order guard passed"
+            echo ""
+            echo "Production is serving \`${SHA}\` (Vercel deployment"
+            echo "\`${SUCCESS_ID}\`), so pending migrations are safe to apply"
+            echo "against the live build."
+            echo ""
+            echo "${SEEN}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up pnpm
         uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
