@@ -2896,6 +2896,57 @@ export function ProgramPicker({
     );
   }
 
+  function renderAssistanceVolume() {
+    if (selected?.id !== "wendler-531") return null;
+    const current =
+      values.assistanceVolume === "low" || values.assistanceVolume === "high"
+        ? values.assistanceVolume
+        : "standard";
+    const OPTIONS = [
+      { value: "low", label: "Easier", hint: "One notch lighter — fewer assistance sets per category." },
+      { value: "standard", label: "Balanced", hint: "The template's own assistance volume. The default." },
+      { value: "high", label: "Harder", hint: "One notch heavier — more assistance sets per category." },
+    ] as const;
+    return (
+      <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="wendler-assistance-volume">
+        <div className={styles.label}>Assistance volume</div>
+        <p className={styles.sub} style={{ marginTop: 6 }}>
+          {
+            "How much push / pull / single-leg-or-core work follows your main lifts. Your main and supplemental sets are unchanged, and a template that prescribes no assistance stays that way."
+          }
+        </p>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+          {OPTIONS.map((o) => {
+            const on = current === o.value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                data-testid={`wendler-assistance-volume-${o.value}`}
+                aria-pressed={on}
+                onClick={() => setField("assistanceVolume", o.value)}
+                className={styles.chip}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  border: "1px solid var(--line, #2a2f2b)",
+                  background: on ? "var(--accent, #8fb39b)" : "transparent",
+                  color: on ? "#0f1310" : "inherit",
+                  cursor: "pointer",
+                }}
+              >
+                {o.label}
+              </button>
+            );
+          })}
+        </div>
+        <p className={styles.sub} style={{ marginTop: 8 }}>
+          {OPTIONS.find((o) => o.value === current)?.hint}
+        </p>
+      </div>
+    );
+  }
+
   function renderActivationSupplementals() {
     if (!isActivation) return null;
     const groups = [
@@ -3046,6 +3097,7 @@ export function ProgramPicker({
         {renderSpecStrip()}
         {renderGpPlan()}
         {!customizeTb ? renderActivationSupplementals() : null}
+        {renderAssistanceVolume()}
         {renderTbAccessories()}
       </div>
     );

@@ -40,6 +40,44 @@ describe("Hybrid engine — setup shape", () => {
     expect(fields.some((f) => f.key === "focusMuscles")).toBe(true);
   });
 
+  it("exposes accessory volume as a per-block choice defaulting to medium (ADR 0024)", () => {
+    const field = hybridProgramEngine
+      .describeSetup()
+      .fields.find((f) => f.key === "accessoryVolume");
+    expect(field).toBeDefined();
+    expect(field?.type).toBe("select");
+    expect(field?.defaultValue).toBe("medium");
+    expect(field?.options?.map((o) => o.value)).toEqual(["low", "medium", "high"]);
+  });
+
+  it("maps accessoryVolume through to the instance, and omits it when unset", () => {
+    for (const level of ["low", "medium", "high"] as const) {
+      const instance = hybridProgramEngine.setup(
+        { values: { daysPerWeek: 4, startedOn: "2026-01-05", accessoryVolume: level } },
+        CTX,
+      );
+      expect(instance.accessoryVolume).toBe(level);
+    }
+
+    // No wizard value (legacy instance / Season deploy predating the field):
+    // the key stays absent so the engine falls back to its byte-identical
+    // `medium` default rather than being pinned by an explicit write.
+    const unset = hybridProgramEngine.setup(
+      { values: { daysPerWeek: 4, startedOn: "2026-01-05" } },
+      CTX,
+    );
+    expect(unset.accessoryVolume).toBeUndefined();
+  });
+
+  it("rejects an out-of-range accessoryVolume rather than silently coercing it", () => {
+    expect(() =>
+      hybridProgramEngine.setup(
+        { values: { daysPerWeek: 4, startedOn: "2026-01-05", accessoryVolume: "maximum" } },
+        CTX,
+      ),
+    ).toThrow();
+  });
+
   it("keeps tmPercent OUT of the instance/context input (parity is preserved)", () => {
     // tmPercent is read at DEPLOY time (to seed training_maxes.tm_percent), not
     // threaded through the shared assembly input — so the instance is identical

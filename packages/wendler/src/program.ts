@@ -117,10 +117,11 @@ export interface WendlerInstance {
    */
   daysPerWeek?: number;
   /**
-   * The user's global accessory-volume preference (low = Easier, standard =
-   * Balanced, high = Harder). Shifts the template-derived assistance level up or
-   * down one notch. Optional / omitted ⇒ `standard` (byte-identical) for
-   * back-compat with instances stored before this field.
+   * How much assistance work each session carries (low = Easier, standard =
+   * Balanced, high = Harder). Collected in the wizard's Loadout step; shifts
+   * the template-derived assistance level up or down one notch. Optional /
+   * omitted ⇒ `standard` (byte-identical) for back-compat with instances
+   * stored before this field.
    */
   assistanceVolume?: AssistanceVolumePref;
 }
@@ -286,6 +287,18 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
         { key: "leaderCycles", label: "Leader cycles", type: "number", defaultValue: 2 },
         { key: "anchorCycles", label: "Anchor cycles", type: "number", defaultValue: 1 },
         { key: "tmPercent", label: "TM % of 1RM", type: "number", defaultValue: 0.85 },
+        {
+          key: "assistanceVolume",
+          label: "Assistance volume",
+          type: "select",
+          options: [
+            { value: "low", label: "Easier" },
+            { value: "standard", label: "Balanced" },
+            { value: "high", label: "Harder" },
+          ],
+          defaultValue: "standard",
+          help: "How much push / pull / single-leg-or-core assistance each session carries. Shifts the template's own level one notch; main and supplemental work are untouched.",
+        },
       ],
     };
   },
@@ -330,8 +343,9 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
     const rawDays = Number(v.daysPerWeek ?? dayOrder.length);
     const daysPerWeek = rawDays === 2 ? 2 : dayOrder.length;
 
-    // Global accessory-volume preference (low/standard/high). Anything else
-    // (null, legacy, undefined) collapses to "standard" → byte-identical.
+    // Per-block assistance volume (low/standard/high), collected in the wizard's
+    // Loadout step. Anything else (null, legacy, undefined) collapses to
+    // "standard" → byte-identical.
     const assistanceVolume: AssistanceVolumePref =
       v.assistanceVolume === "low" || v.assistanceVolume === "high"
         ? v.assistanceVolume

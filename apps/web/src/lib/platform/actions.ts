@@ -54,6 +54,11 @@ import {
   sessionLinksSchema,
   type SessionLinks,
 } from "./session-links";
+import {
+  resolveAssistanceVolume,
+  type AssistanceVolume,
+} from "./assistance-volume";
+import { resolveAccessoryVolumeLevel } from "@/lib/planner/accessory-volume";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import type { MovementResolver } from "./adapter";
 import {
@@ -960,18 +965,24 @@ async function computeForeignWrite(
           : "unanchored",
     };
   };
-  // Global accessory-volume preference (profiles.effort_preference:
-  // low=Easier / standard=Balanced / high=Harder). 5/3/1 scales its assistance
-  // volume by this single global control. Read best-effort; default standard.
-  let assistanceVolumePref: "low" | "standard" | "high" = "standard";
+  // Assistance volume (low = Easier / standard = Balanced / high = Harder).
+  // 5/3/1 collects this per block in the wizard's Loadout step. Deploys that
+  // carry no wizard value (clients predating the field, or edit-mode re-deploys
+  // of older blocks) fall back to the legacy global `profiles.effort_preference`
+  // so they stay byte-identical. See `./assistance-volume`.
+  let assistanceVolumePref: AssistanceVolume = "standard";
   if (programId === "wendler-531") {
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("effort_preference")
-      .eq("id", user.id)
-      .maybeSingle();
-    const raw = prof?.effort_preference;
-    if (raw === "low" || raw === "high") assistanceVolumePref = raw;
+    const fromWizard = setupValues.assistanceVolume;
+    let fromProfile: unknown = null;
+    if (typeof fromWizard !== "string") {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("effort_preference")
+        .eq("id", user.id)
+        .maybeSingle();
+      fromProfile = prof?.effort_preference ?? null;
+    }
+    assistanceVolumePref = resolveAssistanceVolume({ fromWizard, fromProfile });
   }
   const effectiveSetupValues = customization && isTbCustomizationV1(customization)
     ? {
@@ -2059,6 +2070,11 @@ async function createNativeProgramInstance(
       // Hybrid stores an explicit boolean so the per-block value wins over the
       // profile default at materialisation; default OFF when the toggle is unset.
       allows_two_a_days: twoADay ?? false,
+      // ADR 0024 — per-block accessory volume (wizard Loadout step). The
+      // instance is what materialisation reads, but the column is the one the
+      // off-plan quick-generate fallback and any block-level query look at, so
+      // keep the row honest rather than leaving it on the 'medium' default.
+      accessory_volume: resolveAccessoryVolumeLevel(instance.accessoryVolume),
       // Per-block antagonist-superset choice (migration 0111, wizard Schedule
       // step). Applies to ALL programs; default OFF when the toggle is unset so
       // the per-block value wins over the profile pref at read time.
