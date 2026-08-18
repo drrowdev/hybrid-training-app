@@ -4,9 +4,21 @@ Foundation for browser-level E2E against `apps/web`. Covers the
 **onboarding**, **plan-creation**, **multi-user RLS**, **session-log**,
 **auth**, and **program-run** critical paths from
 [`AGENTS.md`](../../../AGENTS.md). With program-run landed,
-**all 3 AGENTS.md critical paths are covered** (`auth` ✓ + `log` ✓ +
-`program-run` ✓), and the AGENTS.md "Multi-user E2E" mandate stays
-satisfied by `multi-user-rls-desktop.spec.ts`.
+**all 3 AGENTS.md critical paths have a spec** (`auth` ✓ + `log` ✓ +
+`program-run` ✓), and the AGENTS.md "Multi-user E2E" mandate has a spec in
+`multi-user-rls-desktop.spec.ts`.
+
+> ⚠️ **Having a spec is not the same as running it in CI.** By the
+> [deliberate policy below](#ci), the E2E Supabase secrets are not set in
+> GitHub Actions, so every seeded spec — 55 of 57 files — self-skips there:
+> currently **19 of 116 tests execute**, and the job still reports green.
+> The three "covered" critical paths, including the multi-user RLS mandate,
+> are among the ones that only run when someone runs the suite locally.
+>
+> That trade-off is intentional. What was *not* intentional: the ratio was
+> invisible. The `Report e2e execution coverage` step in `ci.yml` now prints
+> it into the job summary on every run, so the real number is always in
+> front of you rather than buried in this file.
 
 > The engineering rule "E2E — Playwright in `apps/web`. Critical paths:
 > auth + log + program-run" now has a passing spec for each path.
@@ -207,14 +219,20 @@ The `e2e (playwright)` job in `.github/workflows/ci.yml`:
 4. Starts it in the background (`pnpm --filter @hta/web start`) and
    waits for `localhost:3000` to respond.
 5. Runs `pnpm --filter @hta/web exec playwright test`.
-6. Uploads `apps/web/playwright-report/` as an artifact on failure.
+6. Reports how many tests actually executed vs self-skipped into the job
+   summary (`Report e2e execution coverage`).
+7. Uploads `apps/web/playwright-report/` as an artifact on failure.
 
 **Current policy: secrets are intentionally NOT set in GitHub Actions.**
-The job runs every PR but every test self-skips because the Supabase
+The job runs every PR but every seeded test self-skips because the Supabase
 env vars aren't present in CI. This is a deliberate choice — adding the
 service-role key as a GitHub secret means anyone able to push a workflow
 change to a PR could exfiltrate it. The risk isn't worth the coverage at
 this stage.
+
+Because the job stays green either way, step 6 above prints the real
+executed/skipped ratio into the job summary. Treat a drop in that number as
+a signal, not noise.
 
 The expectation is that the author runs `pnpm --filter @hta/web test:e2e`
 locally before pushing significant changes to the wizard / onboarding /
@@ -222,6 +240,25 @@ plan-creation surfaces. When the project ships to production and gets a
 dedicated test Supabase project, set the `E2E_*` secrets (which override
 the standard fallback) so CI can exercise the tests against the test
 project without ever seeing prod credentials.
+
+## Spec naming is load-bearing
+
+`playwright.config.ts` assigns specs to a project **by filename**:
+
+| Filename pattern       | Project            | Viewport   |
+| ---------------------- | ------------------ | ---------- |
+| `*-desktop.spec.ts`    | `desktop-chromium` | 1280 × 720 |
+| `*-mobile.spec.ts`     | `mobile-chromium`  | 375 × 812  |
+| anything else          | `chromium`         | 1280 × 720 |
+
+The catch-all `chromium` project exists because a spec matching neither
+suffix used to match **no** project and was silently dropped — not run, not
+skipped, not even counted. Twelve specs (14 tests) sat invisible that way.
+
+`src/lib/testing/__tests__/e2e-spec-coverage.test.ts` runs in the ordinary
+unit-test job and fails if any spec is claimed by zero projects, or by more
+than one. Prefer an explicit `-desktop` / `-mobile` suffix so the intended
+viewport is obvious from the filename.
 
 ## Follow-ups
 
