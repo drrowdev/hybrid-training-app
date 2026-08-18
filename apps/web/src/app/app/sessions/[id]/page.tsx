@@ -15,6 +15,7 @@ import {
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { CancelWorkoutButton } from "@/components/session/CancelWorkoutButton";
 import { EditableSessionTitle } from "@/components/session/EditableSessionTitle";
+import { BackLink } from "@/components/ui/BackLink";
 import { getTrainingMaxDict } from "@/lib/training-maxes/queries";
 import {
   type LoggedSet,
@@ -875,6 +876,7 @@ export default async function SessionDetailPage({
     >
     <div style={{ display: "grid", gap: 18 }}>
       <header>
+        <BackLink href="/app" label="Today" />
         {/* Single crumb row — e.g. "29 MAY · ENDURANCE · WK 1". Replaces
             the older 2-row header that duplicated the date as both a
             chip eyebrow and a stand-alone metadata strip. */}

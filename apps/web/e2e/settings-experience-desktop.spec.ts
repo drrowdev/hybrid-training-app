@@ -70,12 +70,13 @@ test.describe("@desktop /app/settings/profile · training experience", () => {
     await expect(how).not.toContainText(/DC-/);
 
     // Settings that no longer belong on this page are gone: body composition
-    // had no engine consumer, accessory volume moved into the 5/3/1 wizard,
-    // and the display name is edited on /app/profile.
+    // had no engine consumer, and accessory volume moved into the 5/3/1
+    // wizard. (The display name is back — see training-profile.spec.ts —
+    // because /app/profile, which used to host it, had no inbound link and
+    // has since been retired.)
     await expect(page.getByTestId("settings-group-body-comp-phase")).toHaveCount(0);
     await expect(page.getByTestId("settings-body-comp-phase")).toHaveCount(0);
     await expect(page.getByTestId("settings-effort-preference-form")).toHaveCount(0);
-    await expect(page.getByTestId("settings-display-name-input")).toHaveCount(0);
 
     // Pick the Advanced option — auto-save fires on selection change.
     await page.getByTestId("settings-experience-advanced_5y_10y").click();

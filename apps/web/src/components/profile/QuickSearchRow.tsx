@@ -2,7 +2,7 @@
 
 /**
  * QuickSearchRow — mobile-friendly entry point that opens the
- * command palette via `useCommandPalette()`. Lives on /app/profile
+ * command palette via `useCommandPalette()`. Lives on /app/settings
  * (the "More" destination on mobile) because the desktop top-bar
  * search button is hidden < 768 px.
  */

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Page-level client wrapper for /app/races.
+ * Page-level client wrapper for /app/settings/events.
  *
  * Combines:
  *   - the "Add event" trigger + the EventFormModal in create mode

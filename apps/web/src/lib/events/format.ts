@@ -1,5 +1,5 @@
 /**
- * Formatting helpers for the /app/races page. Pure functions — no
+ * Formatting helpers for the /app/settings/events page. Pure functions — no
  * React, no Supabase — so they're trivially unit-testable.
  */
 import { daysBetweenYmd } from "@/lib/dates";

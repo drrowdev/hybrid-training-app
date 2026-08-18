@@ -1118,7 +1118,7 @@ a.cp-tbr-pop-item { color: var(--cp-text); }
 
 /* ── Top nav — mobile hides brand glyph, primary tabs, right cluster ─
    On mobile the BottomTabBar handles primary navigation and
-   /app/profile surfaces notifications + quick search, so the top-bar
+   /app/settings surfaces notifications + quick search, so the top-bar
    collapses to just the safe-area inset.
 
    The desktop header is a 56px elevated bar with a bottom border. Left

@@ -3,18 +3,19 @@ import { signInAs } from "./fixtures/auth";
 import { markOnboarded } from "./fixtures/seed-blocks";
 
 /**
- * /app/races · self-serve priority event management.
+ * /app/settings/events · self-serve priority event management.
  *
  * Coverage:
  *  - Empty state renders the EmptyState card with the explainer copy
  *    plus an "Add event" CTA.
+ *  - Back link points at the Settings hub.
  *  - Add modal opens, accepts name/date/priority/modality, saves.
  *  - The new row appears in the upcoming list and as a dot on the
  *    timeline strip.
  *  - Edit changes the name in place.
  *  - Delete removes the row.
  */
-test.describe("@desktop /app/races · priority event management", () => {
+test.describe("@desktop /app/settings/events · priority event management", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
   test("empty → add → edit → delete flow", async ({
@@ -36,13 +37,19 @@ test.describe("@desktop /app/races · priority event management", () => {
     );
     const ymd = target.toISOString().slice(0, 10);
 
-    await page.goto("/app/races");
+    await page.goto("/app/settings/events");
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByTestId("races-page")).toBeVisible();
+    await expect(page.getByTestId("events-page")).toBeVisible();
     await expect(
       page.getByRole("heading", { level: 1, name: /events/i }),
     ).toBeVisible();
+
+    // Back link resolves to the Settings hub.
+    const back = page.getByTestId("back-link");
+    await expect(back).toBeVisible();
+    await expect(back).toHaveAttribute("href", "/app/settings");
+    await expect(back).toContainText(/settings/i);
 
     // Empty state.
     await expect(page.getByTestId("empty-state")).toBeVisible();

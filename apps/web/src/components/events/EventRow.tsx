@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * EventRow — one row in the upcoming or history list on /app/races.
+ * EventRow — one row in the upcoming or history list on /app/settings/events.
  *
  * Compact bar by default (name + relative date + chips + status);
  * click anywhere on the bar (or press Enter when focused) to expand

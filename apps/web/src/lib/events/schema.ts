@@ -1,5 +1,5 @@
 /**
- * Validation schemas + types for the /app/races (priority events)
+ * Validation schemas + types for the /app/settings/events (priority events)
  * surface. Lives outside actions.ts because the "use server" file may
  * only export async functions.
  *

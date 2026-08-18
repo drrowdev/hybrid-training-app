@@ -3,21 +3,24 @@ import { signInAs } from "./fixtures/auth";
 import { markOnboarded } from "./fixtures/seed-blocks";
 
 /**
- * /app/profile · training profile page.
+ * /app/settings/profile · the three settings absorbed from /app/profile.
  *
- * Smoke coverage:
- *  - Sign in, visit /app/profile.
- *  - Identity header shows the display name + email.
- *  - Bodyweight section renders (sparkline-or-empty-state, both are
- *    valid for a fresh user).
- *  - AI-notes editor is visible.
- *  - Inline-edit display name works (Enter to save, value sticks
- *    after reload).
+ * `/app/profile` had no inbound link anywhere in the app but was the only
+ * UI for the display name, `ai_notes`, and the `am_window_start` /
+ * `pm_window_start` two-a-day windows the Today page reads to place a
+ * morning versus an evening session. The route is retired; this spec
+ * guards the migration of all three.
+ *
+ * Coverage:
+ *  - All three cards render on Settings > Training profile.
+ *  - Each edit auto-saves and survives a reload.
+ *  - The windows write both ends of the two-hour span.
+ *  - The retired route is gone.
  */
-test.describe("@desktop /app/profile · training profile page", () => {
+test.describe("@desktop /app/settings/profile · absorbed settings", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
-  test("renders identity / bodyweight / AI notes; inline name edit persists", async ({
+  test("display name, windows and notes persist across a reload", async ({
     page,
     context,
     freshUser,
@@ -26,12 +29,6 @@ test.describe("@desktop /app/profile · training profile page", () => {
     baseURL,
   }) => {
     await markOnboarded(admin, freshUser.userId);
-    // Pre-seed a display name so the trigger has something to render.
-    await admin
-      .from("profiles")
-      .update({ display_name: "Initial Name" })
-      .eq("id", freshUser.userId);
-
     await signInAs(
       context,
       freshUser,
@@ -39,58 +36,71 @@ test.describe("@desktop /app/profile · training profile page", () => {
       baseURL ?? "http://localhost:3000",
     );
 
-    await page.goto("/app/profile");
+    await page.goto("/app/settings/profile");
     await page.waitForLoadState("networkidle");
 
-    // Page mounted.
-    await expect(page.getByTestId("training-profile-page")).toBeVisible();
+    // Back link resolves to the Settings hub.
+    const back = page.getByTestId("back-link");
+    await expect(back).toBeVisible();
+    await expect(back).toHaveAttribute("href", "/app/settings");
 
-    // Identity header — name + email visible.
-    const identity = page.getByTestId("profile-identity");
-    await expect(identity).toBeVisible();
-    await expect(page.getByTestId("display-name-value")).toContainText(
-      /initial name/i,
-    );
-    await expect(page.getByTestId("display-name-email")).toContainText(
-      freshUser.email,
-    );
+    // ── Display name ──────────────────────────────────────────────
+    await expect(page.getByTestId("settings-card-identity")).toBeVisible();
+    const name = page.getByTestId("settings-display-name-input");
+    await name.fill("Edited Name");
+    await name.blur();
+    await expect(
+      page.getByTestId("autosave-status-settings-display-name-input"),
+    ).toHaveAttribute("data-status", "saved");
 
-    // Bodyweight section — sparkline or empty state (both valid for a
-    // fresh user).
-    const bw = page.getByTestId("profile-bodyweight");
-    await expect(bw).toBeVisible();
-    const sparklineCount = await page
-      .getByTestId("bodyweight-sparkline")
-      .count();
-    const emptyCount = await bw.getByTestId("empty-state").count();
-    expect(sparklineCount + emptyCount).toBeGreaterThan(0);
+    // ── Training windows ──────────────────────────────────────────
+    await expect(
+      page.getByTestId("settings-card-training-windows"),
+    ).toBeVisible();
+    await page.getByTestId("settings-am-window-start").fill("06:30");
+    // Time inputs commit on change, with no debounce.
+    await expect(
+      page.getByTestId("autosave-status-settings-am-window-start"),
+    ).toHaveAttribute("data-status", "saved");
 
-    // AI-notes editor is visible.
-    await expect(page.getByTestId("profile-training-notes")).toBeVisible();
-    await expect(page.getByTestId("training-notes-textarea")).toBeVisible();
-
-    // Inline-edit: click the trigger, type a new name, press Enter.
-    await page.getByTestId("display-name-trigger").click();
-    const input = page.getByTestId("display-name-input");
-    await expect(input).toBeVisible();
-    await input.fill("Edited Name");
-    await input.press("Enter");
-
-    // After save the rendered value flips.
-    await expect(page.getByTestId("display-name-value")).toContainText(
-      /edited name/i,
+    // ── Training notes ────────────────────────────────────────────
+    await expect(
+      page.getByTestId("settings-card-training-notes"),
+    ).toBeVisible();
+    const notes = page.getByTestId("training-notes-textarea");
+    await notes.fill("Heavy days go better after a rest day.");
+    await notes.blur();
+    await expect(page.getByTestId("training-notes-status")).toContainText(
+      /saved/i,
     );
 
-    // Reload — the change persisted.
+    // ── All three persisted ───────────────────────────────────────
     await page.reload();
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("display-name-value")).toContainText(
-      /edited name/i,
+
+    await expect(page.getByTestId("settings-display-name-input")).toHaveValue(
+      "Edited Name",
+    );
+    await expect(page.getByTestId("settings-am-window-start")).toHaveValue(
+      "06:30",
+    );
+    await expect(page.getByTestId("training-notes-textarea")).toHaveValue(
+      /heavy days go better/i,
     );
 
-    // Right-rail surfaces render.
-    await expect(page.getByTestId("profile-preferences")).toBeVisible();
-    await expect(page.getByTestId("profile-tm-summary")).toBeVisible();
-    await expect(page.getByTestId("profile-limitations")).toBeVisible();
+    // DB: the window wrote both ends of the two-hour span.
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("display_name, am_window_start, am_window_end, ai_notes")
+      .eq("id", freshUser.userId)
+      .maybeSingle();
+    expect(profile?.display_name).toBe("Edited Name");
+    expect(String(profile?.am_window_start)).toMatch(/^06:30/);
+    expect(String(profile?.am_window_end)).toMatch(/^08:30/);
+    expect(String(profile?.ai_notes)).toMatch(/heavy days go better/i);
+
+    // The retired route is gone.
+    const gone = await page.goto("/app/profile");
+    expect(gone?.status()).toBe(404);
   });
 });

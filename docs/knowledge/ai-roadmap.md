@@ -278,9 +278,9 @@ Proper push-up / pull-up / squat progression ladders with rep-based "training ma
 
 2026-05-30 audit. Items lifted out of the parking lot:
 
-- **#9 /races page** — shipped 2026-05-23 as `/app/races` (PR #56).
+- **#9 /races page** — shipped 2026-05-23 as `/app/races` (PR #56). Route retired 2026-08-18: the surface now lives at `/app/settings/events`, which absorbed the richer implementation and replaced the plain form that was there.
 - **#10 /injuries page** — shipped 2026-05-23 as `/app/recovery/injuries` (PR #54). Further extended by Limitations v2 lifecycle in PR #189 (bilateral side + muscle-level filter + per-exercise allow + event lifecycle + Today banner). Migration 0070.
-- **#11 Training Profile page** — shipped 2026-05-23 as `/app/profile` (PR #55).
+- **#11 Training Profile page** — shipped 2026-05-23 as `/app/profile` (PR #55). Route retired 2026-08-18 as an unlinked duplicate of `/app/settings/profile`; its two unique settings (training notes, AM/PM training windows) moved there.
 - **#12 Calendar view modes** — shipped 2026-05-23 (PR #57: Month / Timeline / List with filters + legend). Further redesigned in the /plan layout shift (PRs #133, #200-#205) with scrollable calendar + drawer drill-down + filter persistence via `?filter=`.
 - **#14 'What is this?' inline help** — shipped 2026-05-23 as the `MetricHelp` primitive with central glossary (PR #53).
 - **#15 AMRAP -> e1RM distinction** — shipped 2026-05-23 (PR #52: AMRAP-driven e1RM vs entered 1RM distinction + suggestion banner). Anchor PR detection now binds to saved 1RM rather than historical max (PR #75).

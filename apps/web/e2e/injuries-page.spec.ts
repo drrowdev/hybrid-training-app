@@ -34,7 +34,7 @@ test.describe("@desktop /app/recovery/injuries · self-serve limitations", () =>
     // Page mounted.
     await expect(page.getByTestId("injuries-page")).toBeVisible();
     await expect(
-      page.getByRole("heading", { level: 1, name: /injuries/i }),
+      page.getByRole("heading", { level: 1, name: /limitations/i }),
     ).toBeVisible();
 
     // Empty state copy + CTA.

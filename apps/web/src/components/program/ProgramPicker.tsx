@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { BackLink } from "@/components/ui/BackLink";
 import {
   AB_TRIAD_MOVEMENTS,
   activationPhaseForWeek,
@@ -4822,6 +4823,12 @@ export function ProgramPicker({
 
   return (
     <div className={styles.wizard}>
+      {/* Exit hatch. The wizard's own "Back" button walks the step rail, so
+          without this there is no way out of the flow. Editing implies an
+          active block (Plan renders); a fresh run may have none, and
+          /app/plan redirects blockless users straight back here — so send
+          them to Today instead of into a loop. */}
+      <BackLink href={isEditing ? "/app/plan" : "/app"} label={isEditing ? "Plan" : "Today"} />
       <h1 className={styles.pageTitle}>{isEditing ? "Edit your plan" : "Start a program"}</h1>
 
       {isEditing && (

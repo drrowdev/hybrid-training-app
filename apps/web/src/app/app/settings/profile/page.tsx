@@ -1,12 +1,16 @@
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
+  DisplayNameAutoSave,
   GenderAutoSave,
   TrainingExperienceAutoSave,
+  TrainingWindowsAutoSave,
   UnitsAutoSave,
 } from "@/components/settings/SettingsAutoSaveSections";
 import { SettingCard, SettingNote } from "@/components/settings/SettingCard";
 import { SettingInfo } from "@/components/settings/SettingInfo";
+import { TrainingNotesEditor } from "@/components/settings/TrainingNotesEditor";
+import { updateTrainingNotes } from "@/lib/profile/actions";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 type TrainingExperience =
@@ -55,8 +59,10 @@ function asTrainingExperience(v: unknown): TrainingExperience | "" {
  *   - Accessory volume was labelled global but only ever shifted 5/3/1
  *     assistance volume, so it moved into the 5/3/1 wizard's Loadout step.
  *
- * The display name is not repeated here either — it is click-to-edit on the
- * /app/profile identity header.
+ * Three settings arrived here from the retired /app/profile route, which had
+ * no inbound link anywhere in the app: the display name, the training notes,
+ * and the two-a-day training windows the Today page reads to place a morning
+ * versus an evening session.
  */
 export default async function ProfileSettingsPage() {
   const supabase = await createClient();
@@ -67,13 +73,18 @@ export default async function ProfileSettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("units, gender, training_experience")
+    .select("units, gender, training_experience, display_name, am_window_start, pm_window_start, ai_notes")
     .eq("id", user.id)
     .maybeSingle();
 
   const experience = asTrainingExperience(profile?.training_experience);
   const gender = (profile?.gender as "male" | "female" | null) ?? null;
   const units = profile?.units === "imperial" ? "imperial" : "metric";
+  const displayName = (profile?.display_name as string | null) ?? "";
+  // Postgres hands back `HH:mm:ss`; the native time input wants `HH:mm`.
+  const amWindowStart = ((profile?.am_window_start as string | null) ?? "07:00").slice(0, 5);
+  const pmWindowStart = ((profile?.pm_window_start as string | null) ?? "17:00").slice(0, 5);
+  const trainingNotes = (profile?.ai_notes as string | null) ?? "";
 
   return (
     <div className="space-y-8">
@@ -165,6 +176,63 @@ export default async function ProfileSettingsPage() {
           <div data-testid="settings-units">
             <UnitsAutoSave initialUnits={units} />
           </div>
+        </SettingCard>
+
+        <SettingCard
+          id="identity"
+          eyebrow="Identity"
+          title="Display name"
+          value={displayName || "Not set"}
+          testId="settings-card-identity"
+        >
+          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
+            What the app calls you. Display only — it never affects programming.
+          </p>
+          <DisplayNameAutoSave initialDisplayName={displayName} />
+        </SettingCard>
+
+        <SettingCard
+          id="training-windows"
+          eyebrow="Scheduling"
+          title="Training windows"
+          value={`${amWindowStart} · ${pmWindowStart}`}
+          testId="settings-card-training-windows"
+          info={
+            <SettingInfo
+              label="How training windows work"
+              testId="settings-windows-how"
+            >
+              When you train twice in a day, the app has to decide which
+              session is the morning one and which is the evening one. These
+              two times are how it decides. Each window covers two hours from
+              the time you set.
+            </SettingInfo>
+          }
+        >
+          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
+            When your usual morning and evening sessions start.
+          </p>
+          <TrainingWindowsAutoSave
+            initialAmStart={amWindowStart}
+            initialPmStart={pmWindowStart}
+          />
+        </SettingCard>
+
+        <SettingCard
+          id="training-notes"
+          eyebrow="Context"
+          title="Training notes"
+          value={trainingNotes ? "Written" : "Empty"}
+          testId="settings-card-training-notes"
+        >
+          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
+            Anything worth remembering about how you train — what works, what
+            flares up, what you want to keep an eye on.
+          </p>
+          <TrainingNotesEditor
+            initialValue={trainingNotes}
+            action={updateTrainingNotes}
+          />
         </SettingCard>
       </div>
     </div>

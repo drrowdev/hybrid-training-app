@@ -17,7 +17,12 @@
  */
 import { useCallback } from "react";
 import { updateProfile } from "@/lib/settings/actions";
-import { AutoSaveRadioGroup, AutoSaveSegmented } from "./auto-save";
+import {
+  AutoSaveRadioGroup,
+  AutoSaveSegmented,
+  AutoSaveTextField,
+  AutoSaveTimeField,
+} from "./auto-save";
 
 type TrainingExperience =
   | "beginner_lt_6m"
@@ -33,10 +38,29 @@ async function saveField(name: string, value: string): Promise<void> {
 }
 
 // ─── Display name ────────────────────────────────────────────────────
-// Removed from the training-profile page. The name is already
-// click-to-edit on the /app/profile identity header
-// (`components/profile/DisplayNameEditor`), and a second field for it
-// here was the least-visited control on a page about training defaults.
+// Back on the training-profile page. It had been dropped on the grounds
+// that the name was click-to-edit on the /app/profile identity header —
+// but that route had no inbound link anywhere in the app and has since
+// been retired, which would have left the display name uneditable.
+
+export function DisplayNameAutoSave({
+  initialDisplayName,
+}: {
+  initialDisplayName: string;
+}) {
+  const save = useCallback((v: string) => saveField("displayName", v), []);
+  return (
+    <div data-testid="settings-profile-basics">
+      <AutoSaveTextField
+        label="Display name"
+        initial={initialDisplayName}
+        save={save}
+        testId="settings-display-name-input"
+        inputProps={{ maxLength: 60, placeholder: "What should we call you?" }}
+      />
+    </div>
+  );
+}
 
 const UNIT_OPTIONS = [
   { value: "metric" as const, label: "kg / km" },
@@ -172,6 +196,41 @@ export function TrainingExperienceAutoSave({
 // TODO: retire the column once no in-flight deploy relies on the fallback.
 
 // ─── Session feedback (haptics + timer tone) ─────────────────────────
+
+// ─── Two-a-day training windows ──────────────────────────────────────
+// Absorbed from the retired /app/profile page. The Today page uses these
+// to decide whether a session lands in the morning or evening slot; each
+// window is stored as a 2-hour span derived from the start time.
+
+export function TrainingWindowsAutoSave({
+  initialAmStart,
+  initialPmStart,
+}: {
+  initialAmStart: string;
+  initialPmStart: string;
+}) {
+  const saveAm = useCallback((v: string) => saveField("amWindowStart", v), []);
+  const savePm = useCallback((v: string) => saveField("pmWindowStart", v), []);
+  return (
+    <div
+      className="grid grid-cols-2 gap-3"
+      data-testid="settings-training-windows"
+    >
+      <AutoSaveTimeField
+        label="Morning window starts"
+        initial={initialAmStart}
+        save={saveAm}
+        testId="settings-am-window-start"
+      />
+      <AutoSaveTimeField
+        label="Evening window starts"
+        initial={initialPmStart}
+        save={savePm}
+        testId="settings-pm-window-start"
+      />
+    </div>
+  );
+}
 
 // ─── Daily recovery check-in ─────────────────────────────────────────
 // Removed — the Today wellness check-in card was retired (see

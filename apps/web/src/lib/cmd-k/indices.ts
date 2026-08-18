@@ -132,9 +132,9 @@ export async function loadPaletteIndices(
           kind: "event" as const,
           title: e.name as string,
           subtitle: `${e.priority ?? "A"}-priority · ${e.event_date}`,
-          // Priority events now live at /app/races; the palette
+          // Priority events live at /app/settings/events; the palette
           // deep-links into the row anchor so the row mounts expanded.
-          href: `/app/races#event-${e.id}`,
+          href: `/app/settings/events#event-${e.id}`,
           icon: "★",
         }))
       : [];

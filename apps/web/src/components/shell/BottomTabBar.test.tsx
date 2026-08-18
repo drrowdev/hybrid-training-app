@@ -15,7 +15,7 @@ vi.mock("next/navigation", () => ({
 import { BottomTabBar } from "./BottomTabBar";
 
 describe("BottomTabBar", () => {
-  it("MORE tab links to /app/settings (card-grid hub, not /app/profile)", () => {
+  it("MORE tab links to the /app/settings card-grid hub", () => {
     const html = renderToStaticMarkup(<BottomTabBar />);
     // Render attribute order isn't stable, so locate the MORE tab's
     // surrounding anchor and extract whichever href it carries.

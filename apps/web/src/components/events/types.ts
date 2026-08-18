@@ -1,5 +1,5 @@
 /**
- * Shared row shape for the /app/races page. Server-rendered, then
+ * Shared row shape for the /app/settings/events page. Server-rendered, then
  * handed to client components that render the timeline and the
  * expandable list. Keeping the shape narrow (only what the UI shows)
  * keeps the prop graph easy to reason about.

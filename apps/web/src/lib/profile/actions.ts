@@ -1,23 +1,18 @@
 "use server";
 
 /**
- * Server actions for the /app/profile page.
+ * Server actions carried over from the retired /app/profile page.
  *
- * All actions are thin wrappers around `profiles` upserts plus a
- * targeted `revalidatePath("/app/profile")` so inline edits feel
- * immediate. Larger fan-out revalidations (e.g. settings, today)
- * already happen in `@/lib/settings/actions::updateProfile`; this
- * module exists to keep the click-to-edit affordances narrow.
+ * `updateTrainingNotes` now backs the Training notes group on
+ * /app/settings/profile; the bodyweight-nudge dismissals are called
+ * from the Today and Plan pages. Identity, units and the two-a-day
+ * windows all moved to `@/lib/settings/actions::updateProfile`.
  */
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-
-const displayNameSchema = z.object({
-  displayName: z.string().trim().max(60).nullable(),
-});
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -31,30 +26,6 @@ async function getUserOrRedirect(): Promise<{
   } = await getAuthUser();
   if (!user) redirect("/login");
   return { supabase, userId: user.id };
-}
-
-export async function updateDisplayName(
-  formData: FormData,
-): Promise<ActionResult> {
-  const raw = formData.get("displayName");
-  const parsed = displayNameSchema.safeParse({
-    displayName: raw == null || raw === "" ? null : String(raw),
-  });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid name" };
-  }
-
-  const { supabase, userId } = await getUserOrRedirect();
-  const { error } = await supabase
-    .from("profiles")
-    .update({ display_name: parsed.data.displayName || null })
-    .eq("id", userId);
-
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath("/app/profile");
-  revalidatePath("/app");
-  return { ok: true };
 }
 
 const trainingNotesSchema = z.object({
@@ -84,68 +55,7 @@ export async function updateTrainingNotes(
 
   if (error) return { ok: false, error: error.message };
 
-  revalidatePath("/app/profile");
-  return { ok: true };
-}
-
-const HHMM = /^\d{2}:\d{2}$/;
-const preferencesSchema = z.object({
-  amWindowStart: z.string().regex(HHMM).optional(),
-  pmWindowStart: z.string().regex(HHMM).optional(),
-  units: z.enum(["metric", "imperial"]).optional(),
-  gender: z.enum(["male", "female", ""]).optional(),
-});
-
-function addHours(hhmm: string, hours: number): string {
-  const [h, m] = hhmm.split(":").map((s) => Number.parseInt(s, 10));
-  const total = (h * 60 + m + hours * 60) % (24 * 60);
-  const nh = Math.floor(total / 60);
-  const nm = total % 60;
-  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
-}
-
-export async function updatePreferences(
-  formData: FormData,
-): Promise<ActionResult> {
-  const parsed = preferencesSchema.safeParse({
-    amWindowStart: formData.get("amWindowStart") || undefined,
-    pmWindowStart: formData.get("pmWindowStart") || undefined,
-    units: formData.get("units") || undefined,
-    gender: formData.get("gender") ?? undefined,
-  });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
-
-  const updates: Record<string, unknown> = {};
-  if (parsed.data.amWindowStart) {
-    updates.am_window_start = parsed.data.amWindowStart;
-    updates.am_window_end = addHours(parsed.data.amWindowStart, 2);
-  }
-  if (parsed.data.pmWindowStart) {
-    updates.pm_window_start = parsed.data.pmWindowStart;
-    updates.pm_window_end = addHours(parsed.data.pmWindowStart, 2);
-  }
-  if (parsed.data.units) {
-    updates.units = parsed.data.units;
-  }
-  // Competition weight category for HYROX station loads. "" clears it back to NULL.
-  if (parsed.data.gender !== undefined) {
-    updates.gender = parsed.data.gender === "" ? null : parsed.data.gender;
-  }
-
-  if (Object.keys(updates).length === 0) return { ok: true };
-
-  const { supabase, userId } = await getUserOrRedirect();
-  const { error } = await supabase
-    .from("profiles")
-    .update(updates)
-    .eq("id", userId);
-  if (error) return { ok: false, error: error.message };
-
-  revalidatePath("/app/profile");
-  revalidatePath("/app");
-  revalidatePath("/app/settings");
+  revalidatePath("/app/settings/profile");
   return { ok: true };
 }
 
