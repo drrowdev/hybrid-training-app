@@ -19,6 +19,7 @@
  * what a lifter calls "set 1" etc., not engine vocabulary.
  */
 import Link from "next/link";
+import { Fragment } from "react";
 import type { PrescriptionItem } from "@hta/db";
 import {
   collapseIdenticalSetItems,
@@ -378,6 +379,63 @@ const movementHeadingStyle: React.CSSProperties = {
   margin: 0,
 };
 
+/**
+ * Split a formatted prescription value into its atomic chunks.
+ *
+ * `formatPrescriptionItem` joins independent facts with " · " ("3 × 15s hold ·
+ * each side"), and the row renderers join multiple items the same way. Every
+ * chunk is a single indivisible fact — "3 × 15" must never be read as "3 ×" on
+ * one line and "15" on the next.
+ */
+export function splitPrescriptionChunks(value: string): string[] {
+  return value
+    .split(" · ")
+    .map((chunk) => chunk.trim())
+    .filter((chunk) => chunk.length > 0);
+}
+
+/**
+ * The right-hand value of a prescription row ("3 × 15", "4 sets · top 85% × 3").
+ *
+ * Each " · "-separated chunk is its own `nowrap` span, so a narrow row can only
+ * break BETWEEN chunks. Without this the value is just text inside a flex item
+ * that shrinks to whatever the movement name leaves behind, and a long name
+ * (e.g. "Supported Wrist Radial Deviation (DB)") wrapped the value mid-value.
+ * Callers pair this with `prescriptionNameStyle` so the NAME absorbs the
+ * shrinking instead.
+ */
+function PrescriptionValue({
+  value,
+  style,
+}: {
+  value: string;
+  style?: React.CSSProperties;
+}) {
+  const chunks = splitPrescriptionChunks(value);
+  return (
+    <span className="mono" data-testid="prescription-value" style={style}>
+      {chunks.length === 0
+        ? "—"
+        : chunks.map((chunk, i) => (
+            <Fragment key={i}>
+              {i > 0 ? " · " : ""}
+              <span style={{ whiteSpace: "nowrap" }}>{chunk}</span>
+            </Fragment>
+          ))}
+    </span>
+  );
+}
+
+/**
+ * Movement-name cell of a prescription row. `minWidth: 0` lets it shrink past
+ * its min-content width so the value keeps its intrinsic size, and
+ * `overflowWrap` is the safety valve for a name with no break opportunity.
+ */
+const prescriptionNameStyle: React.CSSProperties = {
+  minWidth: 0,
+  overflowWrap: "anywhere",
+};
+
 function MovementCard({
   section,
   hideHeading,
@@ -535,19 +593,24 @@ function CondensedStrengthRow({
         borderBottom: "1px solid var(--cp-border)",
       }}
     >
-      <span style={{ fontSize: 14, fontWeight: 600, color: "var(--cp-text)" }}>
+      <span
+        style={{
+          ...prescriptionNameStyle,
+          fontSize: 14,
+          fontWeight: 600,
+          color: "var(--cp-text)",
+        }}
+      >
         {sec.movementName}
       </span>
-      <span
-        className="mono"
+      <PrescriptionValue
+        value={condensedStrengthSummary(sec)}
         style={{
           fontSize: 13,
           color: "var(--cp-text-muted)",
           textAlign: "right",
         }}
-      >
-        {condensedStrengthSummary(sec) || "—"}
-      </span>
+      />
     </div>
   );
 }
@@ -605,12 +668,10 @@ function SetLine({
         Set {setNumber}
         {optional ? " · optional" : ""}
       </span>
-      <span
-        className="mono"
+      <PrescriptionValue
+        value={value}
         style={{ fontSize: 14, color: "var(--cp-text)", textAlign: "right" }}
-      >
-        {value || "—"}
-      </span>
+      />
     </div>
   );
 }
@@ -698,18 +759,23 @@ function AccessoryRow({
         borderBottom: withinSuperset ? "none" : "1px solid var(--cp-border)",
       }}
     >
-      <span style={{ fontSize: 14, fontWeight: 500, color: "var(--cp-text)" }}>
+      <span
+        style={{
+          ...prescriptionNameStyle,
+          fontSize: 14,
+          fontWeight: 500,
+          color: "var(--cp-text)",
+        }}
+      >
         {row.movementName}
       </span>
-      <span
-        className="mono"
-        style={{ fontSize: 13, color: "var(--cp-text-muted)", textAlign: "right" }}
-      >
-        {collapseIdenticalSetItems(row.items)
+      <PrescriptionValue
+        value={collapseIdenticalSetItems(row.items)
           .map((it) => formatPrescriptionItem(it))
           .filter(Boolean)
           .join(" · ")}
-      </span>
+        style={{ fontSize: 13, color: "var(--cp-text-muted)", textAlign: "right" }}
+      />
     </div>
   );
 }
