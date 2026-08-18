@@ -1616,23 +1616,6 @@
   gap: 12px;
   min-width: 0;
 }
-.activationMilestones {
-  display: grid;
-  gap: 5px;
-  border: 1px solid var(--accent-dim);
-  border-radius: var(--wradius);
-  background: var(--cp-accent-soft);
-  padding: 13px 15px;
-}
-.activationMilestones b {
-  color: var(--text);
-  font-size: 13px;
-}
-.activationMilestones span {
-  color: var(--dim);
-  font-size: 11.5px;
-  line-height: 1.5;
-}
 .activationPhase {
   min-width: 0;
   border: 1px solid var(--line2);
