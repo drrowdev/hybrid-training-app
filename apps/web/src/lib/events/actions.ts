@@ -1,7 +1,7 @@
 "use server";
 
 /**
- * Typed server actions for the /app/races page.
+ * Typed server actions for the /app/settings/events page.
  *
  * Object-form actions (not FormData) so the client modals can pass
  * structured target/result payloads without re-encoding nested
@@ -24,7 +24,6 @@ const idSchema = z.string().uuid();
 
 function revalidate() {
   revalidatePath("/app");
-  revalidatePath("/app/races");
   revalidatePath("/app/settings/events");
 }
 

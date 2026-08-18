@@ -7,13 +7,12 @@
  * Submitting persists via `submitBwAssessment` (re-used) and the
  * client wrapper navigates back to /app/settings/bodyweight-progression.
  */
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { getAuthUser } from "@/lib/supabase/server";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { BwAssessmentRunner } from "@/components/onboarding/bw-assessment/BwAssessmentRunner";
 
 export default async function BwAssessmentStandalonePage() {
-  const supabase = await createClient();
   const {
     data: { user },
   } = await getAuthUser();
@@ -21,34 +20,14 @@ export default async function BwAssessmentStandalonePage() {
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <header>
-        <Link
-          href="/app/settings/bodyweight-progression"
-          style={{
-            fontSize: 12,
-            color: "var(--cp-text-muted)",
-            textDecoration: "none",
-          }}
-        >
-          ← back to bodyweight progression
-        </Link>
-        <h1 style={{ fontSize: 26, margin: "8px 0 0", letterSpacing: "-0.01em" }}>
-          Bodyweight assessment
-        </h1>
-        <p
-          style={{
-            margin: "6px 0 0",
-            color: "var(--cp-text-muted)",
-            fontSize: 14,
-            lineHeight: 1.55,
-          }}
-        >
-          Three short pages — rep tests, skill chips, and a hinge-gap
-          acknowledgement — seed your starting node per movement family.
-          Re-running the assessment overwrites your current nodes and
-          zeroes the accumulators.
-        </p>
-      </header>
+      <PageHeader
+        back={{
+          href: "/app/settings/bodyweight-progression",
+          label: "Bodyweight progression",
+        }}
+        title="Bodyweight assessment"
+        subtitle="Three short pages — rep tests, skill chips, and a hinge-gap acknowledgement — seed your starting node per movement family. Re-running the assessment overwrites your current nodes and zeroes the accumulators."
+      />
 
       <BwAssessmentRunner />
     </div>

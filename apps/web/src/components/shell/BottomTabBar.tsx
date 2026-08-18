@@ -112,6 +112,7 @@ const TABS: Tab[] = [
     icon: <IconPlan />,
     match: (p) =>
       p.startsWith("/app/plan") ||
+      p.startsWith("/app/program") ||
       p.startsWith("/app/sessions/start") ||
       p.startsWith("/app/log"),
   },
@@ -129,9 +130,7 @@ const TABS: Tab[] = [
     icon: <IconMore />,
     match: (p) =>
       p.startsWith("/app/settings") ||
-      p.startsWith("/app/profile") ||
-      p.startsWith("/app/recovery") ||
-      p.startsWith("/app/races"),
+      p.startsWith("/app/recovery"),
   },
 ];
 

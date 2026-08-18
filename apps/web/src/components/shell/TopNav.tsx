@@ -43,6 +43,7 @@ const TABS: Tab[] = [
     testid: "topnav-tab-plan",
     match: (p) =>
       p.startsWith("/app/plan") ||
+      p.startsWith("/app/program") ||
       p.startsWith("/app/sessions/start") ||
       p.startsWith("/app/log"),
   },

@@ -27,7 +27,18 @@ const profileSchema = z.object({
   effortPreference: z.enum(["low", "standard", "high"]).optional(),
   gender: z.enum(["male", "female", ""]).optional(),
   showTodayRecoveryCard: z.coerce.boolean().optional(),
+  // Two-a-day scheduling windows. Absorbed from the retired /app/profile
+  // page — the Today page reads these to place AM vs PM sessions.
+  amWindowStart: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+  pmWindowStart: z.string().regex(/^\d{2}:\d{2}$/).optional(),
 });
+
+/** Windows are stored as a 2-hour span; only the start is user-editable. */
+function addHours(hhmm: string, hours: number): string {
+  const [h, m] = hhmm.split(":").map((s) => Number.parseInt(s, 10));
+  const total = ((h ?? 0) * 60 + (m ?? 0) + hours * 60) % (24 * 60);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
 
 export async function updateProfile(formData: FormData): Promise<void> {
   const parsed = profileSchema.safeParse({
@@ -44,6 +55,8 @@ export async function updateProfile(formData: FormData): Promise<void> {
       formData.get("showTodayRecoveryCardPresent") === "1"
         ? formData.get("showTodayRecoveryCard") === "on"
         : undefined,
+    amWindowStart: formData.get("amWindowStart") || undefined,
+    pmWindowStart: formData.get("pmWindowStart") || undefined,
   });
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid input");
 
@@ -79,6 +92,14 @@ export async function updateProfile(formData: FormData): Promise<void> {
   if (parsed.data.gender !== undefined) updates.gender = parsed.data.gender === "" ? null : parsed.data.gender;
   if (parsed.data.showTodayRecoveryCard !== undefined)
     updates.show_today_recovery_card = parsed.data.showTodayRecoveryCard;
+  if (parsed.data.amWindowStart !== undefined) {
+    updates.am_window_start = parsed.data.amWindowStart;
+    updates.am_window_end = addHours(parsed.data.amWindowStart, 2);
+  }
+  if (parsed.data.pmWindowStart !== undefined) {
+    updates.pm_window_start = parsed.data.pmWindowStart;
+    updates.pm_window_end = addHours(parsed.data.pmWindowStart, 2);
+  }
 
   const { error } = await supabase
     .from("profiles")

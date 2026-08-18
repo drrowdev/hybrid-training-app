@@ -527,7 +527,7 @@ export default async function TodayPage() {
 
   // Today is a single-column layout — the right rail (Training Maxes
   // summary) was retired with the shell refresh; TM details live on
-  // /app/profile and /app/settings/training-maxes now.
+  // /app/settings/training-maxes now.
   const isRestDay = plannedToday.length === 0 && !openSession;
   const todayDate = new Date();
 

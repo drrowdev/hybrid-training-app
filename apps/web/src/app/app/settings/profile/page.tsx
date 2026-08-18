@@ -6,9 +6,12 @@ import {
   GenderAutoSave,
   ProfileBasicsAutoSave,
   TrainingExperienceAutoSave,
+  TrainingWindowsAutoSave,
   UnitsAutoSave,
 } from "@/components/settings/SettingsAutoSaveSections";
 import { SettingsGroup } from "@/components/settings/SettingsGroup";
+import { TrainingNotesEditor } from "@/components/settings/TrainingNotesEditor";
+import { updateTrainingNotes } from "@/lib/profile/actions";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 type TrainingExperience =
@@ -73,7 +76,7 @@ export default async function ProfileSettingsPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "display_name, units, gender, body_comp_phase, phase_started_at, phase_target_weeks, training_experience, timezone, effort_preference",
+      "display_name, units, gender, body_comp_phase, phase_started_at, phase_target_weeks, training_experience, timezone, effort_preference, am_window_start, pm_window_start, ai_notes",
     )
     .eq("id", user.id)
     .maybeSingle();
@@ -81,6 +84,11 @@ export default async function ProfileSettingsPage() {
   const experience = asTrainingExperience(profile?.training_experience);
   const phase = asBodyCompPhase(profile?.body_comp_phase);
   const effortPreference = asEffortPreference(profile?.effort_preference);
+
+  // Postgres hands back `HH:mm:ss`; the native time input wants `HH:mm`.
+  const amWindowStart = ((profile?.am_window_start as string | null) ?? "07:00").slice(0, 5);
+  const pmWindowStart = ((profile?.pm_window_start as string | null) ?? "17:00").slice(0, 5);
+  const trainingNotes = (profile?.ai_notes as string | null) ?? "";
 
   const experienceSummary = experience ? EXPERIENCE_LABEL[experience] : "Not set";
   const phaseSummary = PHASE_LABEL[phase];
@@ -194,6 +202,44 @@ export default async function ProfileSettingsPage() {
             Applies to new blocks; existing blocks keep what they were built with.
           </p>
           <EffortPreferenceAutoSave initial={effortPreference} />
+        </SettingsGroup>
+
+        {/* Two-a-day windows — absorbed from the retired /app/profile page.
+            The Today page uses these to place a session in the morning or
+            evening slot. Collapsed by default: set once, rarely revisited. */}
+        <SettingsGroup
+          id="training-windows"
+          title="Training windows"
+          summary={`${amWindowStart} · ${pmWindowStart}`}
+          testId="settings-group-training-windows"
+        >
+          <p className="text-xs text-foreground/60">
+            When your usual morning and evening sessions start. Used to place
+            two-a-day workouts on the right side of the day. Each window covers
+            two hours from the time you set.
+          </p>
+          <TrainingWindowsAutoSave
+            initialAmStart={amWindowStart}
+            initialPmStart={pmWindowStart}
+          />
+        </SettingsGroup>
+
+        {/* Training notes — free text the user keeps about themselves.
+            Also absorbed from /app/profile. */}
+        <SettingsGroup
+          id="training-notes"
+          title="Training notes"
+          summary={trainingNotes ? "Written" : "Empty"}
+          testId="settings-group-training-notes"
+        >
+          <p className="text-xs text-foreground/60">
+            Anything worth remembering about how you train — what works, what
+            flares up, what you want to keep an eye on.
+          </p>
+          <TrainingNotesEditor
+            initialValue={trainingNotes}
+            action={updateTrainingNotes}
+          />
         </SettingsGroup>
       </div>
     </div>

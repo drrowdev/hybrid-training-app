@@ -141,6 +141,7 @@ export default async function InjuriesPage() {
       style={{ display: "grid", gap: 24, maxWidth: 880, margin: "0 auto" }}
     >
       <PageHeader
+        back={{ href: "/app/settings", label: "Settings" }}
         title="Limitations"
         subtitle="Flag an injury or other restriction; the app will cap or rotate around the affected muscles and movements so you can keep training around the issue."
       />

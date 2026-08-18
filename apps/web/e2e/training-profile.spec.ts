@@ -3,21 +3,22 @@ import { signInAs } from "./fixtures/auth";
 import { markOnboarded } from "./fixtures/seed-blocks";
 
 /**
- * /app/profile · training profile page.
+ * /app/settings/profile · training windows + training notes.
  *
- * Smoke coverage:
- *  - Sign in, visit /app/profile.
- *  - Identity header shows the display name + email.
- *  - Bodyweight section renders (sparkline-or-empty-state, both are
- *    valid for a fresh user).
- *  - AI-notes editor is visible.
- *  - Inline-edit display name works (Enter to save, value sticks
- *    after reload).
+ * These two groups were absorbed from the retired /app/profile page —
+ * they are the only UI for `am_window_start` / `pm_window_start` (used
+ * by the Today page to place two-a-day sessions) and `ai_notes`. This
+ * spec guards the migration.
+ *
+ * Coverage:
+ *  - Both groups render on the Settings > Training profile page.
+ *  - Editing a training window auto-saves and survives a reload.
+ *  - Training notes save on blur and survive a reload.
  */
-test.describe("@desktop /app/profile · training profile page", () => {
+test.describe("@desktop /app/settings/profile · windows + notes", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
-  test("renders identity / bodyweight / AI notes; inline name edit persists", async ({
+  test("training windows and notes persist across a reload", async ({
     page,
     context,
     freshUser,
@@ -26,12 +27,6 @@ test.describe("@desktop /app/profile · training profile page", () => {
     baseURL,
   }) => {
     await markOnboarded(admin, freshUser.userId);
-    // Pre-seed a display name so the trigger has something to render.
-    await admin
-      .from("profiles")
-      .update({ display_name: "Initial Name" })
-      .eq("id", freshUser.userId);
-
     await signInAs(
       context,
       freshUser,
@@ -39,58 +34,58 @@ test.describe("@desktop /app/profile · training profile page", () => {
       baseURL ?? "http://localhost:3000",
     );
 
-    await page.goto("/app/profile");
+    await page.goto("/app/settings/profile");
     await page.waitForLoadState("networkidle");
 
-    // Page mounted.
-    await expect(page.getByTestId("training-profile-page")).toBeVisible();
+    // Back link resolves to the Settings hub.
+    const back = page.getByTestId("back-link");
+    await expect(back).toBeVisible();
+    await expect(back).toHaveAttribute("href", "/app/settings");
 
-    // Identity header — name + email visible.
-    const identity = page.getByTestId("profile-identity");
-    await expect(identity).toBeVisible();
-    await expect(page.getByTestId("display-name-value")).toContainText(
-      /initial name/i,
-    );
-    await expect(page.getByTestId("display-name-email")).toContainText(
-      freshUser.email,
-    );
+    // ── Training windows ──────────────────────────────────────────
+    const windowsGroup = page.getByTestId("settings-group-training-windows");
+    await expect(windowsGroup).toBeVisible();
+    await windowsGroup.locator("summary").click();
 
-    // Bodyweight section — sparkline or empty state (both valid for a
-    // fresh user).
-    const bw = page.getByTestId("profile-bodyweight");
-    await expect(bw).toBeVisible();
-    const sparklineCount = await page
-      .getByTestId("bodyweight-sparkline")
-      .count();
-    const emptyCount = await bw.getByTestId("empty-state").count();
-    expect(sparklineCount + emptyCount).toBeGreaterThan(0);
+    const amInput = page.getByTestId("settings-am-window-start");
+    await expect(amInput).toBeVisible();
+    await amInput.fill("06:30");
+    // Time inputs commit on change; wait for the save to land.
+    await expect(
+      page.getByTestId("autosave-status-settings-am-window-start"),
+    ).toHaveAttribute("data-status", "saved");
 
-    // AI-notes editor is visible.
-    await expect(page.getByTestId("profile-training-notes")).toBeVisible();
-    await expect(page.getByTestId("training-notes-textarea")).toBeVisible();
+    // ── Training notes ────────────────────────────────────────────
+    const notesGroup = page.getByTestId("settings-group-training-notes");
+    await expect(notesGroup).toBeVisible();
+    await notesGroup.locator("summary").click();
 
-    // Inline-edit: click the trigger, type a new name, press Enter.
-    await page.getByTestId("display-name-trigger").click();
-    const input = page.getByTestId("display-name-input");
-    await expect(input).toBeVisible();
-    await input.fill("Edited Name");
-    await input.press("Enter");
-
-    // After save the rendered value flips.
-    await expect(page.getByTestId("display-name-value")).toContainText(
-      /edited name/i,
+    const notes = page.getByTestId("training-notes-textarea");
+    await expect(notes).toBeVisible();
+    await notes.fill("Heavy days go better after a rest day.");
+    await notes.blur();
+    await expect(page.getByTestId("training-notes-status")).toContainText(
+      /saved/i,
     );
 
-    // Reload — the change persisted.
+    // ── Both persisted ────────────────────────────────────────────
     await page.reload();
     await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("display-name-value")).toContainText(
-      /edited name/i,
+
+    await page
+      .getByTestId("settings-group-training-windows")
+      .locator("summary")
+      .click();
+    await expect(page.getByTestId("settings-am-window-start")).toHaveValue(
+      "06:30",
     );
 
-    // Right-rail surfaces render.
-    await expect(page.getByTestId("profile-preferences")).toBeVisible();
-    await expect(page.getByTestId("profile-tm-summary")).toBeVisible();
-    await expect(page.getByTestId("profile-limitations")).toBeVisible();
+    await page
+      .getByTestId("settings-group-training-notes")
+      .locator("summary")
+      .click();
+    await expect(page.getByTestId("training-notes-textarea")).toHaveValue(
+      /heavy days go better/i,
+    );
   });
 });

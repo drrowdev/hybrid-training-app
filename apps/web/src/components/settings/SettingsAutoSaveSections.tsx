@@ -26,6 +26,7 @@ import {
   AutoSaveRadioGroup,
   AutoSaveSelect,
   AutoSaveTextField,
+  AutoSaveTimeField,
 } from "./auto-save";
 
 type TrainingExperience =
@@ -311,6 +312,43 @@ export function EffortPreferenceAutoSave({
 }
 
 // ─── Session feedback (haptics + timer tone) ─────────────────────────
+
+// ─── Two-a-day training windows ──────────────────────────────────────
+// Absorbed from the retired /app/profile page. The Today page uses these
+// to decide whether a session lands in the morning or evening slot; each
+// window is stored as a 2-hour span derived from the start time.
+
+export function TrainingWindowsAutoSave({
+  initialAmStart,
+  initialPmStart,
+}: {
+  initialAmStart: string;
+  initialPmStart: string;
+}) {
+  const saveAm = useCallback((v: string) => saveField("amWindowStart", v), []);
+  const savePm = useCallback((v: string) => saveField("pmWindowStart", v), []);
+  return (
+    <div
+      className="space-y-3 rounded-lg border border-foreground/10 p-4"
+      data-testid="settings-training-windows"
+    >
+      <div className="grid grid-cols-2 gap-3">
+        <AutoSaveTimeField
+          label="Morning window starts"
+          initial={initialAmStart}
+          save={saveAm}
+          testId="settings-am-window-start"
+        />
+        <AutoSaveTimeField
+          label="Evening window starts"
+          initial={initialPmStart}
+          save={savePm}
+          testId="settings-pm-window-start"
+        />
+      </div>
+    </div>
+  );
+}
 
 // ─── Daily recovery check-in ─────────────────────────────────────────
 // Removed — the Today wellness check-in card was retired (see
