@@ -3979,25 +3979,25 @@ export function ProgramPicker({
                         {session.type === "strength" ? (
                           <div className={styles.activationMovements}>
                             {(() => {
-                            // Link membership, computed once per session so
-                            // both row renderers (the AB Triad's single row and
-                            // the ordinary slots) can show it. The rows are
+                            // One derivation per session, shared by the rows and
+                            // the editor below them (plan §6.9). The rows are
                             // where the lifter reads the session, so that is
-                            // where a superset has to be visible — describing
-                            // it only in a panel underneath left two linked
-                            // lifts looking like unrelated entries.
-                            const linkBadges = slotLinkBadges(
-                              sessionLinks[session.key] ?? [],
-                              activationLinkableMovements({
-                                slots: session.movements,
-                                selected: draft.movements,
-                                labelOf: customMovementLabel,
-                                builtinCircuitSources: AB_TRIAD_SOURCES,
-                                builtinCircuitLabel: AB_TRIAD_LABEL,
-                                builtinCircuitKey: AB_TRIAD_GROUP_KEY,
-                              }),
-                            );
-                            return session.movements.map((slot) => {
+                            // where a link has to be visible — describing it
+                            // only in a panel underneath left two linked lifts
+                            // looking like unrelated entries.
+                            const linkable = activationLinkableMovements({
+                              slots: session.movements,
+                              selected: draft.movements,
+                              labelOf: customMovementLabel,
+                              builtinCircuitSources: AB_TRIAD_SOURCES,
+                              builtinCircuitLabel: AB_TRIAD_LABEL,
+                              builtinCircuitKey: AB_TRIAD_GROUP_KEY,
+                            });
+                            const links = sessionLinks[session.key] ?? [];
+                            const linkBadges = slotLinkBadges(links, linkable);
+                            return (
+                              <>
+                            {session.movements.map((slot) => {
                               const hasCompleteAbTriad =
                                 AB_TRIAD_SOURCES.every((source) =>
                                   session.movements.some(
@@ -4266,8 +4266,7 @@ export function ProgramPicker({
                                   </div>
                                 </div>
                               );
-                            });
-                            })()}
+                            })}
                             {Object.values(draft.movements).every(
                               (movement) => movement == null,
                             ) ? (
@@ -4277,17 +4276,13 @@ export function ProgramPicker({
                             ) : null}
                             <SessionLinkEditor
                               seriesKey={session.key}
-                              movements={activationLinkableMovements({
-                                slots: session.movements,
-                                selected: draft.movements,
-                                labelOf: customMovementLabel,
-                                builtinCircuitSources: AB_TRIAD_SOURCES,
-                                builtinCircuitLabel: AB_TRIAD_LABEL,
-                                builtinCircuitKey: AB_TRIAD_GROUP_KEY,
-                              })}
-                              links={sessionLinks[session.key] ?? []}
+                              movements={linkable}
+                              links={links}
                               onChange={setLinksForSeries}
                             />
+                              </>
+                            );
+                            })()}
                           </div>
                         ) : null}
                       </section>
