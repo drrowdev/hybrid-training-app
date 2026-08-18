@@ -97,6 +97,8 @@ test("creates and restores a phase-aware customized Activation plan", async ({
 
   const base = page.getByTestId("activation-phase-base");
   await expect(base).toBeVisible();
+  // Phases start collapsed, so the list reads as a list; open the one under test.
+  await base.locator(":scope > summary").click();
   const abTriad = page.getByTestId(
     "activation-movement-activation.base.base-1-ab-triad",
   );
@@ -521,6 +523,12 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
+  // Phases start collapsed on reopen too — the saved state is asserted below,
+  // so open Base before reading it.
+  await page
+    .getByTestId("activation-phase-base")
+    .locator(":scope > summary")
+    .click();
   await expect(
     page
       .getByTestId("activation-session-activation.base.base-1")
