@@ -73,6 +73,7 @@ export type FocusStripLoggerProps = {
   timerSoundEnabled: boolean;
   barbellKg?: number;
   trapBarKg?: number;
+  safetyBarKg?: number;
   plateInventory?: PlateInventoryItem[];
   preferStandardLbPlates?: boolean;
   bwGateStateByFamily?: Readonly<
@@ -189,6 +190,7 @@ export function FocusStripLogger({
   timerSoundEnabled,
   barbellKg,
   trapBarKg,
+  safetyBarKg,
   plateInventory,
   preferStandardLbPlates,
   bwGateStateByFamily,
@@ -669,6 +671,7 @@ export function FocusStripLogger({
               timerSoundEnabled={timerSoundEnabled}
               barbellKg={barbellKg}
               trapBarKg={trapBarKg}
+              safetyBarKg={safetyBarKg}
               plateInventory={plateInventory}
               preferStandardLbPlates={preferStandardLbPlates}
               bwGateStateByFamily={bwGateStateByFamily}
