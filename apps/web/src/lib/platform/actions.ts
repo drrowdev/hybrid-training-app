@@ -46,6 +46,7 @@ import {
   activationCustomizationKey,
   activationPhaseForSession,
   getTbTemplate,
+  TB_MOVEMENT_LABEL,
 } from "@hta/tacticalbarbell";
 import {
   findOrphanedLinkMembers,
@@ -307,9 +308,10 @@ function deriveActivationMilestoneOverrides(
           ),
         );
         if (signatures.size > 1) {
+          const label = TB_MOVEMENT_LABEL[source] ?? source;
           return {
             overrides: {},
-            error: `${source} has conflicting replacements before week ${week}. Use one replacement so the protected test can be mapped safely.`,
+            error: `You've swapped ${label} for more than one movement before week ${week}. Pick a single replacement so the test in that week knows which one to use.`,
           };
         }
         const [resolved] = remaining;

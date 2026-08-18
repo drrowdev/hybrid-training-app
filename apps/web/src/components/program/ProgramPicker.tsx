@@ -3766,14 +3766,6 @@ export function ProgramPicker({
         className={styles.activationBuilder}
         data-testid="activation-custom-builder"
       >
-        <div className={styles.activationMilestones}>
-          <b>Milestone weeks stay protected</b>
-          <span>
-            Tests and peaks in weeks 5, 14, 20, 21, and 25 remain
-            engine-owned. A consistent replacement is mapped into its test;
-            conflicting replacements are never guessed.
-          </span>
-        </div>
         <div className={styles.rehabProtocolPanel}>
           {renderRehabProtocolEditor()}
         </div>
