@@ -409,7 +409,12 @@ select option {
   position: fixed;
   left: 0;
   right: 0;
-  bottom: calc(var(--cp-bottomnav-h) + env(safe-area-inset-bottom));
+  /* Sit ON the bottom edge and absorb the safe-area inset as PADDING rather
+   * than floating above it. Offsetting the whole dock by the inset left a
+   * ~34px strip of live page showing underneath it on a notched phone, and
+   * what showed through was the in-flow "Finish session" bar — directly under
+   * the thumb, one mis-tap from ending the session. */
+  bottom: var(--cp-bottomnav-h);
   z-index: 42;
   display: grid;
   gap: 8px;
@@ -417,6 +422,7 @@ select option {
   border-top: 1px solid var(--cp-border);
   box-shadow: 0 -2px 16px rgba(0, 0, 0, 0.34);
   padding: 10px 14px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
   padding-left: max(14px, env(safe-area-inset-left));
   padding-right: max(14px, env(safe-area-inset-right));
 }
@@ -484,12 +490,13 @@ select option {
 html.cp-session-live .cp-bottom-tabbar { display: none !important; }
 
 /* Reserve exactly the dock's measured height at the bottom of the scroll
- * container so the last card is never trapped behind it. */
+ * container so the last card — and the in-flow Finish bar — is never trapped
+ * behind it. The dock now absorbs the safe-area inset into its own padding, so
+ * its measured height already includes it; adding the inset again here would
+ * double-count and leave a dead gap. */
 @media (max-width: 768px) {
   body:has(.cp-session-dock) .cp-main {
-    padding-bottom: calc(
-      24px + var(--cp-session-dock-h, 0px) + env(safe-area-inset-bottom)
-    );
+    padding-bottom: calc(24px + var(--cp-session-dock-h, 0px));
   }
 }
 

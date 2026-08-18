@@ -186,6 +186,12 @@ export type FocusViewProps = {
    * the decision down lets it be made against the index actually being logged.
    */
   suppressRestForItemIndex?: (itemIndex: number) => boolean;
+  /**
+   * Called when the lifter cancels an edit on a movement that has nothing left
+   * to log. Without it Cancel leaves them parked on the set they just declined
+   * to change, which reads as "Cancel did nothing".
+   */
+  onExitEdit?: () => void;
 };
 
 const SET_KIND_TO_LOG: Record<string, "warmup" | "main" | "back_off" | "accessory" | "tendon"> =
@@ -226,6 +232,7 @@ export function MovementFocusView({
   focusStrip = false,
   dockAccessory = null,
   suppressRestForItemIndex,
+  onExitEdit,
 }: FocusViewProps) {
   const router = useRouter();
   const units = useUnits();
@@ -247,6 +254,29 @@ export function MovementFocusView({
   // editing a 5-set lift, tap a 3-set lift, and slot 4 resolves to no
   // prescription item — the card renders its header and nothing else. Scoping
   // the pin makes a different movement fall back to its own auto cursor.
+  // Editing is an INTENT, not a position.
+  //
+  // It used to be derived purely from "the cursor is sitting on a logged set",
+  // which made it both un-enterable-on-purpose and un-exitable:
+  //   - landing on a fully-logged movement auto-opened edit mode, so the card
+  //     appeared to enter it by itself; and
+  //   - Cancel cleared the manual pin, the auto cursor fell back to the last
+  //     slot (`autoCursorForGroup` returns `length - 1` once everything is
+  //     logged), that slot is logged, and edit mode re-derived instantly. Cancel
+  //     and Update both looked completely dead, and the only escape was leaving
+  //     the session.
+  // Holding the intent explicitly means Cancel has something to actually clear.
+  const [editIntent, setEditIntent] = useState<{
+    key: string;
+    slot: number;
+  } | null>(null);
+  const isSlotLogged = (slot: number) => {
+    const index = group.itemIndices[slot];
+    return index != null && loggedItemIndices.has(index);
+  };
+  const beginEditIfLogged = (slot: number) => {
+    setEditIntent(isSlotLogged(slot) ? { key: groupKey, slot } : null);
+  };
   const [manualPin, setManualPin] = useState<{ key: string; slot: number } | null>(
     initialCursor != null ? { key: groupKey, slot: initialCursor } : null,
   );
@@ -255,8 +285,16 @@ export function MovementFocusView({
   // the parent passes null — `setManualPin(null)` after a save is
   // already the path that hands control back to the auto cursor.
   useEffect(() => {
+    if (initialCursor == null) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- mirror parent-pinned cursor into local state
-    if (initialCursor != null) setManualPin({ key: groupKey, slot: initialCursor });
+    setManualPin({ key: groupKey, slot: initialCursor });
+    // A parent pin that lands on a logged set IS an edit request ("Edit sets"
+    // on a completed card), so it carries the intent with it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- same parent-driven mirror
+    setEditIntent(
+      isSlotLogged(initialCursor) ? { key: groupKey, slot: initialCursor } : null,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- isSlotLogged is derived from props read here
   }, [groupKey, initialCursor]);
   const manualCursor = pinnedCursorForGroup(manualPin, groupKey);
   const cursor = effectiveCursor(autoCursor, manualCursor, totalSlots);
@@ -270,11 +308,38 @@ export function MovementFocusView({
     ? loggedSets.find((set) => set.id === loggedSetId)
     : undefined;
   const pendingSetSync = isActiveLogged && loggedSetId == null;
+  // Nothing left to log here — every required slot is covered. Cancelling an
+  // edit in this state has nowhere useful to put the cursor, so the parent is
+  // asked to move on instead.
+  const requiredSlotsAllLogged = group.items.every((item, slot) => {
+    if (item.optional) return true;
+    const index = group.itemIndices[slot];
+    return index == null || loggedItemIndices.has(index);
+  });
+  /**
+   * Whether saving `justLoggedIndex` finishes this movement.
+   *
+   * The parent advances on this, so it has to mean "nothing required is left",
+   * NOT "the cursor is on the last slot" — which is what it used to mean. Log
+   * sets out of order (tap a later dot, or land there via the auto cursor) and
+   * the positional test fired early: the logger advanced, found nothing open
+   * ahead, wrapped to the front of the list and dropped the lifter into rehab
+   * with the earlier sets of the movement still unlogged.
+   */
+  const finishesMovement = (justLoggedIndex: number) =>
+    group.items.every((item, slot) => {
+      if (item.optional) return true;
+      const index = group.itemIndices[slot];
+      return (
+        index == null ||
+        index === justLoggedIndex ||
+        loggedItemIndices.has(index)
+      );
+    });
   const loggedBeforeSwap =
     activeLoggedSet?.movementId != null &&
     activeLoggedSet.movementId !== group.movementId;
-  const isWarmup = activeItem?.kind === "warmup";
-  const isRehab = isRehabItem(activeItem);
+  const isWarmup = activeItem?.kind === "warmup";  const isRehab = isRehabItem(activeItem);
   // How big is one tap of the ± weight stepper? Bar work moves in plate
   // pairs (2.5 kg); a dumbbell rack moves in 1 kg. Single home:
   // `lib/sessions/load-increment.ts`.
@@ -738,6 +803,7 @@ export function MovementFocusView({
             setError(result.error);
             return;
           }
+          setEditIntent(null);
           setManualPin({ key: groupKey, slot: cursor });
           router.refresh();
         })
@@ -811,7 +877,7 @@ export function MovementFocusView({
     }
     onSaved?.({
       itemIndex: activeItemIndex,
-      isLast: isLastSlot,
+      isLast: finishesMovement(activeItemIndex),
     });
     void addStrengthSet(fd)
       .then((result) => {
@@ -878,7 +944,7 @@ export function MovementFocusView({
       // — they are intentionally "no work".
       onSaved?.({
         itemIndex: activeItemIndex,
-        isLast: cursor >= totalSlots - 1,
+        isLast: finishesMovement(activeItemIndex),
       });
     } finally {
       setSkipPending(false);
@@ -957,13 +1023,25 @@ export function MovementFocusView({
    * "Update set" is not a mode indicator.
    */
   const isEditing =
-    isActiveLogged && !isActiveSkipped && !loggedBeforeSwap && !pendingSetSync;
+    isActiveLogged &&
+    !isActiveSkipped &&
+    !loggedBeforeSwap &&
+    !pendingSetSync &&
+    editIntent?.key === groupKey &&
+    editIntent.slot === cursor;
   const cancelEdit = () => {
-    // Hand control back to the auto cursor. The logged row is untouched —
-    // nothing was written, and the local draft is discarded on re-render.
+    // Drop the intent FIRST — clearing the pin alone hands the cursor back to
+    // `autoCursorForGroup`, which parks on the last slot once the movement is
+    // fully logged, so edit mode would immediately re-derive and Cancel would
+    // look dead.
+    setEditIntent(null);
     setManualPin(null);
     setError(null);
     setSkipMenuOpen(false);
+    // Nothing is left to do on a fully-logged movement, so hand back to the
+    // parent to move on rather than leaving the lifter parked on a set they
+    // just declined to change.
+    if (requiredSlotsAllLogged) onExitEdit?.();
   };
   const editedSummary = isEditing
     ? itemKind === "carry"
@@ -1132,7 +1210,10 @@ export function MovementFocusView({
         loggedItemIndices={loggedItemIndices}
         skippedItemIndices={skippedItemIndices}
         cursor={cursor}
-        onPickSlot={(i) => setManualPin({ key: groupKey, slot: i })}
+        onPickSlot={(i) => {
+          setManualPin({ key: groupKey, slot: i });
+          beginEditIfLogged(i);
+        }}
       />
 
       <div
