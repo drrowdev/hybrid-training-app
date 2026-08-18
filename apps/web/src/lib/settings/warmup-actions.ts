@@ -20,7 +20,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { isWellFormedScheme } from "@/lib/planner/warmups";
-import { programsWithOwnWarmupRamp } from "@/lib/planner/program-warmup-scheme";
+import { programsWithOwnWarmupRamp, activeProgramWithOwnWarmupRamp } from "@/lib/planner/program-warmup-scheme";
+import { getActiveBlock } from "@/lib/planner/queries";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 
 const WARMUP_SCHEME_SCHEMA = z.object({
@@ -89,21 +90,32 @@ export async function updateWarmupScheme(formData: FormData): Promise<void> {
     .eq("id", user.id);
   if (error) throw new Error(error.message);
 
-  // DC-K4 — record the override. A configured ladder displaces the published
-  // ramp of any program that prescribes its own, so the choice is audited as
-  // well as warned about in the editor. Best-effort by the same contract as
-  // every other recording path: a failed audit never blocks the save, and the
-  // canonical record of the choice is the `profiles.warmup_scheme` row itself.
+  // DC-K4 — record the override. The audit fires whenever a program that
+  // publishes its own ramp EXISTS, not only when one is running: a ladder set
+  // today displaces 5/3/1's ramp the moment a 5/3/1 block is created, and an
+  // audit that only fired for the active case would miss exactly that. The
+  // editor's warning is narrower on purpose (it describes what is happening
+  // now), so the row records which of the two situations applied.
+  //
+  // Best-effort by the same contract as every other recording path: a failed
+  // audit never blocks the save, and the canonical record of the choice is the
+  // `profiles.warmup_scheme` row itself.
   const displaced = programsWithOwnWarmupRamp();
   if (displaced.length > 0) {
+    const activeBlock = await getActiveBlock().catch(() => null);
+    const activeOwner = activeProgramWithOwnWarmupRamp(activeBlock?.programId);
     await recordOverrideEvent(supabase, {
       userId: user.id,
       eventType: "custom",
+      ...(activeBlock?.id ? { blockId: activeBlock.id } : {}),
       context: {
         kind: "warmup_ladder_override",
         scheme,
         skipsWarmups: scheme.setCount === 0,
         displacedPrograms: displaced.map((p) => p.id),
+        // Null ⇒ nothing is being displaced yet; the ladder will apply to the
+        // next program block that prescribes its own warm-up.
+        activeProgramDisplaced: activeOwner?.id ?? null,
       },
     });
   }

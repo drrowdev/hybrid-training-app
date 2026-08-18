@@ -11,6 +11,7 @@ import {
   type WarmupScheme,
 } from "@/lib/planner/warmups";
 import { WarmupSettings } from "../WarmupSettings";
+import { TRAINING_MAX_ANCHORED_WARMUP_SCHEME } from "@/lib/planner/program-warmup-scheme";
 
 vi.mock("@/lib/settings/warmup-actions", () => ({
   updateWarmupScheme: vi.fn(async () => ({ ok: true })),
@@ -65,8 +66,76 @@ describe("WarmupSettings preview", () => {
   });
 });
 
+describe("WarmupSettings — the program option is named, and defaults only when relevant", () => {
+  const ACTIVE_531 = {
+    id: "wendler-531",
+    name: "5/3/1",
+    scheme: TRAINING_MAX_ANCHORED_WARMUP_SCHEME,
+  };
+
+  it("names the option after the method it follows, not the mechanism", () => {
+    // "Follow the program" said nothing about WHICH warm-up you would get.
+    const html = renderToStaticMarkup(
+      <WarmupSettings initial={null} activeProgramWithOwnRamp={ACTIVE_531} />,
+    );
+    expect(html).toContain("5/3/1 Warmup");
+    expect(html).not.toContain("Follow the program");
+  });
+
+  it("selects the program option only when that program is actually running", () => {
+    // Nothing stored + 5/3/1 active ⇒ the 5/3/1 ramp is what you get.
+    const active = renderToStaticMarkup(
+      <WarmupSettings initial={null} activeProgramWithOwnRamp={ACTIVE_531} />,
+    );
+    expect(active).toMatch(/<option value="program"[^>]*selected/);
+
+    // Nothing stored + no such program ⇒ you are simply on the standard ramp,
+    // so naming 5/3/1 here would describe a method you are not running.
+    const inactive = renderToStaticMarkup(<WarmupSettings initial={null} />);
+    expect(inactive).toMatch(/<option value="standard"[^>]*selected/);
+    expect(inactive).not.toMatch(/<option value="program"[^>]*selected/);
+  });
+
+  it("keeps the option SELECTABLE even when no such program is running", () => {
+    // Hiding it would strand a lifter who set a custom ladder: they could not
+    // clear it back to automatic, and doing so after starting the program is
+    // too late — warm-up changes never rewrite a materialised block (ADR 0072).
+    const html = renderToStaticMarkup(
+      <WarmupSettings
+        initial={{ setCount: 2, percentLadder: [50, 75], repLadder: [5, 3] }}
+      />,
+    );
+    expect(html).toContain('value="program"');
+    expect(html).toContain("5/3/1 Warmup");
+  });
+
+  it("previews the program's actual ladder rather than an empty panel", () => {
+    const html = renderToStaticMarkup(
+      <WarmupSettings initial={null} activeProgramWithOwnRamp={ACTIVE_531} />,
+    );
+    // 5/3/1's fixed 40/50/60% of Training Max. TM-anchored, so there is no
+    // second "% of top set" number to show.
+    expect(html).toContain("40% TM × 5");
+    expect(html).toContain("50% TM × 5");
+    expect(html).toContain("60% TM × 3");
+    expect(html).not.toContain("% of top set");
+  });
+
+  it("previews the standard ladder when nothing is stored and no program is running", () => {
+    const html = renderToStaticMarkup(<WarmupSettings initial={null} />);
+    // The ramp actually in force: 40/60/80 of the top set.
+    expect(html).toContain("40% of top set = 34% TM");
+    expect(html).toContain("80% of top set = 68% TM");
+    expect(html).toContain('data-testid="warmup-preview-program-note"');
+  });
+});
+
 describe("WarmupSettings — DC-K4 override-and-warn", () => {
-  const OWNERS = [{ id: "wendler-531", name: "5/3/1" }];
+  const ACTIVE_531 = {
+    id: "wendler-531",
+    name: "5/3/1",
+    scheme: TRAINING_MAX_ANCHORED_WARMUP_SCHEME,
+  };
 
   it("warns which program's own warm-up a configured ladder replaces", () => {
     // DC-K4: overriding a principle-derived default must be surfaced, never
@@ -74,30 +143,30 @@ describe("WarmupSettings — DC-K4 override-and-warn", () => {
     const html = renderToStaticMarkup(
       <WarmupSettings
         initial={{ setCount: 2, percentLadder: [50, 75], repLadder: [5, 3] }}
-        programsWithOwnRamp={OWNERS}
+        activeProgramWithOwnRamp={ACTIVE_531}
       />,
     );
     expect(html).toContain('data-testid="warmup-program-override-warning"');
     expect(html).toContain("5/3/1");
-    expect(html).toContain("Follow the program");
+    expect(html).toContain("5/3/1 Warmup");
   });
 
   it("does not warn when the lifter is following the program", () => {
     const html = renderToStaticMarkup(
-      <WarmupSettings initial={null} programsWithOwnRamp={OWNERS} />,
+      <WarmupSettings initial={null} activeProgramWithOwnRamp={ACTIVE_531} />,
     );
     expect(html).not.toContain('data-testid="warmup-program-override-warning"');
   });
 
-  it('a cleared preference selects "Follow the program" and previews no single ladder', () => {
+  it("does not warn when no program with its own warm-up is running", () => {
+    // Nothing methodological is being displaced, so the warning would be noise
+    // — this is the complaint that prompted the rework.
     const html = renderToStaticMarkup(
-      <WarmupSettings initial={null} programsWithOwnRamp={OWNERS} />,
+      <WarmupSettings
+        initial={{ setCount: 2, percentLadder: [50, 75], repLadder: [5, 3] }}
+      />,
     );
-    expect(html).toContain("Each program uses its own warm-up");
-    expect(html).toContain("5/3/1");
-    // No ladder rungs — there is no one ladder to show in this mode.
-    expect(html).not.toContain('data-testid="warmup-preview-0"');
-    expect(html).not.toContain("% of top set");
+    expect(html).not.toContain('data-testid="warmup-program-override-warning"');
   });
 
   it('"skip" still reads as skipping, not as following the program', () => {
@@ -106,7 +175,7 @@ describe("WarmupSettings — DC-K4 override-and-warn", () => {
     const html = renderToStaticMarkup(
       <WarmupSettings
         initial={{ setCount: 0, percentLadder: [], repLadder: [] }}
-        programsWithOwnRamp={OWNERS}
+        activeProgramWithOwnRamp={ACTIVE_531}
       />,
     );
     expect(html).toContain("No warm-ups");
