@@ -88,7 +88,7 @@ export default async function SettingsPage() {
           href="/app/settings/profile"
           icon={<SettingsIcon name="profile" />}
           title="Training profile"
-          description="Name, experience, phase, training frequency."
+          description="Experience, strength standards, units."
           testId="settings-hub-profile"
         />
         <SettingsHubCard
