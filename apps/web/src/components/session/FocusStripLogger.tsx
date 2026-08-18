@@ -686,6 +686,7 @@ export function FocusStripLogger({
               suppressRestForItemIndex={(itemIndex) =>
                 circuitSuppressesRest(activeOriginal, activeCircuit, itemIndex)
               }
+              onExitEdit={() => advance()}
               focusStrip
               dockAccessory={
                 <button

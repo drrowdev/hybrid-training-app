@@ -127,6 +127,21 @@ const SETS: LoggedSet[] = [0, 1].map((i) => ({
   },
 }));
 
+/**
+ * The third rehab set, making that movement FULLY logged.
+ *
+ * This is the state that trapped a live session: with every slot logged the
+ * auto cursor parks on the last one, that slot is logged, and edit mode used to
+ * re-derive from position alone — so Cancel appeared to do nothing and the only
+ * way out was leaving the workout.
+ */
+const THIRD_REHAB_SET: LoggedSet = {
+  ...SETS[0]!,
+  id: "20000000-0000-4000-8000-000000000003",
+  set_index: 2,
+  prescription_item_index: 2,
+};
+
 /** Fixed so the fixture renders identically on every run (and in tests). */
 const SIX_DAYS_AGO = "2026-08-10T18:00:00.000Z";
 
@@ -145,10 +160,17 @@ export function LoggerPreview({ variant }: { variant: string }) {
   // `norehab` is the ordinary training day — the case where the old build
   // rendered no section navigation at all.
   const withRehab = variant !== "norehab";
+  // `rehabdone` leaves the rehab movement with nothing left to log — the state
+  // in which cancelling an edit had nowhere to put the cursor.
+  const rehabDone = variant === "rehabdone";
   const items = withRehab ? [...REHAB_ITEMS, ...WORK_ITEMS] : WORK_ITEMS;
   const prescription = { items } as unknown as Prescription;
-  const sets = withRehab ? SETS : [];
-  const logged: number[] = withRehab ? [0, 1] : [];
+  const sets = withRehab
+    ? rehabDone
+      ? [...SETS, THIRD_REHAB_SET]
+      : SETS
+    : [];
+  const logged: number[] = withRehab ? (rehabDone ? [0, 1, 2] : [0, 1]) : [];
 
   return (
     <CommandPaletteProvider
@@ -192,10 +214,13 @@ export function LoggerPreview({ variant }: { variant: string }) {
             skippedItemIndices={[]}
             loggedSetIdByItemIndex={
               withRehab
-                ? {
+                ? ({
                     0: "20000000-0000-4000-8000-000000000001",
                     1: "20000000-0000-4000-8000-000000000002",
-                  }
+                    ...(rehabDone
+                      ? { 2: "20000000-0000-4000-8000-000000000003" }
+                      : {}),
+                  } as Record<number, string>)
                 : {}
             }
             barbellKg={20}

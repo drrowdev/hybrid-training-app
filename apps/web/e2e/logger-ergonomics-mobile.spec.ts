@@ -311,6 +311,82 @@ test.describe("@mobile logger ergonomics", () => {
     }
   });
 
+  test("cancelling an edit on a fully-logged movement actually exits", async ({
+    page,
+  }) => {
+    // Reported twice from live sessions: Cancel and Update set both appeared
+    // completely dead, and the only escape was leaving the workout.
+    //
+    // Edit mode used to be derived from position alone — "the cursor is on a
+    // logged set". Once a movement is fully logged `autoCursorForGroup` parks
+    // on its LAST slot, which is logged, so clearing the pin re-derived edit
+    // mode instantly. Both buttons ran; the resulting state was identical.
+    await page.setViewportSize({ width: 402, height: 874 });
+    await page.goto(`${PREVIEW}?variant=rehabdone`);
+
+    const card = page.getByTestId("movement-focus-card");
+    await gotoMovement(page, /Seated Calf Raise/);
+
+    // Landing on a completed movement must NOT open edit mode by itself —
+    // that is how it "opened on its own" with no action taken.
+    await expect(card).toHaveAttribute("data-editing", "false");
+    await expect(page.getByTestId("movement-focus-edit-banner")).toHaveCount(0);
+
+    // Opening it is an explicit act.
+    await page.getByTestId("movement-dot-2").click();
+    await expect(card).toHaveAttribute("data-editing", "true");
+    await expect(page.getByTestId("movement-focus-edit-banner")).toBeVisible();
+
+    // ...and Cancel gets out of it, on a movement with nothing left to log.
+    await page.getByTestId("movement-focus-cancel-edit-dock").click();
+    await expect(card).toHaveAttribute("data-editing", "false");
+    await expect(page.getByTestId("movement-focus-edit-banner")).toHaveCount(0);
+    await expect(page.getByTestId("movement-navigator-open")).toBeVisible();
+  });
+
+  test("the dock covers the bottom edge so nothing shows underneath it", async ({
+    page,
+  }) => {
+    // On a notched phone the dock offset itself by the safe-area inset, leaving
+    // a ~34px strip of live page visible below it. What showed through was the
+    // in-flow "Finish session" bar, sitting directly under the thumb — one
+    // mis-tap from ending the session early.
+    await page.setViewportSize({ width: 402, height: 874 });
+    await page.goto(PREVIEW);
+    const dock = page.getByTestId("session-dock");
+    await expect(dock).toBeVisible();
+    // The dock claims the bottom region in a mount effect (it zeroes
+    // `--cp-bottomnav-h` and adds this class together), so wait for that rather
+    // than measuring a pre-hydration frame.
+    await expect(page.locator("html")).toHaveClass(/cp-session-live/);
+
+    const gap = await page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>(
+        '[data-testid="session-dock"]',
+      );
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return Math.round(window.innerHeight - r.bottom);
+    });
+    expect(gap, "dock reaches the bottom edge").toBe(0);
+
+    // And the finish control is never under the dock's footprint.
+    const finishClear = await page.evaluate(() => {
+      const dockEl = document.querySelector<HTMLElement>(
+        '[data-testid="session-dock"]',
+      );
+      const finish = document.querySelector<HTMLElement>(
+        '[data-testid="finish-stickybar"]',
+      );
+      if (!dockEl || !finish) return "no-finish-bar";
+      const d = dockEl.getBoundingClientRect();
+      const f = finish.getBoundingClientRect();
+      const overlaps = !(f.bottom <= d.top || f.top >= d.bottom);
+      return overlaps ? "overlaps" : "clear";
+    });
+    expect(finishClear).not.toBe("overlaps");
+  });
+
   test("editing a logged set is an explicit, cancellable mode", async ({ page }) => {
     await page.setViewportSize({ width: 402, height: 874 });
     await page.goto(PREVIEW);
