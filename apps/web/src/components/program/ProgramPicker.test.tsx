@@ -25,6 +25,7 @@ import {
   type PickerProgram,
   type PickerTbTemplate,
 } from "./ProgramPicker";
+import { hybridProgramEngine } from "@/lib/programs/hybrid/engine";
 
 const OPERATOR: PickerTbTemplate = {
   id: "operator",
@@ -429,6 +430,40 @@ describe("ProgramPicker rendering", () => {
       />,
     );
     expect(html).not.toContain('data-testid="wendler-assistance-volume"');
+  });
+
+  it("surfaces every Hybrid setup field in the loadout step, including accessory volume", () => {
+    // Hybrid has no template list, so its Loadout step renders the engine's
+    // own `describeSetup()` fields generically. This is the guard against the
+    // exact failure this test file's subject had: an engine-side lever that
+    // exists, validates and materialises, but that no screen ever offers.
+    const hybrid: PickerProgram = {
+      id: "hybrid",
+      name: "Hybrid",
+      family: "hybrid",
+      summary: "Concurrent strength + cardio.",
+      enabled: true,
+      sessionsPerWeek: 4,
+      fields: hybridProgramEngine.describeSetup().fields,
+    };
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={[hybrid]}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[OPERATOR]}
+        initialProgramId="hybrid"
+      />,
+    );
+    expect(html).toContain("Accessory volume");
+    for (const label of [
+      "Minimal — main lifts and essentials only",
+      "Balanced (recommended)",
+      "More — extra muscle-building work",
+    ]) {
+      expect(html).toContain(label);
+    }
+    // Medium is pre-selected from the schema default.
+    expect(html).toMatch(/<option[^>]*value="medium"[^>]*selected/);
   });
 
   it("starts with no program pre-selected (step 1, no Deploy button)", () => {

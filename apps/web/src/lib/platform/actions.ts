@@ -58,6 +58,7 @@ import {
   resolveAssistanceVolume,
   type AssistanceVolume,
 } from "./assistance-volume";
+import { resolveAccessoryVolumeLevel } from "@/lib/planner/accessory-volume";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import type { MovementResolver } from "./adapter";
 import {
@@ -2069,6 +2070,11 @@ async function createNativeProgramInstance(
       // Hybrid stores an explicit boolean so the per-block value wins over the
       // profile default at materialisation; default OFF when the toggle is unset.
       allows_two_a_days: twoADay ?? false,
+      // ADR 0024 — per-block accessory volume (wizard Loadout step). The
+      // instance is what materialisation reads, but the column is the one the
+      // off-plan quick-generate fallback and any block-level query look at, so
+      // keep the row honest rather than leaving it on the 'medium' default.
+      accessory_volume: resolveAccessoryVolumeLevel(instance.accessoryVolume),
       // Per-block antagonist-superset choice (migration 0111, wizard Schedule
       // step). Applies to ALL programs; default OFF when the toggle is unset so
       // the per-block value wins over the profile pref at read time.
