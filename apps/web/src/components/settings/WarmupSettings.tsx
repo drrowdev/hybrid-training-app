@@ -31,7 +31,13 @@ import { useAutoSave } from "@/lib/settings/use-auto-save";
 import { AutoSaveStatus } from "./AutoSaveStatus";
 
 export type WarmupSettingsProps = {
-  initial: WarmupScheme;
+  /** The stored ladder, or `null` when the lifter has expressed no preference. */
+  initial: WarmupScheme | null;
+  /**
+   * Programs whose OWN published ramp a configured ladder displaces, resolved
+   * by the server from the program registry. Drives the DC-K4 warning.
+   */
+  programsWithOwnRamp?: ReadonlyArray<{ id: string; name: string }>;
 };
 
 const PREVIEW_TOP_PERCENT = 85;
@@ -49,15 +55,19 @@ function normaliseLadders(scheme: WarmupScheme, nextSetCount: number): WarmupSch
   return { setCount: nextSetCount, percentLadder: pct, repLadder: reps };
 }
 
-export function WarmupSettings({ initial }: WarmupSettingsProps) {
+export function WarmupSettings({
+  initial,
+  programsWithOwnRamp = [],
+}: WarmupSettingsProps) {
   const initialPreset = presetKeyForScheme(initial);
   const [preset, setPreset] = useState<WarmupPresetKey>(initialPreset);
 
   // Auto-save closure: validate well-formedness here so a malformed
   // intermediate state (e.g. percent field cleared mid-edit) never
-  // hits the server action's stricter schema parser.
-  const save = useCallback(async (next: WarmupScheme) => {
-    if (!isWellFormedScheme(next)) {
+  // hits the server action's stricter schema parser. `null` is a valid
+  // value meaning "follow the program" and skips that check.
+  const save = useCallback(async (next: WarmupScheme | null) => {
+    if (next !== null && !isWellFormedScheme(next)) {
       // Surface the malformed state as a save error so the user sees
       // the inline status chip — keeps parity with the previous
       // submit-time validation message.
@@ -74,7 +84,7 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
     status,
     retry,
     lastError,
-  } = useAutoSave<WarmupScheme>({
+  } = useAutoSave<WarmupScheme | null>({
     initial,
     save,
     debounceMs: 500,
@@ -82,10 +92,26 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
 
   const onPresetChange = (next: WarmupPresetKey) => {
     setPreset(next);
+    if (next === "program") {
+      // Clear the stored preference so each program's own ramp applies again.
+      setSchemeAndSave(null);
+      return;
+    }
     if (next !== "custom") {
       // Cloning the arrays so subsequent edits in Custom mode don't
       // mutate the canonical preset.
       const p = presetByKey(next).scheme;
+      if (!p) return;
+      setSchemeAndSave({
+        setCount: p.setCount,
+        percentLadder: [...p.percentLadder],
+        repLadder: [...p.repLadder],
+      });
+      return;
+    }
+    // Entering Custom from "Follow the program" needs a ladder to edit.
+    if (scheme == null) {
+      const p = presetByKey("custom").scheme!;
       setSchemeAndSave({
         setCount: p.setCount,
         percentLadder: [...p.percentLadder],
@@ -95,18 +121,21 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
   };
 
   const setSetCount = (n: number) => {
+    if (scheme == null) return;
     setSchemeAndSave(
       normaliseLadders(scheme, Math.max(1, Math.min(MAX_SET_COUNT, n))),
     );
   };
 
   const setPct = (i: number, v: string) => {
+    if (scheme == null) return;
     const next = [...scheme.percentLadder];
     next[i] = Number(v);
     setSchemeAndSave({ ...scheme, percentLadder: next });
   };
 
   const setReps = (i: number, v: string) => {
+    if (scheme == null) return;
     const next = [...scheme.repLadder];
     next[i] = Number(v);
     setSchemeAndSave({ ...scheme, repLadder: next });
@@ -120,11 +149,15 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
   // in `resolveWarmupScheme` is a read-boundary concern and must not
   // reach this render.
   const preview = useMemo(
-    () => generateWarmupItems("preview", PREVIEW_TOP_PERCENT, scheme),
+    () =>
+      scheme == null
+        ? []
+        : generateWarmupItems("preview", PREVIEW_TOP_PERCENT, scheme),
     [scheme],
   );
 
   const customEditable = preset === "custom";
+  const followsProgram = scheme == null;
 
   return (
     <div
@@ -168,7 +201,32 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
         </select>
       </label>
 
-      {customEditable && scheme.setCount > 0 && (
+      {/* DC-K4 — override-and-warn, never silent overrule. Choosing a ladder
+          displaces the published warm-up of any program that prescribes its
+          own, so say which, and how to undo it. */}
+      {!followsProgram && programsWithOwnRamp.length > 0 && (
+        <p
+          role="note"
+          data-testid="warmup-program-override-warning"
+          style={{
+            margin: 0,
+            fontSize: 12,
+            lineHeight: 1.5,
+            color: "var(--cp-text-muted)",
+            border: "1px solid var(--cp-border)",
+            borderRadius: 10,
+            padding: "10px 12px",
+            background: "var(--cp-surface)",
+          }}
+        >
+          Your ladder replaces the warm-up{" "}
+          {programsWithOwnRamp.map((p) => p.name).join(" and ")} prescribes as
+          part of {programsWithOwnRamp.length > 1 ? "their" : "its"} method.
+          Pick <strong>Follow the program</strong> to hand it back.
+        </p>
+      )}
+
+      {customEditable && scheme != null && scheme.setCount > 0 && (
         <fieldset
           style={{
             display: "grid",
@@ -273,9 +331,19 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
             color: "var(--cp-text-muted)",
           }}
         >
-          Preview against an {PREVIEW_TOP_PERCENT}% TM top set
+          {followsProgram
+            ? "Each program uses its own warm-up"
+            : `Preview against an ${PREVIEW_TOP_PERCENT}% TM top set`}
         </span>
-        {preview.length === 0 ? (
+        {followsProgram ? (
+          <span style={{ fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
+            {programsWithOwnRamp.length > 0
+              ? `${programsWithOwnRamp
+                  .map((p) => p.name)
+                  .join(" and ")} warms up the way its own method prescribes. Every other program uses the standard ramp.`
+              : "Every program uses the standard ramp."}
+          </span>
+        ) : preview.length === 0 ? (
           <span style={{ fontSize: 13, color: "var(--cp-text-muted)", fontStyle: "italic" }}>
             No warm-ups — your sessions start at the first working set.
           </span>
@@ -291,7 +359,11 @@ export function WarmupSettings({ initial }: WarmupSettingsProps) {
                   color: "var(--cp-text)",
                 }}
               >
-                • Warmup {i + 1}: {it.percentTm}% TM × {it.reps}
+                {/* Show BOTH number spaces. The ladder is a % of the top set,
+                    but the prescription renders in % TM, and seeing only the
+                    latter (40 → "34% TM") reads like the ladder was ignored. */}
+                • Warmup {i + 1}: {scheme?.percentLadder[i]}% of top set ={" "}
+                {it.percentTm}% TM × {it.reps}
               </li>
             ))}
           </ul>

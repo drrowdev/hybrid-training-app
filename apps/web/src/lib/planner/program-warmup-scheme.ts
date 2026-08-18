@@ -89,6 +89,47 @@ export function programOwnsWarmupScheme(
   return programId != null && programId in PROGRAM_WARMUP_SCHEMES;
 }
 
+/** A program whose ramp is part of its published method, not the app's default. */
+export type ProgramWarmupOwner = {
+  id: string;
+  name: string;
+  scheme: WarmupScheme;
+};
+
+/**
+ * The programs whose OWN ramp an explicit user ladder displaces.
+ *
+ * DERIVED, not listed: a program qualifies when its registered default differs
+ * from the shared app ramp. Registering a program that simply inherits the
+ * shared routine (Tactical Barbell, Zulu/HT, HYROX, Green) therefore does NOT
+ * add it here — nothing methodological is being overruled in that case.
+ *
+ * Drives the DC-K4 warning on the warm-up settings screen: choosing a ladder is
+ * an override of a principle-derived default, so the lifter is told which
+ * method's ramp it replaces rather than having it changed silently.
+ */
+export function programsWithOwnWarmupRamp(): ProgramWarmupOwner[] {
+  const named: Record<string, string> = {
+    [wendler531Engine.meta.id]: wendler531Engine.meta.name,
+    [tacticalBarbellEngine.meta.id]: tacticalBarbellEngine.meta.name,
+    [zuluHtEngine.meta.id]: zuluHtEngine.meta.name,
+    [hyroxEngine.meta.id]: hyroxEngine.meta.name,
+    [greenProtocolEngine.meta.id]: greenProtocolEngine.meta.name,
+  };
+  return Object.entries(PROGRAM_WARMUP_SCHEMES)
+    .filter(([, scheme]) => !schemesEqual(scheme, GLOBAL_ANCHORED_WARMUP_SCHEME))
+    .map(([id, scheme]) => ({ id, name: named[id] ?? id, scheme }));
+}
+
+function schemesEqual(a: WarmupScheme, b: WarmupScheme): boolean {
+  return (
+    a.setCount === b.setCount &&
+    a.anchor === b.anchor &&
+    a.percentLadder.every((v, i) => v === b.percentLadder[i]) &&
+    a.repLadder.every((v, i) => v === b.repLadder[i])
+  );
+}
+
 /**
  * Pull the owning block's program id out of a `planned_sessions` row selected
  * with a `training_blocks!inner(program_id)` embed. PostgREST returns the embed
