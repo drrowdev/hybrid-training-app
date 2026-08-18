@@ -192,41 +192,8 @@ export function removeLink(
 }
 
 /**
- * Move a member up or down within its link.
- *
- * Order is not cosmetic: a member's index becomes its `circuit.position`, which
- * drives the logger's rotation order AND where the rest timer fires — rest is
- * suppressed for every member except the last in a round. So the lifter has to
- * be able to say which lift closes the round.
- *
- * Returns the input unchanged when the move would fall off either end, so a
- * disabled control and a stray call behave identically.
+ * Toggle a movement in the pending selection, respecting the member cap.
  */
-export function moveMember(
-  links: readonly SessionLink[],
-  linkId: string,
-  fromIndex: number,
-  direction: -1 | 1,
-): SessionLink[] {
-  return links.map((link) => {
-    if (link.id !== linkId) return link;
-    const toIndex = fromIndex + direction;
-    if (
-      fromIndex < 0 ||
-      fromIndex >= link.members.length ||
-      toIndex < 0 ||
-      toIndex >= link.members.length
-    ) {
-      return link;
-    }
-    const members = [...link.members];
-    const [moved] = members.splice(fromIndex, 1);
-    members.splice(toIndex, 0, moved!);
-    return { ...link, members };
-  });
-}
-
-/** Toggle a movement in the pending selection, respecting the member cap. */
 export function toggleSelection(
   selected: readonly string[],
   key: string,
@@ -382,3 +349,147 @@ export function linkHasMainLift(
 ): boolean {
   return linksIncludeMainLift([link], movements);
 }
+
+/**
+ * One thing the lifter picked, as they picked it.
+ *
+ * A link's `members` are canonical SLOTS because that is what the engine
+ * resolves and what `circuit.position` indexes. But the lifter chose STATIONS:
+ * "Back Extension + AB Triad" is two picks, not four. Rendering members
+ * directly is why a two-pick superset displayed as A1–A4 and read as a giant
+ * set. Stations are the display unit; members stay the stored unit.
+ */
+export interface LinkStation {
+  /** Row identity — a group row's synthetic key, or the slot itself. */
+  key: string;
+  label: string;
+  /** Canonical slots this station contributes, in stored order. */
+  slots: string[];
+  /** Index of this station's first slot within `link.members`. */
+  memberOffset: number;
+}
+
+/** The row that owns a canonical slot, if any of the offered rows do. */
+function ownerOf(
+  slot: string,
+  movements: readonly LinkableMovement[],
+): LinkableMovement | undefined {
+  return movements.find((m) => slotsOf(m).includes(slot));
+}
+
+/**
+ * Collapse a link's members into the stations the lifter actually chose.
+ *
+ * Consecutive members belonging to the same row fold into one station. They are
+ * only folded when CONTIGUOUS: if a reorder ever split a group apart, showing
+ * it as one station would misreport the order the engine will run.
+ */
+export function linkStations(
+  link: SessionLink,
+  movements: readonly LinkableMovement[],
+): LinkStation[] {
+  const out: LinkStation[] = [];
+  link.members.forEach((member, index) => {
+    const owner = ownerOf(member, movements);
+    const key = owner?.key ?? member;
+    const previous = out[out.length - 1];
+    if (previous && previous.key === key) {
+      previous.slots.push(member);
+      return;
+    }
+    out.push({
+      key,
+      label: owner?.label ?? member,
+      slots: [member],
+      memberOffset: index,
+    });
+  });
+  return out;
+}
+
+/**
+ * Per-slot link membership, for annotating the program-slot rows.
+ *
+ * The rows are the lifter's mental model of the session, so the link has to be
+ * visible there — a panel underneath makes two linked lifts look like two
+ * unrelated entries. Keyed by canonical slot because that is what a row is
+ * keyed by.
+ */
+export interface SlotLinkBadge {
+  linkId: string;
+  linkName: string;
+  /** 1-based station position — the "A1" / "A2" the lifter sees. */
+  station: number;
+  stationCount: number;
+  /** First slot of its station: where the station's label/controls belong. */
+  isStationStart: boolean;
+  /** Last slot of the LAST station — the one rest follows. */
+  isLinkEnd: boolean;
+  hasMainLift: boolean;
+}
+
+export function slotLinkBadges(
+  links: readonly SessionLink[],
+  movements: readonly LinkableMovement[],
+): Map<string, SlotLinkBadge> {
+  const out = new Map<string, SlotLinkBadge>();
+  for (const link of links) {
+    const stations = linkStations(link, movements);
+    const hasMainLift = linkHasMainLift(link, movements);
+    const lastMember = link.members[link.members.length - 1];
+    stations.forEach((station, stationIndex) => {
+      station.slots.forEach((slot, slotIndex) => {
+        out.set(slot, {
+          linkId: link.id,
+          linkName: link.name,
+          station: stationIndex + 1,
+          stationCount: stations.length,
+          isStationStart: slotIndex === 0,
+          isLinkEnd: slot === lastMember,
+          hasMainLift,
+        });
+      });
+    });
+  }
+  return out;
+}
+
+/**
+ * Move a whole station within its link.
+ *
+ * Order is not cosmetic: a member's index becomes its `circuit.position`, which
+ * drives the logger's rotation order AND where the rest timer fires — rest is
+ * suppressed for every member except the last in a round. So the lifter has to
+ * be able to say which lift closes the round.
+ *
+ * Stations move as a block. Shifting a single slot tore a group apart: nudging
+ * the AB Triad down once would leave Back Extension sandwiched between two of
+ * its movements. Returns the input unchanged when the move falls off an end, so
+ * a disabled control and a stray call behave identically.
+ */
+export function moveStation(
+  links: readonly SessionLink[],
+  linkId: string,
+  stationIndex: number,
+  direction: -1 | 1,
+  movements: readonly LinkableMovement[],
+): SessionLink[] {
+  return links.map((link) => {
+    if (link.id !== linkId) return link;
+    const stations = linkStations(link, movements);
+    const target = stationIndex + direction;
+    if (
+      stationIndex < 0 ||
+      stationIndex >= stations.length ||
+      target < 0 ||
+      target >= stations.length
+    ) {
+      return link;
+    }
+    const reordered = [...stations];
+    const [moved] = reordered.splice(stationIndex, 1);
+    reordered.splice(target, 0, moved!);
+    return { ...link, members: reordered.flatMap((s) => s.slots) };
+  });
+}
+

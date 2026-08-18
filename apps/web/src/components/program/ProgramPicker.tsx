@@ -48,6 +48,8 @@ import { SessionLinkEditor, type LinkableMovement } from "./SessionLinkEditor";
 import {
   activationLinkableMovements,
   pruneMovementFromLinks,
+  slotLinkBadges,
+  type SlotLinkBadge,
 } from "./session-link-editing";
 import {
   SESSION_LINKS_VERSION,
@@ -171,6 +173,61 @@ export interface PickerActivationPhase {
       kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
     }>;
   }>;
+}
+
+/**
+ * Row class for a program-slot row that belongs to a session link.
+ *
+ * The accent rail is drawn per row rather than by wrapping the members in a
+ * container: the rows are siblings in one grid, and wrapping them would break
+ * the shared column tracks that keep PROGRAM SLOT / EXERCISE aligned.
+ */
+function rowLinkClass(
+  styles: Record<string, string>,
+  badge: SlotLinkBadge | undefined,
+): string {
+  const base = styles.activationMovementRow ?? "";
+  if (!badge) return base;
+  return [
+    base,
+    styles.linkedRow,
+    badge.hasMainLift ? styles.linkedRowWarn : "",
+    badge.station === 1 && badge.isStationStart ? styles.linkedRowStart : "",
+    badge.isLinkEnd ? styles.linkedRowEnd : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * "SUPERSET A1", on the row it applies to.
+ *
+ * Only the first row of a station is labelled. The AB Triad's three slots are
+ * ONE pick, so numbering them A2/A3/A4 is exactly what made a two-station
+ * superset read as a giant set.
+ */
+function LinkBadge({
+  styles,
+  badge,
+}: {
+  styles: Record<string, string>;
+  badge: SlotLinkBadge | undefined;
+}) {
+  if (!badge) return null;
+  if (!badge.isStationStart) {
+    return <span className={styles.linkContinuation}>{"\u2514 same station"}</span>;
+  }
+  return (
+    <span
+      className={[styles.linkBadge, badge.hasMainLift ? styles.linkBadgeWarn : ""]
+        .filter(Boolean)
+        .join(" ")}
+      data-testid={`row-link-badge-${badge.linkId}-${badge.station}`}
+    >
+      <code>A{badge.station}</code>
+      {badge.linkName}
+    </span>
+  );
 }
 
 function sessionSeriesFor(template: PickerTbTemplate): NonNullable<
@@ -3921,7 +3978,26 @@ export function ProgramPicker({
                         </div>
                         {session.type === "strength" ? (
                           <div className={styles.activationMovements}>
-                            {session.movements.map((slot) => {
+                            {(() => {
+                            // Link membership, computed once per session so
+                            // both row renderers (the AB Triad's single row and
+                            // the ordinary slots) can show it. The rows are
+                            // where the lifter reads the session, so that is
+                            // where a superset has to be visible — describing
+                            // it only in a panel underneath left two linked
+                            // lifts looking like unrelated entries.
+                            const linkBadges = slotLinkBadges(
+                              sessionLinks[session.key] ?? [],
+                              activationLinkableMovements({
+                                slots: session.movements,
+                                selected: draft.movements,
+                                labelOf: customMovementLabel,
+                                builtinCircuitSources: AB_TRIAD_SOURCES,
+                                builtinCircuitLabel: AB_TRIAD_LABEL,
+                                builtinCircuitKey: AB_TRIAD_GROUP_KEY,
+                              }),
+                            );
+                            return session.movements.map((slot) => {
                               const hasCompleteAbTriad =
                                 AB_TRIAD_SOURCES.every((source) =>
                                   session.movements.some(
@@ -3978,10 +4054,19 @@ export function ProgramPicker({
                                 return (
                                   <div
                                     key="ab-triad"
-                                    className={styles.activationMovementRow}
+                                    className={rowLinkClass(
+                                      styles,
+                                      linkBadges.get(AB_TRIAD_SOURCES[0]!),
+                                    )}
                                     data-testid={`activation-movement-${session.key}-ab-triad`}
                                   >
                                     <span className={styles.sourceSlot}>
+                                      <LinkBadge
+                                        styles={styles}
+                                        badge={linkBadges.get(
+                                          AB_TRIAD_SOURCES[0]!,
+                                        )}
+                                      />
                                       <small>Program slot</small>
                                       <b>AB Triad</b>
                                     </span>
@@ -4099,10 +4184,17 @@ export function ProgramPicker({
                               return (
                                 <div
                                   key={slot.sourceMovement}
-                                  className={styles.activationMovementRow}
+                                  className={rowLinkClass(
+                                    styles,
+                                    linkBadges.get(slot.sourceMovement),
+                                  )}
                                   data-testid={`activation-movement-${session.key}-${slot.sourceMovement}`}
                                 >
                                   <span className={styles.sourceSlot}>
+                                    <LinkBadge
+                                      styles={styles}
+                                      badge={linkBadges.get(slot.sourceMovement)}
+                                    />
                                     <small>Program slot</small>
                                     <b>
                                       {movementLabel(
@@ -4174,7 +4266,8 @@ export function ProgramPicker({
                                   </div>
                                 </div>
                               );
-                            })}
+                            });
+                            })()}
                             {Object.values(draft.movements).every(
                               (movement) => movement == null,
                             ) ? (
@@ -4520,10 +4613,37 @@ export function ProgramPicker({
                           <small>{series.label}</small>
                         </header>
                         <div className={styles.seriesExercises}>
-                          {(customSessionMovements[series.key] ?? []).map(
-                            (movementKey) => (
-                              <div key={movementKey}>
+                          {(() => {
+                            // Same rationale as the Activation rows: the link
+                            // is drawn where the lifter reads the session.
+                            const linkBadges = slotLinkBadges(
+                              sessionLinks[series.key] ?? [],
+                              linkableMovementsFor(
+                                customSessionMovements[series.key] ?? [],
+                                series.supplementalMovements ?? [],
+                              ),
+                            );
+                            return (customSessionMovements[series.key] ?? []).map(
+                            (movementKey) => {
+                              const badge = linkBadges.get(movementKey);
+                              return (
+                              <div
+                                key={movementKey}
+                                className={
+                                  badge
+                                    ? [
+                                        styles.linkedRow,
+                                        badge.hasMainLift
+                                          ? styles.linkedRowWarn
+                                          : "",
+                                      ]
+                                        .filter(Boolean)
+                                        .join(" ")
+                                    : undefined
+                                }
+                              >
                                 <span>
+                                  <LinkBadge styles={styles} badge={badge} />
                                   <b>{customMovementLabel(movementKey)}</b>
                                   <small>
                                     {catalogMovementMeta[movementKey]
@@ -4551,8 +4671,10 @@ export function ProgramPicker({
                                   Remove
                                 </button>
                               </div>
-                            ),
-                          )}
+                              );
+                            },
+                          );
+                          })()}
                         </div>
                         <details className={styles.addExercise}>
                           <summary>+ Add exercise</summary>

@@ -29,8 +29,9 @@ import {
   addLink,
   canCreateLink,
   linkHasMainLift,
+  linkStations,
   linksIncludeMainLift,
-  moveMember,
+  moveStation,
   removeLink,
   selectableMovements,
   selectedStations,
@@ -92,9 +93,10 @@ export function SessionLinkEditor({
             const accent = hasMain
               ? "var(--warn, #c99a5b)"
               : "var(--accent, #8fb39b)";
-            const lastLabel =
-              byKey.get(link.members[link.members.length - 1]!) ??
-              link.members[link.members.length - 1]!;
+            const stations = linkStations(link, movements);
+            // Rest follows the last STATION, which for a group is the whole
+            // group — "rest after AB Triad", not "rest after Toes-to-Bar".
+            const lastLabel = stations[stations.length - 1]?.label ?? "";
             return (
               <div
                 key={link.id}
@@ -139,13 +141,21 @@ export function SessionLinkEditor({
                     Unlink
                   </button>
                 </div>
-                {link.members.map((member, index) => {
-                  const label = byKey.get(member) ?? member;
+                {stations.map((station, index) => {
                   const isFirst = index === 0;
-                  const isLast = index === link.members.length - 1;
+                  const isLast = index === stations.length - 1;
+                  // A group station keeps its members visible as a sub-line:
+                  // the lifter should still see what the AB Triad contains,
+                  // just not mistake it for three separate picks.
+                  const contents =
+                    station.slots.length > 1
+                      ? station.slots
+                          .map((slot) => byKey.get(slot) ?? slot)
+                          .join(" \u2192 ")
+                      : null;
                   return (
                     <div
-                      key={member}
+                      key={station.key}
                       data-testid={`link-member-${link.id}-${index}`}
                       style={{
                         display: "flex",
@@ -170,15 +180,30 @@ export function SessionLinkEditor({
                       <span
                         style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}
                       >
-                        {label}
+                        {station.label}
+                        {contents && (
+                          <em
+                            style={{
+                              display: "block",
+                              fontSize: 10,
+                              fontStyle: "normal",
+                              color: "var(--muted, #79836f)",
+                            }}
+                          >
+                            {contents}
+                          </em>
+                        )}
                       </span>
                       <button
                         type="button"
-                        aria-label={`Move ${label} earlier`}
+                        aria-label={`Move ${station.label} earlier`}
                         data-testid={`link-move-up-${link.id}-${index}`}
                         disabled={isFirst}
                         onClick={() =>
-                          onChange(seriesKey, moveMember(links, link.id, index, -1))
+                          onChange(
+                            seriesKey,
+                            moveStation(links, link.id, index, -1, movements),
+                          )
                         }
                         style={moveButtonStyle(isFirst)}
                       >
@@ -186,11 +211,14 @@ export function SessionLinkEditor({
                       </button>
                       <button
                         type="button"
-                        aria-label={`Move ${label} later`}
+                        aria-label={`Move ${station.label} later`}
                         data-testid={`link-move-down-${link.id}-${index}`}
                         disabled={isLast}
                         onClick={() =>
-                          onChange(seriesKey, moveMember(links, link.id, index, 1))
+                          onChange(
+                            seriesKey,
+                            moveStation(links, link.id, index, 1, movements),
+                          )
                         }
                         style={moveButtonStyle(isLast)}
                       >
