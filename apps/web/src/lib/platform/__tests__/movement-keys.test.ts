@@ -48,7 +48,14 @@ describe("movement-key mapping", () => {
     expect(STATIC_ENGINE_MOVEMENTS.pullup?.slug).toBe("pull-up-overhand");
     expect(STATIC_ENGINE_MOVEMENTS["reverse-hyper"]?.slug).toBe("reverse-hyper");
     expect(engineKeysForSlug("push-press")).toEqual(["push-press"]);
-    expect(engineKeysForSlug("block-pull-deadlift")).toEqual(["rack-pull"]);
+    expect(engineKeysForSlug("rack-pull")).toEqual(["rack-pull"]);
+    // Rack pull and block pull are separate catalog movements (migration 0132).
+    // Block Pull Deadlift owns no engine key of its own, so it falls back to the
+    // broad deadlift role — a rack-pull 1RM can no longer re-anchor the lifter's
+    // Deadlift, and a genuine block-pull 1RM is no longer read as a rack pull.
+    expect(engineKeysForSlug("block-pull-deadlift")).toEqual(["deadlift"]);
+    expect(roleForSlug("block-pull-deadlift")).toBe("deadlift");
+    expect(roleForSlug("rack-pull")).toBeUndefined();
     expect(engineKeysForSlug("push-up")).toEqual(
       expect.arrayContaining(["pushup", "plyo-pushup"]),
     );

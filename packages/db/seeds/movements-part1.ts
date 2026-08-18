@@ -137,6 +137,11 @@ const HINGE: NewMovement[] = [
   hinge("trap-bar-deadlift", "Trap Bar Deadlift", { equipment: "trap-bar", primaryMuscles: ["quads", "glutes", "hamstrings", "lower_back"] }),
   hinge("deficit-deadlift", "Deficit Deadlift", { equipment: "barbell", metadata: { emphasis: "off-floor-strength", eccentric_cost: "high" }, experienceMin: 2 }),
   hinge("block-pull-deadlift", "Block Pull Deadlift", { equipment: "barbell-blocks", metadata: { emphasis: "lockout-strength" }, experienceMin: 2 }),
+  // Distinct from `block-pull-deadlift`: the bar rests on rack pins (usually at
+  // or above the knee), not on blocks, so the range and the loads differ. They
+  // used to share one catalog row, which let a rack-pull 1RM re-anchor the
+  // lifter's Deadlift role — see migration 0132.
+  hinge("rack-pull", "Rack Pull", { equipment: "barbell-rack", metadata: { emphasis: "lockout-strength", rom_profile: "partial" }, experienceMin: 2 }),
   hinge("paused-deadlift", "Paused Deadlift", { equipment: "barbell", metadata: { tempo: "off-floor-pause-2s" }, experienceMin: 2 }),
   hinge("rdl-bb", "Romanian Deadlift (BB)", { equipment: "barbell", primaryMuscles: ["hamstrings", "glutes"], secondaryMuscles: ["lower_back", "lats"], metadata: { eccentric_cost: "high" } }),
   hinge("rdl-db", "Romanian Deadlift (DB)", { equipment: "dumbbells", primaryMuscles: ["hamstrings", "glutes"], secondaryMuscles: ["lats", "forearms", "traps", "lower_back"], axialLoad: "moderate" }),

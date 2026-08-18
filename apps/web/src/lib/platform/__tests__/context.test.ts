@@ -169,4 +169,74 @@ describe("buildPlatformContext", () => {
     });
     expect(bundle.ctx.oneRepMaxes["catalog:no-max"]).toBeUndefined();
   });
+
+  it("keeps rack pull and block pull deadlift on separate anchors", async () => {
+    // Regression: the two used to share one catalog row, so a Rack Pull 1RM was
+    // stored against Block Pull Deadlift — a Deadlift-role candidate — and
+    // silently re-anchored the lifter's Deadlift. Migration 0132 split them.
+    const from = vi.fn((table: string) => {
+      if (table === "profiles") {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: { warmup_scheme: null }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === "training_maxes") {
+        return {
+          select: () => ({
+            eq: async () => ({
+              data: [
+                {
+                  one_rm_kg: 200,
+                  movement: {
+                    id: "conventional-id",
+                    slug: "conventional-deadlift",
+                    display_name: "Conventional Deadlift",
+                  },
+                },
+                {
+                  one_rm_kg: 260,
+                  movement: {
+                    id: "rack-pull-id",
+                    slug: "rack-pull",
+                    display_name: "Rack Pull",
+                  },
+                },
+                {
+                  one_rm_kg: 230,
+                  movement: {
+                    id: "block-pull-id",
+                    slug: "block-pull-deadlift",
+                    display_name: "Block Pull Deadlift",
+                  },
+                },
+              ],
+              error: null,
+            }),
+          }),
+        };
+      }
+      return {
+        select: () => ({
+          is: () => ({ in: async () => ({ data: [], error: null }) }),
+        }),
+      };
+    });
+
+    const bundle = await buildPlatformContext({ from } as never, "user-1", {});
+
+    expect(bundle.ctx.oneRepMaxes["rack-pull"]).toBe(260);
+    expect(bundle.ctx.oneRepMaxes.deadlift).toBe(200);
+    expect(bundle.resolveMovement("deadlift")).toMatchObject({
+      movementId: "conventional-id",
+      displayName: "Deadlift",
+    });
+    expect(bundle.resolveMovement("rack-pull")).toMatchObject({
+      movementId: "rack-pull-id",
+      displayName: "Rack Pull",
+    });
+  });
 });
