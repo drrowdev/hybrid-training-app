@@ -12,15 +12,17 @@ import {
   addLink,
   canCreateLink,
   linkHasMainLift,
+  linkStations,
   linkedKeys,
   linksIncludeMainLift,
-  moveMember,
+  moveStation,
   nextLinkId,
   pruneLinksToMovements,
   pruneMovementFromLinks,
   removeLink,
   selectableMovements,
   slotLabels,
+  slotLinkBadges,
   slotsOf,
   toggleSelection,
   type LinkableMovement,
@@ -468,62 +470,214 @@ describe("pruning links when lifts leave the slot", () => {
   });
 });
 
-describe("moveMember", () => {
+describe("moveStation — plain lifts (one slot per station)", () => {
   const links = [
     link("link-1", ["squat", "bench", "catalog:1"], "Tri-set"),
     link("link-2", ["catalog:2", "catalog:3"]),
   ];
+  const rows: LinkableMovement[] = [
+    { key: "squat", label: "Squat" },
+    { key: "bench", label: "Bench" },
+    { key: "catalog:1", label: "Curl" },
+    { key: "catalog:2", label: "Pushdown" },
+    { key: "catalog:3", label: "Raise" },
+  ];
+  const move = (id: string, index: number, dir: -1 | 1) =>
+    moveStation(links, id, index, dir, rows);
 
-  it("moves a member earlier", () => {
-    const out = moveMember(links, "link-1", 1, -1);
-    expect(out[0]!.members).toEqual(["bench", "squat", "catalog:1"]);
+  it("moves a station earlier", () => {
+    expect(move("link-1", 1, -1)[0]!.members).toEqual([
+      "bench",
+      "squat",
+      "catalog:1",
+    ]);
   });
 
-  it("moves a member later", () => {
-    const out = moveMember(links, "link-1", 0, 1);
-    expect(out[0]!.members).toEqual(["bench", "squat", "catalog:1"]);
+  it("moves a station later", () => {
+    expect(move("link-1", 0, 1)[0]!.members).toEqual([
+      "bench",
+      "squat",
+      "catalog:1",
+    ]);
   });
 
   it("moves across the whole group, not just by swapping neighbours", () => {
     // Last -> first, one step at a time, ends up fully reversed at the front.
-    let out = moveMember(links, "link-1", 2, -1);
-    out = moveMember(out, "link-1", 1, -1);
+    let out = moveStation(links, "link-1", 2, -1, rows);
+    out = moveStation(out, "link-1", 1, -1, rows);
     expect(out[0]!.members).toEqual(["catalog:1", "squat", "bench"]);
   });
 
-  it("refuses to move the first member earlier", () => {
-    expect(moveMember(links, "link-1", 0, -1)[0]!.members).toEqual(
-      links[0]!.members,
-    );
+  it("refuses to move the first station earlier", () => {
+    expect(move("link-1", 0, -1)[0]!.members).toEqual(links[0]!.members);
   });
 
-  it("refuses to move the last member later", () => {
-    expect(moveMember(links, "link-1", 2, 1)[0]!.members).toEqual(
-      links[0]!.members,
-    );
+  it("refuses to move the last station later", () => {
+    expect(move("link-1", 2, 1)[0]!.members).toEqual(links[0]!.members);
   });
 
   it("ignores an out-of-range index", () => {
-    expect(moveMember(links, "link-1", 9, -1)[0]!.members).toEqual(
-      links[0]!.members,
-    );
-    expect(moveMember(links, "link-1", -1, 1)[0]!.members).toEqual(
-      links[0]!.members,
-    );
+    expect(move("link-1", 9, -1)[0]!.members).toEqual(links[0]!.members);
+    expect(move("link-1", -1, 1)[0]!.members).toEqual(links[0]!.members);
   });
 
   it("leaves other links untouched", () => {
-    const out = moveMember(links, "link-1", 0, 1);
-    expect(out[1]).toEqual(links[1]);
+    expect(move("link-1", 0, 1)[1]).toEqual(links[1]);
   });
 
   it("is a no-op for an unknown link id", () => {
-    expect(moveMember(links, "nope", 0, 1)).toEqual(links);
+    expect(move("nope", 0, 1)).toEqual(links);
   });
 
   it("never drops or duplicates a member", () => {
-    const out = moveMember(links, "link-1", 1, -1);
+    const out = move("link-1", 1, -1);
     expect([...out[0]!.members].sort()).toEqual([...links[0]!.members].sort());
     expect(new Set(out[0]!.members).size).toBe(out[0]!.members.length);
+  });
+});
+describe("stations — what the lifter picked, not what the engine stores", () => {
+  const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"];
+  const GROUP_KEY = "group:tb-ab-triad";
+  const ROWS: LinkableMovement[] = [
+    { key: "back-extension", label: "Back Extension" },
+    {
+      key: GROUP_KEY,
+      label: "AB Triad",
+      expandsTo: [
+        { key: TRIAD[0]!, label: "Hanging Leg Raise" },
+        { key: TRIAD[1]!, label: "Hanging Knee Raise" },
+        { key: TRIAD[2]!, label: "Toes to Bar" },
+      ],
+    },
+    { key: "catalog:1", label: "Barbell curl" },
+  ];
+
+  it("collapses a group's slots back into the one row that was picked", () => {
+    // The reported bug: picking two things rendered A1-A4 and read as a giant
+    // set. Two picks must display as two stations.
+    const [linked] = addLink([], ROWS, ["back-extension", GROUP_KEY]);
+    const stations = linkStations(linked!, ROWS);
+    expect(stations.map((s) => s.label)).toEqual(["Back Extension", "AB Triad"]);
+    expect(stations).toHaveLength(2);
+    // The stored members are untouched — the engine still gets four slots.
+    expect(linked!.members).toEqual(["back-extension", ...TRIAD]);
+  });
+
+  it("keeps one station per plain lift", () => {
+    const [linked] = addLink([], ROWS, ["back-extension", "catalog:1"]);
+    expect(linkStations(linked!, ROWS).map((s) => s.slots)).toEqual([
+      ["back-extension"],
+      ["catalog:1"],
+    ]);
+  });
+
+  it("does not fold a group whose slots got separated", () => {
+    // Folding non-contiguous slots would claim a running order the engine will
+    // not actually use.
+    const split = link("link-1", [
+      TRIAD[0]!,
+      "back-extension",
+      TRIAD[1]!,
+      TRIAD[2]!,
+    ]);
+    expect(linkStations(split, ROWS).map((s) => s.label)).toEqual([
+      "AB Triad",
+      "Back Extension",
+      "AB Triad",
+    ]);
+  });
+
+  it("falls back to the raw slot when no row owns it", () => {
+    const orphan = link("link-1", ["back-extension", "ghost-slot"]);
+    expect(linkStations(orphan, ROWS).map((s) => s.label)).toEqual([
+      "Back Extension",
+      "ghost-slot",
+    ]);
+  });
+});
+
+describe("slotLinkBadges — showing the link on the program-slot rows", () => {
+  const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"];
+  const GROUP_KEY = "group:tb-ab-triad";
+  const ROWS: LinkableMovement[] = [
+    { key: "back-extension", label: "Back Extension" },
+    {
+      key: GROUP_KEY,
+      label: "AB Triad",
+      expandsTo: TRIAD.map((k) => ({ key: k, label: k })),
+    },
+  ];
+
+  it("gives every slot of a group the SAME station number", () => {
+    // A panel underneath made two linked lifts look unrelated. The rows carry
+    // the link now, and all three triad slots are station 2 — not 2, 3, 4.
+    const [linked] = addLink([], ROWS, ["back-extension", GROUP_KEY]);
+    const badges = slotLinkBadges([linked!], ROWS);
+    expect(badges.get("back-extension")!.station).toBe(1);
+    for (const slot of TRIAD) expect(badges.get(slot)!.station).toBe(2);
+    expect(badges.get("back-extension")!.stationCount).toBe(2);
+  });
+
+  it("marks only the first slot of a station as its start", () => {
+    const [linked] = addLink([], ROWS, ["back-extension", GROUP_KEY]);
+    const badges = slotLinkBadges([linked!], ROWS);
+    expect(badges.get(TRIAD[0]!)!.isStationStart).toBe(true);
+    expect(badges.get(TRIAD[1]!)!.isStationStart).toBe(false);
+  });
+
+  it("marks the final slot as the link end — rest follows it", () => {
+    const [linked] = addLink([], ROWS, ["back-extension", GROUP_KEY]);
+    const badges = slotLinkBadges([linked!], ROWS);
+    expect(badges.get(TRIAD[2]!)!.isLinkEnd).toBe(true);
+    expect(badges.get("back-extension")!.isLinkEnd).toBe(false);
+  });
+
+  it("leaves unlinked slots out entirely", () => {
+    const [linked] = addLink([], ROWS, ["back-extension", GROUP_KEY]);
+    expect(slotLinkBadges([linked!], ROWS).has("squat")).toBe(false);
+  });
+});
+
+describe("moveStation", () => {
+  const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"];
+  const GROUP_KEY = "group:tb-ab-triad";
+  const ROWS: LinkableMovement[] = [
+    { key: "back-extension", label: "Back Extension" },
+    {
+      key: GROUP_KEY,
+      label: "AB Triad",
+      expandsTo: TRIAD.map((k) => ({ key: k, label: k })),
+    },
+  ];
+  const links = [link("link-1", ["back-extension", ...TRIAD])];
+
+  it("moves a group as a block instead of tearing it apart", () => {
+    // moveMember would leave Back Extension sandwiched inside the triad.
+    const out = moveStation(links, "link-1", 1, -1, ROWS);
+    expect(out[0]!.members).toEqual([...TRIAD, "back-extension"]);
+  });
+
+  it("is a no-op past either end", () => {
+    expect(moveStation(links, "link-1", 0, -1, ROWS)).toEqual(links);
+    expect(moveStation(links, "link-1", 1, 1, ROWS)).toEqual(links);
+  });
+
+  it("leaves other links alone", () => {
+    const two = [...links, link("link-2", ["a", "b"])];
+    expect(moveStation(two, "link-1", 1, -1, ROWS)[1]).toEqual(two[1]);
+  });
+
+  it("still moves one slot per station for plain lifts", () => {
+    const plain = [link("link-1", ["a", "b", "c"])];
+    const rows: LinkableMovement[] = [
+      { key: "a", label: "A" },
+      { key: "b", label: "B" },
+      { key: "c", label: "C" },
+    ];
+    expect(moveStation(plain, "link-1", 2, -1, rows)[0]!.members).toEqual([
+      "a",
+      "c",
+      "b",
+    ]);
   });
 });

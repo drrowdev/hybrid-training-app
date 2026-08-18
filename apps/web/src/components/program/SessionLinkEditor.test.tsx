@@ -137,3 +137,58 @@ describe("SessionLinkEditor", () => {
     expect(html).toContain("session-link-link-1");
   });
 });
+
+describe("a group station is one pick, not three", () => {
+  const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"];
+  const WITH_GROUP: LinkableMovement[] = [
+    { key: "back-extension", label: "Back Extension" },
+    {
+      key: "group:tb-ab-triad",
+      label: "AB Triad",
+      expandsTo: [
+        { key: TRIAD[0]!, label: "Hanging Leg Raise" },
+        { key: TRIAD[1]!, label: "Hanging Knee Raise" },
+        { key: TRIAD[2]!, label: "Toes-to-Bar" },
+      ],
+    },
+  ];
+  const linked = [
+    {
+      id: "link-1",
+      name: "Superset",
+      members: ["back-extension", ...TRIAD],
+    },
+  ];
+
+  it("shows two A-rows for two picks, not four", () => {
+    // The reported bug: picking Back Extension + AB Triad rendered A1-A4, so a
+    // superset of two things read as a giant set of four.
+    const html = markup(linked, WITH_GROUP);
+    expect(html).toContain(">A1</span>");
+    expect(html).toContain(">A2</span>");
+    expect(html).not.toContain(">A3</span>");
+    expect(html).not.toContain(">A4</span>");
+    expect(html).toContain("link-member-link-1-0");
+    expect(html).toContain("link-member-link-1-1");
+    expect(html).not.toContain("link-member-link-1-2");
+  });
+
+  it("names the group, and still shows what is inside it", () => {
+    const html = markup(linked, WITH_GROUP);
+    expect(html).toContain("AB Triad");
+    // The members stay visible as a sub-line so the lifter can see the work,
+    // without them being mistaken for separate picks.
+    expect(html).toContain("Hanging Leg Raise");
+    expect(html).toContain("Toes-to-Bar");
+  });
+
+  it("rests after the group, not after its last movement", () => {
+    expect(markup(linked, WITH_GROUP)).toContain("Rest after AB Triad");
+  });
+
+  it("labels the reorder controls with the station", () => {
+    const html = markup(linked, WITH_GROUP);
+    expect(html).toContain("Move AB Triad earlier");
+    expect(html).not.toContain("Move Toes-to-Bar earlier");
+  });
+});

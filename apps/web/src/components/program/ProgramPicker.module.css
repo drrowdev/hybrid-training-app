@@ -2050,3 +2050,58 @@
     gap: 10px;
   }
 }
+
+/* ── Session-link membership, shown ON the program-slot rows ──────────
+ * A superset used to be described only in a panel below the list, so two
+ * linked lifts read as two unrelated rows. The link is drawn on the rows it
+ * actually applies to: a continuous accent rail down the left of the members,
+ * and an A1/A2 badge in the slot column.
+ *
+ * The rail is built from per-row borders rather than a wrapping element so it
+ * survives the rows being siblings in one grid — wrapping them would break the
+ * shared column tracks that keep PROGRAM SLOT / EXERCISE aligned. */
+.linkedRow {
+  position: relative;
+  border-left: 2px solid var(--accent, #8fb39b);
+  padding-left: 10px;
+  margin-left: 2px;
+}
+.linkedRowWarn {
+  border-left-color: var(--warn, #c99a5b);
+}
+/* Only the first and last members of a link get a rounded cap, so the rail
+ * reads as one bracket spanning the group. */
+.linkedRowStart {
+  border-top-left-radius: 6px;
+}
+.linkedRowEnd {
+  border-bottom-left-radius: 6px;
+}
+.linkBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent, #8fb39b);
+}
+.linkBadgeWarn {
+  color: var(--warn, #c99a5b);
+}
+.linkBadge code {
+  font-family: var(--cp-font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+/* Continuation rows inside one group station (the AB Triad's members) carry the
+ * rail but no badge — they are part of the station above, not new picks. */
+.linkContinuation {
+  font-size: 10.5px;
+  color: var(--muted, #79836f);
+}
