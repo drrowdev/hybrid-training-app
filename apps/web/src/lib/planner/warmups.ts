@@ -121,6 +121,14 @@ export type WarmupLoadOptions = {
  * renderer calls this helper after multiplying by TM. It keeps a small lift's
  * first warm-up from becoming lighter than the empty bar and uses the user's
  * smallest configured plate pair as the rounding increment.
+ *
+ * Loadable totals form a lattice ANCHORED ON THE BAR — `bar + n × increment`,
+ * because plates are added in pairs to a fixed bar. Rounding from zero instead
+ * silently produces unloadable numbers whenever the bar's mass is not itself a
+ * multiple of the increment: a 15 kg bar with only 5 kg plates loads 15/25/35,
+ * yet a raw 26 kg rounded from zero returns 30 kg, which cannot be built. A
+ * 20 kg bar hides the bug entirely — 20 is a multiple of every standard plate
+ * pair, so both lattices coincide and the two roundings agree.
  */
 export function roundWarmupLoadKg(
   rawKg: number,
@@ -140,7 +148,13 @@ export function roundWarmupLoadKg(
   );
   const smallestPlateKg = plateWeights.length > 0 ? Math.min(...plateWeights) : null;
   const incrementKg = smallestPlateKg != null ? smallestPlateKg * 2 : 2.5;
-  const roundedKg = Math.round(rawKg / incrementKg) * incrementKg;
+  // No bar (dumbbell / machine / bodyweight-loaded) means no fixed base to
+  // count plate pairs from, so the lattice starts at zero as before.
+  const roundedKg =
+    barWeightKg > 0
+      ? barWeightKg +
+        Math.max(0, Math.round((rawKg - barWeightKg) / incrementKg)) * incrementKg
+      : Math.round(rawKg / incrementKg) * incrementKg;
 
   // Keep floating-point noise out of persisted/logged loads.
   return Math.max(barWeightKg, Math.round(roundedKg * 100) / 100);

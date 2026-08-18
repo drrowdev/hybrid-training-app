@@ -11,7 +11,7 @@
  * smaller, more contained set of non-bar implements. Slug match is
  * case-insensitive and tolerant of `_` / `-` separators.
  */
-export type BarKind = "barbell" | "trap_bar";
+export type BarKind = "barbell" | "trap_bar" | "safety_bar";
 
 const NON_BARBELL_PATTERNS = [
   "dumbbell",
@@ -38,6 +38,23 @@ const NON_BARBELL_PATTERNS = [
 
 const TRAP_BAR_PATTERNS = ["trap_bar", "trap-bar", "hex_bar", "hex-bar"] as const;
 
+/**
+ * Safety-squat-bar tokens, mirroring the equipment-requirement heuristic's
+ * `safety_squat` / `ssb` matching (`equipment-requirements.ts`). Anchored on a
+ * separator rather than a bare "ssb" substring so an unrelated slug that merely
+ * contains those letters can't be misread as a specialty bar.
+ */
+const SAFETY_BAR_PATTERNS = [
+  "safety_squat",
+  "safety-squat",
+  "safety_bar",
+  "safety-bar",
+  "ssb-",
+  "ssb_",
+  "-ssb",
+  "_ssb",
+] as const;
+
 export function resolveBarKind(movementSlug: string | null | undefined): BarKind | null {
   if (!movementSlug) return null;
   const slug = movementSlug.toLowerCase();
@@ -47,6 +64,9 @@ export function resolveBarKind(movementSlug: string | null | undefined): BarKind
   for (const p of TRAP_BAR_PATTERNS) {
     if (slug.includes(p)) return "trap_bar";
   }
+  for (const p of SAFETY_BAR_PATTERNS) {
+    if (slug.includes(p)) return "safety_bar";
+  }
   return "barbell";
 }
 
@@ -54,6 +74,7 @@ export function resolveBarKind(movementSlug: string | null | undefined): BarKind
 export type BarInventoryKg = {
   barbellKg?: number | null;
   trapBarKg?: number | null;
+  safetyBarKg?: number | null;
 };
 
 /**
@@ -68,11 +89,14 @@ export type BarInventoryKg = {
  * Returns `null` — meaning "no bar, so no bar floor and no plate
  * breakdown" — when either the movement isn't loaded on a bar or the
  * user doesn't own the bar it needs. `bars.barbellKg === 0`
- * (travel/hotel, bodyweight-only) and `bars.trapBarKg === null`
- * (home/functional/custom) are the canonical "no such bar" signals —
- * see `hasLoadableMainLift` / `presetKeyForScheme` in
- * `lib/settings/equipment-presets.ts`. Never coerce them to a default
- * bar mass at a call site.
+ * (travel/hotel, bodyweight-only), `bars.trapBarKg === null`
+ * (home/functional/custom) and `bars.safetyBarKg === null` are the
+ * canonical "no such bar" signals — see `hasLoadableMainLift` /
+ * `presetKeyForScheme` in `lib/settings/equipment-presets.ts`. Never
+ * coerce them to a default bar mass at a call site: a safety-squat bar
+ * is typically 25 kg against a 20 kg barbell, so substituting the
+ * straight-bar mass mis-states every warm-up load and plate count for
+ * the lift.
  */
 export function resolveBarWeightKg(
   movementSlug: string | null | undefined,
@@ -80,7 +104,12 @@ export function resolveBarWeightKg(
 ): number | null {
   const barKind = resolveBarKind(movementSlug);
   if (barKind == null) return null;
-  const weightKg = barKind === "trap_bar" ? bars?.trapBarKg : bars?.barbellKg;
+  const weightKg =
+    barKind === "trap_bar"
+      ? bars?.trapBarKg
+      : barKind === "safety_bar"
+        ? bars?.safetyBarKg
+        : bars?.barbellKg;
   if (typeof weightKg !== "number" || !Number.isFinite(weightKg) || weightKg <= 0) {
     return null;
   }

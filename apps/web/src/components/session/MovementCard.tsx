@@ -79,6 +79,7 @@ export type MovementCardProps = {
   /** User equipment — forwarded to `<MovementFocusView>` for the plate breakdown. */
   barbellKg?: number;
   trapBarKg?: number;
+  safetyBarKg?: number;
   plateInventory?: PlateInventoryItem[];
   preferStandardLbPlates?: boolean;
   /** Persistence key prefix — combined with movementId for localStorage. */
@@ -137,6 +138,7 @@ export function MovementCard({
   timerSoundEnabled,
   barbellKg,
   trapBarKg,
+  safetyBarKg,
   plateInventory,
   preferStandardLbPlates,
   persistKeyPrefix,
@@ -636,6 +638,7 @@ export function MovementCard({
             timerSoundEnabled={timerSoundEnabled}
             barbellKg={barbellKg}
             trapBarKg={trapBarKg}
+            safetyBarKg={safetyBarKg}
             plateInventory={plateInventory}
             preferStandardLbPlates={preferStandardLbPlates}
             initialCursor={pinnedCursor}

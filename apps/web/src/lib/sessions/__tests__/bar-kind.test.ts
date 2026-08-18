@@ -66,3 +66,47 @@ describe("resolveBarWeightKg", () => {
     ).toBeNull();
   });
 });
+
+describe("resolveBarWeightKg — safety squat bar", () => {
+  it("uses the SAFETY-bar mass, not the straight-bar mass", () => {
+    // `ssb-squat` is a real catalog movement (`equipment: "barbell-ssb"`).
+    // It used to fall through to `barbellKg`, so every warm-up load and plate
+    // count for the lift was computed against a 20 kg bar instead of the
+    // 25 kg SSB the lifter actually owns.
+    expect(resolveBarKind("ssb-squat")).toBe("safety_bar");
+    expect(COMMERCIAL_GYM_PRESET.bars.safetyBarKg).toBe(25);
+    expect(resolveBarWeightKg("ssb-squat", COMMERCIAL_GYM_PRESET.bars)).toBe(25);
+    // The straight-bar mass differs, so a regression is observable.
+    expect(COMMERCIAL_GYM_PRESET.bars.barbellKg).toBe(20);
+  });
+
+  it("matches the same tokens the equipment-requirement heuristic uses", () => {
+    for (const slug of [
+      "ssb-squat",
+      "ssb_squat",
+      "safety-squat-bar-squat",
+      "safety_squat_bar_good_morning",
+      "front-ssb-squat",
+    ]) {
+      expect(resolveBarKind(slug)).toBe("safety_bar");
+    }
+  });
+
+  it("does not misread an unrelated slug that merely contains those letters", () => {
+    // Anchored on a separator, so no bare-substring false positives.
+    expect(resolveBarKind("barbell_back_squat")).toBe("barbell");
+    expect(resolveBarKind("kossberg-press")).toBe("barbell");
+  });
+
+  it("returns null when the user owns no safety bar", () => {
+    for (const preset of [
+      HOME_GYM_PRESET,
+      FUNCTIONAL_GYM_PRESET,
+      CUSTOM_EMPTY_PRESET,
+    ]) {
+      expect(preset.bars.safetyBarKg).toBeNull();
+      expect(resolveBarWeightKg("ssb-squat", preset.bars)).toBeNull();
+    }
+    expect(resolveBarWeightKg("ssb-squat", { safetyBarKg: undefined })).toBeNull();
+  });
+});

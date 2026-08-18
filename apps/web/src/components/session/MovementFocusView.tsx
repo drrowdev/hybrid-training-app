@@ -133,12 +133,15 @@ export type FocusViewProps = {
    * the breakdown.
    *
    * These are the RAW stored values: `barbellKg === 0` and a missing /
-   * null `trapBarKg` mean "the user owns no such bar". Never default
-   * them to 20 / 25 here — `resolveBarWeightKg` owns that decision and
-   * the server-side warm-up materialisation reads the same signal.
+   * null `trapBarKg` / `safetyBarKg` mean "the user owns no such bar".
+   * Never default them to 20 / 25 here — `resolveBarWeightKg` owns that
+   * decision and the server-side warm-up materialisation reads the same
+   * signal, so a default applied here would silently disagree with the
+   * persisted `set_logs.weight_kg`.
    */
   barbellKg?: number | null;
   trapBarKg?: number | null;
+  safetyBarKg?: number | null;
   plateInventory?: PlateInventoryItem[];
   preferStandardLbPlates?: boolean;
   /**
@@ -212,6 +215,7 @@ export function MovementFocusView({
   timerSoundEnabled,
   barbellKg,
   trapBarKg,
+  safetyBarKg,
   plateInventory,
   preferStandardLbPlates = true,
   equipmentTag,
@@ -308,8 +312,8 @@ export function MovementFocusView({
   // (`fillSessionFromPlan`) so the displayed warm-up load and the
   // persisted one always agree.
   const barWeightKg = useMemo(
-    () => resolveBarWeightKg(group.movementSlug, { barbellKg, trapBarKg }),
-    [barbellKg, group.movementSlug, trapBarKg],
+    () => resolveBarWeightKg(group.movementSlug, { barbellKg, trapBarKg, safetyBarKg }),
+    [barbellKg, group.movementSlug, trapBarKg, safetyBarKg],
   );
 
   const warmupLoadOptions = useMemo(

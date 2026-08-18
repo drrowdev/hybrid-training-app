@@ -7,6 +7,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  COMMERCIAL_GYM_PRESET,
   HOME_GYM_PRESET,
   TRAVEL_HOTEL_PRESET,
 } from "@/lib/settings/equipment-presets";
@@ -230,6 +231,47 @@ describe("fillSessionFromPlan warm-up loads", () => {
 
     // 60 × 34% = 20.4 kg → 2.5 kg plate-pair increment → 20 kg, no bar floor.
     expect(mockState.upserts.map((row) => row.weight_kg)).toEqual([20]);
+  });
+
+  it("persists the same load the focus view displays for an SSB squat", async () => {
+    // The safety-squat bar is 25 kg in a commercial gym against a 20 kg
+    // straight bar. `ssb-squat` used to resolve as a plain barbell, so both
+    // sides floored to the wrong bar. Client counterpart:
+    // components/session/__tests__/MovementFocusView.warmup-bar.test.tsx.
+    mockState.planned = {
+      ...mockState.planned,
+      prescription: {
+        items: [
+          {
+            movementId: "movement-ssb",
+            movementSlug: "ssb-squat",
+            kind: "warmup",
+            sets: 1,
+            reps: 5,
+            percentTm: 34,
+          },
+        ],
+      },
+    };
+    mockState.profile = {
+      tm_percent_default: 90,
+      plate_inventory_kg: [],
+      equipment: COMMERCIAL_GYM_PRESET,
+    };
+    mockState.trainingMaxes = [
+      { movement_id: "movement-ssb", one_rm_kg: 60, tm_percent: 100 },
+    ];
+    mockState.upserts = [];
+
+    const { fillSessionFromPlan } = await import("../actions");
+    const formData = new FormData();
+    formData.set("sessionId", SESSION_ID);
+
+    await fillSessionFromPlan(formData);
+
+    // 60 × 34% = 20.4 kg → rounds to 20 kg → floored to the 25 kg SSB, not
+    // the 20 kg straight bar.
+    expect(mockState.upserts.map((row) => row.weight_kg)).toEqual([25]);
   });
 
   it("persists the same load the focus view displays for a preset with no barbell", async () => {

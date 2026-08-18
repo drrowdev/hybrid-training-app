@@ -180,6 +180,53 @@ describe("generateWarmupItems", () => {
     expect(roundWarmupLoadKg(8)).toBe(7.5);
   });
 
+  it("only returns loads the lifter can actually build on the bar", () => {
+    // Plates go on in PAIRS onto a fixed bar, so loadable totals are
+    // `bar + n × (smallest plate × 2)`. Rounding from zero instead produced
+    // impossible numbers whenever the bar was not itself a multiple of the
+    // increment: a 15 kg bar with only 5 kg plates loads 15 / 25 / 35, but a
+    // raw 26 kg used to round to 30 kg, which cannot be built.
+    const bar = 15;
+    const plates = [5];
+    const loadable = new Set(
+      Array.from({ length: 20 }, (_, n) => bar + n * 10),
+    );
+    for (const raw of [16, 22, 26, 28, 34, 38, 44]) {
+      const out = roundWarmupLoadKg(raw, {
+        barWeightKg: bar,
+        availablePlateWeightsKg: plates,
+      });
+      expect(loadable.has(out)).toBe(true);
+    }
+    expect(
+      roundWarmupLoadKg(26, { barWeightKg: 15, availablePlateWeightsKg: [5] }),
+    ).toBe(25);
+  });
+
+  it("is unchanged for a 20 kg bar, where both lattices coincide", () => {
+    // Regression guard for the fix above: 20 is a multiple of every standard
+    // plate pair, so the overwhelmingly common setup must round identically to
+    // before and these expectations must not move.
+    expect(
+      roundWarmupLoadKg(26, { barWeightKg: 20, availablePlateWeightsKg: [5, 10, 20] }),
+    ).toBe(30);
+    expect(
+      roundWarmupLoadKg(18, { barWeightKg: 20, availablePlateWeightsKg: [1.25, 2.5, 5] }),
+    ).toBe(20);
+    expect(
+      roundWarmupLoadKg(63, { barWeightKg: 20, availablePlateWeightsKg: [1.25, 2.5, 5] }),
+    ).toBe(62.5);
+  });
+
+  it("never returns less than the empty bar", () => {
+    expect(
+      roundWarmupLoadKg(4, { barWeightKg: 15, availablePlateWeightsKg: [5] }),
+    ).toBe(15);
+    expect(
+      roundWarmupLoadKg(1, { barWeightKg: 20, availablePlateWeightsKg: [1.25] }),
+    ).toBe(20);
+  });
+
   it("rounds to nearest 0.5%: top 73%, ladder entry 50% → 36.5%", () => {
     const scheme: WarmupScheme = {
       setCount: 1,
