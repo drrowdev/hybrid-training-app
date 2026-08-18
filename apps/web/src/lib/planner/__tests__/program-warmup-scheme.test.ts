@@ -8,8 +8,10 @@ import {
   GLOBAL_ANCHORED_WARMUP_SCHEME,
   PROGRAM_WARMUP_SCHEMES,
   TRAINING_MAX_ANCHORED_WARMUP_SCHEME,
+  activeProgramWithOwnWarmupRamp,
   programIdFromJoinedBlock,
   programOwnsWarmupScheme,
+  programWarmupOptionLabel,
   warmupSchemeForProgram,
 } from "../program-warmup-scheme";
 import {
@@ -154,6 +156,46 @@ describe("registry derivation (plan §6.9 — no restated constants)", () => {
         greenProtocolEngine.meta.id,
       ].sort(),
     );
+  });
+});
+
+describe("activeProgramWithOwnWarmupRamp", () => {
+  it("resolves 5/3/1 — the only program that publishes its own ramp", () => {
+    const active = activeProgramWithOwnWarmupRamp(wendler531Engine.meta.id);
+    expect(active?.id).toBe(wendler531Engine.meta.id);
+    expect(active?.scheme).toEqual(TRAINING_MAX_ANCHORED_WARMUP_SCHEME);
+  });
+
+  it("resolves null for programs that merely inherit the shared ramp", () => {
+    // These are registered so the swap path agrees with generation, but none
+    // of them prescribes a warm-up as part of its method — so there is nothing
+    // for a chosen ladder to override, and no reason to name them in the UI.
+    for (const engine of [
+      tacticalBarbellEngine,
+      zuluHtEngine,
+      hyroxEngine,
+      greenProtocolEngine,
+    ]) {
+      expect(activeProgramWithOwnWarmupRamp(engine.meta.id)).toBeNull();
+    }
+  });
+
+  it("resolves null with no active block, or a block with no program", () => {
+    // A native archetype block carries no program_id, and a lifter between
+    // blocks has none at all.
+    expect(activeProgramWithOwnWarmupRamp(null)).toBeNull();
+    expect(activeProgramWithOwnWarmupRamp(undefined)).toBeNull();
+    expect(activeProgramWithOwnWarmupRamp("")).toBeNull();
+    expect(activeProgramWithOwnWarmupRamp("some-other-program")).toBeNull();
+  });
+});
+
+describe("programWarmupOptionLabel", () => {
+  it("names the option after the single method that publishes a ramp", () => {
+    // Derived from the registry, so it cannot drift from the program it
+    // actually follows.
+    expect(programWarmupOptionLabel()).toBe(`${wendler531Engine.meta.name} Warmup`);
+    expect(programWarmupOptionLabel()).toBe("5/3/1 Warmup");
   });
 });
 

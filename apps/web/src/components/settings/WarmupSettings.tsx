@@ -22,9 +22,12 @@ import {
   presetKeyForScheme,
   type WarmupPresetKey,
 } from "@/lib/settings/warmup-presets";
+import { programWarmupOptionLabel } from "@/lib/planner/program-warmup-scheme";
 import {
+  DEFAULT_WARMUP_SCHEME,
   generateWarmupItems,
   isWellFormedScheme,
+  warmupAnchorOf,
   type WarmupScheme,
 } from "@/lib/planner/warmups";
 import { useAutoSave } from "@/lib/settings/use-auto-save";
@@ -34,10 +37,16 @@ export type WarmupSettingsProps = {
   /** The stored ladder, or `null` when the lifter has expressed no preference. */
   initial: WarmupScheme | null;
   /**
-   * Programs whose OWN published ramp a configured ladder displaces, resolved
-   * by the server from the program registry. Drives the DC-K4 warning.
+   * The program whose OWN published ramp is in play right now, resolved by the
+   * server from the ACTIVE training block. `null` when no such program is
+   * running — the lifter is then simply on the standard ramp, and nothing
+   * methodological is being overridden.
    */
-  programsWithOwnRamp?: ReadonlyArray<{ id: string; name: string }>;
+  activeProgramWithOwnRamp?: {
+    id: string;
+    name: string;
+    scheme: WarmupScheme;
+  } | null;
 };
 
 const PREVIEW_TOP_PERCENT = 85;
@@ -57,9 +66,10 @@ function normaliseLadders(scheme: WarmupScheme, nextSetCount: number): WarmupSch
 
 export function WarmupSettings({
   initial,
-  programsWithOwnRamp = [],
+  activeProgramWithOwnRamp = null,
 }: WarmupSettingsProps) {
-  const initialPreset = presetKeyForScheme(initial);
+  const programRampActive = activeProgramWithOwnRamp != null;
+  const initialPreset = presetKeyForScheme(initial, { programRampActive });
   const [preset, setPreset] = useState<WarmupPresetKey>(initialPreset);
 
   // Auto-save closure: validate well-formedness here so a malformed
@@ -148,16 +158,24 @@ export function WarmupSettings({
   // inputs above it — in particular the migration-0039 legacy upgrade
   // in `resolveWarmupScheme` is a read-boundary concern and must not
   // reach this render.
+  //
+  // With nothing stored, preview the ramp the lifter would ACTUALLY get: the
+  // active program's own ladder when one is running, otherwise the standard
+  // one. An empty "no preference" panel would say nothing useful.
+  const effectiveScheme =
+    scheme ?? activeProgramWithOwnRamp?.scheme ?? DEFAULT_WARMUP_SCHEME;
   const preview = useMemo(
-    () =>
-      scheme == null
-        ? []
-        : generateWarmupItems("preview", PREVIEW_TOP_PERCENT, scheme),
-    [scheme],
+    () => generateWarmupItems("preview", PREVIEW_TOP_PERCENT, effectiveScheme),
+    [effectiveScheme],
   );
+  // A TM-anchored ladder IS the %TM series, so there is no top-set percentage
+  // to show alongside it — the two number spaces only differ for a top-set one.
+  const previewIsTmAnchored = warmupAnchorOf(effectiveScheme) === "training_max";
 
   const customEditable = preset === "custom";
   const followsProgram = scheme == null;
+  // DC-K4 only bites when a published ramp is actually being displaced.
+  const overridesProgram = !followsProgram && programRampActive;
 
   return (
     <div
@@ -201,10 +219,11 @@ export function WarmupSettings({
         </select>
       </label>
 
-      {/* DC-K4 — override-and-warn, never silent overrule. Choosing a ladder
-          displaces the published warm-up of any program that prescribes its
-          own, so say which, and how to undo it. */}
-      {!followsProgram && programsWithOwnRamp.length > 0 && (
+      {/* DC-K4 — override-and-warn, never silent overrule. Shown only while a
+          program that publishes its own warm-up is actually running: with no
+          such program active nothing methodological is being displaced, so a
+          warning would be noise. */}
+      {overridesProgram && activeProgramWithOwnRamp && (
         <p
           role="note"
           data-testid="warmup-program-override-warning"
@@ -219,10 +238,9 @@ export function WarmupSettings({
             background: "var(--cp-surface)",
           }}
         >
-          Your ladder replaces the warm-up{" "}
-          {programsWithOwnRamp.map((p) => p.name).join(" and ")} prescribes as
-          part of {programsWithOwnRamp.length > 1 ? "their" : "its"} method.
-          Pick <strong>Follow the program</strong> to hand it back.
+          You&rsquo;re running {activeProgramWithOwnRamp.name}, and your ladder
+          replaces the warm-up it prescribes as part of its method. Pick{" "}
+          <strong>{programWarmupOptionLabel()}</strong> to hand it back.
         </p>
       )}
 
@@ -331,19 +349,11 @@ export function WarmupSettings({
             color: "var(--cp-text-muted)",
           }}
         >
-          {followsProgram
-            ? "Each program uses its own warm-up"
+          {followsProgram && activeProgramWithOwnRamp
+            ? `${activeProgramWithOwnRamp.name}'s own warm-up`
             : `Preview against an ${PREVIEW_TOP_PERCENT}% TM top set`}
         </span>
-        {followsProgram ? (
-          <span style={{ fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-            {programsWithOwnRamp.length > 0
-              ? `${programsWithOwnRamp
-                  .map((p) => p.name)
-                  .join(" and ")} warms up the way its own method prescribes. Every other program uses the standard ramp.`
-              : "Every program uses the standard ramp."}
-          </span>
-        ) : preview.length === 0 ? (
+        {preview.length === 0 ? (
           <span style={{ fontSize: 13, color: "var(--cp-text-muted)", fontStyle: "italic" }}>
             No warm-ups — your sessions start at the first working set.
           </span>
@@ -359,14 +369,34 @@ export function WarmupSettings({
                   color: "var(--cp-text)",
                 }}
               >
-                {/* Show BOTH number spaces. The ladder is a % of the top set,
-                    but the prescription renders in % TM, and seeing only the
-                    latter (40 → "34% TM") reads like the ladder was ignored. */}
-                • Warmup {i + 1}: {scheme?.percentLadder[i]}% of top set ={" "}
-                {it.percentTm}% TM × {it.reps}
+                {/* A top-set ladder shows BOTH number spaces: it is a % of the
+                    top set, but the prescription renders in % TM, and seeing
+                    only the latter (40 → "34% TM") reads like the ladder was
+                    ignored. A TM-anchored ramp is already the %TM series, so
+                    there is no second number to show. */}
+                {previewIsTmAnchored ? (
+                  <>
+                    • Warmup {i + 1}: {it.percentTm}% TM × {it.reps}
+                  </>
+                ) : (
+                  <>
+                    • Warmup {i + 1}: {effectiveScheme.percentLadder[i]}% of top
+                    set = {it.percentTm}% TM × {it.reps}
+                  </>
+                )}
               </li>
             ))}
           </ul>
+        )}
+        {followsProgram && (
+          <span
+            data-testid="warmup-preview-program-note"
+            style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}
+          >
+            {activeProgramWithOwnRamp
+              ? `A fixed percentage of your Training Max — the same loads every week of the wave. Other programs use the standard ramp.`
+              : `Nothing is set, so you're on the standard ramp. A program that prescribes its own warm-up would use that instead.`}
+          </span>
         )}
       </div>
 

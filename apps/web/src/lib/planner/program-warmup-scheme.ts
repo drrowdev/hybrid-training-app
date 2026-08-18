@@ -121,6 +121,37 @@ export function programsWithOwnWarmupRamp(): ProgramWarmupOwner[] {
     .map(([id, scheme]) => ({ id, name: named[id] ?? id, scheme }));
 }
 
+/**
+ * The program whose own ramp is in play RIGHT NOW, or `null`.
+ *
+ * `programId` must come from the active `training_blocks` row — the same source
+ * the swap rebuild reads via {@link programIdFromJoinedBlock}. Deliberately NOT
+ * `program_instances.status`: that column is not updated when a block is ended
+ * (`planner/actions.ts`), auto-completes (`planner/completion.ts`) or is
+ * deleted (its `block_id` FK is `ON DELETE SET NULL`), so an instance can still
+ * read "active" long after its block is over — which would have the settings
+ * screen claim a program is running when it is not.
+ */
+export function activeProgramWithOwnWarmupRamp(
+  programId: string | null | undefined,
+): ProgramWarmupOwner | null {
+  if (programId == null || programId.length === 0) return null;
+  return programsWithOwnWarmupRamp().find((p) => p.id === programId) ?? null;
+}
+
+/**
+ * Label for the "use the program's own ramp" option.
+ *
+ * Derived from the registry so it names the method it actually follows —
+ * "5/3/1 Warmup" today, because 5/3/1 is the only program that publishes one.
+ * Falls back to a generic label if a second program ever registers its own,
+ * since one option can no longer stand for a single named method then.
+ */
+export function programWarmupOptionLabel(): string {
+  const owners = programsWithOwnWarmupRamp();
+  return owners.length === 1 ? `${owners[0]!.name} Warmup` : "Program warm-up";
+}
+
 function schemesEqual(a: WarmupScheme, b: WarmupScheme): boolean {
   return (
     a.setCount === b.setCount &&

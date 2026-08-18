@@ -8,6 +8,7 @@ import {
   isLegacyDefaultWarmupScheme,
   type WarmupScheme,
 } from "@/lib/planner/warmups";
+import { programWarmupOptionLabel } from "@/lib/planner/program-warmup-scheme";
 
 export type WarmupPresetKey =
   | "program"
@@ -32,15 +33,20 @@ export type WarmupPreset = {
  * the top working set (the same semantic used by `generateWarmupItems`).
  * "custom" carries the standard ladder as its editable starting point.
  *
- * "program" is deliberately FIRST and is the state of a lifter who has never
- * touched this screen. It exists so that picking a ladder stays reversible:
- * without it, an explicit choice could never be withdrawn and a program's own
- * ramp could never be restored.
+ * The "program" entry writes SQL NULL — no stored preference — which is what
+ * lets a program apply its own published ramp. Its LABEL is derived from the
+ * registry (`programWarmupOptionLabel`), so it names the method it follows
+ * rather than describing the mechanism.
+ *
+ * It stays selectable even when no such program is running. Hiding it would
+ * strand a lifter who set a custom ladder: they could not clear it back to
+ * automatic, and doing so after starting the program is too late — warm-up
+ * changes never rewrite an already-materialised block (ADR 0072).
  */
 export const WARMUP_PRESETS: ReadonlyArray<WarmupPreset> = [
   {
     key: "program",
-    label: "Follow the program",
+    label: programWarmupOptionLabel(),
     scheme: null,
   },
   {
@@ -85,14 +91,27 @@ function schemesEqual(a: WarmupScheme, b: WarmupScheme): boolean {
 }
 
 /**
- * Derive the preset key that matches a stored scheme — returns
- * "custom" when nothing matches one of the curated presets, and
- * "program" when nothing is stored at all (the lifter has expressed no
- * preference, so every program uses its own ramp). Used by the settings UI to
- * pre-select the right option on reload.
+ * Derive the preset key that matches a stored scheme.
+ *
+ * A stored ladder maps to its preset, or "custom" when it matches none. NO
+ * stored ladder (`null`) is the automatic state, and which option represents
+ * it depends on what is actually running:
+ *
+ * - a program with its own ramp IS active ⇒ `"program"`, because that ramp is
+ *   what the lifter is getting;
+ * - otherwise ⇒ `"standard"`, because with nothing stored and no program ramp
+ *   in play the effective ladder IS the standard one. Showing the program
+ *   option as selected there would name a method the lifter isn't running.
+ *
+ * Either way the selection describes the lifter's CURRENT effective ramp.
  */
-export function presetKeyForScheme(scheme: WarmupScheme | null): WarmupPresetKey {
-  if (scheme == null) return "program";
+export function presetKeyForScheme(
+  scheme: WarmupScheme | null,
+  options: { programRampActive?: boolean } = {},
+): WarmupPresetKey {
+  if (scheme == null) {
+    return options.programRampActive ? "program" : "standard";
+  }
   // Migration 0039 left the old implicit default materialized in some
   // profiles. Treat that exact payload as Standard so those users are not
   // stranded on the old ramp or relabelled as Custom.
