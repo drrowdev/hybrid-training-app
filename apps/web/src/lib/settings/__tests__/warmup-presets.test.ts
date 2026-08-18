@@ -14,23 +14,31 @@ describe("warmup presets", () => {
     expect(presetByKey("standard").scheme).toEqual(DEFAULT_WARMUP_SCHEME);
   });
 
+  it("the 'follow the program' preset carries no ladder — it CLEARS the preference", () => {
+    // A null scheme is what makes an explicit choice reversible: it writes SQL
+    // NULL so each program's own ramp applies again. It must NOT be an empty
+    // ladder, which would mean "skip warm-ups".
+    expect(presetByKey("program").scheme).toBeNull();
+    expect(WARMUP_PRESETS[0]!.key).toBe("program");
+  });
+
   it("skip preset is setCount: 0 with empty ladders", () => {
-    const skip = presetByKey("skip").scheme;
+    const skip = presetByKey("skip").scheme!;
     expect(skip.setCount).toBe(0);
     expect(skip.percentLadder).toEqual([]);
     expect(skip.repLadder).toEqual([]);
   });
 
   it("long preset is 4 sets, quick is 2 sets, and both reach a useful bridge to work", () => {
-    expect(presetByKey("long").scheme.setCount).toBe(4);
-    expect(presetByKey("quick").scheme.setCount).toBe(2);
-    expect(presetByKey("long").scheme.percentLadder).toEqual([30, 50, 70, 85]);
-    expect(presetByKey("quick").scheme.percentLadder).toEqual([50, 75]);
+    expect(presetByKey("long").scheme!.setCount).toBe(4);
+    expect(presetByKey("quick").scheme!.setCount).toBe(2);
+    expect(presetByKey("long").scheme!.percentLadder).toEqual([30, 50, 70, 85]);
+    expect(presetByKey("quick").scheme!.percentLadder).toEqual([50, 75]);
   });
 
   it("each non-custom preset has matching ladder lengths", () => {
     for (const p of WARMUP_PRESETS) {
-      if (p.key === "custom") continue;
+      if (p.key === "custom" || p.scheme == null) continue;
       expect(p.scheme.percentLadder.length).toBe(p.scheme.setCount);
       expect(p.scheme.repLadder.length).toBe(p.scheme.setCount);
     }
@@ -40,6 +48,10 @@ describe("warmup presets", () => {
 describe("presetKeyForScheme", () => {
   it("maps the default scheme to 'standard'", () => {
     expect(presetKeyForScheme(DEFAULT_WARMUP_SCHEME)).toBe("standard");
+  });
+
+  it("maps a cleared preference to 'follow the program'", () => {
+    expect(presetKeyForScheme(null)).toBe("program");
   });
 
   it("maps each preset's own scheme back to its key", () => {

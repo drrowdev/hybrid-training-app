@@ -962,8 +962,10 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         : anchor;
       const weightKg = roundToIncrement(basis * prescribedPercent, ctx.roundingKg);
       // Warm-up ramp to the working weight — shared global routine (40/60/80% ×
-      // 5/5/3, floored). Submaximal TB work still benefits from a couple of ramp
-      // sets to groove the lift.
+      // 5/5/3, floored) unless the lifter has configured their own ladder, which
+      // wins via `ctx.warmupRamp`. TB publishes no warm-up of its own, so the
+      // shared ramp is only a default here. Submaximal TB work still benefits
+      // from a couple of ramp sets to groove the lift.
       if (includeWarmup) {
         items.push(
           ...buildGlobalWarmupItems({
@@ -971,6 +973,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
             movementId: lift.movement,
             workingWeightKg: weightKg,
             roundingKg: ctx.roundingKg,
+            ...(ctx.warmupRamp ? { ramp: ctx.warmupRamp } : {}),
           }),
         );
       }

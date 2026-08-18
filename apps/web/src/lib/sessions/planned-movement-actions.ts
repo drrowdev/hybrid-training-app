@@ -19,7 +19,7 @@ import { z } from "zod";
 import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { isRehabItem } from "@hta/domain";
-import { resolveWarmupScheme } from "@/lib/planner/warmups";
+import { resolveWarmupPreference } from "@/lib/planner/warmups";
 import {
   programIdFromJoinedBlock,
   warmupSchemeForProgram,
@@ -232,11 +232,12 @@ export async function swapPlannedMovement(formData: FormData): Promise<PlannedEd
   // Rehab prescriptions are not TM-anchored; they still use the shared
   // movement rebuild, but don't need the strength-lift no-anchor warning.
   const rebuildContext = {
-    // A block owned by a program that publishes its own warm-up ramp is
-    // rebuilt with THAT ramp; archetype/native blocks keep the user's ladder.
+    // A block owned by a program that publishes its own warm-up ramp falls back
+    // to THAT ramp — but only when the lifter has never configured a ladder.
+    // An explicit choice wins, including "skip warm-ups".
     warmupScheme: warmupSchemeForProgram(
       loaded.programId,
-      resolveWarmupScheme(
+      resolveWarmupPreference(
         (profile as { warmup_scheme?: unknown } | null)?.warmup_scheme,
       ),
     ),

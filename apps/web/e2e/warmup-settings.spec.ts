@@ -43,15 +43,29 @@ test.describe("@desktop /app/settings/training · warmup ladder", () => {
     const preset = page.getByTestId("warmup-preset-select");
     await expect(preset).toBeVisible();
 
+    // A fresh user has never chosen, so warmup_scheme IS NULL and each program
+    // keeps its own ramp. No override warning is due in this state.
+    await expect(preset).toHaveValue("program");
+    await expect(
+      page.getByTestId("warmup-program-override-warning"),
+    ).toHaveCount(0);
+
     // Switch to Quick 2-set: 50% / 75% × 5 / 3 against an 85% top set
-    // resolves to 42.5% × 5 and 64% × 3 (rounded to nearest 0.5%).
+    // resolves to 42.5% × 5 and 64% × 3 (rounded to nearest 0.5%). The
+    // preview names BOTH number spaces so the ladder never looks ignored.
     await preset.selectOption("quick");
     await expect(page.getByTestId("warmup-preview-0")).toContainText(
-      /Warmup 1: 42\.5% TM × 5/i,
+      /Warmup 1: 50% of top set = 42\.5% TM × 5/i,
     );
     await expect(page.getByTestId("warmup-preview-1")).toContainText(
-      /Warmup 2: 64% TM × 3/i,
+      /Warmup 2: 75% of top set = 64% TM × 3/i,
     );
+
+    // Choosing a ladder displaces 5/3/1's published ramp, so DC-K4 requires
+    // the editor to say so rather than apply it silently.
+    await expect(
+      page.getByTestId("warmup-program-override-warning"),
+    ).toBeVisible();
 
     // Preset switch auto-saves — wait for the inline "Saved" badge
     // before navigating.
@@ -77,6 +91,26 @@ test.describe("@desktop /app/settings/training · warmup ladder", () => {
     await page.reload();
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("warmup-preset-select")).toHaveValue("quick");
+
+    // The choice must be REVERSIBLE: "Follow the program" clears the stored
+    // preference back to SQL NULL so each program's own ramp applies again.
+    // Without this, an explicit ladder could never be withdrawn.
+    await page.getByTestId("warmup-preset-select").selectOption("program");
+    await expect(page.getByTestId("warmup-settings-saved")).toBeVisible({
+      timeout: 5_000,
+    });
+    const { data: cleared } = await admin
+      .from("profiles")
+      .select("warmup_scheme")
+      .eq("id", freshUser.userId)
+      .maybeSingle();
+    expect(cleared?.warmup_scheme).toBeNull();
+
+    // Put the Quick ladder back for the block-generation half of the spec.
+    await page.getByTestId("warmup-preset-select").selectOption("quick");
+    await expect(page.getByTestId("warmup-settings-saved")).toBeVisible({
+      timeout: 5_000,
+    });
 
     // Drive the wizard so createBlock fires with the freshly written
     // warmup_scheme and prepends two warmup items before each main lift.

@@ -114,16 +114,17 @@ export interface PlateBreakdown {
  * - `"top_set"` — the app-wide shared ramp (`@hta/program-core`
  *   `GLOBAL_WARMUP_PERCENTS`), a percentage of the day's heaviest work set,
  *   so the ladder climbs with the top set.
+ *
+ * Re-exported from `@hta/program-core`, which owns the canonical shape so a
+ * ramp can cross the platform seam on `PlatformContext.warmupRamp` without
+ * being translated (plan §6.9 — one home for a shared type). The local names
+ * are kept as aliases so this package's public API is unchanged.
  */
-export type WarmupAnchor = "top_set" | "training_max";
+export type { WarmupAnchor, WarmupRamp } from "@hta/program-core";
+import type { WarmupRamp } from "@hta/program-core";
 
-export interface WarmupConfig {
-  /** Each entry is a percent (0..1) of whatever `anchor` names. */
-  percents: number[];
-  reps: number[];
-  /** Absent means `"top_set"` (the historical behaviour of this config). */
-  anchor?: WarmupAnchor;
-}
+/** @see WarmupRamp — kept as an alias for this package's existing callers. */
+export type WarmupConfig = WarmupRamp;
 
 export interface TrainingMaxConfig {
   /** Percent (0..1) of estimated 1RM used as the Training Max. Wendler default 0.85. */

@@ -583,6 +583,7 @@ function buildStrength(sess: HyroxSession, ctx: PlatformContext, args: Prescribe
           movementId: movement,
           workingWeightKg: weightKg,
           roundingKg: ctx.roundingKg,
+          ...(ctx.warmupRamp ? { ramp: ctx.warmupRamp } : {}),
         }),
       );
       items.push({

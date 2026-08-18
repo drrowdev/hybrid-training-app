@@ -11,7 +11,11 @@
  * prescription assembly in `lib/planner/actions.ts`.
  */
 import type { PrescriptionItem } from "@hta/db";
-import { GLOBAL_WARMUP_PERCENTS, GLOBAL_WARMUP_REPS } from "@hta/program-core";
+import {
+  GLOBAL_WARMUP_PERCENTS,
+  GLOBAL_WARMUP_REPS,
+  type WarmupRamp,
+} from "@hta/program-core";
 
 /**
  * What `percentLadder` is a percentage OF.
@@ -206,12 +210,73 @@ export function isLegacyDefaultWarmupScheme(
  * `profiles.warmup_scheme`, never inside generation. `generateWarmupItems`
  * stays faithful to whatever it is handed so an editor preview can show
  * the user's in-flight ladder verbatim.
+ *
+ * ⚠️ This function ERASES the difference between "user never chose" (NULL) and
+ * "user explicitly chose the default ladder". Where that difference decides
+ * whether a program's own ramp applies, use {@link resolveWarmupPreference}
+ * instead — see its docs.
  */
 export function resolveWarmupScheme(stored: unknown): WarmupScheme {
   if (stored == null) return DEFAULT_WARMUP_SCHEME;
   if (isLegacyDefaultWarmupScheme(stored)) return DEFAULT_WARMUP_SCHEME;
   if (!isWellFormedScheme(stored)) return DEFAULT_WARMUP_SCHEME;
   return stored;
+}
+
+/**
+ * Whether the lifter has expressed a warm-up preference at all.
+ *
+ * - `"program"` — no usable preference stored. A program that publishes its own
+ *   ramp (5/3/1) uses THAT ramp; everything else uses the app default.
+ * - `"user"` — an explicit choice, which wins over a program's ramp everywhere,
+ *   including `setCount: 0` ("skip warm-ups").
+ */
+export type WarmupPreference =
+  | { mode: "program" }
+  | { mode: "user"; scheme: WarmupScheme };
+
+/**
+ * Classify a RAW `profiles.warmup_scheme` value into a {@link WarmupPreference}.
+ *
+ * Pass the column value straight from the query — never the output of
+ * {@link resolveWarmupScheme}, which has already collapsed NULL into the
+ * default and destroyed the signal this function exists to read.
+ *
+ * - NULL ⇒ `"program"`. Migration 0039 added the column with no backfill and
+ *   the settings editor is its only writer, so NULL provably means "this lifter
+ *   has never touched the setting" rather than "chose the default".
+ * - The exact 0039-era payload ⇒ `"user"` (upgraded to the current default).
+ *   It could only have been written BY the settings editor, so it is a real
+ *   choice even though it is no longer the default ladder.
+ * - Malformed ⇒ `"program"`. An unreadable blob is not a preference; falling
+ *   back to the program's own ramp is the conservative reading.
+ */
+export function resolveWarmupPreference(stored: unknown): WarmupPreference {
+  if (stored == null) return { mode: "program" };
+  if (isLegacyDefaultWarmupScheme(stored)) {
+    return { mode: "user", scheme: DEFAULT_WARMUP_SCHEME };
+  }
+  if (!isWellFormedScheme(stored)) return { mode: "program" };
+  return { mode: "user", scheme: stored };
+}
+
+/**
+ * Convert an app-space {@link WarmupScheme} (percent 0..100) into the engine-space
+ * {@link WarmupRamp} (fraction 0..1) that crosses the platform seam on
+ * `PlatformContext.warmupRamp`. Single home for the conversion (plan §6.9),
+ * the inverse direction of {@link fractionToPercent}.
+ *
+ * `setCount: 0` becomes an EMPTY ramp, which is how "skip warm-ups" reaches an
+ * engine. The ladders are sliced to `setCount` so a scheme carrying trailing
+ * junk beyond its own count cannot smuggle extra rungs into an engine.
+ */
+export function warmupSchemeToRamp(scheme: WarmupScheme): WarmupRamp {
+  const count = Math.max(0, scheme.setCount);
+  return {
+    percents: scheme.percentLadder.slice(0, count).map((p) => p / 100),
+    reps: scheme.repLadder.slice(0, count),
+    anchor: warmupAnchorOf(scheme),
+  };
 }
 
 /** Round to nearest 0.5%. */
