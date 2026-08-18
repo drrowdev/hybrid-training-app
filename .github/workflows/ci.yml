@@ -346,10 +346,25 @@ jobs:
         # (drop body_comp_phase) is exactly that shape: the old build SELECTs
         # the columns by name and 500s the moment they disappear.
         #
-        # So: refuse to migrate unless the Vercel integration has recorded a
-        # SUCCESSFUL Production deployment for this exact commit. No new secret
-        # — `vercel[bot]` writes standard GitHub Deployment records, readable
+        # So: refuse to migrate unless VERCEL has recorded a SUCCESSFUL
+        # Production deployment for this exact commit. No new secret —
+        # `vercel[bot]` writes standard GitHub Deployment records, readable
         # with the workflow token.
+        #
+        # TWO SUBTLETIES, both learned the hard way on the first real run:
+        #
+        #  1. This job itself declares `environment: Production`, so GitHub
+        #     creates its OWN Production deployment record for it. Querying
+        #     "newest Production deployment for this SHA" therefore found THIS
+        #     JOB, mid-run, in state `in_progress`, and failed — which then
+        #     marked its own record `failure`. The guard could never pass.
+        #     Hence: only consider records created by `vercel[bot]`.
+        #
+        #  2. A commit can have several Vercel Production deployments (a
+        #     redeploy, a promote). A later duplicate failing does NOT unship
+        #     the earlier successful one — a failed build never replaces live
+        #     code. So the question is "has this commit EVER deployed
+        #     successfully", not "did the most recent attempt succeed".
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -370,18 +385,19 @@ jobs:
             exit 0
           fi
 
-          echo "Looking for a Production deployment of ${SHA}…"
-          DEPLOY_ID=$(gh api \
-            "repos/${REPO}/deployments?sha=${SHA}&environment=Production&per_page=1" \
-            --jq '.[0].id // empty')
+          echo "Looking for a Vercel Production deployment of ${SHA}…"
+          # `vercel[bot]` only — see subtlety (1) above.
+          DEPLOY_IDS=$(gh api --paginate \
+            "repos/${REPO}/deployments?sha=${SHA}&environment=Production&per_page=100" \
+            --jq '.[] | select(.creator.login == "vercel[bot]") | .id')
 
-          if [ -z "${DEPLOY_ID}" ]; then
+          if [ -z "${DEPLOY_IDS}" ]; then
             {
-              echo "## ❌ No production deployment for this commit"
+              echo "## ❌ No Vercel production deployment for this commit"
               echo ""
-              echo "Commit \`${SHA}\` has no \`Production\` deployment record, so the"
-              echo "app running in production is NOT this code. Applying migrations"
-              echo "now can break the live build."
+              echo "Commit \`${SHA}\` has no \`Production\` deployment from"
+              echo "\`vercel[bot]\`, so the app running in production is NOT this"
+              echo "code. Applying migrations now can break the live build."
               echo ""
               echo "**Wait for the Vercel deploy of \`main\` to finish, then re-dispatch.**"
               echo ""
@@ -389,43 +405,47 @@ jobs:
               echo "\`allow_undeployed=true\` — but only if the running build tolerates"
               echo "the pending migrations."
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::No Production deployment found for ${SHA}."
+            echo "::error::No Vercel Production deployment found for ${SHA}."
             exit 1
           fi
 
-          STATE=$(gh api \
-            "repos/${REPO}/deployments/${DEPLOY_ID}/statuses?per_page=1" \
-            --jq '.[0].state // "unknown"')
-          echo "Deployment ${DEPLOY_ID} state: ${STATE}"
+          # Any successful attempt is enough — see subtlety (2) above.
+          SUCCESS_ID=""
+          SEEN=""
+          for id in ${DEPLOY_IDS}; do
+            state=$(gh api "repos/${REPO}/deployments/${id}/statuses?per_page=100" \
+              --jq '[.[].state] | if any(. == "success") then "success" else (.[0] // "unknown") end')
+            echo "  deployment ${id}: ${state}"
+            SEEN="${SEEN}- \`${id}\` → \`${state}\`"$'\n'
+            if [ "${state}" = "success" ] && [ -z "${SUCCESS_ID}" ]; then
+              SUCCESS_ID="${id}"
+            fi
+          done
 
-          if [ "${STATE}" != "success" ]; then
+          if [ -z "${SUCCESS_ID}" ]; then
             {
-              echo "## ❌ Production app deploy is not successful"
+              echo "## ❌ No successful production deploy for this commit"
               echo ""
-              echo "Deployment \`${DEPLOY_ID}\` for \`${SHA}\` is in state \`${STATE}\`."
+              echo "Vercel has Production deployment(s) for \`${SHA}\`, but none"
+              echo "reached \`success\`:"
               echo ""
-              case "${STATE}" in
-                pending|queued|in_progress)
-                  echo "The deploy is still running — wait for it to finish, then re-dispatch." ;;
-                failure|error)
-                  echo "The deploy FAILED, so production is still serving older code."
-                  echo "Fix the deploy first; migrating now would break the live build." ;;
-                inactive)
-                  echo "This deployment was superseded by a newer one — dispatch from"
-                  echo "current \`main\` instead of an older commit." ;;
-                *)
-                  echo "Unrecognised state. Check the deployment before migrating." ;;
-              esac
+              echo "${SEEN}"
+              echo "If a deploy is still building, wait and re-dispatch. If it FAILED,"
+              echo "production is still serving older code — fix the deploy first,"
+              echo "because migrating now would break the live build."
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::Production deployment for ${SHA} is '${STATE}', not 'success'."
+            echo "::error::No Vercel Production deployment of ${SHA} reached 'success'."
             exit 1
           fi
 
           {
             echo "## ✅ Deploy-order guard passed"
             echo ""
-            echo "Production is serving \`${SHA}\` (deployment \`${DEPLOY_ID}\`), so"
-            echo "pending migrations are safe to apply against the live build."
+            echo "Production is serving \`${SHA}\` (Vercel deployment"
+            echo "\`${SUCCESS_ID}\`), so pending migrations are safe to apply"
+            echo "against the live build."
+            echo ""
+            echo "${SEEN}"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up pnpm
