@@ -317,9 +317,10 @@ describe("swapActiveMovement", () => {
     expect(warmups.map((item) => item.percentTm)).toEqual([67.5]);
   });
 
-  it("a program-owned block rebuilds warm-ups with the PROGRAM's fixed %-of-TM ramp, not the user's ladder", async () => {
-    // Running the 5/3/1-family template means running its warm-up: a flat
-    // 40/50/60 % of the Training Max that does not climb with the top set.
+  it("a program-owned block honours the user's EXPLICIT ladder over the program's ramp (DC-K4)", async () => {
+    // Owner decision: a program's published ramp is a DEFAULT, not a mandate.
+    // A lifter who configured their own ladder gets it everywhere — silently
+    // substituting 5/3/1's ramp here would be the overrule DC-K4 forbids.
     plannedProgramId = wendler531Engine.meta.id;
     replacementOneRmKg = 50;
     profileWarmupScheme = {
@@ -363,11 +364,61 @@ describe("swapActiveMovement", () => {
       items: Array<Record<string, unknown>>;
     };
     // Item count (and therefore every set_logs.prescription_item_index) is
-    // still preserved — the anchor only changes the percentages.
+    // still preserved — this is a live session, so slots are rewritten in place
+    // rather than re-counted to the user's 2-rung ladder.
     expect(updated.items).toHaveLength(6);
     const warmups = updated.items.filter((item) => item.kind === "warmup");
     expect(warmups).toHaveLength(3);
-    // The program's ramp, NOT the user's 50/75 × the 95 % top set (47.5/71.25).
+    // The user's 50/75 ladder against the 95 % top set — NOT the program's
+    // flat 40/50/60 % of Training Max.
+    expect(warmups.map((item) => item.percentTm)).not.toEqual([40, 50, 60]);
+    expect(warmups.map((item) => item.percentTm)).toEqual([47.5, 71.5, 71.5]);
+  });
+
+  it("a program-owned block falls back to the PROGRAM's ramp when the user never chose", async () => {
+    // warmup_scheme IS NULL — no preference, so 5/3/1's own flat 40/50/60 % of
+    // the Training Max applies and does not climb with the top set.
+    plannedProgramId = wendler531Engine.meta.id;
+    replacementOneRmKg = 50;
+    profileWarmupScheme = null;
+    plannedPrescription = {
+      items: [
+        ...Array.from({ length: 3 }, (_, i) => ({
+          movementId: ORIGINAL_ID,
+          movementSlug: "front-squat",
+          movementName: "Front Squat",
+          kind: "warmup",
+          sets: 1,
+          reps: [5, 5, 3][i],
+          percentTm: [34, 51, 68][i],
+          targetWeightKg: 120,
+        })),
+        ...Array.from({ length: 3 }, (_, i) => ({
+          movementId: ORIGINAL_ID,
+          movementSlug: "front-squat",
+          movementName: "Front Squat",
+          kind: "main",
+          sets: 1,
+          reps: 5,
+          percentTm: [75, 85, 95][i],
+        })),
+      ],
+    };
+    const { swapActiveMovement } = await import("../swap-actions");
+    const fd = new FormData();
+    fd.set("sessionId", SESSION_ID);
+    fd.set("originalMovementId", ORIGINAL_ID);
+    fd.set("newMovementId", NEW_ID);
+    fd.set("reason", "equipment");
+
+    const result = await swapActiveMovement(fd);
+    expect(result.ok).toBe(true);
+    const updated = plannedUpdates[0]!.prescription as {
+      items: Array<Record<string, unknown>>;
+    };
+    expect(updated.items).toHaveLength(6);
+    const warmups = updated.items.filter((item) => item.kind === "warmup");
+    expect(warmups).toHaveLength(3);
     expect(warmups.map((item) => item.percentTm)).toEqual([40, 50, 60]);
     expect(warmups.map((item) => item.reps)).toEqual([5, 5, 3]);
     expect(warmups.every((item) => item.targetWeightKg == null)).toBe(true);

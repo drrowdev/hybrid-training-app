@@ -180,13 +180,15 @@ export const zuluHtEngine: ProgramEngine<ZuluHtInstance> = {
     const heavyBasis = basisFor(heavyMv);
     if (heavyBasis != null) {
       const heavyWeight = roundToIncrement(heavyBasis * wave.heavyPct, ctx.roundingKg);
-      // Warm-up ramp to the heavy work weight — shared global routine.
+      // Warm-up ramp to the heavy work weight — shared global routine, or the
+      // lifter's own ladder when they have configured one (`ctx.warmupRamp`).
       items.push(
         ...buildGlobalWarmupItems({
           name: `${label(heavyMv)} (heavy)`,
           movementId: heavyMv,
           workingWeightKg: heavyWeight,
           roundingKg: ctx.roundingKg,
+          ...(ctx.warmupRamp ? { ramp: ctx.warmupRamp } : {}),
         }),
       );
       items.push({
@@ -214,6 +216,7 @@ export const zuluHtEngine: ProgramEngine<ZuluHtInstance> = {
           movementId: suppMv,
           workingWeightKg: suppWeight,
           roundingKg: ctx.roundingKg,
+          ...(ctx.warmupRamp ? { ramp: ctx.warmupRamp } : {}),
         }),
       );
       items.push({

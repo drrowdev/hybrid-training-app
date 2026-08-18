@@ -17,10 +17,16 @@
  * Pure: no DB, no React. Callers resolve the owning program id and hand it in.
  */
 import { TRAINING_MAX_WARMUP, wendler531Engine } from "@hta/wendler";
+import { tacticalBarbellEngine, zuluHtEngine } from "@hta/tacticalbarbell";
+import { hyroxEngine } from "@hta/hyrox";
+import { greenProtocolEngine } from "@hta/green";
+import { GLOBAL_WARMUP_RAMP } from "@hta/program-core";
 import {
   fractionToPercent,
+  DEFAULT_WARMUP_SCHEME,
   type WarmupScheme,
   type WarmupAnchor,
+  type WarmupPreference,
 } from "./warmups";
 
 /** Translate an engine `WarmupConfig` into the app's stored scheme shape. */
@@ -45,12 +51,35 @@ export const TRAINING_MAX_ANCHORED_WARMUP_SCHEME: WarmupScheme =
   schemeFromEngineConfig(TRAINING_MAX_WARMUP);
 
 /**
- * Program id → the warm-up scheme that program prescribes. Keyed off the
- * engine's own `meta.id` so the key can never drift from the registry.
+ * The shared 40/60/80%-of-the-work-set ramp in app scheme space. DERIVED from
+ * `@hta/program-core`'s `GLOBAL_WARMUP_RAMP` — the same ramp those engines fall
+ * back to when no user ladder is supplied — so the swap path and the generation
+ * path cannot drift apart (plan §6.9).
+ */
+export const GLOBAL_ANCHORED_WARMUP_SCHEME: WarmupScheme =
+  schemeFromEngineConfig(GLOBAL_WARMUP_RAMP);
+
+/**
+ * Program id → the warm-up ramp that program falls back to when the lifter has
+ * expressed NO preference of their own. Keyed off each engine's `meta.id` so a
+ * key can never drift from the registry.
+ *
+ * 5/3/1 is the only entry that publishes a ramp as part of its method. The rest
+ * are registered deliberately, with the SHARED ramp their engines already use:
+ * without an entry, `warmupSchemeForProgram` would fall through to the app
+ * default and a swap would rebuild a movement's ladder differently from the way
+ * the session was generated. Registering them keeps the two in lockstep.
+ *
+ * Green delegates its strength days to the Tactical Barbell and Zulu/HT engines
+ * (`@hta/green` `prescribe`), so it inherits the same shared ramp.
  */
 export const PROGRAM_WARMUP_SCHEMES: Readonly<Record<string, WarmupScheme>> =
   Object.freeze({
     [wendler531Engine.meta.id]: TRAINING_MAX_ANCHORED_WARMUP_SCHEME,
+    [tacticalBarbellEngine.meta.id]: GLOBAL_ANCHORED_WARMUP_SCHEME,
+    [zuluHtEngine.meta.id]: GLOBAL_ANCHORED_WARMUP_SCHEME,
+    [hyroxEngine.meta.id]: GLOBAL_ANCHORED_WARMUP_SCHEME,
+    [greenProtocolEngine.meta.id]: GLOBAL_ANCHORED_WARMUP_SCHEME,
   });
 
 /** True when the program publishes its own warm-up ladder. */
@@ -79,15 +108,21 @@ export function programIdFromJoinedBlock(row: unknown): string | null {
 /**
  * The scheme to use for a session owned by `programId`.
  *
- * A program with a published ramp wins over the user's global ladder — running
- * that template means running its warm-up. Everything else (native archetype
- * blocks, quick sessions, programs with no published ramp, unknown ids) keeps
- * the user's own scheme, including `setCount: 0` ("skip warm-ups").
+ * The lifter's OWN ladder wins whenever they have expressed one — including
+ * `setCount: 0` ("skip warm-ups"), and including inside 5/3/1. A program's
+ * published ramp is a DEFAULT for lifters who have never touched the setting,
+ * not a mandate.
+ *
+ * `preference` must come from `resolveWarmupPreference` on the RAW stored
+ * column. Passing a resolved `WarmupScheme` here cannot work: the resolver has
+ * already turned NULL into the default ladder, so "never chose" and "chose the
+ * default" arrive identical and the program ramp could never apply.
  */
 export function warmupSchemeForProgram(
   programId: string | null | undefined,
-  userScheme: WarmupScheme,
+  preference: WarmupPreference,
 ): WarmupScheme {
-  if (programId == null) return userScheme;
-  return PROGRAM_WARMUP_SCHEMES[programId] ?? userScheme;
+  if (preference.mode === "user") return preference.scheme;
+  if (programId == null) return DEFAULT_WARMUP_SCHEME;
+  return PROGRAM_WARMUP_SCHEMES[programId] ?? DEFAULT_WARMUP_SCHEME;
 }

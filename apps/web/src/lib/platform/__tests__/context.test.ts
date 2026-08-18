@@ -49,6 +49,21 @@ describe("buildPlatformContext", () => {
 
   it("combines user 1RMs with shared catalog movements for Activation", async () => {
     const from = vi.fn((table: string) => {
+      if (table === "profiles") {
+        // warmup_scheme IS NULL — the lifter has never configured a ladder, so
+        // no `warmupRamp` should reach the engines and each program keeps its
+        // own published ramp.
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { warmup_scheme: null },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
       if (table === "training_maxes") {
         return {
           select: () => ({

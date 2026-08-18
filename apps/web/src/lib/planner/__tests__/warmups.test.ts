@@ -8,10 +8,98 @@ import {
   isLegacyDefaultWarmupScheme,
   isWellFormedScheme,
   roundWarmupLoadKg,
+  resolveWarmupPreference,
   resolveWarmupScheme,
   warmupAnchorOf,
+  warmupSchemeToRamp,
   type WarmupScheme,
 } from "../warmups";
+
+describe("resolveWarmupPreference — 'never chose' is not 'chose the default'", () => {
+  it("NULL means no preference, so a program's own ramp still applies", () => {
+    // Migration 0039 added warmup_scheme with no backfill and the settings
+    // editor is its only writer, so NULL provably means "never touched".
+    expect(resolveWarmupPreference(null)).toEqual({ mode: "program" });
+    expect(resolveWarmupPreference(undefined)).toEqual({ mode: "program" });
+  });
+
+  it("a stored ladder is an explicit choice, even when it equals the default", () => {
+    // The distinction resolveWarmupScheme cannot make: this payload is
+    // byte-identical to the app default but was deliberately written.
+    const preference = resolveWarmupPreference({ ...DEFAULT_WARMUP_SCHEME });
+    expect(preference.mode).toBe("user");
+    expect(preference).toMatchObject({ scheme: DEFAULT_WARMUP_SCHEME });
+  });
+
+  it("setCount 0 is a real preference, not an absent one", () => {
+    expect(
+      resolveWarmupPreference({ setCount: 0, percentLadder: [], repLadder: [] }),
+    ).toEqual({
+      mode: "user",
+      scheme: { setCount: 0, percentLadder: [], repLadder: [] },
+    });
+  });
+
+  it("the 0039-era payload counts as a choice, upgraded to the current default", () => {
+    expect(resolveWarmupPreference({ ...LEGACY_DEFAULT_WARMUP_SCHEME })).toEqual({
+      mode: "user",
+      scheme: DEFAULT_WARMUP_SCHEME,
+    });
+  });
+
+  it("a malformed blob is not a preference", () => {
+    // Conservative reading: an unreadable payload should not defeat a
+    // program's published ramp.
+    expect(resolveWarmupPreference({ setCount: 3, percentLadder: [40] })).toEqual({
+      mode: "program",
+    });
+    expect(resolveWarmupPreference("nonsense")).toEqual({ mode: "program" });
+  });
+
+  it("agrees with resolveWarmupScheme on the resulting ladder whenever one is chosen", () => {
+    for (const stored of [
+      { ...DEFAULT_WARMUP_SCHEME },
+      { ...LEGACY_DEFAULT_WARMUP_SCHEME },
+      { setCount: 2, percentLadder: [50, 75], repLadder: [5, 3] },
+    ]) {
+      const preference = resolveWarmupPreference(stored);
+      expect(preference.mode).toBe("user");
+      if (preference.mode === "user") {
+        expect(preference.scheme).toEqual(resolveWarmupScheme(stored));
+      }
+    }
+  });
+});
+
+describe("warmupSchemeToRamp — app percent space → engine fraction space", () => {
+  it("converts percents to fractions and carries the anchor", () => {
+    expect(
+      warmupSchemeToRamp({ setCount: 2, percentLadder: [50, 75], repLadder: [5, 3] }),
+    ).toEqual({ percents: [0.5, 0.75], reps: [5, 3], anchor: "top_set" });
+  });
+
+  it("setCount 0 becomes an EMPTY ramp — how 'skip warm-ups' reaches an engine", () => {
+    expect(
+      warmupSchemeToRamp({ setCount: 0, percentLadder: [], repLadder: [] }),
+    ).toEqual({ percents: [], reps: [], anchor: "top_set" });
+  });
+
+  it("round-trips the app default back to the shared global ramp", () => {
+    const ramp = warmupSchemeToRamp(DEFAULT_WARMUP_SCHEME);
+    expect(ramp.percents).toEqual([...GLOBAL_WARMUP_PERCENTS]);
+    expect(ramp.reps).toEqual([...GLOBAL_WARMUP_REPS]);
+  });
+
+  it("never emits more rungs than setCount, even if a ladder carries junk", () => {
+    expect(
+      warmupSchemeToRamp({
+        setCount: 2,
+        percentLadder: [40, 60, 80],
+        repLadder: [5, 5, 3],
+      } as WarmupScheme),
+    ).toEqual({ percents: [0.4, 0.6], reps: [5, 5], anchor: "top_set" });
+  });
+});
 
 describe("generateWarmupItems", () => {
   it("default scheme + 85% top set → 3 warmups at 34/51/68% × 5/5/3", () => {
