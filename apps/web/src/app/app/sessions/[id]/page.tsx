@@ -157,12 +157,13 @@ export default async function SessionDetailPage({
   // both surface a fully-typed Equipment blob here.
   const equipment = resolveEquipment(feedbackPrefs ?? null);
   // Raw, uncoerced bar inventory. `barbellKg === 0` (travel/hotel,
-  // bodyweight-only) and `trapBarKg === null` (home/functional/custom)
-  // mean "the user owns no such bar" — `resolveBarWeightKg` is the one
-  // place that interprets them, shared with the server-side warm-up
-  // materialisation in `fillSessionFromPlan`.
+  // bodyweight-only) and `trapBarKg` / `safetyBarKg === null`
+  // (home/functional/custom) mean "the user owns no such bar" —
+  // `resolveBarWeightKg` is the one place that interprets them, shared
+  // with the server-side warm-up materialisation in `fillSessionFromPlan`.
   const barbellKg = equipment.bars.barbellKg;
   const trapBarKg = equipment.bars.trapBarKg;
+  const safetyBarKg = equipment.bars.safetyBarKg;
   const plateInventory = equipment.plates.map((weightKg) => ({ weightKg }));
   const preferStandardLbPlates = equipment.preset !== "custom";
 
@@ -1345,6 +1346,7 @@ export default async function SessionDetailPage({
         loggedSetIdByItemIndex={loggedSetIdByItemIndex}
         barbellKg={barbellKg}
         trapBarKg={trapBarKg ?? undefined}
+        safetyBarKg={safetyBarKg ?? undefined}
         plateInventory={plateInventory}
         preferStandardLbPlates={preferStandardLbPlates}
         bwGateStateByFamily={bwGateStateByFamily}

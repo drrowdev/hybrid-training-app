@@ -429,14 +429,20 @@ export const wendler531Engine: ProgramEngine<WendlerInstance> = {
       });
 
       const raw: RawSet[] = [];
-      // Warm-up ramp. 5/3/1's ramp is a FIXED 40/50/60% of the Training Max
+      // Warm-up ramp. 5/3/1's OWN ramp is a FIXED 40/50/60% of the Training Max
       // (5/5/3) — it does not climb with the week's top set, so a 5s / 3s /
       // 5/3/1 week all warm up on the same bar loads. See warmup.ts.
+      //
+      // That ramp is a DEFAULT, not a mandate: a lifter who has configured
+      // their own ladder supplies it on `ctx.warmupRamp`, and their choice wins
+      // (including an empty ramp, which skips warm-ups entirely). Absent means
+      // "no preference", so the published 5/3/1 ramp stands.
       const topWorking = mainSets.reduce((m, s) => Math.max(m, s.weightKg), 0);
       for (const w of buildProgramWarmupSets({
         trainingMaxKg: tm,
         topWorkingWeightKg: topWorking,
         roundingKg: r,
+        ...(ctx.warmupRamp ? { config: ctx.warmupRamp } : {}),
       })) {
         raw.push({ kind: "warmup", name, weightKg: w.weightKg, reps: w.reps });
       }

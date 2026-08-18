@@ -669,6 +669,23 @@ Migration 0130 drops `strava_connections` and `strava_event_log`. Neither has ha
 
 Externally-imported cardio rows are read-only again. The removal had made them editable on the grounds that the "edit upstream and re-sync" instruction was a dead end, which was true of the instruction but not of the reason: an imported row is a faithful copy of what a device measured, so hand-editing a recorded heart-rate average silently corrupts the record. The freeze is now keyed on import provenance rather than on any particular provider, and the copy states that the row is kept as recorded without naming an upstream that no longer exists.
 
+## [2026-08-18] decision | A configured warm-up ladder wins over a program's published ramp
+`profiles.warmup_scheme` governed only natively assembled blocks. Every program engine hardcoded a ramp and never read the setting, so "Skip warmups" still produced three sets in 5/3/1, Tactical Barbell, Zulu/HT, HYROX and Green — contradicting the column's own schema comment, which promises `setCount = 0` "disables auto-warmups entirely".
+
+Only 5/3/1 publishes a warm-up as part of its method; `program-core` states outright that the other four have none, and they were hardcoding the app's OWN default ramp — the very ladder the setting exists to configure. So ignoring the lifter there had no methodology justification at all, only 5/3/1 did.
+
+Owner decision: programs supply a DEFAULT, not a mandate. The stored value is now read as a tri-state — NULL ("never chose") keeps each program's own ramp, any stored ladder wins everywhere including inside 5/3/1 and including `setCount: 0`. The absent/present distinction is load-bearing: migration 0039 added the column with no backfill and the settings editor is its only writer, so NULL provably means "never touched" rather than "picked the default". Without it, honouring explicit choices would strip 5/3/1's ramp from every lifter who never opened the screen. `resolveWarmupPreference` reads the raw column; `resolveWarmupScheme` collapses NULL and is now documented as unusable where that difference decides whether a program ramp applies — both swap loaders were resolving too early and had to move onto the preference.
+
+Seam is a new optional `PlatformContext.warmupRamp`, matching the existing optional-context pattern, carrying a canonical `WarmupRamp` that `program-core` now owns; `@hta/wendler` keeps `WarmupConfig`/`WarmupAnchor` as aliases so no public API breaks. An empty ramp emits no items — how "skip" reaches an engine.
+
+Closes a second, pre-existing defect: TB/Zulu-HT/HYROX/Green were absent from `PROGRAM_WARMUP_SCHEMES`, so an unstarted session generated with the hardcoded ramp was rebuilt by a swap using the user's ladder, leaving one movement on a rung count its neighbours did not share. They are registered with the shared ramp their engines already default to, derived from `GLOBAL_WARMUP_RAMP` rather than restated.
+
+DC-K4 is satisfied without a migration: the editor names the program whose warm-up a choice replaces (derived — a program qualifies only when its registered default differs from the shared ramp), a "Follow the program" preset writes SQL NULL so the choice is reversible, and the override is audited via the existing `custom` event type on the deliberately-loose `engine_override_events.context` JSONB. Behaviour changes only for newly generated sessions; existing prescription snapshots are never rewritten, per 0039's forward-only note and ADR 0016.
+
+Also corrected the settings preview, which showed a 40/60/80 ladder as "34% TM" and read like the setting had been ignored. It now names both number spaces ("40% of top set = 34% TM").
+
+See ADR 0072.
+
 ## [2026-08-18] decision | Rebuild the training profile page; relocate accessory volume; drop body-comp phase
 A UI-simplification pass on `/app/settings/profile` turned into a correctness pass, because tracing what each control actually influenced found that two of the four were describing behaviour the engine does not have.
 

@@ -20,6 +20,10 @@ import {
   type StrengthRole,
 } from "@/lib/planner/archetypes";
 import type { MovementResolver, ResolvedMovement } from "./adapter";
+import {
+  resolveWarmupPreference,
+  warmupSchemeToRamp,
+} from "@/lib/planner/warmups";
 
 export interface PlatformContextBundle {
   ctx: PlatformContext;
@@ -80,11 +84,20 @@ export async function buildPlatformContext(
     customMovements?: CustomMovementBinding[];
   } = {},
 ): Promise<PlatformContextBundle> {
-  const { data, error } = await supabase
-    .from("training_maxes")
-    .select("one_rm_kg, movement:movements(id, slug, display_name)")
-    .eq("user_id", userId);
+  const [
+    { data, error },
+    { data: profile, error: profileError },
+  ] = await Promise.all([
+    supabase
+      .from("training_maxes")
+      .select("one_rm_kg, movement:movements(id, slug, display_name)")
+      .eq("user_id", userId),
+    supabase.from("profiles").select("warmup_scheme").eq("id", userId).maybeSingle(),
+  ]);
   if (error) throw new Error(`buildPlatformContext: ${error.message}`);
+  if (profileError) throw new Error(`buildPlatformContext: ${profileError.message}`);
+  const warmupSchemeRaw = (profile as { warmup_scheme?: unknown } | null)
+    ?.warmup_scheme;
 
   const oneRepMaxes: Record<string, number> = {};
   const resolved = new Map<string, ResolvedMovement>();
@@ -184,11 +197,20 @@ export async function buildPlatformContext(
 
   const resolveMovement: MovementResolver = (engineKey) => resolved.get(engineKey);
 
+  // The lifter's own warm-up ladder, supplied to the engines ONLY when they
+  // have actually chosen one. Read raw (not via `resolveWarmupScheme`) because
+  // NULL — "never touched the setting" — is what tells an engine to keep its
+  // own published ramp. See `resolveWarmupPreference`.
+  const preference = resolveWarmupPreference(warmupSchemeRaw);
+  const warmupRamp =
+    preference.mode === "user" ? warmupSchemeToRamp(preference.scheme) : undefined;
+
   return {
     ctx: {
       oneRepMaxes,
       roundingKg: opts.roundingKg ?? 2.5,
       ...(opts.gender ? { gender: opts.gender } : {}),
+      ...(warmupRamp ? { warmupRamp } : {}),
     },
     resolveMovement,
     anchoredKeys: Object.keys(oneRepMaxes),

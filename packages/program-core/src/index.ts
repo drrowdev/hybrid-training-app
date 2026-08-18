@@ -262,6 +262,22 @@ export interface PlatformContext {
   gender?: "male" | "female";
   /** Injectable "now" for deterministic date math in tests. */
   now?: Date;
+  /**
+   * The lifter's OWN warm-up ladder, supplied only when they have explicitly
+   * chosen one in settings.
+   *
+   * ABSENT means "no preference expressed" — the engine then uses its own
+   * published ramp (5/3/1's fixed %-of-Training-Max ladder) or, for a program
+   * that publishes none, the shared {@link GLOBAL_WARMUP_RAMP}. Present means
+   * the user chose, and their choice wins over the program default — including
+   * an empty ramp, which means "skip warm-ups entirely".
+   *
+   * The platform is responsible for the absent/present distinction: a stored
+   * scheme that is NULL (never touched) must NOT be resolved to a default
+   * before it reaches here, or "no preference" becomes indistinguishable from
+   * an explicit pick of the default ladder.
+   */
+  warmupRamp?: WarmupRamp;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -447,8 +463,10 @@ export function oneRepMaxFor(ctx: PlatformContext, movement: string): number | u
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Global warm-up ramp — the app's shared default for strength programs that ramp
-// to a top working set and have no published warm-up of their own (Tactical
+// Warm-up ramps
+//
+// `GLOBAL_WARMUP_RAMP` is the app's shared default for strength programs that
+// ramp to a top working set and have no published warm-up of their own (Tactical
 // Barbell, Zulu/HT, HYROX strength…). 40/60/80% OF THE WORK SET × 5/5/3 reps, so
 // the ladder climbs as the top set climbs.
 //
@@ -459,10 +477,41 @@ export function oneRepMaxFor(ctx: PlatformContext, movement: string): number | u
 // `TRAINING_MAX_WARMUP` / `buildProgramWarmupSets`); everything else should call
 // `buildGlobalWarmupItems` rather than redefining the ramp, so the shared
 // routine stays consistent app-wide.
+//
+// BOTH are only DEFAULTS. A lifter who has explicitly configured their own
+// ladder supplies it via `PlatformContext.warmupRamp`, and that wins over the
+// program's ramp — see the `warmupRamp` docs on `PlatformContext`.
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** What a ramp's percentages are measured against. */
+export type WarmupAnchor = "top_set" | "training_max";
+
+/**
+ * A warm-up ladder in engine space: fractions (0.4), not percents (40).
+ *
+ * `percents` and `reps` are parallel and must be the same length; an EMPTY
+ * ramp is meaningful and means "no warm-ups at all".
+ */
+export interface WarmupRamp {
+  /** Each entry is a fraction (0..1) of whatever `anchor` names. */
+  percents: number[];
+  reps: number[];
+  /** Absent means `"top_set"`. */
+  anchor?: WarmupAnchor;
+}
 
 export const GLOBAL_WARMUP_PERCENTS = [0.4, 0.6, 0.8] as const;
 export const GLOBAL_WARMUP_REPS = [5, 5, 3] as const;
+
+/**
+ * The shared ramp as a {@link WarmupRamp}. DERIVED from the constants above
+ * rather than restating them (plan §6.9 — one home for a derived value).
+ */
+export const GLOBAL_WARMUP_RAMP: WarmupRamp = {
+  percents: [...GLOBAL_WARMUP_PERCENTS],
+  reps: [...GLOBAL_WARMUP_REPS],
+  anchor: "top_set",
+};
 
 function floorTo(value: number, increment: number): number {
   if (increment <= 0) return value;
@@ -474,24 +523,41 @@ function floorTo(value: number, increment: number): number {
  * `workingWeightKg`. Each warm-up is floored to `roundingKg` so it never rounds
  * up past the work set, and any zero-weight ramp set is dropped (e.g. a very
  * light first lift). Returns one single-rep-scheme item per ramp step.
+ *
+ * `ramp` defaults to {@link GLOBAL_WARMUP_RAMP}; pass `ctx.warmupRamp` to let a
+ * lifter's own ladder win. An empty ramp returns no items — that is how "skip
+ * warm-ups" travels into an engine.
+ *
+ * ANCHOR CONTRACT: this helper only knows the working weight, so it can only
+ * honour a `top_set` ramp. A `training_max` ramp is not rejected (a thrown
+ * error inside prescription assembly would break the lifter's whole plan) but
+ * it cannot be applied here either, so it falls back to the shared ramp rather
+ * than silently mis-anchoring — the exact failure mode that made 5/3/1's ramp
+ * climb week to week before it was fixed.
  */
 export function buildGlobalWarmupItems(args: {
   name: string;
   movementId?: string;
   workingWeightKg: number;
   roundingKg: number;
+  ramp?: WarmupRamp;
 }): PrescribedItem[] {
   const { name, movementId, workingWeightKg, roundingKg } = args;
+  const requested = args.ramp ?? GLOBAL_WARMUP_RAMP;
+  const ramp =
+    (requested.anchor ?? "top_set") === "training_max"
+      ? GLOBAL_WARMUP_RAMP
+      : requested;
   const items: PrescribedItem[] = [];
-  for (let i = 0; i < GLOBAL_WARMUP_PERCENTS.length; i++) {
-    const w = floorTo(workingWeightKg * GLOBAL_WARMUP_PERCENTS[i]!, roundingKg);
+  for (let i = 0; i < ramp.percents.length; i++) {
+    const w = floorTo(workingWeightKg * ramp.percents[i]!, roundingKg);
     if (w <= 0) continue;
     items.push({
       kind: "warmup",
       name,
       ...(movementId != null ? { movementId } : {}),
       sets: 1,
-      reps: GLOBAL_WARMUP_REPS[i]!,
+      reps: ramp.reps[i] ?? 5,
       weightKg: w,
     });
   }

@@ -23,7 +23,10 @@ import { revalidatePath } from "next/cache";
 import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
-import { resolveWarmupScheme } from "@/lib/planner/warmups";
+import {
+  resolveWarmupPreference,
+  type WarmupPreference,
+} from "@/lib/planner/warmups";
 import {
   programIdFromJoinedBlock,
   warmupSchemeForProgram,
@@ -69,7 +72,12 @@ async function loadSwapPrescriptionContext(
   movementId: string,
 ): Promise<
   | {
-      warmupScheme: ReturnType<typeof resolveWarmupScheme>;
+      /**
+       * The RAW preference, not a resolved scheme: whether the program's own
+       * ramp applies depends on the lifter never having chosen a ladder, and
+       * `resolveWarmupScheme` would have erased that distinction here.
+       */
+      warmupPreference: WarmupPreference;
       replacementHasTrainingMax: boolean;
     }
   | { error: string }
@@ -92,7 +100,7 @@ async function loadSwapPrescriptionContext(
   if (profileError) return { error: profileError.message };
   const oneRm = Number((tm as { one_rm_kg?: number | string | null } | null)?.one_rm_kg);
   return {
-    warmupScheme: resolveWarmupScheme(
+    warmupPreference: resolveWarmupPreference(
       (profile as { warmup_scheme?: unknown } | null)?.warmup_scheme,
     ),
     // Bodyweight-node rows do not provide a kg anchor for a loaded warm-up
@@ -174,13 +182,13 @@ export async function swapActiveMovement(
     .eq("user_id", user.id)
     .maybeSingle();
   // A session materialised from a program that publishes its own warm-up ramp
-  // (e.g. the fixed %-of-Training-Max ladder) must be rebuilt with THAT ramp,
-  // not the user's global top-set ladder — otherwise a swap silently
-  // re-anchors the program's warm-ups. Quick/freestyle workouts have no block
-  // and keep the user's scheme.
+  // (e.g. the fixed %-of-Training-Max ladder) falls back to THAT ramp — but only
+  // for a lifter who has never configured a ladder of their own. An explicit
+  // choice wins everywhere, including "skip warm-ups". Quick/freestyle workouts
+  // have no block and always use the lifter's scheme.
   const warmupScheme = warmupSchemeForProgram(
     programIdFromJoinedBlock(planned),
-    swapContext.warmupScheme,
+    swapContext.warmupPreference,
   );
   // Rehab prescriptions are not TM-anchored. Keep the shared rebuild path,
   // but don't apply the strength-lift no-anchor fallback to them.

@@ -74,6 +74,7 @@ export type MovementCardListProps = {
   /** User equipment props forwarded to each prescribed card. */
   barbellKg?: number;
   trapBarKg?: number;
+  safetyBarKg?: number;
   plateInventory?: PlateInventoryItem[];
   preferStandardLbPlates?: boolean;
   /**
@@ -137,6 +138,7 @@ export function MovementCardList({
   timerSoundEnabled,
   barbellKg,
   trapBarKg,
+  safetyBarKg,
   plateInventory,
   preferStandardLbPlates,
   bwGateStateByFamily,
@@ -556,6 +558,7 @@ export function MovementCardList({
           timerSoundEnabled={timerSoundEnabled}
           barbellKg={barbellKg}
           trapBarKg={trapBarKg}
+          safetyBarKg={safetyBarKg}
           plateInventory={plateInventory}
           preferStandardLbPlates={preferStandardLbPlates}
           bwGateStateByFamily={bwGateStateByFamily}
@@ -622,6 +625,7 @@ export function MovementCardList({
         timerSoundEnabled={timerSoundEnabled}
         barbellKg={barbellKg}
         trapBarKg={trapBarKg}
+        safetyBarKg={safetyBarKg}
         plateInventory={plateInventory}
         preferStandardLbPlates={preferStandardLbPlates}
         bwGateStateByFamily={bwGateStateByFamily}
@@ -837,6 +841,7 @@ type PrescribedCardProps = {
   timerSoundEnabled: boolean;
   barbellKg?: number;
   trapBarKg?: number;
+  safetyBarKg?: number;
   plateInventory?: PlateInventoryItem[];
   preferStandardLbPlates?: boolean;
   bwGateStateByFamily?: Readonly<
@@ -902,6 +907,7 @@ const PrescribedCard = memo(function PrescribedCard(props: PrescribedCardProps) 
       timerSoundEnabled={props.timerSoundEnabled}
       barbellKg={props.barbellKg}
       trapBarKg={props.trapBarKg}
+      safetyBarKg={props.safetyBarKg}
       plateInventory={props.plateInventory}
       preferStandardLbPlates={props.preferStandardLbPlates}
       persistKeyPrefix={`mc:${props.sessionId}`}

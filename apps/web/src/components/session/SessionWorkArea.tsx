@@ -78,6 +78,7 @@ export function SessionWorkArea({
   loggedSetIdByItemIndex,
   barbellKg,
   trapBarKg,
+  safetyBarKg,
   plateInventory,
   preferStandardLbPlates,
   bwGateStateByFamily,
@@ -107,6 +108,7 @@ export function SessionWorkArea({
   loggedSetIdByItemIndex: Record<number, string>;
   barbellKg?: number;
   trapBarKg?: number;
+  safetyBarKg?: number;
   plateInventory?: PlateInventoryItem[];
   preferStandardLbPlates?: boolean;
   bwGateStateByFamily?: Readonly<
@@ -384,6 +386,7 @@ export function SessionWorkArea({
         timerSoundEnabled={timerSoundEnabled}
         barbellKg={barbellKg}
         trapBarKg={trapBarKg}
+        safetyBarKg={safetyBarKg}
         plateInventory={plateInventory}
         preferStandardLbPlates={preferStandardLbPlates}
         bwGateStateByFamily={mergedBwGateStateByFamily}

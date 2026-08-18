@@ -11,7 +11,8 @@ import { WarmupSettings } from "@/components/settings/WarmupSettings";
 import { CardioSourceSettings } from "@/components/settings/CardioSourceSettings";
 import { CardioModalitySettings } from "@/components/settings/CardioModalitySettings";
 import { SeasonPlanningToggle } from "@/components/settings/SeasonPlanningToggle";
-import { resolveWarmupScheme } from "@/lib/planner/warmups";
+import { resolveWarmupPreference } from "@/lib/planner/warmups";
+import { programsWithOwnWarmupRamp } from "@/lib/planner/program-warmup-scheme";
 import { sanitizePreferredModalities } from "@/lib/planner/preferred-cardio-modality";
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -30,7 +31,14 @@ export default async function TrainingSettingsPage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  const scheme = resolveWarmupScheme(profile?.warmup_scheme);
+  // Raw, not resolved: `null` means "never chose", which the editor surfaces as
+  // "Follow the program" and which lets each program keep its own ramp.
+  const preference = resolveWarmupPreference(profile?.warmup_scheme);
+  const scheme = preference.mode === "user" ? preference.scheme : null;
+  const programsWithOwnRamp = programsWithOwnWarmupRamp().map((p) => ({
+    id: p.id,
+    name: p.name,
+  }));
   const cardioSource =
     (profile?.preferred_cardio_source as "internal" | "external" | undefined) ??
     "internal";
@@ -56,7 +64,10 @@ export default async function TrainingSettingsPage() {
 
       <section style={{ display: "grid", gap: 12 }}>
         <h2 style={{ fontSize: 18, margin: 0 }}>Warmup ladder</h2>
-        <WarmupSettings initial={scheme} />
+        <WarmupSettings
+          initial={scheme}
+          programsWithOwnRamp={programsWithOwnRamp}
+        />
       </section>
 
       <section style={{ display: "grid", gap: 12 }}>

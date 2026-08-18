@@ -52,6 +52,7 @@ function render(options: {
   tmKg: number;
   barbellKg: number;
   trapBarKg: number | null;
+  safetyBarKg?: number | null;
   plates: readonly number[];
 }) {
   return renderToStaticMarkup(
@@ -71,6 +72,7 @@ function render(options: {
       timerSoundEnabled={false}
       barbellKg={options.barbellKg}
       trapBarKg={options.trapBarKg}
+      safetyBarKg={options.safetyBarKg ?? null}
       plateInventory={options.plates.map((weightKg) => ({ weightKg }))}
     />,
   );
@@ -146,5 +148,41 @@ describe("MovementFocusView warm-up bar floor", () => {
     // 20.4 kg raw rounds to 20 kg, then floors to the 25 kg trap bar.
     expect(html).toContain('value="25"');
     expect(html).toContain("Raised to the 25 kg bar minimum");
+  });
+
+  it("uses the SAFETY-bar mass for an SSB squat, not the straight bar", () => {
+    // `ssb-squat` used to resolve as a plain barbell, so the focus view floored
+    // to 20 kg while the lifter's SSB actually weighs 25 kg — understating the
+    // load and the plate count for every warm-up on the lift.
+    const html = render({
+      movementSlug: "ssb-squat",
+      percentTm: 34,
+      tmKg: 60,
+      barbellKg: COMMERCIAL_GYM_PRESET.bars.barbellKg,
+      trapBarKg: COMMERCIAL_GYM_PRESET.bars.trapBarKg,
+      safetyBarKg: COMMERCIAL_GYM_PRESET.bars.safetyBarKg,
+      plates: COMMERCIAL_GYM_PRESET.plates,
+    });
+
+    expect(html).toContain('value="25"');
+    expect(html).toContain("Raised to the 25 kg bar minimum");
+    expect(html).not.toContain("Raised to the 20 kg bar minimum");
+  });
+
+  it("does not invent a safety bar the user does not own", () => {
+    const html = render({
+      movementSlug: "ssb-squat",
+      percentTm: 34,
+      tmKg: 60,
+      barbellKg: HOME_GYM_PRESET.bars.barbellKg,
+      trapBarKg: HOME_GYM_PRESET.bars.trapBarKg,
+      safetyBarKg: HOME_GYM_PRESET.bars.safetyBarKg,
+      plates: HOME_GYM_PRESET.plates,
+    });
+
+    // No SSB in a home gym, and the straight bar must NOT stand in for it.
+    expect(html).toContain('value="20"');
+    expect(html).not.toContain("bar minimum");
+    expect(html).not.toContain("cp-plate-wrap");
   });
 });
