@@ -54,6 +54,10 @@ import {
   sessionLinksSchema,
   type SessionLinks,
 } from "./session-links";
+import {
+  resolveAssistanceVolume,
+  type AssistanceVolume,
+} from "./assistance-volume";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import type { MovementResolver } from "./adapter";
 import {
@@ -960,18 +964,24 @@ async function computeForeignWrite(
           : "unanchored",
     };
   };
-  // Global accessory-volume preference (profiles.effort_preference:
-  // low=Easier / standard=Balanced / high=Harder). 5/3/1 scales its assistance
-  // volume by this single global control. Read best-effort; default standard.
-  let assistanceVolumePref: "low" | "standard" | "high" = "standard";
+  // Assistance volume (low = Easier / standard = Balanced / high = Harder).
+  // 5/3/1 collects this per block in the wizard's Loadout step. Deploys that
+  // carry no wizard value (clients predating the field, or edit-mode re-deploys
+  // of older blocks) fall back to the legacy global `profiles.effort_preference`
+  // so they stay byte-identical. See `./assistance-volume`.
+  let assistanceVolumePref: AssistanceVolume = "standard";
   if (programId === "wendler-531") {
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("effort_preference")
-      .eq("id", user.id)
-      .maybeSingle();
-    const raw = prof?.effort_preference;
-    if (raw === "low" || raw === "high") assistanceVolumePref = raw;
+    const fromWizard = setupValues.assistanceVolume;
+    let fromProfile: unknown = null;
+    if (typeof fromWizard !== "string") {
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("effort_preference")
+        .eq("id", user.id)
+        .maybeSingle();
+      fromProfile = prof?.effort_preference ?? null;
+    }
+    assistanceVolumePref = resolveAssistanceVolume({ fromWizard, fromProfile });
   }
   const effectiveSetupValues = customization && isTbCustomizationV1(customization)
     ? {

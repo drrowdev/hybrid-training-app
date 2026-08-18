@@ -397,6 +397,40 @@ describe("ProgramPicker rendering", () => {
     );
   });
 
+  it("offers a per-block assistance volume on the 5/3/1 loadout step, defaulting to Balanced", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={programs}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[OPERATOR]}
+        initialProgramId="wendler-531"
+      />,
+    );
+    expect(html).toContain('data-testid="wendler-assistance-volume"');
+    for (const level of ["low", "standard", "high"]) {
+      expect(html).toContain(`data-testid="wendler-assistance-volume-${level}"`);
+    }
+    // Balanced is pre-selected; the other two are not.
+    expect(html).toMatch(
+      /data-testid="wendler-assistance-volume-standard"[^>]*aria-pressed="true"/,
+    );
+    expect(html).toMatch(
+      /data-testid="wendler-assistance-volume-low"[^>]*aria-pressed="false"/,
+    );
+  });
+
+  it("does not offer assistance volume for a non-5/3/1 program", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={programs}
+        anchoredKeys={["squat", "bench", "deadlift"]}
+        tbTemplates={[OPERATOR]}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+    expect(html).not.toContain('data-testid="wendler-assistance-volume"');
+  });
+
   it("starts with no program pre-selected (step 1, no Deploy button)", () => {
     const html = renderToStaticMarkup(
       <ProgramPicker

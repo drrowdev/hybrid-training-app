@@ -35,6 +35,16 @@ describe("5/3/1 engine — meta + setup", () => {
     expect(keys).not.toContain("squat");
   });
 
+  it("describeSetup offers assistance volume as a per-block choice defaulting to Balanced", () => {
+    const field = wendler531Engine
+      .describeSetup()
+      .fields.find((f) => f.key === "assistanceVolume");
+    expect(field).toBeDefined();
+    expect(field!.type).toBe("select");
+    expect(field!.defaultValue).toBe("standard");
+    expect(field!.options?.map((o) => o.value)).toEqual(["low", "standard", "high"]);
+  });
+
   it("setup derives each lift's Training Max from the shared 1RMs (TM = round(1RM × tmPercent))", () => {
     const inst = setup();
     // 165×0.85=140.25→140, 118×0.85=100.3→100, 212×0.85=180.2→180, 71×0.85=60.35→60
@@ -188,7 +198,7 @@ describe("5/3/1 engine — assistance intent (ADR 0047)", () => {
     expect(assist.every((a) => a.sets === 2)).toBe(true);
   });
 
-  it("the global accessory-volume preference scales assistance (Easier→2, Balanced→3, Harder→4 sets)", () => {
+  it("the per-block assistance volume scales assistance (Easier→2, Balanced→3, Harder→4 sets)", () => {
     const ref = (inst: WendlerInstance) => findRef(inst, "lift:squat", "week:1", "phase:leader");
     const setsFor = (pref?: string) => {
       const inst = setup(pref ? { assistanceVolume: pref } : {});
@@ -200,6 +210,17 @@ describe("5/3/1 engine — assistance intent (ADR 0047)", () => {
     expect(setsFor()).toEqual([3, 3, 3]);
     expect(setsFor("standard")).toEqual([3, 3, 3]);
     expect(setsFor("high")).toEqual([4, 4, 4]);
+  });
+
+  it("a stored instance predating the field prescribes the Balanced volume", () => {
+    // Back-compat: instances serialised before `assistanceVolume` existed have
+    // no such key, and must keep their original (template-derived) volume.
+    const { assistanceVolume: _omitted, ...legacy } = setup();
+    const inst = legacy as WendlerInstance;
+    expect(inst.assistanceVolume).toBeUndefined();
+    const ref = findRef(inst, "lift:squat", "week:1", "phase:leader");
+    const assist = itemsOfKind(wendler531Engine.prescribe(inst, ref, ctx), "assistance");
+    expect(assist.map((a) => a.sets)).toEqual([3, 3, 3]);
   });
 
   it("a 7th-week (deload / TM-test) session emits LIGHT assistance — 2 sets per slot", () => {
