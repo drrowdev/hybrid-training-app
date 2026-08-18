@@ -20,6 +20,11 @@ import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { computeTaperRecommendation, taperModalityForEvent } from "./taper";
 import { computeRecoveryWindow } from "./recovery";
+import { resolveDeclaredExperience } from "./build-block-assembly-context";
+import {
+  TIER_INTERMEDIATE,
+  declaredExperienceToTier,
+} from "./experience-tier";
 
 const eventIdSchema = z
   .object({ eventId: z.string().uuid() })
@@ -339,19 +344,19 @@ export async function applyRecoveryPlan(formData: FormData): Promise<ActionResul
     .select("training_experience")
     .eq("id", auth.userId)
     .maybeSingle();
-  // Map declared experience to a numeric tier 0..4. profile.training_experience
-  // is a string enum; we resolve via a small lookup.
-  const tierMap: Record<string, number> = {
-    untrained: 0,
-    novice: 1,
-    intermediate: 2,
-    advanced: 3,
-    elite: 4,
-  };
+  // Map declared experience to the canonical ordinal tier 0..4.
+  //
+  // This used to hand-roll a lookup keyed on `untrained | novice | intermediate
+  // | advanced | elite`. Those names have not been the column's values since
+  // migration 0052 moved it to the 5-tier `beginner_lt_6m` scale, so every
+  // lookup missed and silently pinned EVERY user to tier 2 — meaning
+  // `computeRecoveryWindow`'s TIER_MULT (1.5 → 0.75) never varied recovery
+  // windows by experience at all. Go through the shared helper so the scale
+  // stays in one place and cannot drift again.
   const profTier =
-    typeof prof?.training_experience === "string"
-      ? tierMap[prof.training_experience as string] ?? 2
-      : 2;
+    declaredExperienceToTier(
+      resolveDeclaredExperience(prof?.training_experience),
+    ) ?? TIER_INTERMEDIATE;
   const userTier = parsed.data.userTier ?? profTier;
 
   const modality = (evt.modality ?? "other") as
