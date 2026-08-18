@@ -43,9 +43,13 @@ test.describe("@desktop /app/settings/training · warmup ladder", () => {
     const preset = page.getByTestId("warmup-preset-select");
     await expect(preset).toBeVisible();
 
-    // A fresh user has never chosen, so warmup_scheme IS NULL and each program
-    // keeps its own ramp. No override warning is due in this state.
-    await expect(preset).toHaveValue("program");
+    // A fresh user has never chosen and has no active program, so the
+    // selection shows the ramp actually in force — the standard ladder — and
+    // the 5/3/1 option is present but not selected.
+    await expect(preset).toHaveValue("standard");
+    await expect(preset.locator('option[value="program"]')).toHaveText(
+      /5\/3\/1 Warmup/i,
+    );
     await expect(
       page.getByTestId("warmup-program-override-warning"),
     ).toHaveCount(0);
@@ -61,11 +65,11 @@ test.describe("@desktop /app/settings/training · warmup ladder", () => {
       /Warmup 2: 75% of top set = 64% TM × 3/i,
     );
 
-    // Choosing a ladder displaces 5/3/1's published ramp, so DC-K4 requires
-    // the editor to say so rather than apply it silently.
+    // No 5/3/1 block is running, so nothing methodological is displaced and
+    // the DC-K4 warning must stay quiet.
     await expect(
       page.getByTestId("warmup-program-override-warning"),
-    ).toBeVisible();
+    ).toHaveCount(0);
 
     // Preset switch auto-saves — wait for the inline "Saved" badge
     // before navigating.
@@ -92,9 +96,9 @@ test.describe("@desktop /app/settings/training · warmup ladder", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("warmup-preset-select")).toHaveValue("quick");
 
-    // The choice must be REVERSIBLE: "Follow the program" clears the stored
-    // preference back to SQL NULL so each program's own ramp applies again.
-    // Without this, an explicit ladder could never be withdrawn.
+    // The choice must stay REVERSIBLE even with no such program running —
+    // that is exactly when a lifter needs to undo a ladder, since clearing it
+    // after a 5/3/1 block is materialised is too late to change that block.
     await page.getByTestId("warmup-preset-select").selectOption("program");
     await expect(page.getByTestId("warmup-settings-saved")).toBeVisible({
       timeout: 5_000,

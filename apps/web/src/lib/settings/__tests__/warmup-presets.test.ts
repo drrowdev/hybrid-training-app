@@ -14,12 +14,18 @@ describe("warmup presets", () => {
     expect(presetByKey("standard").scheme).toEqual(DEFAULT_WARMUP_SCHEME);
   });
 
-  it("the 'follow the program' preset carries no ladder — it CLEARS the preference", () => {
+  it("the program option carries no ladder — it CLEARS the preference", () => {
     // A null scheme is what makes an explicit choice reversible: it writes SQL
-    // NULL so each program's own ramp applies again. It must NOT be an empty
+    // NULL so a program's own ramp applies again. It must NOT be an empty
     // ladder, which would mean "skip warm-ups".
     expect(presetByKey("program").scheme).toBeNull();
     expect(WARMUP_PRESETS[0]!.key).toBe("program");
+  });
+
+  it("names the program option after the method it follows", () => {
+    // Derived from the registry rather than hardcoded, so the label can't drift
+    // from whichever program actually publishes a ramp.
+    expect(presetByKey("program").label).toBe("5/3/1 Warmup");
   });
 
   it("skip preset is setCount: 0 with empty ladders", () => {
@@ -50,14 +56,23 @@ describe("presetKeyForScheme", () => {
     expect(presetKeyForScheme(DEFAULT_WARMUP_SCHEME)).toBe("standard");
   });
 
-  it("maps a cleared preference to 'follow the program'", () => {
-    expect(presetKeyForScheme(null)).toBe("program");
+  it("maps a cleared preference to the program option only when one is running", () => {
+    // With no stored ladder the selection must describe the CURRENT effective
+    // ramp: the program's own when it is running, the standard one otherwise.
+    expect(presetKeyForScheme(null, { programRampActive: true })).toBe("program");
+    expect(presetKeyForScheme(null, { programRampActive: false })).toBe("standard");
+    expect(presetKeyForScheme(null)).toBe("standard");
   });
 
   it("maps each preset's own scheme back to its key", () => {
     for (const p of WARMUP_PRESETS) {
       if (p.key === "custom") continue;
-      expect(presetKeyForScheme(p.scheme)).toBe(p.key);
+      // The program option carries no ladder — its key comes from the absence
+      // of a stored scheme plus a running program, covered above.
+      const active = p.scheme == null;
+      expect(presetKeyForScheme(p.scheme, { programRampActive: active })).toBe(
+        p.key,
+      );
     }
   });
 

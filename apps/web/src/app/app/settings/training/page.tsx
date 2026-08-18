@@ -7,12 +7,13 @@
  */
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { getActiveBlock } from "@/lib/planner/queries";
 import { WarmupSettings } from "@/components/settings/WarmupSettings";
 import { CardioSourceSettings } from "@/components/settings/CardioSourceSettings";
 import { CardioModalitySettings } from "@/components/settings/CardioModalitySettings";
 import { SeasonPlanningToggle } from "@/components/settings/SeasonPlanningToggle";
 import { resolveWarmupPreference } from "@/lib/planner/warmups";
-import { programsWithOwnWarmupRamp } from "@/lib/planner/program-warmup-scheme";
+import { activeProgramWithOwnWarmupRamp } from "@/lib/planner/program-warmup-scheme";
 import { sanitizePreferredModalities } from "@/lib/planner/preferred-cardio-modality";
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -31,14 +32,17 @@ export default async function TrainingSettingsPage() {
     .eq("id", user.id)
     .maybeSingle();
 
-  // Raw, not resolved: `null` means "never chose", which the editor surfaces as
-  // "Follow the program" and which lets each program keep its own ramp.
+  // Raw, not resolved: `null` means "never chose", which lets a program apply
+  // its own ramp. Which option represents that depends on what is RUNNING, so
+  // read the active block's program — not `program_instances.status`, which is
+  // never cleared when a block ends, completes or is deleted and would have
+  // this screen claim a program is active long after it finished.
   const preference = resolveWarmupPreference(profile?.warmup_scheme);
   const scheme = preference.mode === "user" ? preference.scheme : null;
-  const programsWithOwnRamp = programsWithOwnWarmupRamp().map((p) => ({
-    id: p.id,
-    name: p.name,
-  }));
+  const activeBlock = await getActiveBlock();
+  const activeProgramWithOwnRamp = activeProgramWithOwnWarmupRamp(
+    activeBlock?.programId,
+  );
   const cardioSource =
     (profile?.preferred_cardio_source as "internal" | "external" | undefined) ??
     "internal";
@@ -66,7 +70,7 @@ export default async function TrainingSettingsPage() {
         <h2 style={{ fontSize: 18, margin: 0 }}>Warmup ladder</h2>
         <WarmupSettings
           initial={scheme}
-          programsWithOwnRamp={programsWithOwnRamp}
+          activeProgramWithOwnRamp={activeProgramWithOwnRamp}
         />
       </section>
 
