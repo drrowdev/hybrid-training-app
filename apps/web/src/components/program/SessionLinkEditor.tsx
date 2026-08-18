@@ -1,21 +1,25 @@
 "use client";
 
 /**
- * Session-link editor — pick two or more lifts in one strength slot and run them
- * back-to-back as a superset / tri-set / giant set.
+ * Session-link CREATOR — pick two or more lifts in one strength slot and run
+ * them back-to-back as a superset / tri-set / giant set.
  *
- * Replaces the block-level "Superset accessories" checkbox, which auto-paired
- * anatomical antagonists and could never touch a main lift or express what the
- * lifter actually wanted. Here the link is explicit: the lifter chooses the
- * members and the order.
+ * This component used to also RENDER each existing link, member by member,
+ * below the program-slot list. That is now drawn on the rows themselves (see
+ * `slotLinkBadges` + `LinkBadge` in ProgramPicker): stating the link in both
+ * places said the same thing twice, and the panel version listed stored
+ * members, so a two-pick superset containing the AB Triad displayed as four
+ * rows. Reorder and Unlink moved to the rows with the label. What is left here
+ * is the one thing the rows cannot express — creating a link that does not
+ * exist yet.
  *
  * Two rules are enforced here rather than left to the engine:
  *
  *   - Movements the template ALREADY links (the AB Triad) are never offered. A
- *     prescription item carries at most one circuit, so an overlapping user link
- *     would collide; the engine drops such links as a backstop, but a control
- *     you can click that then silently does nothing is worse than one you cannot
- *     click.
+ *     prescription item carries at most one circuit, so an overlapping user
+ *     link would collide; the engine drops such links as a backstop, but a
+ *     control you can click that then silently does nothing is worse than one
+ *     you cannot click.
  *   - Linking a main lift warns but never blocks (DC-K4 — override and warn).
  *     Long rests between heavy sets are what let you hold the prescribed
  *     percentage, so the trade-off is surfaced, not decided for the lifter.
@@ -28,36 +32,14 @@ import { defaultLinkName, type SessionLink } from "@/lib/platform/session-links"
 import {
   addLink,
   canCreateLink,
-  linkHasMainLift,
-  linkStations,
   linksIncludeMainLift,
-  moveStation,
-  removeLink,
   selectableMovements,
   selectedStations,
-  slotLabels,
   toggleSelection,
   type LinkableMovement,
 } from "./session-link-editing";
 
 export type { LinkableMovement };
-
-/** Compact ± control for reordering a link's members. */
-function moveButtonStyle(disabled: boolean) {
-  return {
-    flex: "none" as const,
-    width: 26,
-    height: 26,
-    lineHeight: "1",
-    border: "1px solid var(--line2, #384230)",
-    borderRadius: 4,
-    background: "transparent",
-    color: "var(--dim, #afb8a8)",
-    fontSize: 11,
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? 0.3 : 1,
-  };
-}
 
 export interface SessionLinkEditorProps {
   seriesKey: string;
@@ -80,168 +62,11 @@ export function SessionLinkEditor({
   const selectable = selectableMovements(movements, links);
   const lockedNote = movements.find((m) => m.lockedReason)?.lockedReason;
   const showWarning = linksIncludeMainLift(links, movements);
-  const byKey = slotLabels(movements);
 
   if (movements.length < 2) return null;
 
   return (
     <div data-testid={`session-links-${seriesKey}`} style={{ marginTop: 10 }}>
-      {links.length > 0 && (
-        <div style={{ display: "grid", gap: 6, marginBottom: 8 }}>
-          {links.map((link) => {
-            const hasMain = linkHasMainLift(link, movements);
-            const accent = hasMain
-              ? "var(--warn, #c99a5b)"
-              : "var(--accent, #8fb39b)";
-            const stations = linkStations(link, movements);
-            // Rest follows the last STATION, which for a group is the whole
-            // group — "rest after AB Triad", not "rest after Toes-to-Bar".
-            const lastLabel = stations[stations.length - 1]?.label ?? "";
-            return (
-              <div
-                key={link.id}
-                data-testid={`session-link-${link.id}`}
-                style={{
-                  borderLeft: `2px solid ${accent}`,
-                  paddingLeft: 8,
-                  paddingBottom: 2,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    minHeight: 26,
-                  }}
-                >
-                  <b
-                    style={{
-                      fontSize: 10,
-                      letterSpacing: "0.08em",
-                      textTransform: "uppercase",
-                      color: accent,
-                      flex: 1,
-                    }}
-                  >
-                    {link.name}
-                  </b>
-                  <button
-                    type="button"
-                    aria-label={`Unlink ${link.name}`}
-                    onClick={() => onChange(seriesKey, removeLink(links, link.id))}
-                    style={{
-                      border: 0,
-                      background: "transparent",
-                      color: "var(--warn, #c99a5b)",
-                      cursor: "pointer",
-                      fontSize: 11,
-                    }}
-                  >
-                    Unlink
-                  </button>
-                </div>
-                {stations.map((station, index) => {
-                  const isFirst = index === 0;
-                  const isLast = index === stations.length - 1;
-                  // A group station keeps its members visible as a sub-line:
-                  // the lifter should still see what the AB Triad contains,
-                  // just not mistake it for three separate picks.
-                  const contents =
-                    station.slots.length > 1
-                      ? station.slots
-                          .map((slot) => byKey.get(slot) ?? slot)
-                          .join(" \u2192 ")
-                      : null;
-                  return (
-                    <div
-                      key={station.key}
-                      data-testid={`link-member-${link.id}-${index}`}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        minHeight: 32,
-                        fontSize: 11.5,
-                        color: "var(--dim, #afb8a8)",
-                      }}
-                    >
-                      <span
-                        className="mono"
-                        style={{
-                          flex: "none",
-                          fontSize: 9.5,
-                          color: accent,
-                          minWidth: 18,
-                        }}
-                      >
-                        A{index + 1}
-                      </span>
-                      <span
-                        style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}
-                      >
-                        {station.label}
-                        {contents && (
-                          <em
-                            style={{
-                              display: "block",
-                              fontSize: 10,
-                              fontStyle: "normal",
-                              color: "var(--muted, #79836f)",
-                            }}
-                          >
-                            {contents}
-                          </em>
-                        )}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label={`Move ${station.label} earlier`}
-                        data-testid={`link-move-up-${link.id}-${index}`}
-                        disabled={isFirst}
-                        onClick={() =>
-                          onChange(
-                            seriesKey,
-                            moveStation(links, link.id, index, -1, movements),
-                          )
-                        }
-                        style={moveButtonStyle(isFirst)}
-                      >
-                        {"\u2191"}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Move ${station.label} later`}
-                        data-testid={`link-move-down-${link.id}-${index}`}
-                        disabled={isLast}
-                        onClick={() =>
-                          onChange(
-                            seriesKey,
-                            moveStation(links, link.id, index, 1, movements),
-                          )
-                        }
-                        style={moveButtonStyle(isLast)}
-                      >
-                        {"\u2193"}
-                      </button>
-                    </div>
-                  );
-                })}
-                <p
-                  style={{
-                    margin: "2px 0 0",
-                    fontSize: 10,
-                    color: "var(--muted, #79836f)",
-                  }}
-                >
-                  {`Rest after ${lastLabel}.`}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       {selectable.length >= 2 && (
         <details
           open={pickerOpen}

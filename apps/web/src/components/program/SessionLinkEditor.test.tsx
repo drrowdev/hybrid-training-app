@@ -1,9 +1,13 @@
 /**
  * SessionLinkEditor static render.
  *
- * Static markup only — the project test env is Node with no DOM, so the editing
- * behaviour is covered directly in `session-link-editing.test.ts` and the
- * click-through path by the Playwright program specs.
+ * This component creates links; it no longer draws them. The drawing moved onto
+ * the program-slot rows, so the assertions about members / order / rest live in
+ * `session-link-editing.test.ts` (`linkStations`, `slotLinkBadges`) and the
+ * click-through path in the Playwright program specs. What is left here is the
+ * picker, the locked-movement rule, and the main-lift warning.
+ *
+ * Static markup only — the project test env is Node with no DOM.
  */
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -48,56 +52,24 @@ describe("SessionLinkEditor", () => {
     expect(html).toContain("link-create-slot-1");
   });
 
-  it("renders a link with its members in performance order", () => {
-    const html = markup([
+  it("invites more lifts into an existing link", () => {
+    expect(markup([
       { id: "link-1", name: "Superset", members: ["catalog:1", "catalog:2"] },
-    ]);
-    expect(html).toContain("session-link-link-1");
-    expect(html).toContain("Barbell curl");
-    expect(html).toContain("Triceps pushdown");
-    expect(html).toContain("Unlink Superset");
+    ])).toContain("Link more lifts");
   });
 
-  it("labels each member with its round position", () => {
-    const html = markup([
-      { id: "link-1", name: "Tri-set", members: ["squat", "catalog:1", "catalog:2"] },
-    ]);
-    expect(html).toContain("link-member-link-1-0");
-    expect(html).toContain("link-member-link-1-1");
-    expect(html).toContain("link-member-link-1-2");
-    // React splits `A{index + 1}` into separate text nodes.
-    expect(html.replace(/<!--.*?-->/g, "")).toContain("A3");
+  it("names the button after what the picked count would make", () => {
+    // Nothing picked yet, so the button states its precondition rather than
+    // pretending it is ready.
+    expect(markup([])).toContain("Select 2 or more");
   });
 
-  it("offers move controls, disabled at each end", () => {
-    const html = markup([
-      { id: "link-1", name: "Superset", members: ["catalog:1", "catalog:2"] },
-    ]);
-    expect(html).toContain("Move Barbell curl later");
-    expect(html).toContain("Move Triceps pushdown earlier");
-    // First member cannot move up; last cannot move down.
-    expect(html).toMatch(
-      /link-move-up-link-1-0"[^>]*disabled|disabled[^>]*link-move-up-link-1-0"/,
-    );
-    expect(html).toMatch(
-      /link-move-down-link-1-1"[^>]*disabled|disabled[^>]*link-move-down-link-1-1"/,
-    );
-  });
-
-  it("says which lift the rest follows, so order reads as consequential", () => {
-    const html = markup([
-      { id: "link-1", name: "Superset", members: ["catalog:1", "catalog:2"] },
-    ]);
-    expect(html).toContain("Rest after Triceps pushdown");
-  });
-
-  it("warns when a link contains a main lift, and still renders the link", () => {
+  it("warns when a link contains a main lift", () => {
     const html = markup([
       { id: "link-1", name: "Superset", members: ["squat", "bench"] },
     ]);
     expect(html).toContain("link-main-warning-slot-1");
     expect(html).toContain("Main lift in a superset.");
-    expect(html).toContain("session-link-link-1");
   });
 
   it("does not warn for an accessory-only link", () => {
@@ -134,61 +106,44 @@ describe("SessionLinkEditor", () => {
       { id: "link-1", name: "Tri-set", members: ["squat", "bench", "catalog:1"] },
     ]);
     expect(html).not.toContain("link-create-slot-1");
-    expect(html).toContain("session-link-link-1");
+    expect(html).not.toContain("link-picker-toggle-slot-1");
   });
 });
 
-describe("a group station is one pick, not three", () => {
-  const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"];
-  const WITH_GROUP: LinkableMovement[] = [
-    { key: "back-extension", label: "Back Extension" },
-    {
-      key: "group:tb-ab-triad",
-      label: "AB Triad",
-      expandsTo: [
-        { key: TRIAD[0]!, label: "Hanging Leg Raise" },
-        { key: TRIAD[1]!, label: "Hanging Knee Raise" },
-        { key: TRIAD[2]!, label: "Toes-to-Bar" },
-      ],
-    },
-  ];
+describe("the link is stated once, on the rows — not again down here", () => {
+  // The reported bug: every link appeared twice, as a row badge AND as a member
+  // list in this panel. The panel version also listed stored members, so a
+  // two-pick superset containing the AB Triad read as a giant set of four.
   const linked = [
-    {
-      id: "link-1",
-      name: "Superset",
-      members: ["back-extension", ...TRIAD],
-    },
+    { id: "link-1", name: "Superset", members: ["catalog:1", "catalog:2"] },
   ];
 
-  it("shows two A-rows for two picks, not four", () => {
-    // The reported bug: picking Back Extension + AB Triad rendered A1-A4, so a
-    // superset of two things read as a giant set of four.
-    const html = markup(linked, WITH_GROUP);
-    expect(html).toContain(">A1</span>");
-    expect(html).toContain(">A2</span>");
-    expect(html).not.toContain(">A3</span>");
-    expect(html).not.toContain(">A4</span>");
-    expect(html).toContain("link-member-link-1-0");
-    expect(html).toContain("link-member-link-1-1");
-    expect(html).not.toContain("link-member-link-1-2");
+  it("does not re-list the members", () => {
+    const html = markup(linked);
+    expect(html).not.toContain("session-link-link-1");
+    expect(html).not.toContain("link-member-link-1-0");
+    // The linked lifts are absent from the picker (covered above), so their
+    // names should not appear anywhere in this panel at all.
+    expect(html).not.toContain("Barbell curl");
+    expect(html).not.toContain("Triceps pushdown");
   });
 
-  it("names the group, and still shows what is inside it", () => {
-    const html = markup(linked, WITH_GROUP);
-    expect(html).toContain("AB Triad");
-    // The members stay visible as a sub-line so the lifter can see the work,
-    // without them being mistaken for separate picks.
-    expect(html).toContain("Hanging Leg Raise");
-    expect(html).toContain("Toes-to-Bar");
+  it("does not repeat the round positions", () => {
+    const html = markup([
+      { id: "link-1", name: "Tri-set", members: ["squat", "catalog:1", "catalog:2"] },
+    ]);
+    expect(html).not.toContain(">A1</span>");
+    expect(html).not.toContain(">A2</span>");
   });
 
-  it("rests after the group, not after its last movement", () => {
-    expect(markup(linked, WITH_GROUP)).toContain("Rest after AB Triad");
+  it("carries no Unlink or reorder controls", () => {
+    const html = markup(linked);
+    expect(html).not.toContain("Unlink");
+    expect(html).not.toContain("link-move-up-link-1-0");
+    expect(html).not.toContain("link-move-down-link-1-0");
   });
 
-  it("labels the reorder controls with the station", () => {
-    const html = markup(linked, WITH_GROUP);
-    expect(html).toContain("Move AB Triad earlier");
-    expect(html).not.toContain("Move Toes-to-Bar earlier");
+  it("drops the rest-after line entirely", () => {
+    expect(markup(linked)).not.toContain("Rest after");
   });
 });

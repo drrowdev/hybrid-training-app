@@ -45,11 +45,11 @@ import {
 } from "@/lib/platform/tb-customization";
 import styles from "./ProgramPicker.module.css";
 import { SessionLinkEditor, type LinkableMovement } from "./SessionLinkEditor";
+import { LinkBadge, rowLinkClass } from "./LinkBadge";
 import {
   activationLinkableMovements,
   pruneMovementFromLinks,
   slotLinkBadges,
-  type SlotLinkBadge,
 } from "./session-link-editing";
 import {
   SESSION_LINKS_VERSION,
@@ -175,60 +175,6 @@ export interface PickerActivationPhase {
   }>;
 }
 
-/**
- * Row class for a program-slot row that belongs to a session link.
- *
- * The accent rail is drawn per row rather than by wrapping the members in a
- * container: the rows are siblings in one grid, and wrapping them would break
- * the shared column tracks that keep PROGRAM SLOT / EXERCISE aligned.
- */
-function rowLinkClass(
-  styles: Record<string, string>,
-  badge: SlotLinkBadge | undefined,
-): string {
-  const base = styles.activationMovementRow ?? "";
-  if (!badge) return base;
-  return [
-    base,
-    styles.linkedRow,
-    badge.hasMainLift ? styles.linkedRowWarn : "",
-    badge.station === 1 && badge.isStationStart ? styles.linkedRowStart : "",
-    badge.isLinkEnd ? styles.linkedRowEnd : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
-
-/**
- * "SUPERSET A1", on the row it applies to.
- *
- * Only the first row of a station is labelled. The AB Triad's three slots are
- * ONE pick, so numbering them A2/A3/A4 is exactly what made a two-station
- * superset read as a giant set.
- */
-function LinkBadge({
-  styles,
-  badge,
-}: {
-  styles: Record<string, string>;
-  badge: SlotLinkBadge | undefined;
-}) {
-  if (!badge) return null;
-  if (!badge.isStationStart) {
-    return <span className={styles.linkContinuation}>{"\u2514 same station"}</span>;
-  }
-  return (
-    <span
-      className={[styles.linkBadge, badge.hasMainLift ? styles.linkBadgeWarn : ""]
-        .filter(Boolean)
-        .join(" ")}
-      data-testid={`row-link-badge-${badge.linkId}-${badge.station}`}
-    >
-      <code>A{badge.station}</code>
-      {badge.linkName}
-    </span>
-  );
-}
 
 function sessionSeriesFor(template: PickerTbTemplate): NonNullable<
   PickerTbTemplate["sessionSeries"]
@@ -3812,7 +3758,13 @@ export function ProgramPicker({
       operator: 18,
       vertex: 23,
     };
-    const firstOpenPhase = Math.max(
+    // Which phase the plan actually begins in. This used to auto-expand that
+    // phase; it now only labels it. Expanding one phase pushed every later
+    // phase off-screen behind a wall of session rows, so the list stopped
+    // reading as a list — and the phase you want is not always the one you
+    // start in. Collapsed-by-default keeps all four phases visible at once and
+    // makes opening one a deliberate act.
+    const startPhaseIndex = Math.max(
       0,
       activeTbTemplate.activationPhases.findIndex(
         (phase) => phaseEndWeek[phase.key] >= startWeekIndex,
@@ -3870,7 +3822,6 @@ export function ProgramPicker({
             <details
               key={phase.key}
               className={styles.activationPhase}
-              open={phaseIndex === firstOpenPhase}
               data-testid={`activation-phase-${phase.key}`}
             >
               <summary>
@@ -3890,7 +3841,9 @@ export function ProgramPicker({
                     ? beforeStart
                       ? " · Before start · locked"
                       : " · Past · locked"
-                    : ""}
+                    : phaseIndex === startPhaseIndex
+                      ? " · Starts here"
+                      : ""}
                 </span>
               </summary>
               <fieldset
@@ -4066,6 +4019,10 @@ export function ProgramPicker({
                                         badge={linkBadges.get(
                                           AB_TRIAD_SOURCES[0]!,
                                         )}
+                                        links={links}
+                                        movements={linkable}
+                                        seriesKey={session.key}
+                                        onChange={setLinksForSeries}
                                       />
                                       <small>Program slot</small>
                                       <b>AB Triad</b>
@@ -4194,6 +4151,10 @@ export function ProgramPicker({
                                     <LinkBadge
                                       styles={styles}
                                       badge={linkBadges.get(slot.sourceMovement)}
+                                      links={links}
+                                      movements={linkable}
+                                      seriesKey={session.key}
+                                      onChange={setLinksForSeries}
                                     />
                                     <small>Program slot</small>
                                     <b>
@@ -4609,36 +4570,32 @@ export function ProgramPicker({
                         </header>
                         <div className={styles.seriesExercises}>
                           {(() => {
-                            // Same rationale as the Activation rows: the link
-                            // is drawn where the lifter reads the session.
-                            const linkBadges = slotLinkBadges(
-                              sessionLinks[series.key] ?? [],
-                              linkableMovementsFor(
-                                customSessionMovements[series.key] ?? [],
-                                series.supplementalMovements ?? [],
-                              ),
+                            // Same rationale as the Activation rows: the link is
+                            // drawn where the lifter reads the session, and the
+                            // derivation is shared with the picker below.
+                            const linkable = linkableMovementsFor(
+                              customSessionMovements[series.key] ?? [],
+                              series.supplementalMovements ?? [],
                             );
+                            const links = sessionLinks[series.key] ?? [];
+                            const linkBadges = slotLinkBadges(links, linkable);
                             return (customSessionMovements[series.key] ?? []).map(
                             (movementKey) => {
                               const badge = linkBadges.get(movementKey);
                               return (
                               <div
                                 key={movementKey}
-                                className={
-                                  badge
-                                    ? [
-                                        styles.linkedRow,
-                                        badge.hasMainLift
-                                          ? styles.linkedRowWarn
-                                          : "",
-                                      ]
-                                        .filter(Boolean)
-                                        .join(" ")
-                                    : undefined
-                                }
+                                className={rowLinkClass(styles, badge, "")}
                               >
                                 <span>
-                                  <LinkBadge styles={styles} badge={badge} />
+                                  <LinkBadge
+                                    styles={styles}
+                                    badge={badge}
+                                    links={links}
+                                    movements={linkable}
+                                    seriesKey={series.key}
+                                    onChange={setLinksForSeries}
+                                  />
                                   <b>{customMovementLabel(movementKey)}</b>
                                   <small>
                                     {catalogMovementMeta[movementKey]
