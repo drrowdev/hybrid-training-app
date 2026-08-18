@@ -51,7 +51,7 @@ function asTrainingExperience(v: unknown): TrainingExperience | "" {
  *
  *   - Body composition phase had no engine consumer at all — nothing in the
  *     planner ever read `body_comp_phase`, despite the copy claiming a cut
- *     pulled back top-end intensity.
+ *     pulled back top-end intensity. Migration 0131 drops the columns.
  *   - Accessory volume was labelled global but only ever shifted 5/3/1
  *     assistance volume, so it moved into the 5/3/1 wizard's Loadout step.
  *

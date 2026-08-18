@@ -7,7 +7,6 @@
 import { sql } from "drizzle-orm";
 import {
   boolean,
-  date,
   jsonb,
   pgEnum,
   pgTable,
@@ -20,13 +19,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 
-/** DC-F11 + DC-Q2: declared body-composition phase. */
-export const bodyCompPhase = pgEnum("body_comp_phase", [
-  "gain",
-  "maintain",
-  "lean_out",
-]);
-
 /** HYROX competition weight category — drives gendered station loads (divisions.ts). */
 export const gender = pgEnum("gender", ["male", "female"]);
 
@@ -38,9 +30,6 @@ export const profiles = pgTable("profiles", {
   bodyweightKg: numeric("bodyweight_kg", { precision: 6, scale: 2 }),
   /** Competition weight category (HYROX uses men's / women's station standards). */
   gender: gender("gender"),
-  bodyCompPhase: bodyCompPhase("body_comp_phase").default("maintain").notNull(),
-  phaseStartedAt: date("phase_started_at"),
-  phaseTargetWeeks: smallint("phase_target_weeks"),
   /** Default % of 1RM used as the training max when no per-movement override is set. */
   tmPercentDefault: numeric("tm_percent_default", { precision: 4, scale: 1 })
     .default("90.0")
@@ -299,4 +288,3 @@ export const profileSelect = createSelectSchema(profiles);
 
 export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
-export type BodyCompPhase = (typeof bodyCompPhase.enumValues)[number];

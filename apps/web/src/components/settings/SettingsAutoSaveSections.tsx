@@ -156,10 +156,8 @@ export function TrainingExperienceAutoSave({
 // Removed. `profiles.body_comp_phase` / `phase_started_at` /
 // `phase_target_weeks` had no engine consumer — nothing in the planner
 // ever read them, despite the UI claiming a cut pulled back top-end
-// intensity. The columns remain for now and are still surfaced in the
-// admin block-review export as reporting metadata.
-// TODO: drop the three columns (with a rollback migration) once the
-// stored values are confirmed dead.
+// intensity. Migration 0131 drops all three columns and the enum.
+// DC-Q2 / DC-T3 are ⏸ [BACKLOG] until a real consumer exists.
 
 // ─── Effort / volume dial ────────────────────────────────────────────
 // Removed. `profiles.effort_preference` was labelled "Accessory volume"
