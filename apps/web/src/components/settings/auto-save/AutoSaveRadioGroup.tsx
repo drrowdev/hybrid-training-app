@@ -22,6 +22,12 @@ export type AutoSaveRadioGroupProps<T extends string> = {
 
 /**
  * Radio-group auto-save field. Commits on every selection change.
+ *
+ * Styled as a quiet list rather than a stack of bordered boxes: the
+ * selected row gets a soft accent wash and a left accent bar, the rest
+ * stay flat. Nesting bordered rows inside a bordered card inside a
+ * bordered group was the main source of visual noise on the old
+ * settings page.
  */
 export function AutoSaveRadioGroup<T extends string>({
   name,
@@ -38,7 +44,11 @@ export function AutoSaveRadioGroup<T extends string>({
   });
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      <div role="radiogroup" aria-labelledby={groupId} style={{ display: "grid", gap: 8 }}>
+      <div
+        role="radiogroup"
+        aria-labelledby={groupId}
+        style={{ display: "grid", gap: 2 }}
+      >
         {options.map((opt) => {
           const sel = value === opt.value;
           return (
@@ -49,11 +59,14 @@ export function AutoSaveRadioGroup<T extends string>({
               style={{
                 display: "flex",
                 alignItems: "flex-start",
-                gap: 12,
+                gap: 10,
                 cursor: "pointer",
-                border: "1px solid var(--cp-border)",
                 borderRadius: 8,
-                padding: "10px 12px",
+                padding: "9px 12px",
+                minHeight: 44,
+                background: sel ? "var(--cp-accent-soft)" : "transparent",
+                boxShadow: sel ? "inset 3px 0 0 var(--cp-accent)" : "none",
+                transition: "background .14s",
               }}
             >
               <input
@@ -62,10 +75,17 @@ export function AutoSaveRadioGroup<T extends string>({
                 value={opt.value}
                 checked={sel}
                 onChange={() => setValue(opt.value)}
-                style={{ marginTop: 4 }}
+                style={{ marginTop: 3 }}
               />
               <span style={{ fontSize: 14 }}>
-                {opt.label}
+                <span
+                  style={{
+                    fontWeight: sel ? 650 : 500,
+                    color: sel ? "var(--cp-text)" : "var(--cp-text-soft)",
+                  }}
+                >
+                  {opt.label}
+                </span>
                 {opt.hint != null && (
                   <span
                     style={{

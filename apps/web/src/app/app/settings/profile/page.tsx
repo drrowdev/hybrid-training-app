@@ -1,15 +1,14 @@
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
-  BodyCompPhaseAutoSave,
-  EffortPreferenceAutoSave,
+  DisplayNameAutoSave,
   GenderAutoSave,
-  ProfileBasicsAutoSave,
   TrainingExperienceAutoSave,
   TrainingWindowsAutoSave,
   UnitsAutoSave,
 } from "@/components/settings/SettingsAutoSaveSections";
-import { SettingsGroup } from "@/components/settings/SettingsGroup";
+import { SettingCard, SettingNote } from "@/components/settings/SettingCard";
+import { SettingInfo } from "@/components/settings/SettingInfo";
 import { TrainingNotesEditor } from "@/components/settings/TrainingNotesEditor";
 import { updateTrainingNotes } from "@/lib/profile/actions";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -20,18 +19,6 @@ type TrainingExperience =
   | "intermediate_2y_5y"
   | "advanced_5y_10y"
   | "highly_advanced_10y_plus";
-type BodyCompPhase = "gain" | "maintain" | "lean_out";
-type EffortPreference = "low" | "standard" | "high";
-
-const EFFORT_PREFERENCE_LABEL: Record<EffortPreference, string> = {
-  low: "Easier",
-  standard: "Balanced",
-  high: "Harder",
-};
-
-function asEffortPreference(v: unknown): EffortPreference {
-  return v === "low" || v === "high" ? v : "standard";
-}
 
 const TRAINING_EXPERIENCE_VALUES: ReadonlySet<TrainingExperience> = new Set([
   "beginner_lt_6m",
@@ -49,12 +36,6 @@ const EXPERIENCE_LABEL: Record<TrainingExperience, string> = {
   highly_advanced_10y_plus: "Highly advanced",
 };
 
-const PHASE_LABEL: Record<BodyCompPhase, string> = {
-  maintain: "Maintain",
-  gain: "Gain",
-  lean_out: "Lean out",
-};
-
 function asTrainingExperience(v: unknown): TrainingExperience | "" {
   return typeof v === "string" &&
     TRAINING_EXPERIENCE_VALUES.has(v as TrainingExperience)
@@ -62,10 +43,27 @@ function asTrainingExperience(v: unknown): TrainingExperience | "" {
     : "";
 }
 
-function asBodyCompPhase(v: unknown): BodyCompPhase {
-  return v === "gain" || v === "lean_out" ? v : "maintain";
-}
-
+/**
+ * Training profile — the athlete properties every program calibrates against.
+ *
+ * Two always-open cards grouped by EFFECT rather than by field type, each
+ * leading with its current value. This replaced four collapsible groups that
+ * hid three of four settings behind a click and rendered the current value as
+ * the smallest, dimmest text on the page.
+ *
+ * Two settings that used to live here are gone:
+ *
+ *   - Body composition phase had no engine consumer at all — nothing in the
+ *     planner ever read `body_comp_phase`, despite the copy claiming a cut
+ *     pulled back top-end intensity. Migration 0131 drops the columns.
+ *   - Accessory volume was labelled global but only ever shifted 5/3/1
+ *     assistance volume, so it moved into the 5/3/1 wizard's Loadout step.
+ *
+ * Three settings arrived here from the retired /app/profile route, which had
+ * no inbound link anywhere in the app: the display name, the training notes,
+ * and the two-a-day training windows the Today page reads to place a morning
+ * versus an evening session.
+ */
 export default async function ProfileSettingsPage() {
   const supabase = await createClient();
   const {
@@ -75,164 +73,159 @@ export default async function ProfileSettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select(
-      "display_name, units, gender, body_comp_phase, phase_started_at, phase_target_weeks, training_experience, timezone, effort_preference, am_window_start, pm_window_start, ai_notes",
-    )
+    .select("units, gender, training_experience, display_name, am_window_start, pm_window_start, ai_notes")
     .eq("id", user.id)
     .maybeSingle();
 
   const experience = asTrainingExperience(profile?.training_experience);
-  const phase = asBodyCompPhase(profile?.body_comp_phase);
-  const effortPreference = asEffortPreference(profile?.effort_preference);
-
+  const gender = (profile?.gender as "male" | "female" | null) ?? null;
+  const units = profile?.units === "imperial" ? "imperial" : "metric";
+  const displayName = (profile?.display_name as string | null) ?? "";
   // Postgres hands back `HH:mm:ss`; the native time input wants `HH:mm`.
   const amWindowStart = ((profile?.am_window_start as string | null) ?? "07:00").slice(0, 5);
   const pmWindowStart = ((profile?.pm_window_start as string | null) ?? "17:00").slice(0, 5);
   const trainingNotes = (profile?.ai_notes as string | null) ?? "";
-
-  const experienceSummary = experience ? EXPERIENCE_LABEL[experience] : "Not set";
-  const phaseSummary = PHASE_LABEL[phase];
-  const effortSummary = EFFORT_PREFERENCE_LABEL[effortPreference];
 
   return (
     <div className="space-y-8">
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
         title="Training profile"
-        subtitle="Identity and the defaults the app uses when building a new block."
+        subtitle="How the app calibrates a new block to you."
       />
 
-      <div className="space-y-3">
-        {/* Profile — name + units. Always open: smallest section and the
-            only one a user is likely to revisit. */}
-        <SettingsGroup
-          id="profile"
-          title="Profile"
-          testId="settings-group-profile"
-          defaultOpen
-        >
-          <ProfileBasicsAutoSave
-            initialDisplayName={profile?.display_name ?? ""}
-          />
-          <div className="space-y-2" data-testid="settings-units">
-            <p className="text-xs text-foreground/60">
-              Show weights and distances in kilograms / kilometres or pounds /
-              miles. Everything is stored in metric and converted for display —
-              switching never changes your logged numbers.
-            </p>
-            <UnitsAutoSave
-              initialUnits={profile?.units === "imperial" ? "imperial" : "metric"}
-            />
-          </div>
-          <div className="space-y-2" data-testid="settings-gender">
-            <GenderAutoSave
-              initial={(profile?.gender as "male" | "female" | null) ?? null}
-            />
-          </div>
-        </SettingsGroup>
-
-        {/* Training experience — one-time-ish; collapsed by default. */}
-        <SettingsGroup
+      <div className="settings-profile-grid">
+        <SettingCard
           id="experience"
+          eyebrow="Calibration"
           title="Training experience"
-          summary={experienceSummary}
-          testId="settings-group-experience"
+          value={experience ? EXPERIENCE_LABEL[experience] : "Not set"}
+          testId="settings-card-experience"
+          info={
+            <SettingInfo
+              label="How training experience works"
+              testId="settings-experience-how"
+            >
+              Your declared experience anchors your starting tier. From there
+              the app refines it from four observed signals: per-lift strength
+              relative to bodyweight, 12-week training adherence, schedule
+              regularity, and recovery check-in fill rate. When your declared
+              tier and what the app observes disagree, the app keeps your choice
+              and shows a soft note — it never silently overrules you.
+            </SettingInfo>
+          }
         >
-          <p className="text-xs text-foreground/60">
-            How long you&apos;ve been training consistently. Used to seed your
-            training tier — your tier adjusts automatically as the app observes
-            your training.
+          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
+            Sets which movement variations you&apos;re offered and how your
+            loading progresses. Used by every program.
           </p>
           <TrainingExperienceAutoSave initial={experience} />
-          <details
-            className="text-xs text-foreground/60"
-            data-testid="settings-experience-how"
+
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+              paddingTop: 14,
+              borderTop: "1px solid var(--cp-border)",
+            }}
+            data-testid="settings-gender"
           >
-            <summary className="cursor-pointer select-none hover:text-foreground">
-              How does this work?
-            </summary>
-            <p className="mt-2 leading-relaxed">
-              Your declared experience anchors your starting tier. From there,
-              the app refines it based on four signals: per-lift
-              strength relative to bodyweight, 12-week training adherence,
-              schedule regularity, and recovery check-in fill rate. When your
-              declared tier and what the app observes disagree, the
-              app keeps your choice and shows a soft note — never silently
-              overrules you.
+            <div
+              style={{
+                fontFamily: "var(--cp-font-mono)",
+                fontSize: 10,
+                letterSpacing: "0.14em",
+                textTransform: "uppercase",
+                color: "var(--cp-text-muted)",
+              }}
+            >
+              Strength standards
+            </div>
+            <p
+              style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}
+            >
+              Sets sex-specific strength standards and the loads used for
+              standardised race stations.
             </p>
-          </details>
-        </SettingsGroup>
+            <GenderAutoSave initial={gender} />
+            {gender == null && (
+              <SettingNote>
+                Not set — standards stay unisex until you choose.
+              </SettingNote>
+            )}
+          </div>
+        </SettingCard>
 
-        {/* Body composition phase — one-time-ish; collapsed by default. */}
-        <SettingsGroup
-          id="body-comp-phase"
-          title="Body composition phase"
-          summary={phaseSummary}
-          testId="settings-group-body-comp-phase"
+        <SettingCard
+          id="units"
+          eyebrow="Measurement"
+          title="Units"
+          value={units === "imperial" ? "lb / mi" : "kg / km"}
+          testId="settings-card-units"
+          info={
+            <SettingInfo label="How units work" testId="settings-units-how">
+              Display only. Everything is stored in metric and converted for
+              display — switching never changes your logged numbers.
+            </SettingInfo>
+          }
         >
-          <p className="text-xs text-foreground/60">
-            Tell the app whether you&apos;re building, holding, or cutting.
-            During a cut the app pulls back top-end intensity slightly and
-            protects strength via heavy, low-volume work.
+          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
+            Show weights and distances in kilograms and kilometres, or pounds
+            and miles.
           </p>
-          <BodyCompPhaseAutoSave
-            initialPhase={phase}
-            initialStartedAt={profile?.phase_started_at ?? ""}
-            initialTargetWeeks={
-              profile?.phase_target_weeks != null
-                ? String(profile.phase_target_weeks)
-                : ""
-            }
-          />
-        </SettingsGroup>
+          <div data-testid="settings-units">
+            <UnitsAutoSave initialUnits={units} />
+          </div>
+        </SettingCard>
 
-        {/* Accessory volume (ADR 0016 effort_preference) — a GLOBAL dial that
-            scales the optional accessory work across programs.
-            Collapsed by default. New blocks only. */}
-        <SettingsGroup
-          id="effort-preference"
-          title="Accessory volume"
-          summary={effortSummary}
-          testId="settings-group-effort-preference"
+        <SettingCard
+          id="identity"
+          eyebrow="Identity"
+          title="Display name"
+          value={displayName || "Not set"}
+          testId="settings-card-identity"
         >
-          <p className="text-xs text-foreground/60">
-            How much optional accessory work your strength days carry.{" "}
-            <strong>Applies to every program you run</strong> — Balanced is the
-            standard. Your main lifts, supplemental and cardio are unchanged.
-            Applies to new blocks; existing blocks keep what they were built with.
+          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
+            What the app calls you. Display only — it never affects programming.
           </p>
-          <EffortPreferenceAutoSave initial={effortPreference} />
-        </SettingsGroup>
+          <DisplayNameAutoSave initialDisplayName={displayName} />
+        </SettingCard>
 
-        {/* Two-a-day windows — absorbed from the retired /app/profile page.
-            The Today page uses these to place a session in the morning or
-            evening slot. Collapsed by default: set once, rarely revisited. */}
-        <SettingsGroup
+        <SettingCard
           id="training-windows"
+          eyebrow="Scheduling"
           title="Training windows"
-          summary={`${amWindowStart} · ${pmWindowStart}`}
-          testId="settings-group-training-windows"
+          value={`${amWindowStart} · ${pmWindowStart}`}
+          testId="settings-card-training-windows"
+          info={
+            <SettingInfo
+              label="How training windows work"
+              testId="settings-windows-how"
+            >
+              When you train twice in a day, the app has to decide which
+              session is the morning one and which is the evening one. These
+              two times are how it decides. Each window covers two hours from
+              the time you set.
+            </SettingInfo>
+          }
         >
-          <p className="text-xs text-foreground/60">
-            When your usual morning and evening sessions start. Used to place
-            two-a-day workouts on the right side of the day. Each window covers
-            two hours from the time you set.
+          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
+            When your usual morning and evening sessions start.
           </p>
           <TrainingWindowsAutoSave
             initialAmStart={amWindowStart}
             initialPmStart={pmWindowStart}
           />
-        </SettingsGroup>
+        </SettingCard>
 
-        {/* Training notes — free text the user keeps about themselves.
-            Also absorbed from /app/profile. */}
-        <SettingsGroup
+        <SettingCard
           id="training-notes"
+          eyebrow="Context"
           title="Training notes"
-          summary={trainingNotes ? "Written" : "Empty"}
-          testId="settings-group-training-notes"
+          value={trainingNotes ? "Written" : "Empty"}
+          testId="settings-card-training-notes"
         >
-          <p className="text-xs text-foreground/60">
+          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
             Anything worth remembering about how you train — what works, what
             flares up, what you want to keep an eye on.
           </p>
@@ -240,7 +233,7 @@ export default async function ProfileSettingsPage() {
             initialValue={trainingNotes}
             action={updateTrainingNotes}
           />
-        </SettingsGroup>
+        </SettingCard>
       </div>
     </div>
   );

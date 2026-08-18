@@ -3,28 +3,23 @@
 /**
  * Per-section auto-save wrappers used by /app/settings.
  *
- * Each wrapper owns the inputs for one collapsible group on the
- * settings page, builds a `FormData` from the new value, and calls
- * the shared `updateProfile` server action (which already supports
- * partial updates — only the touched columns get written).
+ * Each wrapper owns the inputs for one card on the settings page, builds
+ * a `FormData` from the new value, and calls the shared `updateProfile`
+ * server action (which already supports partial updates — only the
+ * touched columns get written).
  *
  * No "Save" buttons here by design — fields commit on the contract
  * documented in each wrapper:
- *   - selects / radios / checkboxes  → commit on change
- *   - text / number inputs           → debounce 500ms + blur + Enter
- *   - time / date inputs             → commit on change
+ *   - radios / segments → commit on change
  *
  * The "Log weight" form on the same page stays explicit — logging a
  * bodyweight reading is a discrete action, not a config save.
  */
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { updateProfile } from "@/lib/settings/actions";
 import {
-  AutoSaveCheckbox,
-  AutoSaveDateField,
-  AutoSaveNumberField,
   AutoSaveRadioGroup,
-  AutoSaveSelect,
+  AutoSaveSegmented,
   AutoSaveTextField,
   AutoSaveTimeField,
 } from "./auto-save";
@@ -35,7 +30,6 @@ type TrainingExperience =
   | "intermediate_2y_5y"
   | "advanced_5y_10y"
   | "highly_advanced_10y_plus";
-type BodyCompPhase = "gain" | "maintain" | "lean_out";
 
 async function saveField(name: string, value: string): Promise<void> {
   const fd = new FormData();
@@ -43,47 +37,35 @@ async function saveField(name: string, value: string): Promise<void> {
   await updateProfile(fd);
 }
 
-async function saveCheckbox(name: string, value: boolean): Promise<void> {
-  // The `updateProfile` action expects a *Present marker so it can
-  // distinguish "checkbox cleared" from "checkbox not in this form".
-  // Auto-save fires one field at a time, so always set the marker.
-  const fd = new FormData();
-  fd.set(`${name}Present`, "1");
-  if (value) fd.set(name, "on");
-  await updateProfile(fd);
-}
+// ─── Display name ────────────────────────────────────────────────────
+// Back on the training-profile page. It had been dropped on the grounds
+// that the name was click-to-edit on the /app/profile identity header —
+// but that route had no inbound link anywhere in the app and has since
+// been retired, which would have left the display name uneditable.
 
-// ─── Profile basics ──────────────────────────────────────────────────
-
-const UNIT_OPTIONS = [
-  { value: "metric", label: "kg / km" },
-  { value: "imperial", label: "lb / mi" },
-] as const;
-
-export function ProfileBasicsAutoSave({
+export function DisplayNameAutoSave({
   initialDisplayName,
 }: {
   initialDisplayName: string;
 }) {
-  const saveDisplayName = useCallback(
-    (v: string) => saveField("displayName", v),
-    [],
-  );
+  const save = useCallback((v: string) => saveField("displayName", v), []);
   return (
-    <div
-      className="space-y-3 rounded-lg border border-foreground/10 p-4"
-      data-testid="settings-profile-basics"
-    >
+    <div data-testid="settings-profile-basics">
       <AutoSaveTextField
         label="Display name"
         initial={initialDisplayName}
-        save={saveDisplayName}
+        save={save}
         testId="settings-display-name-input"
         inputProps={{ maxLength: 60, placeholder: "What should we call you?" }}
       />
     </div>
   );
 }
+
+const UNIT_OPTIONS = [
+  { value: "metric" as const, label: "kg / km" },
+  { value: "imperial" as const, label: "lb / mi" },
+];
 
 // ─── Units (kg / lb · km / mi) ───────────────────────────────────────
 
@@ -94,22 +76,20 @@ export function UnitsAutoSave({
 }) {
   const saveUnits = useCallback((v: string) => saveField("units", v), []);
   return (
-    <div
-      className="space-y-3 rounded-lg border border-foreground/10 p-4"
-      data-testid="settings-units-form"
-    >
-      <AutoSaveSelect
-        label="Units"
+    <div data-testid="settings-units-form">
+      <AutoSaveSegmented
+        name="units"
+        legend="Units"
         initial={initialUnits}
         options={UNIT_OPTIONS}
         save={saveUnits}
-        testId="settings-units-select"
+        statusTestIdSuffix="settings-units"
       />
     </div>
   );
 }
 
-// ─── Gender (sex-specific HYROX loads + strength-standard defaults) ──
+// ─── Gender (sex-specific race loads + strength-standard defaults) ───
 
 const GENDER_OPTIONS = [
   { value: "male" as const, label: "Male", testId: "settings-gender-male" },
@@ -123,77 +103,15 @@ export function GenderAutoSave({
 }) {
   const save = useCallback((v: string) => saveField("gender", v), []);
   return (
-    <div
-      className="space-y-3 rounded-lg border border-foreground/10 p-4"
-      data-testid="settings-gender-form"
-    >
-      <AutoSaveRadioGroup
+    <div data-testid="settings-gender-form">
+      <AutoSaveSegmented
         name="gender"
+        legend="Sex used for strength standards"
         initial={initial ?? ""}
         options={GENDER_OPTIONS}
         save={save}
         statusTestIdSuffix="settings-gender"
       />
-    </div>
-  );
-}
-
-// ─── Body composition phase ──────────────────────────────────────────
-
-const PHASE_OPTIONS = [
-  { value: "maintain", label: "Maintain" },
-  { value: "gain", label: "Gain (lean bulk)" },
-  { value: "lean_out", label: "Lean out (cut)" },
-] as const;
-
-export function BodyCompPhaseAutoSave({
-  initialPhase,
-  initialStartedAt,
-  initialTargetWeeks,
-}: {
-  initialPhase: BodyCompPhase;
-  initialStartedAt: string;
-  initialTargetWeeks: string;
-}) {
-  const savePhase = useCallback(
-    (v: string) => saveField("bodyCompPhase", v),
-    [],
-  );
-  const saveStartedAt = useCallback(
-    (v: string) => saveField("phaseStartedAt", v),
-    [],
-  );
-  const saveTargetWeeks = useCallback(
-    (v: string) => saveField("phaseTargetWeeks", v),
-    [],
-  );
-  return (
-    <div
-      className="space-y-3 rounded-lg border border-foreground/10 p-4"
-      data-testid="settings-body-comp-phase"
-    >
-      <AutoSaveSelect
-        label="Current phase"
-        initial={initialPhase}
-        options={PHASE_OPTIONS}
-        save={savePhase}
-        testId="settings-body-comp-phase-select"
-      />
-      <div className="grid grid-cols-2 gap-3">
-        <AutoSaveDateField
-          label="Started on"
-          initial={initialStartedAt}
-          save={saveStartedAt}
-          testId="settings-phase-started-at"
-        />
-        <AutoSaveNumberField
-          label="Target length (weeks)"
-          initial={initialTargetWeeks}
-          save={saveTargetWeeks}
-          testId="settings-phase-target-weeks"
-          inputProps={{ min: 1, max: 52, placeholder: "e.g. 10" }}
-        />
-      </div>
     </div>
   );
 }
@@ -204,7 +122,7 @@ const EXPERIENCE_OPTIONS = [
   {
     value: "beginner_lt_6m" as const,
     label: "Beginner",
-    hint: "New to training. <6 months. Still building the habit.",
+    hint: "Under 6 months. Still building the habit.",
     testId: "settings-experience-beginner_lt_6m",
   },
   {
@@ -246,10 +164,7 @@ export function TrainingExperienceAutoSave({
   // nothing declared yet — but mark nothing selected via data-selected.
   const seed: TrainingExperience = initial || "beginner_lt_6m";
   return (
-    <div
-      className="space-y-3 rounded-lg border border-foreground/10 p-4"
-      data-testid="settings-training-experience-form"
-    >
+    <div data-testid="settings-training-experience-form">
       <AutoSaveRadioGroup
         name="trainingExperience"
         initial={seed}
@@ -261,55 +176,24 @@ export function TrainingExperienceAutoSave({
   );
 }
 
+// ─── Body composition phase ──────────────────────────────────────────
+// Removed. `profiles.body_comp_phase` / `phase_started_at` /
+// `phase_target_weeks` had no engine consumer — nothing in the planner
+// ever read them, despite the UI claiming a cut pulled back top-end
+// intensity. Migration 0131 drops all three columns and the enum.
+// DC-Q2 / DC-T3 are ⏸ [BACKLOG] until a real consumer exists.
+
 // ─── Effort / volume dial ────────────────────────────────────────────
-
-type EffortPreference = "low" | "standard" | "high";
-
-const EFFORT_PREFERENCE_OPTIONS = [
-  {
-    value: "low" as const,
-    label: "Easier",
-    hint: "Lower volume, more reps in reserve. Good when endurance work is heavy or you're managing fatigue.",
-    testId: "settings-effort-low",
-  },
-  {
-    value: "standard" as const,
-    label: "Balanced",
-    hint: "The default. Challenging but submaximal — concurrent-safe.",
-    testId: "settings-effort-standard",
-  },
-  {
-    value: "high" as const,
-    label: "Harder",
-    hint: "More accessory sets and closer to failure on muscle-building work. For when growth is the priority.",
-    testId: "settings-effort-high",
-  },
-];
-
-export function EffortPreferenceAutoSave({
-  initial,
-}: {
-  initial: EffortPreference;
-}) {
-  const save = useCallback(
-    (v: EffortPreference) => saveField("effortPreference", v),
-    [],
-  );
-  return (
-    <div
-      className="space-y-3 rounded-lg border border-foreground/10 p-4"
-      data-testid="settings-effort-preference-form"
-    >
-      <AutoSaveRadioGroup
-        name="effortPreference"
-        initial={initial}
-        options={EFFORT_PREFERENCE_OPTIONS}
-        save={save}
-        statusTestIdSuffix="settings-effort"
-      />
-    </div>
-  );
-}
+// Removed. `profiles.effort_preference` was labelled "Accessory volume"
+// and claimed to apply to every program. Its only live consumer was
+// 5/3/1 assistance volume, which now collects the choice per block in
+// the program wizard's Loadout step (see
+// `@/lib/platform/assistance-volume`). The column is still read there as
+// a fallback for deploys that carry no wizard value.
+// Its other code path — the ADR 0016 hypertrophy effort anchor — only
+// fires on `hypertrophy_anchor` blocks, and the Hybrid program hardwires
+// `concurrent_hybrid`, so that path is unreachable.
+// TODO: retire the column once no in-flight deploy relies on the fallback.
 
 // ─── Session feedback (haptics + timer tone) ─────────────────────────
 
@@ -329,23 +213,21 @@ export function TrainingWindowsAutoSave({
   const savePm = useCallback((v: string) => saveField("pmWindowStart", v), []);
   return (
     <div
-      className="space-y-3 rounded-lg border border-foreground/10 p-4"
+      className="grid grid-cols-2 gap-3"
       data-testid="settings-training-windows"
     >
-      <div className="grid grid-cols-2 gap-3">
-        <AutoSaveTimeField
-          label="Morning window starts"
-          initial={initialAmStart}
-          save={saveAm}
-          testId="settings-am-window-start"
-        />
-        <AutoSaveTimeField
-          label="Evening window starts"
-          initial={initialPmStart}
-          save={savePm}
-          testId="settings-pm-window-start"
-        />
-      </div>
+      <AutoSaveTimeField
+        label="Morning window starts"
+        initial={initialAmStart}
+        save={saveAm}
+        testId="settings-am-window-start"
+      />
+      <AutoSaveTimeField
+        label="Evening window starts"
+        initial={initialPmStart}
+        save={savePm}
+        testId="settings-pm-window-start"
+      />
     </div>
   );
 }

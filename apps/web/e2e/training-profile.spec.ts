@@ -3,22 +3,24 @@ import { signInAs } from "./fixtures/auth";
 import { markOnboarded } from "./fixtures/seed-blocks";
 
 /**
- * /app/settings/profile · training windows + training notes.
+ * /app/settings/profile · the three settings absorbed from /app/profile.
  *
- * These two groups were absorbed from the retired /app/profile page —
- * they are the only UI for `am_window_start` / `pm_window_start` (used
- * by the Today page to place two-a-day sessions) and `ai_notes`. This
- * spec guards the migration.
+ * `/app/profile` had no inbound link anywhere in the app but was the only
+ * UI for the display name, `ai_notes`, and the `am_window_start` /
+ * `pm_window_start` two-a-day windows the Today page reads to place a
+ * morning versus an evening session. The route is retired; this spec
+ * guards the migration of all three.
  *
  * Coverage:
- *  - Both groups render on the Settings > Training profile page.
- *  - Editing a training window auto-saves and survives a reload.
- *  - Training notes save on blur and survive a reload.
+ *  - All three cards render on Settings > Training profile.
+ *  - Each edit auto-saves and survives a reload.
+ *  - The windows write both ends of the two-hour span.
+ *  - The retired route is gone.
  */
-test.describe("@desktop /app/settings/profile · windows + notes", () => {
+test.describe("@desktop /app/settings/profile · absorbed settings", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
 
-  test("training windows and notes persist across a reload", async ({
+  test("display name, windows and notes persist across a reload", async ({
     page,
     context,
     freshUser,
@@ -42,50 +44,63 @@ test.describe("@desktop /app/settings/profile · windows + notes", () => {
     await expect(back).toBeVisible();
     await expect(back).toHaveAttribute("href", "/app/settings");
 
-    // ── Training windows ──────────────────────────────────────────
-    const windowsGroup = page.getByTestId("settings-group-training-windows");
-    await expect(windowsGroup).toBeVisible();
-    await windowsGroup.locator("summary").click();
+    // ── Display name ──────────────────────────────────────────────
+    await expect(page.getByTestId("settings-card-identity")).toBeVisible();
+    const name = page.getByTestId("settings-display-name-input");
+    await name.fill("Edited Name");
+    await name.blur();
+    await expect(
+      page.getByTestId("autosave-status-settings-display-name-input"),
+    ).toHaveAttribute("data-status", "saved");
 
-    const amInput = page.getByTestId("settings-am-window-start");
-    await expect(amInput).toBeVisible();
-    await amInput.fill("06:30");
-    // Time inputs commit on change; wait for the save to land.
+    // ── Training windows ──────────────────────────────────────────
+    await expect(
+      page.getByTestId("settings-card-training-windows"),
+    ).toBeVisible();
+    await page.getByTestId("settings-am-window-start").fill("06:30");
+    // Time inputs commit on change, with no debounce.
     await expect(
       page.getByTestId("autosave-status-settings-am-window-start"),
     ).toHaveAttribute("data-status", "saved");
 
     // ── Training notes ────────────────────────────────────────────
-    const notesGroup = page.getByTestId("settings-group-training-notes");
-    await expect(notesGroup).toBeVisible();
-    await notesGroup.locator("summary").click();
-
+    await expect(
+      page.getByTestId("settings-card-training-notes"),
+    ).toBeVisible();
     const notes = page.getByTestId("training-notes-textarea");
-    await expect(notes).toBeVisible();
     await notes.fill("Heavy days go better after a rest day.");
     await notes.blur();
     await expect(page.getByTestId("training-notes-status")).toContainText(
       /saved/i,
     );
 
-    // ── Both persisted ────────────────────────────────────────────
+    // ── All three persisted ───────────────────────────────────────
     await page.reload();
     await page.waitForLoadState("networkidle");
 
-    await page
-      .getByTestId("settings-group-training-windows")
-      .locator("summary")
-      .click();
+    await expect(page.getByTestId("settings-display-name-input")).toHaveValue(
+      "Edited Name",
+    );
     await expect(page.getByTestId("settings-am-window-start")).toHaveValue(
       "06:30",
     );
-
-    await page
-      .getByTestId("settings-group-training-notes")
-      .locator("summary")
-      .click();
     await expect(page.getByTestId("training-notes-textarea")).toHaveValue(
       /heavy days go better/i,
     );
+
+    // DB: the window wrote both ends of the two-hour span.
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("display_name, am_window_start, am_window_end, ai_notes")
+      .eq("id", freshUser.userId)
+      .maybeSingle();
+    expect(profile?.display_name).toBe("Edited Name");
+    expect(String(profile?.am_window_start)).toMatch(/^06:30/);
+    expect(String(profile?.am_window_end)).toMatch(/^08:30/);
+    expect(String(profile?.ai_notes)).toMatch(/heavy days go better/i);
+
+    // The retired route is gone.
+    const gone = await page.goto("/app/profile");
+    expect(gone?.status()).toBe(404);
   });
 });

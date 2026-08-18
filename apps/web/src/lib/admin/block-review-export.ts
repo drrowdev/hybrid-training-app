@@ -19,8 +19,6 @@
 export type ReviewAthlete = {
   experienceTier: string | null;
   bodyweightKg: number | null;
-  bodyCompPhase: string | null;
-  phaseTargetWeeks: number | null;
   trainingDaysPerWeek: number | null;
   allowsTwoADays: boolean | null;
   equipment: string[];
@@ -211,9 +209,6 @@ function athleteSection(a: ReviewAthlete, lims: ReviewLimitation[]): string {
     "",
     `- **Experience tier:** ${a.experienceTier ?? "—"}`,
     `- **Bodyweight:** ${fmtKg(a.bodyweightKg)}`,
-    `- **Body-composition phase:** ${a.bodyCompPhase ?? "—"}${
-      a.phaseTargetWeeks != null ? ` (target ${a.phaseTargetWeeks} weeks)` : ""
-    }`,
     `- **Training days/week:** ${a.trainingDaysPerWeek ?? "—"}`,
     `- **Open to two-a-days:** ${yesNo(a.allowsTwoADays)}`,
     `- **Equipment:** ${joinOrDash(a.equipment)}`,

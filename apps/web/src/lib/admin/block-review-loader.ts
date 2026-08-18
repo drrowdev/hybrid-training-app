@@ -151,7 +151,7 @@ export async function loadBlockReviewData(
     supabase
       .from("profiles")
       .select(
-        "training_experience, bodyweight_kg, body_comp_phase, phase_target_weeks, training_days_per_week, allows_two_a_days, equipment",
+        "training_experience, bodyweight_kg, training_days_per_week, allows_two_a_days, equipment",
       )
       .eq("id", userId)
       .maybeSingle(),
@@ -169,8 +169,6 @@ export async function loadBlockReviewData(
   const profile = (profileRes.data ?? null) as {
     training_experience: string | null;
     bodyweight_kg: number | string | null;
-    body_comp_phase: string | null;
-    phase_target_weeks: number | null;
     training_days_per_week: number | null;
     allows_two_a_days: boolean | null;
     equipment: unknown;
@@ -229,8 +227,6 @@ export async function loadBlockReviewData(
     athlete: {
       experienceTier: profile?.training_experience ?? null,
       bodyweightKg: bw != null ? Number(bw) : null,
-      bodyCompPhase: profile?.body_comp_phase ?? null,
-      phaseTargetWeeks: profile?.phase_target_weeks ?? null,
       trainingDaysPerWeek: profile?.training_days_per_week ?? null,
       allowsTwoADays: profile?.allows_two_a_days ?? null,
       equipment: summariseEquipment(profile?.equipment ?? null),
