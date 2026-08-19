@@ -25,6 +25,7 @@ export type SettingsIconName =
   | "training-maxes"
   | "bw-progression"
   | "limitations"
+  | "rehab-protocols"
   | "events"
   | "preferences"
   | "hr-zones";
@@ -72,6 +73,15 @@ export function SettingsIcon({ name }: { name: SettingsIconName }): ReactNode {
         <svg {...base}>
           <path d="M19 14c1.5-1.6 2-3 2-4.5A4.5 4.5 0 0 0 12 7a4.5 4.5 0 0 0-9 2.5C3 12 6 15 12 20c2.2-1.8 3.9-3.4 5-4.6z" />
           <path d="M3.5 12h3l1.5-3 2 6 1.5-3h3" />
+        </svg>
+      );
+    case "rehab-protocols": // clipboard with a checked line
+      return (
+        <svg {...base}>
+          <path d="M9 4h6v3H9z" />
+          <path d="M15 5.5h2A1.5 1.5 0 0 1 18.5 7v12A1.5 1.5 0 0 1 17 20.5H7A1.5 1.5 0 0 1 5.5 19V7A1.5 1.5 0 0 1 7 5.5h2" />
+          <path d="m8.5 12.5 1.5 1.5 3-3" />
+          <path d="M8.5 17h7" />
         </svg>
       );
     case "events": // flag
