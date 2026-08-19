@@ -71,6 +71,7 @@ export type FocusStripLoggerProps = {
   updateStrengthSet: typeof updateStrengthSetInline;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
+  restTimerEnabled: boolean;
   barbellKg?: number;
   trapBarKg?: number;
   safetyBarKg?: number;
@@ -188,6 +189,7 @@ export function FocusStripLogger({
   updateStrengthSet,
   hapticsEnabled,
   timerSoundEnabled,
+  restTimerEnabled,
   barbellKg,
   trapBarKg,
   safetyBarKg,
@@ -669,6 +671,7 @@ export function FocusStripLogger({
               updateStrengthSet={updateStrengthSet}
               hapticsEnabled={hapticsEnabled}
               timerSoundEnabled={timerSoundEnabled}
+              restTimerEnabled={restTimerEnabled}
               barbellKg={barbellKg}
               trapBarKg={trapBarKg}
               safetyBarKg={safetyBarKg}

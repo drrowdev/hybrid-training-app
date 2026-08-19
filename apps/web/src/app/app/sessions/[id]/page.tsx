@@ -51,6 +51,7 @@ import { findBumpProposalForSession } from "@/lib/stats/bump-proposal";
 import { findPrRecalibrateProposals } from "@/lib/stats/pr-recalibrate";
 import { getLastSetsForMovements, getPriorBestsForMovements, summariseSessionSets } from "@/lib/sessions/queries";
 import { summariseCardioLogs } from "@/lib/sessions/cardio-summary";
+import { readRestTimerEnabled } from "@/lib/sessions/rest-timer-preference";
 import { suggestNextWeight } from "@/lib/progression/suggest-next";
 import {
   matchPrescriptionItemsDetailed,
@@ -151,6 +152,11 @@ export default async function SessionDetailPage({
 
   const hapticsEnabled = feedbackPrefs?.haptics_enabled ?? true;
   const timerSoundEnabled = feedbackPrefs?.timer_sound_enabled ?? true;
+  // Deliberately NOT part of the profile select above. Until migration 0133 is
+  // applied the column does not exist, and PostgREST fails the whole request on
+  // an unknown column — which would silently reset equipment, plate inventory,
+  // units and date formats for every user mid-deploy-window.
+  const restTimerEnabled = await readRestTimerEnabled(user.id);
   const userUnits: "metric" | "imperial" =
     feedbackPrefs?.units === "imperial" ? "imperial" : "metric";
   // Resolve via the same canonical helper the settings page uses, so
@@ -1338,6 +1344,7 @@ export default async function SessionDetailPage({
         fillFromPlan={fillSessionFromPlan}
         hapticsEnabled={hapticsEnabled}
         timerSoundEnabled={timerSoundEnabled}
+        restTimerEnabled={restTimerEnabled}
         lastSetHints={lastSetHints}
         priorBests={priorBests}
         plannedSessionId={(planned?.id as string | undefined) ?? null}

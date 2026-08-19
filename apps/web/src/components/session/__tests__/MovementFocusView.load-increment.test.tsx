@@ -55,6 +55,7 @@ function render(group: MovementGroup, equipmentTag?: string | null) {
       addStrengthSet={addStrengthSet}
       hapticsEnabled={false}
       timerSoundEnabled={false}
+      restTimerEnabled={true}
       equipmentTag={equipmentTag}
     />,
   );

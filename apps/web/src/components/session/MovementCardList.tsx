@@ -71,6 +71,7 @@ export type MovementCardListProps = {
   fillFromPlan: typeof fillSessionFromPlanAction;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
+  restTimerEnabled: boolean;
   /** User equipment props forwarded to each prescribed card. */
   barbellKg?: number;
   trapBarKg?: number;
@@ -136,6 +137,7 @@ export function MovementCardList({
   fillFromPlan,
   hapticsEnabled,
   timerSoundEnabled,
+  restTimerEnabled,
   barbellKg,
   trapBarKg,
   safetyBarKg,
@@ -556,6 +558,7 @@ export function MovementCardList({
           updateStrengthSet={updateStrengthSet}
           hapticsEnabled={hapticsEnabled}
           timerSoundEnabled={timerSoundEnabled}
+          restTimerEnabled={restTimerEnabled}
           barbellKg={barbellKg}
           trapBarKg={trapBarKg}
           safetyBarKg={safetyBarKg}
@@ -585,6 +588,7 @@ export function MovementCardList({
             onRemove={handleRemove}
             hapticsEnabled={hapticsEnabled}
             timerSoundEnabled={timerSoundEnabled}
+            restTimerEnabled={restTimerEnabled}
           />
         ))}
       </div>
@@ -623,6 +627,7 @@ export function MovementCardList({
         showFillFromPlan={idx === 0 && showFillOnFirst}
         hapticsEnabled={hapticsEnabled}
         timerSoundEnabled={timerSoundEnabled}
+        restTimerEnabled={restTimerEnabled}
         barbellKg={barbellKg}
         trapBarKg={trapBarKg}
         safetyBarKg={safetyBarKg}
@@ -723,6 +728,7 @@ export function MovementCardList({
           onRemove={handleRemove}
           hapticsEnabled={hapticsEnabled}
           timerSoundEnabled={timerSoundEnabled}
+          restTimerEnabled={restTimerEnabled}
         />
       ))}
 
@@ -839,6 +845,7 @@ type PrescribedCardProps = {
   showFillFromPlan: boolean;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
+  restTimerEnabled: boolean;
   barbellKg?: number;
   trapBarKg?: number;
   safetyBarKg?: number;
@@ -905,6 +912,7 @@ const PrescribedCard = memo(function PrescribedCard(props: PrescribedCardProps) 
       showFillFromPlan={props.showFillFromPlan}
       hapticsEnabled={props.hapticsEnabled}
       timerSoundEnabled={props.timerSoundEnabled}
+      restTimerEnabled={props.restTimerEnabled}
       barbellKg={props.barbellKg}
       trapBarKg={props.trapBarKg}
       safetyBarKg={props.safetyBarKg}
@@ -936,6 +944,7 @@ function samePrescribedCardProps(
     previous.showFillFromPlan !== next.showFillFromPlan ||
     previous.hapticsEnabled !== next.hapticsEnabled ||
     previous.timerSoundEnabled !== next.timerSoundEnabled ||
+    previous.restTimerEnabled !== next.restTimerEnabled ||
     previous.barbellKg !== next.barbellKg ||
     previous.trapBarKg !== next.trapBarKg ||
     previous.plateInventory !== next.plateInventory ||

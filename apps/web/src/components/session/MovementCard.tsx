@@ -76,6 +76,7 @@ export type MovementCardProps = {
   showFillFromPlan: boolean;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
+  restTimerEnabled: boolean;
   /** User equipment — forwarded to `<MovementFocusView>` for the plate breakdown. */
   barbellKg?: number;
   trapBarKg?: number;
@@ -136,6 +137,7 @@ export function MovementCard({
   showFillFromPlan,
   hapticsEnabled,
   timerSoundEnabled,
+  restTimerEnabled,
   barbellKg,
   trapBarKg,
   safetyBarKg,
@@ -636,6 +638,7 @@ export function MovementCard({
             addStrengthSet={addStrengthSet}
             hapticsEnabled={hapticsEnabled}
             timerSoundEnabled={timerSoundEnabled}
+            restTimerEnabled={restTimerEnabled}
             barbellKg={barbellKg}
             trapBarKg={trapBarKg}
             safetyBarKg={safetyBarKg}
