@@ -755,3 +755,15 @@ The duplication was self-inflicted. The previous change put the link where the l
 `LinkBadge` and `rowLinkClass` moved out of `ProgramPicker` into their own module. The motive was testability, not tidiness: the wizard rows sit behind customise mode and an expanded phase, which a Node-env static render cannot reach, so the assembled JSX had never been exercised — only its inputs (`slotLinkBadges`) and its CSS names. It now has 16 tests. Extracting it also surfaced a real inconsistency: the custom-builder rows composed their link classes inline and omitted `linkedRowStart` / `linkedRowEnd`, so the rail never capped there. `rowLinkClass` now takes the base class as a parameter — Activation rows pass `activationMovementRow`, custom-builder rows pass `""` because they are styled by a descendant selector — and both get the same caps.
 
 Activation phases now start collapsed. `open={phaseIndex === firstOpenPhase}` expanded whichever phase contained the start week, which for a fresh program is Base; one open phase pushes the other three off-screen behind a wall of session rows, so the list stopped reading as a list. The start-week signal is not lost — that phase's summary now says "Starts here", alongside the existing "Before start / Past · locked" markers. Two `tb-customized-desktop` blocks had been reading Base content without opening it and now click its summary first, matching how they already handle Armor and Operator.
+
+## [2026-08-19] decision | Bound Playwright setup in CI so an apt stall cannot eat the whole e2e job
+
+The e2e job failed twice consecutively at exactly 20m16s with no test output. The cause was not a test: `playwright install --with-deps chromium` reached "Switching to root user to install dependencies..." and then emitted nothing until the job's own `timeout-minutes: 20` killed it. Zero specs ran, and the job reported as a plain red X — indistinguishable at a glance from a genuine regression, which is the expensive part. The same stall had already cost a re-run earlier in the day on a different PR, so it is intermittent rather than one bad runner.
+
+Three changes, all about bounding the blast radius rather than chasing the apt mirror:
+
+- Browsers are cached at `~/.cache/ms-playwright`, keyed on the lockfile hash, so the download is skipped outright on a hit.
+- System dependencies move to their own step with `timeout-minutes: 5` and `continue-on-error: true`. `ubuntu-latest` already ships the shared libraries headless Chromium needs — `--with-deps` targets bare containers — so this is belt-and-braces. If it is skipped AND a library genuinely is missing, Playwright fails at browser launch with an explicit message, which is a much better signal than a silent stall.
+- The browser install itself gets `timeout-minutes: 6`.
+
+Worst case is now ~11 minutes of setup with the tests still getting their turn, instead of a 20-minute wall and nothing to read.
