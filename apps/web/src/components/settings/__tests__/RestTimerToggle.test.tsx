@@ -33,12 +33,9 @@ describe("RestTimerToggle", () => {
     expect(html).toContain('aria-checked="false"');
   });
 
-  it("says what turning it off does and does not change", () => {
-    // "Off" must not read as "skip your rest" — the countdown stops, the rest
-    // doesn't.
+  it("names the setting", () => {
     const html = renderToStaticMarkup(<RestTimerToggle initial={true} />);
     expect(html).toContain("Rest timer");
-    expect(html).toMatch(/rest untimed/i);
   });
 
   it("is labelled for screen readers", () => {

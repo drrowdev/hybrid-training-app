@@ -48,9 +48,7 @@ export function RestTimerToggle({ initial }: { initial: boolean }) {
               marginTop: 3,
             }}
           >
-            Counts down between sets and can buzz when it hits zero. Turn it off
-            to rest untimed — your sets, and everything else in the session, work
-            exactly the same.
+            Counts down between sets and can buzz when it hits zero.
           </div>
         </div>
         <button
