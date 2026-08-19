@@ -120,6 +120,12 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.rehab_protocols TO authenticated;
 
 ALTER TABLE public.program_rehab_bindings ENABLE ROW LEVEL SECURITY;
 
+-- The write policies verify OWNERSHIP OF BOTH REFERENCED ROWS, not just the
+-- denormalised `user_id`. Checking `auth.uid() = user_id` alone would let a
+-- user insert a binding of their own that points at somebody else's protocol
+-- id: the foreign key permits it, and `ON DELETE RESTRICT` would then stop the
+-- real owner from ever deleting that protocol.
+
 DROP POLICY IF EXISTS program_rehab_bindings_select_self ON public.program_rehab_bindings;
 CREATE POLICY program_rehab_bindings_select_self
   ON public.program_rehab_bindings FOR SELECT
@@ -128,13 +134,33 @@ CREATE POLICY program_rehab_bindings_select_self
 DROP POLICY IF EXISTS program_rehab_bindings_insert_self ON public.program_rehab_bindings;
 CREATE POLICY program_rehab_bindings_insert_self
   ON public.program_rehab_bindings FOR INSERT
-  WITH CHECK ((SELECT auth.uid()) = user_id);
+  WITH CHECK (
+    (SELECT auth.uid()) = user_id
+    AND EXISTS (
+      SELECT 1 FROM public.rehab_protocols p
+       WHERE p.id = rehab_protocol_id AND p.user_id = (SELECT auth.uid())
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.program_instances i
+       WHERE i.id = program_instance_id AND i.user_id = (SELECT auth.uid())
+    )
+  );
 
 DROP POLICY IF EXISTS program_rehab_bindings_update_self ON public.program_rehab_bindings;
 CREATE POLICY program_rehab_bindings_update_self
   ON public.program_rehab_bindings FOR UPDATE
   USING ((SELECT auth.uid()) = user_id)
-  WITH CHECK ((SELECT auth.uid()) = user_id);
+  WITH CHECK (
+    (SELECT auth.uid()) = user_id
+    AND EXISTS (
+      SELECT 1 FROM public.rehab_protocols p
+       WHERE p.id = rehab_protocol_id AND p.user_id = (SELECT auth.uid())
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.program_instances i
+       WHERE i.id = program_instance_id AND i.user_id = (SELECT auth.uid())
+    )
+  );
 
 DROP POLICY IF EXISTS program_rehab_bindings_delete_self ON public.program_rehab_bindings;
 CREATE POLICY program_rehab_bindings_delete_self
