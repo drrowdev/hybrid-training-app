@@ -490,6 +490,51 @@ describe("SessionDrawer — Plan review-only mode", () => {
     expect(html).not.toContain('data-testid="plan-drawer-mark-done"');
     expect(html).not.toContain('data-testid="overdue-log-');
   });
+
+  it("removes the link-a-logged-activity control on a cardio session too", async () => {
+    // Reported from use: a Plan cardio drawer showed no Mark done (correct —
+    // logging is Today's) but still offered "Link a logged activity", which
+    // completes the slot just as surely. It sat outside the `allowLogging`
+    // gate its siblings were behind.
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session({ isCardio: true, isStrength: false })}
+        today="2026-05-26"
+        weeks={4}
+        onClose={() => {}}
+        moveAction={noop}
+        skipAction={noop}
+        unskipAction={noop}
+        updateNotesAction={async () => ({ ok: true as const })}
+        allowLogging={false}
+      />,
+    );
+    expect(html).not.toContain('data-testid="link-activity-control"');
+    // The empty flex wrapper carries a 12px margin, so the element must go too
+    // (the class name still appears in the inline <style> block, so match the
+    // attribute rather than the bare string).
+    expect(html).not.toContain('class="drawer-cta-extras"');
+    // Schedule controls are unaffected.
+    expect(html).toContain('data-testid="plan-drawer-skip"');
+  });
+
+  it("still offers it when logging IS allowed (the Today rail)", async () => {
+    const { SessionDrawer } = await import("./PlanRedesign");
+    const html = renderToStaticMarkup(
+      <SessionDrawer
+        session={session({ isCardio: true, isStrength: false })}
+        today="2026-05-26"
+        weeks={4}
+        onClose={() => {}}
+        moveAction={noop}
+        skipAction={noop}
+        unskipAction={noop}
+        updateNotesAction={async () => ({ ok: true as const })}
+      />,
+    );
+    expect(html).toContain('data-testid="link-activity-control"');
+  });
 });
 
 describe("SessionDrawer — drag handle + sheet markup", () => {

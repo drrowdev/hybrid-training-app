@@ -1,15 +1,18 @@
 "use server";
 
 /**
- * Manual "link a logged activity to a planned session" (ADR follow-up to the
- * automatic linker). The retired auto-linker only
- * fires for `cardio_source='external'` blocks and only at sync time, so a HYROX
- * (internal-cardio) plan — or any case where the activity synced before the day
- * was swapped — has no way to attach an already-logged run to its planned cardio
- * slot. This closes that gap.
+ * Manual "link a logged activity to a planned session".
+ *
+ * Candidates are the user's OWN completed sessions that carry a cardio log —
+ * there is no third-party integration involved. The automatic linker this
+ * replaces fired only for `cardio_source='external'` blocks and only when an
+ * activity arrived from a sync; it retired with the Strava integration
+ * (migration 0130). Without this, a cardio session logged before the day was
+ * swapped — or any internal-cardio plan the old linker never covered — had no
+ * way to attach to its planned slot.
  *
  * Crucially this is HYROX-aware: it runs the SAME classify-and-attribute path the
- * auto-linker uses, stamping `session_modality` + `effective_stress_load` (from
+ * auto-linker used, stamping `session_modality` + `effective_stress_load` (from
  * the run's HR), not just `completed_session_id`. A naive link that set only the
  * completion pointer would mark the day done but leave the engine's load
  * attribution at zero.
