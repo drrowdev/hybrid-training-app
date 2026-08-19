@@ -23,6 +23,27 @@ The three research papers (`hybrid-training-research-{v1,v2,new}.md`) are **raw 
 - **Methodology purity (plan §1, owner-confirmed):** zero external program names in catalog, data model, or engine.
 - **Override-and-warn, never silent overrule (DC-K4):** when a user overrides a principle-derived default, the engine records the override and shows a warning. Hard blocks reserved for safety (tendon refractory, active-limitation gates, RLS/auth violations).
 
+## UI copy
+
+Write what the control does. Nothing else.
+
+**No unsolicited explanation.** Before shipping any user-facing string, ask: would a competent user, looking at this control, have asked this question? If no, cut it.
+
+Two specific bans:
+
+- **No pre-emptive reassurance.** Never state what a setting *doesn't* affect, won't break, or leaves unchanged. Denying a consequence invents the fear — "your sets work exactly the same" implies they might not have.
+- **No implementation narration.** Describe the user's action, never the engine's mechanics. Words like *engine-owned*, *mapped*, *derived*, *canonical*, *materialized*, *protected* belong in code and comments, never in the UI.
+
+Corollaries:
+
+- A label and a control state already communicate. Don't restate them in prose.
+- Explain a rule only where it **blocks** the user — in the validation error, at the moment of failure. Not pre-emptively, in a card, on every visit.
+- Interpolate display labels into user-facing strings, never raw keys or slugs.
+- Default to deleting a sentence. If a reviewer can't name the question it answers, it goes.
+- Don't pin removable copy in a test. A test asserting on a sentence makes that sentence permanent; assert on behaviour instead.
+
+Applies to AI-authored copy in particular: writing UI immediately after reading the implementation makes internal mechanics feel salient. They are not.
+
 ## Wiki maintenance
 
 The `docs/knowledge/` directory follows the Karpathy personal-knowledge-base pattern (plan §6.10):
