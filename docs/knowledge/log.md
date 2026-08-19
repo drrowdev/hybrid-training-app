@@ -809,3 +809,11 @@ Neither half of that reading was right, and both are worth recording because the
 **Mark done's absence was deliberate**, recorded on 2026-08-18: Plan became the macro review/edit surface, and Mark done plus overdue Log now moved to Today, where they remain. A test already asserts "the logging actions must still be absent" for `allowLogging={false}`.
 
 The real defect was the inconsistency between those two facts. `LinkActivityControl` was rendered on `session.isCardio && !done && !skipped` alone, outside the `allowLogging` gate its siblings sit behind — so a review-only drawer still offered a way to complete a cardio slot while the sanctioned ways were correctly hidden. Owner decision: keep Plan review-only. The gate now wraps the whole `drawer-cta-extras` region rather than each child, which also stops an empty flex wrapper and its 12px margin being left behind.
+
+## [2026-08-19] decision | Rehab protocols become a user-owned library bound to programs by reference
+
+Rehab protocol authoring moves out of the program wizard into Settings. A protocol is now a first-class row (`rehab_protocols`) attached to a program through `program_rehab_bindings`, so it outlives the program it was written for and an edit reaches the live plan automatically. See ADR 0073 and migration 0134.
+
+The binding table exists instead of a `libraryId` field in `setup_input.customization` because that blob is strict-validated and this repo deploys app-first, database-second: the previous build would reject a stamped blob, and `edit-context.ts` safeParses it, so the wizard would silently open without the user's rehab. A real FK also makes "cannot delete a protocol a program uses" a database guarantee, and legacy V1/V2 blobs have no named-protocol array to stamp at all.
+
+Local protocol ids are preserved for existing attachments and are the library uuid for new ones. The old ordinal ids were reused by position, so a swap could hand one protocol's supersets — and its `removedEmbeddedRehabSourceRefs` tombstones — to an unrelated protocol.

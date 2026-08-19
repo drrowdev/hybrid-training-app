@@ -31,6 +31,7 @@ export * from "./schema/tm-suggestions";
 export * from "./schema/planner";
 export * from "./schema/program-instances";
 export * from "./schema/program-recommendations";
+export * from "./schema/rehab-protocols";
 export * from "./schema/training-seasons";
 export * from "./client";
 export * from "./schema/priority-events";

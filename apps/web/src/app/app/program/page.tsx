@@ -39,8 +39,15 @@ import {
   type PickerTbTemplate,
   type PickerBenchRole,
   type PickerRehabMovement,
+  type PickerLibraryProtocol,
 } from "@/components/program/ProgramPicker";
 import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
+import {
+  listRehabProtocols,
+  loadRehabBindingsFor,
+} from "@/lib/rehab-protocols/queries";
+import { formatProtocolSummary } from "@/lib/rehab-protocols/summary";
+import { bindingsByLibraryId } from "@/lib/rehab-protocols/attachment";
 
 // Sage program-wizard type scale — scoped to this route via CSS variables on
 // the wrapper below (see ProgramPicker.module.css). Not loaded app-wide.
@@ -309,6 +316,35 @@ export default async function ProgramPickerPage({
     }
   }
 
+  // The Settings rehab library, plus which of its protocols the program being
+  // edited already uses. Preserving those local ids is what stops a live
+  // program's supersets, day assignments and deleted-rehab tombstones stopping
+  // matching the first time it's edited after the library landed.
+  const libraryRows = await listRehabProtocols();
+  const libraryProtocols: PickerLibraryProtocol[] = libraryRows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    items: row.items,
+    links: row.links,
+    summary: formatProtocolSummary(row.items),
+  }));
+  let existingRehabBindings: Record<string, string> = {};
+  if (editContext) {
+    const { data: instance } = await supabase
+      .from("program_instances")
+      .select("id")
+      .eq("block_id", editContext.blockId)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
+    if (instance?.id) {
+      const { bindingsByInstance } = await loadRehabBindingsFor([instance.id as string]);
+      existingRehabBindings = bindingsByLibraryId(
+        bindingsByInstance[instance.id as string] ?? {},
+      );
+    }
+  }
+
   return (
     <div className={`${archivo.variable} ${oswald.variable} ${saira.variable} ${jetbrains.variable}`}>
       <ProgramPicker
@@ -317,6 +353,8 @@ export default async function ProgramPickerPage({
         tbTemplates={tbTemplates}
         benchRoles={benchRoles}
         rehabMovements={rehabMovements}
+        libraryProtocols={libraryProtocols}
+        existingRehabBindings={existingRehabBindings}
         {...(pullupMovement ? { pullupMovement } : {})}
         {...(initialProgramId ? { initialProgramId } : {})}
         {...(initialLoadoutValue ? { initialLoadoutValue } : {})}

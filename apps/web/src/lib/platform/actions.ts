@@ -451,6 +451,22 @@ const createProgramInstanceSchema = z
     /** When present, the wizard was deep-linked from a Season roadmap (ADR 0051):
      *  activate this planned season_block + link it to the new block on deploy. */
     seasonBlockId: z.string().uuid().optional(),
+    /**
+     * Which Settings library protocol each local protocol slot refers to.
+     * Recorded AFTER the deploy succeeds, so a failed deploy never leaves a
+     * program claiming rehab it doesn't have.
+     */
+    rehabBindings: z
+      .array(
+        z
+          .object({
+            localProtocolId: z.string().min(1).max(64),
+            rehabProtocolId: z.string().uuid(),
+          })
+          .strict(),
+      )
+      .max(8)
+      .optional(),
   })
   .strict();
 
@@ -467,7 +483,7 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks: rawSessionLinks, editBlockId, seasonBlockId } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks: rawSessionLinks, editBlockId, seasonBlockId, rehabBindings } = parsed.data;
   const sessionLinks = normalizeSessionLinks(rawSessionLinks);
 
   if (sessionLinks && programId !== "tactical-barbell") {
@@ -615,7 +631,7 @@ export async function createProgramInstance(
     if (!STRENGTH_ONLY_PROGRAM_IDS.has(programId)) {
       return { ok: false, error: "This program can't be edited in place yet." };
     }
-    return updateForeignProgramInstance(supabase, user, editBlockId, {
+    const edited = await updateForeignProgramInstance(supabase, user, editBlockId, {
       programId,
       setupValues,
       weekdays,
@@ -626,6 +642,20 @@ export async function createProgramInstance(
       ...(customization ? { customization } : {}),
       ...(sessionLinks ? { sessionLinks } : {}),
     });
+    // Editing is the path that ATTACHES rehab to a program the user already
+    // has, so bindings have to be written here too. Skipping it left the
+    // program with no binding, which silently stopped every later Settings
+    // edit from syncing into it.
+    if (edited.ok) {
+      const bindingError = await persistRehabBindings(
+        supabase,
+        user.id,
+        edited.programInstanceId,
+        rehabBindings ?? [],
+      );
+      if (bindingError) return { ok: false, error: bindingError };
+    }
+    return edited;
   }
 
   if (isNativeProgram(programId)) {
@@ -662,7 +692,7 @@ export async function createProgramInstance(
       ...(seasonBlockId ? { seasonBlockId } : {}),
     });
   }
-  return createForeignProgramInstance(supabase, user, {
+  const result = await createForeignProgramInstance(supabase, user, {
     programId,
     setupValues,
     weekdays,
@@ -676,6 +706,74 @@ export async function createProgramInstance(
     ...(sessionLinks ? { sessionLinks } : {}),
     ...(seasonBlockId ? { seasonBlockId } : {}),
   });
+  // Recorded only AFTER the plan is written, so a failed deploy never leaves a
+  // program claiming rehab it doesn't have.
+  if (result.ok) {
+    const bindingError = await persistRehabBindings(
+      supabase,
+      user.id,
+      result.programInstanceId,
+      rehabBindings ?? [],
+    );
+    if (bindingError) return { ok: false, error: bindingError };
+  }
+  return result;
+}
+
+/**
+ * Replace a program instance's rehab bindings with exactly what was deployed.
+ * Returns an error message on failure, or null on success.
+ *
+ * Deleting first is what makes unticking a protocol take effect — the row has
+ * to go, or the resolver would keep substituting a protocol the program no
+ * longer has.
+ *
+ * A missing table means migration 0134 has not run yet, which is EXPECTED
+ * between deploy and migration; the program simply keeps using the items
+ * already in its customization, exactly as before the library existed. Every
+ * other failure is surfaced: a deploy whose bindings didn't persist looks fine
+ * today and then silently stops receiving Settings edits forever, which is
+ * worse than a visible error.
+ */
+async function persistRehabBindings(
+  supabase: SupabaseClient,
+  userId: string,
+  programInstanceId: string,
+  bindings: ReadonlyArray<{ localProtocolId: string; rehabProtocolId: string }>,
+): Promise<string | null> {
+  if (!programInstanceId) return null;
+  const { error: deleteError } = await supabase
+    .from("program_rehab_bindings")
+    .delete()
+    .eq("program_instance_id", programInstanceId)
+    .eq("user_id", userId);
+  if (deleteError) {
+    if (isMissingRehabTable(deleteError)) return null;
+    return `Couldn't update this program's rehab protocols: ${deleteError.message}`;
+  }
+  if (bindings.length === 0) return null;
+  const { error: insertError } = await supabase.from("program_rehab_bindings").insert(
+    bindings.map((binding) => ({
+      program_instance_id: programInstanceId,
+      local_protocol_id: binding.localProtocolId,
+      rehab_protocol_id: binding.rehabProtocolId,
+      user_id: userId,
+    })),
+  );
+  if (insertError) {
+    if (isMissingRehabTable(insertError)) return null;
+    return `Couldn't attach the rehab protocols: ${insertError.message}`;
+  }
+  return null;
+}
+
+/** Postgres "undefined_table" / PostgREST unknown relation — 0134 hasn't run. */
+function isMissingRehabTable(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === "42P01" ||
+    error.code === "PGRST205" ||
+    /relation .* does not exist/i.test(error.message ?? "")
+  );
 }
 
 /** A selectable program start point for the picker (a phase/block boundary). */

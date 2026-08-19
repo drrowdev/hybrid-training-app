@@ -72,6 +72,15 @@ export default async function SettingsPage() {
   const upcomingEventsCount = upcomingEvents ?? 0;
   const trainingMaxesSet = tmCount ?? 0;
 
+  // Counted with its own query so an unknown relation can't take the whole hub
+  // down: this repo deploys app-first, database-second, so `rehab_protocols`
+  // may not exist yet. A failure means "not migrated", which reads as none.
+  const { count: rehabCount } = await supabase
+    .from("rehab_protocols")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id);
+  const rehabProtocolCount = rehabCount ?? 0;
+
   return (
     <div className="space-y-6">
       <PageHeader title="Settings" />
@@ -131,6 +140,14 @@ export default async function SettingsPage() {
           description="Active limitations + history."
           badge={`${activeLimCount} active`}
           testId="settings-hub-injuries"
+        />
+        <SettingsHubCard
+          href="/app/settings/rehab-protocols"
+          icon={<SettingsIcon name="rehab-protocols" />}
+          title="Rehab protocols"
+          description="Rehab you can add to a program."
+          badge={`${rehabProtocolCount} saved`}
+          testId="settings-hub-rehab-protocols"
         />
         <SettingsHubCard
           href="/app/settings/events"
