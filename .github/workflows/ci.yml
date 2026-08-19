@@ -211,8 +211,33 @@ jobs:
             echo "configured=false" >> "$GITHUB_OUTPUT"
             echo "::notice::E2E secrets not configured — Playwright tests will self-skip."
           fi
-      - name: Install Playwright browsers
-        run: pnpm --filter @hta/web exec playwright install --with-deps chromium
+      # Playwright setup is split into three bounded steps because the single
+      # `playwright install --with-deps chromium` call has repeatedly hung.
+      # Observed twice in a row: the step reaches "Switching to root user to
+      # install dependencies..." and then emits nothing until the job's own
+      # 20-minute timeout kills it, so ZERO tests run and the failure looks
+      # like a test failure rather than an apt stall.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: playwright-${{ runner.os }}-
+
+      # System libraries only. `ubuntu-latest` already ships what headless
+      # Chromium needs — `--with-deps` exists for bare containers — so this is
+      # belt-and-braces and must never be able to consume the whole job. If it
+      # is skipped AND a library really is missing, Playwright fails at browser
+      # launch with an explicit message, which is a far better signal than a
+      # silent 20-minute stall.
+      - name: Install Playwright system deps (best effort)
+        timeout-minutes: 5
+        continue-on-error: true
+        run: pnpm --filter @hta/web exec playwright install-deps chromium
+
+      - name: Install Playwright browser
+        timeout-minutes: 6
+        run: pnpm --filter @hta/web exec playwright install chromium
 
       - name: Build web
         run: pnpm --filter @hta/web build
