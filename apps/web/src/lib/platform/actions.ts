@@ -451,6 +451,22 @@ const createProgramInstanceSchema = z
     /** When present, the wizard was deep-linked from a Season roadmap (ADR 0051):
      *  activate this planned season_block + link it to the new block on deploy. */
     seasonBlockId: z.string().uuid().optional(),
+    /**
+     * Which Settings library protocol each local protocol slot refers to.
+     * Recorded AFTER the deploy succeeds, so a failed deploy never leaves a
+     * program claiming rehab it doesn't have.
+     */
+    rehabBindings: z
+      .array(
+        z
+          .object({
+            localProtocolId: z.string().min(1).max(64),
+            rehabProtocolId: z.string().uuid(),
+          })
+          .strict(),
+      )
+      .max(8)
+      .optional(),
   })
   .strict();
 
@@ -467,7 +483,7 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks: rawSessionLinks, editBlockId, seasonBlockId } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks: rawSessionLinks, editBlockId, seasonBlockId, rehabBindings } = parsed.data;
   const sessionLinks = normalizeSessionLinks(rawSessionLinks);
 
   if (sessionLinks && programId !== "tactical-barbell") {
@@ -662,7 +678,7 @@ export async function createProgramInstance(
       ...(seasonBlockId ? { seasonBlockId } : {}),
     });
   }
-  return createForeignProgramInstance(supabase, user, {
+  const result = await createForeignProgramInstance(supabase, user, {
     programId,
     setupValues,
     weekdays,
@@ -676,6 +692,53 @@ export async function createProgramInstance(
     ...(sessionLinks ? { sessionLinks } : {}),
     ...(seasonBlockId ? { seasonBlockId } : {}),
   });
+  // Recorded only AFTER the plan is written, so a failed deploy never leaves a
+  // program claiming rehab it doesn't have.
+  if (result.ok) {
+    await persistRehabBindings(
+      supabase,
+      user.id,
+      result.programInstanceId,
+      rehabBindings ?? [],
+    );
+  }
+  return result;
+}
+
+/**
+ * Replace a program instance's rehab bindings with exactly what was deployed.
+ *
+ * Deleting first is what makes unticking a protocol take effect — the row has
+ * to go, or the resolver would keep substituting a protocol the program no
+ * longer has. A missing table means migration 0134 has not run yet, which is
+ * expected between deploy and migration; the program simply keeps using the
+ * items already in its customization, exactly as before the library existed.
+ */
+async function persistRehabBindings(
+  supabase: SupabaseClient,
+  userId: string,
+  programInstanceId: string,
+  bindings: ReadonlyArray<{ localProtocolId: string; rehabProtocolId: string }>,
+): Promise<void> {
+  if (!programInstanceId) return;
+  const { error: deleteError } = await supabase
+    .from("program_rehab_bindings")
+    .delete()
+    .eq("program_instance_id", programInstanceId)
+    .eq("user_id", userId);
+  if (deleteError) {
+    if (deleteError.code === "42P01" || deleteError.code === "PGRST205") return;
+    return;
+  }
+  if (bindings.length === 0) return;
+  await supabase.from("program_rehab_bindings").insert(
+    bindings.map((binding) => ({
+      program_instance_id: programInstanceId,
+      local_protocol_id: binding.localProtocolId,
+      rehab_protocol_id: binding.rehabProtocolId,
+      user_id: userId,
+    })),
+  );
 }
 
 /** A selectable program start point for the picker (a phase/block boundary). */
