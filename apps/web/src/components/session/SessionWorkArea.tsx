@@ -63,6 +63,7 @@ export function SessionWorkArea({
   fillFromPlan,
   hapticsEnabled,
   timerSoundEnabled,
+  restTimerEnabled,
   // `lastSetHints` (prior-session "last time: X kg × Y" for each
   // movement) is computed server-side and threaded to the card list,
   // which surfaces it on accessory cards — the only weight-selection
@@ -98,6 +99,7 @@ export function SessionWorkArea({
   fillFromPlan: FillSessionFromPlanAction;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
+  restTimerEnabled: boolean;
   lastSetHints: Record<string, LastSetHint>;
   priorBests: Record<string, PriorBest>;
   plannedSessionId: string | null;
@@ -384,6 +386,7 @@ export function SessionWorkArea({
         fillFromPlan={fillFromPlan}
         hapticsEnabled={hapticsEnabled}
         timerSoundEnabled={timerSoundEnabled}
+        restTimerEnabled={restTimerEnabled}
         barbellKg={barbellKg}
         trapBarKg={trapBarKg}
         safetyBarKg={safetyBarKg}

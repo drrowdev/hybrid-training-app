@@ -932,6 +932,13 @@
       "when": 1787097600000,
       "tag": "0132_split_rack_pull_from_block_pull",
       "breakpoints": false
+    },
+    {
+      "idx": 133,
+      "version": "7",
+      "when": 1787184000000,
+      "tag": "0133_rest_timer_enabled",
+      "breakpoints": false
     }
   ]
 }

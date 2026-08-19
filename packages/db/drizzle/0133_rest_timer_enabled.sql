@@ -1,0 +1,57 @@
+-- 0133_rest_timer_enabled.sql
+--
+-- Adds an opt-out for the inter-set rest countdown.
+--
+--   rest_timer_enabled  — boolean NOT NULL DEFAULT true
+--
+-- Requested from use: some lifters time their own rest, or train in a way
+-- (circuits, rehab, open gyms) where a countdown pinned above the controls is
+-- noise rather than help.
+--
+-- DEFAULT true is load-bearing: every existing row keeps today's behaviour, so
+-- the migration is behaviour-neutral until a user opts out. Adding a NOT NULL
+-- column WITH a default is a metadata-only change on PG11+, so it does not
+-- rewrite the table and needs no batching.
+--
+-- SCOPE: this suppresses the countdown, not the rest. Nothing downstream keys
+-- off the timer — set logging, auto-advance and session completion are all
+-- driven by saved sets, and `suppressRestForItemIndex` already produces a
+-- no-timer state mid-superset — so turning it off cannot strand a session.
+--
+-- Deploy ORDER: this repo is app-first, database-second — Vercel deploys on
+-- merge and migrations are dispatched manually afterwards (see the deploy-order
+-- guard in ci.yml). So between deploy and migration this column DOES NOT EXIST
+-- while the new build is already serving traffic.
+--
+-- That matters more than it first appears. PostgREST fails the WHOLE request on
+-- an unknown column, so naming `rest_timer_enabled` in an existing multi-column
+-- profile SELECT would take the entire row down with it — the session page's
+-- select also carries equipment, plate inventory, units and date formats, and
+-- every one of those would silently fall back to defaults for every user until
+-- the migration ran. A per-column `?? true` does not rescue that; there is no
+-- row to read a column from.
+--
+-- The preference is therefore read by its OWN small query
+-- (`readRestTimerEnabled`), which treats any error as "not migrated yet" and
+-- returns true. Existing profile selects are left untouched. Once 0133 is
+-- applied everywhere, that helper can be folded into the main select and the
+-- extra round-trip dropped.
+--
+-- RLS needs no attention: `profiles` policies are row-scoped on
+-- `auth.uid() = id` and never reference individual columns. The GDPR export
+-- route selects `profiles.*`, so the new column simply starts appearing —
+-- no export consumer indexes columns by name.
+--
+-- ROLLBACK (schema only — per-user opt-outs are discarded):
+--
+--   ALTER TABLE public.profiles DROP COLUMN IF EXISTS rest_timer_enabled;
+--
+-- Ship the application release that removed the toggle FIRST, or the settings
+-- page write will 500 against the dropped column.
+--
+-- Kept inline rather than as a sibling `.down.sql`: the migration-drift guard
+-- requires every .sql file under drizzle/ to have a `_journal.json` entry, and
+-- drizzle only journals forward migrations.
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS rest_timer_enabled boolean NOT NULL DEFAULT true;

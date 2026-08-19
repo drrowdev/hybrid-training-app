@@ -23,7 +23,7 @@ import {
   type MovementGroup,
 } from "@/lib/sessions/movement-grouping";
 import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
-import { restSecondsForKind } from "@/lib/sessions/rest";
+import { restSecondsForSet } from "@/lib/sessions/rest";
 import { resolveBarWeightKg } from "@/lib/sessions/bar-kind";
 import { resolveLoadIncrement } from "@/lib/sessions/load-increment";
 import { roundWarmupLoadKg } from "@/lib/planner/warmups";
@@ -107,6 +107,11 @@ export type FocusViewProps = {
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
+  /**
+   * Lifter's opt-out for the inter-set countdown. Gates both starting a rest
+   * and restoring a persisted one after a reload.
+   */
+  restTimerEnabled: boolean;
   /**
    * Phase 4 — per-BW-family gate state, keyed by family. Surfaced
    * inside the "Next:" popover beneath each BW main-lift's headline.
@@ -219,6 +224,7 @@ export function MovementFocusView({
   updateStrengthSet,
   hapticsEnabled,
   timerSoundEnabled,
+  restTimerEnabled,
   barbellKg,
   trapBarKg,
   safetyBarKg,
@@ -602,7 +608,9 @@ export function MovementFocusView({
     if (!saved) return;
     const now = Date.now();
     const restLeft = remainingRestSeconds(saved.restDeadlineMs, now);
-    if (restLeft > 0) {
+    // A persisted deadline outlives the preference, so a lifter who turned the
+    // countdown off must not have one restored under them by a reload.
+    if (restTimerEnabled && restLeft > 0) {
       restDeadlineRef.current = saved.restDeadlineMs ?? null;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot restore of persisted resume state
       setRestSeconds(restLeft);
@@ -641,7 +649,12 @@ export function MovementFocusView({
         durationSec,
         externalLoadKg,
       },
-      restDeadlineMs: restDeadlineRef.current ?? undefined,
+      // Never persist a deadline the lifter has opted out of — a resume
+      // snapshot outlives the preference, and restoring one would put a
+      // countdown back on screen that they turned off.
+      restDeadlineMs: restTimerEnabled
+        ? (restDeadlineRef.current ?? undefined)
+        : undefined,
       restLabel: group.movementName,
     });
   }, [
@@ -657,6 +670,7 @@ export function MovementFocusView({
     externalLoadKg,
     group.movementName,
     restSeconds,
+    restTimerEnabled,
   ]);
 
   // Snap weight/reps to the target whenever the active slot changes.
@@ -868,10 +882,17 @@ export function MovementFocusView({
       setRestSeconds(0);
       restDeadlineRef.current = null;
     } else {
-      const secs = restSecondsForKind(SET_KIND_TO_LOG[activeItem.kind] ?? "main");
+      // Full state transition. `secs === 0` — the lifter turned the countdown
+      // off, or this kind never rests — must also CLEAR any countdown still
+      // running from an earlier set and drop its deadline, or a stale timer
+      // would keep ticking and get persisted into the resume snapshot.
+      const secs = restSecondsForSet(
+        SET_KIND_TO_LOG[activeItem.kind] ?? "main",
+        { restTimerEnabled },
+      );
+      setRestSeconds(secs);
+      restDeadlineRef.current = secs > 0 ? Date.now() + secs * 1000 : null;
       if (secs > 0) {
-        setRestSeconds(secs);
-        restDeadlineRef.current = Date.now() + secs * 1000;
         setRestToken((t) => t + 1);
       }
     }

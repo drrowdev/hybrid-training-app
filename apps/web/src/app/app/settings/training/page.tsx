@@ -12,6 +12,8 @@ import { WarmupSettings } from "@/components/settings/WarmupSettings";
 import { CardioSourceSettings } from "@/components/settings/CardioSourceSettings";
 import { CardioModalitySettings } from "@/components/settings/CardioModalitySettings";
 import { SeasonPlanningToggle } from "@/components/settings/SeasonPlanningToggle";
+import { RestTimerToggle } from "@/components/settings/RestTimerToggle";
+import { readRestTimerEnabled } from "@/lib/sessions/rest-timer-preference";
 import { resolveWarmupPreference } from "@/lib/planner/warmups";
 import { activeProgramWithOwnWarmupRamp } from "@/lib/planner/program-warmup-scheme";
 import { sanitizePreferredModalities } from "@/lib/planner/preferred-cardio-modality";
@@ -50,6 +52,10 @@ export default async function TrainingSettingsPage() {
   const cardioModalities = sanitizePreferredModalities(
     profile?.preferred_cardio_modalities as readonly unknown[] | null,
   );
+  // Read separately, NOT added to the select above: until migration 0133 is
+  // applied the column does not exist, and PostgREST would fail the whole
+  // request — taking warmup and cardio settings down with it.
+  const restTimerEnabled = await readRestTimerEnabled(user.id);
 
   return (
     <main
@@ -84,6 +90,11 @@ export default async function TrainingSettingsPage() {
       <section style={{ display: "grid", gap: 12 }}>
         <h2 style={{ fontSize: 18, margin: 0 }}>Cardio types</h2>
         <CardioModalitySettings initial={cardioModalities} />
+      </section>
+
+      <section style={{ display: "grid", gap: 12 }}>
+        <h2 style={{ fontSize: 18, margin: 0 }}>Logging</h2>
+        <RestTimerToggle initial={restTimerEnabled} />
       </section>
 
       <section style={{ display: "grid", gap: 12 }}>

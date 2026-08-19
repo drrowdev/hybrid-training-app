@@ -44,3 +44,33 @@ export function restSecondsForKind(kind: PrescriptionItemKind | RestableSetKind)
       return 0;
   }
 }
+
+/**
+ * Rest seconds for a set, honouring the lifter's opt-out.
+ *
+ * The three loggers all go through this rather than calling
+ * `restSecondsForKind` directly, so "should a countdown start?" has one
+ * answer in one place instead of three copies of the same `if`.
+ *
+ * Disabled returns 0, which every caller already handles: `RestTimer`
+ * documents `seconds=0` as "render nothing", and the call sites guard on
+ * `secs > 0` before arming a deadline. It is the same state a superset
+ * already produces mid-round, so it is well-trodden rather than novel.
+ *
+ * This suppresses the COUNTDOWN, not the rest. Nothing downstream keys off
+ * the timer — saving a set drives auto-advance and completion — so a lifter
+ * who turns it off simply rests untimed.
+ *
+ * Note what deliberately does NOT consult the preference: the session-duration
+ * estimate (`estimate-duration.ts`) keeps calling `restSecondsForKind`. The
+ * lifter still rests when the countdown is off, so an estimate that dropped
+ * rest would model a session nobody performs — the same reason ADR 0071 forbids
+ * the superset presentation from feeding the duration governor.
+ */
+export function restSecondsForSet(
+  kind: PrescriptionItemKind | RestableSetKind,
+  opts: { restTimerEnabled: boolean },
+): number {
+  if (!opts.restTimerEnabled) return 0;
+  return restSecondsForKind(kind);
+}

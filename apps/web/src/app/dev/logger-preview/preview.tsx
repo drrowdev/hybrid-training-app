@@ -206,6 +206,7 @@ export function LoggerPreview({ variant }: { variant: string }) {
             /* eslint-enable @typescript-eslint/no-explicit-any */
             hapticsEnabled={false}
             timerSoundEnabled={false}
+            restTimerEnabled={true}
             lastSetHints={LAST_SET_HINTS}
             priorBests={{}}
             plannedSessionId="30000000-0000-4000-8000-000000000001"

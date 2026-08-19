@@ -70,6 +70,7 @@ function render(options: {
       updateStrengthSet={updateStrengthSet}
       hapticsEnabled={false}
       timerSoundEnabled={false}
+      restTimerEnabled={true}
       barbellKg={options.barbellKg}
       trapBarKg={options.trapBarKg}
       safetyBarKg={options.safetyBarKg ?? null}

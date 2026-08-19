@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useFormStatus } from "react-dom";
 import { MovementPicker, type MovementSearchResult } from "@/components/movement-picker";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
-import { restSecondsForKind } from "@/lib/sessions/rest";
+import { restSecondsForSet } from "@/lib/sessions/rest";
 import { formatHintDate } from "@/lib/sessions/format-hint-date";
 import { hapticTick } from "@/lib/feedback";
 import { RestTimer } from "./RestTimer";
@@ -113,6 +113,7 @@ export function SessionLogClient({
   priorBests,
   hapticsEnabled = true,
   timerSoundEnabled = true,
+  restTimerEnabled = true,
   prefillRequest = null,
 }: {
   sessionId: string;
@@ -132,6 +133,11 @@ export function SessionLogClient({
   hapticsEnabled?: boolean;
   /** Phase 3 C2 — tone at rest-timer zero. */
   timerSoundEnabled?: boolean;
+  /**
+   * Lifter's opt-out for the inter-set countdown. False suppresses the timer,
+   * not the rest — logging, auto-advance and completion are unaffected.
+   */
+  restTimerEnabled?: boolean;
   /** feat/logging-works — prefill driven by a prescription row tap. */
   prefillRequest?: PrescriptionPrefillRequest | null;
 }) {
@@ -318,10 +324,13 @@ export function SessionLogClient({
     // user's next free-form set on the same movement doesn't double-
     // mark the prescription item as done.
     setPendingPrescriptionItemIndex(null);
-    // Kick the rest timer based on the set kind (B4).
-    const secs = restSecondsForKind(setKind);
+    // Kick the rest timer based on the set kind (B4). A full state
+    // transition, not a conditional start: when the lifter has the timer off
+    // (or this kind never rests) any countdown still on screen from an earlier
+    // set must be cleared, not left running.
+    const secs = restSecondsForSet(setKind, { restTimerEnabled });
+    setRestSeconds(secs);
     if (secs > 0) {
-      setRestSeconds(secs);
       setRestToken((t) => t + 1);
     }
   };

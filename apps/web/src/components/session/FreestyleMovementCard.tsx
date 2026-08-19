@@ -27,7 +27,7 @@ import type { addStrengthSet as addStrengthSetAction } from "@/lib/sessions/acti
 import type { removeSessionMovementAction as removeSessionMovementActionType } from "@/lib/sessions/session-movement-actions";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
 import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
-import { restSecondsForKind } from "@/lib/sessions/rest";
+import { restSecondsForSet } from "@/lib/sessions/rest";
 import { hapticTick } from "@/lib/feedback";
 import { useUnits } from "@/lib/units/context";
 import {
@@ -84,6 +84,7 @@ export function FreestyleMovementCard({
   onRemove,
   hapticsEnabled,
   timerSoundEnabled,
+  restTimerEnabled,
   readOnly = false,
 }: {
   sessionId: string;
@@ -114,6 +115,7 @@ export function FreestyleMovementCard({
   onRemove?: (movementId: string) => void;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
+  restTimerEnabled: boolean;
   /**
    * Session-complete read-only mode. Defaults the card collapsed,
    * hides the remove kebab, and swaps the log form for a read-only
@@ -228,9 +230,10 @@ export function FreestyleMovementCard({
       }
       hapticTick(hapticsEnabled);
       if (flash.weight || flash.e1rm) setPrFlash(flash);
-      const secs = restSecondsForKind(setKind);
+      // Full state transition: 0 must also clear a countdown still on screen.
+      const secs = restSecondsForSet(setKind, { restTimerEnabled });
+      setRestSeconds(secs);
       if (secs > 0) {
-        setRestSeconds(secs);
         setRestToken((t) => t + 1);
       }
     } finally {

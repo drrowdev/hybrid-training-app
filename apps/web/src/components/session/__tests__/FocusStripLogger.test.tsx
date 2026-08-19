@@ -166,6 +166,7 @@ describe("FocusStripLogger", () => {
         updateStrengthSet={updateStrengthSet}
         hapticsEnabled={false}
         timerSoundEnabled={false}
+        restTimerEnabled={true}
       />,
     );
     expect(html).toContain('data-testid="focus-strip-logger"');
@@ -208,6 +209,7 @@ describe("FocusStripLogger", () => {
         updateStrengthSet={updateStrengthSet}
         hapticsEnabled={false}
         timerSoundEnabled={false}
+        restTimerEnabled={true}
       />,
     );
     // Auto-pairing is gone: unlinked accessories carry no superset cue. A user
@@ -233,6 +235,7 @@ describe("FocusStripLogger", () => {
         updateStrengthSet={updateStrengthSet}
         hapticsEnabled={false}
         timerSoundEnabled={false}
+        restTimerEnabled={true}
       />,
     );
     expect(html).toContain("0/3");
@@ -266,6 +269,7 @@ describe("FocusStripLogger", () => {
         updateStrengthSet={updateStrengthSet}
         hapticsEnabled={false}
         timerSoundEnabled={false}
+        restTimerEnabled={true}
       />,
     );
 
@@ -319,6 +323,7 @@ describe("FocusStripLogger", () => {
         updateStrengthSet={updateStrengthSet}
         hapticsEnabled={false}
         timerSoundEnabled={false}
+        restTimerEnabled={true}
       />,
     );
 
@@ -346,6 +351,7 @@ describe("FocusStripLogger", () => {
         updateStrengthSet={updateStrengthSet}
         hapticsEnabled={false}
         timerSoundEnabled={false}
+        restTimerEnabled={true}
       />,
     );
     expect(html).toContain('data-testid="focus-strip-circuit-cue"');
@@ -399,6 +405,7 @@ describe("MovementFocusView inline history", () => {
         updateStrengthSet={updateStrengthSet}
         hapticsEnabled={false}
         timerSoundEnabled={false}
+        restTimerEnabled={true}
         focusStrip
         initialCursor={0}
       />,
@@ -424,6 +431,7 @@ describe("MovementFocusView inline history", () => {
         updateStrengthSet={updateStrengthSet}
         hapticsEnabled={false}
         timerSoundEnabled={false}
+        restTimerEnabled={true}
         focusStrip
         initialCursor={0}
       />,
@@ -457,6 +465,7 @@ describe("MovementFocusView inline history", () => {
         updateStrengthSet={updateStrengthSet}
         hapticsEnabled={false}
         timerSoundEnabled={false}
+        restTimerEnabled={true}
         focusStrip
         initialCursor={0}
       />,
@@ -490,6 +499,7 @@ describe("MovementFocusView inline history", () => {
         updateStrengthSet={updateStrengthSet}
         hapticsEnabled={false}
         timerSoundEnabled={false}
+        restTimerEnabled={true}
         focusStrip
         initialCursor={0}
       />,
@@ -525,6 +535,7 @@ describe("MovementFocusView inline history", () => {
         updateStrengthSet={updateStrengthSet}
         hapticsEnabled={false}
         timerSoundEnabled={false}
+        restTimerEnabled={true}
         focusStrip
       />,
     );
@@ -554,6 +565,7 @@ describe("MovementFocusView inline history", () => {
         updateStrengthSet={updateStrengthSet}
         hapticsEnabled={false}
         timerSoundEnabled={false}
+        restTimerEnabled={true}
         focusStrip
         initialCursor={4}
       />,

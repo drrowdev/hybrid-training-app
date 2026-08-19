@@ -34,6 +34,7 @@ const baseProps = {
   >[0]["addStrengthSet"],
   hapticsEnabled: false,
   timerSoundEnabled: false,
+  restTimerEnabled: true,
 };
 
 describe("freestyleChipsOpen", () => {

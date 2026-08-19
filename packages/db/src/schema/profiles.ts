@@ -87,6 +87,18 @@ export const profiles = pgTable("profiles", {
    */
   timerSoundEnabled: boolean("timer_sound_enabled").default(true).notNull(),
   /**
+   * Inter-set rest countdown. Default TRUE, which is the behaviour every
+   * existing user already has.
+   *
+   * FALSE suppresses the countdown itself, not the rest: the lifter still
+   * rests, the app just stops timing it. Nothing downstream keys off the
+   * timer — set logging, auto-advance and session completion are all driven
+   * by saved sets — so this is purely a display choice. It reuses the state
+   * supersets already produce mid-round, where rest is deliberately not
+   * timed either. See migration 0133.
+   */
+  restTimerEnabled: boolean("rest_timer_enabled").default(true).notNull(),
+  /**
    * Phase 3 today-redesign — controls whether the Today page renders
    * the inline 1/3/5/7/9 fatigue + soreness `HowRecoveredCard`. The
    * card is the only manual check-in surface (the pre-session
