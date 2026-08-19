@@ -733,6 +733,200 @@ describe("materializeProgram — TB3 Activation", () => {
     expect(rehab[0]?.prescription.items).toHaveLength(3);
     expect(rehab[0]?.prescription.items[0]?.movementName).toBe("Dead bug");
   });
+
+  it("realises a rehab superset, counting sides as ONE station", () => {
+    // A protocol addresses sides as separate rows sharing a movement id, and
+    // the logger keys rehab cards on the movement id alone — so both rows are
+    // one station. Rounds must therefore be stamped across all its sets, or
+    // the reader's fallback takes the first side and orphans the second.
+    const COPE = "00000000-0000-4000-8000-000000000011";
+    const BAND = "00000000-0000-4000-8000-000000000012";
+    const customization = {
+      version: 3 as const,
+      templateId: "activation" as const,
+      displayName: "Activation · Linked rehab",
+      phases: {
+        base: {
+          sessions: {},
+          rehabAssignments: [{ day: 1, protocolId: "adductor" }],
+        },
+        armor: { sessions: {}, rehabAssignments: [] },
+        operator: { sessions: {}, rehabAssignments: [] },
+        vertex: { sessions: {}, rehabAssignments: [] },
+      },
+      rehabProtocols: [
+        {
+          id: "adductor",
+          name: "Adductor",
+          items: [
+            {
+              movementId: COPE,
+              movementName: "Copenhagen plank",
+              side: "left" as const,
+              sets: 2,
+              reps: 10,
+            },
+            {
+              movementId: COPE,
+              movementName: "Copenhagen plank",
+              side: "right" as const,
+              sets: 2,
+              reps: 10,
+            },
+            {
+              movementId: BAND,
+              movementName: "Band pull-apart",
+              sets: 4,
+              reps: 12,
+            },
+          ],
+        },
+      ],
+    } satisfies import("../tb-customization").TbActivationCustomizationV3;
+
+    const linked = materializeProgram(
+      tacticalBarbellEngine,
+      instance,
+      activationCtx,
+      resolve,
+      {
+        weekdays: [0],
+        customization,
+        sessionLinks: {
+          "rehab.adductor": [
+            { id: "link-1", name: "Superset", members: [COPE, BAND] },
+          ],
+        },
+      },
+    );
+    const session = linked.sessions.find(
+      (s) => s.weekIndex === 0 && s.role === "rehab",
+    )!;
+    const items = session.prescription.items;
+
+    const cope = items.filter((i) => i.movementId === COPE);
+    const band = items.filter((i) => i.movementId === BAND);
+    expect(cope).toHaveLength(4);
+    expect(band).toHaveLength(4);
+
+    // Every set of BOTH sides rotates — 2 left + 2 right is a 4-deep station.
+    expect(cope.map((i) => i.circuit?.round)).toEqual([0, 1, 2, 3]);
+    expect(band.map((i) => i.circuit?.round)).toEqual([0, 1, 2, 3]);
+    for (const item of [...cope, ...band]) {
+      expect(item.circuit?.rounds).toBe(4);
+      expect(item.circuit?.size).toBe(2);
+    }
+    expect(cope[0]?.circuit?.position).toBe(0);
+    expect(band[0]?.circuit?.position).toBe(1);
+
+    // Namespaced, so it cannot collide with a strength `link-1` once embedded.
+    expect(cope[0]?.circuit?.id).toBe("rehab:adductor:link-1");
+  });
+
+  it("does not collide with a strength link of the same id in one session", () => {
+    // Both editors mint `link-1` and rehab is PREPENDED into the strength
+    // prescription. Sharing an id would present four groups for a two-station
+    // circuit, failing the logger's completeness check and dropping both.
+    const COPE = "00000000-0000-4000-8000-000000000011";
+    const BAND = "00000000-0000-4000-8000-000000000012";
+    const customization = {
+      version: 3 as const,
+      templateId: "activation" as const,
+      displayName: "Activation · Linked rehab on a strength day",
+      phases: {
+        base: {
+          sessions: {},
+          rehabAssignments: [{ day: 0, protocolId: "adductor" }],
+        },
+        armor: { sessions: {}, rehabAssignments: [] },
+        operator: { sessions: {}, rehabAssignments: [] },
+        vertex: { sessions: {}, rehabAssignments: [] },
+      },
+      rehabProtocols: [
+        {
+          id: "adductor",
+          name: "Adductor",
+          items: [
+            { movementId: COPE, movementName: "Copenhagen plank", sets: 2, reps: 10 },
+            { movementId: BAND, movementName: "Band pull-apart", sets: 2, reps: 12 },
+          ],
+        },
+      ],
+    } satisfies import("../tb-customization").TbActivationCustomizationV3;
+
+    const combined = materializeProgram(
+      tacticalBarbellEngine,
+      instance,
+      activationCtx,
+      resolve,
+      {
+        weekdays: [0],
+        customization,
+        sessionLinks: {
+          "rehab.adductor": [
+            { id: "link-1", name: "Superset", members: [COPE, BAND] },
+          ],
+        },
+      },
+    ).sessions.find(
+      (s) => s.weekIndex === 0 && s.dayIndex === 0 && s.role === "strength",
+    )!;
+
+    const ids = new Set(
+      combined.prescription.items
+        .map((i) => i.circuit?.id)
+        .filter((id): id is string => id != null),
+    );
+    expect(ids.has("rehab:adductor:link-1")).toBe(true);
+    expect(ids.has("link-1")).toBe(false);
+
+    // Each circuit id must be claimed by exactly its own station count.
+    for (const id of ids) {
+      const members = combined.prescription.items.filter(
+        (i) => i.circuit?.id === id,
+      );
+      const size = members[0]!.circuit!.size;
+      const positions = new Set(members.map((i) => i.circuit!.position));
+      expect(positions.size).toBe(size);
+    }
+  });
+
+  it("leaves rehab unlinked when no links are supplied", () => {
+    const COPE = "00000000-0000-4000-8000-000000000011";
+    const customization = {
+      version: 3 as const,
+      templateId: "activation" as const,
+      displayName: "Activation · Unlinked rehab",
+      phases: {
+        base: {
+          sessions: {},
+          rehabAssignments: [{ day: 1, protocolId: "adductor" }],
+        },
+        armor: { sessions: {}, rehabAssignments: [] },
+        operator: { sessions: {}, rehabAssignments: [] },
+        vertex: { sessions: {}, rehabAssignments: [] },
+      },
+      rehabProtocols: [
+        {
+          id: "adductor",
+          name: "Adductor",
+          items: [
+            { movementId: COPE, movementName: "Copenhagen plank", sets: 2, reps: 10 },
+          ],
+        },
+      ],
+    } satisfies import("../tb-customization").TbActivationCustomizationV3;
+    const session = materializeProgram(
+      tacticalBarbellEngine,
+      instance,
+      activationCtx,
+      resolve,
+      { weekdays: [0], customization },
+    ).sessions.find((s) => s.weekIndex === 0 && s.role === "rehab")!;
+    expect(
+      session.prescription.items.every((i) => i.circuit == null),
+    ).toBe(true);
+  });
 });
 
 describe("materializeProgram — Green Protocol (concurrent strength + cardio)", () => {

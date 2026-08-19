@@ -37,6 +37,7 @@ import {
   activationSessionConfigs,
   activationRehabAssignments,
   activationRehabProtocols,
+  LEGACY_REHAB_PROTOCOL_ID,
   isTbActivationCustomization,
   isTbActivationCustomizationV2,
   isTbCustomizationV1,
@@ -51,6 +52,8 @@ import {
 } from "../planner/session-modality";
 import { expandPrescriptionSets } from "@/lib/planner/expand-prescription-sets";
 import { embedRehabPrescription } from "./rehab-composition";
+import { applyRehabLinks, rehabSeriesKey } from "./rehab-links";
+import type { SessionLink } from "./session-links";
 
 export interface MaterializeOptions {
   /**
@@ -103,6 +106,16 @@ export interface MaterializeOptions {
   mainLiftBasisLabel?: "TM" | "1RM";
   /** Versioned Tactical Barbell overlay. Omitted preserves canonical output. */
   customization?: TbCustomization;
+  /**
+   * User-authored links, by series key. Only the `rehab.<protocolId>` entries
+   * are read here — strength links reach the prescription through the engine,
+   * which resolves them against its own emitted items long before rehab exists.
+   *
+   * Threaded explicitly rather than read off the instance: `materializeProgram`
+   * is engine-generic, so reaching into a `TbInstance` for them would be a cast
+   * that silently returns nothing for every other program.
+   */
+  sessionLinks?: Readonly<Record<string, readonly SessionLink[]>>;
 }
 
 export interface MaterializedSession {
@@ -496,6 +509,10 @@ export function materializeProgram<I>(
                     {
                       day,
                       protocolId: null,
+                      // Provenance stays null, but links need a stable key.
+                      // The V1 blob has no protocols at all, so it resolves
+                      // through the same synthetic id V2 normalises to.
+                      linkProtocolId: LEGACY_REHAB_PROTOCOL_ID,
                       protocolName: "Rehab",
                       items: legacyRehabItems,
                     },
@@ -526,6 +543,11 @@ export function materializeProgram<I>(
                     protocolId: usesLegacyActivationRehab
                       ? null
                       : protocol.id,
+                    // `activationRehabProtocols` gives the legacy V2 blob a
+                    // real id (`protocol-1`), so links resolve identically
+                    // whether or not provenance is being suppressed — and keep
+                    // resolving once V2 is edited into V3.
+                    linkProtocolId: protocol.id,
                     protocolName: usesLegacyActivationRehab
                       ? "Rehab"
                       : protocol.name,
@@ -580,7 +602,21 @@ export function materializeProgram<I>(
             };
           }),
         };
+        // Links attach AFTER expansion: a station's depth is counted in sets,
+        // and the round stamp lands on each granular set. A protocol addresses
+        // sides as separate rows sharing one movement, so a station can span
+        // several items — the reader's unstamped fallback would take only the
+        // first side's sets and orphan the rest to solo work.
+        const rehabLinks =
+          opts.sessionLinks?.[rehabSeriesKey(assignment.linkProtocolId)] ?? [];
         const expandedPrescription = expandPrescriptionSets(prescription);
+        if (rehabLinks.length > 0) {
+          expandedPrescription.items = applyRehabLinks(
+            expandedPrescription.items,
+            rehabLinks,
+            assignment.linkProtocolId,
+          );
+        }
         const strengthSession = sessions.find(
           (session) =>
             session.weekIndex === weekIndex &&

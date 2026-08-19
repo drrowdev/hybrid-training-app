@@ -52,6 +52,11 @@ import {
   slotLinkBadges,
 } from "./session-link-editing";
 import {
+  rehabLinkableMovements,
+  rehabSeriesKey,
+} from "@/lib/platform/rehab-links";
+import { LEGACY_REHAB_PROTOCOL_ID } from "@/lib/platform/tb-customization";
+import {
   SESSION_LINKS_VERSION,
   type SessionLink,
   type SessionLinks,
@@ -1398,6 +1403,14 @@ export function ProgramPicker({
   );
   const AB_TRIAD_LABEL = "AB Triad";
 
+  /** Display name for a rehab catalog movement, for link labels. */
+  const rehabMovementName = useCallback(
+    (movementId: string) =>
+      rehabMovements.find((movement) => movement.id === movementId)?.name ??
+      "Rehab movement",
+    [rehabMovements],
+  );
+
   /**
    * The lifts a slot can link, in session order.
    *
@@ -2154,12 +2167,56 @@ export function ProgramPicker({
         protocol.id === protocolId ? { ...protocol, ...patch } : protocol,
       ),
     );
+    if (patch.items) pruneRehabLinks(protocolId, patch.items);
+  }
+
+  /**
+   * Drop link members the protocol no longer contains.
+   *
+   * Removing a movement, or re-pointing a row at a different one, can leave a
+   * link naming something absent. The engine drops such a link whole and
+   * silently, and the server rejects the deploy — so prune as the edit happens
+   * rather than let the lifter discover it at the end.
+   */
+  function pruneRehabLinks(
+    protocolId: string,
+    items: readonly RehabDraft[],
+  ) {
+    const seriesKey = rehabSeriesKey(protocolId);
+    setSessionLinks((current) => {
+      const links = current[seriesKey];
+      if (!links?.length) return current;
+      const present = new Set(items.map((item) => item.movementId));
+      const next = links
+        .map((link) => ({
+          ...link,
+          members: link.members.filter((member) => present.has(member)),
+        }))
+        // A link needs two stations to mean anything; one leftover is solo work.
+        .filter((link) => link.members.length >= 2);
+      if (
+        next.length === links.length &&
+        next.every(
+          (link, index) =>
+            link.members.length === links[index]!.members.length,
+        )
+      ) {
+        return current;
+      }
+      const updated = { ...current };
+      if (next.length > 0) updated[seriesKey] = next;
+      else delete updated[seriesKey];
+      return updated;
+    });
   }
 
   function removeRehabProtocol(protocolId: string) {
     setRehabProtocols((current) =>
       current.filter((protocol) => protocol.id !== protocolId),
     );
+    // Protocol ids are reused as ordinals, so a link left behind would be
+    // silently adopted by whatever protocol next takes this id.
+    setLinksForSeries(rehabSeriesKey(protocolId), []);
     setActivationDrafts((current) =>
       Object.fromEntries(
         Object.entries(current).map(([phase, draft]) => [
@@ -2218,17 +2275,43 @@ export function ProgramPicker({
           : protocol,
       ),
     );
+    // Re-pointing a row at another movement can strand a link member just as
+    // removing the row would. Derived outside the updater above, which must
+    // stay pure — React may run it more than once.
+    if (patch.movementId != null) {
+      const protocol = rehabProtocols.find(
+        (candidate) => candidate.id === protocolId,
+      );
+      if (protocol) {
+        pruneRehabLinks(
+          protocolId,
+          protocol.items.map((item, itemIndex) =>
+            itemIndex === index ? { ...item, ...patch } : item,
+          ),
+        );
+      }
+    }
   }
 
   function updateRehabMovement(
     index: number,
     patch: Partial<RehabDraft>,
   ) {
-    setRehabDrafts((current) =>
-      current.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, ...patch } : item,
-      ),
+    const next = rehabDrafts.map((item, itemIndex) =>
+      itemIndex === index ? { ...item, ...patch } : item,
     );
+    setRehabDrafts(next);
+    // Re-pointing a row can strand a link member. The weekly blob's single
+    // protocol resolves under the same synthetic id the Activation editor uses.
+    if (patch.movementId != null) {
+      pruneRehabLinks(LEGACY_REHAB_PROTOCOL_ID, next);
+    }
+  }
+
+  function removeRehabDraft(index: number) {
+    const next = rehabDrafts.filter((_, itemIndex) => itemIndex !== index);
+    setRehabDrafts(next);
+    pruneRehabLinks(LEGACY_REHAB_PROTOCOL_ID, next);
   }
   function resetWeek() {
     setWeek(buildWeek(requiredDays ?? freq531));
@@ -3576,7 +3659,20 @@ export function ProgramPicker({
           with another workout. SxC does not generate or progress this work.
         </p>
         <div className={styles.rehabProtocols}>
-          {rehabProtocols.map((protocol, protocolIndex) => (
+          {rehabProtocols.map((protocol, protocolIndex) => {
+            // Rehab links live under their own series key so they travel with
+            // the protocol — link once, and it applies on every day and phase
+            // that protocol is assigned to.
+            const seriesKey = rehabSeriesKey(protocol.id);
+            const linkable = rehabLinkableMovements(
+              protocol.items.map((item) => ({
+                movementId: item.movementId,
+                movementName: rehabMovementName(item.movementId),
+              })),
+            );
+            const links = sessionLinks[seriesKey] ?? [];
+            const linkBadges = slotLinkBadges(links, linkable);
+            return (
             <section
               key={protocol.id}
               className={styles.rehabProtocolCard}
@@ -3603,11 +3699,46 @@ export function ProgramPicker({
                 </button>
               </div>
               <div className={styles.rehabList}>
-                {protocol.items.map((item, index) => (
+                {protocol.items.map((item, index) => {
+                  // Every row for one movement is a single station — the logger
+                  // merges them into one card regardless of side. So the rail
+                  // runs through all of them, but only the FIRST is labelled;
+                  // repeating "A1" down a left/right pair is exactly what made
+                  // a two-station superset read as a giant set elsewhere.
+                  const stationBadge = linkBadges.get(item.movementId);
+                  const firstRowForMovement =
+                    protocol.items.findIndex(
+                      (candidate) => candidate.movementId === item.movementId,
+                    ) === index;
+                  const lastRowForMovement =
+                    protocol.items.findLastIndex(
+                      (candidate) => candidate.movementId === item.movementId,
+                    ) === index;
+                  // The rail's caps belong on the first and last ROW of the
+                  // station, not repeated on each row of a left/right pair.
+                  const rowBadge = stationBadge
+                    ? {
+                        ...stationBadge,
+                        isStationStart:
+                          stationBadge.isStationStart && firstRowForMovement,
+                        isLinkEnd: stationBadge.isLinkEnd && lastRowForMovement,
+                      }
+                    : undefined;
+                  return (
                   <div
                     key={`${protocol.id}-${item.movementId}-${index}`}
-                    className={styles.rehabRow}
+                    className={rowLinkClass(styles, rowBadge, styles.rehabRow ?? "")}
                   >
+                    {firstRowForMovement && (
+                      <LinkBadge
+                        styles={styles}
+                        badge={stationBadge}
+                        links={links}
+                        movements={linkable}
+                        seriesKey={seriesKey}
+                        onChange={setLinksForSeries}
+                      />
+                    )}
                     <select
                       value={item.movementId}
                       onChange={(event) =>
@@ -3715,7 +3846,8 @@ export function ProgramPicker({
                       Remove
                     </button>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               <button
                 type="button"
@@ -3725,6 +3857,12 @@ export function ProgramPicker({
               >
                 + Add movement
               </button>
+              <SessionLinkEditor
+                seriesKey={seriesKey}
+                movements={linkable}
+                links={links}
+                onChange={setLinksForSeries}
+              />
               {protocol.items.length === 0 ? (
                 <p className={styles.inlineError}>
                   Add at least one movement to {protocol.name || "this protocol"}.
@@ -3736,7 +3874,8 @@ export function ProgramPicker({
                 </p>
               ) : null}
             </section>
-          ))}
+            );
+          })}
         </div>
         <button
           type="button"
@@ -4678,12 +4817,67 @@ export function ProgramPicker({
                       Enter only movements and loading supplied by you or your
                       clinician. SxC does not generate or progress rehab work.
                     </p>
+                    {(() => {
+                      // The weekly blob holds a single unnamed protocol, which
+                      // `activationRehabProtocols` normalises to `protocol-1`.
+                      // Using that id here means one link model covers both
+                      // shapes, and links survive an upgrade to the phase-aware
+                      // editor.
+                      const seriesKey = rehabSeriesKey(
+                        LEGACY_REHAB_PROTOCOL_ID,
+                      );
+                      const linkable = rehabLinkableMovements(
+                        rehabDrafts.map((item) => ({
+                          movementId: item.movementId,
+                          movementName: rehabMovementName(item.movementId),
+                        })),
+                      );
+                      const links = sessionLinks[seriesKey] ?? [];
+                      const linkBadges = slotLinkBadges(links, linkable);
+                      return (
+                    <>
                     <div className={styles.rehabList}>
-                      {rehabDrafts.map((item, index) => (
+                      {rehabDrafts.map((item, index) => {
+                        const stationBadge = linkBadges.get(item.movementId);
+                        const firstRowForMovement =
+                          rehabDrafts.findIndex(
+                            (candidate) =>
+                              candidate.movementId === item.movementId,
+                          ) === index;
+                        const lastRowForMovement =
+                          rehabDrafts.findLastIndex(
+                            (candidate) =>
+                              candidate.movementId === item.movementId,
+                          ) === index;
+                        const rowBadge = stationBadge
+                          ? {
+                              ...stationBadge,
+                              isStationStart:
+                                stationBadge.isStationStart &&
+                                firstRowForMovement,
+                              isLinkEnd:
+                                stationBadge.isLinkEnd && lastRowForMovement,
+                            }
+                          : undefined;
+                        return (
                         <div
                           key={`${item.movementId}-${index}`}
-                          className={styles.rehabRow}
+                          className={rowLinkClass(
+                            styles,
+                            rowBadge,
+                            styles.rehabRow ?? "",
+                          )}
                         >
+                          {firstRowForMovement && (
+                            <LinkBadge
+                              styles={styles}
+                              badge={stationBadge}
+                              links={links}
+                              movements={linkable}
+                              seriesKey={seriesKey}
+                              onChange={setLinksForSeries}
+                            />
+                          )}
                           <select
                             value={item.movementId}
                             onChange={(event) =>
@@ -4780,18 +4974,15 @@ export function ProgramPicker({
                           <button
                             type="button"
                             onClick={() =>
-                              setRehabDrafts((current) =>
-                                current.filter(
-                                  (_, itemIndex) => itemIndex !== index,
-                                ),
-                              )
+                              removeRehabDraft(index)
                             }
                             aria-label={`Remove rehab movement ${index + 1}`}
                           >
                             Remove
                           </button>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                     <button
                       type="button"
@@ -4801,6 +4992,15 @@ export function ProgramPicker({
                     >
                       + Add rehab movement
                     </button>
+                    <SessionLinkEditor
+                      seriesKey={seriesKey}
+                      movements={linkable}
+                      links={links}
+                      onChange={setLinksForSeries}
+                    />
+                    </>
+                      );
+                    })()}
                     {rehabDrafts.length === 0 ? (
                       <p className={styles.inlineError}>
                         Add at least one movement for your rehab day.

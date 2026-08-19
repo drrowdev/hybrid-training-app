@@ -2140,3 +2140,11 @@
   font-weight: 700;
   padding: 0 6px !important;
 }
+
+/* A rehab row is a 7-column grid of controls; the link badge belongs ACROSS it,
+   above the controls, not competing for the first column. */
+.rehabRow > .linkBadge,
+.rehabRow > .linkContinuation {
+  grid-column: 1 / -1;
+  width: auto;
+}

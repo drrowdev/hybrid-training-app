@@ -81,6 +81,7 @@ import { inferProgramStartWeekIndex } from "@/lib/plan/program-overview";
 import {
   customizationDays,
   activationRehabProtocols,
+  LEGACY_REHAB_PROTOCOL_ID,
   effectiveActivationRehabProtocolIds,
   isTbActivationCustomization,
   activationSessionConfigs,
@@ -89,6 +90,7 @@ import {
   type TbActivationCustomization,
   type TbCustomization,
 } from "./tb-customization";
+import { rehabSeriesKey } from "./rehab-links";
 import {
   loadsBlockedMuscle,
   loadsBlockedRegion,
@@ -479,21 +481,76 @@ export async function createProgramInstance(
   // already refuses to realise a link with a missing member, but it does so
   // SILENTLY — the lifter would deploy, and the superset would simply not be
   // there. When the wizard sends the movement list too, we can say so instead.
+  //
+  // Rehab series MUST be listed here as well. `findOrphanedLinkMembers` reads
+  // an unknown key as "no movements available", so omitting them would reject
+  // every rehab link as orphaned rather than validating it.
   if (sessionLinks && customization && isTbCustomizationV1(customization)) {
     const orphans = findOrphanedLinkMembers(
       sessionLinks,
-      Object.fromEntries(
-        Object.entries(customization.sessionMovements).map(([key, movements]) => [
+      Object.fromEntries([
+        ...Object.entries(customization.sessionMovements).map(([key, movements]) => [
           key,
           movements.map((movement) => movement.movement),
         ]),
-      ),
+        [
+          rehabSeriesKey(LEGACY_REHAB_PROTOCOL_ID),
+          (customization.rehab?.items ?? []).map((item) => item.movementId),
+        ],
+      ]),
     );
     if (orphans.length > 0) {
       const count = orphans.reduce((n, o) => n + o.missing.length, 0);
       return {
         ok: false,
         error: `A linked superset references ${count === 1 ? "a lift" : "lifts"} that aren't in that session anymore. Remove the link or add the ${count === 1 ? "lift" : "lifts"} back.`,
+      };
+    }
+  }
+
+  // Activation's strength series are not enumerable here, so the check above
+  // does not run for it — but its rehab protocols ARE, and a link naming a
+  // protocol that no longer exists (ids are reused as ordinals) would attach
+  // to whatever protocol later takes that id. Reject it rather than let a
+  // stale link silently adopt an unrelated protocol.
+  if (
+    sessionLinks &&
+    customization &&
+    isTbActivationCustomization(customization)
+  ) {
+    const protocols = activationRehabProtocols(customization);
+    const known = new Map(
+      protocols.map((protocol) => [
+        rehabSeriesKey(protocol.id),
+        protocol.items.map((item) => item.movementId),
+      ]),
+    );
+    for (const seriesKey of Object.keys(sessionLinks.bySeries)) {
+      if (!seriesKey.startsWith("rehab.")) continue;
+      if (!known.has(seriesKey)) {
+        return {
+          ok: false,
+          error:
+            "A linked superset belongs to a rehab protocol that no longer exists. Remove the link and re-create it.",
+        };
+      }
+    }
+    const orphans = findOrphanedLinkMembers(
+      sessionLinks,
+      Object.fromEntries([
+        ...known,
+        // Strength series are unverifiable here; echo their own members back so
+        // they pass rather than being condemned as orphans.
+        ...Object.entries(sessionLinks.bySeries)
+          .filter(([key]) => !key.startsWith("rehab."))
+          .map(([key, links]) => [key, links.flatMap((link) => link.members)]),
+      ]),
+    );
+    if (orphans.length > 0) {
+      const count = orphans.reduce((n, o) => n + o.missing.length, 0);
+      return {
+        ok: false,
+        error: `A linked superset references ${count === 1 ? "a movement" : "movements"} that aren't in that rehab protocol anymore. Remove the link or add the ${count === 1 ? "movement" : "movements"} back.`,
       };
     }
   }
@@ -1154,6 +1211,7 @@ async function computeForeignWrite(
     ...(startWeekIndex != null ? { startWeekIndex } : {}),
     ...(cardioWeekdays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
     ...(customization ? { customization } : {}),
+    ...(sessionLinks ? { sessionLinks: linksBySeries(sessionLinks) } : {}),
   });
   if (customization) {
     const limitations = await readLimitationsContext(supabase, user.id);

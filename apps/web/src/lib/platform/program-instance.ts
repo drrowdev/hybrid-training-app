@@ -20,6 +20,7 @@ import type { AssistancePlanner } from "./assistance-resolver";
 import type { TbAccessoryInjector } from "./tb-accessories";
 import { computeTmAlignment } from "./tm-alignment";
 import type { TbCustomization } from "./tb-customization";
+import type { SessionLink } from "./session-links";
 
 export interface BuildProgramInstanceArgs<I> {
   engine: ProgramEngine<I>;
@@ -39,6 +40,12 @@ export interface BuildProgramInstanceArgs<I> {
   /** Optional open-cardio weekdays (0 = Mon … 6 = Sun) for strength-only programs. */
   cardioWeekdays?: number[];
   customization?: TbCustomization;
+  /**
+   * User-authored links by series key. Threaded through to materialisation so
+   * the `rehab.<protocolId>` entries can be realised on the rehab prescription
+   * — strength links travel inside the engine instance instead.
+   */
+  sessionLinks?: Readonly<Record<string, readonly SessionLink[]>>;
 }
 
 /** A `training_maxes.tm_percent` seed for one anchored movement. */
@@ -70,7 +77,7 @@ export interface ProgramInstanceWrite {
 export function buildProgramInstanceWrite<I>(
   args: BuildProgramInstanceArgs<I>,
 ): ProgramInstanceWrite {
-  const { engine, instance, ctx, resolveMovement, weekdays, assistance, accessories, startWeekIndex, cardioWeekdays, customization } = args;
+  const { engine, instance, ctx, resolveMovement, weekdays, assistance, accessories, startWeekIndex, cardioWeekdays, customization, sessionLinks } = args;
 
   // The working-max basis the program loads off (Option A seeds it onto
   // training_maxes.tm_percent). A program loads straight off the true 1RM when
@@ -96,6 +103,7 @@ export function buildProgramInstanceWrite<I>(
       ...(startWeekIndex != null ? { startWeekIndex } : {}),
       ...(cardioWeekdays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
       ...(customization ? { customization } : {}),
+      ...(sessionLinks ? { sessionLinks } : {}),
     },
   );
 
