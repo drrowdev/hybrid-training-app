@@ -797,3 +797,15 @@ The behaviour is deliberately narrow: OFF suppresses the COUNTDOWN, not the rest
 Two smaller traps, both worth recording. A persisted rest deadline outlives the preference, so the resume-after-reload path is gated too and no deadline is written while the timer is off — otherwise turning it off, reloading, and getting a countdown back would look like the setting had failed. And starting a rest is now a full state transition (`setRestSeconds(secs)` unconditionally, deadline cleared when 0) rather than a conditional start, so a countdown from an earlier set cannot survive the toggle.
 
 Also learned: a `"use server"` module may export ONLY async functions. The read helper's default constant broke the entire module for every importer, and typecheck did not catch it — only `pnpm build` did. Read and write are now separate modules, which is the right split anyway since the read is server-only and never needed to be an action.
+
+## [2026-08-19] fix | The Plan drawer's last logging affordance follows the others behind `allowLogging`
+
+Reported from use: a cardio session drawer had no Mark done but still offered "Link a logged activity" — read as Strava residue left behind by migration 0130.
+
+Neither half of that reading was right, and both are worth recording because the surface invites the same mistake twice.
+
+**"Link a logged activity" is not Strava.** Strava has no references left anywhere in `apps/web/src`. `getLinkableActivities` queries the user's OWN completed `sessions` joined to `cardio_logs`; the control attaches one to a planned slot through the same classify-and-attribute path the old auto-linker used, so HYROX load attribution survives. What retired with Strava was the AUTOMATIC linker, which only ever fired for `cardio_source='external'` blocks at sync time. The manual control is what remains useful without it — a cardio session logged before the day was swapped, or on an internal-cardio plan, otherwise has no route back to its slot. Deleting it would have removed a working feature. Both file headers still described the retired sync behaviour, which is what made it read as dead code; they now say plainly that the candidates are the user's own sessions.
+
+**Mark done's absence was deliberate**, recorded on 2026-08-18: Plan became the macro review/edit surface, and Mark done plus overdue Log now moved to Today, where they remain. A test already asserts "the logging actions must still be absent" for `allowLogging={false}`.
+
+The real defect was the inconsistency between those two facts. `LinkActivityControl` was rendered on `session.isCardio && !done && !skipped` alone, outside the `allowLogging` gate its siblings sit behind — so a review-only drawer still offered a way to complete a cardio slot while the sanctioned ways were correctly hidden. Owner decision: keep Plan review-only. The gate now wraps the whole `drawer-cta-extras` region rather than each child, which also stops an empty flex wrapper and its 12px margin being left behind.

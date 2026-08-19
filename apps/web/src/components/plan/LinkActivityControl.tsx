@@ -2,10 +2,17 @@
 
 /**
  * LinkActivityControl — "Link a logged activity" affordance on a planned cardio
- * session drawer. Lets the user attach an already-logged run (e.g. an
- * activity that synced before the day was swapped, or any internal-cardio plan
- * the auto-linker skips) to this planned slot, with full HYROX load attribution
- * via `linkActivityToPlanned`.
+ * session drawer. Lets the user attach an already-logged cardio session of
+ * their own to this planned slot, with full HYROX load attribution via
+ * `linkActivityToPlanned`.
+ *
+ * Nothing to do with any third-party integration — the candidates are the
+ * user's OWN completed sessions carrying a cardio log. It exists because a
+ * session logged before the day was swapped, or one on an internal-cardio plan,
+ * has no automatic route back to its planned slot.
+ *
+ * Rendered only where logging is allowed (Today), never on Plan, which is a
+ * review/edit surface — see the `allowLogging` gate in `PlanRedesign`.
  *
  * Candidates are fetched on demand (no upfront prop threading) and the chosen
  * link refreshes the route so the Today hero / week rail update immediately.

@@ -2806,11 +2806,18 @@ export function SessionDrawer({
             </p>
           )}
 
-          {((overdue && !session.skipped && !session.done) ||
-            (session.isCardio && !session.done && !session.skipped)) && (
+          {/* Logging affordances. ALL of this region is gated on `allowLogging`
+              — Plan is the review/edit surface and logging belongs to Today.
+              "Link a logged activity" used to sit outside the gate, so a
+              review-only drawer still offered one way to complete a cardio slot
+              while Mark done and Log now were correctly absent. Gating the
+              wrapper rather than each child also avoids leaving an empty
+              `.drawer-cta-extras` behind, which carries a 12px margin. */}
+          {allowLogging &&
+            ((overdue && !session.skipped && !session.done) ||
+              (session.isCardio && !session.done && !session.skipped)) && (
             <div className="drawer-cta-extras">
-              {allowLogging &&
-                startSessionAction &&
+              {startSessionAction &&
                 overdue &&
                 !session.skipped &&
                 !session.done && (
