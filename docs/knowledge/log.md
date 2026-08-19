@@ -767,3 +767,19 @@ Three changes, all about bounding the blast radius rather than chasing the apt m
 - The browser install itself gets `timeout-minutes: 6`.
 
 Worst case is now ~11 minutes of setup with the tests still getting their turn, instead of a 20-minute wall and nothing to read.
+
+## [2026-08-19] refine | Rehab movements can be supersetted, with a station spanning both sides
+
+Requested from use: "I'd like to superset/giant set also rehab movements."
+
+Rehab links reuse the existing `sessionLinks` envelope under a new series key, `rehab.<protocolId>`. They are deliberately NOT a field on `rehabProtocolSchema`: that schema is `.strict()` inside a `.strict()` versioned union, so an older deployed build would reject the unknown key and — because the customization is `safeParse`d as one unit — drop the WHOLE customization. That hazard is why the link envelope exists separately in the first place. Keying by protocol also gives the right scope: a protocol is authored once and assigned to several days and phases, so its supersets travel with it rather than being re-declared per assignment. Legacy needs no special case; `activationRehabProtocols` already normalises the V1/V2 shapes to `protocol-1`, so both resolve through `rehab.protocol-1` and keep resolving after an upgrade to V3. The stored `rehabProtocolId` provenance stays null on those paths, so the link key is carried separately as `linkProtocolId` rather than derived from emitted metadata.
+
+Three things had to differ from the strength path, each found by rubber-ducking the plan before writing it:
+
+**A station can span several items.** A protocol addresses sides as separate rows sharing one `movementId`, and `movementIdentityKey` keys rehab cards as `rehab:<movementId>` with side excluded — so left and right are ONE logger card. Link members are therefore movements, and the wizard offers one entry per distinct movement. This also forces the round stamp: `participatingItemIndices` falls back to "the first `rounds` required slots of the group", which is right only when a station is one item per round. That holds for the engine's AB Triad and fails for rehab — unstamped, a 3-left/3-right Copenhagen station would have put only the LEFT sets in the rotation and orphaned every right-side set to solo work. An earlier reading of this codebase concluded stamping was optional because the AB Triad does without it; that reasoning does not generalise.
+
+**Circuit ids had to be namespaced.** `applySessionLinks` uses the stored link id verbatim and ids are unique only within a series, so both editors mint `link-1`. Once rehab is prepended into the day's strength prescription the logger groups circuit candidates globally by id, so two unrelated `link-1`s would present four groups for a two-station circuit, fail `buildLinkedCircuitByMovementId`'s completeness check and silently drop BOTH — breaking the existing strength feature. Materialised ids are now `rehab:<protocolId>:<linkId>`; stored ids are untouched.
+
+**Members are re-emitted contiguously**, as the strength path already does, because the preview only brackets consecutive rows.
+
+Two integrity gaps closed while wiring it. `findOrphanedLinkMembers` reads an unknown series key as "no movements available", so rehab keys had to be added to the map or every rehab link would have been rejected as orphaned on deploy. And protocol ids are reused as ordinals while `removeRehabProtocol` pruned assignments but not links — delete `protocol-2`, create another, and it silently inherited the old superset. Links are now pruned on protocol deletion, on movement removal, and when a row is re-pointed at a different movement; Activation deploys additionally reject a link naming a protocol that no longer exists.
