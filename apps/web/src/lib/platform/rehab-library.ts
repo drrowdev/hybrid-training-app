@@ -105,9 +105,18 @@ export function resolveRehabLibrary(
 
   const applyLinks = (localId: string, protocol: LibraryProtocol) => {
     // The library owns a protocol's grouping, so its links REPLACE whatever the
-    // program carried. Leaving the program's copy in place would let a removed
-    // superset survive an edit.
-    resolvedLinks[`${REHAB_SERIES_PREFIX}${localId}`] = [...protocol.links];
+    // program carried. Leaving the program's copy in place would let a superset
+    // the user removed in Settings survive the edit.
+    //
+    // An empty list DELETES the key rather than writing `[]`:
+    // `sessionLinksSchema` requires `.min(1)` per series, so an empty array is
+    // not a valid "no links" value — the absent key is.
+    const seriesKey = `${REHAB_SERIES_PREFIX}${localId}`;
+    if (protocol.links.length === 0) {
+      delete resolvedLinks[seriesKey];
+      return;
+    }
+    resolvedLinks[seriesKey] = [...protocol.links];
   };
 
   if (isTbActivationCustomizationV3(customization)) {

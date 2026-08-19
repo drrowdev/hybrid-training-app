@@ -109,29 +109,31 @@ describe("resolveRehabLibrary — V3", () => {
   it("replaces the program's links for a bound protocol", () => {
     const resolved = resolveRehabLibrary(
       v3(),
-      { "rehab.protocol-1": [{ id: "old", kind: "superset", members: ["a", "b"] }] },
+      { "rehab.protocol-1": [{ id: "old", name: "Old", members: ["a", "b"] }] },
       { "protocol-1": "lib-1" },
-      [lib({ links: [{ id: "new", kind: "circuit", members: ["c", "d"], rounds: 3 }] })],
+      [lib({ links: [{ id: "new", name: "New", members: ["c", "d"] }] })],
     );
     expect(resolved.linksBySeries["rehab.protocol-1"]).toEqual([
-      { id: "new", kind: "circuit", members: ["c", "d"], rounds: 3 },
+      { id: "new", name: "New", members: ["c", "d"] },
     ]);
   });
 
-  it("clears links the user removed in Settings", () => {
+  it("removes the series key when the user deletes the superset in Settings", () => {
     const resolved = resolveRehabLibrary(
       v3(),
-      { "rehab.protocol-1": [{ id: "old", kind: "superset", members: ["a", "b"] }] },
+      { "rehab.protocol-1": [{ id: "old", name: "Old", members: ["a", "b"] }] },
       { "protocol-1": "lib-1" },
       [lib({ links: [] })],
     );
-    expect(resolved.linksBySeries["rehab.protocol-1"]).toEqual([]);
+    // Not `[]` — `sessionLinksSchema` requires at least one link per series, so
+    // the absent key is the only valid "no links" value.
+    expect("rehab.protocol-1" in resolved.linksBySeries).toBe(false);
   });
 
   it("leaves an unrelated series key alone", () => {
     const resolved = resolveRehabLibrary(
       v3(),
-      { "strength.day-1": [{ id: "s", kind: "superset", members: ["x", "y"] }] },
+      { "strength.day-1": [{ id: "s", name: "S", members: ["x", "y"] }] },
       { "protocol-1": "lib-1" },
       [lib()],
     );
@@ -196,7 +198,7 @@ describe("resolutionChangesProgram", () => {
   it("is true when only the links changed", () => {
     expect(
       resolutionChangesProgram(v3(), {}, { "protocol-1": "lib-1" }, [
-        lib({ links: [{ id: "l", kind: "superset", members: ["a", "b"] }] }),
+        lib({ links: [{ id: "l", name: "L", members: ["a", "b"] }] }),
       ]),
     ).toBe(true);
   });
@@ -208,16 +210,11 @@ describe("resolutionChangesProgram", () => {
   });
 
   it("treats an absent links key and an empty link list as the same thing", () => {
-    // A protocol with no supersets resolves to `rehab.<id>: []`, which the
-    // program never stored. Counting that as a change would rewrite the plan on
-    // every single save.
+    // A protocol with no supersets resolves to an absent key, which is also
+    // what a program with no supersets stored. Counting that as a change would
+    // rewrite the plan on every single save.
     expect(
-      resolutionChangesProgram(
-        v3(),
-        { "rehab.protocol-1": [] },
-        { "protocol-1": "lib-1" },
-        [lib({ links: [] })],
-      ),
+      resolutionChangesProgram(v3(), {}, { "protocol-1": "lib-1" }, [lib({ links: [] })]),
     ).toBe(false);
   });
 });
