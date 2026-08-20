@@ -11,6 +11,8 @@ import { useMemo, useState, useTransition } from "react";
 import type { RehabProtocolItem, RehabProtocolRow } from "@/lib/rehab-protocols/queries";
 import { formatProtocolSummary } from "@/lib/rehab-protocols/summary";
 import type { SessionLink } from "@/lib/platform/session-links";
+import { rehabLinkableMovements } from "@/lib/platform/rehab-links";
+import { SessionLinkEditor } from "@/components/program/SessionLinkEditor";
 
 export type PickerMovement = { id: string; name: string; pattern: string };
 
@@ -394,16 +396,41 @@ function ProtocolEditor({
               <span
                 style={{
                   justifySelf: "start",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
                   fontSize: 10,
                   textTransform: "uppercase",
                   letterSpacing: "0.08em",
                   color: "var(--cp-accent)",
                   border: "1px solid var(--cp-accent-soft)",
                   borderRadius: 20,
-                  padding: "2px 8px",
+                  padding: "2px 4px 2px 8px",
                 }}
               >
                 {station.name}
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChange({
+                      ...draft,
+                      links: draft.links.filter((link) => link.id !== station.id),
+                    })
+                  }
+                  aria-label={`Unlink ${station.name}`}
+                  data-testid={`rehab-protocol-unlink-${station.id}`}
+                  style={{
+                    background: "none",
+                    border: 0,
+                    color: "inherit",
+                    cursor: "pointer",
+                    font: "inherit",
+                    lineHeight: 1,
+                    padding: "0 4px",
+                  }}
+                >
+                  ✕
+                </button>
               </span>
             )}
             <div
@@ -528,6 +555,24 @@ function ProtocolEditor({
           </section>
         );
       })}
+
+      {draft.items.length >= 2 && (
+        <SessionLinkEditor
+          // Scoped to this protocol's own key so the editor's "already linked"
+          // logic sees only this protocol's links. The key it's stored under
+          // per program (`rehab.<localId>`) is decided at attach time, not here
+          // — a library protocol has no program yet.
+          seriesKey="rehab-protocol"
+          movements={rehabLinkableMovements(
+            draft.items.map((item) => ({
+              movementId: item.movementId,
+              movementName: item.movementName,
+            })),
+          )}
+          links={draft.links}
+          onChange={(_seriesKey, links) => onChange({ ...draft, links })}
+        />
+      )}
 
       <section
         className="cp-card"

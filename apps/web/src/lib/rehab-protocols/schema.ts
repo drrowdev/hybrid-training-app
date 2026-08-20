@@ -62,6 +62,34 @@ export const rehabProtocolDefinitionSchema = z
         });
       }
     }
+
+    // `PrescriptionItem.circuit` is singular, so a movement in two links is
+    // unrepresentable downstream and `sessionLinksSchema` rejects it at deploy.
+    // The picker won't offer an overlapping selection, but the library is
+    // writable directly through PostgREST — catching it here fails at save,
+    // where the user can act on it, rather than at deploy.
+    const seen = new Set<string>();
+    for (const [index, link] of value.links.entries()) {
+      for (const member of link.members) {
+        if (seen.has(member)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["links", index],
+            message: "A movement can only belong to one superset.",
+          });
+        }
+        seen.add(member);
+      }
+    }
+
+    const ids = value.links.map((link) => link.id);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["links"],
+        message: "Superset ids must be unique.",
+      });
+    }
   });
 
 export const rehabProtocolInputSchema = z.object({
