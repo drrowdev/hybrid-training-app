@@ -47,7 +47,11 @@ import {
   loadRehabBindingsFor,
 } from "@/lib/rehab-protocols/queries";
 import { formatProtocolSummary } from "@/lib/rehab-protocols/summary";
-import { bindingsByLibraryId } from "@/lib/rehab-protocols/attachment";
+import {
+  bindingsByLibraryId,
+  matchProtocolsToLibrary,
+} from "@/lib/rehab-protocols/attachment";
+import { rehabFingerprint } from "@/lib/platform/rehab-library";
 
 // Sage program-wizard type scale — scoped to this route via CSS variables on
 // the wrapper below (see ProgramPicker.module.css). Not loaded app-wide.
@@ -342,6 +346,36 @@ export default async function ProgramPickerPage({
       existingRehabBindings = bindingsByLibraryId(
         bindingsByInstance[instance.id as string] ?? {},
       );
+    }
+    // A program can carry rehab with no binding row — one added before the
+    // library existed, or missed by the 0134 backfill. Fall back to matching
+    // its own protocols against the library by content, so its local ids are
+    // preserved and its day assignments keep resolving. Saving then writes the
+    // real binding rows.
+    const own = editContext.customization
+      ? rehabFingerprint(editContext.customization)
+      : [];
+    const unbound = own.filter(
+      (protocol) => !Object.values(existingRehabBindings).includes(protocol.id),
+    );
+    if (unbound.length > 0) {
+      const matched = matchProtocolsToLibrary(
+        unbound.map((protocol) => ({
+          id: protocol.id,
+          name: protocol.name,
+          items: protocol.items as unknown[],
+        })),
+        libraryProtocols.map((protocol) => ({
+          id: protocol.id,
+          name: protocol.name,
+          items: protocol.items as unknown[],
+        })),
+      );
+      for (const [localId, libraryId] of Object.entries(matched)) {
+        if (!(libraryId in existingRehabBindings)) {
+          existingRehabBindings[libraryId] = localId;
+        }
+      }
     }
   }
 

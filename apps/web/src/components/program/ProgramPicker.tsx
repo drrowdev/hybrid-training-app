@@ -1751,18 +1751,18 @@ export function ProgramPicker({
         if (new Set(selected).size !== selected.length) return false;
       }
     }
-    const protocolIds = new Set(rehabProtocols.map((protocol) => protocol.id));
     // Library protocols are validated where they're authored (Settings) and by
     // the database, so the wizard only checks that a selection resolves.
     const protocolsReady = rehabProtocols.every(
       (protocol) => protocol.name.trim().length > 0 && protocol.items.length > 0,
     );
-    const assignmentsReady = Object.values(activationDrafts).every((phase) =>
-      Object.values(phase.rehabAssignments).every((protocolId) =>
-        protocolIds.has(protocolId),
-      ),
-    );
-    return protocolsReady && assignmentsReady;
+    // Assignments are deliberately NOT gated here. One naming a protocol that
+    // isn't attached is dropped when the payload is built (`pruneAssignments`),
+    // and its day already renders as "No rehab" — so rejecting it contradicted
+    // both the screen and the payload, and stranded the wizard: the only way
+    // out was to re-pick "No rehab" on every stale day, which deleted the entry
+    // that should never have blocked the save.
+    return protocolsReady;
   }, [
     activeTbTemplate,
     activationDrafts,
