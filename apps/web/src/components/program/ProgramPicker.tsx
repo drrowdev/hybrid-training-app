@@ -2383,7 +2383,15 @@ export function ProgramPicker({
           : {}),
       });
       setResult(res);
-      if (res.ok) router.push(isEditing ? "/app/plan" : "/app");
+      if (res.ok) {
+        router.push(
+          isEditing
+            ? res.todayLeftAsIs
+              ? "/app/plan?kept=today"
+              : "/app/plan"
+            : "/app",
+        );
+      }
     });
   }
 

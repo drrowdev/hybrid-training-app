@@ -44,13 +44,19 @@ export async function logPrescribedSet(
  * Finish the in-progress session. The Finish bar now completes inline
  * (no /complete interstitial): submitting it stamps `completed_at` and
  * redirects back to the session detail, which renders the summary.
+ *
+ * While required sets are still outstanding the action lives in the header's
+ * ⋯ menu instead of the bottom bar, so open the menu when the bar is absent.
  */
 export async function finishAndCompleteSession(
   page: Page,
   sessionId: string,
 ): Promise<void> {
-  await page
-    .getByTestId("finish-stickybar")
+  const bar = page.getByTestId("finish-stickybar");
+  if ((await bar.count()) === 0 || !(await bar.first().isVisible())) {
+    await page.getByLabel("More actions").click();
+  }
+  await bar
     .getByRole("button", { name: /finish session/i })
     .click();
   await page.waitForURL(`**/app/sessions/${sessionId}`, { timeout: 30_000 });

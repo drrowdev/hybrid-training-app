@@ -68,6 +68,7 @@ export default async function PlanPage({
     new?: string;
     build?: string;
     deload?: string;
+    kept?: string;
   }>;
 }) {
   const supabase = await createClient();
@@ -346,6 +347,23 @@ export default async function PlanPage({
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
+      {sp?.kept === "today" && (
+        <div
+          data-testid="plan-today-kept-notice"
+          style={{
+            border: "1px solid var(--cp-border)",
+            borderLeft: "3px solid var(--cp-warning)",
+            borderRadius: 10,
+            padding: "10px 14px",
+            fontSize: 13,
+            color: "var(--cp-text)",
+            background: "var(--cp-surface)",
+          }}
+        >
+          Today&rsquo;s workout is already under way, so it kept its current
+          plan. Your changes apply to the upcoming workouts.
+        </div>
+      )}
       {!seasonEnabled && <SeasonDiscoveryNudge />}
       {tissueGaps.length > 0 && <TissueStackCard gaps={tissueGaps} />}
       {limitationOffer && (

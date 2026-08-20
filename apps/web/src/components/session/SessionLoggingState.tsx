@@ -13,6 +13,12 @@ type SessionLoggingState = {
   hasStrengthSets: boolean;
   remainingPlannedSets: number;
   remainingRehabSets: number;
+  /**
+   * Prescribed work still outstanding that the user can't just ignore —
+   * excludes warm-ups and optional items. Drives whether the session is
+   * presented as "still working" or "ready to finish".
+   */
+  remainingRequiredSets: number;
   registerStrengthLog: (
     clientId: string,
     prescriptionItemIndex: number | null,
@@ -26,11 +32,13 @@ export function SessionLoggingStateProvider({
   initialHasStrengthSets,
   initialUnloggedStrengthCount,
   initialUnloggedRehabIndices = [],
+  initialUnloggedRequiredIndices = [],
   children,
 }: {
   initialHasStrengthSets: boolean;
   initialUnloggedStrengthCount: number;
   initialUnloggedRehabIndices?: number[];
+  initialUnloggedRequiredIndices?: number[];
   children: ReactNode;
 }) {
   const [optimisticLogs, setOptimisticLogs] = useState<
@@ -61,7 +69,9 @@ export function SessionLoggingStateProvider({
   const value = useMemo<SessionLoggingState>(() => {
     let prescribedPending = 0;
     let rehabPending = 0;
+    let requiredPending = 0;
     const rehabIndices = new Set(initialUnloggedRehabIndices);
+    const requiredIndices = new Set(initialUnloggedRequiredIndices);
     for (const prescriptionItemIndex of optimisticLogs.values()) {
       if (prescriptionItemIndex != null) prescribedPending += 1;
       if (
@@ -69,6 +79,12 @@ export function SessionLoggingStateProvider({
         rehabIndices.has(prescriptionItemIndex)
       ) {
         rehabPending += 1;
+      }
+      if (
+        prescriptionItemIndex != null &&
+        requiredIndices.has(prescriptionItemIndex)
+      ) {
+        requiredPending += 1;
       }
     }
     return {
@@ -81,6 +97,10 @@ export function SessionLoggingStateProvider({
         0,
         initialUnloggedRehabIndices.length - rehabPending,
       ),
+      remainingRequiredSets: Math.max(
+        0,
+        initialUnloggedRequiredIndices.length - requiredPending,
+      ),
       registerStrengthLog,
       rollbackStrengthLog,
     };
@@ -88,6 +108,7 @@ export function SessionLoggingStateProvider({
     initialHasStrengthSets,
     initialUnloggedStrengthCount,
     initialUnloggedRehabIndices,
+    initialUnloggedRequiredIndices,
     optimisticLogs,
     registerStrengthLog,
     rollbackStrengthLog,

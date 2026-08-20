@@ -102,26 +102,32 @@ function summariseStrengthBlock(items: PrescriptionItem[], tmLabel: "TM" | "1RM"
   );
   const pcts = items.map((it) => it.percentTm).filter((p): p is number => p != null);
   const sameReps = reps.every((r) => r === reps[0]);
-  const samePct = pcts.length > 0 && pcts.every((p) => p === pcts[0]);
+  // Only trust the percentage list when EVERY item carried one. `filter` drops
+  // the gaps, so a block loaded [65, none, 85] would otherwise print
+  // "5·5·5 @ 65/85%" and silently mis-assign the intensities.
+  const pctsComplete = pcts.length === items.length;
+  const samePct = pctsComplete && pcts.every((p) => p === pcts[0]);
   const setRange = items[0]?.setRange;
   const setLabel = setRange
     ? `${setRange.min}–${setRange.max}`
     : String(items.length);
 
-  // Uniform across the block: `3×5 @ 80% TM`.
-  if (sameReps && samePct) {
+  // Uniform across the block: `3×5 @ 80% TM`, or `3–5×8–10` when the movement
+  // carries no percentage at all (bodyweight work like a pull-up). Requiring a
+  // percentage here sent every unloaded movement to the per-item branch below,
+  // which repeated its rep range once per set — "8–10·8–10·8–10·8–10·8–10".
+  if (sameReps && (samePct || pcts.length === 0)) {
     const head = `${setLabel}×${reps[0]}`;
     return pcts.length > 0 ? `${head} @ ${pcts[0]}% ${tmLabel}` : head;
   }
   // Same reps, varying intensity: `5·5·5 @ 65/75/85% TM`.
   if (sameReps) {
     const head = items.map(() => reps[0]).join("·");
-    if (pcts.length > 0) return `${head} @ ${pcts.join("/")}% ${tmLabel}`;
-    return head;
+    return pctsComplete ? `${head} @ ${pcts.join("/")}% ${tmLabel}` : head;
   }
   // Varying reps: list each rep count.
   const head = reps.join("/");
-  if (pcts.length > 0) return `${head} @ ${pcts.join("/")}% ${tmLabel}`;
+  if (pctsComplete) return `${head} @ ${pcts.join("/")}% ${tmLabel}`;
   return head;
 }
 

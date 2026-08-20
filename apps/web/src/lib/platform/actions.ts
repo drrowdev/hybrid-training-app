@@ -473,7 +473,18 @@ const createProgramInstanceSchema = z
 export type CreateProgramInstanceInput = z.input<typeof createProgramInstanceSchema>;
 
 export type CreateProgramInstanceResult =
-  | { ok: true; blockId: string; programInstanceId: string; skipped: number }
+  | {
+      ok: true;
+      blockId: string;
+      programInstanceId: string;
+      skipped: number;
+      /**
+       * True when today's workout kept its existing plan because it is already
+       * under way. Set only on the edit path; lets the UI explain a save that
+       * otherwise looks like it did nothing.
+       */
+      todayLeftAsIs?: boolean;
+    }
   | { ok: false; error: string };
 
 export async function createProgramInstance(
@@ -1918,6 +1929,37 @@ async function updateForeignProgramInstance(
         ];
   });
 
+  // Today's non-rehab row is frozen on purpose (see forward-rewrite.ts), and a
+  // row that has already been started also blocks the in-place rehab refresh.
+  // Both are correct — you don't rewrite a workout someone is midway through —
+  // but they make an edit look like it did nothing. Report whether anything was
+  // actually held back so the UI can say so instead of staying silent.
+  const todayLeftAsIs = (futureRows ?? []).some((row, index) => {
+    const rewriteRow = existingFuture[index]!;
+    if (
+      rewriteRow.weekIndex !== currentWeekIndex ||
+      rewriteRow.dayIndex !== currentDayIndex ||
+      rewriteRow.role !== "strength"
+    ) {
+      return false;
+    }
+    const generated = sessionsForRewrite.find(
+      (session) =>
+        session.role === "strength" &&
+        session.weekIndex === rewriteRow.weekIndex &&
+        session.dayIndex === rewriteRow.dayIndex &&
+        session.slot === rewriteRow.slot,
+    );
+    if (!generated) return false;
+    // Compare against what this row will ACTUALLY hold after the refresh, so a
+    // rehab-only change that did land isn't reported as withheld.
+    const effective =
+      strengthPrescriptionUpdates.find((u) => u.id === rewriteRow.id)
+        ?.prescription ?? (row.prescription as Prescription);
+    return !prescriptionsEquivalent(effective, generated.prescription);
+  });
+
+
   // 5) Build replacement rows and execute the prescription refresh, deletes,
   // and inserts in one transaction. Every mutation carries its read snapshot,
   // so a concurrent start/edit aborts the entire rewrite.
@@ -2149,6 +2191,7 @@ async function updateForeignProgramInstance(
     blockId,
     programInstanceId: (pi?.id as string) ?? "",
     skipped: write.skipped.length,
+    todayLeftAsIs,
   };
 }
 

@@ -18,9 +18,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { PrescriptionItem } from "@hta/db";
 import {
   SessionPreviewBody,
-  splitPrescriptionChunks,
   type SessionPreviewInput,
 } from "../SessionPreviewBody";
+import { splitPrescriptionChunks } from "@/lib/plan/prescription-chunks";
 
 const session = (items: PrescriptionItem[]): SessionPreviewInput => ({
   id: "planned-1",

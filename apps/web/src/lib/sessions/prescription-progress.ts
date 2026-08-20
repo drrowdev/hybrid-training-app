@@ -133,6 +133,29 @@ const WORKING_STRENGTH_ITEM_KINDS = new Set([
 ]);
 
 /**
+ * Item indices the user is REQUIRED to resolve — log or explicitly skip —
+ * before a session counts as worked through.
+ *
+ * Warm-ups are excluded because they are auto-generated and routinely left
+ * unlogged, and optional items are excluded because opting out is the whole
+ * point of marking them optional. Counting either would mean a session could
+ * never reach "done", which matters wherever the UI treats "done" as a state
+ * change rather than a label.
+ */
+export function requiredStrengthItemIndices(
+  prescription: Prescription | null,
+): number[] {
+  if (!prescription?.items?.length) return [];
+  const out: number[] = [];
+  prescription.items.forEach((it, i) => {
+    if (!WORKING_STRENGTH_ITEM_KINDS.has(it.kind)) return;
+    if (it.optional) return;
+    out.push(i);
+  });
+  return out;
+}
+
+/**
  * Total programmed WORKING strength sets in a prescription (warm-ups excluded).
  * Each strength item is typically one working set (`sets` defaults to 1; the
  * planner repeats items across a wave), so this sums `sets ?? 1` over the working
