@@ -440,6 +440,57 @@ describe("collapseIdenticalSetItems", () => {
     expect(out).toHaveLength(3);
   });
 
+  it("collapses a linked station despite its per-set round stamps", () => {
+    // `applyRehabLinks` stamps `circuit.round` with the rotation index, so
+    // every set of a linked movement differs. Comparing the whole circuit meant
+    // a giant set never collapsed: a 3-set station read
+    // "1 × 10 · 1 × 10 · 1 × 10" instead of "3 × 10".
+    const circuit = {
+      id: "rehab.p1.link-1",
+      name: "Giant set",
+      position: 0,
+      size: 4,
+      rounds: 3,
+    };
+    const base = item({ kind: "tendon", movementSlug: "hip_abduction", reps: 10, sets: 1 });
+    const out = collapseIdenticalSetItems([
+      { ...base, circuit: { ...circuit, round: 0 } },
+      { ...base, circuit: { ...circuit, round: 1 } },
+      { ...base, circuit: { ...circuit, round: 2 } },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.sets).toBe(3);
+  });
+
+  it("keeps two different stations apart", () => {
+    const base = item({ kind: "tendon", movementSlug: "hip_abduction", reps: 10, sets: 1 });
+    const out = collapseIdenticalSetItems([
+      {
+        ...base,
+        circuit: { id: "rehab.p1.link-1", name: "Giant set", position: 0, size: 2, rounds: 1, round: 0 },
+      },
+      {
+        ...base,
+        circuit: { id: "rehab.p1.link-1", name: "Giant set", position: 1, size: 2, rounds: 1, round: 0 },
+      },
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
+  it("never merges a linked set into an unlinked one", () => {
+    // A station deeper than the rotation keeps its tail as ordinary solo work,
+    // and that tail is genuinely different work — full rest, not in the circuit.
+    const base = item({ kind: "tendon", movementSlug: "hip_adduction", reps: 15, sets: 1 });
+    const out = collapseIdenticalSetItems([
+      {
+        ...base,
+        circuit: { id: "rehab.p1.link-1", name: "Giant set", position: 0, size: 4, rounds: 3, round: 2 },
+      },
+      base,
+    ]);
+    expect(out).toHaveLength(2);
+  });
+
   it("collapses required and optional slots when a structured set range exists", () => {
     const base = item({
       kind: "back_off",

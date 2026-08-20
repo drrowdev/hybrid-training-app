@@ -466,11 +466,21 @@ function sameExceptSets(a: PrescriptionItem, b: PrescriptionItem): boolean {
     const {
       sets: _sets,
       optional: _optional,
+      circuit: _circuit,
       ...rest
     } = it as PrescriptionItem & { sets?: number; optional?: boolean };
     void _sets;
+    // `circuit.round` counts the rotation and therefore DIFFERS on every set of
+    // a linked movement, which stopped a superset or giant set from collapsing
+    // at all: a 3-set station read "1 × 10 · 1 × 10 · 1 × 10" instead of
+    // "3 × 10". The rest of the circuit still participates, so two stations —
+    // or a linked and an unlinked run of the same movement — never merge.
+    const circuit = _circuit
+      ? { id: _circuit.id, name: _circuit.name, position: _circuit.position, size: _circuit.size, rounds: _circuit.rounds }
+      : undefined;
+    const withCircuit = { ...rest, ...(circuit ? { circuit } : {}) };
     return JSON.stringify(
-      it.setRange ? rest : { ...rest, optional: _optional },
+      it.setRange ? withCircuit : { ...withCircuit, optional: _optional },
     );
   };
   return stripSets(a) === stripSets(b);
