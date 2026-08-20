@@ -360,8 +360,8 @@ export default async function PlanPage({
             background: "var(--cp-surface)",
           }}
         >
-          Today&rsquo;s workout is already under way, so it kept its current
-          plan. Your changes apply to the upcoming workouts.
+          Today&rsquo;s workout has changes of its own, so it kept its current
+          plan. Your edit applies to the upcoming workouts.
         </div>
       )}
       {!seasonEnabled && <SeasonDiscoveryNudge />}

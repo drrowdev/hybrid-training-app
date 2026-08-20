@@ -8,6 +8,7 @@ import {
   swapMovementInPrescription,
   addMovementToPrescription,
   hasUserEditedPrescription,
+  prescriptionCarriesUserState,
 } from "../prescription-mutations";
 import type { Prescription } from "@hta/db";
 import type { WarmupScheme } from "@/lib/planner/warmups";
@@ -886,6 +887,37 @@ describe("hasUserEditedPrescription", () => {
           },
         ],
       }),
+    ).toBe(true);
+  });
+});
+
+describe("prescriptionCarriesUserState", () => {
+  it("preserves a session the user accepted an adjustment on", () => {
+    // These markers are the ONLY record that the user accepted a trim, a
+    // skipped deload or an early deload — regenerating the row would erase
+    // both the adjustment and any trace it happened.
+    expect(prescriptionCarriesUserState(base)).toBe(false);
+    expect(
+      prescriptionCarriesUserState({ ...base, autoregVolumeScale: 0.7 }),
+    ).toBe(true);
+    expect(
+      prescriptionCarriesUserState({ ...base, deloadSkipped: true }),
+    ).toBe(true);
+    expect(prescriptionCarriesUserState({ ...base, earlyDeload: true })).toBe(
+      true,
+    );
+  });
+
+  it("still covers everything a movement edit covers", () => {
+    expect(prescriptionCarriesUserState({ ...base, userEdited: true })).toBe(
+      true,
+    );
+  });
+
+  it("treats a full-scale trim marker as user state", () => {
+    // `autoregVolumeScale: 1` is a recorded decision, not an absence.
+    expect(
+      prescriptionCarriesUserState({ ...base, autoregVolumeScale: 1 }),
     ).toBe(true);
   });
 });

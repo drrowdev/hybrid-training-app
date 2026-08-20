@@ -77,9 +77,20 @@ describe("planForwardOnlyRewrite", () => {
     // Week-1 strength rows are deleted+re-created; the new cardio row is inserted.
     expect(plan.deleteIds).toEqual(["s1-0", "s1-2", "s1-4"]);
     const inserted = plan.insertIndices.map((i) => newSessions[i]!);
-    expect(inserted.every((s) => s.weekIndex === 1)).toBe(true);
-    expect(inserted.some((s) => s.dayIndex === 6)).toBe(true); // cardio added
-    expect(inserted).toHaveLength(4); // 3 strength + 1 cardio
+    // Today (w0 d6) is the very day the new cardio slot lands on, and there is
+    // no existing row there, so it is created too — adding a day starting today
+    // should not silently wait until next week.
+    expect(inserted).toEqual([
+      { weekIndex: 0, dayIndex: 6, slot: "single" },
+      { weekIndex: 1, dayIndex: 0, slot: "single" },
+      { weekIndex: 1, dayIndex: 2, slot: "single" },
+      { weekIndex: 1, dayIndex: 4, slot: "single" },
+      { weekIndex: 1, dayIndex: 6, slot: "single" },
+    ]);
+    // Nothing from earlier in the current week is resurrected.
+    expect(
+      inserted.some((s) => s.weekIndex === 0 && s.dayIndex < 6),
+    ).toBe(false);
   });
 
   it("preserves a future row that was started/skipped and never re-inserts its slot", () => {
@@ -114,7 +125,7 @@ describe("planForwardOnlyRewrite", () => {
     ).toBe(6);
   });
 
-  it("regenerates untouched sessions later in the current week", () => {
+  it("regenerates untouched sessions from today onward in the current week", () => {
     const newSessions: NewSessionLite[] = [
       ...strengthWeek(1, [0, 3, 5]),
       ...strengthWeek(2, [0, 3, 5]),
@@ -135,7 +146,11 @@ describe("planForwardOnlyRewrite", () => {
       newSessions,
     });
 
-    expect(plan.deleteIds.sort()).toEqual(["later-a", "later-b", "next"]);
+    // A pristine today is regenerated like any other upcoming day — saving a
+    // program edit is an explicit instruction, not a suggestion.
+    expect(plan.deleteIds.sort()).toEqual(
+      ["later-a", "later-b", "next", "today"].sort(),
+    );
     const inserted = plan.insertIndices.map((index) => newSessions[index]!);
     expect(inserted).toEqual([
       { weekIndex: 1, dayIndex: 3, slot: "single" },
@@ -144,6 +159,48 @@ describe("planForwardOnlyRewrite", () => {
       { weekIndex: 2, dayIndex: 3, slot: "single" },
       { weekIndex: 2, dayIndex: 5, slot: "single" },
     ]);
+  });
+
+  it("preserves today when the user has invested in it", () => {
+    const newSessions: NewSessionLite[] = strengthWeek(1, [2, 4]);
+    const plan = planForwardOnlyRewrite({
+      currentWeekIndex: 1,
+      currentDayIndex: 2,
+      writeWeeks: 3,
+      existingFuture: [
+        { id: "today", weekIndex: 1, dayIndex: 2, slot: "single", touched: true },
+        { id: "later", weekIndex: 1, dayIndex: 4, slot: "single", touched: false },
+      ],
+      newSessions,
+    });
+
+    expect(plan.deleteIds).toEqual(["later"]);
+    // Today's slot is not re-inserted — the preserved row stays.
+    expect(
+      plan.insertIndices.map((index) => newSessions[index]!.dayIndex),
+    ).toEqual([4]);
+  });
+
+  it("regenerates only the untouched slot of a two-a-day today", () => {
+    const newSessions: NewSessionLite[] = [
+      { weekIndex: 1, dayIndex: 2, slot: "am", role: "strength" },
+      { weekIndex: 1, dayIndex: 2, slot: "pm", role: "strength" },
+    ];
+    const plan = planForwardOnlyRewrite({
+      currentWeekIndex: 1,
+      currentDayIndex: 2,
+      writeWeeks: 2,
+      existingFuture: [
+        { id: "am", weekIndex: 1, dayIndex: 2, slot: "am", role: "strength", touched: true },
+        { id: "pm", weekIndex: 1, dayIndex: 2, slot: "pm", role: "strength", touched: false },
+      ],
+      newSessions,
+    });
+
+    expect(plan.deleteIds).toEqual(["pm"]);
+    expect(
+      plan.insertIndices.map((index) => newSessions[index]!.slot),
+    ).toEqual(["pm"]);
   });
 
   it("preserves a touched upcoming session in the current week", () => {
@@ -177,7 +234,7 @@ describe("planForwardOnlyRewrite", () => {
     ).toEqual([6]);
   });
 
-  it("removes an untouched legacy rehab slot when it is embedded into today's strength", () => {
+  it("replaces an untouched today, legacy rehab slot and all, with the embedded strength row", () => {
     const newSessions: NewSessionLite[] = [
       {
         weekIndex: 1,
@@ -211,7 +268,42 @@ describe("planForwardOnlyRewrite", () => {
       newSessions,
     });
 
+    expect(plan.deleteIds.sort()).toEqual(["today-rehab", "today-strength"]);
+    expect(plan.insertIndices).toEqual([0]);
+  });
+
+  it("keeps a touched today strength row while still clearing its untouched rehab slot", () => {
+    const newSessions: NewSessionLite[] = [
+      { weekIndex: 1, dayIndex: 0, slot: "single", role: "strength" },
+    ];
+    const plan = planForwardOnlyRewrite({
+      currentWeekIndex: 1,
+      currentDayIndex: 0,
+      writeWeeks: 3,
+      existingFuture: [
+        {
+          id: "today-strength",
+          weekIndex: 1,
+          dayIndex: 0,
+          slot: "single",
+          role: "strength",
+          touched: true,
+        },
+        {
+          id: "today-rehab",
+          weekIndex: 1,
+          dayIndex: 0,
+          slot: "pm",
+          role: "rehab",
+          touched: false,
+        },
+      ],
+      newSessions,
+    });
+
     expect(plan.deleteIds).toEqual(["today-rehab"]);
+    // The preserved strength slot is not re-inserted; its rehab section is
+    // refreshed in place by the caller instead.
     expect(plan.insertIndices).toEqual([]);
   });
 

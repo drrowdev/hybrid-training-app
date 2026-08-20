@@ -76,7 +76,7 @@ import {
 } from "./forward-rewrite";
 import { todayYmd, mondayOfYmd, daysBetweenYmd } from "@/lib/dates";
 import { programSetupAuditInput } from "./setup-audit";
-import { hasUserEditedPrescription } from "@/lib/sessions/prescription-mutations";
+import { prescriptionCarriesUserState } from "@/lib/sessions/prescription-mutations";
 import { inferProgramStartWeekIndex } from "@/lib/plan/program-overview";
 import {
   customizationDays,
@@ -1793,6 +1793,18 @@ async function updateForeignProgramInstance(
     dayIndex: number,
   ): `${number}-${number}` =>
     `${weekIndex}-${dayIndex}`;
+  // A limitation swap/drop rewrites a session's items without leaving any
+  // marker on the prescription, so the audit table is the only way to know the
+  // user accepted an adjustment on that row. Best-effort: losing this lookup
+  // must not fail the edit, it only makes preservation less generous.
+  const { data: limitationRows } = await supabase
+    .from("limitation_adjustments")
+    .select("session_id")
+    .eq("user_id", user.id)
+    .eq("block_id", blockId);
+  const limitationAdjustedIds = new Set(
+    (limitationRows ?? []).map((row) => row.session_id as string),
+  );
   const unavailableStrengthDays = new Set(
     (futureRows ?? []).flatMap((row) =>
       row.role === "strength" &&
@@ -1811,7 +1823,8 @@ async function updateForeignProgramInstance(
       row.skipped_at != null ||
       row.planned_at != null ||
       (typeof row.notes === "string" && row.notes.trim() !== "") ||
-      hasUserEditedPrescription(row.prescription as Prescription | null);
+      limitationAdjustedIds.has(row.id as string) ||
+      prescriptionCarriesUserState(row.prescription as Prescription | null);
     if (row.role === "rehab" && !touched) {
       const priorRehab = priorRehabByDay.get(key);
       touched =
@@ -1862,21 +1875,21 @@ async function updateForeignProgramInstance(
     })),
   });
 
-  // Preserved strength rows (today, plus user-touched future rows) keep their
-  // core work. Refresh only an untouched rehab section; a touched standalone
+  // A row the plan keeps (touched, or earlier than today) holds on to its core
+  // work. Refresh only an unedited rehab section on it; a touched standalone
   // rehab row suppresses embedding on that day so the obligation is not doubled.
+  // Preservation is read off the plan rather than re-derived — a row that is
+  // being deleted must not also receive an in-place update.
+  const deleteIdSet = new Set(plan.deleteIds);
   const strengthPrescriptionUpdates = (futureRows ?? []).flatMap((row, index) => {
     const rewriteRow = existingFuture[index]!;
-    const isToday =
-      rewriteRow.weekIndex === currentWeekIndex &&
-      rewriteRow.dayIndex === currentDayIndex;
     const isPast =
       rewriteRow.weekIndex === currentWeekIndex &&
       rewriteRow.dayIndex < currentDayIndex;
     const isPreservedStrength =
       !isPast &&
       rewriteRow.role === "strength" &&
-      (isToday || rewriteRow.touched);
+      !deleteIdSet.has(rewriteRow.id);
     if (
       !isPreservedStrength ||
       row.completed_session_id != null ||
@@ -1929,17 +1942,19 @@ async function updateForeignProgramInstance(
         ];
   });
 
-  // Today's non-rehab row is frozen on purpose (see forward-rewrite.ts), and a
-  // row that has already been started also blocks the in-place rehab refresh.
-  // Both are correct — you don't rewrite a workout someone is midway through —
-  // but they make an edit look like it did nothing. Report whether anything was
-  // actually held back so the UI can say so instead of staying silent.
+  // Today's workout is regenerated like any other day UNLESS the user has
+  // invested in it — started it, rescheduled it, annotated it, or accepted an
+  // adjustment on it. Then it keeps its own plan, which makes the save look
+  // like it did nothing. Report whether that actually held something back so
+  // the UI can say so instead of staying silent.
   const todayLeftAsIs = (futureRows ?? []).some((row, index) => {
     const rewriteRow = existingFuture[index]!;
     if (
       rewriteRow.weekIndex !== currentWeekIndex ||
       rewriteRow.dayIndex !== currentDayIndex ||
-      rewriteRow.role !== "strength"
+      rewriteRow.role !== "strength" ||
+      // Being replaced outright — nothing was withheld.
+      deleteIdSet.has(rewriteRow.id)
     ) {
       return false;
     }
