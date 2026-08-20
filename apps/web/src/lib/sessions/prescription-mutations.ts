@@ -299,6 +299,31 @@ export function hasUserEditedPrescription(
 }
 
 /**
+ * Does this planned session carry state the user accepted, such that
+ * regenerating the row from the program would throw that state away?
+ *
+ * Broader than `hasUserEditedPrescription`, which only covers movement edits.
+ * A volume trim, a skipped deload, and an early deload are all offers the user
+ * explicitly accepted; the prescription was rewritten in place and the marker
+ * is the only record that it happened.
+ *
+ * Limitation-response swaps are NOT visible here — they rewrite items without
+ * leaving a marker — so the rewrite path additionally preserves any row named
+ * in `limitation_adjustments`.
+ */
+export function prescriptionCarriesUserState(
+  prescription: Prescription | null | undefined,
+): boolean {
+  if (!prescription) return false;
+  if (hasUserEditedPrescription(prescription)) return true;
+  return (
+    prescription.autoregVolumeScale != null ||
+    prescription.deloadSkipped === true ||
+    prescription.earlyDeload === true
+  );
+}
+
+/**
  * Returns a NEW prescription with item[itemIndex] swapped to the given
  * movement. Records ``meta.swappedFrom = { movementId, movementName }``
  * on the mutated item — preserving the very-first original through

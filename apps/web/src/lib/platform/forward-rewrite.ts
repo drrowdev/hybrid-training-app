@@ -4,12 +4,14 @@
  * Given today's (week, day) boundary, a freshly materialised set of sessions,
  * and the block's existing rows from the current week onward, it decides —
  * without touching the DB — which untouched upcoming rows to delete and which
- * new rows to insert. Past rows, today's non-rehab rows, and any started or
- * skipped row are preserved. An untouched legacy rehab row scheduled today may
- * be removed while its section is refreshed in-place on today's strength row.
+ * new rows to insert. Past rows and any touched row are preserved; everything
+ * from today forward that the user has not invested in is regenerated.
  *
- * "Forward-only" means past calendar slots are frozen. Today's rehab data is
- * the narrow exception because it is explicitly user-authored protocol data.
+ * "Forward-only" means past calendar slots are frozen. Today is NOT frozen:
+ * saving a program edit is an explicit instruction, and a pristine unstarted
+ * workout today should follow it like any other day. `touched` is what keeps a
+ * workout the user has started, rescheduled, annotated or customised safe —
+ * see the caller, which is where that predicate is assembled.
  */
 
 export interface ExistingFutureRow {
@@ -78,26 +80,18 @@ export function planForwardOnlyRewrite(args: {
     row.weekIndex < currentWeekIndex ||
     (row.weekIndex === currentWeekIndex &&
       row.dayIndex < currentDayIndex);
-  const isTodayNonRehab = (row: {
-    weekIndex: number;
-    dayIndex: number;
-    role?: string;
-  }) =>
-    row.weekIndex === currentWeekIndex &&
-    row.dayIndex === currentDayIndex &&
-    row.role !== "rehab";
 
   const preserved = new Set<string>();
   const deleteIds: string[] = [];
   for (const r of existingFuture) {
-    if (isPast(r) || isTodayNonRehab(r)) continue;
+    if (isPast(r)) continue;
     if (r.touched) preserved.add(key(r));
     else deleteIds.push(r.id);
   }
 
   const insertIndices: number[] = [];
   newSessions.forEach((s, i) => {
-    if (isPast(s) || isTodayNonRehab(s)) return;
+    if (isPast(s)) return;
     if (preserved.has(key(s))) return; // keep the logged/skipped row instead
     insertIndices.push(i);
   });
