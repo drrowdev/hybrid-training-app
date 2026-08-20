@@ -52,6 +52,43 @@ export function localProtocolIdFor(
   return existing[libraryProtocolId] ?? libraryProtocolId;
 }
 
+/**
+ * Match a program's OWN rehab protocols to library rows by content.
+ *
+ * Needed because a program can carry rehab with no binding row: migration 0134
+ * seeds bindings only for programs it matched, and a protocol added before the
+ * library existed has none. Without a match the wizard mints a fresh local id
+ * for it, which orphans that program's day assignments — every rehab day
+ * silently falls back to "No rehab".
+ *
+ * Matching is exact on `{name, items}` first, then on name alone when that name
+ * is unambiguous in the library. Anything else is left unmatched rather than
+ * guessed: a wrong match would attach the wrong movements to a live plan.
+ */
+export function matchProtocolsToLibrary(
+  programProtocols: ReadonlyArray<{ id: string; name: string; items: unknown[] }>,
+  library: ReadonlyArray<{ id: string; name: string; items: unknown[] }>,
+): Record<string, string> {
+  const byName = new Map<string, string[]>();
+  for (const entry of library) {
+    const key = entry.name.trim().toLowerCase();
+    byName.set(key, [...(byName.get(key) ?? []), entry.id]);
+  }
+  const bindings: Record<string, string> = {};
+  for (const protocol of programProtocols) {
+    const nameKey = protocol.name.trim().toLowerCase();
+    const candidates = byName.get(nameKey) ?? [];
+    const exact = library.find(
+      (entry) =>
+        entry.name.trim().toLowerCase() === nameKey &&
+        JSON.stringify(entry.items) === JSON.stringify(protocol.items),
+    );
+    const matched = exact ?? (candidates.length === 1 ? library.find((e) => e.id === candidates[0]) : undefined);
+    if (matched) bindings[protocol.id] = matched.id;
+  }
+  return bindings;
+}
+
 export type SelectedProtocol = {
   /** The library row id. */
   libraryId: string;

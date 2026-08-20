@@ -92,28 +92,40 @@ export const listRehabProtocols = cache(async function listRehabProtocols(): Pro
 
   const { data: bindings, error: bindingError } = await supabase
     .from("program_rehab_bindings")
-    .select(
-      "rehab_protocol_id, program_instances!inner(display_name, status, deleted_at)",
-    )
+    .select("rehab_protocol_id, program_instance_id")
     .eq("user_id", user.id);
   if (bindingError && !isMissingTable(bindingError)) {
     throw new Error(bindingError.message);
   }
 
+  // Resolved with a SECOND plain query rather than a PostgREST embed. The embed
+  // (`program_instances!inner(...)`) depends on relationship inference, and
+  // `program_rehab_bindings` has three foreign keys — when that inference is
+  // off, the join silently yields nothing and every protocol reads "Not in any
+  // program" while actually being attached.
+  const instanceIds = [...new Set((bindings ?? []).map((b) => b.program_instance_id))];
+  const liveInstances = new Map<string, string>();
+  if (instanceIds.length > 0) {
+    const { data: instances, error: instanceError } = await supabase
+      .from("program_instances")
+      .select("id, display_name, status, deleted_at")
+      .eq("user_id", user.id)
+      .in("id", instanceIds);
+    if (instanceError) throw new Error(instanceError.message);
+    for (const instance of instances ?? []) {
+      if (instance.status !== "active" || instance.deleted_at != null) continue;
+      liveInstances.set(
+        instance.id as string,
+        (instance.display_name as string | null) ?? "your program",
+      );
+    }
+  }
+
   const usedBy = new Map<string, string[]>();
   for (const binding of bindings ?? []) {
-    const instance = (
-      Array.isArray(binding.program_instances)
-        ? binding.program_instances[0]
-        : binding.program_instances
-    ) as
-      | { display_name?: string | null; status?: string; deleted_at?: string | null }
-      | null;
-    if (!instance || instance.status !== "active" || instance.deleted_at != null) {
-      continue;
-    }
+    const label = liveInstances.get(binding.program_instance_id);
+    if (!label) continue;
     const names = usedBy.get(binding.rehab_protocol_id) ?? [];
-    const label = instance.display_name ?? "your program";
     if (!names.includes(label)) names.push(label);
     usedBy.set(binding.rehab_protocol_id, names);
   }

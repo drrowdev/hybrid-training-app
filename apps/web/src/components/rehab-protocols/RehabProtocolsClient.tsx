@@ -385,30 +385,48 @@ function ProtocolEditor({
 
       {draft.items.map((item, index) => {
         const station = draft.links.find((link) => link.members.includes(item.movementId));
+        const previous = draft.items[index - 1];
+        const next = draft.items[index + 1];
+        const sameStation = (other: RehabProtocolItem | undefined) =>
+          !!station && !!other && station.members.includes(other.movementId);
+        const isFirstOfStation = !!station && !sameStation(previous);
+        const isLastOfStation = !!station && !sameStation(next);
+        // Position within the station, counted over the protocol's rows so the
+        // label reads "2 of 4" rather than repeating an anonymous chip.
+        const stationRows = station
+          ? draft.items.filter((candidate) => station.members.includes(candidate.movementId))
+          : [];
+        const positionInStation = station
+          ? stationRows.findIndex((candidate) => candidate === item) + 1
+          : 0;
         return (
-          <section
-            key={`${item.movementId}-${index}`}
-            className="cp-card"
-            data-testid={`rehab-protocol-item-${index}`}
-            style={{ padding: 12, display: "grid", gap: 10 }}
-          >
-            {station && (
-              <span
+          <div key={`${item.movementId}-${index}`} style={{ display: "grid" }}>
+            {isFirstOfStation && station && (
+              <div
+                data-testid={`rehab-protocol-station-${station.id}`}
                 style={{
-                  justifySelf: "start",
-                  display: "inline-flex",
+                  display: "flex",
                   alignItems: "center",
-                  gap: 6,
-                  fontSize: 10,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.08em",
-                  color: "var(--cp-accent)",
-                  border: "1px solid var(--cp-accent-soft)",
-                  borderRadius: 20,
-                  padding: "2px 4px 2px 8px",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  background: "var(--cp-accent-soft)",
+                  border: "1px solid var(--cp-accent)",
+                  borderBottom: 0,
+                  borderRadius: "10px 10px 0 0",
+                  padding: "7px 12px",
                 }}
               >
-                {station.name}
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                    color: "var(--cp-accent)",
+                  }}
+                >
+                  {station.name} · {stationRows.length} movements back to back
+                </span>
                 <button
                   type="button"
                   onClick={() =>
@@ -422,17 +440,45 @@ function ProtocolEditor({
                   style={{
                     background: "none",
                     border: 0,
-                    color: "inherit",
+                    color: "var(--cp-accent)",
                     cursor: "pointer",
                     font: "inherit",
-                    lineHeight: 1,
-                    padding: "0 4px",
+                    fontSize: 11,
+                    padding: 0,
+                    textDecoration: "underline",
                   }}
                 >
-                  ✕
+                  Unlink
                 </button>
-              </span>
+              </div>
             )}
+            <section
+              className="cp-card"
+              data-testid={`rehab-protocol-item-${index}`}
+              style={{
+                padding: 12,
+                display: "grid",
+                gap: 10,
+                // A linked run reads as ONE block: the accent rail runs down
+                // every card in the station, and only the outer corners round.
+                ...(station
+                  ? {
+                      borderColor: "var(--cp-accent)",
+                      borderLeftWidth: 3,
+                      borderTopWidth: isFirstOfStation ? 1 : 0,
+                      borderRadius: isLastOfStation ? "0 0 10px 10px" : 0,
+                    }
+                  : {}),
+              }}
+            >
+              {station && (
+                <span
+                  className="mono"
+                  style={{ fontSize: 10.5, color: "var(--cp-accent)" }}
+                >
+                  {positionInStation} of {stationRows.length}
+                </span>
+              )}
             <div
               style={{
                 display: "flex",
@@ -552,7 +598,8 @@ function ProtocolEditor({
                 style={{ width: "100%", minWidth: 0 }}
               />
             </label>
-          </section>
+            </section>
+          </div>
         );
       })}
 

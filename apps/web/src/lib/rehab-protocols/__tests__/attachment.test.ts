@@ -9,6 +9,7 @@ import {
   attachProtocols,
   bindingsByLibraryId,
   localProtocolIdFor,
+  matchProtocolsToLibrary,
   pruneAssignments,
   pruneRehabLinks,
 } from "../attachment";
@@ -128,5 +129,71 @@ describe("pruneRehabLinks", () => {
     expect(
       pruneRehabLinks({ "day-1": ["keep"], "rehab.protocol-9": ["drop"] }, attached),
     ).toEqual({ "day-1": ["keep"] });
+  });
+});
+
+describe("matchProtocolsToLibrary", () => {
+  const items = [{ movementId: "m1", sets: 3, reps: 10 }];
+  const other = [{ movementId: "m2", sets: 4, reps: 8 }];
+
+  it("matches a program's protocol to an identical library row", () => {
+    // The case that matters: a program carrying rehab with NO binding row.
+    // Without a match the wizard mints a new local id, which orphans that
+    // program's day assignments and silently empties every rehab day.
+    expect(
+      matchProtocolsToLibrary(
+        [{ id: "protocol-1", name: "Elbow", items }],
+        [{ id: LIB_A, name: "Elbow", items }],
+      ),
+    ).toEqual({ "protocol-1": LIB_A });
+  });
+
+  it("falls back to an unambiguous name when the items have drifted", () => {
+    expect(
+      matchProtocolsToLibrary(
+        [{ id: "protocol-1", name: "Elbow", items }],
+        [{ id: LIB_A, name: "Elbow", items: other }],
+      ),
+    ).toEqual({ "protocol-1": LIB_A });
+  });
+
+  it("prefers the exact content match when a name is duplicated", () => {
+    expect(
+      matchProtocolsToLibrary(
+        [{ id: "protocol-1", name: "Elbow", items }],
+        [
+          { id: LIB_A, name: "Elbow", items: other },
+          { id: LIB_B, name: "Elbow", items },
+        ],
+      ),
+    ).toEqual({ "protocol-1": LIB_B });
+  });
+
+  it("leaves an ambiguous name unmatched rather than guessing", () => {
+    // A wrong match attaches the wrong movements to a live plan.
+    expect(
+      matchProtocolsToLibrary(
+        [{ id: "protocol-1", name: "Elbow", items }],
+        [
+          { id: LIB_A, name: "Elbow", items: other },
+          { id: LIB_B, name: "Elbow", items: other },
+        ],
+      ),
+    ).toEqual({});
+  });
+
+  it("ignores case and surrounding space in the name", () => {
+    expect(
+      matchProtocolsToLibrary(
+        [{ id: "protocol-1", name: "  golfer's ELBOW  ", items }],
+        [{ id: LIB_A, name: "Golfer's elbow", items }],
+      ),
+    ).toEqual({ "protocol-1": LIB_A });
+  });
+
+  it("matches nothing when the library is empty", () => {
+    expect(matchProtocolsToLibrary([{ id: "protocol-1", name: "Elbow", items }], [])).toEqual(
+      {},
+    );
   });
 });
