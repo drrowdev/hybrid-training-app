@@ -624,12 +624,15 @@ describe("SessionDrawer — drag handle + sheet markup", () => {
       '<span class="n">4<span class="optional-marker"> · optional</span></span>',
     );
     expect(html).toContain(
-      '<span class="v">65% 1RM × 8–10</span>',
+      '<span class="v"><span>65% 1RM × 8–10</span></span>',
     );
-    expect(html).not.toContain(
-      '<span class="v">65% 1RM × 8–10 · optional</span>',
-    );
+    expect(html).not.toContain("65% 1RM × 8–10 · optional");
     expect(html).toContain("overflow-wrap: anywhere");
+    // The name column must stay able to shrink AND the value column must not be
+    // an intrinsic `auto` track, or a long value squeezes the movement name to
+    // zero width and `overflow-wrap: anywhere` breaks it one letter per line.
+    expect(html).toContain("grid-template-columns: 36px minmax(0, 1fr) minmax(0, auto)");
+    expect(html).not.toMatch(/\.set-row \.v \{[^}]*white-space: nowrap/);
     expect(html).toMatch(
       /@media\s*\(\s*max-width:\s*520px\s*\)[\s\S]*?optional-set-row[\s\S]*?grid-template-columns:\s*88px/,
     );

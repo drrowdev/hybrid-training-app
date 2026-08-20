@@ -33,6 +33,7 @@ import {
   segmentSupersetSections,
 } from "@/lib/plan/superset-grouping";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
+import { splitPrescriptionChunks } from "@/lib/plan/prescription-chunks";
 import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import { CardioCard } from "./CardioCard";
 import { makeShouldHideHeading } from "@/lib/session/heading-dedup";
@@ -378,21 +379,6 @@ const movementHeadingStyle: React.CSSProperties = {
   color: "var(--cp-text)",
   margin: 0,
 };
-
-/**
- * Split a formatted prescription value into its atomic chunks.
- *
- * `formatPrescriptionItem` joins independent facts with " · " ("3 × 15s hold ·
- * each side"), and the row renderers join multiple items the same way. Every
- * chunk is a single indivisible fact — "3 × 15" must never be read as "3 ×" on
- * one line and "15" on the next.
- */
-export function splitPrescriptionChunks(value: string): string[] {
-  return value
-    .split(" · ")
-    .map((chunk) => chunk.trim())
-    .filter((chunk) => chunk.length > 0);
-}
 
 /**
  * The right-hand value of a prescription row ("3 × 15", "4 sets · top 85% × 3").

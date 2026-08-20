@@ -24,6 +24,47 @@ import { enqueue as outboxEnqueue } from "@/lib/offline/outbox";
 import { clearResume } from "@/lib/sessions/session-resume";
 import { useSessionLoggingState } from "./SessionLoggingState";
 
+/**
+ * Where the Finish action belongs right now.
+ *
+ * While required work is outstanding the big button would sit directly above
+ * the fixed dock's "Log set" — the control the user taps dozens of times a
+ * session — so Finish moves into the ⋯ menu, which costs a deliberate extra
+ * tap. Once nothing required is left, Finish is the obvious next action and
+ * takes the primary slot back.
+ */
+export function finishPlacement(remainingRequiredSets: number): "bottom" | "menu" {
+  return remainingRequiredSets > 0 ? "menu" : "bottom";
+}
+
+type FinishSlotProps = {
+  sessionId: string;
+  disabled: boolean;
+  subtitle?: string | null;
+  hybrid?: boolean;
+  testId?: string;
+};
+
+/** Renders the Finish bar at the end of the content, or nothing when the
+ *  action currently belongs in the ⋯ menu. */
+export function FinishSessionBottomSlot(props: FinishSlotProps) {
+  const loggingState = useSessionLoggingState();
+  if (finishPlacement(loggingState?.remainingRequiredSets ?? 0) !== "bottom") {
+    return null;
+  }
+  return <FinishSessionBar {...props} variant="bottom" />;
+}
+
+/** Renders the Finish row inside the ⋯ menu, or nothing when the action
+ *  currently owns the primary slot at the end of the content. */
+export function FinishSessionMenuSlot(props: FinishSlotProps) {
+  const loggingState = useSessionLoggingState();
+  if (finishPlacement(loggingState?.remainingRequiredSets ?? 0) !== "menu") {
+    return null;
+  }
+  return <FinishSessionBar {...props} variant="menu" />;
+}
+
 export function FinishSessionBar({
   sessionId,
   variant,
@@ -33,7 +74,14 @@ export function FinishSessionBar({
   testId = "finish-stickybar",
 }: {
   sessionId: string;
-  variant: "bottom" | "banner";
+  /**
+   * `bottom` — full-width button at the end of the session content.
+   * `banner` — compact pill in the "Session in progress" banner.
+   * `menu`   — row inside the header's ⋯ menu, used while required work is
+   *            still outstanding so the primary Finish button isn't sitting a
+   *            thumb-width from "Log set" in the fixed dock.
+   */
+  variant: "bottom" | "banner" | "menu";
   disabled: boolean;
   /** Optional small text rendered under the bottom-variant button. */
   subtitle?: string | null;
@@ -161,6 +209,70 @@ export function FinishSessionBar({
       root.style.removeProperty("--cp-finishbar-clearance");
     };
   }, [publishesClearance]);
+
+  if (variant === "menu") {
+    if (effectiveDisabled) {
+      return (
+        <span
+          data-testid={testId}
+          data-armed="false"
+          aria-disabled="true"
+          style={{
+            display: "block",
+            padding: "8px 10px",
+            fontSize: 13,
+            color: "var(--cp-text-muted)",
+            cursor: "not-allowed",
+          }}
+        >
+          {label}
+        </span>
+      );
+    }
+    if (savedOffline) {
+      return (
+        <span
+          data-testid="finish-saved-offline"
+          style={{ display: "block", padding: "8px 10px", fontSize: 13 }}
+        >
+          Saved offline — finishes when you reconnect
+        </span>
+      );
+    }
+    return (
+      <form onSubmit={handleSubmit} data-testid={testId} data-armed="true">
+        <input type="hidden" name="sessionId" value={sessionId} />
+        <button
+          type="submit"
+          role="menuitem"
+          disabled={finishing}
+          style={{
+            display: "block",
+            width: "100%",
+            textAlign: "left",
+            padding: "8px 10px",
+            border: 0,
+            borderRadius: 8,
+            background: "transparent",
+            color: "var(--cp-text)",
+            font: "inherit",
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          {finishing ? "Finishing…" : "Finish session"}
+        </button>
+        {finishError && (
+          <div
+            role="alert"
+            style={{ color: "var(--cp-danger)", fontSize: 12, padding: "0 10px 6px" }}
+          >
+            {finishError}
+          </div>
+        )}
+      </form>
+    );
+  }
 
   if (variant === "banner") {
     if (effectiveDisabled) {

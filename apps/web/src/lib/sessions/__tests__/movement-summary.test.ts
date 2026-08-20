@@ -133,6 +133,32 @@ describe("summariseGroupForHeader — not started", () => {
     );
   });
 
+  it("bodyweight supplemental work collapses instead of repeating the rep range per set", () => {
+    // A pull-up carries no percentTm. The compact branch used to require a
+    // percentage, so every unloaded movement rendered "8–10·8–10·8–10·8–10·8–10".
+    const ranged = {
+      movementId: "pullup",
+      kind: "back_off" as const,
+      sets: 1,
+      reps: 8,
+      setRange: { min: 3, max: 5 },
+      repRange: { min: 8, max: 10 },
+    };
+    const g = groupOf([ranged, ranged, ranged, ranged, ranged]);
+    expect(summariseGroupForHeader(g, [], undefined, "1RM")).toBe("3–5×8–10");
+  });
+
+  it("omits intensity when only some sets carry a percentage", () => {
+    // Filtering the gaps out would print "5·5·5 @ 65/85%" — three sets against
+    // two percentages, silently mis-assigned.
+    const g = groupOf([
+      { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 65 },
+      { movementId: "sq", kind: "main", sets: 1, reps: 5 },
+      { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 85 },
+    ]);
+    expect(summariseGroupForHeader(g, [])).toBe("5·5·5");
+  });
+
   it("mixed main + back-off renders both blocks, truncated tastefully", () => {
     const g = groupOf([
       { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 65 },

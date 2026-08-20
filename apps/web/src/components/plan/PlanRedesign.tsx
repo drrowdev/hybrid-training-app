@@ -33,10 +33,12 @@ import {
   useRef,
   useState,
   useTransition,
+  Fragment,
   type DragEvent,
   type ReactNode,
 } from "react";
 import { formatPrescriptionItem } from "@/lib/planner/archetypes";
+import { splitPrescriptionChunks } from "@/lib/plan/prescription-chunks";
 import {
   FOCUS_MUSCLE_LABEL,
   isFocusMuscle,
@@ -3184,7 +3186,7 @@ export function SessionDrawer({
           }
           .plan-drawer .set-row {
             display: grid;
-            grid-template-columns: 36px 1fr auto;
+            grid-template-columns: 36px minmax(0, 1fr) minmax(0, auto);
             gap: 8px;
             padding: 8px 0;
             border-bottom: 1px solid var(--cp-border);
@@ -3196,14 +3198,23 @@ export function SessionDrawer({
             min-width: 0;
             overflow-wrap: anywhere;
           }
+          /* The value wraps BETWEEN its " · " chunks but never inside one.
+             Nowrap on the whole cell let a long value (a linked station's
+             per-set list) claim the full width, squeezing the movement name to
+             zero — and overflow-wrap: anywhere then broke that name one
+             character per line. */
           .plan-drawer .set-row .v {
             font-family: var(--cp-font-mono);
             color: var(--cp-text);
             font-weight: 600;
+            min-width: 0;
+            text-align: right;
+          }
+          .plan-drawer .set-row .v > span {
             white-space: nowrap;
           }
           .plan-drawer .set-row.optional-set-row {
-            grid-template-columns: 104px minmax(0, 1fr) auto;
+            grid-template-columns: 104px minmax(0, 1fr) minmax(0, auto);
           }
           .plan-drawer .set-row .optional-marker {
             color: var(--cp-text-muted);
@@ -3211,7 +3222,7 @@ export function SessionDrawer({
           }
           @media (max-width: 520px) {
             .plan-drawer .set-row.optional-set-row {
-              grid-template-columns: 88px minmax(0, 1fr) auto;
+              grid-template-columns: 88px minmax(0, 1fr) minmax(0, auto);
               gap: 6px;
             }
           }
@@ -3403,8 +3414,29 @@ function SetRow({
         ) : null}
       </span>
       <span>{item.movementName ?? "Movement"}</span>
-      <span className="v">{formatPrescriptionItem(item)}</span>
+      <SetRowValue value={formatPrescriptionItem(item)} />
     </div>
+  );
+}
+
+/**
+ * Right-hand value of a drawer set row, split so it can only break between
+ * whole facts. Each " · " chunk ("3 × 15", "each side") is its own nowrap span;
+ * without the split the value was one nowrap block that took the width it
+ * wanted and left the movement name a sliver.
+ */
+function SetRowValue({ value }: { value: string }) {
+  const chunks = splitPrescriptionChunks(value);
+  if (chunks.length === 0) return <span className="v">—</span>;
+  return (
+    <span className="v">
+      {chunks.map((chunk, i) => (
+        <Fragment key={i}>
+          {i > 0 ? " " : ""}
+          <span>{i > 0 ? `· ${chunk}` : chunk}</span>
+        </Fragment>
+      ))}
+    </span>
   );
 }
 
@@ -4063,14 +4095,11 @@ function DrawerAccessoryRow({
         {num}
       </span>
       <span>{row.movementName}</span>
-      <span className="v">
-        {collapseIdenticalSetItems(row.items).map((it, j) => (
-          <span key={j}>
-            {j > 0 ? " · " : ""}
-            {formatPrescriptionItem(it)}
-          </span>
-        ))}
-      </span>
+      <SetRowValue
+        value={collapseIdenticalSetItems(row.items)
+          .map((it) => formatPrescriptionItem(it))
+          .join(" · ")}
+      />
     </div>
   );
 }

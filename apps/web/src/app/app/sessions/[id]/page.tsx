@@ -29,7 +29,10 @@ import {
   resolveFreestyleMovements,
   type PersistedFreestyle,
 } from "@/lib/sessions/freestyle-resolver";
-import { FinishSessionBar } from "@/components/session/FinishSessionBar";
+import {
+  FinishSessionBottomSlot,
+  FinishSessionMenuSlot,
+} from "@/components/session/FinishSessionBar";
 import { SessionLoggingStateProvider } from "@/components/session/SessionLoggingState";
 import { HyroxCompletionForm } from "@/components/session/HyroxCompletionForm";
 import { resolveHyroxCompletionView } from "@/lib/hyrox/resolve-completion-view";
@@ -57,6 +60,7 @@ import {
   matchPrescriptionItemsDetailed,
   countStrengthPrescriptionItems,
   countProgrammedWorkingSets,
+  requiredStrengthItemIndices,
 } from "@/lib/sessions/prescription-progress";
 import {
   buildLoggedSetIdsByItemIndex,
@@ -767,6 +771,14 @@ export default async function SessionDetailPage({
     plannedPrescription?.items ?? [],
     loggedItemIndexSet,
   );
+  // Required work = prescribed working sets the user can't just ignore
+  // (warm-ups and optional items excluded). Resolved means logged OR
+  // explicitly skipped.
+  const unloggedRequiredIndices = requiredStrengthItemIndices(
+    plannedPrescription,
+  ).filter(
+    (i) => !loggedItemIndexSet.has(i) && !skippedItemIndexSet.has(i),
+  );
 
   // Cardio modality / log form wiring. A session is "cardio-aware"
   // when any prescription item is a cardio kind; "pure cardio" when
@@ -879,6 +891,7 @@ export default async function SessionDetailPage({
       initialHasStrengthSets={sets.length > 0}
       initialUnloggedStrengthCount={unloggedStrengthCount}
       initialUnloggedRehabIndices={unloggedRehabIndices}
+      initialUnloggedRequiredIndices={unloggedRequiredIndices}
     >
     <div style={{ display: "grid", gap: 18 }}>
       <header>
@@ -965,6 +978,14 @@ export default async function SessionDetailPage({
                   padding: 4,
                 }}
               >
+                {!isComplete && !isPureCardio && !hyroxView && (
+                  <FinishSessionMenuSlot
+                    sessionId={id}
+                    disabled={sets.length === 0}
+                    hybrid={hasCardio && hasStrengthPrescription}
+                    testId="finish-stickybar"
+                  />
+                )}
                 {isEmptyInProgress ? (
                   <CancelWorkoutButton
                     sessionId={session.id}
@@ -1650,9 +1671,8 @@ export default async function SessionDetailPage({
             ? `${unloggedStrengthCount} of ${strengthItemCount} planned sets aren't logged. You can still finish; the session will be marked complete with what you logged. · Finish anyway`
             : null;
         return (
-          <FinishSessionBar
+          <FinishSessionBottomSlot
             sessionId={id}
-            variant="bottom"
             disabled={!canFinish}
             subtitle={subtitle}
             hybrid={isHybrid}
