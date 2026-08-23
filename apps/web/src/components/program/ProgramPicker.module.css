@@ -1903,8 +1903,10 @@
   cursor: not-allowed;
 }
 /* Remove sits beside Change, so it matches it: same box, same size, quieter
-   colour. It only reads as destructive under the pointer. */
-.rowRemove {
+   colour. It only reads as destructive under the pointer. Scoped past the
+   bare-element rule above, which would otherwise win on specificity and put
+   the warning colour back. */
+.seriesExercises button.rowRemove {
   border: 1px solid var(--line2);
   border-radius: var(--wradius);
   background: transparent;
@@ -1913,8 +1915,8 @@
   font-size: 11px;
   cursor: pointer;
 }
-.rowRemove:hover:not(:disabled),
-.rowRemove:focus-visible {
+.seriesExercises button.rowRemove:hover:not(:disabled),
+.seriesExercises button.rowRemove:focus-visible {
   border-color: var(--warn);
   color: var(--warn);
 }

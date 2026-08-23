@@ -385,8 +385,36 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     );
   });
 
-  it("[accessory] a movement the user adds is prescribed at an accessory dose, not the session's", () => {
+  it("[slot identity] a swapped ab slot drops the circuit note that named its movements", () => {
     const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-1": [
+          { movement: "bench", sourceMovement: "bench", split: "A" },
+          { movement: "squat", sourceMovement: "squat", split: "A" },
+          {
+            movement: "catalog:00000000-0000-4000-8000-0000000000ab",
+            displayName: "Cable Crunch",
+            sourceMovement: "hanging-leg-raise",
+            kind: "unanchored",
+            split: "A",
+          },
+        ],
+      },
+    });
+    const crunch = tb
+      .prescribe(inst, "b0-w1-p1a", ctx)
+      .items.find((item) => item.name === "Cable Crunch");
+
+    expect(crunch).toBeDefined();
+    expect(crunch?.kind).toBe("supplemental");
+    // The AB Triad note enumerates hanging leg raises, knee raises and
+    // toes-to-bar — none of which are in this session any more.
+    expect(crunch?.note ?? "").not.toMatch(/hanging/i);
+    expect(crunch?.circuit).toBeUndefined();
+  });
+
+  it("[accessory] a movement the user adds is prescribed at an accessory dose, not the session's", () => {    const inst = setup({
       templateId: "zulu",
       customSessionMovements: {
         "slot-1": [

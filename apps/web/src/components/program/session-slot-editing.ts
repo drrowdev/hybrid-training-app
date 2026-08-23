@@ -8,6 +8,7 @@
  * user hadn't seeded yet, and re-deriving the accessory role from a missing slot
  * demoted a legacy customization's lifts to 3×12.
  */
+import { MAX_LINK_MEMBERS } from "@/lib/platform/session-links";
 
 export type SlotKind = "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
 
@@ -257,24 +258,33 @@ export function isGroupReplaced(
  * movement leaves any link that ran it naming two slots the session no longer
  * has. The engine refuses a link with a missing member, so the whole superset
  * would disappear without a word.
+ *
+ * The result obeys the same size rules as every other link edit: a link left
+ * with fewer than two members is not a superset and is dissolved, and a rewrite
+ * that would push a link past `maxMembers` is refused rather than written — both
+ * are rejected by the deploy schema, which fails the whole submission with a
+ * message that names neither the link nor the session.
  */
 export function replaceLinkMembers<T extends { members: string[] }>(
   links: readonly T[],
   from: readonly string[],
   to: readonly string[],
+  maxMembers = MAX_LINK_MEMBERS,
 ): T[] {
   const dropped = new Set(from);
-  return links.map((link) => {
-    if (!from.every((member) => link.members.includes(member))) return link;
-    let emitted = false;
-    const members = link.members.flatMap((member) => {
-      if (!dropped.has(member)) return [member];
-      if (emitted) return [];
-      emitted = true;
-      return [...to];
-    });
-    return { ...link, members };
-  });
+  return links
+    .map((link) => {
+      if (!from.every((member) => link.members.includes(member))) return link;
+      let emitted = false;
+      const members = link.members.flatMap((member) => {
+        if (!dropped.has(member)) return [member];
+        if (emitted) return [];
+        emitted = true;
+        return [...to];
+      });
+      return members.length > maxMembers ? link : { ...link, members };
+    })
+    .filter((link) => link.members.length >= 2);
 }
 
 /** Whether any session row differs from what the template prescribes. */

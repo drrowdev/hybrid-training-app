@@ -2315,9 +2315,20 @@ export function ProgramPicker({
   function removedSupplementalLabels(
     series: NonNullable<PickerTbTemplate["sessionSeries"]>[number],
   ): string[] {
-    const kept = new Set(draftsForSeries(series).map(slotIdentity));
+    const drafts = draftsForSeries(series);
+    const kept = new Set(drafts.map(slotIdentity));
+    const triad = AB_TRIAD_MOVEMENTS as readonly string[];
+    // A swapped circuit is not a removal — the row above already shows what
+    // took its place, and Restore says how to undo it.
+    const swappedGroup = isGroupReplaced(drafts, triad)
+      ? new Set(triad)
+      : new Set<string>();
     return series.slots
-      .filter((slot) => !kept.has(slot.sourceMovement))
+      .filter(
+        (slot) =>
+          !kept.has(slot.sourceMovement) &&
+          !swappedGroup.has(slot.sourceMovement),
+      )
       .map((slot) => customMovementLabel(slot.sourceMovement));
   }
 

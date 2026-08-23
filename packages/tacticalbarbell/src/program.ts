@@ -1023,6 +1023,16 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         if (rule.note != null) ruleNote = rule.note;
       }
 
+      // The AB Triad's note names its three movements, so it only describes the
+      // work while the circuit is whole. Once a slot is filled by something
+      // else, the note would list movements the session no longer contains.
+      if (
+        !hasCompleteAbTriad &&
+        (AB_TRIAD_MOVEMENTS as readonly string[]).includes(sourceMovement)
+      ) {
+        ruleNote = undefined;
+      }
+
       const rangeNote =
         ruleNote ??
         (prescribedSetsMin !== prescribedSetsMax

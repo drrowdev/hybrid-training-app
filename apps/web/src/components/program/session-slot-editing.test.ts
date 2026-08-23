@@ -299,6 +299,27 @@ describe("replaceLinkMembers", () => {
       "squat",
     ]);
   });
+
+  it("dissolves a link the swap would leave with one lift", () => {
+    // Reachable: superset the press with the triad, remove the press, then
+    // change the triad. Left as-is the link becomes a single member, which the
+    // deploy schema rejects outright — failing the whole submission with a
+    // message that names neither the link nor the session.
+    const links = [{ id: "l1", name: "Superset", members: [...TRIAD] }];
+    expect(replaceLinkMembers(links, TRIAD, [TRIAD[0]!])).toEqual([]);
+  });
+
+  it("refuses a restore that would push a link past its size limit", () => {
+    const members = ["hanging-leg-raise", "a", "b", "c", "d", "e", "f"];
+    const links = [{ id: "l1", name: "Giant set", members }];
+    // 7 + 2 = 9 > 8, so the link is left as it is rather than written invalid.
+    expect(replaceLinkMembers(links, [TRIAD[0]!], TRIAD)).toEqual(links);
+    // One fewer member and the restore fits.
+    const fits = [{ id: "l1", name: "Giant set", members: members.slice(0, 6) }];
+    expect(replaceLinkMembers(fits, [TRIAD[0]!], TRIAD)[0]!.members).toHaveLength(
+      8,
+    );
+  });
 });
 
 describe("slotsEdited", () => {
