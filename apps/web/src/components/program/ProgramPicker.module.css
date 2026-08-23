@@ -1902,6 +1902,48 @@
   opacity: 0.35;
   cursor: not-allowed;
 }
+/* Remove sits beside Change, so it matches it: same box, same size, quieter
+   colour. It only reads as destructive under the pointer. */
+.rowRemove {
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.rowRemove:hover:not(:disabled),
+.rowRemove:focus-visible {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.seriesSection {
+  margin-top: 14px;
+  margin-bottom: 2px;
+  font-size: 10px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.seriesCard > div:first-of-type > .seriesSection {
+  margin-top: 4px;
+}
+.rowRestore {
+  margin-top: 8px;
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: transparent;
+  color: var(--dim);
+  padding: 8px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.rowRestore:hover,
+.rowRestore:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .seriesExercises > div > span.seriesRowActions {
   display: flex;
   align-items: center;

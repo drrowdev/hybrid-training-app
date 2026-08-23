@@ -50,16 +50,25 @@ import {
 } from "./session-link-editing";
 import {
   addAccessory,
+  canRemoveRows,
+  collapseGroup,
+  hasWholeGroup,
+  isGroupReplaced,
+  orderBySection,
   removeSlot,
+  replaceLinkMembers,
   replaceSlot,
+  restoreGroup,
+  sectionOf,
   seededDrafts,
   slotDraftsFor as slotDraftsForSlots,
   slotIdentity,
   slotOf as slotOfSlots,
   slotPayloadEntry,
   slotsEdited,
-  canRemoveRows,
+  SLOT_SECTIONS,
   type SeriesSlotDraft,
+  type SlotSection,
   type TemplateSlot,
 } from "./session-slot-editing";
 import {
@@ -2240,6 +2249,57 @@ export function ProgramPicker({
     for (const identity of identities) removeSeriesMovement(seriesKey, identity);
   }
 
+  /**
+   * Swap a built-in circuit for one movement, and move any link that ran the
+   * circuit onto that movement. Without the link rewrite the link would keep
+   * naming slots the session no longer has, and the engine drops a link with a
+   * missing member — the superset would disappear with nothing said.
+   */
+  function collapseSeriesGroup(
+    seriesKey: string,
+    group: readonly string[],
+    movement: string,
+  ) {
+    setCustomSessionMovements((current) => ({
+      ...current,
+      [seriesKey]: collapseGroup(
+        seededFor(current, seriesKey),
+        group,
+        movement,
+      ),
+    }));
+    setSessionLinks((current) =>
+      current[seriesKey]
+        ? {
+            ...current,
+            [seriesKey]: replaceLinkMembers(current[seriesKey]!, group, [
+              group[0]!,
+            ]),
+          }
+        : current,
+    );
+  }
+
+  /** Put a swapped circuit back, links included. */
+  function restoreSeriesGroup(seriesKey: string, group: readonly string[]) {
+    setCustomSessionMovements((current) => ({
+      ...current,
+      [seriesKey]: restoreGroup(seededFor(current, seriesKey), group),
+    }));
+    setSessionLinks((current) =>
+      current[seriesKey]
+        ? {
+            ...current,
+            [seriesKey]: replaceLinkMembers(
+              current[seriesKey]!,
+              [group[0]!],
+              group,
+            ),
+          }
+        : current,
+    );
+  }
+
   /** The rows for a session: the user's edits, or the template's own slots. */
   function draftsForSeries(
     series: NonNullable<PickerTbTemplate["sessionSeries"]>[number],
@@ -2415,21 +2475,23 @@ export function ProgramPicker({
               sessionMovements: Object.fromEntries(
                 sessionSeriesFor(activeTbTemplate).map((series) => [
                   series.key,
-                  draftsForSeries(series).map((draft) => {
-                    const slot = slotOf(series, draft);
-                    const catalog = catalogMovementMeta[draft.movement];
-                    return slotPayloadEntry(
-                      draft,
-                      slot,
-                      catalog
-                        ? {
-                            id: catalog.id,
-                            slug: catalog.slug,
-                            name: catalog.name,
-                          }
-                        : undefined,
-                    );
-                  }),
+                  orderBySection(draftsForSeries(series), series.slots).map(
+                    (draft) => {
+                      const slot = slotOf(series, draft);
+                      const catalog = catalogMovementMeta[draft.movement];
+                      return slotPayloadEntry(
+                        draft,
+                        slot,
+                        catalog
+                          ? {
+                              id: catalog.id,
+                              slug: catalog.slug,
+                              name: catalog.name,
+                            }
+                          : undefined,
+                      );
+                    },
+                  ),
                 ]),
               ),
               ...(customizeTb && rehabWeekdays.length > 0
@@ -2839,125 +2901,147 @@ export function ProgramPicker({
     const series = sessionSeriesFor(activeTbTemplate);
     if (series.length === 0) return null;
     const triad = AB_TRIAD_MOVEMENTS as readonly string[];
+    const SECTION_LABEL: Record<SlotSection, string> = {
+      main: "Main lifts",
+      supplemental: "Supplemental",
+      accessory: "Accessories",
+    };
     return (
       <div className={styles.specwrap} data-testid="tb-session-preview">
         <div className={styles.label}>Each session</div>
         <div className={styles.seriesGrid}>
           {series.map((entry) => {
-            const drafts = draftsForSeries(entry);
+            const drafts = orderBySection(draftsForSeries(entry), entry.slots);
             const linkable = linkableMovementsFor(drafts, entry);
             const links = sessionLinks[entry.key] ?? [];
             const linkBadges = slotLinkBadges(links, linkable);
             // The AB Triad is one circuit. It is offered as a single row so it
             // can't be half-removed, which would leave the rest running loose.
-            const wholeTriad = triad.every((movement) =>
-              drafts.some((draft) => slotIdentity(draft) === movement),
-            );
+            const wholeTriad = hasWholeGroup(drafts, triad);
+            const triadReplaced = isGroupReplaced(drafts, triad);
             const removed = removedSupplementalLabels(entry);
+            const populated = SLOT_SECTIONS.filter((section) =>
+              drafts.some((draft) => sectionOf(entry.slots, draft) === section),
+            );
+            // A session that is nothing but main lifts needs no heading to say so.
+            const showHeadings = populated.length > 1;
             let triadShown = false;
+
+            const renderRow = (draft: SeriesSlotDraft) => {
+              const identity = slotIdentity(draft);
+              const slot = slotOf(entry, draft);
+              const isTriad = wholeTriad && triad.includes(identity);
+              if (isTriad && triadShown) return null;
+              if (isTriad) triadShown = true;
+              const badge = linkBadges.get(identity);
+              const removesRows = isTriad ? triad.length : 1;
+              const changeTarget = isTriad ? "ab-triad" : identity;
+              return (
+                <div
+                  key={identity}
+                  className={rowLinkClass(styles, badge, "")}
+                  data-testid={`tb-slot-${entry.key}-${changeTarget}`}
+                >
+                  <span>
+                    <LinkBadge
+                      styles={styles}
+                      badge={badge}
+                      links={links}
+                      movements={linkable}
+                      seriesKey={entry.key}
+                      onChange={setLinksForSeries}
+                    />
+                    <b>
+                      {isTriad
+                        ? AB_TRIAD_LABEL
+                        : customMovementLabel(draft.movement)}
+                    </b>
+                  </span>
+                  <span className={styles.seriesRowActions}>
+                    {slot || isTriad ? (
+                      <details className={styles.addExercise}>
+                        <summary
+                          data-testid={`tb-slot-change-${entry.key}-${changeTarget}`}
+                        >
+                          Change
+                        </summary>
+                        <ExerciseLibraryPicker
+                          movements={rehabMovements}
+                          excludeKeys={drafts.map((row) => row.movement)}
+                          onPick={(movement) => {
+                            const key = catalogMovementKey(movement.id);
+                            setCatalogMovementMeta((current) => ({
+                              ...current,
+                              [key]: movement,
+                            }));
+                            if (isTriad) collapseSeriesGroup(entry.key, triad, key);
+                            else replaceSeriesMovement(entry.key, identity, key);
+                          }}
+                        />
+                      </details>
+                    ) : null}
+                    <button
+                      type="button"
+                      className={styles.rowRemove}
+                      disabled={!canRemoveRows(drafts.length, removesRows)}
+                      onClick={() =>
+                        isTriad
+                          ? removeSeriesMovements(entry.key, triad)
+                          : removeSeriesMovement(entry.key, identity)
+                      }
+                    >
+                      Remove
+                    </button>
+                  </span>
+                </div>
+              );
+            };
+
             return (
               <section key={entry.key} className={styles.seriesCard}>
                 <header>
                   <b>{entry.label}</b>
                 </header>
-                <div className={styles.seriesExercises}>
-                  {drafts.map((draft) => {
-                    const identity = slotIdentity(draft);
-                    const slot = slotOf(entry, draft);
-                    const isTriad = wholeTriad && triad.includes(identity);
-                    if (isTriad && triadShown) return null;
-                    if (isTriad) triadShown = true;
-                    const badge = linkBadges.get(identity);
-                    const roleLabel =
-                      draft.role === "accessory"
-                        ? "Accessory"
-                        : slot?.role === "supplemental"
-                          ? "Supplemental"
-                          : "Main lift";
-                    return (
-                      <div
-                        key={identity}
-                        className={rowLinkClass(styles, badge, "")}
-                        data-testid={`tb-slot-${entry.key}-${isTriad ? "ab-triad" : identity}`}
-                      >
-                        <span>
-                          <LinkBadge
-                            styles={styles}
-                            badge={badge}
-                            links={links}
-                            movements={linkable}
-                            seriesKey={entry.key}
-                            onChange={setLinksForSeries}
-                          />
-                          <b>
-                            {isTriad
-                              ? AB_TRIAD_LABEL
-                              : customMovementLabel(draft.movement)}
-                          </b>
-                          <small>{isTriad ? "Supplemental" : roleLabel}</small>
-                        </span>
-                        <span className={styles.seriesRowActions}>
-                          {slot && !isTriad ? (
-                            <details className={styles.addExercise}>
-                              <summary
-                                data-testid={`tb-slot-change-${entry.key}-${identity}`}
-                              >
-                                Change
-                              </summary>
-                              <ExerciseLibraryPicker
-                                movements={rehabMovements}
-                                excludeKeys={drafts.map((row) => row.movement)}
-                                onPick={(movement) => {
-                                  const key = catalogMovementKey(movement.id);
-                                  setCatalogMovementMeta((current) => ({
-                                    ...current,
-                                    [key]: movement,
-                                  }));
-                                  replaceSeriesMovement(
-                                    entry.key,
-                                    identity,
-                                    key,
-                                  );
-                                }}
-                              />
-                            </details>
-                          ) : null}
-                          <button
-                            type="button"
-                            disabled={
-                              !canRemoveRows(
-                                drafts.length,
-                                isTriad ? triad.length : 1,
-                              )
-                            }
-                            onClick={() =>
-                              isTriad
-                                ? removeSeriesMovements(entry.key, triad)
-                                : removeSeriesMovement(entry.key, identity)
-                            }
-                          >
-                            Remove
-                          </button>
-                        </span>
+                {populated.map((section) => (
+                  <div key={section}>
+                    {showHeadings ? (
+                      <div className={styles.seriesSection}>
+                        {SECTION_LABEL[section]}
                       </div>
-                    );
-                  })}
-                </div>
+                    ) : null}
+                    <div className={styles.seriesExercises}>
+                      {drafts
+                        .filter(
+                          (draft) => sectionOf(entry.slots, draft) === section,
+                        )
+                        .map(renderRow)}
+                    </div>
+                    {section === "supplemental" && triadReplaced ? (
+                      <button
+                        type="button"
+                        className={styles.rowRestore}
+                        data-testid={`tb-restore-triad-${entry.key}`}
+                        onClick={() => restoreSeriesGroup(entry.key, triad)}
+                      >
+                        {`Restore ${AB_TRIAD_LABEL}`}
+                      </button>
+                    ) : null}
+                    {section === "accessory" && tbAccessoryCaution ? (
+                      <p
+                        className={styles.note}
+                        data-testid={`tb-accessory-caution-${entry.key}`}
+                      >
+                        {tbAccessoryCaution}
+                      </p>
+                    ) : null}
+                  </div>
+                ))}
                 {removed.length > 0 ? (
                   <p
                     className={styles.note}
                     data-testid={`tb-removed-${entry.key}`}
                   >
                     {`Removed: ${removed.join(", ")}.`}
-                  </p>
-                ) : null}
-                {tbAccessoryCaution &&
-                drafts.some((row) => row.role === "accessory") ? (
-                  <p
-                    className={styles.note}
-                    data-testid={`tb-accessory-caution-${entry.key}`}
-                  >
-                    {tbAccessoryCaution}
                   </p>
                 ) : null}
                 <details className={styles.addExercise}>

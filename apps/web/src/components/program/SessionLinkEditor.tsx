@@ -95,7 +95,7 @@ export function SessionLinkEditor({
             >
               {pickerOpen ? "\u2212" : "+"}
             </span>
-            {links.length > 0 ? "Link more lifts" : "Link lifts"}
+            {links.length > 0 ? "Superset more lifts" : "Superset lifts"}
           </summary>
           <div style={{ display: "grid", gap: 4, marginTop: 6 }}>
             {selectable.map((m) => (
