@@ -155,6 +155,11 @@ export function slotPayloadEntry(
   };
 }
 
+/** Whether a click that drops `removedRows` may proceed without emptying the session. */
+export function canRemoveRows(totalRows: number, removedRows: number): boolean {
+  return totalRows - removedRows >= 1;
+}
+
 /** Whether any session row differs from what the template prescribes. */
 export function slotsEdited(
   existing: readonly SeriesSlotDraft[] | undefined,

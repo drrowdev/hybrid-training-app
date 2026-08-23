@@ -58,6 +58,7 @@ import {
   slotOf as slotOfSlots,
   slotPayloadEntry,
   slotsEdited,
+  canRemoveRows,
   type SeriesSlotDraft,
   type TemplateSlot,
 } from "./session-slot-editing";
@@ -2923,7 +2924,12 @@ export function ProgramPicker({
                           ) : null}
                           <button
                             type="button"
-                            disabled={drafts.length <= 1}
+                            disabled={
+                              !canRemoveRows(
+                                drafts.length,
+                                isTriad ? triad.length : 1,
+                              )
+                            }
                             onClick={() =>
                               isTriad
                                 ? removeSeriesMovements(entry.key, triad)

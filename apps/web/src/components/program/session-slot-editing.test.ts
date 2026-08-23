@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   addAccessory,
+  canRemoveRows,
   removeSlot,
   replaceSlot,
   seededDrafts,
@@ -158,6 +159,25 @@ describe("slotPayloadEntry", () => {
     expect(slotPayloadEntry({ movement: "pullup" }, undefined).kind).toBe(
       "bodyweight",
     );
+  });
+});
+
+describe("canRemoveRows", () => {
+  it("allows a removal that leaves at least one lift", () => {
+    expect(canRemoveRows(3, 1)).toBe(true);
+    expect(canRemoveRows(2, 1)).toBe(true);
+  });
+
+  it("refuses a removal that would empty the session", () => {
+    expect(canRemoveRows(1, 1)).toBe(false);
+  });
+
+  it("counts every row a single click drops", () => {
+    // The AB Triad renders as one row but removes three. Counting rows on
+    // screen let a session with only the triad left be emptied in one click,
+    // which then blocked deploy with nothing on screen to explain it.
+    expect(canRemoveRows(3, 3)).toBe(false);
+    expect(canRemoveRows(4, 3)).toBe(true);
   });
 });
 
