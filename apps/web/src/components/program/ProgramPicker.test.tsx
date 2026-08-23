@@ -552,6 +552,40 @@ describe("ProgramPicker rendering", () => {
     expect(html).not.toContain("tb-accessory-muscle-");
   });
 
+  it("no longer offers the Green Protocol accessory toggle", () => {
+    const greenPrograms: PickerProgram[] = [
+      {
+        id: "green-protocol",
+        name: "Green Protocol",
+        family: "green",
+        summary: "Endurance-led Tactical Barbell.",
+        enabled: true,
+        sessionsPerWeek: 5,
+        fixedSchedule: true,
+        fields: [
+          {
+            key: "phaseId",
+            label: "Phase",
+            type: "select" as const,
+            options: [{ value: "base", label: "Base Building" }],
+            defaultValue: "base",
+          },
+        ],
+      },
+    ];
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={greenPrograms}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[]}
+        initialProgramId="green-protocol"
+      />,
+    );
+
+    expect(html).not.toContain('data-testid="tb-accessories-toggle"');
+    expect(html).not.toContain("tb-accessory-muscle-");
+  });
+
   it("offers a per-block assistance volume on the 5/3/1 loadout step, defaulting to Balanced", () => {    const html = renderToStaticMarkup(
       <ProgramPicker
         programs={programs}

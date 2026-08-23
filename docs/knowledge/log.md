@@ -842,3 +842,15 @@ Now there is one. The loadout step's per-day preview became the editor: every ro
 Kept deliberately: the auto-picking injector and its deploy parameter, unchanged, for Green Protocol (periodised across several templates, no per-session editor to move into) and for blocks already deployed with it - their accessory selection rotates per session, so there is no faithful conversion into one repeating row, and deleting the injector would strip work from a live plan on its next edit. Editing movements no longer renames a block: displayName became optional on the customization overlay.
 
 See ADR 0075. ADR 0048 is superseded for Tactical Barbell and still governs Green Protocol.
+
+## [2026-08-23] decision | Green Protocol drops the accessory checkbox too
+
+Follow-up to the same-day Tactical Barbell decision, on owner instruction: "remove the box for green protocol too, it's a tb program."
+
+Correct on the substance - Green Protocol is Tactical Barbell periodised across phases, running Operator, Fighter and Zulu-HT at different points. Keeping an auto-picking checkbox on one and not the other would have left the confusing control alive in the app for no reason other than implementation convenience.
+
+The consequence is honest and worth stating: Green has no per-session editor to move the choice into, because its sessions are not a fixed weekly series - each phase resolves a different template per session ref. So a new Green block now carries no accessory work at all, which is what the book prescribes by default anyway. Giving Green the same per-session editor is open work.
+
+Blocks already deployed with auto-picked accessories keep them, Green included: the injector and its deploy parameter are untouched and still run on re-deploy, with a single control in the wizard to keep or clear. The muscle-emphasis multiselect is gone entirely; a legacy block re-deploys against the standard set.
+
+ADR 0075 updated - it now supersedes ADR 0048 outright rather than for Tactical Barbell only.

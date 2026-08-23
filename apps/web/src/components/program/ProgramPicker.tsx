@@ -25,8 +25,6 @@ import {
   type ProgramSegmentOption,
 } from "@/lib/platform/actions";
 import {
-  TB_ACCESSORY_MUSCLES,
-  TB_ACCESSORY_MUSCLE_LABELS,
   TB_DEFAULT_ACCESSORY_MUSCLES,
   tbAccessoryPlanForTemplate,
 } from "@/lib/platform/tb-accessories-config";
@@ -1393,16 +1391,17 @@ export function ProgramPicker({
   // Green Protocol also offers opt-in accessories (its book treats them as
   // optional). GP is periodised, so the cap is per strength session rather than
   // a single template — the offer itself is unconditional when GP is selected.
-  // Tactical Barbell no longer auto-picks accessories: the user adds them to a
-  // session themselves. The flag survives only so a block deployed under the old
-  // behaviour keeps its accessory work when it is edited.
-  const gpAccessoriesOffered = isGp;
+  // Neither Tactical Barbell nor Green Protocol auto-picks accessories any more:
+  // the user adds them to a session themselves. The flag survives only so a block
+  // deployed under the old behaviour keeps its accessory work when it is edited.
   const legacyAccessories =
-    isTb && isEditing && (editContext?.accessoriesEnabled ?? false);
+    (isTb || isGp) && isEditing && (editContext?.accessoriesEnabled ?? false);
   const [accessoriesOn, setAccessoriesOn] = useState<boolean>(
     isEditing && editContext ? editContext.accessoriesEnabled : false,
   );
-  const [accessoryMuscles, setAccessoryMuscles] = useState<string[]>([...TB_DEFAULT_ACCESSORY_MUSCLES]);
+  // The muscle emphasis is no longer chosen in the wizard; a legacy block that
+  // still auto-picks its accessories keeps the standard set when it is re-deployed.
+  const accessoryMuscles = [...TB_DEFAULT_ACCESSORY_MUSCLES];
   const accessoryMovements = useMemo(
     () =>
       rehabMovements.filter((movement) => movement.pattern === ACCESSORY_PATTERN),
@@ -2551,7 +2550,7 @@ export function ProgramPicker({
         ...(supportsCardioDays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
         ...(selected.id === "hyrox" && raceDate ? { raceDate } : {}),
         ...(startWeekIndex > 0 ? { startWeekIndex } : {}),
-        ...((gpAccessoriesOffered || legacyAccessories) && accessoriesOn
+        ...(legacyAccessories && accessoriesOn
           ? { accessories: { enabled: true, muscles: accessoryMuscles } }
           : {}),        ...((isHybrid || isHyrox) && twoADay ? { twoADay: true } : {}),
         ...(isTb && Object.keys(outgoingLinks).length > 0
@@ -3081,34 +3080,10 @@ export function ProgramPicker({
   }
 
   function renderTbAccessories() {
-    // Tactical Barbell: the block was deployed before accessories were chosen by
-    // hand, so it still carries auto-added work. Offer a way to drop it rather
-    // than leaving it in the plan with nothing in the wizard that explains it.
-    if (legacyAccessories) {
-      return (
-        <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="tb-accessories">
-          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={accessoriesOn}
-              data-testid="tb-accessories-toggle"
-              onChange={(e) => setAccessoriesOn(e.target.checked)}
-            />
-            <span className={styles.label} style={{ margin: 0 }}>
-              Keep the accessory work already in this plan
-            </span>
-          </label>
-          <p className={styles.sub} style={{ marginTop: 6 }}>
-            {"Turn this off to clear it, then add the movements you want to each session above."}
-          </p>
-        </div>
-      );
-    }
-    if (!gpAccessoriesOffered) return null;
-    const toggleMuscle = (m: string) =>
-      setAccessoryMuscles((prev) =>
-        prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m],
-      );
+    // The block was deployed before accessories were chosen by hand, so it still
+    // carries auto-added work. Offer a way to drop it rather than leaving it in
+    // the plan with nothing in the wizard that accounts for it.
+    if (!legacyAccessories) return null;
     return (
       <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="tb-accessories">
         <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
@@ -3119,49 +3094,9 @@ export function ProgramPicker({
             onChange={(e) => setAccessoriesOn(e.target.checked)}
           />
           <span className={styles.label} style={{ margin: 0 }}>
-            Add accessory work (optional)
+            Keep the accessory work already in this plan
           </span>
         </label>
-        <p className={styles.sub} style={{ marginTop: 6 }}>
-          {"Adds up to 2\u20133 muscle-focused movements after each strength session, depending on the day\u2019s template. Never on a conditioning day."}
-        </p>
-        {accessoriesOn ? (
-          <>
-            <div className={styles.label} style={{ marginTop: 12 }}>
-              Emphasis
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {TB_ACCESSORY_MUSCLES.map((m) => {
-                const on = accessoryMuscles.includes(m);
-                return (
-                  <button
-                    key={m}
-                    type="button"
-                    data-testid={`tb-accessory-muscle-${m}`}
-                    aria-pressed={on}
-                    onClick={() => toggleMuscle(m)}
-                    className={styles.chip}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 999,
-                      border: "1px solid var(--line, #2a2f2b)",
-                      background: on ? "var(--accent, #8fb39b)" : "transparent",
-                      color: on ? "#0f1310" : "inherit",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {TB_ACCESSORY_MUSCLE_LABELS[m]}
-                  </button>
-                );
-              })}
-            </div>
-            {accessoryMuscles.length === 0 ? (
-              <p className={styles.sub} style={{ marginTop: 8 }}>
-                {"Pick at least one muscle, or we\u2019ll use a balanced default (arms, abs, calves)."}
-              </p>
-            ) : null}
-          </>
-        ) : null}
       </div>
     );
   }

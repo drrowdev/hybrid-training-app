@@ -1,7 +1,7 @@
 # ADR 0075 — Tactical Barbell accessories are chosen by the user, in the session
 
 Status: Accepted (2026-08-23)
-Supersedes: ADR 0048 for Tactical Barbell (Green Protocol keeps its behaviour)
+Supersedes: ADR 0048 (both Tactical Barbell and Green Protocol)
 Related: ADR 0074 (slot identity survives a substitution), ADR 0071 (session
 links), DC-K4 (override-and-warn)
 
@@ -56,9 +56,11 @@ one hidden and mis-prescribing.
    refused accessories outright. With the user choosing explicitly, the objection
    is stated where they add the work and only once they have added some — Mass
    already schedules its own arm and pull-up day. It never blocks (DC-K4).
-6. **The checkbox is gone for Tactical Barbell.** The auto-picking injector,
-   the `accessories` deploy param and the muscle allowlist remain, unchanged, for
-   two consumers: Green Protocol (below) and blocks already deployed with it.
+6. **The checkbox is gone.** For Tactical Barbell *and* for Green Protocol —
+   Green runs Tactical Barbell templates, so it inherits the same answer even
+   though it does not yet have the editor. The auto-picking injector, the
+   `accessories` deploy param and the muscle allowlist remain, unchanged, for one
+   consumer: blocks already deployed with them.
 7. **Editing the movements no longer renames the block.** `displayName` becomes
    optional on the V1 customization: movement edits write the same overlay
    "Customize template" does, and only the naming flow should set a name.
@@ -89,10 +91,12 @@ one hidden and mis-prescribing.
   filtering and the experience floor applied to auto-picked movements; a user
   choosing from the library sees the whole library. Acceptable — they are picking
   a curl for themselves, not being handed one.
-- **Green Protocol is untouched.** It is periodised across several TB templates
-  with a per-session cap and has no per-session editor to move this into.
-  Replacing its toggle needs a phase-aware editor and is a separate piece of work.
-  Until then the checkbox exists in the app, for Green only.
+- **Green Protocol loses auto-picked accessories too.** Owner decision: it is a
+  Tactical Barbell program, so it gets the same answer. It is periodised across
+  several TB templates with a per-session cap and has no per-session editor to
+  move the choice into, so for now a new Green block simply has no accessory
+  work — which is what the book prescribes by default anyway. Giving it the same
+  editor is open work, not a regression to fix before shipping this.
 - **Existing blocks keep their accessory work.** On edit, the wizard offers one
   control to keep or clear it; keeping it re-runs the injector exactly as before.
 - **`role` is a new discriminator in an existing JSONB blob** — no schema
@@ -101,8 +105,8 @@ one hidden and mis-prescribing.
 ## Open questions
 
 1. **Green Protocol's editor.** GP resolves a different TB template per phase, so
-   its sessions are not a fixed weekly series. Whether it gets the same per-session
-   editor, or keeps auto-suggestion permanently, is undecided.
+   its sessions are not a fixed weekly series. Whether it gets the same
+   per-session editor, or stays accessory-free, is undecided.
 2. **Equipment awareness in the picker.** The library is not filtered by the
    user's equipment. Showing what they can't load is a mild annoyance rather than
    a correctness problem, but it is worth revisiting.

@@ -496,12 +496,12 @@ function cloneEntry(
   if (c.displayName) lift.displayName = c.displayName;
   if (c.split === "A" || c.split === "B") lift.split = c.split;
   if (c.kind) lift.kind = c.kind;
-  // Slot identity has to survive the copy, or a customized replacement loses the
-  // prescription rules (supplemental %, sets, reps) attached to its slot.
-  if ((c as TbClusterLift).sourceMovement) {
-    lift.sourceMovement = (c as TbClusterLift).sourceMovement;
-  }
-  if ((c as TbClusterLift).role) lift.role = (c as TbClusterLift).role;
+  // Slot identity and the accessory role have to survive the copy, or a
+  // customized replacement loses the prescription attached to its slot.
+  const source = (c as TbClusterLift).sourceMovement;
+  if (source) lift.sourceMovement = source;
+  const role = (c as TbClusterLift).role;
+  if (role) lift.role = role;
   return lift;
 }
 
