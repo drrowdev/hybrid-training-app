@@ -46,6 +46,7 @@ import {
   activationCustomizationKey,
   activationPhaseForSession,
   getTbTemplate,
+  tbTemplateSeries,
   TB_MOVEMENT_LABEL,
 } from "@hta/tacticalbarbell";
 import {
@@ -518,7 +519,9 @@ export async function createProgramInstance(
       Object.fromEntries([
         ...Object.entries(customization.sessionMovements).map(([key, movements]) => [
           key,
-          movements.map((movement) => movement.movement),
+          // Links are keyed by SLOT, the same identity the engine realises them
+          // against — so a link survives swapping the exercise in that slot.
+          movements.map((movement) => movement.sourceMovement ?? movement.movement),
         ]),
         [
           rehabSeriesKey(LEGACY_REHAB_PROTOCOL_ID),
@@ -1267,6 +1270,37 @@ async function computeForeignWrite(
         throw new Error(
           `Customized movement '${movement.movement}' is not available. Choose another movement.`,
         );
+      }
+    }
+    // A slot claim decides which prescription (main vs supplemental, and its
+    // sets/reps/%) the entry inherits, so it has to name a slot this template
+    // actually has in that session. Unchecked, a hand-crafted payload could
+    // claim an arbitrary slot and pull its loading onto any movement.
+    if (isTbCustomizationV1(customization)) {
+      const tbTemplate =
+        typeof setupValues.templateId === "string"
+          ? getTbTemplate(setupValues.templateId)
+          : undefined;
+      if (tbTemplate) {
+        const slotsBySeries = new Map(
+          tbTemplateSeries(tbTemplate).map((series) => [
+            series.key,
+            new Set(series.slots.map((slot) => slot.sourceMovement)),
+          ]),
+        );
+        for (const [seriesKey, movements] of Object.entries(
+          customization.sessionMovements,
+        )) {
+          const known = slotsBySeries.get(seriesKey);
+          for (const movement of movements) {
+            if (!movement.sourceMovement) continue;
+            if (!known?.has(movement.sourceMovement)) {
+              throw new Error(
+                `Customized movement '${movement.movement}' refers to a slot this template no longer has. Review the program setup.`,
+              );
+            }
+          }
+        }
       }
     }
   }

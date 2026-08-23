@@ -38,9 +38,25 @@ const movementReplacementSchema = z
     kind: z
       .enum(["barbell", "weighted-bw", "bodyweight", "unanchored"])
       .optional(),
+    /**
+     * The template slot this entry fills. Present when the entry stands in for a
+     * movement the template prescribes, absent when the user added it themselves.
+     * The engine matches its prescription rules on this, so a swapped
+     * supplemental keeps its supplemental sets/reps/% instead of reverting to
+     * main work. Only ever a template movement key — a `catalog:` movement is
+     * something the user added and can never BE a slot.
+     */
+    sourceMovement: z.string().trim().min(1).max(80).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.sourceMovement?.startsWith("catalog:")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sourceMovement"],
+        message: "A custom movement cannot stand in for a template slot.",
+      });
+    }
     if (!value.movement.startsWith("catalog:")) return;
     if (
       !value.movementId ||
@@ -61,9 +77,26 @@ export const tbCustomizationV1Schema = z
     displayName: z.string().trim().min(1).max(120),
     dayTypes: z.array(weekdayTypeSchema).length(7),
     sessionMovements: z.record(
-      z.array(
-        movementReplacementSchema,
-      ).min(1).max(8),
+      z
+        .array(movementReplacementSchema)
+        .min(1)
+        .max(8)
+        .superRefine((movements, ctx) => {
+          // One entry per slot. Without this, two entries could both claim the
+          // barbell-row slot and each inherit its supplemental loading.
+          const seen = new Set<string>();
+          for (const movement of movements) {
+            if (!movement.sourceMovement) continue;
+            if (seen.has(movement.sourceMovement)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Each movement in a session must fill a different slot.",
+              });
+              return;
+            }
+            seen.add(movement.sourceMovement);
+          }
+        }),
     ),
     rehab: z
       .object({

@@ -34,6 +34,7 @@ import {
   TB_MOVEMENT_LABEL,
   AB_TRIAD_MOVEMENTS,
   getTbTemplate,
+  isSupplementalSlot,
   type TbTemplate,
   type TbLiftKind,
   type TbClusterEntry,
@@ -53,7 +54,16 @@ export interface TbClusterLift {
   split?: "A" | "B";
   /** How the lift is loaded (default "barbell"). Bodyweight loads off max reps. */
   kind?: TbLiftKind;
-  /** Canonical Activation slot whose prescription rules this replacement inherits. */
+  /**
+   * Canonical template slot whose prescription rules this replacement inherits.
+   *
+   * Set whenever a user swaps the exercise filling a prescribed slot — an
+   * Activation override, the Armor supplemental choice, or a customized weekly
+   * slot. Everything that reasons about a lift's ROLE rather than its identity
+   * (`prescriptionRules` matching, peak detection, AB Triad grouping, session
+   * links) reads `sourceMovement ?? movement`, so a swap keeps the slot's
+   * prescription instead of silently reverting the lift to main work.
+   */
   sourceMovement?: string;
 }
 
@@ -278,8 +288,16 @@ function sameMovementSelection(
   right: readonly TbClusterEntry[] | undefined,
 ): boolean {
   if (!right || left.length !== right.length) return false;
-  const normalize = (entry: TbClusterEntry) =>
-    `${entry.movement}:${entry.kind ?? ""}`;
+  // Compare SLOT ASSIGNMENTS, not just the multiset of movements. A customized
+  // entry carries the canonical slot it fills, so "squat and bench swapped
+  // between slots" is a real change even though the movements are identical —
+  // sorting bare movement names would have reported it unchanged and silently
+  // discarded the user's edit. Entries without a slot (legacy payloads, free
+  // additions) fall back to their own movement, preserving the old behaviour.
+  const normalize = (entry: TbClusterEntry) => {
+    const slot = (entry as TbClusterLift).sourceMovement ?? entry.movement;
+    return `${slot}→${entry.movement}:${entry.kind ?? ""}`;
+  };
   return [...left].map(normalize).sort().join("|") ===
     [...right].map(normalize).sort().join("|");
 }
@@ -325,6 +343,56 @@ function workSessionForSeries(
   );
 }
 
+/** One movement the template prescribes in a repeating weekly strength slot. */
+export interface TbSeriesSlot {
+  /** The template's own movement key — the slot's permanent identity. */
+  sourceMovement: string;
+  role: "main" | "supplemental";
+  kind?: TbLiftKind;
+  split?: "A" | "B";
+}
+
+export interface TbTemplateSeries {
+  key: string;
+  label: string;
+  slots: TbSeriesSlot[];
+}
+
+/**
+ * The repeating weekly strength slots a template prescribes, keyed the same way
+ * `customSessionMovements` is. The single home for "what does this template
+ * actually put in each session, and which of it is supplemental" — the wizard
+ * preview, the customization editor and the deploy-time validator all read this
+ * rather than each re-deriving it from `weeklySessions`.
+ *
+ * Activation is excluded: its slots vary by phase and have their own projection.
+ */
+export function tbTemplateSeries(template: TbTemplate): TbTemplateSeries[] {
+  if (template.id === "activation") return [];
+  return template.weeklySessions
+    .filter(
+      (session) =>
+        session.conditioning == null &&
+        session.kind !== "test" &&
+        session.kind !== "rest" &&
+        (!session.activeWeeks || session.activeWeeks.includes(1)),
+    )
+    .map((session) => ({
+      key: sessionSeriesKey(template, session),
+      label: session.label,
+      slots: (session.fixedMovements ?? template.defaultCluster).map(
+        (entry): TbSeriesSlot => ({
+          sourceMovement: entry.movement,
+          role: isSupplementalSlot(session, entry.movement)
+            ? "supplemental"
+            : "main",
+          ...(entry.kind ? { kind: entry.kind } : {}),
+          ...(entry.split ? { split: entry.split } : {}),
+        }),
+      ),
+    }));
+}
+
 function translateTestSelection(
   template: TbTemplate,
   session: TbTemplate["weeklySessions"][number],
@@ -335,21 +403,40 @@ function translateTestSelection(
   const baseNames = new Set(
     canonicalWorkSelection.map((entry) => entry.movement),
   );
+  // A structured customization states, per entry, which template slot it fills.
+  // When it does, the test week resolves each peak lift by SLOT — so a
+  // supplemental the user swapped, or a movement they added themselves, can
+  // never be promoted into a 1RM attempt just because the peak lift's own slot
+  // was emptied. The positional heuristic below stays for legacy payloads
+  // written before slots were recorded.
+  const slotted = customized.some(
+    (entry) => (entry as TbClusterLift).sourceMovement != null,
+  );
+  const slotOf = (entry: TbClusterEntry) =>
+    (entry as TbClusterLift).sourceMovement ?? entry.movement;
   const used = new Set<string>();
   const movementMap = new Map<string, string>();
   const lifts: TbClusterLift[] = [];
 
   for (const fixed of session.fixedMovements) {
-    const exact = customized.find(
-      (entry) => entry.movement === fixed.movement && !used.has(entry.movement),
+    const bySlot = customized.find(
+      (entry) => slotOf(entry) === fixed.movement && !used.has(entry.movement),
     );
-    const added = customized.find(
-      (entry) => !baseNames.has(entry.movement) && !used.has(entry.movement),
-    );
-    const fallback = customized.find(
-      (entry) => !used.has(entry.movement),
-    );
-    const replacement = exact ?? added ?? fallback;
+    let replacement: TbClusterEntry | undefined;
+    if (slotted) {
+      replacement = bySlot;
+    } else {
+      const exact = customized.find(
+        (entry) => entry.movement === fixed.movement && !used.has(entry.movement),
+      );
+      const added = customized.find(
+        (entry) => !baseNames.has(entry.movement) && !used.has(entry.movement),
+      );
+      const fallback = customized.find(
+        (entry) => !used.has(entry.movement),
+      );
+      replacement = exact ?? added ?? fallback;
+    }
     if (!replacement) continue;
     used.add(replacement.movement);
     movementMap.set(fixed.movement, replacement.movement);
@@ -395,6 +482,11 @@ function cloneEntry(
   if (c.displayName) lift.displayName = c.displayName;
   if (c.split === "A" || c.split === "B") lift.split = c.split;
   if (c.kind) lift.kind = c.kind;
+  // Slot identity has to survive the copy, or a customized replacement loses the
+  // prescription rules (supplemental %, sets, reps) attached to its slot.
+  if ((c as TbClusterLift).sourceMovement) {
+    lift.sourceMovement = (c as TbClusterLift).sourceMovement;
+  }
   return lift;
 }
 
@@ -443,6 +535,12 @@ function entriesFromValue(v: unknown): TbClusterLift[] {
         }
 
         if (o.split === "A" || o.split === "B") lift.split = o.split;
+        if (
+          typeof o.sourceMovement === "string" &&
+          o.sourceMovement.length > 0
+        ) {
+          lift.sourceMovement = o.sourceMovement;
+        }
         out.push(lift);
       }
     }

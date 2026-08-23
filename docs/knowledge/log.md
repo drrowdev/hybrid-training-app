@@ -817,3 +817,14 @@ Rehab protocol authoring moves out of the program wizard into Settings. A protoc
 The binding table exists instead of a `libraryId` field in `setup_input.customization` because that blob is strict-validated and this repo deploys app-first, database-second: the previous build would reject a stamped blob, and `edit-context.ts` safeParses it, so the wizard would silently open without the user's rehab. A real FK also makes "cannot delete a protocol a program uses" a database guarantee, and legacy V1/V2 blobs have no named-protocol array to stamp at all.
 
 Local protocol ids are preserved for existing attachments and are the library uuid for new ones. The old ordinal ids were reused by position, so a swap could hand one protocol's supersets — and its `removedEmbeddedRehabSourceRefs` tombstones — to an unrelated protocol.
+## [2026-08-23] decision | Zulu's supplemental lifts become visible in the wizard, and editable without losing their prescription
+
+Reported from use: the Zulu loadout step looked as though Tactical Barbell prescribed four main lifts and nothing else, so the "Add accessory work" toggle read as the only route to any extra work.
+
+The engine was right and the wizard was wrong. TB3 Zulu has emitted supplemental lifts since it was rebuilt — overhead press plus the AB Triad on A days, barbell row and back extension on B days, 3-5x8-10 on the 65/70/75 wave — and tests pin them. What was missing was any way to see that: the card copy still described the earlier edition's user-chosen 4-lift cluster, and step 2 showed only frequency, length and loading basis.
+
+Underneath sat a real defect. A customized session's lifts were identified by movement key alone, and prescription rules match on that key, so swapping the exercise in a supplemental slot silently promoted it to main work at the session's main percentage. The same root cause let a week-6 peak slot be filled by an unrelated supplemental once its own lift was removed, and made a reassignment between two slots compare equal to the untouched template and be discarded.
+
+A slot is now a first-class identity that survives substitution - the mechanism Activation's Armor picker already used, wired into the weekly path. Supplemental slots gained Change and Remove alongside main ones, removal is stated back rather than blocked (DC-K4), and slot claims are validated structurally and against the selected template at deploy. Step 2 lists each day's main and supplemental lifts from the template itself, so the prose cannot drift again. See ADR 0074.
+
+Deliberately left alone: the accessory injector can still stack ab isolation onto the AB Triad, which is a muscle-overlap question rather than a slot one; and Zulu I/A, Gladiator, Mass and Grey Man remain on the earlier edition, their copy accurate for what they currently are.

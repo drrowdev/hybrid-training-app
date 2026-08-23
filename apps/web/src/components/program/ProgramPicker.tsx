@@ -149,17 +149,18 @@ export interface PickerTbTemplate {
   sessionSeries?: Array<{
     key: string;
     label: string;
-    movements: string[];
     /**
-     * Movements the template prescribes as supplemental rather than main work
-     * (Zulu's overhead press, barbell row and back extension). Drives the
-     * main-lift superset warning, which must not fire on accessory work.
+     * What the template prescribes in this repeating strength slot, in order.
+     * `sourceMovement` is the slot's permanent identity: it is what a
+     * replacement inherits its prescription from, and what a superset link is
+     * keyed by, so both survive swapping the exercise that fills the slot.
      */
-    supplementalMovements?: string[];
-    movementKinds?: Record<
-      string,
-      "barbell" | "weighted-bw" | "bodyweight" | "unanchored"
-    >;
+    slots: Array<{
+      sourceMovement: string;
+      role: "main" | "supplemental";
+      kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
+      split?: "A" | "B";
+    }>;
   }>;
   activationPhases?: PickerActivationPhase[];
 }
@@ -182,6 +183,52 @@ export interface PickerActivationPhase {
 }
 
 
+type PickerSeriesSlot = NonNullable<
+  PickerTbTemplate["sessionSeries"]
+>[number]["slots"][number];
+
+/**
+ * One editable row in a customized strength slot.
+ *
+ * `sourceMovement` is the template slot the row fills; `movement` is whatever
+ * exercise currently fills it. They differ once the user swaps the exercise,
+ * and the slot is what the engine matches its prescription rules against — so a
+ * swapped supplemental keeps its supplemental sets, reps and percentage. A row
+ * the user added themselves has no slot and is prescribed as main work.
+ */
+interface SeriesSlotDraft {
+  sourceMovement?: string;
+  movement: string;
+  kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
+}
+
+/**
+ * The slot a row belongs to. Customizations written before slots were recorded
+ * carry only a movement key, which for an unswapped row IS its slot — the same
+ * fallback the engine applies.
+ */
+function slotIdentity(draft: SeriesSlotDraft): string {
+  return draft.sourceMovement ?? draft.movement;
+}
+
+function slotDraftsFor(
+  series: NonNullable<PickerTbTemplate["sessionSeries"]>[number],
+): SeriesSlotDraft[] {
+  return series.slots.map((slot) => ({
+    sourceMovement: slot.sourceMovement,
+    movement: slot.sourceMovement,
+    ...(slot.kind ? { kind: slot.kind } : {}),
+  }));
+}
+
+function slotOf(
+  series: NonNullable<PickerTbTemplate["sessionSeries"]>[number],
+  draft: SeriesSlotDraft,
+): PickerSeriesSlot | undefined {
+  const identity = slotIdentity(draft);
+  return series.slots.find((slot) => slot.sourceMovement === identity);
+}
+
 function sessionSeriesFor(template: PickerTbTemplate): NonNullable<
   PickerTbTemplate["sessionSeries"]
 > {
@@ -190,13 +237,12 @@ function sessionSeriesFor(template: PickerTbTemplate): NonNullable<
     : Array.from({ length: template.sessionsPerWeek }, (_, index) => ({
         key: `slot-${index + 1}`,
         label: `Day ${index + 1}`,
-        movements: template.defaultCluster.map((entry) => entry.movement),
-        supplementalMovements: [],
-        movementKinds: Object.fromEntries(
-          template.defaultCluster
-            .filter((entry) => entry.kind != null)
-            .map((entry) => [entry.movement, entry.kind!]),
-        ),
+        slots: template.defaultCluster.map((entry) => ({
+          sourceMovement: entry.movement,
+          role: "main" as const,
+          ...(entry.kind ? { kind: entry.kind } : {}),
+          ...(entry.split ? { split: entry.split } : {}),
+        })),
       }));
 }
 
@@ -395,10 +441,10 @@ const TEMPLATE_COPY: Record<string, Record<string, TemplateCopy>> = {
       long: "Fighter is the 2-day-a-week minimum-effective-dose strength template. Same submaximal percentage waves as Operator, but only twice a week \u2014 freeing up the calendar for high volumes of running, rucking or sport practice. The go-to when conditioning is your priority and strength just needs to be maintained or slowly built.",
     },
     zulu: {
-      desc: "A/B split, 4 lifts trained twice each across the week.",
+      desc: "A/B split \u2014 4 sessions a week, each with main and supplemental lifts.",
       freq: "4 sessions / week",
       len: "6-week block",
-      long: "Zulu splits 4 main lifts into two pairs (A and B) and trains each pair twice across 4 sessions a week. It lets you carry more lifts than Operator\u2019s 3-lift cap while staying submaximal. A good fit when you want broader barbell coverage and can give strength 4 days.",
+      long: "Zulu runs two sessions, A and B, twice each across four days. A trains bench and squat, then overhead press and ab work. B trains deadlift and weighted pull-ups, then barbell rows and back extensions. The second pass through the week opens slightly heavier than the first. More barbell coverage than Operator, for when you can give strength 4 days.",
     },
     "zulu-ia": {
       desc: "Zulu, autoregulated: 3\u20135 sets, heavier weeks 4\u20136.",
@@ -1351,7 +1397,7 @@ export function ProgramPicker({
     editContext?.customization?.displayName ?? DEFAULT_CUSTOM_TB_NAME,
   );
   const [customSessionMovements, setCustomSessionMovements] = useState<
-    Record<string, string[]>
+    Record<string, SeriesSlotDraft[]>
   >(() => {
     const customization = editContext?.customization;
     return customization && isTbCustomizationV1(customization)
@@ -1359,7 +1405,13 @@ export function ProgramPicker({
           Object.entries(customization.sessionMovements).map(
             ([key, movements]) => [
               key,
-              movements.map((movement) => movement.movement),
+              movements.map((movement) => ({
+                movement: movement.movement,
+                ...(movement.sourceMovement
+                  ? { sourceMovement: movement.sourceMovement }
+                  : {}),
+                ...(movement.kind ? { kind: movement.kind } : {}),
+              })),
             ],
           ),
         )
@@ -1399,15 +1451,16 @@ export function ProgramPicker({
    * would make the main-lift warning meaningless.
    */
   const linkableMovementsFor = (
-    movementKeys: readonly string[],
-    supplemental: readonly string[] = [],
+    drafts: readonly SeriesSlotDraft[],
+    series?: NonNullable<PickerTbTemplate["sessionSeries"]>[number],
   ): LinkableMovement[] => {
-    const isSupplemental = new Set(supplemental);
     const triad = AB_TRIAD_MOVEMENTS as readonly string[];
-    const completeTriad = triad.every((m) => movementKeys.includes(m));
+    const identities = drafts.map(slotIdentity);
+    const completeTriad = triad.every((m) => identities.includes(m));
     const out: LinkableMovement[] = [];
     let triadEmitted = false;
-    for (const key of movementKeys) {
+    for (const draft of drafts) {
+      const key = slotIdentity(draft);
       if (completeTriad && triad.includes(key)) {
         if (triadEmitted) continue;
         triadEmitted = true;
@@ -1424,8 +1477,10 @@ export function ProgramPicker({
       }
       out.push({
         key,
-        label: customMovementLabel(key),
-        isMain: !key.startsWith("catalog:") && !isSupplemental.has(key),
+        label: customMovementLabel(draft.movement),
+        isMain:
+          !draft.movement.startsWith("catalog:") &&
+          (series ? slotOf(series, draft)?.role !== "supplemental" : true),
       });
     }
     return out;
@@ -1507,7 +1562,7 @@ export function ProgramPicker({
         ? Object.fromEntries(
             sessionSeriesFor(activeTbTemplate).map((series) => [
               series.key,
-              [...series.movements],
+              slotDraftsFor(series),
             ]),
           )
         : {},
@@ -1683,6 +1738,7 @@ export function ProgramPicker({
       const available = new Set(roleKeys);
       return Object.values(customSessionMovements)
         .flat()
+        .map((draft) => draft.movement)
         .filter((key) => available.has(key) && key !== "pullup")
         .filter((key, index, all) => all.indexOf(key) === index)
         .sort((a, b) => roleKeys.indexOf(a) - roleKeys.indexOf(b));
@@ -1832,7 +1888,7 @@ export function ProgramPicker({
           ? Object.fromEntries(
               sessionSeriesFor(t).map((series) => [
                 series.key,
-                [...series.movements],
+                slotDraftsFor(series),
               ]),
             )
           : {},
@@ -1914,7 +1970,7 @@ export function ProgramPicker({
           Object.fromEntries(
             sessionSeriesFor(activeTbTemplate).map((series) => [
               series.key,
-              [...series.movements],
+              slotDraftsFor(series),
             ]),
           ),
         );
@@ -2087,14 +2143,13 @@ export function ProgramPicker({
     });
   }
 
-  function toggleSeriesMovement(seriesKey: string, movement: string) {
+  /** Drop a row from a customized slot list, keyed by the slot it fills. */
+  function removeSeriesMovement(seriesKey: string, identity: string) {
     setCustomSessionMovements((current) => {
       const selected = current[seriesKey] ?? [];
       return {
         ...current,
-        [seriesKey]: selected.includes(movement)
-          ? selected.filter((key) => key !== movement)
-          : [...selected, movement],
+        [seriesKey]: selected.filter((draft) => slotIdentity(draft) !== identity),
       };
     });
     // A removed lift must leave any link it was part of, or the link keeps a
@@ -2104,7 +2159,7 @@ export function ProgramPicker({
     setSessionLinks((current) => {
       const links = current[seriesKey];
       if (!links?.length) return current;
-      const pruned = pruneMovementFromLinks(links, movement);
+      const pruned = pruneMovementFromLinks(links, identity);
       if (pruned.length === links.length &&
           pruned.every((l, i) => l.members.length === links[i]!.members.length)) {
         return current;
@@ -2114,6 +2169,57 @@ export function ProgramPicker({
       else delete next[seriesKey];
       return next;
     });
+  }
+
+  /**
+   * Put a different exercise in a slot. The slot itself is untouched, so links
+   * keyed by it survive and the engine keeps prescribing it the same way.
+   */
+  function replaceSeriesMovement(
+    seriesKey: string,
+    identity: string,
+    movement: string,
+    kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored",
+  ) {
+    setCustomSessionMovements((current) => {
+      const selected = current[seriesKey] ?? [];
+      return {
+        ...current,
+        [seriesKey]: selected.map((draft) =>
+          slotIdentity(draft) === identity
+            ? {
+                sourceMovement: identity,
+                movement,
+                ...(kind ? { kind } : {}),
+              }
+            : draft,
+        ),
+      };
+    });
+  }
+
+  function addSeriesMovement(seriesKey: string, movement: string) {
+    setCustomSessionMovements((current) => {
+      const selected = current[seriesKey] ?? [];
+      if (selected.some((draft) => draft.movement === movement)) return current;
+      return { ...current, [seriesKey]: [...selected, { movement }] };
+    });
+  }
+
+  /**
+   * Prescribed lifts the user has dropped from a slot list. Removal is allowed —
+   * it is their session — but it is stated back to them rather than passing
+   * silently (DC-K4).
+   */
+  function removedSupplementalLabels(
+    series: NonNullable<PickerTbTemplate["sessionSeries"]>[number],
+  ): string[] {
+    const kept = new Set(
+      (customSessionMovements[series.key] ?? []).map(slotIdentity),
+    );
+    return series.slots
+      .filter((slot) => !kept.has(slot.sourceMovement))
+      .map((slot) => customMovementLabel(slot.sourceMovement));
   }
 
   function resetWeek() {
@@ -2265,29 +2371,33 @@ export function ProgramPicker({
               sessionMovements: Object.fromEntries(
                 sessionSeriesFor(activeTbTemplate).map((series) => [
                   series.key,
-                  (customSessionMovements[series.key] ?? []).map(
-                    (movement) => {
-                      const kind =
-                        series.movementKinds?.[movement] ??
-                        (movement === "weighted-pullup"
-                          ? "weighted-bw"
-                          : movement === "pullup"
-                            ? "bodyweight"
-                            : undefined);
-                      const catalog = catalogMovementMeta[movement];
-                      return {
-                        movement,
-                        ...(catalog
-                          ? {
-                              movementId: catalog.id,
-                              slug: catalog.slug,
-                              displayName: catalog.name,
-                            }
-                          : {}),
-                        ...(kind ? { kind } : {}),
-                      };
-                    },
-                  ),
+                  (customSessionMovements[series.key] ?? []).map((draft) => {
+                    const slot = slotOf(series, draft);
+                    const kind =
+                      draft.kind ??
+                      slot?.kind ??
+                      (draft.movement === "weighted-pullup"
+                        ? "weighted-bw"
+                        : draft.movement === "pullup"
+                          ? "bodyweight"
+                          : undefined);
+                    const catalog = catalogMovementMeta[draft.movement];
+                    return {
+                      movement: draft.movement,
+                      // Only claim a slot the template actually prescribes here;
+                      // a movement the user added stays unclaimed and is
+                      // prescribed as main work.
+                      ...(slot ? { sourceMovement: slot.sourceMovement } : {}),
+                      ...(catalog
+                        ? {
+                            movementId: catalog.id,
+                            slug: catalog.slug,
+                            displayName: catalog.name,
+                          }
+                        : {}),
+                      ...(kind ? { kind } : {}),
+                    };
+                  }),
                 ]),
               ),
               ...(rehabWeekdays.length > 0
@@ -2687,8 +2797,72 @@ export function ProgramPicker({
     );
   }
 
-  function renderGpPlan() {
-    if (!selected || selected.id !== "green-protocol") return null;
+  /**
+   * What each session of the chosen template contains. Read from the template
+   * itself rather than written out in prose, so it stays true as templates change.
+   */
+  function renderTbSessionPreview() {
+    if (!isTb || isActivation || !activeTbTemplate) return null;
+    const series = sessionSeriesFor(activeTbTemplate);
+    if (series.length === 0) return null;
+    const triad = AB_TRIAD_MOVEMENTS as readonly string[];
+    // The AB Triad is one circuit, so it reads as one entry rather than three.
+    const namesOf = (slots: ReadonlyArray<{ sourceMovement: string }>) => {
+      const complete = triad.every((movement) =>
+        slots.some((slot) => slot.sourceMovement === movement),
+      );
+      const out: string[] = [];
+      let triadShown = false;
+      for (const slot of slots) {
+        if (complete && triad.includes(slot.sourceMovement)) {
+          if (triadShown) continue;
+          triadShown = true;
+          out.push(AB_TRIAD_LABEL);
+          continue;
+        }
+        out.push(customMovementLabel(slot.sourceMovement));
+      }
+      return out;
+    };
+    return (
+      <div className={styles.specwrap} data-testid="tb-session-preview">
+        <div className={styles.label}>Each session</div>
+        <div className={styles.seriesGrid}>
+          {series.map((entry) => {
+            const main = entry.slots.filter((slot) => slot.role === "main");
+            const supplemental = entry.slots.filter(
+              (slot) => slot.role === "supplemental",
+            );
+            return (
+              <section key={entry.key} className={styles.seriesCard}>
+                <header>
+                  <b>{entry.label}</b>
+                </header>
+                <div className={styles.seriesExercises}>
+                  <div>
+                    <span>
+                      <small>Main lifts</small>
+                      <b>{namesOf(main).join(", ")}</b>
+                    </span>
+                  </div>
+                  {supplemental.length > 0 ? (
+                    <div>
+                      <span>
+                        <small>Supplemental</small>
+                        <b>{namesOf(supplemental).join(", ")}</b>
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  function renderGpPlan() {    if (!selected || selected.id !== "green-protocol") return null;
     const plan = GP_FOUNDATION.includes(selectedLoadoutValue)
       ? GP_FOUNDATION.slice(GP_FOUNDATION.indexOf(selectedLoadoutValue))
       : [selectedLoadoutValue];
@@ -2752,8 +2926,8 @@ export function ProgramPicker({
         </label>
         <p className={styles.sub} style={{ marginTop: 6 }}>
           {isGp
-            ? "Green Protocol treats accessories as optional \u2014 conditioning and your main lifts come first. Turn this on for a little aesthetic work (arms, abs, calves) after your strength sessions. Up to 2\u20133 per session depending on the day\u2019s template, and never added to a conditioning day."
-            : `Tactical Barbell doesn\u2019t add accessories \u2014 your main lifts and conditioning do the heavy lifting. Turn this on only if you want a little aesthetic work (arms, abs, calves) after your main lifts. Up to ${tbAccessoryPlan?.maxItems ?? 2} per session, kept light so it never compromises your strength work.`}
+            ? "Adds up to 2\u20133 muscle-focused movements after each strength session, depending on the day\u2019s template. Never on a conditioning day."
+            : `Adds up to ${tbAccessoryPlan?.maxItems ?? 2} muscle-focused movements after each strength session.`}
         </p>
         {accessoriesOn ? (
           <>
@@ -2995,6 +3169,7 @@ export function ProgramPicker({
           </div>
         ) : null}
         {renderSpecStrip()}
+        {renderTbSessionPreview()}
         {renderGpPlan()}
         {!customizeTb ? renderActivationSupplementals() : null}
         {renderAssistanceVolume()}
@@ -4344,19 +4519,23 @@ export function ProgramPicker({
                             // Same rationale as the Activation rows: the link is
                             // drawn where the lifter reads the session, and the
                             // derivation is shared with the picker below.
+                            const drafts =
+                              customSessionMovements[series.key] ?? [];
                             const linkable = linkableMovementsFor(
-                              customSessionMovements[series.key] ?? [],
-                              series.supplementalMovements ?? [],
+                              drafts,
+                              series,
                             );
                             const links = sessionLinks[series.key] ?? [];
                             const linkBadges = slotLinkBadges(links, linkable);
-                            return (customSessionMovements[series.key] ?? []).map(
-                            (movementKey) => {
-                              const badge = linkBadges.get(movementKey);
+                            return drafts.map((draft) => {
+                              const identity = slotIdentity(draft);
+                              const slot = slotOf(series, draft);
+                              const badge = linkBadges.get(identity);
                               return (
                               <div
-                                key={movementKey}
+                                key={identity}
                                 className={rowLinkClass(styles, badge, "")}
+                                data-testid={`tb-slot-${series.key}-${identity}`}
                               >
                                 <span>
                                   <LinkBadge
@@ -4367,58 +4546,85 @@ export function ProgramPicker({
                                     seriesKey={series.key}
                                     onChange={setLinksForSeries}
                                   />
-                                  <b>{customMovementLabel(movementKey)}</b>
+                                  <b>{customMovementLabel(draft.movement)}</b>
                                   <small>
-                                    {catalogMovementMeta[movementKey]
-                                      ?.hasOneRm
-                                      ? "Uses saved 1RM"
-                                      : movementKey.startsWith("catalog:")
-                                        ? "Manual load"
-                                        : "Programmed loading"}
+                                    {slot?.role === "supplemental"
+                                      ? "Supplemental"
+                                      : catalogMovementMeta[draft.movement]
+                                            ?.hasOneRm
+                                        ? "Uses saved 1RM"
+                                        : draft.movement.startsWith("catalog:")
+                                          ? "Manual load"
+                                          : "Main lift"}
                                   </small>
                                 </span>
-                                <button
-                                  type="button"
-                                  disabled={
-                                    (customSessionMovements[
-                                      series.key
-                                    ]?.length ?? 0) <= 1
-                                  }
-                                  onClick={() =>
-                                    toggleSeriesMovement(
-                                      series.key,
-                                      movementKey,
-                                    )
-                                  }
-                                >
-                                  Remove
-                                </button>
+                                <span className={styles.seriesRowActions}>
+                                  {slot ? (
+                                    <details className={styles.addExercise}>
+                                      <summary
+                                        data-testid={`tb-slot-change-${series.key}-${identity}`}
+                                      >
+                                        Change
+                                      </summary>
+                                      <ExerciseLibraryPicker
+                                        movements={rehabMovements}
+                                        excludeKeys={drafts.map(
+                                          (entry) => entry.movement,
+                                        )}
+                                        onPick={(movement) => {
+                                          const key = catalogMovementKey(
+                                            movement.id,
+                                          );
+                                          setCatalogMovementMeta((current) => ({
+                                            ...current,
+                                            [key]: movement,
+                                          }));
+                                          replaceSeriesMovement(
+                                            series.key,
+                                            identity,
+                                            key,
+                                          );
+                                        }}
+                                      />
+                                    </details>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    disabled={drafts.length <= 1}
+                                    onClick={() =>
+                                      removeSeriesMovement(series.key, identity)
+                                    }
+                                  >
+                                    Remove
+                                  </button>
+                                </span>
                               </div>
                               );
-                            },
-                          );
+                            });
                           })()}
                         </div>
+                        {removedSupplementalLabels(series).length > 0 ? (
+                          <p
+                            className={styles.note}
+                            data-testid={`tb-removed-supplemental-${series.key}`}
+                          >
+                            {`Removed from this session: ${removedSupplementalLabels(series).join(", ")}.`}
+                          </p>
+                        ) : null}
                         <details className={styles.addExercise}>
                           <summary>+ Add exercise</summary>
                           <ExerciseLibraryPicker
                             movements={rehabMovements}
-                            excludeKeys={
+                            excludeKeys={(
                               customSessionMovements[series.key] ?? []
-                            }
+                            ).map((draft) => draft.movement)}
                             onPick={(movement) => {
                               const key = catalogMovementKey(movement.id);
                               setCatalogMovementMeta((current) => ({
                                 ...current,
                                 [key]: movement,
                               }));
-                              setCustomSessionMovements((current) => ({
-                                ...current,
-                                [series.key]: [
-                                  ...(current[series.key] ?? []),
-                                  key,
-                                ],
-                              }));
+                              addSeriesMovement(series.key, key);
                             }}
                           />
                         </details>
@@ -4432,7 +4638,7 @@ export function ProgramPicker({
                           seriesKey={series.key}
                           movements={linkableMovementsFor(
                             customSessionMovements[series.key] ?? [],
-                            series.supplementalMovements ?? [],
+                            series,
                           )}
                           links={sessionLinks[series.key] ?? []}
                           onChange={setLinksForSeries}
@@ -4566,8 +4772,8 @@ export function ProgramPicker({
                   <SessionLinkEditor
                     seriesKey={series.key}
                     movements={linkableMovementsFor(
-                      series.movements,
-                      series.supplementalMovements ?? [],
+                      slotDraftsFor(series),
+                      series,
                     )}
                     links={sessionLinks[series.key] ?? []}
                     onChange={setLinksForSeries}

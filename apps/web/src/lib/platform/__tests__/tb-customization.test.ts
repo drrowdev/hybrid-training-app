@@ -115,8 +115,51 @@ describe("Tactical Barbell customization contract", () => {
     expect(tbCustomizationSchema.parse(base)).toEqual(base);
   });
 
-  it("requires a rehab protocol when the week contains rehab", () => {
+  it("carries the template slot a replacement stands in for", () => {
+    const swapped = {
+      ...base,
+      sessionMovements: {
+        "slot-1": [
+          { movement: "squat", sourceMovement: "squat" },
+          { movement: "push-press", sourceMovement: "overhead-press" },
+        ],
+        "slot-2": [{ movement: "bench" }],
+      },
+    };
+    expect(tbCustomizationSchema.parse(swapped)).toEqual(swapped);
+  });
+
+  it("rejects two movements claiming the same slot", () => {
     expect(
+      tbCustomizationSchema.safeParse({
+        ...base,
+        sessionMovements: {
+          "slot-1": [
+            { movement: "push-press", sourceMovement: "overhead-press" },
+            { movement: "incline-bench", sourceMovement: "overhead-press" },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a custom movement claiming to be a template slot", () => {
+    expect(
+      tbCustomizationSchema.safeParse({
+        ...base,
+        sessionMovements: {
+          "slot-1": [
+            {
+              movement: "squat",
+              sourceMovement: "catalog:00000000-0000-4000-8000-000000000010",
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires a rehab protocol when the week contains rehab", () => {    expect(
       tbCustomizationSchema.safeParse({ ...base, rehab: undefined }).success,
     ).toBe(false);
   });

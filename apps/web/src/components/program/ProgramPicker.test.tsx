@@ -67,8 +67,52 @@ const ZULU: PickerTbTemplate = {
   ],
 };
 
-const ACTIVATION: PickerTbTemplate = {
-  id: "activation",
+const ZULU_TB3: PickerTbTemplate = {
+  ...ZULU,
+  fixedLoadout: true,
+  sessionSeries: [
+    {
+      key: "slot-1",
+      label: "Day 1 \u00B7 A",
+      slots: [
+        { sourceMovement: "bench", role: "main" },
+        { sourceMovement: "squat", role: "main" },
+        { sourceMovement: "overhead-press", role: "supplemental" },
+        {
+          sourceMovement: "hanging-leg-raise",
+          role: "supplemental",
+          kind: "unanchored",
+        },
+        {
+          sourceMovement: "hanging-knee-raise",
+          role: "supplemental",
+          kind: "unanchored",
+        },
+        {
+          sourceMovement: "toes-to-bar",
+          role: "supplemental",
+          kind: "unanchored",
+        },
+      ],
+    },
+    {
+      key: "slot-2",
+      label: "Day 2 \u00B7 B",
+      slots: [
+        { sourceMovement: "deadlift", role: "main" },
+        { sourceMovement: "weighted-pullup", role: "main", kind: "weighted-bw" },
+        { sourceMovement: "barbell-row", role: "supplemental" },
+        {
+          sourceMovement: "back-extension",
+          role: "supplemental",
+          kind: "unanchored",
+        },
+      ],
+    },
+  ],
+};
+
+const ACTIVATION: PickerTbTemplate = {  id: "activation",
   name: "Activation",
   structure: "cluster",
   clusterMin: 3,
@@ -398,8 +442,48 @@ describe("ProgramPicker rendering", () => {
     );
   });
 
-  it("offers a per-block assistance volume on the 5/3/1 loadout step, defaulting to Balanced", () => {
+  it("shows each Zulu session's main and supplemental lifts on the loadout step", () => {
+    const zuluPrograms: PickerProgram[] = programs.map((program) =>
+      program.id === "tactical-barbell"
+        ? {
+            ...program,
+            fields: [
+              {
+                key: "templateId",
+                label: "Template",
+                type: "select" as const,
+                options: [{ value: "zulu", label: "Zulu" }],
+                defaultValue: "zulu",
+              },
+            ],
+          }
+        : program,
+    );
     const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+
+    expect(html).toContain('data-testid="tb-session-preview"');
+    expect(html).toContain("Supplemental");
+    for (const lift of [
+      "Overhead Press",
+      "Barbell Row",
+      "Back Extension",
+      "Weighted Pull-up",
+    ]) {
+      expect(html).toContain(lift);
+    }
+    // The ab work is one circuit, so it reads as one entry.
+    expect(html).toContain("AB Triad");
+    expect(html).not.toContain("Hanging Knee Raise");
+  });
+
+  it("offers a per-block assistance volume on the 5/3/1 loadout step, defaulting to Balanced", () => {    const html = renderToStaticMarkup(
       <ProgramPicker
         programs={programs}
         anchoredKeys={["squat", "bench", "deadlift", "press"]}

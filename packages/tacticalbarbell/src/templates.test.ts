@@ -4,6 +4,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { TB_TEMPLATES, getTbTemplate, isSupplementalSlot } from "./templates";
+import { tbTemplateSeries } from "./program";
 
 describe("TB templates — structural integrity", () => {
   it("ships the seven canonical templates plus TB3 Activation", () => {
@@ -211,8 +212,57 @@ describe("isSupplementalSlot", () => {
   });
 });
 
-describe("supplemental lifts that carry no training max", () => {
-  // Nobody one-rep-maxes a back extension, so anchoring it to a percentage
+describe("tbTemplateSeries — what the wizard shows and edits", () => {
+  it("splits each Zulu day into its main and supplemental slots", () => {
+    const series = tbTemplateSeries(getTbTemplate("zulu")!);
+    expect(series.map((entry) => entry.key)).toEqual([
+      "slot-1",
+      "slot-2",
+      "slot-3",
+      "slot-4",
+    ]);
+    const byRole = (index: number, role: "main" | "supplemental") =>
+      series[index]!.slots
+        .filter((slot) => slot.role === role)
+        .map((slot) => slot.sourceMovement);
+
+    expect(byRole(0, "main")).toEqual(["bench", "squat"]);
+    expect(byRole(0, "supplemental")).toEqual([
+      "overhead-press",
+      "hanging-leg-raise",
+      "hanging-knee-raise",
+      "toes-to-bar",
+    ]);
+    expect(byRole(1, "main")).toEqual(["deadlift", "weighted-pullup"]);
+    expect(byRole(1, "supplemental")).toEqual([
+      "barbell-row",
+      "back-extension",
+    ]);
+  });
+
+  it("reports every Operator slot as main work", () => {
+    const series = tbTemplateSeries(getTbTemplate("operator")!);
+    expect(series).toHaveLength(3);
+    expect(
+      series.every((entry) => entry.slots.every((slot) => slot.role === "main")),
+    ).toBe(true);
+  });
+
+  it("leaves Activation to its own phase-aware projection", () => {
+    expect(tbTemplateSeries(getTbTemplate("activation")!)).toEqual([]);
+  });
+
+  it("keys every slot list the same way a customization does", () => {
+    for (const template of TB_TEMPLATES) {
+      for (const entry of tbTemplateSeries(template)) {
+        expect(entry.key, template.id).toMatch(/^slot-\d+$/);
+        expect(entry.slots.length, `${template.id}:${entry.key}`).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+describe("supplemental lifts that carry no training max", () => {  // Nobody one-rep-maxes a back extension, so anchoring it to a percentage
   // demanded a number that does not exist and put it in the starting-max list.
   const activation = getTbTemplate("activation")!;
   const slot = (id: string, movement: string) =>

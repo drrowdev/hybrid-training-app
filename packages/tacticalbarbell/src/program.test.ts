@@ -257,8 +257,204 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     }
   });
 
-  it("preserves canonical prescriptions for every standalone template when its slots are unchanged", () => {
-    for (const template of TB_TEMPLATES.filter(
+  it("[slot identity] a canonical Zulu customization that names its slots stays byte-identical", () => {
+    const withSlots = (entries: ReadonlyArray<Record<string, unknown>>) =>
+      entries.map((entry) => ({
+        ...entry,
+        sourceMovement: entry.movement,
+      }));
+    const a = withSlots([
+      { movement: "bench", split: "A" },
+      { movement: "squat", split: "A" },
+      { movement: "overhead-press", split: "A" },
+      { movement: "hanging-leg-raise", split: "A" },
+      { movement: "hanging-knee-raise", split: "A" },
+      { movement: "toes-to-bar", split: "A" },
+    ]);
+    const b = withSlots([
+      { movement: "deadlift", split: "B" },
+      { movement: "weighted-pullup", kind: "weighted-bw", split: "B" },
+      { movement: "barbell-row", split: "B" },
+      { movement: "back-extension", kind: "unanchored", split: "B" },
+    ]);
+    const canonical = setup({ templateId: "zulu" });
+    const customized = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-1": a,
+        "slot-2": b,
+        "slot-3": a,
+        "slot-4": b,
+      },
+    });
+
+    for (const spec of tb.timeline(canonical)) {
+      expect(tb.prescribe(customized, spec.ref, ctx), spec.ref).toEqual(
+        tb.prescribe(canonical, spec.ref, ctx),
+      );
+    }
+  });
+
+  it("[slot identity] a swapped Zulu supplemental keeps the slot's supplemental prescription", () => {
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-1": [
+          { movement: "bench", sourceMovement: "bench", split: "A" },
+          { movement: "squat", sourceMovement: "squat", split: "A" },
+          { movement: "push-press", sourceMovement: "overhead-press", split: "A" },
+        ],
+      },
+    });
+    const week1 = tb.prescribe(inst, "b0-w1-p1a", ctx);
+
+    expect(itemsOfKind(week1, "main").map((item) => item.name)).toEqual([
+      "Bench Press",
+      "Squat",
+    ]);
+    expect(itemsOfKind(week1, "supplemental")).toEqual([
+      expect.objectContaining({
+        name: "Push Press",
+        kind: "supplemental",
+        sets: 3,
+        setsMax: 5,
+        reps: 8,
+        repsMax: 10,
+        percentOfTm: 0.65,
+      }),
+    ]);
+    // Week 3 rides the supplemental wave (0.65 → 0.70 → 0.75), not the main one.
+    expect(
+      itemsOfKind(tb.prescribe(inst, "b0-w3-p1a", ctx), "supplemental")[0]
+        ?.percentOfTm,
+    ).toBe(0.75);
+  });
+
+  it("[slot identity] a swapped unanchored supplemental stays supplemental and unloaded", () => {
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-2": [
+          { movement: "deadlift", sourceMovement: "deadlift", split: "B" },
+          {
+            movement: "weighted-pullup",
+            sourceMovement: "weighted-pullup",
+            kind: "weighted-bw",
+            split: "B",
+          },
+          { movement: "barbell-row", sourceMovement: "barbell-row", split: "B" },
+          {
+            movement: "reverse-hyper",
+            sourceMovement: "back-extension",
+            kind: "unanchored",
+            split: "B",
+          },
+        ],
+      },
+    });
+    const supplemental = itemsOfKind(
+      tb.prescribe(inst, "b0-w1-p1b", ctx),
+      "supplemental",
+    );
+
+    expect(supplemental.map((item) => item.name)).toEqual([
+      "Barbell Row",
+      "Reverse Hyperextension",
+    ]);
+    expect(supplemental[1]).toMatchObject({ sets: 3, setsMax: 5, reps: 8, repsMax: 10 });
+    expect(supplemental[1]?.percentOfTm).toBeUndefined();
+    expect(supplemental[1]?.weightKg).toBeUndefined();
+  });
+
+  it("[slot identity] removing a supplemental leaves the main lifts prescribed unchanged", () => {
+    const canonical = setup({ templateId: "zulu" });
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-1": [
+          { movement: "bench", sourceMovement: "bench", split: "A" },
+          { movement: "squat", sourceMovement: "squat", split: "A" },
+        ],
+      },
+    });
+    const week1 = tb.prescribe(inst, "b0-w1-p1a", ctx);
+
+    expect(itemsOfKind(week1, "supplemental")).toEqual([]);
+    expect(itemsOfKind(week1, "main")).toEqual(
+      itemsOfKind(tb.prescribe(canonical, "b0-w1-p1a", ctx), "main"),
+    );
+  });
+
+  it("[slot identity] a movement added without a slot is prescribed as main work", () => {
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-1": [
+          { movement: "bench", sourceMovement: "bench", split: "A" },
+          { movement: "squat", sourceMovement: "squat", split: "A" },
+          { movement: "power-clean", split: "A" },
+        ],
+      },
+    });
+    const week1 = tb.prescribe(inst, "b0-w1-p1a", ctx);
+
+    expect(itemsOfKind(week1, "supplemental")).toEqual([]);
+    expect(itemsOfKind(week1, "main").map((item) => item.name)).toEqual([
+      "Bench Press",
+      "Squat",
+      "Power Clean",
+    ]);
+  });
+
+  it("[slot identity] swapping two movements between slots is honoured, not read as unchanged", () => {
+    const canonical = setup({ templateId: "zulu" });
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-1": [
+          { movement: "squat", sourceMovement: "bench", split: "A" },
+          { movement: "bench", sourceMovement: "squat", split: "A" },
+          {
+            movement: "overhead-press",
+            sourceMovement: "overhead-press",
+            split: "A",
+          },
+        ],
+      },
+    });
+    const main = itemsOfKind(tb.prescribe(inst, "b0-w1-p1a", ctx), "main");
+
+    expect(main.map((item) => item.name)).toEqual(["Squat", "Bench Press"]);
+    expect(
+      itemsOfKind(tb.prescribe(canonical, "b0-w1-p1a", ctx), "main").map(
+        (item) => item.name,
+      ),
+    ).toEqual(["Bench Press", "Squat"]);
+  });
+
+  it("[slot identity] an emptied main slot never promotes a supplemental into the peak attempt", () => {
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        // Squat removed; only the bench main and the supplemental slots remain.
+        "slot-1": [
+          { movement: "bench", sourceMovement: "bench", split: "A" },
+          {
+            movement: "overhead-press",
+            sourceMovement: "overhead-press",
+            split: "A",
+          },
+        ],
+      },
+    });
+    // peak-a1 is the squat attempt, supported by bench.
+    const main = itemsOfKind(tb.prescribe(inst, "b0-w6-peak-a1", ctx), "main");
+
+    expect(main.map((item) => item.name)).toEqual(["Bench Press"]);
+    expect(main.every((item) => item.name !== "Overhead Press")).toBe(true);
+  });
+
+  it("preserves canonical prescriptions for every standalone template when its slots are unchanged", () => {    for (const template of TB_TEMPLATES.filter(
       (candidate) => candidate.id !== "activation",
     )) {
       const workSessions = template.weeklySessions.filter(

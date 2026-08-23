@@ -1189,4 +1189,62 @@ describe("materializeProgram — customized Tactical Barbell", () => {
       percentTm: 75,
     });
   });
+
+  it("keeps a swapped Zulu supplemental supplemental all the way into the stored prescription", () => {
+    const zuluCtx: PlatformContext = {
+      oneRepMaxes: {
+        squat: 200,
+        bench: 100,
+        deadlift: 250,
+        "overhead-press": 100,
+        "push-press": 100,
+        "weighted-pullup": 50,
+        "barbell-row": 120,
+      },
+      roundingKg: 2.5,
+    };
+    const zuluInstance = tacticalBarbellEngine.setup(
+      {
+        values: {
+          templateId: "zulu",
+          customSessionMovements: {
+            "slot-1": [
+              { movement: "bench", sourceMovement: "bench", split: "A" },
+              { movement: "squat", sourceMovement: "squat", split: "A" },
+              {
+                movement: "push-press",
+                sourceMovement: "overhead-press",
+                split: "A",
+              },
+            ],
+          },
+        },
+      },
+      zuluCtx,
+    );
+    const result = materializeProgram(
+      tacticalBarbellEngine,
+      zuluInstance,
+      zuluCtx,
+      resolve,
+      { weekdays: [0, 1, 3, 4] },
+    );
+    const dayOne = result.sessions.find(
+      (session) => session.weekIndex === 0 && session.dayIndex === 0,
+    )!;
+    const pushPress = dayOne.prescription.items.filter(
+      (item) => item.movementName === "Push-press" && item.kind !== "warmup",
+    );
+
+    expect(pushPress.length).toBeGreaterThan(0);
+    // The adapter stores supplemental work as `back_off`, never `main`.
+    expect(pushPress.every((item) => item.kind === "back_off")).toBe(true);
+    expect(pushPress[0]).toMatchObject({ percentTm: 65, reps: 8 });
+    expect(
+      dayOne.prescription.items
+        .filter((item) => item.kind === "main")
+        .map((item) => item.movementName)
+        .filter((name, index, all) => all.indexOf(name) === index),
+    ).toEqual(["Bench", "Squat"]);
+  });
 });
