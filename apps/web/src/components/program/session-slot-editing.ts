@@ -259,11 +259,11 @@ export function isGroupReplaced(
  * has. The engine refuses a link with a missing member, so the whole superset
  * would disappear without a word.
  *
- * The result obeys the same size rules as every other link edit: a link left
- * with fewer than two members is not a superset and is dissolved, and a rewrite
- * that would push a link past `maxMembers` is refused rather than written — both
- * are rejected by the deploy schema, which fails the whole submission with a
- * message that names neither the link nor the session.
+ * The result obeys the same size rules as every other link edit: a link that
+ * cannot be rewritten within them is dissolved rather than left naming slots
+ * that no longer line up. A link too full to take the circuit back would still
+ * name only its first slot, and the engine drops a link that claims part of a
+ * circuit — so leaving it would promise a superset that never runs.
  */
 export function replaceLinkMembers<T extends { members: string[] }>(
   links: readonly T[],
@@ -282,9 +282,12 @@ export function replaceLinkMembers<T extends { members: string[] }>(
         emitted = true;
         return [...to];
       });
-      return members.length > maxMembers ? link : { ...link, members };
+      return { ...link, members };
     })
-    .filter((link) => link.members.length >= 2);
+    .filter(
+      (link) =>
+        link.members.length >= 2 && link.members.length <= maxMembers,
+    );
 }
 
 /** Whether any session row differs from what the template prescribes. */

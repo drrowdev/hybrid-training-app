@@ -2268,16 +2268,7 @@ export function ProgramPicker({
         movement,
       ),
     }));
-    setSessionLinks((current) =>
-      current[seriesKey]
-        ? {
-            ...current,
-            [seriesKey]: replaceLinkMembers(current[seriesKey]!, group, [
-              group[0]!,
-            ]),
-          }
-        : current,
-    );
+    rewriteSeriesLinks(seriesKey, group, [group[0]!]);
   }
 
   /** Put a swapped circuit back, links included. */
@@ -2286,18 +2277,28 @@ export function ProgramPicker({
       ...current,
       [seriesKey]: restoreGroup(seededFor(current, seriesKey), group),
     }));
-    setSessionLinks((current) =>
-      current[seriesKey]
-        ? {
-            ...current,
-            [seriesKey]: replaceLinkMembers(
-              current[seriesKey]!,
-              [group[0]!],
-              group,
-            ),
-          }
-        : current,
-    );
+    rewriteSeriesLinks(seriesKey, [group[0]!], group);
+  }
+
+  /**
+   * Move this session's links off `from` and onto `to`. A series with no links
+   * left drops its key entirely — an empty list is not a valid series and the
+   * deploy schema rejects the whole submission for it.
+   */
+  function rewriteSeriesLinks(
+    seriesKey: string,
+    from: readonly string[],
+    to: readonly string[],
+  ) {
+    setSessionLinks((current) => {
+      const links = current[seriesKey];
+      if (!links?.length) return current;
+      const rewritten = replaceLinkMembers(links, from, to);
+      const next = { ...current };
+      if (rewritten.length > 0) next[seriesKey] = rewritten;
+      else delete next[seriesKey];
+      return next;
+    });
   }
 
   /** The rows for a session: the user's edits, or the template's own slots. */

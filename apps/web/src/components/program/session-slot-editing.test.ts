@@ -309,11 +309,13 @@ describe("replaceLinkMembers", () => {
     expect(replaceLinkMembers(links, TRIAD, [TRIAD[0]!])).toEqual([]);
   });
 
-  it("refuses a restore that would push a link past its size limit", () => {
+  it("dissolves a link too full to take the circuit back", () => {
     const members = ["hanging-leg-raise", "a", "b", "c", "d", "e", "f"];
     const links = [{ id: "l1", name: "Giant set", members }];
-    // 7 + 2 = 9 > 8, so the link is left as it is rather than written invalid.
-    expect(replaceLinkMembers(links, [TRIAD[0]!], TRIAD)).toEqual(links);
+    // 7 + 2 = 9 > 8. Left in place it would name only the circuit's first slot
+    // while the session ran all three, and the engine drops a link that claims
+    // part of a circuit — so it would promise a superset that never runs.
+    expect(replaceLinkMembers(links, [TRIAD[0]!], TRIAD)).toEqual([]);
     // One fewer member and the restore fits.
     const fits = [{ id: "l1", name: "Giant set", members: members.slice(0, 6) }];
     expect(replaceLinkMembers(fits, [TRIAD[0]!], TRIAD)[0]!.members).toHaveLength(
