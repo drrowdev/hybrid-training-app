@@ -38,9 +38,39 @@ const movementReplacementSchema = z
     kind: z
       .enum(["barbell", "weighted-bw", "bodyweight", "unanchored"])
       .optional(),
+    /**
+     * The template slot this entry fills. Present when the entry stands in for a
+     * movement the template prescribes, absent when the user added it themselves.
+     * The engine matches its prescription rules on this, so a swapped
+     * supplemental keeps its supplemental sets/reps/% instead of reverting to
+     * main work. Only ever a template movement key — a `catalog:` movement is
+     * something the user added and can never BE a slot.
+     */
+    sourceMovement: z.string().trim().min(1).max(80).optional(),
+    /**
+     * Marks a movement the user added rather than one the template prescribes.
+     * Stated explicitly rather than inferred from a missing `sourceMovement`,
+     * because customizations written before slots existed have no slot on ANY
+     * entry — inferring would turn their main lifts into accessory work.
+     */
+    role: z.literal("accessory").optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
+    if (value.sourceMovement?.startsWith("catalog:")) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["sourceMovement"],
+        message: "A custom movement cannot stand in for a template slot.",
+      });
+    }
+    if (value.role === "accessory" && value.sourceMovement) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["role"],
+        message: "Accessory work does not fill a template slot.",
+      });
+    }
     if (!value.movement.startsWith("catalog:")) return;
     if (
       !value.movementId ||
@@ -58,12 +88,34 @@ const movementReplacementSchema = z
 export const tbCustomizationV1Schema = z
   .object({
     version: z.literal(TB_CUSTOMIZATION_VERSION),
-    displayName: z.string().trim().min(1).max(120),
+    /**
+     * The user's name for the block. Optional: editing the movements in a
+     * session writes this overlay too, and that alone should not rename their
+     * program — only the "Customize template" flow names it.
+     */
+    displayName: z.string().trim().min(1).max(120).optional(),
     dayTypes: z.array(weekdayTypeSchema).length(7),
     sessionMovements: z.record(
-      z.array(
-        movementReplacementSchema,
-      ).min(1).max(8),
+      z
+        .array(movementReplacementSchema)
+        .min(1)
+        .max(8)
+        .superRefine((movements, ctx) => {
+          // One entry per slot. Without this, two entries could both claim the
+          // barbell-row slot and each inherit its supplemental loading.
+          const seen = new Set<string>();
+          for (const movement of movements) {
+            if (!movement.sourceMovement) continue;
+            if (seen.has(movement.sourceMovement)) {
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "Each movement in a session must fill a different slot.",
+              });
+              return;
+            }
+            seen.add(movement.sourceMovement);
+          }
+        }),
     ),
     rehab: z
       .object({
@@ -358,5 +410,42 @@ export function customizationDays(
 ): number[] {
   return customization.dayTypes.flatMap((day, index) =>
     day === type ? [index] : [],
+  );
+}
+
+/** Catalog ids of the accessories the user picked themselves in the session editor. */
+export function userChosenAccessoryIds(
+  customization: TbCustomization | undefined,
+): Set<string> {
+  if (!customization || !isTbCustomizationV1(customization)) return new Set();
+  return new Set(
+    Object.values(customization.sessionMovements)
+      .flat()
+      .flatMap((movement) =>
+        movement.role === "accessory" && movement.movementId
+          ? [movement.movementId]
+          : [],
+      ),
+  );
+}
+
+/**
+ * Whether a block still carries accessory work the retired auto-injector added
+ * (ADR 0048, superseded by ADR 0075).
+ *
+ * A template prescribes no `accessory` items of its own, so any that appear were
+ * either auto-injected or picked by the user in the session editor. Both
+ * materialise identically, so the user's own picks have to be excluded by id —
+ * otherwise a block built entirely by hand reads as an auto-picking one and
+ * switches the injector back on when it is edited.
+ */
+export function hasAutoInjectedAccessories(
+  items: ReadonlyArray<{ kind?: string; movementId?: string }>,
+  chosenAccessoryIds: ReadonlySet<string>,
+): boolean {
+  return items.some(
+    (item) =>
+      item.kind === "accessory" &&
+      !(item.movementId != null && chosenAccessoryIds.has(item.movementId)),
   );
 }

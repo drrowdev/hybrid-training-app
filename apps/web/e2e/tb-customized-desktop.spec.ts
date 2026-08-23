@@ -33,7 +33,7 @@ test("customized TB builder exposes standalone templates and Activation", async 
 
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
-  await expect(page.getByText("Strength movements")).toBeVisible();
+  await expect(page.getByText("Rehab protocol")).toBeHidden();
 
   const tuesday = page.getByRole("button", { name: /Tue Rest/i });
   await tuesday.click();
@@ -47,7 +47,7 @@ test("customized TB builder exposes standalone templates and Activation", async 
   ).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByText("Strength movements")).toBeVisible();
+  await expect(page.getByText("Rehab protocol")).toBeVisible();
   const overflow = await page.evaluate(() => ({
     amount: document.documentElement.scrollWidth - window.innerWidth,
     offenders: Array.from(document.querySelectorAll("*"))

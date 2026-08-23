@@ -196,7 +196,7 @@ export function rehabFingerprint(
     ? [
         {
           id: LEGACY_REHAB_PROTOCOL_ID,
-          name: customization.displayName,
+          name: customization.displayName ?? "Rehab",
           items: customization.rehab.items,
         },
       ]

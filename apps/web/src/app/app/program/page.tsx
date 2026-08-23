@@ -20,6 +20,7 @@ import {
   TB_TEMPLATES,
   activationCustomizationKey,
   isSupplementalSlot,
+  tbTemplateSeries,
   activationPhaseForSession,
 } from "@hta/tacticalbarbell";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
@@ -218,32 +219,11 @@ export default async function ProgramPickerPage({
       ...(c.split ? { split: c.split } : {}),
       ...(c.kind ? { kind: c.kind } : {}),
     })),
-    sessionSeries: t.weeklySessions
-      .filter(
-        (session) =>
-          session.conditioning == null &&
-          session.kind !== "test" &&
-          session.kind !== "rest" &&
-          (!session.activeWeeks || session.activeWeeks.includes(1)),
-      )
-      .map((session, index) => ({
-        key: `slot-${index + 1}`,
-        label: session.label,
-        movements: (session.fixedMovements ?? t.defaultCluster).map(
-          (movement) => movement.movement,
-        ),
-        supplementalMovements: (session.fixedMovements ?? t.defaultCluster)
-          .map((movement) => movement.movement)
-          .filter((movement) => isSupplementalSlot(session, movement)),
-        movementKinds: Object.fromEntries(
-          (session.fixedMovements ?? t.defaultCluster)
-            .filter((movement) => movement.kind != null)
-            .map((movement) => [movement.movement, movement.kind!]),
-        ) as Record<
-          string,
-          "barbell" | "weighted-bw" | "bodyweight" | "unanchored"
-        >,
-      })),
+    sessionSeries: tbTemplateSeries(t).map((series) => ({
+      key: series.key,
+      label: series.label,
+      slots: series.slots,
+    })),
     ...(t.id === "activation"
       ? {
           activationPhases: ACTIVATION_PHASE_KEYS.map((phase) => ({

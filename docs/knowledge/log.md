@@ -817,3 +817,52 @@ Rehab protocol authoring moves out of the program wizard into Settings. A protoc
 The binding table exists instead of a `libraryId` field in `setup_input.customization` because that blob is strict-validated and this repo deploys app-first, database-second: the previous build would reject a stamped blob, and `edit-context.ts` safeParses it, so the wizard would silently open without the user's rehab. A real FK also makes "cannot delete a protocol a program uses" a database guarantee, and legacy V1/V2 blobs have no named-protocol array to stamp at all.
 
 Local protocol ids are preserved for existing attachments and are the library uuid for new ones. The old ordinal ids were reused by position, so a swap could hand one protocol's supersets — and its `removedEmbeddedRehabSourceRefs` tombstones — to an unrelated protocol.
+## [2026-08-23] decision | Zulu's supplemental lifts become visible in the wizard, and editable without losing their prescription
+
+Reported from use: the Zulu loadout step looked as though Tactical Barbell prescribed four main lifts and nothing else, so the "Add accessory work" toggle read as the only route to any extra work.
+
+The engine was right and the wizard was wrong. TB3 Zulu has emitted supplemental lifts since it was rebuilt — overhead press plus the AB Triad on A days, barbell row and back extension on B days, 3-5x8-10 on the 65/70/75 wave — and tests pin them. What was missing was any way to see that: the card copy still described the earlier edition's user-chosen 4-lift cluster, and step 2 showed only frequency, length and loading basis.
+
+Underneath sat a real defect. A customized session's lifts were identified by movement key alone, and prescription rules match on that key, so swapping the exercise in a supplemental slot silently promoted it to main work at the session's main percentage. The same root cause let a week-6 peak slot be filled by an unrelated supplemental once its own lift was removed, and made a reassignment between two slots compare equal to the untouched template and be discarded.
+
+A slot is now a first-class identity that survives substitution - the mechanism Activation's Armor picker already used, wired into the weekly path. Supplemental slots gained Change and Remove alongside main ones, removal is stated back rather than blocked (DC-K4), and slot claims are validated structurally and against the selected template at deploy. Step 2 lists each day's main and supplemental lifts from the template itself, so the prose cannot drift again. See ADR 0074.
+
+Deliberately left alone: the accessory injector can still stack ab isolation onto the AB Triad, which is a muscle-overlap question rather than a slot one; and Zulu I/A, Gladiator, Mass and Grey Man remain on the earlier edition, their copy accurate for what they currently are.
+
+## [2026-08-23] decision | Tactical Barbell accessories move from an invisible checkbox to the session editor
+
+Owner feedback on the ADR 0048 accessory toggle: "the whole checkbox is confusing as the user doesnt really know what it does."
+
+Fair reading of what it did. You ticked a box, chose some muscles, and nothing appeared - the movements were picked for you later, out of sight, first visible once the plan existed. Its copy also asserted that Tactical Barbell adds no accessories, which was never true of Zulu.
+
+Meanwhile the wizard already had a place where a user picks the movements in a session, three steps away behind "Customize template", and its "+ Add exercise" was broken for the purpose: an added movement carried no slot, matched no prescription rule, and was emitted as main work at the session's sets and reps. A bicep curl was prescribed 3-5x5. Two surfaces for shaping a session, one invisible and automatic, one hidden and mis-prescribing.
+
+Now there is one. The loadout step's per-day preview became the editor: every row is Main, Supplemental or Accessory, with Change, Remove and Add accessory. Added movements carry an explicit accessory role - stated, never inferred from a missing slot, because pre-slot customizations have no slot on any entry and inferring would turn their main lifts into curls - and are prescribed at the dose ADR 0048 derived from the book. The picker offers only movements that suit that dose. Templates that previously refused accessories now object in the place the work is added, and only once it has been added.
+
+Kept deliberately: the auto-picking injector and its deploy parameter, unchanged, for Green Protocol (periodised across several templates, no per-session editor to move into) and for blocks already deployed with it - their accessory selection rotates per session, so there is no faithful conversion into one repeating row, and deleting the injector would strip work from a live plan on its next edit. Editing movements no longer renames a block: displayName became optional on the customization overlay.
+
+See ADR 0075. ADR 0048 is superseded for Tactical Barbell and still governs Green Protocol.
+
+## [2026-08-23] decision | Green Protocol drops the accessory checkbox too
+
+Follow-up to the same-day Tactical Barbell decision, on owner instruction: "remove the box for green protocol too, it's a tb program."
+
+Correct on the substance - Green Protocol is Tactical Barbell periodised across phases, running Operator, Fighter and Zulu-HT at different points. Keeping an auto-picking checkbox on one and not the other would have left the confusing control alive in the app for no reason other than implementation convenience.
+
+The consequence is honest and worth stating: Green has no per-session editor to move the choice into, because its sessions are not a fixed weekly series - each phase resolves a different template per session ref. So a new Green block now carries no accessory work at all, which is what the book prescribes by default anyway. Giving Green the same per-session editor is open work.
+
+Blocks already deployed with auto-picked accessories keep them, Green included: the injector and its deploy parameter are untouched and still run on re-deploy, with a single control in the wizard to keep or clear. The muscle-emphasis multiselect is gone entirely; a legacy block re-deploys against the standard set.
+
+ADR 0075 updated - it now supersedes ADR 0048 outright rather than for Tactical Barbell only.
+
+## [2026-08-23] fix | Three regressions caught in review before the session-editor change merged
+
+Pre-merge review of the Tactical Barbell session-editor branch found three defects, all in the seam between a stored customization and the new slot model. Recorded because two of them would have silently corrupted an existing user's plan rather than failing loudly.
+
+**A pre-slot customization's own lifts would have been demoted to accessory work.** The deploy builder derived "this is accessory work" from `slotOf(...) === undefined`. Customizations written before slots existed carry no slot on any entry, and a lift swapped under the old flow has a `catalog:<uuid>` movement key that matches no slot - so on the next edit it was rewritten with `role: "accessory"`, and the engine then forced it to 3x8-15 with no percentage and no warm-up. A loaded main lift became an unloaded 3x12. The role is now carried from the payload and never derived. The engine's own test already asserted the correct contract - a slotless entry is main work - so the wizard was the party that was wrong.
+
+**The first edit on an untouched session deleted every lift in it.** `removeSeriesMovement` and `replaceSeriesMovement` started from `current[seriesKey] ?? []`, and the fallback to the template only fires when the key is absent - `[]` is not nullish. Two reachable paths leave the map empty on mount (editing a block with no stored customization, and the `?program=tactical-barbell` deep link on the default template), and `canDeploy` then blocked deploy with no message. Both mutators now seed from the template.
+
+**A new block's own accessories were misread as the old automatic ones.** `accessoriesEnabled` was inferred as "any stored item of kind accessory", but a user-added movement materialises as exactly that kind. So a hand-built Zulu block came back on edit looking like an auto-picking one and re-enabled the retired injector, adding work the user never asked for. The user's own picks are now excluded by movement id. `setup_input` never persisted the `accessories` parameter, so exclusion is the only signal available for blocks deployed before this.
+
+The riskiest logic was extracted into `session-slot-editing.ts` as pure functions with their own tests, mirroring how `session-link-editing.ts` was split out: it had been unreachable from the test suite because it lived inside the component and the project's test environment has no DOM, which is why static-markup tests missed all three.

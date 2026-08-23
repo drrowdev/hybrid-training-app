@@ -5,10 +5,12 @@ import {
   activationRehabProtocols,
   activationSessionConfigs,
   effectiveActivationRehabProtocolIds,
+  hasAutoInjectedAccessories,
   isTbActivationCustomization,
   isTbActivationCustomizationV2,
   isTbActivationCustomizationV3,
   tbCustomizationSchema,
+  userChosenAccessoryIds,
 } from "../tb-customization";
 
 const base = {
@@ -114,6 +116,153 @@ describe("Tactical Barbell customization contract", () => {
   it("accepts a versioned weekly layout with structured rehab", () => {
     expect(tbCustomizationSchema.parse(base)).toEqual(base);
   });
+
+  it("carries the template slot a replacement stands in for", () => {
+    const swapped = {
+      ...base,
+      sessionMovements: {
+        "slot-1": [
+          { movement: "squat", sourceMovement: "squat" },
+          { movement: "push-press", sourceMovement: "overhead-press" },
+        ],
+        "slot-2": [{ movement: "bench" }],
+      },
+    };
+    expect(tbCustomizationSchema.parse(swapped)).toEqual(swapped);
+  });
+
+  it("rejects two movements claiming the same slot", () => {
+    expect(
+      tbCustomizationSchema.safeParse({
+        ...base,
+        sessionMovements: {
+          "slot-1": [
+            { movement: "push-press", sourceMovement: "overhead-press" },
+            { movement: "incline-bench", sourceMovement: "overhead-press" },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a custom movement claiming to be a template slot", () => {
+    expect(
+      tbCustomizationSchema.safeParse({
+        ...base,
+        sessionMovements: {
+          "slot-1": [
+            {
+              movement: "squat",
+              sourceMovement: "catalog:00000000-0000-4000-8000-000000000010",
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("carries an accessory the user added, which fills no slot", () => {
+    const withAccessory = {
+      ...base,
+      sessionMovements: {
+        "slot-1": [
+          { movement: "squat", sourceMovement: "squat" },
+          {
+            movement: "catalog:00000000-0000-4000-8000-000000000010",
+            movementId: "00000000-0000-4000-8000-000000000010",
+            slug: "bb-curl",
+            displayName: "Barbell Curl",
+            role: "accessory" as const,
+          },
+        ],
+      },
+    };
+    expect(tbCustomizationSchema.parse(withAccessory)).toEqual(withAccessory);
+  });
+
+  it("rejects an accessory that also claims a slot", () => {
+    expect(
+      tbCustomizationSchema.safeParse({
+        ...base,
+        sessionMovements: {
+          "slot-1": [
+            {
+              movement: "push-press",
+              sourceMovement: "overhead-press",
+              role: "accessory",
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a movement-only overlay that does not rename the block", () => {
+    const { displayName: _displayName, ...unnamed } = base;
+    expect(tbCustomizationSchema.safeParse(unnamed).success).toBe(true);
+  });
+
+  describe("telling auto-injected accessory work from the user's own", () => {
+  const CURL_ID = "00000000-0000-4000-8000-0000000000c1";
+  const RAISE_ID = "00000000-0000-4000-8000-0000000000c2";
+  const chosen = (movementId: string) =>
+    tbCustomizationSchema.parse({
+      ...base,
+      sessionMovements: {
+        "slot-1": [
+          { movement: "squat", sourceMovement: "squat" },
+          {
+            movement: `catalog:${movementId}`,
+            movementId,
+            slug: "bb-curl",
+            displayName: "Barbell Curl",
+            role: "accessory" as const,
+          },
+        ],
+      },
+    });
+
+  it("reads a block the user built by hand as carrying none", () => {
+    // Both kinds materialise as `accessory`, so without excluding the user's own
+    // picks a hand-built block re-enabled the retired auto-injector on edit.
+    const ids = userChosenAccessoryIds(chosen(CURL_ID));
+    expect(
+      hasAutoInjectedAccessories(
+        [
+          { kind: "main", movementId: "squat-id" },
+          { kind: "accessory", movementId: CURL_ID },
+        ],
+        ids,
+      ),
+    ).toBe(false);
+  });
+
+  it("still spots accessory work the user did not pick", () => {
+    const ids = userChosenAccessoryIds(chosen(CURL_ID));
+    expect(
+      hasAutoInjectedAccessories(
+        [
+          { kind: "accessory", movementId: CURL_ID },
+          { kind: "accessory", movementId: RAISE_ID },
+        ],
+        ids,
+      ),
+    ).toBe(true);
+  });
+
+  it("treats a block with no customization as auto-injected", () => {
+    expect(userChosenAccessoryIds(undefined).size).toBe(0);
+    expect(
+      hasAutoInjectedAccessories([{ kind: "accessory", movementId: CURL_ID }], new Set()),
+    ).toBe(true);
+  });
+
+  it("is false when the block has no accessory work at all", () => {
+    expect(
+      hasAutoInjectedAccessories([{ kind: "main" }, { kind: "back_off" }], new Set()),
+    ).toBe(false);
+  });
+});
 
   it("requires a rehab protocol when the week contains rehab", () => {
     expect(

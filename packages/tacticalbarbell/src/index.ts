@@ -29,8 +29,11 @@ export {
 export { roundToIncrement } from "./rounding";
 export {
   tacticalBarbellEngine,
+  tbTemplateSeries,
   type TbInstance,
   type TbClusterLift,
+  type TbSeriesSlot,
+  type TbTemplateSeries,
   type TbSessionLink,
   type TbActivationSessionOverride,
 } from "./program";

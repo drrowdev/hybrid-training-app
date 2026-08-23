@@ -25,8 +25,6 @@ import {
   type ProgramSegmentOption,
 } from "@/lib/platform/actions";
 import {
-  TB_ACCESSORY_MUSCLES,
-  TB_ACCESSORY_MUSCLE_LABELS,
   TB_DEFAULT_ACCESSORY_MUSCLES,
   tbAccessoryPlanForTemplate,
 } from "@/lib/platform/tb-accessories-config";
@@ -50,6 +48,20 @@ import {
   pruneMovementFromLinks,
   slotLinkBadges,
 } from "./session-link-editing";
+import {
+  addAccessory,
+  removeSlot,
+  replaceSlot,
+  seededDrafts,
+  slotDraftsFor as slotDraftsForSlots,
+  slotIdentity,
+  slotOf as slotOfSlots,
+  slotPayloadEntry,
+  slotsEdited,
+  canRemoveRows,
+  type SeriesSlotDraft,
+  type TemplateSlot,
+} from "./session-slot-editing";
 import {
 } from "@/lib/platform/rehab-links";
 import {
@@ -149,17 +161,18 @@ export interface PickerTbTemplate {
   sessionSeries?: Array<{
     key: string;
     label: string;
-    movements: string[];
     /**
-     * Movements the template prescribes as supplemental rather than main work
-     * (Zulu's overhead press, barbell row and back extension). Drives the
-     * main-lift superset warning, which must not fire on accessory work.
+     * What the template prescribes in this repeating strength slot, in order.
+     * `sourceMovement` is the slot's permanent identity: it is what a
+     * replacement inherits its prescription from, and what a superset link is
+     * keyed by, so both survive swapping the exercise that fills the slot.
      */
-    supplementalMovements?: string[];
-    movementKinds?: Record<
-      string,
-      "barbell" | "weighted-bw" | "bodyweight" | "unanchored"
-    >;
+    slots: Array<{
+      sourceMovement: string;
+      role: "main" | "supplemental";
+      kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
+      split?: "A" | "B";
+    }>;
   }>;
   activationPhases?: PickerActivationPhase[];
 }
@@ -182,6 +195,25 @@ export interface PickerActivationPhase {
 }
 
 
+type PickerSeriesSlot = TemplateSlot;
+
+type PickerSeries = NonNullable<PickerTbTemplate["sessionSeries"]>[number];
+
+const slotDraftsFor = (series: PickerSeries): SeriesSlotDraft[] =>
+  slotDraftsForSlots(series.slots);
+
+const slotOf = (
+  series: PickerSeries,
+  draft: SeriesSlotDraft,
+): PickerSeriesSlot | undefined => slotOfSlots(series.slots, draft);
+
+/**
+ * Movements that make sense at an accessory dose (8–15 reps, near failure).
+ * Isolation work only: a carry, a plyometric or an Olympic lift cannot share
+ * that prescription, so offering them here would produce nonsense.
+ */
+const ACCESSORY_PATTERN = "isolation";
+
 function sessionSeriesFor(template: PickerTbTemplate): NonNullable<
   PickerTbTemplate["sessionSeries"]
 > {
@@ -190,13 +222,12 @@ function sessionSeriesFor(template: PickerTbTemplate): NonNullable<
     : Array.from({ length: template.sessionsPerWeek }, (_, index) => ({
         key: `slot-${index + 1}`,
         label: `Day ${index + 1}`,
-        movements: template.defaultCluster.map((entry) => entry.movement),
-        supplementalMovements: [],
-        movementKinds: Object.fromEntries(
-          template.defaultCluster
-            .filter((entry) => entry.kind != null)
-            .map((entry) => [entry.movement, entry.kind!]),
-        ),
+        slots: template.defaultCluster.map((entry) => ({
+          sourceMovement: entry.movement,
+          role: "main" as const,
+          ...(entry.kind ? { kind: entry.kind } : {}),
+          ...(entry.split ? { split: entry.split } : {}),
+        })),
       }));
 }
 
@@ -395,10 +426,10 @@ const TEMPLATE_COPY: Record<string, Record<string, TemplateCopy>> = {
       long: "Fighter is the 2-day-a-week minimum-effective-dose strength template. Same submaximal percentage waves as Operator, but only twice a week \u2014 freeing up the calendar for high volumes of running, rucking or sport practice. The go-to when conditioning is your priority and strength just needs to be maintained or slowly built.",
     },
     zulu: {
-      desc: "A/B split, 4 lifts trained twice each across the week.",
+      desc: "A/B split \u2014 4 sessions a week, each with main and supplemental lifts.",
       freq: "4 sessions / week",
       len: "6-week block",
-      long: "Zulu splits 4 main lifts into two pairs (A and B) and trains each pair twice across 4 sessions a week. It lets you carry more lifts than Operator\u2019s 3-lift cap while staying submaximal. A good fit when you want broader barbell coverage and can give strength 4 days.",
+      long: "Zulu runs two sessions, A and B, twice each across four days. A trains bench and squat, then overhead press and ab work. B trains deadlift and weighted pull-ups, then barbell rows and back extensions. The second pass through the week opens slightly heavier than the first. More barbell coverage than Operator, for when you can give strength 4 days.",
     },
     "zulu-ia": {
       desc: "Zulu, autoregulated: 3\u20135 sets, heavier weeks 4\u20136.",
@@ -1337,11 +1368,32 @@ export function ProgramPicker({
   // Green Protocol also offers opt-in accessories (its book treats them as
   // optional). GP is periodised, so the cap is per strength session rather than
   // a single template — the offer itself is unconditional when GP is selected.
-  const accessoriesOffered = (isTb && tbAccessoryPlan != null) || isGp;
+  // Neither Tactical Barbell nor Green Protocol auto-picks accessories any more:
+  // the user adds them to a session themselves. The flag survives only so a block
+  // deployed under the old behaviour keeps its accessory work when it is edited.
+  const legacyAccessories =
+    (isTb || isGp) && isEditing && (editContext?.accessoriesEnabled ?? false);
   const [accessoriesOn, setAccessoriesOn] = useState<boolean>(
     isEditing && editContext ? editContext.accessoriesEnabled : false,
   );
-  const [accessoryMuscles, setAccessoryMuscles] = useState<string[]>([...TB_DEFAULT_ACCESSORY_MUSCLES]);
+  // The muscle emphasis is no longer chosen in the wizard; a legacy block that
+  // still auto-picks its accessories keeps the standard set when it is re-deployed.
+  const accessoryMuscles = [...TB_DEFAULT_ACCESSORY_MUSCLES];
+  const accessoryMovements = useMemo(
+    () =>
+      rehabMovements.filter((movement) => movement.pattern === ACCESSORY_PATTERN),
+    [rehabMovements],
+  );
+  /**
+   * Stated where the user is about to add work the book argues against, in the
+   * place they'd add it — not as a block. Their session, their call (DC-K4).
+   */
+  const tbAccessoryCaution =
+    isTb && tbAccessoryPlan == null
+      ? tbTemplateId === "mass"
+        ? "Mass already schedules its own arm and pull-up work."
+        : "This template is built on heavy volume; extra work eats into it."
+      : null;
   // Per-block two-a-day preference (migration 0110) — Hybrid only, default OFF.
   const [twoADay, setTwoADay] = useState<boolean>(false);
   const [customizeTb, setCustomizeTb] = useState<boolean>(
@@ -1351,7 +1403,7 @@ export function ProgramPicker({
     editContext?.customization?.displayName ?? DEFAULT_CUSTOM_TB_NAME,
   );
   const [customSessionMovements, setCustomSessionMovements] = useState<
-    Record<string, string[]>
+    Record<string, SeriesSlotDraft[]>
   >(() => {
     const customization = editContext?.customization;
     return customization && isTbCustomizationV1(customization)
@@ -1359,17 +1411,35 @@ export function ProgramPicker({
           Object.entries(customization.sessionMovements).map(
             ([key, movements]) => [
               key,
-              movements.map((movement) => movement.movement),
+              movements.map((movement) => ({
+                movement: movement.movement,
+                ...(movement.sourceMovement
+                  ? { sourceMovement: movement.sourceMovement }
+                  : {}),
+                ...(movement.role ? { role: movement.role } : {}),
+                ...(movement.kind ? { kind: movement.kind } : {}),
+              })),
             ],
           ),
         )
       : {};
   });
+  /**
+   * Whether the user has changed any session's movements away from what the
+   * template prescribes. Editing them writes the same overlay "Customize
+   * template" does, so the overlay has to be sent for either reason.
+   */
+  const tbMovementsEdited = useMemo(() => {
+    if (!isTb || isActivation || !activeTbTemplate) return false;
+    return sessionSeriesFor(activeTbTemplate).some((series) =>
+      slotsEdited(customSessionMovements[series.key], series.slots),
+    );
+  }, [isTb, isActivation, activeTbTemplate, customSessionMovements]);
+
   // User-authored superset / tri-set links, keyed by session series. Kept OUTSIDE
   // the TB customization blob so they also work on canonical templates and on
   // Activation — see lib/platform/session-links.
-  const [sessionLinks, setSessionLinks] = useState<Record<string, SessionLink[]>>(
-    () => ({ ...(editContext?.sessionLinks?.bySeries ?? {}) }),
+  const [sessionLinks, setSessionLinks] = useState<Record<string, SessionLink[]>>(    () => ({ ...(editContext?.sessionLinks?.bySeries ?? {}) }),
   );
   const setLinksForSeries = useCallback(
     (seriesKey: string, links: SessionLink[]) => {
@@ -1399,15 +1469,16 @@ export function ProgramPicker({
    * would make the main-lift warning meaningless.
    */
   const linkableMovementsFor = (
-    movementKeys: readonly string[],
-    supplemental: readonly string[] = [],
+    drafts: readonly SeriesSlotDraft[],
+    series?: NonNullable<PickerTbTemplate["sessionSeries"]>[number],
   ): LinkableMovement[] => {
-    const isSupplemental = new Set(supplemental);
     const triad = AB_TRIAD_MOVEMENTS as readonly string[];
-    const completeTriad = triad.every((m) => movementKeys.includes(m));
+    const identities = drafts.map(slotIdentity);
+    const completeTriad = triad.every((m) => identities.includes(m));
     const out: LinkableMovement[] = [];
     let triadEmitted = false;
-    for (const key of movementKeys) {
+    for (const draft of drafts) {
+      const key = slotIdentity(draft);
       if (completeTriad && triad.includes(key)) {
         if (triadEmitted) continue;
         triadEmitted = true;
@@ -1424,8 +1495,10 @@ export function ProgramPicker({
       }
       out.push({
         key,
-        label: customMovementLabel(key),
-        isMain: !key.startsWith("catalog:") && !isSupplemental.has(key),
+        label: customMovementLabel(draft.movement),
+        isMain:
+          !draft.movement.startsWith("catalog:") &&
+          (series ? slotOf(series, draft)?.role !== "supplemental" : true),
       });
     }
     return out;
@@ -1507,7 +1580,7 @@ export function ProgramPicker({
         ? Object.fromEntries(
             sessionSeriesFor(activeTbTemplate).map((series) => [
               series.key,
-              [...series.movements],
+              slotDraftsFor(series),
             ]),
           )
         : {},
@@ -1683,6 +1756,7 @@ export function ProgramPicker({
       const available = new Set(roleKeys);
       return Object.values(customSessionMovements)
         .flat()
+        .map((draft) => draft.movement)
         .filter((key) => available.has(key) && key !== "pullup")
         .filter((key, index, all) => all.indexOf(key) === index)
         .sort((a, b) => roleKeys.indexOf(a) - roleKeys.indexOf(b));
@@ -1779,14 +1853,14 @@ export function ProgramPicker({
     activationStartBenchmarksReady &&
     activationDraftsReady &&
     clusterOk &&
+    (!isTb ||
+      isActivation ||
+      !activeTbTemplate ||
+      sessionSeriesFor(activeTbTemplate).every(
+        (series) => draftsForSeries(series).length > 0,
+      )) &&
     (!customizeTb ||
       (customName.trim().length > 0 &&
-        (isActivation ||
-          !activeTbTemplate ||
-          sessionSeriesFor(activeTbTemplate).every(
-          (series) =>
-            (customSessionMovements[series.key]?.length ?? 0) > 0,
-          )) &&
         (rehabWeekdays.length === 0 || rehabProtocols.length > 0))) &&
     !pending;
 
@@ -1832,7 +1906,7 @@ export function ProgramPicker({
           ? Object.fromEntries(
               sessionSeriesFor(t).map((series) => [
                 series.key,
-                [...series.movements],
+                slotDraftsFor(series),
               ]),
             )
           : {},
@@ -1914,7 +1988,7 @@ export function ProgramPicker({
           Object.fromEntries(
             sessionSeriesFor(activeTbTemplate).map((series) => [
               series.key,
-              [...series.movements],
+              slotDraftsFor(series),
             ]),
           ),
         );
@@ -2087,16 +2161,29 @@ export function ProgramPicker({
     });
   }
 
-  function toggleSeriesMovement(seriesKey: string, movement: string) {
-    setCustomSessionMovements((current) => {
-      const selected = current[seriesKey] ?? [];
-      return {
-        ...current,
-        [seriesKey]: selected.includes(movement)
-          ? selected.filter((key) => key !== movement)
-          : [...selected, movement],
-      };
-    });
+  /**
+   * The rows a session currently has, seeding from the template when the user
+   * hasn't touched this session yet. Every mutator goes through this: starting
+   * from an empty list would wipe the template's own lifts on the first edit.
+   */
+  function seededFor(
+    current: Record<string, SeriesSlotDraft[]>,
+    seriesKey: string,
+  ): SeriesSlotDraft[] {
+    const series = activeTbTemplate
+      ? sessionSeriesFor(activeTbTemplate).find(
+          (entry) => entry.key === seriesKey,
+        )
+      : undefined;
+    return seededDrafts(current[seriesKey], series?.slots ?? []);
+  }
+
+  /** Drop a row from a customized slot list, keyed by the slot it fills. */
+  function removeSeriesMovement(seriesKey: string, identity: string) {
+    setCustomSessionMovements((current) => ({
+      ...current,
+      [seriesKey]: removeSlot(seededFor(current, seriesKey), identity),
+    }));
     // A removed lift must leave any link it was part of, or the link keeps a
     // member the session no longer has: the engine requires every member to be
     // present, so it would drop the whole link at materialisation and the
@@ -2104,7 +2191,7 @@ export function ProgramPicker({
     setSessionLinks((current) => {
       const links = current[seriesKey];
       if (!links?.length) return current;
-      const pruned = pruneMovementFromLinks(links, movement);
+      const pruned = pruneMovementFromLinks(links, identity);
       if (pruned.length === links.length &&
           pruned.every((l, i) => l.members.length === links[i]!.members.length)) {
         return current;
@@ -2114,6 +2201,64 @@ export function ProgramPicker({
       else delete next[seriesKey];
       return next;
     });
+  }
+
+  /**
+   * Put a different exercise in a slot. The slot itself is untouched, so links
+   * keyed by it survive and the engine keeps prescribing it the same way.
+   */
+  function replaceSeriesMovement(
+    seriesKey: string,
+    identity: string,
+    movement: string,
+    kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored",
+  ) {
+    setCustomSessionMovements((current) => ({
+      ...current,
+      [seriesKey]: replaceSlot(
+        seededFor(current, seriesKey),
+        identity,
+        movement,
+        kind,
+      ),
+    }));
+  }
+
+  /** Add a movement the user chose themselves; it is prescribed as accessory work. */
+  function addSeriesAccessory(seriesKey: string, movement: string) {
+    setCustomSessionMovements((current) => ({
+      ...current,
+      [seriesKey]: addAccessory(seededFor(current, seriesKey), movement),
+    }));
+  }
+
+  /** Drop several rows at once — the AB Triad is removed whole or not at all. */
+  function removeSeriesMovements(
+    seriesKey: string,
+    identities: readonly string[],
+  ) {
+    for (const identity of identities) removeSeriesMovement(seriesKey, identity);
+  }
+
+  /** The rows for a session: the user's edits, or the template's own slots. */
+  function draftsForSeries(
+    series: NonNullable<PickerTbTemplate["sessionSeries"]>[number],
+  ): SeriesSlotDraft[] {
+    return customSessionMovements[series.key] ?? slotDraftsFor(series);
+  }
+
+  /**
+   * Prescribed lifts the user has dropped from a slot list. Removal is allowed —
+   * it is their session — but it is stated back to them rather than passing
+   * silently (DC-K4).
+   */
+  function removedSupplementalLabels(
+    series: NonNullable<PickerTbTemplate["sessionSeries"]>[number],
+  ): string[] {
+    const kept = new Set(draftsForSeries(series).map(slotIdentity));
+    return series.slots
+      .filter((slot) => !kept.has(slot.sourceMovement))
+      .map((slot) => customMovementLabel(slot.sourceMovement));
   }
 
   function resetWeek() {
@@ -2238,59 +2383,56 @@ export function ProgramPicker({
       };
     };
     const customization: TbCustomization | undefined =
-      customizeTb && activeTbTemplate
+      (customizeTb || tbMovementsEdited) && activeTbTemplate
         ? isActivation
-          ? {
-              version: TB_ACTIVATION_CUSTOMIZATION_VERSION,
-              templateId: "activation",
-              displayName: customName.trim(),
-              phases: {
-                base: activationPhasePayload("base"),
-                armor: activationPhasePayload("armor"),
-                operator: activationPhasePayload("operator"),
-                vertex: activationPhasePayload("vertex"),
-              },
-              rehabProtocols: rehabProtocols.map((protocol) => ({
-                id: protocol.id,
-                name: protocol.name.trim(),
-                items: protocol.items,
-              })),
-            }
+          ? customizeTb
+            ? {
+                version: TB_ACTIVATION_CUSTOMIZATION_VERSION,
+                templateId: "activation",
+                displayName: customName.trim(),
+                phases: {
+                  base: activationPhasePayload("base"),
+                  armor: activationPhasePayload("armor"),
+                  operator: activationPhasePayload("operator"),
+                  vertex: activationPhasePayload("vertex"),
+                },
+                rehabProtocols: rehabProtocols.map((protocol) => ({
+                  id: protocol.id,
+                  name: protocol.name.trim(),
+                  items: protocol.items,
+                })),
+              }
+            : undefined
           : {
               version: TB_CUSTOMIZATION_VERSION,
-              displayName: customName.trim(),
+              // Only the "Customize template" flow names a block. Editing the
+              // movements in a session writes this same overlay, and that alone
+              // must not rename the user's program.
+              ...(customizeTb ? { displayName: customName.trim() } : {}),
               dayTypes: week.map((day) =>
                 day === "cardio" ? "conditioning" : day,
               ),
               sessionMovements: Object.fromEntries(
                 sessionSeriesFor(activeTbTemplate).map((series) => [
                   series.key,
-                  (customSessionMovements[series.key] ?? []).map(
-                    (movement) => {
-                      const kind =
-                        series.movementKinds?.[movement] ??
-                        (movement === "weighted-pullup"
-                          ? "weighted-bw"
-                          : movement === "pullup"
-                            ? "bodyweight"
-                            : undefined);
-                      const catalog = catalogMovementMeta[movement];
-                      return {
-                        movement,
-                        ...(catalog
-                          ? {
-                              movementId: catalog.id,
-                              slug: catalog.slug,
-                              displayName: catalog.name,
-                            }
-                          : {}),
-                        ...(kind ? { kind } : {}),
-                      };
-                    },
-                  ),
+                  draftsForSeries(series).map((draft) => {
+                    const slot = slotOf(series, draft);
+                    const catalog = catalogMovementMeta[draft.movement];
+                    return slotPayloadEntry(
+                      draft,
+                      slot,
+                      catalog
+                        ? {
+                            id: catalog.id,
+                            slug: catalog.slug,
+                            name: catalog.name,
+                          }
+                        : undefined,
+                    );
+                  }),
                 ]),
               ),
-              ...(rehabWeekdays.length > 0
+              ...(customizeTb && rehabWeekdays.length > 0
                 ? { rehab: { items: rehabItems } }
                 : {}),
             }
@@ -2358,10 +2500,9 @@ export function ProgramPicker({
         ...(supportsCardioDays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
         ...(selected.id === "hyrox" && raceDate ? { raceDate } : {}),
         ...(startWeekIndex > 0 ? { startWeekIndex } : {}),
-        ...(accessoriesOffered && accessoriesOn
+        ...(legacyAccessories && accessoriesOn
           ? { accessories: { enabled: true, muscles: accessoryMuscles } }
-          : {}),
-        ...((isHybrid || isHyrox) && twoADay ? { twoADay: true } : {}),
+          : {}),        ...((isHybrid || isHyrox) && twoADay ? { twoADay: true } : {}),
         ...(isTb && Object.keys(outgoingLinks).length > 0
           ? {
               sessionLinks: {
@@ -2687,8 +2828,170 @@ export function ProgramPicker({
     );
   }
 
-  function renderGpPlan() {
-    if (!selected || selected.id !== "green-protocol") return null;
+  /**
+   * The sessions this template runs, and the movements in each. Read from the
+   * template rather than written out in prose, so it stays true as templates
+   * change — and editable in place, so there is one surface for shaping a
+   * session rather than a preview here and a builder three steps later.
+   */
+  function renderTbSessionPreview() {
+    if (!isTb || isActivation || !activeTbTemplate) return null;
+    const series = sessionSeriesFor(activeTbTemplate);
+    if (series.length === 0) return null;
+    const triad = AB_TRIAD_MOVEMENTS as readonly string[];
+    return (
+      <div className={styles.specwrap} data-testid="tb-session-preview">
+        <div className={styles.label}>Each session</div>
+        <div className={styles.seriesGrid}>
+          {series.map((entry) => {
+            const drafts = draftsForSeries(entry);
+            const linkable = linkableMovementsFor(drafts, entry);
+            const links = sessionLinks[entry.key] ?? [];
+            const linkBadges = slotLinkBadges(links, linkable);
+            // The AB Triad is one circuit. It is offered as a single row so it
+            // can't be half-removed, which would leave the rest running loose.
+            const wholeTriad = triad.every((movement) =>
+              drafts.some((draft) => slotIdentity(draft) === movement),
+            );
+            const removed = removedSupplementalLabels(entry);
+            let triadShown = false;
+            return (
+              <section key={entry.key} className={styles.seriesCard}>
+                <header>
+                  <b>{entry.label}</b>
+                </header>
+                <div className={styles.seriesExercises}>
+                  {drafts.map((draft) => {
+                    const identity = slotIdentity(draft);
+                    const slot = slotOf(entry, draft);
+                    const isTriad = wholeTriad && triad.includes(identity);
+                    if (isTriad && triadShown) return null;
+                    if (isTriad) triadShown = true;
+                    const badge = linkBadges.get(identity);
+                    const roleLabel =
+                      draft.role === "accessory"
+                        ? "Accessory"
+                        : slot?.role === "supplemental"
+                          ? "Supplemental"
+                          : "Main lift";
+                    return (
+                      <div
+                        key={identity}
+                        className={rowLinkClass(styles, badge, "")}
+                        data-testid={`tb-slot-${entry.key}-${isTriad ? "ab-triad" : identity}`}
+                      >
+                        <span>
+                          <LinkBadge
+                            styles={styles}
+                            badge={badge}
+                            links={links}
+                            movements={linkable}
+                            seriesKey={entry.key}
+                            onChange={setLinksForSeries}
+                          />
+                          <b>
+                            {isTriad
+                              ? AB_TRIAD_LABEL
+                              : customMovementLabel(draft.movement)}
+                          </b>
+                          <small>{isTriad ? "Supplemental" : roleLabel}</small>
+                        </span>
+                        <span className={styles.seriesRowActions}>
+                          {slot && !isTriad ? (
+                            <details className={styles.addExercise}>
+                              <summary
+                                data-testid={`tb-slot-change-${entry.key}-${identity}`}
+                              >
+                                Change
+                              </summary>
+                              <ExerciseLibraryPicker
+                                movements={rehabMovements}
+                                excludeKeys={drafts.map((row) => row.movement)}
+                                onPick={(movement) => {
+                                  const key = catalogMovementKey(movement.id);
+                                  setCatalogMovementMeta((current) => ({
+                                    ...current,
+                                    [key]: movement,
+                                  }));
+                                  replaceSeriesMovement(
+                                    entry.key,
+                                    identity,
+                                    key,
+                                  );
+                                }}
+                              />
+                            </details>
+                          ) : null}
+                          <button
+                            type="button"
+                            disabled={
+                              !canRemoveRows(
+                                drafts.length,
+                                isTriad ? triad.length : 1,
+                              )
+                            }
+                            onClick={() =>
+                              isTriad
+                                ? removeSeriesMovements(entry.key, triad)
+                                : removeSeriesMovement(entry.key, identity)
+                            }
+                          >
+                            Remove
+                          </button>
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {removed.length > 0 ? (
+                  <p
+                    className={styles.note}
+                    data-testid={`tb-removed-${entry.key}`}
+                  >
+                    {`Removed: ${removed.join(", ")}.`}
+                  </p>
+                ) : null}
+                {tbAccessoryCaution &&
+                drafts.some((row) => row.role === "accessory") ? (
+                  <p
+                    className={styles.note}
+                    data-testid={`tb-accessory-caution-${entry.key}`}
+                  >
+                    {tbAccessoryCaution}
+                  </p>
+                ) : null}
+                <details className={styles.addExercise}>
+                  <summary data-testid={`tb-add-accessory-${entry.key}`}>
+                    + Add accessory
+                  </summary>
+                  <ExerciseLibraryPicker
+                    movements={accessoryMovements}
+                    excludeKeys={drafts.map((row) => row.movement)}
+                    onPick={(movement) => {
+                      const key = catalogMovementKey(movement.id);
+                      setCatalogMovementMeta((current) => ({
+                        ...current,
+                        [key]: movement,
+                      }));
+                      addSeriesAccessory(entry.key, key);
+                    }}
+                  />
+                </details>
+                <SessionLinkEditor
+                  seriesKey={entry.key}
+                  movements={linkable}
+                  links={links}
+                  onChange={setLinksForSeries}
+                />
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  function renderGpPlan() {    if (!selected || selected.id !== "green-protocol") return null;
     const plan = GP_FOUNDATION.includes(selectedLoadoutValue)
       ? GP_FOUNDATION.slice(GP_FOUNDATION.indexOf(selectedLoadoutValue))
       : [selectedLoadoutValue];
@@ -2732,11 +3035,10 @@ export function ProgramPicker({
   }
 
   function renderTbAccessories() {
-    if (!accessoriesOffered) return null;
-    const toggleMuscle = (m: string) =>
-      setAccessoryMuscles((prev) =>
-        prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m],
-      );
+    // The block was deployed before accessories were chosen by hand, so it still
+    // carries auto-added work. Offer a way to drop it rather than leaving it in
+    // the plan with nothing in the wizard that accounts for it.
+    if (!legacyAccessories) return null;
     return (
       <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="tb-accessories">
         <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
@@ -2747,51 +3049,9 @@ export function ProgramPicker({
             onChange={(e) => setAccessoriesOn(e.target.checked)}
           />
           <span className={styles.label} style={{ margin: 0 }}>
-            Add accessory work (optional)
+            Keep the accessory work already in this plan
           </span>
         </label>
-        <p className={styles.sub} style={{ marginTop: 6 }}>
-          {isGp
-            ? "Green Protocol treats accessories as optional \u2014 conditioning and your main lifts come first. Turn this on for a little aesthetic work (arms, abs, calves) after your strength sessions. Up to 2\u20133 per session depending on the day\u2019s template, and never added to a conditioning day."
-            : `Tactical Barbell doesn\u2019t add accessories \u2014 your main lifts and conditioning do the heavy lifting. Turn this on only if you want a little aesthetic work (arms, abs, calves) after your main lifts. Up to ${tbAccessoryPlan?.maxItems ?? 2} per session, kept light so it never compromises your strength work.`}
-        </p>
-        {accessoriesOn ? (
-          <>
-            <div className={styles.label} style={{ marginTop: 12 }}>
-              Emphasis
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {TB_ACCESSORY_MUSCLES.map((m) => {
-                const on = accessoryMuscles.includes(m);
-                return (
-                  <button
-                    key={m}
-                    type="button"
-                    data-testid={`tb-accessory-muscle-${m}`}
-                    aria-pressed={on}
-                    onClick={() => toggleMuscle(m)}
-                    className={styles.chip}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 999,
-                      border: "1px solid var(--line, #2a2f2b)",
-                      background: on ? "var(--accent, #8fb39b)" : "transparent",
-                      color: on ? "#0f1310" : "inherit",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {TB_ACCESSORY_MUSCLE_LABELS[m]}
-                  </button>
-                );
-              })}
-            </div>
-            {accessoryMuscles.length === 0 ? (
-              <p className={styles.sub} style={{ marginTop: 8 }}>
-                {"Pick at least one muscle, or we\u2019ll use a balanced default (arms, abs, calves)."}
-              </p>
-            ) : null}
-          </>
-        ) : null}
       </div>
     );
   }
@@ -2973,7 +3233,7 @@ export function ProgramPicker({
                 <small>
                   {isActivation
                     ? "Customize each Activation phase while keeping its progression and milestone weeks."
-                    : "Move strength and conditioning, add rehab-only days, and choose the movements for each strength slot."}
+                    : "Move strength and conditioning, add rehab-only days, and name the block."}
                 </small>
               </span>
             </label>
@@ -2995,6 +3255,7 @@ export function ProgramPicker({
           </div>
         ) : null}
         {renderSpecStrip()}
+        {renderTbSessionPreview()}
         {renderGpPlan()}
         {!customizeTb ? renderActivationSupplementals() : null}
         {renderAssistanceVolume()}
@@ -4322,126 +4583,6 @@ export function ProgramPicker({
 
             {customizeTb && activeTbTemplate ? (
               <div className={styles.customBuilder}>
-                <div>
-                  <div className={styles.label}>Strength movements</div>
-                  <p className={styles.note}>
-                    Choose the movements for each repeating strength slot.
-                    The template still owns percentages, sets, reps, and peak
-                    progression.
-                  </p>
-                  <div className={styles.seriesGrid}>
-                    {sessionSeriesFor(activeTbTemplate).map((series, index) => (
-                      <section
-                        key={series.key}
-                        className={styles.seriesCard}
-                      >
-                        <header>
-                          <b>Strength {index + 1}</b>
-                          <small>{series.label}</small>
-                        </header>
-                        <div className={styles.seriesExercises}>
-                          {(() => {
-                            // Same rationale as the Activation rows: the link is
-                            // drawn where the lifter reads the session, and the
-                            // derivation is shared with the picker below.
-                            const linkable = linkableMovementsFor(
-                              customSessionMovements[series.key] ?? [],
-                              series.supplementalMovements ?? [],
-                            );
-                            const links = sessionLinks[series.key] ?? [];
-                            const linkBadges = slotLinkBadges(links, linkable);
-                            return (customSessionMovements[series.key] ?? []).map(
-                            (movementKey) => {
-                              const badge = linkBadges.get(movementKey);
-                              return (
-                              <div
-                                key={movementKey}
-                                className={rowLinkClass(styles, badge, "")}
-                              >
-                                <span>
-                                  <LinkBadge
-                                    styles={styles}
-                                    badge={badge}
-                                    links={links}
-                                    movements={linkable}
-                                    seriesKey={series.key}
-                                    onChange={setLinksForSeries}
-                                  />
-                                  <b>{customMovementLabel(movementKey)}</b>
-                                  <small>
-                                    {catalogMovementMeta[movementKey]
-                                      ?.hasOneRm
-                                      ? "Uses saved 1RM"
-                                      : movementKey.startsWith("catalog:")
-                                        ? "Manual load"
-                                        : "Programmed loading"}
-                                  </small>
-                                </span>
-                                <button
-                                  type="button"
-                                  disabled={
-                                    (customSessionMovements[
-                                      series.key
-                                    ]?.length ?? 0) <= 1
-                                  }
-                                  onClick={() =>
-                                    toggleSeriesMovement(
-                                      series.key,
-                                      movementKey,
-                                    )
-                                  }
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                              );
-                            },
-                          );
-                          })()}
-                        </div>
-                        <details className={styles.addExercise}>
-                          <summary>+ Add exercise</summary>
-                          <ExerciseLibraryPicker
-                            movements={rehabMovements}
-                            excludeKeys={
-                              customSessionMovements[series.key] ?? []
-                            }
-                            onPick={(movement) => {
-                              const key = catalogMovementKey(movement.id);
-                              setCatalogMovementMeta((current) => ({
-                                ...current,
-                                [key]: movement,
-                              }));
-                              setCustomSessionMovements((current) => ({
-                                ...current,
-                                [series.key]: [
-                                  ...(current[series.key] ?? []),
-                                  key,
-                                ],
-                              }));
-                            }}
-                          />
-                        </details>
-                        {(customSessionMovements[series.key]?.length ?? 0) ===
-                        0 ? (
-                          <p className={styles.inlineError}>
-                            Choose at least one movement.
-                          </p>
-                        ) : null}
-                        <SessionLinkEditor
-                          seriesKey={series.key}
-                          movements={linkableMovementsFor(
-                            customSessionMovements[series.key] ?? [],
-                            series.supplementalMovements ?? [],
-                          )}
-                          links={sessionLinks[series.key] ?? []}
-                          onChange={setLinksForSeries}
-                        />
-                      </section>
-                    ))}
-                  </div>
-                </div>
-
                 {rehabWeekdays.length > 0 ? (
                   <div>
                     <div className={styles.label}>Rehab protocol</div>
@@ -4542,41 +4683,6 @@ export function ProgramPicker({
             </p>
           </div>
         ) : null}
-
-        {/* Explicit lift links replace the old block-level "Superset accessories"
-            checkbox, which auto-paired anatomical antagonists and could never
-            touch a main lift. Only offered for Tactical Barbell, whose engine
-            resolves them; the customized builder renders its own editor inline
-            per slot, so this stands in for canonical templates. */}
-        {isTb && !customizeTb && !isActivation && activeTbTemplate && (
-          <div style={{ marginTop: 24, maxWidth: 560 }} data-testid="session-links">
-            <span className={styles.label} style={{ margin: 0 }}>
-              Link lifts (optional)
-            </span>
-            <p className={styles.sub} style={{ marginTop: 6 }}>
-              {"Run two or more lifts back-to-back as a superset \u2014 one set of each, then a single rest. Shortens the session without changing which lifts you do, your sets, reps or percentages."}
-            </p>
-            <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-              {sessionSeriesFor(activeTbTemplate).map((series, index) => (
-                <section key={series.key} className={styles.seriesCard}>
-                  <header>
-                    <b>Strength {index + 1}</b>
-                    <small>{series.label}</small>
-                  </header>
-                  <SessionLinkEditor
-                    seriesKey={series.key}
-                    movements={linkableMovementsFor(
-                      series.movements,
-                      series.supplementalMovements ?? [],
-                    )}
-                    links={sessionLinks[series.key] ?? []}
-                    onChange={setLinksForSeries}
-                  />
-                </section>
-              ))}
-            </div>
-          </div>
-        )}
 
         {renderSummary()}
       </div>

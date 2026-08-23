@@ -16,7 +16,9 @@
 import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
+  hasAutoInjectedAccessories,
   tbCustomizationSchema,
+  userChosenAccessoryIds,
   type TbCustomization,
 } from "./tb-customization";
 import {
@@ -107,8 +109,16 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
     .filter((d) => typeof d === "number" && d >= 0 && d <= 6)
     .sort((a, b) => a - b);
 
+  const customizationResult = tbCustomizationSchema.safeParse(
+    setupInput.customization,
+  );
+  const chosenAccessoryIds = userChosenAccessoryIds(
+    customizationResult.success ? customizationResult.data : undefined,
+  );
+
   // Detect opt-in TB accessory work so a re-gen doesn't silently drop it: the
-  // base templates carry no `accessory` items, so any one is a positive signal.
+  // base templates carry no `accessory` items, so any one the user did NOT pick
+  // came from the retired auto-injector (ADR 0048, superseded by ADR 0075).
   const { data: strengthRow } = await supabase
     .from("planned_sessions")
     .select("prescription")
@@ -119,10 +129,11 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
     .maybeSingle();
   const items = ((strengthRow?.prescription as Prescription | null)?.items ?? []) as Array<{
     kind?: string;
+    movementId?: string;
   }>;
-  const accessoriesEnabled = items.some((i) => i.kind === "accessory");
-  const customizationResult = tbCustomizationSchema.safeParse(
-    setupInput.customization,
+  const accessoriesEnabled = hasAutoInjectedAccessories(
+    items,
+    chosenAccessoryIds,
   );
   // Parsed SEPARATELY from the customization on purpose: they are sibling keys
   // in `setup_input`, so a malformed customization must not silently strip the

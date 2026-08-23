@@ -67,8 +67,52 @@ const ZULU: PickerTbTemplate = {
   ],
 };
 
-const ACTIVATION: PickerTbTemplate = {
-  id: "activation",
+const ZULU_TB3: PickerTbTemplate = {
+  ...ZULU,
+  fixedLoadout: true,
+  sessionSeries: [
+    {
+      key: "slot-1",
+      label: "Day 1 \u00B7 A",
+      slots: [
+        { sourceMovement: "bench", role: "main" },
+        { sourceMovement: "squat", role: "main" },
+        { sourceMovement: "overhead-press", role: "supplemental" },
+        {
+          sourceMovement: "hanging-leg-raise",
+          role: "supplemental",
+          kind: "unanchored",
+        },
+        {
+          sourceMovement: "hanging-knee-raise",
+          role: "supplemental",
+          kind: "unanchored",
+        },
+        {
+          sourceMovement: "toes-to-bar",
+          role: "supplemental",
+          kind: "unanchored",
+        },
+      ],
+    },
+    {
+      key: "slot-2",
+      label: "Day 2 \u00B7 B",
+      slots: [
+        { sourceMovement: "deadlift", role: "main" },
+        { sourceMovement: "weighted-pullup", role: "main", kind: "weighted-bw" },
+        { sourceMovement: "barbell-row", role: "supplemental" },
+        {
+          sourceMovement: "back-extension",
+          role: "supplemental",
+          kind: "unanchored",
+        },
+      ],
+    },
+  ],
+};
+
+const ACTIVATION: PickerTbTemplate = {  id: "activation",
   name: "Activation",
   structure: "cluster",
   clusterMin: 3,
@@ -398,8 +442,151 @@ describe("ProgramPicker rendering", () => {
     );
   });
 
-  it("offers a per-block assistance volume on the 5/3/1 loadout step, defaulting to Balanced", () => {
+  const zuluPrograms = (): PickerProgram[] =>
+    programs.map((program) =>
+      program.id === "tactical-barbell"
+        ? {
+            ...program,
+            fields: [
+              {
+                key: "templateId",
+                label: "Template",
+                type: "select" as const,
+                options: [{ value: "zulu", label: "Zulu" }],
+                defaultValue: "zulu",
+              },
+            ],
+          }
+        : program,
+    );
+
+  const ACCESSORY_LIBRARY = [
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000001",
+      name: "Barbell Curl",
+      slug: "bb-curl",
+      pattern: "isolation",
+      hasOneRm: false,
+    },
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000002",
+      name: "Farmer Carry",
+      slug: "farmer-carry",
+      pattern: "carry",
+      hasOneRm: false,
+    },
+  ];
+
+  it("shows each Zulu session's main and supplemental lifts on the loadout step", () => {
     const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+
+    expect(html).toContain('data-testid="tb-session-preview"');
+    expect(html).toContain("Supplemental");
+    for (const lift of [
+      "Overhead Press",
+      "Barbell Row",
+      "Back Extension",
+      "Weighted Pull-up",
+    ]) {
+      expect(html).toContain(lift);
+    }
+    // The ab work is one circuit, so it reads as one entry.
+    expect(html).toContain("AB Triad");
+    expect(html).not.toContain("Hanging Knee Raise");
+  });
+
+  it("lets every Zulu slot be changed or removed from the loadout step", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+
+    for (const slot of ["bench", "squat", "overhead-press"]) {
+      expect(html).toContain(`data-testid="tb-slot-slot-1-${slot}"`);
+      expect(html).toContain(`data-testid="tb-slot-change-slot-1-${slot}"`);
+    }
+    // The triad is one row, so it can't be half-removed.
+    expect(html).toContain('data-testid="tb-slot-slot-1-ab-triad"');
+    expect(html).not.toContain("tb-slot-change-slot-1-hanging-leg-raise");
+  });
+
+  it("offers accessories only from movements that suit an accessory dose", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        rehabMovements={ACCESSORY_LIBRARY}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+    const start = html.indexOf('data-testid="tb-add-accessory-slot-1"');
+    const scoped = html.slice(start, html.indexOf("</details>", start));
+
+    expect(scoped).toContain("Barbell Curl");
+    expect(scoped).not.toContain("Farmer Carry");
+  });
+
+  it("no longer offers the Tactical Barbell accessory toggle", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+
+    expect(html).not.toContain('data-testid="tb-accessories-toggle"');
+    expect(html).not.toContain("tb-accessory-muscle-");
+  });
+
+  it("no longer offers the Green Protocol accessory toggle", () => {
+    const greenPrograms: PickerProgram[] = [
+      {
+        id: "green-protocol",
+        name: "Green Protocol",
+        family: "green",
+        summary: "Endurance-led Tactical Barbell.",
+        enabled: true,
+        sessionsPerWeek: 5,
+        fixedSchedule: true,
+        fields: [
+          {
+            key: "phaseId",
+            label: "Phase",
+            type: "select" as const,
+            options: [{ value: "base", label: "Base Building" }],
+            defaultValue: "base",
+          },
+        ],
+      },
+    ];
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={greenPrograms}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[]}
+        initialProgramId="green-protocol"
+      />,
+    );
+
+    expect(html).not.toContain('data-testid="tb-accessories-toggle"');
+    expect(html).not.toContain("tb-accessory-muscle-");
+  });
+
+  it("offers a per-block assistance volume on the 5/3/1 loadout step, defaulting to Balanced", () => {    const html = renderToStaticMarkup(
       <ProgramPicker
         programs={programs}
         anchoredKeys={["squat", "bench", "deadlift", "press"]}
