@@ -854,3 +854,15 @@ The consequence is honest and worth stating: Green has no per-session editor to 
 Blocks already deployed with auto-picked accessories keep them, Green included: the injector and its deploy parameter are untouched and still run on re-deploy, with a single control in the wizard to keep or clear. The muscle-emphasis multiselect is gone entirely; a legacy block re-deploys against the standard set.
 
 ADR 0075 updated - it now supersedes ADR 0048 outright rather than for Tactical Barbell only.
+
+## [2026-08-23] fix | Three regressions caught in review before the session-editor change merged
+
+Pre-merge review of the Tactical Barbell session-editor branch found three defects, all in the seam between a stored customization and the new slot model. Recorded because two of them would have silently corrupted an existing user's plan rather than failing loudly.
+
+**A pre-slot customization's own lifts would have been demoted to accessory work.** The deploy builder derived "this is accessory work" from `slotOf(...) === undefined`. Customizations written before slots existed carry no slot on any entry, and a lift swapped under the old flow has a `catalog:<uuid>` movement key that matches no slot - so on the next edit it was rewritten with `role: "accessory"`, and the engine then forced it to 3x8-15 with no percentage and no warm-up. A loaded main lift became an unloaded 3x12. The role is now carried from the payload and never derived. The engine's own test already asserted the correct contract - a slotless entry is main work - so the wizard was the party that was wrong.
+
+**The first edit on an untouched session deleted every lift in it.** `removeSeriesMovement` and `replaceSeriesMovement` started from `current[seriesKey] ?? []`, and the fallback to the template only fires when the key is absent - `[]` is not nullish. Two reachable paths leave the map empty on mount (editing a block with no stored customization, and the `?program=tactical-barbell` deep link on the default template), and `canDeploy` then blocked deploy with no message. Both mutators now seed from the template.
+
+**A new block's own accessories were misread as the old automatic ones.** `accessoriesEnabled` was inferred as "any stored item of kind accessory", but a user-added movement materialises as exactly that kind. So a hand-built Zulu block came back on edit looking like an auto-picking one and re-enabled the retired injector, adding work the user never asked for. The user's own picks are now excluded by movement id. `setup_input` never persisted the `accessories` parameter, so exclusion is the only signal available for blocks deployed before this.
+
+The riskiest logic was extracted into `session-slot-editing.ts` as pure functions with their own tests, mirroring how `session-link-editing.ts` was split out: it had been unreachable from the test suite because it lived inside the component and the project's test environment has no DOM, which is why static-markup tests missed all three.

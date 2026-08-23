@@ -49,6 +49,19 @@ import {
   slotLinkBadges,
 } from "./session-link-editing";
 import {
+  addAccessory,
+  removeSlot,
+  replaceSlot,
+  seededDrafts,
+  slotDraftsFor as slotDraftsForSlots,
+  slotIdentity,
+  slotOf as slotOfSlots,
+  slotPayloadEntry,
+  slotsEdited,
+  type SeriesSlotDraft,
+  type TemplateSlot,
+} from "./session-slot-editing";
+import {
 } from "@/lib/platform/rehab-links";
 import {
   SESSION_LINKS_VERSION,
@@ -181,54 +194,17 @@ export interface PickerActivationPhase {
 }
 
 
-type PickerSeriesSlot = NonNullable<
-  PickerTbTemplate["sessionSeries"]
->[number]["slots"][number];
+type PickerSeriesSlot = TemplateSlot;
 
-/**
- * One editable row in a customized strength slot.
- *
- * `sourceMovement` is the template slot the row fills; `movement` is whatever
- * exercise currently fills it. They differ once the user swaps the exercise,
- * and the slot is what the engine matches its prescription rules against — so a
- * swapped supplemental keeps its supplemental sets, reps and percentage. A row
- * the user added themselves has no slot and is prescribed as main work.
- */
-interface SeriesSlotDraft {
-  sourceMovement?: string;
-  movement: string;
-  kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
-  /** Set on a movement the user added; it is prescribed as accessory work. */
-  role?: "accessory";
-}
+type PickerSeries = NonNullable<PickerTbTemplate["sessionSeries"]>[number];
 
-/**
- * The slot a row belongs to. Customizations written before slots were recorded
- * carry only a movement key, which for an unswapped row IS its slot — the same
- * fallback the engine applies.
- */
-function slotIdentity(draft: SeriesSlotDraft): string {
-  return draft.sourceMovement ?? draft.movement;
-}
+const slotDraftsFor = (series: PickerSeries): SeriesSlotDraft[] =>
+  slotDraftsForSlots(series.slots);
 
-function slotDraftsFor(
-  series: NonNullable<PickerTbTemplate["sessionSeries"]>[number],
-): SeriesSlotDraft[] {
-  return series.slots.map((slot) => ({
-    sourceMovement: slot.sourceMovement,
-    movement: slot.sourceMovement,
-    ...(slot.kind ? { kind: slot.kind } : {}),
-  }));
-}
-
-function slotOf(
-  series: NonNullable<PickerTbTemplate["sessionSeries"]>[number],
+const slotOf = (
+  series: PickerSeries,
   draft: SeriesSlotDraft,
-): PickerSeriesSlot | undefined {
-  if (draft.role === "accessory") return undefined;
-  const identity = slotIdentity(draft);
-  return series.slots.find((slot) => slot.sourceMovement === identity);
-}
+): PickerSeriesSlot | undefined => slotOfSlots(series.slots, draft);
 
 /**
  * Movements that make sense at an accessory dose (8–15 reps, near failure).
@@ -1439,6 +1415,7 @@ export function ProgramPicker({
                 ...(movement.sourceMovement
                   ? { sourceMovement: movement.sourceMovement }
                   : {}),
+                ...(movement.role ? { role: movement.role } : {}),
                 ...(movement.kind ? { kind: movement.kind } : {}),
               })),
             ],
@@ -1453,20 +1430,9 @@ export function ProgramPicker({
    */
   const tbMovementsEdited = useMemo(() => {
     if (!isTb || isActivation || !activeTbTemplate) return false;
-    return sessionSeriesFor(activeTbTemplate).some((series) => {
-      const drafts = customSessionMovements[series.key];
-      if (!drafts) return false;
-      const canonical = slotDraftsFor(series);
-      if (drafts.length !== canonical.length) return true;
-      return drafts.some((draft, index) => {
-        const base = canonical[index]!;
-        return (
-          draft.movement !== base.movement ||
-          draft.sourceMovement !== base.sourceMovement ||
-          draft.role != null
-        );
-      });
-    });
+    return sessionSeriesFor(activeTbTemplate).some((series) =>
+      slotsEdited(customSessionMovements[series.key], series.slots),
+    );
   }, [isTb, isActivation, activeTbTemplate, customSessionMovements]);
 
   // User-authored superset / tri-set links, keyed by session series. Kept OUTSIDE
@@ -2194,15 +2160,29 @@ export function ProgramPicker({
     });
   }
 
+  /**
+   * The rows a session currently has, seeding from the template when the user
+   * hasn't touched this session yet. Every mutator goes through this: starting
+   * from an empty list would wipe the template's own lifts on the first edit.
+   */
+  function seededFor(
+    current: Record<string, SeriesSlotDraft[]>,
+    seriesKey: string,
+  ): SeriesSlotDraft[] {
+    const series = activeTbTemplate
+      ? sessionSeriesFor(activeTbTemplate).find(
+          (entry) => entry.key === seriesKey,
+        )
+      : undefined;
+    return seededDrafts(current[seriesKey], series?.slots ?? []);
+  }
+
   /** Drop a row from a customized slot list, keyed by the slot it fills. */
   function removeSeriesMovement(seriesKey: string, identity: string) {
-    setCustomSessionMovements((current) => {
-      const selected = current[seriesKey] ?? [];
-      return {
-        ...current,
-        [seriesKey]: selected.filter((draft) => slotIdentity(draft) !== identity),
-      };
-    });
+    setCustomSessionMovements((current) => ({
+      ...current,
+      [seriesKey]: removeSlot(seededFor(current, seriesKey), identity),
+    }));
     // A removed lift must leave any link it was part of, or the link keeps a
     // member the session no longer has: the engine requires every member to be
     // present, so it would drop the whole link at materialisation and the
@@ -2232,41 +2212,23 @@ export function ProgramPicker({
     movement: string,
     kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored",
   ) {
-    setCustomSessionMovements((current) => {
-      const selected = current[seriesKey] ?? [];
-      return {
-        ...current,
-        [seriesKey]: selected.map((draft) =>
-          slotIdentity(draft) === identity
-            ? {
-                sourceMovement: identity,
-                movement,
-                ...(kind ? { kind } : {}),
-              }
-            : draft,
-        ),
-      };
-    });
+    setCustomSessionMovements((current) => ({
+      ...current,
+      [seriesKey]: replaceSlot(
+        seededFor(current, seriesKey),
+        identity,
+        movement,
+        kind,
+      ),
+    }));
   }
 
   /** Add a movement the user chose themselves; it is prescribed as accessory work. */
   function addSeriesAccessory(seriesKey: string, movement: string) {
-    setCustomSessionMovements((current) => {
-      const selected =
-        current[seriesKey] ??
-        (activeTbTemplate
-          ? slotDraftsFor(
-              sessionSeriesFor(activeTbTemplate).find(
-                (entry) => entry.key === seriesKey,
-              )!,
-            )
-          : []);
-      if (selected.some((draft) => draft.movement === movement)) return current;
-      return {
-        ...current,
-        [seriesKey]: [...selected, { movement, role: "accessory" as const }],
-      };
-    });
+    setCustomSessionMovements((current) => ({
+      ...current,
+      [seriesKey]: addAccessory(seededFor(current, seriesKey), movement),
+    }));
   }
 
   /** Drop several rows at once — the AB Triad is removed whole or not at all. */
@@ -2454,31 +2416,18 @@ export function ProgramPicker({
                   series.key,
                   draftsForSeries(series).map((draft) => {
                     const slot = slotOf(series, draft);
-                    const kind =
-                      draft.kind ??
-                      slot?.kind ??
-                      (draft.movement === "weighted-pullup"
-                        ? "weighted-bw"
-                        : draft.movement === "pullup"
-                          ? "bodyweight"
-                          : undefined);
                     const catalog = catalogMovementMeta[draft.movement];
-                    return {
-                      movement: draft.movement,
-                      // A row either fills a slot the template prescribes, or is
-                      // accessory work the user added. Never both, never neither.
-                      ...(slot
-                        ? { sourceMovement: slot.sourceMovement }
-                        : { role: "accessory" as const }),
-                      ...(catalog
+                    return slotPayloadEntry(
+                      draft,
+                      slot,
+                      catalog
                         ? {
-                            movementId: catalog.id,
+                            id: catalog.id,
                             slug: catalog.slug,
-                            displayName: catalog.name,
+                            name: catalog.name,
                           }
-                        : {}),
-                      ...(kind ? { kind } : {}),
-                    };
+                        : undefined,
+                    );
                   }),
                 ]),
               ),

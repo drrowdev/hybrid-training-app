@@ -412,3 +412,40 @@ export function customizationDays(
     day === type ? [index] : [],
   );
 }
+
+/** Catalog ids of the accessories the user picked themselves in the session editor. */
+export function userChosenAccessoryIds(
+  customization: TbCustomization | undefined,
+): Set<string> {
+  if (!customization || !isTbCustomizationV1(customization)) return new Set();
+  return new Set(
+    Object.values(customization.sessionMovements)
+      .flat()
+      .flatMap((movement) =>
+        movement.role === "accessory" && movement.movementId
+          ? [movement.movementId]
+          : [],
+      ),
+  );
+}
+
+/**
+ * Whether a block still carries accessory work the retired auto-injector added
+ * (ADR 0048, superseded by ADR 0075).
+ *
+ * A template prescribes no `accessory` items of its own, so any that appear were
+ * either auto-injected or picked by the user in the session editor. Both
+ * materialise identically, so the user's own picks have to be excluded by id —
+ * otherwise a block built entirely by hand reads as an auto-picking one and
+ * switches the injector back on when it is edited.
+ */
+export function hasAutoInjectedAccessories(
+  items: ReadonlyArray<{ kind?: string; movementId?: string }>,
+  chosenAccessoryIds: ReadonlySet<string>,
+): boolean {
+  return items.some(
+    (item) =>
+      item.kind === "accessory" &&
+      !(item.movementId != null && chosenAccessoryIds.has(item.movementId)),
+  );
+}

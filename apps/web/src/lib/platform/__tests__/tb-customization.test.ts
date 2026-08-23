@@ -5,10 +5,12 @@ import {
   activationRehabProtocols,
   activationSessionConfigs,
   effectiveActivationRehabProtocolIds,
+  hasAutoInjectedAccessories,
   isTbActivationCustomization,
   isTbActivationCustomizationV2,
   isTbActivationCustomizationV3,
   tbCustomizationSchema,
+  userChosenAccessoryIds,
 } from "../tb-customization";
 
 const base = {
@@ -200,7 +202,70 @@ describe("Tactical Barbell customization contract", () => {
     expect(tbCustomizationSchema.safeParse(unnamed).success).toBe(true);
   });
 
-  it("requires a rehab protocol when the week contains rehab", () => {    expect(
+  describe("telling auto-injected accessory work from the user's own", () => {
+  const CURL_ID = "00000000-0000-4000-8000-0000000000c1";
+  const RAISE_ID = "00000000-0000-4000-8000-0000000000c2";
+  const chosen = (movementId: string) =>
+    tbCustomizationSchema.parse({
+      ...base,
+      sessionMovements: {
+        "slot-1": [
+          { movement: "squat", sourceMovement: "squat" },
+          {
+            movement: `catalog:${movementId}`,
+            movementId,
+            slug: "bb-curl",
+            displayName: "Barbell Curl",
+            role: "accessory" as const,
+          },
+        ],
+      },
+    });
+
+  it("reads a block the user built by hand as carrying none", () => {
+    // Both kinds materialise as `accessory`, so without excluding the user's own
+    // picks a hand-built block re-enabled the retired auto-injector on edit.
+    const ids = userChosenAccessoryIds(chosen(CURL_ID));
+    expect(
+      hasAutoInjectedAccessories(
+        [
+          { kind: "main", movementId: "squat-id" },
+          { kind: "accessory", movementId: CURL_ID },
+        ],
+        ids,
+      ),
+    ).toBe(false);
+  });
+
+  it("still spots accessory work the user did not pick", () => {
+    const ids = userChosenAccessoryIds(chosen(CURL_ID));
+    expect(
+      hasAutoInjectedAccessories(
+        [
+          { kind: "accessory", movementId: CURL_ID },
+          { kind: "accessory", movementId: RAISE_ID },
+        ],
+        ids,
+      ),
+    ).toBe(true);
+  });
+
+  it("treats a block with no customization as auto-injected", () => {
+    expect(userChosenAccessoryIds(undefined).size).toBe(0);
+    expect(
+      hasAutoInjectedAccessories([{ kind: "accessory", movementId: CURL_ID }], new Set()),
+    ).toBe(true);
+  });
+
+  it("is false when the block has no accessory work at all", () => {
+    expect(
+      hasAutoInjectedAccessories([{ kind: "main" }, { kind: "back_off" }], new Set()),
+    ).toBe(false);
+  });
+});
+
+  it("requires a rehab protocol when the week contains rehab", () => {
+    expect(
       tbCustomizationSchema.safeParse({ ...base, rehab: undefined }).success,
     ).toBe(false);
   });

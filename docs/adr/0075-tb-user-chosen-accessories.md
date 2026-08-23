@@ -99,6 +99,13 @@ one hidden and mis-prescribing.
   editor is open work, not a regression to fix before shipping this.
 - **Existing blocks keep their accessory work.** On edit, the wizard offers one
   control to keep or clear it; keeping it re-runs the injector exactly as before.
+  Auto-injected work and the user's own picks materialise identically, so the
+  user's are excluded by movement id — otherwise a block built entirely by hand
+  reads as an auto-picking one and switches the injector back on.
+- **A pre-slot customization is left alone.** Its entries carry no slot *and* no
+  role, and the accessory role is carried from the payload rather than derived
+  from a missing slot, so its lifts keep being prescribed as main work. Deriving
+  would have turned a swapped main lift into an unloaded 3×12 on the next edit.
 - **`role` is a new discriminator in an existing JSONB blob** — no schema
   migration, no new column, and old payloads parse unchanged.
 
