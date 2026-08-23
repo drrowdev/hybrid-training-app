@@ -516,9 +516,76 @@ describe("ProgramPicker rendering", () => {
       expect(html).toContain(`data-testid="tb-slot-slot-1-${slot}"`);
       expect(html).toContain(`data-testid="tb-slot-change-slot-1-${slot}"`);
     }
-    // The triad is one row, so it can't be half-removed.
+    // The triad is one row, so it can't be half-removed — but it can be swapped.
     expect(html).toContain('data-testid="tb-slot-slot-1-ab-triad"');
+    expect(html).toContain('data-testid="tb-slot-change-slot-1-ab-triad"');
     expect(html).not.toContain("tb-slot-change-slot-1-hanging-leg-raise");
+  });
+
+  it("groups a session's lifts under the section each is run in", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+    const card = html.slice(
+      html.indexOf('data-testid="tb-slot-slot-1-bench"') - 400,
+      html.indexOf('data-testid="tb-slot-slot-2-deadlift"'),
+    );
+
+    expect(card.indexOf("Main lifts")).toBeGreaterThanOrEqual(0);
+    expect(card.indexOf("Main lifts")).toBeLessThan(card.indexOf("Supplemental"));
+    expect(card.indexOf("Supplemental")).toBeLessThan(
+      card.indexOf("Overhead Press"),
+    );
+  });
+
+  it("does not head a session that is nothing but main lifts", () => {
+    const operatorPrograms: PickerProgram[] = programs.map((program) =>
+      program.id === "tactical-barbell"
+        ? {
+            ...program,
+            fields: [
+              {
+                key: "templateId",
+                label: "Template",
+                type: "select" as const,
+                options: [{ value: "operator", label: "Operator" }],
+                defaultValue: "operator",
+              },
+            ],
+          }
+        : program,
+    );
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={operatorPrograms}
+        anchoredKeys={["squat", "bench", "deadlift"]}
+        tbTemplates={[
+          {
+            ...OPERATOR,
+            sessionSeries: [
+              {
+                key: "slot-1",
+                label: "Day 1",
+                slots: [
+                  { sourceMovement: "bench", role: "main" },
+                  { sourceMovement: "squat", role: "main" },
+                ],
+              },
+            ],
+          },
+        ]}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+
+    expect(html).toContain('data-testid="tb-slot-slot-1-bench"');
+    expect(html).not.toContain("Main lifts");
+    expect(html).not.toContain("Supplemental");
   });
 
   it("offers accessories only from movements that suit an accessory dose", () => {

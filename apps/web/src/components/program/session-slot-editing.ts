@@ -8,6 +8,7 @@
  * user hadn't seeded yet, and re-deriving the accessory role from a missing slot
  * demoted a legacy customization's lifts to 3×12.
  */
+import { MAX_LINK_MEMBERS } from "@/lib/platform/session-links";
 
 export type SlotKind = "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
 
@@ -158,6 +159,135 @@ export function slotPayloadEntry(
 /** Whether a click that drops `removedRows` may proceed without emptying the session. */
 export function canRemoveRows(totalRows: number, removedRows: number): boolean {
   return totalRows - removedRows >= 1;
+}
+
+/** The three groups a session's rows are shown in, in the order they are run. */
+export type SlotSection = "main" | "supplemental" | "accessory";
+
+export const SLOT_SECTIONS: readonly SlotSection[] = [
+  "main",
+  "supplemental",
+  "accessory",
+];
+
+export function sectionOf(
+  slots: readonly TemplateSlot[],
+  draft: SeriesSlotDraft,
+): SlotSection {
+  if (draft.role === "accessory") return "accessory";
+  return slotOf(slots, draft)?.role === "supplemental"
+    ? "supplemental"
+    : "main";
+}
+
+/**
+ * Group the rows the way they are shown: main work, then the template's
+ * supplemental work, then anything the user added. The session is prescribed in
+ * this order too, so the screen and the workout can't disagree. A canonical
+ * template is already in this order, so ordering it changes nothing.
+ */
+export function orderBySection(
+  drafts: readonly SeriesSlotDraft[],
+  slots: readonly TemplateSlot[],
+): SeriesSlotDraft[] {
+  return SLOT_SECTIONS.flatMap((section) =>
+    drafts.filter((draft) => sectionOf(slots, draft) === section),
+  );
+}
+
+/**
+ * Swap a whole built-in circuit for one movement.
+ *
+ * The replacement keeps the circuit's FIRST slot, so the row still knows which
+ * circuit it stands in for and can be restored. The other slots are dropped —
+ * a circuit runs whole or not at all.
+ */
+export function collapseGroup(
+  drafts: readonly SeriesSlotDraft[],
+  group: readonly string[],
+  movement: string,
+): SeriesSlotDraft[] {
+  const [head, ...rest] = group;
+  if (!head) return [...drafts];
+  const dropped = new Set(rest);
+  return drafts.flatMap((draft) => {
+    const identity = slotIdentity(draft);
+    if (identity === head) return [{ sourceMovement: head, movement }];
+    return dropped.has(identity) ? [] : [draft];
+  });
+}
+
+/** Put a collapsed circuit back, in place. */
+export function restoreGroup(
+  drafts: readonly SeriesSlotDraft[],
+  group: readonly string[],
+): SeriesSlotDraft[] {
+  const [head] = group;
+  if (!head) return [...drafts];
+  return drafts.flatMap((draft) =>
+    slotIdentity(draft) === head
+      ? group.map((source) => ({ sourceMovement: source, movement: source }))
+      : [draft],
+  );
+}
+
+/** Whether a built-in circuit is present whole. */
+export function hasWholeGroup(
+  drafts: readonly SeriesSlotDraft[],
+  group: readonly string[],
+): boolean {
+  const present = new Set(drafts.map(slotIdentity));
+  return group.every((source) => present.has(source));
+}
+
+/** Whether a circuit was swapped for a single movement rather than removed. */
+export function isGroupReplaced(
+  drafts: readonly SeriesSlotDraft[],
+  group: readonly string[],
+): boolean {
+  const [head] = group;
+  if (!head) return false;
+  const row = drafts.find((draft) => slotIdentity(draft) === head);
+  return row != null && row.movement !== head && !hasWholeGroup(drafts, group);
+}
+
+/**
+ * Rewrite the members of every link that contains `from`, in place.
+ *
+ * A link names the canonical slots it runs, so collapsing a circuit into one
+ * movement leaves any link that ran it naming two slots the session no longer
+ * has. The engine refuses a link with a missing member, so the whole superset
+ * would disappear without a word.
+ *
+ * The result obeys the same size rules as every other link edit: a link that
+ * cannot be rewritten within them is dissolved rather than left naming slots
+ * that no longer line up. A link too full to take the circuit back would still
+ * name only its first slot, and the engine drops a link that claims part of a
+ * circuit — so leaving it would promise a superset that never runs.
+ */
+export function replaceLinkMembers<T extends { members: string[] }>(
+  links: readonly T[],
+  from: readonly string[],
+  to: readonly string[],
+  maxMembers = MAX_LINK_MEMBERS,
+): T[] {
+  const dropped = new Set(from);
+  return links
+    .map((link) => {
+      if (!from.every((member) => link.members.includes(member))) return link;
+      let emitted = false;
+      const members = link.members.flatMap((member) => {
+        if (!dropped.has(member)) return [member];
+        if (emitted) return [];
+        emitted = true;
+        return [...to];
+      });
+      return { ...link, members };
+    })
+    .filter(
+      (link) =>
+        link.members.length >= 2 && link.members.length <= maxMembers,
+    );
 }
 
 /** Whether any session row differs from what the template prescribes. */

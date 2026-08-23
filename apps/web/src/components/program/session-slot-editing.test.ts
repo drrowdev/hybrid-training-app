@@ -10,8 +10,15 @@ import { describe, it, expect } from "vitest";
 import {
   addAccessory,
   canRemoveRows,
+  collapseGroup,
+  hasWholeGroup,
+  isGroupReplaced,
+  orderBySection,
   removeSlot,
+  replaceLinkMembers,
   replaceSlot,
+  restoreGroup,
+  sectionOf,
   seededDrafts,
   slotDraftsFor,
   slotIdentity,
@@ -178,6 +185,142 @@ describe("canRemoveRows", () => {
     // which then blocked deploy with nothing on screen to explain it.
     expect(canRemoveRows(3, 3)).toBe(false);
     expect(canRemoveRows(4, 3)).toBe(true);
+  });
+});
+
+describe("sections", () => {
+  const TRIAD_SLOTS: TemplateSlot[] = [
+    ...SLOTS,
+    { sourceMovement: "hanging-leg-raise", role: "supplemental" },
+    { sourceMovement: "hanging-knee-raise", role: "supplemental" },
+    { sourceMovement: "toes-to-bar", role: "supplemental" },
+  ];
+
+  it("sorts a row into the section it is run in", () => {
+    expect(sectionOf(SLOTS, { movement: "bench" })).toBe("main");
+    expect(sectionOf(SLOTS, { movement: "overhead-press" })).toBe(
+      "supplemental",
+    );
+    expect(sectionOf(SLOTS, { movement: CURL, role: "accessory" })).toBe(
+      "accessory",
+    );
+  });
+
+  it("treats a pre-slot row it cannot place as main work, matching the engine", () => {
+    expect(sectionOf(SLOTS, { movement: CURL })).toBe("main");
+  });
+
+  it("orders main, then supplemental, then what the user added", () => {
+    const drafts = addAccessory(
+      [
+        { sourceMovement: "overhead-press", movement: "overhead-press" },
+        { sourceMovement: "bench", movement: "bench" },
+      ],
+      CURL,
+    );
+    expect(
+      orderBySection(drafts, SLOTS).map((draft) => draft.movement),
+    ).toEqual(["bench", "overhead-press", CURL]);
+  });
+
+  it("leaves a template that is already in that order untouched", () => {
+    const canonical = slotDraftsFor(TRIAD_SLOTS);
+    expect(orderBySection(canonical, TRIAD_SLOTS)).toEqual(canonical);
+  });
+});
+
+describe("swapping a built-in circuit", () => {
+  const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"];
+  const withTriad = (): SeriesSlotDraft[] => [
+    { sourceMovement: "bench", movement: "bench" },
+    ...TRIAD.map((source) => ({ sourceMovement: source, movement: source })),
+  ];
+
+  it("replaces the whole circuit with one movement, keeping its place", () => {
+    const next = collapseGroup(withTriad(), TRIAD, CURL);
+    expect(next.map((draft) => draft.movement)).toEqual(["bench", CURL]);
+    expect(next[1]).toMatchObject({ sourceMovement: "hanging-leg-raise" });
+  });
+
+  it("puts the circuit back where it was", () => {
+    const collapsed = collapseGroup(withTriad(), TRIAD, CURL);
+    expect(restoreGroup(collapsed, TRIAD)).toEqual(withTriad());
+  });
+
+  it("knows when the circuit is whole, swapped, or gone", () => {
+    const whole = withTriad();
+    const collapsed = collapseGroup(whole, TRIAD, CURL);
+    const removed = TRIAD.reduce(
+      (drafts, source) => removeSlot(drafts, source),
+      whole as SeriesSlotDraft[],
+    );
+
+    expect(hasWholeGroup(whole, TRIAD)).toBe(true);
+    expect(isGroupReplaced(whole, TRIAD)).toBe(false);
+    expect(hasWholeGroup(collapsed, TRIAD)).toBe(false);
+    expect(isGroupReplaced(collapsed, TRIAD)).toBe(true);
+    expect(isGroupReplaced(removed, TRIAD)).toBe(false);
+  });
+});
+
+describe("replaceLinkMembers", () => {
+  const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"];
+
+  it("moves a link off a circuit that was swapped for one movement", () => {
+    // Left alone, the link would name two lifts the session no longer has, and
+    // the engine drops a link with a missing member — the superset would vanish.
+    const links = [{ id: "l1", name: "Superset", members: ["bench", ...TRIAD] }];
+    expect(replaceLinkMembers(links, TRIAD, [TRIAD[0]!])).toEqual([
+      { id: "l1", name: "Superset", members: ["bench", "hanging-leg-raise"] },
+    ]);
+  });
+
+  it("puts the circuit's members back when it is restored", () => {
+    const links = [
+      { id: "l1", name: "Superset", members: ["bench", "hanging-leg-raise"] },
+    ];
+    expect(replaceLinkMembers(links, [TRIAD[0]!], TRIAD)).toEqual([
+      { id: "l1", name: "Superset", members: ["bench", ...TRIAD] },
+    ]);
+  });
+
+  it("leaves a link that never ran the circuit alone", () => {
+    const links = [{ id: "l1", name: "Superset", members: ["bench", "squat"] }];
+    expect(replaceLinkMembers(links, TRIAD, [TRIAD[0]!])).toEqual(links);
+  });
+
+  it("keeps the position the circuit held in the order", () => {
+    const links = [
+      { id: "l1", name: "Tri-set", members: [...TRIAD, "bench", "squat"] },
+    ];
+    expect(replaceLinkMembers(links, TRIAD, [TRIAD[0]!])[0]!.members).toEqual([
+      "hanging-leg-raise",
+      "bench",
+      "squat",
+    ]);
+  });
+
+  it("dissolves a link the swap would leave with one lift", () => {
+    // Reachable: superset the press with the triad, remove the press, then
+    // change the triad. Left as-is the link becomes a single member, which the
+    // deploy schema rejects outright — failing the whole submission with a
+    // message that names neither the link nor the session.
+    const links = [{ id: "l1", name: "Superset", members: [...TRIAD] }];
+    expect(replaceLinkMembers(links, TRIAD, [TRIAD[0]!])).toEqual([]);
+  });
+
+  it("dissolves a link too full to take the circuit back", () => {
+    const members = ["hanging-leg-raise", "a", "b", "c", "d", "e", "f"];
+    const links = [{ id: "l1", name: "Giant set", members }];
+    // 7 + 2 = 9 > 8. Left in place it would name only the circuit's first slot
+    // while the session ran all three, and the engine drops a link that claims
+    // part of a circuit — so it would promise a superset that never runs.
+    expect(replaceLinkMembers(links, [TRIAD[0]!], TRIAD)).toEqual([]);
+    // One fewer member and the restore fits.
+    const fits = [{ id: "l1", name: "Giant set", members: members.slice(0, 6) }];
+    expect(replaceLinkMembers(fits, [TRIAD[0]!], TRIAD)[0]!.members).toHaveLength(
+      8,
+    );
   });
 });
 

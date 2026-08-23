@@ -42,7 +42,6 @@ describe("SessionLinkEditor", () => {
 
   it("offers the picker when nothing is linked yet, marked closed", () => {
     const html = markup([]);
-    expect(html).toContain("Link lifts");
     expect(html).toContain("link-picker-toggle-slot-1");
     // Closed picker shows "+"; the open state swaps it for a minus so the
     // control says which way it will move.
@@ -52,10 +51,16 @@ describe("SessionLinkEditor", () => {
     expect(html).toContain("link-create-slot-1");
   });
 
-  it("invites more lifts into an existing link", () => {
-    expect(markup([
+  it("says it will start another group once one exists", () => {
+    const first = markup([]);
+    const second = markup([
       { id: "link-1", name: "Superset", members: ["catalog:1", "catalog:2"] },
-    ])).toContain("Link more lifts");
+    ]);
+    const labelOf = (html: string) =>
+      html.slice(html.indexOf("</span>"), html.indexOf("</summary>"));
+
+    expect(second).toContain("link-picker-toggle-slot-1");
+    expect(labelOf(second)).not.toBe(labelOf(first));
   });
 
   it("names the button after what the picked count would make", () => {
