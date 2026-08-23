@@ -159,6 +159,47 @@ describe("Tactical Barbell customization contract", () => {
     ).toBe(false);
   });
 
+  it("carries an accessory the user added, which fills no slot", () => {
+    const withAccessory = {
+      ...base,
+      sessionMovements: {
+        "slot-1": [
+          { movement: "squat", sourceMovement: "squat" },
+          {
+            movement: "catalog:00000000-0000-4000-8000-000000000010",
+            movementId: "00000000-0000-4000-8000-000000000010",
+            slug: "bb-curl",
+            displayName: "Barbell Curl",
+            role: "accessory" as const,
+          },
+        ],
+      },
+    };
+    expect(tbCustomizationSchema.parse(withAccessory)).toEqual(withAccessory);
+  });
+
+  it("rejects an accessory that also claims a slot", () => {
+    expect(
+      tbCustomizationSchema.safeParse({
+        ...base,
+        sessionMovements: {
+          "slot-1": [
+            {
+              movement: "push-press",
+              sourceMovement: "overhead-press",
+              role: "accessory",
+            },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts a movement-only overlay that does not rename the block", () => {
+    const { displayName: _displayName, ...unnamed } = base;
+    expect(tbCustomizationSchema.safeParse(unnamed).success).toBe(true);
+  });
+
   it("requires a rehab protocol when the week contains rehab", () => {    expect(
       tbCustomizationSchema.safeParse({ ...base, rehab: undefined }).success,
     ).toBe(false);

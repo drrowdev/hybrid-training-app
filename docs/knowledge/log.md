@@ -828,3 +828,17 @@ Underneath sat a real defect. A customized session's lifts were identified by mo
 A slot is now a first-class identity that survives substitution - the mechanism Activation's Armor picker already used, wired into the weekly path. Supplemental slots gained Change and Remove alongside main ones, removal is stated back rather than blocked (DC-K4), and slot claims are validated structurally and against the selected template at deploy. Step 2 lists each day's main and supplemental lifts from the template itself, so the prose cannot drift again. See ADR 0074.
 
 Deliberately left alone: the accessory injector can still stack ab isolation onto the AB Triad, which is a muscle-overlap question rather than a slot one; and Zulu I/A, Gladiator, Mass and Grey Man remain on the earlier edition, their copy accurate for what they currently are.
+
+## [2026-08-23] decision | Tactical Barbell accessories move from an invisible checkbox to the session editor
+
+Owner feedback on the ADR 0048 accessory toggle: "the whole checkbox is confusing as the user doesnt really know what it does."
+
+Fair reading of what it did. You ticked a box, chose some muscles, and nothing appeared - the movements were picked for you later, out of sight, first visible once the plan existed. Its copy also asserted that Tactical Barbell adds no accessories, which was never true of Zulu.
+
+Meanwhile the wizard already had a place where a user picks the movements in a session, three steps away behind "Customize template", and its "+ Add exercise" was broken for the purpose: an added movement carried no slot, matched no prescription rule, and was emitted as main work at the session's sets and reps. A bicep curl was prescribed 3-5x5. Two surfaces for shaping a session, one invisible and automatic, one hidden and mis-prescribing.
+
+Now there is one. The loadout step's per-day preview became the editor: every row is Main, Supplemental or Accessory, with Change, Remove and Add accessory. Added movements carry an explicit accessory role - stated, never inferred from a missing slot, because pre-slot customizations have no slot on any entry and inferring would turn their main lifts into curls - and are prescribed at the dose ADR 0048 derived from the book. The picker offers only movements that suit that dose. Templates that previously refused accessories now object in the place the work is added, and only once it has been added.
+
+Kept deliberately: the auto-picking injector and its deploy parameter, unchanged, for Green Protocol (periodised across several templates, no per-session editor to move into) and for blocks already deployed with it - their accessory selection rotates per session, so there is no faithful conversion into one repeating row, and deleting the injector would strip work from a live plan on its next edit. Editing movements no longer renames a block: displayName became optional on the customization overlay.
+
+See ADR 0075. ADR 0048 is superseded for Tactical Barbell and still governs Green Protocol.

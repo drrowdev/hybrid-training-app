@@ -1247,4 +1247,52 @@ describe("materializeProgram — customized Tactical Barbell", () => {
         .filter((name, index, all) => all.indexOf(name) === index),
     ).toEqual(["Bench", "Squat"]);
   });
+
+  it("materializes a user-added accessory as accessory work, not a main lift", () => {
+    const zuluCtx: PlatformContext = {
+      oneRepMaxes: { squat: 200, bench: 100, deadlift: 250, "overhead-press": 100 },
+      roundingKg: 2.5,
+    };
+    const curlKey = "catalog:00000000-0000-4000-8000-0000000000c1";
+    const zuluInstance = tacticalBarbellEngine.setup(
+      {
+        values: {
+          templateId: "zulu",
+          customSessionMovements: {
+            "slot-1": [
+              { movement: "bench", sourceMovement: "bench", split: "A" },
+              { movement: "squat", sourceMovement: "squat", split: "A" },
+              { movement: curlKey, displayName: "Barbell Curl", role: "accessory" },
+            ],
+          },
+        },
+      },
+      zuluCtx,
+    );
+    const curlResolve: MovementResolver = (key) =>
+      key === curlKey
+        ? {
+            movementId: "00000000-0000-4000-8000-0000000000c1",
+            slug: "bb-curl",
+            displayName: "Barbell Curl",
+          }
+        : resolve(key);
+    const result = materializeProgram(
+      tacticalBarbellEngine,
+      zuluInstance,
+      zuluCtx,
+      curlResolve,
+      { weekdays: [0, 1, 3, 4] },
+    );
+    const dayOne = result.sessions.find(
+      (session) => session.weekIndex === 0 && session.dayIndex === 0,
+    )!;
+    const curl = dayOne.prescription.items.filter(
+      (item) => item.movementName === "Barbell Curl",
+    );
+
+    expect(curl.every((item) => item.kind === "accessory")).toBe(true);
+    expect(curl[0]?.percentTm).toBeUndefined();
+    expect(curl[0]).toMatchObject({ reps: 8, repRange: { min: 8, max: 15 } });
+  });
 });

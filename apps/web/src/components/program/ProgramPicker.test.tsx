@@ -442,8 +442,8 @@ describe("ProgramPicker rendering", () => {
     );
   });
 
-  it("shows each Zulu session's main and supplemental lifts on the loadout step", () => {
-    const zuluPrograms: PickerProgram[] = programs.map((program) =>
+  const zuluPrograms = (): PickerProgram[] =>
+    programs.map((program) =>
       program.id === "tactical-barbell"
         ? {
             ...program,
@@ -459,9 +459,28 @@ describe("ProgramPicker rendering", () => {
           }
         : program,
     );
+
+  const ACCESSORY_LIBRARY = [
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000001",
+      name: "Barbell Curl",
+      slug: "bb-curl",
+      pattern: "isolation",
+      hasOneRm: false,
+    },
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000002",
+      name: "Farmer Carry",
+      slug: "farmer-carry",
+      pattern: "carry",
+      hasOneRm: false,
+    },
+  ];
+
+  it("shows each Zulu session's main and supplemental lifts on the loadout step", () => {
     const html = renderToStaticMarkup(
       <ProgramPicker
-        programs={zuluPrograms}
+        programs={zuluPrograms()}
         anchoredKeys={["squat", "bench", "deadlift", "press"]}
         tbTemplates={[ZULU_TB3]}
         initialProgramId="tactical-barbell"
@@ -481,6 +500,56 @@ describe("ProgramPicker rendering", () => {
     // The ab work is one circuit, so it reads as one entry.
     expect(html).toContain("AB Triad");
     expect(html).not.toContain("Hanging Knee Raise");
+  });
+
+  it("lets every Zulu slot be changed or removed from the loadout step", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+
+    for (const slot of ["bench", "squat", "overhead-press"]) {
+      expect(html).toContain(`data-testid="tb-slot-slot-1-${slot}"`);
+      expect(html).toContain(`data-testid="tb-slot-change-slot-1-${slot}"`);
+    }
+    // The triad is one row, so it can't be half-removed.
+    expect(html).toContain('data-testid="tb-slot-slot-1-ab-triad"');
+    expect(html).not.toContain("tb-slot-change-slot-1-hanging-leg-raise");
+  });
+
+  it("offers accessories only from movements that suit an accessory dose", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        rehabMovements={ACCESSORY_LIBRARY}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+    const start = html.indexOf('data-testid="tb-add-accessory-slot-1"');
+    const scoped = html.slice(start, html.indexOf("</details>", start));
+
+    expect(scoped).toContain("Barbell Curl");
+    expect(scoped).not.toContain("Farmer Carry");
+  });
+
+  it("no longer offers the Tactical Barbell accessory toggle", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+
+    expect(html).not.toContain('data-testid="tb-accessories-toggle"');
+    expect(html).not.toContain("tb-accessory-muscle-");
   });
 
   it("offers a per-block assistance volume on the 5/3/1 loadout step, defaulting to Balanced", () => {    const html = renderToStaticMarkup(

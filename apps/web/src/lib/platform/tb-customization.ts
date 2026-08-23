@@ -47,6 +47,13 @@ const movementReplacementSchema = z
      * something the user added and can never BE a slot.
      */
     sourceMovement: z.string().trim().min(1).max(80).optional(),
+    /**
+     * Marks a movement the user added rather than one the template prescribes.
+     * Stated explicitly rather than inferred from a missing `sourceMovement`,
+     * because customizations written before slots existed have no slot on ANY
+     * entry — inferring would turn their main lifts into accessory work.
+     */
+    role: z.literal("accessory").optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -55,6 +62,13 @@ const movementReplacementSchema = z
         code: z.ZodIssueCode.custom,
         path: ["sourceMovement"],
         message: "A custom movement cannot stand in for a template slot.",
+      });
+    }
+    if (value.role === "accessory" && value.sourceMovement) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["role"],
+        message: "Accessory work does not fill a template slot.",
       });
     }
     if (!value.movement.startsWith("catalog:")) return;
@@ -74,7 +88,12 @@ const movementReplacementSchema = z
 export const tbCustomizationV1Schema = z
   .object({
     version: z.literal(TB_CUSTOMIZATION_VERSION),
-    displayName: z.string().trim().min(1).max(120),
+    /**
+     * The user's name for the block. Optional: editing the movements in a
+     * session writes this overlay too, and that alone should not rename their
+     * program — only the "Customize template" flow names it.
+     */
+    displayName: z.string().trim().min(1).max(120).optional(),
     dayTypes: z.array(weekdayTypeSchema).length(7),
     sessionMovements: z.record(
       z

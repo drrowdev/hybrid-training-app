@@ -1,6 +1,11 @@
 # ADR 0048 — Tactical Barbell optional accessory work
 
-Status: Accepted (2026-06-13) — platform layer implemented in #496
+Status: Superseded for Tactical Barbell by [ADR 0075](0075-tb-user-chosen-accessories.md)
+(2026-08-23) — accessories are now chosen by the user in the session editor. This
+ADR still governs **Green Protocol**, which keeps the toggle and the injector, and
+the accessory DOSE it derived (8–15 reps, near failure) is what a user-added
+movement is prescribed at. Originally: Accepted (2026-06-13) — platform layer
+implemented in #496
 Supersedes: none
 Related: ADR 0047 (5/3/1 assistance generation — the *contrasting* model), the
 platform pivot (5/3/1 + TB as foreign engines), the prescription adapter

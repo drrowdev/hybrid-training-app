@@ -385,8 +385,80 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     );
   });
 
-  it("[slot identity] a movement added without a slot is prescribed as main work", () => {
+  it("[accessory] a movement the user adds is prescribed at an accessory dose, not the session's", () => {
     const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-1": [
+          { movement: "bench", sourceMovement: "bench", split: "A" },
+          { movement: "squat", sourceMovement: "squat", split: "A" },
+          {
+            movement: "catalog:00000000-0000-4000-8000-0000000000c1",
+            displayName: "Barbell Curl",
+            role: "accessory",
+          },
+        ],
+      },
+    });
+    const week1 = tb.prescribe(inst, "b0-w1-p1a", ctx);
+    const curl = week1.items.filter((item) => item.name === "Barbell Curl");
+
+    expect(curl).toHaveLength(1);
+    expect(curl[0]).toMatchObject({
+      kind: "assistance",
+      sets: 3,
+      reps: 8,
+      repsMax: 15,
+      repsLabel: "8–15",
+    });
+    // No percentage, no weight, and no warm-up ramp of its own.
+    expect(curl[0]?.percentOfTm).toBeUndefined();
+    expect(curl[0]?.weightKg).toBeUndefined();
+    expect(week1.items.filter((item) => item.kind === "warmup").every(
+      (item) => item.name !== "Barbell Curl",
+    )).toBe(true);
+    expect(itemsOfKind(week1, "main").map((item) => item.name)).toEqual([
+      "Bench Press",
+      "Squat",
+    ]);
+  });
+
+  it("[accessory] an added movement with a known 1RM still takes no percentage", () => {
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-1": [
+          { movement: "bench", sourceMovement: "bench", split: "A" },
+          { movement: "overhead-press", role: "accessory" },
+        ],
+      },
+    });
+    const press = tb
+      .prescribe(inst, "b0-w1-p1a", ctx)
+      .items.filter((item) => item.name === "Overhead Press");
+
+    expect(press).toHaveLength(1);
+    expect(press[0]).toMatchObject({ kind: "assistance", sets: 3, reps: 8 });
+    expect(press[0]?.percentOfTm).toBeUndefined();
+    expect(press[0]?.weightKg).toBeUndefined();
+  });
+
+  it("[accessory] never becomes the peak attempt when a main slot is emptied", () => {
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-1": [
+          { movement: "bench", sourceMovement: "bench", split: "A" },
+          { movement: "power-clean", role: "accessory" },
+        ],
+      },
+    });
+    const main = itemsOfKind(tb.prescribe(inst, "b0-w6-peak-a1", ctx), "main");
+
+    expect(main.map((item) => item.name)).toEqual(["Bench Press"]);
+  });
+
+  it("[slot identity] a movement added without a slot is prescribed as main work", () => {    const inst = setup({
       templateId: "zulu",
       customSessionMovements: {
         "slot-1": [
