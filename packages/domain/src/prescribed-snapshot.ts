@@ -17,6 +17,7 @@
  * result for every unanchored movement.
  */
 import { resolvePrescriptionSetWork } from "./prescription-set-work";
+import { resolveTargetLoadKg } from "./target-load";
 
 /** The subset of a prescription item this resolver reads. */
 export type PrescribedSnapshotInput = {
@@ -48,6 +49,14 @@ export type PrescribedSnapshotContext = {
   tmKg?: number | null;
   /** What `percentTm` is a percentage of. 5/3/1 → "TM"; TB / GP / HYROX → "1RM". */
   basis?: "TM" | "1RM";
+  /**
+   * True when this movement's max counts bodyweight (weighted pull-ups / dips),
+   * so a percentage of it is a total and the prescribed load is that total
+   * minus `bodyweightKg`.
+   */
+  isSystemLoad?: boolean;
+  /** The lifter's bodyweight in kg — required to resolve a system-load percentage. */
+  bodyweightKg?: number | null | undefined;
   /** Plate-rounding hook so storage matches the displayed load exactly. */
   roundToPlate?: (kg: number) => number;
   setKind?: string;
@@ -100,15 +109,15 @@ export function resolvePrescribedSnapshot(
 
   const round = ctx.roundToPlate ?? ((kg: number) => kg);
 
-  let targetWeightKg: number | null = null;
   const percentTm = num(item.percentTm);
-  const tmKg = num(ctx.tmKg);
-  if (percentTm != null && tmKg != null && tmKg > 0) {
-    targetWeightKg = round((tmKg * percentTm) / 100);
-  } else if (item.targetWeightKg != null && item.targetWeightKg > 0) {
+  const targetWeightKg = resolveTargetLoadKg(item, {
+    tmKg: ctx.tmKg,
+    ...(ctx.isSystemLoad ? { isSystemLoad: true } : {}),
+    bodyweightKg: ctx.bodyweightKg,
+    roundKg: round,
     // Warm-up ramps resolve to a concrete kg at deploy and carry no percentage.
-    targetWeightKg = round(item.targetWeightKg);
-  }
+    roundAbsoluteKg: round,
+  });
 
   // Reuse the existing work resolver so reps/hold/distance selection (and its
   // range-midpoint rule) has exactly one implementation.

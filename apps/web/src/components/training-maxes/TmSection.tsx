@@ -23,7 +23,10 @@ export type RoleGroupInput = {
   setRow?: TmRow;
   setRowSourceSet?: TmSourceSet | null;
 };
-export type PickerGroup = { label: string; items: { id: string; display_name: string }[] };
+export type PickerGroup = {
+  label: string;
+  items: { id: string; display_name: string; systemLoad?: boolean }[];
+};
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -44,6 +47,7 @@ export function TmSection({
   otherRowSourceSets,
   pickerGroups,
   hasActiveBlock,
+  bodyweightKg = null,
   upsertAction,
   moveAction,
   deleteAction,
@@ -55,6 +59,8 @@ export function TmSection({
   otherRowSourceSets?: Record<string, TmSourceSet | null>;
   pickerGroups: PickerGroup[];
   hasActiveBlock: boolean;
+  /** The lifter's bodyweight (kg) — lets the estimator work on a system load. */
+  bodyweightKg?: number | null;
   upsertAction: (fd: FormData) => Promise<unknown>;
   moveAction: (fd: FormData) => Promise<unknown>;
   deleteAction: (fd: FormData) => Promise<void>;
@@ -112,6 +118,7 @@ export function TmSection({
                 units={units}
                 row={r}
                 sourceSet={otherRowSourceSets?.[r.id] ?? null}
+                bodyweightKg={bodyweightKg}
                 upsertAction={upsertAction}
                 deleteAction={deleteAction}
                 lockAction={lockAction}
@@ -141,12 +148,18 @@ function OneRmInput({
   ariaLabel,
   initialKg,
   units,
+  isSystemLoad = false,
+  bodyweightKg = null,
   action,
 }: {
   movementId: string;
   ariaLabel: string;
   initialKg: number | null;
   units: WeightUnit;
+  /** This movement's max counts bodyweight plus added load. */
+  isSystemLoad?: boolean;
+  /** The lifter's bodyweight in kg, for the system-load estimator. */
+  bodyweightKg?: number | null;
   action: (fd: FormData) => Promise<unknown>;
 }) {
   const unitLabel = weightUnitLabel(units);
@@ -242,6 +255,8 @@ function OneRmInput({
       {estimateOpen && (
         <EstimatePopover
           units={units}
+          isSystemLoad={isSystemLoad}
+          bodyweightKg={bodyweightKg}
           onCancel={() => setEstimateOpen(false)}
           onApply={applyEstimate}
         />
@@ -253,13 +268,20 @@ function OneRmInput({
 /**
  * Inline "estimate your 1RM from a recent set" popover — weight × reps run
  * through Epley, shown in the user's unit. Apply pushes the result into the row.
+ *
+ * A system-load movement is estimated from the total the lifter moved, so the
+ * added weight has bodyweight added to it before the formula sees it.
  */
 function EstimatePopover({
   units,
+  isSystemLoad = false,
+  bodyweightKg = null,
   onCancel,
   onApply,
 }: {
   units: WeightUnit;
+  isSystemLoad?: boolean;
+  bodyweightKg?: number | null;
   onCancel: () => void;
   onApply: (displayValue: number) => void;
 }) {
@@ -267,7 +289,19 @@ function EstimatePopover({
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("5");
 
-  const est = epleyOneRm(Number(weight), Number(reps));
+  const bodyweightDisplay =
+    bodyweightKg != null && bodyweightKg > 0
+      ? roundDisplayWeight(displayWeight(bodyweightKg, units), units)
+      : null;
+  const needsBodyweight = isSystemLoad && bodyweightDisplay == null;
+  const entered = Number(weight);
+  const setTotal =
+    isSystemLoad && bodyweightDisplay != null
+      ? Number.isFinite(entered) && entered >= 0
+        ? entered + bodyweightDisplay
+        : 0
+      : entered;
+  const est = needsBodyweight ? 0 : epleyOneRm(setTotal, Number(reps));
   const estDisplay = est > 0 ? roundDisplayWeight(est, units) : 0;
 
   return (
@@ -276,17 +310,19 @@ function EstimatePopover({
       <p className={styles.popP}>Enter a recent hard set and we&apos;ll work out your 1-rep max.</p>
       <div className={styles.popFields}>
         <div className={styles.popField}>
-          <label htmlFor="est-weight">Weight ({unitLabel})</label>
+          <label htmlFor="est-weight">
+            {isSystemLoad ? `Added weight (${unitLabel})` : `Weight (${unitLabel})`}
+          </label>
           <span className={styles.inp}>
             <input
               id="est-weight"
               type="number"
               step={units === "imperial" ? "1" : "0.5"}
-              min="1"
+              min={isSystemLoad ? "0" : "1"}
               value={weight}
               onChange={(e) => setWeight(e.target.value)}
               inputMode="decimal"
-              aria-label="Set weight"
+              aria-label={isSystemLoad ? "Added weight" : "Set weight"}
               autoFocus
             />
             <span className={styles.unit}>{unitLabel}</span>
@@ -312,7 +348,9 @@ function EstimatePopover({
       </div>
       <div className={styles.popRes}>
         <span className={styles.popResL}>Estimated 1RM</span>
-        <span className={styles.popResV}>{est > 0 ? `${estDisplay} ${unitLabel}` : "—"}</span>
+        <span className={styles.popResV}>
+          {needsBodyweight ? "Set your bodyweight" : est > 0 ? `${estDisplay} ${unitLabel}` : "—"}
+        </span>
       </div>
       <div className={styles.popBtns}>
         <button type="button" onClick={onCancel}>
@@ -414,6 +452,7 @@ function OtherLiftRow({
   units,
   row,
   sourceSet,
+  bodyweightKg,
   upsertAction,
   deleteAction,
   lockAction,
@@ -421,6 +460,7 @@ function OtherLiftRow({
   units: WeightUnit;
   row: TmRow;
   sourceSet: TmSourceSet | null;
+  bodyweightKg: number | null;
   upsertAction: (fd: FormData) => Promise<unknown>;
   deleteAction: (fd: FormData) => Promise<void>;
   lockAction: (fd: FormData) => Promise<unknown>;
@@ -434,6 +474,9 @@ function OtherLiftRow({
     >
       <div className={styles.linfo}>
         <span className={styles.ln}>{row.movementName}</span>
+        {row.systemLoad && (
+          <span className={styles.qualifier}>bodyweight + added</span>
+        )}
         {row.source !== "entered" && (
           <TmSourceBadge source={row.source} formula={row.derivedFormula} />
         )}
@@ -442,8 +485,14 @@ function OtherLiftRow({
         <OneRmInput
           units={units}
           movementId={row.movementId}
-          ariaLabel={`${row.movementName} 1RM`}
+          ariaLabel={
+            row.systemLoad
+              ? `${row.movementName} 1RM, bodyweight plus added weight`
+              : `${row.movementName} 1RM`
+          }
           initialKg={row.oneRmKg}
+          isSystemLoad={row.systemLoad}
+          bodyweightKg={bodyweightKg}
           action={upsertAction}
         />
         <form action={deleteAction}>

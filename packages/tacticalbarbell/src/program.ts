@@ -30,7 +30,11 @@ import type {
   RecoveryBoundary,
   RecoveryWeekPolicy,
 } from "@hta/program-core";
-import { buildGlobalWarmupItems } from "@hta/program-core";
+import {
+  addedLoadFromSystemLoad,
+  buildGlobalWarmupItems,
+  buildSystemLoadWarmupItems,
+} from "@hta/program-core";
 import {
   TB_TEMPLATES,
   TB_MOVEMENT_LABEL,
@@ -1143,6 +1147,67 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       const basis = instance.useTrainingMax
         ? roundToIncrement(anchor * instance.tmPercent, ctx.roundingKg)
         : anchor;
+
+      // A weighted bodyweight movement is anchored on a SYSTEM load — the 1RM
+      // counts bodyweight plus whatever hangs off the belt. The percentage
+      // therefore names a total, and the load to add is that total minus
+      // bodyweight. Without the subtraction an 85 kg lifter with a 110 kg
+      // weighted pull-up gets 77 kg on a belt at 70%, when the honest answer is
+      // a plain bodyweight pull-up.
+      if (lift.kind === "weighted-bw") {
+        if (ctx.bodyweightKg == null || ctx.bodyweightKg <= 0) {
+          // No bodyweight recorded — the total cannot be split. Carry the
+          // percentage so the session still materialises (same shape as a
+          // missing 1RM) and say what is missing, rather than guessing a load.
+          items.push({
+            kind: prescribedItemKind,
+            name: liftLabel(lift),
+            movementId: lift.movement,
+            sets: prescribedSetsMin,
+            ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),
+            reps: prescribedReps,
+            ...(prescribedRepsMax != null ? { repsMax: prescribedRepsMax } : {}),
+            repsLabel: prescribedRepsLabel,
+            percentOfTm: prescribedPercent,
+            note: `${rangeNote} · set your bodyweight before this session`,
+          });
+          pushLift();
+          continue;
+        }
+        const systemLoadKg = basis * prescribedPercent;
+        const addedKg = addedLoadFromSystemLoad(systemLoadKg, ctx.bodyweightKg, (kg) =>
+          roundToIncrement(kg, ctx.roundingKg),
+        );
+        if (includeWarmup) {
+          items.push(
+            ...buildSystemLoadWarmupItems({
+              name: liftLabel(lift),
+              movementId: lift.movement,
+              workingSystemLoadKg: systemLoadKg,
+              bodyweightKg: ctx.bodyweightKg,
+              roundingKg: ctx.roundingKg,
+              ...(ctx.warmupRamp ? { ramp: ctx.warmupRamp } : {}),
+            }),
+          );
+        }
+        items.push({
+          kind: prescribedItemKind,
+          name: liftLabel(lift),
+          movementId: lift.movement,
+          sets: prescribedSetsMin,
+          ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),
+          reps: prescribedReps,
+          ...(prescribedRepsMax != null ? { repsMax: prescribedRepsMax } : {}),
+          repsLabel: prescribedRepsLabel,
+          weightKg: addedKg,
+          percentOfTm: prescribedPercent,
+          systemLoad: true,
+          note: addedKg === 0 ? `bodyweight; ${rangeNote}` : rangeNote,
+        });
+        pushLift();
+        continue;
+      }
+
       const weightKg = roundToIncrement(basis * prescribedPercent, ctx.roundingKg);
       // Warm-up ramp to the working weight — shared global routine (40/60/80% ×
       // 5/5/3, floored) unless the lifter has configured their own ladder, which

@@ -33,6 +33,11 @@ export type TmRow = {
   effectivePercent: number;
   tmKg: number;
   updatedAt: string;
+  /**
+   * This movement's max is a SYSTEM load — bodyweight plus whatever hangs off
+   * the belt (weighted pull-ups / dips). What the lifter types is the total.
+   */
+  systemLoad: boolean;
 } & TmProvenance;
 
 export type TmContext = {
@@ -60,7 +65,7 @@ export const getTrainingMaxContext = cache(async function getTrainingMaxContext(
     supabase
       .from("training_maxes")
       .select(
-        "id, movement_id, one_rm_kg, tm_percent, updated_at, source, derived_from_session_id, derived_from_set_log_id, derived_formula, derived_at, movements(display_name, slug)",
+        "id, movement_id, one_rm_kg, tm_percent, updated_at, source, derived_from_session_id, derived_from_set_log_id, derived_formula, derived_at, movements(display_name, slug, body_weight_loaded)",
       )
       .order("updated_at", { ascending: false }),
   ]);
@@ -92,6 +97,7 @@ export const getTrainingMaxContext = cache(async function getTrainingMaxContext(
       effectivePercent: effective,
       tmKg: roundToPlate((oneRm * effective) / 100),
       updatedAt: r.updated_at,
+      systemLoad: (m as { body_weight_loaded?: boolean | null }).body_weight_loaded === true,
       source,
       derivedFromSessionId:
         (r as { derived_from_session_id?: string | null }).derived_from_session_id ?? null,

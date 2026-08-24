@@ -23,9 +23,29 @@ const STRENGTH_TMS: { slug: string; oneRmKg: number }[] = [
 ];
 const TB3_TMS = [
   ...STRENGTH_TMS,
-  { slug: "weighted-pull-up", oneRmKg: 35 },
+  // A weighted pull-up max is a SYSTEM load — bodyweight plus belt. 118 kg for
+  // the 82 kg lifter seeded below is a +36 kg pull-up.
+  { slug: "weighted-pull-up", oneRmKg: 118 },
   { slug: "bb-row-overhand", oneRmKg: 100 },
 ];
+/** Bodyweight the system-load percentages above are resolved against. */
+const TB3_BODYWEIGHT_KG = 82;
+
+/**
+ * A weighted pull-up's load is its percentage of the system max MINUS
+ * bodyweight, so the engine can only resolve one for a lifter who has recorded
+ * theirs.
+ */
+async function seedBodyweight(
+  admin: { from: (table: string) => { update: (values: Record<string, unknown>) => { eq: (column: string, value: string) => PromiseLike<{ error: { message: string } | null }> } } },
+  userId: string,
+) {
+  const { error } = await admin
+    .from("profiles")
+    .update({ bodyweight_kg: TB3_BODYWEIGHT_KG })
+    .eq("id", userId);
+  if (error) throw new Error(`seed bodyweight: ${error.message}`);
+}
 
 test.describe("@desktop /app/program · deploy 5/3/1", () => {
   test.skip(({ browserName }) => browserName !== "chromium", "Chromium-only");
@@ -138,6 +158,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     baseURL,
   }) => {
     await markOnboarded(admin, freshUser.userId);
+    await seedBodyweight(admin, freshUser.userId);
 
     for (const tm of TB3_TMS) {
       const { data: mv } = await admin
@@ -211,6 +232,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     baseURL,
   }) => {
     await markOnboarded(admin, freshUser.userId);
+    await seedBodyweight(admin, freshUser.userId);
     for (const tm of TB3_TMS) {
       const { data: mv } = await admin
         .from("movements")

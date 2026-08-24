@@ -907,3 +907,19 @@ Review before merge found five defects, two of which would have shipped as silen
 The third was the anchoring hazard in a costume. Session refs are instance-independent, so a fresh deploy of the same template contains byte-identical refs: advice raised by a FINISHED block resolved perfectly well against the block that replaced it, and would have scheduled the light week six weeks out. Resolution is now scoped to the recommendation that raised it, and pending advice is retired when its block is archived.
 
 See ADR 0077.
+
+## [2026-08-25] fix | A weighted pull-up's max counts bodyweight, so a percentage of it is a total
+
+A weighted pull-up is maxed the way weighted calisthenics has always maxed it: bodyweight plus whatever hangs off the belt. An 85 kg lifter doing a pull-up with +25 kg has a 110 kg max. The lift kind that says so - `weighted-bw`, "anchored on a kg 1RM that INCLUDES bodyweight" - had been declared and documented in the Tactical Barbell templates since the templates were written, and nothing ever implemented it. The prescriber had branches for unanchored work and for pure bodyweight work anchored on max reps, and everything else fell through to the barbell path. So 70% of 110 kg became 77 kg hanging off a dip belt, and the shared warm-up ladder then asked for 31 / 46 / 61 kg on the way there.
+
+The correct answer at 70% is 77 kg of total system load, which for an 85 kg lifter is a plain bodyweight pull-up. That is not an edge case: anyone whose max is under roughly 1.4x bodyweight spends the lighter weeks of a wave adding nothing at all.
+
+The fix has two halves because the load is computed twice. The engine now has a `weighted-bw` branch that takes bodyweight off the total, floors the result at a bodyweight set, and ramps its warm-ups on the system load before converting each step - collapsing the repeated sub-bodyweight steps, so a ramp reads "bodyweight x5, then +2.5 kg x3" instead of three identical sets. That half only reaches warm-ups, though, because the adapter keeps `percentTm` and discards the engine's weight for working sets: the app re-derives kg from the saved max in three separate places (the plan materialiser, the live logger, the prescribed snapshot), each with its own copy of `tm x percent`. Fixing the engine alone would have changed nothing a user sees. Those three now share one resolver in `@hta/domain`, which takes an optional bodyweight offset.
+
+Which movements need the offset is read from the catalog's `body_weight_loaded`, not only from a flag on the stored item. That is deliberate: it means a program deployed before this change stops prescribing 77 kg without the lifter rebuilding it. Newly generated items also carry `systemLoad` so the adapter knows a 0 kg warm-up is a prescription ("bodyweight") rather than an unresolved load - previously it was dropped, and the logger then prefilled the last belt load the lifter had used, which is the opposite of a warm-up.
+
+Two supporting corrections. The 1RM field for a belt-loaded movement now says what it collects ("bodyweight + added"), and its estimator asks for added weight and adds bodyweight before the formula - the number was previously ambiguous, and the app never said which one it wanted. And TM-anchored PR detection is suppressed for these movements: it compares the weight on the belt against a bodyweight-inclusive max, so it could never fire and displayed an estimated 1RM that meant nothing.
+
+No migration. `systemLoad` is additive inside the prescription JSONB. Existing maxes are not reinterpreted: a value entered as added-weight-only now resolves to a bodyweight set, which is too light rather than too heavy.
+
+Deferred: assisted (band / machine) pull-ups for a lifter whose percentage lands well under bodyweight, and rebuilding historical pull-up e1RMs against the bodyweight recorded at the time of each set.
