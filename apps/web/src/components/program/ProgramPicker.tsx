@@ -58,6 +58,7 @@ import {
   removeSlot,
   replaceLinkMembers,
   replaceSlot,
+  restoreSlot,
   restoreGroup,
   sectionOf,
   seededDrafts,
@@ -2194,6 +2195,23 @@ export function ProgramPicker({
     return seededDrafts(current[seriesKey], series?.slots ?? []);
   }
 
+  /** Put a template slot the user removed back where it belongs. */
+  function restoreSeriesSlot(seriesKey: string, sourceMovement: string) {
+    if (!activeTbTemplate) return;
+    const series = sessionSeriesFor(activeTbTemplate).find(
+      (entry) => entry.key === seriesKey,
+    );
+    if (!series) return;
+    setCustomSessionMovements((current) => ({
+      ...current,
+      [seriesKey]: restoreSlot(
+        seededFor(current, seriesKey),
+        series.slots,
+        sourceMovement,
+      ),
+    }));
+  }
+
   /** Drop a row from a customized slot list, keyed by the slot it fills. */
   function removeSeriesMovement(seriesKey: string, identity: string) {
     setCustomSessionMovements((current) => ({
@@ -2280,9 +2298,16 @@ export function ProgramPicker({
 
   /** Put a swapped circuit back, links included. */
   function restoreSeriesGroup(seriesKey: string, group: readonly string[]) {
+    const series = activeTbTemplate
+      ? sessionSeriesFor(activeTbTemplate).find((entry) => entry.key === seriesKey)
+      : undefined;
     setCustomSessionMovements((current) => ({
       ...current,
-      [seriesKey]: restoreGroup(seededFor(current, seriesKey), group),
+      [seriesKey]: restoreGroup(
+        seededFor(current, seriesKey),
+        group,
+        series?.slots ?? [],
+      ),
     }));
     rewriteSeriesLinks(seriesKey, [group[0]!], group);
   }
@@ -2318,26 +2343,27 @@ export function ProgramPicker({
   /**
    * Prescribed lifts the user has dropped from a slot list. Removal is allowed —
    * it is their session — but it is stated back to them rather than passing
-   * silently (DC-K4).
+   * silently (DC-K4), and it can be undone.
    */
-  function removedSupplementalLabels(
+  function removedSupplementalSlots(
     series: NonNullable<PickerTbTemplate["sessionSeries"]>[number],
-  ): string[] {
+    triadRestorable: boolean,
+  ): { sourceMovement: string; label: string }[] {
     const drafts = draftsForSeries(series);
     const kept = new Set(drafts.map(slotIdentity));
     const triad = AB_TRIAD_MOVEMENTS as readonly string[];
-    // A swapped circuit is not a removal — the row above already shows what
-    // took its place, and Restore says how to undo it.
-    const swappedGroup = isGroupReplaced(drafts, triad)
-      ? new Set(triad)
-      : new Set<string>();
     return series.slots
       .filter(
         (slot) =>
           !kept.has(slot.sourceMovement) &&
-          !swappedGroup.has(slot.sourceMovement),
+          // The triad is offered back as a group; its members are never listed
+          // singly, so a partial restore can't be built one button at a time.
+          !(triadRestorable && triad.includes(slot.sourceMovement)),
       )
-      .map((slot) => customMovementLabel(slot.sourceMovement));
+      .map((slot) => ({
+        sourceMovement: slot.sourceMovement,
+        label: customMovementLabel(slot.sourceMovement),
+      }));
   }
 
   function resetWeek() {
@@ -2939,7 +2965,14 @@ export function ProgramPicker({
             // can't be half-removed, which would leave the rest running loose.
             const wholeTriad = hasWholeGroup(drafts, triad);
             const triadReplaced = isGroupReplaced(drafts, triad);
-            const removed = removedSupplementalLabels(entry);
+            // Gone entirely: no row holds it, so nothing above can offer it back.
+            const triadRemoved =
+              entry.slots.some((slot) => triad.includes(slot.sourceMovement)) &&
+              !drafts.some((draft) => triad.includes(slotIdentity(draft)));
+            // Restored as a whole either way — `abRule` prescribes the circuit as
+            // one unit, so a half-restored triad states three rounds against one lift.
+            const triadRestorable = triadReplaced || triadRemoved;
+            const removed = removedSupplementalSlots(entry, triadRestorable);
             const populated = SLOT_SECTIONS.filter((section) =>
               drafts.some((draft) => sectionOf(entry.slots, draft) === section),
             );
@@ -3036,16 +3069,6 @@ export function ProgramPicker({
                         )
                         .map(renderRow)}
                     </div>
-                    {section === "supplemental" && triadReplaced ? (
-                      <button
-                        type="button"
-                        className={styles.rowRestore}
-                        data-testid={`tb-restore-triad-${entry.key}`}
-                        onClick={() => restoreSeriesGroup(entry.key, triad)}
-                      >
-                        {`Restore ${AB_TRIAD_LABEL}`}
-                      </button>
-                    ) : null}
                     {section === "accessory" && tbAccessoryCaution ? (
                       <p
                         className={styles.note}
@@ -3056,13 +3079,35 @@ export function ProgramPicker({
                     ) : null}
                   </div>
                 ))}
-                {removed.length > 0 ? (
-                  <p
+                {removed.length > 0 || triadRestorable ? (
+                  <div
                     className={styles.note}
                     data-testid={`tb-removed-${entry.key}`}
                   >
-                    {`Removed: ${removed.join(", ")}.`}
-                  </p>
+                    {triadRestorable ? (
+                      <button
+                        type="button"
+                        className={styles.rowRestore}
+                        data-testid={`tb-restore-triad-${entry.key}`}
+                        onClick={() => restoreSeriesGroup(entry.key, triad)}
+                      >
+                        {`Restore ${AB_TRIAD_LABEL}`}
+                      </button>
+                    ) : null}
+                    {removed.map((slot) => (
+                      <button
+                        key={slot.sourceMovement}
+                        type="button"
+                        className={styles.rowRestore}
+                        data-testid={`tb-restore-slot-${entry.key}-${slot.sourceMovement}`}
+                        onClick={() =>
+                          restoreSeriesSlot(entry.key, slot.sourceMovement)
+                        }
+                      >
+                        {`Restore ${slot.label}`}
+                      </button>
+                    ))}
+                  </div>
                 ) : null}
                 <details className={styles.addExercise}>
                   <summary data-testid={`tb-add-accessory-${entry.key}`}>

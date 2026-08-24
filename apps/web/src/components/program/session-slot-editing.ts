@@ -97,6 +97,52 @@ export function removeSlot(
 }
 
 /**
+ * Put a removed template slot back, exactly as the template prescribes it.
+ *
+ * Restores the slot, not "a movement called X": the row comes back carrying its
+ * canonical `sourceMovement` and `kind`, which is what the engine matches its
+ * prescription rules against (ADR 0074). Rebuilding it as a bare movement would
+ * hand a supplemental lift back as main work.
+ *
+ * The row is placed in template order rather than appended, so restoring the
+ * first of two supplementals doesn't leave it sitting under the second.
+ */
+export function restoreSlot(
+  drafts: readonly SeriesSlotDraft[],
+  slots: readonly TemplateSlot[],
+  sourceMovement: string,
+): SeriesSlotDraft[] {
+  const slot = slots.find((s) => s.sourceMovement === sourceMovement);
+  if (!slot) return [...drafts];
+  if (drafts.some((draft) => slotIdentity(draft) === sourceMovement)) {
+    return [...drafts];
+  }
+
+  const restored: SeriesSlotDraft = {
+    sourceMovement: slot.sourceMovement,
+    movement: slot.sourceMovement,
+    ...(slot.kind ? { kind: slot.kind } : {}),
+  };
+
+  // Template rows keep template order; anything the user added stays after them.
+  const order = new Map(slots.map((s, index) => [s.sourceMovement, index]));
+  const templateRows: SeriesSlotDraft[] = [];
+  const addedRows: SeriesSlotDraft[] = [];
+  for (const draft of [...drafts, restored]) {
+    if (order.has(slotIdentity(draft)) && draft.role !== "accessory") {
+      templateRows.push(draft);
+    } else {
+      addedRows.push(draft);
+    }
+  }
+  templateRows.sort(
+    (a, b) =>
+      (order.get(slotIdentity(a)) ?? 0) - (order.get(slotIdentity(b)) ?? 0),
+  );
+  return [...templateRows, ...addedRows];
+}
+
+/**
  * Put a different exercise in a slot. The slot itself is untouched, so links
  * keyed by it survive and the engine keeps prescribing it the same way.
  */
@@ -218,16 +264,33 @@ export function collapseGroup(
 }
 
 /** Put a collapsed circuit back, in place. */
+/**
+ * Put a built-in circuit back.
+ *
+ * Two ways it can be gone: swapped for a single movement (the head row is still
+ * there, holding a different exercise), or removed outright. Restoring means the
+ * whole circuit either way — `abRule` prescribes the AB Triad as one unit, so
+ * half a triad would print the circuit's instructions against one lift.
+ */
 export function restoreGroup(
   drafts: readonly SeriesSlotDraft[],
   group: readonly string[],
+  slots: readonly TemplateSlot[] = [],
 ): SeriesSlotDraft[] {
   const [head] = group;
   if (!head) return [...drafts];
-  return drafts.flatMap((draft) =>
-    slotIdentity(draft) === head
-      ? group.map((source) => ({ sourceMovement: source, movement: source }))
-      : [draft],
+  const hasHead = drafts.some((draft) => slotIdentity(draft) === head);
+  if (hasHead) {
+    return drafts.flatMap((draft) =>
+      slotIdentity(draft) === head
+        ? group.map((source) => ({ sourceMovement: source, movement: source }))
+        : [draft],
+    );
+  }
+  // Removed outright: no row to expand, so re-insert each slot in template order.
+  return group.reduce<SeriesSlotDraft[]>(
+    (rows, source) => restoreSlot(rows, slots, source),
+    [...drafts],
   );
 }
 
