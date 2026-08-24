@@ -149,6 +149,82 @@ describe("the mirrored week is eased, not copied", () => {
     expect(warmups.every((w) => (w.percentTm ?? 0) < top)).toBe(true);
   });
 
+  it("warms a lift up once, however many sets it then does", () => {
+    // The ramp was emitted per working SET, so a TB lift got six warm-ups
+    // before three work sets — on a recovery week.
+    const out = buildDeloadPrescription(
+      presc([
+        { movementId: "sq", kind: "warmup", percentTm: 50, reps: 5 },
+        { movementId: "sq", kind: "warmup", percentTm: 70, reps: 3 },
+        { movementId: "sq", kind: "main", percentTm: 90, reps: 5 },
+      ]),
+      TB_RECOVERY_WEEK,
+    );
+    expect(out.items.filter((i) => i.kind === "warmup")).toHaveLength(2);
+    expect(mainsOf(out)).toHaveLength(3);
+  });
+
+  it("never warms up above the first working set of a ramp", () => {
+    // 5/3/1 opens at 40 %. Ramping off the TOP set left a 42 % warm-up before it.
+    const out = buildDeloadPrescription(
+      presc([
+        { movementId: "sq", kind: "warmup", percentTm: 40, reps: 5 },
+        { movementId: "sq", kind: "main", percentTm: 85, reps: 5 },
+      ]),
+      WENDLER_RECOVERY_WEEK,
+    );
+    const warmups = out.items.filter((i) => i.kind === "warmup");
+    const firstWorking = mainsOf(out)[0]!.percentTm!;
+
+    expect(warmups.length).toBeGreaterThan(0);
+    expect(warmups.every((w) => (w.percentTm ?? 0) < firstWorking)).toBe(true);
+  });
+
+  it("does not carry the mirrored week's absolute load onto a warm-up", () => {
+    // The source row's kg is the week being mirrored, and would sit in the
+    // stored prescription contradicting the percentage next to it.
+    const out = buildDeloadPrescription(
+      presc([
+        { movementId: "sq", kind: "warmup", percentTm: 50, reps: 5, targetWeightKg: 80 },
+        { movementId: "sq", kind: "main", percentTm: 90, reps: 5 },
+      ]),
+      TB_RECOVERY_WEEK,
+    );
+    expect(
+      out.items
+        .filter((i) => i.kind === "warmup")
+        .every((w) => w.targetWeightKg === undefined),
+    ).toBe(true);
+  });
+
+  it("puts a lift's warm-ups before its own working sets", () => {
+    const out = buildDeloadPrescription(
+      presc([
+        { movementId: "sq", kind: "warmup", percentTm: 50, reps: 5 },
+        { movementId: "sq", kind: "main", percentTm: 90, reps: 5 },
+        { movementId: "bn", kind: "warmup", percentTm: 50, reps: 5 },
+        { movementId: "bn", kind: "main", percentTm: 90, reps: 5 },
+      ]),
+      TB_RECOVERY_WEEK,
+    );
+    const kinds = out.items.map((i) => `${i.movementId}:${i.kind}`);
+    expect(kinds.indexOf("sq:warmup")).toBeLessThan(kinds.indexOf("sq:main"));
+    expect(kinds.indexOf("bn:warmup")).toBeLessThan(kinds.indexOf("bn:main"));
+    // And each lift's block stays together.
+    expect(kinds.lastIndexOf("sq:main")).toBeLessThan(kinds.indexOf("bn:warmup"));
+  });
+
+  it("leaves a bodyweight lift's warm-ups alone — there is no percentage to rebuild", () => {
+    const out = buildDeloadPrescription(
+      presc([
+        { movementId: "pu", kind: "warmup", reps: 5 },
+        { movementId: "pu", kind: "main", sets: 5, reps: 10 },
+      ]),
+      TB_RECOVERY_WEEK,
+    );
+    expect(out.items.filter((i) => i.kind === "warmup")).toHaveLength(1);
+  });
+
   it("shortens a long easy session instead of passing it through", () => {
     const out = buildDeloadPrescription(
       presc([{ movementId: "z2", kind: "cardio_z2", durationMin: 90 }]),

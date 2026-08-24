@@ -90,13 +90,18 @@ export function buildDeloadPrescription(
 ): Prescription {
   const items: PrescriptionItem[] = [];
   const mainSets = recoveryMainSets(policy);
+  // The FIRST working set is what a warm-up ramps to. Taking the top set would
+  // let a warm-up land above the opening set of a ramped policy.
+  const firstWorkingPercent =
+    mainSets.length > 0
+      ? Math.round(Math.min(...mainSets.map((s) => s.percent)) * percentScale)
+      : 0;
 
-  // 1. Main lifts first, so their warm-ups can ramp to the RIGHT top set. The
-  //    recovery week mirrors the next programmed week, which for a Tactical
-  //    Barbell block is often peak week — passing its warm-ups through would
-  //    have the lifter warming up heavier than they then work.
+  // Each distinct main lift once — its warm-ups, then its working sets. The
+  // recovery week mirrors the next programmed week, which for a Tactical Barbell
+  // block is often peak week, so the source's warm-ups are regenerated rather
+  // than carried over: they would otherwise be heavier than the recovery work.
   const seenMain = new Set<string>();
-  const mainItems: PrescriptionItem[] = [];
   for (const it of source.items) {
     if (it.kind !== "main" || seenMain.has(it.movementId)) continue;
     seenMain.add(it.movementId);
@@ -110,8 +115,29 @@ export function buildDeloadPrescription(
     );
 
     if (hasPercent) {
+      const hasWarmup = source.items.some(
+        (s) => s.kind === "warmup" && s.movementId === it.movementId,
+      );
+      if (hasWarmup) {
+        for (const ramp of RECOVERY_WARMUP_RAMP) {
+          const percent = Math.round(firstWorkingPercent * ramp.of);
+          if (percent <= 0 || percent >= firstWorkingPercent) continue;
+          // Built explicitly, not spread from the source row — that row carries
+          // the mirrored week's absolute `targetWeightKg`, which would sit in
+          // the stored prescription contradicting the new percentage.
+          items.push({
+            movementId: it.movementId,
+            ...(it.movementSlug ? { movementSlug: it.movementSlug } : {}),
+            ...(it.movementName ? { movementName: it.movementName } : {}),
+            kind: "warmup",
+            percentTm: percent,
+            reps: ramp.reps,
+            isAmrap: false,
+          });
+        }
+      }
       for (const set of mainSets) {
-        mainItems.push({
+        items.push({
           movementId: it.movementId,
           ...(it.movementSlug ? { movementSlug: it.movementSlug } : {}),
           ...(it.movementName ? { movementName: it.movementName } : {}),
@@ -127,13 +153,18 @@ export function buildDeloadPrescription(
       }
     } else {
       // Bodyweight / fixed-load main with no %TM basis: there is no percentage
-      // to ease, so ease the VOLUME instead — the policy's set count at its rep
-      // floor, never AMRAP.
+      // to ease, so ease the VOLUME instead — one set at the rep floor, never
+      // AMRAP. Its warm-ups pass through: there is no percentage to rebuild.
+      items.push(
+        ...source.items.filter(
+          (s) => s.kind === "warmup" && s.movementId === it.movementId,
+        ),
+      );
       const lightest = source.items
         .filter((s) => s.movementId === it.movementId && s.kind === "main")
         .reduce((a, b) => ((b.reps ?? 0) <= (a.reps ?? 0) ? b : a), it);
       const reps = Math.min(lightest.reps ?? DEFAULT_BODYWEIGHT_REPS, DEFAULT_BODYWEIGHT_REPS);
-      mainItems.push({
+      items.push({
         ...lightest,
         sets: 1,
         reps,
@@ -143,34 +174,6 @@ export function buildDeloadPrescription(
       });
     }
   }
-
-  // 2. Warm-ups: regenerated to the recovery week's own top set, not carried
-  //    over from the week being mirrored.
-  const topPercent = mainSets.length > 0
-    ? Math.round(mainSets[mainSets.length - 1]!.percent * percentScale)
-    : 0;
-  for (const main of mainItems) {
-    const warmups = source.items.filter(
-      (s) => s.kind === "warmup" && s.movementId === main.movementId,
-    );
-    if (warmups.length === 0) continue;
-    if (main.percentTm == null) {
-      items.push(...warmups);
-      continue;
-    }
-    for (const ramp of RECOVERY_WARMUP_RAMP) {
-      const percent = Math.round(topPercent * ramp.of);
-      if (percent <= 0 || percent >= main.percentTm) continue;
-      items.push({
-        ...warmups[0]!,
-        kind: "warmup",
-        percentTm: percent,
-        reps: ramp.reps,
-        isAmrap: false,
-      });
-    }
-  }
-  items.push(...mainItems);
 
   // 3. Conditioning: keep easy cardio (capped when the policy says so); convert
   //    hard cardio to a short easy Z2.

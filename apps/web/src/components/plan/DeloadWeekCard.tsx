@@ -177,10 +177,12 @@ export function DeloadWeekCard({
       ) : (
         <>
           <div style={{ fontSize: 13, color: "var(--cp-text)", lineHeight: 1.5 }}>
-            Insert a <strong>recovery week</strong> — a lighter week
-            now (mains at 40/50/60&nbsp;%, easy conditioning, no accessories), then
-            resume <strong>exactly</strong> the week you were about to do. Nothing is
-            skipped; your block just runs a week longer.
+            Insert a <strong>recovery week</strong>{" "}
+            {live.restOnly
+              ? "— rest and easy conditioning"
+              : `— mains at ${live.percent}\u00A0%, easy conditioning, no accessories`}
+            , then resume <strong>exactly</strong> the week you were about to do.
+            Nothing is skipped; your block just runs a week longer.
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
