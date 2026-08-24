@@ -27,6 +27,7 @@ import type {
   LoggedSession,
   ProgramRecommendation,
   ProgramSegment,
+  RecoveryBoundary,
   RecoveryWeekPolicy,
 } from "@hta/program-core";
 import { buildGlobalWarmupItems } from "@hta/program-core";
@@ -1206,6 +1207,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         title: "Retest your maxes",
         detail: `You've finished a ${template.blockWeeks}-week ${template.name} block. Tactical Barbell: retest your 1RMs every 6–12 weeks before re-seeding the next block.`,
         data: { blockWeeks: template.blockWeeks, block: blockNum },
+        occurrenceKey: `block-${blockNum}`,
       },
     ];
 
@@ -1215,19 +1217,37 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         title: "Start your next block",
         detail: `Begin Block ${blockNum + 1} once you've retested and re-seeded your maxes.`,
         data: { nextBlock: blockNum + 1 },
+        occurrenceKey: `block-${blockNum}`,
       });
     }
 
-    // CNS-recovery deload: TB1 advises a dephasing/recovery week roughly every
-    // few months of hard training. Surface it on ~24-week boundaries (heuristic).
-    const cumulativeWeeks = blockNum * template.blockWeeks;
-    if (cumulativeWeeks % 24 === 0) {
+    // TB3: "A good rule of thumb is to deload after Peak Week." The boundaries
+    // this template declares are the authority on whether it has one — the rule
+    // does not apply to a template that prescribes no peak week.
+    const boundary = tacticalBarbellEngine
+      .recoveryBoundaries!(instance)
+      .find((candidate) => candidate.key === `peak-b${blockNum}`);
+    if (boundary) {
       recommendations.push({
         kind: "deload",
-        title: "Consider a CNS deload",
-        detail: `You've logged ~${cumulativeWeeks} weeks of TB training. Tactical Barbell recommends a CNS-recovery deload every few months — take a lighter week if fatigue is accumulating.`,
-        data: { cumulativeWeeks },
+        title: boundary.title,
+        detail: boundary.detail,
+        data: { boundary: boundary.key, block: blockNum },
+        occurrenceKey: boundary.key,
       });
+    } else {
+      // No peak week to deload after, so fall back to TB1's dephasing guidance:
+      // a CNS-recovery week every few months of hard training.
+      const cumulativeWeeks = blockNum * template.blockWeeks;
+      if (cumulativeWeeks % 24 === 0) {
+        recommendations.push({
+          kind: "deload",
+          title: "Consider a CNS deload",
+          detail: `You've logged ~${cumulativeWeeks} weeks of TB training. Tactical Barbell recommends a CNS-recovery deload every few months — take a lighter week if fatigue is accumulating.`,
+          data: { cumulativeWeeks },
+          occurrenceKey: `cns-${cumulativeWeeks}`,
+        });
+      }
     }
 
     return { instance, recommendations };
@@ -1251,6 +1271,43 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
           kind: "block",
         });
       }
+    }
+    return out;
+  },
+
+  /**
+   * Tactical Barbell 3: "A good rule of thumb is to deload after Peak Week."
+   *
+   * One boundary per engine block that HAS a peak week — read from the template's
+   * own test sessions rather than assumed, because the rule genuinely does not
+   * apply to every Tactical Barbell template: Gladiator, Mass, Grey Man and
+   * Zulu I/A prescribe no peak week at all.
+   *
+   * Activation is excluded: it is a 25-week on-ramp with its own scheduled
+   * deload at week 15, and its test weeks establish maxes for the next phase
+   * rather than closing a block.
+   */
+  recoveryBoundaries(instance: TbInstance): RecoveryBoundary[] {
+    const template = getTbTemplate(instance.templateId);
+    if (!template || template.id === "activation") return [];
+    const peakSessions = template.weeklySessions.filter(
+      (session) =>
+        session.kind === "test" &&
+        (session.activeWeeks?.includes(template.blockWeeks) ?? false),
+    );
+    if (peakSessions.length === 0) return [];
+
+    const out: RecoveryBoundary[] = [];
+    for (let block = 0; block < instance.blocks; block++) {
+      out.push({
+        key: `peak-b${block + 1}`,
+        refs: peakSessions.map((session) =>
+          sessionRef(block, template.blockWeeks, session.id),
+        ),
+        title: "Take a recovery week",
+        detail:
+          "You've finished peak week. Tactical Barbell's rule of thumb is to deload after it — an active recovery week at reduced volume and intensity before your next block.",
+      });
     }
     return out;
   },

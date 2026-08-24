@@ -18,15 +18,19 @@ type UpdateCall = {
   payload: Record<string, unknown>;
   eq: Array<[string, unknown]>;
   neq: Array<[string, unknown]>;
+  in: Array<[string, unknown]>;
 };
 
-function fakeSupabase(error: { message: string } | null = null) {
+function fakeSupabase(
+  error: { message: string } | null = null,
+  archived: { id: string }[] = [],
+) {
   const calls: UpdateCall[] = [];
   const client = {
     from(table: string) {
       return {
         update(payload: Record<string, unknown>) {
-          const call: UpdateCall = { table, payload, eq: [], neq: [] };
+          const call: UpdateCall = { table, payload, eq: [], neq: [], in: [] };
           calls.push(call);
           const q: Record<string, unknown> = {
             eq(col: string, val: unknown) {
@@ -37,8 +41,14 @@ function fakeSupabase(error: { message: string } | null = null) {
               call.neq.push([col, val]);
               return q;
             },
-            then: <T,>(fn: (v: { error: { message: string } | null }) => T) =>
-              Promise.resolve(fn({ error })),
+            in(col: string, vals: unknown[]) {
+              call.in.push([col, vals]);
+              return q;
+            },
+            select: () => q,
+            then: <T,>(
+              fn: (v: { data: { id: string }[]; error: { message: string } | null }) => T,
+            ) => Promise.resolve(fn({ data: archived, error })),
           };
           return q;
         },
@@ -65,6 +75,24 @@ describe("archivePriorActiveBlocks (atomic block creation fix)", () => {
     expect(call.eq).toContainEqual(["user_id", "user-1"]);
     expect(call.eq).toContainEqual(["status", "active"]);
     expect(call.neq).toContainEqual(["id", "new-block"]);
+  });
+
+  it("retires nudges that belonged to the blocks it archived", async () => {
+    const { client, calls } = fakeSupabase(null, [{ id: "old-1" }, { id: "old-2" }]);
+    await archivePriorActiveBlocks(client, "user-1", "new-block");
+
+    const nudges = calls.find((c) => c.table === "program_recommendations");
+    expect(nudges, "pending advice for an archived plan should not survive it").toBeTruthy();
+    expect(nudges!.payload.status).toBe("dismissed");
+    expect(nudges!.eq).toContainEqual(["user_id", "user-1"]);
+    expect(nudges!.eq).toContainEqual(["status", "pending"]);
+    expect(nudges!.in).toContainEqual(["block_id", ["old-1", "old-2"]]);
+  });
+
+  it("leaves nudges alone when there was nothing to archive", async () => {
+    const { client, calls } = fakeSupabase(null, []);
+    await archivePriorActiveBlocks(client, "user-1", "new-block");
+    expect(calls.some((c) => c.table === "program_recommendations")).toBe(false);
   });
 
   it("returns the error message instead of throwing when the update fails", async () => {

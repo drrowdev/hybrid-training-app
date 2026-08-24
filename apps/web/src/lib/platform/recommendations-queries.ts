@@ -10,6 +10,7 @@ export interface PendingProgramRecommendation {
   title: string;
   detail: string;
   data?: Record<string, unknown> | null;
+  occurrenceKey?: string | null;
 }
 
 export async function getPendingProgramRecommendations(
@@ -19,7 +20,7 @@ export async function getPendingProgramRecommendations(
 ): Promise<PendingProgramRecommendation[]> {
   const { data } = await supabase
     .from("program_recommendations")
-    .select("id, kind, title, detail, data")
+    .select("id, kind, title, detail, data, occurrence_key")
     .eq("user_id", userId)
     .eq("status", "pending")
     .order("created_at", { ascending: false })
@@ -30,5 +31,6 @@ export async function getPendingProgramRecommendations(
     title: r.title as string,
     detail: r.detail as string,
     data: (r.data as Record<string, unknown> | null) ?? null,
+    occurrenceKey: (r.occurrence_key as string | null) ?? null,
   }));
 }

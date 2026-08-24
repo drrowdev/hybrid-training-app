@@ -57,11 +57,21 @@ export function DeloadWeekCard({
   previewAction,
   autoOpen = false,
   variant = "banner",
+  resolveRecommendationId,
+  resolveAction,
 }: {
   preview: DeloadWeekPreview;
-  insertAction: (percent?: number) => Promise<InsertDeloadResult>;
+  insertAction: (
+    percent?: number,
+    boundaryKey?: string,
+    recommendationId?: string,
+  ) => Promise<InsertDeloadResult>;
   /** Rebuilds the preview when the lifter changes the working percentage. */
-  previewAction?: (percent?: number) => Promise<DeloadWeekPreview | null>;
+  previewAction?: (
+    percent?: number,
+    boundaryKey?: string,
+    recommendationId?: string,
+  ) => Promise<DeloadWeekPreview | null>;
   /** Open the preview modal on mount (e.g. deep-linked from the TB deload banner). */
   autoOpen?: boolean;
   /**
@@ -69,6 +79,12 @@ export function DeloadWeekCard({
    * "quiet" — always-available compact control in the program-controls section.
    */
   variant?: "banner" | "quiet";
+  /**
+   * The nudge that sent the lifter here. Cleared once the week is actually in
+   * the plan, so a failed insert leaves the nudge standing.
+   */
+  resolveRecommendationId?: string;
+  resolveAction?: (id: string) => Promise<{ ok: true } | { ok: false; error: string }>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(autoOpen);
@@ -78,12 +94,13 @@ export function DeloadWeekCard({
   const [pending, startTransition] = useTransition();
   const [live, setLive] = useState<DeloadWeekPreview>(preview);
   const [percent, setPercent] = useState<number>(preview.percent);
+  const boundaryKey = preview.boundaryKey;
 
   const changePercent = (next: number) => {
     setPercent(next);
     if (!previewAction) return;
     startTransition(async () => {
-      const rebuilt = await previewAction(next);
+      const rebuilt = await previewAction(next, boundaryKey, resolveRecommendationId);
       if (rebuilt) setLive(rebuilt);
     });
   };
@@ -91,10 +108,17 @@ export function DeloadWeekCard({
   const apply = () => {
     setError(null);
     startTransition(async () => {
-      const res = await insertAction(live.restOnly ? undefined : percent);
+      const res = await insertAction(
+        live.restOnly ? undefined : percent,
+        boundaryKey,
+        resolveRecommendationId,
+      );
       if (!res.ok) {
         setError(res.error);
         return;
+      }
+      if (resolveRecommendationId && resolveAction) {
+        await resolveAction(resolveRecommendationId);
       }
       setDone(true);
       setOpen(false);
@@ -132,7 +156,7 @@ export function DeloadWeekCard({
       {quiet ? (
         done ? (
           <div style={{ fontSize: 13, color: "var(--cp-text)" }} data-testid="deload-week-done">
-            ✓ Recovery week added — it&apos;s next, then your block resumes.
+            ✓ Recovery week added.
           </div>
         ) : (
           <>
@@ -171,8 +195,7 @@ export function DeloadWeekCard({
 
       {done ? (
         <div style={{ fontSize: 13, color: "var(--cp-text)" }} data-testid="deload-week-done">
-          ✓ Recovery week added. Take it easy this week — your next planned week
-          picks up right after it.
+          ✓ Recovery week added.
         </div>
       ) : (
         <>
@@ -181,8 +204,7 @@ export function DeloadWeekCard({
             {live.restOnly
               ? "— rest and easy conditioning"
               : `— mains at ${live.percent}\u00A0%, easy conditioning, no accessories`}
-            , then resume <strong>exactly</strong> the week you were about to do.
-            Nothing is skipped; your block just runs a week longer.
+            {` — after week ${live.afterWeek + 1}. Every later week shifts back one.`}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -236,8 +258,7 @@ export function DeloadWeekCard({
                 Your recovery week
               </h2>
               <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-                This light week is inserted next; every later week shifts back one,
-                so you resume exactly where you left off.
+                {`Goes in after week ${live.afterWeek + 1}. Every later week shifts back one.`}
               </p>
             </div>
 

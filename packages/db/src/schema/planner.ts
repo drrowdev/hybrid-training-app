@@ -438,6 +438,14 @@ export type Prescription = {
    */
   programRef?: string;
   /**
+   * Marks a week the `insert_deload_week` RPC added (ADR 0049/0077), as opposed
+   * to a program's own programmed deload week — both carry role='deload'.
+   * Provenance, not configuration: it is what makes a repeated insert a no-op
+   * without swallowing a user-initiated recovery week taken the week before a
+   * programmed one.
+   */
+  insertedRecoveryWeek?: boolean;
+  /**
    * Quick HYROX generation — the chosen session format ("circuit" /
    * "compromised" / "erg" / "run"). Set only on quick-generated HYROX sessions
    * so the adaptive format picker can read recency from past sessions. Absent on

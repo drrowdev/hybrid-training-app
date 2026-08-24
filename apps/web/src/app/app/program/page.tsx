@@ -285,6 +285,21 @@ export default async function ProgramPickerPage({
   const seasonBlockId =
     !editContext && sp.seasonBlockId ? sp.seasonBlockId : undefined;
 
+  // Post-peak recovery (TB3): the program advised a deload and the lifter came
+  // here instead of taking one, so offer to lead the new block with it.
+  let recoveryAdvised = false;
+  if (!editContext) {
+    const { data: advised } = await supabase
+      .from("program_recommendations")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("kind", "deload")
+      .eq("status", "pending")
+      .limit(1)
+      .maybeSingle();
+    recoveryAdvised = !!advised;
+  }
+
   // ADR 0060 — a HYROX block deployed for a season's PEAK slot must still taper to
   // the event. With the new race/no-race split, a blank race date means "no taper",
   // so for a peaking season block we pre-fill the wizard's race date from the
@@ -374,6 +389,7 @@ export default async function ProgramPickerPage({
         {...(initialLoadoutValue ? { initialLoadoutValue } : {})}
         {...(editContext ? { editContext } : {})}
         {...(seasonBlockId ? { seasonBlockId } : {})}
+        {...(recoveryAdvised ? { recoveryAdvised: true } : {})}
         {...(prefillRaceDate ? { prefillRaceDate } : {})}
       />
     </div>

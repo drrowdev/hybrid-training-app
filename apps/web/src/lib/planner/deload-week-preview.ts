@@ -19,6 +19,8 @@ import {
   recoveryWeekPolicyFor,
 } from "./recovery-week-policy";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { getProgramEngine } from "@/lib/platform/registry";
+import { resolveBoundaryAnchor } from "./recovery-anchor";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { computeActiveBlockFatigue } from "@/lib/planner/block-fatigue";
 import { EARLY_DELOAD_THRESHOLD } from "@/lib/planner/fatigue-proxy";
@@ -41,6 +43,32 @@ export type DeloadWeekPreview = {
   outsideRecommended: boolean;
   /** This program's recovery week is rest, so there is no percentage to set. */
   restOnly: boolean;
+  /** Set when the placement came from a program boundary rather than from today. */
+  boundaryKey?: string;
+};
+
+export type DeloadPreviewOptions = {
+  percent?: number;
+  /**
+   * Place the week where the program advised, identified by the boundary key the
+   * engine raised. Resolved server-side; an unresolvable key yields no preview
+   * rather than a week placed at today.
+   */
+  boundaryKey?: string;
+  /**
+   * The recommendation that raised the advice. Session refs are
+   * instance-independent, so a new deploy of the same template contains
+   * byte-identical refs — without this, advice from a finished block would
+   * happily resolve against the block that replaced it and schedule the light
+   * week six weeks out. The advice only applies to the block that raised it.
+   */
+  recommendationId?: string;
+  /**
+   * Put the recovery week before week 1 instead of after the current week. TB3
+   * advises deloading between blocks, so a peak week at the end of one plan is
+   * followed by a recovery week at the start of the next.
+   */
+  prepend?: boolean;
 };
 
 /** Current 0-based week index of an active block (rolling, clamped to the block). */
@@ -50,11 +78,43 @@ function currentWeekIndex(startedOn: string, weeks: number): number {
   return Math.max(0, Math.min(weeks - 1, Math.floor(days / 7)));
 }
 
+/** The week a declared boundary sits in, read from the plan as it stands now. */
+async function boundaryWeek(
+  supabase: SupabaseClient,
+  userId: string,
+  blockId: string,
+  programId: string | null,
+  instance: unknown,
+  boundaryKey: string,
+): Promise<number | null> {
+  if (!programId || instance == null) return null;
+  const engine = getProgramEngine(programId);
+  const boundary = engine
+    ?.recoveryBoundaries?.(instance)
+    .find((candidate) => candidate.key === boundaryKey);
+  if (!boundary) return null;
+
+  const { data: rows } = await supabase
+    .from("planned_sessions")
+    .select("week_index, prescription")
+    .eq("user_id", userId)
+    .eq("block_id", blockId);
+  const anchor = resolveBoundaryAnchor(
+    boundary.refs,
+    (rows ?? []).flatMap((r) => {
+      const ref = (r.prescription as Prescription | null)?.programRef;
+      return ref ? [{ weekIndex: r.week_index as number, programRef: ref }] : [];
+    }),
+  );
+  return anchor?.afterWeek ?? null;
+}
+
 export async function getDeloadWeekPreview(
   supabase: SupabaseClient,
   userId: string,
-  chosenPercent?: number,
+  options: DeloadPreviewOptions = {},
 ): Promise<DeloadWeekPreview | null> {
+  const { percent: chosenPercent, boundaryKey, recommendationId, prepend } = options;
   const { data: block } = await supabase
     .from("training_blocks")
     .select("id, started_on, weeks, program_id")
@@ -63,6 +123,23 @@ export async function getDeloadWeekPreview(
     .is("deleted_at", null)
     .maybeSingle();
   if (!block) return null;
+
+  // Program advice belongs to the block that raised it. A block the lifter has
+  // moved on from cannot place a week in the one that replaced it.
+  if (boundaryKey && recommendationId) {
+    const { data: rec } = await supabase
+      .from("program_recommendations")
+      .select("block_id, occurrence_key")
+      .eq("id", recommendationId)
+      .eq("user_id", userId)
+      .eq("status", "pending")
+      .maybeSingle();
+    if (!rec || rec.block_id !== block.id || rec.occurrence_key !== boundaryKey) {
+      return null;
+    }
+  } else if (boundaryKey) {
+    return null;
+  }
 
   // The recovery week's CONTENT belongs to the program, not to this file.
   const { data: pi } = await supabase
@@ -80,11 +157,25 @@ export async function getDeloadWeekPreview(
   const percentScale = recoveryPercentScale(policy, pi?.instance ?? null);
 
   const weeks = block.weeks as number;
-  const cur = currentWeekIndex(block.started_on as string, weeks);
-  // Insert after the current week; mirror the NEXT programmed week's structure
-  // (clamped to the last week when the user is already in it).
-  const afterWeek = cur;
-  const mirrorWeek = Math.min(cur + 1, weeks - 1);
+  // Where the week goes: before week 1 when leading a new block, otherwise the
+  // program's boundary if it named one, otherwise after the week the lifter is
+  // in. Mirror the NEXT programmed week's structure (clamped to the last week
+  // when there is nothing after it).
+  const anchored = boundaryKey
+    ? await boundaryWeek(
+        supabase,
+        userId,
+        block.id as string,
+        block.program_id as string | null,
+        pi?.instance ?? null,
+        boundaryKey,
+      )
+    : null;
+  if (boundaryKey && anchored === null) return null;
+  const afterWeek = prepend
+    ? -1
+    : (anchored ?? currentWeekIndex(block.started_on as string, weeks));
+  const mirrorWeek = Math.min(afterWeek + 1, weeks - 1);
 
   const { data: rows } = await supabase
     .from("planned_sessions")
@@ -131,6 +222,7 @@ export async function getDeloadWeekPreview(
     outsideRecommended:
       !policy.restOnly && isOutsideRecommended(policy, percent),
     restOnly: policy.restOnly === true,
+    ...(boundaryKey ? { boundaryKey } : {}),
   };
 }
 

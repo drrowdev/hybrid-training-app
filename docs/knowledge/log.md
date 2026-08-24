@@ -880,3 +880,30 @@ Each program now states a RecoveryWeekPolicy and the platform places it: engines
 Left open deliberately: the "deload after Peak Week" prompt TB3 names as its rule of thumb. A plain TB block ends in a peak week, so it is the most predictable deload point in the program, but surfacing it needs a suggestion to survive the block being marked complete and needs recommendation identity to stop being one-per-block - a user-data migration, and therefore its own decision. TB3's calisthenics-circuit alternative is also deferred; it is a structurally different week rather than a lightened version of your own.
 
 See ADR 0076. ADR 0049's placement, insertion and off-program model are unchanged.
+
+
+## [2026-08-25] decision | The program says when a recovery week is due, and where it goes
+
+ADR 0076 moved the recovery week's content into the program. This closes the other half: when one is due, and where it lands.
+
+Both were platform guesses. "When" was a 24-week counter standing in for TB1's dephasing guidance, which knows nothing of TB3's actual rule - "a good rule of thumb is to deload after Peak Week". Operator, Fighter and Zulu end a block with three maximal singles; the counter fired on arithmetic instead, so a lifter finishing a 6-week Operator block was advised nothing until week 24.
+
+"Where" was the more dangerous of the two, because it looked right. `getDeloadWeekPreview` derived the insertion point from `Date.now()`. For the user-initiated control that is correct - "I am tired now" means "after this week". For program-advised placement it means a lifter who logs their last peak session on Sunday and taps the prompt on Thursday gets the light week wherever Thursday happens to fall, potentially inside the next block. A correct prompt with a wrong placement is worse than no prompt, because nothing tells the lifter to doubt it.
+
+A program now declares its own `recoveryBoundaries` - a key, the session refs that must be settled, and the copy. TB derives them from each template's own peak-week test sessions, so Gladiator, Mass and Grey Man declare none and correctly raise no post-peak deload; the 24-week counter survives only as their fallback, which is the guidance that actually applies to them. Activation keeps its own week-15 deload.
+
+Placement resolves the boundary's refs against live `planned_sessions` rows rather than computing `block x blockWeeks + finalWeek`, because an earlier inserted recovery week has already shifted everything after it. When those sessions are no longer in the plan the preview returns nothing at all: a boundary we cannot see is one we must not guess at. The client only ever sends a boundary key, never a week number.
+
+Two pre-existing defects had to go first. Recommendations were unique on (user_id, block_id, kind) while every engine block of an instance shares ONE training_blocks row - so block 2's "retest your maxes" was swallowed by block 1's, and a per-block deload prompt would have multiplied the same bug. Migration 0135 adds `occurrence_key`; NULL still means "once per plan". And `insert_deload_week` had no lock and no duplicate check, so a double-tap inserted two weeks; migration 0136 locks the block and returns the existing week index instead.
+
+The prompt now clears when the week lands rather than when the link is clicked, so a failed insert leaves the advice standing. When the peak week is the last week of a plan there is nothing to insert before it, so the wizard offers to lead the next block with the recovery week - closer to TB3's "between blocks" than stretching a finished block.
+
+Still unsupported: TB3's "and Work Capacity blocks". This app has no work capacity block as a domain concept, and inventing one to satisfy a sentence would be worse than omitting it.
+
+See ADR 0077.
+
+Review before merge found five defects, two of which would have shipped as silence rather than as errors. The unique index used `COALESCE(occurrence_key,'')`, which makes it an EXPRESSION index - and Postgres cannot infer one of those from the plain column list PostgREST sends for `on_conflict`. Every recommendation insert would have failed with 42P10, and since the write result was never checked, the symptom would have been no retest nudge, no deload prompt, no error and a green test suite. The column is now NOT NULL DEFAULT '' with a plain index, and the upsert checks its error. The second: the idempotency guard tested `role = 'deload'`, which is how every program tags its OWN programmed deload week - so a lifter standing the week before their scheduled deload would have pressed "take a recovery week", been told it worked, and got nothing. Inserted weeks now carry their own provenance marker.
+
+The third was the anchoring hazard in a costume. Session refs are instance-independent, so a fresh deploy of the same template contains byte-identical refs: advice raised by a FINISHED block resolved perfectly well against the block that replaced it, and would have scheduled the light week six weeks out. Resolution is now scoped to the recommendation that raised it, and pending advice is retired when its block is archived.
+
+See ADR 0077.

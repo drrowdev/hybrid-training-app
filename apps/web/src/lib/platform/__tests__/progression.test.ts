@@ -6,6 +6,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { wendler531Engine } from "@hta/wendler";
+import { tacticalBarbellEngine } from "@hta/tacticalbarbell";
 import { applyProgramProgression } from "../progression";
 
 const ctx = { oneRepMaxes: { squat: 165, bench: 118, deadlift: 212, press: 71 }, roundingKg: 2.5 };
@@ -164,5 +165,82 @@ describe("applyProgramProgression — 5/3/1 7th-week TM test", () => {
     await applyProgramProgression({ supabase, userId: "u1", sessionId: "s1", blockId: "b1" });
     const recInsert = rec.inserts.find((i) => i.table === "program_recommendations");
     expect(recInsert, "tm-bump should not be surfaced as a program recommendation").toBeFalsy();
+  });
+});
+
+describe("applyProgramProgression — one nudge per occurrence, not per kind", () => {
+  const tbCtx = { oneRepMaxes: { squat: 200, bench: 140, deadlift: 240 }, roundingKg: 2.5 };
+
+  function tbInstance() {
+    return tacticalBarbellEngine.setup(
+      { values: { templateId: "operator", blocks: 4, cluster: ["squat", "bench", "deadlift"] } },
+      tbCtx,
+    );
+  }
+
+  function runBlockEnd(pendingRows: unknown[], ref: string) {
+    const rec: Recorded = { inserts: [], updates: [] };
+    const supabase = fakeSupabase(
+      {
+        program_instances: {
+          single: { id: "pi1", program_id: "tactical-barbell", instance: tbInstance() },
+        },
+        planned_sessions: { single: { prescription: { items: [], programRef: ref } } },
+        set_logs: {
+          list: [
+            {
+              weight_kg: 180,
+              reps: 3,
+              rpe: 8,
+              set_kind: "main",
+              notes: null,
+              prescription_item_index: 0,
+              movement: { slug: "back-squat-high-bar" },
+            },
+          ],
+        },
+        training_maxes: {
+          list: [
+            {
+              one_rm_kg: 200,
+              movement: { id: "mv-squat", slug: "back-squat-high-bar", display_name: "Squat" },
+            },
+          ],
+        },
+        program_recommendations: { list: pendingRows },
+      },
+      rec,
+    );
+    return { rec, run: () => applyProgramProgression({ supabase, userId: "u1", sessionId: "s1", blockId: "b1" }) };
+  }
+
+  it("raises block 2's nudges even while block 1's are still pending", async () => {
+    // Every engine block of an instance shares ONE training_blocks row, so a
+    // filter on kind alone hid the second block's retest behind the first's.
+    const { rec, run } = runBlockEnd(
+      [
+        { kind: "tm-test", occurrence_key: "block-1" },
+        { kind: "next-block", occurrence_key: "block-1" },
+        { kind: "deload", occurrence_key: "peak-b1" },
+      ],
+      "b1-w6-peak-deadlift",
+    );
+    await run();
+    const rows = (rec.inserts.find((i) => i.table === "program_recommendations")?.rows ??
+      []) as { kind: string; occurrence_key?: string }[];
+    expect(rows.map((r) => r.occurrence_key)).toEqual(["block-2", "block-2", "peak-b2"]);
+  });
+
+  it("does not stack a second copy of the same occurrence", async () => {
+    const { rec, run } = runBlockEnd(
+      [
+        { kind: "tm-test", occurrence_key: "block-2" },
+        { kind: "next-block", occurrence_key: "block-2" },
+        { kind: "deload", occurrence_key: "peak-b2" },
+      ],
+      "b1-w6-peak-deadlift",
+    );
+    await run();
+    expect(rec.inserts.find((i) => i.table === "program_recommendations")).toBeFalsy();
   });
 });

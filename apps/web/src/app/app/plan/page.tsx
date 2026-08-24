@@ -41,6 +41,7 @@ import {
   previewDeloadWeekAction,
 } from "@/lib/planner/deload-week-actions";
 import { DeloadWeekCard } from "@/components/plan/DeloadWeekCard";
+import { dismissProgramRecommendation } from "@/lib/platform/actions";
 import { getEarlyDeloadRecommendation } from "@/lib/planner/early-deload-offer";
 import { acceptEarlyDeload } from "@/lib/planner/early-deload-actions";
 import { EarlyDeloadCard } from "@/components/plan/EarlyDeloadCard";
@@ -71,6 +72,8 @@ export default async function PlanPage({
     new?: string;
     build?: string;
     deload?: string;
+    boundary?: string;
+    rec?: string;
     kept?: string;
   }>;
 }) {
@@ -337,16 +340,32 @@ export default async function PlanPage({
     getDeloadWeekFatigueSignal(),
   ]);
 
+  const deloadRecId = typeof sp.rec === "string" ? sp.rec : undefined;
+
+  // A program-advised recovery week is placed by the program, not by today's
+  // date. Null when the advice belongs to a block the lifter has moved on from,
+  // or when the plan no longer contains the sessions it named.
+  const anchoredPreview =
+    typeof sp.boundary === "string" && deloadRecId
+      ? await getDeloadWeekPreview(supabase, user.id, {
+          boundaryKey: sp.boundary,
+          recommendationId: deloadRecId,
+        })
+      : null;
+
   // Recovery-week entry. The QUIET control is always available (program
   // controls). The PROMINENT banner only surfaces on a real fatigue signal — or
   // when deep-linked from the TB deload advisory (?deload=1) — and never when a
   // programmed deload offer is already handling fatigue.
   const deloadDeepLink = sp.deload === "1";
+  // A program-advised link that no longer resolves is not a deep link at all.
+  const bannerPreview = sp.boundary ? anchoredPreview : deloadWeekPreview;
+  const deloadDeepLinkActive = deloadDeepLink && (!sp.boundary || !!anchoredPreview);
   const showDeloadBanner =
-    !!deloadWeekPreview &&
+    !!bannerPreview &&
     !deloadSkipOffer &&
     !earlyDeloadReco &&
-    (deloadFatigued || deloadDeepLink);
+    (deloadFatigued || deloadDeepLinkActive);
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
@@ -384,13 +403,19 @@ export default async function PlanPage({
       {deloadSkipOffer && (
         <DeloadSkipCard offer={deloadSkipOffer} applyAction={acceptDeloadSkip} />
       )}
-      {showDeloadBanner && deloadWeekPreview && (
+      {showDeloadBanner && bannerPreview && (
         <DeloadWeekCard
-          preview={deloadWeekPreview}
+          preview={bannerPreview}
           insertAction={insertDeloadWeekAction}
           previewAction={previewDeloadWeekAction}
           variant="banner"
-          autoOpen={deloadDeepLink}
+          autoOpen={deloadDeepLinkActive}
+          {...(deloadRecId
+            ? {
+                resolveRecommendationId: deloadRecId,
+                resolveAction: dismissProgramRecommendation,
+              }
+            : {})}
         />
       )}
       {showBodyweightBanner && (
@@ -419,7 +444,7 @@ export default async function PlanPage({
                   insertAction={insertDeloadWeekAction}
           previewAction={previewDeloadWeekAction}
                   variant="quiet"
-                  autoOpen={deloadDeepLink}
+                  autoOpen={deloadDeepLinkActive && !sp.boundary}
                 />
               ) : undefined
             }
