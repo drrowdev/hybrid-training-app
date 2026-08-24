@@ -23,7 +23,12 @@ describe("inferAccessoryBucket", () => {
     expect(inferAccessoryBucket({ slug: "eccentric-heel-raise" })).toBe(
       "tendon",
     );
-    expect(inferAccessoryBucket({ slug: "copenhagen-plank" })).toBe("tendon");
+  });
+
+  it("doses the Copenhagen plank as a hold, not rep-based HSR", () => {
+    expect(inferAccessoryBucket({ slug: "copenhagen-plank" })).toBe(
+      "isometric",
+    );
   });
 
   it("returns plyometric for power-reason picks", () => {

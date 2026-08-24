@@ -908,7 +908,6 @@ The third was the anchoring hazard in a costume. Session refs are instance-indep
 
 See ADR 0077.
 
-
 ## [2026-08-24] fix | Weighted dip joins the library, and a removed lift can be put back
 
 Two owner reports from the same session, with different causes.
@@ -940,3 +939,41 @@ Two supporting corrections. The 1RM field for a belt-loaded movement now says wh
 No migration. `systemLoad` is additive inside the prescription JSONB. Existing maxes are not reinterpreted: a value entered as added-weight-only now resolves to a bodyweight set, which is too light rather than too heavy.
 
 Deferred: assisted (band / machine) pull-ups for a lifter whose percentage lands well under bodyweight, and rebuilding historical pull-up e1RMs against the bodyweight recorded at the time of each set.
+
+---
+
+## [2026-08-24] fix | One Copenhagen, and lunges the catalogue never had
+
+Two library entries described the same exercise. `copenhagen-plank` was seeded by the leg-isolation helper and `copenhagen-side-plank` by the tendon helper - same setup, same cues, same region, same equipment, and because `derive-roles.ts` keys off `metadata.protocol` and a `/copenhagen/` slug match, the same derived roles on both. Nothing distinguished them but which array they were declared in.
+
+The isolation row survives. `tb-accessories.ts` hard-filters `pattern = 'isolation'`, so the tendon copy could never be drawn as accessory work, and nothing anywhere selects candidates by `pattern = 'tendon'` - the prescription item kind of that name is a separate concept. The tendon copy added a library entry and no capability.
+
+Merging exposed a dosing bug in the row we kept. `copenhagen-plank` was listed literally in `TENDON_KEYWORDS`, and the tendon test fires before the isometric one, so a Copenhagen was prescribed as ADR 0041 rep-based HSR - eight reps with a three-second eccentric - when it is a hold. Removing the keyword lets it fall through to the isometric bucket and be prescribed for time. It was only survivable before because the duplicate, which did land in the isometric bucket, masked it.
+
+Migration 0138 moves history rather than dropping it (owner-confirmed). That is not ceremony: `set_logs` and `session_movements` reference `movements(id)` ON DELETE RESTRICT while `training_maxes` and `tm_suggestions` CASCADE, so a bare DELETE would either fail outright or quietly destroy a training max depending on what the lifter had logged. Where a unique key collides - a second training max, a pending suggestion, a session already holding both - the survivor's row wins.
+
+Separately: the catalogue had no lunge at all. Split squats, Bulgarians, ATG, Cossack, and a HYROX-only sandbag lunge, but nothing that steps. Three consumers already assumed otherwise - the muscle map carried `lunge` and `walking-lunge` fanout keys for slugs that were never seeded, migration 0019 tagged `forward-lunge` / `reverse-lunge` / `walking-lunge` with the `single_leg` role in UPDATEs that matched nothing, and `accessory-schema.md` lists them as examples of that role. The single-leg pool was thinner than every reader of those files believed.
+
+Migration 0139 adds forward and reverse lunges in bodyweight, dumbbell and barbell, tracking the split-squat pair's attributes with axial load and the experience gate scaling by implement. Roles are spelled out in the SQL: `deriveAccessoryRoles()` runs only while building `SEED_MOVEMENTS` in TypeScript, so a migration-inserted row without them would be invisible to the picker until someone ran a full reseed.
+
+Kept to the six asked for. Walking, curtsy and lateral lunges and step-ups stay unseeded, and the two dead muscle-map keys were left alone rather than tidied as a passenger on this change.
+
+---
+
+## [2026-08-24] refine | The rest of the lunge family, and where a step-up's adductor tag belongs
+
+Follows the previous entry. Walking lunge, step-up, curtsy lunge and lateral lunge, ten rows across bodyweight / dumbbell / barbell, seeded by migration 0140. Migration 0019 had already named `walking-lunge`, `step-up`, `step-up-db`, `step-up-bb` and `curtsy-lunge` in UPDATEs that matched nothing, so the slugs were chosen years ago by a migration that could never find them.
+
+Three calls worth recording, all of which came out of review rather than out of the first draft.
+
+**The step-up keeps its adductor tag.** A step-up barely loads the groin, and `accessory-schema.md` casts it as the low-impact single-leg fallback, so the draft dropped `adductors` to keep it available under an adductor flag. That is a silent overrule of a safety gate dressed up as a catalogue attribute. `affected-movements.ts` matches a limitation on muscle tags, and the project's stance is override-and-warn with the user holding the allow-list - not a row that quietly lies about what it loads. If the filter is too coarse, the filter is what to fix.
+
+**The lateral lunge's primary region is `adductor_groin`, not `knee`.** It loads the trailing adductor under a lengthening bias. A limitation matches on `primary_region` only - `secondary_regions` is never consulted - so filing it under the knee like its siblings would have let a groin flag miss the one movement in the family that most deserves to be caught. Mirrors `cossack-squat-loaded`.
+
+**The box a step-up needs cannot be expressed.** The equipment inventory has no box or bench field, so `bodyweight-box` would filter nothing, and it would additionally read as externally loaded to `carriesExternalLoad` and win the advanced-tier loadable ranking bonus. Equipment is tagged plainly and the box is named in the setup text, which is where the user actually reads it. A test pins that, because the setup string is now the only place the requirement exists. Modelling a box in the inventory is a separate change and was not made here.
+
+The curtsy lunge sits at experienceMin 1 rather than 0. Ten new unilateral entries move the tier-0 single-leg share of the accessory pool up by roughly ten points, and a cross-behind step is not a foundational staple; gating the niche one curbs the distortion without curating by implement.
+
+No barbell curtsy and no barbell lateral lunge. The threshold applied was "commonly programmed under a bar", which `step-up-bb` clears and those two do not.
+
+The dead `walking-lunge` key in the muscle map became live for the first time and was rewritten to match its siblings. The `lunge` key stays dead and untouched - it names no slug and inventing one to justify it would be the tail wagging the dog. The 0139 rollback guard was also widened: it checked `training_maxes` but not `tm_suggestions`, `tm_history` or `cardio_logs`, all of which cascade or null on movement delete.

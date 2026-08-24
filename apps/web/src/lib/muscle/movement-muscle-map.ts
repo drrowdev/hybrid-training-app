@@ -94,6 +94,105 @@ export const MOVEMENT_MUSCLE_MAP: Record<string, MuscleWeight[]> = {
   "walking-lunge": [
     { muscle: "quads", weight: 1.0 },
     { muscle: "glutes", weight: 1.0 },
+    { muscle: "hamstrings", weight: 0.25 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  "walking-lunge-db": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "hamstrings", weight: 0.25 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  "walking-lunge-bb": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "erectors", weight: 0.5 },
+    { muscle: "hamstrings", weight: 0.25 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  // Step-ups skip the deep front-knee position, so the quad share is lower
+  // than a lunge's and the glute drives the rep.
+  "step-up": [
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "quads", weight: 0.5 },
+    { muscle: "hamstrings", weight: 0.25 },
+  ],
+  "step-up-db": [
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "quads", weight: 0.5 },
+    { muscle: "hamstrings", weight: 0.25 },
+  ],
+  "step-up-bb": [
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "quads", weight: 0.5 },
+    { muscle: "erectors", weight: 0.5 },
+    { muscle: "hamstrings", weight: 0.25 },
+  ],
+  "curtsy-lunge": [
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "adductors", weight: 0.25 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  "curtsy-lunge-db": [
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "adductors", weight: 0.25 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  // The trailing leg's groin is the point of the lateral lunge, so adductors
+  // carry a full share rather than the incidental one a forward lunge gets.
+  "lateral-lunge": [
+    { muscle: "adductors", weight: 1.0 },
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 0.5 },
+    { muscle: "hamstrings", weight: 0.25 },
+  ],
+  "lateral-lunge-db": [
+    { muscle: "adductors", weight: 1.0 },
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 0.5 },
+    { muscle: "hamstrings", weight: 0.25 },
+  ],
+  "forward-lunge": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "hamstrings", weight: 0.25 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  "forward-lunge-db": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "hamstrings", weight: 0.25 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  "forward-lunge-bb": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "erectors", weight: 0.5 },
+    { muscle: "hamstrings", weight: 0.25 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  // Reverse stepping shifts load toward the hip, so glutes/hamstrings carry
+  // more than in the forward step.
+  "reverse-lunge": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "hamstrings", weight: 0.5 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  "reverse-lunge-db": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "hamstrings", weight: 0.5 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  "reverse-lunge-bb": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "erectors", weight: 0.5 },
+    { muscle: "hamstrings", weight: 0.5 },
+    { muscle: "core", weight: 0.25 },
   ],
 
   // ── Hinge family ─────────────────────────────────────────────────
@@ -343,11 +442,6 @@ export const MOVEMENT_MUSCLE_MAP: Record<string, MuscleWeight[]> = {
   "hip-adduction-machine": [{ muscle: "adductors", weight: 1.0 }],
   "copenhagen-plank": [
     { muscle: "adductors", weight: 1.0 },
-    { muscle: "core", weight: 0.5 },
-  ],
-  "copenhagen-side-plank": [
-    { muscle: "adductors", weight: 1.0 },
-    { muscle: "obliques", weight: 0.5 },
     { muscle: "core", weight: 0.5 },
   ],
 

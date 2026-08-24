@@ -103,6 +103,47 @@ const SQUAT: NewMovement[] = [
   squat("bulgarian-split-squat-bb", "Bulgarian Split Squat (BB)", { equipment: "barbell-bench", bilateral: false, axialLoad: "high", experienceMin: 2 }),
   squat("split-squat-db", "Split Squat (DB)", { equipment: "dumbbells", bilateral: false, axialLoad: "moderate" }),
   squat("split-squat-bb", "Split Squat (BB)", { equipment: "barbell", bilateral: false, axialLoad: "high", experienceMin: 2 }),
+  // Lunges — the stepping cousins of the static split squat. The catalog had
+  // none, while `movement-muscle-map.ts`, `accessory-schema.md` and migration
+  // 0019 all already referenced them, so the single-leg pool was thinner than
+  // every consumer assumed. Attributes track the split-squat pair; the step
+  // makes them less stable, so no `stability: "supported"`. Reverse stepping
+  // shifts load off the front knee onto the hip, hence the differing emphasis.
+  squat("forward-lunge", "Forward Lunge", { equipment: "bodyweight", bilateral: false, axialLoad: "low", bodyWeightLoaded: true, metadata: { eccentric_cost: "moderate", cns_cost: "low", stim_fatigue_ratio: "moderate", emphasis: "front-knee-loaded" } }),
+  squat("forward-lunge-db", "Forward Lunge (DB)", { equipment: "dumbbells", bilateral: false, axialLoad: "moderate", metadata: { eccentric_cost: "moderate", cns_cost: "moderate", stim_fatigue_ratio: "moderate", emphasis: "front-knee-loaded" } }),
+  squat("forward-lunge-bb", "Forward Lunge (BB)", { equipment: "barbell", bilateral: false, axialLoad: "high", experienceMin: 2, metadata: { eccentric_cost: "moderate", cns_cost: "high", stim_fatigue_ratio: "moderate", emphasis: "front-knee-loaded" } }),
+  squat("reverse-lunge", "Reverse Lunge", { equipment: "bodyweight", bilateral: false, axialLoad: "low", bodyWeightLoaded: true, metadata: { eccentric_cost: "moderate", cns_cost: "low", stim_fatigue_ratio: "moderate", emphasis: "hip-loaded-knee-friendly" } }),
+  squat("reverse-lunge-db", "Reverse Lunge (DB)", { equipment: "dumbbells", bilateral: false, axialLoad: "moderate", metadata: { eccentric_cost: "moderate", cns_cost: "moderate", stim_fatigue_ratio: "moderate", emphasis: "hip-loaded-knee-friendly" } }),
+  squat("reverse-lunge-bb", "Reverse Lunge (BB)", { equipment: "barbell", bilateral: false, axialLoad: "high", experienceMin: 2, metadata: { eccentric_cost: "moderate", cns_cost: "high", stim_fatigue_ratio: "moderate", emphasis: "hip-loaded-knee-friendly" } }),
+  // Walking lunge — the travelling forward lunge. Same tissue demand, so the
+  // muscle tags match `forward-lunge`; only the emphasis differs.
+  squat("walking-lunge", "Walking Lunge", { equipment: "bodyweight", bilateral: false, axialLoad: "low", bodyWeightLoaded: true, metadata: { eccentric_cost: "moderate", cns_cost: "low", stim_fatigue_ratio: "moderate", emphasis: "travelling-quad-glute" } }),
+  squat("walking-lunge-db", "Walking Lunge (DB)", { equipment: "dumbbells", bilateral: false, axialLoad: "moderate", metadata: { eccentric_cost: "moderate", cns_cost: "moderate", stim_fatigue_ratio: "moderate", emphasis: "travelling-quad-glute" } }),
+  squat("walking-lunge-bb", "Walking Lunge (BB)", { equipment: "barbell", bilateral: false, axialLoad: "high", experienceMin: 2, metadata: { eccentric_cost: "moderate", cns_cost: "high", stim_fatigue_ratio: "moderate", emphasis: "travelling-quad-glute" } }),
+  // Step-up — the lowest-impact loaded single-leg option (no deep front-knee
+  // flexion, no floor contact for the trailing leg). The box it needs isn't
+  // representable: the equipment inventory has no box/bench field, and a
+  // `bodyweight-box` tag would additionally read as externally loaded to
+  // `carriesExternalLoad`. So the implement is tagged plainly and the box is
+  // named in the setup text, matching `atg-split-squat`'s handling.
+  // Adductors stay tagged (helper default) even though a step-up is only
+  // mildly groin-loading: the limitation filter keys off muscle tags, and
+  // dropping the tag to keep step-ups available under an adductor flag would
+  // silently overrule a safety gate rather than let the user allow-list it.
+  squat("step-up", "Step-Up", { equipment: "bodyweight", bilateral: false, axialLoad: "low", bodyWeightLoaded: true, metadata: { eccentric_cost: "low", cns_cost: "low", stim_fatigue_ratio: "moderate", emphasis: "low-impact-single-leg" } }),
+  squat("step-up-db", "Step-Up (DB)", { equipment: "dumbbells", bilateral: false, axialLoad: "moderate", metadata: { eccentric_cost: "low", cns_cost: "moderate", stim_fatigue_ratio: "moderate", emphasis: "low-impact-single-leg" } }),
+  squat("step-up-bb", "Step-Up (BB)", { equipment: "barbell", bilateral: false, axialLoad: "high", experienceMin: 2, metadata: { eccentric_cost: "low", cns_cost: "high", stim_fatigue_ratio: "moderate", emphasis: "low-impact-single-leg" } }),
+  // Curtsy lunge — crossing behind loads the frontal-plane hip, so it also
+  // tags abductors and carries `adductor_groin` as a secondary region. The
+  // cross-behind step needs balance and hip control, hence experienceMin 1.
+  squat("curtsy-lunge", "Curtsy Lunge", { equipment: "bodyweight", bilateral: false, axialLoad: "low", bodyWeightLoaded: true, secondaryMuscles: ["hamstrings", "lower_back", "adductors", "abductors"], secondaryRegions: ["hamstring_posterior", "lumbar_trunk", "foot_ankle_calf", "adductor_groin"], experienceMin: 1, metadata: { eccentric_cost: "moderate", cns_cost: "low", stim_fatigue_ratio: "moderate", emphasis: "frontal-plane-hip" } }),
+  squat("curtsy-lunge-db", "Curtsy Lunge (DB)", { equipment: "dumbbells", bilateral: false, axialLoad: "moderate", secondaryMuscles: ["hamstrings", "lower_back", "adductors", "abductors"], secondaryRegions: ["hamstring_posterior", "lumbar_trunk", "foot_ankle_calf", "adductor_groin"], experienceMin: 1, metadata: { eccentric_cost: "moderate", cns_cost: "moderate", stim_fatigue_ratio: "moderate", emphasis: "frontal-plane-hip" } }),
+  // Lateral lunge — a frontal-plane movement that lengthens the trailing
+  // adductor under load, so the groin is the PRIMARY region (mirroring
+  // `cossack-squat-loaded`), not a secondary one. Region matters here because
+  // `affected-movements.ts` matches a limitation on primary_region only.
+  squat("lateral-lunge", "Lateral Lunge", { equipment: "bodyweight", bilateral: false, axialLoad: "low", bodyWeightLoaded: true, primaryRegion: "adductor_groin", secondaryRegions: ["knee", "hamstring_posterior", "lumbar_trunk"], primaryMuscles: ["quads", "adductors", "glutes"], secondaryMuscles: ["hamstrings"], metadata: { eccentric_cost: "moderate", cns_cost: "low", stim_fatigue_ratio: "moderate", emphasis: "frontal-plane-groin" } }),
+  squat("lateral-lunge-db", "Lateral Lunge (DB)", { equipment: "dumbbells", bilateral: false, axialLoad: "moderate", primaryRegion: "adductor_groin", secondaryRegions: ["knee", "hamstring_posterior", "lumbar_trunk"], primaryMuscles: ["quads", "adductors", "glutes"], secondaryMuscles: ["hamstrings"], metadata: { eccentric_cost: "moderate", cns_cost: "moderate", stim_fatigue_ratio: "moderate", emphasis: "frontal-plane-groin" } }),
   squat("atg-split-squat", "ATG Split Squat", { equipment: "bodyweight", bilateral: false, axialLoad: "low", primaryMuscles: ["quads", "glutes", "adductors"], metadata: { rom_profile: "deep" } }),
   squat("cossack-squat", "Cossack Squat", { equipment: "bodyweight-or-loaded", bilateral: false, axialLoad: "low", primaryMuscles: ["quads", "adductors", "glutes"], secondaryMuscles: ["hamstrings"] }),
   squat("goblet-squat", "Goblet Squat", { equipment: "dumbbell-or-kb", axialLoad: "moderate", stability: "supported" }),
