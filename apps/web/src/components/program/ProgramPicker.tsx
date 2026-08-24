@@ -1154,6 +1154,7 @@ export function ProgramPicker({
   editContext,
   seasonBlockId,
   prefillRaceDate,
+  recoveryAdvised = false,
 }: {
   programs: PickerProgram[];
   anchoredKeys: string[];
@@ -1185,6 +1186,11 @@ export function ProgramPicker({
    * user can still clear it.
    */
   prefillRaceDate?: string;
+  /**
+   * The lifter's program has advised a recovery week they haven't taken. Offers
+   * to run it as week 1 of this block.
+   */
+  recoveryAdvised?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -1232,6 +1238,7 @@ export function ProgramPicker({
     isEditing && editContext ? editContext.startedOn : upcomingMondayYmd(todayYmd()),
   );
   const [raceDate, setRaceDate] = useState<string>(prefillRaceDate ?? "");
+  const [startWithRecovery, setStartWithRecovery] = useState<boolean>(false);
   // Start point (the program phase/block to begin from). Default 0 = beginning.
   const [segments, setSegments] = useState<ProgramSegmentOption[]>([]);
   const [startWeekIndex, setStartWeekIndex] = useState<number>(0);
@@ -2588,6 +2595,7 @@ export function ProgramPicker({
         ...(customization ? { customization } : {}),
         ...(isEditing && editContext ? { editBlockId: editContext.blockId } : {}),
         ...(!isEditing && seasonBlockId ? { seasonBlockId } : {}),
+        ...(!isEditing && startWithRecovery ? { startWithRecoveryWeek: true } : {}),
         ...(isTb && attachedProtocols.length > 0
           ? {
               rehabBindings: attachedProtocols.map((protocol) => ({
@@ -4504,6 +4512,25 @@ export function ProgramPicker({
             </div>
           ) : null}
         </div>
+
+        {!isEditing && recoveryAdvised ? (
+          <div style={{ marginBottom: 18 }}>
+            <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={startWithRecovery}
+                onChange={(e) => setStartWithRecovery(e.target.checked)}
+                style={{ marginTop: 3 }}
+              />
+              <span>
+                <span className={styles.label} style={{ marginBottom: 2, display: "block" }}>
+                  Start with a recovery week
+                </span>
+                <span className={styles.note}>Week 1 runs light, then the program starts.</span>
+              </span>
+            </label>
+          </div>
+        ) : null}
 
         {!isEditing && segments.length > 1 ? (
           <div style={{ marginBottom: 18 }}>

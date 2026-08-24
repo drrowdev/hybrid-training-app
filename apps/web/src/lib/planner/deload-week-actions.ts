@@ -24,6 +24,12 @@ const removeSchema = z.object({ weekIndex: z.number().int().min(0) }).strict();
  */
 const percentSchema = z.number().int().min(RECOVERY_PERCENT_MIN).max(RECOVERY_PERCENT_MAX);
 
+/** An engine-declared boundary key, e.g. "peak-b2". */
+const boundaryKeySchema = z.string().min(1).max(64);
+
+/** The recommendation that raised the advice. */
+const recIdSchema = z.string().uuid();
+
 function revalidateAll(): void {
   revalidatePath("/app");
   revalidatePath("/app/plan");
@@ -39,6 +45,8 @@ function revalidateAll(): void {
  */
 export async function previewDeloadWeekAction(
   percent?: number,
+  boundaryKey?: string,
+  recommendationId?: string,
 ): Promise<DeloadWeekPreview | null> {
   const supabase = await createClient();
   const {
@@ -46,11 +54,13 @@ export async function previewDeloadWeekAction(
   } = await getAuthUser();
   if (!user) redirect("/login");
   const parsed = percentSchema.safeParse(percent);
-  return getDeloadWeekPreview(
-    supabase,
-    user.id,
-    parsed.success ? parsed.data : undefined,
-  );
+  const key = boundaryKeySchema.safeParse(boundaryKey);
+  const recId = recIdSchema.safeParse(recommendationId);
+  return getDeloadWeekPreview(supabase, user.id, {
+    ...(parsed.success ? { percent: parsed.data } : {}),
+    ...(key.success ? { boundaryKey: key.data } : {}),
+    ...(recId.success ? { recommendationId: recId.data } : {}),
+  });
 }
 
 /**
@@ -60,9 +70,16 @@ export async function previewDeloadWeekAction(
  * payload), then calls the atomic `insert_deload_week` RPC which renumbers later
  * weeks + inserts the recovery sessions (role='deload', off-program) + bumps the
  * block length. RLS-scoped via the request client; the RPC re-checks ownership.
+ *
+ * `boundaryKey` places the week where the program advised instead of after
+ * today's week. It is a key, not a week number: the client never says where to
+ * insert, so a stale page cannot drop a light week into a hard one. It is only
+ * honoured alongside the recommendation that raised it (ADR 0077).
  */
 export async function insertDeloadWeekAction(
   percent?: number,
+  boundaryKey?: string,
+  recommendationId?: string,
 ): Promise<InsertDeloadResult> {
   const supabase = await createClient();
   const {
@@ -71,11 +88,13 @@ export async function insertDeloadWeekAction(
   if (!user) redirect("/login");
 
   const parsedPercent = percentSchema.safeParse(percent);
-  const preview = await getDeloadWeekPreview(
-    supabase,
-    user.id,
-    parsedPercent.success ? parsedPercent.data : undefined,
-  );
+  const parsedKey = boundaryKeySchema.safeParse(boundaryKey);
+  const parsedRecId = recIdSchema.safeParse(recommendationId);
+  const preview = await getDeloadWeekPreview(supabase, user.id, {
+    ...(parsedPercent.success ? { percent: parsedPercent.data } : {}),
+    ...(parsedKey.success ? { boundaryKey: parsedKey.data } : {}),
+    ...(parsedRecId.success ? { recommendationId: parsedRecId.data } : {}),
+  });
   if (!preview) return { ok: false, error: "No active block to deload." };
 
   const payload = preview.sessions.map((s) => ({

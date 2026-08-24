@@ -231,7 +231,26 @@ export interface RecoveryWeekPolicy {
   cue: string;
 }
 
-/** A field the setup wizard must collect for a program. */export type SetupFieldType =
+/**
+ * A point where the program advises a recovery week.
+ *
+ * The rule is the program's ("deload after Peak Week"), but the WEEK is placed
+ * by the platform, so the engine names the boundary rather than scheduling
+ * anything. `refs` are the engine sessions that must be settled — logged or
+ * skipped — before the lifter has actually reached it; logging one session of a
+ * four-session peak week is not finishing peak week.
+ */
+export interface RecoveryBoundary {
+  /** Stable within an instance, so a prompt can be raised once per occurrence. */
+  key: string;
+  /** Every engine session that must be settled for the boundary to be reached. */
+  refs: string[];
+  title: string;
+  detail: string;
+}
+
+/** A field the setup wizard must collect for a program. */
+export type SetupFieldType =
   | "training-max"
   | "number"
   | "select"
@@ -346,6 +365,13 @@ export interface ProgramRecommendation {
   detail: string;
   /** Optional structured payload (e.g. { movement, fromTmKg, toTmKg }). */
   data?: Record<string, unknown>;
+  /**
+   * Which occurrence within the plan this is for — e.g. the engine block whose
+   * peak week raised it. One materialised block holds every engine block of an
+   * instance, so a recurring nudge must say which one it belongs to or the plan
+   * can only ever raise it once. Omit for a nudge that happens once per plan.
+   */
+  occurrenceKey?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -467,6 +493,16 @@ export interface ProgramEngine<Instance = unknown> {
    * "from the beginning" start.
    */
   segments?(instance: Instance): ProgramSegment[];
+
+  /**
+   * Points at which this program advises taking a recovery week, in order.
+   *
+   * Declared rather than inferred: the rule belongs to the source, and two
+   * templates from the same book can differ — Tactical Barbell 3 names Peak
+   * Week, which Operator, Fighter and Zulu have and Gladiator, Mass and Grey Man
+   * do not. Engines that say nothing about recovery timing omit this.
+   */
+  recoveryBoundaries?(instance: Instance): RecoveryBoundary[];
 }
 
 /**

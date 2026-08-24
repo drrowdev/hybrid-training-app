@@ -35,6 +35,14 @@ export const programRecommendations = pgTable(
     detail: text("detail").notNull(),
     /** Optional structured payload from the engine recommendation. */
     data: jsonb("data"),
+    /**
+     * Which occurrence of `kind` this row is for within the plan — e.g. the
+     * engine block whose peak week raised it. One `training_blocks` row holds
+     * every engine block of an instance, so without this a plan could raise
+     * each kind exactly once however many blocks it ran. '' means the plan
+     * raises this kind once, which is every row written before migration 0135.
+     */
+    occurrenceKey: text("occurrence_key").notNull().default(""),
     status: text("status").notNull().default("pending"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)
@@ -47,13 +55,15 @@ export const programRecommendations = pgTable(
       t.status,
       t.createdAt,
     ),
-    // Idempotency guard (migration 0105) — one recommendation of each kind per
-    // block; makes the completion hook's upsert a safe no-op under races.
-    userBlockKindUnique: uniqueIndex("program_recommendations_user_block_kind_unique").on(
-      t.userId,
-      t.blockId,
-      t.kind,
-    ),
+    // Idempotency guard (migrations 0105, 0135) — one recommendation of each
+    // kind PER OCCURRENCE per block; makes the completion hook's upsert a safe
+    // no-op under races. `occurrence_key` is NOT NULL because two NULLs are
+    // distinct to a Postgres unique index (letting the duplicate-insert race
+    // back in), and because an expression index over COALESCE cannot serve as
+    // the ON CONFLICT arbiter for the plain column list PostgREST sends.
+    userBlockKindOccurrenceUnique: uniqueIndex(
+      "program_recommendations_user_block_kind_occurrence_unique",
+    ).on(t.userId, t.blockId, t.kind, t.occurrenceKey),
   }),
 );
 

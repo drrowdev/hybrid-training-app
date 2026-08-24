@@ -35,13 +35,28 @@ export async function archivePriorActiveBlocks(
   exceptBlockId: string,
 ): Promise<{ error: string | null }> {
   const now = new Date().toISOString();
-  const { error } = await supabase
+  const { data: archived, error } = await supabase
     .from("training_blocks")
     .update({ status: "archived", archived_at: now, ended_at: now })
     .eq("user_id", userId)
     .eq("status", "active")
-    .neq("id", exceptBlockId);
-  return { error: error ? error.message : null };
+    .neq("id", exceptBlockId)
+    .select("id");
+  if (error) return { error: error.message };
+
+  // A nudge is advice about a specific plan. Once that plan is archived the
+  // advice cannot be acted on, so retiring it here stops it sitting on Today
+  // pointing at a block the lifter has left.
+  const ids = (archived ?? []).map((b) => b.id as string);
+  if (ids.length > 0) {
+    await supabase
+      .from("program_recommendations")
+      .update({ status: "dismissed", resolved_at: now })
+      .eq("user_id", userId)
+      .eq("status", "pending")
+      .in("block_id", ids);
+  }
+  return { error: null };
 }
 
 /**

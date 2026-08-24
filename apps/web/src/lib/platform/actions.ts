@@ -71,6 +71,7 @@ import {
 } from "./tb-accessories";
 import { discardAbandonedInProgressSessions } from "@/lib/planner/archive-prior-blocks";
 import { activateSeasonBlock } from "@/lib/seasons/activation";
+import { getDeloadWeekPreview } from "@/lib/planner/deload-week-preview";
 import {
   planForwardOnlyRewrite,
   prescriptionsEquivalent,
@@ -453,6 +454,12 @@ const createProgramInstanceSchema = z
      *  activate this planned season_block + link it to the new block on deploy. */
     seasonBlockId: z.string().uuid().optional(),
     /**
+     * Lead the new block with a recovery week. Offered after a peak week, where
+     * the program advises deloading between blocks and there is no room left in
+     * the block that just ended.
+     */
+    startWithRecoveryWeek: z.boolean().optional(),
+    /**
      * Which Settings library protocol each local protocol slot refers to.
      * Recorded AFTER the deploy succeeds, so a failed deploy never leaves a
      * program claiming rehab it doesn't have.
@@ -495,7 +502,7 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks: rawSessionLinks, editBlockId, seasonBlockId, rehabBindings } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks: rawSessionLinks, editBlockId, seasonBlockId, rehabBindings, startWithRecoveryWeek } = parsed.data;
   const sessionLinks = normalizeSessionLinks(rawSessionLinks);
 
   if (sessionLinks && programId !== "tactical-barbell") {
@@ -694,7 +701,7 @@ export async function createProgramInstance(
             : null;
       if (seasonBias) nativeSetupValues = { ...setupValues, seasonBias };
     }
-    return createNativeProgramInstance(supabase, user, {
+    const nativeResult = await createNativeProgramInstance(supabase, user, {
       programId,
       setupValues: nativeSetupValues,
       weekdays,
@@ -705,6 +712,10 @@ export async function createProgramInstance(
       ...(sessionLinks ? { sessionLinks } : {}),
       ...(seasonBlockId ? { seasonBlockId } : {}),
     });
+    if (nativeResult.ok && startWithRecoveryWeek) {
+      await leadBlockWithRecoveryWeek(supabase, user.id);
+    }
+    return nativeResult;
   }
   const result = await createForeignProgramInstance(supabase, user, {
     programId,
@@ -719,6 +730,7 @@ export async function createProgramInstance(
     ...(customization ? { customization } : {}),
     ...(sessionLinks ? { sessionLinks } : {}),
     ...(seasonBlockId ? { seasonBlockId } : {}),
+    ...(startWithRecoveryWeek ? { startWithRecoveryWeek: true } : {}),
   });
   // Recorded only AFTER the plan is written, so a failed deploy never leaves a
   // program claiming rehab it doesn't have.
@@ -890,6 +902,8 @@ interface DeployArgs {
   /** When the wizard was deep-linked from a Season roadmap (ADR 0051) — the
    *  planned season_block to activate + link to the new training block on deploy. */
   seasonBlockId?: string;
+  /** Lead the new block with a recovery week (post-peak, TB3). */
+  startWithRecoveryWeek?: boolean;
 }
 
 /**
@@ -1417,7 +1431,7 @@ async function computeForeignWrite(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, seasonBlockId, twoADay, customization, sessionLinks }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, seasonBlockId, twoADay, customization, sessionLinks, startWithRecoveryWeek }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -1621,11 +1635,60 @@ async function createForeignProgramInstance(
     }
   }
 
+  // TB3 advises a deload between blocks. When the peak week that raised the
+  // advice was the end of the previous plan, the recovery week can only land at
+  // the front of this one.
+  if (startWithRecoveryWeek) {
+    await leadBlockWithRecoveryWeek(supabase, user.id);
+  }
+
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/stats");
 
   return { ok: true, blockId, programInstanceId: pi.id as string, skipped: write.skipped.length };
+}
+
+/**
+ * Put a recovery week in front of the block that was just deployed, and clear
+ * the advice that asked for it.
+ *
+ * Best-effort throughout: a lifter whose plan is already written must never see
+ * a deploy fail because the optional light week didn't land.
+ */
+async function leadBlockWithRecoveryWeek(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<void> {
+  try {
+    const preview = await getDeloadWeekPreview(supabase, userId, { prepend: true });
+    if (!preview) return;
+    const { error } = await supabase.rpc("insert_deload_week", {
+      p_block_id: preview.blockId,
+      p_user_id: userId,
+      p_after_week: -1,
+      p_sessions: preview.sessions.map((s) => ({
+        day_index: s.dayIndex,
+        slot: s.slot,
+        title: s.title,
+        session_modality: s.sessionModality,
+        prescription: s.prescription,
+      })),
+    });
+    if (error) {
+      console.error("leading recovery week failed:", error.message);
+      return;
+    }
+    // The advice has been taken; leaving it pending would nag for a second week.
+    await supabase
+      .from("program_recommendations")
+      .update({ status: "accepted", resolved_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .eq("kind", "deload")
+      .eq("status", "pending");
+  } catch (e) {
+    console.error("leading recovery week failed:", e);
+  }
 }
 
 /**

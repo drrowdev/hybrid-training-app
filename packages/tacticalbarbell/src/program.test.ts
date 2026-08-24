@@ -175,6 +175,47 @@ describe("TB engine — timeline", () => {
   });
 });
 
+describe("TB engine — where the program advises a recovery week", () => {
+  it("[recovery] advises a recovery week after each peak week, once per block", () => {
+    // TB3: "A good rule of thumb is to deload after Peak Week."
+    const inst = setup({ templateId: "zulu", blocks: 2 });
+    const boundaries = tb.recoveryBoundaries!(inst);
+
+    expect(boundaries.map((b) => b.key)).toEqual(["peak-b1", "peak-b2"]);
+    // Every peak session of that block must be settled, not just the last one
+    // logged: peak week is four sessions.
+    expect(boundaries[0]!.refs).toEqual([
+      "b0-w6-peak-a1",
+      "b0-w6-peak-b1",
+      "b0-w6-peak-a2",
+      "b0-w6-peak-b2",
+    ]);
+    expect(boundaries[1]!.refs.every((ref) => ref.startsWith("b1-w6-"))).toBe(true);
+  });
+
+  it("[recovery] advises nothing for a template with no peak week", () => {
+    // The rule names Peak Week, and these templates prescribe none.
+    for (const templateId of ["gladiator", "mass", "grey-man", "zulu-ia"]) {
+      expect(
+        tb.recoveryBoundaries!(setup({ templateId })),
+        templateId,
+      ).toEqual([]);
+    }
+  });
+
+  it("[recovery] leaves Activation alone — it schedules its own deload", () => {
+    expect(tb.recoveryBoundaries!(setup({ templateId: "activation" }))).toEqual([]);
+  });
+
+  it("[recovery] names peak sessions that the timeline actually contains", () => {
+    const inst = setup({ templateId: "operator", blocks: 1 });
+    const refs = new Set(tb.timeline(inst).map((spec) => spec.ref));
+    for (const boundary of tb.recoveryBoundaries!(inst)) {
+      for (const ref of boundary.refs) expect(refs.has(ref), ref).toBe(true);
+    }
+  });
+});
+
 describe("TB engine — prescribe (% of the shared 1RM)", () => {
   it("an empty customization is byte-identical to the canonical instance", () => {
     const canonical = setup({ templateId: "fighter" });
@@ -1162,10 +1203,37 @@ describe("TB engine — onSessionLogged (program-owned recommendations)", () => 
       log("b0-w6-peak-deadlift"),
       ctx,
     );
-    expect(recommendations.map((r) => r.kind)).toEqual(["tm-test"]);
+    expect(recommendations.map((r) => r.kind)).toEqual(["tm-test", "deload"]);
     // TB never auto-applies anything; strength state is untouched.
     expect(ctx.oneRepMaxes.squat).toBe(200);
     expect(instance.cluster).toHaveLength(3);
+  });
+
+  it("the deload it raises after a peak week is the one the template declared", () => {
+    const instance = setup();
+    const { recommendations } = tb.onSessionLogged(instance, log("b0-w6-peak-deadlift"), ctx);
+    const deload = recommendations.find((r) => r.kind === "deload");
+    const boundary = tb.recoveryBoundaries!(instance).find((b) => b.key === "peak-b1");
+    expect(deload?.occurrenceKey).toBe("peak-b1");
+    expect(deload?.title).toBe(boundary?.title);
+    expect(deload?.detail).toBe(boundary?.detail);
+  });
+
+  it("keys each block's nudges to that block, so a later block can raise them again", () => {
+    const instance = setup({ blocks: 4 });
+    const first = tb.onSessionLogged(instance, log("b0-w6-peak-deadlift"), ctx).recommendations;
+    const second = tb.onSessionLogged(instance, log("b1-w6-peak-deadlift"), ctx).recommendations;
+    expect(first.map((r) => r.occurrenceKey)).toEqual(["block-1", "block-1", "peak-b1"]);
+    expect(second.map((r) => r.occurrenceKey)).toEqual(["block-2", "block-2", "peak-b2"]);
+  });
+
+  it("a template with no peak week raises no post-peak deload", () => {
+    const { recommendations } = tb.onSessionLogged(
+      setup({ templateId: "gladiator" }),
+      log("b0-w6-s3"),
+      ctx,
+    );
+    expect(recommendations.map((r) => r.kind)).toEqual(["tm-test"]);
   });
 
   it("a block end with more blocks remaining also recommends the next block", () => {
@@ -1174,16 +1242,27 @@ describe("TB engine — onSessionLogged (program-owned recommendations)", () => 
       log("b0-w6-peak-deadlift"),
       ctx,
     );
-    expect(recommendations.map((r) => r.kind)).toEqual(["tm-test", "next-block"]);
+    expect(recommendations.map((r) => r.kind)).toEqual(["tm-test", "next-block", "deload"]);
   });
 
-  it("surfaces a CNS deload at the ~24-week boundary", () => {
+  it("falls back to the ~24-week CNS deload only where there is no peak week", () => {
+    const { recommendations } = tb.onSessionLogged(
+      setup({ templateId: "gladiator", blocks: 4 }),
+      log("b3-w6-s3"),
+      ctx,
+    );
+    const deload = recommendations.find((r) => r.kind === "deload");
+    expect(deload?.occurrenceKey).toBe("cns-24");
+  });
+
+  it("prefers the peak-week deload over the 24-week heuristic when both would fire", () => {
     const { recommendations } = tb.onSessionLogged(
       setup({ blocks: 4 }),
       log("b3-w6-peak-deadlift"),
       ctx,
     );
-    expect(recommendations.map((r) => r.kind)).toEqual(["tm-test", "deload"]);
+    const deloads = recommendations.filter((r) => r.kind === "deload");
+    expect(deloads.map((r) => r.occurrenceKey)).toEqual(["peak-b4"]);
   });
 
   it("recognises Activation's week-25 retest as its block end", () => {

@@ -122,35 +122,49 @@ export async function applyProgramProgression(args: {
   const toSurface = recommendations.filter((r) => SURFACED_KINDS.has(r.kind));
   if (toSurface.length === 0) return;
 
-  // Dedup: don't re-insert a still-pending rec of the same kind for this block
-  // (e.g. re-completing the block's last session shouldn't stack nudges).
+  // Dedup by (kind, occurrence), not by kind: one `training_blocks` row holds
+  // every engine block of an instance, so filtering on kind alone swallowed
+  // block 2's "retest your maxes" behind block 1's. A pending row for the SAME
+  // occurrence is still skipped, so re-completing a session doesn't stack nudges.
   const { data: existing } = await supabase
     .from("program_recommendations")
-    .select("kind")
+    .select("kind, occurrence_key")
     .eq("user_id", userId)
     .eq("block_id", blockId)
     .eq("status", "pending");
-  const pendingKinds = new Set((existing ?? []).map((e) => e.kind as string));
+  const pending = new Set(
+    (existing ?? []).map((e) => `${e.kind as string}\u0000${e.occurrence_key ?? ""}`),
+  );
 
   const rows = toSurface
-    .filter((r) => !pendingKinds.has(r.kind))
+    .filter((r) => !pending.has(`${r.kind}\u0000${r.occurrenceKey ?? ""}`))
     .map((r) => ({
       user_id: userId,
       program_instance_id: pi.id as string,
       block_id: blockId,
       session_id: sessionId,
       kind: r.kind,
+      // Always a string: the unique index (migration 0135) is over the plain
+      // column, and a NULL would make every row distinct to it.
+      occurrence_key: r.occurrenceKey ?? "",
       title: r.title,
       detail: r.detail,
       data: r.data ?? null,
       status: "pending",
     }));
   if (rows.length > 0) {
-    // Idempotent: the unique (user_id, block_id, kind) index (migration 0105)
-    // makes a concurrent re-completion a no-op rather than a duplicate insert.
-    await supabase
+    // Idempotent: the unique (user_id, block_id, kind, occurrence_key) index
+    // (migration 0135) makes a concurrent re-completion a no-op rather than a
+    // duplicate insert.
+    const { error } = await supabase
       .from("program_recommendations")
-      .upsert(rows, { onConflict: "user_id,block_id,kind", ignoreDuplicates: true });
+      .upsert(rows, {
+        onConflict: "user_id,block_id,kind,occurrence_key",
+        ignoreDuplicates: true,
+      });
+    // A silent failure here means the lifter is never told to retest or deload,
+    // with nothing anywhere to say why. Log it; never fail the logged session.
+    if (error) console.error("program recommendation insert failed:", error.message);
   }
 }
 

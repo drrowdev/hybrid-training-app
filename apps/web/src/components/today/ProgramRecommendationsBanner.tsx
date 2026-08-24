@@ -19,13 +19,21 @@ type DismissAction = (id: string) => Promise<{ ok: true } | { ok: false; error: 
  * A CTA target derived from a recommendation. `next-block` routes to the program
  * picker's next phase; `deload` routes to the Plan page's existing recovery-week
  * card (deep-linked to auto-open its preview) so the deload nudge reuses the one
- * deload workflow rather than spawning a parallel one.
+ * deload workflow rather than spawning a parallel one. The deload link carries
+ * the boundary the program named, so the week lands where the program advised
+ * rather than wherever the lifter happens to be when they open it.
  */
 function advanceTarget(
   r: PendingProgramRecommendation,
-): { href: string; label: string } | null {
+): { href: string; label: string; keepUntilDone?: boolean } | null {
   if (r.kind === "deload") {
-    return { href: "/app/plan?deload=1", label: "Take a recovery week \u2192" };
+    const params = new URLSearchParams({ deload: "1", rec: r.id });
+    if (r.occurrenceKey) params.set("boundary", r.occurrenceKey);
+    return {
+      href: `/app/plan?${params.toString()}`,
+      label: "Take a recovery week \u2192",
+      keepUntilDone: true,
+    };
   }
   const d = r.data;
   if (r.kind !== "next-block" || !d) return null;
@@ -86,7 +94,9 @@ export function ProgramRecommendationsBanner({
             {advance && (
               <Link
                 href={advance.href}
-                onClick={() => dismiss(r.id)}
+                onClick={() => {
+                  if (!advance.keepUntilDone) dismiss(r.id);
+                }}
                 style={{
                   padding: "6px 12px",
                   borderRadius: 7,
