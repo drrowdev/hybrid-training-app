@@ -77,7 +77,9 @@ export const REHAB_SERIES_PREFIX = "rehab.";
  * list by the synthetic legacy id.
  */
 export function localProtocolIds(source: RehabSource): string[] {
-  if (source.rehabSchedule) return [source.rehabSchedule.localProtocolId];
+  if (source.rehabSchedule) {
+    return source.rehabSchedule.protocols.map((protocol) => protocol.id);
+  }
   const customization = source.customization;
   if (!customization) return [];
   if (isTbActivationCustomizationV3(customization)) {
@@ -140,18 +142,19 @@ export function resolveRehabLibrary(
   // its items — unlike the legacy shapes below, which have nowhere to keep a
   // name. Placement (`series` / `days`) is the PROGRAM's, so it is untouched.
   if (rehabSchedule) {
-    const bound = lookup(rehabSchedule.localProtocolId);
-    if (!bound) {
-      return { customization, rehabSchedule, linksBySeries: resolvedLinks, missing };
-    }
-    applyLinks(rehabSchedule.localProtocolId, bound);
+    const protocols = rehabSchedule.protocols.map((protocol) => {
+      const bound = lookup(protocol.id);
+      if (!bound) return protocol;
+      applyLinks(protocol.id, bound);
+      return {
+        ...protocol,
+        name: bound.name,
+        items: bound.items as RehabSchedule["protocols"][number]["items"],
+      };
+    });
     return {
       customization,
-      rehabSchedule: {
-        ...rehabSchedule,
-        name: bound.name,
-        items: bound.items as RehabSchedule["items"],
-      },
+      rehabSchedule: { ...rehabSchedule, protocols },
       linksBySeries: resolvedLinks,
       missing,
     };
@@ -232,13 +235,11 @@ export function rehabFingerprint(
   source: RehabSource,
 ): Array<{ id: string; name: string; items: RehabItemLike[] }> {
   if (source.rehabSchedule) {
-    return [
-      {
-        id: source.rehabSchedule.localProtocolId,
-        name: source.rehabSchedule.name,
-        items: source.rehabSchedule.items,
-      },
-    ];
+    return source.rehabSchedule.protocols.map((protocol) => ({
+      id: protocol.id,
+      name: protocol.name,
+      items: protocol.items,
+    }));
   }
   const customization = source.customization;
   if (!customization) return [];

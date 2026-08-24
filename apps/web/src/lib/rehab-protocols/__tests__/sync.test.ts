@@ -108,10 +108,10 @@ beforeEach(() => {
     programStartWeekIndex: 0,
     rehabSchedule: {
       version: 1,
-      localProtocolId: "protocol-1",
-      name: "Original",
-      items: definition.items,
-      series: ["slot-1"],
+      protocols: [
+        { id: "protocol-1", name: "Original", items: definition.items },
+      ],
+      series: [{ key: "slot-1", protocolId: "protocol-1" }],
       days: [],
     },
   });
@@ -139,7 +139,10 @@ describe("syncing a protocol edit into a live program", () => {
     // The envelope is independent of the "Customize template" opt-in, so a
     // canonical block must not be skipped for having no customization.
     expect(createProgramInstance.mock.calls[0]![0]).toMatchObject({
-      rehabSchedule: { name: "Renamed", series: ["slot-1"] },
+      rehabSchedule: {
+        protocols: [expect.objectContaining({ name: "Renamed" })],
+        series: [{ key: "slot-1", protocolId: "protocol-1" }],
+      },
     });
     expect(createProgramInstance.mock.calls[0]![0].customization).toBeUndefined();
   });
@@ -157,10 +160,10 @@ describe("syncing a protocol edit into a live program", () => {
       programStartWeekIndex: 0,
       rehabSchedule: {
         version: 1,
-        localProtocolId: "protocol-1",
-        name: "Renamed",
-        items: definition.items,
-        series: ["slot-1"],
+        protocols: [
+          { id: "protocol-1", name: "Renamed", items: definition.items },
+        ],
+        series: [{ key: "slot-1", protocolId: "protocol-1" }],
         days: [],
       },
     });

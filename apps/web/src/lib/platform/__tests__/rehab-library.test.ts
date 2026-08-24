@@ -65,10 +65,16 @@ const src = (customization: TbCustomization) => ({ customization });
 const envelope = (over: Record<string, unknown> = {}) =>
   ({
     version: 1,
-    localProtocolId: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
-    name: "Elbow",
-    items: [item("Wrist Curl")],
-    series: ["slot-1"],
+    protocols: [
+      {
+        id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+        name: "Elbow",
+        items: [item("Wrist Curl")],
+      },
+    ],
+    series: [
+      { key: "slot-1", protocolId: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa" },
+    ],
     days: [],
     ...over,
   }) as unknown as RehabSchedule;
@@ -187,10 +193,47 @@ describe("resolveRehabLibrary — weekly envelope", () => {
     const resolved = resolveRehabLibrary({ rehabSchedule: envelope() }, {}, bindings, [
       lib({ name: "Golfer's Elbow", items: [item("Reverse Wrist Curl")] }),
     ]);
-    expect(resolved.rehabSchedule?.name).toBe("Golfer's Elbow");
-    expect(resolved.rehabSchedule?.items[0]!.movementName).toBe("Reverse Wrist Curl");
+    expect(resolved.rehabSchedule?.protocols[0]!.name).toBe("Golfer's Elbow");
+    expect(resolved.rehabSchedule?.protocols[0]!.items[0]!.movementName).toBe(
+      "Reverse Wrist Curl",
+    );
     // Placement belongs to the PROGRAM — Settings must never move rehab days.
-    expect(resolved.rehabSchedule?.series).toEqual(["slot-1"]);
+    expect(resolved.rehabSchedule?.series).toEqual([
+      { key: "slot-1", protocolId: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa" },
+    ]);
+  });
+
+  it("substitutes only the bound protocol, leaving its siblings alone", () => {
+    const resolved = resolveRehabLibrary(
+      {
+        rehabSchedule: envelope({
+          protocols: [
+            {
+              id: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+              name: "Elbow",
+              items: [item("Wrist Curl")],
+            },
+            {
+              id: "bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb",
+              name: "Groin",
+              items: [item("Copenhagen")],
+            },
+          ],
+          series: [
+            { key: "slot-1", protocolId: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa" },
+            { key: "slot-2", protocolId: "bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb" },
+          ],
+        }),
+      },
+      {},
+      bindings,
+      [lib({ name: "Golfer's Elbow" })],
+    );
+    expect(resolved.rehabSchedule?.protocols[0]!.name).toBe("Golfer's Elbow");
+    expect(resolved.rehabSchedule?.protocols[1]!.name).toBe("Groin");
+    expect(resolved.rehabSchedule?.protocols[1]!.items[0]!.movementName).toBe(
+      "Copenhagen",
+    );
   });
 
   it("resolves with no customization at all", () => {
@@ -200,7 +243,7 @@ describe("resolveRehabLibrary — weekly envelope", () => {
       lib({ name: "Renamed" }),
     ]);
     expect(resolved.customization).toBeUndefined();
-    expect(resolved.rehabSchedule?.name).toBe("Renamed");
+    expect(resolved.rehabSchedule?.protocols[0]!.name).toBe("Renamed");
   });
 
   it("addresses links by the envelope's own local id", () => {
@@ -218,7 +261,7 @@ describe("resolveRehabLibrary — weekly envelope", () => {
   it("reports a bound protocol whose library row is gone", () => {
     const resolved = resolveRehabLibrary({ rehabSchedule: envelope() }, {}, bindings, []);
     expect(resolved.missing).toEqual(["aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa"]);
-    expect(resolved.rehabSchedule?.name).toBe("Elbow");
+    expect(resolved.rehabSchedule?.protocols[0]!.name).toBe("Elbow");
   });
 
   it("sees a rename as a change so it reaches the plan", () => {

@@ -52,7 +52,11 @@ import {
 import { expandPrescriptionSets } from "@/lib/planner/expand-prescription-sets";
 import { embedRehabPrescription } from "./rehab-composition";
 import { applyRehabLinks, rehabSeriesKey } from "./rehab-links";
-import { weeklyRehabPlan, type RehabSchedule } from "./rehab-schedule";
+import {
+  weeklyRehabPlan,
+  type RehabSchedule,
+  type WeeklyRehabProtocol,
+} from "./rehab-schedule";
 import type { SessionLink } from "./session-links";
 
 export interface MaterializeOptions {
@@ -506,9 +510,12 @@ export function materializeProgram<I>(
     activationProtocols.map((protocol) => [protocol.id, protocol]),
   );
   if (
-    (weeklyRehab.items.length > 0 || activationProtocols.length > 0) &&
+    (weeklyRehab.protocols.length > 0 || activationProtocols.length > 0) &&
     maxEmittedWeek >= 0
   ) {
+    const weeklyProtocolById = new Map(
+      weeklyRehab.protocols.map((protocol) => [protocol.localProtocolId, protocol]),
+    );
     const takenSlots = new Set(
       sessions.map(
         (session) =>
@@ -519,32 +526,47 @@ export function materializeProgram<I>(
       const rehabAssignments =
         opts.customization == null || isTbCustomizationV1(opts.customization)
           ? (() => {
-              if (weeklyRehab.items.length === 0) return [];
+              if (weeklyRehab.protocols.length === 0) return [];
+              const assignment = (
+                protocol: WeeklyRehabProtocol,
+                day: number,
+                host: MaterializedSession | undefined,
+              ) => ({
+                day,
+                protocolId: protocol.protocolId,
+                // Provenance may be null, but links always need a stable key —
+                // the same synthetic id the legacy shapes normalise to.
+                linkProtocolId: protocol.localProtocolId,
+                protocolName: protocol.protocolName,
+                items: protocol.items,
+                host,
+              });
+              const out: ReturnType<typeof assignment>[] = [];
+              const claimedDays = new Set<number>();
               // A session the user attached rehab to is the host, whatever its
               // role that week — a peak/test week reuses the same series key,
               // and dropping to a role check would make rehab vanish there.
-              const hosts = new Map<number, MaterializedSession>();
               for (const session of sessions) {
                 if (session.weekIndex !== weekIndex) continue;
                 const key = seriesKeyOf.get(session);
-                if (!key || !weeklyRehab.series.includes(key)) continue;
-                if (!hosts.has(session.dayIndex)) hosts.set(session.dayIndex, session);
+                if (!key) continue;
+                const localId = weeklyRehab.bySeries.get(key);
+                if (!localId) continue;
+                const protocol = weeklyProtocolById.get(localId);
+                if (!protocol) continue;
+                out.push(assignment(protocol, session.dayIndex, session));
+                claimedDays.add(session.dayIndex);
               }
-              // One assignment per day: a standalone day that also holds an
-              // attached session would otherwise prescribe the protocol twice.
-              const days = [
-                ...new Set([...weeklyRehab.days, ...hosts.keys()]),
-              ].sort((left, right) => left - right);
-              return days.map((day) => ({
-                day,
-                protocolId: weeklyRehab.protocolId,
-                // Provenance may be null, but links always need a stable key —
-                // the same synthetic id the legacy shapes normalise to.
-                linkProtocolId: weeklyRehab.localProtocolId,
-                protocolName: weeklyRehab.protocolName,
-                items: weeklyRehab.items,
-                host: hosts.get(day),
-              }));
+              // A standalone day that already holds an attached session would
+              // otherwise prescribe rehab twice on the same day.
+              for (const [day, localId] of weeklyRehab.byDay) {
+                if (claimedDays.has(day)) continue;
+                const protocol = weeklyProtocolById.get(localId);
+                if (!protocol) continue;
+                out.push(assignment(protocol, day, undefined));
+                claimedDays.add(day);
+              }
+              return out.sort((left, right) => left.day - right.day);
             })()
           : opts.customization &&
               isTbActivationCustomization(opts.customization)

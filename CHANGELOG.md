@@ -7,9 +7,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
 ### Rehab on a Tactical Barbell training day (ADR 0078)
 - Each session in the program wizard's "Each session" list now has **+ Add
   rehab**, beside + Add accessory. The protocol runs as that workout's warm-up
-  section instead of taking over a whole day.
-- Rehab-only days still work exactly as before: set a day to Rehab in the
-  schedule step.
+  section instead of taking over a whole day, and each session picks its own —
+  knee rehab on squat day, shoulder rehab on press day.
+- Rehab-only days still work as before: set a day to Rehab in the schedule step,
+  then choose which protocol it runs.
 - Rehab no longer needs "Customize template" — a canonical Operator / Fighter /
   Zulu block can carry it.
 - Rehab attaches to the SESSION, so moving that session to another weekday in

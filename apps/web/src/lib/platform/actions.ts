@@ -537,11 +537,11 @@ export async function createProgramInstance(
   // SILENTLY — the lifter would deploy, and the superset would simply not be
   // there. When the wizard sends the movement list too, we can say so instead.
   //
-  // Rehab series MUST be listed here as well. `findOrphanedLinkMembers` reads
-  // an unknown key as "no movements available", so omitting them would reject
-  // every rehab link as orphaned rather than validating it.
+  // Rehab series are validated separately below: they exist with or without a
+  // customization, so they cannot live inside this V1-only branch. Echo them
+  // back here so they pass — `findOrphanedLinkMembers` reads an unknown key as
+  // "no movements available" and would condemn every rehab link as orphaned.
   if (sessionLinks && customization && isTbCustomizationV1(customization)) {
-    const weeklyRehab = weeklyRehabPlan(customization, rehabSchedule);
     const orphans = findOrphanedLinkMembers(
       sessionLinks,
       Object.fromEntries([
@@ -551,10 +551,9 @@ export async function createProgramInstance(
           // against — so a link survives swapping the exercise in that slot.
           movements.map((movement) => movement.sourceMovement ?? movement.movement),
         ]),
-        [
-          rehabSeriesKey(weeklyRehab.localProtocolId),
-          weeklyRehab.items.map((item) => item.movementId),
-        ],
+        ...Object.entries(sessionLinks.bySeries)
+          .filter(([key]) => key.startsWith("rehab."))
+          .map(([key, links]) => [key, links.flatMap((link) => link.members)]),
       ]),
     );
     if (orphans.length > 0) {
@@ -566,38 +565,41 @@ export async function createProgramInstance(
     }
   }
 
-  // A weekly block can carry rehab with no customization at all (the envelope
-  // is independent of it), so its rehab series is validated on its own rather
-  // than inside the V1 branch above. A `rehab.*` key naming anything but the
-  // attached protocol would silently attach to whatever later takes that id.
+  // A weekly block can carry rehab with no customization at all — the envelope
+  // is independent of it — so its rehab series are validated on their own. A
+  // `rehab.*` key naming a protocol the block no longer runs would silently
+  // attach to whatever later takes that id.
   if (
     sessionLinks &&
     programId === "tactical-barbell" &&
     (customization == null || isTbCustomizationV1(customization))
   ) {
     const weeklyRehab = weeklyRehabPlan(customization, rehabSchedule);
-    const expected = rehabSeriesKey(weeklyRehab.localProtocolId);
+    const known = new Map(
+      weeklyRehab.protocols.map((protocol) => [
+        rehabSeriesKey(protocol.localProtocolId),
+        protocol.items.map((item) => item.movementId),
+      ]),
+    );
     for (const seriesKey of Object.keys(sessionLinks.bySeries)) {
       if (!seriesKey.startsWith("rehab.")) continue;
-      if (seriesKey === expected && weeklyRehab.items.length > 0) continue;
+      if (known.has(seriesKey)) continue;
       return {
         ok: false,
         error:
           "A linked superset belongs to a rehab protocol that no longer exists. Remove the link and re-create it.",
       };
     }
-    if (weeklyRehab.items.length > 0 && customization == null) {
-      const orphans = findOrphanedLinkMembers(sessionLinks, {
-        [expected]: weeklyRehab.items.map((item) => item.movementId),
-      });
-      const rehabOrphans = orphans.filter((entry) => entry.seriesKey === expected);
-      if (rehabOrphans.length > 0) {
-        const count = rehabOrphans.reduce((n, o) => n + o.missing.length, 0);
-        return {
-          ok: false,
-          error: `A linked superset references ${count === 1 ? "a movement" : "movements"} that aren't in that rehab protocol anymore. Remove the link or add the ${count === 1 ? "movement" : "movements"} back.`,
-        };
-      }
+    const rehabOrphans = findOrphanedLinkMembers(
+      sessionLinks,
+      Object.fromEntries(known),
+    ).filter((entry) => entry.seriesKey.startsWith("rehab."));
+    if (rehabOrphans.length > 0) {
+      const count = rehabOrphans.reduce((n, o) => n + o.missing.length, 0);
+      return {
+        ok: false,
+        error: `A linked superset references ${count === 1 ? "a movement" : "movements"} that aren't in that rehab protocol anymore. Remove the link or add the ${count === 1 ? "movement" : "movements"} back.`,
+      };
     }
   }
 
@@ -1437,7 +1439,7 @@ async function computeForeignWrite(
   const weeklyRehabItems = weeklyRehabPlan(
     customization && isTbCustomizationV1(customization) ? customization : undefined,
     rehabSchedule,
-  ).items;
+  ).protocols.flatMap((protocol) => protocol.items);
   if (customization || weeklyRehabItems.length > 0) {
     const limitations = await readLimitationsContext(supabase, user.id);
     const catalog = customizationCatalog;

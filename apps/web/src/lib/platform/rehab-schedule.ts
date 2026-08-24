@@ -1,11 +1,12 @@
 /**
- * Where a weekly Tactical Barbell block runs its rehab protocol.
+ * Where a weekly Tactical Barbell block runs its rehab protocols.
  *
  * ## Why this is not in the customization blob
  *
  * `tbCustomizationV1Schema` encodes rehab as a DAY TYPE — a weekday is strength
  * OR conditioning OR rehab OR rest — so "rehab as the warm-up section of a
- * strength day" is unrepresentable there. The engine has always supported it
+ * strength day" is unrepresentable there, and it carries exactly one unnamed
+ * item list. The engine has always supported the placement
  * (`materializeProgram` embeds a same-day rehab prescription into the strength
  * session, which is how Activation does it); only the weekly blob could not say
  * it.
@@ -19,7 +20,7 @@
  * predates it ignores the key and the customization still parses; the worst
  * case is rehab missing, never a lost block.
  *
- * ## Why placement is a SERIES KEY, not a weekday
+ * ## Why a session is addressed by SERIES KEY, not by weekday
  *
  * The user attaches rehab to a SESSION ("Day 1 · A"), on the loadout step —
  * which runs before the schedule step, so its weekday is not settled yet.
@@ -35,11 +36,12 @@
  *
  * ## Identity
  *
- * `localProtocolId` is the id everything else keys off: `rehab.<localId>` link
- * series, the `program_rehab_bindings` row, and — for a named protocol — the
- * `rehabSourceRef` that deleted-rehab tombstones reference. It is the library
- * row's uuid for a new attachment and `protocol-1` for a block converted from
- * the legacy shape, whose refs must not move underneath its own tombstones.
+ * A protocol's `id` here is the LOCAL protocol id — what everything else keys
+ * off: the `rehab.<localId>` link series, the `program_rehab_bindings` row, and
+ * (for a named protocol) the `rehabSourceRef` that deleted-rehab tombstones
+ * reference. It is the library row's uuid for a new attachment and `protocol-1`
+ * for a block converted from the legacy shape, whose refs must not move
+ * underneath its own tombstones.
  */
 import { z } from "zod";
 
@@ -68,38 +70,96 @@ const rehabScheduleItemSchema = z
     message: "Each rehab movement needs reps or a hold time.",
   });
 
+const rehabScheduleProtocolSchema = z
+  .object({
+    /** LOCAL protocol id: a library uuid, or `protocol-1` for a converted block. */
+    id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
+    name: z.string().trim().min(1).max(120),
+    items: z.array(rehabScheduleItemSchema).min(1).max(20),
+  })
+  .strict();
+
 export const rehabScheduleSchema = z
   .object({
     version: z.literal(REHAB_SCHEDULE_VERSION),
-    localProtocolId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
-    name: z.string().trim().min(1).max(120),
-    items: z.array(rehabScheduleItemSchema).min(1).max(20),
-    /** Series keys of the sessions that carry rehab as their warm-up section. */
-    series: z.array(z.string().trim().min(1).max(120)).max(14).default([]),
-    /** Weekdays (0 = Mon … 6 = Sun) that run rehab as a session of its own. */
-    days: z.array(z.number().int().min(0).max(6)).max(7).default([]),
+    protocols: z.array(rehabScheduleProtocolSchema).min(1).max(8),
+    /** Sessions that carry a protocol as their warm-up section. */
+    series: z
+      .array(
+        z
+          .object({
+            key: z.string().trim().min(1).max(120),
+            protocolId: z.string().min(1).max(64),
+          })
+          .strict(),
+      )
+      .max(14)
+      .default([]),
+    /** Weekdays (0 = Mon … 6 = Sun) that run a protocol as a session of their own. */
+    days: z
+      .array(
+        z
+          .object({
+            day: z.number().int().min(0).max(6),
+            protocolId: z.string().min(1).max(64),
+          })
+          .strict(),
+      )
+      .max(7)
+      .default([]),
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (new Set(value.days).size !== value.days.length) {
+    const ids = value.protocols.map((protocol) => protocol.id);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["protocols"],
+        message: "Rehab protocol ids must be unique.",
+      });
+    }
+    const days = value.days.map((entry) => entry.day);
+    if (new Set(days).size !== days.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["days"],
-        message: "Rehab days must be distinct.",
+        message: "Each day can run at most one rehab protocol.",
       });
     }
-    if (new Set(value.series).size !== value.series.length) {
+    const keys = value.series.map((entry) => entry.key);
+    if (new Set(keys).size !== keys.length) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["series"],
-        message: "Each session can carry rehab at most once.",
+        message: "Each session can carry at most one rehab protocol.",
       });
     }
     if (value.days.length === 0 && value.series.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Choose where this rehab protocol runs.",
+        message: "Choose where these rehab protocols run.",
       });
+    }
+    // A placement naming a protocol that isn't here resolves to nothing at
+    // materialisation — silently, because the engine simply finds no items.
+    const known = new Set(ids);
+    for (const [index, entry] of value.series.entries()) {
+      if (!known.has(entry.protocolId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["series", index],
+          message: `Rehab protocol '${entry.protocolId}' does not exist.`,
+        });
+      }
+    }
+    for (const [index, entry] of value.days.entries()) {
+      if (!known.has(entry.protocolId)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["days", index],
+          message: `Rehab protocol '${entry.protocolId}' does not exist.`,
+        });
+      }
     }
   });
 
@@ -119,14 +179,7 @@ export function parseStoredRehabSchedule(
   return result.success ? result.data : undefined;
 }
 
-/** Weekly-TB rehab as every reader needs it: what runs, and where. */
-export type WeeklyRehabPlan = {
-  /** Empty when the block has no rehab. */
-  items: readonly RehabScheduleItem[];
-  /** Weekdays running rehab as a session of its own. */
-  days: readonly number[];
-  /** Series keys whose session carries rehab. */
-  series: readonly string[];
+export type WeeklyRehabProtocol = {
   localProtocolId: string;
   /**
    * Provenance stamped onto every materialised rehab item. `null` for a block
@@ -136,15 +189,23 @@ export type WeeklyRehabPlan = {
   protocolId: string | null;
   /** What the plan calls this rehab section. */
   protocolName: string;
+  items: readonly RehabScheduleItem[];
+};
+
+/** Weekly-TB rehab as every reader needs it: what runs, and where. */
+export type WeeklyRehabPlan = {
+  /** Empty when the block has no rehab. */
+  protocols: readonly WeeklyRehabProtocol[];
+  /** Series key → local protocol id. */
+  bySeries: ReadonlyMap<string, string>;
+  /** Weekday → local protocol id. */
+  byDay: ReadonlyMap<number, string>;
 };
 
 const EMPTY_PLAN: WeeklyRehabPlan = {
-  items: [],
-  days: [],
-  series: [],
-  localProtocolId: LEGACY_REHAB_PROTOCOL_ID,
-  protocolId: null,
-  protocolName: "Rehab",
+  protocols: [],
+  bySeries: new Map(),
+  byDay: new Map(),
 };
 
 /**
@@ -160,30 +221,42 @@ export function weeklyRehabPlan(
   schedule: RehabSchedule | undefined,
 ): WeeklyRehabPlan {
   if (schedule) {
-    const legacy = schedule.localProtocolId === LEGACY_REHAB_PROTOCOL_ID;
     return {
-      items: schedule.items,
-      days: schedule.days,
-      series: schedule.series,
-      localProtocolId: schedule.localProtocolId,
-      // Same rule the Activation path uses: the synthetic legacy id carries no
-      // provenance, so a block converted from the old shape keeps emitting
-      // `rehab-w<week>-d<day>` and its tombstones keep matching.
-      protocolId: legacy ? null : schedule.localProtocolId,
-      protocolName: legacy ? "Rehab" : schedule.name,
+      protocols: schedule.protocols.map((protocol) => {
+        // Same rule the Activation path uses: the synthetic legacy id carries
+        // no provenance, so a block converted from the old shape keeps emitting
+        // `rehab-w<week>-d<day>` and its tombstones keep matching.
+        const legacy = protocol.id === LEGACY_REHAB_PROTOCOL_ID;
+        return {
+          localProtocolId: protocol.id,
+          protocolId: legacy ? null : protocol.id,
+          protocolName: legacy ? "Rehab" : protocol.name,
+          items: protocol.items,
+        };
+      }),
+      bySeries: new Map(
+        schedule.series.map((entry) => [entry.key, entry.protocolId]),
+      ),
+      byDay: new Map(schedule.days.map((entry) => [entry.day, entry.protocolId])),
     };
   }
   if (!customization || !isTbCustomizationV1(customization)) return EMPTY_PLAN;
   const items = customization.rehab?.items ?? [];
   if (items.length === 0) return EMPTY_PLAN;
   return {
-    items,
-    days: customization.dayTypes.flatMap((type, day) =>
-      type === "rehab" ? [day] : [],
+    protocols: [
+      {
+        localProtocolId: LEGACY_REHAB_PROTOCOL_ID,
+        protocolId: null,
+        protocolName: "Rehab",
+        items,
+      },
+    ],
+    bySeries: new Map(),
+    byDay: new Map(
+      customization.dayTypes.flatMap((type, day) =>
+        type === "rehab" ? [[day, LEGACY_REHAB_PROTOCOL_ID] as const] : [],
+      ),
     ),
-    series: [],
-    localProtocolId: LEGACY_REHAB_PROTOCOL_ID,
-    protocolId: null,
-    protocolName: "Rehab",
   };
 }

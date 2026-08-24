@@ -916,6 +916,8 @@ Placement now lives in a sibling envelope on the wizard payload rather than insi
 
 A session is addressed by its SERIES KEY, not by a weekday. The user attaches rehab a step before the schedule is set, and reproducing the engine's seating rule in the wizard is wrong the moment a template carries a conditioning or test session — the wizard's series list filters those out while the engine counts them. Resolving the key at materialisation is exact, and rehab follows its session when the schedule moves. It resolves against the session with that key whatever its role, or rehab would vanish in a peak week — the week a lifter is most loaded.
 
+A weekly block runs several protocols, one per placement — knee rehab on squat day, shoulder rehab on press day. Which protocols a block is attached to is DERIVED from where they run rather than tracked beside it: one chosen and then taken off every session is not attached, so its supersets and its library binding go with it. Keeping them would fail the deploy for a protocol with supersets, and leave a block claiming rehab it never runs for one without.
+
 Two pre-existing bugs surfaced in the same path and are fixed here. The Settings sync path replaced a program's protocol bindings with an empty list, so the first edit synced and no later one ever did. And a newly deployed weekly block bound its protocol under the library uuid but materialised its links under the synthetic legacy id, so rehab supersets were dropped and Settings edits never reached it.
 
 See ADR 0078.

@@ -1,5 +1,4 @@
 # ADR 0078 — Weekly Tactical Barbell rehab placement is a sibling envelope, addressed by session
-
 Status: Accepted (2026-08-24)
 Related: ADR 0071 (user-authored session links), ADR 0073 (rehab protocol library),
 migration 0127 (embed same-day rehab)
@@ -26,7 +25,12 @@ the existing `+ Add accessory` and `+ Superset more lifts`.
 **1. Placement and content live in a sibling envelope, `setup_input.rehabSchedule`.**
 
 ```
-rehabSchedule: { version: 1, localProtocolId, name, items[], series[], days[] }
+rehabSchedule: {
+  version: 1,
+  protocols: [{ id, name, items[] }],   // id is the LOCAL protocol id
+  series:    [{ key, protocolId }],     // key is the engine's session series key
+  days:      [{ day, protocolId }],
+}
 ```
 
 `tbCustomizationV1Schema` is untouched. Extending it was rejected for the reason
@@ -58,30 +62,40 @@ A peak/test week reuses the same key, so a `role === "strength"` filter would
 make rehab vanish in exactly the week a lifter is most loaded.
 
 `days` stays weekday-indexed because a standalone rehab day has no session to
-hang off. A day named by both is prescribed once.
+hang off. A day named by both is prescribed once, the session winning.
 
-**3. `weeklyRehabPlan()` is the only reader.** Envelope first; without one, a
+**3. A weekly block runs SEVERAL protocols, one per placement.** Knee rehab on
+squat day and shoulder rehab on press day is the case that asked for this, and
+it is what Activation has always allowed. The cross-validation mirrors
+`tbActivationCustomizationV3Schema`: ids unique, every placement naming a
+protocol the envelope carries, at most one protocol per session and per day.
+
+**4. `weeklyRehabPlan()` is the only reader.** Envelope first; without one, a
 block resolves to precisely what it did before — its own `rehab.items` on the
 weekdays its `dayTypes` marks. A deployed block is unaffected until the wizard
 next writes it (AGENTS.md §6.9).
 
-**4. Provenance follows the Activation rule.** `localProtocolId` is the library
-row's uuid for a new attachment and `protocol-1` for a block converted from the
-legacy shape. The synthetic legacy id carries NO provenance, so a converted
-block keeps emitting `rehab-w<week>-d<day>` and the tombstones for rehab the
-user already deleted keep matching. A uuid carries its own id and name.
+**5. Provenance follows the Activation rule.** A protocol's local id is the
+library row's uuid for a new attachment and `protocol-1` for a block converted
+from the legacy shape. The synthetic legacy id carries NO provenance, so a
+converted block keeps emitting `rehab-w<week>-d<day>` and the tombstones for
+rehab the user already deleted keep matching. A uuid carries its own id and
+name, and since a day runs one protocol those refs cannot collide.
 
-**5. Rehab no longer requires the "Customize template" opt-in.** The envelope is
+**6. Rehab no longer requires the "Customize template" opt-in.** The envelope is
 independent of the customization, so a canonical Zulu block can carry rehab —
 the same freedom ADR 0071 gave the links, for the same reason.
 
 ## Consequences
 
-- A weekly block can run its protocol on any mix of its sessions and its rest
-  days. Attaching it to a session embeds it as that workout's warm-up section;
-  a conditioning day gets its own `pm` session; a rest day a `single` one.
-- The weekly shape still runs ONE protocol. Multiple named protocols per weekly
-  block is a separate decision.
+- A weekly block can run rehab on any mix of its sessions and its rest days,
+  with a DIFFERENT protocol per placement. Attaching one to a session embeds it
+  as that workout's warm-up section; a conditioning day gets its own `pm`
+  session; a rest day a `single` one.
+- The set of protocols a weekly block runs is derived from its placements. One
+  chosen and then taken off every session is not attached, so its links and its
+  binding go with it — otherwise the deploy fails for a protocol with supersets
+  and the block claims rehab it never runs for one without.
 - `resolveRehabLibrary` and friends take a `RehabSource` (`{customization?,
   rehabSchedule?}`) so a Settings edit reaches a block through either home.
   Sync no longer requires a customization to exist.
