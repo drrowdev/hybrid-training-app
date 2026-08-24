@@ -109,6 +109,15 @@ export type MovementCardListProps = {
    */
   bodyweightMovementIds?: ReadonlyArray<string>;
   /**
+   * Movement ids anchored on a SYSTEM load — a max that counts bodyweight plus
+   * belt (weighted pull-ups / dips). Forwarded so the focus view subtracts
+   * bodyweight from a percentage of that max instead of putting the whole total
+   * on the belt.
+   */
+  systemLoadMovementIds?: ReadonlyArray<string>;
+  /** The lifter's bodyweight (kg) — resolves the loads above. */
+  bodyweightKg?: number | null;
+  /**
    * Equipment + region per movementId, used to cluster accessory cards by
    * "station" (smart ordering). Omitted ⇒ keep the engine's pass order.
    */
@@ -146,12 +155,18 @@ export function MovementCardList({
   bwGateStateByFamily,
   resolvedFreestyle,
   bodyweightMovementIds,
+  systemLoadMovementIds,
+  bodyweightKg,
   accessoryMetaById,
   customAccessoryOrder,
 }: MovementCardListProps) {
   const bodyweightIdSet = useMemo(
     () => new Set(bodyweightMovementIds ?? []),
     [bodyweightMovementIds],
+  );
+  const systemLoadIdSet = useMemo(
+    () => new Set(systemLoadMovementIds ?? []),
+    [systemLoadMovementIds],
   );
   // movementId → catalog equipment tag. Sizes the ± weight stepper inside the
   // focus view (dumbbells step 1 kg, plates 2.5 kg) — see load-increment.ts.
@@ -566,6 +581,8 @@ export function MovementCardList({
           preferStandardLbPlates={preferStandardLbPlates}
           bwGateStateByFamily={bwGateStateByFamily}
           bodyweightMovementIds={bodyweightIdSet}
+          systemLoadMovementIds={systemLoadIdSet}
+          bodyweightKg={bodyweightKg}
           equipmentByMovementId={equipmentTagById}
         />
 
@@ -635,6 +652,8 @@ export function MovementCardList({
         preferStandardLbPlates={preferStandardLbPlates}
         bwGateStateByFamily={bwGateStateByFamily}
         bodyweightCapable={bodyweightIdSet.has(group.movementId)}
+        isSystemLoad={systemLoadIdSet.has(group.movementId)}
+        bodyweightKg={bodyweightKg}
         equipmentTag={accessoryMetaById?.[group.movementId]?.equipment ?? null}
         {...(dragHandle ? { dragHandle } : {})}
       />
@@ -864,6 +883,10 @@ type PrescribedCardProps = {
     >
   >;
   bodyweightCapable?: boolean;
+  /** This movement's max includes bodyweight (weighted pull-ups / dips). */
+  isSystemLoad?: boolean;
+  /** The lifter's bodyweight (kg) — resolves a system-load percentage. */
+  bodyweightKg?: number | null;
   /** Catalog `movements.equipment` tag — sizes the ± weight stepper. */
   equipmentTag?: string | null;
   dragHandle?: React.ReactNode;
@@ -921,6 +944,8 @@ const PrescribedCard = memo(function PrescribedCard(props: PrescribedCardProps) 
       persistKeyPrefix={`mc:${props.sessionId}`}
       bwGateStateByFamily={props.bwGateStateByFamily}
       bodyweightCapable={props.bodyweightCapable}
+      isSystemLoad={props.isSystemLoad}
+      bodyweightKg={props.bodyweightKg}
       equipmentTag={props.equipmentTag}
       dragHandle={props.dragHandle}
     />
@@ -951,6 +976,8 @@ function samePrescribedCardProps(
     previous.preferStandardLbPlates !== next.preferStandardLbPlates ||
     previous.bwGateStateByFamily !== next.bwGateStateByFamily ||
     previous.bodyweightCapable !== next.bodyweightCapable ||
+    previous.isSystemLoad !== next.isSystemLoad ||
+    previous.bodyweightKg !== next.bodyweightKg ||
     previous.equipmentTag !== next.equipmentTag ||
     Boolean(previous.dragHandle) !== Boolean(next.dragHandle)
   ) {

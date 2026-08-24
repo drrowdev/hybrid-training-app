@@ -19,6 +19,8 @@
  * accepts — engines never auto-apply a TM bump or schedule a deload.
  */
 
+import { addedLoadFromSystemLoad } from "@hta/domain";
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Prescription — the common currency every program emits
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,6 +87,13 @@ export interface PrescribedItem {
   repsMax?: number;
   /** Loaded working weight (kg), when applicable. */
   weightKg?: number;
+  /**
+   * True when this item's max — and therefore `weightKg` — belongs to a SYSTEM
+   * load movement: the 1RM counts bodyweight plus belt (weighted pull-ups /
+   * dips), and `weightKg` is the ADDED portion only. Makes `weightKg: 0`
+   * meaningful ("bodyweight") rather than "no load resolved".
+   */
+  systemLoad?: boolean;
   /** Fraction of the relevant training max, when %-based. */
   percentOfTm?: number;
   /** As-many-reps-as-possible / PR set. */
@@ -319,6 +328,17 @@ export interface PlatformContext {
   oneRepMaxes: Record<string, number>;
   /** Plate increment for rounding working weights (kg). */
   roundingKg: number;
+  /**
+   * The lifter's current bodyweight (kg), when they have recorded one.
+   *
+   * Required by movements whose 1RM is a SYSTEM LOAD — bodyweight plus whatever
+   * hangs off the belt (weighted pull-ups, weighted dips). A percentage of that
+   * 1RM is a total, so the load to actually add is `total − bodyweight`, and
+   * without this number an engine cannot resolve one at all. ABSENT means "not
+   * recorded": engines must leave the load unresolved rather than guess, or a
+   * 110 kg system max becomes 77 kg on a belt.
+   */
+  bodyweightKg?: number;
   /** Recent logged sessions, most recent first (for progression heuristics). */
   recentLogs?: LoggedSession[];
   /** Movement/region keys currently under an active injury limitation. */
@@ -645,3 +665,61 @@ export function buildGlobalWarmupItems(args: {
   }
   return items;
 }
+
+/**
+ * Build the warm-up ramp for a SYSTEM-LOAD movement — one whose 1RM counts
+ * bodyweight plus whatever hangs off the belt (weighted pull-ups / dips).
+ *
+ * The ramp itself is the shared ladder, applied to the TOTAL system load, so a
+ * warm-up is a real fraction of the effort the top set demands. Each step is
+ * then converted into the only part the lifter can actually change — the added
+ * load — by taking bodyweight off. Steps that land at or under bodyweight are a
+ * plain bodyweight set (0 kg added), and consecutive steps that resolve to the
+ * SAME added load collapse into one: for most lifters the bottom of the ladder
+ * is under bodyweight, and prescribing the identical set twice is noise.
+ *
+ * The ramp lives in {@link buildGlobalWarmupItems}' constants, not restated
+ * here (plan §6.9), so a lifter's own ladder still wins via `ctx.warmupRamp`.
+ */
+export function buildSystemLoadWarmupItems(args: {
+  name: string;
+  movementId?: string;
+  /** The working set's TOTAL system load — bodyweight + added (kg). */
+  workingSystemLoadKg: number;
+  bodyweightKg: number;
+  roundingKg: number;
+  ramp?: WarmupRamp;
+}): PrescribedItem[] {
+  const { name, movementId, workingSystemLoadKg, bodyweightKg, roundingKg } = args;
+  const requested = args.ramp ?? GLOBAL_WARMUP_RAMP;
+  const ramp =
+    (requested.anchor ?? "top_set") === "training_max" ? GLOBAL_WARMUP_RAMP : requested;
+  const items: PrescribedItem[] = [];
+  let previousAddedKg: number | null = null;
+  for (let i = 0; i < ramp.percents.length; i++) {
+    const systemStepKg = workingSystemLoadKg * ramp.percents[i]!;
+    const addedKg = addedLoadFromSystemLoad(systemStepKg, bodyweightKg, (kg) =>
+      floorTo(kg, roundingKg),
+    );
+    if (previousAddedKg != null && addedKg === previousAddedKg) continue;
+    previousAddedKg = addedKg;
+    items.push({
+      kind: "warmup",
+      name,
+      ...(movementId != null ? { movementId } : {}),
+      sets: 1,
+      reps: ramp.reps[i] ?? 5,
+      weightKg: addedKg,
+      ...(addedKg === 0 ? { note: "bodyweight" } : {}),
+      systemLoad: true,
+    });
+  }
+  return items;
+}
+
+/**
+ * The added load for a system-load movement. Re-exported from `@hta/domain` so
+ * an engine importing the platform seam gets the conversion without reaching
+ * past it — the maths itself has exactly one home.
+ */
+export { addedLoadFromSystemLoad } from "@hta/domain";

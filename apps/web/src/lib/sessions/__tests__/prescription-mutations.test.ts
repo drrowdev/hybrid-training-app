@@ -104,6 +104,21 @@ describe("applyPrescriptionSwap — Phase 2 A2", () => {
     expect(next.items).not.toBe(base.items);
   });
 
+  it("drops the bodyweight-inclusive anchor when the movement leaves", () => {
+    // `systemLoad` says "this percentage counts bodyweight". Carried onto a
+    // barbell replacement it would subtract the lifter's bodyweight from a row.
+    const pullup = {
+      ...base,
+      items: [{ ...base.items[0]!, systemLoad: true, movementId: "mov-wpu" }],
+    };
+    const next = applyPrescriptionSwap(pullup, {
+      itemIndex: 0,
+      newMovement: { id: "mov-row", slug: "bb-row-overhand", displayName: "Barbell Row" },
+    });
+    expect(next.items[0]!.systemLoad).toBeUndefined();
+    expect(next.items[0]!.percentTm).toBe(80);
+  });
+
   it("throws RangeError on out-of-range index", () => {
     expect(() =>
       applyPrescriptionSwap(base, {

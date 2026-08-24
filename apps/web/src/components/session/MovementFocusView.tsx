@@ -27,7 +27,12 @@ import { restSecondsForSet } from "@/lib/sessions/rest";
 import { resolveBarWeightKg } from "@/lib/sessions/bar-kind";
 import { resolveLoadIncrement } from "@/lib/sessions/load-increment";
 import { roundWarmupLoadKg } from "@/lib/planner/warmups";
-import { resolvePrescriptionSetWork, resolvePrescribedSnapshot, isRehabItem } from "@hta/domain";
+import {
+  resolvePrescriptionSetWork,
+  resolvePrescribedSnapshot,
+  resolveTargetLoadKg,
+  isRehabItem,
+} from "@hta/domain";
 import { SET_KIND_TO_LOG as SHARED_SET_KIND_TO_LOG } from "@/lib/sessions/set-kind";
 import { hapticTick } from "@/lib/feedback";
 import { useUnits } from "@/lib/units/context";
@@ -74,6 +79,17 @@ export type FocusViewProps = {
   sessionId: string;
   group: MovementGroup;
   tmKg: number | undefined;
+  /**
+   * The lifter's bodyweight (kg). Required to resolve a load for a movement
+   * whose max includes bodyweight — see `isSystemLoad`.
+   */
+  bodyweightKg?: number | undefined;
+  /**
+   * True when this movement's max counts bodyweight plus belt (weighted
+   * pull-ups / dips), so a percentage of it is a total and the prescribed load
+   * is that total minus bodyweight.
+   */
+  isSystemLoad?: boolean;
   /** Saved 1RM from training_maxes.one_rm_kg. Drives TM-anchored PR flash. */
   oneRmKg: number | undefined;
   loggedItemIndices: ReadonlySet<number>;
@@ -213,6 +229,8 @@ export function MovementFocusView({
   sessionId,
   group,
   tmKg,
+  bodyweightKg,
+  isSystemLoad = false,
   oneRmKg,
   loggedItemIndices,
   skippedItemIndices,
@@ -395,20 +413,21 @@ export function MovementFocusView({
     [barWeightKg, plateInventory],
   );
 
-  const targetWeightForItem = useCallback((item: PrescriptionItem): number | null => {
-    if (item.percentTm != null && tmKg) {
-      const rawKg = (tmKg * item.percentTm) / 100;
-      return item.kind === "warmup"
-        ? roundWarmupLoadKg(rawKg, warmupLoadOptions)
-        : roundToPlate(rawKg);
-    }
-    if (item.targetWeightKg != null && item.targetWeightKg > 0) {
-      return item.kind === "warmup"
-        ? roundWarmupLoadKg(item.targetWeightKg, warmupLoadOptions)
-        : roundToPlate(item.targetWeightKg);
-    }
-    return null;
-  }, [tmKg, warmupLoadOptions]);
+  const targetWeightForItem = useCallback(
+    (item: PrescriptionItem): number | null => {
+      const systemLoad = isSystemLoad || item.systemLoad === true;
+      const roundKg = (kg: number) =>
+        item.kind === "warmup" ? roundWarmupLoadKg(kg, warmupLoadOptions) : roundToPlate(kg);
+      return resolveTargetLoadKg(item, {
+        tmKg: tmKg ?? null,
+        ...(systemLoad ? { isSystemLoad: true } : {}),
+        bodyweightKg: bodyweightKg ?? null,
+        roundKg,
+        roundAbsoluteKg: roundKg,
+      });
+    },
+    [bodyweightKg, isSystemLoad, tmKg, warmupLoadOptions],
+  );
 
   // Target weight / reps derived from the prescription + TM.
   // Resolution order, most to least authoritative:
@@ -833,9 +852,13 @@ export function MovementFocusView({
     // no PR can fire — we don't celebrate against a missing claim.
     // Carries / isometric holds don't trigger TM-anchored PRs (no rep
     // count to anchor an e1RM estimate against).
+    //
+    // Nor does a system-load movement: the logged weight is what hangs off the
+    // belt, the saved max counts bodyweight too, and comparing the two produces
+    // an e1RM that means nothing and a PR that can never fire.
     const setKindForPr = SET_KIND_TO_LOG[activeItem.kind] ?? "main";
     const flash =
-      itemKind === "default"
+      itemKind === "default" && !isSystemLoad
         ? detectTmAnchoredPr({
             weightKg: weight,
             reps,

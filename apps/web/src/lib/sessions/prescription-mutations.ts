@@ -72,7 +72,7 @@ function applySwapToItem(
   // If we've already swapped this item, keep the original-original
   // recorded — chaining swaps shouldn't lose that lineage.
   const swappedFrom: SwappedFromMeta = prevSwappedFrom ?? leaving;
-  return {
+  const next: PrescriptionItem = {
     ...orig,
     movementId: input.newMovement.id,
     movementSlug: input.newMovement.slug,
@@ -84,6 +84,11 @@ function applySwapToItem(
       swappedAt: input.swappedAt ?? new Date().toISOString(),
     },
   };
+  // "This percentage counts bodyweight" describes the movement that just left.
+  // Kept across the swap it would take bodyweight off a barbell row; the
+  // replacement's own status is read from the catalog.
+  delete next.systemLoad;
+  return next;
 }
 
 export type MovementMutationScope = {
@@ -484,6 +489,8 @@ function rewriteWarmupSlot(
     meta: { ...((slot.meta ?? {}) as Record<string, unknown>), ...meta },
   };
   delete next.targetWeightKg;
+  // "This percentage counts bodyweight" is a property of the old movement.
+  delete next.systemLoad;
   if (generated.percentTm != null) {
     next.percentTm = generated.percentTm;
     next.intensityLabel = generated.intensityLabel;
@@ -584,6 +591,10 @@ export function swapMovementInPrescription(
   // Rehab / external-cardio items are the exception: their load is the user's
   // own number with no %TM fallback, so clearing it would silently delete the
   // prescription rather than re-derive it (DC-K4).
+  //
+  // `systemLoad` belongs to the old movement too: it says "this percentage
+  // counts bodyweight". Carried across a swap it would take bodyweight off a
+  // barbell row. The replacement's own status is read from the catalog.
   const retarget = (item: PrescriptionItem): PrescriptionItem => {
     const prevMeta = (item.meta ?? {}) as Record<string, unknown>;
     const nextItem: PrescriptionItem = {
@@ -597,6 +608,7 @@ export function swapMovementInPrescription(
         swapLineage: nextSwapLineage(prevMeta, leavingMovement),
       },
     };
+    delete nextItem.systemLoad;
     if (!keepsAbsoluteLoadAcrossSwap(item)) delete nextItem.targetWeightKg;
     return nextItem;
   };

@@ -7,7 +7,7 @@ type Status = "idle" | "saving" | "saved" | "error";
 
 const DEBOUNCE_MS = 600;
 
-type Candidate = { id: string; display_name: string; pattern?: string };
+type Candidate = { id: string; display_name: string; pattern?: string; systemLoad?: boolean };
 
 export function TmAutoForm({
   mode,
@@ -42,6 +42,11 @@ export function TmAutoForm({
   const [oneRm, setOneRm] = useState<string>(
     initial?.oneRmKg != null ? String(initial.oneRmKg) : "",
   );
+  // Weighted pull-ups / dips are maxed as bodyweight plus what's on the belt.
+  // The field has to say so or the number it collects means two different things.
+  const selectedIsSystemLoad = (
+    candidateGroups?.flatMap((g) => g.items) ?? candidates ?? []
+  ).some((c) => c.id === movementId && c.systemLoad === true);
 
   const [status, setStatus] = useState<Status>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -144,7 +149,11 @@ export function TmAutoForm({
         </div>
       )}
       <div style={{ display: "grid", gap: 2 }}>
-        <Label>1RM ({unitLabel})</Label>
+        <Label>
+          {selectedIsSystemLoad
+            ? `1RM, bodyweight + added (${unitLabel})`
+            : `1RM (${unitLabel})`}
+        </Label>
         <input
           type="number"
           step={units === "imperial" ? "1" : "0.5"}

@@ -119,7 +119,7 @@ export default async function SessionDetailPage({
     supabase
       .from("profiles")
       .select(
-        "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format, units",
+        "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format, units, bodyweight_kg",
       )
       .eq("id", user.id)
       .maybeSingle(),
@@ -167,6 +167,13 @@ export default async function SessionDetailPage({
   // a profile written through the new editor and a legacy profile
   // both surface a fully-typed Equipment blob here.
   const equipment = resolveEquipment(feedbackPrefs ?? null);
+  // Weighted pull-ups / dips are anchored on a bodyweight-inclusive max, so the
+  // logger needs this to work out what actually goes on the belt.
+  const bodyweightRaw = (feedbackPrefs as { bodyweight_kg?: string | number | null } | null)
+    ?.bodyweight_kg;
+  const bodyweightNum = bodyweightRaw == null ? NaN : Number(bodyweightRaw);
+  const bodyweightKg =
+    Number.isFinite(bodyweightNum) && bodyweightNum > 0 ? bodyweightNum : null;
   // Raw, uncoerced bar inventory. `barbellKg === 0` (travel/hotel,
   // bodyweight-only) and `trapBarKg` / `safetyBarKg === null`
   // (home/functional/custom) mean "the user owns no such bar" —
@@ -847,6 +854,9 @@ export default async function SessionDetailPage({
   );
   const cardioModalityByMovementId: Record<string, string | null> = {};
   const bodyweightMovementIds: string[] = [];
+  // A max that counts bodyweight (weighted pull-ups / dips) makes a percentage
+  // a TOTAL, not a belt load — the logger has to take bodyweight off it.
+  const systemLoadMovementIds: string[] = [];
   // Smart accessory ordering (render-side): equipment + region per movement so
   // the card list can cluster accessories by "station" (don't run back and
   // forth) without changing the stored prescription. See accessory-order.ts.
@@ -875,6 +885,9 @@ export default async function SessionDetailPage({
           isBodyweightCapableEquipment(equipment)
         ) {
           bodyweightMovementIds.push(rowId);
+        }
+        if ((row as { body_weight_loaded?: boolean }).body_weight_loaded) {
+          systemLoadMovementIds.push(rowId);
         }
         accessoryMetaById[rowId] = {
           equipment,
@@ -1382,6 +1395,8 @@ export default async function SessionDetailPage({
         bwGateStateByFamily={bwGateStateByFamily}
         resolvedFreestyle={resolvedFreestyle}
         bodyweightMovementIds={bodyweightMovementIds}
+        systemLoadMovementIds={systemLoadMovementIds}
+        bodyweightKg={bodyweightKg}
         accessoryMetaById={accessoryMetaById}
         customAccessoryOrder={
           (session.custom_accessory_order as string[] | null) ?? null

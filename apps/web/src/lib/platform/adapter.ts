@@ -216,9 +216,15 @@ export function adaptSessionPrescription(
       // Warm-ups resolve to a concrete kg (the engine ramps off the top working
       // weight) but carry no % of TM, so without this they rendered "—kg".
       // Surface the absolute target so the logger prescribes a real warm-up load.
-      ...(appKind === "warmup" && it.weightKg != null && it.weightKg > 0
+      // On a system-load movement `0` IS the load (a bodyweight pull-up), so it
+      // has to survive — dropping it sends the logger to the last belt load the
+      // lifter used, which is the opposite of a warm-up.
+      ...(appKind === "warmup" &&
+      it.weightKg != null &&
+      (it.weightKg > 0 || it.systemLoad === true)
         ? { targetWeightKg: it.weightKg }
         : {}),
+      ...(it.systemLoad === true ? { systemLoad: true } : {}),
       ...(it.kind === "amrap" || it.isAmrap ? { isAmrap: true } : {}),
       ...(notes ? { notes } : {}),
       ...(it.circuit ? { circuit: { ...it.circuit } } : {}),

@@ -31,12 +31,17 @@ export default async function TrainingMaxesPage() {
   const { data: profile } = user
     ? await supabase
         .from("profiles")
-        .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, units")
+        .select("equipment, barbell_kg, trap_bar_kg, plate_inventory_kg, units, bodyweight_kg")
         .eq("id", user.id)
         .maybeSingle()
     : { data: null };
   const equipment = resolveEquipment(profile);
   const bodyweightOnly = !hasLoadableMainLift(equipment);
+  const bodyweightRaw = (profile as { bodyweight_kg?: string | number | null } | null)
+    ?.bodyweight_kg;
+  const bodyweightNum = bodyweightRaw == null ? NaN : Number(bodyweightRaw);
+  const bodyweightKg =
+    Number.isFinite(bodyweightNum) && bodyweightNum > 0 ? bodyweightNum : null;
   const units: "metric" | "imperial" =
     profile?.units === "imperial" ? "imperial" : "metric";
 
@@ -91,7 +96,7 @@ export default async function TrainingMaxesPage() {
 
   const { data: compounds } = await supabase
     .from("movements")
-    .select("id, slug, display_name, pattern")
+    .select("id, slug, display_name, pattern, body_weight_loaded")
     .eq("is_compound", true)
     .is("user_id", null)
     .order("pattern")
@@ -107,11 +112,17 @@ export default async function TrainingMaxesPage() {
     olympic: "Olympic lifts",
   };
 
-  const grouped = new Map<string, { id: string; display_name: string }[]>();
+  const grouped = new Map<string, { id: string; display_name: string; systemLoad?: boolean }[]>();
   for (const m of compounds ?? []) {
     if (existingMovementIds.has(m.id)) continue;
     const arr = grouped.get(m.pattern) ?? [];
-    arr.push({ id: m.id, display_name: m.display_name });
+    arr.push({
+      id: m.id,
+      display_name: m.display_name,
+      ...((m as { body_weight_loaded?: boolean }).body_weight_loaded
+        ? { systemLoad: true }
+        : {}),
+    });
     grouped.set(m.pattern, arr);
   }
   const pickerGroups: PickerGroup[] = Array.from(grouped.entries()).map(([pattern, items]) => ({
@@ -159,6 +170,7 @@ export default async function TrainingMaxesPage() {
         otherRowSourceSets={otherRowSourceSets}
         pickerGroups={pickerGroups}
         hasActiveBlock={!!archetype}
+        bodyweightKg={bodyweightKg}
         upsertAction={upsertTrainingMax}
         moveAction={moveTrainingMaxVariant}
         deleteAction={deleteTrainingMax}

@@ -10,6 +10,8 @@ export * from "./region-freshness";
 export * from "./ewma-series";
 export * from "./prescription-set-work";
 export * from "./prescribed-snapshot";
+export * from "./system-load";
+export * from "./target-load";
 export * from "./prescription-fidelity";
 export * from "./rehab-section";
 export * from "./types";

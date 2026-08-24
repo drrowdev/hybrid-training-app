@@ -19,7 +19,10 @@ const ctx: PlatformContext = {
     press: 100,
     "overhead-press": 100,
     pullup: 50,
-    "weighted-pullup": 50,
+    // A weighted pull-up 1RM is a SYSTEM load — bodyweight plus belt. 120 kg
+    // for an 80 kg lifter is +40 kg, which is what makes the percentages below
+    // land on real belt loads.
+    "weighted-pullup": 120,
     "barbell-row": 120,
     "pendlay-row": 100,
     "rack-pull": 250,
@@ -27,6 +30,7 @@ const ctx: PlatformContext = {
     "push-press": 100,
   },
   roundingKg: 2.5,
+  bodyweightKg: 80,
 };
 
 function setup(values: Record<string, unknown> = {}): TbInstance {
@@ -683,13 +687,17 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     expect(mains.map((i) => [i.name, i.weightKg, i.sets, i.repsLabel, i.percentOfTm])).toEqual([
       ["Bench Press", 75, 3, "5", 0.75],
       ["Squat", 150, 3, "5", 0.75],
-      ["Weighted Pull-up", 37.5, 3, "5", 0.75],
+      // 75% of the 120 kg SYSTEM max = 90 kg total; the lifter is 80 kg, so
+      // 10 kg goes on the belt — not 90 kg, and not 0.75 × 120.
+      ["Weighted Pull-up", 10, 3, "5", 0.75],
     ]);
     expect(mains).toHaveLength(3);
     expect(mains.every((item) => item.setsMax === 5)).toBe(true);
-    // Each lift carries a 3-set warm-up ramp ahead of its work sets.
-    expect(itemsOfKind(p, "warmup")).toHaveLength(9);
-    expect(totalPrescribedSets(p)).toBe(18); // 9 warm-up + 9 required working
+    // Barbell lifts carry a 3-set warm-up ramp. The pull-up's ramp is a fraction
+    // of 90 kg of system load, every step of which is under the lifter's own
+    // bodyweight — three identical bodyweight sets collapse into one.
+    expect(itemsOfKind(p, "warmup")).toHaveLength(7);
+    expect(totalPrescribedSets(p)).toBe(16); // 7 warm-up + 9 required working
   });
 
   it("Operator week 3 intensifies to 3–5×3 @ 85%", () => {
@@ -697,7 +705,8 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     expect(itemsOfKind(p, "main").map((i) => [i.weightKg, i.reps, i.percentOfTm])).toEqual([
       [85, 3, 0.85],
       [170, 3, 0.85],
-      [42.5, 3, 0.85],
+      // 0.85 × 120 = 102 kg of system load − 80 kg bodyweight = 22 → 22.5 kg.
+      [22.5, 3, 0.85],
     ]);
   });
 
