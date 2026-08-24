@@ -3,11 +3,12 @@
 -- Removes the six lunge rows and their how-to content.
 --
 -- Fails fast rather than destroying data: `set_logs` and `session_movements`
--- reference `movements(id)` ON DELETE RESTRICT, but `training_maxes` and
--- `tm_suggestions` CASCADE. So if a lifter has logged a lunge, a bare DELETE
--- would either error halfway or quietly drop a training max. The guard below
--- raises with a clear message instead; clear the references first if you really
--- mean to remove these.
+-- reference `movements(id)` ON DELETE RESTRICT, but `training_maxes`,
+-- `tm_suggestions` and `movement_instructions` CASCADE and `cardio_logs` is set
+-- NULL. So if a lifter has logged a lunge, a bare DELETE would either error
+-- halfway or quietly drop a training max or a pending TM suggestion. The guard
+-- below raises with a clear message instead; clear the references first if you
+-- really mean to remove these.
 
 DO $$
 DECLARE
@@ -29,11 +30,14 @@ BEGIN
   SELECT (SELECT count(*) FROM public.set_logs WHERE movement_id = ANY(lunge_ids))
        + (SELECT count(*) FROM public.session_movements WHERE movement_id = ANY(lunge_ids))
        + (SELECT count(*) FROM public.training_maxes WHERE movement_id = ANY(lunge_ids))
+       + (SELECT count(*) FROM public.tm_suggestions WHERE movement_id = ANY(lunge_ids))
+       + (SELECT count(*) FROM public.tm_history WHERE movement_id = ANY(lunge_ids))
+       + (SELECT count(*) FROM public.cardio_logs WHERE movement_id = ANY(lunge_ids))
     INTO blocking;
 
   IF blocking > 0 THEN
     RAISE EXCEPTION
-      'Refusing to roll back 0139: % logged set / session / training-max reference(s) to the lunges. Remove or repoint them first.',
+      'Refusing to roll back 0139: % user reference(s) to the lunges. Remove or repoint them first.',
       blocking;
   END IF;
 

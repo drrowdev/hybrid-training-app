@@ -111,6 +111,16 @@ describe("movement catalog seed", () => {
       "reverse-lunge",
       "reverse-lunge-db",
       "reverse-lunge-bb",
+      "walking-lunge",
+      "walking-lunge-db",
+      "walking-lunge-bb",
+      "step-up",
+      "step-up-db",
+      "step-up-bb",
+      "curtsy-lunge",
+      "curtsy-lunge-db",
+      "lateral-lunge",
+      "lateral-lunge-db",
       "atg-split-squat",
       "cossack-squat",
       "cossack-squat-loaded",
@@ -138,14 +148,26 @@ describe("movement catalog seed", () => {
     }
   });
 
-  it("seeds forward + reverse lunges across bodyweight / DB / BB with how-to content", () => {
+  it("seeds the lunge / step-up family across bodyweight / DB / BB with how-to content", () => {
     const expected = [
-      { slug: "forward-lunge", name: "Forward Lunge", equipment: "bodyweight", axialLoad: "low", experienceMin: 0 },
-      { slug: "forward-lunge-db", name: "Forward Lunge (DB)", equipment: "dumbbells", axialLoad: "moderate", experienceMin: 0 },
-      { slug: "forward-lunge-bb", name: "Forward Lunge (BB)", equipment: "barbell", axialLoad: "high", experienceMin: 2 },
-      { slug: "reverse-lunge", name: "Reverse Lunge", equipment: "bodyweight", axialLoad: "low", experienceMin: 0 },
-      { slug: "reverse-lunge-db", name: "Reverse Lunge (DB)", equipment: "dumbbells", axialLoad: "moderate", experienceMin: 0 },
-      { slug: "reverse-lunge-bb", name: "Reverse Lunge (BB)", equipment: "barbell", axialLoad: "high", experienceMin: 2 },
+      { slug: "forward-lunge", name: "Forward Lunge", equipment: "bodyweight", axialLoad: "low", experienceMin: 0, region: "knee" },
+      { slug: "forward-lunge-db", name: "Forward Lunge (DB)", equipment: "dumbbells", axialLoad: "moderate", experienceMin: 0, region: "knee" },
+      { slug: "forward-lunge-bb", name: "Forward Lunge (BB)", equipment: "barbell", axialLoad: "high", experienceMin: 2, region: "knee" },
+      { slug: "reverse-lunge", name: "Reverse Lunge", equipment: "bodyweight", axialLoad: "low", experienceMin: 0, region: "knee" },
+      { slug: "reverse-lunge-db", name: "Reverse Lunge (DB)", equipment: "dumbbells", axialLoad: "moderate", experienceMin: 0, region: "knee" },
+      { slug: "reverse-lunge-bb", name: "Reverse Lunge (BB)", equipment: "barbell", axialLoad: "high", experienceMin: 2, region: "knee" },
+      { slug: "walking-lunge", name: "Walking Lunge", equipment: "bodyweight", axialLoad: "low", experienceMin: 0, region: "knee" },
+      { slug: "walking-lunge-db", name: "Walking Lunge (DB)", equipment: "dumbbells", axialLoad: "moderate", experienceMin: 0, region: "knee" },
+      { slug: "walking-lunge-bb", name: "Walking Lunge (BB)", equipment: "barbell", axialLoad: "high", experienceMin: 2, region: "knee" },
+      { slug: "step-up", name: "Step-Up", equipment: "bodyweight", axialLoad: "low", experienceMin: 0, region: "knee" },
+      { slug: "step-up-db", name: "Step-Up (DB)", equipment: "dumbbells", axialLoad: "moderate", experienceMin: 0, region: "knee" },
+      { slug: "step-up-bb", name: "Step-Up (BB)", equipment: "barbell", axialLoad: "high", experienceMin: 2, region: "knee" },
+      { slug: "curtsy-lunge", name: "Curtsy Lunge", equipment: "bodyweight", axialLoad: "low", experienceMin: 1, region: "knee" },
+      { slug: "curtsy-lunge-db", name: "Curtsy Lunge (DB)", equipment: "dumbbells", axialLoad: "moderate", experienceMin: 1, region: "knee" },
+      // Frontal-plane, trailing-leg groin under load — the groin is the primary
+      // region, which is what an adductor_groin limitation actually matches on.
+      { slug: "lateral-lunge", name: "Lateral Lunge", equipment: "bodyweight", axialLoad: "low", experienceMin: 0, region: "adductor_groin" },
+      { slug: "lateral-lunge-db", name: "Lateral Lunge (DB)", equipment: "dumbbells", axialLoad: "moderate", experienceMin: 0, region: "adductor_groin" },
     ];
 
     for (const entry of expected) {
@@ -154,7 +176,7 @@ describe("movement catalog seed", () => {
       expect(movement).toMatchObject({
         displayName: entry.name,
         pattern: "squat",
-        primaryRegion: "knee",
+        primaryRegion: entry.region,
         equipment: entry.equipment,
         axialLoad: entry.axialLoad,
         experienceMin: entry.experienceMin,
@@ -174,6 +196,21 @@ describe("movement catalog seed", () => {
       expect(instructions, `${entry.slug} missing instructions`).toBeTruthy();
       expect(instructions!.steps.length).toBeGreaterThanOrEqual(3);
       expect(instructions!.cues.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("step-ups name the box they need — the equipment inventory can't model one", () => {
+    // `equipment` is tagged plainly (bodyweight / dumbbells / barbell) because
+    // the inventory has no box field and a `bodyweight-box` tag would read as
+    // externally loaded to `carriesExternalLoad`. The setup text is therefore
+    // the only place the requirement is communicated.
+    for (const slug of ["step-up", "step-up-db", "step-up-bb"]) {
+      const instructions = MOVEMENT_INSTRUCTIONS.find(
+        (candidate) => candidate.slug === slug,
+      );
+      expect(instructions?.setup?.toLowerCase(), `${slug} setup must name the box`).toMatch(
+        /box|bench/,
+      );
     }
   });
 
