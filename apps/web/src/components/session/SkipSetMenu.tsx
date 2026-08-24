@@ -11,15 +11,11 @@
  */
 
 import { useState } from "react";
-import { SKIP_REASONS, type SkipReason } from "@/lib/sessions/skip-reasons";
-
-const CHIP_LABELS: Readonly<Record<SkipReason, string>> = {
-  pain: "Pain",
-  fatigue: "Fatigue",
-  time: "Time",
-  equipment: "Equipment",
-  other: "Other",
-};
+import {
+  SKIP_REASONS,
+  skipReasonLabel,
+  type SkipReason,
+} from "@/lib/sessions/skip-reasons";
 
 export type SkipSetMenuProps = {
   onConfirm: (reason: SkipReason, note: string | null) => Promise<void> | void;
@@ -93,7 +89,7 @@ export function SkipSetMenu({ onConfirm, onCancel, pending, error, prompt }: Ski
                 opacity: pending ? 0.6 : 1,
               }}
             >
-              {CHIP_LABELS[r]}
+              {skipReasonLabel(r)}
             </button>
           );
         })}
