@@ -599,7 +599,15 @@ const AB_TRIAD = AB_TRIAD_MOVEMENTS.map((movement) => ({
   kind: "unanchored" as const,
 }));
 
-const abRule: TbPrescriptionRule = {
+/**
+ * How the AB Triad is prescribed, wherever it appears.
+ *
+ * The circuit owns its own dose: three rounds of five, unloaded, no warm-up
+ * ramp. Templates that prescribe it attach this as a session rule; a lifter who
+ * adds the triad to a day that doesn't gets the same numbers from the same
+ * place, so the two can't drift.
+ */
+export const AB_TRIAD_RULE: TbPrescriptionRule = {
   movements: [...AB_TRIAD_MOVEMENTS],
   percent: null,
   setsMin: 3,
@@ -611,6 +619,8 @@ const abRule: TbPrescriptionRule = {
   note:
     "AB Triad — 3 rounds: 5 hanging leg raises, 5 hanging knee raises, then 5 toes-to-bar.",
 };
+
+const abRule: TbPrescriptionRule = AB_TRIAD_RULE;
 
 const zuluSupplementalRules = (movements: string[]): TbPrescriptionRule[] =>
   [0.65, 0.7, 0.75, 0.65, 0.7].map((percent, index) => ({

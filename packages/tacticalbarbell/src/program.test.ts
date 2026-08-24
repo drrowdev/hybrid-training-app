@@ -14,6 +14,7 @@ import {
   AB_TRIAD_MOVEMENTS,
   getTbTemplate,
   isSupplementalSlot,
+  TB_MOVEMENT_LABEL,
 } from "./templates";
 
 const ctx: PlatformContext = {
@@ -1518,5 +1519,105 @@ it("borrows from a LOADED supplemental, never a bodyweight one", () => {
     ]);
     const peak = tb.prescribe(inst, "b0-w6-peak-b1", ctx);
     expect(itemsOfKind(peak, "main").map((item) => item.name)).not.toContain("Weighted Dip");
+  });
+});
+
+describe("TB engine — an AB Triad the lifter added", () => {
+  /** Zulu B prescribes no triad of its own, so this is purely user-added. */
+  const zuluBWithTriad = () =>
+    setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-2": [
+          { movement: "deadlift", sourceMovement: "deadlift", split: "B" },
+          { movement: "weighted-pullup", sourceMovement: "weighted-pullup", split: "B" },
+          { movement: "barbell-row", sourceMovement: "barbell-row", split: "B" },
+          { movement: "back-extension", sourceMovement: "back-extension", split: "B", kind: "unanchored" },
+          ...AB_TRIAD_MOVEMENTS.map((movement) => ({
+            movement,
+            role: "supplemental" as const,
+            kind: "unanchored" as const,
+          })),
+        ],
+      },
+    });
+
+  const triadItems = (ref: string) =>
+    tb
+      .prescribe(zuluBWithTriad(), ref, ctx)
+      .items.filter((item) =>
+        (AB_TRIAD_MOVEMENTS as readonly string[]).some(
+          (movement) => item.name === TB_MOVEMENT_LABEL[movement],
+        ),
+      );
+
+  it("is stamped as the circuit, not as three loose ab exercises", () => {
+    const items = triadItems("b0-w1-p1b").filter((item) => item.kind !== "warmup");
+    expect(items).toHaveLength(3);
+    expect(items.map((item) => item.circuit?.id)).toEqual([
+      "tb-ab-triad",
+      "tb-ab-triad",
+      "tb-ab-triad",
+    ]);
+    expect(items.map((item) => item.circuit?.position)).toEqual([0, 1, 2]);
+    expect(items.every((item) => item.circuit?.size === 3)).toBe(true);
+  });
+
+  it("takes the circuit's own dose, not the day's supplemental dose", () => {
+    // Zulu B's supplemental work is 3–5×8–10 at 65%. The triad is 3 rounds of 5,
+    // unloaded — that is what the triad IS, wherever it appears.
+    const items = triadItems("b0-w1-p1b").filter((item) => item.kind !== "warmup");
+    expect(items.every((item) => item.sets === 3 && item.reps === 5)).toBe(true);
+    expect(items.every((item) => item.percentOfTm == null)).toBe(true);
+    expect(items.every((item) => item.kind === "supplemental")).toBe(true);
+  });
+
+  it("carries the circuit's note", () => {
+    const items = triadItems("b0-w1-p1b").filter((item) => item.kind !== "warmup");
+    expect(items[0]?.note ?? "").toMatch(/AB Triad/i);
+  });
+
+  it("takes no warm-up ramp", () => {
+    expect(triadItems("b0-w1-p1b").filter((item) => item.kind === "warmup")).toEqual([]);
+  });
+
+  it("is not promoted into a peak attempt on the test week", () => {
+    const peak = tb.prescribe(zuluBWithTriad(), "b0-w6-peak-b1", ctx);
+    expect(itemsOfKind(peak, "main").map((item) => item.name)).not.toContain(
+      TB_MOVEMENT_LABEL["toes-to-bar"],
+    );
+    // Guard the guard: the label must actually be what a triad item is called,
+    // or this assertion could never fail.
+    expect(triadItems("b0-w1-p1b").map((item) => item.name)).toContain(
+      TB_MOVEMENT_LABEL["toes-to-bar"],
+    );
+  });
+
+  it("takes the ordinary added-lift dose when the circuit is incomplete", () => {
+    // Two thirds of a triad is not a triad, and must not wear its numbers.
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-2": [
+          { movement: "deadlift", sourceMovement: "deadlift", split: "B" },
+          { movement: "barbell-row", sourceMovement: "barbell-row", split: "B" },
+          { movement: "hanging-leg-raise", role: "supplemental", kind: "unanchored" },
+          { movement: "hanging-knee-raise", role: "supplemental", kind: "unanchored" },
+        ],
+      },
+    });
+    const items = tb
+      .prescribe(inst, "b0-w1-p1b", ctx)
+      .items.filter((item) => item.name === TB_MOVEMENT_LABEL["hanging-leg-raise"]);
+    expect(items.every((item) => item.circuit == null)).toBe(true);
+    expect(items[0]?.note ?? "").not.toMatch(/AB Triad/i);
+  });
+
+  it("leaves a template's own triad prescribed exactly as before", () => {
+    // Zulu A prescribes the triad; nothing about the added path may change it.
+    const canonical = tb.prescribe(setup({ templateId: "zulu" }), "b0-w1-p1a", ctx);
+    const triad = canonical.items.filter((item) => item.circuit?.id === "tb-ab-triad");
+    expect(triad).toHaveLength(3);
+    expect(triad.every((item) => item.sets === 3 && item.reps === 5)).toBe(true);
   });
 });
