@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   addAccessory,
+  addMovement,
   canRemoveRows,
   collapseGroup,
   hasWholeGroup,
@@ -530,5 +531,71 @@ describe("restoreSlot — user-added work never sorts into template order", () =
       role: "accessory",
     });
     expect(restored.map(slotIdentity)).toEqual(["bench", "squat", "overhead-press"]);
+  });
+});
+
+describe("addMovement — the dose the user asked for", () => {
+  const ZULU_B: TemplateSlot[] = [
+    { sourceMovement: "deadlift", role: "main" },
+    { sourceMovement: "barbell-row", role: "supplemental" },
+  ];
+
+  it("records supplemental work as supplemental, not as accessory", () => {
+    const [added] = addMovement([], CURL, "supplemental").slice(-1);
+    expect(added).toEqual({ movement: CURL, role: "supplemental" });
+  });
+
+  it("shows added supplemental work in the supplemental section", () => {
+    const drafts = addMovement(slotDraftsFor(ZULU_B), CURL, "supplemental");
+    const added = drafts.find((d) => d.movement === CURL)!;
+    expect(sectionOf(ZULU_B, added)).toBe("supplemental");
+  });
+
+  it("shows added accessory work in the accessory section", () => {
+    const drafts = addMovement(slotDraftsFor(ZULU_B), CURL, "accessory");
+    expect(sectionOf(ZULU_B, drafts.find((d) => d.movement === CURL)!)).toBe("accessory");
+  });
+
+  it("sends the role to the engine so the dose survives deploy", () => {
+    const supplemental = addMovement([], CURL, "supplemental")[0]!;
+    expect(slotPayloadEntry(supplemental, undefined)).toMatchObject({
+      movement: CURL,
+      role: "supplemental",
+    });
+  });
+
+  it("never lets added work claim a template slot", () => {
+    // `slotOf` returning a slot would give the row that slot's prescription and
+    // let it be promoted into a peak attempt.
+    const added = addMovement([], "barbell-row", "supplemental")[0]!;
+    expect(slotOf(ZULU_B, added)).toBeUndefined();
+    expect(slotPayloadEntry(added, undefined).sourceMovement).toBeUndefined();
+  });
+
+  it("lets a day carry more supplemental work than the template lists", () => {
+    // TB3 leaves supplemental volume to the lifter.
+    const drafts = addMovement(
+      addMovement(slotDraftsFor(ZULU_B), CURL, "supplemental"),
+      "catalog:00000000-0000-4000-8000-0000000000c2",
+      "supplemental",
+    );
+    expect(
+      drafts.filter((d) => sectionOf(ZULU_B, d) === "supplemental"),
+    ).toHaveLength(3);
+  });
+
+  it("does not add the same movement twice", () => {
+    const once = addMovement(slotDraftsFor(ZULU_B), CURL, "supplemental");
+    expect(addMovement(once, CURL, "accessory")).toEqual(once);
+  });
+
+  it("keeps added supplemental work after the template's own rows on restore", () => {
+    const withAdded = addMovement(slotDraftsFor(ZULU_B), CURL, "supplemental");
+    const restored = restoreSlot(
+      removeSlot(withAdded, "barbell-row"),
+      ZULU_B,
+      "barbell-row",
+    );
+    expect(restored.map((d) => d.movement)).toEqual(["deadlift", "barbell-row", CURL]);
   });
 });

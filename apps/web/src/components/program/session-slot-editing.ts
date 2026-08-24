@@ -33,14 +33,24 @@ export interface SeriesSlotDraft {
   sourceMovement?: string;
   movement: string;
   kind?: SlotKind;
-  role?: "accessory";
+  role?: AddedRole;
 }
+
+/**
+ * How a movement the user added is dosed.
+ *
+ * `"supplemental"` takes the dose the session's own supplemental work gets —
+ * same percentage, sets and reps. `"accessory"` takes the accessory dose
+ * (3×8–15 near failure) and no percentage. The distinction is real
+ * methodology, not a label, so both stay expressible.
+ */
+export type AddedRole = "accessory" | "supplemental";
 
 /** What a customized session sends for one row. */
 export interface SlotPayloadEntry {
   movement: string;
   sourceMovement?: string;
-  role?: "accessory";
+  role?: AddedRole;
   kind?: SlotKind;
   movementId?: string;
   slug?: string;
@@ -67,12 +77,12 @@ export function slotDraftsFor(
   }));
 }
 
-/** The template slot a row fills, or undefined for accessory work. */
+/** The template slot a row fills, or undefined for work the user added. */
 export function slotOf(
   slots: readonly TemplateSlot[],
   draft: SeriesSlotDraft,
 ): TemplateSlot | undefined {
-  if (draft.role === "accessory") return undefined;
+  if (draft.role) return undefined;
   const identity = slotIdentity(draft);
   return slots.find((slot) => slot.sourceMovement === identity);
 }
@@ -129,7 +139,7 @@ export function restoreSlot(
   const templateRows: SeriesSlotDraft[] = [];
   const addedRows: SeriesSlotDraft[] = [];
   for (const draft of [...drafts, restored]) {
-    if (order.has(slotIdentity(draft)) && draft.role !== "accessory") {
+    if (order.has(slotIdentity(draft)) && draft.role == null) {
       templateRows.push(draft);
     } else {
       addedRows.push(draft);
@@ -159,13 +169,27 @@ export function replaceSlot(
   );
 }
 
-/** Append a movement the user chose; it is prescribed as accessory work. */
+/**
+ * Append a movement the user chose, at the dose they asked for.
+ *
+ * TB3 leaves supplemental volume to the lifter, so a day may carry more
+ * supplemental work than the book lists.
+ */
+export function addMovement(
+  drafts: readonly SeriesSlotDraft[],
+  movement: string,
+  role: AddedRole,
+): SeriesSlotDraft[] {
+  if (drafts.some((draft) => draft.movement === movement)) return [...drafts];
+  return [...drafts, { movement, role }];
+}
+
+/** Append a movement prescribed as accessory work. */
 export function addAccessory(
   drafts: readonly SeriesSlotDraft[],
   movement: string,
 ): SeriesSlotDraft[] {
-  if (drafts.some((draft) => draft.movement === movement)) return [...drafts];
-  return [...drafts, { movement, role: "accessory" }];
+  return addMovement(drafts, movement, "accessory");
 }
 
 /**
@@ -190,8 +214,8 @@ export function slotPayloadEntry(
         : undefined);
   return {
     movement: draft.movement,
-    ...(draft.role === "accessory"
-      ? { role: "accessory" as const }
+    ...(draft.role
+      ? { role: draft.role }
       : slot
         ? { sourceMovement: slot.sourceMovement }
         : {}),
@@ -220,7 +244,10 @@ export function sectionOf(
   slots: readonly TemplateSlot[],
   draft: SeriesSlotDraft,
 ): SlotSection {
+  // The role the user picked wins: a lift they added is shown, and prescribed,
+  // at the dose they asked for.
   if (draft.role === "accessory") return "accessory";
+  if (draft.role === "supplemental") return "supplemental";
   return slotOf(slots, draft)?.role === "supplemental"
     ? "supplemental"
     : "main";
