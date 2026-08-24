@@ -14,34 +14,54 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { DeloadWeekPreview } from "@/lib/planner/deload-week-preview";
 import type { DeloadSessionSpec } from "@/lib/planner/deload-week";
+import type { PrescriptionItem } from "@hta/db";
 import type { InsertDeloadResult } from "@/lib/planner/deload-week-actions";
+import {
+  RECOVERY_PERCENT_MAX,
+  RECOVERY_PERCENT_MIN,
+} from "@/lib/planner/recovery-week-bounds";
 
-/** One-line plain-English summary of a deload session's content. */
+/** One-line plain-English summary of a recovery session's content. */
 function summariseSession(s: DeloadSessionSpec): string {
   const items = s.prescription.items;
-  const mains = new Map<string, string>();
+  const mains = new Map<string, { name: string; sets: number; item: PrescriptionItem }>();
   let easyCardio = false;
   for (const it of items) {
     if (it.kind === "main") {
-      mains.set(it.movementId, it.movementName ?? it.movementSlug ?? "Main lift");
+      const name = it.movementName ?? it.movementSlug ?? "Main lift";
+      const seen = mains.get(it.movementId);
+      mains.set(it.movementId, {
+        name,
+        sets: (seen?.sets ?? 0) + 1,
+        item: seen?.item ?? it,
+      });
     } else if (it.kind.startsWith("cardio")) {
       easyCardio = true;
     }
   }
   const parts: string[] = [];
-  for (const name of mains.values()) parts.push(`${name} 3×5 light`);
-  if (easyCardio) parts.push("easy Z2 cardio");
+  for (const main of mains.values()) {
+    const reps = main.item.repRange
+      ? `${main.item.repRange.min}–${main.item.repRange.max}`
+      : String(main.item.reps ?? "");
+    const load = main.item.percentTm != null ? ` @ ${main.item.percentTm}%` : "";
+    parts.push(`${main.name} ${main.sets}×${reps}${load}`);
+  }
+  if (easyCardio) parts.push("easy cardio");
   return parts.length ? parts.join(" · ") : "Recovery";
 }
 
 export function DeloadWeekCard({
   preview,
   insertAction,
+  previewAction,
   autoOpen = false,
   variant = "banner",
 }: {
   preview: DeloadWeekPreview;
-  insertAction: () => Promise<InsertDeloadResult>;
+  insertAction: (percent?: number) => Promise<InsertDeloadResult>;
+  /** Rebuilds the preview when the lifter changes the working percentage. */
+  previewAction?: (percent?: number) => Promise<DeloadWeekPreview | null>;
   /** Open the preview modal on mount (e.g. deep-linked from the TB deload banner). */
   autoOpen?: boolean;
   /**
@@ -56,11 +76,22 @@ export function DeloadWeekCard({
   const [dismissed, setDismissed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [live, setLive] = useState<DeloadWeekPreview>(preview);
+  const [percent, setPercent] = useState<number>(preview.percent);
+
+  const changePercent = (next: number) => {
+    setPercent(next);
+    if (!previewAction) return;
+    startTransition(async () => {
+      const rebuilt = await previewAction(next);
+      if (rebuilt) setLive(rebuilt);
+    });
+  };
 
   const apply = () => {
     setError(null);
     startTransition(async () => {
-      const res = await insertAction();
+      const res = await insertAction(live.restOnly ? undefined : percent);
       if (!res.ok) {
         setError(res.error);
         return;
@@ -209,7 +240,7 @@ export function DeloadWeekCard({
             </div>
 
             <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 6 }}>
-              {preview.sessions.map((s) => (
+              {live.sessions.map((s) => (
                 <li
                   key={`${s.dayIndex}-${s.slot}`}
                   style={{
@@ -230,7 +261,50 @@ export function DeloadWeekCard({
               ))}
             </ul>
 
-            {preview.eventWarning && (
+            {!live.restOnly && (
+              <div style={{ display: "grid", gap: 6 }} data-testid="deload-week-percent">
+                <label
+                  htmlFor="recovery-percent"
+                  style={{ fontSize: 13, color: "var(--cp-text)", fontWeight: 600 }}
+                >
+                  Working weight
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <input
+                    id="recovery-percent"
+                    type="range"
+                    min={RECOVERY_PERCENT_MIN}
+                    max={RECOVERY_PERCENT_MAX}
+                    step={1}
+                    value={percent}
+                    disabled={pending || !previewAction}
+                    onChange={(e) => changePercent(Number(e.target.value))}
+                    style={{ flex: 1 }}
+                  />
+                  <span
+                    style={{ fontSize: 13, color: "var(--cp-text)", minWidth: 40, textAlign: "right" }}
+                  >
+                    {percent}%
+                  </span>
+                </div>
+                {live.recommendedPercent && (
+                  <div style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
+                    {`Your program suggests ${live.recommendedPercent.min}–${live.recommendedPercent.max}%.`}
+                  </div>
+                )}
+                {live.outsideRecommended && (
+                  <div
+                    role="note"
+                    data-testid="deload-week-percent-warning"
+                    style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
+                  >
+                    {"That's outside what your program suggests for a recovery week."}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {live.eventWarning && (
               <div
                 role="note"
                 data-testid="deload-week-event-warning"

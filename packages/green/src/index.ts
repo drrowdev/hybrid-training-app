@@ -22,5 +22,5 @@ export {
   type DayCell,
   type GreenStrength,
 } from "./phases";
-export { greenProtocolEngine, greenStrengthTemplateByRef, type GreenInstance } from "./program";
+export { greenProtocolEngine, greenStrengthTemplateByRef, GREEN_RECOVERY_WEEK, type GreenInstance } from "./program";
 export { suggestTbSessions, isGenericSlot } from "./tb-suggestions";

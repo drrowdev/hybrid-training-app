@@ -5,6 +5,7 @@ export {
   hyroxEngine,
   hyroxMeta,
   hyroxRef,
+  HYROX_RECOVERY_WEEK,
   parseHyroxRef,
   hyroxSessionIdForRef,
   WEEKS_BY_EXPERIENCE,

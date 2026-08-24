@@ -12,6 +12,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Prescription } from "@hta/db";
 import { buildDeloadWeek, type DeloadSessionSpec } from "./deload-week";
+import {
+  clampRecoveryPercent,
+  isOutsideRecommended,
+  recoveryPercentScale,
+  recoveryWeekPolicyFor,
+} from "./recovery-week-policy";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { computeActiveBlockFatigue } from "@/lib/planner/block-fatigue";
@@ -27,6 +33,14 @@ export type DeloadWeekPreview = {
   sessions: DeloadSessionSpec[];
   /** True when a future A-priority event falls in the block and would shift by a week. */
   eventWarning: boolean;
+  /** The working percentage these sessions were built at. */
+  percent: number;
+  /** What this program advises, shown next to the control. */
+  recommendedPercent?: { min: number; max: number };
+  /** True when `percent` sits outside that advice. */
+  outsideRecommended: boolean;
+  /** This program's recovery week is rest, so there is no percentage to set. */
+  restOnly: boolean;
 };
 
 /** Current 0-based week index of an active block (rolling, clamped to the block). */
@@ -39,15 +53,31 @@ function currentWeekIndex(startedOn: string, weeks: number): number {
 export async function getDeloadWeekPreview(
   supabase: SupabaseClient,
   userId: string,
+  chosenPercent?: number,
 ): Promise<DeloadWeekPreview | null> {
   const { data: block } = await supabase
     .from("training_blocks")
-    .select("id, started_on, weeks")
+    .select("id, started_on, weeks, program_id")
     .eq("user_id", userId)
     .eq("status", "active")
     .is("deleted_at", null)
     .maybeSingle();
   if (!block) return null;
+
+  // The recovery week's CONTENT belongs to the program, not to this file.
+  const { data: pi } = await supabase
+    .from("program_instances")
+    .select("instance")
+    .eq("block_id", block.id)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+  const basePolicy = recoveryWeekPolicyFor(block.program_id as string | null);
+  const percent = basePolicy.restOnly
+    ? basePolicy.topPercent
+    : clampRecoveryPercent(chosenPercent ?? basePolicy.topPercent);
+  const policy = { ...basePolicy, topPercent: percent };
+  const percentScale = recoveryPercentScale(policy, pi?.instance ?? null);
 
   const weeks = block.weeks as number;
   const cur = currentWeekIndex(block.started_on as string, weeks);
@@ -72,6 +102,8 @@ export async function getDeloadWeekPreview(
       sessionModality: (r.session_modality as string | null) ?? null,
       prescription: (r.prescription as Prescription | null) ?? null,
     })),
+    policy,
+    percentScale,
   );
   if (sessions.length === 0) return null;
 
@@ -92,6 +124,13 @@ export async function getDeloadWeekPreview(
     deloadWeekIndex: afterWeek + 1,
     sessions,
     eventWarning: !!evt,
+    percent,
+    ...(policy.recommendedPercent
+      ? { recommendedPercent: policy.recommendedPercent }
+      : {}),
+    outsideRecommended:
+      !policy.restOnly && isOutsideRecommended(policy, percent),
+    restOnly: policy.restOnly === true,
   };
 }
 

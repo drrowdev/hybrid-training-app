@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { getDeloadWeekPreview } from "./deload-week-preview";
+import { getDeloadWeekPreview, type DeloadWeekPreview } from "./deload-week-preview";
+import {
+  RECOVERY_PERCENT_MAX,
+  RECOVERY_PERCENT_MIN,
+} from "./recovery-week-bounds";
 
 export type InsertDeloadResult =
   | { ok: true; deloadWeekIndex: number; sessions: number }
@@ -14,11 +18,39 @@ export type RemoveDeloadResult = { ok: true } | { ok: false; error: string };
 
 const removeSchema = z.object({ weekIndex: z.number().int().min(0) }).strict();
 
+/**
+ * The user's chosen working percentage. Bounded here as well as clamped in the
+ * preview: the action is the trust boundary, and the value decides load.
+ */
+const percentSchema = z.number().int().min(RECOVERY_PERCENT_MIN).max(RECOVERY_PERCENT_MAX);
+
 function revalidateAll(): void {
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/sessions");
   revalidatePath("/app/stats");
+}
+
+/**
+ * Rebuild the preview at a different working percentage (ADR 0049).
+ *
+ * Read-only. The card calls this when the lifter moves the percentage so the
+ * week they are shown is the week they will get.
+ */
+export async function previewDeloadWeekAction(
+  percent?: number,
+): Promise<DeloadWeekPreview | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+  const parsed = percentSchema.safeParse(percent);
+  return getDeloadWeekPreview(
+    supabase,
+    user.id,
+    parsed.success ? parsed.data : undefined,
+  );
 }
 
 /**
@@ -29,14 +61,21 @@ function revalidateAll(): void {
  * weeks + inserts the recovery sessions (role='deload', off-program) + bumps the
  * block length. RLS-scoped via the request client; the RPC re-checks ownership.
  */
-export async function insertDeloadWeekAction(): Promise<InsertDeloadResult> {
+export async function insertDeloadWeekAction(
+  percent?: number,
+): Promise<InsertDeloadResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const preview = await getDeloadWeekPreview(supabase, user.id);
+  const parsedPercent = percentSchema.safeParse(percent);
+  const preview = await getDeloadWeekPreview(
+    supabase,
+    user.id,
+    parsedPercent.success ? parsedPercent.data : undefined,
+  );
   if (!preview) return { ok: false, error: "No active block to deload." };
 
   const payload = preview.sessions.map((s) => ({

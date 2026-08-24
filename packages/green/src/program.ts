@@ -26,6 +26,7 @@ import type {
   ProgramRecommendation,
   ProgramSegment,
   ProgramSegmentKind,
+  RecoveryWeekPolicy,
 } from "@hta/program-core";
 import {
   tacticalBarbellEngine,
@@ -327,6 +328,24 @@ function asMovementList(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return v.filter((x): x is string => typeof x === "string" && x.length > 0);
 }
+
+/**
+ * A Green Protocol recovery week.
+ *
+ * Green already schedules its own deloads, and they are near-total rest — one
+ * "Deload" marker and six rest days (`phases.ts`). A user-initiated recovery
+ * week matches that rather than inventing a lighter lifting week, so pressing
+ * the button mid-phase gives the same week the program would have given.
+ */
+export const GREEN_RECOVERY_WEEK: RecoveryWeekPolicy = {
+  topPercent: 0,
+  setOffsets: [],
+  reps: 0,
+  basis: "one-rm",
+  restOnly: true,
+  easyCardioMaxMin: 30,
+  cue: "Recovery week",
+};
 
 export const greenProtocolEngine: ProgramEngine<GreenInstance> = {
   meta: META,

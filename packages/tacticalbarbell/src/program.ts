@@ -27,6 +27,7 @@ import type {
   LoggedSession,
   ProgramRecommendation,
   ProgramSegment,
+  RecoveryWeekPolicy,
 } from "@hta/program-core";
 import { buildGlobalWarmupItems } from "@hta/program-core";
 import {
@@ -774,6 +775,31 @@ function applySessionLinks(
 
 /** Narrow alias: the working (non-warm-up) item a link attaches its circuit to. */
 type PrescriptionWorkingItem = PrescribedItem;
+
+/**
+ * A Tactical Barbell recovery week (TB3, "Deload").
+ *
+ * "An active recovery week. Volume and intensity are reduced… Approx 3 sets ×
+ * 3–5 65-70%RM per session." Three straight sets per lift, not three sets split
+ * across a cluster — three sets shared between three lifts is one set each.
+ *
+ * The default takes the BOTTOM of the book's range: it is a recovery week, and
+ * TB's whole stance is submaximal. The user can move it.
+ *
+ * `basis: "one-rm"` because TB states its percentages against the true max. A
+ * lifter who opted to run the block off a derived training max would otherwise
+ * get 65% of that — about 58% of their real max, under the book's range.
+ */
+export const TB_RECOVERY_WEEK: RecoveryWeekPolicy = {
+  topPercent: 65,
+  setOffsets: [0, 0, 0],
+  reps: 3,
+  repsMax: 5,
+  recommendedPercent: { min: 65, max: 70 },
+  basis: "one-rm",
+  easyCardioMaxMin: 30,
+  cue: "Recovery week — volume and intensity reduced",
+};
 
 export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
   meta: META,

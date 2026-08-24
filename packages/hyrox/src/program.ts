@@ -32,6 +32,7 @@ import type {
   LoggedSession,
   ProgramRecommendation,
   ProgramSegment,
+  RecoveryWeekPolicy,
 } from "@hta/program-core";
 import {
   buildHyroxGrid,
@@ -348,6 +349,24 @@ function prescribeRef(
   }
   return { items };
 }
+
+/**
+ * A HYROX recovery week.
+ *
+ * HYROX's own scheduled recovery weeks keep easy aerobic work and drop the
+ * intensity rather than the lifting — its strength work is already a support
+ * dose. A user-initiated week mirrors that: light straight sets, easy cardio
+ * kept but capped.
+ */
+export const HYROX_RECOVERY_WEEK: RecoveryWeekPolicy = {
+  topPercent: 60,
+  setOffsets: [0, 0],
+  reps: 5,
+  recommendedPercent: { min: 55, max: 65 },
+  basis: "one-rm",
+  easyCardioMaxMin: 40,
+  cue: "Recovery week — keep it easy",
+};
 
 export const hyroxEngine: ProgramEngine<HyroxInstance> = {
   meta: hyroxMeta,

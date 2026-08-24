@@ -30,6 +30,7 @@ export { roundToIncrement } from "./rounding";
 export {
   tacticalBarbellEngine,
   tbTemplateSeries,
+  TB_RECOVERY_WEEK,
   type TbInstance,
   type TbClusterLift,
   type TbSeriesSlot,
