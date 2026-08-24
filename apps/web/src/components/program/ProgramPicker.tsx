@@ -3353,25 +3353,6 @@ export function ProgramPicker({
                     ))}
                   </div>
                 ) : null}
-                {hasSupplementalWork ? (
-                  <details className={styles.addExercise}>
-                    <summary data-testid={`tb-add-supplemental-${entry.key}`}>
-                      + Add supplemental
-                    </summary>
-                    <ExerciseLibraryPicker
-                      movements={rehabMovements}
-                      excludeKeys={drafts.map((row) => row.movement)}
-                      onPick={(movement) => {
-                        const key = catalogMovementKey(movement.id);
-                        setCatalogMovementMeta((current) => ({
-                          ...current,
-                          [key]: movement,
-                        }));
-                        addSeriesMovement(entry.key, key, "supplemental");
-                      }}
-                    />
-                  </details>
-                ) : null}
                 {rehabOnSeries ? (
                   <div>
                     {showHeadings ? (
@@ -3410,6 +3391,25 @@ export function ProgramPicker({
                       </div>
                     </div>
                   </div>
+                ) : null}
+                {hasSupplementalWork ? (
+                  <details className={styles.addExercise}>
+                    <summary data-testid={`tb-add-supplemental-${entry.key}`}>
+                      + Add supplemental
+                    </summary>
+                    <ExerciseLibraryPicker
+                      movements={rehabMovements}
+                      excludeKeys={drafts.map((row) => row.movement)}
+                      onPick={(movement) => {
+                        const key = catalogMovementKey(movement.id);
+                        setCatalogMovementMeta((current) => ({
+                          ...current,
+                          [key]: movement,
+                        }));
+                        addSeriesMovement(entry.key, key, "supplemental");
+                      }}
+                    />
+                  </details>
                 ) : null}
                 <details className={styles.addExercise}>
                   <summary data-testid={`tb-add-accessory-${entry.key}`}>
