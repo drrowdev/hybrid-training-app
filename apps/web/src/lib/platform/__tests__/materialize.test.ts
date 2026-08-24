@@ -291,6 +291,136 @@ describe("materializeProgram — TB optional accessories (ADR 0048)", () => {
   });
 });
 
+describe("materializeProgram — weekly TB rehab placement", () => {
+  const rehabItem = {
+    movementId: "11111111-1111-1111-1111-111111111111",
+    movementName: "Copenhagen Plank",
+    sets: 3,
+    holdSeconds: 30,
+  };
+  const envelope = (over: Record<string, unknown> = {}) =>
+    ({
+      version: 1,
+      localProtocolId: "protocol-1",
+      name: "Rehab",
+      items: [rehabItem],
+      series: [],
+      days: [],
+      ...over,
+    }) as never;
+
+  function zulu() {
+    return tacticalBarbellEngine.setup({ values: { templateId: "zulu" } }, ctx);
+  }
+  const zuluWeekdays = [0, 1, 3, 4];
+
+  it("embeds the protocol into the strength session it was attached to (DC-J1)", () => {
+    const r = materializeProgram(tacticalBarbellEngine, zulu(), ctx, resolve, {
+      weekdays: zuluWeekdays,
+      rehabSchedule: envelope({ series: ["slot-1"] }),
+    });
+    const week0 = r.sessions.filter((s) => s.weekIndex === 0);
+    // The whole point: no separate rehab session, and the strength day carries it.
+    expect(week0.some((s) => s.role === "rehab")).toBe(false);
+    const host = week0.find((s) => s.dayIndex === 0 && s.role === "strength")!;
+    expect(
+      host.prescription.items.some(
+        (item) => item.meta?.rehab === true && item.movementId === rehabItem.movementId,
+      ),
+    ).toBe(true);
+    expect(host.prescription.meta?.embeddedRehabSections).toEqual([
+      expect.objectContaining({ protocolName: "Rehab", sourceRef: "rehab-w0-d0" }),
+    ]);
+    // Other strength days are untouched.
+    const other = week0.find((s) => s.dayIndex === 1 && s.role === "strength")!;
+    expect(other.prescription.items.some((item) => item.meta?.rehab === true)).toBe(
+      false,
+    );
+  });
+
+  it("keeps rehab on its session through a peak/test week", () => {
+    const r = materializeProgram(tacticalBarbellEngine, zulu(), ctx, resolve, {
+      weekdays: zuluWeekdays,
+      rehabSchedule: envelope({ series: ["slot-1"] }),
+    });
+    const weeks = [...new Set(r.sessions.map((s) => s.weekIndex))];
+    for (const weekIndex of weeks) {
+      const carriers = r.sessions.filter(
+        (s) =>
+          s.weekIndex === weekIndex &&
+          (s.prescription.items.some((item) => item.meta?.rehab === true) ||
+            s.role === "rehab"),
+      );
+      expect(carriers).toHaveLength(1);
+    }
+  });
+
+  it("emits a standalone session for a rehab-only weekday", () => {
+    const r = materializeProgram(tacticalBarbellEngine, zulu(), ctx, resolve, {
+      weekdays: zuluWeekdays,
+      rehabSchedule: envelope({ days: [2] }),
+    });
+    const standalone = r.sessions.find(
+      (s) => s.weekIndex === 0 && s.role === "rehab",
+    )!;
+    expect(standalone.dayIndex).toBe(2);
+    expect(standalone.slot).toBe("single");
+    expect(standalone.prescription.programRef).toBe("rehab-w0-d2");
+  });
+
+  it("prescribes a day once when it is both attached and listed", () => {
+    // `slot-1` sits on weekday 0, which `days` also names. Two assignments on one
+    // day would prescribe the protocol twice.
+    const r = materializeProgram(tacticalBarbellEngine, zulu(), ctx, resolve, {
+      weekdays: zuluWeekdays,
+      rehabSchedule: envelope({ series: ["slot-1"], days: [0] }),
+    });
+    const host = r.sessions.find(
+      (s) => s.weekIndex === 0 && s.dayIndex === 0 && s.role === "strength",
+    )!;
+    expect(
+      host.prescription.items.filter((item) => item.meta?.rehab === true),
+    ).toHaveLength(3);
+    expect(host.prescription.meta?.embeddedRehabSections).toHaveLength(1);
+  });
+
+  it("keeps the legacy source ref so deleted-rehab tombstones still match", () => {
+    // A block converted from the old shape addresses its protocol by the
+    // synthetic legacy id, which carries no provenance — so its refs are the
+    // same ones already recorded in the user's tombstones.
+    const r = materializeProgram(tacticalBarbellEngine, zulu(), ctx, resolve, {
+      weekdays: zuluWeekdays,
+      rehabSchedule: envelope({ series: ["slot-1"] }),
+    });
+    const host = r.sessions.find(
+      (s) => s.weekIndex === 0 && s.dayIndex === 0 && s.role === "strength",
+    )!;
+    const rehabItems = host.prescription.items.filter(
+      (item) => item.meta?.rehab === true,
+    );
+    expect(rehabItems[0]!.meta?.rehabProtocolId).toBeNull();
+    expect(rehabItems[0]!.meta?.rehabSourceRef).toBe("rehab-w0-d0");
+  });
+
+  it("stamps the protocol's own name once it has a library id", () => {
+    const r = materializeProgram(tacticalBarbellEngine, zulu(), ctx, resolve, {
+      weekdays: zuluWeekdays,
+      rehabSchedule: envelope({
+        localProtocolId: "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+        name: "Groin",
+        days: [2],
+      }),
+    });
+    const standalone = r.sessions.find(
+      (s) => s.weekIndex === 0 && s.role === "rehab",
+    )!;
+    expect(standalone.title).toBe("Rehab · Groin");
+    expect(standalone.prescription.programRef).toBe(
+      "rehab-aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa-w0-d2",
+    );
+  });
+});
+
 describe("materializeProgram — TB3 Activation", () => {
   const activationCtx: PlatformContext = {
     oneRepMaxes: {

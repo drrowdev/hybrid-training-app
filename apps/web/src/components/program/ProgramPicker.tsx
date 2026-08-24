@@ -79,6 +79,10 @@ import {
   type SessionLinks,
 } from "@/lib/platform/session-links";
 import {
+  REHAB_SCHEDULE_VERSION,
+  type RehabSchedule,
+} from "@/lib/platform/rehab-schedule";
+import {
   attachProtocols,
   pruneAssignments,
   pruneRehabLinks,
@@ -685,6 +689,45 @@ function catalogMovementMetaFromCustomization(
   );
 }
 
+/** Choose which library protocol a session's rehab section runs. */
+function RehabProtocolPicker({
+  styles: css,
+  protocols,
+  selectedId,
+  onPick,
+}: {
+  styles: Record<string, string>;
+  protocols: PickerLibraryProtocol[];
+  selectedId?: string;
+  onPick: (protocol: PickerLibraryProtocol) => void;
+}) {
+  return (
+    <div className={css.libraryPicker}>
+      <div className={css.libraryResults}>
+        {protocols.map((protocol) => (
+          <button
+            key={protocol.id}
+            type="button"
+            aria-current={protocol.id === selectedId}
+            onClick={(event) => {
+              onPick(protocol);
+              event.currentTarget.closest("details")?.removeAttribute("open");
+            }}
+          >
+            <span>
+              <b>{protocol.name}</b>
+              <small>{protocol.summary}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+      <a className={css.libraryPickerLink} href="/app/settings/rehab-protocols">
+        Manage rehab protocols
+      </a>
+    </div>
+  );
+}
+
 function ExerciseLibraryPicker({
   movements,
   onPick,
@@ -882,17 +925,29 @@ function buildWeekFrom(
   strengthDays: number[],
   cardioDays: number[],
   customization?: TbCustomization,
+  /**
+   * Weekdays the block's rehab envelope runs on. A day with nothing else on it
+   * reads as a rehab-only day in the grid — which is what it is. Days that also
+   * hold a session keep their own type; their rehab hangs off the session.
+   */
+  rehabDays: readonly number[] = [],
 ): DayType[] {
-  if (customization && isTbCustomizationV1(customization)) {
-    return customization.dayTypes.map((day) =>
-      day === "conditioning" ? "cardio" : day,
-    );
+  const base =
+    customization && isTbCustomizationV1(customization)
+      ? customization.dayTypes.map((day): DayType =>
+          day === "conditioning" ? "cardio" : day,
+        )
+      : (() => {
+          const w: DayType[] = Array.from({ length: 7 }, () => "rest");
+          for (const d of cardioDays) if (d >= 0 && d <= 6) w[d] = "cardio";
+          // Strength wins any collision so the strength-day count stays correct.
+          for (const d of strengthDays) if (d >= 0 && d <= 6) w[d] = "strength";
+          return w;
+        })();
+  for (const d of rehabDays) {
+    if (d >= 0 && d <= 6 && base[d] === "rest") base[d] = "rehab";
   }
-  const w: DayType[] = Array.from({ length: 7 }, () => "rest");
-  for (const d of cardioDays) if (d >= 0 && d <= 6) w[d] = "cardio";
-  // Strength wins any collision so the strength-day count stays correct.
-  for (const d of strengthDays) if (d >= 0 && d <= 6) w[d] = "strength";
-  return w;
+  return base;
 }
 const DAY_SPREADS: Record<number, number[]> = {
   1: [0],
@@ -1113,6 +1168,8 @@ export interface ProgramEditContextProp {
   customization?: TbCustomization;
   /** User-authored superset links, rehydrated into the link editor. */
   sessionLinks?: SessionLinks;
+  /** Where this block runs its rehab protocol, rehydrated into the session cards. */
+  rehabSchedule?: RehabSchedule;
   currentWeekIndex?: number;
   programStartWeekIndex?: number;
 }
@@ -1285,6 +1342,7 @@ export function ProgramPicker({
           editContext.strengthWeekdays,
           editContext.cardioWeekdays,
           editContext.customization,
+          editContext.rehabSchedule?.days ?? [],
         )
       : buildWeek(preselectProgram?.sessionsPerWeek ?? 4),
   );
@@ -1566,6 +1624,22 @@ export function ProgramPicker({
         : [...current, libraryId],
     );
   }, []);
+  // Series keys of the sessions carrying rehab as their warm-up section, set on
+  // the session cards. A weekly block runs ONE protocol, so this is where it
+  // runs rather than which protocol runs.
+  const [rehabSeries, setRehabSeries] = useState<string[]>(
+    () => editContext?.rehabSchedule?.series ?? [],
+  );
+  const weeklyProtocol = attachedProtocols[0];
+  function addRehabToSeries(seriesKey: string, libraryId?: string) {
+    if (libraryId) setSelectedProtocolIds([libraryId]);
+    setRehabSeries((current) =>
+      current.includes(seriesKey) ? current : [...current, seriesKey],
+    );
+  }
+  function removeRehabFromSeries(seriesKey: string) {
+    setRehabSeries((current) => current.filter((key) => key !== seriesKey));
+  }
   const [activationDrafts, setActivationDrafts] =
     useState<ActivationDrafts>(() =>
       activationDraftsFromCustomization(
@@ -1602,6 +1676,7 @@ export function ProgramPicker({
         : {},
     );
     setSelectedProtocolIds([]);
+    setRehabSeries([]);
     setCatalogMovementMeta({});
     setActivationDrafts(
       defaultActivationDrafts(
@@ -1878,6 +1953,7 @@ export function ProgramPicker({
     (!customizeTb ||
       (customName.trim().length > 0 &&
         (rehabWeekdays.length === 0 || rehabProtocols.length > 0))) &&
+    (rehabSeries.length === 0 || rehabProtocols.length > 0) &&
     !pending;
 
   // Loadout step derivations (the setup field the template/phase choice writes to).
@@ -2399,9 +2475,27 @@ export function ProgramPicker({
       setupValues.dayOrder = chosen.dayOrder;
     }
 
-    // The weekly blob stores ONE unnamed item list; the selector is a single
-    // choice there, so the first (only) attached protocol supplies it.
-    const rehabItems = rehabProtocols[0]?.items ?? [];
+    // Where the weekly block runs its protocol: on the sessions the user
+    // attached it to, plus any rehab-only day. Sent as its own envelope, never
+    // as part of the customization — see `lib/platform/rehab-schedule`.
+    const liveSeriesKeys = new Set(
+      activeTbTemplate ? sessionSeriesFor(activeTbTemplate).map((s) => s.key) : [],
+    );
+    const attachedSeries = rehabSeries.filter((key) => liveSeriesKeys.has(key));
+    const weeklyProtocolPayload = attachedProtocols[0];
+    const rehabSchedule: RehabSchedule | undefined =
+      !isActivation &&
+      weeklyProtocolPayload &&
+      (attachedSeries.length > 0 || rehabWeekdays.length > 0)
+        ? {
+            version: REHAB_SCHEDULE_VERSION,
+            localProtocolId: weeklyProtocolPayload.localId,
+            name: weeklyProtocolPayload.name,
+            items: weeklyProtocolPayload.items as RehabSchedule["items"],
+            series: attachedSeries,
+            days: rehabWeekdays,
+          }
+        : undefined;
     const activationPhasePayload = (
       phase: ActivationPhaseKey,
     ): TbActivationCustomizationV3["phases"][ActivationPhaseKey] => {
@@ -2488,8 +2582,17 @@ export function ProgramPicker({
               // movements in a session writes this same overlay, and that alone
               // must not rename the user's program.
               ...(customizeTb ? { displayName: customName.trim() } : {}),
+              // A rehab-only day is written as REST here, with the envelope
+              // naming the day. `tbCustomizationV1Schema` pairs its `rehab` day
+              // type with a `rehab` field, and that pair cannot express rehab
+              // sitting on a strength day — so the blob is left saying nothing
+              // about rehab at all and keeps validating unchanged.
               dayTypes: week.map((day) =>
-                day === "cardio" ? "conditioning" : day,
+                day === "cardio"
+                  ? "conditioning"
+                  : day === "rehab"
+                    ? "rest"
+                    : day,
               ),
               sessionMovements: Object.fromEntries(
                 sessionSeriesFor(activeTbTemplate).map((series) => [
@@ -2513,9 +2616,6 @@ export function ProgramPicker({
                   ),
                 ]),
               ),
-              ...(customizeTb && rehabWeekdays.length > 0
-                ? { rehab: { items: rehabItems } }
-                : {}),
             }
         : undefined;
 
@@ -2563,14 +2663,22 @@ export function ProgramPicker({
       // protocol that is no longer attached is dropped — deploy rejects a link
       // naming a protocol that doesn't exist, and a reused id would otherwise
       // adopt it.
-      const rehabLinkEntries = attachedProtocols.flatMap((protocol) => {
+      //
+      // A weekly block's protocol counts as attached only while it RUNS
+      // somewhere. Taking rehab off the last session leaves it selected on
+      // screen, and keeping its links and binding would fail the deploy for a
+      // protocol with supersets, and leave a block claiming rehab it no longer
+      // has for one without.
+      const deployedProtocols =
+        isActivation || rehabSchedule ? attachedProtocols : [];
+      const rehabLinkEntries = deployedProtocols.flatMap((protocol) => {
         const links = libraryById.get(protocol.libraryId)?.links ?? [];
         return links.length > 0
           ? ([[`rehab.${protocol.localId}`, links]] as const)
           : [];
       });
       const outgoingLinks = {
-        ...pruneRehabLinks(sessionLinks, attachedProtocols),
+        ...pruneRehabLinks(sessionLinks, deployedProtocols),
         ...Object.fromEntries(rehabLinkEntries),
       };
       const res = await createProgramInstance({
@@ -2593,12 +2701,13 @@ export function ProgramPicker({
             }
           : {}),
         ...(customization ? { customization } : {}),
+        ...(rehabSchedule ? { rehabSchedule } : {}),
         ...(isEditing && editContext ? { editBlockId: editContext.blockId } : {}),
         ...(!isEditing && seasonBlockId ? { seasonBlockId } : {}),
         ...(!isEditing && startWithRecovery ? { startWithRecoveryWeek: true } : {}),
-        ...(isTb && attachedProtocols.length > 0
+        ...(isTb && deployedProtocols.length > 0
           ? {
-              rehabBindings: attachedProtocols.map((protocol) => ({
+              rehabBindings: deployedProtocols.map((protocol) => ({
                 localProtocolId: protocol.localId,
                 rehabProtocolId: protocol.libraryId,
               })),
@@ -2940,6 +3049,10 @@ export function ProgramPicker({
             const wholeTriad = hasWholeGroup(drafts, triad);
             const triadReplaced = isGroupReplaced(drafts, triad);
             const removed = removedSupplementalLabels(entry);
+            const rehabOnSeries =
+              weeklyProtocol && rehabSeries.includes(entry.key)
+                ? weeklyProtocol
+                : null;
             const populated = SLOT_SECTIONS.filter((section) =>
               drafts.some((draft) => sectionOf(entry.slots, draft) === section),
             );
@@ -3064,6 +3177,44 @@ export function ProgramPicker({
                     {`Removed: ${removed.join(", ")}.`}
                   </p>
                 ) : null}
+                {rehabOnSeries ? (
+                  <div>
+                    {showHeadings ? (
+                      <div className={styles.seriesSection}>Rehab</div>
+                    ) : null}
+                    <div className={styles.seriesExercises}>
+                      <div data-testid={`tb-rehab-${entry.key}`}>                        <span>
+                          <b>{rehabOnSeries.name}</b>
+                        </span>
+                        <span className={styles.seriesRowActions}>
+                          <details className={styles.addExercise}>
+                            <summary
+                              data-testid={`tb-rehab-change-${entry.key}`}
+                            >
+                              Change all rehab
+                            </summary>
+                            <RehabProtocolPicker
+                              styles={styles}
+                              protocols={libraryProtocols}
+                              selectedId={rehabOnSeries.libraryId}
+                              onPick={(protocol) =>
+                                setSelectedProtocolIds([protocol.id])
+                              }
+                            />
+                          </details>
+                          <button
+                            type="button"
+                            className={styles.rowRemove}
+                            data-testid={`tb-rehab-remove-${entry.key}`}
+                            onClick={() => removeRehabFromSeries(entry.key)}
+                          >
+                            Remove
+                          </button>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <details className={styles.addExercise}>
                   <summary data-testid={`tb-add-accessory-${entry.key}`}>
                     + Add accessory
@@ -3081,6 +3232,31 @@ export function ProgramPicker({
                     }}
                   />
                 </details>
+                {libraryProtocols.length > 0 && !rehabOnSeries ? (
+                  weeklyProtocol ? (
+                    <button
+                      type="button"
+                      className={styles.addSection}
+                      data-testid={`tb-add-rehab-${entry.key}`}
+                      onClick={() => addRehabToSeries(entry.key)}
+                    >
+                      {"+ Add rehab"}
+                    </button>
+                  ) : (
+                    <details className={styles.addExercise}>
+                      <summary data-testid={`tb-add-rehab-${entry.key}`}>
+                        + Add rehab
+                      </summary>
+                      <RehabProtocolPicker
+                        styles={styles}
+                        protocols={libraryProtocols}
+                        onPick={(protocol) =>
+                          addRehabToSeries(entry.key, protocol.id)
+                        }
+                      />
+                    </details>
+                  )
+                ) : null}
                 <SessionLinkEditor
                   seriesKey={entry.key}
                   movements={linkable}

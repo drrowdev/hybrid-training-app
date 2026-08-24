@@ -299,23 +299,27 @@ async function syncOneProgram(
   const context = await getBlockEditContext(blockId);
   // No editable context means the block isn't in a state the wizard could edit
   // either (wrong program, archived, missing instance state). Leave it alone.
-  if (!context || !context.customization) return { ok: true, changed: false };
+  if (!context) return { ok: true, changed: false };
+  // A block can carry rehab through the envelope with no customization at all,
+  // so the presence of a customization is not what makes it syncable.
+  if (!context.customization && !context.rehabSchedule) {
+    return { ok: true, changed: false };
+  }
 
   const { bindingsByInstance, library } = await loadBindings([programInstanceId]);
   const bindings = bindingsByInstance[programInstanceId] ?? {};
   if (Object.keys(bindings).length === 0) return { ok: true, changed: false };
 
+  const source = {
+    ...(context.customization ? { customization: context.customization } : {}),
+    ...(context.rehabSchedule ? { rehabSchedule: context.rehabSchedule } : {}),
+  };
   const linksBySeries = context.sessionLinks?.bySeries ?? {};
-  if (!resolutionChangesProgram(context.customization, linksBySeries, bindings, library)) {
+  if (!resolutionChangesProgram(source, linksBySeries, bindings, library)) {
     return { ok: true, changed: false };
   }
 
-  const resolved = resolveRehabLibrary(
-    context.customization,
-    linksBySeries,
-    bindings,
-    library,
-  );
+  const resolved = resolveRehabLibrary(source, linksBySeries, bindings, library);
   if (resolved.missing.length > 0) {
     return {
       ok: false,
@@ -331,9 +335,19 @@ async function syncOneProgram(
     startedOn: context.startedOn,
     startWeekIndex: context.programStartWeekIndex,
     accessories: { enabled: context.accessoriesEnabled },
-    customization: resolved.customization,
+    ...(resolved.customization ? { customization: resolved.customization } : {}),
+    ...(resolved.rehabSchedule ? { rehabSchedule: resolved.rehabSchedule } : {}),
     sessionLinks: { version: 1, bySeries: resolved.linksBySeries },
     editBlockId: blockId,
+    // Echoed back deliberately. The edit path REPLACES a program's bindings
+    // with exactly what it is sent, so omitting them here deleted every one —
+    // the first sync worked and no later one ever did.
+    rehabBindings: Object.entries(bindings).map(
+      ([localProtocolId, rehabProtocolId]) => ({
+        localProtocolId,
+        rehabProtocolId,
+      }),
+    ),
   });
   if (!result.ok) return { ok: false, error: result.error };
   return { ok: true, changed: true };

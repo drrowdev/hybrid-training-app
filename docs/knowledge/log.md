@@ -907,3 +907,15 @@ Review before merge found five defects, two of which would have shipped as silen
 The third was the anchoring hazard in a costume. Session refs are instance-independent, so a fresh deploy of the same template contains byte-identical refs: advice raised by a FINISHED block resolved perfectly well against the block that replaced it, and would have scheduled the light week six weeks out. Resolution is now scoped to the recommendation that raised it, and pending advice is retired when its block is archived.
 
 See ADR 0077.
+
+## [2026-08-26] decision | Rehab attaches to a Tactical Barbell session, not to a day it takes over
+
+A weekly Tactical Barbell block could only run rehab on a day it gave up entirely. The customization blob encodes rehab as a DAY TYPE — strength OR conditioning OR rehab OR rest — so `rehab as the warm-up of a strength day` had nowhere to live. The engine had supported that placement since migration 0127 and Activation has used it all along; only the weekly shape could not ask for it.
+
+Placement now lives in a sibling envelope on the wizard payload rather than inside the customization. That blob is a strict union parsed as one unit, so an older build meeting an unknown key drops the WHOLE block configuration, not just its rehab — the hazard ADR 0071 avoided for the session links, avoided again the same way. What the wizard writes into the customization is unchanged in shape: a rehab-only day is a rest day, and the blob says nothing about rehab at all.
+
+A session is addressed by its SERIES KEY, not by a weekday. The user attaches rehab a step before the schedule is set, and reproducing the engine's seating rule in the wizard is wrong the moment a template carries a conditioning or test session — the wizard's series list filters those out while the engine counts them. Resolving the key at materialisation is exact, and rehab follows its session when the schedule moves. It resolves against the session with that key whatever its role, or rehab would vanish in a peak week — the week a lifter is most loaded.
+
+Two pre-existing bugs surfaced in the same path and are fixed here. The Settings sync path replaced a program's protocol bindings with an empty list, so the first edit synced and no later one ever did. And a newly deployed weekly block bound its protocol under the library uuid but materialised its links under the synthetic legacy id, so rehab supersets were dropped and Settings edits never reached it.
+
+See ADR 0078.

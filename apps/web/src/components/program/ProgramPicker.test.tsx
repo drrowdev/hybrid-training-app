@@ -502,6 +502,89 @@ describe("ProgramPicker rendering", () => {
     expect(html).not.toContain("Hanging Knee Raise");
   });
 
+  const REHAB_LIBRARY = [
+    {
+      id: "bbbbbbbb-0000-4000-8000-000000000001",
+      name: "TB Zulu rehab",
+      summary: "3 movements",
+      items: [
+        {
+          movementId: "cccccccc-0000-4000-8000-000000000001",
+          movementName: "Copenhagen Plank",
+          sets: 3,
+          holdSeconds: 30,
+        },
+      ],
+      links: [],
+    },
+  ];
+
+  it("offers rehab on every session card once the library has a protocol", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+        libraryProtocols={REHAB_LIBRARY}
+      />,
+    );
+
+    expect(html).toContain('data-testid="tb-add-rehab-slot-1"');
+    expect(html).toContain('data-testid="tb-add-rehab-slot-2"');
+    expect(html).toContain("TB Zulu rehab");
+  });
+
+  it("offers no rehab control when the library is empty", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+
+    expect(html).not.toContain('data-testid="tb-add-rehab-slot-1"');
+  });
+
+  it("shows a session's attached rehab when re-entering the wizard", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+        libraryProtocols={REHAB_LIBRARY}
+        existingRehabBindings={{
+          "bbbbbbbb-0000-4000-8000-000000000001": "protocol-1",
+        }}
+        editContext={{
+          blockId: "11111111-1111-4111-8111-111111111111",
+          programId: "tactical-barbell",
+          setupValues: { templateId: "zulu" },
+          strengthWeekdays: [0, 1, 3, 4],
+          cardioWeekdays: [],
+          startedOn: "2026-01-05",
+          accessoriesEnabled: false,
+          rehabSchedule: {
+            version: 1,
+            localProtocolId: "protocol-1",
+            name: "TB Zulu rehab",
+            items: REHAB_LIBRARY[0]!.items,
+            series: ["slot-1"],
+            days: [],
+          } as never,
+        }}
+      />,
+    );
+
+    expect(html).toContain('data-testid="tb-rehab-slot-1"');
+    expect(html).toContain('data-testid="tb-rehab-remove-slot-1"');
+    // Only the session it was attached to carries it.
+    expect(html).not.toContain('data-testid="tb-rehab-slot-2"');
+  });
+
   it("lets every Zulu slot be changed or removed from the loadout step", () => {
     const html = renderToStaticMarkup(
       <ProgramPicker
