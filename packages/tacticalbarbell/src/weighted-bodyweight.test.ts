@@ -53,8 +53,23 @@ describe("weighted pull-ups are prescribed off a system load", () => {
     const { main } = pullupItems(ctxWith(), "b0-w1-s1");
     expect(main?.weightKg).toBe(0);
     expect(main?.systemLoad).toBe(true);
-    // Still the template's rep scheme — this is not the max-reps `bodyweight`
-    // kind, it is a loaded lift that happens to need no plates today.
+  });
+
+  it("turns a bodyweight-only set into max clean reps, not the loaded rep scheme", () => {
+    // TB3 does not run the loaded scheme at bodyweight — with nothing left to
+    // add, the set is repped out, so a light week still drives the pull-up.
+    const { main } = pullupItems(ctxWith(), "b0-w1-s1");
+    expect(main?.isAmrap).toBe(true);
+    // The loaded prescription's rep CEILING goes with the load it belonged to.
+    expect(main?.repsMax).toBeUndefined();
+    // The loaded "stop short of failure" cue would contradict an open set.
+    expect(main?.note ?? "").not.toMatch(/short of failure/i);
+  });
+
+  it("leaves a loaded set on the template's rep scheme", () => {
+    const { main } = pullupItems(ctxWith(), "b0-w5-s1");
+    expect(main?.weightKg).toBeGreaterThan(0);
+    expect(main?.isAmrap).toBeUndefined();
     expect(main?.reps).toBe(5);
   });
 
@@ -64,6 +79,7 @@ describe("weighted pull-ups are prescribed off a system load", () => {
       "b0-w1-s1",
     );
     expect(main?.weightKg).toBe(0);
+    expect(main?.isAmrap).toBe(true);
   });
 
   it("ramps warm-ups on the system load, then converts each step to belt load", () => {
