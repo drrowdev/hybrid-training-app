@@ -1190,6 +1190,18 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
             }),
           );
         }
+        // Nothing left to hang off the belt. TB3 does not then run the loaded
+        // rep scheme at bodyweight — the set becomes max clean reps, so the
+        // lighter weeks of a wave still drive the pull-up forward. The loaded
+        // "stop short of failure" cue goes with the load it belonged to.
+        const isMaxRepsSet = addedKg === 0;
+        const maxRepsNote = "bodyweight — max clean reps";
+        const bodyweightNote =
+          ruleNote != null
+            ? `${ruleNote} · ${maxRepsNote}`
+            : prescribedSetsMin !== prescribedSetsMax
+              ? `${prescribedSetsMin}–${prescribedSetsMax} sets — ${maxRepsNote}`
+              : maxRepsNote;
         items.push({
           kind: prescribedItemKind,
           name: liftLabel(lift),
@@ -1197,12 +1209,16 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
           sets: prescribedSetsMin,
           ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),
           reps: prescribedReps,
-          ...(prescribedRepsMax != null ? { repsMax: prescribedRepsMax } : {}),
-          repsLabel: prescribedRepsLabel,
+          // A rep RANGE is a loaded-set instruction; an open set has no ceiling.
+          ...(prescribedRepsMax != null && !isMaxRepsSet
+            ? { repsMax: prescribedRepsMax }
+            : {}),
+          repsLabel: isMaxRepsSet ? String(prescribedReps) : prescribedRepsLabel,
           weightKg: addedKg,
           percentOfTm: prescribedPercent,
           systemLoad: true,
-          note: addedKg === 0 ? `bodyweight; ${rangeNote}` : rangeNote,
+          ...(isMaxRepsSet ? { isAmrap: true } : {}),
+          note: isMaxRepsSet ? bodyweightNote : rangeNote,
         });
         pushLift();
         continue;

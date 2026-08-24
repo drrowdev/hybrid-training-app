@@ -977,3 +977,15 @@ The curtsy lunge sits at experienceMin 1 rather than 0. Ten new unilateral entri
 No barbell curtsy and no barbell lateral lunge. The threshold applied was "commonly programmed under a bar", which `step-up-bb` clears and those two do not.
 
 The dead `walking-lunge` key in the muscle map became live for the first time and was rewritten to match its siblings. The `lunge` key stays dead and untouched - it names no slug and inventing one to justify it would be the tail wagging the dog. The 0139 rollback guard was also widened: it checked `training_maxes` but not `tm_suggestions`, `tm_history` or `cardio_logs`, all of which cascade or null on movement delete.
+
+## [2026-08-25] decision | A weighted pull-up with nothing on the belt is a max-reps set
+
+Owner-confirmed follow-up to the system-load fix. That change made the lighter weeks of a wave resolve to a bodyweight pull-up, which is correct - but it left the loaded prescription in place around it, so the set read "3-5 x 5, submaximal, stop short of failure" with no weight. TB3 does not run the loaded rep scheme at bodyweight. With nothing left to add, the set is repped out, which is what keeps a light week driving the pull-up forward instead of being five easy reps.
+
+The engine already had a `bodyweight` lift kind that prescribes a PERCENTAGE OF MAX CLEAN REPS (a 20-rep max at 75% = 15 reps), citing TB1. Reusing it here was the obvious move and is wrong on the data: that kind reads its anchor as a rep ceiling, and a `weighted-bw` movement's anchor is a kg system max. The app has no max-rep count for a weighted pull-up at all - `pullUpMaxReps` exists only for lifters who came through the bodyweight-only onboarding assessment, which is exactly the population that does not have a weighted pull-up. Choosing the percentage reading would therefore have meant collecting a second number from every lifter. Owner chose the open set.
+
+So a `weighted-bw` lift whose added load resolves to zero now carries `isAmrap`, drops the loaded rep CEILING (`repsMax` - a range is a loaded-set instruction), and drops the "stop short of failure" cue, which directly contradicts an open set. The template's rep count stays as a floor, so the set reads as "5 reps+" rather than losing its anchor entirely. Loaded weeks are untouched.
+
+The set count is deliberately not collapsed: all 3-5 sets are max-reps sets, matching how the adapter already expands a multi-set working item into one loggable slot per set.
+
+Not revisited: PR detection stays suppressed for these movements. Repping out a bodyweight pull-up is exactly where a REP pr would be meaningful, but the saved max is a kg system load, so there is nothing here to fire against yet. That wants a max-reps anchor of its own.

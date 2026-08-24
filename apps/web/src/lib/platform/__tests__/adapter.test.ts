@@ -132,6 +132,37 @@ describe("adaptSessionPrescription — strength", () => {
     expect(prescription.items.some((i) => i.isAmrap)).toBe(true);
   });
 
+  it("carries a bodyweight-only system-load set through as an open set", () => {
+    // Nothing left to hang off the belt, so the set is repped out. Both the
+    // flag AND the 0 kg have to survive: without `isAmrap` the logger presents
+    // the loaded rep scheme, and without the load it falls back to whatever the
+    // lifter last hung off a belt.
+    const bodyweightOnly = {
+      kind: "main" as const,
+      name: "Weighted Pull-up",
+      movementId: "weighted-pullup",
+      sets: 3,
+      reps: 5,
+      weightKg: 0,
+      percentOfTm: 0.75,
+      systemLoad: true,
+      isAmrap: true,
+    };
+    const warmup = { ...bodyweightOnly, kind: "warmup" as const, sets: 1, isAmrap: false };
+    const { prescription } = adaptSessionPrescription(
+      { items: [warmup, bodyweightOnly] },
+      resolve,
+    );
+    const warmupItem = prescription.items.find((i) => i.kind === "warmup")!;
+    expect(warmupItem.targetWeightKg).toBe(0);
+    expect(warmupItem.systemLoad).toBe(true);
+    const working = prescription.items.filter((i) => i.kind === "main");
+    // Each of the three sets is its own max-reps slot.
+    expect(working).toHaveLength(3);
+    expect(working.every((i) => i.isAmrap === true)).toBe(true);
+    expect(working.every((i) => i.systemLoad === true)).toBe(true);
+  });
+
   it("labels the main-lift basis noun: defaults to '% TM', '% 1RM' when told", () => {
     const main = {
       kind: "main" as const,
