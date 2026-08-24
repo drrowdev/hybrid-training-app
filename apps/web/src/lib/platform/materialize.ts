@@ -37,7 +37,6 @@ import {
   activationSessionConfigs,
   activationRehabAssignments,
   activationRehabProtocols,
-  LEGACY_REHAB_PROTOCOL_ID,
   isTbActivationCustomization,
   isTbActivationCustomizationV2,
   isTbCustomizationV1,
@@ -53,6 +52,11 @@ import {
 import { expandPrescriptionSets } from "@/lib/planner/expand-prescription-sets";
 import { embedRehabPrescription } from "./rehab-composition";
 import { applyRehabLinks, rehabSeriesKey } from "./rehab-links";
+import {
+  weeklyRehabPlan,
+  type RehabSchedule,
+  type WeeklyRehabProtocol,
+} from "./rehab-schedule";
 import type { SessionLink } from "./session-links";
 
 export interface MaterializeOptions {
@@ -116,6 +120,12 @@ export interface MaterializeOptions {
    * that silently returns nothing for every other program.
    */
   sessionLinks?: Readonly<Record<string, readonly SessionLink[]>>;
+  /**
+   * Where a weekly Tactical Barbell block runs its rehab protocol. Absent means
+   * the block resolves rehab from its customization exactly as before the
+   * envelope existed.
+   */
+  rehabSchedule?: RehabSchedule;
 }
 
 export interface MaterializedSession {
@@ -311,6 +321,7 @@ export function materializeProgram<I>(
 ): MaterializeResult {
   const timeline = engine.timeline(instance);
   const sessions: MaterializedSession[] = [];
+  const seriesKeyOf = new Map<MaterializedSession, string>();
   const allSkipped: SkippedItem[] = [];
 
   const startWeek = Math.max(0, Math.trunc(opts.startWeekIndex ?? 0));
@@ -388,7 +399,7 @@ export function materializeProgram<I>(
     // weekday — reusing the (week, day, slot) machinery Hybrid already uses.
     const hasSecond = spec.secondSession != null;
 
-    sessions.push({
+    const emitted: MaterializedSession = {
       ref: spec.ref,
       weekIndex,
       dayIndex,
@@ -402,7 +413,12 @@ export function materializeProgram<I>(
       sessionModality: modality,
       effectiveStressLoad: load,
       skipped,
-    });
+    };
+    sessions.push(emitted);
+    // Kept out of `MaterializedSession` itself: nothing downstream of this
+    // function has a use for a series key, and the row it writes has no column
+    // for one. Rehab placement resolves against it below.
+    if (spec.seriesKey) seriesKeyOf.set(emitted, spec.seriesKey);
 
     if (spec.secondSession) {
       const pmRef = spec.secondSession.ref;
@@ -476,10 +492,13 @@ export function materializeProgram<I>(
     }
   }
 
-  const legacyRehabItems =
-    opts.customization && isTbCustomizationV1(opts.customization)
-      ? opts.customization.rehab?.items ?? []
-      : [];
+  // Weekly TB: what runs and where, from the envelope when the block has one
+  // and from its own customization otherwise. Activation carries its rehab in
+  // the customization blob and is unaffected.
+  const weeklyRehab =
+    opts.customization == null || isTbCustomizationV1(opts.customization)
+      ? weeklyRehabPlan(opts.customization, opts.rehabSchedule)
+      : weeklyRehabPlan(undefined, undefined);
   const activationProtocols =
     opts.customization && isTbActivationCustomization(opts.customization)
       ? activationRehabProtocols(opts.customization)
@@ -491,9 +510,12 @@ export function materializeProgram<I>(
     activationProtocols.map((protocol) => [protocol.id, protocol]),
   );
   if (
-    (legacyRehabItems.length > 0 || activationProtocols.length > 0) &&
+    (weeklyRehab.protocols.length > 0 || activationProtocols.length > 0) &&
     maxEmittedWeek >= 0
   ) {
+    const weeklyProtocolById = new Map(
+      weeklyRehab.protocols.map((protocol) => [protocol.localProtocolId, protocol]),
+    );
     const takenSlots = new Set(
       sessions.map(
         (session) =>
@@ -502,23 +524,50 @@ export function materializeProgram<I>(
     );
     for (let weekIndex = 0; weekIndex <= maxEmittedWeek; weekIndex++) {
       const rehabAssignments =
-        opts.customization && isTbCustomizationV1(opts.customization)
-          ? opts.customization.dayTypes.flatMap((type, day) =>
-              type === "rehab"
-                ? [
-                    {
-                      day,
-                      protocolId: null,
-                      // Provenance stays null, but links need a stable key.
-                      // The V1 blob has no protocols at all, so it resolves
-                      // through the same synthetic id V2 normalises to.
-                      linkProtocolId: LEGACY_REHAB_PROTOCOL_ID,
-                      protocolName: "Rehab",
-                      items: legacyRehabItems,
-                    },
-                  ]
-                : [],
-            )
+        opts.customization == null || isTbCustomizationV1(opts.customization)
+          ? (() => {
+              if (weeklyRehab.protocols.length === 0) return [];
+              const assignment = (
+                protocol: WeeklyRehabProtocol,
+                day: number,
+                host: MaterializedSession | undefined,
+              ) => ({
+                day,
+                protocolId: protocol.protocolId,
+                // Provenance may be null, but links always need a stable key —
+                // the same synthetic id the legacy shapes normalise to.
+                linkProtocolId: protocol.localProtocolId,
+                protocolName: protocol.protocolName,
+                items: protocol.items,
+                host,
+              });
+              const out: ReturnType<typeof assignment>[] = [];
+              const claimedDays = new Set<number>();
+              // A session the user attached rehab to is the host, whatever its
+              // role that week — a peak/test week reuses the same series key,
+              // and dropping to a role check would make rehab vanish there.
+              for (const session of sessions) {
+                if (session.weekIndex !== weekIndex) continue;
+                const key = seriesKeyOf.get(session);
+                if (!key) continue;
+                const localId = weeklyRehab.bySeries.get(key);
+                if (!localId) continue;
+                const protocol = weeklyProtocolById.get(localId);
+                if (!protocol) continue;
+                out.push(assignment(protocol, session.dayIndex, session));
+                claimedDays.add(session.dayIndex);
+              }
+              // A standalone day that already holds an attached session would
+              // otherwise prescribe rehab twice on the same day.
+              for (const [day, localId] of weeklyRehab.byDay) {
+                if (claimedDays.has(day)) continue;
+                const protocol = weeklyProtocolById.get(localId);
+                if (!protocol) continue;
+                out.push(assignment(protocol, day, undefined));
+                claimedDays.add(day);
+              }
+              return out.sort((left, right) => left.day - right.day);
+            })()
           : opts.customization &&
               isTbActivationCustomization(opts.customization)
             ? (() => {
@@ -552,6 +601,8 @@ export function materializeProgram<I>(
                       ? "Rehab"
                       : protocol.name,
                     items: protocol.items,
+                    // Activation places rehab by weekday, never by session.
+                    host: undefined as MaterializedSession | undefined,
                   };
                 });
               })()
@@ -617,12 +668,14 @@ export function materializeProgram<I>(
             assignment.linkProtocolId,
           );
         }
-        const strengthSession = sessions.find(
-          (session) =>
-            session.weekIndex === weekIndex &&
-            session.dayIndex === dayIndex &&
-            session.role === "strength",
-        );
+        const strengthSession =
+          assignment.host ??
+          sessions.find(
+            (session) =>
+              session.weekIndex === weekIndex &&
+              session.dayIndex === dayIndex &&
+              session.role === "strength",
+          );
         if (strengthSession) {
           strengthSession.prescription = embedRehabPrescription(
             strengthSession.prescription,

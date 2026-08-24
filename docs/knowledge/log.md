@@ -1003,3 +1003,17 @@ Which slot lends the dose is the whole correctness question. Two are wrong to bo
 Review also caught that the first tests exercised a branch production cannot reach. Deploy stamps a `kind` on every catalog movement - `barbell` when the lifter has a 1RM, `unanchored` when they do not - so a test payload with neither took a third path that emits a percentage but no weight and no warm-ups. The PR's central claim, that an added supplemental inherits the day's warm-up ramp, was true and untested. Both real paths are now covered, with the added lift given a 1RM distinct from the donor's so "loaded off its own max" actually means something.
 
 A day with no supplemental work of its own has no dose to lend; the lift falls back to the accessory dose. The wizard does not offer the control there, so it is a defined fallback rather than a reachable state.
+
+## [2026-08-26] decision | Rehab attaches to a Tactical Barbell session, not to a day it takes over
+
+A weekly Tactical Barbell block could only run rehab on a day it gave up entirely. The customization blob encodes rehab as a DAY TYPE — strength OR conditioning OR rehab OR rest — so `rehab as the warm-up of a strength day` had nowhere to live. The engine had supported that placement since migration 0127 and Activation has used it all along; only the weekly shape could not ask for it.
+
+Placement now lives in a sibling envelope on the wizard payload rather than inside the customization. That blob is a strict union parsed as one unit, so an older build meeting an unknown key drops the WHOLE block configuration, not just its rehab — the hazard ADR 0071 avoided for the session links, avoided again the same way. What the wizard writes into the customization is unchanged in shape: a rehab-only day is a rest day, and the blob says nothing about rehab at all.
+
+A session is addressed by its SERIES KEY, not by a weekday. The user attaches rehab a step before the schedule is set, and reproducing the engine's seating rule in the wizard is wrong the moment a template carries a conditioning or test session — the wizard's series list filters those out while the engine counts them. Resolving the key at materialisation is exact, and rehab follows its session when the schedule moves. It resolves against the session with that key whatever its role, or rehab would vanish in a peak week — the week a lifter is most loaded.
+
+A weekly block runs several protocols, one per placement — knee rehab on squat day, shoulder rehab on press day. Which protocols a block is attached to is DERIVED from where they run rather than tracked beside it: one chosen and then taken off every session is not attached, so its supersets and its library binding go with it. Keeping them would fail the deploy for a protocol with supersets, and leave a block claiming rehab it never runs for one without.
+
+Two pre-existing bugs surfaced in the same path and are fixed here. The Settings sync path replaced a program's protocol bindings with an empty list, so the first edit synced and no later one ever did. And a newly deployed weekly block bound its protocol under the library uuid but materialised its links under the synthetic legacy id, so rehab supersets were dropped and Settings edits never reached it.
+
+See ADR 0078.

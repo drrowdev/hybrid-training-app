@@ -18,6 +18,7 @@ import {
   activationSummaryPhaseFor,
   activationRequiredBenchmarkKeysFor,
   defaultClusterFor,
+  initialRehabByDay,
   relevantBenchmarkKeysFor,
   startScheduleFor,
   validateClusterClient,
@@ -500,6 +501,170 @@ describe("ProgramPicker rendering", () => {
     // The ab work is one circuit, so it reads as one entry.
     expect(html).toContain("AB Triad");
     expect(html).not.toContain("Hanging Knee Raise");
+  });
+
+  const REHAB_LIBRARY = [
+    {
+      id: "bbbbbbbb-0000-4000-8000-000000000001",
+      name: "TB Zulu rehab",
+      summary: "3 movements",
+      items: [
+        {
+          movementId: "cccccccc-0000-4000-8000-000000000001",
+          movementName: "Copenhagen Plank",
+          sets: 3,
+          holdSeconds: 30,
+        },
+      ],
+      links: [],
+    },
+    {
+      id: "bbbbbbbb-0000-4000-8000-000000000002",
+      name: "Shoulder prehab",
+      summary: "2 movements",
+      items: [
+        {
+          movementId: "cccccccc-0000-4000-8000-000000000002",
+          movementName: "Prone Y",
+          sets: 2,
+          reps: 12,
+        },
+      ],
+      links: [],
+    },
+  ];
+
+  it("offers rehab on every session card once the library has a protocol", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+        libraryProtocols={REHAB_LIBRARY}
+      />,
+    );
+
+    expect(html).toContain('data-testid="tb-add-rehab-slot-1"');
+    expect(html).toContain('data-testid="tb-add-rehab-slot-2"');
+    // Every protocol is offered on every card, so two sessions can run
+    // different ones.
+    expect(html).toContain("TB Zulu rehab");
+    expect(html).toContain("Shoulder prehab");
+  });
+
+  it("offers no rehab control when the library is empty", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+
+    expect(html).not.toContain('data-testid="tb-add-rehab-slot-1"');
+  });
+
+  it("shows each session's own protocol when re-entering the wizard", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+        libraryProtocols={REHAB_LIBRARY}
+        existingRehabBindings={{
+          "bbbbbbbb-0000-4000-8000-000000000001": "protocol-1",
+          "bbbbbbbb-0000-4000-8000-000000000002":
+            "bbbbbbbb-0000-4000-8000-000000000002",
+        }}
+        editContext={{
+          blockId: "11111111-1111-4111-8111-111111111111",
+          programId: "tactical-barbell",
+          setupValues: { templateId: "zulu" },
+          strengthWeekdays: [0, 1, 3, 4],
+          cardioWeekdays: [],
+          startedOn: "2026-01-05",
+          accessoriesEnabled: false,
+          rehabSchedule: {
+            version: 1,
+            protocols: [
+              {
+                id: "protocol-1",
+                name: "TB Zulu rehab",
+                items: REHAB_LIBRARY[0]!.items,
+              },
+              {
+                id: "bbbbbbbb-0000-4000-8000-000000000002",
+                name: "Shoulder prehab",
+                items: REHAB_LIBRARY[1]!.items,
+              },
+            ],
+            series: [
+              { key: "slot-1", protocolId: "protocol-1" },
+              {
+                key: "slot-2",
+                protocolId: "bbbbbbbb-0000-4000-8000-000000000002",
+              },
+            ],
+            days: [],
+          } as never,
+        }}
+      />,
+    );
+
+    expect(html).toContain('data-testid="tb-rehab-slot-1"');
+    expect(html).toContain('data-testid="tb-rehab-remove-slot-1"');
+    expect(html).toContain('data-testid="tb-rehab-slot-2"');
+    // Neither session offers to add rehab it already has.
+    expect(html).not.toContain('data-testid="tb-add-rehab-slot-1"');
+  });
+
+  it("keeps a pre-envelope block's rehab day set when re-entering the wizard", () => {
+    // A block deployed before the envelope existed keeps its rehab day in
+    // `dayTypes` and its protocol under the synthetic legacy id. Losing it here
+    // would strand the wizard: the day would read as unset and refuse to deploy
+    // until the user re-picked what the block already runs.
+    const legacyBlock = {
+      version: 1,
+      displayName: "TB Zulu rehab",
+      dayTypes: [
+        "strength",
+        "strength",
+        "rehab",
+        "strength",
+        "strength",
+        "rest",
+        "rest",
+      ],
+      sessionMovements: {},
+      rehab: { items: REHAB_LIBRARY[0]!.items },
+    } as never;
+    const bindings = new Map([["protocol-1", REHAB_LIBRARY[0]!.id]]);
+
+    expect(initialRehabByDay(undefined, legacyBlock, bindings)).toEqual({
+      2: REHAB_LIBRARY[0]!.id,
+    });
+    // With no binding there is nothing to seed — the day stays unset rather
+    // than guessing a protocol.
+    expect(initialRehabByDay(undefined, legacyBlock, new Map())).toEqual({});
+  });
+
+  it("reads rehab days from the envelope once a block has one", () => {
+    const envelope = {
+      version: 1,
+      protocols: [
+        { id: "protocol-1", name: "TB Zulu rehab", items: REHAB_LIBRARY[0]!.items },
+      ],
+      series: [],
+      days: [{ day: 5, protocolId: "protocol-1" }],
+    } as never;
+    const bindings = new Map([["protocol-1", REHAB_LIBRARY[0]!.id]]);
+
+    expect(initialRehabByDay(envelope, undefined, bindings)).toEqual({
+      5: REHAB_LIBRARY[0]!.id,
+    });
   });
 
   it("lets every Zulu slot be changed or removed from the loadout step", () => {

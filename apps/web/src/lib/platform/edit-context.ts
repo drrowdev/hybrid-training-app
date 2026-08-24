@@ -25,6 +25,10 @@ import {
   parseStoredSessionLinks,
   type SessionLinks,
 } from "./session-links";
+import {
+  parseStoredRehabSchedule,
+  type RehabSchedule,
+} from "./rehab-schedule";
 import { daysBetweenYmd, mondayOfYmd, todayYmd } from "@/lib/dates";
 
 /** Foreign strength-only programs the edit flow supports (own cardio is wizard-added). */
@@ -46,6 +50,8 @@ export interface ProgramEditContext {
   customization?: TbCustomization;
   /** User-authored superset links, rehydrated for the wizard's link editor. */
   sessionLinks?: SessionLinks;
+  /** Where this block runs its rehab protocol (weekly Tactical Barbell only). */
+  rehabSchedule?: RehabSchedule;
   /** Current materialized block week and absolute engine start offset. */
   currentWeekIndex: number;
   programStartWeekIndex: number;
@@ -88,6 +94,7 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
     weekdays?: number[];
     customization?: unknown;
     sessionLinks?: unknown;
+    rehabSchedule?: unknown;
     startWeekIndex?: number;
   };
   const setupValues = setupInput.values ?? {};
@@ -139,6 +146,7 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
   // in `setup_input`, so a malformed customization must not silently strip the
   // user's links (and vice versa).
   const sessionLinks = parseStoredSessionLinks(setupInput.sessionLinks);
+  const rehabSchedule = parseStoredRehabSchedule(setupInput.rehabSchedule);
   const { data: profile } = await supabase
     .from("profiles")
     .select("timezone")
@@ -168,5 +176,6 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
       ? { customization: customizationResult.data }
       : {}),
     ...(sessionLinks ? { sessionLinks } : {}),
+    ...(rehabSchedule ? { rehabSchedule } : {}),
   };
 }

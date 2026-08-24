@@ -347,9 +347,14 @@ export default async function ProgramPickerPage({
     // its own protocols against the library by content, so its local ids are
     // preserved and its day assignments keep resolving. Saving then writes the
     // real binding rows.
-    const own = editContext.customization
-      ? rehabFingerprint(editContext.customization)
-      : [];
+    const own = rehabFingerprint({
+      ...(editContext.customization
+        ? { customization: editContext.customization }
+        : {}),
+      ...(editContext.rehabSchedule
+        ? { rehabSchedule: editContext.rehabSchedule }
+        : {}),
+    });
     const unbound = own.filter(
       (protocol) => !Object.values(existingRehabBindings).includes(protocol.id),
     );

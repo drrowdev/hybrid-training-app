@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Rehab on a Tactical Barbell training day (ADR 0078)
+- Each session in the program wizard's "Each session" list now has **+ Add
+  rehab**, beside + Add accessory. The protocol runs as that workout's warm-up
+  section instead of taking over a whole day, and each session picks its own —
+  knee rehab on squat day, shoulder rehab on press day.
+- Rehab-only days still work as before: set a day to Rehab in the schedule step,
+  then choose which protocol it runs.
+- Rehab no longer needs "Customize template" — a canonical Operator / Fighter /
+  Zulu block can carry it.
+- Rehab attaches to the SESSION, so moving that session to another weekday in
+  the schedule step takes its rehab with it, and a peak/test week keeps it.
+- Placement is stored beside the block's setup rather than inside its
+  customization, so an existing block is untouched until you next save it, and
+  a rolled-back build loses no configuration.
+- Fixes: editing a protocol in Settings synced into a live program once and then
+  silently never again. Fixes: a newly deployed weekly block never linked to the
+  Settings library at all, so supersets inside a rehab protocol were dropped and
+  later Settings edits never reached it.
+
 ### Link lifts into supersets (ADR 0071, supersedes ADR 0026)
 - Replaced the block-level "Superset accessories" toggle, which inferred pairs
   from an anatomical antagonist table, with explicit per-slot links you author

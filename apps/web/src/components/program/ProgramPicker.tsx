@@ -31,6 +31,7 @@ import {
 import { upsertTrainingMax } from "@/lib/training-maxes/actions";
 import {
   DEFAULT_CUSTOM_TB_NAME,
+  LEGACY_REHAB_PROTOCOL_ID,
   TB_ACTIVATION_CUSTOMIZATION_VERSION,
   TB_CUSTOMIZATION_VERSION,
   activationSessionConfigs,
@@ -80,6 +81,10 @@ import {
   type SessionLink,
   type SessionLinks,
 } from "@/lib/platform/session-links";
+import {
+  REHAB_SCHEDULE_VERSION,
+  type RehabSchedule,
+} from "@/lib/platform/rehab-schedule";
 import {
   attachProtocols,
   pruneAssignments,
@@ -687,6 +692,45 @@ function catalogMovementMetaFromCustomization(
   );
 }
 
+/** Choose which library protocol a session's rehab section runs. */
+function RehabProtocolPicker({
+  styles: css,
+  protocols,
+  selectedId,
+  onPick,
+}: {
+  styles: Record<string, string>;
+  protocols: PickerLibraryProtocol[];
+  selectedId?: string;
+  onPick: (protocol: PickerLibraryProtocol) => void;
+}) {
+  return (
+    <div className={css.libraryPicker}>
+      <div className={css.libraryResults}>
+        {protocols.map((protocol) => (
+          <button
+            key={protocol.id}
+            type="button"
+            aria-current={protocol.id === selectedId}
+            onClick={(event) => {
+              onPick(protocol);
+              event.currentTarget.closest("details")?.removeAttribute("open");
+            }}
+          >
+            <span>
+              <b>{protocol.name}</b>
+              <small>{protocol.summary}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+      <a className={css.libraryPickerLink} href="/app/settings/rehab-protocols">
+        Manage rehab protocols
+      </a>
+    </div>
+  );
+}
+
 function ExerciseLibraryPicker({
   movements,
   onPick,
@@ -879,22 +923,68 @@ function buildWeek(n: number): DayType[] {
   return w;
 }
 
+/**
+ * Which library protocol each rehab-only day runs when the wizard opens.
+ *
+ * A block deployed before the `rehabSchedule` envelope existed keeps its rehab
+ * days in `dayTypes` and its single protocol under the synthetic legacy id.
+ * Reading only the envelope would show every one of those days as unset and
+ * refuse to deploy until the user re-picked what the block already runs.
+ *
+ * `localToLibrary` inverts the wizard's `libraryId → localId` bindings.
+ */
+export function initialRehabByDay(
+  rehabSchedule: RehabSchedule | undefined,
+  customization: TbCustomization | undefined,
+  localToLibrary: ReadonlyMap<string, string>,
+): Record<number, string> {
+  if (rehabSchedule) {
+    return Object.fromEntries(
+      rehabSchedule.days.flatMap((entry) => {
+        const libraryId = localToLibrary.get(entry.protocolId);
+        return libraryId ? [[entry.day, libraryId] as const] : [];
+      }),
+    );
+  }
+  const legacy = localToLibrary.get(LEGACY_REHAB_PROTOCOL_ID);
+  if (!legacy || !customization || !isTbCustomizationV1(customization)) {
+    return {};
+  }
+  return Object.fromEntries(
+    customization.dayTypes.flatMap((type, day) =>
+      type === "rehab" ? [[day, legacy] as const] : [],
+    ),
+  );
+}
+
 /** Build a week from explicit strength + cardio weekdays (edit-mode prefill). */
 function buildWeekFrom(
   strengthDays: number[],
   cardioDays: number[],
   customization?: TbCustomization,
+  /**
+   * Weekdays the block's rehab envelope runs on. A day with nothing else on it
+   * reads as a rehab-only day in the grid — which is what it is. Days that also
+   * hold a session keep their own type; their rehab hangs off the session.
+   */
+  rehabDays: readonly number[] = [],
 ): DayType[] {
-  if (customization && isTbCustomizationV1(customization)) {
-    return customization.dayTypes.map((day) =>
-      day === "conditioning" ? "cardio" : day,
-    );
+  const base =
+    customization && isTbCustomizationV1(customization)
+      ? customization.dayTypes.map((day): DayType =>
+          day === "conditioning" ? "cardio" : day,
+        )
+      : (() => {
+          const w: DayType[] = Array.from({ length: 7 }, () => "rest");
+          for (const d of cardioDays) if (d >= 0 && d <= 6) w[d] = "cardio";
+          // Strength wins any collision so the strength-day count stays correct.
+          for (const d of strengthDays) if (d >= 0 && d <= 6) w[d] = "strength";
+          return w;
+        })();
+  for (const d of rehabDays) {
+    if (d >= 0 && d <= 6 && base[d] === "rest") base[d] = "rehab";
   }
-  const w: DayType[] = Array.from({ length: 7 }, () => "rest");
-  for (const d of cardioDays) if (d >= 0 && d <= 6) w[d] = "cardio";
-  // Strength wins any collision so the strength-day count stays correct.
-  for (const d of strengthDays) if (d >= 0 && d <= 6) w[d] = "strength";
-  return w;
+  return base;
 }
 const DAY_SPREADS: Record<number, number[]> = {
   1: [0],
@@ -1115,6 +1205,8 @@ export interface ProgramEditContextProp {
   customization?: TbCustomization;
   /** User-authored superset links, rehydrated into the link editor. */
   sessionLinks?: SessionLinks;
+  /** Where this block runs its rehab protocol, rehydrated into the session cards. */
+  rehabSchedule?: RehabSchedule;
   currentWeekIndex?: number;
   programStartWeekIndex?: number;
 }
@@ -1287,6 +1379,7 @@ export function ProgramPicker({
           editContext.strengthWeekdays,
           editContext.cardioWeekdays,
           editContext.customization,
+          (editContext.rehabSchedule?.days ?? []).map((entry) => entry.day),
         )
       : buildWeek(preselectProgram?.sessionsPerWeek ?? 4),
   );
@@ -1521,8 +1614,9 @@ export function ProgramPicker({
     }
     return out;
   };
-  // Rehab is no longer authored here. The wizard SELECTS from the Settings
-  // library; these are the selected library ids, in display order.
+  // Activation's rehab protocols. It picks a set here and assigns them to days
+  // per phase; a weekly block instead picks per session and per rehab day, in
+  // `rehabBySeries` / `rehabByDay` below.
   //
   // Seeded from whatever the program already has attached, so re-entering the
   // wizard on a live program shows its current rehab ticked. `attachProtocols`
@@ -1568,6 +1662,79 @@ export function ProgramPicker({
         : [...current, libraryId],
     );
   }, []);
+  // Which library protocol runs where, for a weekly block. Set on the session
+  // cards (`bySeries`) and on the schedule step's rehab days (`byDay`). Values
+  // are LIBRARY ids; local ids are assigned by `attachProtocols` at deploy so a
+  // live program's links, bindings and tombstones keep matching.
+  const localToLibrary = useMemo(
+    () =>
+      new Map(
+        Object.entries(existingRehabBindings).map(([libraryId, localId]) => [
+          localId,
+          libraryId,
+        ]),
+      ),
+    [existingRehabBindings],
+  );
+  const [rehabBySeries, setRehabBySeries] = useState<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        (editContext?.rehabSchedule?.series ?? []).flatMap((entry) => {
+          const libraryId = localToLibrary.get(entry.protocolId);
+          return libraryId ? [[entry.key, libraryId] as const] : [];
+        }),
+      ),
+  );
+  const [rehabByDay, setRehabByDay] = useState<Record<number, string>>(() =>
+    initialRehabByDay(
+      editContext?.rehabSchedule,
+      editContext?.customization,
+      localToLibrary,
+    ),
+  );
+  /**
+   * The protocols a weekly block actually runs, derived from its placements —
+   * a protocol chosen and then taken off every session is not attached, and
+   * keeping it would leave the block claiming rehab it doesn't have.
+   */
+  const weeklyAttached = useMemo(
+    () =>
+      attachProtocols(
+        [
+          ...new Set([
+            ...Object.values(rehabBySeries),
+            ...Object.values(rehabByDay),
+          ]),
+        ].flatMap((id) => {
+          const protocol = libraryById.get(id);
+          return protocol
+            ? [{ libraryId: protocol.id, name: protocol.name, items: protocol.items }]
+            : [];
+        }),
+        existingRehabBindings,
+      ),
+    [existingRehabBindings, libraryById, rehabByDay, rehabBySeries],
+  );
+  const weeklyLocalIdByLibraryId = useMemo(
+    () => new Map(weeklyAttached.map((p) => [p.libraryId, p.localId])),
+    [weeklyAttached],
+  );
+  function setRehabForSeries(seriesKey: string, libraryId: string | null) {
+    setRehabBySeries((current) => {
+      const next = { ...current };
+      if (libraryId) next[seriesKey] = libraryId;
+      else delete next[seriesKey];
+      return next;
+    });
+  }
+  function setRehabForDay(day: number, libraryId: string | null) {
+    setRehabByDay((current) => {
+      const next = { ...current };
+      if (libraryId) next[day] = libraryId;
+      else delete next[day];
+      return next;
+    });
+  }
   const [activationDrafts, setActivationDrafts] =
     useState<ActivationDrafts>(() =>
       activationDraftsFromCustomization(
@@ -1604,6 +1771,8 @@ export function ProgramPicker({
         : {},
     );
     setSelectedProtocolIds([]);
+    setRehabBySeries({});
+    setRehabByDay({});
     setCatalogMovementMeta({});
     setActivationDrafts(
       defaultActivationDrafts(
@@ -1879,7 +2048,9 @@ export function ProgramPicker({
       )) &&
     (!customizeTb ||
       (customName.trim().length > 0 &&
-        (rehabWeekdays.length === 0 || rehabProtocols.length > 0))) &&
+        // Every rehab day must name a protocol, or the day would deploy empty.
+        (isActivation ||
+          rehabWeekdays.every((day) => rehabByDay[day] != null)))) &&
     !pending;
 
   // Loadout step derivations (the setup field the template/phase choice writes to).
@@ -2430,9 +2601,49 @@ export function ProgramPicker({
       setupValues.dayOrder = chosen.dayOrder;
     }
 
-    // The weekly blob stores ONE unnamed item list; the selector is a single
-    // choice there, so the first (only) attached protocol supplies it.
-    const rehabItems = rehabProtocols[0]?.items ?? [];
+    // Where the weekly block runs its rehab: on the sessions the user attached
+    // it to, plus any rehab-only day. Sent as its own envelope, never as part
+    // of the customization — see `lib/platform/rehab-schedule`.
+    const liveSeriesKeys = new Set(
+      activeTbTemplate ? sessionSeriesFor(activeTbTemplate).map((s) => s.key) : [],
+    );
+    const seriesPlacements = Object.entries(rehabBySeries).flatMap(
+      ([key, libraryId]) => {
+        const protocolId = weeklyLocalIdByLibraryId.get(libraryId);
+        return liveSeriesKeys.has(key) && protocolId
+          ? [{ key, protocolId }]
+          : [];
+      },
+    );
+    const dayPlacements = rehabWeekdays.flatMap((day) => {
+      const libraryId = rehabByDay[day];
+      const protocolId = libraryId
+        ? weeklyLocalIdByLibraryId.get(libraryId)
+        : undefined;
+      return protocolId ? [{ day, protocolId }] : [];
+    });
+    // Only the protocols actually placed. One chosen and then taken off every
+    // session would otherwise leave the block claiming rehab it never runs.
+    const placedIds = new Set([
+      ...seriesPlacements.map((entry) => entry.protocolId),
+      ...dayPlacements.map((entry) => entry.protocolId),
+    ]);
+    const weeklyProtocolsPayload = weeklyAttached.filter((protocol) =>
+      placedIds.has(protocol.localId),
+    );
+    const rehabSchedule: RehabSchedule | undefined =
+      !isActivation && weeklyProtocolsPayload.length > 0
+        ? {
+            version: REHAB_SCHEDULE_VERSION,
+            protocols: weeklyProtocolsPayload.map((protocol) => ({
+              id: protocol.localId,
+              name: protocol.name,
+              items: protocol.items as RehabSchedule["protocols"][number]["items"],
+            })),
+            series: seriesPlacements,
+            days: dayPlacements,
+          }
+        : undefined;
     const activationPhasePayload = (
       phase: ActivationPhaseKey,
     ): TbActivationCustomizationV3["phases"][ActivationPhaseKey] => {
@@ -2519,8 +2730,17 @@ export function ProgramPicker({
               // movements in a session writes this same overlay, and that alone
               // must not rename the user's program.
               ...(customizeTb ? { displayName: customName.trim() } : {}),
+              // A rehab-only day is written as REST here, with the envelope
+              // naming the day. `tbCustomizationV1Schema` pairs its `rehab` day
+              // type with a `rehab` field, and that pair cannot express rehab
+              // sitting on a strength day — so the blob is left saying nothing
+              // about rehab at all and keeps validating unchanged.
               dayTypes: week.map((day) =>
-                day === "cardio" ? "conditioning" : day,
+                day === "cardio"
+                  ? "conditioning"
+                  : day === "rehab"
+                    ? "rest"
+                    : day,
               ),
               sessionMovements: Object.fromEntries(
                 sessionSeriesFor(activeTbTemplate).map((series) => [
@@ -2544,9 +2764,6 @@ export function ProgramPicker({
                   ),
                 ]),
               ),
-              ...(customizeTb && rehabWeekdays.length > 0
-                ? { rehab: { items: rehabItems } }
-                : {}),
             }
         : undefined;
 
@@ -2594,14 +2811,24 @@ export function ProgramPicker({
       // protocol that is no longer attached is dropped — deploy rejects a link
       // naming a protocol that doesn't exist, and a reused id would otherwise
       // adopt it.
-      const rehabLinkEntries = attachedProtocols.flatMap((protocol) => {
+      //
+      // A weekly block's protocols are the ones it actually RUNS. Taking rehab
+      // off the last session that used a protocol must take its links and its
+      // binding with it, or the deploy fails for a protocol with supersets and
+      // the block claims rehab it no longer has for one without.
+      const deployedProtocols = isActivation
+        ? attachedProtocols
+        : weeklyAttached.filter((protocol) =>
+            rehabSchedule?.protocols.some((entry) => entry.id === protocol.localId),
+          );
+      const rehabLinkEntries = deployedProtocols.flatMap((protocol) => {
         const links = libraryById.get(protocol.libraryId)?.links ?? [];
         return links.length > 0
           ? ([[`rehab.${protocol.localId}`, links]] as const)
           : [];
       });
       const outgoingLinks = {
-        ...pruneRehabLinks(sessionLinks, attachedProtocols),
+        ...pruneRehabLinks(sessionLinks, deployedProtocols),
         ...Object.fromEntries(rehabLinkEntries),
       };
       const res = await createProgramInstance({
@@ -2624,12 +2851,13 @@ export function ProgramPicker({
             }
           : {}),
         ...(customization ? { customization } : {}),
+        ...(rehabSchedule ? { rehabSchedule } : {}),
         ...(isEditing && editContext ? { editBlockId: editContext.blockId } : {}),
         ...(!isEditing && seasonBlockId ? { seasonBlockId } : {}),
         ...(!isEditing && startWithRecovery ? { startWithRecoveryWeek: true } : {}),
-        ...(isTb && attachedProtocols.length > 0
+        ...(isTb && deployedProtocols.length > 0
           ? {
-              rehabBindings: attachedProtocols.map((protocol) => ({
+              rehabBindings: deployedProtocols.map((protocol) => ({
                 localProtocolId: protocol.localId,
                 rehabProtocolId: protocol.libraryId,
               })),
@@ -2988,6 +3216,7 @@ export function ProgramPicker({
                 !triad.includes(slot.sourceMovement),
             );
             const removed = removedSupplementalSlots(entry, triadRestorable);
+            const rehabOnSeries = libraryById.get(rehabBySeries[entry.key] ?? "");
             const populated = SLOT_SECTIONS.filter((section) =>
               drafts.some((draft) => sectionOf(entry.slots, draft) === section),
             );
@@ -3124,6 +3353,45 @@ export function ProgramPicker({
                     ))}
                   </div>
                 ) : null}
+                {rehabOnSeries ? (
+                  <div>
+                    {showHeadings ? (
+                      <div className={styles.seriesSection}>Rehab</div>
+                    ) : null}
+                    <div className={styles.seriesExercises}>
+                      <div data-testid={`tb-rehab-${entry.key}`}>
+                        <span>
+                          <b>{rehabOnSeries.name}</b>
+                        </span>
+                        <span className={styles.seriesRowActions}>
+                          <details className={styles.addExercise}>
+                            <summary
+                              data-testid={`tb-rehab-change-${entry.key}`}
+                            >
+                              Change
+                            </summary>
+                            <RehabProtocolPicker
+                              styles={styles}
+                              protocols={libraryProtocols}
+                              selectedId={rehabOnSeries.id}
+                              onPick={(protocol) =>
+                                setRehabForSeries(entry.key, protocol.id)
+                              }
+                            />
+                          </details>
+                          <button
+                            type="button"
+                            className={styles.rowRemove}
+                            data-testid={`tb-rehab-remove-${entry.key}`}
+                            onClick={() => setRehabForSeries(entry.key, null)}
+                          >
+                            Remove
+                          </button>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 {hasSupplementalWork ? (
                   <details className={styles.addExercise}>
                     <summary data-testid={`tb-add-supplemental-${entry.key}`}>
@@ -3160,6 +3428,20 @@ export function ProgramPicker({
                     }}
                   />
                 </details>
+                {libraryProtocols.length > 0 && !rehabOnSeries ? (
+                  <details className={styles.addExercise}>
+                    <summary data-testid={`tb-add-rehab-${entry.key}`}>
+                      + Add rehab
+                    </summary>
+                    <RehabProtocolPicker
+                      styles={styles}
+                      protocols={libraryProtocols}
+                      onPick={(protocol) =>
+                        setRehabForSeries(entry.key, protocol.id)
+                      }
+                    />
+                  </details>
+                ) : null}
                 <SessionLinkEditor
                   seriesKey={entry.key}
                   movements={linkable}
@@ -4783,72 +5065,58 @@ export function ProgramPicker({
 
             <p className={styles.note}>{schednote}</p>
 
-            {customizeTb && activeTbTemplate ? (
+            {customizeTb && activeTbTemplate && rehabWeekdays.length > 0 ? (
               <div className={styles.customBuilder}>
-                {rehabWeekdays.length > 0 ? (
-                  <div>
-                    <div className={styles.label}>Rehab protocol</div>
-                    {libraryProtocols.length === 0 ? (
-                      <p className={styles.note} data-testid="rehab-library-empty-v1">
-                        No rehab protocols yet. Create one in Settings &rarr;
-                        Rehab protocols, then pick it here.
-                      </p>
-                    ) : (
-                      <div className={styles.rehabProtocols}>
-                        {libraryProtocols.map((protocol) => {
-                          // A weekly-blob program stores ONE unnamed item list,
-                          // so this is a single choice, not a multi-select.
-                          const checked = selectedProtocolIds[0] === protocol.id;
-                          return (
-                            <label
-                              key={protocol.id}
-                              className={styles.rehabProtocolCard}
-                              data-testid={`rehab-protocol-option-${protocol.id}`}
-                              data-selected={checked ? "true" : "false"}
-                              style={{
-                                display: "flex",
-                                gap: 11,
-                                alignItems: "flex-start",
-                                cursor: "pointer",
-                              }}
+                <div>
+                  <div className={styles.label}>Rehab days</div>
+                  {libraryProtocols.length === 0 ? (
+                    <p className={styles.note} data-testid="rehab-library-empty-v1">
+                      No rehab protocols yet. Create one in Settings &rarr; Rehab
+                      protocols, then pick it here.
+                    </p>
+                  ) : (
+                    <div className={styles.activationRehabDays}>
+                      {rehabWeekdays.map((day) => {
+                        const selectedId = rehabByDay[day] ?? "";
+                        return (
+                          <label
+                            key={day}
+                            className={selectedId ? styles.selected : ""}
+                            data-testid={`rehab-day-${day}`}
+                          >
+                            <span>{WD[day]}</span>
+                            <select
+                              value={selectedId}
+                              aria-label={`${WD[day]} rehab protocol`}
+                              onChange={(event) =>
+                                setRehabForDay(day, event.target.value || null)
+                              }
                             >
-                              <input
-                                type="radio"
-                                name="rehab-protocol"
-                                checked={checked}
-                                onChange={() => setSelectedProtocolIds([protocol.id])}
-                                aria-label={protocol.name}
-                                style={{ marginTop: 3 }}
-                              />
-                              <span style={{ minWidth: 0 }}>
-                                <span style={{ display: "block", fontWeight: 600 }}>
+                              <option value="">Pick a protocol</option>
+                              {libraryProtocols.map((protocol) => (
+                                <option key={protocol.id} value={protocol.id}>
                                   {protocol.name}
-                                </span>
-                                <span
-                                  style={{ display: "block", fontSize: 12, opacity: 0.75 }}
-                                >
-                                  {protocol.summary}
-                                </span>
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                    <a
-                      className={styles.addlift}
-                      href="/app/settings/rehab-protocols"
-                      data-testid="rehab-library-link-v1"
-                    >
-                      Manage rehab protocols
-                    </a>
-                    {selectedProtocolIds.length === 0 ? (
-                      <p className={styles.inlineError}>
-                        Pick a rehab protocol for your rehab day.
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <a
+                    className={styles.addlift}
+                    href="/app/settings/rehab-protocols"
+                    data-testid="rehab-library-link-v1"
+                  >
+                    Manage rehab protocols
+                  </a>
+                  {rehabWeekdays.some((day) => rehabByDay[day] == null) ? (
+                    <p className={styles.inlineError}>
+                      Pick a rehab protocol for every rehab day.
+                    </p>
+                  ) : null}
+                </div>
               </div>
             ) : null}
           </>

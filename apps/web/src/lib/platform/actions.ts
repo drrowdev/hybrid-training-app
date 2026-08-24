@@ -53,9 +53,16 @@ import {
   findOrphanedLinkMembers,
   linksBySeries,
   normalizeSessionLinks,
+  parseStoredSessionLinks,
   sessionLinksSchema,
   type SessionLinks,
 } from "./session-links";
+import {
+  rehabScheduleSchema,
+  parseStoredRehabSchedule,
+  weeklyRehabPlan,
+  type RehabSchedule,
+} from "./rehab-schedule";
 import {
   resolveAssistanceVolume,
   type AssistanceVolume,
@@ -83,7 +90,6 @@ import { inferProgramStartWeekIndex } from "@/lib/plan/program-overview";
 import {
   customizationDays,
   activationRehabProtocols,
-  LEGACY_REHAB_PROTOCOL_ID,
   effectiveActivationRehabProtocolIds,
   isTbActivationCustomization,
   activationSessionConfigs,
@@ -445,6 +451,13 @@ const createProgramInstanceSchema = z
      * below rather than silently ignored.
      */
     sessionLinks: sessionLinksSchema.optional(),
+    /**
+     * Where a weekly Tactical Barbell block runs its rehab protocol — on the
+     * warm-up of named sessions, on standalone weekdays, or both. A sibling of
+     * `customization` rather than a field inside it, for the reason ADR 0071
+     * gives for the links: that blob is a strict union parsed as one unit.
+     */
+    rehabSchedule: rehabScheduleSchema.optional(),
     /** When present, this deploy is a forward-only EDIT of an existing active
      *  block (5/3/1 / Tactical Barbell only): keep the same block + program
      *  instance, preserve everything through today plus touched rows, and
@@ -502,8 +515,15 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks: rawSessionLinks, editBlockId, seasonBlockId, rehabBindings, startWithRecoveryWeek } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks: rawSessionLinks, rehabSchedule, editBlockId, seasonBlockId, rehabBindings, startWithRecoveryWeek } = parsed.data;
   const sessionLinks = normalizeSessionLinks(rawSessionLinks);
+
+  if (rehabSchedule && programId !== "tactical-barbell") {
+    return {
+      ok: false,
+      error: "Only Tactical Barbell templates can schedule rehab protocols.",
+    };
+  }
 
   if (sessionLinks && programId !== "tactical-barbell") {
     return {
@@ -517,9 +537,10 @@ export async function createProgramInstance(
   // SILENTLY — the lifter would deploy, and the superset would simply not be
   // there. When the wizard sends the movement list too, we can say so instead.
   //
-  // Rehab series MUST be listed here as well. `findOrphanedLinkMembers` reads
-  // an unknown key as "no movements available", so omitting them would reject
-  // every rehab link as orphaned rather than validating it.
+  // Rehab series are validated separately below: they exist with or without a
+  // customization, so they cannot live inside this V1-only branch. Echo them
+  // back here so they pass — `findOrphanedLinkMembers` reads an unknown key as
+  // "no movements available" and would condemn every rehab link as orphaned.
   if (sessionLinks && customization && isTbCustomizationV1(customization)) {
     const orphans = findOrphanedLinkMembers(
       sessionLinks,
@@ -530,10 +551,9 @@ export async function createProgramInstance(
           // against — so a link survives swapping the exercise in that slot.
           movements.map((movement) => movement.sourceMovement ?? movement.movement),
         ]),
-        [
-          rehabSeriesKey(LEGACY_REHAB_PROTOCOL_ID),
-          (customization.rehab?.items ?? []).map((item) => item.movementId),
-        ],
+        ...Object.entries(sessionLinks.bySeries)
+          .filter(([key]) => key.startsWith("rehab."))
+          .map(([key, links]) => [key, links.flatMap((link) => link.members)]),
       ]),
     );
     if (orphans.length > 0) {
@@ -545,7 +565,45 @@ export async function createProgramInstance(
     }
   }
 
-  // Activation's strength series are not enumerable here, so the check above
+  // A weekly block can carry rehab with no customization at all — the envelope
+  // is independent of it — so its rehab series are validated on their own. A
+  // `rehab.*` key naming a protocol the block no longer runs would silently
+  // attach to whatever later takes that id.
+  if (
+    sessionLinks &&
+    programId === "tactical-barbell" &&
+    (customization == null || isTbCustomizationV1(customization))
+  ) {
+    const weeklyRehab = weeklyRehabPlan(customization, rehabSchedule);
+    const known = new Map(
+      weeklyRehab.protocols.map((protocol) => [
+        rehabSeriesKey(protocol.localProtocolId),
+        protocol.items.map((item) => item.movementId),
+      ]),
+    );
+    for (const seriesKey of Object.keys(sessionLinks.bySeries)) {
+      if (!seriesKey.startsWith("rehab.")) continue;
+      if (known.has(seriesKey)) continue;
+      return {
+        ok: false,
+        error:
+          "A linked superset belongs to a rehab protocol that no longer exists. Remove the link and re-create it.",
+      };
+    }
+    const rehabOrphans = findOrphanedLinkMembers(
+      sessionLinks,
+      Object.fromEntries(known),
+    ).filter((entry) => entry.seriesKey.startsWith("rehab."));
+    if (rehabOrphans.length > 0) {
+      const count = rehabOrphans.reduce((n, o) => n + o.missing.length, 0);
+      return {
+        ok: false,
+        error: `A linked superset references ${count === 1 ? "a movement" : "movements"} that aren't in that rehab protocol anymore. Remove the link or add the ${count === 1 ? "movement" : "movements"} back.`,
+      };
+    }
+  }
+
+  // Activation's strength series are not enumerable here, so the V1 check
   // does not run for it — but its rehab protocols ARE, and a link naming a
   // protocol that no longer exists (ids are reused as ordinals) would attach
   // to whatever protocol later takes that id. Reject it rather than let a
@@ -662,6 +720,7 @@ export async function createProgramInstance(
       ...(accessories ? { accessories } : {}),
       ...(customization ? { customization } : {}),
       ...(sessionLinks ? { sessionLinks } : {}),
+      ...(rehabSchedule ? { rehabSchedule } : {}),
     });
     // Editing is the path that ATTACHES rehab to a program the user already
     // has, so bindings have to be written here too. Skipping it left the
@@ -729,6 +788,7 @@ export async function createProgramInstance(
     ...(accessories ? { accessories } : {}),
     ...(customization ? { customization } : {}),
     ...(sessionLinks ? { sessionLinks } : {}),
+    ...(rehabSchedule ? { rehabSchedule } : {}),
     ...(seasonBlockId ? { seasonBlockId } : {}),
     ...(startWithRecoveryWeek ? { startWithRecoveryWeek: true } : {}),
   });
@@ -899,6 +959,8 @@ interface DeployArgs {
   /** User-authored superset / tri-set links, keyed by session series key.
    *  Tactical Barbell only; see `./session-links`. */
   sessionLinks?: SessionLinks;
+  /** Where a weekly Tactical Barbell block runs its rehab protocol. */
+  rehabSchedule?: RehabSchedule;
   /** When the wizard was deep-linked from a Season roadmap (ADR 0051) — the
    *  planned season_block to activate + link to the new training block on deploy. */
   seasonBlockId?: string;
@@ -1081,7 +1143,7 @@ async function computeForeignWrite(
   supabase: SupabaseClient,
   user: User,
   engine: ProgramEngine,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks, rehabSchedule }: DeployArgs,
 ): Promise<{ instance: unknown; write: ProgramInstanceWrite }> {
   // HYROX: a supplied race date overrides the experience block length with the
   // whole weeks from start to race, so the program's end-taper lands on race week
@@ -1369,14 +1431,22 @@ async function computeForeignWrite(
     ...(cardioWeekdays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
     ...(customization ? { customization } : {}),
     ...(sessionLinks ? { sessionLinks: linksBySeries(sessionLinks) } : {}),
+    ...(rehabSchedule ? { rehabSchedule } : {}),
   });
-  if (customization) {
+  // Active limitations are checked against everything the block will actually
+  // prescribe. Rehab now reaches a block through the envelope as well as the
+  // customization, so it is read here even when there is no customization.
+  const weeklyRehabItems = weeklyRehabPlan(
+    customization && isTbCustomizationV1(customization) ? customization : undefined,
+    rehabSchedule,
+  ).protocols.flatMap((protocol) => protocol.items);
+  if (customization || weeklyRehabItems.length > 0) {
     const limitations = await readLimitationsContext(supabase, user.id);
     const catalog = customizationCatalog;
     const byId = new Map(catalog.map((movement) => [movement.id, movement]));
     const selectedIds = new Set<string>();
-    if (isTbCustomizationV1(customization)) {
-      for (const item of customization.rehab?.items ?? []) {
+    if (customization == null || isTbCustomizationV1(customization)) {
+      for (const item of weeklyRehabItems) {
         selectedIds.add(item.movementId);
       }
     } else {
@@ -1389,12 +1459,12 @@ async function computeForeignWrite(
         for (const item of protocol.items) selectedIds.add(item.movementId);
       }
     }
-    const replacementMovements = isTbCustomizationV1(customization)
-      ? Object.values(customization.sessionMovements).flat()
-      : effectiveActivationMovements(
-          customization,
-          startWeekIndex ?? 0,
-        );
+    const replacementMovements =
+      customization == null
+        ? []
+        : isTbCustomizationV1(customization)
+          ? Object.values(customization.sessionMovements).flat()
+          : effectiveActivationMovements(customization, startWeekIndex ?? 0);
     for (const movement of replacementMovements) {
       const resolved = resolveMovement(movement.movement);
       if (resolved) selectedIds.add(resolved.movementId);
@@ -1431,7 +1501,7 @@ async function computeForeignWrite(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, seasonBlockId, twoADay, customization, sessionLinks, startWithRecoveryWeek }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, seasonBlockId, twoADay, customization, sessionLinks, rehabSchedule, startWithRecoveryWeek }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -1452,6 +1522,8 @@ async function createForeignProgramInstance(
       ...(accessories ? { accessories } : {}),
       ...(twoADay ? { twoADay } : {}),
       ...(customization ? { customization } : {}),
+      ...(sessionLinks ? { sessionLinks } : {}),
+      ...(rehabSchedule ? { rehabSchedule } : {}),
     }));
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
@@ -1575,6 +1647,7 @@ async function createForeignProgramInstance(
         startWeekIndex,
         ...(customization ? { customization } : {}),
         ...(sessionLinks ? { sessionLinks } : {}),
+        ...(rehabSchedule ? { rehabSchedule } : {}),
       }),
       display_name: customization?.displayName ?? null,
       customization_version: customization?.version ?? null,
@@ -1710,7 +1783,7 @@ async function updateForeignProgramInstance(
   blockId: string,
   args: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
-  const { programId, customization, sessionLinks } = args;
+  const { programId, customization, sessionLinks, rehabSchedule } = args;
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
 
@@ -1815,6 +1888,16 @@ async function updateForeignProgramInstance(
       priorSetupInput.customization == null
         ? null
         : tbCustomizationSchema.safeParse(priorSetupInput.customization);
+    // Parsed as siblings, exactly as `edit-context` does. Omitting the rehab
+    // envelope here would leave the baseline with no rehab at all for a block
+    // that keeps it there — every standalone rehab row would then read as
+    // user-edited and be preserved, so a Settings edit could never update one.
+    const priorRehabSchedule = parseStoredRehabSchedule(
+      priorSetupInput.rehabSchedule,
+    );
+    const priorSessionLinks = parseStoredSessionLinks(
+      priorSetupInput.sessionLinks,
+    );
     if (
       priorValues &&
       priorWeekdays &&
@@ -1836,6 +1919,8 @@ async function updateForeignProgramInstance(
             ...(parsedPriorCustomization?.success
               ? { customization: parsedPriorCustomization.data }
               : {}),
+            ...(priorRehabSchedule ? { rehabSchedule: priorRehabSchedule } : {}),
+            ...(priorSessionLinks ? { sessionLinks: priorSessionLinks } : {}),
           },
         ));
       } catch (error) {
@@ -2283,6 +2368,7 @@ async function updateForeignProgramInstance(
         startWeekIndex: effectiveStartWeekIndex,
         ...(customization ? { customization } : {}),
         ...(sessionLinks ? { sessionLinks } : {}),
+        ...(rehabSchedule ? { rehabSchedule } : {}),
       }),
       display_name: customization?.displayName ?? null,
       customization_version: customization?.version ?? null,
