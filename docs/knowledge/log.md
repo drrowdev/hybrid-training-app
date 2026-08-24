@@ -908,7 +908,6 @@ The third was the anchoring hazard in a costume. Session refs are instance-indep
 
 See ADR 0077.
 
-
 ## [2026-08-24] fix | Weighted dip joins the library, and a removed lift can be put back
 
 Two owner reports from the same session, with different causes.
@@ -940,3 +939,21 @@ Two supporting corrections. The 1RM field for a belt-loaded movement now says wh
 No migration. `systemLoad` is additive inside the prescription JSONB. Existing maxes are not reinterpreted: a value entered as added-weight-only now resolves to a bodyweight set, which is too light rather than too heavy.
 
 Deferred: assisted (band / machine) pull-ups for a lifter whose percentage lands well under bodyweight, and rebuilding historical pull-up e1RMs against the bodyweight recorded at the time of each set.
+
+---
+
+## [2026-08-24] fix | One Copenhagen, and lunges the catalogue never had
+
+Two library entries described the same exercise. `copenhagen-plank` was seeded by the leg-isolation helper and `copenhagen-side-plank` by the tendon helper - same setup, same cues, same region, same equipment, and because `derive-roles.ts` keys off `metadata.protocol` and a `/copenhagen/` slug match, the same derived roles on both. Nothing distinguished them but which array they were declared in.
+
+The isolation row survives. `tb-accessories.ts` hard-filters `pattern = 'isolation'`, so the tendon copy could never be drawn as accessory work, and nothing anywhere selects candidates by `pattern = 'tendon'` - the prescription item kind of that name is a separate concept. The tendon copy added a library entry and no capability.
+
+Merging exposed a dosing bug in the row we kept. `copenhagen-plank` was listed literally in `TENDON_KEYWORDS`, and the tendon test fires before the isometric one, so a Copenhagen was prescribed as ADR 0041 rep-based HSR - eight reps with a three-second eccentric - when it is a hold. Removing the keyword lets it fall through to the isometric bucket and be prescribed for time. It was only survivable before because the duplicate, which did land in the isometric bucket, masked it.
+
+Migration 0138 moves history rather than dropping it (owner-confirmed). That is not ceremony: `set_logs` and `session_movements` reference `movements(id)` ON DELETE RESTRICT while `training_maxes` and `tm_suggestions` CASCADE, so a bare DELETE would either fail outright or quietly destroy a training max depending on what the lifter had logged. Where a unique key collides - a second training max, a pending suggestion, a session already holding both - the survivor's row wins.
+
+Separately: the catalogue had no lunge at all. Split squats, Bulgarians, ATG, Cossack, and a HYROX-only sandbag lunge, but nothing that steps. Three consumers already assumed otherwise - the muscle map carried `lunge` and `walking-lunge` fanout keys for slugs that were never seeded, migration 0019 tagged `forward-lunge` / `reverse-lunge` / `walking-lunge` with the `single_leg` role in UPDATEs that matched nothing, and `accessory-schema.md` lists them as examples of that role. The single-leg pool was thinner than every reader of those files believed.
+
+Migration 0139 adds forward and reverse lunges in bodyweight, dumbbell and barbell, tracking the split-squat pair's attributes with axial load and the experience gate scaling by implement. Roles are spelled out in the SQL: `deriveAccessoryRoles()` runs only while building `SEED_MOVEMENTS` in TypeScript, so a migration-inserted row without them would be invisible to the picker until someone ran a full reseed.
+
+Kept to the six asked for. Walking, curtsy and lateral lunges and step-ups stay unseeded, and the two dead muscle-map keys were left alone rather than tidied as a passenger on this change.

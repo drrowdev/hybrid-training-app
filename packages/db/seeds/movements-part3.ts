@@ -259,7 +259,7 @@ const OLYMPIC: NewMovement[] = [
   oly("kb-clean-and-jerk", "Kettlebell Clean & Jerk", { equipment: "kettlebell", primaryMuscles: ["hamstrings", "glutes", "front_delts", "triceps"], secondaryMuscles: ["lower_back", "abs", "traps", "quads", "forearms"], axialLoad: "moderate", functionalRoles: ["power_olympic", "power_ballistic"], metadata: { emphasis: "posterior-chain-into-overhead" } }),
 ];
 
-// ─── tendon / resilience (15) — Baar 2017 HIGH protocols ───
+// ─── tendon / resilience (14) — Baar 2017 HIGH protocols ───
 const tendon = (slug: string, name: string, opts: MoveOpts = {}): NewMovement =>
   m(slug, name, {
     pattern: "tendon",
@@ -292,7 +292,11 @@ const TENDON: NewMovement[] = [
   tendon("nordic-curl-eccentric", "Nordic Curl (eccentric-only)", { equipment: "anchor", primaryMuscles: ["hamstrings"], primaryRegion: "hamstring_posterior", metadata: { emphasis: "hamstring-strain-prevention", eccentric_cost: "very_high" } }),
   tendon("jefferson-curl", "Jefferson Curl", { equipment: "barbell-or-db", pattern: "hinge", primaryMuscles: ["lower_back", "hamstrings"], primaryRegion: "lumbar_trunk", metadata: { protocol: "loaded-mobility", emphasis: "spinal-flexion-tolerance" } }),
   tendon("cossack-squat-loaded", "Loaded Cossack Squat", { equipment: "dumbbell-or-kb", pattern: "squat", bilateral: false, primaryMuscles: ["quads", "adductors", "glutes"], primaryRegion: "adductor_groin", secondaryRegions: ["knee"], metadata: { protocol: "loaded-mobility" } }),
-  tendon("copenhagen-side-plank", "Copenhagen Side Plank", { equipment: "bench", primaryMuscles: ["adductors", "obliques"], primaryRegion: "adductor_groin", metadata: { protocol: "isometric", emphasis: "adductor-prehab" } }),
+  // `copenhagen-side-plank` lived here and duplicated `copenhagen-plank` in
+  // movements-part2.ts — same setup, same cues, same region, same derived
+  // roles. Merged into the isolation-pattern row by migration 0138; the
+  // isolation row is the survivor because `tb-accessories.ts` only draws from
+  // `pattern === "isolation"`, so the tendon copy was unreachable there.
 ];
 
 // ─── rotator cuff / shoulder care (8) ───

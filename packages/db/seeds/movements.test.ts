@@ -105,6 +105,12 @@ describe("movement catalog seed", () => {
       "split-squat-db",
       "bulgarian-split-squat-bb",
       "bulgarian-split-squat-db",
+      "forward-lunge",
+      "forward-lunge-db",
+      "forward-lunge-bb",
+      "reverse-lunge",
+      "reverse-lunge-db",
+      "reverse-lunge-bb",
       "atg-split-squat",
       "cossack-squat",
       "cossack-squat-loaded",
@@ -130,6 +136,57 @@ describe("movement catalog seed", () => {
         "adductors",
       );
     }
+  });
+
+  it("seeds forward + reverse lunges across bodyweight / DB / BB with how-to content", () => {
+    const expected = [
+      { slug: "forward-lunge", name: "Forward Lunge", equipment: "bodyweight", axialLoad: "low", experienceMin: 0 },
+      { slug: "forward-lunge-db", name: "Forward Lunge (DB)", equipment: "dumbbells", axialLoad: "moderate", experienceMin: 0 },
+      { slug: "forward-lunge-bb", name: "Forward Lunge (BB)", equipment: "barbell", axialLoad: "high", experienceMin: 2 },
+      { slug: "reverse-lunge", name: "Reverse Lunge", equipment: "bodyweight", axialLoad: "low", experienceMin: 0 },
+      { slug: "reverse-lunge-db", name: "Reverse Lunge (DB)", equipment: "dumbbells", axialLoad: "moderate", experienceMin: 0 },
+      { slug: "reverse-lunge-bb", name: "Reverse Lunge (BB)", equipment: "barbell", axialLoad: "high", experienceMin: 2 },
+    ];
+
+    for (const entry of expected) {
+      const movement = SEED.find((candidate) => candidate.slug === entry.slug);
+      expect(movement, `${entry.slug} missing from seed`).toBeTruthy();
+      expect(movement).toMatchObject({
+        displayName: entry.name,
+        pattern: "squat",
+        primaryRegion: "knee",
+        equipment: entry.equipment,
+        axialLoad: entry.axialLoad,
+        experienceMin: entry.experienceMin,
+        bilateral: false,
+        isCompound: true,
+      });
+      // Unilateral squat pattern → the picker's single-leg slot (ADR 0035
+      // functional roles). Derived, so a helper change can't silently drop it.
+      expect(
+        movement?.functionalRoles,
+        `${entry.slug} must carry the single_leg role`,
+      ).toContain("single_leg");
+
+      const instructions = MOVEMENT_INSTRUCTIONS.find(
+        (candidate) => candidate.slug === entry.slug,
+      );
+      expect(instructions, `${entry.slug} missing instructions`).toBeTruthy();
+      expect(instructions!.steps.length).toBeGreaterThanOrEqual(3);
+      expect(instructions!.cues.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it("carries exactly one Copenhagen entry (migration 0138 dedupe)", () => {
+    const copenhagens = SEED.filter((candidate) =>
+      candidate.slug.includes("copenhagen"),
+    ).map((candidate) => candidate.slug);
+    expect(copenhagens).toEqual(["copenhagen-plank"]);
+    expect(
+      MOVEMENT_INSTRUCTIONS.filter((candidate) =>
+        candidate.slug.includes("copenhagen"),
+      ).map((candidate) => candidate.slug),
+    ).toEqual(["copenhagen-plank"]);
   });
 
   it("seeds Landmine Squat to Box with compound metadata and how-to content", () => {

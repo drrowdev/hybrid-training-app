@@ -103,6 +103,18 @@ const SQUAT: NewMovement[] = [
   squat("bulgarian-split-squat-bb", "Bulgarian Split Squat (BB)", { equipment: "barbell-bench", bilateral: false, axialLoad: "high", experienceMin: 2 }),
   squat("split-squat-db", "Split Squat (DB)", { equipment: "dumbbells", bilateral: false, axialLoad: "moderate" }),
   squat("split-squat-bb", "Split Squat (BB)", { equipment: "barbell", bilateral: false, axialLoad: "high", experienceMin: 2 }),
+  // Lunges — the stepping cousins of the static split squat. The catalog had
+  // none, while `movement-muscle-map.ts`, `accessory-schema.md` and migration
+  // 0019 all already referenced them, so the single-leg pool was thinner than
+  // every consumer assumed. Attributes track the split-squat pair; the step
+  // makes them less stable, so no `stability: "supported"`. Reverse stepping
+  // shifts load off the front knee onto the hip, hence the differing emphasis.
+  squat("forward-lunge", "Forward Lunge", { equipment: "bodyweight", bilateral: false, axialLoad: "low", bodyWeightLoaded: true, metadata: { eccentric_cost: "moderate", cns_cost: "low", stim_fatigue_ratio: "moderate", emphasis: "front-knee-loaded" } }),
+  squat("forward-lunge-db", "Forward Lunge (DB)", { equipment: "dumbbells", bilateral: false, axialLoad: "moderate", metadata: { eccentric_cost: "moderate", cns_cost: "moderate", stim_fatigue_ratio: "moderate", emphasis: "front-knee-loaded" } }),
+  squat("forward-lunge-bb", "Forward Lunge (BB)", { equipment: "barbell", bilateral: false, axialLoad: "high", experienceMin: 2, metadata: { eccentric_cost: "moderate", cns_cost: "high", stim_fatigue_ratio: "moderate", emphasis: "front-knee-loaded" } }),
+  squat("reverse-lunge", "Reverse Lunge", { equipment: "bodyweight", bilateral: false, axialLoad: "low", bodyWeightLoaded: true, metadata: { eccentric_cost: "moderate", cns_cost: "low", stim_fatigue_ratio: "moderate", emphasis: "hip-loaded-knee-friendly" } }),
+  squat("reverse-lunge-db", "Reverse Lunge (DB)", { equipment: "dumbbells", bilateral: false, axialLoad: "moderate", metadata: { eccentric_cost: "moderate", cns_cost: "moderate", stim_fatigue_ratio: "moderate", emphasis: "hip-loaded-knee-friendly" } }),
+  squat("reverse-lunge-bb", "Reverse Lunge (BB)", { equipment: "barbell", bilateral: false, axialLoad: "high", experienceMin: 2, metadata: { eccentric_cost: "moderate", cns_cost: "high", stim_fatigue_ratio: "moderate", emphasis: "hip-loaded-knee-friendly" } }),
   squat("atg-split-squat", "ATG Split Squat", { equipment: "bodyweight", bilateral: false, axialLoad: "low", primaryMuscles: ["quads", "glutes", "adductors"], metadata: { rom_profile: "deep" } }),
   squat("cossack-squat", "Cossack Squat", { equipment: "bodyweight-or-loaded", bilateral: false, axialLoad: "low", primaryMuscles: ["quads", "adductors", "glutes"], secondaryMuscles: ["hamstrings"] }),
   squat("goblet-squat", "Goblet Squat", { equipment: "dumbbell-or-kb", axialLoad: "moderate", stability: "supported" }),

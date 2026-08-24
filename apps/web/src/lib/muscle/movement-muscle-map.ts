@@ -95,6 +95,46 @@ export const MOVEMENT_MUSCLE_MAP: Record<string, MuscleWeight[]> = {
     { muscle: "quads", weight: 1.0 },
     { muscle: "glutes", weight: 1.0 },
   ],
+  "forward-lunge": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "hamstrings", weight: 0.25 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  "forward-lunge-db": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "hamstrings", weight: 0.25 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  "forward-lunge-bb": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "erectors", weight: 0.5 },
+    { muscle: "hamstrings", weight: 0.25 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  // Reverse stepping shifts load toward the hip, so glutes/hamstrings carry
+  // more than in the forward step.
+  "reverse-lunge": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "hamstrings", weight: 0.5 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  "reverse-lunge-db": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "hamstrings", weight: 0.5 },
+    { muscle: "core", weight: 0.25 },
+  ],
+  "reverse-lunge-bb": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "erectors", weight: 0.5 },
+    { muscle: "hamstrings", weight: 0.5 },
+    { muscle: "core", weight: 0.25 },
+  ],
 
   // ── Hinge family ─────────────────────────────────────────────────
   "conventional-deadlift": [
@@ -343,11 +383,6 @@ export const MOVEMENT_MUSCLE_MAP: Record<string, MuscleWeight[]> = {
   "hip-adduction-machine": [{ muscle: "adductors", weight: 1.0 }],
   "copenhagen-plank": [
     { muscle: "adductors", weight: 1.0 },
-    { muscle: "core", weight: 0.5 },
-  ],
-  "copenhagen-side-plank": [
-    { muscle: "adductors", weight: 1.0 },
-    { muscle: "obliques", weight: 0.5 },
     { muscle: "core", weight: 0.5 },
   ],
 
