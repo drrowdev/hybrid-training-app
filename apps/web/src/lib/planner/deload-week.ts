@@ -24,7 +24,7 @@
 import type { RecoveryWeekPolicy } from "@hta/program-core";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 
-/** Warm-up ramp for the recovery week's own top set. */
+/** Warm-up ramp to the recovery week's FIRST working set. */
 const RECOVERY_WARMUP_RAMP = [
   { of: 0.4, reps: 5 },
   { of: 0.7, reps: 3 },
