@@ -18,6 +18,7 @@ import {
   replaceLinkMembers,
   replaceSlot,
   restoreGroup,
+  restoreSlot,
   sectionOf,
   seededDrafts,
   slotDraftsFor,
@@ -349,5 +350,185 @@ describe("slotsEdited", () => {
       { sourceMovement: "overhead-press", movement: "overhead-press" },
     ];
     expect(slotsEdited(swapped, SLOTS)).toBe(true);
+  });
+});
+
+describe("restoreSlot — putting a removed template lift back", () => {
+  // Zulu B: two main lifts and two supplementals. TB3 allows a day to run one
+  // supplemental, so dropping to one and back must both be reachable.
+  const ZULU_B: TemplateSlot[] = [
+    { sourceMovement: "deadlift", role: "main" },
+    { sourceMovement: "weighted-pullup", role: "main", kind: "weighted-bw" },
+    { sourceMovement: "barbell-row", role: "supplemental" },
+    { sourceMovement: "back-extension", role: "supplemental", kind: "unanchored" },
+  ];
+
+  it("restores the lift as SUPPLEMENTAL work, not as a main lift", () => {
+    const afterRemove = removeSlot(slotDraftsFor(ZULU_B), "back-extension");
+    const restored = restoreSlot(afterRemove, ZULU_B, "back-extension");
+    const row = restored.find((d) => slotIdentity(d) === "back-extension")!;
+    // Slot identity is what the engine matches its prescription rules against:
+    // without it the row is a bare movement and gets the main-lift scheme.
+    expect(row.sourceMovement).toBe("back-extension");
+    expect(sectionOf(ZULU_B, row)).toBe("supplemental");
+  });
+
+  it("brings back the slot's own kind", () => {
+    const afterRemove = removeSlot(slotDraftsFor(ZULU_B), "weighted-pullup");
+    const restored = restoreSlot(afterRemove, ZULU_B, "weighted-pullup");
+    expect(restored.find((d) => slotIdentity(d) === "weighted-pullup")).toEqual({
+      sourceMovement: "weighted-pullup",
+      movement: "weighted-pullup",
+      kind: "weighted-bw",
+    });
+  });
+
+  it("round-trips to exactly the template", () => {
+    const start = slotDraftsFor(ZULU_B);
+    const restored = restoreSlot(
+      removeSlot(start, "barbell-row"),
+      ZULU_B,
+      "barbell-row",
+    );
+    expect(restored).toEqual(start);
+  });
+
+  it("puts the lift back in template order, not on the end", () => {
+    const afterRemove = removeSlot(slotDraftsFor(ZULU_B), "barbell-row");
+    const restored = restoreSlot(afterRemove, ZULU_B, "barbell-row");
+    expect(restored.map(slotIdentity)).toEqual([
+      "deadlift",
+      "weighted-pullup",
+      "barbell-row",
+      "back-extension",
+    ]);
+  });
+
+  it("keeps a swapped exercise in its slot while restoring a different one", () => {
+    const swapped = replaceSlot(slotDraftsFor(ZULU_B), "barbell-row", CURL);
+    const restored = restoreSlot(
+      removeSlot(swapped, "back-extension"),
+      ZULU_B,
+      "back-extension",
+    );
+    expect(restored.find((d) => slotIdentity(d) === "barbell-row")?.movement).toBe(CURL);
+  });
+
+  it("leaves work the user added after the template's own lifts", () => {
+    const withAccessory = addAccessory(slotDraftsFor(ZULU_B), CURL);
+    const restored = restoreSlot(
+      removeSlot(withAccessory, "back-extension"),
+      ZULU_B,
+      "back-extension",
+    );
+    expect(restored[restored.length - 1]).toEqual({ movement: CURL, role: "accessory" });
+  });
+
+  it("is a no-op when the lift is already there", () => {
+    const start = slotDraftsFor(ZULU_B);
+    expect(restoreSlot(start, ZULU_B, "barbell-row")).toEqual(start);
+  });
+
+  it("is a no-op for a movement the template never had", () => {
+    const start = slotDraftsFor(ZULU_B);
+    expect(restoreSlot(start, ZULU_B, "front-squat")).toEqual(start);
+  });
+
+  it("restores a slot whose exercise had been swapped, as the template lift", () => {
+    // Swap then remove then restore: the slot comes back canonical, because the
+    // template is what a restore restores.
+    const swapped = replaceSlot(slotDraftsFor(ZULU_B), "back-extension", CURL);
+    const restored = restoreSlot(
+      removeSlot(swapped, "back-extension"),
+      ZULU_B,
+      "back-extension",
+    );
+    expect(restored.find((d) => slotIdentity(d) === "back-extension")?.movement).toBe(
+      "back-extension",
+    );
+  });
+});
+
+describe("restoreGroup — a circuit comes back whole", () => {
+  const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"] as const;
+  const ZULU_A: TemplateSlot[] = [
+    { sourceMovement: "bench", role: "main" },
+    { sourceMovement: "squat", role: "main" },
+    { sourceMovement: "overhead-press", role: "supplemental" },
+    { sourceMovement: "hanging-leg-raise", role: "supplemental" },
+    { sourceMovement: "hanging-knee-raise", role: "supplemental" },
+    { sourceMovement: "toes-to-bar", role: "supplemental" },
+  ];
+
+  it("restores a circuit that was REMOVED, not just one that was swapped", () => {
+    // Removal leaves no row to expand, so the swap-only path returned the
+    // session unchanged and the circuit was unreachable.
+    const withoutTriad = TRIAD.reduce<SeriesSlotDraft[]>(
+      (rows, movement) => removeSlot(rows, movement),
+      slotDraftsFor(ZULU_A),
+    );
+    expect(hasWholeGroup(withoutTriad, TRIAD)).toBe(false);
+    const restored = restoreGroup(withoutTriad, TRIAD, ZULU_A);
+    expect(hasWholeGroup(restored, TRIAD)).toBe(true);
+    expect(restored).toEqual(slotDraftsFor(ZULU_A));
+  });
+
+  it("still restores a circuit that was swapped for one movement", () => {
+    const swapped = collapseGroup(slotDraftsFor(ZULU_A), TRIAD, CURL);
+    const restored = restoreGroup(swapped, TRIAD, ZULU_A);
+    expect(hasWholeGroup(restored, TRIAD)).toBe(true);
+  });
+
+  it("brings the whole circuit back, never part of it", () => {
+    // `abRule` prescribes three rounds across all three lifts, so a half
+    // restore would state the circuit against one movement.
+    const partial = removeSlot(
+      removeSlot(slotDraftsFor(ZULU_A), "hanging-knee-raise"),
+      "toes-to-bar",
+    );
+    const restored = restoreGroup(partial, TRIAD, ZULU_A);
+    expect(restored.filter((d) => TRIAD.includes(slotIdentity(d) as never))).toHaveLength(3);
+  });
+
+  it("puts the circuit back in template order", () => {
+    const withoutTriad = TRIAD.reduce<SeriesSlotDraft[]>(
+      (rows, movement) => removeSlot(rows, movement),
+      slotDraftsFor(ZULU_A),
+    );
+    expect(restoreGroup(withoutTriad, TRIAD, ZULU_A).map(slotIdentity)).toEqual([
+      "bench",
+      "squat",
+      "overhead-press",
+      ...TRIAD,
+    ]);
+  });
+
+  it("keeps user-added work after the circuit it restores", () => {
+    const withAccessory = addAccessory(
+      TRIAD.reduce<SeriesSlotDraft[]>(
+        (rows, movement) => removeSlot(rows, movement),
+        slotDraftsFor(ZULU_A),
+      ),
+      CURL,
+    );
+    const restored = restoreGroup(withAccessory, TRIAD, ZULU_A);
+    expect(restored[restored.length - 1]).toEqual({ movement: CURL, role: "accessory" });
+  });
+});
+
+describe("restoreSlot — user-added work never sorts into template order", () => {
+  it("keeps an accessory row last even when its movement matches a template slot", () => {
+    // A hand-written payload can name a template movement as accessory work.
+    // Sorting it into template order would move it out of the accessory section.
+    const drafts: SeriesSlotDraft[] = [
+      { sourceMovement: "bench", movement: "bench" },
+      { movement: "overhead-press", role: "accessory" },
+    ];
+    const restored = restoreSlot(drafts, SLOTS, "squat");
+    expect(restored[restored.length - 1]).toEqual({
+      movement: "overhead-press",
+      role: "accessory",
+    });
+    expect(restored.map(slotIdentity)).toEqual(["bench", "squat", "overhead-press"]);
   });
 });

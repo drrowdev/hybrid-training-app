@@ -2815,6 +2815,29 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
     ],
   },
   {
+    slug: "weighted-dip",
+    summary:
+      "Parallel bar dip with load hung from a dip belt, trained as a heavy pressing lift.",
+    setup:
+      "Hang the load from a dip belt, set the bars about shoulder-width, and support yourself at lockout with the shoulders down.",
+    steps: [
+      "Take the load and stabilise at the top with elbows locked.",
+      "Lower under control until the upper arms reach about parallel with the floor.",
+      "Keep the load hanging still rather than swinging.",
+      "Press back to a full lockout.",
+    ],
+    cues: [
+      "Keep a slight forward lean for chest, more upright for triceps.",
+      "Keep the shoulders pulled down away from the ears.",
+      "Stop at the depth your shoulders tolerate.",
+    ],
+    commonMistakes: [
+      "Dropping into the bottom and bouncing out of it.",
+      "Letting the load swing and turn the set into a kip.",
+      "Going deeper than the shoulder can control just to add range.",
+    ],
+  },
+  {
     slug: "hack-squat",
     summary: "Machine squat on an angled sled — heavy quad loading with back support.",
     setup: "Shoulders under the pads, feet on the platform, back flat on the pad.",
