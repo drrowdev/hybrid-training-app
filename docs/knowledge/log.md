@@ -907,3 +907,20 @@ Review before merge found five defects, two of which would have shipped as silen
 The third was the anchoring hazard in a costume. Session refs are instance-independent, so a fresh deploy of the same template contains byte-identical refs: advice raised by a FINISHED block resolved perfectly well against the block that replaced it, and would have scheduled the light week six weeks out. Resolution is now scoped to the recommendation that raised it, and pending advice is retired when its block is archived.
 
 See ADR 0077.
+
+
+## [2026-08-24] fix | Weighted dip joins the library, and a removed lift can be put back
+
+Two owner reports from the same session, with different causes.
+
+The library had `weighted-pull-up` as its own movement but no weighted dip - only a Parallel Bar Dip, which is loadable but does not answer a search for "weighted dip". The catalog was inconsistent with itself: the app's own convention is that a weighted variant earns its own row when it is trained as a strength lift, so its history and loaded max stay separate from the bodyweight version. Owner confirmed they want it tracked separately. Added as `weighted-dip`, mirroring the pull-up entry.
+
+The equipment tag is the trap. `requirementFromEquipmentTag` matches by SUBSTRING, and the only string that routes to a dip belt is `dip-belt`; anything else returns null and the slug heuristic takes over, which for this slug has no branch at all and lands on the permissive default. A plausible-looking tag like `dip-bars-belt` would therefore have offered the weighted dip to every lifter, belt or no belt. Review caught that my first write-up of this named the wrong failure - it claimed a pull-up bar, which is what happens to `dip-parallel` and `dip-ring`, not to this slug. The tag is therefore the belt rather than the bars - the belt is the scarce item anyway - and a test pins both the working tag and the failure mode. Noted but not fixed: `weighted-pull-up`'s own `bar-belt` tag has the same gap, so the app does not currently know a weighted pull-up needs a belt either.
+
+The rollback is guarded rather than a plain DELETE. A global movement can be picked the moment it exists, so by the time anyone rolls back it may be referenced by set_logs, training_maxes, a stored prescription or a saved customization. It is removed only while nothing refers to it: a catalog entry nobody can find again is a smaller problem than logged history losing its exercise.
+
+Separately, removing a lift from a TB session was one-way - the dropped lift rendered as dead text with no control to undo it. That is the defect under the report that Zulu's supplemental count is "locked to two": you could go down to one, but never back. `restoreSlot` puts the TEMPLATE SLOT back, carrying its canonical sourceMovement and kind, because the slot is what the engine matches its prescription rules against; rebuilding the row as a bare movement would return a supplemental lift as main work at the main-lift scheme.
+
+Review caught that the first version of that change made a fully removed AB Triad both invisible and unrestorable, because the only thing rendering "Restore AB Triad" was a swap check that returns false when the row is absent. Worse than the behaviour it replaced, which at least still named the lift. The triad is now restored whole from either state - `abRule` prescribes it as one unit, so a half-restored triad would state three rounds against a single lift.
+
+Owner decisions taken this session, to be implemented next: the AB Triad becomes a properly selectable engine-owned circuit rather than a search alias; and a Zulu day may carry more than two supplemental lifts WITHOUT a warning, on the grounds that TB3 leaves supplemental volume to the lifter - so choosing three is not an override of a principle-derived default and DC-K4 does not apply.
