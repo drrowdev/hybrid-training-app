@@ -49,7 +49,7 @@ import {
   slotLinkBadges,
 } from "./session-link-editing";
 import {
-  addAccessory,
+  addMovement,
   canRemoveRows,
   collapseGroup,
   hasWholeGroup,
@@ -69,6 +69,7 @@ import {
   slotsEdited,
   SLOT_SECTIONS,
   type SeriesSlotDraft,
+  type AddedRole,
   type SlotSection,
   type TemplateSlot,
 } from "./session-slot-editing";
@@ -2259,10 +2260,14 @@ export function ProgramPicker({
   }
 
   /** Add a movement the user chose themselves; it is prescribed as accessory work. */
-  function addSeriesAccessory(seriesKey: string, movement: string) {
+  function addSeriesMovement(
+    seriesKey: string,
+    movement: string,
+    role: AddedRole,
+  ) {
     setCustomSessionMovements((current) => ({
       ...current,
-      [seriesKey]: addAccessory(seededFor(current, seriesKey), movement),
+      [seriesKey]: addMovement(seededFor(current, seriesKey), movement, role),
     }));
   }
 
@@ -2972,6 +2977,16 @@ export function ProgramPicker({
             // Restored as a whole either way — `abRule` prescribes the circuit as
             // one unit, so a half-restored triad states three rounds against one lift.
             const triadRestorable = triadReplaced || triadRemoved;
+            // Supplemental work can only be added where the day already
+            // prescribes some: the engine doses an added supplemental from a
+            // slot the session already has, and with none there is nothing to
+            // borrow. Read from the TEMPLATE, so removing every supplemental
+            // doesn't take the control away with it.
+            const hasSupplementalWork = entry.slots.some(
+              (slot) =>
+                slot.role === "supplemental" &&
+                !triad.includes(slot.sourceMovement),
+            );
             const removed = removedSupplementalSlots(entry, triadRestorable);
             const populated = SLOT_SECTIONS.filter((section) =>
               drafts.some((draft) => sectionOf(entry.slots, draft) === section),
@@ -3109,6 +3124,25 @@ export function ProgramPicker({
                     ))}
                   </div>
                 ) : null}
+                {hasSupplementalWork ? (
+                  <details className={styles.addExercise}>
+                    <summary data-testid={`tb-add-supplemental-${entry.key}`}>
+                      + Add supplemental
+                    </summary>
+                    <ExerciseLibraryPicker
+                      movements={rehabMovements}
+                      excludeKeys={drafts.map((row) => row.movement)}
+                      onPick={(movement) => {
+                        const key = catalogMovementKey(movement.id);
+                        setCatalogMovementMeta((current) => ({
+                          ...current,
+                          [key]: movement,
+                        }));
+                        addSeriesMovement(entry.key, key, "supplemental");
+                      }}
+                    />
+                  </details>
+                ) : null}
                 <details className={styles.addExercise}>
                   <summary data-testid={`tb-add-accessory-${entry.key}`}>
                     + Add accessory
@@ -3122,7 +3156,7 @@ export function ProgramPicker({
                         ...current,
                         [key]: movement,
                       }));
-                      addSeriesAccessory(entry.key, key);
+                      addSeriesMovement(entry.key, key, "accessory");
                     }}
                   />
                 </details>

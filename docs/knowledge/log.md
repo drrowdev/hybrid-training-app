@@ -989,3 +989,17 @@ So a `weighted-bw` lift whose added load resolves to zero now carries `isAmrap`,
 The set count is deliberately not collapsed: all 3-5 sets are max-reps sets, matching how the adapter already expands a multi-set working item into one loggable slot per set.
 
 Not revisited: PR detection stays suppressed for these movements. Repping out a bodyweight pull-up is exactly where a REP pr would be meaningful, but the saved max is a kg system load, so there is nothing here to fire against yet. That wants a max-reps anchor of its own.
+
+## [2026-08-24] decision | Supplemental work is the lifter's to add, and is dosed by the day it joins
+
+The other half of "Zulu's supplemental count is locked to two". Removal became reversible earlier; this is the add. The only add path hardcoded `role: "accessory"`, so anything the lifter added took the accessory dose - 3x8-15 near failure, no percentage, no warm-up - and there was no way to add work at the SUPPLEMENTAL dose of 3-5x8-10 at 65/70/75%.
+
+Owner decided a day may carry more supplemental work than the book lists, and explicitly WITHOUT a warning: TB3 says the amount of supplemental work is ultimately up to the lifter, so choosing three is not overriding a principle-derived default and DC-K4 does not apply. Recorded because the reasoning is the interesting part - DC-K4 governs overrides of what the method prescribes, not choices the method hands to the lifter.
+
+The design question was what an added supplemental should be prescribed AS. It carries no template slot, so no prescription rule matches it by name. Rather than invent a dose or restate the numbers in a second place, it BORROWS one: `supplementalDonor` picks a supplemental slot the day already has, and the added lift resolves its rules through that slot's key. It therefore tracks the week automatically - 65 in week 1, 70 in week 2, 75 in week 3 - and inherits the warm-up ramp, because it is reading the same rule the template's own supplemental work reads.
+
+Which slot lends the dose is the whole correctness question. Two are wrong to borrow from. Circuit members: the AB Triad's rule is 3x5 with a note naming its three movements, so lending it prints that circuit against an unrelated lift. And bodyweight supplementals: their rule carries `percent: null` and a max-reps note, so a loaded lift would inherit no percentage at all. Review caught the second - Activation's Armor B days list pull-ups BEFORE the overhead press, so "first supplemental slot" picked the bodyweight one. Not reachable from the wizard today, since Activation persists through a different shape entirely, but it is the same failure the triad exclusion was written to prevent and it is now pinned.
+
+Review also caught that the first tests exercised a branch production cannot reach. Deploy stamps a `kind` on every catalog movement - `barbell` when the lifter has a 1RM, `unanchored` when they do not - so a test payload with neither took a third path that emits a percentage but no weight and no warm-ups. The PR's central claim, that an added supplemental inherits the day's warm-up ramp, was true and untested. Both real paths are now covered, with the added lift given a 1RM distinct from the donor's so "loaded off its own max" actually means something.
+
+A day with no supplemental work of its own has no dose to lend; the lift falls back to the accessory dose. The wizard does not offer the control there, so it is a defined fallback rather than a reachable state.

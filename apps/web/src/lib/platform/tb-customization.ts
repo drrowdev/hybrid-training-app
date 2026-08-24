@@ -52,8 +52,11 @@ const movementReplacementSchema = z
      * Stated explicitly rather than inferred from a missing `sourceMovement`,
      * because customizations written before slots existed have no slot on ANY
      * entry — inferring would turn their main lifts into accessory work.
+     *
+     * `"supplemental"` asks for the dose the session's own supplemental work
+     * gets; `"accessory"` asks for the accessory dose.
      */
-    role: z.literal("accessory").optional(),
+    role: z.enum(["accessory", "supplemental"]).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -64,11 +67,11 @@ const movementReplacementSchema = z
         message: "A custom movement cannot stand in for a template slot.",
       });
     }
-    if (value.role === "accessory" && value.sourceMovement) {
+    if (value.role && value.sourceMovement) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["role"],
-        message: "Accessory work does not fill a template slot.",
+        message: "A movement you added does not fill a template slot.",
       });
     }
     if (!value.movement.startsWith("catalog:")) return;
@@ -413,7 +416,7 @@ export function customizationDays(
   );
 }
 
-/** Catalog ids of the accessories the user picked themselves in the session editor. */
+/** Catalog ids of the movements the user added themselves in the session editor. */
 export function userChosenAccessoryIds(
   customization: TbCustomization | undefined,
 ): Set<string> {
@@ -422,9 +425,9 @@ export function userChosenAccessoryIds(
     Object.values(customization.sessionMovements)
       .flat()
       .flatMap((movement) =>
-        movement.role === "accessory" && movement.movementId
-          ? [movement.movementId]
-          : [],
+        // Either dose counts: this answers "did the user pick this", not
+        // "how is it prescribed".
+        movement.role && movement.movementId ? [movement.movementId] : [],
       ),
   );
 }

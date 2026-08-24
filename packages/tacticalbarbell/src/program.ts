@@ -73,12 +73,22 @@ export interface TbClusterLift {
   sourceMovement?: string;
   /**
    * Marks a lift the USER added to a session rather than one the template
-   * prescribes. It carries no slot, takes no percentage and no warm-up ramp, and
-   * is prescribed at an accessory dose (see `ACCESSORY_DOSE`) instead of the
-   * session's main sets and reps — a bicep curl is not a Tactical Barbell lift
-   * and must not be loaded like one.
+   * prescribes. It carries no slot, so no prescription rule matches it by name.
+   *
+   * `"accessory"` takes no percentage and no warm-up ramp and is prescribed at
+   * an accessory dose (see `ACCESSORY_DOSE`) instead of the session's sets and
+   * reps — a bicep curl is not a Tactical Barbell lift and must not be loaded
+   * like one.
+   *
+   * `"supplemental"` means "prescribe me like this session's own supplemental
+   * work": the same percentage, sets, reps and warm-up the template already
+   * gives the supplemental slots on that day. TB3 leaves supplemental volume to
+   * the lifter, so a day may carry more of it than the book lists. A session
+   * that prescribes no supplemental work has no dose to lend, and the lift falls
+   * back to the accessory dose — unreachable from the wizard, which only offers
+   * the control where supplemental work already exists.
    */
-  role?: "accessory";
+  role?: "accessory" | "supplemental";
 }
 
 export interface TbActivationSessionOverride {
@@ -408,6 +418,42 @@ export function tbTemplateSeries(template: TbTemplate): TbTemplateSeries[] {
     }));
 }
 
+/**
+ * The slot whose supplemental dose a user-added supplemental borrows.
+ *
+ * A supplemental slot on the day, preferring one that is actually LOADED.
+ * Two kinds of slot are wrong to borrow from:
+ *
+ *  - circuit members — the AB Triad's rule is 3×5 with a note naming its three
+ *    movements, so lending it prints that circuit against an unrelated lift;
+ *  - bodyweight supplementals — their rule carries `percent: null` and a note
+ *    about max reps, so a loaded lift would inherit no percentage at all.
+ *
+ * Null when the session prescribes no supplemental work of its own. There is
+ * then no dose to borrow, and the caller falls back to the accessory dose.
+ */
+function supplementalDonor(
+  session: TbTemplate["weeklySessions"][number],
+): string | undefined {
+  const circuit = AB_TRIAD_MOVEMENTS as readonly string[];
+  const candidates = (session.fixedMovements ?? []).filter(
+    (entry) =>
+      !circuit.includes(entry.movement) &&
+      isSupplementalSlot(session, entry.movement),
+  );
+  const loaded = candidates.find(
+    (entry) =>
+      entry.kind !== "bodyweight" &&
+      entry.kind !== "unanchored" &&
+      (session.prescriptionRules ?? []).some(
+        (rule) =>
+          rule.percent != null &&
+          (rule.movements?.includes(entry.movement) ?? false),
+      ),
+  );
+  return (loaded ?? candidates[0])?.movement;
+}
+
 function translateTestSelection(
   template: TbTemplate,
   session: TbTemplate["weeklySessions"][number],
@@ -429,10 +475,10 @@ function translateTestSelection(
   );
   const slotOf = (entry: TbClusterEntry) =>
     (entry as TbClusterLift).sourceMovement ?? entry.movement;
-  // Accessory work the user bolted on is never a candidate for a 1RM attempt,
-  // whichever resolution path runs.
+  // Work the user bolted on is never a candidate for a 1RM attempt, whichever
+  // resolution path runs and whichever dose they gave it.
   const candidates = customized.filter(
-    (entry) => (entry as TbClusterLift).role !== "accessory",
+    (entry) => (entry as TbClusterLift).role == null,
   );
   const used = new Set<string>();
   const movementMap = new Map<string, string>();
@@ -578,7 +624,9 @@ function entriesFromValue(v: unknown): TbClusterLift[] {
         ) {
           lift.sourceMovement = o.sourceMovement;
         }
-        if (o.role === "accessory") lift.role = "accessory";
+        if (o.role === "accessory" || o.role === "supplemental") {
+          lift.role = o.role;
+        }
         out.push(lift);
       }
     }
@@ -1024,10 +1072,21 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       let includeWarmup = true;
       let ruleNote: string | undefined;
 
-      // A user-added movement is not template work: it takes the accessory dose
-      // and skips the template's percentage, set range and warm-up ramp
-      // entirely, so no prescription rule applies to it either.
-      const isUserAccessory = lift.role === "accessory";
+      // A user-added movement carries no slot, so no rule matches it by name.
+      //
+      // An added SUPPLEMENTAL borrows the dose from a slot the session already
+      // prescribes as supplemental — the same percentage, sets and reps its own
+      // supplemental work gets that week. Circuit members are never the donor:
+      // the AB Triad's rule is 3×5 with a note naming its three movements, and
+      // lending that to an unrelated lift would print the circuit's instructions
+      // against it.
+      const donorMovement =
+        lift.role === "supplemental" ? supplementalDonor(session) : undefined;
+      // "Supplemental" on a session with no supplemental work has no dose to
+      // borrow; fall back to the accessory dose rather than the main-lift scheme.
+      const isUserAccessory =
+        lift.role === "accessory" ||
+        (lift.role === "supplemental" && donorMovement == null);
       if (isUserAccessory) {
         prescribedPercent = null;
         prescribedSetsMin = ACCESSORY_DOSE.sets;
@@ -1040,9 +1099,11 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         ruleNote = ACCESSORY_DOSE.note;
       }
 
+      // An added lift matches rules through its donor slot, never its own name.
+      const ruleMatchMovement = donorMovement ?? sourceMovement;
       for (const rule of isUserAccessory ? [] : session.prescriptionRules ?? []) {
         if (rule.activeWeeks && !rule.activeWeeks.includes(parsed.week)) continue;
-        if (rule.movements && !rule.movements.includes(sourceMovement)) continue;
+        if (rule.movements && !rule.movements.includes(ruleMatchMovement)) continue;
         if (rule.percent !== undefined) prescribedPercent = rule.percent;
         if (rule.setsMin != null) prescribedSetsMin = rule.setsMin;
         if (rule.setsMax != null) prescribedSetsMax = rule.setsMax;
