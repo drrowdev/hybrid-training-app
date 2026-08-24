@@ -50,6 +50,7 @@ import {
   slotLinkBadges,
 } from "./session-link-editing";
 import {
+  addGroup,
   addMovement,
   canRemoveRows,
   collapseGroup,
@@ -229,6 +230,23 @@ const slotOf = (
  * that prescription, so offering them here would produce nonsense.
  */
 const ACCESSORY_PATTERN = "isolation";
+
+/**
+ * Circuits a lifter can add to a session that doesn't already prescribe one.
+ *
+ * The AB Triad is not an exercise, so it isn't in the exercise library — it is
+ * three movements run as three rounds. Offering it here is what makes it
+ * addable at all; adding its three parts by hand would give three loose ab
+ * exercises rather than the circuit.
+ */
+const TB_CIRCUITS: readonly PickerCircuit[] = [
+  {
+    id: "ab-triad",
+    name: "AB Triad",
+    movements: AB_TRIAD_MOVEMENTS,
+    detail: "3 rounds × 5 — hanging leg raise, hanging knee raise, toes-to-bar",
+  },
+];
 
 function sessionSeriesFor(template: PickerTbTemplate): NonNullable<
   PickerTbTemplate["sessionSeries"]
@@ -731,17 +749,48 @@ function RehabProtocolPicker({
   );
 }
 
+/** A pickable circuit — several movements the lifter adds as one unit. */
+type PickerCircuit = {
+  id: string;
+  name: string;
+  movements: readonly string[];
+  detail: string;
+};
+
 function ExerciseLibraryPicker({
   movements,
   onPick,
   excludeKeys = [],
+  circuits = [],
+  excludeIdentities = [],
+  onPickCircuit,
 }: {
   movements: PickerRehabMovement[];
   onPick: (movement: PickerRehabMovement) => void;
   excludeKeys?: string[];
+  /** Offered above the exercises; picking one adds every movement in it. */
+  circuits?: readonly PickerCircuit[];
+  /**
+   * Slot identities already in the session. A circuit is matched against these
+   * rather than `excludeKeys`, which holds the exercise currently filling each
+   * row — a swapped circuit still occupies its slots under its own identity, so
+   * comparing against the exercise would offer a circuit that can't be added.
+   */
+  excludeIdentities?: readonly string[];
+  onPickCircuit?: (circuit: PickerCircuit) => void;
 }) {
   const [query, setQuery] = useState("");
   const normalized = query.trim().toLowerCase();
+  const taken = new Set(excludeIdentities);
+  const circuitMatches = onPickCircuit
+    ? circuits.filter(
+        (circuit) =>
+          !circuit.movements.some((movement) => taken.has(movement)) &&
+          (!normalized ||
+            circuit.name.toLowerCase().includes(normalized) ||
+            circuit.movements.some((movement) => movement.includes(normalized))),
+      )
+    : [];
   const matches = movements
     .filter(
       (movement) =>
@@ -762,6 +811,24 @@ function ExerciseLibraryPicker({
         aria-label="Search the exercise library"
       />
       <div className={styles.libraryResults}>
+        {circuitMatches.map((circuit) => (
+          <button
+            key={circuit.id}
+            type="button"
+            data-testid={`tb-pick-circuit-${circuit.id}`}
+            onClick={(event) => {
+              onPickCircuit?.(circuit);
+              setQuery("");
+              event.currentTarget.closest("details")?.removeAttribute("open");
+            }}
+          >
+            <span>
+              <b>{circuit.name}</b>
+              <small>{circuit.detail}</small>
+            </span>
+            <em>{`${circuit.movements.length} exercises`}</em>
+          </button>
+        ))}
         {matches.map((movement) => (
           <button
             key={movement.id}
@@ -779,7 +846,9 @@ function ExerciseLibraryPicker({
             <em>{movement.hasOneRm ? "Uses saved 1RM" : "Manual load"}</em>
           </button>
         ))}
-        {matches.length === 0 ? <p>No matching exercises.</p> : null}
+        {matches.length === 0 && circuitMatches.length === 0 ? (
+          <p>No matching exercises.</p>
+        ) : null}
       </div>
     </div>
   );
@@ -2442,6 +2511,18 @@ export function ProgramPicker({
     }));
   }
 
+  /** Add a built-in circuit to a session the template didn't put one in. */
+  function addSeriesGroup(
+    seriesKey: string,
+    group: readonly string[],
+    role: AddedRole,
+  ) {
+    setCustomSessionMovements((current) => ({
+      ...current,
+      [seriesKey]: addGroup(seededFor(current, seriesKey), group, role),
+    }));
+  }
+
   /** Drop several rows at once — the AB Triad is removed whole or not at all. */
   function removeSeriesMovements(
     seriesKey: string,
@@ -3197,10 +3278,16 @@ export function ProgramPicker({
             // The AB Triad is one circuit. It is offered as a single row so it
             // can't be half-removed, which would leave the rest running loose.
             const wholeTriad = hasWholeGroup(drafts, triad);
+            // Whether the TEMPLATE prescribes the circuit. A circuit the lifter
+            // added has no slot to restore into once it's removed outright —
+            // they add it again instead.
+            const templateTriad = entry.slots.some((slot) =>
+              triad.includes(slot.sourceMovement),
+            );
             const triadReplaced = isGroupReplaced(drafts, triad);
             // Gone entirely: no row holds it, so nothing above can offer it back.
             const triadRemoved =
-              entry.slots.some((slot) => triad.includes(slot.sourceMovement)) &&
+              templateTriad &&
               !drafts.some((draft) => triad.includes(slotIdentity(draft)));
             // Restored as a whole either way — `abRule` prescribes the circuit as
             // one unit, so a half-restored triad states three rounds against one lift.
@@ -3400,6 +3487,11 @@ export function ProgramPicker({
                     <ExerciseLibraryPicker
                       movements={rehabMovements}
                       excludeKeys={drafts.map((row) => row.movement)}
+                      circuits={TB_CIRCUITS}
+                      excludeIdentities={drafts.map(slotIdentity)}
+                      onPickCircuit={(circuit) =>
+                        addSeriesGroup(entry.key, circuit.movements, "supplemental")
+                      }
                       onPick={(movement) => {
                         const key = catalogMovementKey(movement.id);
                         setCatalogMovementMeta((current) => ({

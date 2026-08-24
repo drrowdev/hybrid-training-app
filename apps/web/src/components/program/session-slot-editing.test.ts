@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import {
   addAccessory,
+  addGroup,
   addMovement,
   canRemoveRows,
   collapseGroup,
@@ -597,5 +598,133 @@ describe("addMovement — the dose the user asked for", () => {
       "barbell-row",
     );
     expect(restored.map((d) => d.movement)).toEqual(["deadlift", "barbell-row", CURL]);
+  });
+});
+
+describe("addGroup — adding a circuit the template didn't prescribe", () => {
+  const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"] as const;
+  // Zulu B: no triad of its own, but it does prescribe supplemental work.
+  const ZULU_B: TemplateSlot[] = [
+    { sourceMovement: "deadlift", role: "main" },
+    { sourceMovement: "barbell-row", role: "supplemental" },
+  ];
+
+  it("adds the whole circuit as supplemental work", () => {
+    const drafts = addGroup(slotDraftsFor(ZULU_B), TRIAD, "supplemental");
+    expect(drafts.slice(-3)).toEqual(
+      TRIAD.map((movement) => ({ movement, role: "supplemental" })),
+    );
+    expect(drafts.slice(-3).every((d) => sectionOf(ZULU_B, d) === "supplemental")).toBe(true);
+  });
+
+  it("adds every member or none", () => {
+    // Three rounds across three movements: two thirds is not the circuit.
+    const drafts = addGroup([], TRIAD, "supplemental");
+    expect(drafts).toHaveLength(3);
+  });
+
+  it("refuses a second circuit when any member is already there", () => {
+    const once = addGroup(slotDraftsFor(ZULU_B), TRIAD, "supplemental");
+    expect(addGroup(once, TRIAD, "supplemental")).toEqual(once);
+    // Even a single overlapping member blocks it — two triads sharing a
+    // movement would give that movement two circuit identities.
+    const partial: SeriesSlotDraft[] = [{ movement: "toes-to-bar", role: "accessory" }];
+    expect(addGroup(partial, TRIAD, "supplemental")).toEqual(partial);
+  });
+
+  it("does not offer a second copy to a day that already prescribes one", () => {
+    const zuluA: TemplateSlot[] = [
+      { sourceMovement: "bench", role: "main" },
+      ...TRIAD.map((m) => ({ sourceMovement: m, role: "supplemental" as const })),
+    ];
+    const drafts = slotDraftsFor(zuluA);
+    expect(addGroup(drafts, TRIAD, "supplemental")).toEqual(drafts);
+  });
+
+  it("sends each member to the engine as added work with no template slot", () => {
+    // A slot would give it the template's prescription and make it a peak
+    // candidate; the circuit's identity comes from the movement keys instead.
+    const drafts = addGroup([], TRIAD, "supplemental");
+    for (const draft of drafts) {
+      expect(slotOf(ZULU_B, draft)).toBeUndefined();
+      expect(slotPayloadEntry(draft, undefined)).toEqual({
+        movement: draft.movement,
+        role: "supplemental",
+      });
+    }
+  });
+
+  it("is a no-op for an empty circuit", () => {
+    const drafts = slotDraftsFor(ZULU_B);
+    expect(addGroup(drafts, [], "supplemental")).toEqual(drafts);
+  });
+
+  it("can be removed whole and added again", () => {
+    const added = addGroup(slotDraftsFor(ZULU_B), TRIAD, "supplemental");
+    const removed = TRIAD.reduce<SeriesSlotDraft[]>(
+      (rows, movement) => removeSlot(rows, movement),
+      added,
+    );
+    expect(removed).toEqual(slotDraftsFor(ZULU_B));
+    expect(addGroup(removed, TRIAD, "supplemental")).toEqual(added);
+  });
+});
+
+describe("an added circuit keeps its role through Change and Restore", () => {
+  const TRIAD = ["hanging-leg-raise", "hanging-knee-raise", "toes-to-bar"] as const;
+  const ZULU_B: TemplateSlot[] = [
+    { sourceMovement: "deadlift", role: "main" },
+    { sourceMovement: "barbell-row", role: "supplemental" },
+  ];
+  const ZULU_A: TemplateSlot[] = [
+    { sourceMovement: "bench", role: "main" },
+    ...TRIAD.map((m) => ({ sourceMovement: m, role: "supplemental" as const })),
+  ];
+
+  it("swapping an added circuit leaves added work, not a phantom template slot", () => {
+    // Claiming a slot the session doesn't have loses BOTH the role and the
+    // slot at payload time, and the engine then prescribes it as a main lift
+    // at a percentage of a max the lifter has never set.
+    const added = addGroup(slotDraftsFor(ZULU_B), TRIAD, "supplemental");
+    const swapped = collapseGroup(added, TRIAD, CURL);
+    const row = swapped.find((d) => d.movement === CURL)!;
+    expect(row.role).toBe("supplemental");
+    // The identity is wizard bookkeeping so the circuit can be restored; the
+    // engine never sees it, because a roled row sends its role instead.
+    expect(slotPayloadEntry(row, slotOf(ZULU_B, row))).toEqual({
+      movement: CURL,
+      role: "supplemental",
+    });
+  });
+
+  it("restoring an added circuit brings it back as added work", () => {
+    const added = addGroup(slotDraftsFor(ZULU_B), TRIAD, "supplemental");
+    const restored = restoreGroup(collapseGroup(added, TRIAD, CURL), TRIAD, ZULU_B);
+    expect(restored.slice(-3)).toEqual(
+      TRIAD.map((movement) => ({ movement, role: "supplemental" })),
+    );
+  });
+
+  it("cannot restore an added circuit that was removed outright", () => {
+    // There is no slot to restore it into; the lifter adds it again instead.
+    const removed = slotDraftsFor(ZULU_B);
+    expect(restoreGroup(removed, TRIAD, ZULU_B)).toEqual(removed);
+  });
+
+  it("still rebuilds a TEMPLATE circuit as template slots", () => {
+    const swapped = collapseGroup(slotDraftsFor(ZULU_A), TRIAD, CURL);
+    expect(swapped.find((d) => d.movement === CURL)).toEqual({
+      sourceMovement: "hanging-leg-raise",
+      movement: CURL,
+    });
+    expect(restoreGroup(swapped, TRIAD, ZULU_A)).toEqual(slotDraftsFor(ZULU_A));
+  });
+
+  it("still restores a TEMPLATE circuit that was removed outright", () => {
+    const removed = TRIAD.reduce<SeriesSlotDraft[]>(
+      (rows, movement) => removeSlot(rows, movement),
+      slotDraftsFor(ZULU_A),
+    );
+    expect(restoreGroup(removed, TRIAD, ZULU_A)).toEqual(slotDraftsFor(ZULU_A));
   });
 });

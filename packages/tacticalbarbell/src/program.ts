@@ -39,6 +39,7 @@ import {
   TB_TEMPLATES,
   TB_MOVEMENT_LABEL,
   AB_TRIAD_MOVEMENTS,
+  AB_TRIAD_RULE,
   getTbTemplate,
   isSupplementalSlot,
   type TbTemplate,
@@ -1082,11 +1083,20 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       // against it.
       const donorMovement =
         lift.role === "supplemental" ? supplementalDonor(session) : undefined;
+      // A lifter who adds the AB Triad to a day that doesn't prescribe one gets
+      // the circuit's own dose, not the day's supplemental dose: three rounds of
+      // five is what the triad IS. Only while the circuit is whole — three loose
+      // ab movements are not a triad and take the ordinary added-lift dose.
+      const isAddedTriadMember =
+        lift.role != null &&
+        hasCompleteAbTriad &&
+        (AB_TRIAD_MOVEMENTS as readonly string[]).includes(sourceMovement);
       // "Supplemental" on a session with no supplemental work has no dose to
       // borrow; fall back to the accessory dose rather than the main-lift scheme.
       const isUserAccessory =
-        lift.role === "accessory" ||
-        (lift.role === "supplemental" && donorMovement == null);
+        !isAddedTriadMember &&
+        (lift.role === "accessory" ||
+          (lift.role === "supplemental" && donorMovement == null));
       if (isUserAccessory) {
         prescribedPercent = null;
         prescribedSetsMin = ACCESSORY_DOSE.sets;
@@ -1100,10 +1110,24 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       }
 
       // An added lift matches rules through its donor slot, never its own name.
+      // An added triad reads the circuit's own rule instead, so the numbers come
+      // from the same place whether the template prescribed it or the lifter did.
       const ruleMatchMovement = donorMovement ?? sourceMovement;
-      for (const rule of isUserAccessory ? [] : session.prescriptionRules ?? []) {
+      const rules = isUserAccessory
+        ? []
+        : isAddedTriadMember
+          ? [AB_TRIAD_RULE]
+          : session.prescriptionRules ?? [];
+      for (const rule of rules) {
         if (rule.activeWeeks && !rule.activeWeeks.includes(parsed.week)) continue;
-        if (rule.movements && !rule.movements.includes(ruleMatchMovement)) continue;
+        if (
+          rule.movements &&
+          !rule.movements.includes(
+            isAddedTriadMember ? sourceMovement : ruleMatchMovement,
+          )
+        ) {
+          continue;
+        }
         if (rule.percent !== undefined) prescribedPercent = rule.percent;
         if (rule.setsMin != null) prescribedSetsMin = rule.setsMin;
         if (rule.setsMax != null) prescribedSetsMax = rule.setsMax;

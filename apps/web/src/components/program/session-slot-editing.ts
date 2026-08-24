@@ -193,6 +193,27 @@ export function addAccessory(
 }
 
 /**
+ * Add a built-in circuit the template didn't prescribe.
+ *
+ * All of it or none: the AB Triad is three rounds across three movements, so a
+ * partial add would be three loose ab exercises wearing the circuit's name. A
+ * session already holding any member is left alone — one triad per day.
+ */
+export function addGroup(
+  drafts: readonly SeriesSlotDraft[],
+  group: readonly string[],
+  role: AddedRole,
+): SeriesSlotDraft[] {
+  if (group.length === 0) return [...drafts];
+  const present = new Set(drafts.map(slotIdentity));
+  if (group.some((movement) => present.has(movement))) return [...drafts];
+  return [
+    ...drafts,
+    ...group.map((movement) => ({ movement, role })),
+  ];
+}
+
+/**
  * What one row sends to the engine.
  *
  * The accessory role is CARRIED from the draft, never re-derived from a missing
@@ -285,19 +306,29 @@ export function collapseGroup(
   const dropped = new Set(rest);
   return drafts.flatMap((draft) => {
     const identity = slotIdentity(draft);
-    if (identity === head) return [{ sourceMovement: head, movement }];
-    return dropped.has(identity) ? [] : [draft];
+    if (identity !== head) return dropped.has(identity) ? [] : [draft];
+    // Keep the head's identity either way, so the circuit can still be restored
+    // into the row that replaced it. For a circuit the LIFTER added, keep the
+    // role too: it fills no template slot, and `slotPayloadEntry` drops the
+    // identity for a roled row, so only the wizard ever sees it. Without the
+    // role the engine would prescribe the replacement as main work at the
+    // main-lift scheme, against a max the lifter has never set.
+    return draft.role
+      ? [{ sourceMovement: head, movement, role: draft.role }]
+      : [{ sourceMovement: head, movement }];
   });
 }
 
-/** Put a collapsed circuit back, in place. */
 /**
  * Put a built-in circuit back.
  *
  * Two ways it can be gone: swapped for a single movement (the head row is still
  * there, holding a different exercise), or removed outright. Restoring means the
- * whole circuit either way — `abRule` prescribes the AB Triad as one unit, so
- * half a triad would print the circuit's instructions against one lift.
+ * whole circuit either way — `AB_TRIAD_RULE` prescribes the AB Triad as one
+ * unit, so half a triad would print the circuit's instructions against one lift.
+ *
+ * A circuit restores to the shape it came from: template slots when the template
+ * prescribes it, added rows carrying their role when the lifter added it.
  */
 export function restoreGroup(
   drafts: readonly SeriesSlotDraft[],
@@ -306,15 +337,23 @@ export function restoreGroup(
 ): SeriesSlotDraft[] {
   const [head] = group;
   if (!head) return [...drafts];
-  const hasHead = drafts.some((draft) => slotIdentity(draft) === head);
-  if (hasHead) {
+  const isTemplateGroup = slots.some((slot) => group.includes(slot.sourceMovement));
+  const headRow = drafts.find((draft) => slotIdentity(draft) === head);
+  if (headRow) {
+    const role = isTemplateGroup ? undefined : headRow.role;
     return drafts.flatMap((draft) =>
       slotIdentity(draft) === head
-        ? group.map((source) => ({ sourceMovement: source, movement: source }))
+        ? group.map((source) =>
+            role
+              ? { movement: source, role }
+              : { sourceMovement: source, movement: source },
+          )
         : [draft],
     );
   }
-  // Removed outright: no row to expand, so re-insert each slot in template order.
+  // Removed outright: no row to expand. Only a template circuit can be put back
+  // from nothing — an added one has no slot to restore, and is re-added instead.
+  if (!isTemplateGroup) return [...drafts];
   return group.reduce<SeriesSlotDraft[]>(
     (rows, source) => restoreSlot(rows, slots, source),
     [...drafts],
