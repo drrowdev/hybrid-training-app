@@ -908,6 +908,102 @@ The third was the anchoring hazard in a costume. Session refs are instance-indep
 
 See ADR 0077.
 
+## [2026-08-24] fix | Weighted dip joins the library, and a removed lift can be put back
+
+Two owner reports from the same session, with different causes.
+
+The library had `weighted-pull-up` as its own movement but no weighted dip - only a Parallel Bar Dip, which is loadable but does not answer a search for "weighted dip". The catalog was inconsistent with itself: the app's own convention is that a weighted variant earns its own row when it is trained as a strength lift, so its history and loaded max stay separate from the bodyweight version. Owner confirmed they want it tracked separately. Added as `weighted-dip`, mirroring the pull-up entry.
+
+The equipment tag is the trap. `requirementFromEquipmentTag` matches by SUBSTRING, and the only string that routes to a dip belt is `dip-belt`; anything else returns null and the slug heuristic takes over, which for this slug has no branch at all and lands on the permissive default. A plausible-looking tag like `dip-bars-belt` would therefore have offered the weighted dip to every lifter, belt or no belt. Review caught that my first write-up of this named the wrong failure - it claimed a pull-up bar, which is what happens to `dip-parallel` and `dip-ring`, not to this slug. The tag is therefore the belt rather than the bars - the belt is the scarce item anyway - and a test pins both the working tag and the failure mode. Noted but not fixed: `weighted-pull-up`'s own `bar-belt` tag has the same gap, so the app does not currently know a weighted pull-up needs a belt either.
+
+The rollback is guarded rather than a plain DELETE. A global movement can be picked the moment it exists, so by the time anyone rolls back it may be referenced by set_logs, training_maxes, a stored prescription or a saved customization. It is removed only while nothing refers to it: a catalog entry nobody can find again is a smaller problem than logged history losing its exercise.
+
+Separately, removing a lift from a TB session was one-way - the dropped lift rendered as dead text with no control to undo it. That is the defect under the report that Zulu's supplemental count is "locked to two": you could go down to one, but never back. `restoreSlot` puts the TEMPLATE SLOT back, carrying its canonical sourceMovement and kind, because the slot is what the engine matches its prescription rules against; rebuilding the row as a bare movement would return a supplemental lift as main work at the main-lift scheme.
+
+Review caught that the first version of that change made a fully removed AB Triad both invisible and unrestorable, because the only thing rendering "Restore AB Triad" was a swap check that returns false when the row is absent. Worse than the behaviour it replaced, which at least still named the lift. The triad is now restored whole from either state - `abRule` prescribes it as one unit, so a half-restored triad would state three rounds against a single lift.
+
+Owner decisions taken this session, to be implemented next: the AB Triad becomes a properly selectable engine-owned circuit rather than a search alias; and a Zulu day may carry more than two supplemental lifts WITHOUT a warning, on the grounds that TB3 leaves supplemental volume to the lifter - so choosing three is not an override of a principle-derived default and DC-K4 does not apply.
+
+## [2026-08-25] fix | A weighted pull-up's max counts bodyweight, so a percentage of it is a total
+
+A weighted pull-up is maxed the way weighted calisthenics has always maxed it: bodyweight plus whatever hangs off the belt. An 85 kg lifter doing a pull-up with +25 kg has a 110 kg max. The lift kind that says so - `weighted-bw`, "anchored on a kg 1RM that INCLUDES bodyweight" - had been declared and documented in the Tactical Barbell templates since the templates were written, and nothing ever implemented it. The prescriber had branches for unanchored work and for pure bodyweight work anchored on max reps, and everything else fell through to the barbell path. So 70% of 110 kg became 77 kg hanging off a dip belt, and the shared warm-up ladder then asked for 31 / 46 / 61 kg on the way there.
+
+The correct answer at 70% is 77 kg of total system load, which for an 85 kg lifter is a plain bodyweight pull-up. That is not an edge case: anyone whose max is under roughly 1.4x bodyweight spends the lighter weeks of a wave adding nothing at all.
+
+The fix has two halves because the load is computed twice. The engine now has a `weighted-bw` branch that takes bodyweight off the total, floors the result at a bodyweight set, and ramps its warm-ups on the system load before converting each step - collapsing the repeated sub-bodyweight steps, so a ramp reads "bodyweight x5, then +2.5 kg x3" instead of three identical sets. That half only reaches warm-ups, though, because the adapter keeps `percentTm` and discards the engine's weight for working sets: the app re-derives kg from the saved max in three separate places (the plan materialiser, the live logger, the prescribed snapshot), each with its own copy of `tm x percent`. Fixing the engine alone would have changed nothing a user sees. Those three now share one resolver in `@hta/domain`, which takes an optional bodyweight offset.
+
+Which movements need the offset is read from the catalog's `body_weight_loaded`, not only from a flag on the stored item. That is deliberate: it means a program deployed before this change stops prescribing 77 kg without the lifter rebuilding it. Newly generated items also carry `systemLoad` so the adapter knows a 0 kg warm-up is a prescription ("bodyweight") rather than an unresolved load - previously it was dropped, and the logger then prefilled the last belt load the lifter had used, which is the opposite of a warm-up.
+
+Two supporting corrections. The 1RM field for a belt-loaded movement now says what it collects ("bodyweight + added"), and its estimator asks for added weight and adds bodyweight before the formula - the number was previously ambiguous, and the app never said which one it wanted. And TM-anchored PR detection is suppressed for these movements: it compares the weight on the belt against a bodyweight-inclusive max, so it could never fire and displayed an estimated 1RM that meant nothing.
+
+No migration. `systemLoad` is additive inside the prescription JSONB. Existing maxes are not reinterpreted: a value entered as added-weight-only now resolves to a bodyweight set, which is too light rather than too heavy.
+
+Deferred: assisted (band / machine) pull-ups for a lifter whose percentage lands well under bodyweight, and rebuilding historical pull-up e1RMs against the bodyweight recorded at the time of each set.
+
+---
+
+## [2026-08-24] fix | One Copenhagen, and lunges the catalogue never had
+
+Two library entries described the same exercise. `copenhagen-plank` was seeded by the leg-isolation helper and `copenhagen-side-plank` by the tendon helper - same setup, same cues, same region, same equipment, and because `derive-roles.ts` keys off `metadata.protocol` and a `/copenhagen/` slug match, the same derived roles on both. Nothing distinguished them but which array they were declared in.
+
+The isolation row survives. `tb-accessories.ts` hard-filters `pattern = 'isolation'`, so the tendon copy could never be drawn as accessory work, and nothing anywhere selects candidates by `pattern = 'tendon'` - the prescription item kind of that name is a separate concept. The tendon copy added a library entry and no capability.
+
+Merging exposed a dosing bug in the row we kept. `copenhagen-plank` was listed literally in `TENDON_KEYWORDS`, and the tendon test fires before the isometric one, so a Copenhagen was prescribed as ADR 0041 rep-based HSR - eight reps with a three-second eccentric - when it is a hold. Removing the keyword lets it fall through to the isometric bucket and be prescribed for time. It was only survivable before because the duplicate, which did land in the isometric bucket, masked it.
+
+Migration 0138 moves history rather than dropping it (owner-confirmed). That is not ceremony: `set_logs` and `session_movements` reference `movements(id)` ON DELETE RESTRICT while `training_maxes` and `tm_suggestions` CASCADE, so a bare DELETE would either fail outright or quietly destroy a training max depending on what the lifter had logged. Where a unique key collides - a second training max, a pending suggestion, a session already holding both - the survivor's row wins.
+
+Separately: the catalogue had no lunge at all. Split squats, Bulgarians, ATG, Cossack, and a HYROX-only sandbag lunge, but nothing that steps. Three consumers already assumed otherwise - the muscle map carried `lunge` and `walking-lunge` fanout keys for slugs that were never seeded, migration 0019 tagged `forward-lunge` / `reverse-lunge` / `walking-lunge` with the `single_leg` role in UPDATEs that matched nothing, and `accessory-schema.md` lists them as examples of that role. The single-leg pool was thinner than every reader of those files believed.
+
+Migration 0139 adds forward and reverse lunges in bodyweight, dumbbell and barbell, tracking the split-squat pair's attributes with axial load and the experience gate scaling by implement. Roles are spelled out in the SQL: `deriveAccessoryRoles()` runs only while building `SEED_MOVEMENTS` in TypeScript, so a migration-inserted row without them would be invisible to the picker until someone ran a full reseed.
+
+Kept to the six asked for. Walking, curtsy and lateral lunges and step-ups stay unseeded, and the two dead muscle-map keys were left alone rather than tidied as a passenger on this change.
+
+---
+
+## [2026-08-24] refine | The rest of the lunge family, and where a step-up's adductor tag belongs
+
+Follows the previous entry. Walking lunge, step-up, curtsy lunge and lateral lunge, ten rows across bodyweight / dumbbell / barbell, seeded by migration 0140. Migration 0019 had already named `walking-lunge`, `step-up`, `step-up-db`, `step-up-bb` and `curtsy-lunge` in UPDATEs that matched nothing, so the slugs were chosen years ago by a migration that could never find them.
+
+Three calls worth recording, all of which came out of review rather than out of the first draft.
+
+**The step-up keeps its adductor tag.** A step-up barely loads the groin, and `accessory-schema.md` casts it as the low-impact single-leg fallback, so the draft dropped `adductors` to keep it available under an adductor flag. That is a silent overrule of a safety gate dressed up as a catalogue attribute. `affected-movements.ts` matches a limitation on muscle tags, and the project's stance is override-and-warn with the user holding the allow-list - not a row that quietly lies about what it loads. If the filter is too coarse, the filter is what to fix.
+
+**The lateral lunge's primary region is `adductor_groin`, not `knee`.** It loads the trailing adductor under a lengthening bias. A limitation matches on `primary_region` only - `secondary_regions` is never consulted - so filing it under the knee like its siblings would have let a groin flag miss the one movement in the family that most deserves to be caught. Mirrors `cossack-squat-loaded`.
+
+**The box a step-up needs cannot be expressed.** The equipment inventory has no box or bench field, so `bodyweight-box` would filter nothing, and it would additionally read as externally loaded to `carriesExternalLoad` and win the advanced-tier loadable ranking bonus. Equipment is tagged plainly and the box is named in the setup text, which is where the user actually reads it. A test pins that, because the setup string is now the only place the requirement exists. Modelling a box in the inventory is a separate change and was not made here.
+
+The curtsy lunge sits at experienceMin 1 rather than 0. Ten new unilateral entries move the tier-0 single-leg share of the accessory pool up by roughly ten points, and a cross-behind step is not a foundational staple; gating the niche one curbs the distortion without curating by implement.
+
+No barbell curtsy and no barbell lateral lunge. The threshold applied was "commonly programmed under a bar", which `step-up-bb` clears and those two do not.
+
+The dead `walking-lunge` key in the muscle map became live for the first time and was rewritten to match its siblings. The `lunge` key stays dead and untouched - it names no slug and inventing one to justify it would be the tail wagging the dog. The 0139 rollback guard was also widened: it checked `training_maxes` but not `tm_suggestions`, `tm_history` or `cardio_logs`, all of which cascade or null on movement delete.
+
+## [2026-08-25] decision | A weighted pull-up with nothing on the belt is a max-reps set
+
+Owner-confirmed follow-up to the system-load fix. That change made the lighter weeks of a wave resolve to a bodyweight pull-up, which is correct - but it left the loaded prescription in place around it, so the set read "3-5 x 5, submaximal, stop short of failure" with no weight. TB3 does not run the loaded rep scheme at bodyweight. With nothing left to add, the set is repped out, which is what keeps a light week driving the pull-up forward instead of being five easy reps.
+
+The engine already had a `bodyweight` lift kind that prescribes a PERCENTAGE OF MAX CLEAN REPS (a 20-rep max at 75% = 15 reps), citing TB1. Reusing it here was the obvious move and is wrong on the data: that kind reads its anchor as a rep ceiling, and a `weighted-bw` movement's anchor is a kg system max. The app has no max-rep count for a weighted pull-up at all - `pullUpMaxReps` exists only for lifters who came through the bodyweight-only onboarding assessment, which is exactly the population that does not have a weighted pull-up. Choosing the percentage reading would therefore have meant collecting a second number from every lifter. Owner chose the open set.
+
+So a `weighted-bw` lift whose added load resolves to zero now carries `isAmrap`, drops the loaded rep CEILING (`repsMax` - a range is a loaded-set instruction), and drops the "stop short of failure" cue, which directly contradicts an open set. The template's rep count stays as a floor, so the set reads as "5 reps+" rather than losing its anchor entirely. Loaded weeks are untouched.
+
+The set count is deliberately not collapsed: all 3-5 sets are max-reps sets, matching how the adapter already expands a multi-set working item into one loggable slot per set.
+
+Not revisited: PR detection stays suppressed for these movements. Repping out a bodyweight pull-up is exactly where a REP pr would be meaningful, but the saved max is a kg system load, so there is nothing here to fire against yet. That wants a max-reps anchor of its own.
+
+## [2026-08-24] decision | Supplemental work is the lifter's to add, and is dosed by the day it joins
+
+The other half of "Zulu's supplemental count is locked to two". Removal became reversible earlier; this is the add. The only add path hardcoded `role: "accessory"`, so anything the lifter added took the accessory dose - 3x8-15 near failure, no percentage, no warm-up - and there was no way to add work at the SUPPLEMENTAL dose of 3-5x8-10 at 65/70/75%.
+
+Owner decided a day may carry more supplemental work than the book lists, and explicitly WITHOUT a warning: TB3 says the amount of supplemental work is ultimately up to the lifter, so choosing three is not overriding a principle-derived default and DC-K4 does not apply. Recorded because the reasoning is the interesting part - DC-K4 governs overrides of what the method prescribes, not choices the method hands to the lifter.
+
+The design question was what an added supplemental should be prescribed AS. It carries no template slot, so no prescription rule matches it by name. Rather than invent a dose or restate the numbers in a second place, it BORROWS one: `supplementalDonor` picks a supplemental slot the day already has, and the added lift resolves its rules through that slot's key. It therefore tracks the week automatically - 65 in week 1, 70 in week 2, 75 in week 3 - and inherits the warm-up ramp, because it is reading the same rule the template's own supplemental work reads.
+
+Which slot lends the dose is the whole correctness question. Two are wrong to borrow from. Circuit members: the AB Triad's rule is 3x5 with a note naming its three movements, so lending it prints that circuit against an unrelated lift. And bodyweight supplementals: their rule carries `percent: null` and a max-reps note, so a loaded lift would inherit no percentage at all. Review caught the second - Activation's Armor B days list pull-ups BEFORE the overhead press, so "first supplemental slot" picked the bodyweight one. Not reachable from the wizard today, since Activation persists through a different shape entirely, but it is the same failure the triad exclusion was written to prevent and it is now pinned.
+
+Review also caught that the first tests exercised a branch production cannot reach. Deploy stamps a `kind` on every catalog movement - `barbell` when the lifter has a 1RM, `unanchored` when they do not - so a test payload with neither took a third path that emits a percentage but no weight and no warm-ups. The PR's central claim, that an added supplemental inherits the day's warm-up ramp, was true and untested. Both real paths are now covered, with the added lift given a 1RM distinct from the donor's so "loaded off its own max" actually means something.
+
+A day with no supplemental work of its own has no dose to lend; the lift falls back to the accessory dose. The wizard does not offer the control there, so it is a defined fallback rather than a reachable state.
+
 ## [2026-08-26] decision | Rehab attaches to a Tactical Barbell session, not to a day it takes over
 
 A weekly Tactical Barbell block could only run rehab on a day it gave up entirely. The customization blob encodes rehab as a DAY TYPE — strength OR conditioning OR rehab OR rest — so `rehab as the warm-up of a strength day` had nowhere to live. The engine had supported that placement since migration 0127 and Activation has used it all along; only the weekly shape could not ask for it.

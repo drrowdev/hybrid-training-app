@@ -29,6 +29,7 @@ const setRow: TmRow = {
   effectivePercent: 90,
   tmKg: 54,
   updatedAt: "2026-08-16T00:00:00.000Z",
+  systemLoad: false,
   source: "entered",
   derivedFromSessionId: null,
   derivedFromSetLogId: null,

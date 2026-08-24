@@ -85,6 +85,8 @@ export function SessionWorkArea({
   bwGateStateByFamily,
   resolvedFreestyle,
   bodyweightMovementIds,
+  systemLoadMovementIds,
+  bodyweightKg,
   accessoryMetaById,
   customAccessoryOrder,
 }: {
@@ -138,6 +140,14 @@ export function SessionWorkArea({
    * added load (bodyweight) instead of demanding a weight. Omitted ⇒ none.
    */
   bodyweightMovementIds?: ReadonlyArray<string>;
+  /**
+   * Movement ids anchored on a SYSTEM load — a max that counts bodyweight plus
+   * belt (weighted pull-ups / dips). A percentage of that max is a total, so
+   * the load to put on the belt is that total minus the lifter's bodyweight.
+   */
+  systemLoadMovementIds?: ReadonlyArray<string>;
+  /** The lifter's bodyweight (kg) — resolves the loads above. */
+  bodyweightKg?: number | null;
   /** Equipment + region per movementId for smart accessory card ordering. */
   accessoryMetaById?: Readonly<Record<string, { equipment: string | null; region: string | null }>>;
   /** User's saved per-session accessory order (movementIds); overrides the smart default. */
@@ -395,6 +405,8 @@ export function SessionWorkArea({
         bwGateStateByFamily={mergedBwGateStateByFamily}
         resolvedFreestyle={resolvedFreestyle}
         bodyweightMovementIds={bodyweightMovementIds}
+        systemLoadMovementIds={systemLoadMovementIds}
+        bodyweightKg={bodyweightKg}
         accessoryMetaById={accessoryMetaById}
         customAccessoryOrder={customAccessoryOrder}
       />

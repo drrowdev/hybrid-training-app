@@ -92,12 +92,17 @@ export async function buildPlatformContext(
       .from("training_maxes")
       .select("one_rm_kg, movement:movements(id, slug, display_name)")
       .eq("user_id", userId),
-    supabase.from("profiles").select("warmup_scheme").eq("id", userId).maybeSingle(),
+    supabase.from("profiles").select("warmup_scheme, bodyweight_kg").eq("id", userId).maybeSingle(),
   ]);
   if (error) throw new Error(`buildPlatformContext: ${error.message}`);
   if (profileError) throw new Error(`buildPlatformContext: ${profileError.message}`);
   const warmupSchemeRaw = (profile as { warmup_scheme?: unknown } | null)
     ?.warmup_scheme;
+  // Weighted pull-ups / dips are anchored on a bodyweight-inclusive max, so an
+  // engine cannot turn a percentage of one into a belt load without this.
+  const bodyweightRaw = (profile as { bodyweight_kg?: string | number | null } | null)
+    ?.bodyweight_kg;
+  const bodyweightKg = bodyweightRaw == null ? NaN : Number(bodyweightRaw);
 
   const oneRepMaxes: Record<string, number> = {};
   const resolved = new Map<string, ResolvedMovement>();
@@ -209,6 +214,7 @@ export async function buildPlatformContext(
     ctx: {
       oneRepMaxes,
       roundingKg: opts.roundingKg ?? 2.5,
+      ...(Number.isFinite(bodyweightKg) && bodyweightKg > 0 ? { bodyweightKg } : {}),
       ...(opts.gender ? { gender: opts.gender } : {}),
       ...(warmupRamp ? { warmupRamp } : {}),
     },

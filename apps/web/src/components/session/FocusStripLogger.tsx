@@ -90,6 +90,10 @@ export type FocusStripLoggerProps = {
     >
   >;
   bodyweightMovementIds?: ReadonlySet<string>;
+  /** Movement ids whose max includes bodyweight (weighted pull-ups / dips). */
+  systemLoadMovementIds?: ReadonlySet<string>;
+  /** The lifter's bodyweight (kg) — resolves a system-load percentage. */
+  bodyweightKg?: number | null;
   /** movementId → catalog `movements.equipment` tag; sizes the ± weight stepper. */
   equipmentByMovementId?: ReadonlyMap<string, string | null>;
 };
@@ -197,6 +201,8 @@ export function FocusStripLogger({
   preferStandardLbPlates,
   bwGateStateByFamily,
   bodyweightMovementIds,
+  systemLoadMovementIds,
+  bodyweightKg,
   equipmentByMovementId,
 }: FocusStripLoggerProps) {
   const router = useRouter();
@@ -660,6 +666,10 @@ export function FocusStripLogger({
               sessionId={sessionId}
               group={activeGroup}
               tmKg={tmKg}
+              bodyweightKg={bodyweightKg ?? undefined}
+              isSystemLoad={
+                systemLoadMovementIds?.has(activeGroup.movementId) ?? false
+              }
               oneRmKg={oneRmKg}
               loggedItemIndices={loggedItemIndices}
               skippedItemIndices={skippedItemIndices}

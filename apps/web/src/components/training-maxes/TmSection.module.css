@@ -73,6 +73,14 @@
   color: var(--cp-text);
 }
 
+/* Names the unit of the number beside it, for a max that counts bodyweight. */
+.qualifier {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cp-text-muted);
+}
+
 /* Boxless variant dropdown — matches the wizard's "Back Squat ▼" text. */
 .variantSel {
   appearance: none;

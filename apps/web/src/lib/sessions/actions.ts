@@ -33,9 +33,11 @@ import {
 import {
   resolvePrescriptionSetWork,
   resolvePrescribedSnapshot,
+  resolveTargetLoadKg,
   validateSubmittedTarget,
 } from "@hta/domain";
 import type { Prescription, PrescriptionItem, PrescribedSnapshot } from "@hta/db";
+import { isSystemLoadItem, loadSystemLoadMovementIds } from "./system-load";
 import { loggedSetKindForItemKind } from "./set-kind";
 import { recomputeAfterCompletedSessionSetChange } from "./post-completion-recompute";
 import { resolveBarWeightKg } from "./bar-kind";
@@ -211,14 +213,24 @@ async function resolveSetSnapshot(
     // Independently derive what this item implies, so submitted values can be
     // corroborated. `tmKg` is only needed for percentage-based loads.
     let tmKg: number | null = null;
+    let bodyweightKg: number | null = null;
+    let isSystemLoad = item.systemLoad === true;
     if (typeof item.percentTm === "number" && item.movementId) {
-      const [tmRes, profileRes] = await Promise.all([
+      const [tmRes, profileRes, movementRes] = await Promise.all([
         supabase
           .from("training_maxes")
           .select(TM_RESOLUTION_SELECT)
           .eq("movement_id", item.movementId)
           .maybeSingle(),
-        supabase.from("profiles").select("tm_percent_default").maybeSingle(),
+        supabase
+          .from("profiles")
+          .select("tm_percent_default, bodyweight_kg")
+          .maybeSingle(),
+        supabase
+          .from("movements")
+          .select("body_weight_loaded")
+          .eq("id", item.movementId)
+          .maybeSingle(),
       ]);
       const tmRow = tmRes.data as {
         one_rm_kg?: number | string | null;
@@ -229,13 +241,25 @@ async function resolveSetSnapshot(
         const pct = Number(
           tmRow?.tm_percent ?? profileRes.data?.tm_percent_default ?? 90,
         );
-        tmKg = (oneRm * pct) / 100;
+        // Rounded, matching `getTrainingMaxContext` — the working max the live
+        // logger resolves against. An unrounded max here disagreed with the
+        // logger by a plate, which the bodyweight subtraction on a system-load
+        // movement then magnifies into a rejected target.
+        tmKg = roundToPlate((oneRm * pct) / 100);
       }
+      const bw = Number(profileRes.data?.bodyweight_kg);
+      bodyweightKg = Number.isFinite(bw) && bw > 0 ? bw : null;
+      isSystemLoad =
+        isSystemLoad ||
+        (movementRes.data as { body_weight_loaded?: boolean | null } | null)
+          ?.body_weight_loaded === true;
     }
 
     const expected = resolvePrescribedSnapshot(item, {
       tmKg,
       basis: item.intensityLabel?.includes("1RM") ? "1RM" : "TM",
+      ...(isSystemLoad ? { isSystemLoad: true } : {}),
+      bodyweightKg,
       roundToPlate,
       setKind: args.setKind,
     });
@@ -1616,7 +1640,7 @@ export async function fillSessionFromPlan(
     supabase
       .from("profiles")
       .select(
-        "tm_percent_default, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment",
+        "tm_percent_default, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, bodyweight_kg",
       )
       .eq("id", user.id)
       .maybeSingle(),
@@ -1638,7 +1662,9 @@ export async function fillSessionFromPlan(
 
   // Build a tm lookup by movement_id for percentTm resolution. The training
   // max = stored 1RM × effective TM% (per-movement override, else the profile
-  // default, else 90) — same formula as `getTrainingMaxContext`.
+  // default, else 90), rounded to the plate increment — the same number
+  // `getTrainingMaxContext` hands the live logger, so the materialised load and
+  // the displayed one cannot disagree by a plate.
   const defaultPct = Number(profileRes.data?.tm_percent_default ?? 90);
   const equipment = resolveEquipment(profileRes.data);
   const tmByMovementId = new Map<string, number>();
@@ -1650,7 +1676,7 @@ export async function fillSessionFromPlan(
     const oneRm = Number(row.one_rm_kg);
     if (!Number.isFinite(oneRm) || oneRm <= 0) continue;
     const pct = row.tm_percent == null ? defaultPct : Number(row.tm_percent);
-    const tm = (oneRm * pct) / 100;
+    const tm = roundToPlate((oneRm * pct) / 100);
     if (Number.isFinite(tm) && tm > 0) tmByMovementId.set(row.movement_id, tm);
   }
 
@@ -1670,6 +1696,17 @@ export async function fillSessionFromPlan(
     items = applyModificationsToPrescription(base, mods).items ?? [];
   }
   const inserts: SetInsert[] = [];
+  // Weighted pull-ups / dips are anchored on a bodyweight-inclusive max, so a
+  // percentage of one is a TOTAL. Without bodyweight the added load can't be
+  // resolved at all, and without knowing which movements those are the total
+  // would go straight onto the belt.
+  const bodyweightRaw = profileRes.data?.bodyweight_kg;
+  const bodyweightNum = bodyweightRaw == null ? NaN : Number(bodyweightRaw);
+  const bodyweightKg = Number.isFinite(bodyweightNum) && bodyweightNum > 0 ? bodyweightNum : null;
+  const systemLoadMovementIds = await loadSystemLoadMovementIds(
+    supabase,
+    items.map((item) => item.movementId),
+  );
   const missingSets = planMissingPrescriptionSets(
     parsed.data.sessionId,
     items,
@@ -1694,22 +1731,17 @@ export async function fillSessionFromPlan(
       barWeightKg: warmupBarWeightKg ?? undefined,
       availablePlateWeightsKg: equipment.plates,
     };
-    let weight: number | null = null;
-    if (typeof item.percentTm === "number" && tm) {
-      const rawKg = tm * (item.percentTm / 100);
-      weight =
-        item.kind === "warmup"
-          ? roundWarmupLoadKg(rawKg, warmupLoadOptions)
-          : roundToPlate(rawKg);
-    } else if (
-      typeof item.targetWeightKg === "number" &&
-      Number.isFinite(item.targetWeightKg)
-    ) {
-      weight =
-        item.kind === "warmup"
-          ? roundWarmupLoadKg(item.targetWeightKg, warmupLoadOptions)
-          : item.targetWeightKg;
-    }
+    const systemLoad = isSystemLoadItem(item, systemLoadMovementIds);
+    const roundKg = (kg: number) =>
+      item.kind === "warmup" ? roundWarmupLoadKg(kg, warmupLoadOptions) : roundToPlate(kg);
+    const weight = resolveTargetLoadKg(item, {
+      tmKg: tm ?? null,
+      ...(systemLoad ? { isSystemLoad: true } : {}),
+      bodyweightKg,
+      roundKg,
+      // A hand-entered rehab / external-cardio load is stored verbatim.
+      ...(item.kind === "warmup" ? { roundAbsoluteKg: roundKg } : {}),
+    });
 
     // ADR 0070 — the prescribed snapshot. This path IS the prescription
     // resolver, so the snapshot is exactly what the prefill shows. Derived
@@ -1717,6 +1749,8 @@ export async function fillSessionFromPlan(
     const snapshot = resolvePrescribedSnapshot(item, {
       tmKg: tm ?? null,
       basis: item.intensityLabel?.includes("1RM") ? "1RM" : "TM",
+      ...(systemLoad ? { isSystemLoad: true } : {}),
+      bodyweightKg,
       roundToPlate,
       setKind: missing.setKind,
     });

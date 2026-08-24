@@ -16,6 +16,7 @@ import {
   type StrengthDay,
 } from "../archetypes";
 import { foldDualMainLifts } from "../main-lift-folding";
+import { resolveRequiredEquipment } from "../equipment-requirements";
 import { assemblePrescriptionItems } from "../assemble-prescription";
 import {
   carriesExternalLoad,
@@ -106,5 +107,32 @@ describe("ADR 0041 — advanced-tier loadable preference", () => {
       slugOf(it)?.includes("pull-up"),
     );
     expect(pulls.some((it) => slugOf(it) === "weighted-pull-up")).toBe(true);
+  });
+});
+
+describe("weighted variants ask for the implement that makes them weighted", () => {
+  it("routes the weighted dip to a dip belt", () => {
+    // The tag is matched by SUBSTRING, and `dip-belt` is the only string that
+    // reaches this branch — so this pins the tag, not just the movement.
+    expect(
+      resolveRequiredEquipment({
+        slug: "weighted-dip",
+        pattern: "press",
+        equipment: "dip-belt",
+      }),
+    ).toEqual({ kind: "dip_belt" });
+  });
+
+  it("would be offered to a lifter with no belt under an unrecognised tag", () => {
+    // A plausible-looking tag returns null from the tag matcher, and the slug
+    // heuristic has no branch for this slug, so it lands on the permissive
+    // default — the weighted dip would be offered to everyone.
+    expect(
+      resolveRequiredEquipment({
+        slug: "weighted-dip",
+        pattern: "press",
+        equipment: "dip-bars-belt",
+      }),
+    ).toEqual({ kind: "bodyweight_or_generic" });
   });
 });

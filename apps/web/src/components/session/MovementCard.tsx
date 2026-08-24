@@ -56,6 +56,10 @@ export type MovementCardProps = {
    */
   readOnly?: boolean;
   tmKg: number | undefined;
+  /** This movement's max includes bodyweight (weighted pull-ups / dips). */
+  isSystemLoad?: boolean;
+  /** The lifter's bodyweight (kg) — resolves a system-load percentage. */
+  bodyweightKg?: number | null;
   /** Saved 1RM from training_maxes.one_rm_kg. Drives TM-anchored PR flash. */
   oneRmKg: number | undefined;
   loggedItemIndices: ReadonlySet<number>;
@@ -125,6 +129,8 @@ export function MovementCard({
   group: groupProp,
   readOnly = false,
   tmKg,
+  isSystemLoad,
+  bodyweightKg,
   oneRmKg,
   loggedItemIndices,
   skippedItemIndices,
@@ -629,6 +635,8 @@ export function MovementCard({
             sessionId={sessionId}
             group={group}
             tmKg={tmKg}
+            bodyweightKg={bodyweightKg ?? undefined}
+            isSystemLoad={isSystemLoad ?? false}
             oneRmKg={oneRmKg}
             loggedItemIndices={loggedItemIndices}
             skippedItemIndices={skippedItemIndices}

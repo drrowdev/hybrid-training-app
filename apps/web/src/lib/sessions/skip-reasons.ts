@@ -19,3 +19,22 @@ export const SKIP_REASONS = [
 ] as const;
 
 export type SkipReason = (typeof SKIP_REASONS)[number];
+
+const SKIP_REASON_LABELS: Readonly<Record<SkipReason, string>> = {
+  pain: "Pain",
+  fatigue: "Fatigue",
+  time: "Time",
+  equipment: "Equipment",
+  other: "Other",
+};
+
+/**
+ * The display label for a stored skip reason. The column holds the slug; every
+ * surface that shows a reason to a lifter goes through here.
+ *
+ * Unknown values pass through: a reason written before this allowlist, or by a
+ * newer client, is still better shown than swallowed.
+ */
+export function skipReasonLabel(reason: string): string {
+  return SKIP_REASON_LABELS[reason as SkipReason] ?? reason;
+}

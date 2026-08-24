@@ -58,12 +58,17 @@ vi.mock("@/lib/supabase/server", () => ({
         if (table === "set_logs") {
           return { data: mockState.existingSets, error: null };
         }
+        if (table === "movements") {
+          // Barbell lifts — none of these maxes include bodyweight.
+          return { data: [], error: null };
+        }
         return { data: null, error: null };
       };
 
       Object.assign(builder, {
         select: () => builder,
         eq: () => builder,
+        in: () => builder,
         maybeSingle: () => Promise.resolve(execute()),
         upsert: (rows: Array<Record<string, unknown>>) => {
           mockState.upserts.push(...rows);

@@ -9,7 +9,12 @@ import { describe, it, expect } from "vitest";
 import type { PlatformContext, LoggedSession } from "@hta/program-core";
 import { totalPrescribedSets, itemsOfKind } from "@hta/program-core";
 import { tacticalBarbellEngine as tb, type TbInstance } from "./program";
-import { TB_TEMPLATES } from "./templates";
+import {
+  TB_TEMPLATES,
+  AB_TRIAD_MOVEMENTS,
+  getTbTemplate,
+  isSupplementalSlot,
+} from "./templates";
 
 const ctx: PlatformContext = {
   oneRepMaxes: {
@@ -19,7 +24,10 @@ const ctx: PlatformContext = {
     press: 100,
     "overhead-press": 100,
     pullup: 50,
-    "weighted-pullup": 50,
+    // A weighted pull-up 1RM is a SYSTEM load — bodyweight plus belt. 120 kg
+    // for an 80 kg lifter is +40 kg, which is what makes the percentages below
+    // land on real belt loads.
+    "weighted-pullup": 120,
     "barbell-row": 120,
     "pendlay-row": 100,
     "rack-pull": 250,
@@ -27,6 +35,7 @@ const ctx: PlatformContext = {
     "push-press": 100,
   },
   roundingKg: 2.5,
+  bodyweightKg: 80,
 };
 
 function setup(values: Record<string, unknown> = {}): TbInstance {
@@ -683,13 +692,17 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     expect(mains.map((i) => [i.name, i.weightKg, i.sets, i.repsLabel, i.percentOfTm])).toEqual([
       ["Bench Press", 75, 3, "5", 0.75],
       ["Squat", 150, 3, "5", 0.75],
-      ["Weighted Pull-up", 37.5, 3, "5", 0.75],
+      // 75% of the 120 kg SYSTEM max = 90 kg total; the lifter is 80 kg, so
+      // 10 kg goes on the belt — not 90 kg, and not 0.75 × 120.
+      ["Weighted Pull-up", 10, 3, "5", 0.75],
     ]);
     expect(mains).toHaveLength(3);
     expect(mains.every((item) => item.setsMax === 5)).toBe(true);
-    // Each lift carries a 3-set warm-up ramp ahead of its work sets.
-    expect(itemsOfKind(p, "warmup")).toHaveLength(9);
-    expect(totalPrescribedSets(p)).toBe(18); // 9 warm-up + 9 required working
+    // Barbell lifts carry a 3-set warm-up ramp. The pull-up's ramp is a fraction
+    // of 90 kg of system load, every step of which is under the lifter's own
+    // bodyweight — three identical bodyweight sets collapse into one.
+    expect(itemsOfKind(p, "warmup")).toHaveLength(7);
+    expect(totalPrescribedSets(p)).toBe(16); // 7 warm-up + 9 required working
   });
 
   it("Operator week 3 intensifies to 3–5×3 @ 85%", () => {
@@ -697,7 +710,8 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     expect(itemsOfKind(p, "main").map((i) => [i.weightKg, i.reps, i.percentOfTm])).toEqual([
       [85, 3, 0.85],
       [170, 3, 0.85],
-      [42.5, 3, 0.85],
+      // 0.85 × 120 = 102 kg of system load − 80 kg bodyweight = 22 → 22.5 kg.
+      [22.5, 3, 0.85],
     ]);
   });
 
@@ -1295,5 +1309,214 @@ describe("TB engine — segments (start points)", () => {
     expect(segs).toHaveLength(10);
     expect(segs[0]).toEqual({ startWeekIndex: 0, label: "Base", kind: "phase" });
     expect(segs.at(-1)).toEqual({ startWeekIndex: 24, label: "Final retest", kind: "test" });
+  });
+});
+
+describe("TB engine — supplemental work the user adds", () => {
+  const CURL = "catalog:00000000-0000-4000-8000-0000000000c1";
+
+  /** Zulu B: deadlift + weighted pull-up (main), barbell row + back extension. */
+  const zuluBWith = (extra: Record<string, unknown>[]) =>
+    setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-2": [
+          { movement: "deadlift", sourceMovement: "deadlift", split: "B" },
+          { movement: "weighted-pullup", sourceMovement: "weighted-pullup", split: "B" },
+          { movement: "barbell-row", sourceMovement: "barbell-row", split: "B" },
+          { movement: "back-extension", sourceMovement: "back-extension", split: "B", kind: "unanchored" },
+          ...extra,
+        ],
+      },
+    });
+
+  /**
+   * Deploy stamps a `kind` on every `catalog:` movement — "barbell" when the
+   * lifter has a 1RM for it, "unanchored" when they don't — so a test without
+   * one exercises a branch production never reaches.
+   */
+  const loadedCtx: PlatformContext = {
+    ...ctx,
+    // Deliberately not the row's 120, so "loaded off its own max" is testable.
+    oneRepMaxes: { ...ctx.oneRepMaxes, [CURL]: 90 },
+  };
+
+  it("gives an added supplemental the same dose the day's own supplemental work gets", () => {
+    const inst = zuluBWith([
+      { movement: CURL, displayName: "Weighted Dip", role: "supplemental", kind: "barbell" },
+    ]);
+    const week1 = tb.prescribe(inst, "b0-w1-p1b", loadedCtx);
+    const working = (name: string) =>
+      week1.items.filter((item) => item.name === name && item.kind !== "warmup");
+    const added = working("Weighted Dip");
+    const row = working("Barbell Row");
+
+    expect(added).toHaveLength(1);
+    expect(row).toHaveLength(1);
+    expect([added[0]?.kind, added[0]?.sets, added[0]?.reps, added[0]?.repsMax, added[0]?.percentOfTm]).toEqual(
+      [row[0]?.kind, row[0]?.sets, row[0]?.reps, row[0]?.repsMax, row[0]?.percentOfTm],
+    );
+    // The note belongs to the dose, so it comes across too.
+    expect(added[0]?.note).toBe(row[0]?.note);
+    // Loaded off its own 1RM at the supplemental percentage, not the row's max.
+    expect(added[0]?.weightKg).toBeGreaterThan(0);
+    expect(added[0]?.weightKg).not.toBe(row[0]?.weightKg);
+  });
+
+  it("inherits the warm-up ramp the day's supplemental work gets", () => {
+    const inst = zuluBWith([
+      { movement: CURL, displayName: "Weighted Dip", role: "supplemental", kind: "barbell" },
+    ]);
+    const week1 = tb.prescribe(inst, "b0-w1-p1b", loadedCtx);
+    const warmups = week1.items.filter(
+      (item) => item.kind === "warmup" && item.name === "Weighted Dip",
+    );
+    expect(warmups.length).toBeGreaterThan(0);
+  });
+
+  it("carries no percentage when the lifter has no max for it", () => {
+    // Deploy stamps `unanchored` on a catalog movement with no 1RM. The dose
+    // still comes from the donor; only the loading can't.
+    const inst = zuluBWith([
+      { movement: CURL, displayName: "Weighted Dip", role: "supplemental", kind: "unanchored" },
+    ]);
+    const week1 = tb.prescribe(inst, "b0-w1-p1b", ctx);
+    const added = week1.items.filter(
+      (item) => item.name === "Weighted Dip" && item.kind !== "warmup",
+    );
+    const row = week1.items.filter(
+      (item) => item.name === "Barbell Row" && item.kind !== "warmup",
+    );
+    expect(added).toHaveLength(1);
+    expect(added[0]?.percentOfTm).toBeUndefined();
+    expect(added[0]?.weightKg).toBeUndefined();
+    expect([added[0]?.kind, added[0]?.sets, added[0]?.reps]).toEqual(
+      [row[0]?.kind, row[0]?.sets, row[0]?.reps],
+    );
+  });
+
+  it("tracks the week's supplemental percentage rather than freezing at week 1", () => {
+    const inst = zuluBWith([
+      { movement: CURL, displayName: "Weighted Dip", role: "supplemental", kind: "barbell" },
+    ]);
+    const percents = [1, 2, 3].map(
+      (week) =>
+        tb
+          .prescribe(inst, `b0-w${week}-p1b`, loadedCtx)
+          .items.filter((item) => item.name === "Weighted Dip" && item.kind !== "warmup")[0]?.percentOfTm,
+    );
+    // Zulu's supplemental wave is 65 / 70 / 75.
+    expect(percents).toEqual([0.65, 0.7, 0.75]);
+  });
+
+  it("is prescribed as supplemental, not as assistance", () => {
+    const inst = zuluBWith([
+      { movement: CURL, displayName: "Weighted Dip", role: "supplemental", kind: "barbell" },
+    ]);
+    const added = tb
+      .prescribe(inst, "b0-w1-p1b", loadedCtx)
+      .items.filter((item) => item.name === "Weighted Dip" && item.kind !== "warmup");
+    expect(added[0]?.kind).toBe("supplemental");
+  });
+
+  it("still takes the accessory dose when the user asked for accessory work", () => {
+    const inst = zuluBWith([
+      { movement: CURL, displayName: "Barbell Curl", role: "accessory" },
+    ]);
+    const added = tb
+      .prescribe(inst, "b0-w1-p1b", ctx)
+      .items.find((item) => item.name === "Barbell Curl");
+    expect(added).toMatchObject({ kind: "assistance", sets: 3, reps: 8, repsMax: 15 });
+    expect(added?.percentOfTm).toBeUndefined();
+  });
+
+  it("never borrows the AB Triad's dose or its note", () => {
+    // The triad's rule is 3×5 with a note naming its three movements. Lending
+    // it to an unrelated lift would state that circuit against it.
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-1": [
+          { movement: "bench", sourceMovement: "bench", split: "A" },
+          { movement: "squat", sourceMovement: "squat", split: "A" },
+          { movement: "overhead-press", sourceMovement: "overhead-press", split: "A" },
+          ...AB_TRIAD_MOVEMENTS.map((movement) => ({
+            movement,
+            sourceMovement: movement,
+            kind: "unanchored" as const,
+            split: "A" as const,
+          })),
+          { movement: CURL, displayName: "Weighted Dip", role: "supplemental" },
+        ],
+      },
+    });
+    const week1 = tb.prescribe(inst, "b0-w1-p1a", ctx);
+    const working = (name: string) =>
+      week1.items.filter((item) => item.name === name && item.kind !== "warmup");
+    const added = working("Weighted Dip");
+    const press = working("Overhead Press");
+
+    expect(added).toHaveLength(1);
+    expect(added[0]?.note ?? "").not.toMatch(/hanging|toes/i);
+    expect(added[0]?.circuit).toBeUndefined();
+    // It borrows the overhead press's dose, which is the day's supplemental work.
+    expect([added[0]?.sets, added[0]?.reps, added[0]?.percentOfTm]).toEqual(
+      [press[0]?.sets, press[0]?.reps, press[0]?.percentOfTm],
+    );
+  });
+
+  it("falls back to the accessory dose on a day with no supplemental work", () => {
+    // Operator prescribes three main lifts and nothing else, so there is no
+    // dose to borrow. Unreachable from the wizard, which only offers the
+    // control where supplemental work already exists.
+    const inst = setup({
+      templateId: "operator",
+      customSessionMovements: {
+        "slot-1": [
+          { movement: "squat", sourceMovement: "squat" },
+          { movement: "bench", sourceMovement: "bench" },
+          { movement: "deadlift", sourceMovement: "deadlift" },
+          { movement: CURL, displayName: "Weighted Dip", role: "supplemental" },
+        ],
+      },
+    });
+    const added = tb
+      .prescribe(inst, "b0-w1-s1", ctx)
+      .items.find((item) => item.name === "Weighted Dip");
+    expect(added?.kind).toBe("assistance");
+    expect(added?.percentOfTm).toBeUndefined();
+  });
+
+it("borrows from a LOADED supplemental, never a bodyweight one", () => {
+    // Activation's Armor B days list pull-ups before the overhead press, and
+    // the pull-up rule carries `percent: null` plus a max-reps note. Taking the
+    // first supplemental slot would have handed a loaded lift no percentage and
+    // somebody else's note. Not reachable from the wizard today, which is
+    // exactly why it needs pinning.
+    const armorB = getTbTemplate("activation")!.weeklySessions!.find(
+      (session) => session.id === "armor-b1",
+    )!;
+    const supplementals = (armorB.fixedMovements ?? [])
+      .map((entry) => entry.movement)
+      .filter((movement) => isSupplementalSlot(armorB, movement));
+    // The bodyweight one comes first in the template, so "first match" is wrong.
+    expect(supplementals[0]).toBe("pullup");
+    expect(supplementals).toContain("overhead-press");
+
+    const loadedRule = (armorB.prescriptionRules ?? []).some(
+      (rule) => rule.percent != null && rule.movements?.includes("overhead-press"),
+    );
+    const bodyweightRule = (armorB.prescriptionRules ?? []).some(
+      (rule) => rule.percent == null && rule.movements?.includes("pullup"),
+    );
+    expect(loadedRule).toBe(true);
+    expect(bodyweightRule).toBe(true);
+  });
+  it("is never promoted into a peak attempt", () => {
+    const inst = zuluBWith([
+      { movement: CURL, displayName: "Weighted Dip", role: "supplemental" },
+    ]);
+    const peak = tb.prescribe(inst, "b0-w6-peak-b1", ctx);
+    expect(itemsOfKind(peak, "main").map((item) => item.name)).not.toContain("Weighted Dip");
   });
 });

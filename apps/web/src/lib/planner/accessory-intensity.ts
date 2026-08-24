@@ -125,7 +125,6 @@ const TENDON_KEYWORDS = [
   "isometric-hold",
   "tendon",
   "eccentric-heel",
-  "copenhagen-plank",
 ];
 
 function slugHas(slug: string | undefined, keywords: string[]): boolean {
@@ -139,7 +138,11 @@ function slugHas(slug: string | undefined, keywords: string[]): boolean {
  *
  * Precedence (first match wins):
  *   1. Tendon — `bulletproofRoles` includes "hsr" OR slug matches a
- *      tendon keyword (e.g. "hsr-rdl", "copenhagen-plank").
+ *      tendon keyword (e.g. "hsr-rdl", "eccentric-heel-raise"). The
+ *      Copenhagen plank was listed here and so was dosed as rep-based
+ *      HSR (ADR 0041's `HSR_REPS = 8` plus a 3 s eccentric cue). It is a
+ *      hold, not a rep-and-tempo lift, so it now falls through to the
+ *      isometric bucket below and is prescribed for time.
  *   2. Plyometric — `reason === "power"`, OR bulletproof plyo roles,
  *      OR slug matches a plyo keyword. Honours the catalog's
  *      `highStrainTendon` flag as a separate plyo signal.

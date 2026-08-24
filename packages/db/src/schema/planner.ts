@@ -244,6 +244,13 @@ export type PrescriptionItem = {
    * training max changes.
    */
   targetWeightKg?: number;
+  /**
+   * Strength: this movement's max counts BODYWEIGHT plus belt (weighted
+   * pull-ups / dips), so `percentTm` names a total and `targetWeightKg` is the
+   * added portion only — `0` means a plain bodyweight set. Resolving the load
+   * needs the lifter's bodyweight; see `@hta/domain` `resolveTargetLoadKg`.
+   */
+  systemLoad?: boolean;
   /** Cardio: planned duration in minutes. */
   durationMin?: number;
   /** Cardio: optional plain-language HR cap or pace target (e.g. "≤ 70% HRR", "conversational"). */

@@ -33,14 +33,24 @@ export interface SeriesSlotDraft {
   sourceMovement?: string;
   movement: string;
   kind?: SlotKind;
-  role?: "accessory";
+  role?: AddedRole;
 }
+
+/**
+ * How a movement the user added is dosed.
+ *
+ * `"supplemental"` takes the dose the session's own supplemental work gets —
+ * same percentage, sets and reps. `"accessory"` takes the accessory dose
+ * (3×8–15 near failure) and no percentage. The distinction is real
+ * methodology, not a label, so both stay expressible.
+ */
+export type AddedRole = "accessory" | "supplemental";
 
 /** What a customized session sends for one row. */
 export interface SlotPayloadEntry {
   movement: string;
   sourceMovement?: string;
-  role?: "accessory";
+  role?: AddedRole;
   kind?: SlotKind;
   movementId?: string;
   slug?: string;
@@ -67,12 +77,12 @@ export function slotDraftsFor(
   }));
 }
 
-/** The template slot a row fills, or undefined for accessory work. */
+/** The template slot a row fills, or undefined for work the user added. */
 export function slotOf(
   slots: readonly TemplateSlot[],
   draft: SeriesSlotDraft,
 ): TemplateSlot | undefined {
-  if (draft.role === "accessory") return undefined;
+  if (draft.role) return undefined;
   const identity = slotIdentity(draft);
   return slots.find((slot) => slot.sourceMovement === identity);
 }
@@ -97,6 +107,52 @@ export function removeSlot(
 }
 
 /**
+ * Put a removed template slot back, exactly as the template prescribes it.
+ *
+ * Restores the slot, not "a movement called X": the row comes back carrying its
+ * canonical `sourceMovement` and `kind`, which is what the engine matches its
+ * prescription rules against (ADR 0074). Rebuilding it as a bare movement would
+ * hand a supplemental lift back as main work.
+ *
+ * The row is placed in template order rather than appended, so restoring the
+ * first of two supplementals doesn't leave it sitting under the second.
+ */
+export function restoreSlot(
+  drafts: readonly SeriesSlotDraft[],
+  slots: readonly TemplateSlot[],
+  sourceMovement: string,
+): SeriesSlotDraft[] {
+  const slot = slots.find((s) => s.sourceMovement === sourceMovement);
+  if (!slot) return [...drafts];
+  if (drafts.some((draft) => slotIdentity(draft) === sourceMovement)) {
+    return [...drafts];
+  }
+
+  const restored: SeriesSlotDraft = {
+    sourceMovement: slot.sourceMovement,
+    movement: slot.sourceMovement,
+    ...(slot.kind ? { kind: slot.kind } : {}),
+  };
+
+  // Template rows keep template order; anything the user added stays after them.
+  const order = new Map(slots.map((s, index) => [s.sourceMovement, index]));
+  const templateRows: SeriesSlotDraft[] = [];
+  const addedRows: SeriesSlotDraft[] = [];
+  for (const draft of [...drafts, restored]) {
+    if (order.has(slotIdentity(draft)) && draft.role == null) {
+      templateRows.push(draft);
+    } else {
+      addedRows.push(draft);
+    }
+  }
+  templateRows.sort(
+    (a, b) =>
+      (order.get(slotIdentity(a)) ?? 0) - (order.get(slotIdentity(b)) ?? 0),
+  );
+  return [...templateRows, ...addedRows];
+}
+
+/**
  * Put a different exercise in a slot. The slot itself is untouched, so links
  * keyed by it survive and the engine keeps prescribing it the same way.
  */
@@ -113,13 +169,27 @@ export function replaceSlot(
   );
 }
 
-/** Append a movement the user chose; it is prescribed as accessory work. */
+/**
+ * Append a movement the user chose, at the dose they asked for.
+ *
+ * TB3 leaves supplemental volume to the lifter, so a day may carry more
+ * supplemental work than the book lists.
+ */
+export function addMovement(
+  drafts: readonly SeriesSlotDraft[],
+  movement: string,
+  role: AddedRole,
+): SeriesSlotDraft[] {
+  if (drafts.some((draft) => draft.movement === movement)) return [...drafts];
+  return [...drafts, { movement, role }];
+}
+
+/** Append a movement prescribed as accessory work. */
 export function addAccessory(
   drafts: readonly SeriesSlotDraft[],
   movement: string,
 ): SeriesSlotDraft[] {
-  if (drafts.some((draft) => draft.movement === movement)) return [...drafts];
-  return [...drafts, { movement, role: "accessory" }];
+  return addMovement(drafts, movement, "accessory");
 }
 
 /**
@@ -144,8 +214,8 @@ export function slotPayloadEntry(
         : undefined);
   return {
     movement: draft.movement,
-    ...(draft.role === "accessory"
-      ? { role: "accessory" as const }
+    ...(draft.role
+      ? { role: draft.role }
       : slot
         ? { sourceMovement: slot.sourceMovement }
         : {}),
@@ -174,7 +244,10 @@ export function sectionOf(
   slots: readonly TemplateSlot[],
   draft: SeriesSlotDraft,
 ): SlotSection {
+  // The role the user picked wins: a lift they added is shown, and prescribed,
+  // at the dose they asked for.
   if (draft.role === "accessory") return "accessory";
+  if (draft.role === "supplemental") return "supplemental";
   return slotOf(slots, draft)?.role === "supplemental"
     ? "supplemental"
     : "main";
@@ -218,16 +291,33 @@ export function collapseGroup(
 }
 
 /** Put a collapsed circuit back, in place. */
+/**
+ * Put a built-in circuit back.
+ *
+ * Two ways it can be gone: swapped for a single movement (the head row is still
+ * there, holding a different exercise), or removed outright. Restoring means the
+ * whole circuit either way — `abRule` prescribes the AB Triad as one unit, so
+ * half a triad would print the circuit's instructions against one lift.
+ */
 export function restoreGroup(
   drafts: readonly SeriesSlotDraft[],
   group: readonly string[],
+  slots: readonly TemplateSlot[] = [],
 ): SeriesSlotDraft[] {
   const [head] = group;
   if (!head) return [...drafts];
-  return drafts.flatMap((draft) =>
-    slotIdentity(draft) === head
-      ? group.map((source) => ({ sourceMovement: source, movement: source }))
-      : [draft],
+  const hasHead = drafts.some((draft) => slotIdentity(draft) === head);
+  if (hasHead) {
+    return drafts.flatMap((draft) =>
+      slotIdentity(draft) === head
+        ? group.map((source) => ({ sourceMovement: source, movement: source }))
+        : [draft],
+    );
+  }
+  // Removed outright: no row to expand, so re-insert each slot in template order.
+  return group.reduce<SeriesSlotDraft[]>(
+    (rows, source) => restoreSlot(rows, slots, source),
+    [...drafts],
   );
 }
 
