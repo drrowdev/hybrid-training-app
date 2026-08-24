@@ -193,6 +193,16 @@ const PRESS: NewMovement[] = [
   press("landmine-press-half-kneeling", "Half-Kneeling Landmine Press", { equipment: "landmine", bilateral: false, primaryMuscles: ["front_delts", "upper_chest", "triceps"] }),
   press("landmine-press-standing", "Standing Landmine Press", { equipment: "landmine", primaryMuscles: ["front_delts", "upper_chest", "triceps"], secondaryMuscles: ["side_delts", "lower_back"], secondaryRegions: ["elbow_forearm", "lumbar_trunk"] }),
   press("dip-parallel", "Parallel Bar Dip", { equipment: "dip-bars", bodyWeightLoaded: true, primaryMuscles: ["chest", "triceps", "front_delts"] }),
+  // The pressing counterpart to `weighted-pull-up`, and tracked the same way:
+  // its own movement so it carries its own history and loaded max.
+  //
+  // The tag is the BELT, not the bars. `requirementFromEquipmentTag` matches by
+  // substring, and `dip-belt` is the only string that routes to the lifter's
+  // tracked dip belt — the belt is the scarce item anyway. A tag the resolver
+  // doesn't recognise returns null and the slug heuristic takes over, which for
+  // this slug falls through to `bodyweight_or_generic`: available to everyone,
+  // belt or no belt.
+  press("weighted-dip", "Weighted Dip", { equipment: "dip-belt", bodyWeightLoaded: true, primaryMuscles: ["chest", "triceps", "front_delts"], metadata: { cns_cost: "high", stim_fatigue_ratio: "moderate", emphasis: "max-strength" }, experienceMin: 2 }),
   press("dip-ring", "Ring Dip", { equipment: "rings", bodyWeightLoaded: true, primaryMuscles: ["chest", "triceps"], experienceMin: 2 }),
   press("dip-bench", "Bench Dip", { equipment: "bench", primaryMuscles: ["triceps", "front_delts"] }),
   press("machine-chest-press", "Machine Chest Press", { equipment: "machine-chest-press", stability: "fixed_path" }),
