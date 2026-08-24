@@ -27,6 +27,7 @@ import type {
   LoggedSession,
   ProgramRecommendation,
   ProgramSegment,
+  RecoveryWeekPolicy,
 } from "@hta/program-core";
 import type { MainLift, SeventhWeekKind, WendlerWeek } from "./types";
 import type { MainScheme } from "./waves";
@@ -265,6 +266,25 @@ function evaluateTmTest(repsAtTm: number): "lower" | "hold" | "raise" {
   if (repsAtTm >= 5) return "raise";
   return "hold";
 }
+
+/**
+ * A 5/3/1 recovery week — the deload wave from *5/3/1 Forever*: 40/50/60 % of
+ * the training max × 5, no AMRAP. Wendler cuts the WEIGHT and keeps the reps,
+ * which is the opposite trade from Tactical Barbell's; the two are not
+ * interchangeable, which is why each program states its own.
+ *
+ * `basis: "training-max"` because 5/3/1's percentages are of the TM by
+ * definition, not of the true max.
+ */
+export const WENDLER_RECOVERY_WEEK: RecoveryWeekPolicy = {
+  topPercent: 60,
+  setOffsets: [-20, -10, 0],
+  reps: 5,
+  recommendedPercent: { min: 50, max: 60 },
+  basis: "training-max",
+  easyCardioMaxMin: 30,
+  cue: "Deload — leave plenty in reserve",
+};
 
 export const wendler531Engine: ProgramEngine<WendlerInstance> = {
   meta: META,

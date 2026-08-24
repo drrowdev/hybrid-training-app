@@ -184,8 +184,54 @@ export interface ProgramMeta {
   summary: string;
 }
 
-/** A field the setup wizard must collect for a program. */
-export type SetupFieldType =
+/**
+ * What a recovery week looks like for this program.
+ *
+ * A user-initiated recovery week is placed by the platform (it is an extra week
+ * inserted between two programmed ones, so no engine has a session to hang it
+ * on) — but what it CONTAINS is methodology, and belongs to the program. Without
+ * this, one program's deload numbers get applied to every program: 5/3/1 cuts
+ * the weight hard and keeps the reps, Tactical Barbell keeps the weight moderate
+ * and cuts the reps, and they are not interchangeable.
+ *
+ * The platform reads this and does the mirroring, the insertion and the rows.
+ * The engine never sees a stored prescription.
+ */
+export interface RecoveryWeekPolicy {
+  /**
+   * Working percentage for the last (heaviest) main set, as a percentage of the
+   * basis below. The user may change it; `recommendedPercent` is what the source
+   * advises and is what they are shown.
+   */
+  topPercent: number;
+  /**
+   * Offsets from `topPercent` for each main set, in order. `[0, 0, 0]` is three
+   * straight sets; `[-20, -10, 0]` is a ramp. Length is the set count.
+   */
+  setOffsets: readonly number[];
+  /** Target reps per main set, and the top of the range when the source gives one. */
+  reps: number;
+  repsMax?: number;
+  /** The range the source advises, shown to the user and used to warn outside it. */
+  recommendedPercent?: { min: number; max: number };
+  /**
+   * What the percentage is OF. `one-rm` pins it to the lifter's true max even
+   * when they opted to load the program off a derived training max — otherwise a
+   * "65%" recovery week silently becomes 58% of what the book means.
+   */
+  basis: "one-rm" | "training-max";
+  /** Cap for easy cardio on a recovery week; omitted leaves duration untouched. */
+  easyCardioMaxMin?: number;
+  /**
+   * Replace strength work with rest entirely. Used by programs whose own
+   * scheduled deload is a rest week, so a user-initiated one matches it.
+   */
+  restOnly?: boolean;
+  /** Cue written onto each main set. */
+  cue: string;
+}
+
+/** A field the setup wizard must collect for a program. */export type SetupFieldType =
   | "training-max"
   | "number"
   | "select"

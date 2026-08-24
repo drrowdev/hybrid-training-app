@@ -36,7 +36,10 @@ import { getDeloadSkipOffer } from "@/lib/planner/deload-skip-offer";
 import { acceptDeloadSkip } from "@/lib/planner/deload-skip-actions";
 import { DeloadSkipCard } from "@/components/plan/DeloadSkipCard";
 import { getDeloadWeekPreview, getDeloadWeekFatigueSignal } from "@/lib/planner/deload-week-preview";
-import { insertDeloadWeekAction } from "@/lib/planner/deload-week-actions";
+import {
+  insertDeloadWeekAction,
+  previewDeloadWeekAction,
+} from "@/lib/planner/deload-week-actions";
 import { DeloadWeekCard } from "@/components/plan/DeloadWeekCard";
 import { getEarlyDeloadRecommendation } from "@/lib/planner/early-deload-offer";
 import { acceptEarlyDeload } from "@/lib/planner/early-deload-actions";
@@ -385,6 +388,7 @@ export default async function PlanPage({
         <DeloadWeekCard
           preview={deloadWeekPreview}
           insertAction={insertDeloadWeekAction}
+          previewAction={previewDeloadWeekAction}
           variant="banner"
           autoOpen={deloadDeepLink}
         />
@@ -413,6 +417,7 @@ export default async function PlanPage({
                 <DeloadWeekCard
                   preview={deloadWeekPreview}
                   insertAction={insertDeloadWeekAction}
+          previewAction={previewDeloadWeekAction}
                   variant="quiet"
                   autoOpen={deloadDeepLink}
                 />
