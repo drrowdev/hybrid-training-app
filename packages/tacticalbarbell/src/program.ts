@@ -91,7 +91,32 @@ export interface TbClusterLift {
    * the control where supplemental work already exists.
    */
   role?: "accessory" | "supplemental";
+  /**
+   * The lifter's own sets and reps for a movement they added.
+   *
+   * Volume only — loading stays with the program, so an overridden supplemental
+   * still follows the week's percentage. Applied AFTER the rules resolve, so it
+   * is the last word on how much work the lift is, and nothing else.
+   */
+  doseOverride?: {
+    sets: number;
+    setsMax?: number;
+    reps: number;
+    repsMax?: number;
+  };
 }
+
+/**
+ * The limits of a lifter-typed dose. Volume is theirs, so these are wide enough
+ * never to argue with a real training decision and narrow enough to catch a
+ * typo. One home: the wizard gates Save on them, the persistence schema
+ * enforces them, and the engine drops a stored dose that breaks them, so a
+ * value can never pass one layer and be refused by the next.
+ */
+export const TB_DOSE_BOUNDS = {
+  sets: { min: 1, max: 20 },
+  reps: { min: 1, max: 100 },
+} as const;
 
 export interface TbActivationSessionOverride {
   movementOverrides: Record<string, TbClusterLift | null>;
@@ -510,8 +535,8 @@ export interface TbSlotDose {
   /** "5" or "8–10". */
   reps: string;
   /**
-   * "65–75% TM" when the slot is loaded off a max, "max reps" for bodyweight
-   * work, null when there is nothing to state.
+   * "65–75% TM" when the slot is loaded off a max, null when there is nothing
+   * to state (bodyweight or unanchored work carries no percentage).
    */
   load: string | null;
 }
@@ -695,12 +720,15 @@ function cloneEntry(
   if (c.displayName) lift.displayName = c.displayName;
   if (c.split === "A" || c.split === "B") lift.split = c.split;
   if (c.kind) lift.kind = c.kind;
-  // Slot identity and the accessory role have to survive the copy, or a
-  // customized replacement loses the prescription attached to its slot.
+  // Slot identity, the added-work role and the lifter's own numbers all have to
+  // survive the copy, or a customized replacement loses the prescription
+  // attached to its slot — or the sets and reps they typed.
   const source = (c as TbClusterLift).sourceMovement;
   if (source) lift.sourceMovement = source;
   const role = (c as TbClusterLift).role;
   if (role) lift.role = role;
+  const dose = (c as TbClusterLift).doseOverride;
+  if (dose) lift.doseOverride = { ...dose };
   return lift;
 }
 
@@ -774,6 +802,32 @@ function entriesFromValue(v: unknown): TbClusterLift[] {
         if (o.role === "accessory" || o.role === "supplemental") {
           lift.role = o.role;
         }
+        // Only meaningful on work the lifter added: a hand-written blob
+        // shouldn't be able to give a template lift its own numbers. The bounds
+        // are the schema's, checked again here because this reads STORED data,
+        // which a schema that runs on write cannot vouch for.
+        if (lift.role && o.doseOverride && typeof o.doseOverride === "object") {
+          const d = o.doseOverride as Record<string, unknown>;
+          const inRange = (v: unknown, b: { min: number; max: number }) =>
+            typeof v === "number" && Number.isInteger(v) && v >= b.min && v <= b.max;
+          const { sets: setBound, reps: repBound } = TB_DOSE_BOUNDS;
+          if (inRange(d.sets, setBound) && inRange(d.reps, repBound)) {
+            const sets = d.sets as number;
+            const reps = d.reps as number;
+            const setsMax = d.setsMax;
+            const repsMax = d.repsMax;
+            lift.doseOverride = {
+              sets,
+              reps,
+              ...(inRange(setsMax, setBound) && (setsMax as number) >= sets
+                ? { setsMax: setsMax as number }
+                : {}),
+              ...(inRange(repsMax, repBound) && (repsMax as number) >= reps
+                ? { repsMax: repsMax as number }
+                : {}),
+            };
+          }
+        }
         out.push(lift);
       }
     }
@@ -802,7 +856,13 @@ function activationSessionOverridesFromValue(
         continue;
       }
       const [replacement] = entriesFromValue([rawReplacement]);
-      if (replacement) movementOverrides[sourceMovement] = replacement;
+      if (replacement) {
+        // Activation has no dose editor, so it must never act on a dose — not
+        // even one a hand-edited blob smuggled in. Enforced here rather than
+        // trusting the write-side schema, because this is what reads storage.
+        delete replacement.doseOverride;
+        movementOverrides[sourceMovement] = replacement;
+      }
     }
     out[sessionKey] = { movementOverrides };
   }
@@ -1289,6 +1349,24 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       prescribedItemKind = resolved.itemKind;
       includeWarmup = resolved.warmup;
       ruleNote = resolved.note;
+
+      // The lifter's own numbers are the last word on VOLUME. Applied after the
+      // rules so an overridden supplemental still tracks the week's percentage,
+      // and only for work they added — a template lift's dose is the program.
+      const override = lift.role ? lift.doseOverride : undefined;
+      if (override) {
+        prescribedSetsMin = override.sets;
+        prescribedSetsMax = override.setsMax ?? override.sets;
+        prescribedReps = override.reps;
+        prescribedRepsMax = override.repsMax;
+        prescribedRepsLabel =
+          override.repsMax != null && override.repsMax !== override.reps
+            ? `${override.reps}\u2013${override.repsMax}`
+            : String(override.reps);
+        // The rule's note describes the rule's numbers, which are no longer the
+        // ones being run.
+        ruleNote = undefined;
+      }
 
       // The AB Triad's note names its three movements, so it only describes the
       // work while the circuit is whole. Once a slot is filled by something

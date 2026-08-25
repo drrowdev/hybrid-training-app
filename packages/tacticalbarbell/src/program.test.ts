@@ -1730,3 +1730,202 @@ describe("tbTemplateSeries — what each row says it will be", () => {
     }
   });
 });
+
+describe("TB engine — the lifter's own sets and reps", () => {
+  const CURL = "catalog:00000000-0000-4000-8000-0000000000c1";
+  const loadedCtx: PlatformContext = {
+    ...ctx,
+    oneRepMaxes: { ...ctx.oneRepMaxes, [CURL]: 90 },
+  };
+
+  const zuluBWith = (extra: Record<string, unknown>[]) =>
+    setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-2": [
+          { movement: "deadlift", sourceMovement: "deadlift", split: "B" },
+          { movement: "barbell-row", sourceMovement: "barbell-row", split: "B" },
+          ...extra,
+        ],
+      },
+    });
+
+  const working = (inst: TbInstance, ref: string, name: string) =>
+    tb.prescribe(inst, ref, loadedCtx).items.filter(
+      (item) => item.name === name && item.kind !== "warmup",
+    );
+
+  it("uses the numbers the lifter typed", () => {
+    const inst = zuluBWith([
+      {
+        movement: CURL,
+        displayName: "Weighted Dip",
+        role: "supplemental",
+        kind: "barbell",
+        doseOverride: { sets: 4, reps: 10, repsMax: 12 },
+      },
+    ]);
+    expect(working(inst, "b0-w1-p1b", "Weighted Dip")[0]).toMatchObject({
+      sets: 4,
+      reps: 10,
+      repsMax: 12,
+      repsLabel: "10–12",
+    });
+  });
+
+  it("keeps the program's loading — volume is the lifter's, load is not", () => {
+    const inst = zuluBWith([
+      {
+        movement: CURL,
+        displayName: "Weighted Dip",
+        role: "supplemental",
+        kind: "barbell",
+        doseOverride: { sets: 4, reps: 10 },
+      },
+    ]);
+    const percents = [1, 2, 3].map(
+      (week) => working(inst, `b0-w${week}-p1b`, "Weighted Dip")[0]?.percentOfTm,
+    );
+    expect(percents).toEqual([0.65, 0.7, 0.75]);
+  });
+
+  it("carries a set range", () => {
+    const inst = zuluBWith([
+      {
+        movement: CURL,
+        displayName: "Weighted Dip",
+        role: "supplemental",
+        kind: "barbell",
+        doseOverride: { sets: 3, setsMax: 5, reps: 8 },
+      },
+    ]);
+    const item = working(inst, "b0-w1-p1b", "Weighted Dip")[0];
+    expect([item?.sets, item?.setsMax, item?.reps, item?.repsLabel]).toEqual([3, 5, 8, "8"]);
+  });
+
+  it("overrides accessory work too", () => {
+    const inst = zuluBWith([
+      {
+        movement: CURL,
+        displayName: "Barbell Curl",
+        role: "accessory",
+        kind: "barbell",
+        doseOverride: { sets: 5, reps: 20 },
+      },
+    ]);
+    const item = working(inst, "b0-w1-p1b", "Barbell Curl")[0];
+    expect([item?.kind, item?.sets, item?.reps]).toEqual(["assistance", 5, 20]);
+  });
+
+  it("drops the rule's note, which described numbers no longer being run", () => {
+    const inst = zuluBWith([
+      {
+        movement: CURL,
+        displayName: "Weighted Dip",
+        role: "supplemental",
+        kind: "barbell",
+        doseOverride: { sets: 4, reps: 10 },
+      },
+    ]);
+    expect(working(inst, "b0-w1-p1b", "Weighted Dip")[0]?.note ?? "").not.toContain(
+      "3–5 sets of 8–10",
+    );
+  });
+
+  it("ignores an override on a lift the template prescribes", () => {
+    // A template lift's dose IS the program. The schema refuses this too; the
+    // engine refuses it as well so a hand-written blob cannot rewrite the book.
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-2": [
+          { movement: "deadlift", sourceMovement: "deadlift", split: "B" },
+          {
+            movement: "barbell-row",
+            sourceMovement: "barbell-row",
+            split: "B",
+            doseOverride: { sets: 9, reps: 30 },
+          },
+        ],
+      },
+    });
+    const row = working(inst, "b0-w1-p1b", "Barbell Row")[0];
+    expect([row?.sets, row?.setsMax, row?.reps, row?.repsMax]).toEqual([3, 5, 8, 10]);
+  });
+
+  const dip = (extra: Record<string, unknown> = {}) =>
+    zuluBWith([
+      {
+        movement: CURL,
+        displayName: "Dip",
+        role: "supplemental",
+        kind: "barbell",
+        ...extra,
+      },
+    ]);
+
+  /**
+   * A stored dose the schema would have refused must be dropped. Also asserts
+   * the probe differs from the untouched dose, so the test cannot pass by
+   * coincidence when the guard is removed.
+   */
+  const ignoresDose = (doseOverride: Record<string, unknown>) => {
+    const base = working(dip(), "b0-w1-p1b", "Dip")[0];
+    expect(base?.sets).toBeGreaterThan(0);
+    expect([Number(doseOverride.sets), Number(doseOverride.reps)]).not.toEqual([
+      base?.sets,
+      base?.reps,
+    ]);
+    expect(working(dip({ doseOverride }), "b0-w1-p1b", "Dip")[0]).toMatchObject({
+      sets: base?.sets,
+      reps: base?.reps,
+    });
+  };
+
+  it("ignores a stored dose outside the bounds", () => {
+    // entriesFromValue reads STORED data, which a schema that runs on write
+    // cannot vouch for: an older build or a hand-edited blob must not be able
+    // to prescribe 99 sets.
+    ignoresDose({ sets: 99, reps: 12 });
+    ignoresDose({ sets: 4, reps: 400 });
+  });
+
+  it("ignores a stored dose that is not whole numbers", () => {
+    ignoresDose({ sets: 2.5, reps: 12 });
+    ignoresDose({ sets: 4, reps: 10.5 });
+  });
+
+  it("ignores a stored dose written as text", () => {
+    ignoresDose({ sets: "9", reps: 12 });
+    ignoresDose({ sets: 9, reps: "12" });
+  });
+
+  it("never gives Activation a dose, whatever the blob says", () => {
+    // Activation has no dose editor, so it must not act on one. Checked in the
+    // engine and not only in the schema, because the engine reads storage.
+    const inst = setup({
+      templateId: "activation",
+      activationSessionOverrides: {
+        "activation.armor.armor-a1": {
+          movementOverrides: {
+            "back-extension": {
+              movement: "overhead-press",
+              role: "supplemental",
+              doseOverride: { sets: 9, reps: 30 },
+            },
+          },
+        },
+      },
+    });
+    const supplemental = itemsOfKind(
+      tb.prescribe(inst, "b0-w6-armor-a1", ctx),
+      "supplemental",
+    );
+    expect(supplemental.find((item) => item.name === "Overhead Press")).toMatchObject({
+      sets: 3,
+      setsMax: 5,
+      reps: 8,
+      repsMax: 10,
+    });
+  });
+});

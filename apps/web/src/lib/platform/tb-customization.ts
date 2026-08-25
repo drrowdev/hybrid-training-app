@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TB_DOSE_BOUNDS } from "@hta/tacticalbarbell";
 
 export const TB_CUSTOMIZATION_VERSION = 1 as const;
 export const TB_ACTIVATION_CUSTOMIZATION_V2_VERSION = 2 as const;
@@ -29,61 +30,132 @@ const rehabItemSchema = z
     message: "Each rehab movement needs reps or a hold time.",
   });
 
-const movementReplacementSchema = z
+const movementReplacementFields = z.object({
+  movement: z.string().trim().min(1).max(80),
+  movementId: z.string().uuid().optional(),
+  slug: z.string().trim().min(1).max(160).optional(),
+  displayName: z.string().trim().min(1).max(160).optional(),
+  kind: z
+    .enum(["barbell", "weighted-bw", "bodyweight", "unanchored"])
+    .optional(),
+  /**
+   * The template slot this entry fills. Present when the entry stands in for a
+   * movement the template prescribes, absent when the user added it themselves.
+   * The engine matches its prescription rules on this, so a swapped
+   * supplemental keeps its supplemental sets/reps/% instead of reverting to
+   * main work. Only ever a template movement key — a `catalog:` movement is
+   * something the user added and can never BE a slot.
+   */
+  sourceMovement: z.string().trim().min(1).max(80).optional(),
+  /**
+   * Marks a movement the user added rather than one the template prescribes.
+   * Stated explicitly rather than inferred from a missing `sourceMovement`,
+   * because customizations written before slots existed have no slot on ANY
+   * entry — inferring would turn their main lifts into accessory work.
+   *
+   * `"supplemental"` asks for the dose the session's own supplemental work
+   * gets; `"accessory"` asks for the accessory dose.
+   */
+  role: z.enum(["accessory", "supplemental"]).optional(),
+});
+
+/** Shared rules, applied to both the weekly and the Activation shapes. */
+function refineMovementReplacement(
+  value: z.infer<typeof movementReplacementFields>,
+  ctx: z.RefinementCtx,
+): void {
+  if (value.sourceMovement?.startsWith("catalog:")) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["sourceMovement"],
+      message: "A custom movement cannot stand in for a template slot.",
+    });
+  }
+  if (value.role && value.sourceMovement) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["role"],
+      message: "A movement you added does not fill a template slot.",
+    });
+  }
+  if (!value.movement.startsWith("catalog:")) return;
+  if (
+    !value.movementId ||
+    value.movement !== `catalog:${value.movementId}` ||
+    !value.slug ||
+    !value.displayName
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Catalog movements require a matching id, slug, and display name.",
+    });
+  }
+}
+
+const movementReplacementSchema = movementReplacementFields
+  .strict()
+  .superRefine(refineMovementReplacement);
+
+/**
+ * A lifter's own sets and reps for a movement THEY added.
+ *
+ * Volume only. Loading stays with the program: a percentage is of the training
+ * max, so a typed one needs a max the lifter may not have set, and means nothing
+ * on a bodyweight movement. Applied after the week's rule resolves, so an
+ * overridden supplemental still follows the wave.
+ */
+const doseOverrideSchema = z
   .object({
-    movement: z.string().trim().min(1).max(80),
-    movementId: z.string().uuid().optional(),
-    slug: z.string().trim().min(1).max(160).optional(),
-    displayName: z.string().trim().min(1).max(160).optional(),
-    kind: z
-      .enum(["barbell", "weighted-bw", "bodyweight", "unanchored"])
+    sets: z.number().int().min(TB_DOSE_BOUNDS.sets.min).max(TB_DOSE_BOUNDS.sets.max),
+    setsMax: z
+      .number()
+      .int()
+      .min(TB_DOSE_BOUNDS.sets.min)
+      .max(TB_DOSE_BOUNDS.sets.max)
       .optional(),
-    /**
-     * The template slot this entry fills. Present when the entry stands in for a
-     * movement the template prescribes, absent when the user added it themselves.
-     * The engine matches its prescription rules on this, so a swapped
-     * supplemental keeps its supplemental sets/reps/% instead of reverting to
-     * main work. Only ever a template movement key — a `catalog:` movement is
-     * something the user added and can never BE a slot.
-     */
-    sourceMovement: z.string().trim().min(1).max(80).optional(),
-    /**
-     * Marks a movement the user added rather than one the template prescribes.
-     * Stated explicitly rather than inferred from a missing `sourceMovement`,
-     * because customizations written before slots existed have no slot on ANY
-     * entry — inferring would turn their main lifts into accessory work.
-     *
-     * `"supplemental"` asks for the dose the session's own supplemental work
-     * gets; `"accessory"` asks for the accessory dose.
-     */
-    role: z.enum(["accessory", "supplemental"]).optional(),
+    reps: z.number().int().min(TB_DOSE_BOUNDS.reps.min).max(TB_DOSE_BOUNDS.reps.max),
+    repsMax: z
+      .number()
+      .int()
+      .min(TB_DOSE_BOUNDS.reps.min)
+      .max(TB_DOSE_BOUNDS.reps.max)
+      .optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.sourceMovement?.startsWith("catalog:")) {
+    if (value.setsMax != null && value.setsMax < value.sets) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["sourceMovement"],
-        message: "A custom movement cannot stand in for a template slot.",
+        path: ["setsMax"],
+        message: "The top of the set range cannot be below the bottom.",
       });
     }
-    if (value.role && value.sourceMovement) {
+    if (value.repsMax != null && value.repsMax < value.reps) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["role"],
-        message: "A movement you added does not fill a template slot.",
+        path: ["repsMax"],
+        message: "The top of the rep range cannot be below the bottom.",
       });
     }
-    if (!value.movement.startsWith("catalog:")) return;
-    if (
-      !value.movementId ||
-      value.movement !== `catalog:${value.movementId}` ||
-      !value.slug ||
-      !value.displayName
-    ) {
+  });
+
+/**
+ * The weekly-session entry: the shared shape plus `doseOverride`.
+ *
+ * Only the weekly TB engine honours it, so Activation's `movementOverrides`
+ * keep the base schema — the blob cannot then carry a setting that surface
+ * would silently ignore.
+ */
+const sessionMovementSchema = movementReplacementFields
+  .extend({ doseOverride: doseOverrideSchema.optional() })
+  .strict()
+  .superRefine((value, ctx) => {
+    refineMovementReplacement(value, ctx);
+    if (value.doseOverride && !value.role) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Catalog movements require a matching id, slug, and display name.",
+        path: ["doseOverride"],
+        message: "Only a movement you added can carry your own sets and reps.",
       });
     }
   });
@@ -100,7 +172,7 @@ export const tbCustomizationV1Schema = z
     dayTypes: z.array(weekdayTypeSchema).length(7),
     sessionMovements: z.record(
       z
-        .array(movementReplacementSchema)
+        .array(sessionMovementSchema)
         .min(1)
         .max(8)
         .superRefine((movements, ctx) => {

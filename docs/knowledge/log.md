@@ -1063,3 +1063,21 @@ The dose is derived in the engine, not the wizard. `applyPrescriptionRules` is e
 Two engine subtleties the display forced into the open. A rule that sets `reps` without clearing the scheme's `repsMax` leaves a range the session never states, so the AB Triad's 3x5 read "5-8"; the engine's own `repsLabel` wins where every week agrees on one. And an `unanchored` slot takes `prescribe`'s no-weight branch however its rules resolved, so stating a percentage would promise a load that never arrives.
 
 Review found five, two of which mattered. The work-type panel highlighted `addKind` while the Add button computed a different role, so on every template except Zulu the option shown as selected was the one that would not be used - the same invisible-difference problem, reintroduced inside the fix for it. And the Supplemental gate read the optional `dose` DISPLAY field rather than the slot's existence, which would silently have disabled supplemental work on a day that prescribes it. Also: `pendingAdd` survived a template switch onto an identically-keyed `slot-1`; the accessory copy promised a sets/reps control that is a follow-up; and a fixture claimed a dose the engine does not produce, unnoticed because the assertion checked only that the element existed.
+
+## [2026-08-25] decision | The lifter sets the volume; the program keeps the loading
+
+Fourth and last of the session-editor pieces. A row the lifter added can now carry their own sets and reps, edited in place. Load is not editable and was never on the table: a percentage is of a training max, so a typed one needs a max they may not have set and means nothing on a bodyweight movement.
+
+The override is applied AFTER `applyPrescriptionRules`, not instead of it. That ordering is the whole design - the week's percentage still resolves through the rules, so an overridden supplemental keeps tracking the wave across the block, and only the amount of work changes. It clears the rule note, because a note describing sets the lift no longer does is worse than no note.
+
+Only work the lifter added can take one. A template lift's dose is the program, and editing it here would be editing the book rather than the session, so both the schema and the engine require `role` before they will look at a dose.
+
+TB3 leaves supplemental volume to the lifter, so there is no warning for exceeding the book - DC-K4 governs overrides of what the method PRESCRIBES, not of a freedom it grants.
+
+Three layers now share one set of limits (`TB_DOSE_BOUNDS`, exported from the engine) because review found them disagreeing. The wizard let Save through at 30 sets, the deploy schema capped at 20, and the whole submission came back rejected quoting a number with no hint which row produced it. The gate now names the offending number where it blocks, and a test asserts every dose Save accepts is one the schema accepts, so the two cannot drift apart again.
+
+The engine re-checks the same limits when reading stored data. A schema that runs on write cannot vouch for a blob written by an older build or edited by hand, and the old defensive parse used `Number()`, so it would have accepted "4", 2.5 and 500 - all things the schema refuses.
+
+Activation is defended in the engine, not only in the schema. It has no dose editor, its overrides deliberately kept the base shape, and `entriesFromValue` is shared - so a dose reaching it from a hand-written blob would have been honoured by a surface with no way to show or remove it. It is now dropped where storage is read.
+
+Review found four. The one that mattered was the Save/schema disagreement above. It also caught a test that could not fail: it claimed to prove that editing only the numbers still counts as a change, but asserted something an earlier test already covered, and the code it guarded was dead - an entry carrying a dose always has a role, no template entry ever does, so the comparison already differed before the dose was consulted. The dead segment and its confident, wrong comment are gone. The replacements were each confirmed to fail with their guard removed, and one of them passed for the wrong reason on the first attempt, which is exactly why they were checked.
