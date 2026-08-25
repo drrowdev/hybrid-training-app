@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import type { PlatformContext, LoggedSession } from "@hta/program-core";
 import { totalPrescribedSets, itemsOfKind } from "@hta/program-core";
-import { tacticalBarbellEngine as tb, type TbInstance } from "./program";
+import { tacticalBarbellEngine as tb, tbTemplateSeries, type TbInstance } from "./program";
 import {
   TB_TEMPLATES,
   AB_TRIAD_MOVEMENTS,
@@ -1663,5 +1663,70 @@ describe("TB engine — supplemental work takes no warm-up ramp", () => {
       .prescribe(setup({ templateId: "activation" }), "b0-w6-armor-b1", ctx)
       .items.filter((item) => item.kind === "warmup" && item.name === "Overhead Press");
     expect(armor).toEqual([]);
+  });
+});
+
+describe("tbTemplateSeries — what each row says it will be", () => {
+  const slotOf = (templateId: string, key: string, movement: string) =>
+    tbTemplateSeries(getTbTemplate(templateId)!)
+      .find((entry) => entry.key === key)!
+      .slots.find((slot) => slot.sourceMovement === movement)!;
+
+  it("states a main lift's range across the whole block, not one week", () => {
+    // This session runs weeks 1–5 (week 6 is peak week, its own sessions),
+    // so the row states the wave across those: 70/80/85/70/80.
+    const squat = slotOf("zulu", "slot-1", "squat");
+    expect(squat.dose.load).toBe("70–85% TM");
+    expect(squat.role).toBe("main");
+  });
+
+  it("states the supplemental wave, not the main one", () => {
+    const row = slotOf("zulu", "slot-2", "barbell-row");
+    expect(row.dose).toEqual({ sets: "3–5", reps: "8–10", load: "65–75% TM" });
+  });
+
+  it("collapses a range to one number when it does not move", () => {
+    const triad = slotOf("zulu", "slot-1", "hanging-leg-raise");
+    expect(triad.dose.sets).toBe("3");
+    expect(triad.dose.reps).toBe("5");
+  });
+
+  it("states no load for a slot with no max to load off", () => {
+    // Back extension is unanchored: the rules give it a percentage, but
+    // `prescribe` emits it with no weight, so the row must not promise one.
+    const back = slotOf("zulu", "slot-2", "back-extension");
+    expect(back.dose.load).toBeNull();
+  });
+
+  it("states a weighted bodyweight lift's percentage like any other loaded lift", () => {
+    // A weighted pull-up loads off its own max, so it takes the wave.
+    const pullup = slotOf("zulu", "slot-2", "weighted-pullup");
+    expect(pullup.dose.load).toBe("70–85% TM");
+  });
+
+  it("gives every slot of every template something to show", () => {
+    for (const template of TB_TEMPLATES) {
+      for (const entry of tbTemplateSeries(template)) {
+        for (const slot of entry.slots) {
+          expect(slot.dose.sets, `${template.id}/${slot.sourceMovement}`).not.toBe("");
+          expect(slot.dose.reps, `${template.id}/${slot.sourceMovement}`).not.toBe("");
+        }
+      }
+    }
+  });
+
+  it("agrees with what the session actually prescribes that week", () => {
+    // The row and the workout read the same rules, so a row cannot promise
+    // numbers the session does not deliver.
+    const inst = setup({ templateId: "zulu" });
+    const row = slotOf("zulu", "slot-2", "barbell-row");
+    for (const week of [1, 2, 3]) {
+      const item = tb
+        .prescribe(inst, `b0-w${week}-p1b`, ctx)
+        .items.find((i) => i.name === "Barbell Row" && i.kind !== "warmup")!;
+      expect(item.sets).toBeGreaterThanOrEqual(Number(row.dose.sets.split("–")[0]));
+      expect(Math.round((item.percentOfTm ?? 0) * 100)).toBeGreaterThanOrEqual(65);
+      expect(Math.round((item.percentOfTm ?? 0) * 100)).toBeLessThanOrEqual(75);
+    }
   });
 });

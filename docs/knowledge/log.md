@@ -1046,3 +1046,20 @@ Owner chose to extend it to supplemental work the LIFTER adds as well, overrulin
 Blast radius, checked before the change: only the session duration estimate moves, because `estimateSessionSeconds` prices warm-up sets. Hard-set counts, effective stress load, muscle volume, the ADR-0013 budget and the recovery-week builder all already exclude warm-ups. Forward-only - materialised `planned_sessions` keep the prescription they were written with, so a deployed block is not rewritten under a lifter who may already have logged against it.
 
 Also corrected in the same conversation, though it was copy rather than code: a mock-up line claiming accessory work is "dropped first if the week runs heavy". ADR-0013 trims only "when the user has accepted an over-budget volume nudge", and limitation swaps are equally an offer - a main lift "is never auto-changed". The app does not change a program on the lifter's behalf, and the line said it did.
+
+
+## [2026-08-25] decision | One add button, and every row says what it will be
+
+Owner: "This setup with +Add accessory and +Add supplemental buttons is now very weird. There should be only one button."
+
+The buttons were the symptom. The cause is that a session row showed only the movement name - no sets, no reps, no percentage anywhere in the editor - so the two buttons differed by something the screen never showed. Adding a second button had made an existing gap visible rather than creating one.
+
+The literal request could not be met. Operator, Fighter, Gladiator, Mass and Grey Man prescribe NO supplemental work, so a single button called "+ Add supplemental" would take away the ability to add anything on five of the seven templates. It is "+ Add exercise", and the work type is chosen AFTER picking the exercise, where Supplemental can be disabled with its reason and Accessory can be disabled for a movement that cannot be run for 8-15 reps to failure - a protection the old accessory-only picker gave by filtering its list, which a review-caught test stopped me from dropping.
+
+Owner also rejected copy describing what the app does automatically: "The app shouldn't make any changes in the program on behalf of the user." Checked, and he is right - ADR-0013 trimming happens only "when the user has accepted an over-budget volume nudge", and a main lift "is never auto-changed" by limitation handling. Both are offers. The line went, and with it my earlier argument for keeping the two doses apart; the honest difference is loading, not fatigue management.
+
+The dose is derived in the engine, not the wizard. `applyPrescriptionRules` is extracted verbatim from `prescribe`'s rule loop and both now call it, so the row and the workout read the same rules and a row cannot promise numbers the session will not deliver. `tbSlotDose` states the BLOCK's range rather than one week's - this editor edits a repeating session, so "65%" would be wrong for five weeks out of six.
+
+Two engine subtleties the display forced into the open. A rule that sets `reps` without clearing the scheme's `repsMax` leaves a range the session never states, so the AB Triad's 3x5 read "5-8"; the engine's own `repsLabel` wins where every week agrees on one. And an `unanchored` slot takes `prescribe`'s no-weight branch however its rules resolved, so stating a percentage would promise a load that never arrives.
+
+Review found five, two of which mattered. The work-type panel highlighted `addKind` while the Add button computed a different role, so on every template except Zulu the option shown as selected was the one that would not be used - the same invisible-difference problem, reintroduced inside the fix for it. And the Supplemental gate read the optional `dose` DISPLAY field rather than the slot's existence, which would silently have disabled supplemental work on a day that prescribes it. Also: `pendingAdd` survived a template switch onto an identically-keyed `slot-1`; the accessory copy promised a sets/reps control that is a follow-up; and a fixture claimed a dose the engine does not produce, unnoticed because the assertion checked only that the element existed.

@@ -18,6 +18,27 @@ export interface TemplateSlot {
   role: "main" | "supplemental";
   kind?: SlotKind;
   split?: "A" | "B";
+  /** What the template prescribes this slot across the block, for display. */
+  dose?: { sets: string; reps: string; load: string | null };
+}
+
+/** Sets, reps and load as one line: `3–5 × 8–10 · 65–75% TM`. */
+export function doseLabel(
+  dose: { sets: string; reps: string; load: string | null } | undefined,
+): string | null {
+  if (!dose || !dose.sets || !dose.reps) return null;
+  const head = `${dose.sets} \u00D7 ${dose.reps}`;
+  return dose.load ? `${head} \u00B7 ${dose.load}` : head;
+}
+
+/** The dose a movement the lifter added is prescribed at. */
+export function addedDose(
+  role: AddedRole,
+  supplementalDose: { sets: string; reps: string; load: string | null } | undefined,
+): { sets: string; reps: string; load: string | null } {
+  return role === "supplemental" && supplementalDose
+    ? supplementalDose
+    : { sets: "3", reps: "8–15", load: null };
 }
 
 /**

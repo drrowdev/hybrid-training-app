@@ -52,6 +52,8 @@ import {
 import {
   addGroup,
   addMovement,
+  addedDose,
+  doseLabel,
   canRemoveRows,
   collapseGroup,
   hasWholeGroup,
@@ -189,6 +191,8 @@ export interface PickerTbTemplate {
       role: "main" | "supplemental";
       kind?: "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
       split?: "A" | "B";
+      /** What this slot is prescribed across the block, for the row to state. */
+      dose?: { sets: string; reps: string; load: string | null };
     }>;
   }>;
   activationPhases?: PickerActivationPhase[];
@@ -1402,6 +1406,14 @@ export function ProgramPicker({
   );
   const [raceDate, setRaceDate] = useState<string>(prefillRaceDate ?? "");
   const [startWithRecovery, setStartWithRecovery] = useState<boolean>(false);
+  /** The exercise picked from the library, waiting for its work type. */
+  const [pendingAdd, setPendingAdd] = useState<{
+    seriesKey: string;
+    movementKey: string;
+    name: string;
+    pattern: string;
+  } | null>(null);
+  const [addKind, setAddKind] = useState<AddedRole>("supplemental");
   // Start point (the program phase/block to begin from). Default 0 = beginning.
   const [segments, setSegments] = useState<ProgramSegmentOption[]>([]);
   const [startWeekIndex, setStartWeekIndex] = useState<number>(0);
@@ -1559,11 +1571,6 @@ export function ProgramPicker({
   // The muscle emphasis is no longer chosen in the wizard; a legacy block that
   // still auto-picks its accessories keeps the standard set when it is re-deployed.
   const accessoryMuscles = [...TB_DEFAULT_ACCESSORY_MUSCLES];
-  const accessoryMovements = useMemo(
-    () =>
-      rehabMovements.filter((movement) => movement.pattern === ACCESSORY_PATTERN),
-    [rehabMovements],
-  );
   /**
    * Stated where the user is about to add work the book argues against, in the
    * place they'd add it — not as a block. Their session, their call (DC-K4).
@@ -1633,6 +1640,7 @@ export function ProgramPicker({
     [],
   );
   const AB_TRIAD_LABEL = "AB Triad";
+  const AB_TRIAD_DOSE = "3 rounds × 5";
 
   /**
    * The lifts a slot can link, in session order.
@@ -1843,6 +1851,11 @@ export function ProgramPicker({
     setRehabBySeries({});
     setRehabByDay({});
     setCatalogMovementMeta({});
+    // Series keys are `slot-1`, `slot-2`, … on every template, so a half-finished
+    // add would reappear on the new template's day 1 — pointing at a movement
+    // whose catalog entry was just cleared.
+    setPendingAdd(null);
+    setAddKind("supplemental");
     setActivationDrafts(
       defaultActivationDrafts(
         activeTbTemplate,
@@ -3292,16 +3305,32 @@ export function ProgramPicker({
             // Restored as a whole either way — `abRule` prescribes the circuit as
             // one unit, so a half-restored triad states three rounds against one lift.
             const triadRestorable = triadReplaced || triadRemoved;
-            // Supplemental work can only be added where the day already
-            // prescribes some: the engine doses an added supplemental from a
-            // slot the session already has, and with none there is nothing to
-            // borrow. Read from the TEMPLATE, so removing every supplemental
-            // doesn't take the control away with it.
-            const hasSupplementalWork = entry.slots.some(
+            // The dose an added supplemental will borrow — the day's own
+            // supplemental slot, which is what the engine doses it from.
+            const supplementalSlot = entry.slots.find(
               (slot) =>
                 slot.role === "supplemental" &&
                 !triad.includes(slot.sourceMovement),
             );
+            // Gate on the slot EXISTING, not on it carrying a dose: `dose` is a
+            // display field and optional, so reading it here would silently take
+            // the option away from a day that genuinely prescribes supplemental work.
+            const hasSupplementalWork = supplementalSlot != null;
+            const supplementalDose = supplementalSlot?.dose;
+            // An accessory dose is 8–15 reps near failure. A carry, a plyometric
+            // or an Olympic lift cannot be run that way, so it is offered as
+            // supplemental work or not at all.
+            const accessoryFits =
+              pendingAdd?.seriesKey === entry.key &&
+              pendingAdd.pattern === ACCESSORY_PATTERN;
+            // What Add will actually do. The highlighted option and the button
+            // must agree — showing one as selected while adding the other is the
+            // same invisible-difference problem this whole change is fixing.
+            const effectiveKind: AddedRole = !accessoryFits
+              ? "supplemental"
+              : !hasSupplementalWork
+                ? "accessory"
+                : addKind;
             const removed = removedSupplementalSlots(entry, triadRestorable);
             const rehabOnSeries = libraryById.get(rehabBySeries[entry.key] ?? "");
             const populated = SLOT_SECTIONS.filter((section) =>
@@ -3320,13 +3349,20 @@ export function ProgramPicker({
               const badge = linkBadges.get(identity);
               const removesRows = isTriad ? triad.length : 1;
               const changeTarget = isTriad ? "ab-triad" : identity;
+              // The AB Triad states its own shape; every other row states what
+              // the session will actually prescribe it.
+              const rowDose = isTriad
+                ? AB_TRIAD_DOSE
+                : doseLabel(
+                    slot?.dose ?? (draft.role ? addedDose(draft.role, supplementalDose) : undefined),
+                  );
               return (
                 <div
                   key={identity}
                   className={rowLinkClass(styles, badge, "")}
                   data-testid={`tb-slot-${entry.key}-${changeTarget}`}
                 >
-                  <span>
+                  <span className={styles.rowLabel}>
                     <LinkBadge
                       styles={styles}
                       badge={badge}
@@ -3340,6 +3376,14 @@ export function ProgramPicker({
                         ? AB_TRIAD_LABEL
                         : customMovementLabel(draft.movement)}
                     </b>
+                    {rowDose ? (
+                      <small
+                        className={styles.rowDose}
+                        data-testid={`tb-dose-${entry.key}-${changeTarget}`}
+                      >
+                        {rowDose}
+                      </small>
+                    ) : null}
                   </span>
                   <span className={styles.seriesRowActions}>
                     {slot || isTriad ? (
@@ -3479,47 +3523,104 @@ export function ProgramPicker({
                     </div>
                   </div>
                 ) : null}
-                {hasSupplementalWork ? (
-                  <details className={styles.addExercise}>
-                    <summary data-testid={`tb-add-supplemental-${entry.key}`}>
-                      + Add supplemental
-                    </summary>
-                    <ExerciseLibraryPicker
-                      movements={rehabMovements}
-                      excludeKeys={drafts.map((row) => row.movement)}
-                      circuits={TB_CIRCUITS}
-                      excludeIdentities={drafts.map(slotIdentity)}
-                      onPickCircuit={(circuit) =>
-                        addSeriesGroup(entry.key, circuit.movements, "supplemental")
-                      }
-                      onPick={(movement) => {
-                        const key = catalogMovementKey(movement.id);
-                        setCatalogMovementMeta((current) => ({
-                          ...current,
-                          [key]: movement,
-                        }));
-                        addSeriesMovement(entry.key, key, "supplemental");
-                      }}
-                    />
-                  </details>
-                ) : null}
                 <details className={styles.addExercise}>
-                  <summary data-testid={`tb-add-accessory-${entry.key}`}>
-                    + Add accessory
+                  <summary data-testid={`tb-add-exercise-${entry.key}`}>
+                    + Add exercise
                   </summary>
                   <ExerciseLibraryPicker
-                    movements={accessoryMovements}
+                    movements={rehabMovements}
                     excludeKeys={drafts.map((row) => row.movement)}
+                    circuits={TB_CIRCUITS}
+                    excludeIdentities={drafts.map(slotIdentity)}
+                    onPickCircuit={(circuit) =>
+                      addSeriesGroup(entry.key, circuit.movements, "supplemental")
+                    }
                     onPick={(movement) => {
                       const key = catalogMovementKey(movement.id);
                       setCatalogMovementMeta((current) => ({
                         ...current,
                         [key]: movement,
                       }));
-                      addSeriesMovement(entry.key, key, "accessory");
+                      setAddKind("supplemental");
+                      setPendingAdd({ seriesKey: entry.key, movementKey: key, name: movement.name, pattern: movement.pattern });
                     }}
                   />
                 </details>
+                {pendingAdd?.seriesKey === entry.key ? (
+                  <div
+                    className={styles.addKind}
+                    data-testid={`tb-add-kind-${entry.key}`}
+                  >
+                    <div className={styles.addKindWho}>
+                      {`Add ${pendingAdd.name} as`}
+                    </div>
+                    <div className={styles.addKindOptions}>
+                      <button
+                        type="button"
+                        disabled={!hasSupplementalWork}
+                        aria-pressed={effectiveKind === "supplemental"}
+                        data-testid={`tb-add-kind-supplemental-${entry.key}`}
+                        className={effectiveKind === "supplemental" ? styles.addKindOn : undefined}
+                        onClick={() => setAddKind("supplemental")}
+                      >
+                        <b>Supplemental</b>
+                        {hasSupplementalWork ? (
+                          <>
+                            <small className={styles.rowDose}>{doseLabel(supplementalDose)}</small>
+                            <small>Loaded off your max, following the program.</small>
+                          </>
+                        ) : (
+                          <small className={styles.addKindBlocked}>
+                            This session prescribes no supplemental work.
+                          </small>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!accessoryFits}
+                        aria-pressed={effectiveKind === "accessory"}
+                        data-testid={`tb-add-kind-accessory-${entry.key}`}
+                        className={effectiveKind === "accessory" ? styles.addKindOn : undefined}
+                        onClick={() => setAddKind("accessory")}
+                      >
+                        <b>Accessory</b>
+                        {accessoryFits ? (
+                          <>
+                            <small className={styles.rowDose}>
+                              {doseLabel(addedDose("accessory", undefined))}
+                            </small>
+                            <small>No prescribed weight; you choose the load.</small>
+                          </>
+                        ) : (
+                          <small className={styles.addKindBlocked}>
+                            {`${pendingAdd.name} can't be run for 8–15 reps to failure.`}
+                          </small>
+                        )}
+                      </button>
+                    </div>
+                    <div className={styles.addKindFoot}>
+                      <button type="button" onClick={() => setPendingAdd(null)}>
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.addKindGo}
+                        disabled={!hasSupplementalWork && !accessoryFits}
+                        data-testid={`tb-add-kind-confirm-${entry.key}`}
+                        onClick={() => {
+                          addSeriesMovement(
+                            entry.key,
+                            pendingAdd.movementKey,
+                            effectiveKind,
+                          );
+                          setPendingAdd(null);
+                        }}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 {libraryProtocols.length > 0 && !rehabOnSeries ? (
                   <details className={styles.addExercise}>
                     <summary data-testid={`tb-add-rehab-${entry.key}`}>

@@ -2232,3 +2232,88 @@
   grid-column: 1 / -1;
   width: auto;
 }
+/* Row label now carries a dose line under the movement name. */
+.seriesExercises > div > span.rowLabel {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.rowDose {
+  font-family: var(--font-mono-wizard), monospace;
+  font-size: 10.5px;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+/* "Add <exercise> as" — the work-type step, after an exercise is picked. */
+.addKind {
+  margin-top: 6px;
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--wradius);
+  background: var(--panel);
+  padding: 12px;
+}
+.addKindWho {
+  font-size: 12px;
+  color: var(--dim);
+}
+.addKindOptions {
+  display: grid;
+  gap: 8px;
+}
+.addKindOptions > button {
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: var(--bg);
+  color: var(--text);
+  padding: 10px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.addKindOptions > button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.addKindOptions > button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.addKindOptions > button b {
+  font-size: 12.5px;
+}
+.addKindOptions > button small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.addKindOn {
+  border-color: var(--accent) !important;
+  background: color-mix(in oklab, var(--accent) 8%, var(--bg)) !important;
+}
+.addKindBlocked {
+  color: var(--warn) !important;
+}
+.addKindFoot {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.addKindFoot > button {
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: transparent;
+  color: var(--muted);
+  padding: 7px 12px;
+  font-size: 11.5px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.addKindGo {
+  border-color: var(--accent) !important;
+  background: var(--accent) !important;
+  color: #101410 !important;
+  font-weight: 600;
+}
