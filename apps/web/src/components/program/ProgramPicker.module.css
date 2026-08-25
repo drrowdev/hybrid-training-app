@@ -2317,3 +2317,87 @@
   color: #101410 !important;
   font-weight: 600;
 }
+
+/* Inline sets/reps editor, under the row it edits. */
+.doseEditor {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--accent);
+  border-radius: var(--wradius);
+  background: var(--panel);
+  padding: 12px;
+}
+.doseFields {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.doseField {
+  display: grid;
+  gap: 4px;
+}
+.doseField label {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.doseField > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.doseField input {
+  width: 56px;
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: var(--bg);
+  color: var(--text);
+  padding: 7px 8px;
+  font-family: var(--font-mono-wizard), monospace;
+  font-size: 12.5px;
+  text-align: center;
+}
+.doseField input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.doseField span {
+  font-size: 11px;
+  color: var(--muted);
+}
+.doseError {
+  margin: 0;
+  color: var(--warn);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+.doseFoot {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+.doseFoot > button {
+  border: 1px solid var(--line2);
+  border-radius: var(--wradius);
+  background: transparent;
+  color: var(--muted);
+  padding: 7px 12px;
+  font-size: 11.5px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.doseReset {
+  margin-right: auto;
+}
+.doseSave {
+  border-color: var(--accent) !important;
+  background: var(--accent) !important;
+  color: #101410 !important;
+  font-weight: 600;
+}
+.doseSave:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

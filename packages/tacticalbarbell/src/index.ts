@@ -31,6 +31,7 @@ export {
   tacticalBarbellEngine,
   tbTemplateSeries,
   TB_RECOVERY_WEEK,
+  TB_DOSE_BOUNDS,
   type TbInstance,
   type TbClusterLift,
   type TbSeriesSlot,

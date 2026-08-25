@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readDoseInput } from "@/components/program/session-slot-editing";
 import {
   DEFAULT_CUSTOM_TB_NAME,
   activationRehabAssignments,
@@ -411,5 +412,94 @@ describe("Tactical Barbell customization contract", () => {
         },
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("the lifter's own sets and reps", () => {
+  const CURL_ID = "00000000-0000-4000-8000-0000000000c1";
+  const added = (over: Record<string, unknown> = {}) => ({
+    movement: `catalog:${CURL_ID}`,
+    movementId: CURL_ID,
+    slug: "barbell-curl",
+    displayName: "Barbell Curl",
+    role: "accessory" as const,
+    ...over,
+  });
+  const withEntry = (entry: Record<string, unknown>) =>
+    tbCustomizationSchema.safeParse({
+      ...base,
+      sessionMovements: {
+        ...base.sessionMovements,
+        "slot-1": [{ movement: "squat" }, entry],
+      },
+    }).success;
+
+  it("accepts a dose on work the lifter added", () => {
+    expect(withEntry(added({ doseOverride: { sets: 4, reps: 10, repsMax: 12 } }))).toBe(true);
+  });
+
+  it("refuses a dose on a lift the template prescribes", () => {
+    expect(
+      withEntry({ movement: "barbell-row", doseOverride: { sets: 4, reps: 10 } }),
+    ).toBe(false);
+  });
+
+  it("refuses a range whose top is below its bottom", () => {
+    expect(withEntry(added({ doseOverride: { sets: 5, setsMax: 2, reps: 10 } }))).toBe(false);
+    expect(withEntry(added({ doseOverride: { sets: 3, reps: 12, repsMax: 8 } }))).toBe(false);
+  });
+
+  it("refuses nonsense numbers", () => {
+    for (const dose of [
+      { sets: 0, reps: 10 },
+      { sets: 4, reps: 0 },
+      { sets: 4.5, reps: 10 },
+      { sets: 999, reps: 10 },
+      { sets: 4, reps: 10, extra: 1 },
+    ]) {
+      expect(withEntry(added({ doseOverride: dose })), JSON.stringify(dose)).toBe(false);
+    }
+  });
+
+  it("refuses a dose in an Activation override, which nothing there honours", () => {
+    // The weekly and Activation entries share a base shape; only the weekly one
+    // gained this field, so the blob cannot carry a setting that surface would
+    // silently ignore.
+    const bad = structuredClone(activation);
+    bad.phases.base.sessions["activation.base.base-1"]!.movementOverrides = {
+      "goblet-squat": {
+        movement: "front-squat",
+        doseOverride: { sets: 4, reps: 10 },
+      },
+    } as never;
+    expect(tbCustomizationSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it("still accepts an Activation override without one", () => {
+    expect(tbCustomizationSchema.safeParse(activation).success).toBe(true);
+  });
+
+  it("accepts every dose the wizard's Save button lets through", () => {
+    // The gate and this schema must agree. When they drifted, Save looked fine
+    // and the whole deploy came back rejected, naming a number but not the row.
+    const typed = [
+      { sets: "1", setsMax: "", reps: "1", repsMax: "" },
+      { sets: "20", setsMax: "", reps: "100", repsMax: "" },
+      { sets: "1", setsMax: "20", reps: "1", repsMax: "100" },
+      { sets: "4", setsMax: "6", reps: "8", repsMax: "12" },
+      // Refused by the gate, so the schema is never asked.
+      { sets: "21", setsMax: "", reps: "10", repsMax: "" },
+      { sets: "4", setsMax: "", reps: "101", repsMax: "" },
+      { sets: "0", setsMax: "", reps: "10", repsMax: "" },
+      { sets: "2.5", setsMax: "", reps: "10", repsMax: "" },
+    ];
+    let accepted = 0;
+    for (const input of typed) {
+      const { dose } = readDoseInput(input);
+      if (dose == null) continue;
+      accepted += 1;
+      expect(withEntry(added({ doseOverride: dose })), JSON.stringify(dose)).toBe(true);
+    }
+    expect(accepted).toBe(4);
   });
 });

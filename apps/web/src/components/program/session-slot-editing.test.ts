@@ -16,6 +16,9 @@ import {
   hasWholeGroup,
   isGroupReplaced,
   orderBySection,
+  overriddenDose,
+  readDoseInput,
+  setDoseOverride,
   removeSlot,
   replaceLinkMembers,
   replaceSlot,
@@ -726,5 +729,149 @@ describe("an added circuit keeps its role through Change and Restore", () => {
       slotDraftsFor(ZULU_A),
     );
     expect(restoreGroup(removed, TRIAD, ZULU_A)).toEqual(slotDraftsFor(ZULU_A));
+  });
+});
+
+describe("setDoseOverride — the lifter's own sets and reps", () => {
+  const ZULU_B: TemplateSlot[] = [
+    { sourceMovement: "deadlift", role: "main" },
+    { sourceMovement: "barbell-row", role: "supplemental" },
+  ];
+  const DOSE = { sets: 4, reps: 10, repsMax: 12 };
+
+  it("puts the numbers on a row the lifter added", () => {
+    const drafts = addMovement(slotDraftsFor(ZULU_B), CURL, "supplemental");
+    const next = setDoseOverride(drafts, CURL, DOSE);
+    expect(next.find((d) => d.movement === CURL)).toEqual({
+      movement: CURL,
+      role: "supplemental",
+      doseOverride: DOSE,
+    });
+  });
+
+  it("refuses to give a template lift its own numbers", () => {
+    // A template lift's dose IS the program; editing it here would be editing
+    // the book rather than the lifter's session.
+    const drafts = slotDraftsFor(ZULU_B);
+    expect(setDoseOverride(drafts, "barbell-row", DOSE)).toEqual(drafts);
+  });
+
+  it("clears the numbers on reset, leaving no empty field behind", () => {
+    const withDose = setDoseOverride(
+      addMovement(slotDraftsFor(ZULU_B), CURL, "supplemental"),
+      CURL,
+      DOSE,
+    );
+    const cleared = setDoseOverride(withDose, CURL, null);
+    const row = cleared.find((d) => d.movement === CURL)!;
+    expect(row).toEqual({ movement: CURL, role: "supplemental" });
+    expect("doseOverride" in row).toBe(false);
+  });
+
+  it("sends the numbers to the engine", () => {
+    const row = setDoseOverride(
+      addMovement([], CURL, "accessory"),
+      CURL,
+      DOSE,
+    )[0]!;
+    expect(slotPayloadEntry(row, undefined)).toEqual({
+      movement: CURL,
+      role: "accessory",
+      doseOverride: DOSE,
+    });
+  });
+
+  it("never sends a dose without the role that makes it legal", () => {
+    // The schema refuses `doseOverride` without `role`; the payload builder
+    // must not be able to produce that shape in the first place.
+    const rogue: SeriesSlotDraft = {
+      sourceMovement: "barbell-row",
+      movement: "barbell-row",
+      doseOverride: DOSE,
+    };
+    expect(slotPayloadEntry(rogue, ZULU_B[1]).doseOverride).toBeUndefined();
+  });
+
+  it("leaves every other row alone", () => {
+    const drafts = addMovement(slotDraftsFor(ZULU_B), CURL, "supplemental");
+    const next = setDoseOverride(drafts, CURL, DOSE);
+    expect(next.slice(0, 2)).toEqual(drafts.slice(0, 2));
+  });
+});
+
+describe("overriddenDose — how the row reads once edited", () => {
+  it("collapses a range the lifter did not give", () => {
+    expect(overriddenDose({ sets: 4, reps: 10 }, "65–75% TM")).toEqual({
+      sets: "4",
+      reps: "10",
+      load: "65–75% TM",
+    });
+  });
+
+  it("shows a range where they gave one", () => {
+    expect(overriddenDose({ sets: 3, setsMax: 5, reps: 8, repsMax: 12 }, null)).toEqual({
+      sets: "3–5",
+      reps: "8–12",
+      load: null,
+    });
+  });
+
+  it("keeps the program's loading — volume is theirs, load is not", () => {
+    expect(overriddenDose({ sets: 4, reps: 10 }, "65–75% TM").load).toBe("65–75% TM");
+  });
+});
+
+describe("reading the dose the lifter typed", () => {
+  const boxes = (over: Partial<Record<string, string>> = {}) => ({
+    sets: "4",
+    setsMax: "",
+    reps: "10",
+    repsMax: "",
+    ...over,
+  });
+
+  it("reads a plain sets and reps", () => {
+    expect(readDoseInput(boxes())).toEqual({
+      dose: { sets: 4, reps: 10 },
+      reason: null,
+    });
+  });
+
+  it("reads a range", () => {
+    expect(readDoseInput(boxes({ setsMax: "6", repsMax: "12" })).dose).toEqual({
+      sets: 4,
+      setsMax: 6,
+      reps: 10,
+      repsMax: 12,
+    });
+  });
+
+  it("drops a top of range equal to the bottom, so 4 to 4 is just 4", () => {
+    expect(readDoseInput(boxes({ setsMax: "4" })).dose).toEqual({
+      sets: 4,
+      reps: 10,
+    });
+  });
+
+  it("refuses an inverted range and says so", () => {
+    const { dose, reason } = readDoseInput(boxes({ setsMax: "2" }));
+    expect(dose).toBeNull();
+    expect(reason).toBe("The top of a range cannot be below the bottom.");
+  });
+
+  it("refuses what is not a whole number", () => {
+    expect(readDoseInput(boxes({ sets: "" })).dose).toBeNull();
+    expect(readDoseInput(boxes({ sets: "2.5" })).dose).toBeNull();
+    expect(readDoseInput(boxes({ sets: "0" })).dose).toBeNull();
+    expect(readDoseInput(boxes({ reps: "ten" })).dose).toBeNull();
+  });
+
+  it("names the number that is too big, rather than dimming Save in silence", () => {
+    expect(readDoseInput(boxes({ sets: "21" })).reason).toBe("Sets can go up to 20.");
+    expect(readDoseInput(boxes({ setsMax: "21" })).reason).toBe("Sets can go up to 20.");
+    expect(readDoseInput(boxes({ reps: "101" })).reason).toBe("Reps can go up to 100.");
+    expect(readDoseInput(boxes({ repsMax: "101" })).reason).toBe(
+      "Reps can go up to 100.",
+    );
   });
 });

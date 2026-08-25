@@ -54,11 +54,14 @@ import {
   addMovement,
   addedDose,
   doseLabel,
+  overriddenDose,
+  setDoseOverride,
   canRemoveRows,
   collapseGroup,
   hasWholeGroup,
   isGroupReplaced,
   orderBySection,
+  readDoseInput,
   removeSlot,
   replaceLinkMembers,
   replaceSlot,
@@ -74,6 +77,7 @@ import {
   SLOT_SECTIONS,
   type SeriesSlotDraft,
   type AddedRole,
+  type DoseOverride,
   type SlotSection,
   type TemplateSlot,
 } from "./session-slot-editing";
@@ -1414,6 +1418,16 @@ export function ProgramPicker({
     pattern: string;
   } | null>(null);
   const [addKind, setAddKind] = useState<AddedRole>("supplemental");
+  /** The row whose sets and reps are being edited, and its in-progress values. */
+  const [doseEdit, setDoseEdit] = useState<{
+    key: string;
+    seriesKey: string;
+    identity: string;
+    sets: string;
+    setsMax: string;
+    reps: string;
+    repsMax: string;
+  } | null>(null);
   // Start point (the program phase/block to begin from). Default 0 = beginning.
   const [segments, setSegments] = useState<ProgramSegmentOption[]>([]);
   const [startWeekIndex, setStartWeekIndex] = useState<number>(0);
@@ -1856,6 +1870,7 @@ export function ProgramPicker({
     // whose catalog entry was just cleared.
     setPendingAdd(null);
     setAddKind("supplemental");
+    setDoseEdit(null);
     setActivationDrafts(
       defaultActivationDrafts(
         activeTbTemplate,
@@ -2521,6 +2536,18 @@ export function ProgramPicker({
     setCustomSessionMovements((current) => ({
       ...current,
       [seriesKey]: addMovement(seededFor(current, seriesKey), movement, role),
+    }));
+  }
+
+  /** Put the lifter's own sets and reps on a row, or clear them. */
+  function setSeriesDose(
+    seriesKey: string,
+    identity: string,
+    dose: DoseOverride | null,
+  ) {
+    setCustomSessionMovements((current) => ({
+      ...current,
+      [seriesKey]: setDoseOverride(seededFor(current, seriesKey), identity, dose),
     }));
   }
 
@@ -3354,8 +3381,17 @@ export function ProgramPicker({
               const rowDose = isTriad
                 ? AB_TRIAD_DOSE
                 : doseLabel(
-                    slot?.dose ?? (draft.role ? addedDose(draft.role, supplementalDose) : undefined),
+                    draft.role && draft.doseOverride
+                      ? overriddenDose(
+                          draft.doseOverride,
+                          addedDose(draft.role, supplementalDose).load,
+                        )
+                      : slot?.dose ?? (draft.role ? addedDose(draft.role, supplementalDose) : undefined),
                   );
+              // Editable only on work the lifter added, and never on a circuit:
+              // the AB Triad runs one dose across three movements.
+              const canEditDose = draft.role != null && !isTriad;
+              const editingDose = doseEdit?.key === `${entry.key}:${identity}`;
               return (
                 <div
                   key={identity}
@@ -3386,6 +3422,30 @@ export function ProgramPicker({
                     ) : null}
                   </span>
                   <span className={styles.seriesRowActions}>
+                    {canEditDose ? (
+                      <button
+                        type="button"
+                        className={styles.rowRemove}
+                        data-testid={`tb-dose-edit-${entry.key}-${changeTarget}`}
+                        onClick={() =>
+                          setDoseEdit(
+                            editingDose
+                              ? null
+                              : {
+                                  key: `${entry.key}:${identity}`,
+                                  seriesKey: entry.key,
+                                  identity,
+                                  sets: String(draft.doseOverride?.sets ?? ""),
+                                  setsMax: String(draft.doseOverride?.setsMax ?? ""),
+                                  reps: String(draft.doseOverride?.reps ?? ""),
+                                  repsMax: String(draft.doseOverride?.repsMax ?? ""),
+                                },
+                          )
+                        }
+                      >
+                        Edit
+                      </button>
+                    ) : null}
                     {slot || isTriad ? (
                       <details className={styles.addExercise}>
                         <summary
@@ -3425,6 +3485,96 @@ export function ProgramPicker({
               );
             };
 
+            /** The inline sets/reps editor, rendered under the row it edits. */
+            const renderDoseEditor = (draft: SeriesSlotDraft) => {
+              const identity = slotIdentity(draft);
+              if (doseEdit?.key !== `${entry.key}:${identity}`) return null;
+              const { dose, reason } = readDoseInput(doseEdit);
+              const bad = dose == null;
+              const field = (
+                label: string,
+                lo: "sets" | "reps",
+                hi: "setsMax" | "repsMax",
+              ) => (
+                <div className={styles.doseField}>
+                  <label htmlFor={`dose-${lo}-${entry.key}-${identity}`}>{label}</label>
+                  <div>
+                    <input
+                      id={`dose-${lo}-${entry.key}-${identity}`}
+                      inputMode="numeric"
+                      value={doseEdit[lo]}
+                      data-testid={`tb-dose-${lo}-${entry.key}-${identity}`}
+                      onChange={(e) =>
+                        setDoseEdit((cur) => (cur ? { ...cur, [lo]: e.target.value } : cur))
+                      }
+                    />
+                    <span>to</span>
+                    <input
+                      aria-label={`${label}, top of range`}
+                      inputMode="numeric"
+                      value={doseEdit[hi]}
+                      data-testid={`tb-dose-${hi}-${entry.key}-${identity}`}
+                      onChange={(e) =>
+                        setDoseEdit((cur) => (cur ? { ...cur, [hi]: e.target.value } : cur))
+                      }
+                    />
+                  </div>
+                </div>
+              );
+              return (
+                <div
+                  key={`${identity}-dose`}
+                  className={styles.doseEditor}
+                  data-testid={`tb-dose-editor-${entry.key}-${identity}`}
+                >
+                  <div className={styles.doseFields}>
+                    {field("Sets", "sets", "setsMax")}
+                    {field("Reps", "reps", "repsMax")}
+                  </div>
+                  {reason ? (
+                    <p
+                      className={styles.doseError}
+                      role="alert"
+                      data-testid={`tb-dose-error-${entry.key}-${identity}`}
+                    >
+                      {reason}
+                    </p>
+                  ) : null}
+                  <div className={styles.doseFoot}>
+                    {draft.doseOverride ? (
+                      <button
+                        type="button"
+                        className={styles.doseReset}
+                        data-testid={`tb-dose-reset-${entry.key}-${identity}`}
+                        onClick={() => {
+                          setSeriesDose(entry.key, identity, null);
+                          setDoseEdit(null);
+                        }}
+                      >
+                        Reset
+                      </button>
+                    ) : null}
+                    <button type="button" onClick={() => setDoseEdit(null)}>
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.doseSave}
+                      disabled={bad}
+                      data-testid={`tb-dose-save-${entry.key}-${identity}`}
+                      onClick={() => {
+                        if (dose == null) return;
+                        setSeriesDose(entry.key, identity, dose);
+                        setDoseEdit(null);
+                      }}
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              );
+            };
+
             return (
               <section key={entry.key} className={styles.seriesCard}>
                 <header>
@@ -3442,7 +3592,10 @@ export function ProgramPicker({
                         .filter(
                           (draft) => sectionOf(entry.slots, draft) === section,
                         )
-                        .map(renderRow)}
+                        .flatMap((draft) => [
+                          renderRow(draft),
+                          renderDoseEditor(draft),
+                        ])}
                     </div>
                     {section === "accessory" && tbAccessoryCaution ? (
                       <p
