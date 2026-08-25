@@ -264,6 +264,40 @@ describe("movement catalog seed", () => {
     expect(instructions!.cues.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("seeds the GHD back extension as a sibling of the 45°, not a clone of the deadlift helper", () => {
+    const ghd = SEED.find((candidate) => candidate.slug === "back-extension-ghd");
+    expect(ghd, "back-extension-ghd missing from seed").toBeTruthy();
+    expect(ghd).toMatchObject({
+      displayName: "GHD Back Extension",
+      pattern: "hinge",
+      equipment: "ghd-machine",
+      primaryRegion: "hamstring_posterior",
+      axialLoad: "moderate",
+      stability: "supported",
+      experienceMin: 0,
+    });
+    expect(ghd?.primaryMuscles).toEqual(["lower_back", "glutes", "hamstrings"]);
+    // The `hinge(...)` helper is built around the deadlift and defaults to
+    // lats/forearms/traps and a `knee` secondary region. Nothing is held during
+    // a back extension and the knees are anchored rather than loaded, so those
+    // defaults are overridden — they would otherwise drive limitation filtering.
+    expect(ghd?.secondaryMuscles).toEqual([]);
+    expect(ghd?.secondaryRegions).toEqual(["lumbar_trunk"]);
+
+    // Separate movement from the 45°, not a rename of it.
+    const angled = SEED.find((candidate) => candidate.slug === "back-extension-45");
+    expect(angled, "back-extension-45 must still exist").toBeTruthy();
+    expect(angled?.displayName).toBe("45° Back Extension");
+
+    const instructions = MOVEMENT_INSTRUCTIONS.find(
+      (candidate) => candidate.slug === "back-extension-ghd",
+    );
+    expect(instructions, "back-extension-ghd missing instructions").toBeTruthy();
+    expect(instructions?.setup?.toLowerCase()).toContain("ghd");
+    expect(instructions!.steps.length).toBeGreaterThanOrEqual(3);
+    expect(instructions!.cues.length).toBeGreaterThanOrEqual(2);
+  });
+
   it("seeds Landmine Squat to Box with compound metadata and how-to content", () => {
     const movement = SEED.find(
       (candidate) => candidate.slug === "landmine-squat-to-box",

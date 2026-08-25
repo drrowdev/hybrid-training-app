@@ -411,6 +411,24 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
     commonMistakes: ["Cranking into overextension at the top."],
   },
   {
+    slug: "back-extension-ghd",
+    summary: "Hip extension on a glute-ham developer, torso horizontal at the top — a longer range than the 45° version.",
+    setup: "Face down on a GHD, hip pads just below the hip bones, feet locked between the rollers.",
+    steps: [
+      "Let the torso fold down at the hips, keeping the back neutral.",
+      "Squeeze the glutes and hamstrings to raise back up to horizontal.",
+      "Stop level with the legs — don't arch past straight.",
+    ],
+    cues: [
+      "The movement is at the hips; the spine stays in one position.",
+      "Horizontal is the top of the rep, not a starting point for an arch.",
+    ],
+    commonMistakes: [
+      "Arching the lower back at the top to gain height.",
+      "Setting the pads too high, which blocks the hinge.",
+    ],
+  },
+  {
     slug: "kb-swing-american",
     summary: "Explosive hip-snap swing taking the kettlebell fully overhead.",
     setup: "Stand over the bell, feet a bit wider than the hips, two-hand grip.",

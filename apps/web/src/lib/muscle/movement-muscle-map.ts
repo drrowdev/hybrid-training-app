@@ -254,6 +254,11 @@ export const MOVEMENT_MUSCLE_MAP: Record<string, MuscleWeight[]> = {
     { muscle: "glutes", weight: 0.5 },
     { muscle: "hamstrings", weight: 0.5 },
   ],
+  "back-extension-ghd": [
+    { muscle: "erectors", weight: 1.0 },
+    { muscle: "glutes", weight: 0.5 },
+    { muscle: "hamstrings", weight: 0.5 },
+  ],
   "reverse-hyper": [
     { muscle: "glutes", weight: 1.0 },
     { muscle: "hamstrings", weight: 0.5 },

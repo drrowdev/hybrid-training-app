@@ -194,11 +194,11 @@ export function inferRequiredEquipment(movement: {
  *
  * Returns `null` (→ caller falls back to slug inference) for:
  *   - a missing tag,
- *   - any tag offering a non-machine alternative (`*-or-bw`,
- *     `*-or-bodyweight`, `bodyweight-or-*`) — those movements have a
- *     free/bodyweight option and must stay broadly available,
  *   - any implement we don't track against the user's inventory
  *     (plate / gripper / erg / sled …).
+ *
+ * A tag offering a bodyweight / free alternative returns
+ * `bodyweight_or_generic` — an ANSWER, not a `null`. See below.
  *
  * Machine, cable AND free-weight implements (barbell / dumbbell / kettlebell /
  * specialty bars / bands / vest / sandbag / dip-belt) all map to a hard
@@ -212,10 +212,23 @@ export function requirementFromEquipmentTag(
   if (!tag) return null;
   const t = tag.toLowerCase();
 
-  // Escape hatch: any movement whose tag offers a bodyweight / free
-  // alternative is never a hard machine requirement.
+  // A tag offering a bodyweight / free alternative is AUTHORITATIVE: the
+  // movement can be done with no equipment, full stop.
+  //
+  // This used to return null, meaning "no opinion", which let the slug
+  // heuristic below decide instead — and a slug substring could then contradict
+  // the tag outright. `hsr-calf-raise-db` ("HSR Calf Raise — DB/BW", tagged
+  // `dumbbell-or-bw`) ends `_db`, so it demanded dumbbells; migration 0094 had
+  // added it precisely so the ADR 0034 Achilles HSR guarantee could be met
+  // machine-free, and a two-letter suffix quietly undid that. Same shape as
+  // `sliding-leg-curl` matching `leg_curl` and demanding a machine.
+  //
+  // Every other bodyweight-tagged row in the catalog already resolved here, so
+  // the tag is now simply believed. A movement that genuinely needs hardware
+  // (pull-up bar, rings) is tagged for it — `bar`, `bar-or-rings` — never plain
+  // `bodyweight`; catalog-integrity covers that convention.
   if (tagOffersBodyweight(tag)) {
-    return null;
+    return { kind: "bodyweight_or_generic" };
   }
 
   // Specific machines we can match against the user's tracked inventory.
@@ -272,47 +285,20 @@ function tagOffersBodyweight(tag: string | null | undefined): boolean {
   return t.includes("bodyweight") || t.includes("or-bw") || t.includes("bw-or");
 }
 
-/** Machines and cable stacks — a facility you either have access to or don't. */
-function isFacilityRequirement(req: EquipmentRequirement): boolean {
-  return req.kind === "machine" || req.kind === "machine_generic" || req.kind === "cable";
-}
-
 /**
  * Resolve the equipment requirement for a catalog movement, preferring
- * the authoritative DB `equipment` tag for the machine/cable family and
- * falling back to the slug heuristic for everything else.
+ * the authoritative DB `equipment` tag and falling back to the slug
+ * heuristic only when the tag has no opinion.
  */
 export function resolveRequiredEquipment(movement: {
   slug: string;
   pattern?: string | null;
   equipment?: string | null;
 }): EquipmentRequirement {
-  const fromTag = requirementFromEquipmentTag(movement.equipment);
-  if (fromTag) return fromTag;
-
-  const inferred = inferRequiredEquipment(movement);
-
-  // A tag that explicitly offers bodyweight cannot require a FACILITY.
-  //
-  // `requirementFromEquipmentTag` returns null both for "no opinion" (missing
-  // or untracked tag) and for "explicitly bodyweight", and the slug heuristic
-  // then decides either way — so an explicit bodyweight tag could be overruled
-  // by a substring. `sliding-leg-curl` normalises to `sliding_leg_curl`, hits
-  // the `leg_curl` branch, and demanded a leg-curl MACHINE: a movement whose
-  // whole point is needing no machine was hidden from everyone without one, and
-  // no equipment tag could rescue it.
-  //
-  // Owning a machine is binary, so "can be done with bodyweight" and "requires
-  // a machine" is a flat contradiction and the tag wins. Slug-inferred
-  // FREE-WEIGHT requirements are deliberately left alone: for a tag like
-  // `dumbbell-or-bw` which implement is primary is a catalog judgement rather
-  // than a contradiction, and changing it would alter which movements an
-  // equipment-poor lifter is offered — a separate decision from this one.
-  if (tagOffersBodyweight(movement.equipment) && isFacilityRequirement(inferred)) {
-    return { kind: "bodyweight_or_generic" };
-  }
-
-  return inferred;
+  return (
+    requirementFromEquipmentTag(movement.equipment) ??
+    inferRequiredEquipment(movement)
+  );
 }
 
 /**
