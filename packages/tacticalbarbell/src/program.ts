@@ -40,6 +40,7 @@ import {
   TB_MOVEMENT_LABEL,
   AB_TRIAD_MOVEMENTS,
   AB_TRIAD_RULE,
+  type TbPrescriptionRule,
   getTbTemplate,
   isSupplementalSlot,
   type TbTemplate,
@@ -376,6 +377,8 @@ export interface TbSeriesSlot {
   role: "main" | "supplemental";
   kind?: TbLiftKind;
   split?: "A" | "B";
+  /** What this slot is prescribed across the block, for the wizard to state. */
+  dose: TbSlotDose;
 }
 
 export interface TbTemplateSeries {
@@ -414,6 +417,7 @@ export function tbTemplateSeries(template: TbTemplate): TbTemplateSeries[] {
             : "main",
           ...(entry.kind ? { kind: entry.kind } : {}),
           ...(entry.split ? { split: entry.split } : {}),
+          dose: tbSlotDose(template, session, entry.movement, entry.kind),
         }),
       ),
     }));
@@ -453,6 +457,148 @@ function supplementalDonor(
       ),
   );
   return (loaded ?? candidates[0])?.movement;
+}
+
+/** What a slot is prescribed in one week, after its rules have been applied. */
+interface ResolvedDose {
+  setsMin: number;
+  setsMax: number;
+  reps: number;
+  repsMax?: number;
+  repsLabel: string;
+  percent: number | null;
+  itemKind: PrescribedItem["kind"];
+  warmup: boolean;
+  note?: string;
+}
+
+/**
+ * Apply a session's prescription rules to a slot's starting dose.
+ *
+ * The single home for "what does this slot get in week N". `prescribe` uses it
+ * to build the workout; `tbTemplateSeries` uses it to tell the wizard what each
+ * row will be. Two copies of this would drift, and the screen would then
+ * promise numbers the session doesn't deliver.
+ */
+function applyPrescriptionRules(
+  base: ResolvedDose,
+  rules: readonly TbPrescriptionRule[],
+  week: number,
+  matchMovement: string,
+): ResolvedDose {
+  const out: ResolvedDose = { ...base };
+  for (const rule of rules) {
+    if (rule.activeWeeks && !rule.activeWeeks.includes(week)) continue;
+    if (rule.movements && !rule.movements.includes(matchMovement)) continue;
+    if (rule.percent !== undefined) out.percent = rule.percent;
+    if (rule.setsMin != null) out.setsMin = rule.setsMin;
+    if (rule.setsMax != null) out.setsMax = rule.setsMax;
+    if (rule.reps != null) out.reps = rule.reps;
+    if (rule.repsMax !== undefined) out.repsMax = rule.repsMax;
+    if (rule.repsLabel != null) out.repsLabel = rule.repsLabel;
+    if (rule.itemKind != null) out.itemKind = rule.itemKind;
+    if (rule.warmup != null) out.warmup = rule.warmup;
+    if (rule.note != null) out.note = rule.note;
+  }
+  return out;
+}
+
+/** A slot's dose across the whole block, as the wizard states it on a row. */
+export interface TbSlotDose {
+  /** "3" or "3–5". */
+  sets: string;
+  /** "5" or "8–10". */
+  reps: string;
+  /**
+   * "65–75% TM" when the slot is loaded off a max, "max reps" for bodyweight
+   * work, null when there is nothing to state.
+   */
+  load: string | null;
+}
+
+function span(min: number, max: number): string {
+  return min === max ? `${min}` : `${min}\u2013${max}`;
+}
+
+/**
+ * What a slot is prescribed across the block, for display.
+ *
+ * A range, not one week's numbers: this editor edits a repeating session, so
+ * stating week 1's 65% would be wrong for the other five.
+ */
+export function tbSlotDose(
+  template: TbTemplate,
+  session: TbTemplate["weeklySessions"][number],
+  sourceMovement: string,
+  kind?: TbLiftKind,
+  useTemplateDefaults = true,
+): TbSlotDose {
+  const weeks = Array.from({ length: template.blockWeeks }, (_, i) => i + 1).filter(
+    (week) => !session.activeWeeks || session.activeWeeks.includes(week),
+  );
+  // The same choice `prescribe` makes: a lifter running the template's own
+  // scheme reads one wave, one running their own cluster reads the delegated one.
+  const waves =
+    useTemplateDefaults || !template.delegatedWaves
+      ? template.waves
+      : template.delegatedWaves;
+  const schemes =
+    useTemplateDefaults || !template.delegatedSetsReps
+      ? template.setsReps
+      : template.delegatedSetsReps;
+  const wave = waves.find((w) => w.id === session.waveId) ?? waves[0];
+  const movementRange = session.movementSetRanges?.[sourceMovement];
+
+  const doses = weeks.map((week) => {
+    const scheme = schemes[week - 1]!;
+    return applyPrescriptionRules(
+      {
+        setsMin: movementRange?.min ?? scheme.setsMin,
+        setsMax: movementRange?.max ?? scheme.setsMax,
+        reps: scheme.reps,
+        ...(scheme.repsMax != null ? { repsMax: scheme.repsMax } : {}),
+        repsLabel: scheme.repsLabel,
+        percent: wave?.percents[week - 1] ?? null,
+        itemKind: "main" as const,
+        warmup: true,
+      },
+      session.prescriptionRules ?? [],
+      week,
+      sourceMovement,
+    );
+  });
+  if (doses.length === 0) return { sets: "", reps: "", load: null };
+
+  const setsMin = Math.min(...doses.map((d) => d.setsMin));
+  const setsMax = Math.max(...doses.map((d) => d.setsMax));
+  // The engine's own rep LABEL wins where every week agrees on one. A rule that
+  // sets `reps` without clearing the scheme's `repsMax` leaves a range the
+  // session never states — the AB Triad's 3×5 would otherwise read "5–8".
+  const labels = new Set(doses.map((d) => d.repsLabel));
+  const reps =
+    labels.size === 1
+      ? [...labels][0]!
+      : span(
+          Math.min(...doses.map((d) => d.reps)),
+          Math.max(...doses.map((d) => d.repsMax ?? d.reps)),
+        );
+
+  // An unanchored slot has no max to load off, so `prescribe` emits it with no
+  // weight and no percentage however the rules resolved. Saying one here would
+  // promise a load the session never gives.
+  const percents =
+    kind === "unanchored"
+      ? []
+      : doses.map((d) => d.percent).filter((p): p is number => p != null);
+  const load =
+    percents.length > 0
+      ? `${span(
+          Math.round(Math.min(...percents) * 100),
+          Math.round(Math.max(...percents) * 100),
+        )}% TM`
+      : null;
+
+  return { sets: span(setsMin, setsMax), reps, load };
 }
 
 function translateTestSelection(
@@ -1118,26 +1264,31 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         : isAddedTriadMember
           ? [AB_TRIAD_RULE]
           : session.prescriptionRules ?? [];
-      for (const rule of rules) {
-        if (rule.activeWeeks && !rule.activeWeeks.includes(parsed.week)) continue;
-        if (
-          rule.movements &&
-          !rule.movements.includes(
-            isAddedTriadMember ? sourceMovement : ruleMatchMovement,
-          )
-        ) {
-          continue;
-        }
-        if (rule.percent !== undefined) prescribedPercent = rule.percent;
-        if (rule.setsMin != null) prescribedSetsMin = rule.setsMin;
-        if (rule.setsMax != null) prescribedSetsMax = rule.setsMax;
-        if (rule.reps != null) prescribedReps = rule.reps;
-        if (rule.repsMax !== undefined) prescribedRepsMax = rule.repsMax;
-        if (rule.repsLabel != null) prescribedRepsLabel = rule.repsLabel;
-        if (rule.itemKind != null) prescribedItemKind = rule.itemKind;
-        if (rule.warmup != null) includeWarmup = rule.warmup;
-        if (rule.note != null) ruleNote = rule.note;
-      }
+      const resolved = applyPrescriptionRules(
+        {
+          setsMin: prescribedSetsMin,
+          setsMax: prescribedSetsMax,
+          reps: prescribedReps,
+          ...(prescribedRepsMax != null ? { repsMax: prescribedRepsMax } : {}),
+          repsLabel: prescribedRepsLabel,
+          percent: prescribedPercent,
+          itemKind: prescribedItemKind,
+          warmup: includeWarmup,
+          ...(ruleNote != null ? { note: ruleNote } : {}),
+        },
+        rules,
+        parsed.week,
+        isAddedTriadMember ? sourceMovement : ruleMatchMovement,
+      );
+      prescribedPercent = resolved.percent;
+      prescribedSetsMin = resolved.setsMin;
+      prescribedSetsMax = resolved.setsMax;
+      prescribedReps = resolved.reps;
+      prescribedRepsMax = resolved.repsMax;
+      prescribedRepsLabel = resolved.repsLabel;
+      prescribedItemKind = resolved.itemKind;
+      includeWarmup = resolved.warmup;
+      ruleNote = resolved.note;
 
       // The AB Triad's note names its three movements, so it only describes the
       // work while the circuit is whole. Once a slot is filled by something

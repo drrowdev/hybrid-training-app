@@ -34,6 +34,7 @@ export {
   type TbInstance,
   type TbClusterLift,
   type TbSeriesSlot,
+  type TbSlotDose,
   type TbTemplateSeries,
   type TbSessionLink,
   type TbActivationSessionOverride,

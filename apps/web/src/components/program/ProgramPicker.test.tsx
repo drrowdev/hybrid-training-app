@@ -53,6 +53,10 @@ const GLADIATOR: PickerTbTemplate = {
   defaultCluster: [{ movement: "deadlift" }, { movement: "bench" }],
 };
 
+// What the server sends per slot (verified against `tbSlotDose` for Zulu).
+const MAIN_DOSE = { sets: "3–5", reps: "3–8", load: "70–85% TM" };
+const SUPP_DOSE = { sets: "3–5", reps: "8–10", load: "65–75% TM" };
+
 const ZULU: PickerTbTemplate = {
   id: "zulu",
   name: "Zulu",
@@ -76,9 +80,9 @@ const ZULU_TB3: PickerTbTemplate = {
       key: "slot-1",
       label: "Day 1 \u00B7 A",
       slots: [
-        { sourceMovement: "bench", role: "main" },
-        { sourceMovement: "squat", role: "main" },
-        { sourceMovement: "overhead-press", role: "supplemental" },
+        { sourceMovement: "bench", role: "main", dose: MAIN_DOSE },
+        { sourceMovement: "squat", role: "main", dose: MAIN_DOSE },
+        { sourceMovement: "overhead-press", role: "supplemental", dose: SUPP_DOSE },
         {
           sourceMovement: "hanging-leg-raise",
           role: "supplemental",
@@ -753,7 +757,7 @@ describe("ProgramPicker rendering", () => {
     expect(html).not.toContain("Supplemental");
   });
 
-  it("offers accessories only from movements that suit an accessory dose", () => {
+  it("offers the whole library from one add button", () => {
     const html = renderToStaticMarkup(
       <ProgramPicker
         programs={zuluPrograms()}
@@ -763,11 +767,37 @@ describe("ProgramPicker rendering", () => {
         initialProgramId="tactical-barbell"
       />,
     );
-    const start = html.indexOf('data-testid="tb-add-accessory-slot-1"');
+    const start = html.indexOf('data-testid="tb-add-exercise-slot-1"');
     const scoped = html.slice(start, html.indexOf("</details>", start));
 
+    // One picker, so a carry is reachable — it just can't be ACCESSORY work,
+    // which the work-type step states when you pick it.
     expect(scoped).toContain("Barbell Curl");
-    expect(scoped).not.toContain("Farmer Carry");
+    expect(scoped).toContain("Farmer Carry");
+    expect(html).not.toContain('data-testid="tb-add-accessory-slot-1"');
+    expect(html).not.toContain('data-testid="tb-add-supplemental-slot-1"');
+  });
+
+  it("states what each row will be prescribed", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        rehabMovements={ACCESSORY_LIBRARY}
+        initialProgramId="tactical-barbell"
+      />,
+    );
+    // Two add buttons differing only by an invisible dose was the complaint;
+    // the row is where that becomes visible.
+    const start = html.indexOf('data-testid="tb-dose-slot-1-squat"');
+    expect(start).toBeGreaterThan(-1);
+    expect(html.slice(start, start + 120)).toContain("3–5 × 3–8 · 70–85% TM");
+    const supp = html.indexOf('data-testid="tb-dose-slot-1-overhead-press"');
+    expect(html.slice(supp, supp + 120)).toContain("3–5 × 8–10 · 65–75% TM");
+    // The circuit states its own shape rather than a sets × reps line.
+    const triad = html.indexOf('data-testid="tb-dose-slot-1-ab-triad"');
+    expect(html.slice(triad, triad + 80)).toContain("3 rounds × 5");
   });
 
   it("no longer offers the Tactical Barbell accessory toggle", () => {
