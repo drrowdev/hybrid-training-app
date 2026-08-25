@@ -988,6 +988,13 @@
       "when": 1787788800000,
       "tag": "0140_seed_lunge_variants",
       "breakpoints": false
+    },
+    {
+      "idx": 141,
+      "version": "7",
+      "when": 1787875200000,
+      "tag": "0141_seed_sliding_leg_curl",
+      "breakpoints": false
     }
   ]
 }

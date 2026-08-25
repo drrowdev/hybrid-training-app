@@ -319,6 +319,35 @@ describe("resolveRequiredEquipment — DB tag precedence over slug", () => {
       resolveRequiredEquipment({ slug: "lateral-raise-db", equipment: "dumbbells" }),
     ).toEqual({ kind: "dumbbells" });
   });
+
+  it("never lets a bodyweight tag be overruled into needing a machine", () => {
+    // `sliding-leg-curl` normalises to `sliding_leg_curl`, which hits the
+    // `leg_curl` branch of the slug heuristic and demanded a leg-curl MACHINE —
+    // hiding a movement whose whole point is needing no machine from every user
+    // without one. No equipment tag could rescue it, because the bodyweight
+    // escape hatch returns null and the slug then decides.
+    expect(inferRequiredEquipment({ slug: "sliding-leg-curl" })).toEqual({
+      kind: "machine",
+      machine: "leg_curl",
+    });
+    expect(
+      resolveRequiredEquipment({ slug: "sliding-leg-curl", equipment: "bodyweight" }),
+    ).toEqual({ kind: "bodyweight_or_generic" });
+    // Same contradiction, any facility: a cable/machine-generic inference loses
+    // to an explicit bodyweight tag too.
+    expect(
+      resolveRequiredEquipment({ slug: "cable-pull-through", equipment: "bodyweight-or-band" }),
+    ).toEqual({ kind: "bodyweight_or_generic" });
+  });
+
+  it("still trusts the slug for free-weight implements on an either/or tag", () => {
+    // Deliberately unchanged: for `dumbbell-or-bw` which implement is primary is
+    // a catalog judgement, not a contradiction the way a machine is. Pinned so
+    // the machine fix above can't quietly widen into free weights.
+    expect(
+      resolveRequiredEquipment({ slug: "hsr-calf-raise-db", equipment: "dumbbell-or-bw" }),
+    ).toEqual({ kind: "dumbbells" });
+  });
 });
 
 describe("isEquipmentAvailable — machine_generic", () => {
