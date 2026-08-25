@@ -1029,3 +1029,20 @@ The mechanism turned out to already exist, in two halves that had not met. `hasC
 Review found a real one. `collapseGroup` and `restoreGroup` were written when a circuit could only be a set of template slots, so they rebuild rows as `{ sourceMovement, movement }` - correct then, and role-destroying now. Swapping an added triad for one exercise produced a row claiming a slot the session does not have; `slotPayloadEntry` then emitted neither the role nor the slot, and the engine prescribed it as a MAIN lift at a percentage of a max the lifter had never set. Restore made it worse by doing the same to all three. The fix keeps the head's identity for restoration AND its role for prescription - the identity is wizard bookkeeping that `slotPayloadEntry` drops for a roled row, so the engine never sees it.
 
 Two smaller ones: the circuit entry was filtered against the exercise currently filling each row rather than against slot identities, so a swapped circuit still occupied its slots and the button rendered but did nothing; and a peak-promotion assertion compared against a field `PrescribedItem` does not have, so it could never have failed. The second is the more instructive - the test package excludes test files from typecheck, so a nonexistent property reads as `undefined` and the assertion passes vacuously. It now asserts on the label, with a second assertion pinning that the label is what a triad item is actually called.
+
+
+## [2026-08-25] fix | Supplemental work takes no warm-up ramp
+
+Owner: "I dont think supplemental lifts need warmup. They are usually targeting the same muscle groups as the main lifts."
+
+Correct, and the code disagreed with itself. `includeWarmup` defaults to true and only a prescription rule turns it off. Activation's two supplemental rule factories both declared `warmup: false`; Zulu's did not. So on Zulu B the barbell row - 3-5x8-10 at 65% - got the shared 40/60/80% ramp, meaning warm-up sets at roughly 26%, 39% and 52% of the lifter's max, AFTER they had already pulled heavy deadlifts in the same session.
+
+The reasoning holds across every TB template, because supplemental work always follows main work on the same pattern: Zulu A benches and squats then presses overhead; Zulu B deadlifts and does weighted pull-ups then rows; Activation's Armor B benches and rows then does pull-ups and presses. TB3 prescribes no warm-up for supplemental work either - the ramp was purely this app's default.
+
+One line, in the `zuluSupplementalRules` factory rather than repeated across its five week rules.
+
+Owner chose to extend it to supplemental work the LIFTER adds as well, overruling the rubber-duck's suggestion to keep the ramp there. The duck's case was that an added supplemental need not overlap - weighted dips on a deadlift day warm nothing for pressing - which is true, but the owner's call is that they will warm up themselves rather than have the app decide. The inheritance falls out for free: an added supplemental borrows the donor slot's rule, so it borrows `warmup: false` with everything else, and the test asserting the opposite was inverted.
+
+Blast radius, checked before the change: only the session duration estimate moves, because `estimateSessionSeconds` prices warm-up sets. Hard-set counts, effective stress load, muscle volume, the ADR-0013 budget and the recovery-week builder all already exclude warm-ups. Forward-only - materialised `planned_sessions` keep the prescription they were written with, so a deployed block is not rewritten under a lifter who may already have logged against it.
+
+Also corrected in the same conversation, though it was copy rather than code: a mock-up line claiming accessory work is "dropped first if the week runs heavy". ADR-0013 trims only "when the user has accepted an over-budget volume nudge", and limitation swaps are equally an offer - a main lift "is never auto-changed". The app does not change a program on the lifter's behalf, and the line said it did.

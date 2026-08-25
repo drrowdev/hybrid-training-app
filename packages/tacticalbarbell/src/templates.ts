@@ -633,6 +633,12 @@ const zuluSupplementalRules = (movements: string[]): TbPrescriptionRule[] =>
     repsMax: 10,
     repsLabel: "8–10",
     itemKind: "supplemental",
+    // Supplemental work follows main work on the same patterns — the overhead
+    // press after benching, the row after pull-ups — so the lifter is already
+    // warm, and a ramp to 65% of a max would land under half of it. TB3
+    // prescribes no warm-up for supplemental work either. Activation's rules
+    // already said this; Zulu's did not.
+    warmup: false,
     note: "Supplemental — 3–5 sets of 8–10.",
   }));
 
