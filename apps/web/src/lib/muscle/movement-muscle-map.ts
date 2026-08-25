@@ -436,6 +436,13 @@ export const MOVEMENT_MUSCLE_MAP: Record<string, MuscleWeight[]> = {
     { muscle: "hamstrings", weight: 1.0 },
     { muscle: "glutes", weight: 0.25 },
   ],
+  // The bridge holds hip extension for the whole set, so the glutes carry more
+  // than in a machine curl and the trunk braces throughout.
+  "sliding-leg-curl": [
+    { muscle: "hamstrings", weight: 1.0 },
+    { muscle: "glutes", weight: 0.5 },
+    { muscle: "core", weight: 0.25 },
+  ],
   "calf-raise-standing": [{ muscle: "calves", weight: 1.0 }],
   "calf-raise-seated": [{ muscle: "calves", weight: 1.0 }],
   "tibialis-raise": [{ muscle: "calves", weight: 0.25 }],

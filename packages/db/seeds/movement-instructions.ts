@@ -1264,6 +1264,24 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
     commonMistakes: ["Breaking at the hips to cheat the lower."],
   },
   {
+    slug: "sliding-leg-curl",
+    summary: "Bridged hamstring curl with the heels on sliders — hamstring work needing no machine.",
+    setup: "Lie on your back on a smooth floor, heels on sliders (or a towel, or paper plates), arms flat at your sides.",
+    steps: [
+      "Squeeze the glutes and lift the hips into a bridge.",
+      "Slide the heels away until the legs are nearly straight, keeping the hips up.",
+      "Pull the heels back in under the knees with the hamstrings.",
+    ],
+    cues: [
+      "Hips stay lifted the whole set — don't let them sag as the legs slide out.",
+      "Slide out only as far as you can keep the hips up; take more range as it gets easier.",
+    ],
+    commonMistakes: [
+      "Dropping the hips to reach further out.",
+      "Rushing the slide out — the lengthening half is the work.",
+    ],
+  },
+  {
     slug: "overhead-tri-ext-cable",
     summary: "Overhead rope triceps extension with constant tension and a long-head stretch.",
     setup: "Face away from a cable, rope held overhead, elbows by the ears.",

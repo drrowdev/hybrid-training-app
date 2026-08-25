@@ -271,6 +271,19 @@ const LEG_ISO: NewMovement[] = [
   legIso("leg-curl-seated", "Seated Leg Curl", { equipment: "machine-leg-curl-seated", primaryRegion: "hamstring_posterior", primaryMuscles: ["hamstrings"] }),
   legIso("leg-curl-single", "Single-Leg Curl", { equipment: "machine-leg-curl", bilateral: false, primaryRegion: "hamstring_posterior", primaryMuscles: ["hamstrings"] }),
   legIso("nordic-ham-curl", "Nordic Ham Curl", { equipment: "bodyweight-anchor", primaryRegion: "hamstring_posterior", primaryMuscles: ["hamstrings"], highStrainTendon: true, stability: "free", metadata: { eccentric_cost: "very_high", emphasis: "hamstring-strain-prevention" }, experienceMin: 2 }),
+  // The machine-free hamstring curl: heels on sliders, hips bridged, extend out
+  // and curl back in. Fills the gap between the machine curls (which need a
+  // machine) and the Nordic (which needs an anchor and a strong hamstring).
+  //
+  // `emphasis` deliberately avoids the words "strain-prevention": derive-roles
+  // reads that phrase and tags `alfredson_eccentric`, which is the
+  // symptomatic-only rehab protocol (DC-O4 floor weight 0) and would file a
+  // general accessory as injury work.
+  //
+  // Eccentric demand is declared in the first-class `eccentricLoadScore`, which
+  // is the field the picker actually reads to demote heavy-eccentric work under
+  // concurrent stress; `metadata.eccentric_cost` is descriptive only.
+  legIso("sliding-leg-curl", "Sliding Leg Curl", { equipment: "bodyweight", primaryRegion: "hamstring_posterior", primaryMuscles: ["hamstrings"], secondaryMuscles: ["glutes"], stability: "free", eccentricLoadScore: 4, metadata: { stim_fatigue_ratio: "high", emphasis: "hamstring-eccentric" } }),
   legIso("reverse-nordic-curl", "Reverse Nordic Curl", { equipment: "bodyweight", primaryMuscles: ["quads"], highStrainTendon: true, stability: "free", metadata: { rom_profile: "stretched", emphasis: "rectus-femoris" } }),
   legIso("glute-kickback-cable", "Glute Kickback (cable)", { equipment: "cable-ankle", bilateral: false, primaryMuscles: ["glutes"], primaryRegion: "hamstring_posterior", stability: "supported" }),
   legIso("glute-kickback-machine", "Glute Kickback (machine)", { equipment: "machine-glute-kickback", primaryMuscles: ["glutes"], primaryRegion: "hamstring_posterior" }),

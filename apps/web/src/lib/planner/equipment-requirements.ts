@@ -214,11 +214,7 @@ export function requirementFromEquipmentTag(
 
   // Escape hatch: any movement whose tag offers a bodyweight / free
   // alternative is never a hard machine requirement.
-  if (
-    t.includes("bodyweight") ||
-    t.includes("or-bw") ||
-    t.includes("bw-or")
-  ) {
+  if (tagOffersBodyweight(tag)) {
     return null;
   }
 
@@ -267,6 +263,21 @@ export function requirementFromEquipmentTag(
 }
 
 /**
+ * True when the DB tag explicitly offers a bodyweight / free option
+ * (`bodyweight`, `bodyweight-anchor`, `dumbbell-or-bw`, `bw-or-band`, …).
+ */
+function tagOffersBodyweight(tag: string | null | undefined): boolean {
+  if (!tag) return false;
+  const t = tag.toLowerCase();
+  return t.includes("bodyweight") || t.includes("or-bw") || t.includes("bw-or");
+}
+
+/** Machines and cable stacks — a facility you either have access to or don't. */
+function isFacilityRequirement(req: EquipmentRequirement): boolean {
+  return req.kind === "machine" || req.kind === "machine_generic" || req.kind === "cable";
+}
+
+/**
  * Resolve the equipment requirement for a catalog movement, preferring
  * the authoritative DB `equipment` tag for the machine/cable family and
  * falling back to the slug heuristic for everything else.
@@ -276,10 +287,32 @@ export function resolveRequiredEquipment(movement: {
   pattern?: string | null;
   equipment?: string | null;
 }): EquipmentRequirement {
-  return (
-    requirementFromEquipmentTag(movement.equipment) ??
-    inferRequiredEquipment(movement)
-  );
+  const fromTag = requirementFromEquipmentTag(movement.equipment);
+  if (fromTag) return fromTag;
+
+  const inferred = inferRequiredEquipment(movement);
+
+  // A tag that explicitly offers bodyweight cannot require a FACILITY.
+  //
+  // `requirementFromEquipmentTag` returns null both for "no opinion" (missing
+  // or untracked tag) and for "explicitly bodyweight", and the slug heuristic
+  // then decides either way — so an explicit bodyweight tag could be overruled
+  // by a substring. `sliding-leg-curl` normalises to `sliding_leg_curl`, hits
+  // the `leg_curl` branch, and demanded a leg-curl MACHINE: a movement whose
+  // whole point is needing no machine was hidden from everyone without one, and
+  // no equipment tag could rescue it.
+  //
+  // Owning a machine is binary, so "can be done with bodyweight" and "requires
+  // a machine" is a flat contradiction and the tag wins. Slug-inferred
+  // FREE-WEIGHT requirements are deliberately left alone: for a tag like
+  // `dumbbell-or-bw` which implement is primary is a catalog judgement rather
+  // than a contradiction, and changing it would alter which movements an
+  // equipment-poor lifter is offered — a separate decision from this one.
+  if (tagOffersBodyweight(movement.equipment) && isFacilityRequirement(inferred)) {
+    return { kind: "bodyweight_or_generic" };
+  }
+
+  return inferred;
 }
 
 /**

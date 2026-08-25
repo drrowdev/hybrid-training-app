@@ -226,6 +226,44 @@ describe("movement catalog seed", () => {
     ).toEqual(["copenhagen-plank"]);
   });
 
+  it("seeds the sliding leg curl as a machine-free hamstring curl", () => {
+    const movement = SEED.find((candidate) => candidate.slug === "sliding-leg-curl");
+    expect(movement, "sliding-leg-curl missing from seed").toBeTruthy();
+    expect(movement).toMatchObject({
+      displayName: "Sliding Leg Curl",
+      pattern: "isolation",
+      primaryRegion: "hamstring_posterior",
+      primaryMuscles: ["hamstrings"],
+      equipment: "bodyweight",
+      stability: "free",
+      bilateral: true,
+      isCompound: false,
+      experienceMin: 0,
+    });
+    // The bridge holds hip extension for the whole set.
+    expect(movement?.secondaryMuscles).toContain("glutes");
+    // `alfredson_eccentric` is the symptomatic-only rehab protocol (DC-O4 floor
+    // weight 0). derive-roles tags it from any "strain-prevention" wording, so a
+    // general-purpose accessory must not carry it or it reads as injury work.
+    expect(
+      movement?.bulletproofRoles,
+      "sliding-leg-curl must not be tagged as symptomatic rehab",
+    ).not.toContain("alfredson_eccentric");
+    // Eccentric demand belongs in the first-class column the picker reads, not
+    // only in descriptive metadata.
+    expect(movement?.eccentricLoadScore).toBe(4);
+
+    const instructions = MOVEMENT_INSTRUCTIONS.find(
+      (candidate) => candidate.slug === "sliding-leg-curl",
+    );
+    expect(instructions, "sliding-leg-curl missing instructions").toBeTruthy();
+    // Sliders can't be modelled in the equipment inventory, so the setup text is
+    // the only place the requirement is stated.
+    expect(instructions?.setup?.toLowerCase()).toMatch(/slider|towel/);
+    expect(instructions!.steps.length).toBeGreaterThanOrEqual(3);
+    expect(instructions!.cues.length).toBeGreaterThanOrEqual(2);
+  });
+
   it("seeds Landmine Squat to Box with compound metadata and how-to content", () => {
     const movement = SEED.find(
       (candidate) => candidate.slug === "landmine-squat-to-box",
