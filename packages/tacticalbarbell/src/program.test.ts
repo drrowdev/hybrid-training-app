@@ -1364,15 +1364,23 @@ describe("TB engine — supplemental work the user adds", () => {
     expect(added[0]?.weightKg).not.toBe(row[0]?.weightKg);
   });
 
-  it("inherits the warm-up ramp the day's supplemental work gets", () => {
+  it("takes no warm-up ramp, like the day's own supplemental work", () => {
+    // Supplemental work follows main work on the same patterns, so the lifter
+    // is already warm. A ramp to 65% of a max lands under half of it.
     const inst = zuluBWith([
       { movement: CURL, displayName: "Weighted Dip", role: "supplemental", kind: "barbell" },
     ]);
     const week1 = tb.prescribe(inst, "b0-w1-p1b", loadedCtx);
-    const warmups = week1.items.filter(
-      (item) => item.kind === "warmup" && item.name === "Weighted Dip",
+    expect(week1.items.filter((item) => item.kind === "warmup")).toEqual(
+      week1.items.filter(
+        (item) => item.kind === "warmup" && item.name !== "Weighted Dip",
+      ),
     );
-    expect(warmups.length).toBeGreaterThan(0);
+    expect(
+      week1.items.filter(
+        (item) => item.kind === "warmup" && item.name === "Barbell Row",
+      ),
+    ).toEqual([]);
   });
 
   it("carries no percentage when the lifter has no max for it", () => {
@@ -1619,5 +1627,41 @@ describe("TB engine — an AB Triad the lifter added", () => {
     const triad = canonical.items.filter((item) => item.circuit?.id === "tb-ab-triad");
     expect(triad).toHaveLength(3);
     expect(triad.every((item) => item.sets === 3 && item.reps === 5)).toBe(true);
+  });
+});
+
+describe("TB engine — supplemental work takes no warm-up ramp", () => {
+  const warmupsFor = (ref: string, name: string) =>
+    tb
+      .prescribe(setup({ templateId: "zulu" }), ref, ctx)
+      .items.filter((item) => item.kind === "warmup" && item.name === name);
+
+  it("gives the main lifts their ramp", () => {
+    expect(warmupsFor("b0-w1-p1b", "Deadlift").length).toBeGreaterThan(0);
+  });
+
+  it("gives the day's supplemental lifts none", () => {
+    // Zulu B trains deadlift and weighted pull-ups, then rows: the back is
+    // already warm, and 40% of a 65% working weight is a quarter of the max.
+    expect(warmupsFor("b0-w1-p1b", "Barbell Row")).toEqual([]);
+    expect(warmupsFor("b0-w1-p1a", "Overhead Press")).toEqual([]);
+  });
+
+  it("leaves the supplemental working sets untouched", () => {
+    const row = tb
+      .prescribe(setup({ templateId: "zulu" }), "b0-w1-p1b", ctx)
+      .items.filter((item) => item.name === "Barbell Row");
+    expect(row).toHaveLength(1);
+    expect(row[0]).toMatchObject({ kind: "supplemental", sets: 3, setsMax: 5, reps: 8, repsMax: 10 });
+    expect(row[0]?.percentOfTm).toBe(0.65);
+  });
+
+  it("matches what Activation already did", () => {
+    // Activation's supplemental rules already declared `warmup: false`; Zulu's
+    // did not, and that inconsistency is what this fixes. Armor runs weeks 6–8.
+    const armor = tb
+      .prescribe(setup({ templateId: "activation" }), "b0-w6-armor-b1", ctx)
+      .items.filter((item) => item.kind === "warmup" && item.name === "Overhead Press");
+    expect(armor).toEqual([]);
   });
 });
