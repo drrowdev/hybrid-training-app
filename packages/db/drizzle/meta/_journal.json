@@ -995,6 +995,13 @@
       "when": 1787875200000,
       "tag": "0141_seed_sliding_leg_curl",
       "breakpoints": false
+    },
+    {
+      "idx": 142,
+      "version": "7",
+      "when": 1787961600000,
+      "tag": "0142_seed_ghd_back_extension",
+      "breakpoints": false
     }
   ]
 }

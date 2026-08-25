@@ -1099,3 +1099,23 @@ Two attribute calls came out of review rather than the first draft. The emphasis
 `high_strain_tendon` stays false. The Nordic sets it; a slider curl is a real eccentric but not a clinical high-strain protocol, and the flag feeds stress-bucket weighting.
 
 The sliders are not modelled. The equipment inventory has no slider field, so a `sliders` tag would filter nothing while implying a precision it does not have - the same conclusion reached for the step-up's box in 0140. The tag is plain `bodyweight` and the requirement is named in the setup text, pinned by a test because that string is the only place it exists.
+
+---
+
+## [2026-08-25] fix | The equipment tag is now believed, and the GHD back extension exists
+
+Two things, one of them the follow-up flagged in the previous entry.
+
+**The deferred calf-raise fix.** `hsr-calf-raise-db` - display name "HSR Calf Raise - DB/BW", tag `dumbbell-or-bw` - resolved to REQUIRING dumbbells, because the slug ends `_db` and the bodyweight escape hatch returned `null` rather than an answer, letting the slug decide. Migration 0094 added that row specifically so the ADR 0034 Achilles HSR guarantee could be met machine-free, and a two-letter suffix quietly undid it.
+
+The consequence was worse than one mislabelled row. Probing every `foot_ankle_calf` movement against the equipment presets: `iso-calf-hold` and `hsr-calf-raise` both need a machine, and `hsr-calf-raise-db` needed dumbbells. So a bodyweight-only lifter - or a home gym without dumbbells - had NO available `hsr` source in the calf region at all. The hole 0094 was written to close was still open.
+
+`requirementFromEquipmentTag` now returns `bodyweight_or_generic` for a bodyweight-capable tag instead of `null`. The tag is an answer, not an absence of one. That subsumes the narrower facility-only override added in 0141, which is deleted. Blast radius was measured before the change by resolving every bodyweight-tagged row both ways: exactly one row moves, and it is the broken one.
+
+The cost is that the slug can no longer add hardware a bodyweight tag omitted, so the tag is now the only thing standing between a lifter and a movement they cannot do. A pull-up mistagged `bodyweight` would simply be offered to someone with no bar. That is a catalogue-data failure rather than a resolver one, and it is now pinned by a catalog-integrity test rather than left to a second, contradicting authority.
+
+**GHD back extension.** Added `back-extension-ghd`. Not a duplicate of `back-extension-45`: that one is the angled hyperextension bench, this is the glute-ham developer, which holds the torso horizontal so the lever is longest at the top and the range is larger. Different apparatus, different strength curve.
+
+Attributes are set explicitly rather than inherited. The `hinge(...)` seed helper is built around the deadlift and defaults to a `knee` secondary region and lats/forearms/traps secondary muscles. Nothing is held during a back extension and the knees are anchored rather than loaded - and those columns drive limitation filtering, so inheriting them would let an elbow or knee flag reach a movement it has no business touching. The existing 45° row does inherit them; that is left alone rather than corrected as a passenger.
+
+Also left alone, deliberately: `back-extension-45` is tagged `ghd-machine`, which is wrong - a 45° bench is not a glute-ham developer - and adding a genuine GHD movement means two apparatus now share one tag. The obvious tidy-up is a regression. `isBodyweightCapableEquipment` treats every `machine` tag as requiring an entered weight EXCEPT one containing `ghd`, so retagging it to a hyperextension-bench tag would make the logger demand a load for an unweighted back extension. Correcting it properly means coordinated changes in equipment resolution and bodyweight logging, which is its own change.

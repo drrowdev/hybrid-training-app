@@ -266,10 +266,21 @@ describe("requirementFromEquipmentTag — DB equipment column mapping", () => {
     expect(requirementFromEquipmentTag("cable-rope")).toEqual({ kind: "cable" });
   });
 
-  it("returns null for tags with a bodyweight/free alternative (stay broadly available)", () => {
-    expect(requirementFromEquipmentTag("machine-or-bw")).toBeNull();
-    expect(requirementFromEquipmentTag("bodyweight-or-machine")).toBeNull();
-    expect(requirementFromEquipmentTag("bodyweight")).toBeNull();
+  it("believes a bodyweight/free-alternative tag rather than deferring to the slug", () => {
+    // These used to return null ("no opinion"), which let a slug substring
+    // contradict the tag — see the resolver tests below.
+    expect(requirementFromEquipmentTag("machine-or-bw")).toEqual({
+      kind: "bodyweight_or_generic",
+    });
+    expect(requirementFromEquipmentTag("bodyweight-or-machine")).toEqual({
+      kind: "bodyweight_or_generic",
+    });
+    expect(requirementFromEquipmentTag("bodyweight")).toEqual({
+      kind: "bodyweight_or_generic",
+    });
+    expect(requirementFromEquipmentTag("dumbbell-or-bw")).toEqual({
+      kind: "bodyweight_or_generic",
+    });
   });
 
   it("maps free-weight & specialty-bar tags to a hard requirement (DB tag is authoritative)", () => {
@@ -341,11 +352,22 @@ describe("resolveRequiredEquipment — DB tag precedence over slug", () => {
   });
 
   it("still trusts the slug for free-weight implements on an either/or tag", () => {
-    // Deliberately unchanged: for `dumbbell-or-bw` which implement is primary is
-    // a catalog judgement, not a contradiction the way a machine is. Pinned so
-    // the machine fix above can't quietly widen into free weights.
+    // ADR 0034 added `hsr-calf-raise-db` ("HSR Calf Raise — DB/BW") so the
+    // Achilles HSR guarantee could be met machine-free. Its `_db` suffix made
+    // the slug heuristic demand dumbbells, which left an equipment-poor lifter
+    // with NO available `hsr` source in the calf region — every other one needs
+    // a machine. The tag is now believed.
     expect(
       resolveRequiredEquipment({ slug: "hsr-calf-raise-db", equipment: "dumbbell-or-bw" }),
+    ).toEqual({ kind: "bodyweight_or_generic" });
+    // The tag is what carries it — the slug alone still reads as dumbbells.
+    expect(inferRequiredEquipment({ slug: "hsr-calf-raise-db" })).toEqual({
+      kind: "dumbbells",
+    });
+    // An either/or tag with NO bodyweight option is unaffected: which implement
+    // is primary is a catalog judgement, not a contradiction.
+    expect(
+      resolveRequiredEquipment({ slug: "single-leg-rdl", equipment: "dumbbell-or-kb" }),
     ).toEqual({ kind: "dumbbells" });
   });
 });

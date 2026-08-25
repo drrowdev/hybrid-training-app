@@ -126,6 +126,33 @@ describe("seed catalog — equipment leak guard", () => {
     }
     expect(leaked, `machine/cable movements leaked to a no-equipment user:\n${leaked.join("\n")}`).toEqual([]);
   });
+
+  it("a bodyweight-tagged movement never requires hardware it doesn't name", () => {
+    // The `equipment` tag is authoritative: a tag offering bodyweight resolves
+    // to `bodyweight_or_generic` and the slug is not consulted. That makes the
+    // tag the ONLY thing standing between a user and a movement they can't do,
+    // so a movement genuinely needing hardware must say so in the tag —
+    // `bar`, `bar-or-rings`, `band` — and never plain `bodyweight`.
+    //
+    // Enforced here because the failure is silent: a pull-up mistagged
+    // `bodyweight` would simply be offered to someone with no bar.
+    const HARDWARE_SLUG = /pull[-_]?up|chin[-_]?up|pulldown|dip[-_]|ring[-_]|muscle[-_]?up/;
+    const offenders: string[] = [];
+    for (const m of SEED_MOVEMENTS) {
+      const tag = (m.equipment ?? "").toLowerCase();
+      if (!tag) continue;
+      const offersBodyweight =
+        tag.includes("bodyweight") || tag.includes("or-bw") || tag.includes("bw-or");
+      if (!offersBodyweight) continue;
+      if (HARDWARE_SLUG.test(m.slug)) {
+        offenders.push(`${m.slug} (${m.equipment})`);
+      }
+    }
+    expect(
+      offenders,
+      `movements needing hardware but tagged bodyweight:\n${offenders.join("\n")}`,
+    ).toEqual([]);
+  });
 });
 
 describe("seed catalog — accessory-pattern leak guard", () => {

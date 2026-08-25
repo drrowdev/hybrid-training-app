@@ -196,6 +196,15 @@ const HINGE: NewMovement[] = [
   hinge("single-leg-hip-thrust", "Single-Leg Hip Thrust", { equipment: "bench", bilateral: false, primaryMuscles: ["glutes"], axialLoad: "low" }),
   hinge("glute-bridge-bb", "Barbell Glute Bridge", { equipment: "barbell", primaryMuscles: ["glutes"], axialLoad: "low" }),
   hinge("back-extension-45", "45° Back Extension", { equipment: "ghd-machine", primaryMuscles: ["lower_back", "glutes", "hamstrings"], axialLoad: "moderate", stability: "supported" }),
+  // Distinct from the 45°: the GHD holds the torso HORIZONTAL, so the lever is
+  // longest at the top and the range is larger. Different apparatus, different
+  // strength curve — plenty of gyms have both.
+  //
+  // The `hinge(...)` helper is built around the deadlift, so its defaults are
+  // overridden rather than inherited: no `knee` secondary region (the knees are
+  // anchored, not loaded), no lats/forearms/traps (nothing is being held), and
+  // no high cns_cost. Axial load matches the 45°.
+  hinge("back-extension-ghd", "GHD Back Extension", { equipment: "ghd-machine", primaryMuscles: ["lower_back", "glutes", "hamstrings"], secondaryMuscles: [], secondaryRegions: ["lumbar_trunk"], axialLoad: "moderate", stability: "supported", metadata: { eccentric_cost: "moderate", cns_cost: "low", stim_fatigue_ratio: "moderate", emphasis: "horizontal-lever" } }),
   hinge("reverse-hyper", "Reverse Hyperextension", { equipment: "machine-reverse-hyper", primaryMuscles: ["lower_back", "glutes"], axialLoad: "low", stability: "supported" }),
   hinge("kb-swing-russian", "Russian KB Swing", { equipment: "kettlebell", primaryMuscles: ["glutes", "hamstrings"], secondaryMuscles: ["lower_back", "abs"], axialLoad: "moderate" }),
   hinge("kb-swing-american", "American KB Swing", { equipment: "kettlebell", primaryMuscles: ["glutes", "hamstrings", "side_delts"], secondaryMuscles: ["lats", "forearms", "traps", "lower_back"], axialLoad: "moderate" }),
