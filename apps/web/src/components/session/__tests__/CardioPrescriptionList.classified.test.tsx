@@ -92,7 +92,9 @@ describe("CardioPrescriptionList — Phase 2 classification", () => {
       />,
     );
     expect(html).toContain('data-classified="false"');
-    expect(html).toContain("Logged via Runna. Tap Mark done when finished.");
+    // The body element, not the CTA label — "Mark done" renders whether or
+    // not the fallback body does, so asserting on it proved nothing.
+    expect(html).toContain('data-testid="cardio-external-body-0"');
     expect(html).not.toContain("Detected as");
   });
 

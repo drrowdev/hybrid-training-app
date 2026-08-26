@@ -325,7 +325,7 @@ describe("adaptSessionPrescription — strength", () => {
     expect(skipped.map((s) => s.reason)).toEqual(["no anchored movement for key 'bicep-curl'"]);
   });
 
-  it("uses the generic display-only protocolNote only when the cardio item carries no note", () => {
+  it("leaves a cardio item with no engine note carrying no note at all", () => {
     const { prescription } = adaptSessionPrescription(
       {
         items: [
@@ -337,7 +337,12 @@ describe("adaptSessionPrescription — strength", () => {
     const cardio = prescription.items[0]!;
     expect(cardio.kind).toBe("cardio_external");
     expect(cardio.notes).toBeUndefined();
-    expect(cardio.protocolNote).toMatch(/log the actual session/i);
+    // A generic "log the actual session" line used to be stamped here. The
+    // day is reserved, not prescribed, and the card's label says so; the
+    // sentence only gave the note parser something to shred into rows.
+    expect(cardio.protocolNote).toBeUndefined();
+    // The real datum survives.
+    expect(cardio.durationMin).toBe(30);
   });
 
   it("passes a structured cardioPlan through to the stored cardio item", () => {

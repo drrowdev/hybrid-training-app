@@ -28,10 +28,13 @@ export function buildExternalCardioItems(
       // for items with `kind: "cardio_external"`. Callers that key off
       // `movementId` (movement-match dedupe, logged-set joins) should
       // gate on `kind` first.
+      //
+      // The source name is the only real datum here, and `intensityLabel`
+      // already carries it — it becomes the card's heading. A sentence
+      // repeating it under that heading said nothing extra.
       movementId: "",
       kind: "cardio_external",
       intensityLabel: label,
-      protocolNote: `Logged via ${trimmed ?? "your external program"}.`,
     },
   ];
 }

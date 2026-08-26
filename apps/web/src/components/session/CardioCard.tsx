@@ -26,6 +26,7 @@ import type { PrescriptionItem } from "@hta/db";
 import { cardioPreviewRows } from "./cardio-preview-rows";
 import { CardioPlanView } from "./CardioPlanView";
 import {
+  cardioDisplayName,
   describeCardioKind,
   type CardioDescriptionKind,
 } from "@/lib/session/cardio-descriptions";
@@ -61,7 +62,7 @@ export function CardioCard({
   modalityLabel,
   headerActions,
 }: CardioCardOptions & { item: PrescriptionItem }) {
-  const rawName = item.movementName ?? "Cardio";
+  const rawName = cardioDisplayName(item);
   const name = stripShorthandSuffix(rawName);
   // Preferred path: a structured cardioPlan (HYROX station/cardio sessions) →
   // render the clean, sectioned CardioPlanView. Everything below is the legacy
@@ -71,7 +72,8 @@ export function CardioCard({
   // Prefer the item's own prescription note (the engine's "what to do" copy —
   // HYROX intervals/circuits/compromised runs, Green's LSD, etc.) over the
   // generic kind-based description. Falls back to the educational kind copy for
-  // structured cardio (Z2 / VO2 / threshold) that carries no per-item note.
+  // structured cardio (Z2 / VO2 / threshold) that carries no per-item note, and
+  // to nothing at all for external cardio, which the app does not prescribe.
   const itemNote = item.notes?.trim();
   const description =
     itemNote && itemNote.length > 0
@@ -84,6 +86,13 @@ export function CardioCard({
   const trimmedModality = (modalityLabel ?? "").trim();
   const showModality = trimmedModality.length > 0;
   const hasHeader = !hideHeading || showModality || headerActions != null;
+
+  // A reserved day the lifter fills from their own program has no
+  // description and no rows. Rendering the shell anyway left an empty
+  // bordered box under the title.
+  if (!hasHeader && plan == null && !description && rows.length === 0) {
+    return null;
+  }
 
   return (
     <section data-testid={testId} style={cardStyle}>
@@ -117,15 +126,16 @@ export function CardioCard({
         />
       ) : (
         <>
-          <p
-            data-testid={
-              rowTestIdPrefix ? `${rowTestIdPrefix}-description` : undefined
-            }
-            style={descriptionBlockStyle}
-          >
-            {description}
-          </p>
-
+          {description && (
+            <p
+              data-testid={
+                rowTestIdPrefix ? `${rowTestIdPrefix}-description` : undefined
+              }
+              style={descriptionBlockStyle}
+            >
+              {description}
+            </p>
+          )}
       {rows.length > 0 && (
         <div style={statsGridStyle}>
           {rows.map((row, i) => (

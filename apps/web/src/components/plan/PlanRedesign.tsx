@@ -68,7 +68,7 @@ import {
 import { LinkActivityControl } from "@/components/plan/LinkActivityControl";
 import { CompletedSummaryCard } from "@/components/plan/CompletedSummaryCard";
 import { CardioPlanView } from "@/components/session/CardioPlanView";
-import { EXTERNAL_CARDIO_DISPLAY_NOTE } from "@/lib/session/cardio-descriptions";
+import { cardioProtocolNote } from "@/lib/session/cardio-descriptions";
 import {
   MovementPicker,
   type MovementSearchResult,
@@ -4111,16 +4111,14 @@ function DrawerCardio({ items }: { items: PrescriptionItem[] }) {
       {items.map((it, i) => {
         const duration = it.durationMin != null ? `${it.durationMin} min` : null;
         const target = it.hrCap ?? null;
-        // Plans materialised before cardioPlan still carry the engine's rich note
-        // in `notes` plus a generic "display-only" placeholder in protocolNote.
-        // Prefer the real note; suppress the placeholder so the drawer shows the
-        // actual instructions, not "log it from your tracker".
         const richNote = (it.notes ?? "").trim();
-        const protoRaw = (it.protocolNote ?? "").trim();
-        const protocol =
-          protoRaw && protoRaw !== EXTERNAL_CARDIO_DISPLAY_NOTE.trim() ? protoRaw : null;
-        // When nothing meaningful is present, fall back to the one-line formatter.
-        const fallback = !target && !protocol && !richNote ? formatPrescriptionItem(it) : null;
+        const protocol = cardioProtocolNote(it);
+        // No "Detail" fallback. At this point the only real datum the
+        // one-line formatter could add for cardio is the duration, which the
+        // pill beside the name already shows — and with nothing at all it
+        // emits the literal "cardio", so a reserved day read "Detail: cardio".
+        // It also printed `protocolNote` raw, re-surfacing the placeholder
+        // prose suppressed one line above under a different label.
         return (
           <div key={i} data-testid={`plan-drawer-cardio-${i}`} className="cardio-block">
             <div className="movement-head">
@@ -4153,12 +4151,6 @@ function DrawerCardio({ items }: { items: PrescriptionItem[] }) {
                   <div className="cardio-line">
                     <span className="lbl">Protocol</span>
                     <span className="val">{protocol}</span>
-                  </div>
-                )}
-                {fallback && (
-                  <div className="cardio-line">
-                    <span className="lbl">Detail</span>
-                    <span className="val">{fallback}</span>
                   </div>
                 )}
               </>

@@ -348,3 +348,49 @@ describe("compact hero — user-authored links", () => {
   });
 });
 
+
+describe("SessionPreviewBody (compact) — an open conditioning day", () => {
+  /**
+   * The Today hero for a Tactical Barbell conditioning day. The program
+   * reserves the day; the lifter brings the session. Reported as: "a lot of
+   * unnecessary text ... repeating the same information in all boxes".
+   */
+  const openConditioning = (over: Partial<PrescriptionItem> = {}): PrescriptionItem =>
+    ({
+      movementId: "",
+      kind: "cardio_external",
+      intensityLabel: "Conditioning",
+      ...over,
+    }) as unknown as PrescriptionItem;
+
+  const legacyNote =
+    "Open conditioning — log any run, row, ride or other cardio. Log it here, or link an activity you already recorded externally.";
+
+  it("says the day's name once and nothing else", () => {
+    const html = renderCompact([openConditioning()], { title: "Conditioning" });
+    expect(html).not.toContain('data-testid="session-preview-cardio-0-description"');
+    expect(html).not.toContain('data-testid="session-preview-cardio-0-row-intensity"');
+    expect(html).not.toContain('data-testid="session-preview-cardio-0-row-protocol"');
+    expect(html).not.toContain('data-testid="session-preview-cardio-0-row-intervals"');
+    // The title above the card already carries the name; a second one is the
+    // duplicate heading this fix removed.
+    expect(html.match(/Conditioning/g) ?? []).toHaveLength(0);
+  });
+
+  it("shows the same for a plan materialised before the boilerplate was removed", () => {
+    const html = renderCompact([openConditioning({ protocolNote: legacyNote })], {
+      title: "Conditioning",
+    });
+    expect(html).not.toContain('data-testid="session-preview-cardio-0-row-intensity"');
+    expect(html).not.toContain('data-testid="session-preview-cardio-0-row-intervals"');
+    expect(html).not.toMatch(/log any run, row, ride/i);
+    expect(html).not.toMatch(/recorded externally/i);
+  });
+
+  it("still shows a structured cardio day in full", () => {
+    const html = renderCompact([cardio()], { title: "VO2 intervals" });
+    expect(html).toContain('data-testid="session-preview-cardio-0-description"');
+    expect(html).toContain('data-testid="session-preview-cardio-0-row-intervals"');
+    expect(html).toContain('data-testid="session-preview-cardio-0-row-intensity"');
+  });
+});
