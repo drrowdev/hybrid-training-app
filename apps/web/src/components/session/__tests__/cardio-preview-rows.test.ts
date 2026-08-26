@@ -154,3 +154,72 @@ describe("cardioPreviewRows", () => {
     ]);
   });
 });
+
+describe("cardioPreviewRows — an open conditioning day", () => {
+  /** What `materializeProgram` wrote before the boilerplate was removed. */
+  const legacyNote =
+    "Open conditioning — log any run, row, ride or other cardio. Log it here, or link an activity you already recorded externally.";
+
+  it("does not read the x inside a word as an interval scheme", () => {
+    // A bare /[×x]/ test matched the letter inside ordinary words, so the
+    // card reported a sentence fragment under an INTERVALS label. The note
+    // has to be a REAL one to reach the parser at all — the legacy
+    // placeholder is dropped earlier, which is why this case needs its own
+    // fixture rather than reusing the boilerplate above.
+    const rows = cardioPreviewRows(
+      cardio({ protocolNote: "30 min steady, relaxed breathing, max 140 bpm" }),
+    );
+    expect(rows.map((r) => r.label)).not.toContain("Intervals");
+    expect(rows).toContainEqual({
+      label: "Protocol",
+      value: "30 min steady, relaxed breathing, max 140 bpm",
+    });
+  });
+
+  it("still reads a real interval scheme", () => {
+    for (const note of [
+      "4 × 4 min @ 90–95% HRmax",
+      "6–10 × 10–15s near-max hill sprints",
+      "8x400m",
+    ]) {
+      const rows = cardioPreviewRows(cardio({ protocolNote: note }));
+      expect(rows.map((r) => r.label), note).toContain("Intervals");
+    }
+  });
+
+  it("shows nothing at all for the legacy placeholder note", () => {
+    expect(
+      cardioPreviewRows(cardio({ kind: "cardio_external", protocolNote: legacyNote })),
+    ).toEqual([]);
+  });
+
+  it("invents no intensity for a session the app does not prescribe", () => {
+    // "Follow prescribed effort" under a card that prescribes nothing is a
+    // row that says nothing.
+    expect(cardioPreviewRows(cardio({ kind: "cardio_external" }))).toEqual([]);
+  });
+
+  it("keeps a real target on external cardio", () => {
+    // HYROX and Green emit cardio_external with genuine content. Suppression
+    // is about placeholder prose, never about the kind.
+    const rows = cardioPreviewRows(
+      cardio({
+        kind: "cardio_external",
+        durationMin: 40,
+        hrCap: "≤ 70% HRR",
+        protocolNote: "4 × 4 min @ 90–95% HRmax",
+      }),
+    );
+    expect(rows).toEqual([
+      { label: "Duration", value: "40 min" },
+      { label: "Intervals", value: "4 × 4 min" },
+      { label: "Intensity", value: "90–95% HRmax" },
+    ]);
+  });
+
+  it("keeps the duration of an open day that has one", () => {
+    expect(
+      cardioPreviewRows(cardio({ kind: "cardio_external", durationMin: 30 })),
+    ).toEqual([{ label: "Duration", value: "30 min" }]);
+  });
+});

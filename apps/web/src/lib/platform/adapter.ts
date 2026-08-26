@@ -17,7 +17,6 @@
 import type { SessionPrescription, PrescribedItem } from "@hta/program-core";
 import type { Prescription, PrescriptionItem } from "@hta/db";
 import { STRENGTH_KIND_MAP } from "./movement-keys";
-import { EXTERNAL_CARDIO_DISPLAY_NOTE } from "@/lib/session/cardio-descriptions";
 
 /** The user's anchored movement for an engine key. */
 export interface ResolvedMovement {
@@ -154,13 +153,11 @@ export function adaptSessionPrescription(
         }
         // The engine note IS the "how to do it" prescription (HYROX intervals /
         // circuits / compromised runs, Green's LSD, etc.) — surface it as the
-        // card description. Only when there's no prescription note do we fall
-        // back to the generic "log it from your tracker" hint, so the card never
-        // shows both a real protocol and the contradictory display-only line.
+        // card description. With no engine note there is nothing to say: the
+        // day is reserved and the lifter brings the session, which the card's
+        // label already states.
         if (it.note) {
           cardio.notes = it.note;
-        } else {
-          cardio.protocolNote = EXTERNAL_CARDIO_DISPLAY_NOTE;
         }
         // Structured presentation (summary / format / per-station loads / effort)
         // — the clean, sectioned render used across all surfaces. Additive: when

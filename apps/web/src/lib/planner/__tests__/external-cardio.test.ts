@@ -20,7 +20,6 @@ describe("buildExternalCardioItems — placeholder shape", () => {
     const item = items[0]!;
     expect(item.kind).toBe("cardio_external");
     expect(item.intensityLabel).toBe("Runna");
-    expect(item.protocolNote).toBe("Logged via Runna.");
     // No movement / duration / HR-cap — the user logs via their external program.
     expect(item.movementId).toBe("");
     expect(item.durationMin).toBeUndefined();
@@ -29,17 +28,25 @@ describe("buildExternalCardioItems — placeholder shape", () => {
     expect(item.reps).toBeUndefined();
   });
 
+  it("carries the source name once, and no prose repeating it", () => {
+    // "Logged via Runna." sat in protocolNote, a field for a protocol hint.
+    // Surfaces rendered it under a heading already reading "Runna", and the
+    // note parser treated it as a prescription to break into rows.
+    for (const name of ["Runna", null, "   "]) {
+      const item = buildExternalCardioItems(name)[0]!;
+      expect(item.protocolNote, `protocolNote for ${JSON.stringify(name)}`).toBeUndefined();
+    }
+  });
+
   it("falls back to 'External program' when no program name is provided", () => {
     const items = buildExternalCardioItems(null);
     expect(items).toHaveLength(1);
     expect(items[0]!.intensityLabel).toBe("External program");
-    expect(items[0]!.protocolNote).toBe("Logged via your external program.");
   });
 
   it("trims whitespace-only program names back to the fallback label", () => {
     const items = buildExternalCardioItems("   ");
     expect(items[0]!.intensityLabel).toBe("External program");
-    expect(items[0]!.protocolNote).toBe("Logged via your external program.");
   });
 
   it("emits the same shape regardless of archetype (Strength Anchor / Endurance Anchor / Concurrent Hybrid parity)", () => {

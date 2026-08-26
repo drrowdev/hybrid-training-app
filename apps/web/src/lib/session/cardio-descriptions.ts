@@ -11,15 +11,21 @@
  * unmapped falls back to `GENERIC_CARDIO_DESCRIPTION`.
  */
 
-import type { PrescriptionItemKind } from "@hta/db";
+import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
 
-/** Subset of `PrescriptionItemKind` we explicitly describe. */
+/**
+ * Subset of `PrescriptionItemKind` we explicitly describe.
+ *
+ * `cardio_external` is deliberately absent. It means the session comes from
+ * outside the app, so there is no execution advice to give — and the copy that
+ * used to sit here narrated what the app does with the result instead, which is
+ * not something the lifter asked.
+ */
 export type CardioDescriptionKind =
   | "cardio_vo2"
   | "cardio_z2"
   | "cardio_threshold"
-  | "cardio_alactic"
-  | "cardio_external";
+  | "cardio_alactic";
 
 export const CARDIO_DESCRIPTIONS: Record<CardioDescriptionKind, string> = {
   cardio_vo2:
@@ -30,80 +36,93 @@ export const CARDIO_DESCRIPTIONS: Record<CardioDescriptionKind, string> = {
     "Sustained effort at the upper edge of comfortable — RPE 7, around lactate threshold. You should be breathing hard but still in control. Warm up 10 min easy, then hold the prescribed pace, then cool down 5 min easy.",
   cardio_alactic:
     "Run/bike easy for the prescribed duration, then add the alactic finisher: short, sharp bursts of 10–15 sec at near-max effort with ~100–150 sec easy recovery between reps. Keep each rep brief — these are explosive sprints, not full sprints to exhaustion.",
-  cardio_external:
-    "Follow your external program's plan for this session. Log it back here when you're done so the engine can account for the load.",
 };
 
 export const GENERIC_CARDIO_DESCRIPTION =
   "Follow the prescribed intensity and duration. Adjust pace to match the target HR or RPE. Warm up easy for 5–10 minutes before the main effort and cool down easy afterwards.";
 
 /**
- * One-sentence form of each cardio description, used for compact
- * surfaces where the full "How to do it" paragraph would dominate the
- * card. The in-session card keeps the longer `CARDIO_DESCRIPTIONS`
- * paragraphs — these short forms exist so callers can pick a
- * recognisable opening line per cardio kind without falling back to
- * the long body.
+ * Placeholder prose earlier builds stamped onto a `cardio_external`
+ * item's `protocolNote`. All of it said the same thing — "this session
+ * comes from outside the app" — which the card already conveys, and one
+ * of them was shredded into fake Intervals / Protocol rows by the note
+ * parser.
  *
- * Adding a new kind: register it here AND in `CARDIO_DESCRIPTIONS`.
- */
-export const CARDIO_ONE_LINERS: Record<CardioDescriptionKind, string> = {
-  cardio_vo2:
-    "Hard intervals at 90–95% HRmax with full easy recovery.",
-  cardio_z2:
-    "Steady aerobic pace — easy enough to hold a conversation.",
-  cardio_threshold:
-    "Sustained hard effort just under your lactate threshold.",
-  cardio_alactic:
-    "Short, near-max efforts with long full recoveries between.",
-  cardio_external:
-    "Follow your external program's plan for this session.",
-};
-
-export const GENERIC_CARDIO_ONE_LINER =
-  "Cardio session — follow the prescribed intensity and duration.";
-
-/**
- * Placeholder protocol note the platform adapter stamps on a
- * `cardio_external` item ONLY when the engine supplied no prescription
- * note of its own (genuinely opaque external cardio). When the engine
- * DOES supply a note it becomes the card description and this generic
- * line is suppressed. Exported so the adapter and the render layer agree
- * on the exact string — render surfaces skip it rather than showing it
- * as a redundant "Protocol" row (e.g. on plans materialised before the
- * note started driving the description).
+ * Producers no longer write any of it. These stay because plans
+ * materialised before that change carry the strings in the database, and
+ * every render surface has to recognise them as "no note". Keeping them
+ * in one place is the point: the Today hero, the plan drawer and the
+ * live session page each used to hand-roll this check, and each knew
+ * about a different subset, so the boilerplate always leaked somewhere.
  */
 export const EXTERNAL_CARDIO_DISPLAY_NOTE =
   "Display-only — log the actual session so the engine can account for the load.";
 
+const LEGACY_EXTERNAL_NOTE_PATTERNS: readonly RegExp[] = [
+  /^display-only\b/i,
+  /^open (?:cardio|conditioning) — log any run, row, ride or other cardio\b/i,
+  /^logged via .+\.$/i,
+];
+
 /**
- * Resolve a description for any prescription item kind. Returns the
- * generic fallback for unknown / non-cardio kinds rather than null —
- * callers always render something so the user is never left without
- * guidance.
+ * The item's real protocol hint, or null when it carries nothing but
+ * legacy placeholder prose.
+ *
+ * Only the known boilerplate is dropped. A `cardio_external` item CAN
+ * carry a genuine protocol or HR target (HYROX, Green), and inferring
+ * "unprescribed" from absent fields would have deleted it.
+ */
+export function cardioProtocolNote(
+  item: Pick<PrescriptionItem, "protocolNote">,
+): string | null {
+  const note = item.protocolNote?.trim();
+  if (!note) return null;
+  return LEGACY_EXTERNAL_NOTE_PATTERNS.some((re) => re.test(note)) ? null : note;
+}
+
+/** Cardio that is executed outside the app — the day is reserved, the content isn't ours. */
+export function isExternalCardio(
+  kind: PrescriptionItemKind | string | null | undefined,
+): boolean {
+  return kind === "cardio_external";
+}
+
+/**
+ * What to call this cardio card.
+ *
+ * Shared so the heading and the title-dedup that decides whether to SHOW
+ * the heading resolve the same name. When they disagreed, an open
+ * "Conditioning" day rendered a stray "Cardio" sub-heading under a
+ * "Conditioning" title. `intensityLabel` is only consulted for external
+ * cardio, where it holds the day's label ("Conditioning") or the source
+ * ("Runna"); on prescribed kinds it can hold an intensity, not a name.
+ */
+export function cardioDisplayName(
+  item: Pick<PrescriptionItem, "movementName" | "intensityLabel" | "kind">,
+): string {
+  const name = item.movementName?.trim();
+  if (name) return name;
+  if (isExternalCardio(item.kind)) {
+    const label = item.intensityLabel?.trim();
+    if (label) return label;
+  }
+  return "Cardio";
+}
+
+/**
+ * How to execute this session, or null when there is nothing to say.
+ *
+ * External cardio returns null: the session comes from the lifter's own
+ * program, so the app has no advice to offer and saying so would only
+ * restate the card's own heading.
  */
 export function describeCardioKind(
   kind: PrescriptionItemKind | string | null | undefined,
-): string {
+): string | null {
+  if (isExternalCardio(kind)) return null;
   if (!kind) return GENERIC_CARDIO_DESCRIPTION;
   if (kind in CARDIO_DESCRIPTIONS) {
     return CARDIO_DESCRIPTIONS[kind as CardioDescriptionKind];
   }
   return GENERIC_CARDIO_DESCRIPTION;
-}
-
-/**
- * Short one-sentence description for the Today hero card. Mirrors
- * `describeCardioKind` but returns the brief form. Falls back to the
- * generic one-liner so the hero never renders a blank description for
- * an unrecognised cardio kind.
- */
-export function cardioOneLinerForKind(
-  kind: PrescriptionItemKind | string | null | undefined,
-): string {
-  if (!kind) return GENERIC_CARDIO_ONE_LINER;
-  if (kind in CARDIO_ONE_LINERS) {
-    return CARDIO_ONE_LINERS[kind as CardioDescriptionKind];
-  }
-  return GENERIC_CARDIO_ONE_LINER;
 }

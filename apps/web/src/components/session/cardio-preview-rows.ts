@@ -13,9 +13,24 @@
  * readable than the original single-line mash", not perfect parsing.
  */
 import type { PrescriptionItem } from "@hta/db";
-import { EXTERNAL_CARDIO_DISPLAY_NOTE } from "@/lib/session/cardio-descriptions";
+import {
+  cardioProtocolNote,
+  isExternalCardio,
+} from "@/lib/session/cardio-descriptions";
 
 export type CardioRow = { label: string; value: string };
+
+/**
+ * A count on both sides of the ×, which is what every real interval spec
+ * looks like ("4 × 4 min", "6–10 × 10–15s").
+ *
+ * Testing for a bare `x` matched the letter inside ordinary words — an
+ * open conditioning day's note ended with "recorded e×ternally", so the
+ * card confidently reported a sentence fragment as its interval scheme.
+ */
+function looksLikeIntervals(segment: string): boolean {
+  return /\d\s*[×x]\s*\d/.test(segment);
+}
 
 /**
  * Last-resort Intensity copy keyed by cardio kind. Used when neither
@@ -47,12 +62,9 @@ export function cardioPreviewRows(item: PrescriptionItem): CardioRow[] {
   }
 
   const noteRaw = item.protocolNote?.trim();
-  // Plans materialised before the engine note drove the card description still
-  // carry the generic "display-only" placeholder in protocolNote. The real
-  // instructions now render from `notes`, so skip the placeholder rather than
-  // surfacing it as a redundant "Protocol" row.
-  const note =
-    noteRaw && noteRaw !== EXTERNAL_CARDIO_DISPLAY_NOTE.trim() ? noteRaw : undefined;
+  // Placeholder prose from earlier builds is not a protocol. Recognised in
+  // one shared place so every surface agrees on what counts as "no note".
+  const note = noteRaw ? (cardioProtocolNote(item) ?? undefined) : undefined;
   let intensityFromNote = false;
 
   if (note) {
@@ -78,7 +90,7 @@ export function cardioPreviewRows(item: PrescriptionItem): CardioRow[] {
       // First segment with "N × M unit @ intensity" → split into
       // Intervals + Intensity rows.
       const at = seg.match(/^(.+?)\s*@\s*(.+)$/);
-      if (!consumedIntervals && at && /[×x]/.test(at[1]!)) {
+      if (!consumedIntervals && at && looksLikeIntervals(at[1]!)) {
         rows.push({ label: "Intervals", value: at[1]!.trim() });
         rows.push({ label: "Intensity", value: at[2]!.trim() });
         intensityFromNote = true;
@@ -86,7 +98,7 @@ export function cardioPreviewRows(item: PrescriptionItem): CardioRow[] {
         continue;
       }
 
-      if (!consumedIntervals && /[×x]/.test(seg)) {
+      if (!consumedIntervals && looksLikeIntervals(seg)) {
         rows.push({ label: "Intervals", value: seg });
         consumedIntervals = true;
         continue;
@@ -116,7 +128,12 @@ export function cardioPreviewRows(item: PrescriptionItem): CardioRow[] {
   // a consistent structure regardless of how sparse the prescription
   // is. Z2 sessions tend to have hrCap; other kinds may have neither
   // protocolNote nor hrCap — give them a kind-based default.
-  if (!rows.some((r) => r.label === "Intensity")) {
+  //
+  // External cardio is excluded: the app prescribes no intensity for a
+  // session it doesn't own, and "Follow prescribed effort" under a card
+  // that prescribes nothing is a row that says nothing. A real `hrCap`
+  // on such an item is still honoured above.
+  if (!rows.some((r) => r.label === "Intensity") && !isExternalCardio(item.kind)) {
     const fallback =
       (item.kind && KIND_INTENSITY_FALLBACK[item.kind]) ??
       GENERIC_INTENSITY_FALLBACK;

@@ -36,6 +36,7 @@ import { formatPrescriptionItem } from "@/lib/planner/archetypes";
 import { splitPrescriptionChunks } from "@/lib/plan/prescription-chunks";
 import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import { CardioCard } from "./CardioCard";
+import { cardioDisplayName } from "@/lib/session/cardio-descriptions";
 import { makeShouldHideHeading } from "@/lib/session/heading-dedup";
 import { BackLink } from "@/components/ui/BackLink";
 
@@ -331,7 +332,9 @@ export function SessionPreviewBody({
             // variant drops that meta line, so we let CardioCard show
             // Duration as the single source of truth.
             hideDurationRow={hideCardioDurationRow}
-            hideHeading={shouldHideHeading(item.movementName ?? "Cardio")}
+            // Resolved through the same helper the card renders with, or
+            // the dedup decides about a name the card never shows.
+            hideHeading={shouldHideHeading(cardioDisplayName(item))}
             testId={`session-preview-cardio-${i}`}
             rowTestIdPrefix={`session-preview-cardio-${i}`}
           />

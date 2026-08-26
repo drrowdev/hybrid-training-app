@@ -730,12 +730,16 @@ export function materializeProgram<I>(
  * app's `cardio_external` sentinel; the read side classifies a session as cardio
  * when every item is `cardio_*`, and the user links a same-day logged activity
  * to a `cardio_external` placeholder (block `cardio_source='external'`).
+ *
+ * No `protocolNote`: the day is reserved, not prescribed. The sentence that used
+ * to live there said only that the lifter picks the session, which the card's
+ * own label already says — and the note parser shredded it into fake Intervals
+ * and Protocol rows.
  */
 function openCardioItem(label = "Cardio"): PrescriptionItem {
   return {
     movementId: "",
     kind: "cardio_external",
     intensityLabel: label,
-    protocolNote: `Open ${label.toLowerCase()} — log any run, row, ride or other cardio. Log it here, or link an activity you already recorded externally.`,
   };
 }

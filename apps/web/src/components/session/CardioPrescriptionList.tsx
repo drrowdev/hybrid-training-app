@@ -34,6 +34,10 @@ import type { CardioMachineType } from "@/lib/settings/equipment-schema";
 import type { swapPrescriptionItem } from "@/lib/sessions/actions";
 import { CardioCard } from "./CardioCard";
 import { CardioPlanView } from "./CardioPlanView";
+import {
+  cardioDisplayName,
+  cardioProtocolNote,
+} from "@/lib/session/cardio-descriptions";
 import { makeShouldHideHeading } from "@/lib/session/heading-dedup";
 
 type SwapAction = typeof swapPrescriptionItem;
@@ -153,9 +157,7 @@ export function CardioPrescriptionList({
             ownedCardio={ownedCardio}
             swapAction={swapAction}
             isReadOnly={isReadOnly ?? false}
-            hideHeading={shouldHideHeading(
-              live.movementName ?? live.movementSlug ?? "Cardio",
-            )}
+            hideHeading={shouldHideHeading(cardioDisplayName(live))}
             onSwap={(next) => onSwap(itemIndex, next)}
           />
         );
@@ -206,7 +208,7 @@ function ExternalCardioRow({
   const isLowConfidence =
     hasClassification && classification.confidence < 0.7;
   const richNote = (item.notes ?? "").trim();
-  const protoNote = (item.protocolNote ?? "").trim();
+  const protoNote = cardioProtocolNote(item) ?? "";
   const body = hasClassification
     ? null
     : richNote.length > 0
@@ -308,7 +310,10 @@ function ExternalCardioRow({
       ) : item.cardioPlan ? (
         <CardioPlanView plan={item.cardioPlan} durationMin={item.durationMin ?? null} />
       ) : (
-        <div style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
+        <div
+          data-testid={`cardio-external-body-${itemIndex}`}
+          style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}
+        >
           {body}
         </div>
       )}
