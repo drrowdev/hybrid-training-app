@@ -1163,3 +1163,17 @@ Two live loggers had the identical broken input and now share one field. A third
 **Testing.** Review's sharpest finding was that the unit tests proved nothing about either fix: revert both components and all twelve stay green, because the pure helper and the pure parser were never where the bugs lived. Both bugs are in the component layer, and the repo has no jsdom or RTL on purpose. The coverage that actually fails is Playwright, against fixtures that already exist - the DB-free `/dev/logger-preview` for typing "27,5", and the seeded strip for logging three of five and staying put.
 
 Writing those exposed a hydration race in the shared `openNavigator` helper: a tap landing before the client component hydrates is swallowed, and the sheet never opens. It fails roughly one run in three on a slow machine and was silently costing retries. The tap now retries; `setNavOpen(true)` is idempotent so it is safe.
+
+## [2026-08-29] fix | Skip remaining sets lets you out of a superset
+
+Carried over from the previous review, which found it while checking something else: "Skip remaining sets" did not move the lifter off a linked-circuit station. It wrote every open slot of the movement and then told the parent about one of them - the cursor's. The parent rebuilds coverage from that report, and a circuit's round-major lookup reads it directly, so the rounds that had just been skipped still looked open, the lookup pointed back at the station the lifter was already standing on, and nothing moved. Parked on a movement with nothing left to do, with only the navigator sheet as a way out.
+
+The report is now collected as each write lands, so what the parent is told cannot drift from what was stored, and a run that stops half way reports the half that succeeded rather than nothing.
+
+`isLast` is gone. It was a second answer to "is this movement finished", computed in the child while the parent held the same inputs - and both bugs in this area came from two places disagreeing about that question. The parent decides, once.
+
+The decision moved out of the component into `lib/sessions/focus-advance`. It was inline in a component the suite cannot drive - no jsdom, no RTL, deliberately - which is why these kept being invisible. `hasOpenWork` also folds in the rule from the previous fix: optional sets count until covered or declined.
+
+The pure tests do not catch a component regression, which is the lesson from the last two rounds, so the guard is a Playwright test driving the real skip. It needs the first station done and round one of the second behind the lifter - the only state the bug is reachable in - so the DB-free preview fixture gained a `supersetlast` variant. Confirmed failing with the fix reverted before being kept.
+
+Review found one, and it was mine: on a partial failure the new code closed the skip menu, which is the only surface `skipError` renders on, so the lifter got a success buzz and no message while slots went unwritten. The menu now stays open when a write fails, and the coverage report still goes out so the parent's picture stays truthful. It also caught a test whose name promised more than its assertion added - it repeated the case above it - now reshaped to cover skipping the FIRST station, where the rotation must continue rather than end.

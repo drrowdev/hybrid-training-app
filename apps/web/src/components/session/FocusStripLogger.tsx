@@ -30,12 +30,14 @@ import {
   circuitMembersFor,
   circuitRoundFor,
   circuitSuppressesRest,
-  firstOpenCircuitMovementId,
   firstOpenMovementId,
-  firstOpenOptionalCircuitMovementId,
   isCircuitItemIndex,
   nextOpenItemIndex,
 } from "@/lib/sessions/linked-circuit";
+import {
+  nextMovementAfterSave,
+  nextOpenMovement,
+} from "@/lib/sessions/focus-advance";
 import { hapticTick } from "@/lib/feedback";
 import { SKIP_REASONS, type SkipReason } from "@/lib/sessions/skip-reasons";
 import type {
@@ -378,26 +380,8 @@ export function FocusStripLogger({
     declinedIds = declinedOptionalIds,
     coveredIndices = loggedItemIndices,
   ) => {
-    const start = groups.findIndex(
-      (group) => movementGroupKey(group) === activeId,
-    );
-    for (let offset = 1; offset <= groups.length; offset += 1) {
-      const candidate = groups[(start + offset) % groups.length]!;
-      const requiredOpen = requiredIndices(candidate).some(
-        (index) => !coveredIndices.has(index),
-      );
-      const optionalOpenForCandidate = optionalIndices(candidate).some(
-        (index) => !coveredIndices.has(index),
-      );
-      if (
-        requiredOpen ||
-        (optionalOpenForCandidate &&
-          !declinedIds.has(movementGroupKey(candidate)))
-      ) {
-        setActiveId(movementGroupKey(candidate));
-        return;
-      }
-    }
+    const next = nextOpenMovement(groups, activeId, coveredIndices, declinedIds);
+    if (next) setActiveId(next);
   };
 
   const role = bucketForGroup(activeOriginal);
@@ -729,31 +713,18 @@ export function FocusStripLogger({
                   </span>
                 </button>
               }
-              onSaved={({ itemIndex, isLast }) => {
+              onSaved={({ coveredIndices }) => {
                 const projected = new Set(loggedItemIndices);
-                projected.add(itemIndex);
-                const circuitNext = activeCircuit
-                  ? firstOpenCircuitMovementId(
-                      activeCircuit.id,
-                      groups,
-                      linkedCircuitByMovementId,
-                      projected,
-                    ) ??
-                    // The required rounds are done, but a 3–5 set superset
-                    // still alternates on its optional sets.
-                    firstOpenOptionalCircuitMovementId(
-                      activeCircuit.id,
-                      groups,
-                      linkedCircuitByMovementId,
-                      projected,
-                      declinedOptionalIds,
-                    )
-                  : null;
-                if (circuitNext) {
-                  setActiveId(circuitNext);
-                } else if (isLast) {
-                  advance(declinedOptionalIds, projected);
-                }
+                for (const index of coveredIndices) projected.add(index);
+                const next = nextMovementAfterSave({
+                  groups,
+                  activeKey: activeId,
+                  covered: projected,
+                  declined: declinedOptionalIds,
+                  circuitId: activeCircuit?.id ?? null,
+                  circuits: linkedCircuitByMovementId,
+                });
+                if (next) setActiveId(next);
               }}
             />
             {requiredDone && optionalOpen.length > 0 && (
