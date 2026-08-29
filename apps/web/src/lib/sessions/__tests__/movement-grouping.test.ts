@@ -4,6 +4,7 @@ import {
   groupPrescriptionByMovement,
   deriveCardState,
   isMovementComplete,
+  isMovementFullyCovered,
   autoCursorForGroup,
   effectiveCursor,
   pinnedCursorForGroup,
@@ -253,5 +254,47 @@ describe("bucketPositionForSlot", () => {
     expect(bucketPositionForSlot(g!, 2)).toEqual({ bucket: "working", position: 0, total: 3 });
     // slot 4 = 3rd working set
     expect(bucketPositionForSlot(g!, 4)).toEqual({ bucket: "working", position: 2, total: 3 });
+  });
+});
+
+describe("isMovementFullyCovered — the logger's 'anything left here?' test", () => {
+  /** Tactical Barbell's 3–5 sets: three required, two optional. */
+  const rangedGroup = () =>
+    groupPrescriptionByMovement(
+      p([
+        { movementId: "row", kind: "main", sets: 1, reps: 5 },
+        { movementId: "row", kind: "main", sets: 1, reps: 5 },
+        { movementId: "row", kind: "main", sets: 1, reps: 5 },
+        { movementId: "row", kind: "main", sets: 1, reps: 5, optional: true },
+        { movementId: "row", kind: "main", sets: 1, reps: 5, optional: true },
+      ]),
+    )[0]!;
+
+  it("still has work after the last REQUIRED set", () => {
+    // Reported as: the cursor moves to the next movement when I finish the
+    // 3rd required set, even though I would want to do all 5.
+    const group = rangedGroup();
+    expect(isMovementFullyCovered(group, new Set([0, 1, 2]))).toBe(false);
+    expect(isMovementFullyCovered(group, new Set([0, 1, 2, 3]))).toBe(false);
+  });
+
+  it("is done once every set is covered", () => {
+    expect(isMovementFullyCovered(rangedGroup(), new Set([0, 1, 2, 3, 4]))).toBe(true);
+  });
+
+  it("does not care in which order the sets were covered", () => {
+    const group = rangedGroup();
+    expect(isMovementFullyCovered(group, new Set([4, 3, 2, 1, 0]))).toBe(true);
+    expect(isMovementFullyCovered(group, new Set([0, 2, 4]))).toBe(false);
+  });
+
+  it("disagrees with the completed chip, on purpose", () => {
+    // isMovementComplete asks whether the REQUIRED work is done and drives the
+    // header chip. The logger asks a different question, and conflating them
+    // is what walked the lifter out of the movement at three sets.
+    const group = rangedGroup();
+    const afterRequired = new Set([0, 1, 2]);
+    expect(isMovementComplete(group, afterRequired)).toBe(true);
+    expect(isMovementFullyCovered(group, afterRequired)).toBe(false);
   });
 });

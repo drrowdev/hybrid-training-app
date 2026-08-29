@@ -1141,3 +1141,25 @@ One new test passed while the bug it named was still present - the placeholder i
 Review found three. The one that mattered was mine: the plan drawer falls back to a one-line formatter when it finds no target, protocol or note, and that formatter prints `protocolNote` raw - so suppressing the placeholder one line above merely re-labelled it from "Protocol" to "Detail", and on a new plan carrying nothing at all the formatter emitted its own sentinel and the day read "Detail: cardio". At that point in the code the only real datum left is the duration, which the pill beside the name already shows, so the fallback could not produce anything that was not on screen twice; it is gone. That surface had no test at all - it does now, and both cases fail with the fallback restored.
 
 Review also caught a weakened assertion of mine: replacing a pinned sentence with `toContain("Mark done")` looked like asserting behaviour but "Mark done" is the CTA, rendered whether or not the body it claimed to test renders at all. The body element gained a testid and the test asserts on that. Same lesson in the negative form elsewhere: a `not.toMatch(/Follow prescribed effort/i)` guard would have gone quiet the moment that constant was reworded, so it now asserts the row's absence by testid.
+
+## [2026-08-29] fix | The logger stops deciding you are done, and will take a half kilo
+
+Two reports from one workout: "the cursor moves to the next movement when I finish the 3rd required set, even though I would want to do all 5", and "I couldn't write 27,5 kg for the db row."
+
+**Leaving at the minimum.** Tactical Barbell writes 3-5 sets; the materialiser emits five slots and flags the last two `optional`. Two predicates in `MovementFocusView` treated an optional slot as already satisfied, so the third set meant "movement finished" and the strip advanced. The second one is the same blind spot in a different place: `cancelEdit` exits the movement when the required slots are covered, so backing out of an edit after set three also walked out. Both now ask `isMovementFullyCovered`, a new pure helper: every slot, optional included.
+
+`isMovementComplete` keeps its required-only meaning. It drives the "completed" chip, and a movement whose prescribed work is done IS complete; the logger is asking a different question - "is there anything left here" - and conflating the two is what caused this. The two disagreeing is now asserted, so neither drifts into the other.
+
+The advance loop itself was left alone. `handleSkipRest` writes every remaining slot and then reports a hardcoded `isLast: true`, so a guard in the parent's `onSaved` - my first plan - would have read a coverage set containing only the cursor slot and refused to advance, breaking "Skip remaining sets". The duck caught that before it was written; review confirmed the reasoning and found the same stale-coverage bug already live for skip inside a linked circuit, which is pre-existing and left for its own change.
+
+Leaving early is now the only thing that leaves early, which promotes "End movement" from a 12px underlined link to a real button.
+
+**The half kilo.** The weight field was `type="text"` controlled by a NUMBER: `value={someNumber}`, `onChange` doing `Number(text)`. Typing "27." parsed to 27, the field re-rendered from the number, the dot vanished, and the next keystroke gave 275. A comma never parsed, so nothing was committed and the controlled value snapped straight back - the character could not be typed at all. Between them there was no route to 27.5, on a scale that snaps storage to 0.5 kg. The field now holds TEXT while focused and derives the number from it. Both separators are accepted because the owner is European and the keyboard offers what the locale offers.
+
+Parsing is a strict decimal grammar, not `Number`, which also takes "0x1f", "1e3" and " 12 ". A keystroke that would break the grammar is dropped rather than stripped out of the middle: "2a7" silently becoming 27 is worse than the "a" not appearing. Because every state the field can hold parses, there is no invalid state to guard the log button against.
+
+Two live loggers had the identical broken input and now share one field. A third copy in `SessionLogClient` was left alone - the component is never rendered, only its types are imported.
+
+**Testing.** Review's sharpest finding was that the unit tests proved nothing about either fix: revert both components and all twelve stay green, because the pure helper and the pure parser were never where the bugs lived. Both bugs are in the component layer, and the repo has no jsdom or RTL on purpose. The coverage that actually fails is Playwright, against fixtures that already exist - the DB-free `/dev/logger-preview` for typing "27,5", and the seeded strip for logging three of five and staying put.
+
+Writing those exposed a hydration race in the shared `openNavigator` helper: a tap landing before the client component hydrates is swallowed, and the sheet never opens. It fails roughly one run in three on a slow machine and was silently costing retries. The tap now retries; `setNavOpen(true)` is idempotent so it is safe.

@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { PrescriptionItem } from "@hta/db";
+import { NumberEntryInput } from "./NumberEntryInput";
 import type { SkipReason } from "@/lib/sessions/skip-reasons";
 import {
   autoCursorForGroup,
@@ -17,6 +18,7 @@ import {
   bucketPositionForSlot,
   effectiveCursor,
   bucketLabelForKind,
+  isMovementFullyCovered,
   movementGroupKey,
   pinnedCursorForGroup,
   roundToPlate,
@@ -335,31 +337,22 @@ export function MovementFocusView({
   // Nothing left to log here — every required slot is covered. Cancelling an
   // edit in this state has nowhere useful to put the cursor, so the parent is
   // asked to move on instead.
-  const requiredSlotsAllLogged = group.items.every((item, slot) => {
-    if (item.optional) return true;
-    const index = group.itemIndices[slot];
-    return index == null || loggedItemIndices.has(index);
-  });
+  const allSlotsCovered = isMovementFullyCovered(group, loggedItemIndices);
   /**
    * Whether saving `justLoggedIndex` finishes this movement.
    *
-   * The parent advances on this, so it has to mean "nothing required is left",
-   * NOT "the cursor is on the last slot" — which is what it used to mean. Log
-   * sets out of order (tap a later dot, or land there via the auto cursor) and
-   * the positional test fired early: the logger advanced, found nothing open
+   * The parent advances on this, so it has to mean "nothing is left", NOT
+   * "the cursor is on the last slot" — which is what it used to mean. Log sets
+   * out of order (tap a later dot, or land there via the auto cursor) and the
+   * positional test fired early: the logger advanced, found nothing open
    * ahead, wrapped to the front of the list and dropped the lifter into rehab
    * with the earlier sets of the movement still unlogged.
    */
-  const finishesMovement = (justLoggedIndex: number) =>
-    group.items.every((item, slot) => {
-      if (item.optional) return true;
-      const index = group.itemIndices[slot];
-      return (
-        index == null ||
-        index === justLoggedIndex ||
-        loggedItemIndices.has(index)
-      );
-    });
+  const finishesMovement = (justLoggedIndex: number) => {
+    const projected = new Set(loggedItemIndices);
+    projected.add(justLoggedIndex);
+    return isMovementFullyCovered(group, projected);
+  };
   const loggedBeforeSwap =
     activeLoggedSet?.movementId != null &&
     activeLoggedSet.movementId !== group.movementId;
@@ -1084,8 +1077,10 @@ export function MovementFocusView({
     setSkipMenuOpen(false);
     // Nothing is left to do on a fully-logged movement, so hand back to the
     // parent to move on rather than leaving the lifter parked on a set they
-    // just declined to change.
-    if (requiredSlotsAllLogged) onExitEdit?.();
+    // just declined to change. Optional sets count as something left: this
+    // used to ignore them, so cancelling an edit after the third of five sets
+    // walked out of the movement.
+    if (allSlotsCovered) onExitEdit?.();
   };
   const editedSummary = isEditing
     ? itemKind === "carry"
@@ -1619,6 +1614,11 @@ export function MovementFocusView({
         >
           {!isBwItem && (
             <Stepper
+              // Remount on a slot change: the parent reloads the prescribed
+              // weight for the new set, so half-typed text from the previous
+              // one must not survive. Blur usually clears it, but tapping
+              // "Log set" does not reliably blur on iOS.
+              key={`weight-${activeItemIndex}`}
               label={bodyweightCapable ? `Added weight (${unitLabel})` : `Weight (${unitLabel})`}
               value={roundDisplayWeight(displayWeight(weight, units), units)}
               step={weightStepDisplay(units, weightStep)}
@@ -1632,6 +1632,7 @@ export function MovementFocusView({
           )}
           {itemKind === "carry" ? (
             <Stepper
+              key={`distance-${activeItemIndex}`}
               label="Distance (m)"
               value={distanceM}
               step={5}
@@ -1644,6 +1645,7 @@ export function MovementFocusView({
             />
           ) : itemKind === "isometric" ? (
             <Stepper
+              key={`duration-${activeItemIndex}`}
               label="Time (s)"
               value={durationSec}
               step={5}
@@ -1656,6 +1658,7 @@ export function MovementFocusView({
             />
           ) : (
             <Stepper
+              key={`reps-${activeItemIndex}`}
               label="Reps"
               value={reps}
               step={1}
@@ -2339,6 +2342,14 @@ function Stepper({
   testId?: string;
   showStepHint?: boolean;
 }) {
+  // The ± buttons change the value from outside the text field, so the text
+  // being edited has to be dropped or the field would keep showing what was
+  // typed before the tap. Remounting the input is the reset.
+  const [resetToken, setResetToken] = useState(0);
+  const stepAndReset = (run: () => void) => () => {
+    setResetToken((n) => n + 1);
+    run();
+  };
   return (
     <div
       data-testid={testId}
@@ -2370,30 +2381,21 @@ function Stepper({
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 0, alignItems: "center" }}>
         <button
           type="button"
-          onClick={onMinus}
+          onClick={stepAndReset(onMinus)}
           className="cp-btn"
           aria-label={`Decrease ${label}`}
           style={{ padding: "8px 12px", minWidth: 44, minHeight: 44 }}
         >
           −
         </button>
-        <input
-          type="text"
-          inputMode={integer ? "numeric" : "decimal"}
-          value={Number.isFinite(value) ? value : 0}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            if (!Number.isNaN(n)) onSet(n);
-          }}
-          onFocus={(e) => {
-            // Mobile: the on-screen keyboard covers the lower half of the
-            // viewport, hiding the input + the "Log set" button. Scroll the
-            // focused field toward the top so both stay visible above it.
-            const el = e.currentTarget;
-            setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 50);
-          }}
+        <NumberEntryInput
+          key={resetToken}
+          label={label}
+          value={value}
+          integer={integer}
+          onSet={onSet}
+          scrollIntoViewOnFocus
           className="mono"
-          aria-label={label}
           style={{
             background: "transparent",
             border: "none",
@@ -2408,7 +2410,7 @@ function Stepper({
         />
         <button
           type="button"
-          onClick={onPlus}
+          onClick={stepAndReset(onPlus)}
           className="cp-btn"
           aria-label={`Increase ${label}`}
           style={{ padding: "8px 12px", minWidth: 44, minHeight: 44 }}

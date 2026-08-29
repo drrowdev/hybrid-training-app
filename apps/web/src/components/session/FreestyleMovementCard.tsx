@@ -23,6 +23,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LoggedSet } from "./SessionLogClient";
+import { NumberEntryInput } from "./NumberEntryInput";
 import type { addStrengthSet as addStrengthSetAction } from "@/lib/sessions/actions";
 import type { removeSessionMovementAction as removeSessionMovementActionType } from "@/lib/sessions/session-movement-actions";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
@@ -728,6 +729,13 @@ function FreestyleStepper({
   onPlus: () => void;
   onSet: (n: number) => void;
 }) {
+  // See MovementFocusView's Stepper: the ± buttons change the value from
+  // outside the text field, so the text being edited has to be dropped.
+  const [resetToken, setResetToken] = useState(0);
+  const stepAndReset = (run: () => void) => () => {
+    setResetToken((n) => n + 1);
+    run();
+  };
   return (
     <div
       style={{
@@ -757,19 +765,16 @@ function FreestyleStepper({
           alignItems: "center",
         }}
       >
-        <button type="button" onClick={onMinus} className="cp-btn" style={{ padding: "6px 10px" }}>
+        <button type="button" onClick={stepAndReset(onMinus)} className="cp-btn" style={{ padding: "6px 10px" }}>
           −
         </button>
-        <input
-          type="text"
-          inputMode={integer ? "numeric" : "decimal"}
-          value={Number.isFinite(value) ? value : 0}
-          onChange={(e) => {
-            const n = Number(e.target.value);
-            if (!Number.isNaN(n)) onSet(n);
-          }}
+        <NumberEntryInput
+          key={resetToken}
+          label={label}
+          value={value}
+          integer={integer}
+          onSet={onSet}
           className="mono"
-          aria-label={label}
           style={{
             background: "transparent",
             border: "none",
@@ -781,7 +786,7 @@ function FreestyleStepper({
             color: "var(--cp-text)",
           }}
         />
-        <button type="button" onClick={onPlus} className="cp-btn" style={{ padding: "6px 10px" }}>
+        <button type="button" onClick={stepAndReset(onPlus)} className="cp-btn" style={{ padding: "6px 10px" }}>
           +
         </button>
       </div>

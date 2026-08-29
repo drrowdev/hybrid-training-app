@@ -116,4 +116,84 @@ test.describe("@mobile Focus Strip logger", () => {
       "Update set",
     );
   });
+
+  test("stays on a 3–5 set movement once the required sets are done", async ({
+    page,
+    context,
+    freshUser,
+    seedConfig,
+    admin,
+    baseURL,
+  }) => {
+    // Reported as: "If a set has 5 sets of which 3 are required the cursor
+    // moves to the next movement when I finish the 3rd required set, even
+    // though I would want to do all 5."
+    //
+    // Tactical Barbell writes 3–5 sets. Leaving at three is the app choosing
+    // the lifter's volume for them; leaving early is the End movement button.
+    const url = baseURL ?? "http://localhost:3000";
+    await markOnboarded(admin, freshUser.userId);
+    await seedStrengthTms(admin, freshUser.userId);
+    const seed = await seedActiveBlock(admin, freshUser.userId);
+    const { data: planned, error: plannedError } = await admin
+      .from("planned_sessions")
+      .select("prescription")
+      .eq("id", seed.todayPlannedId)
+      .single();
+    expect(plannedError).toBeNull();
+    const prescription = planned!.prescription as {
+      items: Array<Record<string, unknown>>;
+    };
+    const base = prescription.items[0]!;
+    // Three required sets, then two the lifter may or may not take.
+    prescription.items = [
+      base,
+      { ...base },
+      { ...base },
+      { ...base, optional: true },
+      { ...base, optional: true },
+    ];
+    const { error: updateError } = await admin
+      .from("planned_sessions")
+      .update({ prescription })
+      .eq("id", seed.todayPlannedId);
+    expect(updateError).toBeNull();
+    await signInAs(context, freshUser, seedConfig, url);
+
+    await page.goto("/app");
+    await page.getByRole("link", { name: /start workout/i }).first().click();
+    await page.waitForURL(/\/app\/sessions\/[0-9a-f-]{36}(?:\?|$|#)/, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("focus-strip-logger")).toBeVisible();
+
+    for (let set = 0; set < 3; set += 1) {
+      await logPrescribedSet(page, seed.todayMovementId);
+      await expect(
+        page.locator(`[data-testid="movement-dot-${set}"][data-logged="true"]`),
+      ).toBeVisible({ timeout: 15_000 });
+    }
+
+    // Still here, with the fourth set open and cued.
+    await page.getByTestId("movement-navigator-open").click();
+    await expect(
+      page.getByTestId(`movement-navigator-item-${seed.todayMovementId}`),
+    ).toHaveAttribute("aria-current", "true");
+    await page.getByTestId("movement-navigator-close").click();
+    await expect(page.getByTestId("movement-dot-3")).toHaveAttribute(
+      "data-logged",
+      "false",
+    );
+    await expect(page.getByTestId("movement-dot-3")).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    // Leaving is a deliberate act, and it is the only thing that moves on.
+    await page.getByTestId("focus-strip-end-movement").click();
+    await page.getByTestId("movement-navigator-open").click();
+    await expect(
+      page.getByTestId(`movement-navigator-item-${seed.todayMovementId}`),
+    ).toHaveAttribute("aria-current", "false");
+  });
 });
