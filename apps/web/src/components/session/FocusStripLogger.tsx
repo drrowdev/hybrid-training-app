@@ -759,6 +759,7 @@ export function FocusStripLogger({
             {requiredDone && optionalOpen.length > 0 && (
               <button
                 type="button"
+                className="cp-btn"
                 data-testid="focus-strip-end-movement"
                 onClick={() => {
                   const next = new Set(declinedOptionalIds);
@@ -766,17 +767,7 @@ export function FocusStripLogger({
                   setDeclinedOptionalIds(next);
                   advance(next);
                 }}
-                style={{
-                  justifySelf: "start",
-                  border: 0,
-                  background: "transparent",
-                  color: "var(--cp-text-muted)",
-                  textDecoration: "underline",
-                  fontSize: 12,
-                  cursor: "pointer",
-                  minHeight: 44,
-                  padding: "4px 0",
-                }}
+                style={{ width: "100%", minHeight: 44 }}
               >
                 End movement
               </button>

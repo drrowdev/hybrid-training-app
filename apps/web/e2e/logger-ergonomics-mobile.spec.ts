@@ -35,11 +35,18 @@ const PHONES = [
 ] as const;
 
 async function openNavigator(page: Page) {
-  await page.getByTestId("movement-navigator-open").click();
-  await expect(page.getByTestId("movement-navigator")).toHaveAttribute(
-    "aria-hidden",
-    "false",
-  );
+  // Retry the tap: the trigger is a client component, so a click that lands
+  // before hydration attaches the handler is swallowed silently and the sheet
+  // never opens. `setNavOpen(true)` is idempotent, so re-clicking is safe.
+  const sheet = page.getByTestId("movement-navigator");
+  await expect(async () => {
+    if ((await sheet.getAttribute("aria-hidden")) !== "false") {
+      await page.getByTestId("movement-navigator-open").click();
+    }
+    await expect(sheet).toHaveAttribute("aria-hidden", "false", {
+      timeout: 1_000,
+    });
+  }).toPass({ timeout: 15_000 });
 }
 
 async function gotoMovement(page: Page, name: RegExp) {
@@ -453,6 +460,49 @@ test.describe("@mobile logger ergonomics", () => {
     ).toHaveValue("135");
     await expect(page.getByTestId("load-from-history")).toBeVisible();
     await expect(page.getByTestId("movement-focus-log-button")).toContainText("135");
+  });
+
+  test("a half-kilo weight can be typed, with either decimal separator", async ({
+    page,
+  }) => {
+    // Reported as: "I couldn't write 27,5 kg for the db row. It only accepted
+    // full numbers and no decimals."
+    //
+    // The field was controlled by a NUMBER, so "27." parsed to 27, re-rendered
+    // as "27", and the dot the user had just typed disappeared — the next
+    // keystroke gave 275. A comma never parsed at all, so the controlled value
+    // snapped back and it could not be typed. Weights store to the half kilo,
+    // so there was no route to a load the app can hold.
+    await page.setViewportSize({ width: 402, height: 874 });
+    await page.goto(PREVIEW);
+    await gotoMovement(page, /Leg Press/);
+
+    const weight = page.locator('[data-testid="stepper-weight"] input');
+    const cta = page.getByTestId("movement-focus-log-button");
+    await expect(weight).toHaveValue("135");
+
+    for (const typed of ["27,5", "27.5"]) {
+      await weight.click();
+      await weight.press("ControlOrMeta+a");
+      await weight.pressSequentially(typed, { delay: 30 });
+      // What was typed survives keystroke by keystroke, separator included.
+      await expect(weight).toHaveValue(typed);
+      // And it is the number the set would be logged with.
+      await expect(cta).toContainText("27.5");
+    }
+
+    // Leaving the field shows the stored value, which is snapped to the half
+    // kilo and so need not match the keystrokes character for character.
+    await weight.blur();
+    await expect(weight).toHaveValue("27.5");
+
+    // A rejected keystroke is dropped, not stripped out of the middle: "2a7"
+    // silently becoming 27 would be worse than the "a" never appearing.
+    await weight.click();
+    await weight.press("ControlOrMeta+a");
+    await weight.pressSequentially("4a2,,5", { delay: 30 });
+    await expect(weight).toHaveValue("42,5");
+    await expect(cta).toContainText("42.5");
   });
 
   test("the dock owns the bottom region and the exit is explicit", async ({

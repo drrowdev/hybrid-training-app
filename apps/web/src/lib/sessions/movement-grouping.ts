@@ -215,6 +215,23 @@ export function isMovementComplete(
 }
 
 /**
+ * Every slot covered, optional ones included.
+ *
+ * Distinct from `isMovementComplete`, which asks whether the REQUIRED work is
+ * done and drives the "completed" chip. This asks whether there is anything
+ * left to do here, which is what the logger needs before it moves the lifter
+ * on: a 3–5 set prescription still has sets 4 and 5 open after the third, and
+ * treating those as satisfied made the app decide the lifter was finished at
+ * the minimum. Leaving early is a button, not a default.
+ */
+export function isMovementFullyCovered(
+  group: MovementGroup,
+  coveredItemIndices: ReadonlySet<number>,
+): boolean {
+  return group.itemIndices.every((index) => coveredItemIndices.has(index));
+}
+
+/**
  * Auto cursor — first un-logged item in display order. Returns the
  * LAST item index when every set is already logged (so the recap and
  * focus-view fall back to the last set rather than going out of
