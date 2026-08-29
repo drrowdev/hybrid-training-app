@@ -181,7 +181,15 @@ export type FocusViewProps = {
    */
   initialCursor?: number | null;
   /** Called after a successful save so the parent can run auto-collapse logic. */
-  onSaved?: (info: { itemIndex: number; isLast: boolean }) => void;
+  onSaved?: (info: {
+    /**
+     * Every prescription item this save covered. Usually one; "skip remaining
+     * sets" covers many at once, and reporting only the cursor slot left the
+     * parent believing the rest were still open — which stranded the lifter on
+     * a circuit member whose next-open lookup kept pointing back at itself.
+     */
+    coveredIndices: readonly number[];
+  }) => void;
   /**
    * True when the movement is bodyweight-capable (`body_weight_loaded`):
    * pull-ups, dips, inverted rows, push-ups, etc. For these the weight field
@@ -334,25 +342,11 @@ export function MovementFocusView({
     ? loggedSets.find((set) => set.id === loggedSetId)
     : undefined;
   const pendingSetSync = isActiveLogged && loggedSetId == null;
-  // Nothing left to log here — every required slot is covered. Cancelling an
-  // edit in this state has nowhere useful to put the cursor, so the parent is
-  // asked to move on instead.
+  // Nothing left to log here — every slot is covered, optional included.
+  // Cancelling an edit in this state has nowhere useful to put the cursor, so
+  // the parent is asked to move on instead. Where to move on TO is the
+  // parent's call: `lib/sessions/focus-advance`.
   const allSlotsCovered = isMovementFullyCovered(group, loggedItemIndices);
-  /**
-   * Whether saving `justLoggedIndex` finishes this movement.
-   *
-   * The parent advances on this, so it has to mean "nothing is left", NOT
-   * "the cursor is on the last slot" — which is what it used to mean. Log sets
-   * out of order (tap a later dot, or land there via the auto cursor) and the
-   * positional test fired early: the logger advanced, found nothing open
-   * ahead, wrapped to the front of the list and dropped the lifter into rehab
-   * with the earlier sets of the movement still unlogged.
-   */
-  const finishesMovement = (justLoggedIndex: number) => {
-    const projected = new Set(loggedItemIndices);
-    projected.add(justLoggedIndex);
-    return isMovementFullyCovered(group, projected);
-  };
   const loggedBeforeSwap =
     activeLoggedSet?.movementId != null &&
     activeLoggedSet.movementId !== group.movementId;
@@ -912,10 +906,7 @@ export function MovementFocusView({
         setRestToken((t) => t + 1);
       }
     }
-    onSaved?.({
-      itemIndex: activeItemIndex,
-      isLast: finishesMovement(activeItemIndex),
-    });
+    onSaved?.({ coveredIndices: [activeItemIndex] });
     void addStrengthSet(fd)
       .then((result) => {
         if (result?.error) {
@@ -979,10 +970,7 @@ export function MovementFocusView({
       setManualPin(null);
       // Skipped sets must not trigger PR/e1RM toasts or the rest timer
       // — they are intentionally "no work".
-      onSaved?.({
-        itemIndex: activeItemIndex,
-        isLast: finishesMovement(activeItemIndex),
-      });
+      onSaved?.({ coveredIndices: [activeItemIndex] });
     } finally {
       setSkipPending(false);
     }
@@ -1001,6 +989,8 @@ export function MovementFocusView({
     if (skipPending) return;
     setSkipPending(true);
     setSkipError(null);
+    const covered: number[] = [];
+    let failed = false;
     try {
       for (const { idx, kind, item } of remainingSlots) {
         const fd = new FormData();
@@ -1027,13 +1017,27 @@ export function MovementFocusView({
         const result = await addStrengthSet(fd);
         if (result?.error) {
           setSkipError(result.error);
-          return;
+          failed = true;
+          break;
         }
+        // Collected as each write lands, so what the parent is told matches
+        // what was actually stored. Reporting only the cursor slot left the
+        // parent believing the rest were still open, and a circuit member's
+        // round-major lookup then pointed back at the movement the lifter was
+        // already on — nothing left to do there, and no way forward.
+        covered.push(idx);
       }
+      // A run that stopped part-way still reports the half that landed, so the
+      // parent's coverage stays truthful — but the menu stays open, because it
+      // is the only thing that renders `skipError`, and closing it would trade
+      // the message for a success buzz on a movement with slots still unwritten.
+      if (covered.length > 0) {
+        setManualPin(null);
+        onSaved?.({ coveredIndices: covered });
+      }
+      if (failed) return;
       hapticTick(hapticsEnabled);
       setSkipMenuOpen(false);
-      setManualPin(null);
-      onSaved?.({ itemIndex: activeItemIndex, isLast: true });
     } finally {
       setSkipPending(false);
     }

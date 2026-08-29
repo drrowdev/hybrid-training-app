@@ -156,6 +156,31 @@ const LAST_SET_HINTS = {
 
 const noop = async () => ({ ok: true as const });
 
+/**
+ * Prescription indices by movement, derived from `WORK_ITEMS` rather than
+ * written down, so inserting a set into the fixture cannot silently point the
+ * superset fixture at the wrong slots.
+ */
+function workIndices(
+  withRehab: boolean,
+  match: (item: (typeof WORK_ITEMS)[number]) => boolean,
+): number[] {
+  const offset = withRehab ? REHAB_ITEMS.length : 0;
+  return WORK_ITEMS.flatMap((item, i) => (match(item) ? [offset + i] : []));
+}
+
+const squatAndRdlIndices = (withRehab: boolean) =>
+  workIndices(
+    withRehab,
+    (item) => item.movementId === MOV.squat || item.movementId === MOV.rdl,
+  );
+
+const legPressIndices = (withRehab: boolean) =>
+  workIndices(withRehab, (item) => item.movementId === MOV.legPress);
+
+const firstRowIndex = (withRehab: boolean) =>
+  workIndices(withRehab, (item) => item.movementId === MOV.row)[0]!;
+
 export function LoggerPreview({ variant }: { variant: string }) {
   // `norehab` is the ordinary training day — the case where the old build
   // rendered no section navigation at all.
@@ -163,6 +188,14 @@ export function LoggerPreview({ variant }: { variant: string }) {
   // `rehabdone` leaves the rehab movement with nothing left to log — the state
   // in which cancelling an edit had nowhere to put the cursor.
   const rehabDone = variant === "rehabdone";
+  /**
+   * `supersetlast` stands the lifter on the SECOND station of the superset
+   * with only its later rounds left: the first station is done and so is round
+   * one of this one. Skipping the rest has to leave the circuit, and the state
+   * where it did not could only be reached with the earlier rounds already
+   * covered — which is why it needs its own fixture.
+   */
+  const supersetLast = variant === "supersetlast";
   const items = withRehab ? [...REHAB_ITEMS, ...WORK_ITEMS] : WORK_ITEMS;
   const prescription = { items } as unknown as Prescription;
   const sets = withRehab
@@ -170,7 +203,15 @@ export function LoggerPreview({ variant }: { variant: string }) {
       ? [...SETS, THIRD_REHAB_SET]
       : SETS
     : [];
-  const logged: number[] = withRehab ? (rehabDone ? [0, 1, 2] : [0, 1]) : [];
+  const rehabLogged: number[] = withRehab ? (rehabDone ? [0, 1, 2] : [0, 1]) : [];
+  const logged: number[] = supersetLast
+    ? [
+        ...rehabLogged,
+        ...squatAndRdlIndices(withRehab),
+        ...legPressIndices(withRehab),
+        firstRowIndex(withRehab),
+      ]
+    : rehabLogged;
 
   return (
     <CommandPaletteProvider

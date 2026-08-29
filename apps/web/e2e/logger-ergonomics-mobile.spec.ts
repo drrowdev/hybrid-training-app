@@ -19,6 +19,9 @@ import { test, expect, type Page } from "@playwright/test";
 
 const PREVIEW = "/dev/logger-preview";
 
+/** Fixture movement ids, from `app/dev/logger-preview/preview.tsx`. */
+const ROW_ID = "10000000-0000-4000-8000-000000000005";
+
 /**
  * The devices this app is actually used on. Not a generic responsive matrix —
  * there is one user, on an iPhone 17.
@@ -460,6 +463,41 @@ test.describe("@mobile logger ergonomics", () => {
     ).toHaveValue("135");
     await expect(page.getByTestId("load-from-history")).toBeVisible();
     await expect(page.getByTestId("movement-focus-log-button")).toContainText("135");
+  });
+
+  test("skipping the rest of a superset station leaves the circuit", async ({
+    page,
+  }) => {
+    // "Skip remaining sets" writes every open slot of the movement but used to
+    // report only the cursor's. The circuit's round-major lookup reads that
+    // coverage directly, so the rounds it had just skipped still looked open,
+    // it pointed back at the station the lifter was already standing on, and
+    // nothing moved — parked on a movement with nothing left to do, with only
+    // the navigator sheet as a way out.
+    //
+    // Reachable only with the earlier rounds already covered, hence the
+    // dedicated fixture.
+    await page.setViewportSize({ width: 402, height: 874 });
+    await page.goto(`${PREVIEW}?variant=supersetlast`);
+    await gotoMovement(page, /Seated Cable Row/);
+
+    await page.getByTestId("movement-focus-skip-rest-button").click();
+    await expect(page.getByTestId("skip-set-menu")).toBeVisible();
+    await page.getByTestId("skip-reason-time").click();
+    await page.getByTestId("skip-confirm").click();
+
+    // Moved on, and to a movement that still has work — the stuck state was
+    // being left standing on this one with all three rounds covered. Which
+    // movement comes next is the fixture's business, not this test's.
+    await openNavigator(page);
+    await expect(
+      page.getByTestId(`movement-navigator-item-${ROW_ID}`),
+    ).toHaveAttribute("aria-current", "false");
+    const current = page
+      .getByTestId("movement-navigator")
+      .locator("[data-testid^='movement-navigator-item-'][aria-current='true']");
+    await expect(current).toHaveCount(1);
+    await expect(current).toHaveAttribute("data-done", "false");
   });
 
   test("a half-kilo weight can be typed, with either decimal separator", async ({
