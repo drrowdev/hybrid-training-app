@@ -459,6 +459,11 @@ export type Prescription = {
    * every other session.
    */
   meta?: {
+    /**
+     * The user moved this workout to a different calendar slot. Forward plan
+     * rewrites preserve it instead of restoring the program's original day.
+     */
+    userRescheduled?: true;
     hyroxQuickFormat?: "circuit" | "compromised" | "erg" | "run";
     /**
      * Same-day rehab folded into this session's warm-up flow. The source

@@ -8,6 +8,7 @@ import {
   swapMovementInPrescription,
   addMovementToPrescription,
   hasUserEditedPrescription,
+  markPrescriptionRescheduled,
   prescriptionCarriesUserState,
 } from "../prescription-mutations";
 import type { Prescription } from "@hta/db";
@@ -927,6 +928,15 @@ describe("prescriptionCarriesUserState", () => {
     expect(prescriptionCarriesUserState({ ...base, userEdited: true })).toBe(
       true,
     );
+  });
+
+  it("preserves a workout after the user moves it to another day", () => {
+    const moved = markPrescriptionRescheduled(base);
+
+    expect(moved).not.toBe(base);
+    expect(moved.meta?.userRescheduled).toBe(true);
+    expect(prescriptionCarriesUserState(moved)).toBe(true);
+    expect(markPrescriptionRescheduled(moved)).toBe(moved);
   });
 
   it("treats a full-scale trim marker as user state", () => {

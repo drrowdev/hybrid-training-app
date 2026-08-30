@@ -127,6 +127,19 @@ export function buildPlanPhaseGroups(
  * every later engine boundary. Preserve the engine's phase order while moving
  * boundaries past those inserted weeks.
  */
+export function shiftWeekIndexForInsertedWeeks(
+  weekIndex: number,
+  insertedWeekIndices: readonly number[],
+): number {
+  let shifted = weekIndex;
+  for (const insertedWeek of [...new Set(insertedWeekIndices)]
+    .filter((week) => Number.isInteger(week) && week >= 0)
+    .sort((a, b) => a - b)) {
+    if (insertedWeek <= shifted) shifted += 1;
+  }
+  return shifted;
+}
+
 export function shiftSegmentsForInsertedWeeks(
   segments: readonly PlanProgramSegment[],
   insertedWeekIndices: readonly number[],
@@ -135,17 +148,13 @@ export function shiftSegmentsForInsertedWeeks(
   const inserted = [...new Set(insertedWeekIndices)]
     .filter((week) => Number.isInteger(week) && week >= 0 && week < weeks)
     .sort((a, b) => a - b);
-  const shiftBoundary = (startWeekIndex: number) => {
-    let shifted = startWeekIndex;
-    for (const insertedWeek of inserted) {
-      if (insertedWeek <= shifted) shifted += 1;
-    }
-    return shifted;
-  };
   const shifted = segments
     .map((segment) => ({
       ...segment,
-      startWeekIndex: shiftBoundary(segment.startWeekIndex),
+      startWeekIndex: shiftWeekIndexForInsertedWeeks(
+        segment.startWeekIndex,
+        inserted,
+      ),
     }))
     .filter((segment) => segment.startWeekIndex < weeks);
   const recoverySegments = inserted.flatMap((startWeekIndex, index) => {

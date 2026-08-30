@@ -86,7 +86,10 @@ import {
 import { todayYmd, mondayOfYmd, daysBetweenYmd } from "@/lib/dates";
 import { programSetupAuditInput } from "./setup-audit";
 import { prescriptionCarriesUserState } from "@/lib/sessions/prescription-mutations";
-import { inferProgramStartWeekIndex } from "@/lib/plan/program-overview";
+import {
+  inferProgramStartWeekIndex,
+  shiftWeekIndexForInsertedWeeks,
+} from "@/lib/plan/program-overview";
 import {
   customizationDays,
   activationRehabProtocols,
@@ -1949,24 +1952,43 @@ async function updateForeignProgramInstance(
   if (write.sessions.length === 0) {
     return { ok: false, error: "This program produced no sessions — check your training maxes." };
   }
-  const newWeeks = Math.max(write.weeks, currentWeekIndex + 1);
 
   // 4) Rewrite open slots after today plus an untouched rehab slot scheduled
   //    today. Past rows, today's non-rehab work, and started/skipped rows stay.
-  const { data: futureRows, error: frErr } = await supabase
+  const { data: blockRows, error: frErr } = await supabase
     .from("planned_sessions")
     .select(
       "id, week_index, day_index, slot, role, planned_at, notes, prescription, completed_session_id, skipped_at",
     )
     .eq("block_id", blockId)
-    .eq("user_id", user.id)
-    .gte("week_index", currentWeekIndex);
+    .eq("user_id", user.id);
   if (frErr) return { ok: false, error: frErr.message };
+  const insertedRecoveryWeeks = [
+    ...new Set(
+      (blockRows ?? []).flatMap((row) =>
+        (row.prescription as Prescription | null)?.insertedRecoveryWeek === true
+          ? [row.week_index as number]
+          : [],
+      ),
+    ),
+  ].sort((a, b) => a - b);
+  const futureRows = (blockRows ?? []).filter(
+    (row) => (row.week_index as number) >= currentWeekIndex,
+  );
   const priorRehabByDay = new Map(
     (priorWrite?.sessions ?? []).flatMap((session) => {
       const rehabItems = rehabItemsForComparison(session.prescription);
       return rehabItems.length > 0
         ? [[`${session.weekIndex}-${session.dayIndex}`, rehabItems] as const]
+        : [];
+    }),
+  );
+  const priorRehabByProgramRef = new Map(
+    (priorWrite?.sessions ?? []).flatMap((session) => {
+      const programRef = session.prescription.programRef;
+      const rehabItems = rehabItemsForComparison(session.prescription);
+      return programRef && rehabItems.length > 0
+        ? [[programRef, rehabItems] as const]
         : [];
     }),
   );
@@ -2000,15 +2022,19 @@ async function updateForeignProgramInstance(
       row.week_index as number,
       row.day_index as number,
     );
+    const rowPrescription = row.prescription as Prescription | null;
     let touched =
       row.completed_session_id != null ||
       row.skipped_at != null ||
       row.planned_at != null ||
       (typeof row.notes === "string" && row.notes.trim() !== "") ||
       limitationAdjustedIds.has(row.id as string) ||
-      prescriptionCarriesUserState(row.prescription as Prescription | null);
+      rowPrescription?.insertedRecoveryWeek === true ||
+      prescriptionCarriesUserState(rowPrescription);
     if (row.role === "rehab" && !touched) {
-      const priorRehab = priorRehabByDay.get(key);
+      const priorRehab = rowPrescription?.programRef
+        ? priorRehabByProgramRef.get(rowPrescription.programRef)
+        : priorRehabByDay.get(key);
       touched =
         unavailableStrengthDays.has(key) ||
         priorRehab == null ||
@@ -2023,6 +2049,9 @@ async function updateForeignProgramInstance(
       dayIndex: row.day_index as number,
       slot: (row.slot as string) ?? "single",
       role: (row.role as string | null) ?? undefined,
+      ...(rowPrescription?.programRef
+        ? { programRef: rowPrescription.programRef }
+        : {}),
       touched,
     };
   });
@@ -2033,7 +2062,14 @@ async function updateForeignProgramInstance(
         : [],
     ),
   );
-  const sessionsForRewrite = write.sessions.map((session) =>
+  const shiftedSessions = write.sessions.map((session) => ({
+    ...session,
+    weekIndex: shiftWeekIndexForInsertedWeeks(
+      session.weekIndex,
+      insertedRecoveryWeeks,
+    ),
+  }));
+  const sessionsForRewrite = shiftedSessions.map((session) =>
     session.role === "strength" &&
     touchedSeparateRehabDays.has(
       dayKey(session.weekIndex, session.dayIndex),
@@ -2044,18 +2080,37 @@ async function updateForeignProgramInstance(
         }
       : session,
   );
+  const generatedSessionFor = (
+    rewriteRow: {
+      weekIndex: number;
+      dayIndex: number;
+      slot: string;
+      programRef?: string;
+    },
+  ) =>
+    sessionsForRewrite.find((session) =>
+      rewriteRow.programRef
+        ? session.prescription.programRef === rewriteRow.programRef
+        : session.weekIndex === rewriteRow.weekIndex &&
+          session.dayIndex === rewriteRow.dayIndex &&
+          session.slot === rewriteRow.slot,
+    );
   const plan = planForwardOnlyRewrite({
     currentWeekIndex,
     currentDayIndex,
-    writeWeeks: write.weeks,
+    writeWeeks: write.weeks + insertedRecoveryWeeks.length,
     existingFuture,
     newSessions: sessionsForRewrite.map((s) => ({
       weekIndex: s.weekIndex,
       dayIndex: s.dayIndex,
       slot: s.slot,
       role: s.role,
+      ...(s.prescription.programRef
+        ? { programRef: s.prescription.programRef }
+        : {}),
     })),
   });
+  const newWeeks = plan.newWeeks;
 
   // A row the plan keeps (touched, or earlier than today) holds on to its core
   // work. Refresh only an unedited rehab section on it; a touched standalone
@@ -2079,22 +2134,18 @@ async function updateForeignProgramInstance(
     ) {
       return [];
     }
-    const generated = sessionsForRewrite.find(
-      (session) =>
-        session.role === "strength" &&
-        session.weekIndex === rewriteRow.weekIndex &&
-        session.dayIndex === rewriteRow.dayIndex &&
-        session.slot === rewriteRow.slot,
-    );
+    const generated = generatedSessionFor(rewriteRow);
     if (!generated) return [];
 
     const currentPrescription = row.prescription as Prescription;
     const currentSnapshot = embeddedRehabSnapshot(currentPrescription);
     const currentCarriesRehab =
       currentSnapshot.items.length > 0 || currentSnapshot.sections.length > 0;
-    const priorRehab = priorRehabByDay.get(
-      dayKey(rewriteRow.weekIndex, rewriteRow.dayIndex),
-    );
+    const priorRehab = rewriteRow.programRef
+      ? priorRehabByProgramRef.get(rewriteRow.programRef)
+      : priorRehabByDay.get(
+          dayKey(rewriteRow.weekIndex, rewriteRow.dayIndex),
+        );
     const currentRehabWasEdited =
       (currentPrescription.meta?.removedEmbeddedRehabSourceRefs?.length ?? 0) >
         0 ||
@@ -2140,13 +2191,7 @@ async function updateForeignProgramInstance(
     ) {
       return false;
     }
-    const generated = sessionsForRewrite.find(
-      (session) =>
-        session.role === "strength" &&
-        session.weekIndex === rewriteRow.weekIndex &&
-        session.dayIndex === rewriteRow.dayIndex &&
-        session.slot === rewriteRow.slot,
-    );
+    const generated = generatedSessionFor(rewriteRow);
     if (!generated) return false;
     // Compare against what this row will ACTUALLY hold after the refresh, so a
     // rehab-only change that did land isn't reported as withheld.

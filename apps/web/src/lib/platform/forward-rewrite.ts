@@ -20,7 +20,9 @@ export interface ExistingFutureRow {
   dayIndex: number;
   slot: string;
   role?: string;
-  /** True when the row was started (completed_session_id) or skipped. */
+  /** Stable engine identity, when this row came from a platform program. */
+  programRef?: string;
+  /** True when the user has invested in this row or its placement. */
   touched: boolean;
 }
 
@@ -29,6 +31,8 @@ export interface NewSessionLite {
   dayIndex: number;
   slot: string;
   role?: string;
+  /** Stable engine identity, when this row came from a platform program. */
+  programRef?: string;
 }
 
 export interface ForwardRewritePlan {
@@ -81,24 +85,50 @@ export function planForwardOnlyRewrite(args: {
     (row.weekIndex === currentWeekIndex &&
       row.dayIndex < currentDayIndex);
 
-  const preserved = new Set<string>();
+  const freshByProgramRef = new Map(
+    newSessions.flatMap((session) =>
+      session.programRef ? [[session.programRef, session] as const] : [],
+    ),
+  );
+  const preservedSlots = new Set<string>();
+  const preservedProgramRefs = new Set<string>();
+  let latestPreservedWeek = -1;
   const deleteIds: string[] = [];
   for (const r of existingFuture) {
     if (isPast(r)) continue;
-    if (r.touched) preserved.add(key(r));
-    else deleteIds.push(r.id);
+    const freshReplacement = r.programRef
+      ? freshByProgramRef.get(r.programRef)
+      : undefined;
+    // Legacy moved rows have no durable marker. Never delete one when its only
+    // generated replacement is already behind today's forward-only boundary.
+    const replacementWouldBeLost =
+      freshReplacement != null &&
+      freshReplacement.weekIndex === r.weekIndex &&
+      isPast(freshReplacement);
+    if (r.touched || replacementWouldBeLost) {
+      preservedSlots.add(key(r));
+      if (r.programRef) preservedProgramRefs.add(r.programRef);
+      latestPreservedWeek = Math.max(latestPreservedWeek, r.weekIndex);
+      continue;
+    }
+    deleteIds.push(r.id);
   }
 
   const insertIndices: number[] = [];
   newSessions.forEach((s, i) => {
     if (isPast(s)) return;
-    if (preserved.has(key(s))) return; // keep the logged/skipped row instead
+    if (preservedSlots.has(key(s))) return;
+    if (s.programRef && preservedProgramRefs.has(s.programRef)) return;
     insertIndices.push(i);
   });
 
   return {
     deleteIds,
     insertIndices,
-    newWeeks: Math.max(writeWeeks, currentWeekIndex + 1),
+    newWeeks: Math.max(
+      writeWeeks,
+      currentWeekIndex + 1,
+      latestPreservedWeek + 1,
+    ),
   };
 }

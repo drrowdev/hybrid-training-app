@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Plan refreshes preserve moved workouts
+- Workouts moved to another day now keep that placement when Edit plan or a
+  rehab update refreshes the active plan. Older same-week moves are also
+  protected when their original day has already passed.
+- Inserted recovery weeks remain in place during a refresh, and a move stops
+  instead of overwriting a workout edited at the same time.
+
 ### Rehab on a Tactical Barbell training day (ADR 0078)
 - Each session in the program wizard's "Each session" list now has **+ Add
   rehab**, beside + Add accessory. The protocol runs as that workout's warm-up

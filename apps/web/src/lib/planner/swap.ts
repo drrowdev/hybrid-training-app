@@ -40,14 +40,20 @@
  * fluent builder so the real client implements it structurally — the
  * tests provide a hand-rolled fake.
  */
+export interface SwapUpdateResult {
+  error: { message: string } | null;
+  count: number | null;
+}
+
+export interface SwapUpdateFilter extends PromiseLike<SwapUpdateResult> {
+  eq(column: string, value: unknown): SwapUpdateFilter;
+}
+
 export interface SwapUpdateBuilder {
-  update(values: Record<string, unknown>): {
-    eq(column: string, value: unknown): {
-      eq(column: string, value: unknown): Promise<{
-        error: { message: string } | null;
-      }>;
-    };
-  };
+  update(
+    values: Record<string, unknown>,
+    options?: { count: "exact" },
+  ): SwapUpdateFilter;
 }
 
 export interface SwapClient {
@@ -67,6 +73,15 @@ export interface SwapPlannedSessionsParams {
   targetDay: number;
   /** training_blocks.weeks for the host block, used to pick a parking week. */
   blockWeeks: number;
+  /** Values written when the dragged row reaches its destination. */
+  sourceFinalValues?: Record<string, unknown>;
+  /** Values written when the displaced row reaches its destination. */
+  targetFinalValues?: Record<string, unknown>;
+  /** Original target values restored if the final source move fails. */
+  targetRollbackValues?: Record<string, unknown>;
+  /** Snapshot guards prevent a move from overwriting a concurrent edit. */
+  sourceExpectedPrescription?: unknown;
+  targetExpectedPrescription?: unknown;
 }
 
 /**
@@ -95,12 +110,61 @@ async function applyMove(
   userId: string,
   weekIndex: number,
   dayIndex: number,
-): Promise<{ error: { message: string } | null }> {
-  return client
+  values: Record<string, unknown> = {},
+  expectedPrescription?: unknown,
+): Promise<SwapUpdateResult> {
+  let query = client
     .from("planned_sessions")
-    .update({ week_index: weekIndex, day_index: dayIndex })
+    .update(
+      { ...values, week_index: weekIndex, day_index: dayIndex },
+      { count: "exact" },
+    )
     .eq("id", rowId)
     .eq("user_id", userId);
+  if (expectedPrescription !== undefined) {
+    // PostgREST's `.eq()` interpolates values directly; JSON objects would
+    // become "[object Object]". Send valid JSON so PostgreSQL can compare jsonb.
+    query = query.eq("prescription", JSON.stringify(expectedPrescription));
+  }
+  const result = await query;
+  if (
+    result.error == null &&
+    expectedPrescription !== undefined &&
+    result.count !== 1
+  ) {
+    return {
+      error: {
+        message: "The workout changed while it was being moved. Reload and try again.",
+      },
+      count: result.count,
+    };
+  }
+  return result;
+}
+
+export async function movePlannedSessionRow(params: {
+  client: SwapClient;
+  userId: string;
+  rowId: string;
+  weekIndex: number;
+  dayIndex: number;
+  values?: Record<string, unknown>;
+  expectedPrescription?: unknown;
+}): Promise<void> {
+  const result = await applyMove(
+    params.client,
+    params.rowId,
+    params.userId,
+    params.weekIndex,
+    params.dayIndex,
+    params.values,
+    params.expectedPrescription,
+  );
+  if (result.error) {
+    throw new Error(
+      `movePlannedSessionRow: failed to move ${params.rowId}: ${result.error.message}`,
+    );
+  }
 }
 
 /**
@@ -121,6 +185,8 @@ export async function swapPlannedSessions(
     p.userId,
     park.weekIndex,
     park.dayIndex,
+    {},
+    p.sourceExpectedPrescription,
   );
   if (parkRes.error) {
     throw new Error(
@@ -135,6 +201,8 @@ export async function swapPlannedSessions(
     p.userId,
     p.sourceWeek,
     p.sourceDay,
+    p.targetFinalValues,
+    p.targetExpectedPrescription,
   );
   if (moveTargetRes.error) {
     // Roll back step 1 so the source row reappears on the calendar.
@@ -157,16 +225,31 @@ export async function swapPlannedSessions(
     p.userId,
     p.targetWeek,
     p.targetDay,
+    p.sourceFinalValues,
+    p.sourceExpectedPrescription,
   );
   if (moveSourceRes.error) {
     // Roll back steps 1 + 2 so both rows end up on their original slots.
-    await applyMove(
+    const targetRollback = await applyMove(
       p.client,
       p.targetId,
       p.userId,
       p.targetWeek,
       p.targetDay,
+      p.targetRollbackValues,
+      p.targetFinalValues?.prescription,
     );
+    // Preserve a concurrent prescription edit even if it means leaving the
+    // harmless reschedule marker in place after restoring the target's slot.
+    if (targetRollback.error) {
+      await applyMove(
+        p.client,
+        p.targetId,
+        p.userId,
+        p.targetWeek,
+        p.targetDay,
+      );
+    }
     await applyMove(
       p.client,
       p.sourceId,
