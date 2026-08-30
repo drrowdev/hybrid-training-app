@@ -14,10 +14,13 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  movePlannedSessionRow,
   parkingSlotForSession,
   swapPlannedSessions,
   type SwapClient,
+  type SwapUpdateFilter,
   type SwapUpdateBuilder,
+  type SwapUpdateResult,
 } from "../swap";
 
 type Row = {
@@ -27,6 +30,8 @@ type Row = {
   week_index: number;
   day_index: number;
   slot: "single" | "am" | "pm";
+  planned_at: string | null;
+  prescription: Record<string, unknown>;
 };
 
 /**
@@ -46,6 +51,19 @@ function makeFakeClient(initial: Row[]) {
     userIdFilter: string | undefined;
     values: Record<string, unknown>;
   }> = [];
+  const stableJson = (value: unknown): string => {
+    if (value === null || typeof value !== "object") {
+      return JSON.stringify(value);
+    }
+    if (Array.isArray(value)) {
+      return `[${value.map(stableJson).join(",")}]`;
+    }
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(",")}}`;
+  };
 
   function findUnique(
     blockId: string,
@@ -71,70 +89,77 @@ function makeFakeClient(initial: Row[]) {
         update(values) {
           updateCallCount += 1;
           const myCall = updateCallCount;
-          let idFilter: string | undefined;
-          let userIdFilter: string | undefined;
-          const eqChain = {
-            eq(col: string, val: unknown) {
-              if (col === "id") idFilter = String(val);
-              else if (col === "user_id") userIdFilter = String(val);
-              return {
-                async eq(col2: string, val2: unknown) {
-                  if (col2 === "id") idFilter = String(val2);
-                  else if (col2 === "user_id") userIdFilter = String(val2);
-                  auditLog.push({
-                    rowId: idFilter,
-                    userIdFilter,
-                    values: { ...values },
-                  });
-                  if (
-                    injection &&
-                    injection.onUpdateNthCall === myCall
-                  ) {
-                    return { error: { message: injection.error } };
-                  }
-                  const target = rows.find(
-                    (r) =>
-                      r.id === idFilter &&
-                      (userIdFilter === undefined || r.user_id === userIdFilter),
-                  );
-                  if (!target) {
-                    // Mimic Supabase: rows that don't match the filter
-                    // simply produce zero updates — not an error. The
-                    // "unauthorized" scenario relies on this so the
-                    // swap helper still completes its steps but the
-                    // underlying rows never move. We expose that via
-                    // the audit log + the rows snapshot.
-                    return { error: null };
-                  }
-                  if (
-                    typeof values.week_index === "number" &&
-                    typeof values.day_index === "number"
-                  ) {
-                    const week = values.week_index as number;
-                    const day = values.day_index as number;
-                    const conflict = findUnique(
-                      target.block_id,
-                      week,
-                      day,
-                      target.slot,
-                      target.id,
-                    );
-                    if (conflict) {
-                      return {
-                        error: {
-                          message: `duplicate key value violates unique constraint planned_sessions_block_week_day_slot_unique_idx (existing row ${conflict.id})`,
-                        },
-                      };
-                    }
-                    target.week_index = week;
-                    target.day_index = day;
-                  }
-                  return { error: null };
-                },
-              };
+          const filters = new Map<string, unknown>();
+          let execution: Promise<SwapUpdateResult> | null = null;
+          const execute = async (): Promise<SwapUpdateResult> => {
+            const idFilter = filters.has("id")
+              ? String(filters.get("id"))
+              : undefined;
+            const userIdFilter = filters.has("user_id")
+              ? String(filters.get("user_id"))
+              : undefined;
+            auditLog.push({
+              rowId: idFilter,
+              userIdFilter,
+              values: { ...values },
+            });
+            if (injection && injection.onUpdateNthCall === myCall) {
+              return { error: { message: injection.error }, count: null };
+            }
+            const target = rows.find(
+              (row) =>
+                row.id === idFilter &&
+                (userIdFilter === undefined || row.user_id === userIdFilter) &&
+                (!filters.has("prescription") ||
+                  stableJson(row.prescription) ===
+                    stableJson(
+                      JSON.parse(String(filters.get("prescription"))),
+                    )),
+            );
+            if (!target) return { error: null, count: 0 };
+            if (
+              typeof values.week_index === "number" &&
+              typeof values.day_index === "number"
+            ) {
+              const week = values.week_index as number;
+              const day = values.day_index as number;
+              const conflict = findUnique(
+                target.block_id,
+                week,
+                day,
+                target.slot,
+                target.id,
+              );
+              if (conflict) {
+                return {
+                  error: {
+                    message: `duplicate key value violates unique constraint planned_sessions_block_week_day_slot_unique_idx (existing row ${conflict.id})`,
+                  },
+                  count: null,
+                };
+              }
+              target.week_index = week;
+              target.day_index = day;
+            }
+            if ("planned_at" in values) {
+              target.planned_at = values.planned_at as string | null;
+            }
+            if ("prescription" in values) {
+              target.prescription = values.prescription as Record<string, unknown>;
+            }
+            return { error: null, count: 1 };
+          };
+          const query: SwapUpdateFilter = {
+            eq(column, value) {
+              filters.set(column, value);
+              return query;
+            },
+            then(onfulfilled, onrejected) {
+              if (!execution) execution = execute();
+              return execution.then(onfulfilled, onrejected);
             },
           };
-          return { eq: eqChain.eq };
+          return query;
         },
       };
       return builder;
@@ -170,6 +195,8 @@ function rowAt(
     week_index: week,
     day_index: day,
     slot: "single",
+    planned_at: "2026-08-30T09:00:00Z",
+    prescription: { items: [], programRef: id },
     ...overrides,
   };
 }
@@ -235,6 +262,67 @@ describe("swapPlannedSessions — happy path", () => {
       expect(entry.userIdFilter).toBe(USER);
     }
   });
+
+  it("keeps reschedule markers and clears stale times on both swapped rows", async () => {
+    const fake = makeFakeClient([rowAt(SESSION_A, 0, 1), rowAt(SESSION_B, 1, 3)]);
+    await swapPlannedSessions({
+      client: fake.client,
+      userId: USER,
+      sourceId: SESSION_A,
+      sourceWeek: 0,
+      sourceDay: 1,
+      targetId: SESSION_B,
+      targetWeek: 1,
+      targetDay: 3,
+      blockWeeks: 4,
+      sourceFinalValues: {
+        planned_at: null,
+        prescription: { items: [], meta: { userRescheduled: true } },
+      },
+      targetFinalValues: {
+        planned_at: null,
+        prescription: { items: [], meta: { userRescheduled: true } },
+      },
+      targetRollbackValues: {
+        planned_at: "2026-08-30T09:00:00Z",
+        prescription: { items: [], programRef: SESSION_B },
+      },
+      sourceExpectedPrescription: { items: [], programRef: SESSION_A },
+      targetExpectedPrescription: { items: [], programRef: SESSION_B },
+    });
+
+    for (const row of fake.rows) {
+      expect(row.planned_at).toBeNull();
+      expect(row.prescription).toMatchObject({
+        meta: { userRescheduled: true },
+      });
+    }
+  });
+
+  it("refuses to overwrite a prescription that changed during a move", async () => {
+    const fake = makeFakeClient([rowAt(SESSION_A, 0, 1)]);
+
+    await expect(
+      movePlannedSessionRow({
+        client: fake.client,
+        userId: USER,
+        rowId: SESSION_A,
+        weekIndex: 0,
+        dayIndex: 4,
+        values: {
+          prescription: { items: [], meta: { userRescheduled: true } },
+        },
+        expectedPrescription: { items: [{ movementId: "stale" }] },
+      }),
+    ).rejects.toThrow(/changed while it was being moved/i);
+
+    const row = fake.rows[0]!;
+    expect({ week: row.week_index, day: row.day_index }).toEqual({
+      week: 0,
+      day: 1,
+    });
+    expect(row.prescription).toEqual({ items: [], programRef: SESSION_A });
+  });
 });
 
 describe("swapPlannedSessions — partial-failure rollback", () => {
@@ -276,6 +364,20 @@ describe("swapPlannedSessions — partial-failure rollback", () => {
         targetWeek: 1,
         targetDay: 3,
         blockWeeks: 4,
+        sourceFinalValues: {
+          planned_at: null,
+          prescription: { items: [], meta: { userRescheduled: true } },
+        },
+        targetFinalValues: {
+          planned_at: null,
+          prescription: { items: [], meta: { userRescheduled: true } },
+        },
+        targetRollbackValues: {
+          planned_at: "2026-08-30T09:00:00Z",
+          prescription: { items: [], programRef: SESSION_B },
+        },
+        sourceExpectedPrescription: { items: [], programRef: SESSION_A },
+        targetExpectedPrescription: { items: [], programRef: SESSION_B },
       }),
     ).rejects.toThrow(/constraint blip/);
     // Both rows are restored to their original slots.
@@ -283,6 +385,8 @@ describe("swapPlannedSessions — partial-failure rollback", () => {
     const b = fake.rows.find((r) => r.id === SESSION_B)!;
     expect({ week: a.week_index, day: a.day_index }).toEqual({ week: 0, day: 1 });
     expect({ week: b.week_index, day: b.day_index }).toEqual({ week: 1, day: 3 });
+    expect(b.planned_at).toBe("2026-08-30T09:00:00Z");
+    expect(b.prescription).toEqual({ items: [], programRef: SESSION_B });
   });
 });
 

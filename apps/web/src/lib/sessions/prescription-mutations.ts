@@ -303,6 +303,20 @@ export function hasUserEditedPrescription(
   });
 }
 
+/** Mark a planned workout's calendar placement as a user choice. */
+export function markPrescriptionRescheduled(
+  prescription: Prescription,
+): Prescription {
+  if (prescription.meta?.userRescheduled === true) return prescription;
+  return {
+    ...prescription,
+    meta: {
+      ...prescription.meta,
+      userRescheduled: true,
+    },
+  };
+}
+
 /**
  * Does this planned session carry state the user accepted, such that
  * regenerating the row from the program would throw that state away?
@@ -322,6 +336,7 @@ export function prescriptionCarriesUserState(
   if (!prescription) return false;
   if (hasUserEditedPrescription(prescription)) return true;
   return (
+    prescription.meta?.userRescheduled === true ||
     prescription.autoregVolumeScale != null ||
     prescription.deloadSkipped === true ||
     prescription.earlyDeload === true

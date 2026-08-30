@@ -4,6 +4,7 @@ import {
   inferProgramStartWeekIndex,
   relativeProgramSegments,
   shiftSegmentsForInsertedWeeks,
+  shiftWeekIndexForInsertedWeeks,
 } from "../program-overview";
 import type { ProgramEngine } from "@hta/program-core";
 
@@ -68,6 +69,12 @@ describe("buildPlanPhaseGroups", () => {
   });
 
   describe("shiftSegmentsForInsertedWeeks", () => {
+    it("shifts a program week past every recovery week before it", () => {
+      expect(shiftWeekIndexForInsertedWeeks(0, [2, 5])).toBe(0);
+      expect(shiftWeekIndexForInsertedWeeks(2, [2, 5])).toBe(3);
+      expect(shiftWeekIndexForInsertedWeeks(4, [5, 2, 2])).toBe(6);
+    });
+
     it("moves later phase boundaries past an inserted recovery week", () => {
       expect(
         shiftSegmentsForInsertedWeeks(

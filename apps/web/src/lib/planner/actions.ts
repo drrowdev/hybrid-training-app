@@ -3,11 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { todayYmd, ymdToUtc, daysBetweenYmd } from "@/lib/dates";
 import { getUserTimezone } from "./queries";
-import { swapPlannedSessions } from "./swap";
+import { movePlannedSessionRow, swapPlannedSessions } from "./swap";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
+import { markPrescriptionRescheduled } from "@/lib/sessions/prescription-mutations";
 
 export type CreateBlockResult =
   | { ok: true }
@@ -313,7 +315,7 @@ export async function movePlannedSession(formData: FormData): Promise<void> {
 
   const { data: planned } = await supabase
     .from("planned_sessions")
-    .select("id, block_id, week_index, day_index, slot")
+    .select("id, block_id, week_index, day_index, slot, planned_at, prescription")
     .eq("id", parsed.data.id)
     .eq("user_id", user.id)
     .maybeSingle();
@@ -340,15 +342,21 @@ export async function movePlannedSession(formData: FormData): Promise<void> {
   // by a 1-a-day swap (we only swap matching slots).
   const { data: existing } = await supabase
     .from("planned_sessions")
-    .select("id, week_index, day_index, slot")
+    .select("id, week_index, day_index, slot, planned_at, prescription")
     .eq("block_id", planned.block_id)
     .eq("user_id", user.id)
     .eq("week_index", parsed.data.weekIndex)
     .eq("day_index", parsed.data.dayIndex);
 
   const target = (existing ?? []).find((r) => r.slot === planned.slot);
+  const sourcePrescription = markPrescriptionRescheduled(
+    (planned.prescription as Prescription | null) ?? { items: [] },
+  );
 
   if (target && target.id !== planned.id) {
+    const targetPrescription = markPrescriptionRescheduled(
+      (target.prescription as Prescription | null) ?? { items: [] },
+    );
     // Atomic-ish swap with rollback on partial failure. See
     // ./swap.ts for the parking-slot strategy + rationale. The helper
     // throws on any DB error so we surface failures to the caller
@@ -363,32 +371,36 @@ export async function movePlannedSession(formData: FormData): Promise<void> {
       targetWeek: parsed.data.weekIndex,
       targetDay: parsed.data.dayIndex,
       blockWeeks: block.weeks as number,
+      sourceFinalValues: {
+        prescription: sourcePrescription,
+        planned_at: null,
+      },
+      targetFinalValues: {
+        prescription: targetPrescription,
+        planned_at: null,
+      },
+      targetRollbackValues: {
+        prescription: target.prescription,
+        planned_at: target.planned_at,
+      },
+      sourceExpectedPrescription: planned.prescription,
+      targetExpectedPrescription: target.prescription,
     });
   } else {
-    const { error: moveErr } = await supabase
-      .from("planned_sessions")
-      .update({ week_index: parsed.data.weekIndex, day_index: parsed.data.dayIndex })
-      .eq("id", planned.id)
-      .eq("user_id", user.id);
-    if (moveErr) {
-      throw new Error(
-        `movePlannedSession: failed to move ${planned.id}: ${moveErr.message}`,
-      );
-    }
-  }
-
-  // Moving a day clears any explicit planned_at (the absolute timestamp
-  // referred to the OLD calendar date — keeping it would put the
-  // session on the wrong wall-clock day).
-  const { error: clearErr } = await supabase
-    .from("planned_sessions")
-    .update({ planned_at: null })
-    .in("id", target ? [planned.id, target.id] : [planned.id])
-    .eq("user_id", user.id);
-  if (clearErr) {
-    throw new Error(
-      `movePlannedSession: failed to clear planned_at after move: ${clearErr.message}`,
-    );
+    await movePlannedSessionRow({
+      client: supabase as unknown as Parameters<
+        typeof movePlannedSessionRow
+      >[0]["client"],
+      userId: user.id,
+      rowId: planned.id,
+      weekIndex: parsed.data.weekIndex,
+      dayIndex: parsed.data.dayIndex,
+      values: {
+        planned_at: null,
+        prescription: sourcePrescription,
+      },
+      expectedPrescription: planned.prescription,
+    });
   }
 
   revalidatePath("/app");

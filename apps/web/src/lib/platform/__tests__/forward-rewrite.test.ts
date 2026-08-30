@@ -123,6 +123,24 @@ describe("planForwardOnlyRewrite", () => {
     expect(
       planForwardOnlyRewrite({ currentWeekIndex: 5, currentDayIndex: 6, writeWeeks: 3, existingFuture: [], newSessions: [] }).newWeeks,
     ).toBe(6);
+    // A touched future row also keeps the block long enough to contain it.
+    expect(
+      planForwardOnlyRewrite({
+        currentWeekIndex: 1,
+        currentDayIndex: 2,
+        writeWeeks: 3,
+        existingFuture: [
+          {
+            id: "future-touched",
+            weekIndex: 5,
+            dayIndex: 0,
+            slot: "single",
+            touched: true,
+          },
+        ],
+        newSessions: [],
+      }).newWeeks,
+    ).toBe(6);
   });
 
   it("regenerates untouched sessions from today onward in the current week", () => {
@@ -232,6 +250,144 @@ describe("planForwardOnlyRewrite", () => {
     expect(
       plan.insertIndices.map((index) => newSessions[index]!.dayIndex),
     ).toEqual([6]);
+  });
+
+  it("keeps a legacy moved workout when its generated replacement is already past", () => {
+    const programRef = "b0-w4-p2b";
+    const plan = planForwardOnlyRewrite({
+      currentWeekIndex: 3,
+      currentDayIndex: 6,
+      writeWeeks: 6,
+      existingFuture: [
+        {
+          id: "moved-to-sunday",
+          weekIndex: 3,
+          dayIndex: 6,
+          slot: "single",
+          role: "strength",
+          programRef,
+          touched: false,
+        },
+      ],
+      newSessions: [
+        {
+          weekIndex: 3,
+          dayIndex: 3,
+          slot: "single",
+          role: "strength",
+          programRef,
+        },
+      ],
+    });
+
+    expect(plan.deleteIds).toEqual([]);
+    expect(plan.insertIndices).toEqual([]);
+  });
+
+  it("preserves an inserted recovery week between shifted program weeks", () => {
+    const plan = planForwardOnlyRewrite({
+      currentWeekIndex: 2,
+      currentDayIndex: 0,
+      writeWeeks: 7,
+      existingFuture: [
+        {
+          id: "inserted-recovery",
+          weekIndex: 2,
+          dayIndex: 0,
+          slot: "single",
+          role: "deload",
+          touched: true,
+        },
+      ],
+      newSessions: [
+        {
+          weekIndex: 3,
+          dayIndex: 0,
+          slot: "single",
+          role: "strength",
+          programRef: "b0-w3-p1a",
+        },
+      ],
+    });
+
+    expect(plan.deleteIds).toEqual([]);
+    expect(plan.insertIndices).toEqual([0]);
+    expect(plan.newWeeks).toBe(7);
+  });
+
+  it("does not duplicate a marked moved workout at its generated future slot", () => {
+    const programRef = "b0-w2-p2b";
+    const newSessions: NewSessionLite[] = [
+      {
+        weekIndex: 1,
+        dayIndex: 4,
+        slot: "single",
+        role: "strength",
+        programRef,
+      },
+      {
+        weekIndex: 1,
+        dayIndex: 5,
+        slot: "single",
+        role: "cardio",
+        programRef: "cardio-w1-d5",
+      },
+    ];
+    const plan = planForwardOnlyRewrite({
+      currentWeekIndex: 1,
+      currentDayIndex: 2,
+      writeWeeks: 6,
+      existingFuture: [
+        {
+          id: "moved-to-sunday",
+          weekIndex: 1,
+          dayIndex: 6,
+          slot: "single",
+          role: "strength",
+          programRef,
+          touched: true,
+        },
+      ],
+      newSessions,
+    });
+
+    expect(plan.deleteIds).toEqual([]);
+    expect(plan.insertIndices.map((index) => newSessions[index]!.programRef)).toEqual([
+      "cardio-w1-d5",
+    ]);
+  });
+
+  it("still applies an explicit edit to an untouched workout's day", () => {
+    const programRef = "b0-w2-p2b";
+    const newSessions: NewSessionLite[] = [
+      {
+        weekIndex: 1,
+        dayIndex: 6,
+        slot: "single",
+        role: "strength",
+        programRef,
+      },
+    ];
+    const plan = planForwardOnlyRewrite({
+      currentWeekIndex: 1,
+      currentDayIndex: 2,
+      writeWeeks: 6,
+      existingFuture: [
+        {
+          id: "canonical-friday",
+          weekIndex: 1,
+          dayIndex: 4,
+          slot: "single",
+          role: "strength",
+          programRef,
+          touched: false,
+        },
+      ],
+      newSessions,
+    });
+
+    expect(plan.deleteIds).toEqual(["canonical-friday"]);
+    expect(plan.insertIndices).toEqual([0]);
   });
 
   it("replaces an untouched today, legacy rehab slot and all, with the embedded strength row", () => {
