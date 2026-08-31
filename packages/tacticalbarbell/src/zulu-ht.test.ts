@@ -97,3 +97,105 @@ describe("Zulu/HT — onSessionLogged", () => {
     expect(recommendations).toEqual([]);
   });
 });
+
+describe("Zulu/HT — a belt-loaded lift in the cluster", () => {
+  // Zulu/HT's cluster is a list of bare movement keys — there is no per-lift
+  // kind to carry — so a weighted pull-up substituted into a slot used to ramp
+  // on its bodyweight-inclusive max and hand the lifter the whole total.
+  const bwCtx: PlatformContext = {
+    oneRepMaxes: { press: 100, squat: 200, "weighted-pullup": 118, deadlift: 200 },
+    roundingKg: 2.5,
+    bodyweightKg: 82,
+  };
+  const withPullup = () =>
+    z.setup({ values: { cluster: ["press", "squat", "weighted-pullup", "deadlift"] } }, bwCtx);
+
+  function pullupItems(ref: string) {
+    const p = z.prescribe(withPullup(), ref, bwCtx);
+    return {
+      warmups: itemsOfKind(p, "warmup").filter((i) => i.movementId === "weighted-pullup"),
+      working: [...itemsOfKind(p, "main"), ...itemsOfKind(p, "supplemental")].filter(
+        (i) => i.movementId === "weighted-pullup",
+      ),
+    };
+  }
+
+  it("takes bodyweight off the total wherever the lift lands in the week", () => {
+    // s4 trains it heavy, s2 as the back-off — both are belt loads, and no
+    // prescribed weight may reach the lifter's own bodyweight.
+    for (const ref of ["b0-w1-s2", "b0-w1-s4"]) {
+      const { warmups, working } = pullupItems(ref);
+      expect(working.length).toBeGreaterThan(0);
+      expect(working.every((i) => i.systemLoad === true)).toBe(true);
+      for (const item of [...warmups, ...working]) {
+        expect(item.weightKg!).toBeLessThan(bwCtx.bodyweightKg!);
+      }
+    }
+  });
+
+  it("reps out a set that has nothing left to add", () => {
+    // The back-off runs at 65%: 0.65 × 118 = 76.7 kg, under an 82 kg lifter.
+    const { working } = pullupItems("b0-w1-s2");
+    expect(working[0]?.weightKg).toBe(0);
+    expect(working[0]?.isAmrap).toBe(true);
+  });
+
+  it("leaves the load unresolved rather than guessing with no bodyweight on file", () => {
+    const noBw: PlatformContext = { ...bwCtx };
+    delete (noBw as { bodyweightKg?: number }).bodyweightKg;
+    const p = z.prescribe(
+      z.setup({ values: { cluster: ["press", "squat", "weighted-pullup", "deadlift"] } }, noBw),
+      "b0-w1-s4",
+      noBw,
+    );
+    const main = itemsOfKind(p, "main").find((i) => i.movementId === "weighted-pullup");
+    expect(main?.weightKg).toBeUndefined();
+    expect(main?.percentOfTm).toBe(0.75);
+    expect(
+      itemsOfKind(p, "warmup").filter((i) => i.movementId === "weighted-pullup"),
+    ).toHaveLength(0);
+  });
+
+  it("leaves the barbell lifts in the same session untouched", () => {
+    // s4 pairs the heavy weighted pull-up with a deadlift back-off.
+    const p = z.prescribe(withPullup(), "b0-w1-s4", bwCtx);
+    const deadlift = itemsOfKind(p, "supplemental").find((i) => i.movementId === "deadlift");
+    expect(deadlift?.weightKg).toBe(130); // 0.65 × 200
+    expect(deadlift?.systemLoad).toBeUndefined();
+  });
+});
+
+describe("Zulu/HT — a belt-loaded lift keeps its required cue", () => {
+  const bwCtx: PlatformContext = {
+    // Low enough that the week-3 heavy set still lands under bodyweight, so the
+    // peaking cue and the bodyweight instruction have to coexist.
+    oneRepMaxes: { press: 100, squat: 200, "weighted-pullup": 95, deadlift: 200 },
+    roundingKg: 2.5,
+    bodyweightKg: 82,
+  };
+  const inst = () =>
+    z.setup({ values: { cluster: ["press", "squat", "weighted-pullup", "deadlift"] } }, bwCtx);
+
+  it("states the bodyweight set alongside the week-3 peaking cue", () => {
+    const p = z.prescribe(inst(), "b0-w3-s4", bwCtx);
+    const main = itemsOfKind(p, "main").find((i) => i.movementId === "weighted-pullup");
+    expect(main?.weightKg).toBe(0);
+    expect(main?.isAmrap).toBe(true);
+    // Neither instruction may silently replace the other.
+    expect(main?.note).toContain("max clean reps");
+    expect(main?.note).toContain("Peaking");
+  });
+
+  it("states the missing bodyweight alongside the peaking cue", () => {
+    const noBw: PlatformContext = { ...bwCtx };
+    delete (noBw as { bodyweightKg?: number }).bodyweightKg;
+    const p = z.prescribe(
+      z.setup({ values: { cluster: ["press", "squat", "weighted-pullup", "deadlift"] } }, noBw),
+      "b0-w3-s4",
+      noBw,
+    );
+    const main = itemsOfKind(p, "main").find((i) => i.movementId === "weighted-pullup");
+    expect(main?.note).toContain("bodyweight");
+    expect(main?.note).toContain("Peaking");
+  });
+});

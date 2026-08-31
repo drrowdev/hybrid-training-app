@@ -15,6 +15,26 @@ export type TargetLoadInput = {
   percentTm?: number | null;
   /** Concrete kg the engine resolved itself (warm-up ramps, hand-entered work). */
   targetWeightKg?: number | null;
+  /**
+   * Set by an engine that already did the bodyweight subtraction, so
+   * `targetWeightKg` is the ADDED load and `0` means a bodyweight set.
+   *
+   * Its ABSENCE on a system-load WARM-UP is meaningful: the ramp was written by
+   * a path that didn't know about bodyweight, so its absolute target is a
+   * bodyweight-inclusive TOTAL and still needs the subtraction. That is what
+   * lets a plan materialised before the fix stop prescribing +40 kg on a belt
+   * without being regenerated.
+   */
+  systemLoad?: boolean;
+  /**
+   * The item's role. Only a `warmup` is reinterpreted as described above.
+   *
+   * Absolute loads elsewhere are the LIFTER'S OWN number — a rehab item's
+   * hand-entered load, an external-cardio entry — and several of those sit on
+   * movements the catalog also marks bodyweight-loadable (`eccentric-chin-up`).
+   * Reading one as a bodyweight-inclusive total would silently zero it.
+   */
+  kind?: string | null;
 };
 
 export type TargetLoadContext = {
@@ -73,6 +93,19 @@ export function resolveTargetLoadKg(
   // explicit 0 means "bodyweight" and is a prescription, not a missing value.
   if (absolute != null && (absolute > 0 || (ctx.isSystemLoad && absolute === 0))) {
     const roundAbsolute = ctx.roundAbsoluteKg ?? ((kg: number) => kg);
+    // A system-load WARM-UP written without the `systemLoad` marker came from a
+    // path that never subtracted bodyweight — the number is a total, and
+    // handing it over as-is is what puts +40 kg on a belt. Warm-ups only: every
+    // other absolute load is the lifter's own number.
+    if (ctx.isSystemLoad && item.systemLoad !== true && item.kind === "warmup") {
+      // Zero is zero under either reading — a total of nothing and an added
+      // nothing are both a bodyweight set — so it resolves without needing a
+      // bodyweight on file.
+      if (absolute === 0) return 0;
+      const bodyweightKg = num(ctx.bodyweightKg);
+      if (bodyweightKg == null || bodyweightKg <= 0) return null;
+      return addedLoadFromSystemLoad(absolute, bodyweightKg, roundAbsolute);
+    }
     return roundAbsolute(absolute);
   }
   return null;

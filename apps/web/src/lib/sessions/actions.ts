@@ -211,11 +211,17 @@ async function resolveSetSnapshot(
     if (loggedSetKindForItemKind(item.kind) !== args.setKind) return empty;
 
     // Independently derive what this item implies, so submitted values can be
-    // corroborated. `tmKg` is only needed for percentage-based loads.
+    // corroborated. `tmKg` is only needed for percentage-based loads, but a
+    // legacy system-load WARM-UP carries only an absolute target and still has
+    // to be reinterpreted — without the bodyweight the server would expect the
+    // uncorrected number and reject the corrected one the logger showed.
     let tmKg: number | null = null;
     let bodyweightKg: number | null = null;
     let isSystemLoad = item.systemLoad === true;
-    if (typeof item.percentTm === "number" && item.movementId) {
+    const hasPercent = typeof item.percentTm === "number";
+    const hasAbsolute =
+      typeof item.targetWeightKg === "number" && Number.isFinite(item.targetWeightKg);
+    if ((hasPercent || hasAbsolute) && item.movementId) {
       const [tmRes, profileRes, movementRes] = await Promise.all([
         supabase
           .from("training_maxes")

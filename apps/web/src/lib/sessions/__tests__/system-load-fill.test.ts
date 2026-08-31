@@ -165,6 +165,30 @@ describe("fillSessionFromPlan — weighted bodyweight movements", () => {
     expect(mockState.upserts[0]?.target_weight_kg).toBeNull();
   });
 
+  it("corrects a warm-up stored before the bodyweight subtraction existed", async () => {
+    // The reported bug, as it sits in an already-materialised plan: absolute
+    // warm-up targets that are fractions of the bodyweight-inclusive total,
+    // with no `systemLoad` marker because the path that wrote them didn't know
+    // about bodyweight. Read as totals, all three are plain pull-ups.
+    mockState.planned = pullupPrescription(
+      [40, 60, 80].map((targetWeightKg) => ({
+        movementId: PULLUP_ID,
+        movementSlug: "weighted-pull-up",
+        kind: "warmup",
+        sets: 1,
+        reps: 5,
+        targetWeightKg,
+      })),
+    );
+    const { fillSessionFromPlan } = await import("../actions");
+    const formData = new FormData();
+    formData.set("sessionId", SESSION_ID);
+
+    await fillSessionFromPlan(formData);
+
+    expect(mockState.upserts.map((row) => row.weight_kg)).toEqual([0, 0, 0]);
+  });
+
   it("keeps a 0 kg warm-up instead of dropping it", async () => {
     mockState.planned = pullupPrescription([
       {

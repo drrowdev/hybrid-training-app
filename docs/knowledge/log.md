@@ -1187,3 +1187,19 @@ Manual moves and swaps now stamp a durable marker inside the prescription, and b
 The same review found that Edit plan did not account for user-inserted recovery weeks. Those rows are now preserved and fresh program weeks are shifted around them before reconciliation, so a refresh cannot remove the recovery week or pull later training seven days forward.
 
 No schema migration: the marker lives in the existing prescription metadata. Added regression coverage for the reported Sunday loss, future-position deduplication, explicit schedule edits, marker recognition, successful swaps, rollback of marker/time changes, and recovery-week offsets.
+
+## [2026-08-31] fix | The belt-load subtraction reached one producer of three
+
+Reported as warm-up sets of "+40kg" and "+80kg" on a weighted pull-up. That is the shared 40/60/80% ladder applied to a bodyweight-inclusive max with nothing taken off, which the earlier system-load fix was supposed to have made impossible. It had fixed the one producer it was looking at.
+
+The first miss is the interesting one, because it is a design fault rather than an oversight. `kind` was carried ALONGSIDE the movement in a cluster entry, so every path that builds one had to remember to attach it. The "run your own cluster" mode saves bare movement strings, `entriesFromValue` only set `kind` when an entry carried one explicitly, and an untagged `weighted-pullup` therefore missed the `weighted-bw` branch and fell through to the barbell path. An 118 kg max at 85% became a 100 kg working set ramped +40/+60/+80 - exactly the report. Belt-loading is a property OF THE MOVEMENT, so `defaultLiftKind` now derives it and no caller has to know.
+
+Second: Zulu/HT is a separate engine whose cluster is a bare `string[]` with no per-lift kind at all, so it could never have been fixed by tagging entries. It now recognises a belt-loaded movement by the movement itself. Its two duplicated heavy/back-off blocks became one helper, since the duplication is what let the two drift apart in the first place.
+
+Third, and the one that actually reaches the lifter's existing plan: fixing the engines does nothing for sessions already materialised. An absolute warm-up target on a system-load movement WITHOUT the `systemLoad` marker was written by a path that never subtracted, so it is read as a total and corrected in the resolver - the same catalog-driven strategy that fixed the working sets, now covering the ramp.
+
+`apps/web/src/lib/planner/warmups.ts` emits warm-ups carrying `percentTm` rather than an absolute, so it already resolved correctly through the shared resolver and was left alone.
+
+Review before merge caught three defects in that work, one of them a regression the fix introduced. The legacy reinterpretation first keyed off the catalog's `body_weight_loaded`, which is a broad "takes a belt" capability - it covers push-ups, ordinary dips and rehab movements like `eccentric-chin-up`, whose `targetWeightKg` is the lifter's own hand-entered number stored verbatim. A 10 kg rehab load would have silently resolved to 0. It is now warm-ups only, which is the only place the bug could occur. Second, `resolveSetSnapshot` fetched bodyweight only when a percentage was present, so for a legacy warm-up the server would have expected the uncorrected number and rejected the corrected one the logger displayed, losing the prescribed snapshot. Third, Zulu/HT's optional peaking cue overwrote the note telling the lifter the set is bodyweight.
+
+No migration. Nothing is rewritten in storage; the correction happens at resolution.
