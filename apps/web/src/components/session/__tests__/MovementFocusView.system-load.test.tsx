@@ -98,6 +98,21 @@ describe("MovementFocusView — weighted bodyweight movements", () => {
     expect(html).not.toContain('value="25"');
   });
 
+  it("opens at zero for a warm-up stored before the bodyweight subtraction existed", () => {
+    // 40 kg here was a fraction of the bodyweight-inclusive total, not a belt
+    // load. No `systemLoad` marker, so it is read as a total and lands under an
+    // 85 kg lifter — a plain pull-up, not +40 kg.
+    const html = render({
+      item: { kind: "warmup", targetWeightKg: 40 },
+      tmKg: 118,
+      bodyweightKg: 85,
+      lastSetHint: { weightKg: 25, reps: 5, performedAt: "2026-08-01T00:00:00Z" },
+    });
+    expect(html).toContain('value="0"');
+    expect(html).not.toContain('value="40"');
+    expect(html).not.toContain('value="25"');
+  });
+
   it("keeps a prescribed 0 kg warm-up instead of falling back to history", () => {
     const html = render({
       item: { kind: "warmup", targetWeightKg: 0, systemLoad: true },

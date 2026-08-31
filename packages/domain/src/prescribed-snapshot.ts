@@ -24,6 +24,8 @@ export type PrescribedSnapshotInput = {
   kind?: string;
   percentTm?: number | null;
   targetWeightKg?: number | null;
+  /** The engine already subtracted bodyweight — see `TargetLoadInput`. */
+  systemLoad?: boolean;
   reps?: number | null;
   optional?: boolean;
   isAmrap?: boolean;
@@ -110,14 +112,17 @@ export function resolvePrescribedSnapshot(
   const round = ctx.roundToPlate ?? ((kg: number) => kg);
 
   const percentTm = num(item.percentTm);
-  const targetWeightKg = resolveTargetLoadKg(item, {
-    tmKg: ctx.tmKg,
-    ...(ctx.isSystemLoad ? { isSystemLoad: true } : {}),
-    bodyweightKg: ctx.bodyweightKg,
-    roundKg: round,
-    // Warm-up ramps resolve to a concrete kg at deploy and carry no percentage.
-    roundAbsoluteKg: round,
-  });
+  const targetWeightKg = resolveTargetLoadKg(
+    { ...item, kind: item.kind ?? null },
+    {
+      tmKg: ctx.tmKg,
+      ...(ctx.isSystemLoad ? { isSystemLoad: true } : {}),
+      bodyweightKg: ctx.bodyweightKg,
+      roundKg: round,
+      // Warm-up ramps resolve to a concrete kg at deploy and carry no percentage.
+      roundAbsoluteKg: round,
+    },
+  );
 
   // Reuse the existing work resolver so reps/hold/distance selection (and its
   // range-midpoint rule) has exactly one implementation.

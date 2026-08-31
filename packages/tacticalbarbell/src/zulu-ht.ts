@@ -25,8 +25,12 @@ import type {
   LoggedSession,
   ProgramRecommendation,
 } from "@hta/program-core";
-import { buildGlobalWarmupItems } from "@hta/program-core";
-import { TB_MOVEMENT_LABEL } from "./templates";
+import {
+  addedLoadFromSystemLoad,
+  buildGlobalWarmupItems,
+  buildSystemLoadWarmupItems,
+} from "@hta/program-core";
+import { TB_MOVEMENT_LABEL, isSystemLoadMovement } from "./templates";
 import { roundToIncrement } from "./rounding";
 
 const BLOCK_WEEKS = 3;
@@ -177,56 +181,118 @@ export const zuluHtEngine: ProgramEngine<ZuluHtInstance> = {
     const heavyMv = instance.cluster[session.heavy]!;
     const suppMv = instance.cluster[session.supp]!;
 
+    /**
+     * Emit one lift's warm-up ramp plus its working set.
+     *
+     * A cluster slot here is a bare movement key — Zulu/HT has no per-lift kind
+     * to carry — so a belt-loaded movement is recognised by the movement
+     * itself. Its 1RM counts bodyweight, which makes the percentage a TOTAL:
+     * ramp on that total, then hand the lifter only what goes on the belt.
+     */
+    const emitLift = (args: {
+      movement: string;
+      name: string;
+      kind: "main" | "supplemental";
+      basisKg: number;
+      percent: number;
+      sets: number;
+      reps: number;
+      /** Extra cue for this lift, composed WITH any system-load note. */
+      note?: string;
+    }) => {
+      const { movement, name, kind, basisKg, percent, sets, reps } = args;
+      const targetKg = basisKg * percent;
+      const systemLoad = isSystemLoadMovement(movement);
+      // A system-load note states what the lifter must do or supply, so it
+      // cannot be dropped in favour of an optional cue — both are kept.
+      const composeNote = (required?: string) =>
+        [required, args.note].filter(Boolean).join(" · ") || undefined;
+
+      if (systemLoad && (ctx.bodyweightKg == null || ctx.bodyweightKg <= 0)) {
+        // The total cannot be split without a bodyweight. Carry the percentage
+        // so the session still materialises, rather than guessing a belt load.
+        items.push({
+          kind,
+          name,
+          movementId: movement,
+          sets,
+          reps,
+          percentOfTm: percent,
+          note: composeNote("set your bodyweight before this session")!,
+        });
+        return;
+      }
+
+      const workingKg = systemLoad
+        ? addedLoadFromSystemLoad(targetKg, ctx.bodyweightKg!, (kg) =>
+            roundToIncrement(kg, ctx.roundingKg),
+          )
+        : roundToIncrement(targetKg, ctx.roundingKg);
+
+      items.push(
+        ...(systemLoad
+          ? buildSystemLoadWarmupItems({
+              name,
+              movementId: movement,
+              workingSystemLoadKg: targetKg,
+              bodyweightKg: ctx.bodyweightKg!,
+              roundingKg: ctx.roundingKg,
+              ...(ctx.warmupRamp ? { ramp: ctx.warmupRamp } : {}),
+            })
+          : buildGlobalWarmupItems({
+              name,
+              movementId: movement,
+              workingWeightKg: workingKg,
+              roundingKg: ctx.roundingKg,
+              ...(ctx.warmupRamp ? { ramp: ctx.warmupRamp } : {}),
+            })),
+      );
+      // Nothing left on the belt — the set is repped out rather than run at the
+      // loaded rep scheme (TB3).
+      const isMaxRepsSet = systemLoad && workingKg === 0;
+      const note = composeNote(isMaxRepsSet ? "bodyweight — max clean reps" : undefined);
+      items.push({
+        kind,
+        name,
+        movementId: movement,
+        sets,
+        reps,
+        weightKg: workingKg,
+        percentOfTm: percent,
+        ...(systemLoad ? { systemLoad: true } : {}),
+        ...(isMaxRepsSet ? { isAmrap: true } : {}),
+        ...(note ? { note } : {}),
+      });
+    };
+
     const heavyBasis = basisFor(heavyMv);
     if (heavyBasis != null) {
-      const heavyWeight = roundToIncrement(heavyBasis * wave.heavyPct, ctx.roundingKg);
-      // Warm-up ramp to the heavy work weight — shared global routine, or the
-      // lifter's own ladder when they have configured one (`ctx.warmupRamp`).
-      items.push(
-        ...buildGlobalWarmupItems({
-          name: `${label(heavyMv)} (heavy)`,
-          movementId: heavyMv,
-          workingWeightKg: heavyWeight,
-          roundingKg: ctx.roundingKg,
-          ...(ctx.warmupRamp ? { ramp: ctx.warmupRamp } : {}),
-        }),
-      );
-      items.push({
-        kind: "main",
+      emitLift({
+        movement: heavyMv,
         name: `${label(heavyMv)} (heavy)`,
-        movementId: heavyMv,
+        kind: "main",
+        basisKg: heavyBasis,
+        percent: wave.heavyPct,
         sets: 4,
         reps: wave.heavyReps,
-        weightKg: heavyWeight,
-        percentOfTm: wave.heavyPct,
         ...(parsed.week === BLOCK_WEEKS
-          ? { note: "Peaking (optional): work up to a heavy triple, then rep out singles/doubles, or AMRAP the last set." }
+          ? {
+              note: "Peaking (optional): work up to a heavy triple, then rep out singles/doubles, or AMRAP the last set.",
+            }
           : {}),
       });
     }
 
     const suppBasis = basisFor(suppMv);
     if (suppBasis != null) {
-      const suppWeight = roundToIncrement(suppBasis * wave.suppPct, ctx.roundingKg);
-      // Warm-up ramp for the back-off lift — it's a DIFFERENT movement from the
-      // heavy main, so it gets its own ramp to the (lighter) work weight.
-      items.push(
-        ...buildGlobalWarmupItems({
-          name: `${label(suppMv)} (back-off)`,
-          movementId: suppMv,
-          workingWeightKg: suppWeight,
-          roundingKg: ctx.roundingKg,
-          ...(ctx.warmupRamp ? { ramp: ctx.warmupRamp } : {}),
-        }),
-      );
-      items.push({
-        kind: "supplemental",
+      emitLift({
+        movement: suppMv,
         name: `${label(suppMv)} (back-off)`,
-        movementId: suppMv,
+        kind: "supplemental",
+        basisKg: suppBasis,
+        percent: wave.suppPct,
         sets: 4,
         reps: wave.suppReps,
-        weightKg: suppWeight,
-        percentOfTm: wave.suppPct,
       });
     }
 

@@ -135,6 +135,38 @@ export type TbStructure = "cluster" | "split";
  */
 export type TbLiftKind = "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
 
+/**
+ * Movements whose 1RM is a SYSTEM load — bodyweight plus whatever hangs off the
+ * belt. Their percentages name a total, so the load to add is `total −
+ * bodyweight` (see the `weighted-bw` branch in `prescribe`).
+ *
+ * This is a property OF THE MOVEMENT, so it must not depend on a caller
+ * remembering to tag it. A cluster reaches the engine from several places — a
+ * template's own entry, a setup value that may be a bare movement string, a
+ * stored customization overlay — and an entry that arrives untagged used to
+ * fall through to the barbell path, putting the whole bodyweight-inclusive
+ * total on the belt. `defaultLiftKind` is the fallback that makes those paths
+ * agree without each one restating the fact.
+ */
+export const SYSTEM_LOAD_MOVEMENTS: ReadonlySet<string> = new Set([
+  "weighted-pullup",
+  "weighted-dip",
+]);
+
+/** True when this movement's 1RM counts bodyweight as well as added load. */
+export function isSystemLoadMovement(movement: string): boolean {
+  return SYSTEM_LOAD_MOVEMENTS.has(movement);
+}
+
+/**
+ * The loading kind implied by a movement key, for an entry that carries no
+ * explicit one. Returns undefined when the movement implies nothing — the
+ * caller then keeps its existing behaviour.
+ */
+export function defaultLiftKind(movement: string): TbLiftKind | undefined {
+  return isSystemLoadMovement(movement) ? "weighted-bw" : undefined;
+}
+
 /** A cluster lift with its loading kind and (for split templates) its A/B group. */
 export interface TbClusterEntry {
   movement: TbMovement;

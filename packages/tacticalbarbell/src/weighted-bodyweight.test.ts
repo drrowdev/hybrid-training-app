@@ -133,3 +133,66 @@ describe("weighted pull-ups are prescribed off a system load", () => {
     expect(squat?.systemLoad).toBeUndefined();
   });
 });
+
+describe("the belt-loaded kind survives however the cluster was stored", () => {
+  // The reported bug. `kind` used to be carried ALONGSIDE the movement, so a
+  // cluster that reached the engine untagged — stored as bare movement strings,
+  // or saved before the kind existed — fell through to the barbell path and put
+  // the whole bodyweight-inclusive total on the belt. An 118 kg max at 85%
+  // became a 100 kg working set warmed up at +40 / +60 / +80 kg.
+  const ctx = ctxWith({ oneRepMaxes: { bench: 100, squat: 200, "weighted-pullup": 118 } });
+
+  function ownClusterInstance(cluster: unknown) {
+    return tb.setup(
+      { values: { templateId: "operator", useTemplateDefaults: false, cluster } },
+      ctx,
+    );
+  }
+
+  it("derives it for a cluster stored as bare movement strings", () => {
+    const inst = ownClusterInstance(["bench", "squat", "weighted-pullup"]);
+    expect(inst.cluster.find((c) => c.movement === "weighted-pullup")?.kind).toBe(
+      "weighted-bw",
+    );
+  });
+
+  it("derives it for an entry object that carries no kind", () => {
+    const inst = ownClusterInstance([
+      { movement: "bench" },
+      { movement: "squat" },
+      { movement: "weighted-pullup" },
+    ]);
+    expect(inst.cluster.find((c) => c.movement === "weighted-pullup")?.kind).toBe(
+      "weighted-bw",
+    );
+  });
+
+  it("never ramps an untagged weighted pull-up on the raw total", () => {
+    const inst = ownClusterInstance(["bench", "squat", "weighted-pullup"]);
+    const p = tb.prescribe(inst, "b0-w5-s1", ctx);
+    const pullup = (kind: "warmup" | "main") =>
+      itemsOfKind(p, kind).filter((i) => i.movementId === "weighted-pullup");
+
+    // 0.85 × 118 = 100.3 kg of SYSTEM load. The belt takes what is left after
+    // an 85 kg lifter, and the whole ramp sits under bodyweight.
+    expect(pullup("main")[0]?.weightKg).toBe(15);
+    expect(pullup("main")[0]?.systemLoad).toBe(true);
+    expect(pullup("warmup").map((w) => w.weightKg)).toEqual([0]);
+    // The numbers from the report must not be reachable.
+    for (const item of [...pullup("warmup"), ...pullup("main")]) {
+      expect(item.weightKg).toBeLessThan(ctx.bodyweightKg!);
+    }
+  });
+
+  it("does not re-kind a movement the lifter explicitly tagged otherwise", () => {
+    const inst = ownClusterInstance([
+      { movement: "weighted-pullup", kind: "unanchored" },
+    ]);
+    expect(inst.cluster[0]?.kind).toBe("unanchored");
+  });
+
+  it("leaves a movement that is not belt-loaded untagged", () => {
+    const inst = ownClusterInstance(["squat"]);
+    expect(inst.cluster[0]?.kind).toBeUndefined();
+  });
+});

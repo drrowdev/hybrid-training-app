@@ -47,6 +47,7 @@ import {
   type TbLiftKind,
   type TbClusterEntry,
   activationCustomizationKey,
+  defaultLiftKind,
 } from "./templates";
 import { roundToIncrement } from "./rounding";
 
@@ -775,7 +776,8 @@ function entriesFromValue(v: unknown): TbClusterLift[] {
   const out: TbClusterLift[] = [];
   for (const x of v) {
     if (typeof x === "string" && x.length > 0) {
-      out.push({ movement: x });
+      const kind = defaultLiftKind(x);
+      out.push({ movement: x, ...(kind ? { kind } : {}) });
     } else if (x && typeof x === "object") {
       const o = x as Record<string, unknown>;
       if (typeof o.movement === "string" && o.movement.length > 0) {
@@ -790,6 +792,13 @@ function entriesFromValue(v: unknown): TbClusterLift[] {
           o.kind === "unanchored"
         ) {
           lift.kind = o.kind;
+        } else {
+          // An entry that names a belt-loaded movement but carries no kind —
+          // a cluster stored as bare strings, or one saved before the kind
+          // existed. Untagged, it falls through to the barbell path and the
+          // whole bodyweight-inclusive total goes on the belt.
+          const derived = defaultLiftKind(o.movement);
+          if (derived) lift.kind = derived;
         }
 
         if (o.split === "A" || o.split === "B") lift.split = o.split;
