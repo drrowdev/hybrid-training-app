@@ -20,7 +20,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { completeSessionResult } from "@/lib/sessions/actions";
-import { enqueueSessionCompletion } from "@/lib/offline/session-completion";
+import {
+  enqueueSessionCompletion,
+  runSessionCompletion,
+} from "@/lib/offline/session-completion";
 import { clearResume } from "@/lib/sessions/session-resume";
 import { listForSession as listOutboxForSession } from "@/lib/offline/outbox";
 import { useSessionLoggingState } from "./SessionLoggingState";
@@ -125,12 +128,12 @@ export function FinishSessionBar({
   // Finish-while-offline: completeSession is heavy server work that redirects to
   // the summary, so it can't run offline. When the network is down we instead
   // enqueue a durable `complete` op (after the queued sets) and confirm in place;
-  // the outbox flusher on the session page replays it on reconnect. The ONLINE
-  // path is untouched — the native form action redirects as before.
+  // the outbox flusher on the session page replays it on reconnect.
   const [savedOffline, setSavedOffline] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const completionStored = savedOffline || completionQueued;
+  const registerCompletionQueued = loggingState?.registerCompletionQueued;
   const queueCompletion = async () => {
     let pendingEntries;
     try {
@@ -144,14 +147,14 @@ export function FinishSessionBar({
       return;
     }
     if (pendingEntries.some((entry) => entry.op === "complete")) {
-      clearResume(sessionId);
       setSavedOffline(true);
+      registerCompletionQueued?.(true);
       return;
     }
     const enqueueResult = await enqueueSessionCompletion(sessionId);
     if (enqueueResult.status === "stored") {
-      clearResume(sessionId);
       setSavedOffline(true);
+      registerCompletionQueued?.(true);
     } else {
       setFinishError(
         enqueueResult.status === "failed"
@@ -193,8 +196,8 @@ export function FinishSessionBar({
     const hasQueuedWork = pendingEntries.some((entry) => entry.op !== "complete");
     if (hasQueuedCompletion || hasQueuedWork) {
       if (hasQueuedCompletion) {
-        clearResume(sessionId);
         setSavedOffline(true);
+        registerCompletionQueued?.(true);
       } else {
         await queueCompletion();
       }
@@ -202,20 +205,33 @@ export function FinishSessionBar({
       return;
     }
     try {
-      const result = await completeSessionResult(sessionId, null);
-      if (result.error) {
-        if (result.errorCode === "auth") {
-          window.location.assign("/login");
-          return;
-        }
-        setFinishError(result.error);
+      const durable = await runSessionCompletion(
+        sessionId,
+        () => completeSessionResult(sessionId, null),
+      );
+      if (durable.status === "queued") {
+        setSavedOffline(true);
+        registerCompletionQueued?.(true);
+        setFinishing(false);
+        return;
+      }
+      if (durable.status === "failed") {
+        setFinishError(
+          durable.result?.error ??
+            durable.error?.message ??
+            "Couldn't finish the session. Check your connection and retry.",
+        );
         setFinishing(false);
         return;
       }
       clearResume(sessionId);
       window.location.assign(`/app/sessions/${sessionId}?completed=1`);
-    } catch {
-      setFinishError("Couldn't finish the session. Check your connection and retry.");
+    } catch (error) {
+      setFinishError(
+        error instanceof Error
+          ? error.message
+          : "Couldn't finish the session. Check your connection and retry.",
+      );
       setFinishing(false);
     }
   };

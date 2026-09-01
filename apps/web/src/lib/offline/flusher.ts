@@ -33,7 +33,12 @@ import {
   type OutboxEntry,
 } from "./outbox-core";
 
-export type FlushResult = { flushed: number; remaining: number; dropped: number };
+export type FlushResult = {
+  flushed: number;
+  remaining: number;
+  dropped: number;
+  completed: number;
+};
 
 let flushing = false;
 
@@ -75,15 +80,21 @@ async function runEntry(
 export async function flushOutbox(): Promise<FlushResult> {
   if (!outboxAvailable() || flushing) {
     const remaining = outboxAvailable() ? (await listPending()).length : 0;
-    return { flushed: 0, remaining, dropped: 0 };
+    return { flushed: 0, remaining, dropped: 0, completed: 0 };
   }
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
-    return { flushed: 0, remaining: (await listPending()).length, dropped: 0 };
+    return {
+      flushed: 0,
+      remaining: (await listPending()).length,
+      dropped: 0,
+      completed: 0,
+    };
   }
 
   flushing = true;
   let flushed = 0;
   let dropped = 0;
+  let completed = 0;
   try {
     const pending = await listPending(); // FIFO
     for (const entry of pending) {
@@ -92,6 +103,7 @@ export async function flushOutbox(): Promise<FlushResult> {
       if (outcome === "done") {
         await remove(entry.id);
         flushed += 1;
+        if (entry.op === "complete") completed += 1;
       } else if (outcome === "drop") {
         // Permanent validation rejection — discard so it can't wedge the queue.
         await remove(entry.id);
@@ -103,7 +115,7 @@ export async function flushOutbox(): Promise<FlushResult> {
       }
     }
     const remaining = (await listPending()).length;
-    return { flushed, remaining, dropped };
+    return { flushed, remaining, dropped, completed };
   } finally {
     flushing = false;
   }

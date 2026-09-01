@@ -1011,7 +1011,7 @@ export async function logCardioSession(
   // blocks added via the "+ add cardio block" flow use higher indices
   // and a different code path. Double-tap / network retry now updates
   // the same row instead of producing a duplicate.
-  const { error: upsertErr } = await supabase
+  const { data: canonicalCardioLog, error: upsertErr } = await supabase
     .from("cardio_logs")
     .upsert(
       {
@@ -1027,46 +1027,64 @@ export async function logCardioSession(
         client_log_id: parsed.data.clientLogId ?? null,
       },
       { onConflict: "session_id,block_index" },
-    );
-  if (upsertErr) return { error: upsertErr.message, errorCode: "transient" };
+    )
+    .select("duration_sec, rpe")
+    .single();
+  if (upsertErr || !canonicalCardioLog) {
+    return {
+      error: upsertErr?.message ?? "Could not read the saved cardio log.",
+      errorCode: "transient",
+    };
+  }
 
   // Only flip the session to completed when (a) the user marked the
   // cardio completed AND (b) there's no unlogged strength work that
   // would otherwise be silently dropped. Hybrid sessions with strength
   // pending stay in_progress — the strength finish bar takes over.
-  if (parsed.data.completed && !session.completed_at && !hasUnloggedStrength) {
+  if (parsed.data.completed && !hasUnloggedStrength) {
+    const wasAlreadyCompleted = session.completed_at != null;
+    const canonicalDurationMin = Math.max(
+      1,
+      Math.round(Number(canonicalCardioLog.duration_sec) / 60),
+    );
+    const canonicalRpe =
+      canonicalCardioLog.rpe == null ? null : Number(canonicalCardioLog.rpe);
     const { error: updErr } = await supabase
       .from("sessions")
       .update({
-        completed_at: new Date().toISOString(),
-        duration_min: parsed.data.actualDurationMin,
-        session_rpe: parsed.data.avgRpe ?? null,
+        ...(session.completed_at
+          ? {}
+          : { completed_at: new Date().toISOString() }),
+        duration_min: canonicalDurationMin,
+        session_rpe: canonicalRpe,
       })
       .eq("id", parsed.data.sessionId);
     if (updErr) return { error: updErr.message, errorCode: "transient" };
 
-    // The guarded hook only performs the full ledger rebuild now that
-    // completion is persisted; in-flight cardio logging only writes its row.
-    try {
-      await recomputeAfterCompletedSessionMutation({
-        supabase,
-        sessionId: parsed.data.sessionId,
-        userId: user.id,
-      });
-    } catch (e) {
-      console.error("post-completion recompute (cardio) failed:", e);
-    }
-    try {
-      const { data: linked } = await supabase
-        .from("planned_sessions")
-        .select("block_id")
-        .eq("completed_session_id", parsed.data.sessionId)
-        .maybeSingle();
-      if (linked?.block_id) {
-        await maybeCompleteBlock(supabase, linked.block_id as string);
+    if (!wasAlreadyCompleted) {
+      // The guarded hook only performs the full ledger rebuild now that
+      // completion is persisted; in-flight cardio logging only writes its row.
+      try {
+        await recomputeAfterCompletedSessionMutation({
+          supabase,
+          sessionId: parsed.data.sessionId,
+          userId: user.id,
+        });
+      } catch (e) {
+        console.error("post-completion recompute (cardio) failed:", e);
       }
-    } catch (e) {
-      console.error("maybeCompleteBlock (cardio) failed:", e);
+      try {
+        const { data: linked } = await supabase
+          .from("planned_sessions")
+          .select("block_id")
+          .eq("completed_session_id", parsed.data.sessionId)
+          .maybeSingle();
+        if (linked?.block_id) {
+          await maybeCompleteBlock(supabase, linked.block_id as string);
+        }
+      } catch (e) {
+        console.error("maybeCompleteBlock (cardio) failed:", e);
+      }
     }
   }
 

@@ -1377,3 +1377,12 @@ A second review found that every PostgreSQL unique conflict was being treated as
 an idempotent cardio replay. Cardio replay now confirms that the exact
 `client_log_id` already exists before acknowledging a conflict; unrelated
 conflicts remain retryable. No migration.
+
+## [2026-09-01] refine | Durable completion and cardio reload hardening
+
+Completion requests now use the durable outbox path even while online, retaining
+the intent and resume state through uncertain or transient responses and clearing
+both only after server confirmation. Reloaded cardio forms detect queued
+`cardio_session` entries before allowing another submit, and completed cardio
+sessions copy duration and RPE from the canonical idempotent row without rerunning
+completion side effects. No migration.

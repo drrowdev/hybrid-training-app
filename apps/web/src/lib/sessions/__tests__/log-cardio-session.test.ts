@@ -27,6 +27,7 @@ const cardioInserts: Array<Record<string, unknown>> = [];
 const sessionUpdates: Array<{ id: string; patch: Record<string, unknown> }> = [];
 let cardioBlockInsertError: { code: string; message: string } | null = null;
 let existingCardioClientId: string | null = null;
+let canonicalCardioRow = { duration_sec: 35 * 60, rpe: 8 };
 // review-208 #2 — per-table count returned to the hybrid guard. Tests
 // override these to simulate unlogged strength work.
 const tableCounts: Record<string, number> = {
@@ -110,7 +111,14 @@ vi.mock("@/lib/supabase/server", () => ({
         _opts?: { onConflict?: string },
       ) => {
         if (table === "cardio_logs") cardioInserts.push(row);
-        return Promise.resolve({ error: null });
+        return {
+          select: () => ({
+            single: async () => ({
+              data: canonicalCardioRow,
+              error: null,
+            }),
+          }),
+        };
       };
 
       const update = (patch: Record<string, unknown>) => {
@@ -192,6 +200,7 @@ describe("logCardioSession", () => {
     tableCounts.set_logs = 0;
     cardioBlockInsertError = null;
     existingCardioClientId = null;
+    canonicalCardioRow = { duration_sec: 35 * 60, rpe: 8 };
   });
 
   it("writes a cardio_logs row and marks the session completed on the happy path", async () => {
@@ -264,6 +273,24 @@ describe("logCardioSession", () => {
     const res = await logCardioSession(fd);
     expect(res).toEqual({ ok: true });
     expect(cardioInserts[0]?.client_log_id).toBe(clientLogId);
+  });
+
+  it("copies duration and RPE from the canonical idempotent cardio row", async () => {
+    canonicalCardioRow = { duration_sec: 47 * 60, rpe: 6.5 };
+    const { logCardioSession } = await import("../actions");
+
+    const fd = new FormData();
+    fd.set("sessionId", SESSION_ID);
+    fd.set("completed", "true");
+    fd.set("actualDurationMin", "12");
+    fd.set("avgRpe", "1");
+
+    const res = await logCardioSession(fd);
+
+    expect(res).toEqual({ ok: true });
+    const update = sessionUpdates.find((u) => u.id === SESSION_ID);
+    expect(update?.patch.duration_min).toBe(47);
+    expect(update?.patch.session_rpe).toBe(6.5);
   });
 
   it("does not treat a different unique conflict as an idempotent replay", async () => {

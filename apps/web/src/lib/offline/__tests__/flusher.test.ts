@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { addStrengthSet } from "@/lib/sessions/actions";
+import { addStrengthSet, completeSessionResult } from "@/lib/sessions/actions";
 import {
   listPending,
   outboxAvailable,
@@ -55,7 +55,12 @@ describe("flushOutbox", () => {
 
     const result = await flushOutbox();
 
-    expect(result).toEqual({ flushed: 0, remaining: 1, dropped: 0 });
+    expect(result).toEqual({
+      flushed: 0,
+      remaining: 1,
+      dropped: 0,
+      completed: 0,
+    });
     expect(recordAttempt).toHaveBeenCalledWith(
       entry.id,
       "temporary Supabase failure",
@@ -71,7 +76,33 @@ describe("flushOutbox", () => {
 
     const result = await flushOutbox();
 
-    expect(result).toEqual({ flushed: 0, remaining: 0, dropped: 1 });
+    expect(result).toEqual({
+      flushed: 0,
+      remaining: 0,
+      dropped: 1,
+      completed: 0,
+    });
+    expect(remove).toHaveBeenCalledWith(entry.id);
+  });
+
+  it("counts and removes a completion only after the server confirms it", async () => {
+    queue = [
+      {
+        ...entry,
+        op: "complete",
+        payload: { sessionId: entry.sessionId },
+      },
+    ];
+    vi.mocked(completeSessionResult).mockResolvedValue({ ok: true });
+
+    const result = await flushOutbox();
+
+    expect(result).toEqual({
+      flushed: 1,
+      remaining: 0,
+      dropped: 0,
+      completed: 1,
+    });
     expect(remove).toHaveBeenCalledWith(entry.id);
   });
 });

@@ -50,6 +50,7 @@ import {
   classifyActionResult,
 } from "@/lib/offline/outbox-core";
 import { startAutoFlush } from "@/lib/offline/flusher";
+import { clearResume } from "@/lib/sessions/session-resume";
 import { OfflineSyncBadge } from "./OfflineSyncBadge";
 import { useSessionLoggingState } from "./SessionLoggingState";
 import type { PlateInventoryItem } from "./plate-math";
@@ -412,6 +413,7 @@ export function SessionWorkArea({
       if (cancelled) return;
       setOutboxPending(r.remaining);
       if (r.dropped > 0) setOutboxDropped((count) => count + r.dropped);
+      if (r.completed > 0) clearResume(sessionId);
       // Re-read so a failed replay surfaces as "couldn't sync" rather than
       // sitting silently in the queue looking like it is still in flight.
       void outboxListForSession(sessionId)

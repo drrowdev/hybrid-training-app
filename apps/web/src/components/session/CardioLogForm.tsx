@@ -19,13 +19,15 @@
  * so the default flow stays minimal.
  */
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { logCardioSession as logCardioSessionAction } from "@/lib/sessions/actions";
 import { RpeInput } from "@/components/forms/RpeInput";
 import { createClientId } from "@/lib/offline/client-id";
 import { runDurableAction } from "@/lib/offline/durable-action";
 import { formDataToPayload } from "@/lib/offline/outbox-core";
+import { listForSession as listOutboxForSession } from "@/lib/offline/outbox";
+import type { OutboxEntry } from "@/lib/offline/outbox-core";
 
 type LogAction = typeof logCardioSessionAction;
 
@@ -56,6 +58,12 @@ export type CardioLogFormProps = {
 
 const MI_TO_KM = 1.609344;
 
+export function hasQueuedCardioSession(
+  entries: readonly OutboxEntry[],
+): boolean {
+  return entries.some((entry) => entry.op === "cardio_session");
+}
+
 export function CardioLogForm({
   sessionId,
   prescribedDurationMin,
@@ -70,6 +78,28 @@ export function CardioLogForm({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [savedOffline, setSavedOffline] = useState(false);
+  const [outboxHydrated, setOutboxHydrated] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void listOutboxForSession(sessionId)
+      .then((entries) => {
+        if (!active) return;
+        setSavedOffline(hasQueuedCardioSession(entries));
+        setOutboxHydrated(true);
+      })
+      .catch((hydrationError) => {
+        if (!active) return;
+        setError(
+          hydrationError instanceof Error
+            ? hydrationError.message
+            : "Couldn't check queued cardio. Reload and try again.",
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [sessionId]);
 
   const durationDefault =
     initialDurationMin != null
@@ -101,6 +131,7 @@ export function CardioLogForm({
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!outboxHydrated) return;
     setError(null);
 
     const fd = new FormData();
@@ -373,15 +404,15 @@ export function CardioLogForm({
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || !outboxHydrated}
         data-testid="cardio-log-submit"
         className="cp-btn primary big"
         style={{
           minHeight: 52,
           textAlign: "center",
           justifyContent: "center",
-          opacity: pending ? 0.7 : 1,
-          cursor: pending ? "not-allowed" : "pointer",
+          opacity: pending || !outboxHydrated ? 0.7 : 1,
+          cursor: pending || !outboxHydrated ? "not-allowed" : "pointer",
         }}
       >
         {pending
