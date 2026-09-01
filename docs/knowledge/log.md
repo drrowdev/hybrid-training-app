@@ -1404,3 +1404,10 @@ Session status now re-reads pending and dead-lettered entries for the active
 session after each global flush, and completion refreshes are scoped by session
 id. Work queued for another session can no longer change the current session's
 badge or resume state. No migration.
+
+## [2026-09-01] fix | Preserve legacy completion entries during replay
+
+Completion replay now forwards a UUID receipt only when the queued entry has
+one. Older timestamp-keyed completion rows pass a null receipt and remain
+eligible for normal success or retry handling. An IndexedDB upgrade fixture
+covers reading those rows from an existing outbox. No migration.

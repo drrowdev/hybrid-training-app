@@ -31,6 +31,7 @@ import {
 } from "./outbox";
 import {
   classifyActionResult,
+  isUuid,
   payloadToFormData,
   type ActionResult,
   type OutboxEntry,
@@ -69,7 +70,7 @@ async function runEntry(
     const result = await completeSessionResult(
       entry.payload.sessionId ?? entry.sessionId,
       entry.payload.notes ?? null,
-      entry.id,
+      isUuid(entry.id) ? entry.id : null,
     );
     return { result, threw: false };
   } catch {

@@ -59,6 +59,14 @@ export type OutboxEntry = {
   leaseExpiresAt?: number;
 };
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Completion receipts must be UUIDs; older queued rows used a timestamp id. */
+export function isUuid(value: string): boolean {
+  return UUID_PATTERN.test(value);
+}
+
 /** Create a UUID-shaped durable queue id even in a WebView without randomUUID. */
 export function createOutboxEntryId(): string {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();

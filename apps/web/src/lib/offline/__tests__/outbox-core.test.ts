@@ -5,6 +5,7 @@ import {
   createOutboxEntryId,
   entriesForSession,
   formDataToPayload,
+  isUuid,
   nextSeq,
   payloadToFormData,
   sortBySeq,
@@ -37,6 +38,13 @@ describe("nextSeq", () => {
       expect(createOutboxEntryId()).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
       );
+    });
+  });
+
+  describe("isUuid", () => {
+    it("accepts UUID-shaped completion receipts and rejects legacy ids", () => {
+      expect(isUuid("00000000-0000-4000-8000-000000000001")).toBe(true);
+      expect(isUuid("complete-1700000000000")).toBe(false);
     });
   });
   it("is strictly greater than any existing seq", () => {

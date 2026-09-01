@@ -130,6 +130,28 @@ describe("flushOutbox", () => {
     );
   });
 
+  it("replays legacy completion ids without forwarding an invalid receipt", async () => {
+    queue = [
+      {
+        ...entry,
+        id: "complete-1700000000000",
+        op: "complete",
+        payload: { sessionId: entry.sessionId },
+      },
+    ];
+    vi.mocked(completeSessionResult).mockResolvedValue({ ok: true });
+
+    const result = await flushOutbox();
+
+    expect(result.completedSessionIds).toEqual([entry.sessionId]);
+    expect(completeSessionResult).toHaveBeenCalledWith(
+      entry.sessionId,
+      null,
+      null,
+    );
+    expect(remove).toHaveBeenCalledWith("complete-1700000000000");
+  });
+
   it("skips a terminal poison head and continues the global FIFO", async () => {
     const nextEntry = {
       ...entry,
