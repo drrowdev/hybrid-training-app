@@ -46,8 +46,10 @@ import { SessionLinkEditor, type LinkableMovement } from "./SessionLinkEditor";
 import { LinkBadge, rowLinkClass } from "./LinkBadge";
 import {
   activationLinkableMovements,
+  pruneLinksAcrossSeries,
   pruneMovementFromLinks,
   slotLinkBadges,
+  type SeriesMovementSet,
 } from "./session-link-editing";
 import {
   addGroup,
@@ -59,6 +61,7 @@ import {
   canRemoveRows,
   collapseGroup,
   hasWholeGroup,
+  hydrateSessionMovements,
   isGroupReplaced,
   orderBySection,
   readDoseInput,
@@ -272,6 +275,45 @@ function sessionSeriesFor(template: PickerTbTemplate): NonNullable<
           ...(entry.split ? { split: entry.split } : {}),
         })),
       }));
+}
+
+/**
+ * Every series key a template can ever populate, and the canonical slot
+ * identities valid for it right now — the shape `pruneLinksAcrossSeries` needs
+ * to re-key `sessionLinks` at a template or program switch, before stale
+ * entries become hidden (they're keyed by series, and a canonical slot survives
+ * a movement swap, so identity here is `sourceMovement`, never the movement
+ * currently filling it).
+ *
+ * Activation is a parallel structure (phases of sessions, not repeating weekly
+ * slots), so it is projected separately rather than through `sessionSeriesFor`
+ * — that function's `slot-N` fallback would otherwise manufacture series keys
+ * Activation never uses, matching nothing real and pruning nothing.
+ *
+ * This is the client-side twin of `strengthSeriesMembership` in
+ * `apps/web/src/lib/platform/actions.ts`, which the server uses to reject an
+ * orphaned link independently of whatever the wizard sent. They compute the
+ * same membership from two different template representations (the picker's
+ * own `PickerTbTemplate` here vs. the package's `TbTemplate` there), so a
+ * future change to one's slot/series logic should be checked against the
+ * other to avoid the two silently drifting apart.
+ */
+export function seriesMovementSetsForTemplate(
+  template: PickerTbTemplate | null,
+): SeriesMovementSet[] {
+  if (!template) return [];
+  if (template.id === "activation") {
+    return (template.activationPhases ?? []).flatMap((phase) =>
+      phase.sessions.map((session) => ({
+        key: session.key,
+        identities: session.movements.map((movement) => movement.sourceMovement),
+      })),
+    );
+  }
+  return sessionSeriesFor(template).map((series) => ({
+    key: series.key,
+    identities: series.slots.map((slot) => slot.sourceMovement),
+  }));
 }
 
 export interface PickerStartSchedule {
@@ -1612,21 +1654,7 @@ export function ProgramPicker({
   >(() => {
     const customization = editContext?.customization;
     return customization && isTbCustomizationV1(customization)
-      ? Object.fromEntries(
-          Object.entries(customization.sessionMovements).map(
-            ([key, movements]) => [
-              key,
-              movements.map((movement) => ({
-                movement: movement.movement,
-                ...(movement.sourceMovement
-                  ? { sourceMovement: movement.sourceMovement }
-                  : {}),
-                ...(movement.role ? { role: movement.role } : {}),
-                ...(movement.kind ? { kind: movement.kind } : {}),
-              })),
-            ],
-          ),
-        )
+      ? hydrateSessionMovements(customization.sessionMovements)
       : {};
   });
   /**
@@ -1871,7 +1899,27 @@ export function ProgramPicker({
     setCatalogMovementMeta({});
     // Series keys are `slot-1`, `slot-2`, … on every template, so a half-finished
     // add would reappear on the new template's day 1 — pointing at a movement
-    // whose catalog entry was just cleared.
+    // whose catalog entry was just cleared. The same reused keys are why
+    // `sessionLinks` cannot simply be carried over: a link stored against
+    // `slot-1` on the old template would silently reattach to whatever
+    // unrelated lift fills `slot-1` on the new one. Re-key against the new
+    // template's own membership instead of clearing outright, so a link whose
+    // slots happen to still exist survives the switch.
+    //
+    // `seriesMovementSetsForTemplate` only covers strength series, so this also
+    // drops any `rehab.*` entries — that's fine, not a loss: `setRehabBySeries`/
+    // `setRehabByDay`/`setSelectedProtocolIds([])` above already detach every
+    // rehab protocol on the same switch, and the deploy payload rebuilds
+    // `rehab.*` links fresh from whichever protocols are attached at deploy
+    // time (`pruneRehabLinks` + `rehabLinkEntries`, further down) rather than
+    // reading them back out of this state. A stale `rehab.*` key left here
+    // would never reach the deployed program either way.
+    setSessionLinks((current) =>
+      pruneLinksAcrossSeries(
+        current,
+        seriesMovementSetsForTemplate(activeTbTemplate),
+      ),
+    );
     setPendingAdd(null);
     setAddKind("supplemental");
     setDoseEdit(null);
@@ -2204,6 +2252,14 @@ export function ProgramPicker({
       setSelectedProtocolIds([]);
       setCatalogMovementMeta({});
       setActivationDrafts(defaultActivationDrafts(t ?? null));
+      // Dropping `rehab.*` keys here is safe regardless: deploy always rebuilds
+      // `rehab.*` links fresh from whichever protocols are attached at deploy
+      // time (`pruneRehabLinks` + `rehabLinkEntries`, further down), never from
+      // this state, so a stale key here would not reach the deployed program
+      // even if it survived the switch.
+      setSessionLinks((current) =>
+        pruneLinksAcrossSeries(current, seriesMovementSetsForTemplate(t ?? null)),
+      );
     } else {
       setCluster([]);
       setLastTbTemplateId(null);
@@ -2211,6 +2267,9 @@ export function ProgramPicker({
       setSelectedProtocolIds([]);
       setCatalogMovementMeta({});
       setActivationDrafts(defaultActivationDrafts(null));
+      // Switching away from TB entirely — no series exists to validate stale
+      // links against, so nothing can survive.
+      setSessionLinks({});
     }
     setFreq531(p.id === "wendler-531" ? (p.sessionsPerWeek ?? 4) : 4);
   }

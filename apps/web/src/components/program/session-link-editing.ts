@@ -261,6 +261,54 @@ export function pruneLinksToMovements(
     .filter((link) => link.members.length >= 2);
 }
 
+/** One session series' worth of valid link membership. */
+export interface SeriesMovementSet {
+  key: string;
+  /** Canonical slot identities this series can ever contain right now. */
+  identities: readonly string[];
+}
+
+/**
+ * Re-key a whole `bySeries` map against a NEW template or program's series,
+ * used at the moment a template/program switch would otherwise leave stale
+ * links pointing at slots the new selection doesn't have.
+ *
+ * Two things happen at once, both required — neither alone is safe:
+ *
+ *  - A series key absent from `seriesMovements` (the new template dropped that
+ *    session, or the whole program changed) is DROPPED entirely rather than
+ *    carried over. Templates reuse `slot-1`, `slot-2`, … across templates, so
+ *    keeping an unrecognised key's links around risks silently reattaching
+ *    them to an unrelated session that happens to reuse the same key.
+ *  - A series key that IS still there is pruned member-by-member via
+ *    `pruneLinksToMovements`, so a link that only partly survives (one lift
+ *    swapped, one kept) keeps the members that are still valid instead of
+ *    being dropped wholesale.
+ *
+ * Passing `[]` for `seriesMovements` (switching to a non-TB program) clears
+ * every link, since no series exists to validate them against.
+ */
+export function pruneLinksAcrossSeries(
+  linksBySeries: Readonly<Record<string, SessionLink[]>>,
+  seriesMovements: readonly SeriesMovementSet[],
+): Record<string, SessionLink[]> {
+  const identitiesByKey = new Map(
+    seriesMovements.map((series) => [series.key, series.identities]),
+  );
+  const next: Record<string, SessionLink[]> = {};
+  for (const [seriesKey, links] of Object.entries(linksBySeries)) {
+    if (!links.length) continue;
+    const identities = identitiesByKey.get(seriesKey);
+    if (!identities) continue;
+    const pruned = pruneLinksToMovements(
+      links,
+      identities.map((key) => ({ key, label: key })),
+    );
+    if (pruned.length > 0) next[seriesKey] = pruned;
+  }
+  return next;
+}
+
 /**
  * Linkable lifts for an Activation strength session.
  *
