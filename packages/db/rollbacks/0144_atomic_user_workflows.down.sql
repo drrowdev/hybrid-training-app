@@ -32,6 +32,14 @@ BEGIN
     RAISE EXCEPTION
       'Refusing to roll back 0143_atomic_user_workflows: set_logs.external_load_kg contains recorded data.';
   END IF;
+  IF EXISTS (
+    SELECT 1
+    FROM public.sessions
+    WHERE completion_outbox_entry_id IS NOT NULL
+  ) THEN
+    RAISE EXCEPTION
+      'Refusing to roll back 0143_atomic_user_workflows: sessions.completion_outbox_entry_id contains recorded data.';
+  END IF;
 END $$;
 
 DROP TRIGGER IF EXISTS set_logs_reconcile_bw_progress_trg ON public.set_logs;
@@ -61,6 +69,9 @@ DROP INDEX IF EXISTS public.training_blocks_one_visible_active_per_user;
 DROP INDEX IF EXISTS public.program_instances_one_visible_active_per_user;
 DROP INDEX IF EXISTS public.training_seasons_one_visible_active_per_user;
 
-DROP FUNCTION IF EXISTS public.complete_training_session_with_transition(uuid, text);
+DROP FUNCTION IF EXISTS public.complete_training_session_with_transition(uuid, text, uuid);
+
+DROP INDEX IF EXISTS public.sessions_completion_outbox_entry_per_user;
+ALTER TABLE public.sessions DROP COLUMN IF EXISTS completion_outbox_entry_id;
 
 NOTIFY pgrst, 'reload schema';

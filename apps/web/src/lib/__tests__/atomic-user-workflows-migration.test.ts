@@ -90,6 +90,11 @@ describe("0143 atomic user workflows migration", () => {
     expect(migration).toContain(
       "complete_training_session_with_transition",
     );
+    expect(migration).toContain("p_completion_entry_id uuid DEFAULT NULL");
+    expect(migration).toContain("completion_outbox_entry_id = COALESCE(");
+    expect(migration).toContain(
+      "sessions_completion_outbox_entry_per_user",
+    );
     expect(migration).not.toContain(
       "DROP FUNCTION IF EXISTS public.complete_training_session(uuid, text);",
     );
@@ -152,6 +157,8 @@ describe("0143 atomic user workflows migration", () => {
     expect(hyroxCompletion).toContain("replace_hyrox_session_actuals");
     expect(sessionActions).toContain('error.code === "PGRST202"');
     expect(sessionActions).toContain("if (transitioned) {");
+    expect(sessionActions).toContain("completionEntryId: string | null = null");
+    expect(sessionActions).toContain("p_completion_entry_id: completionEntryId");
     expect(sessionActions).toContain("atomic_user_workflows_ready");
     expect(sessionPage).toContain('"atomic_user_workflows_ready"');
     expect(sessionPage).toContain("const externalLoadBySetId");
@@ -163,5 +170,8 @@ describe("0143 atomic user workflows migration", () => {
     expect(platformActions).toContain("isMissingRpc(atomicDeployment.error)");
     expect(hyroxCompletion).toContain("isMissingRpc(error)");
     expect(rollback).toContain("DROP FUNCTION IF EXISTS public.log_bodyweight_atomically");
+    expect(rollback).toContain(
+      "sessions.completion_outbox_entry_id contains recorded data",
+    );
   });
 });

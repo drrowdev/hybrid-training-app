@@ -1342,3 +1342,11 @@ The daily bodyweight prompt and Settings were each saving a dated measurement an
 ## [2026-09-01] decision | Record bodyweight external load with the set
 
 External belt, vest, and assistance values are actual set data, not ordinary strength weight. They now live beside the set they belong to, so bodyweight progress can safely replace a set's derived history after an edit or deletion. Older rows retain an unknown external value instead of fabricating one; the existing history stays intact.
+
+## [2026-09-01] refine | Persist the offline completion receipt
+
+The authenticated completion RPC now accepts a durable offline outbox UUID.
+The UUID is stored with the first completion in the same transaction, so
+retries return a replay result without moving the completion time or repeating
+once-only work. Online completions retain no receipt. The rollback refuses to
+drop a recorded receipt.

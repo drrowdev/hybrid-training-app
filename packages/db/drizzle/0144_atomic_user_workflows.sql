@@ -400,9 +400,22 @@ GRANT EXECUTE ON FUNCTION public.create_training_season_atomically(
 -- Keep the scalar completion RPC available for the previously deployed app.
 -- The app calls this additive transition-aware variant after migration 0143;
 -- it temporarily falls back to the scalar RPC while this migration is pending.
+-- The nullable outbox entry is the receipt for an offline completion attempt.
+-- It is retained with the completed session so a retry has a durable identity.
+ALTER TABLE public.sessions
+  ADD COLUMN IF NOT EXISTS completion_outbox_entry_id uuid;
+
+CREATE UNIQUE INDEX IF NOT EXISTS sessions_completion_outbox_entry_per_user
+  ON public.sessions (user_id, completion_outbox_entry_id)
+  WHERE completion_outbox_entry_id IS NOT NULL;
+
+COMMENT ON COLUMN public.sessions.completion_outbox_entry_id IS
+  'Durable offline outbox entry that first completed this session; NULL for online completion.';
+
 CREATE OR REPLACE FUNCTION public.complete_training_session_with_transition(
   p_session_id uuid,
-  p_notes text
+  p_notes text,
+  p_completion_entry_id uuid DEFAULT NULL
 )
 RETURNS TABLE(user_id uuid, transitioned boolean)
 LANGUAGE plpgsql
@@ -502,7 +515,11 @@ BEGIN
      SET session_rpe = metrics.session_rpe,
          duration_min = metrics.duration_min,
          notes = p_notes,
-         completed_at = now()
+         completed_at = now(),
+         completion_outbox_entry_id = COALESCE(
+           session.completion_outbox_entry_id,
+           p_completion_entry_id
+         )
     FROM metrics
    WHERE session.id = p_session_id
      AND session.user_id = v_user_id
@@ -512,7 +529,7 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.complete_training_session_with_transition(uuid, text)
+GRANT EXECUTE ON FUNCTION public.complete_training_session_with_transition(uuid, text, uuid)
   TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.replace_hyrox_session_actuals(
