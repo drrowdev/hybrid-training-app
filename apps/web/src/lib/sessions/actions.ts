@@ -1442,14 +1442,6 @@ export async function completeSessionResult(
         console.error("block completion/progression failed:", e);
       }),
       (async () => {
-        const { generateTmSuggestionsForSession } = await import(
-          "@/lib/training-maxes/actions"
-        );
-        await generateTmSuggestionsForSession(sessionId);
-      })().catch((e) => {
-        console.error("generateTmSuggestionsForSession failed:", e);
-      }),
-      (async () => {
         const timezone = await timezonePromise;
         const { applyBwSessionCompletionSideEffects } = await import(
           "@/lib/sessions/bw-set-logging"
