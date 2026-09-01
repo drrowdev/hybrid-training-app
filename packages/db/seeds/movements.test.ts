@@ -105,6 +105,7 @@ describe("movement catalog seed", () => {
       "split-squat-db",
       "bulgarian-split-squat-bb",
       "bulgarian-split-squat-db",
+      "bulgarian-split-squat-db-single-arm",
       "forward-lunge",
       "forward-lunge-db",
       "forward-lunge-bb",
@@ -294,6 +295,55 @@ describe("movement catalog seed", () => {
     );
     expect(instructions, "back-extension-ghd missing instructions").toBeTruthy();
     expect(instructions?.setup?.toLowerCase()).toContain("ghd");
+    expect(instructions!.steps.length).toBeGreaterThanOrEqual(3);
+    expect(instructions!.cues.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("seeds the single-arm Bulgarian split squat without letting it fill a trunk slot", () => {
+    const movement = SEED.find(
+      (candidate) => candidate.slug === "bulgarian-split-squat-db-single-arm",
+    );
+    expect(movement, "bulgarian-split-squat-db-single-arm missing from seed").toBeTruthy();
+    expect(movement).toMatchObject({
+      displayName: "Bulgarian Split Squat (single-arm DB)",
+      pattern: "squat",
+      primaryRegion: "knee",
+      equipment: "dumbbell-bench",
+      bilateral: false,
+      axialLoad: "moderate",
+      experienceMin: 0,
+      // Same knee position and deep-flexion loading as the two-dumbbell
+      // sibling, and the flag feeds the tissue/impact stress bucket.
+      highStrainTendon: true,
+    });
+    // The offset load is held by the lateral trunk, so an oblique or trunk
+    // limitation must catch this where it would not catch the symmetrical
+    // two-dumbbell version.
+    expect(movement?.secondaryMuscles).toContain("obliques");
+
+    // Roles are exact, not merely "contains". The trunk demand is real but
+    // incidental to leg work, and the Hybrid archetype resolves `single_leg`
+    // before `anti_rotation` while deduplicating by movement id only — a row
+    // carrying both could be seated as the trunk slot in a session that already
+    // took a Bulgarian split squat for the leg slot, costing the lifter their
+    // trunk work. On a suitcase carry the trunk demand IS the exercise; here
+    // it is not.
+    expect(movement?.functionalRoles).toEqual(["compound_assistance", "single_leg"]);
+
+    // Separate row from the two-dumbbell version, not a rename of it.
+    expect(
+      SEED.find((candidate) => candidate.slug === "bulgarian-split-squat-db"),
+      "bulgarian-split-squat-db must still exist",
+    ).toBeTruthy();
+
+    const instructions = MOVEMENT_INSTRUCTIONS.find(
+      (candidate) => candidate.slug === "bulgarian-split-squat-db-single-arm",
+    );
+    expect(instructions, "single-arm Bulgarian missing instructions").toBeTruthy();
+    // Which hand holds the dumbbell is the whole difference from the sibling.
+    // Without it the row is ambiguous and a lifter could log either version
+    // against it, so the setup text has to say so.
+    expect(instructions?.setup?.toLowerCase()).toContain("opposite");
     expect(instructions!.steps.length).toBeGreaterThanOrEqual(3);
     expect(instructions!.cues.length).toBeGreaterThanOrEqual(2);
   });

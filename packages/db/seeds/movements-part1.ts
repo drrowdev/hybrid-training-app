@@ -101,6 +101,23 @@ const SQUAT: NewMovement[] = [
   squat("tempo-back-squat", "Tempo Back Squat", { equipment: "barbell", metadata: { tempo: "3-0-X-0", eccentric_cost: "high" }, experienceMin: 2 }),
   squat("bulgarian-split-squat-db", "Bulgarian Split Squat (DB)", { equipment: "dumbbells-bench", bilateral: false, axialLoad: "moderate", highStrainTendon: true }),
   squat("bulgarian-split-squat-bb", "Bulgarian Split Squat (BB)", { equipment: "barbell-bench", bilateral: false, axialLoad: "high", experienceMin: 2 }),
+  // One dumbbell instead of two. The offset load is resisted isometrically by
+  // the lateral trunk, which is why `obliques` is tagged on top of the helper's
+  // defaults — an oblique or trunk limitation should catch this where it would
+  // not catch the symmetrical two-dumbbell version.
+  //
+  // Deliberately NOT tagged `anti_rotation` despite that demand being real.
+  // The Hybrid archetype requires `single_leg` AND `anti_rotation` weekly and
+  // resolves them in that order, deduplicating by movement id only — so a row
+  // carrying both roles could be seated as the trunk-stability slot in a
+  // session that already took a Bulgarian split squat for the leg slot, and the
+  // lifter would lose their trunk work entirely. The trunk demand here is
+  // incidental to leg work; on a suitcase carry it IS the exercise.
+  //
+  // `highStrainTendon` matches the two-dumbbell sibling: same knee position,
+  // same deep-flexion loading, and the flag feeds the tissue/impact stress
+  // bucket. Flagging one and not the other would be incoherent.
+  squat("bulgarian-split-squat-db-single-arm", "Bulgarian Split Squat (single-arm DB)", { equipment: "dumbbell-bench", bilateral: false, axialLoad: "moderate", highStrainTendon: true, secondaryMuscles: ["hamstrings", "lower_back", "adductors", "obliques"], metadata: { eccentric_cost: "moderate", cns_cost: "moderate", stim_fatigue_ratio: "moderate", emphasis: "offset-load" } }),
   squat("split-squat-db", "Split Squat (DB)", { equipment: "dumbbells", bilateral: false, axialLoad: "moderate" }),
   squat("split-squat-bb", "Split Squat (BB)", { equipment: "barbell", bilateral: false, axialLoad: "high", experienceMin: 2 }),
   // Lunges — the stepping cousins of the static split squat. The catalog had
