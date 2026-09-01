@@ -19,7 +19,7 @@ import {
   type BucketLoad,
 } from "@/lib/engine/bucket-load";
 import { isCountableSet } from "@/lib/engine/set-load";
-import { todayYmd } from "@/lib/dates";
+import { todayYmd, ymdInTimezone } from "@/lib/dates";
 
 const LOOKBACK_DAYS = 35; // a hair more than CTL window for clean EWMA
 
@@ -149,7 +149,7 @@ export async function getBucketState(
     if (!isCountableSet({ setKind: row.set_kind, isSkipped: false })) continue;
     const performedAt = performedAtById.get(row.session_id);
     if (!performedAt) continue;
-    const date = performedAt.slice(0, 10);
+    const date = ymdInTimezone(new Date(performedAt), userTz);
     const movement = normaliseMovement(row.movement) ?? { axial_load: "low", high_strain_tendon: false };
     const load = setBucketLoad(
       {
@@ -165,7 +165,7 @@ export async function getBucketState(
   for (const row of cardioRes.data ?? []) {
     const performedAt = performedAtById.get(row.session_id);
     if (!performedAt) continue;
-    const date = performedAt.slice(0, 10);
+    const date = ymdInTimezone(new Date(performedAt), userTz);
     const load = cardioBucketLoad({
       durationSec: row.duration_sec,
       rpe: row.rpe == null ? null : Number(row.rpe),
@@ -174,7 +174,10 @@ export async function getBucketState(
     accumulate(series, date, load);
   }
 
-  const firstDate = (sessions[0]!.performed_at as string).slice(0, 10);
+  const firstDate = ymdInTimezone(
+    new Date(sessions[0]!.performed_at as string),
+    userTz,
+  );
   const todayIso = todayYmd(userTz);
 
   return ALL_BUCKETS.map((bucket) => {

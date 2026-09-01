@@ -1,5 +1,5 @@
 /**
- * Derived-state re-stamp for set mutations on an ALREADY-COMPLETED session
+ * Derived-state re-stamp for mutations on an ALREADY-COMPLETED session
  * (plan §6.9 — one canonical home; call sites import, nobody re-derives).
  *
  * ## Why this exists
@@ -17,6 +17,9 @@
  *      (`recomputeRegionState`). An extra post-hoc working set really is extra
  *      regional load; leaving it out would let DC-V2's load-recency warning
  *      under-report.
+ *   3. Pending TM suggestions for this session — edit or delete of the
+ *      source set must drop or rewrite the banner. Accepted/declined
+ *      history stays put.
  *
  * ## Why it is gated on completion
  *
@@ -38,22 +41,25 @@ import { recomputeActualSessionLoad } from "@/lib/engine/recompute-actual-sessio
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
 import { getUserTimezone } from "@/lib/planner/queries";
 
-export async function recomputeAfterCompletedSessionSetChange(args: {
+export async function recomputeAfterCompletedSessionMutation(args: {
   supabase: SupabaseClient;
   sessionId: string;
   /** Authenticated user id — the read stays user-scoped on top of RLS. */
   userId: string;
+  /** Final-log deletion means an actual zero, unlike an unfulfilled plan. */
+  emptyLogBehavior?: "preserve-prescribed" | "zero-actual";
 }): Promise<{ recomputed: boolean }> {
   const { supabase, sessionId, userId } = args;
 
   let completed = false;
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("sessions")
       .select("completed_at")
       .eq("id", sessionId)
       .eq("user_id", userId)
       .maybeSingle();
+    if (error) throw new Error(error.message);
     completed = !!(data as { completed_at?: string | null } | null)?.completed_at;
   } catch (e) {
     console.error("post-completion recompute: session read failed:", e);
@@ -66,10 +72,11 @@ export async function recomputeAfterCompletedSessionSetChange(args: {
       supabase,
       sessionId,
       requireCompleted: false,
+      emptyLogBehavior: args.emptyLogBehavior,
     });
   } catch (e) {
     console.error(
-      "recomputeActualSessionLoad (post-completion set change) failed:",
+      "recomputeActualSessionLoad (post-completion mutation) failed:",
       e,
     );
   }
@@ -78,7 +85,19 @@ export async function recomputeAfterCompletedSessionSetChange(args: {
     await recomputeRegionState(supabase, userId, await getUserTimezone(userId));
   } catch (e) {
     console.error(
-      "recomputeRegionState (post-completion set change) failed:",
+      "recomputeRegionState (post-completion mutation) failed:",
+      e,
+    );
+  }
+
+  try {
+    const { syncTmSuggestionsForSession } = await import(
+      "@/lib/training-maxes/tm-suggestion-sync"
+    );
+    await syncTmSuggestionsForSession(supabase, userId, sessionId);
+  } catch (e) {
+    console.error(
+      "syncTmSuggestionsForSession (post-completion mutation) failed:",
       e,
     );
   }

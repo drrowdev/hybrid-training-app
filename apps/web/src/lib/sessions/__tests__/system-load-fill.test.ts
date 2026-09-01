@@ -28,6 +28,9 @@ vi.mock("@/lib/engine/region-ledger", () => ({ recomputeRegionState: vi.fn() }))
 vi.mock("@/lib/engine/recompute-actual-session-load", () => ({
   recomputeActualSessionLoad: vi.fn(),
 }));
+vi.mock("../post-completion-recompute", () => ({
+  recomputeAfterCompletedSessionMutation: vi.fn(async () => ({ recomputed: false })),
+}));
 vi.mock("@/lib/planner/completion", () => ({ maybeCompleteBlock: vi.fn() }));
 vi.mock("@/lib/planner/queries", () => ({
   dayDate: vi.fn(),

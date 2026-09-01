@@ -9,6 +9,7 @@ import {
   RECOVERY_PERCENT_MAX,
   RECOVERY_PERCENT_MIN,
 } from "./recovery-week-bounds";
+import { getUserTimezone } from "@/lib/planner/queries";
 
 export type InsertDeloadResult =
   | { ok: true; deloadWeekIndex: number; sessions: number }
@@ -56,7 +57,9 @@ export async function previewDeloadWeekAction(
   const parsed = percentSchema.safeParse(percent);
   const key = boundaryKeySchema.safeParse(boundaryKey);
   const recId = recIdSchema.safeParse(recommendationId);
+  const timezone = await getUserTimezone(user.id);
   return getDeloadWeekPreview(supabase, user.id, {
+    timezone,
     ...(parsed.success ? { percent: parsed.data } : {}),
     ...(key.success ? { boundaryKey: key.data } : {}),
     ...(recId.success ? { recommendationId: recId.data } : {}),
@@ -90,7 +93,9 @@ export async function insertDeloadWeekAction(
   const parsedPercent = percentSchema.safeParse(percent);
   const parsedKey = boundaryKeySchema.safeParse(boundaryKey);
   const parsedRecId = recIdSchema.safeParse(recommendationId);
+  const timezone = await getUserTimezone(user.id);
   const preview = await getDeloadWeekPreview(supabase, user.id, {
+    timezone,
     ...(parsedPercent.success ? { percent: parsedPercent.data } : {}),
     ...(parsedKey.success ? { boundaryKey: parsedKey.data } : {}),
     ...(parsedRecId.success ? { recommendationId: parsedRecId.data } : {}),

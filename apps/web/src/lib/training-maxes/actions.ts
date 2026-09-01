@@ -5,8 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { roundToPlate } from "./queries";
-import { evaluateTmSuggestion } from "./suggestions";
 import { activeProgramTmPercent } from "./active-program-basis";
+import { syncTmSuggestionsForSession } from "./tm-suggestion-sync";
 
 const upsertSchema = z.object({
   movementId: z.string().uuid(),
@@ -304,11 +304,8 @@ export async function dismissTmSuggestion(formData: FormData): Promise<UpsertRes
 }
 
 /**
- * Scan a freshly-completed session for AMRAP top sets that warrant a TM
- * suggestion. Idempotent: re-running for the same session never produces a
- * duplicate pending row (partial unique index on derived_from_set_log_id).
- *
- * Returns the suggestion ids created so the caller can surface telemetry.
+ * Scan a completed session for AMRAP top sets that warrant a TM suggestion.
+ * Idempotent: re-running never produces a duplicate pending row.
  */
 export async function generateTmSuggestionsForSession(
   sessionId: string,
@@ -318,123 +315,8 @@ export async function generateTmSuggestionsForSession(
     data: { user },
   } = await getAuthUser();
   if (!user) return [];
-
-  const { data: session } = await supabase
-    .from("sessions")
-    .select("id, user_id, completed_at")
-    .eq("id", sessionId)
-    .maybeSingle();
-  if (!session || session.user_id !== user.id || !session.completed_at) return [];
-
-  // AMRAP top sets in this codebase = main-kind set with reps logged at or
-  // above 5 and an explicit "top set"-ish marker. We use a heuristic: look
-  // at the heaviest main set per movement in the session that carries an RPE
-  // or notes hint of AMRAP. This stays methodology-pure (no program names).
-  const { data: setLogs } = await supabase
-    .from("set_logs")
-    .select("id, movement_id, weight_kg, reps, rpe, set_kind, notes")
-    .eq("session_id", sessionId);
-  if (!setLogs || setLogs.length === 0) return [];
-
-  // Pick the heaviest "main" set per movement that has reps ≥ 1 and a weight.
-  const topByMovement = new Map<
-    string,
-    { id: string; weightKg: number; reps: number; rpe: number | null }
-  >();
-  for (const s of setLogs) {
-    if (s.set_kind !== "main" && s.set_kind !== "back_off") continue;
-    const w = s.weight_kg == null ? null : Number(s.weight_kg);
-    const r = s.reps == null ? null : Number(s.reps);
-    if (w == null || r == null || w <= 0 || r < 1) continue;
-    const isAmrap = (s.notes ?? "").toLowerCase().includes("amrap") || r >= 5;
-    if (!isAmrap) continue;
-    const prev = topByMovement.get(s.movement_id);
-    if (!prev || w > prev.weightKg) {
-      topByMovement.set(s.movement_id, {
-        id: s.id,
-        weightKg: w,
-        reps: r,
-        rpe: s.rpe == null ? null : Number(s.rpe),
-      });
-    }
-  }
-  if (topByMovement.size === 0) return [];
-
-  const movementIds = Array.from(topByMovement.keys());
-  const { data: tms } = await supabase
-    .from("training_maxes")
-    .select("movement_id, one_rm_kg, tm_percent")
-    .eq("user_id", user.id)
-    .in("movement_id", movementIds);
-  const tmByMovement = new Map(
-    (tms ?? []).map((t) => [
-      t.movement_id,
-      {
-        oneRmKg: Number(t.one_rm_kg),
-        tmPercent: t.tm_percent == null ? null : Number(t.tm_percent),
-      },
-    ]),
-  );
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("tm_percent_default")
-    .eq("id", user.id)
-    .maybeSingle();
-  const defaultPct = Number(profile?.tm_percent_default ?? 90);
-
-  const created: string[] = [];
-  for (const [movementId, top] of topByMovement.entries()) {
-    const current = tmByMovement.get(movementId);
-    if (!current) continue; // no TM yet → don't auto-suggest, user should enter one
-    const effectivePct = current.tmPercent ?? defaultPct;
-    const currentTmKg = roundToPlate((current.oneRmKg * effectivePct) / 100);
-    // The gate suppresses high-rep sets (> AMRAP_CONFIDENCE_REP_CAP) as
-    // low-confidence, so a noisy 8-rep AMRAP no longer produces a TM banner —
-    // TM changes should be infrequent + high-confidence. See suggestions.ts.
-    const result = evaluateTmSuggestion({
-      currentTmKg,
-      amrapWeightKg: top.weightKg,
-      amrapReps: top.reps,
-      amrapRpe: top.rpe,
-    });
-    if (!result.suggest) continue;
-    const source = result.formula === "rpe_zourdos" ? "derived_rpe" : "derived_amrap";
-
-    // ON CONFLICT DO NOTHING via the partial unique index on
-    // (user_id, movement_id, derived_from_set_log_id) WHERE status='pending'.
-    // PostgREST doesn't expose that directly, so we look it up first.
-    const { data: existing } = await supabase
-      .from("tm_suggestions")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("movement_id", movementId)
-      .eq("derived_from_set_log_id", top.id)
-      .eq("status", "pending")
-      .maybeSingle();
-    if (existing) continue;
-
-    const { data: inserted, error } = await supabase
-      .from("tm_suggestions")
-      .insert({
-        user_id: user.id,
-        movement_id: movementId,
-        current_tm_kg: currentTmKg,
-        suggested_tm_kg: result.suggestedTmKg,
-        source,
-        derived_from_session_id: sessionId,
-        derived_from_set_log_id: top.id,
-        derived_formula: result.formula,
-        status: "pending",
-      })
-      .select("id")
-      .maybeSingle();
-    if (!error && inserted?.id) created.push(inserted.id);
-  }
-
-  if (created.length > 0) {
-    revalidatePath("/app");
-  }
+  const created = await syncTmSuggestionsForSession(supabase, user.id, sessionId);
+  if (created.length > 0) revalidatePath("/app");
   return created;
 }
 

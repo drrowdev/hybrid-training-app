@@ -319,7 +319,11 @@ export default async function PlanPage({
 
   // The generic tissue-stack audit belongs only to app-generated archetype
   // blocks. Packaged programs return no gaps because they own their methodology.
-  const tissueGaps = await getCurrentWeekTissueStackGaps(supabase, user.id);
+  const tissueGaps = await getCurrentWeekTissueStackGaps(
+    supabase,
+    user.id,
+    timezone,
+  );
 
   // Reuse the `profile` row fetched above (audit F8 — was a duplicate
   // fetch of the same columns).
@@ -336,7 +340,7 @@ export default async function PlanPage({
     getLimitationResponseOffer(),
     getDeloadSkipOffer(),
     getEarlyDeloadRecommendation(),
-    getDeloadWeekPreview(supabase, user.id),
+    getDeloadWeekPreview(supabase, user.id, { timezone }),
     getDeloadWeekFatigueSignal(),
   ]);
 
@@ -348,6 +352,7 @@ export default async function PlanPage({
   const anchoredPreview =
     typeof sp.boundary === "string" && deloadRecId
       ? await getDeloadWeekPreview(supabase, user.id, {
+          timezone,
           boundaryKey: sp.boundary,
           recommendationId: deloadRecId,
         })

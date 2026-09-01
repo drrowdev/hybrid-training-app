@@ -24,6 +24,7 @@ import { resolveBoundaryAnchor } from "./recovery-anchor";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { computeActiveBlockFatigue } from "@/lib/planner/block-fatigue";
 import { EARLY_DELOAD_THRESHOLD } from "@/lib/planner/fatigue-proxy";
+import { currentBlockWeekIndexAt, ymdInTimezone } from "@/lib/dates";
 
 export type DeloadWeekPreview = {
   blockId: string;
@@ -49,6 +50,8 @@ export type DeloadWeekPreview = {
 
 export type DeloadPreviewOptions = {
   percent?: number;
+  timezone?: string;
+  now?: Date;
   /**
    * Place the week where the program advised, identified by the boundary key the
    * engine raised. Resolved server-side; an unresolvable key yields no preview
@@ -70,13 +73,6 @@ export type DeloadPreviewOptions = {
    */
   prepend?: boolean;
 };
-
-/** Current 0-based week index of an active block (rolling, clamped to the block). */
-function currentWeekIndex(startedOn: string, weeks: number): number {
-  const startMs = new Date(startedOn + "T00:00:00").getTime();
-  const days = Math.floor((Date.now() - startMs) / 86_400_000);
-  return Math.max(0, Math.min(weeks - 1, Math.floor(days / 7)));
-}
 
 /** The week a declared boundary sits in, read from the plan as it stands now. */
 async function boundaryWeek(
@@ -114,7 +110,14 @@ export async function getDeloadWeekPreview(
   userId: string,
   options: DeloadPreviewOptions = {},
 ): Promise<DeloadWeekPreview | null> {
-  const { percent: chosenPercent, boundaryKey, recommendationId, prepend } = options;
+  const {
+    percent: chosenPercent,
+    boundaryKey,
+    recommendationId,
+    prepend,
+    now = new Date(),
+  } = options;
+  const timezone = options.timezone ?? (await getUserTimezone(userId));
   const { data: block } = await supabase
     .from("training_blocks")
     .select("id, started_on, weeks, program_id")
@@ -174,7 +177,13 @@ export async function getDeloadWeekPreview(
   if (boundaryKey && anchored === null) return null;
   const afterWeek = prepend
     ? -1
-    : (anchored ?? currentWeekIndex(block.started_on as string, weeks));
+    : (anchored ??
+      currentBlockWeekIndexAt(
+        block.started_on as string,
+        weeks,
+        timezone,
+        now,
+      ));
   const mirrorWeek = Math.min(afterWeek + 1, weeks - 1);
 
   const { data: rows } = await supabase
@@ -199,7 +208,7 @@ export async function getDeloadWeekPreview(
   if (sessions.length === 0) return null;
 
   // Warn (don't block) when a future A-event would be pushed by the extra week.
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = ymdInTimezone(now, timezone);
   const { data: evt } = await supabase
     .from("events")
     .select("id")

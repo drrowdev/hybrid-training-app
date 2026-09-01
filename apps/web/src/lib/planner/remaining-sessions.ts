@@ -16,6 +16,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Prescription } from "@hta/db";
 import { isUnstartedLinkedSession } from "@/lib/sessions/linked-session-state";
+import { currentBlockWeekIndexAt } from "@/lib/dates";
 
 export type RemainingSession = {
   id: string;
@@ -31,7 +32,7 @@ export type ActiveBlockRemaining = {
   blockId: string;
   archetype: string;
   weeks: number;
-  /** Rolling week index the user is currently in (0-based, clamped). */
+  /** Calendar week index the user is currently in (0-based, clamped). */
   currentWeekIndex: number;
   /** Un-started future rows, ordered by (weekIndex, dayIndex). */
   remaining: RemainingSession[];
@@ -41,12 +42,14 @@ export type ActiveBlockRemaining = {
  * Load the active block and its un-started sessions. Returns null when
  * the user has no active block.
  *
- * `currentWeekIndex` is derived from `started_on` the same way
- * `getCeilingUtilization` does, so the two features agree on "this week".
+ * `currentWeekIndex` is derived from the block's Monday and the user's local
+ * date, so every adaptive feature agrees on "this week".
  */
 export async function getActiveBlockRemainingSessions(
   supabase: SupabaseClient,
   userId: string,
+  timezone: string,
+  now = new Date(),
 ): Promise<ActiveBlockRemaining | null> {
   const { data: block } = await supabase
     .from("training_blocks")
@@ -57,11 +60,11 @@ export async function getActiveBlockRemainingSessions(
     .maybeSingle();
   if (!block) return null;
 
-  const startedOn = new Date(block.started_on + "T00:00:00");
-  const daysSinceStart = Math.floor((Date.now() - startedOn.getTime()) / 86_400_000);
-  const currentWeekIndex = Math.max(
-    0,
-    Math.min(block.weeks - 1, Math.floor(daysSinceStart / 7)),
+  const currentWeekIndex = currentBlockWeekIndexAt(
+    block.started_on,
+    block.weeks,
+    timezone,
+    now,
   );
 
   const { data: rows } = await supabase

@@ -13,6 +13,7 @@ import {
   CUSTOM_EMPTY_PRESET,
 } from "@/lib/settings/equipment-presets";
 import type { Equipment } from "@/lib/settings/equipment-schema";
+import { SEED_MOVEMENTS } from "../../../../../../packages/db/seeds/movements";
 
 function req(slug: string): EquipmentRequirement {
   return inferRequiredEquipment({ slug });
@@ -238,6 +239,32 @@ describe("isEquipmentAvailable — every requirement kind", () => {
     expect(isEquipmentAvailable(r, home)).toBe(false);
     expect(isEquipmentAvailable(r, travel)).toBe(false);
   });
+
+  it("any_of accepts either implement and all_of requires every implement", () => {
+    const either: EquipmentRequirement = {
+      kind: "any_of",
+      requirements: [{ kind: "pull_up_bar" }, { kind: "rings" }],
+    };
+    const both: EquipmentRequirement = {
+      kind: "all_of",
+      requirements: [{ kind: "pull_up_bar" }, { kind: "dip_belt" }],
+    };
+    expect(isEquipmentAvailable(either, home)).toBe(true);
+    expect(
+      isEquipmentAvailable(either, {
+        ...empty,
+        accessories: { ...empty.accessories, rings: true },
+      }),
+    ).toBe(true);
+    expect(isEquipmentAvailable(either, empty)).toBe(false);
+    expect(isEquipmentAvailable(both, home)).toBe(true);
+    expect(
+      isEquipmentAvailable(both, {
+        ...home,
+        accessories: { ...home.accessories, dipBelt: false },
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("requirementFromEquipmentTag — DB equipment column mapping", () => {
@@ -292,8 +319,25 @@ describe("requirementFromEquipmentTag — DB equipment column mapping", () => {
     expect(requirementFromEquipmentTag("trap-bar")).toEqual({ kind: "trap_bar" });
     expect(requirementFromEquipmentTag("preacher-ez")).toEqual({ kind: "barbell" });
     expect(requirementFromEquipmentTag("band-anchor")).toEqual({ kind: "bands" });
-    // either/or with no bodyweight option → require the first-listed implement
-    expect(requirementFromEquipmentTag("dumbbell-or-kb")).toEqual({ kind: "dumbbells" });
+    expect(requirementFromEquipmentTag("dumbbell-or-kb")).toEqual({
+      kind: "any_of",
+      requirements: [{ kind: "dumbbells" }, { kind: "kettlebells" }],
+    });
+  });
+
+  it("maps gymnastic hardware without falling back to the movement slug", () => {
+    expect(requirementFromEquipmentTag("bar")).toEqual({
+      kind: "pull_up_bar",
+    });
+    expect(requirementFromEquipmentTag("rings")).toEqual({ kind: "rings" });
+    expect(requirementFromEquipmentTag("bar-or-rings")).toEqual({
+      kind: "any_of",
+      requirements: [{ kind: "pull_up_bar" }, { kind: "rings" }],
+    });
+    expect(requirementFromEquipmentTag("bar-belt")).toEqual({
+      kind: "all_of",
+      requirements: [{ kind: "pull_up_bar" }, { kind: "dip_belt" }],
+    });
   });
 
   it("returns null for untracked implements and missing tags", () => {
@@ -302,6 +346,23 @@ describe("requirementFromEquipmentTag — DB equipment column mapping", () => {
     expect(requirementFromEquipmentTag("erg")).toBeNull();
     expect(requirementFromEquipmentTag(null)).toBeNull();
     expect(requirementFromEquipmentTag(undefined)).toBeNull();
+  });
+
+  describe("requirementFromEquipmentTag — complete seed catalog", () => {
+    it("pins the resolution of every equipment tag in the catalog", () => {
+      const tags = Array.from(
+        new Set(
+          SEED_MOVEMENTS.map((movement) => movement.equipment).filter(
+            (tag): tag is string => tag != null,
+          ),
+        ),
+      ).sort();
+      const resolutions = Object.fromEntries(
+        tags.map((tag) => [tag, requirementFromEquipmentTag(tag)]),
+      );
+
+      expect(resolutions).toMatchSnapshot();
+    });
   });
 });
 
@@ -351,7 +412,7 @@ describe("resolveRequiredEquipment — DB tag precedence over slug", () => {
     ).toEqual({ kind: "bodyweight_or_generic" });
   });
 
-  it("still trusts the slug for free-weight implements on an either/or tag", () => {
+  it("keeps every available implement on an either/or tag", () => {
     // ADR 0034 added `hsr-calf-raise-db` ("HSR Calf Raise — DB/BW") so the
     // Achilles HSR guarantee could be met machine-free. Its `_db` suffix made
     // the slug heuristic demand dumbbells, which left an equipment-poor lifter
@@ -364,11 +425,12 @@ describe("resolveRequiredEquipment — DB tag precedence over slug", () => {
     expect(inferRequiredEquipment({ slug: "hsr-calf-raise-db" })).toEqual({
       kind: "dumbbells",
     });
-    // An either/or tag with NO bodyweight option is unaffected: which implement
-    // is primary is a catalog judgement, not a contradiction.
     expect(
       resolveRequiredEquipment({ slug: "single-leg-rdl", equipment: "dumbbell-or-kb" }),
-    ).toEqual({ kind: "dumbbells" });
+    ).toEqual({
+      kind: "any_of",
+      requirements: [{ kind: "dumbbells" }, { kind: "kettlebells" }],
+    });
   });
 });
 

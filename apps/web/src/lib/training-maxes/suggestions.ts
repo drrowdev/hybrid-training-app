@@ -6,7 +6,7 @@
  * fully testable without a Supabase client.
  */
 import { conservativeEstimate, type FormulaId } from "./e1rm";
-import { roundToPlate } from "./queries";
+import { roundToPlate } from "@/lib/planner/archetypes";
 
 /**
  * Minimum kg delta between current TM and a derived e1RM before we surface
@@ -45,6 +45,157 @@ export type SuggestionGateResult =
       formula: FormulaId;
       e1RmKg: number;
     };
+
+export type AmrapSetCandidateInput = {
+  id: string;
+  movementId: string;
+  setKind: string | null;
+  weightKg: number | null;
+  reps: number | null;
+  rpe: number | null;
+  notes: string | null;
+  skipped?: boolean | null;
+  prescribed: { isAmrap?: boolean } | null;
+};
+
+export type AmrapTopSet = {
+  id: string;
+  movementId: string;
+  weightKg: number;
+  reps: number;
+  rpe: number | null;
+};
+
+/**
+ * AMRAP source of truth for TM suggestions (ADR 0070).
+ *
+ * Current rows carry a prescribed snapshot: only `isAmrap === true` qualifies.
+ * Never infer from raw reps — a programmed 5 is not an open set.
+ * Legacy rows with no snapshot fall back to an explicit "amrap" note.
+ */
+export function isAmrapSetForTmSuggestion(set: {
+  notes: string | null | undefined;
+  prescribed: { isAmrap?: boolean } | null | undefined;
+}): boolean {
+  if (set.prescribed != null) return set.prescribed.isAmrap === true;
+  return (set.notes ?? "").toLowerCase().includes("amrap");
+}
+
+/** Heaviest qualifying AMRAP working set per movement. */
+export function pickAmrapTopSetsByMovement(
+  sets: readonly AmrapSetCandidateInput[],
+): Map<string, AmrapTopSet> {
+  const topByMovement = new Map<string, AmrapTopSet>();
+  for (const s of sets) {
+    if (s.skipped) continue;
+    if (s.setKind !== "main" && s.setKind !== "back_off") continue;
+    const w = s.weightKg;
+    const r = s.reps;
+    if (w == null || r == null || w <= 0 || r < 1) continue;
+    if (!isAmrapSetForTmSuggestion(s)) continue;
+    const prev = topByMovement.get(s.movementId);
+    if (!prev || w > prev.weightKg) {
+      topByMovement.set(s.movementId, {
+        id: s.id,
+        movementId: s.movementId,
+        weightKg: w,
+        reps: r,
+        rpe: s.rpe,
+      });
+    }
+  }
+  return topByMovement;
+}
+
+export type DesiredTmSuggestion = {
+  movementId: string;
+  setLogId: string;
+  currentTmKg: number;
+  suggestedTmKg: number;
+  source: string;
+  derivedFormula: string;
+};
+
+export type ExistingTmSuggestion = {
+  id: string;
+  movementId: string;
+  derivedFromSetLogId: string | null;
+  status: string;
+  currentTmKg: number | string | null;
+  suggestedTmKg: number | string;
+  derivedFormula: string | null;
+  source: string;
+};
+
+export type TmSuggestionReconcilePlan = {
+  deletePendingIds: string[];
+  updates: Array<DesiredTmSuggestion & { id: string }>;
+  inserts: DesiredTmSuggestion[];
+};
+
+function numEq(a: number | string | null | undefined, b: number): boolean {
+  return a != null && Number(a) === b;
+}
+
+function isIdenticalOffer(
+  existing: ExistingTmSuggestion,
+  desired: DesiredTmSuggestion,
+): boolean {
+  return (
+    existing.derivedFromSetLogId === desired.setLogId &&
+    numEq(existing.suggestedTmKg, desired.suggestedTmKg) &&
+    numEq(existing.currentTmKg, desired.currentTmKg)
+  );
+}
+
+/**
+ * Reconcile pending TM suggestions for one completed session.
+ * Accepted/dismissed rows are never mutated. An identical dismissed offer
+ * is not resurrected; an accepted offer for the same set is not re-queued.
+ */
+export function planTmSuggestionReconcile(
+  desired: readonly DesiredTmSuggestion[],
+  existing: readonly ExistingTmSuggestion[],
+): TmSuggestionReconcilePlan {
+  const pending = existing.filter((s) => s.status === "pending");
+  const accepted = existing.filter((s) => s.status === "accepted");
+  const dismissed = existing.filter((s) => s.status === "dismissed");
+  const claimed = new Set<string>();
+  const updates: Array<DesiredTmSuggestion & { id: string }> = [];
+  const inserts: DesiredTmSuggestion[] = [];
+
+  for (const next of desired) {
+    const sameSet = pending.find(
+      (p) => p.derivedFromSetLogId === next.setLogId && !claimed.has(p.id),
+    );
+    const sameMovement = pending.find(
+      (p) => p.movementId === next.movementId && !claimed.has(p.id),
+    );
+    const reusable = sameSet ?? sameMovement;
+    if (reusable) {
+      claimed.add(reusable.id);
+      const needsUpdate =
+        reusable.derivedFromSetLogId !== next.setLogId ||
+        !numEq(reusable.suggestedTmKg, next.suggestedTmKg) ||
+        !numEq(reusable.currentTmKg, next.currentTmKg) ||
+        reusable.source !== next.source ||
+        reusable.derivedFormula !== next.derivedFormula;
+      if (needsUpdate) updates.push({ id: reusable.id, ...next });
+      continue;
+    }
+    if (accepted.some((row) => row.derivedFromSetLogId === next.setLogId)) {
+      continue;
+    }
+    if (dismissed.some((row) => isIdenticalOffer(row, next))) continue;
+    inserts.push(next);
+  }
+
+  return {
+    deletePendingIds: pending.filter((p) => !claimed.has(p.id)).map((p) => p.id),
+    updates,
+    inserts,
+  };
+}
 
 /**
  * Decide whether a heavy AMRAP set warrants a TM bump:

@@ -24,7 +24,11 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeRegionFreshness, ewmaStep } from "@hta/domain";
-import { todayYmd as todayYmdFn, addDaysToYmd } from "@/lib/dates";
+import {
+  todayYmd as todayYmdFn,
+  addDaysToYmd,
+  ymdInTimezone,
+} from "@/lib/dates";
 import {
   ALL_MUSCLE_GROUPS,
   MUSCLE_LABELS,
@@ -223,6 +227,7 @@ function toStringArray(v: unknown): string[] {
 export async function deriveMuscleLoadEvents(
   supabase: SupabaseClient,
   userId: string,
+  tz = "UTC",
 ): Promise<MuscleLoadEvent[]> {
   const sinceIso = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString();
 
@@ -265,7 +270,7 @@ export async function deriveMuscleLoadEvents(
     if (row.set_kind === "warmup") continue;
     const performedAt = performedAtById.get(row.session_id);
     if (!performedAt) continue;
-    const date = performedAt.slice(0, 10);
+    const date = ymdInTimezone(new Date(performedAt), tz);
     const movement = normaliseMovement(row.movement);
     if (!movement) continue;
     const reps = Number(row.reps);
@@ -290,7 +295,7 @@ export async function deriveMuscleLoadEvents(
   for (const row of cardios ?? []) {
     const performedAt = performedAtById.get(row.session_id);
     if (!performedAt) continue;
-    const date = performedAt.slice(0, 10);
+    const date = ymdInTimezone(new Date(performedAt), tz);
     const movement = normaliseMovement(row.movement);
     const modality = (row.modality as string | null | undefined) ?? null;
     const fanout = cardioFanout(modality);
@@ -390,7 +395,7 @@ export async function getMuscleFreshness(
   }
 
   // Live fallback.
-  const events = await deriveMuscleLoadEvents(supabase, userId);
+  const events = await deriveMuscleLoadEvents(supabase, userId, tz);
   const computed = computeMuscleFreshness(events, today);
   return ALL_MUSCLE_GROUPS.map((m) => computed.get(m)!);
 }

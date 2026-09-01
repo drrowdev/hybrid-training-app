@@ -277,7 +277,7 @@ export async function getReadiness(
 ): Promise<Readiness> {
   const [loadBalance, rpeDrift, outputTrend] = await Promise.all([
     getLoadBalance(supabase, userId, tz),
-    getRpeDrift(supabase, userId),
+    getRpeDrift(supabase, userId, tz),
     getOutputTrend(supabase, userId, tz),
   ]);
   return composeReadiness(loadBalance, rpeDrift, outputTrend);

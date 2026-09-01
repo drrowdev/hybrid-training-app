@@ -47,6 +47,12 @@ const fakeAdmin = {
       order() {
         return this;
       },
+      maybeSingle: async () => {
+        if (table === "profiles") {
+          return { data: { timezone: "UTC" }, error: null };
+        }
+        return { data: null, error: null };
+      },
       // Region state — return a single seeded row so the live derivation
       // produces non-empty output.
       then(onF: (v: { data: unknown; error: null }) => unknown) {

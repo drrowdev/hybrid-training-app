@@ -46,13 +46,10 @@ import {
   deriveMuscleLoadEvents,
   computeMuscleFreshness,
 } from "@/lib/muscle";
+import { todayYmd } from "@/lib/dates";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-function todayUtcYmd(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 type UserErr = { userId: string; error: string };
 
@@ -64,8 +61,9 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   const supabase = createAdmin();
-  const today = todayUtcYmd();
-
+  // Keep the existing batch-level response field. Individual rows below use
+  // each user's local calendar date.
+  const snapshotDate = todayYmd("UTC");
   const userIds = await listAllUserIds(supabase);
 
   let usersProcessed = 0;
@@ -75,7 +73,15 @@ export async function GET(req: Request): Promise<Response> {
 
   for (const userId of userIds) {
     try {
-      const live = await deriveRegionFreshnessLive(supabase, userId, "UTC");
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("timezone")
+        .eq("id", userId)
+        .maybeSingle();
+      if (profileError) throw new Error(profileError.message);
+      const timezone = profile?.timezone ?? "UTC";
+      const today = todayYmd(timezone);
+      const live = await deriveRegionFreshnessLive(supabase, userId, timezone);
       const rows = ALL_REGIONS.flatMap((region) => {
         const snap = live.get(region);
         if (!snap) return [];
@@ -112,7 +118,7 @@ export async function GET(req: Request): Promise<Response> {
       // Muscle snapshots — additive 16-muscle grid alongside the
       // 7-region model. Same lookback, separate table.
       try {
-        const events = await deriveMuscleLoadEvents(supabase, userId);
+        const events = await deriveMuscleLoadEvents(supabase, userId, timezone);
         const computed = computeMuscleFreshness(events, today);
         const muscleRows = ALL_MUSCLE_GROUPS.map((muscle) => {
           const row = computed.get(muscle)!;
@@ -151,7 +157,7 @@ export async function GET(req: Request): Promise<Response> {
 
   return NextResponse.json({
     ok: true,
-    snapshot_date: today,
+    snapshot_date: snapshotDate,
     users_processed: usersProcessed,
     snapshots_written: snapshotsWritten,
     muscle_snapshots_written: muscleSnapshotsWritten,

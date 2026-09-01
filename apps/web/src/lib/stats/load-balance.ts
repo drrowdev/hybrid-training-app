@@ -36,7 +36,7 @@
  * new CP-2 constant added; see ADR 0019).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { mondayOfYmd, todayYmd } from "@/lib/dates";
+import { mondayOfYmd, todayYmd, ymdInTimezone } from "@/lib/dates";
 
 /** Display band derived from the body-wide acute:chronic ratio. */
 export type LoadBand = "unknown" | "detraining" | "productive" | "pushing" | "spiking";
@@ -118,7 +118,7 @@ export function aggregateLoadBalance(
     const ts = Date.parse(s.performed_at);
     if (Number.isNaN(ts)) continue;
     if (ts < earliestTs) continue;
-    seenWeeks.add(mondayOfYmd(s.performed_at.slice(0, 10)));
+    seenWeeks.add(mondayOfYmd(ymdInTimezone(new Date(s.performed_at), tz)));
   }
   // earliestMonday is unused for the count itself; the lookback boundary
   // is enforced by `earliestTs`. We retain `today` resolution so the

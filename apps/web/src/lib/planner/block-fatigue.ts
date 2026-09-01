@@ -19,6 +19,7 @@ import {
   computeFatigueProxy,
   type FatigueArchetypeKey,
 } from "@/lib/planner/fatigue-proxy";
+import { currentBlockWeekIndexAt, ymdInTimezone } from "@/lib/dates";
 
 /** Min logged weeks of history before the proxy is trusted. */
 export const MIN_WEEKS_FOR_PROXY = 3;
@@ -39,12 +40,13 @@ export async function computeActiveBlockFatigue(
   userId: string,
   block: { id: string; archetype: string | null; started_on: string; weeks: number },
   tz: string,
+  now = new Date(),
 ): Promise<ActiveBlockFatigue> {
-  const startedOn = new Date(block.started_on + "T00:00:00");
-  const daysSinceStart = Math.floor((Date.now() - startedOn.getTime()) / 86_400_000);
-  const currentWeekIndex = Math.max(
-    0,
-    Math.min(block.weeks - 1, Math.floor(daysSinceStart / 7)),
+  const currentWeekIndex = currentBlockWeekIndexAt(
+    block.started_on,
+    block.weeks,
+    tz,
+    now,
   );
 
   // A deload (reactive OR earlier early-deload) already this block.
@@ -56,7 +58,11 @@ export async function computeActiveBlockFatigue(
     .gte("created_at", `${block.started_on}T00:00:00Z`);
 
   // Tonnage rollup (acute = most recent logged week, chronic = mean of prior 3).
-  const rollup = await getWeeklyRecoveryRollup(supabase, userId, { weeks: 8, tz });
+  const rollup = await getWeeklyRecoveryRollup(supabase, userId, {
+    weeks: 8,
+    today: ymdInTimezone(now, tz),
+    tz,
+  });
   const logged = rollup.filter((w) => w.loggedSessions > 0); // most-recent-first
   const dataSufficient = logged.length >= MIN_WEEKS_FOR_PROXY;
 
@@ -69,7 +75,7 @@ export async function computeActiveBlockFatigue(
   const recent = logged[0];
 
   // Cardio interference over the trailing 14 days.
-  const sinceIso = new Date(Date.now() - 14 * 86_400_000).toISOString();
+  const sinceIso = new Date(now.getTime() - 14 * 86_400_000).toISOString();
   const { data: recentSessions } = await supabase
     .from("sessions")
     .select("id")

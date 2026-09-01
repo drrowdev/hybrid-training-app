@@ -61,7 +61,7 @@ vi.mock("next/cache", () => ({
 }));
 
 vi.mock("../post-completion-recompute", () => ({
-  recomputeAfterCompletedSessionSetChange: async (
+  recomputeAfterCompletedSessionMutation: async (
     args: Record<string, unknown>,
   ) => {
     recomputeCalls.push(args);

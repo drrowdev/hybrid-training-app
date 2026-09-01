@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { safeAppRedirectPath } from "@/lib/auth/redirect-path";
 
 /**
  * Master switch for self-service account creation. While the app is in the
@@ -52,8 +53,7 @@ export async function signIn(formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { error: error.message };
 
-  const next = String(formData.get("next") ?? "/app");
-  redirect(next);
+  redirect(safeAppRedirectPath(String(formData.get("next") ?? "")));
 }
 
 /**
@@ -106,8 +106,7 @@ export async function verifyEmailCode(formData: FormData) {
   });
   if (error) return { error: error.message };
 
-  const next = String(formData.get("next") ?? "/app");
-  redirect(next);
+  redirect(safeAppRedirectPath(String(formData.get("next") ?? "")));
 }
 
 export async function signOut() {

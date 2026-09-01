@@ -8,6 +8,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addDaysToYmd,
+  currentBlockWeekIndex,
+  currentBlockWeekIndexAt,
   daysBetweenYmd,
   isoWeekdayYmd,
   mondayOfYmd,
@@ -232,6 +234,52 @@ describe("mondayOfYmd", () => {
 describe("upcomingMondayYmd", () => {
   it("returns the same day when ymd is already a Monday", () => {
     expect(upcomingMondayYmd("2025-01-06")).toBe("2025-01-06"); // Mon
+  });
+
+  describe("currentBlockWeekIndex", () => {
+    it("anchors a mid-week block start to the containing Monday", () => {
+      expect(currentBlockWeekIndex("2025-01-08", 4, "2025-01-12")).toBe(0);
+      expect(currentBlockWeekIndex("2025-01-08", 4, "2025-01-13")).toBe(1);
+    });
+
+    it("clamps dates before and after the block", () => {
+      expect(currentBlockWeekIndex("2025-01-08", 4, "2024-12-01")).toBe(0);
+      expect(currentBlockWeekIndex("2025-01-08", 4, "2026-01-01")).toBe(3);
+    });
+
+    it("uses the user's local date at the same Sunday-evening instant", () => {
+      const now = new Date("2026-09-07T02:30:00Z");
+      expect(
+        currentBlockWeekIndexAt(
+          "2026-08-31",
+          4,
+          "America/Los_Angeles",
+          now,
+        ),
+      ).toBe(0);
+      expect(
+        currentBlockWeekIndexAt("2026-08-31", 4, "Europe/Helsinki", now),
+      ).toBe(1);
+    });
+
+    it("does not drift across Helsinki and Los Angeles DST changes", () => {
+      expect(
+        currentBlockWeekIndexAt(
+          "2025-03-26",
+          4,
+          "Europe/Helsinki",
+          new Date("2025-03-31T00:30:00Z"),
+        ),
+      ).toBe(1);
+      expect(
+        currentBlockWeekIndexAt(
+          "2025-03-05",
+          4,
+          "America/Los_Angeles",
+          new Date("2025-03-10T06:30:00Z"),
+        ),
+      ).toBe(0);
+    });
   });
 
   it("advances to the next Monday for any other weekday", () => {
