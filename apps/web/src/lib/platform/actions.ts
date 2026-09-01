@@ -85,6 +85,7 @@ import {
 } from "./forward-rewrite";
 import { todayYmd, mondayOfYmd, daysBetweenYmd } from "@/lib/dates";
 import { programSetupAuditInput } from "./setup-audit";
+import { catalogMovementLoadKind } from "./custom-movement-kind";
 import { prescriptionCarriesUserState } from "@/lib/sessions/prescription-mutations";
 import {
   inferProgramStartWeekIndex,
@@ -1190,6 +1191,9 @@ async function computeForeignWrite(
   const customMovementByKey = new Map(
     validatedCustomMovements.map((movement) => [movement.key, movement]),
   );
+  const catalogMovementById = new Map(
+    customizationCatalog.map((movement) => [movement.id, movement]),
+  );
   const normalizeCustomMovement = <
     T extends {
       movement: string;
@@ -1200,6 +1204,9 @@ async function computeForeignWrite(
   ): T => {
     if (!movement.movement.startsWith("catalog:")) return movement;
     const catalog = customMovementByKey.get(movement.movement);
+    const catalogMovement = catalog
+      ? catalogMovementById.get(catalog.movementId)
+      : undefined;
     return {
       ...movement,
       ...(catalog
@@ -1209,10 +1216,13 @@ async function computeForeignWrite(
             displayName: catalog.displayName,
           }
         : {}),
-      kind:
-        ctx.oneRepMaxes[movement.movement] != null
-          ? "barbell"
-          : "unanchored",
+      // Re-derive at the trusted server boundary. Stored customizations created
+      // before this rule may carry the template slot's stale kind, and trusting
+      // it can put the whole bodyweight-inclusive max on a dip belt.
+      kind: catalogMovementLoadKind({
+        hasOneRm: ctx.oneRepMaxes[movement.movement] != null,
+        isLoadable: catalogMovement?.isLoadable,
+      }),
     };
   };
   // Assistance volume (low = Easier / standard = Balanced / high = Harder).

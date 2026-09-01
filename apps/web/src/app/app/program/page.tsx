@@ -137,6 +137,7 @@ export default async function ProgramPickerPage({
       name: movement.displayName,
       slug: movement.slug,
       pattern: movement.pattern ?? "other",
+      isLoadable: movement.isLoadable === true,
       hasOneRm: trainingMaxContext.rows.some(
         (row) => row.movementId === movement.id && row.oneRmKg > 0,
       ),

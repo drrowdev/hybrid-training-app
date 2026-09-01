@@ -1203,3 +1203,13 @@ Third, and the one that actually reaches the lifter's existing plan: fixing the 
 Review before merge caught three defects in that work, one of them a regression the fix introduced. The legacy reinterpretation first keyed off the catalog's `body_weight_loaded`, which is a broad "takes a belt" capability - it covers push-ups, ordinary dips and rehab movements like `eccentric-chin-up`, whose `targetWeightKg` is the lifter's own hand-entered number stored verbatim. A 10 kg rehab load would have silently resolved to 0. It is now warm-ups only, which is the only place the bug could occur. Second, `resolveSetSnapshot` fetched bodyweight only when a percentage was present, so for a legacy warm-up the server would have expected the uncorrected number and rejected the corrected one the logger displayed, losing the prescribed snapshot. Third, Zulu/HT's optional peaking cue overwrote the note telling the lifter the set is bodyweight.
 
 No migration. Nothing is rewritten in storage; the correction happens at resolution.
+
+## [2026-09-01] fix | A substituted movement owns its loading maths
+
+The whole-codebase review found a critical sibling of the weighted pull-up bug. Tactical Barbell lets a lifter replace a template slot with any catalog movement, but the saved customization chose the loading kind from the SLOT being replaced. Putting a normal Barbell Row into the Weighted Pull-up slot therefore kept `weighted-bw`: at 75% of a 120 kg max for an 82 kg lifter, the engine subtracted bodyweight and prescribed 7.5 kg instead of 90 kg. The reverse was dangerous: putting the new Weighted Dip into a Bench slot treated its bodyweight-inclusive max like a barbell max and prescribed +90 kg on the belt instead of +7.5 kg.
+
+The first fix at the wizard boundary was not enough. Independent review found that deploy's `normalizeCustomMovement` unconditionally rewrote every catalog movement with a max to `barbell`, clobbering the corrected client value before it reached the engine. This also meant old customizations could never heal.
+
+Loading kind is now derived from the selected catalog movement in one pure function: no saved max is `unanchored`; a bodyweight-loadable movement with a saved max is `weighted-bw`; any other movement with a max is `barbell`. The wizard uses it instead of inheriting the old slot, and deploy repeats the derivation from the trusted catalog row rather than trusting the client or stored blob. Existing customized plans therefore correct themselves the next time they are edited/deployed.
+
+No migration. The catalog already owns `body_weight_loaded`, and the training-max and session-load paths already use that column to mean the saved max includes bodyweight.

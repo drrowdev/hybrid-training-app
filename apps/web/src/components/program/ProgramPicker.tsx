@@ -81,6 +81,7 @@ import {
   type SlotSection,
   type TemplateSlot,
 } from "./session-slot-editing";
+import { catalogMovementLoadKind } from "@/lib/platform/custom-movement-kind";
 import {
 } from "@/lib/platform/rehab-links";
 import {
@@ -315,6 +316,8 @@ export interface PickerRehabMovement {
   slug: string;
   pattern: string;
   hasOneRm: boolean;
+  /** Catalog `body_weight_loaded`: a saved max includes bodyweight. */
+  isLoadable?: boolean;
 }
 
 /**
@@ -710,6 +713,7 @@ function catalogMovementMetaFromCustomization(
                 slug: movement.slug,
                 pattern: "custom",
                 hasOneRm: movement.kind !== "unanchored",
+                isLoadable: movement.kind === "weighted-bw",
               },
             ],
           ]
@@ -1554,7 +1558,7 @@ export function ProgramPicker({
       if (!kinds.has(role.engineKey)) kinds.set(role.engineKey, "barbell");
     }
     for (const [key, movement] of Object.entries(catalogMovementMeta)) {
-      kinds.set(key, movement.hasOneRm ? "barbell" : "unanchored");
+      kinds.set(key, catalogMovementLoadKind(movement));
     }
     return kinds;
   }, [activeTbTemplate, benchRoles, catalogMovementMeta]);
@@ -2784,8 +2788,10 @@ export function ProgramPicker({
                 movementOverrides[sourceMovement] = null;
                 continue;
               }
-              const kind = activationMovementKindByKey.get(movement);
               const catalog = catalogMovementMeta[movement];
+              const kind = catalog
+                ? catalogMovementLoadKind(catalog)
+                : activationMovementKindByKey.get(movement);
               movementOverrides[sourceMovement] = {
                 movement,
                 ...(catalog
@@ -2878,6 +2884,7 @@ export function ProgramPicker({
                               id: catalog.id,
                               slug: catalog.slug,
                               name: catalog.name,
+                              kind: catalogMovementLoadKind(catalog),
                             }
                           : undefined,
                       );
