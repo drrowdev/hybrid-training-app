@@ -56,6 +56,34 @@ describe("Zulu/HT — prescribe (heavy + back-off + assistance)", () => {
     expect(assist.weightKg).toBeUndefined();
   });
 
+  it("DC-K4: spends the rep share against the lifter's own max clean reps when they have one", () => {
+    // 20 clean reps: the wave's 60 / 65 / 70% are 12 / 13 / 14 — not the
+    // table's 12 / 10 / 8, which assume a smaller max.
+    const anchored: PlatformContext = {
+      ...ctx,
+      oneRepMaxes: { ...ctx.oneRepMaxes, pullup: 20 },
+    };
+    const reps = [1, 2, 3].map(
+      (week) => itemsOfKind(z.prescribe(setup(), `b0-w${week}-s1`, anchored), "assistance")[0]!,
+    );
+    expect(reps.map((it) => it.reps)).toEqual([12, 13, 14]);
+    for (const it of reps) {
+      expect(it.percentOfTm).toBeUndefined();
+      expect(it.weightKg).toBeUndefined();
+    }
+  });
+
+  it("DC-K4: falls back to the source's own reps when the lifter has no pull-up max", () => {
+    const reps = [1, 2, 3].map(
+      (week) => itemsOfKind(z.prescribe(setup(), `b0-w${week}-s1`, ctx), "assistance")[0]!,
+    );
+    expect(reps.map((it) => it.reps)).toEqual([12, 10, 8]);
+    for (const it of reps) {
+      expect(it.note).toContain("max clean reps");
+      expect(it.percentOfTm).toBeUndefined();
+    }
+  });
+
   it("ramps the heavy and back-off barbell lifts with the global warm-up (40/60/80% × 5/5/3), but not bodyweight pull-ups", () => {
     const p = z.prescribe(setup(), "b0-w1-s1", ctx);
     const warmups = itemsOfKind(p, "warmup");

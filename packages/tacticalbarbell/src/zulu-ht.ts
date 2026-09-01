@@ -29,6 +29,7 @@ import {
   addedLoadFromSystemLoad,
   buildGlobalWarmupItems,
   buildSystemLoadWarmupItems,
+  isRepMaxEngineKey,
 } from "@hta/program-core";
 import { TB_MOVEMENT_LABEL, isSystemLoadMovement } from "./templates";
 import { roundToIncrement } from "./rounding";
@@ -296,18 +297,25 @@ export const zuluHtEngine: ProgramEngine<ZuluHtInstance> = {
       });
     }
 
-    // Sourced as 3–5 sets of a rep target taken from the wave table. The
-    // percentage the source quotes is a share of MAX CLEAN REPS, already spent
-    // to produce `assistReps` — carrying it as `percentOfTm` would hand the
-    // adapter a rep percentage to render as a load percentage.
+    // Sourced as 3–5 sets of a rep target, where the percentage the source
+    // quotes is a share of MAX CLEAN REPS. Spend it here, against the lifter's
+    // own rep max when they have one — the same anchor Tactical Barbell's
+    // bodyweight branch uses — and fall back to the table's own figure when they
+    // do not, rather than inventing a max. Carrying the share as `percentOfTm`
+    // would hand the adapter a rep percentage to render as a load percentage.
+    const assistPct = Math.round(wave.assistPct * 100);
+    const repMax = isRepMaxEngineKey("pullup") ? ctx.oneRepMaxes["pullup"] : undefined;
+    const anchored = repMax != null && repMax > 0;
     items.push({
       kind: "assistance",
       name: `Pull-Ups (Assistance ${session.assist})`,
       movementId: "pullup",
       sets: 3,
       setsMax: 5,
-      reps: wave.assistReps,
-      note: `Scale to about ${Math.round(wave.assistPct * 100)}% of your max clean reps. Add 2–3 accessories from the ${session.assist} list.`,
+      reps: anchored ? Math.max(1, Math.round(repMax * wave.assistPct)) : wave.assistReps,
+      note: anchored
+        ? `${assistPct}% of your max clean reps. Add 2–3 accessories from the ${session.assist} list.`
+        : `Scale to about ${assistPct}% of your max clean reps. Add 2–3 accessories from the ${session.assist} list.`,
     });
 
     return { items };

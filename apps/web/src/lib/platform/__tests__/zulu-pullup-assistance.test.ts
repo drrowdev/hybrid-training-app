@@ -47,12 +47,13 @@ function pullupItems(engine: ProgramEngine<never>, instance: unknown) {
 describe("Zulu/HT pull-up assistance — prescribe", () => {
   const inst: ZuluHtInstance = zuluHtEngine.setup({ values: { blocks: 1 } }, ctx);
 
-  it("DC-K4: keeps the source's reps and set range", () => {
+  it("DC-K4: spends the rep share against the lifter's own max clean reps", () => {
+    // 15 clean reps at the wave's 60 / 65 / 70%.
     const reps = [1, 2, 3].map((week) => {
       const p = zuluHtEngine.prescribe(inst, `b0-w${week}-s1`, ctx);
       return p.items.find((it) => it.kind === "assistance")!;
     });
-    expect(reps.map((it) => it.reps)).toEqual([12, 10, 8]);
+    expect(reps.map((it) => it.reps)).toEqual([9, 10, 11]);
     for (const it of reps) {
       expect(it.sets).toBe(3);
       expect(it.setsMax).toBe(5);
@@ -75,6 +76,21 @@ describe("Zulu/HT pull-up assistance — prescribe", () => {
       .items.find((it) => it.kind === "assistance")!;
     expect(assist.note).toContain("max clean reps");
     expect(assist.note).not.toMatch(/1RM/i);
+  });
+
+  it("DC-K4: falls back to the source's own reps when no pull-up max is recorded", () => {
+    const bare: PlatformContext = {
+      ...ctx,
+      oneRepMaxes: { squat: 150, bench: 100, deadlift: 200, press: 70 },
+    };
+    const reps = [1, 2, 3].map(
+      (week) =>
+        zuluHtEngine
+          .prescribe(inst, `b0-w${week}-s1`, bare)
+          .items.find((it) => it.kind === "assistance")!,
+    );
+    expect(reps.map((it) => it.reps)).toEqual([12, 10, 8]);
+    for (const it of reps) expect(it.percentOfTm).toBeUndefined();
   });
 });
 
@@ -119,6 +135,7 @@ describe("Zulu/HT pull-up assistance — materialized", () => {
       expect(it.percentTm ?? null).toBeNull();
       expect(it.targetWeightKg ?? null).toBeNull();
     }
-    expect(items.some((it) => it.reps === 12)).toBe(true);
-  });
-});
+    // 15 clean reps at 60 / 65 / 70% — the lifter's own anchor, not the table's.
+    const reps = new Set(items.map((it) => it.reps));
+    expect([...reps].sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([9, 10, 11]);
+  });});
