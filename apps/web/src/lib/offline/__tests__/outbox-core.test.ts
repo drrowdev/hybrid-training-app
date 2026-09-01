@@ -70,14 +70,30 @@ describe("classifyActionResult", () => {
   it("retries when the action threw (offline/network)", () => {
     expect(classifyActionResult(undefined, true)).toBe("retry");
   });
-  it("drops when the server returned a validation error (permanent)", () => {
-    expect(classifyActionResult({ error: "Invalid input" }, false)).toBe("drop");
+  it("drops only when the server explicitly returned a validation error", () => {
+    expect(
+      classifyActionResult({ error: "Invalid input", errorCode: "validation" }, false),
+    ).toBe("drop");
+  });
+  it("keeps an unclassified returned error queued", () => {
+    expect(classifyActionResult({ error: "temporary Supabase error" }, false)).toBe(
+      "retry",
+    );
+  });
+  it("keeps a typed transient error queued", () => {
+    expect(
+      classifyActionResult(
+        { error: "session refresh required", errorCode: "transient" },
+        false,
+      ),
+    ).toBe("retry");
   });
   it("is done on a clean ok result", () => {
     expect(classifyActionResult({ ok: true }, false)).toBe("done");
   });
-  it("is done on a bare result with no error", () => {
-    expect(classifyActionResult({}, false)).toBe("done");
+  it("keeps an unacknowledged result queued", () => {
+    expect(classifyActionResult({}, false)).toBe("retry");
+    expect(classifyActionResult(undefined, false)).toBe("retry");
   });
 });
 

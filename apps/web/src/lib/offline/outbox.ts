@@ -3,9 +3,10 @@
  *
  * Durable FIFO queue for offline workout logging. Persists `OutboxEntry` rows
  * so logged sets survive signal loss and app kill, and replays them when
- * connectivity returns (see `./flusher`). All methods are no-ops / empty when
- * IndexedDB is unavailable (SSR, private-mode quirks) so callers can always
- * fall through to the plain online path.
+ * connectivity returns (see `./flusher`). Reads are empty when IndexedDB is
+ * unavailable (SSR, private-mode quirks); writes return an explicit
+ * unavailable/failed status so callers never mistake a missing queue entry
+ * for durable local storage.
  *
  * Pure helpers (ordering, payload (de)serialization, retry classification) live
  * in `./outbox-core` and are unit-tested under the node environment; this file
@@ -81,62 +82,81 @@ export type EnqueueInput = {
   op: OutboxOp;
   sessionId: string;
   payload: Record<string, string>;
+  metadata?: OutboxEntry["metadata"];
 };
+
+export type EnqueueResult =
+  | { status: "stored"; entry: OutboxEntry }
+  | { status: "unavailable" }
+  | { status: "failed"; error: Error };
 
 /**
  * Append an op to the outbox (or overwrite the same id — keyPath collisions are
- * a replay of the same logical write, which is fine). Returns the stored entry,
- * or null when IndexedDB is unavailable so the caller can fall back to the
- * plain online path.
+ * a replay of the same logical write, which is fine). The result explicitly
+ * tells callers whether the write is durable locally, unavailable, or failed.
  */
-export async function enqueue(input: EnqueueInput): Promise<OutboxEntry | null> {
-  if (!hasIDB()) return null;
-  const db = await openDb();
-  // One readwrite transaction is serialised across tabs by IndexedDB. Reading
-  // the highest sequence from the index and then writing in that same
-  // transaction preserves global FIFO without deserialising the full queue.
-  return new Promise<OutboxEntry>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    const store = tx.objectStore(STORE);
-    const cursorReq = store.index("by_seq").openKeyCursor(null, "prev");
-    let entry: OutboxEntry | null = null;
+export async function enqueue(input: EnqueueInput): Promise<EnqueueResult> {
+  if (!hasIDB()) return { status: "unavailable" };
+  try {
+    const db = await openDb();
+    // One readwrite transaction is serialised across tabs by IndexedDB. Reading
+    // the highest sequence from the index and then writing in that same
+    // transaction preserves global FIFO without deserialising the full queue.
+    const entry = await new Promise<OutboxEntry>((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const store = tx.objectStore(STORE);
+      const cursorReq = store.index("by_seq").openKeyCursor(null, "prev");
+      let nextEntry: OutboxEntry | null = null;
 
-    cursorReq.onsuccess = () => {
-      const storedMax =
-        typeof cursorReq.result?.key === "number" ? cursorReq.result.key : 0;
-      const now = Date.now();
-      lastSeq = nextSeq([lastSeq, storedMax], now);
-      entry = {
-        id: input.id,
-        op: input.op,
-        sessionId: input.sessionId,
-        seq: lastSeq,
-        payload: input.payload,
-        createdAt: now,
-        attempts: 0,
+      cursorReq.onsuccess = () => {
+        const storedMax =
+          typeof cursorReq.result?.key === "number" ? cursorReq.result.key : 0;
+        const now = Date.now();
+        lastSeq = nextSeq([lastSeq, storedMax], now);
+        nextEntry = {
+          id: input.id,
+          op: input.op,
+          sessionId: input.sessionId,
+          seq: lastSeq,
+          payload: input.payload,
+          metadata: input.metadata,
+          createdAt: now,
+          attempts: 0,
+        };
+        store.put(nextEntry);
       };
-      store.put(entry);
+      cursorReq.onerror = () => {
+        tx.abort();
+        reject(
+          cursorReq.error ?? new Error("indexedDB sequence read failed"),
+        );
+      };
+      tx.oncomplete = () => {
+        if (nextEntry) resolve(nextEntry);
+        else reject(new Error("indexedDB enqueue failed"));
+      };
+      tx.onerror = () =>
+        reject(tx.error ?? new Error("indexedDB enqueue failed"));
+      tx.onabort = () =>
+        reject(tx.error ?? new Error("indexedDB enqueue aborted"));
+    });
+    return { status: "stored", entry };
+  } catch (error) {
+    return {
+      status: "failed",
+      error: error instanceof Error ? error : new Error(String(error)),
     };
-    cursorReq.onerror = () => {
-      tx.abort();
-      reject(
-        cursorReq.error ?? new Error("indexedDB sequence read failed"),
-      );
-    };
-    tx.oncomplete = () => {
-      if (entry) resolve(entry);
-      else reject(new Error("indexedDB enqueue failed"));
-    };
-    tx.onerror = () =>
-      reject(tx.error ?? new Error("indexedDB enqueue failed"));
-    tx.onabort = () =>
-      reject(tx.error ?? new Error("indexedDB enqueue aborted"));
-  });
+  }
 }
 
 /** All pending entries, FIFO. Empty when IndexedDB is unavailable. */
 export async function listPending(): Promise<OutboxEntry[]> {
   return readAll();
+}
+
+/** Whether an older durable operation is still waiting ahead of this one. */
+export async function hasEarlierPending(seq: number): Promise<boolean> {
+  return (await listPending()).some((entry) => entry.seq < seq);
 }
 
 /** Pending entries for one session, FIFO. */

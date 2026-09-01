@@ -25,6 +25,8 @@ const sessions: SessionRow[] = [
 
 const cardioInserts: Array<Record<string, unknown>> = [];
 const sessionUpdates: Array<{ id: string; patch: Record<string, unknown> }> = [];
+let cardioBlockInsertError: { code: string; message: string } | null = null;
+let existingCardioClientId: string | null = null;
 // review-208 #2 — per-table count returned to the hybrid guard. Tests
 // override these to simulate unlogged strength work.
 const tableCounts: Record<string, number> = {
@@ -73,6 +75,16 @@ vi.mock("@/lib/supabase/server", () => ({
         if (table === "planned_sessions") {
           return { data: null, error: null };
         }
+        if (table === "cardio_logs") {
+          const clientLogId = state.eqs.find(([c]) => c === "client_log_id")?.[1];
+          return {
+            data:
+              clientLogId && clientLogId === existingCardioClientId
+                ? { id: "existing-cardio-id" }
+                : null,
+            error: null,
+          };
+        }
         return { data: null, error: null };
       };
 
@@ -83,8 +95,10 @@ vi.mock("@/lib/supabase/server", () => ({
             single: async () => ({ data: { id: "new-id" }, error: null }),
           }),
           // bare insert (no chained select) — returns { error: null }.
-          then: (resolve: (v: { error: null }) => unknown) =>
-            resolve({ error: null }),
+          then: (
+            resolve: (v: { error: { code: string; message: string } | null }) => unknown,
+          ) =>
+            resolve({ error: cardioBlockInsertError }),
         };
       };
 
@@ -176,6 +190,8 @@ describe("logCardioSession", () => {
     tableCounts.cardio_logs = 0;
     tableCounts.session_items = 0;
     tableCounts.set_logs = 0;
+    cardioBlockInsertError = null;
+    existingCardioClientId = null;
   });
 
   it("writes a cardio_logs row and marks the session completed on the happy path", async () => {
@@ -218,6 +234,7 @@ describe("logCardioSession", () => {
     const res = await logCardioSession(fd);
     expect(res.ok).toBeUndefined();
     expect(res.error).toBeTypeOf("string");
+    expect(res.errorCode).toBe("validation");
     expect(cardioInserts).toHaveLength(0);
     expect(sessionUpdates).toHaveLength(0);
   });
@@ -232,7 +249,58 @@ describe("logCardioSession", () => {
 
     const res = await logCardioSession(fd);
     expect(res.error).toMatch(/not your session/i);
+    expect(res.errorCode).toBe("forbidden");
     expect(cardioInserts).toHaveLength(0);
+  });
+
+  it("persists the client id used for an idempotent replay", async () => {
+    const { logCardioSession } = await import("../actions");
+    const clientLogId = "00000000-0000-4000-8000-000000000099";
+    const fd = new FormData();
+    fd.set("sessionId", SESSION_ID);
+    fd.set("actualDurationMin", "20");
+    fd.set("clientLogId", clientLogId);
+
+    const res = await logCardioSession(fd);
+    expect(res).toEqual({ ok: true });
+    expect(cardioInserts[0]?.client_log_id).toBe(clientLogId);
+  });
+
+  it("does not treat a different unique conflict as an idempotent replay", async () => {
+    const { addCardioBlock } = await import("../actions");
+    const clientLogId = "00000000-0000-4000-8000-000000000098";
+    cardioBlockInsertError = {
+      code: "23505",
+      message: "cardio_logs_session_id_block_index_key",
+    };
+    const fd = new FormData();
+    fd.set("sessionId", SESSION_ID);
+    fd.set("movementId", "00000000-0000-4000-8000-000000000011");
+    fd.set("modality", "running");
+    fd.set("durationSec", "1200");
+    fd.set("clientLogId", clientLogId);
+
+    const res = await addCardioBlock(fd);
+
+    expect(res.errorCode).toBe("transient");
+    expect(res.ok).toBeUndefined();
+  });
+
+  it("accepts a unique conflict only when the client id already exists", async () => {
+    const { addCardioBlock } = await import("../actions");
+    const clientLogId = "00000000-0000-4000-8000-000000000097";
+    cardioBlockInsertError = { code: "23505", message: "duplicate client id" };
+    existingCardioClientId = clientLogId;
+    const fd = new FormData();
+    fd.set("sessionId", SESSION_ID);
+    fd.set("movementId", "00000000-0000-4000-8000-000000000011");
+    fd.set("modality", "running");
+    fd.set("durationSec", "1200");
+    fd.set("clientLogId", clientLogId);
+
+    const res = await addCardioBlock(fd);
+
+    expect(res).toEqual({ ok: true });
   });
 
   it("logs but does NOT flip completed_at when completed=false (skip path)", async () => {

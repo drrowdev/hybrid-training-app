@@ -1,67 +1,77 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { addStrengthSet } from "@/lib/sessions/actions";
+import {
+  listPending,
+  outboxAvailable,
+  recordAttempt,
+  remove,
+} from "../outbox";
+import { flushOutbox } from "../flusher";
 import type { OutboxEntry } from "../outbox-core";
 
-const { completeSessionResult, state } = vi.hoisted(() => ({
-  completeSessionResult: vi.fn(),
-  state: {
-    entries: [] as OutboxEntry[],
-    removed: [] as string[],
-  },
-}));
-
 vi.mock("@/lib/sessions/actions", () => ({
-  addStrengthSet: vi.fn(),
   addCardioBlock: vi.fn(),
-  completeSessionResult,
+  addStrengthSet: vi.fn(),
+  completeSessionResult: vi.fn(),
+  logCardioSession: vi.fn(),
 }));
 
 vi.mock("../outbox", () => ({
-  listPending: async () => state.entries,
-  remove: async (id: string) => {
-    state.removed.push(id);
-    state.entries = state.entries.filter((entry) => entry.id !== id);
-  },
+  listPending: vi.fn(),
+  outboxAvailable: vi.fn(),
   recordAttempt: vi.fn(),
-  outboxAvailable: () => true,
+  remove: vi.fn(),
 }));
 
-import { flushOutbox } from "../flusher";
+const entry: OutboxEntry = {
+  id: "00000000-0000-4000-8000-000000000001",
+  op: "set",
+  sessionId: "00000000-0000-4000-8000-000000000002",
+  seq: 1,
+  payload: { sessionId: "00000000-0000-4000-8000-000000000002" },
+  createdAt: 1,
+  attempts: 0,
+};
 
-describe("flushOutbox legacy completion upgrade", () => {
+describe("flushOutbox", () => {
+  let queue: OutboxEntry[];
+
   beforeEach(() => {
-    state.entries = [
-      {
-        id: "complete-1712345678901",
-        op: "complete",
-        sessionId: "00000000-0000-4000-8000-000000000010",
-        seq: 1,
-        payload: { sessionId: "00000000-0000-4000-8000-000000000010" },
-        createdAt: 1_712_345_678_901,
-        attempts: 0,
-      },
-    ];
-    state.removed.length = 0;
-    completeSessionResult.mockReset();
+    queue = [entry];
+    vi.mocked(addStrengthSet).mockReset();
+    vi.mocked(listPending).mockImplementation(async () => [...queue]);
+    vi.mocked(outboxAvailable).mockReturnValue(true);
+    vi.mocked(recordAttempt).mockReset();
+    vi.mocked(remove).mockImplementation(async (id) => {
+      queue = queue.filter((item) => item.id !== id);
+    });
   });
 
-  it("keeps a legacy completion until the successful atomic completion result", async () => {
-    completeSessionResult.mockImplementation(async () => {
-      expect(state.entries).toHaveLength(1);
-      expect(state.removed).toEqual([]);
-      return { ok: true };
+  it("keeps a transient returned error queued and stops the FIFO drain", async () => {
+    vi.mocked(addStrengthSet).mockResolvedValue({
+      error: "temporary Supabase failure",
+      errorCode: "transient",
     });
 
-    await expect(flushOutbox()).resolves.toEqual({
-      flushed: 1,
-      remaining: 0,
-      dropped: 0,
-    });
+    const result = await flushOutbox();
 
-    expect(completeSessionResult).toHaveBeenCalledWith(
-      "00000000-0000-4000-8000-000000000010",
-      null,
-      "complete-1712345678901",
+    expect(result).toEqual({ flushed: 0, remaining: 1, dropped: 0 });
+    expect(recordAttempt).toHaveBeenCalledWith(
+      entry.id,
+      "temporary Supabase failure",
     );
-    expect(state.removed).toEqual(["complete-1712345678901"]);
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("drops only explicitly invalid entries and reports the drop", async () => {
+    vi.mocked(addStrengthSet).mockResolvedValue({
+      error: "Invalid reps",
+      errorCode: "validation",
+    });
+
+    const result = await flushOutbox();
+
+    expect(result).toEqual({ flushed: 0, remaining: 0, dropped: 1 });
+    expect(remove).toHaveBeenCalledWith(entry.id);
   });
 });

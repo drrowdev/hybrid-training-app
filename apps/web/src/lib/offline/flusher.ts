@@ -18,6 +18,7 @@ import {
   addStrengthSet,
   addCardioBlock,
   completeSessionResult,
+  logCardioSession,
 } from "@/lib/sessions/actions";
 import {
   listPending,
@@ -28,6 +29,7 @@ import {
 import {
   classifyActionResult,
   payloadToFormData,
+  type ActionResult,
   type OutboxEntry,
 } from "./outbox-core";
 
@@ -37,7 +39,10 @@ let flushing = false;
 
 async function runEntry(
   entry: OutboxEntry,
-): Promise<{ result?: { ok?: true; error?: string }; threw: boolean }> {
+): Promise<{
+  result?: ActionResult;
+  threw: boolean;
+}> {
   try {
     if (entry.op === "set") {
       const result = await addStrengthSet(payloadToFormData(entry.payload));
@@ -45,6 +50,10 @@ async function runEntry(
     }
     if (entry.op === "cardio") {
       const result = await addCardioBlock(payloadToFormData(entry.payload));
+      return { result, threw: false };
+    }
+    if (entry.op === "cardio_session") {
+      const result = await logCardioSession(payloadToFormData(entry.payload));
       return { result, threw: false };
     }
     // complete — redirect-free core; payload carries sessionId + optional notes.

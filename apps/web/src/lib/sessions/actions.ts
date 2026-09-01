@@ -51,6 +51,7 @@ import {
   prescriptionItemsHaveStrength,
   sessionPrescribesStrength,
 } from "./strength-prescribed";
+import type { ActionErrorCode } from "@/lib/offline/outbox-core";
 
 const startAdHocSchema = z.object({
   title: z.string().trim().max(120).optional(),
@@ -143,6 +144,7 @@ const setSchema = z.object({
 
 export type AddStrengthSetResult = {
   error?: string;
+  errorCode?: ActionErrorCode;
   ok?: true;
   /**
    * The persisted row, returned so the client optimistic overlay can hold the
@@ -350,23 +352,31 @@ export async function addStrengthSet(
     targetWeightKg: formData.get("targetWeightKg") ?? undefined,
     targetReps: formData.get("targetReps") ?? undefined,
   });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+      errorCode: "validation",
+    };
+  }
 
   const isSkipped = parsed.data.skipped === true;
   if (isSkipped && !parsed.data.skipReason) {
-    return { error: "Pick a reason before skipping." };
+    return { error: "Pick a reason before skipping.", errorCode: "validation" };
   }
 
   const { reps, durationSec, distanceM } = parsed.data;
   if (!isSkipped && !reps && !durationSec && !distanceM) {
-    return { error: "Log at least reps, a hold duration, or a distance." };
+    return {
+      error: "Log at least reps, a hold duration, or a distance.",
+      errorCode: "validation",
+    };
   }
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await getAuthUser();
-  if (!user) return { error: "Not signed in." };
+  if (!user) return { error: "Not signed in.", errorCode: "auth" };
 
   const clientLogId = parsed.data.clientLogId ?? null;
 
@@ -463,7 +473,7 @@ export async function addStrengthSet(
     rowId = atomicRow?.id;
     isNewRow = atomicRow?.inserted === true;
   }
-  if (!rowId) return { error: "Insert failed" };
+  if (!rowId) return { error: "Insert failed", errorCode: "transient" };
 
   // The atomic RPC already reconciled this set. The pre-migration fallback
   // retains its legacy update so the application can be deployed first.
@@ -579,7 +589,7 @@ const cardioSchema = z.object({
 
 export async function addCardioBlock(
   formData: FormData,
-): Promise<{ error?: string; ok?: true }> {
+): Promise<{ error?: string; errorCode?: ActionErrorCode; ok?: true }> {
   const parsed = cardioSchema.safeParse({
     sessionId: formData.get("sessionId"),
     movementId: formData.get("movementId") || undefined,
@@ -592,18 +602,24 @@ export async function addCardioBlock(
     notes: formData.get("notes") || undefined,
     clientLogId: formData.get("clientLogId") || undefined,
   });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  if (!parsed.success) {
+    return {
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+      errorCode: "validation",
+    };
+  }
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await getAuthUser();
-  if (!user) return { error: "Not signed in." };
+  if (!user) return { error: "Not signed in.", errorCode: "auth" };
 
-  const { count } = await supabase
+  const { count, error: countError } = await supabase
     .from("cardio_logs")
     .select("id", { count: "exact", head: true })
     .eq("session_id", parsed.data.sessionId);
+  if (countError) return { error: countError.message, errorCode: "transient" };
 
   const clientLogId = parsed.data.clientLogId ?? null;
   const { error } = await supabase.from("cardio_logs").insert({
@@ -620,10 +636,28 @@ export async function addCardioBlock(
     client_log_id: clientLogId,
   });
 
-  // Idempotent replay: a duplicate flush of an already-persisted block is a
-  // success, not an error (unique-violation on client_log_id, Postgres 23505).
-  if (error && !(clientLogId && (error as { code?: string }).code === "23505")) {
-    return { error: error.message };
+  // A duplicate client_log_id means the original request already persisted
+  // only when that exact id is present. Other unique violations (for example,
+  // a concurrent block_index calculation) must remain retryable.
+  if (error) {
+    const isUniqueViolation = (error as { code?: string }).code === "23505";
+    if (clientLogId && isUniqueViolation) {
+      const { data: existing, error: lookupError } = await supabase
+        .from("cardio_logs")
+        .select("id")
+        .eq("session_id", parsed.data.sessionId)
+        .eq("client_log_id", clientLogId)
+        .maybeSingle();
+      if (!lookupError && existing) {
+        revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
+        return { ok: true };
+      }
+      return {
+        error: lookupError?.message ?? error.message,
+        errorCode: "transient",
+      };
+    }
+    return { error: error.message, errorCode: "transient" };
   }
 
   try {
@@ -905,11 +939,12 @@ const logCardioSessionSchema = z.object({
   // points at the same catalog entry the user was prescribed.
   movementId: z.string().uuid().optional().nullable(),
   modality: z.string().trim().min(1).max(40).default("other"),
+  clientLogId: z.string().uuid().optional().nullable(),
 }).strict();
 
 export async function logCardioSession(
   formData: FormData,
-): Promise<{ ok?: true; error?: string }> {
+): Promise<{ ok?: true; error?: string; errorCode?: ActionErrorCode }> {
   const parsed = logCardioSessionSchema.safeParse({
     sessionId: formData.get("sessionId"),
     completed: formData.get("completed") ?? "true",
@@ -920,16 +955,20 @@ export async function logCardioSession(
     distanceKm: formData.get("distanceKm") || undefined,
     movementId: formData.get("movementId") || undefined,
     modality: formData.get("modality") || "other",
+    clientLogId: formData.get("clientLogId") || undefined,
   });
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+    return {
+      error: parsed.error.issues[0]?.message ?? "Invalid input",
+      errorCode: "validation",
+    };
   }
 
   const supabase = await createClient();
   const {
     data: { user },
   } = await getAuthUser();
-  if (!user) return { error: "Not signed in." };
+  if (!user) return { error: "Not signed in.", errorCode: "auth" };
 
   // Ownership check via the session row — RLS would also block but
   // surfacing a clean error message is friendlier than a generic 401.
@@ -939,22 +978,31 @@ export async function logCardioSession(
     .eq("id", parsed.data.sessionId)
     .is("deleted_at", null)
     .maybeSingle();
-  if (sErr) return { error: sErr.message };
-  if (!session) return { error: "Session not found." };
-  if (session.user_id !== user.id) return { error: "Not your session." };
+  if (sErr) return { error: sErr.message, errorCode: "transient" };
+  if (!session) return { error: "Session not found.", errorCode: "not_found" };
+  if (session.user_id !== user.id) {
+    return { error: "Not your session.", errorCode: "forbidden" };
+  }
 
   // review-208 #2 + review-211 #2 — for hybrid sessions, logging the
   // cardio portion must NOT auto-flip the session to completed if no
   // strength sets have been logged. The "is strength prescribed?"
   // predicate is shared with the import-history auto-link path via
   // `sessionPrescribesStrength` so the two surfaces can't drift.
-  const [hasStrengthPrescribed, { count: setsLoggedCount }] = await Promise.all([
+  const [hasStrengthPrescribed, setsLoggedResult] = await Promise.all([
     sessionPrescribesStrength(supabase, parsed.data.sessionId),
     supabase
       .from("set_logs")
       .select("id", { count: "exact", head: true })
       .eq("session_id", parsed.data.sessionId),
   ]);
+  if (setsLoggedResult.error) {
+    return {
+      error: setsLoggedResult.error.message,
+      errorCode: "transient",
+    };
+  }
+  const setsLoggedCount = setsLoggedResult.count;
   const hasUnloggedStrength =
     hasStrengthPrescribed && (setsLoggedCount ?? 0) === 0;
 
@@ -976,10 +1024,11 @@ export async function logCardioSession(
         avg_hr_bpm: parsed.data.avgHrBpm ?? null,
         rpe: parsed.data.avgRpe ?? null,
         notes: parsed.data.notes ?? null,
+        client_log_id: parsed.data.clientLogId ?? null,
       },
       { onConflict: "session_id,block_index" },
     );
-  if (upsertErr) return { error: upsertErr.message };
+  if (upsertErr) return { error: upsertErr.message, errorCode: "transient" };
 
   // Only flip the session to completed when (a) the user marked the
   // cardio completed AND (b) there's no unlogged strength work that
@@ -994,7 +1043,7 @@ export async function logCardioSession(
         session_rpe: parsed.data.avgRpe ?? null,
       })
       .eq("id", parsed.data.sessionId);
-    if (updErr) return { error: updErr.message };
+    if (updErr) return { error: updErr.message, errorCode: "transient" };
 
     // The guarded hook only performs the full ledger rebuild now that
     // completion is persisted; in-flight cardio logging only writes its row.
@@ -1563,7 +1612,9 @@ export async function completeSessionResult(
     const {
       data: { user },
     } = await getAuthUser();
-    return { error: user ? "Session not found." : "not-signed-in" };
+    return user
+      ? { error: "Session not found.", errorCode: "not_found" }
+      : { error: "not-signed-in", errorCode: "auth" };
   }
   const { user_id: userId, transitioned } = completion;
 

@@ -15,7 +15,20 @@
  * non-UUID completion entries remain replayable without a stored receipt.
  */
 
-export type OutboxOp = "set" | "cardio" | "complete";
+export type OutboxOp = "set" | "cardio" | "cardio_session" | "complete";
+
+export type ActionErrorCode =
+  | "validation"
+  | "auth"
+  | "forbidden"
+  | "not_found"
+  | "transient";
+
+export type ActionResult = {
+  ok?: true;
+  error?: string;
+  errorCode?: ActionErrorCode;
+};
 
 export type OutboxEntry = {
   /** Primary key. For set/cardio this is the `client_log_id` (uuid); new
@@ -28,6 +41,12 @@ export type OutboxEntry = {
   /** Server-action FormData as a plain string map (FormData isn't structured-
    * cloneable into IndexedDB reliably across engines). */
   payload: Record<string, string>;
+  /** Optional display metadata needed to render a queued freestyle set. */
+  metadata?: {
+    movementSlug?: string;
+    movementDisplayName?: string;
+    movementPrimaryRegion?: string;
+  };
   createdAt: number;
   attempts: number;
   lastError?: string;
@@ -75,19 +94,20 @@ export function entriesForSession(
   return sortBySeq(entries.filter((e) => e.sessionId === sessionId));
 }
 
-/** How a failed flush attempt should be treated. A validation rejection from
- * the server (a returned `{ error }`) is permanent — the payload will never be
- * accepted, so drop it rather than loop forever. A thrown error (offline /
- * network / 5xx) is transient — keep and retry. */
+/** How a failed flush attempt should be treated. Only an explicit validation
+ * code is permanent; returned errors without that code remain queued. */
 export type FlushOutcome = "done" | "retry" | "drop";
 
 export function classifyActionResult(
-  result: { ok?: true; error?: string } | undefined,
+  result: ActionResult | undefined,
   threw: boolean,
 ): FlushOutcome {
   if (threw) return "retry"; // network/offline — keep queued
-  if (result && result.error) return "drop"; // server rejected the payload — permanent
-  return "done";
+  if (!result) return "retry"; // no server acknowledgement — keep queued
+  if (result?.error) {
+    return result.errorCode === "validation" ? "drop" : "retry";
+  }
+  return result.ok === true ? "done" : "retry";
 }
 
 /** Exponential backoff (ms) with a ceiling, for spacing retried flushes while

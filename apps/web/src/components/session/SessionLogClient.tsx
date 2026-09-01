@@ -19,6 +19,7 @@ import {
 
 export type LoggedSet = {
   id: string;
+  client_log_id?: string | null;
   set_index: number;
   set_kind: string;
   weight_kg: number | string | null;

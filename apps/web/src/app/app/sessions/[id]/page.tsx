@@ -136,7 +136,7 @@ export default async function SessionDetailPage({
     supabase
       .from("set_logs")
       .select(
-        "id, set_index, set_kind, weight_kg, reps, duration_sec, distance_m, rpe, notes, prescription_item_index, skipped, skip_reason, created_at, target_weight_kg, target_reps, prescribed, movement:movements(id, slug, display_name, primary_region)",
+        "id, client_log_id, set_index, set_kind, weight_kg, reps, duration_sec, distance_m, rpe, notes, prescription_item_index, skipped, skip_reason, created_at, target_weight_kg, target_reps, prescribed, movement:movements(id, slug, display_name, primary_region)",
       )
       .eq("session_id", id)
       .order("set_index", { ascending: true }),
@@ -214,6 +214,7 @@ export default async function SessionDetailPage({
     const m = Array.isArray(s.movement) ? s.movement[0] : s.movement;
     return {
       id: s.id,
+      client_log_id: (s.client_log_id as string | null) ?? null,
       set_index: s.set_index,
       set_kind: s.set_kind,
       weight_kg: s.weight_kg,

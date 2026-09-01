@@ -23,6 +23,9 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { logCardioSession as logCardioSessionAction } from "@/lib/sessions/actions";
 import { RpeInput } from "@/components/forms/RpeInput";
+import { createClientId } from "@/lib/offline/client-id";
+import { runDurableAction } from "@/lib/offline/durable-action";
+import { formDataToPayload } from "@/lib/offline/outbox-core";
 
 type LogAction = typeof logCardioSessionAction;
 
@@ -66,6 +69,7 @@ export function CardioLogForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [savedOffline, setSavedOffline] = useState(false);
 
   const durationDefault =
     initialDurationMin != null
@@ -104,6 +108,8 @@ export function CardioLogForm({
     fd.set("completed", completed ? "true" : "false");
     fd.set("actualDurationMin", duration);
     fd.set("modality", modality);
+    const clientLogId = createClientId();
+    fd.set("clientLogId", clientLogId);
     if (movementId) fd.set("movementId", movementId);
     if (rpe.trim()) fd.set("avgRpe", rpe.trim());
     if (notes.trim()) fd.set("notes", notes.trim());
@@ -117,14 +123,42 @@ export function CardioLogForm({
     }
 
     startTransition(async () => {
-      const res = await action(fd);
-      if (res?.error) {
-        setError(res.error);
+      const durable = await runDurableAction(
+        {
+          id: clientLogId,
+          op: "cardio_session",
+          sessionId,
+          payload: formDataToPayload(fd),
+        },
+        () => action(fd),
+      );
+      if (durable.status === "queued") {
+        setSavedOffline(true);
+        return;
+      }
+      if (durable.status === "failed") {
+        setError(
+          durable.result?.error ??
+            durable.error?.message ??
+            "Couldn't save your cardio. Check your connection and retry.",
+        );
         return;
       }
       router.refresh();
     });
   };
+
+  if (savedOffline) {
+    return (
+      <div
+        data-testid="cardio-saved-offline"
+        className="cp-card"
+        style={{ padding: 14, color: "var(--cp-text)" }}
+      >
+        Saved on this device — finishes when you reconnect
+      </div>
+    );
+  }
 
   return (
     <form
