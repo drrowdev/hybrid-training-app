@@ -9,6 +9,7 @@
  * demoted a legacy customization's lifts to 3×12.
  */
 import { MAX_LINK_MEMBERS } from "@/lib/platform/session-links";
+import { catalogMovementLoadKind } from "@/lib/platform/custom-movement-kind";
 import { TB_DOSE_BOUNDS } from "@hta/tacticalbarbell";
 
 export type SlotKind = "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
@@ -154,6 +155,8 @@ export function setDoseOverride(
  * methodology, not a label, so both stay expressible.
  */
 export type AddedRole = "accessory" | "supplemental";
+
+export { catalogMovementLoadKind as catalogSlotKind };
 
 /** What a customized session sends for one row. */
 export interface SlotPayloadEntry {
@@ -333,9 +336,13 @@ export function addGroup(
 export function slotPayloadEntry(
   draft: SeriesSlotDraft,
   slot: TemplateSlot | undefined,
-  catalog?: { id: string; slug: string; name: string },
+  catalog?: { id: string; slug: string; name: string; kind?: SlotKind },
 ): SlotPayloadEntry {
   const kind =
+    // A selected catalog movement owns its loading semantics. The draft/slot
+    // describe what used to occupy the row and are only fallbacks when this is
+    // still the template movement.
+    catalog?.kind ??
     draft.kind ??
     slot?.kind ??
     (draft.movement === "weighted-pullup"

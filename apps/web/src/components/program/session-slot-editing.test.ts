@@ -30,6 +30,7 @@ import {
   slotIdentity,
   slotOf,
   slotPayloadEntry,
+  catalogSlotKind,
   slotsEdited,
   type SeriesSlotDraft,
   type TemplateSlot,
@@ -124,6 +125,42 @@ describe("editing a session that has not been seeded", () => {
 });
 
 describe("slotPayloadEntry", () => {
+  it("uses the selected movement's loading kind, not the slot it replaced", () => {
+    const weightedSlot = {
+      sourceMovement: "weighted-pullup",
+      role: "main" as const,
+      kind: "weighted-bw" as const,
+    };
+    const rowDraft = replaceSlot(
+      slotDraftsFor([weightedSlot]),
+      "weighted-pullup",
+      "catalog:row",
+    )[0]!;
+    expect(
+      slotPayloadEntry(rowDraft, weightedSlot, {
+        id: "row-id",
+        slug: "bb-row-overhand",
+        name: "Barbell Row",
+        kind: catalogSlotKind({ hasOneRm: true, isLoadable: false }),
+      }).kind,
+    ).toBe("barbell");
+
+    const benchSlot = { sourceMovement: "bench", role: "main" as const };
+    const dipDraft = replaceSlot(
+      slotDraftsFor([benchSlot]),
+      "bench",
+      "catalog:dip",
+    )[0]!;
+    expect(
+      slotPayloadEntry(dipDraft, benchSlot, {
+        id: "dip-id",
+        slug: "weighted-dip",
+        name: "Weighted Dip",
+        kind: catalogSlotKind({ hasOneRm: true, isLoadable: true }),
+      }).kind,
+    ).toBe("weighted-bw");
+  });
+
   it("claims the slot a row fills", () => {
     const [bench] = slotDraftsFor(SLOTS);
     expect(slotPayloadEntry(bench!, slotOf(SLOTS, bench!))).toEqual({
