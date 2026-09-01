@@ -1,6 +1,6 @@
 /**
- * `recomputeAfterCompletedSessionSetChange` — derived state must follow a
- * post-hoc set edit.
+ * `recomputeAfterCompletedSessionMutation` — derived state must follow a
+ * post-hoc edit.
  *
  * A completed session is no longer immutable (the drawer's ✎ Edit opens the
  * full session view, which can add or correct a set). Two values computed at
@@ -67,10 +67,10 @@ function fakeSupabase() {
 }
 
 async function run() {
-  const { recomputeAfterCompletedSessionSetChange } = await import(
+  const { recomputeAfterCompletedSessionMutation } = await import(
     "../post-completion-recompute"
   );
-  return recomputeAfterCompletedSessionSetChange({
+  return recomputeAfterCompletedSessionMutation({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- narrow stub
     supabase: fakeSupabase() as any,
     sessionId: SESSION_ID,
@@ -78,7 +78,7 @@ async function run() {
   });
 }
 
-describe("recomputeAfterCompletedSessionSetChange", () => {
+describe("recomputeAfterCompletedSessionMutation", () => {
   beforeEach(() => {
     eslCalls.length = 0;
     regionCalls.length = 0;

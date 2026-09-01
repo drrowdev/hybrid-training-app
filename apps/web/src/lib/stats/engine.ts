@@ -44,7 +44,12 @@ import {
 } from "@/lib/engine/bucket-load";
 import { normaliseHrZones } from "@/lib/engine/cardio-intensity";
 import type { Bucket } from "@hta/domain";
-import { todayYmd as todayYmdFn, addDaysToYmd, isoWeekdayYmd } from "@/lib/dates";
+import {
+  todayYmd as todayYmdFn,
+  addDaysToYmd,
+  isoWeekdayYmd,
+  ymdInTimezone,
+} from "@/lib/dates";
 import { getWeeklyRecoveryRollup } from "@/lib/engine/recovered-weeks";
 import { deriveRegionFreshnessLive } from "@/lib/stats/region-state-snapshot";
 
@@ -538,7 +543,7 @@ export async function getBucketPressure(
     if (row.set_kind === "warmup") continue;
     const performedAt = performedAtById.get(row.session_id);
     if (!performedAt) continue;
-    const date = performedAt.slice(0, 10);
+    const date = ymdInTimezone(new Date(performedAt), tz);
     const movement = normaliseBucketMovement(row.movement) ?? { axial_load: "low", high_strain_tendon: false };
     const load = setBucketLoad(
       {
@@ -553,7 +558,7 @@ export async function getBucketPressure(
   for (const row of cardioRes.data ?? []) {
     const performedAt = performedAtById.get(row.session_id);
     if (!performedAt) continue;
-    const date = performedAt.slice(0, 10);
+    const date = ymdInTimezone(new Date(performedAt), tz);
     const load = cardioBucketLoad({
       durationSec: row.duration_sec,
       rpe: row.rpe == null ? null : Number(row.rpe),
@@ -564,7 +569,7 @@ export async function getBucketPressure(
   }
 
   const today = todayYmdFn(tz);
-  const start = sessions[0]!.performed_at.slice(0, 10);
+  const start = ymdInTimezone(new Date(sessions[0]!.performed_at), tz);
 
   return ALL_BUCKETS.map((bucket) => {
     let atl = 0;

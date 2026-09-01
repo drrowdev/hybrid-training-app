@@ -7,6 +7,7 @@
  * so the user (and the engine) can see whether the trend is up or flat.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { ymdInTimezone } from "@/lib/dates";
 
 export type RpeDriftPoint = {
   date: string;
@@ -32,6 +33,7 @@ const RISING_THRESHOLD = 0.04; // ~1.1 sRPE shift over 28d = rising
 export async function getRpeDrift(
   supabase: SupabaseClient,
   userId: string,
+  tz: string,
 ): Promise<RpeDrift> {
   const sinceIso = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString();
   const { data } = await supabase
@@ -57,7 +59,7 @@ export async function getRpeDrift(
   const points: RpeDriftPoint[] = data
     .filter((s) => s.session_rpe != null)
     .map((s) => ({
-      date: s.performed_at.slice(0, 10),
+      date: ymdInTimezone(new Date(s.performed_at), tz),
       rpe: Number(s.session_rpe),
       sessionId: s.id,
     }));

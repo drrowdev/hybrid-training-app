@@ -112,6 +112,9 @@ vi.mock("@/lib/engine/region-ledger", () => ({
 vi.mock("@/lib/engine/recompute-actual-session-load", () => ({
   recomputeActualSessionLoad: vi.fn(async () => undefined),
 }));
+vi.mock("../post-completion-recompute", () => ({
+  recomputeAfterCompletedSessionMutation: vi.fn(async () => ({ recomputed: false })),
+}));
 vi.mock("@/lib/planner/completion", () => ({
   maybeCompleteBlock: vi.fn(async () => undefined),
 }));

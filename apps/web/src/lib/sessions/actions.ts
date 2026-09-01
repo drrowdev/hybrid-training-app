@@ -7,7 +7,6 @@ import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { type WeightUnit, toKg } from "@/lib/stats/units";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
-import { recomputeActualSessionLoad } from "@/lib/engine/recompute-actual-session-load";
 import { maybeCompleteBlock } from "@/lib/planner/completion";
 import { expandPrescriptionSetItems } from "@/lib/planner/expand-prescription-sets";
 import { getUserTimezone, dayDate } from "@/lib/planner/queries";
@@ -39,7 +38,7 @@ import {
 import type { Prescription, PrescriptionItem, PrescribedSnapshot } from "@hta/db";
 import { isSystemLoadItem, loadSystemLoadMovementIds } from "./system-load";
 import { loggedSetKindForItemKind } from "./set-kind";
-import { recomputeAfterCompletedSessionSetChange } from "./post-completion-recompute";
+import { recomputeAfterCompletedSessionMutation } from "./post-completion-recompute";
 import { resolveBarWeightKg } from "./bar-kind";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
@@ -459,7 +458,7 @@ export async function addStrengthSet(
   let postCompletionRecompute = false;
   if (isNewRow) {
     try {
-      const { recomputed } = await recomputeAfterCompletedSessionSetChange({
+      const { recomputed } = await recomputeAfterCompletedSessionMutation({
         supabase,
         sessionId: parsed.data.sessionId,
         userId: user.id,
@@ -564,6 +563,19 @@ export async function addCardioBlock(
     return { error: error.message };
   }
 
+  try {
+    const { recomputed } = await recomputeAfterCompletedSessionMutation({
+      supabase,
+      sessionId: parsed.data.sessionId,
+      userId: user.id,
+    });
+    if (recomputed) {
+      revalidatePath("/app");
+      revalidatePath("/app/plan");
+    }
+  } catch (e) {
+    console.error("post-completion recompute (addCardioBlock) failed:", e);
+  }
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   return { ok: true };
 }
@@ -921,26 +933,16 @@ export async function logCardioSession(
       .eq("id", parsed.data.sessionId);
     if (updErr) return { error: updErr.message };
 
-    // Recompute downstream load + region state, mirroring the
-    // strength-completion side effects in `completeSession`. Failures
-    // here must not block the user from finishing.
+    // The guarded hook only performs the full ledger rebuild now that
+    // completion is persisted; in-flight cardio logging only writes its row.
     try {
-      await recomputeActualSessionLoad({
+      await recomputeAfterCompletedSessionMutation({
         supabase,
         sessionId: parsed.data.sessionId,
-        requireCompleted: false,
+        userId: user.id,
       });
     } catch (e) {
-      console.error("recomputeActualSessionLoad (cardio) failed:", e);
-    }
-    try {
-      await recomputeRegionState(
-        supabase,
-        user.id,
-        await getUserTimezone(user.id),
-      );
-    } catch (e) {
-      console.error("recomputeRegionState (cardio) failed:", e);
+      console.error("post-completion recompute (cardio) failed:", e);
     }
     try {
       const { data: linked } = await supabase
@@ -968,14 +970,25 @@ export async function deleteSet(formData: FormData): Promise<void> {
   if (!id || !sessionId) return;
 
   const supabase = await createClient();
-  await supabase.from("set_logs").delete().eq("id", id);
-  // Re-stamp planned_sessions.effective_stress_load when this session
-  // is already completed. requireCompleted gates the no-op for
-  // in-flight sessions.
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+  const { error } = await supabase.from("set_logs").delete().eq("id", id);
+  if (error) throw new Error(error.message);
   try {
-    await recomputeActualSessionLoad({ supabase, sessionId });
+    const { recomputed } = await recomputeAfterCompletedSessionMutation({
+      supabase,
+      sessionId,
+      userId: user.id,
+      emptyLogBehavior: "zero-actual",
+    });
+    if (recomputed) {
+      revalidatePath("/app");
+      revalidatePath("/app/plan");
+    }
   } catch (e) {
-    console.error("recomputeActualSessionLoad (deleteSet) failed:", e);
+    console.error("post-completion recompute (deleteSet) failed:", e);
   }
   revalidatePath(`/app/sessions/${sessionId}`);
 }
@@ -1136,12 +1149,17 @@ export async function updateStrengthSetInline(
   }
 
   try {
-    await recomputeActualSessionLoad({
+    const { recomputed } = await recomputeAfterCompletedSessionMutation({
       supabase,
       sessionId: parsed.data.sessionId,
+      userId: user.id,
     });
+    if (recomputed) {
+      revalidatePath("/app");
+      revalidatePath("/app/plan");
+    }
   } catch (e) {
-    console.error("recomputeActualSessionLoad (updateStrengthSetInline) failed:", e);
+    console.error("post-completion recompute (updateStrengthSetInline) failed:", e);
   }
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   return { ok: true };
@@ -1211,7 +1229,7 @@ export async function editSet(formData: FormData): Promise<void> {
         data: { user },
       } = await getAuthUser();
       if (user) {
-        const { recomputed } = await recomputeAfterCompletedSessionSetChange({
+        const { recomputed } = await recomputeAfterCompletedSessionMutation({
           supabase,
           sessionId,
           userId: user.id,
@@ -1267,9 +1285,24 @@ export async function editCardio(formData: FormData): Promise<void> {
 
   if (error) throw new Error(error.message);
   try {
-    if (sessionId) await recomputeActualSessionLoad({ supabase, sessionId });
+    if (sessionId) {
+      const {
+        data: { user },
+      } = await getAuthUser();
+      if (user) {
+        const { recomputed } = await recomputeAfterCompletedSessionMutation({
+          supabase,
+          sessionId,
+          userId: user.id,
+        });
+        if (recomputed) {
+          revalidatePath("/app");
+          revalidatePath("/app/plan");
+        }
+      }
+    }
   } catch (e) {
-    console.error("recomputeActualSessionLoad (editCardio) failed:", e);
+    console.error("post-completion recompute (editCardio) failed:", e);
   }
   if (sessionId) revalidatePath(`/app/sessions/${sessionId}`);
   redirect(`/app/sessions/${sessionId}`);
@@ -1281,11 +1314,25 @@ export async function deleteCardio(formData: FormData): Promise<void> {
   if (!id || !sessionId) return;
 
   const supabase = await createClient();
-  await supabase.from("cardio_logs").delete().eq("id", id);
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+  const { error } = await supabase.from("cardio_logs").delete().eq("id", id);
+  if (error) throw new Error(error.message);
   try {
-    await recomputeActualSessionLoad({ supabase, sessionId });
+    const { recomputed } = await recomputeAfterCompletedSessionMutation({
+      supabase,
+      sessionId,
+      userId: user.id,
+      emptyLogBehavior: "zero-actual",
+    });
+    if (recomputed) {
+      revalidatePath("/app");
+      revalidatePath("/app/plan");
+    }
   } catch (e) {
-    console.error("recomputeActualSessionLoad (deleteCardio) failed:", e);
+    console.error("post-completion recompute (deleteCardio) failed:", e);
   }
   revalidatePath(`/app/sessions/${sessionId}`);
 }
@@ -1367,18 +1414,12 @@ export async function completeSessionResult(
       .maybeSingle()
       .then(({ data }) => data?.timezone ?? "UTC");
     await Promise.all([
-      recomputeActualSessionLoad({
+      recomputeAfterCompletedSessionMutation({
         supabase,
         sessionId,
-        requireCompleted: false,
+        userId,
       }).catch((e) => {
-        console.error("recomputeActualSessionLoad (completion) failed:", e);
-      }),
-      (async () => {
-        const timezone = await timezonePromise;
-        await recomputeRegionState(supabase, userId, timezone);
-      })().catch((e) => {
-        console.error("recomputeRegionState failed:", e);
+        console.error("post-completion recompute (completion) failed:", e);
       }),
       (async () => {
         const { data: linked } = await supabase
@@ -1794,6 +1835,19 @@ export async function fillSessionFromPlan(
   });
   if (error) return { error: error.message };
 
+  try {
+    const { recomputed } = await recomputeAfterCompletedSessionMutation({
+      supabase,
+      sessionId: parsed.data.sessionId,
+      userId: user.id,
+    });
+    if (recomputed) {
+      revalidatePath("/app");
+      revalidatePath("/app/plan");
+    }
+  } catch (e) {
+    console.error("post-completion recompute (fillSessionFromPlan) failed:", e);
+  }
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   return { ok: true, inserted: inserts.length };
 }

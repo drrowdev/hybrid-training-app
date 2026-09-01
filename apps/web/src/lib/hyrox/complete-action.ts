@@ -22,10 +22,8 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { recomputeRegionState } from "@/lib/engine/region-ledger";
-import { recomputeActualSessionLoad } from "@/lib/engine/recompute-actual-session-load";
-import { getUserTimezone } from "@/lib/planner/queries";
 import { maybeCompleteBlock } from "@/lib/planner/completion";
+import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-completion-recompute";
 import type { Prescription } from "@hta/db";
 import {
   hyroxSessionIdForRef,
@@ -105,8 +103,16 @@ export async function completeHyroxSession(
         : quickFormat === "erg"
           ? "row"
           : "run";
-    await supabase.from("set_logs").delete().eq("session_id", sessionId);
-    await supabase.from("cardio_logs").delete().eq("session_id", sessionId);
+    const { error: setDeleteError } = await supabase
+      .from("set_logs")
+      .delete()
+      .eq("session_id", sessionId);
+    if (setDeleteError) return { error: setDeleteError.message };
+    const { error: cardioDeleteError } = await supabase
+      .from("cardio_logs")
+      .delete()
+      .eq("session_id", sessionId);
+    if (cardioDeleteError) return { error: cardioDeleteError.message };
     const { error: cErr } = await supabase.from("cardio_logs").insert({
       session_id: sessionId,
       movement_id: null,
@@ -129,8 +135,11 @@ export async function completeHyroxSession(
       .eq("id", sessionId);
     if (updErr) return { error: updErr.message };
     try {
-      await recomputeActualSessionLoad({ supabase, sessionId, requireCompleted: false });
-      await recomputeRegionState(supabase, user.id, await getUserTimezone(user.id));
+      await recomputeAfterCompletedSessionMutation({
+        supabase,
+        sessionId,
+        userId: user.id,
+      });
     } catch (e) {
       console.error("recompute (quick hyrox) failed:", e);
     }
@@ -198,8 +207,16 @@ export async function completeHyroxSession(
 
   // Idempotent: structured HYROX sessions are logged ONLY via this action, so
   // replacing this session's materialized rows on re-completion is safe.
-  await supabase.from("set_logs").delete().eq("session_id", sessionId);
-  await supabase.from("cardio_logs").delete().eq("session_id", sessionId);
+  const { error: setDeleteError } = await supabase
+    .from("set_logs")
+    .delete()
+    .eq("session_id", sessionId);
+  if (setDeleteError) return { error: setDeleteError.message };
+  const { error: cardioDeleteError } = await supabase
+    .from("cardio_logs")
+    .delete()
+    .eq("session_id", sessionId);
+  if (cardioDeleteError) return { error: cardioDeleteError.message };
 
   const cardioRows = actuals.cardioLogs.map((c) => ({
     session_id: sessionId,
@@ -249,16 +266,15 @@ export async function completeHyroxSession(
     .eq("id", sessionId);
   if (updErr) return { error: updErr.message };
 
-  // Downstream recompute — best-effort, never blocks completion.
+  // Downstream refresh — best-effort, never blocks completion.
   try {
-    await recomputeActualSessionLoad({ supabase, sessionId, requireCompleted: false });
+    await recomputeAfterCompletedSessionMutation({
+      supabase,
+      sessionId,
+      userId: user.id,
+    });
   } catch (e) {
-    console.error("recomputeActualSessionLoad (hyrox) failed:", e);
-  }
-  try {
-    await recomputeRegionState(supabase, user.id, await getUserTimezone(user.id));
-  } catch (e) {
-    console.error("recomputeRegionState (hyrox) failed:", e);
+    console.error("post-completion recompute (hyrox) failed:", e);
   }
   try {
     await maybeCompleteBlock(supabase, blockId);
