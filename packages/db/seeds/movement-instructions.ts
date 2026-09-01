@@ -2795,6 +2795,24 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
     cues: ["Stay balanced over the front foot.", "Controlled depth each rep."],
   },
   {
+    slug: "bulgarian-split-squat-db-single-arm",
+    summary: "Rear-foot-elevated split squat holding one dumbbell — the offset load adds a side-on balance demand.",
+    setup: "One dumbbell in the hand opposite the front foot, rear foot up on a bench, front foot forward.",
+    steps: [
+      "Lower straight down until the back knee nears the floor.",
+      "Keep the shoulders and hips level as the weight pulls to one side.",
+      "Drive up through the front foot, then swap the dumbbell over with the legs.",
+    ],
+    cues: [
+      "Resist the lean toward the weight — stay square.",
+      "The free hand can rest on a support if balance is the limit.",
+    ],
+    commonMistakes: [
+      "Letting the loaded side dip and side-bending through the reps.",
+      "Twisting toward the dumbbell instead of facing forward.",
+    ],
+  },
+  {
     slug: "cossack-squat",
     summary: "Deep side-to-side squat — adductor and single-leg mobility and strength.",
     setup: "Take a wide stance, toes slightly out.",

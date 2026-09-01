@@ -70,6 +70,14 @@ export const MOVEMENT_MUSCLE_MAP: Record<string, MuscleWeight[]> = {
     { muscle: "glutes", weight: 1.0 },
     { muscle: "adductors", weight: 0.25 },
   ],
+  // One dumbbell instead of two: the lateral trunk holds the offset load, so
+  // obliques earn a tertiary share the symmetrical version doesn't have.
+  "bulgarian-split-squat-db-single-arm": [
+    { muscle: "quads", weight: 1.0 },
+    { muscle: "glutes", weight: 1.0 },
+    { muscle: "adductors", weight: 0.25 },
+    { muscle: "obliques", weight: 0.25 },
+  ],
   "split-squat-bb": [
     { muscle: "quads", weight: 1.0 },
     { muscle: "glutes", weight: 0.5 },
