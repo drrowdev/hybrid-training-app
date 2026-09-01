@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { MovementGroup } from "@/lib/sessions/movement-grouping";
 import {
@@ -576,3 +576,183 @@ describe("MovementFocusView inline history", () => {
     expect(html).toContain("3 of 3");
   });
 });
+
+describe("FocusStripLogger — SSR-safe initial markup regardless of resume (defect #3)", () => {
+  // The suite runs in the `node` environment (no jsdom), so stub the one
+  // storage API `readResume` touches — same technique as
+  // `session-resume.test.ts`.
+  //
+  // `renderToStaticMarkup` never runs effects, so it can only observe
+  // `FocusStripLogger`'s SYNCHRONOUS initial render — exactly the render
+  // that must stay `firstOpenId`-based on both server and client to avoid a
+  // hydration mismatch (reading `readResume` inside the `useState`
+  // initializer would make this render return a DIFFERENT movement on the
+  // client than the server, which has no `window`). The decision logic for
+  // WHICH movement resume actually selects (once the one-shot post-mount
+  // effect applies it) is covered directly by `resolveInitialActiveKey`'s
+  // own tests in `focus-advance.test.ts` — including this same resume-B,
+  // stale-key, and no-resume matrix — since exercising the post-mount
+  // effect itself needs a DOM, which this suite deliberately doesn't have.
+  let store: Map<string, string>;
+
+  beforeEach(() => {
+    store = new Map();
+    const fake: Pick<Storage, "getItem" | "setItem" | "removeItem"> = {
+      getItem: (k) => store.get(k) ?? null,
+      setItem: (k, v) => void store.set(k, v),
+      removeItem: (k) => void store.delete(k),
+    };
+    (globalThis as { window?: unknown }).window = { localStorage: fake };
+  });
+
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  const groups = [mainGroup, supplementalGroup];
+
+  it("renders the first-open movement (A) even when resume points at a later one (B)", async () => {
+    const { writeResume } = await import("@/lib/sessions/session-resume");
+    writeResume({ sessionId: "session-b-resume", activeKey: "press" });
+
+    const html = renderToStaticMarkup(
+      <FocusStripLogger
+        sessionId="session-b-resume"
+        groups={groups}
+        setsByMovement={new Map()}
+        tmBySlug={{ "bench-press-flat": 100, "ohp-standing": 80 }}
+        oneRmBySlug={{ "bench-press-flat": 100, "ohp-standing": 80 }}
+        loggedItemIndices={new Set()}
+        skippedItemIndices={new Set()}
+        loggedSetIdByItemIndex={{}}
+        priorBests={{}}
+        addStrengthSet={addStrengthSet}
+        updateStrengthSet={updateStrengthSet}
+        hapticsEnabled={false}
+        timerSoundEnabled={false}
+        restTimerEnabled={true}
+      />,
+    );
+    // The initial markup must be IDENTICAL to what the server would produce
+    // (no access to resume state there) — "Bench Press" (A, `firstOpenId`),
+    // NOT "Overhead Press" (B, the resumed movement). Applying resume is a
+    // client-only, post-mount effect that this render technique can't
+    // observe; see `resolveInitialActiveKey (defect #3)` in
+    // `focus-advance.test.ts` for coverage of the actual resume selection.
+    expect(html).toContain(
+      'data-testid="movement-navigator-item-bench" data-done="false" aria-current="true"',
+    );
+    expect(html).toContain(
+      'data-testid="movement-navigator-item-press" data-done="false" aria-current="false"',
+    );
+  });
+
+  it("renders the first-open movement (A) when the resumed key no longer exists (e.g. removed by a swap)", async () => {
+    const { writeResume } = await import("@/lib/sessions/session-resume");
+    writeResume({ sessionId: "session-stale-resume", activeKey: "removed-by-swap" });
+
+    const html = renderToStaticMarkup(
+      <FocusStripLogger
+        sessionId="session-stale-resume"
+        groups={groups}
+        setsByMovement={new Map()}
+        tmBySlug={{ "bench-press-flat": 100, "ohp-standing": 80 }}
+        oneRmBySlug={{ "bench-press-flat": 100, "ohp-standing": 80 }}
+        loggedItemIndices={new Set()}
+        skippedItemIndices={new Set()}
+        loggedSetIdByItemIndex={{}}
+        priorBests={{}}
+        addStrengthSet={addStrengthSet}
+        updateStrengthSet={updateStrengthSet}
+        hapticsEnabled={false}
+        timerSoundEnabled={false}
+        restTimerEnabled={true}
+      />,
+    );
+    expect(html).toContain(
+      'data-testid="movement-navigator-item-bench" data-done="false" aria-current="true"',
+    );
+    expect(html).toContain(
+      'data-testid="movement-navigator-item-press" data-done="false" aria-current="false"',
+    );
+  });
+
+  it("renders the first-open movement (A) when there is no resume state at all", () => {
+    const html = renderToStaticMarkup(
+      <FocusStripLogger
+        sessionId="session-no-resume"
+        groups={groups}
+        setsByMovement={new Map()}
+        tmBySlug={{ "bench-press-flat": 100, "ohp-standing": 80 }}
+        oneRmBySlug={{ "bench-press-flat": 100, "ohp-standing": 80 }}
+        loggedItemIndices={new Set()}
+        skippedItemIndices={new Set()}
+        loggedSetIdByItemIndex={{}}
+        priorBests={{}}
+        addStrengthSet={addStrengthSet}
+        updateStrengthSet={updateStrengthSet}
+        hapticsEnabled={false}
+        timerSoundEnabled={false}
+        restTimerEnabled={true}
+      />,
+    );
+    expect(html).toContain(
+      'data-testid="movement-navigator-item-bench" data-done="false" aria-current="true"',
+    );
+  });
+
+  it("renders identical markup with and without a window/localStorage present (no synchronous resume read)", async () => {
+    const { writeResume } = await importWriteResume();
+    writeResume({ sessionId: "session-server-vs-client", activeKey: "press" });
+
+    const clientHtml = renderToStaticMarkup(
+      <FocusStripLogger
+        sessionId="session-server-vs-client"
+        groups={groups}
+        setsByMovement={new Map()}
+        tmBySlug={{ "bench-press-flat": 100, "ohp-standing": 80 }}
+        oneRmBySlug={{ "bench-press-flat": 100, "ohp-standing": 80 }}
+        loggedItemIndices={new Set()}
+        skippedItemIndices={new Set()}
+        loggedSetIdByItemIndex={{}}
+        priorBests={{}}
+        addStrengthSet={addStrengthSet}
+        updateStrengthSet={updateStrengthSet}
+        hapticsEnabled={false}
+        timerSoundEnabled={false}
+        restTimerEnabled={true}
+      />,
+    );
+
+    // Simulate the server: no `window` at all, so `readResume` would throw
+    // or return null if it were reached synchronously during render.
+    delete (globalThis as { window?: unknown }).window;
+    const serverHtml = renderToStaticMarkup(
+      <FocusStripLogger
+        sessionId="session-server-vs-client"
+        groups={groups}
+        setsByMovement={new Map()}
+        tmBySlug={{ "bench-press-flat": 100, "ohp-standing": 80 }}
+        oneRmBySlug={{ "bench-press-flat": 100, "ohp-standing": 80 }}
+        loggedItemIndices={new Set()}
+        skippedItemIndices={new Set()}
+        loggedSetIdByItemIndex={{}}
+        priorBests={{}}
+        addStrengthSet={addStrengthSet}
+        updateStrengthSet={updateStrengthSet}
+        hapticsEnabled={false}
+        timerSoundEnabled={false}
+        restTimerEnabled={true}
+      />,
+    );
+
+    // The exact hydration-safety property: identical markup whether or not
+    // `window`/localStorage is available during this render.
+    expect(clientHtml).toBe(serverHtml);
+  });
+});
+
+async function importWriteResume() {
+  return import("@/lib/sessions/session-resume");
+}
+

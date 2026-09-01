@@ -11,10 +11,12 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     passWithNoTests: true,
-    // Server-action suites import the module under test from inside the test
-    // body, so the first one absorbs the whole graph's load cost. That is
-    // resolution time, not test time, and it exceeds the 5s default whenever
-    // the workspace runs its packages in parallel.
+    // A handful of action tests dynamically `import("../actions")`, a large
+    // module. Under parallel worker-thread contention that first transform
+    // can exceed the 5s default, and — since a timed-out test's in-flight
+    // promise keeps running rather than being cancelled — its delayed
+    // resolution can leak into a later test's shared mock state. Raising the
+    // ceiling gives busy/CI runners headroom without slowing fast tests.
     testTimeout: 20_000,
     hookTimeout: 20_000,
   },

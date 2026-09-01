@@ -26,6 +26,7 @@ import {
 } from "@/lib/sessions/movement-grouping";
 import { detectTmAnchoredPr } from "@/lib/engine/tm-anchored-pr";
 import { restSecondsForSet } from "@/lib/sessions/rest";
+import { shouldFireOnSaved } from "@/lib/sessions/focus-advance";
 import { resolveBarWeightKg } from "@/lib/sessions/bar-kind";
 import { resolveLoadIncrement } from "@/lib/sessions/load-increment";
 import { roundWarmupLoadKg } from "@/lib/planner/warmups";
@@ -206,6 +207,21 @@ export type FocusViewProps = {
   /** Compact hierarchy used by the single-movement Focus Strip logger. */
   focusStrip?: boolean;
   /**
+   * True once the focus strip's one-shot resume application (see
+   * `FocusStripLogger`) has run — whether or not it changed anything.
+   * `undefined`/omitted defaults to ready (non-focus-strip callers, e.g.
+   * `MovementCard`, never gate on resume at all: their own `focusStrip` is
+   * unset and the restore/persist effects below already no-op for them).
+   *
+   * Gates this component's OWN resume restoration (cursor/draft/rest) and
+   * its draft-persistence effect. Without this gate, a focus-strip remount
+   * on the SSR-safe `firstOpenId` fallback would restore/persist against
+   * the WRONG (first-open) movement in the brief window before the parent's
+   * effect corrects `activeId` to the actually-resumed one — overwriting the
+   * resume snapshot before it can ever be read for the right movement.
+   */
+  resumeReady?: boolean;
+  /**
    * Rendered beside the primary action inside the session dock (the focus
    * strip passes its movement-navigator trigger here). Only used when
    * `focusStrip` is set — the inline card layout has no dock.
@@ -270,6 +286,7 @@ export function MovementFocusView({
   bwGateStateByFamily,
   bodyweightCapable = false,
   focusStrip = false,
+  resumeReady = true,
   dockAccessory = null,
   suppressRestForItemIndex,
   onExitEdit,
@@ -541,6 +558,20 @@ export function MovementFocusView({
   // Track which prescription indices we've already fired this session so a
   // repeat tap on the same slot is a no-op (cleared on write error to retry).
   const firedIndicesRef = useRef<Set<number>>(new Set());
+  // "Latest ref" for the stale-navigation guard (defect #2 follow-up): this
+  // component instance is reused across every movement in the strip (see the
+  // `onSaved` comment below), so `groupKey` is whatever movement is CURRENTLY
+  // displayed — kept in sync by the effect below, including renders that
+  // happen while an earlier `handleSubmit` call is still awaiting the
+  // server. Comparing a submit's captured `groupKey` against this ref's
+  // value once that submit resolves tells us whether the lifter has since
+  // navigated elsewhere. A ref write belongs in an effect, not render body
+  // (React forbids the latter), so this runs post-commit on every
+  // `groupKey` change rather than being assigned directly during render.
+  const currentGroupKeyRef = useRef(groupKey);
+  useEffect(() => {
+    currentGroupKeyRef.current = groupKey;
+  }, [groupKey]);
   const [prFlash, setPrFlash] = useState<PrFlash | null>(null);
   const [justLoggedAt, setJustLoggedAt] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
@@ -612,9 +643,18 @@ export function MovementFocusView({
   // Restore the slot, the unsaved numbers and the remaining rest exactly once
   // on mount. Only applies when the stored draft belongs to THIS movement and
   // slot — see `draftAppliesTo`.
+  //
+  // Gated on `resumeReady`: the focus strip mounts on the SSR-safe
+  // `firstOpenId` fallback first, then corrects `activeId` (and `group`,
+  // hence `groupKey`) to the actually-resumed movement in the SAME render as
+  // `resumeReady` flipping true. Firing this restore before that correction
+  // would read `readResume` against the WRONG `groupKey` (first-open, not
+  // resumed) and — because this component instance is reused across every
+  // movement rather than remounted — burn its one-shot guard without ever
+  // restoring the resumed movement's draft.
   const restoredRef = useRef(false);
   useEffect(() => {
-    if (restoredRef.current || !focusStrip) return;
+    if (restoredRef.current || !focusStrip || !resumeReady) return;
     restoredRef.current = true;
     const saved = readResume(sessionId);
     if (!saved) return;
@@ -640,14 +680,27 @@ export function MovementFocusView({
         if (d.externalLoadKg != null) setExternalLoadKg(d.externalLoadKg);
       }
     }
-    // Mount-only: re-running would fight the user's live edits.
+    // Depends on `resumeReady` (NOT mount-only) because the very first
+    // invocation, before the focus strip's own one-shot resume application
+    // has run, must return early WITHOUT setting `restoredRef.current` — see
+    // the comment above. Once `resumeReady` flips true this body runs
+    // exactly once (the ref guard) against the now-correct `groupKey`;
+    // re-running on later `groupKey`/state changes would fight the lifter's
+    // live edits, which is what the ref guard prevents.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [resumeReady]);
 
   // Persist the working state. Cheap (one small localStorage write) and
   // throttled by React's render cadence rather than a timer.
+  //
+  // Gated on `resumeReady` for the same reason as the restore effect above:
+  // the focus strip's first render (before its one-shot resume application
+  // has run) is mounted on the SSR-safe `firstOpenId` fallback, not
+  // necessarily the resumed movement. Persisting on that render would
+  // overwrite the real resume snapshot (pointing at a different movement)
+  // with `firstOpenId`'s blank/default draft before it can ever be restored.
   useEffect(() => {
-    if (!focusStrip) return;
+    if (!focusStrip || !resumeReady) return;
     writeResume({
       sessionId,
       activeKey: groupKey,
@@ -671,6 +724,7 @@ export function MovementFocusView({
     });
   }, [
     focusStrip,
+    resumeReady,
     sessionId,
     groupKey,
     cursor,
@@ -912,7 +966,27 @@ export function MovementFocusView({
         setRestToken((t) => t + 1);
       }
     }
-    onSaved?.({ coveredIndices: [activeItemIndex] });
+    // `onSaved` tells the FOCUS STRIP (the parent) that this slot is covered,
+    // which can advance `activeId` to a different movement entirely once the
+    // active one has no open work left. It must only fire once we know the
+    // write actually landed — either a persisted server row, or a durable
+    // offline-queued acceptance (`{ ok: true }` with no `error`, no `set`).
+    // Firing it eagerly let a validation rejection surface its error on
+    // whatever movement the strip had already advanced to, because this same
+    // component instance is reused (not remounted) across the active
+    // movement switch. On rejection we simply never call it, so the strip
+    // never leaves the failed movement and the error renders on the slot
+    // that actually failed.
+    //
+    // It must ALSO not fire from a stale closure: if the lifter manually
+    // navigates to a different movement while this write is still in
+    // flight, `groupKey` here is still the OLD movement's key. Comparing it
+    // against the live `currentGroupKeyRef` (updated every render) at
+    // resolution time — `shouldFireOnSaved` — lets manual navigation win;
+    // the late success is still recorded (the overlay/undo state below is
+    // unaffected), it just doesn't yank the lifter back to wherever this
+    // stale write thinks they should go next.
+    const submittedGroupKey = groupKey;
     void addStrengthSet(fd)
       .then((result) => {
         if (result?.error) {
@@ -920,6 +994,9 @@ export function MovementFocusView({
           setError(result.error);
           setUndo(null);
           return;
+        }
+        if (shouldFireOnSaved(submittedGroupKey, currentGroupKeyRef.current)) {
+          onSaved?.({ coveredIndices: [activeItemIndex] });
         }
         // Only offer Undo once we hold the real row id — deleting requires it,
         // and an offline-queued set has no server row to delete yet.

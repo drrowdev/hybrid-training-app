@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   attributionInputForGroup,
@@ -37,6 +37,7 @@ import {
 import {
   nextMovementAfterSave,
   nextOpenMovement,
+  resolveInitialActiveKey,
 } from "@/lib/sessions/focus-advance";
 import { hapticTick } from "@/lib/feedback";
 import { SKIP_REASONS, type SkipReason } from "@/lib/sessions/skip-reasons";
@@ -44,6 +45,7 @@ import type {
   addStrengthSet,
   updateStrengthSetInline,
 } from "@/lib/sessions/actions";
+import { readResume } from "@/lib/sessions/session-resume";
 
 export type FocusStripLoggerProps = {
   sessionId: string;
@@ -219,7 +221,48 @@ export function FocusStripLogger({
       loggedItemIndices,
     );
   }, [groups, linkedCircuitByMovementId, loggedItemIndices]);
-  const [activeId, setActiveId] = useState(firstOpenId);
+  // Resume state records which movement the lifter was actually on. Without
+  // this, the strip always opens on `firstOpenId` — mounting the FIRST open
+  // movement (A) even when the lifter was mid-set on a LATER one (B) — and
+  // `MovementFocusView`'s own persist effect then immediately overwrites the
+  // resume snapshot with A's cursor/draft/rest timer, destroying B's before
+  // the lifter can even see it restored. `readResume` already enforces the
+  // six-hour expiry and the session-id match; the extra `groups.some(...)`
+  // guard rejects a stale/foreign key (e.g. a movement removed by a swap)
+  // that no longer exists in this workout.
+  //
+  // The initial state must be `firstOpenId` on BOTH the server render and
+  // the client's first (pre-hydration) render — reading `localStorage`
+  // inside this `useState` initializer would make the CLIENT's very first
+  // render return the resumed key while the server (no `window`) always
+  // falls back to `firstOpenId`, a server/client markup mismatch React must
+  // silently discard. Resume is instead applied via the one-shot effect
+  // below, which only runs after hydration has committed the SSR-identical
+  // markup — the standard-safe place for client-only initial state that
+  // must differ from what the server rendered.
+  const [activeId, setActiveId] = useState<string>(firstOpenId);
+  // Gates `MovementFocusView`'s own resume restoration (cursor/draft/rest)
+  // and its draft-persistence effect: both must wait until this one-shot
+  // resume application below has run, or a persist firing on the FIRST
+  // (pre-resume) render — mounted on `firstOpenId`, not yet the resumed
+  // movement — would overwrite the very resume snapshot we're about to read.
+  const [resumeReady, setResumeReady] = useState(false);
+  const resumeAppliedRef = useRef(false);
+  useEffect(() => {
+    if (resumeAppliedRef.current) return;
+    resumeAppliedRef.current = true;
+    const saved = readResume(sessionId);
+    const resolved = resolveInitialActiveKey(groups, firstOpenId, saved?.activeKey);
+    if (resolved !== firstOpenId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot, client-only application of resume state; see the comment above `activeId`
+      setActiveId(resolved);
+    }
+    setResumeReady(true);
+    // Mount-only: this is a ONE-SHOT application of whatever resume state
+    // existed when the strip first mounted; re-running on every
+    // groups/firstOpenId change would fight the lifter's live navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [declinedOptionalIds, setDeclinedOptionalIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -685,6 +728,7 @@ export function FocusStripLogger({
               }
               onExitEdit={() => advance()}
               focusStrip
+              resumeReady={resumeReady}
               dockAccessory={
                 <button
                   type="button"

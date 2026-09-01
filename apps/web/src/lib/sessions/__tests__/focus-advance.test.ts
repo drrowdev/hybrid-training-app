@@ -12,6 +12,7 @@ import {
   hasOpenWork,
   nextMovementAfterSave,
   nextOpenMovement,
+  resolveInitialActiveKey,
 } from "../focus-advance";
 
 const CIRCUIT = { id: "link-1", name: "Superset", size: 2, rounds: 3 };
@@ -192,5 +193,31 @@ describe("nextOpenMovement", () => {
 
   it("returns null when nothing is open", () => {
     expect(nextOpenMovement(groups, "a", new Set([0, 1, 2]), none)).toBeNull();
+  });
+});
+
+describe("resolveInitialActiveKey (defect #3)", () => {
+  const a = group({ movementId: "a", startIndex: 0, required: 3 });
+  const b = group({ movementId: "b", startIndex: 3, required: 3 });
+  const groups = [a, b];
+
+  it("uses the resumed movement when it still exists in the current groups", () => {
+    // Movement A mounting first and ignoring B's resume draft is exactly the
+    // defect: the lifter was mid-set on B, and the strip must reopen there,
+    // not on A (the first-open fallback).
+    expect(resolveInitialActiveKey(groups, "a", "b")).toBe("b");
+  });
+
+  it("falls back to firstOpenId when there is no resume state", () => {
+    expect(resolveInitialActiveKey(groups, "a", null)).toBe("a");
+    expect(resolveInitialActiveKey(groups, "a", undefined)).toBe("a");
+  });
+
+  it("falls back to firstOpenId when the resumed key is stale/foreign (e.g. removed by a swap)", () => {
+    expect(resolveInitialActiveKey(groups, "a", "removed-by-swap")).toBe("a");
+  });
+
+  it("resuming the already-first-open movement is a no-op", () => {
+    expect(resolveInitialActiveKey(groups, "a", "a")).toBe("a");
   });
 });

@@ -26,14 +26,26 @@ const sessions: SessionRow[] = [
 ];
 const overrideInserts: Array<Record<string, unknown>> = [];
 const plannedUpdates: Array<Record<string, unknown>> = [];
+const sessionUpdates: Array<Record<string, unknown>> = [];
 const rpcCalls: Array<{ fn: string; args: Record<string, unknown> }> = [];
 let rpcError: string | null = null;
+/** Error only on the `remove_session_movement` RPC (add still succeeds). */
+let removeRpcError: string | null = null;
 // A planned_session linked to the active session, with the original movement.
 let plannedPrescription: { items: Array<Record<string, unknown>> } | null = null;
+/** A quick/freestyle session's own prescription (session row, no planned_session). */
+let sessionPrescription: { items: Array<Record<string, unknown>> } | null = null;
 let replacementOneRmKg: number | null = null;
 let profileWarmupScheme: Record<string, unknown> | null = null;
 /** program_id of the training_block that owns the linked planned_session. */
 let plannedProgramId: string | null = null;
+/** Read errors, injected per fail-closed test (defect #4). */
+let plannedReadError: string | null = null;
+let sessionOwnershipReadError: string | null = null;
+let sessionPrescriptionReadError: string | null = null;
+/** Write errors on the two possible prescription-update tables. */
+let plannedUpdateError: string | null = null;
+let sessionUpdateError: string | null = null;
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 
@@ -44,7 +56,9 @@ vi.mock("@/lib/supabase/server", () => ({
     },
     rpc: async (fn: string, args: Record<string, unknown>) => {
       rpcCalls.push({ fn, args });
-      if (rpcError) return { data: null, error: { message: rpcError } };
+      const err =
+        fn === "remove_session_movement" ? (removeRpcError ?? rpcError) : rpcError;
+      if (err) return { data: null, error: { message: err } };
       return {
         data: fn === "remove_session_movement" ? [{ deleted: true }] : null,
         error: null,
@@ -52,13 +66,22 @@ vi.mock("@/lib/supabase/server", () => ({
     },
     from: (table: string) => {
       const state: {
+        select?: string;
         eqs: Array<[string, unknown]>;
         ises: Array<[string, unknown]>;
         insert?: Record<string, unknown>;
         update?: Record<string, unknown>;
       } = { eqs: [], ises: [] };
-      const q: Record<string, (...a: never[]) => unknown> = {
-        select: (() => q) as (...a: never[]) => unknown,
+      const q: Record<string, (...a: never[]) => unknown> & {
+        then?: (
+          resolve: (v: { data: null; error: { message: string } | null }) => unknown,
+          reject?: (e: unknown) => unknown,
+        ) => unknown;
+      } = {
+        select: ((cols: string) => {
+          state.select = cols;
+          return q;
+        }) as (...a: never[]) => unknown,
         eq: ((col: string, val: unknown) => {
           state.eqs.push([col, val]);
           return q as unknown;
@@ -75,6 +98,7 @@ vi.mock("@/lib/supabase/server", () => ({
         update: ((row: Record<string, unknown>) => {
           state.update = row;
           if (table === "planned_sessions") plannedUpdates.push(row);
+          if (table === "sessions") sessionUpdates.push(row);
           return q as unknown;
         }) as (...a: never[]) => unknown,
         maybeSingle: (() => {
@@ -83,6 +107,26 @@ vi.mock("@/lib/supabase/server", () => ({
             return Promise.resolve({ data: movements.find((m) => m.id === id) ?? null, error: null });
           }
           if (table === "sessions") {
+            if (state.select === "prescription") {
+              if (sessionPrescriptionReadError) {
+                return Promise.resolve({
+                  data: null,
+                  error: { message: sessionPrescriptionReadError },
+                });
+              }
+              return Promise.resolve({
+                data: sessionPrescription
+                  ? { prescription: sessionPrescription }
+                  : null,
+                error: null,
+              });
+            }
+            if (sessionOwnershipReadError) {
+              return Promise.resolve({
+                data: null,
+                error: { message: sessionOwnershipReadError },
+              });
+            }
             const id = state.eqs.find(([c]) => c === "id")?.[1];
             return Promise.resolve({
               data:
@@ -97,6 +141,12 @@ vi.mock("@/lib/supabase/server", () => ({
             });
           }
           if (table === "planned_sessions") {
+            if (plannedReadError) {
+              return Promise.resolve({
+                data: null,
+                error: { message: plannedReadError },
+              });
+            }
             return Promise.resolve({
               data: plannedPrescription
                 ? {
@@ -131,6 +181,17 @@ vi.mock("@/lib/supabase/server", () => ({
           return Promise.resolve({ data: null, error: null });
         }) as (...a: never[]) => unknown,
       };
+      // Update chains are awaited directly on the query builder (no
+      // `.maybeSingle()`), so they need their own thenable resolution.
+      q.then = (resolve, reject) => {
+        let err: string | null = null;
+        if (state.update && table === "planned_sessions") err = plannedUpdateError;
+        if (state.update && table === "sessions") err = sessionUpdateError;
+        return Promise.resolve({
+          data: null,
+          error: err ? { message: err } : null,
+        }).then(resolve, reject);
+      };
       return q;
     },
   }),
@@ -141,13 +202,21 @@ describe("swapActiveMovement", () => {
   beforeEach(() => {
     overrideInserts.length = 0;
     plannedUpdates.length = 0;
+    sessionUpdates.length = 0;
     rpcCalls.length = 0;
     rpcError = null;
+    removeRpcError = null;
     sessions[0]!.deleted_at = null;
     plannedPrescription = null;
+    sessionPrescription = null;
     replacementOneRmKg = null;
     profileWarmupScheme = null;
     plannedProgramId = null;
+    plannedReadError = null;
+    sessionOwnershipReadError = null;
+    sessionPrescriptionReadError = null;
+    plannedUpdateError = null;
+    sessionUpdateError = null;
   });
 
   it("writes an override-audit row with movement_swap context", async () => {
@@ -699,5 +768,118 @@ describe("swapActiveMovement", () => {
     expect(result).toEqual({ error: "Session not found." });
     expect(overrideInserts).toHaveLength(0);
     expect(plannedUpdates).toHaveLength(0);
+  });
+
+  // Defect #4: swapActiveMovement must fail closed on every read/write/RPC
+  // error instead of reporting `ok: true` while the swap only partially (or
+  // never) landed.
+  describe("fail-closed error handling (defect #4)", () => {
+    it("surfaces a planned_sessions read error instead of falling through to freestyle persistence", async () => {
+      plannedReadError = "connection reset";
+      const { swapActiveMovement } = await import("../swap-actions");
+      const fd = new FormData();
+      fd.set("sessionId", SESSION_ID);
+      fd.set("originalMovementId", ORIGINAL_ID);
+      fd.set("newMovementId", NEW_ID);
+      fd.set("reason", "equipment");
+
+      const result = await swapActiveMovement(fd);
+      expect(result).toEqual({ error: "connection reset" });
+      // Must NOT treat the read error as "no linked planned_session" and
+      // silently persist against session_movements instead.
+      expect(rpcCalls).toHaveLength(0);
+      expect(plannedUpdates).toHaveLength(0);
+      expect(sessionUpdates).toHaveLength(0);
+      expect(overrideInserts).toHaveLength(0);
+    });
+
+    it("surfaces a freestyle sessions-prescription read error", async () => {
+      sessionPrescriptionReadError = "statement timeout";
+      const { swapActiveMovement } = await import("../swap-actions");
+      const fd = new FormData();
+      fd.set("sessionId", SESSION_ID);
+      fd.set("originalMovementId", ORIGINAL_ID);
+      fd.set("newMovementId", NEW_ID);
+      fd.set("reason", "equipment");
+
+      const result = await swapActiveMovement(fd);
+      expect(result).toEqual({ error: "statement timeout" });
+      expect(rpcCalls).toHaveLength(0);
+      expect(overrideInserts).toHaveLength(0);
+    });
+
+    it("surfaces a planned_sessions UPDATE error instead of claiming the swap succeeded", async () => {
+      plannedPrescription = {
+        items: [
+          {
+            movementId: ORIGINAL_ID,
+            movementSlug: "front-squat",
+            movementName: "Front Squat",
+            kind: "main",
+            sets: 3,
+            reps: 5,
+          },
+        ],
+      };
+      plannedUpdateError = "row-level security violation";
+      const { swapActiveMovement } = await import("../swap-actions");
+      const fd = new FormData();
+      fd.set("sessionId", SESSION_ID);
+      fd.set("originalMovementId", ORIGINAL_ID);
+      fd.set("newMovementId", NEW_ID);
+      fd.set("reason", "equipment");
+
+      const result = await swapActiveMovement(fd);
+      expect(result).toEqual({ error: "row-level security violation" });
+      // No audit for a swap that never actually persisted.
+      expect(overrideInserts).toHaveLength(0);
+    });
+
+    it("surfaces a freestyle sessions UPDATE error instead of claiming the swap succeeded", async () => {
+      sessionPrescription = {
+        items: [
+          {
+            movementId: ORIGINAL_ID,
+            movementSlug: "front-squat",
+            movementName: "Front Squat",
+            kind: "main",
+            sets: 3,
+            reps: 5,
+          },
+        ],
+      };
+      sessionUpdateError = "row-level security violation";
+      const { swapActiveMovement } = await import("../swap-actions");
+      const fd = new FormData();
+      fd.set("sessionId", SESSION_ID);
+      fd.set("originalMovementId", ORIGINAL_ID);
+      fd.set("newMovementId", NEW_ID);
+      fd.set("reason", "equipment");
+
+      const result = await swapActiveMovement(fd);
+      expect(result).toEqual({ error: "row-level security violation" });
+      expect(overrideInserts).toHaveLength(0);
+    });
+
+    it("surfaces a remove_session_movement RPC error after the add already landed, and skips the audit", async () => {
+      removeRpcError = "movement still referenced";
+      const { swapActiveMovement } = await import("../swap-actions");
+      const fd = new FormData();
+      fd.set("sessionId", SESSION_ID);
+      fd.set("originalMovementId", ORIGINAL_ID);
+      fd.set("newMovementId", NEW_ID);
+      fd.set("reason", "equipment");
+
+      const result = await swapActiveMovement(fd);
+      expect(result).toEqual({ error: "movement still referenced" });
+      // The add DID land (both RPCs were attempted) — the reload-recovers
+      // duplicate is reported as an error rather than hidden behind ok:true.
+      expect(rpcCalls.map((call) => call.fn)).toEqual([
+        "add_session_movement",
+        "remove_session_movement",
+      ]);
+      // Audit is written only after persistence fully succeeds.
+      expect(overrideInserts).toHaveLength(0);
+    });
   });
 });

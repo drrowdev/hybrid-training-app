@@ -47,6 +47,62 @@ export function hasOpenWork(
 }
 
 /**
+ * Which movement `FocusStripLogger` should mount on.
+ *
+ * Resume state records which movement the lifter was actually on. Without
+ * this, the strip always opens on `firstOpenId` — mounting the FIRST open
+ * movement (A) even when the lifter was mid-set on a LATER one (B) — and
+ * `MovementFocusView`'s own persist effect then immediately overwrites the
+ * resume snapshot with A's cursor/draft/rest timer, destroying B's before
+ * the lifter can even see it restored.
+ *
+ * `resumeActiveKey` is expected to already have passed `readResume`'s own
+ * six-hour expiry and session-id checks (it reads from storage, so it isn't
+ * pure and is tested separately in `session-resume.test.ts`); this function
+ * only adds the guard a resume read cannot: that the key still names a
+ * movement in the CURRENT `groups` (rejecting a stale/foreign key, e.g. a
+ * movement a swap has since removed from this workout).
+ */
+export function resolveInitialActiveKey(
+  groups: readonly MovementGroup[],
+  firstOpenId: string,
+  resumeActiveKey: string | null | undefined,
+): string {
+  if (
+    resumeActiveKey != null &&
+    groups.some((group) => movementGroupKey(group) === resumeActiveKey)
+  ) {
+    return resumeActiveKey;
+  }
+  return firstOpenId;
+}
+
+/**
+ * Guard against `MovementFocusView`'s stale-closure "late onSaved" race.
+ *
+ * This component instance is reused across every movement the focus strip
+ * shows (never remounted on navigation), so its `handleSubmit` closes over
+ * whatever `groupKey`/`onSaved` were current AT THE MOMENT the lifter tapped
+ * log. If the lifter manually navigates to a different movement while that
+ * write is still in flight, the stale closure's `.then()` still fires later
+ * with the OLD movement's key — calling `onSaved` from that stale closure
+ * would compute "next movement after the OLD one" and could yank the lifter
+ * away from wherever they manually navigated to, overriding their choice.
+ *
+ * `submittedGroupKey` is captured when the write started; `currentGroupKey`
+ * is read from a ref kept live on every render. They differ exactly when a
+ * navigation happened during the request — in which case the caller must
+ * skip calling `onSaved` (the write itself still landed and its data is
+ * tracked independently; only the strip-advance signal is stale).
+ */
+export function shouldFireOnSaved(
+  submittedGroupKey: string,
+  currentGroupKey: string,
+): boolean {
+  return submittedGroupKey === currentGroupKey;
+}
+
+/**
  * The next movement to put in front of the lifter, or null to stay put.
  *
  * Searches forward from the active movement and wraps, so a set logged out of
