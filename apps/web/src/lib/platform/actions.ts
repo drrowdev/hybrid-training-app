@@ -2002,7 +2002,9 @@ async function createForeignProgramInstance(
     ? await deployProgramInstanceDuringMigration(supabase, user, deploymentInput)
     : null;
   const deployment = legacyDeployment?.data ?? atomicDeployment.data;
-  const deploymentError = legacyDeployment?.error ?? atomicDeployment.error;
+  const deploymentError = legacyDeployment
+    ? legacyDeployment.error
+    : atomicDeployment.error;
   const deployed = (
     deployment as
       | Array<{ block_id: string; program_instance_id: string }>
@@ -3005,7 +3007,9 @@ async function createNativeProgramInstance(
     ? await deployProgramInstanceDuringMigration(supabase, user, deploymentInput)
     : null;
   const deployment = legacyDeployment?.data ?? atomicDeployment.data;
-  const deploymentError = legacyDeployment?.error ?? atomicDeployment.error;
+  const deploymentError = legacyDeployment
+    ? legacyDeployment.error
+    : atomicDeployment.error;
   const deployed = (
     deployment as
       | Array<{ block_id: string; program_instance_id: string }>
