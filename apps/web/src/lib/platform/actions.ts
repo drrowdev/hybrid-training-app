@@ -1191,9 +1191,6 @@ async function computeForeignWrite(
   const customMovementByKey = new Map(
     validatedCustomMovements.map((movement) => [movement.key, movement]),
   );
-  const catalogMovementById = new Map(
-    customizationCatalog.map((movement) => [movement.id, movement]),
-  );
   const normalizeCustomMovement = <
     T extends {
       movement: string;
@@ -1204,9 +1201,6 @@ async function computeForeignWrite(
   ): T => {
     if (!movement.movement.startsWith("catalog:")) return movement;
     const catalog = customMovementByKey.get(movement.movement);
-    const catalogMovement = catalog
-      ? catalogMovementById.get(catalog.movementId)
-      : undefined;
     return {
       ...movement,
       ...(catalog
@@ -1221,7 +1215,7 @@ async function computeForeignWrite(
       // it can put the whole bodyweight-inclusive max on a dip belt.
       kind: catalogMovementLoadKind({
         hasOneRm: ctx.oneRepMaxes[movement.movement] != null,
-        isLoadable: catalogMovement?.isLoadable,
+        slug: catalog?.slug,
       }),
     };
   };

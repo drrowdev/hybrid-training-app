@@ -9,7 +9,7 @@
 import type { RecoveryWeekPolicy } from "@hta/program-core";
 import { TB_RECOVERY_WEEK } from "@hta/tacticalbarbell";
 import { WENDLER_RECOVERY_WEEK } from "@hta/wendler";
-import { GREEN_RECOVERY_WEEK } from "@hta/green";
+import { GREEN_RECOVERY_WEEK, greenStrengthBasis, type GreenInstance } from "@hta/green";
 import { HYROX_RECOVERY_WEEK } from "@hta/hyrox";
 
 /**
@@ -56,6 +56,15 @@ export function recoveryPercentScale(
   instance: unknown,
 ): number {
   if (policy.basis === "training-max") return 1;
+
+  // Green keeps its basis per nested strength engine, so a top-level read finds
+  // nothing and concludes "true max". Ask Green (plan §6.9).
+  const green = instance as { strength?: Record<string, unknown> } | null | undefined;
+  if (green?.strength && typeof green.strength === "object") {
+    const basis = greenStrengthBasis(green as GreenInstance);
+    return basis?.kind === "training-max" ? 1 / basis.tmPercent : 1;
+  }
+
   const inst = instance as
     | { useTrainingMax?: boolean; tmPercent?: number }
     | null

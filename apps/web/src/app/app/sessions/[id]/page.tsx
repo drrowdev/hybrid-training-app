@@ -71,6 +71,7 @@ import {
   unresolvedRehabItemIndices,
   rollupFidelity,
   fidelitySummaryLine,
+  isSystemLoadMovementSlug,
 } from "@hta/domain";
 import type { Prescription } from "@hta/db";
 import { loadBwGateStatesForPrescription } from "@/lib/planner/bw-gate-state-loader";
@@ -855,7 +856,9 @@ export default async function SessionDetailPage({
   const cardioModalityByMovementId: Record<string, string | null> = {};
   const bodyweightMovementIds: string[] = [];
   // A max that counts bodyweight (weighted pull-ups / dips) makes a percentage
-  // a TOTAL, not a belt load — the logger has to take bodyweight off it.
+  // a TOTAL, not a belt load — the logger has to take bodyweight off it. That is
+  // a property of the specific movement, not of `body_weight_loaded`, which is
+  // equally true of every lift that can be done unloaded.
   const systemLoadMovementIds: string[] = [];
   // Smart accessory ordering (render-side): equipment + region per movement so
   // the card list can cluster accessories by "station" (don't run back and
@@ -866,8 +869,10 @@ export default async function SessionDetailPage({
       .from("movements")
       .select("id, slug, metadata, body_weight_loaded, equipment, primary_region")
       .in("id", allMovementIds);
+    const resolvedMovementIds = new Set<string>();
     for (const row of movementRows ?? []) {
       const rowId = row.id as string;
+      resolvedMovementIds.add(rowId);
       if (cardioMovementIds.has(rowId)) {
         const meta = (row as { metadata?: Record<string, unknown> | null }).metadata;
         const slug = (row as { slug?: string | null }).slug ?? null;
@@ -886,7 +891,7 @@ export default async function SessionDetailPage({
         ) {
           bodyweightMovementIds.push(rowId);
         }
-        if ((row as { body_weight_loaded?: boolean }).body_weight_loaded) {
+        if (isSystemLoadMovementSlug((row as { slug?: string | null }).slug)) {
           systemLoadMovementIds.push(rowId);
         }
         accessoryMetaById[rowId] = {
@@ -894,6 +899,14 @@ export default async function SessionDetailPage({
           region: (row as { primary_region?: string | null }).primary_region ?? null,
         };
       }
+    }
+    // A movement the catalog could not resolve has no identity to read, so the
+    // item's own marker is all that is left. Items the catalog DID resolve are
+    // already decided above — the marker never overrides it.
+    for (const item of plannedPrescription?.items ?? []) {
+      const id = item.movementId;
+      if (!id || !allMovementIds.includes(id) || resolvedMovementIds.has(id)) continue;
+      if (item.systemLoad === true) systemLoadMovementIds.push(id);
     }
   }
 

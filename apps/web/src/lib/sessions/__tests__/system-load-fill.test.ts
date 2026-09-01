@@ -104,7 +104,7 @@ describe("fillSessionFromPlan — weighted bodyweight movements", () => {
     ];
     // The catalog is what marks the movement, so plans materialised before the
     // engine learned to subtract bodyweight are corrected too.
-    mockState.movements = [{ id: PULLUP_ID, body_weight_loaded: true }];
+    mockState.movements = [{ id: PULLUP_ID, slug: "weighted-pull-up" }];
     mockState.existingSets = [];
     mockState.upserts = [];
   });
@@ -224,7 +224,7 @@ describe("fillSessionFromPlan — weighted bodyweight movements", () => {
     mockState.trainingMaxes = [
       { movement_id: "movement-squat", one_rm_kg: 200, tm_percent: 100 },
     ];
-    mockState.movements = [{ id: "movement-squat", body_weight_loaded: false }];
+    mockState.movements = [{ id: "movement-squat", slug: "back-squat" }];
     const { fillSessionFromPlan } = await import("../actions");
     const formData = new FormData();
     formData.set("sessionId", SESSION_ID);
@@ -232,5 +232,115 @@ describe("fillSessionFromPlan — weighted bodyweight movements", () => {
     await fillSessionFromPlan(formData);
 
     expect(mockState.upserts[0]?.weight_kg).toBe(140);
+  });
+});
+
+const LUNGE_ID = "movement-forward-lunge";
+
+describe("fillSessionFromPlan — bodyweight-capable lifts are not system loads", () => {
+  // A Forward Lunge can be done with no external weight, which is what
+  // `body_weight_loaded` marks. It does NOT mean the saved max counts the
+  // lifter's bodyweight — a 100 kg lunge max is 100 kg on the bar. Treating the
+  // two as the same question turned a 70% lunge into a bodyweight AMRAP.
+  beforeEach(() => {
+    mockState.planned = pullupPrescription([
+      {
+        movementId: LUNGE_ID,
+        movementSlug: "forward-lunge",
+        kind: "main",
+        sets: 1,
+        reps: 8,
+        percentTm: 70,
+      },
+    ]);
+    mockState.profile = {
+      tm_percent_default: 100,
+      barbell_kg: 20,
+      equipment: null,
+      bodyweight_kg: 80,
+    };
+    mockState.trainingMaxes = [{ movement_id: LUNGE_ID, one_rm_kg: 100, tm_percent: 100 }];
+    mockState.movements = [{ id: LUNGE_ID, slug: "forward-lunge" }];
+    mockState.existingSets = [];
+    mockState.upserts = [];
+  });
+
+  it("DC-K4: 70% of a 100 kg lunge max is 70 kg on the bar, not a bodyweight set", async () => {
+    const { fillSessionFromPlan } = await import("../actions");
+    const formData = new FormData();
+    formData.set("sessionId", SESSION_ID);
+
+    await fillSessionFromPlan(formData);
+
+    expect(mockState.upserts[0]?.weight_kg).toBe(70);
+  });
+
+  it("DC-K4: a plan materialised under the old rule is corrected, not honoured", async () => {
+    // Same day, but the stored item still carries the marker written when
+    // `body_weight_loaded` answered this question. The catalog decides.
+    mockState.planned = pullupPrescription([
+      {
+        movementId: LUNGE_ID,
+        movementSlug: "forward-lunge",
+        kind: "main",
+        sets: 1,
+        reps: 8,
+        percentTm: 70,
+        systemLoad: true,
+      },
+    ]);
+    const { fillSessionFromPlan } = await import("../actions");
+    const formData = new FormData();
+    formData.set("sessionId", SESSION_ID);
+
+    await fillSessionFromPlan(formData);
+
+    expect(mockState.upserts[0]?.weight_kg).toBe(70);
+  });
+
+  it("DC-K4: a weighted pull-up with no stored marker still comes off the belt", async () => {
+    mockState.planned = pullupPrescription([
+      {
+        movementId: PULLUP_ID,
+        movementSlug: "weighted-pull-up",
+        kind: "main",
+        sets: 1,
+        reps: 5,
+        percentTm: 100,
+      },
+    ]);
+    mockState.trainingMaxes = [{ movement_id: PULLUP_ID, one_rm_kg: 110, tm_percent: 100 }];
+    mockState.movements = [{ id: PULLUP_ID, slug: "weighted-pull-up" }];
+    const { fillSessionFromPlan } = await import("../actions");
+    const formData = new FormData();
+    formData.set("sessionId", SESSION_ID);
+
+    await fillSessionFromPlan(formData);
+
+    // 110 kg of system load − 80 kg of lifter = 30 kg on the belt.
+    expect(mockState.upserts[0]?.weight_kg).toBe(30);
+  });
+
+  it("falls back to the stored marker when the catalog cannot resolve the movement", async () => {
+    mockState.planned = pullupPrescription([
+      {
+        movementId: PULLUP_ID,
+        movementSlug: "weighted-pull-up",
+        kind: "main",
+        sets: 1,
+        reps: 5,
+        percentTm: 100,
+        systemLoad: true,
+      },
+    ]);
+    mockState.trainingMaxes = [{ movement_id: PULLUP_ID, one_rm_kg: 110, tm_percent: 100 }];
+    mockState.movements = [];
+    const { fillSessionFromPlan } = await import("../actions");
+    const formData = new FormData();
+    formData.set("sessionId", SESSION_ID);
+
+    await fillSessionFromPlan(formData);
+
+    expect(mockState.upserts[0]?.weight_kg).toBe(30);
   });
 });

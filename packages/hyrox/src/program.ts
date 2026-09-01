@@ -333,21 +333,10 @@ function prescribeRef(
 
   if (cell.kind !== "session") return { items: [] };
 
-  // The primary session, plus an optional two-a-day.
-  const items = prescribeSession(cell.session, ctx, args);
-  if (cell.plus) {
-    const plusItems = prescribeSession(cell.plus.session, ctx, args);
-    const plusSess = getHyroxSession(cell.plus.session);
-    if (plusItems.length > 0) {
-      items.push({
-        kind: "note",
-        name: `Two-a-day — ${plusSess?.name ?? cell.plus.session}`,
-        note: "A second, easy session performed the same day (AM/PM split recommended).",
-      });
-      items.push(...plusItems);
-    }
-  }
-  return { items };
+  // One ref prescribes one session. A two-a-day's second session is reachable
+  // through its own `-pm` ref (see `specForCell`), so appending it here as well
+  // would prescribe the same work twice on the same day.
+  return { items: prescribeSession(cell.session, ctx, args) };
 }
 
 /**

@@ -1,22 +1,30 @@
+import { isRepMaxMovementSlug, isSystemLoadMovementSlug } from "@hta/domain";
+
 export type CatalogMovementLoadKind =
   | "barbell"
   | "weighted-bw"
   | "bodyweight"
   | "unanchored";
 
+
 /**
  * Loading semantics belong to the selected movement, not to the template slot
  * it replaced.
  *
- * `body_weight_loaded` is also what the training-max UI uses to say a saved max
- * includes bodyweight. Keep the wizard and the server-side deploy normalizer on
- * the same rule so a client-supplied/stale kind cannot put a system max on a
- * belt or subtract bodyweight from an ordinary lift.
+ * `isLoadable` (the catalog's `body_weight_loaded`) only says external load is
+ * OPTIONAL — true for lunges, step-ups, push-ups and inverted rows as well as
+ * for weighted pull-ups. Treating all of those as system-load maths subtracts
+ * bodyweight from an ordinary lift: 70% of a 100 kg forward lunge becomes 0 kg
+ * for an 80 kg lifter. Only the movements whose saved max genuinely counts
+ * bodyweight get `weighted-bw`, and only those whose max is a rep count get
+ * `bodyweight` (see `@hta/domain`'s movement load identity).
  */
 export function catalogMovementLoadKind(movement: {
   hasOneRm: boolean;
-  isLoadable?: boolean;
+  slug?: string | null;
 }): CatalogMovementLoadKind {
   if (!movement.hasOneRm) return "unanchored";
-  return movement.isLoadable === true ? "weighted-bw" : "barbell";
+  if (isSystemLoadMovementSlug(movement.slug)) return "weighted-bw";
+  if (isRepMaxMovementSlug(movement.slug)) return "bodyweight";
+  return "barbell";
 }

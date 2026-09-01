@@ -1449,7 +1449,9 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       }
 
       // Bodyweight movements (e.g. pull-ups) are anchored on MAX CLEAN REPS and
-      // prescribed as a % of that rep ceiling — never a weight (TB1).
+      // prescribed as a % of that rep ceiling — never a weight (TB1). The
+      // percentage is spent here, on `targetReps`; passing it on as
+      // `percentOfTm` would let the app render it as a percentage of a load.
       if (lift.kind === "bodyweight") {
         const targetReps = Math.max(1, Math.round(anchor * prescribedPercent));
         items.push({
@@ -1460,7 +1462,6 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
           ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),
           reps: targetReps,
           repsLabel: `${targetReps}`,
-          percentOfTm: prescribedPercent,
           note: `bodyweight — ${Math.round(prescribedPercent * 100)}% of max reps; ${rangeNote}`,
         });
         pushLift();

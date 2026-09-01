@@ -1,4 +1,5 @@
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { isSystemLoadMovementSlug } from "@hta/domain";
 import {
   upsertTrainingMax,
   deleteTrainingMax,
@@ -96,7 +97,7 @@ export default async function TrainingMaxesPage() {
 
   const { data: compounds } = await supabase
     .from("movements")
-    .select("id, slug, display_name, pattern, body_weight_loaded")
+    .select("id, slug, display_name, pattern")
     .eq("is_compound", true)
     .is("user_id", null)
     .order("pattern")
@@ -119,7 +120,7 @@ export default async function TrainingMaxesPage() {
     arr.push({
       id: m.id,
       display_name: m.display_name,
-      ...((m as { body_weight_loaded?: boolean }).body_weight_loaded
+      ...(isSystemLoadMovementSlug((m as { slug?: string }).slug)
         ? { systemLoad: true }
         : {}),
     });

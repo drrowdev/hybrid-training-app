@@ -31,6 +31,7 @@ import {
   type PlannedSetKind,
 } from "./fill-plan-sets";
 import {
+  isSystemLoadMovementSlug,
   resolvePrescriptionSetWork,
   resolvePrescribedSnapshot,
   resolveTargetLoadKg,
@@ -234,7 +235,7 @@ async function resolveSetSnapshot(
           .maybeSingle(),
         supabase
           .from("movements")
-          .select("body_weight_loaded")
+          .select("slug")
           .eq("id", item.movementId)
           .maybeSingle(),
       ]);
@@ -255,10 +256,14 @@ async function resolveSetSnapshot(
       }
       const bw = Number(profileRes.data?.bodyweight_kg);
       bodyweightKg = Number.isFinite(bw) && bw > 0 ? bw : null;
-      isSystemLoad =
-        isSystemLoad ||
-        (movementRes.data as { body_weight_loaded?: boolean | null } | null)
-          ?.body_weight_loaded === true;
+      // The catalog decides for any movement it knows. A stale `systemLoad`
+      // marker survives on items materialised while `body_weight_loaded` stood
+      // in for this question, and honouring it subtracts bodyweight from an
+      // ordinary lift.
+      const slug = (movementRes.data as { slug?: string | null } | null)?.slug ?? null;
+      if (slug != null) {
+        isSystemLoad = isSystemLoadMovementSlug(slug);
+      }
     }
 
     const expected = resolvePrescribedSnapshot(item, {
@@ -1709,7 +1714,7 @@ export async function fillSessionFromPlan(
   const bodyweightRaw = profileRes.data?.bodyweight_kg;
   const bodyweightNum = bodyweightRaw == null ? NaN : Number(bodyweightRaw);
   const bodyweightKg = Number.isFinite(bodyweightNum) && bodyweightNum > 0 ? bodyweightNum : null;
-  const systemLoadMovementIds = await loadSystemLoadMovementIds(
+  const systemLoadByMovementId = await loadSystemLoadMovementIds(
     supabase,
     items.map((item) => item.movementId),
   );
@@ -1737,7 +1742,7 @@ export async function fillSessionFromPlan(
       barWeightKg: warmupBarWeightKg ?? undefined,
       availablePlateWeightsKg: equipment.plates,
     };
-    const systemLoad = isSystemLoadItem(item, systemLoadMovementIds);
+    const systemLoad = isSystemLoadItem(item, systemLoadByMovementId);
     const roundKg = (kg: number) =>
       item.kind === "warmup" ? roundWarmupLoadKg(kg, warmupLoadOptions) : roundToPlate(kg);
     const weight = resolveTargetLoadKg(item, {

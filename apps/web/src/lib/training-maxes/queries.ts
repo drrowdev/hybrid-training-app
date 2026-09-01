@@ -8,6 +8,7 @@
 import { cache } from "react";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import type { TmFormula, TmSource } from "@hta/db";
+import { isSystemLoadMovementSlug } from "@hta/domain";
 
 /** Round to the nearest plate increment (default 2.5 kg). */
 export function roundToPlate(kg: number, increment = 2.5): number {
@@ -65,7 +66,7 @@ export const getTrainingMaxContext = cache(async function getTrainingMaxContext(
     supabase
       .from("training_maxes")
       .select(
-        "id, movement_id, one_rm_kg, tm_percent, updated_at, source, derived_from_session_id, derived_from_set_log_id, derived_formula, derived_at, movements(display_name, slug, body_weight_loaded)",
+        "id, movement_id, one_rm_kg, tm_percent, updated_at, source, derived_from_session_id, derived_from_set_log_id, derived_formula, derived_at, movements(display_name, slug)",
       )
       .order("updated_at", { ascending: false }),
   ]);
@@ -97,7 +98,7 @@ export const getTrainingMaxContext = cache(async function getTrainingMaxContext(
       effectivePercent: effective,
       tmKg: roundToPlate((oneRm * effective) / 100),
       updatedAt: r.updated_at,
-      systemLoad: (m as { body_weight_loaded?: boolean | null }).body_weight_loaded === true,
+      systemLoad: isSystemLoadMovementSlug((m as { slug?: string }).slug),
       source,
       derivedFromSessionId:
         (r as { derived_from_session_id?: string | null }).derived_from_session_id ?? null,

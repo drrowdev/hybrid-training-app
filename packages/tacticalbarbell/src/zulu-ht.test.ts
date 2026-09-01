@@ -43,11 +43,17 @@ describe("Zulu/HT — timeline", () => {
 });
 
 describe("Zulu/HT — prescribe (heavy + back-off + assistance)", () => {
-  it("week 1, session 1 = heavy Press 4×5 @75% + back-off Squat 4×10 @65% + pull-ups 3×12 @60%", () => {
+  it("week 1, session 1 = heavy Press 4×5 @75% + back-off Squat 4×10 @65% + pull-ups 3–5×12", () => {
     const p = z.prescribe(setup(), "b0-w1-s1", ctx);
     expect(itemsOfKind(p, "main")[0]).toMatchObject({ name: "Overhead Press (heavy)", sets: 4, reps: 5, weightKg: 75, percentOfTm: 0.75 });
     expect(itemsOfKind(p, "supplemental")[0]).toMatchObject({ name: "Squat (back-off)", sets: 4, reps: 10, weightKg: 130, percentOfTm: 0.65 });
-    expect(itemsOfKind(p, "assistance")[0]).toMatchObject({ name: "Pull-Ups (Assistance A)", sets: 3, reps: 12, percentOfTm: 0.6 });
+    // DC-K4: the source's 60% is a share of MAX CLEAN REPS, already spent to
+    // produce the 12 reps. Carrying it as `percentOfTm` hands the adapter a rep
+    // percentage to render as a load percentage.
+    const assist = itemsOfKind(p, "assistance")[0]!;
+    expect(assist).toMatchObject({ name: "Pull-Ups (Assistance A)", sets: 3, setsMax: 5, reps: 12 });
+    expect(assist.percentOfTm).toBeUndefined();
+    expect(assist.weightKg).toBeUndefined();
   });
 
   it("ramps the heavy and back-off barbell lifts with the global warm-up (40/60/80% × 5/5/3), but not bodyweight pull-ups", () => {

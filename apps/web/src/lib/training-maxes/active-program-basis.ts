@@ -1,11 +1,23 @@
+import { greenStrengthBasis, type GreenInstance } from "@hta/green";
+
+/**
+ * The percentage of the true 1RM the ACTIVE program loads against, for a max
+ * the lifter enters after deployment. `null` when the program family does not
+ * seed a basis, so the caller keeps its own default.
+ *
+ * Green carries no basis of its own — it delegates strength to nested engines —
+ * so it is read through the same canonical reader the alignment pass uses.
+ */
 export function activeProgramTmPercent(
   programFamily: string | null | undefined,
   instance: unknown,
 ): number | null {
-  if (
-    programFamily !== "tactical-barbell" &&
-    programFamily !== "tactical-barbell-green"
-  ) {
+  if (programFamily === "tactical-barbell-green") {
+    const basis = greenStrengthBasis(instance as GreenInstance);
+    if (basis == null) return null;
+    return basis.kind === "one-rm" ? 100 : Math.round(basis.tmPercent * 1000) / 10;
+  }
+  if (programFamily !== "tactical-barbell") {
     return null;
   }
   const value = instance as {

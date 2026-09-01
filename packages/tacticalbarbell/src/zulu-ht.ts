@@ -296,14 +296,18 @@ export const zuluHtEngine: ProgramEngine<ZuluHtInstance> = {
       });
     }
 
+    // Sourced as 3–5 sets of a rep target taken from the wave table. The
+    // percentage the source quotes is a share of MAX CLEAN REPS, already spent
+    // to produce `assistReps` — carrying it as `percentOfTm` would hand the
+    // adapter a rep percentage to render as a load percentage.
     items.push({
       kind: "assistance",
       name: `Pull-Ups (Assistance ${session.assist})`,
       movementId: "pullup",
       sets: 3,
+      setsMax: 5,
       reps: wave.assistReps,
-      percentOfTm: wave.assistPct,
-      note: `${wave.assistPct * 100}% = of max reps for bodyweight (or of 1RM if weighted). Add 2–3 optional accessories on the ${session.assist} list. 3–5 sets.`,
+      note: `Scale to about ${Math.round(wave.assistPct * 100)}% of your max clean reps. Add 2–3 accessories from the ${session.assist} list.`,
     });
 
     return { items };
