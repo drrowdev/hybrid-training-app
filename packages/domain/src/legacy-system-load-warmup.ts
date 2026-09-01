@@ -15,21 +15,30 @@
  *
  * Two different problems live in that row of numbers:
  *
- *  - Any rung the writer did NOT clamp is recoverable EXACTLY: it is the total
- *    minus bodyweight, so adding bodyweight back returns the total. No ramp, no
- *    training max, no guessing.
+ *  - A rung the writer did NOT clamp is its total minus the bodyweight of the
+ *    day it was written. Adding bodyweight back inverts it — but only if the
+ *    bodyweight on file is still that one, which the item cannot say.
  *  - A rung that landed at or under bodyweight was clamped to `0`
  *    (`addedLoadFromSystemLoad`), which erases it. `0` could have been any total
  *    up to the lifter's weight, so the number cannot be un-clamped from the item
  *    itself.
  *
- * A clamped rung is therefore rebuilt from the ramp — but only when REPLAYING
- * the writer against the ladder the app can see today reproduces this block
- * exactly, rung for rung. That replay proves the ladder, the top set and the
- * bodyweight at once, and tells us which rung each surviving slot holds, which
- * a slot count cannot: the writer collapses repeated loads and keeps the first.
- * If the replay does not match, the block is left alone rather than replanned
- * behind the lifter's back.
+ * One gate answers both: a block is recovered only when REPLAYING the writer
+ * against the ladder, top set and bodyweight the app can see today reproduces
+ * this block exactly, slot for slot. A match proves all three at once — a
+ * lifter whose bodyweight has moved since the plan was written no longer
+ * reproduces it — and tells us which ladder rung each surviving slot holds,
+ * which a slot count cannot: the writer collapses repeated loads and keeps the
+ * FIRST. The block is then restated off the ladder. No match, no change: the
+ * numbers are left as they are rather than replanned behind the lifter's back,
+ * and a rung nothing can place stays unprescribed rather than being invented.
+ *
+ * The ladder read is the lifter's configured one, as the task specifies. A
+ * clamped rung holds no information at all, so the configured ladder is the
+ * only thing that can speak for it — and it is the same ladder every other
+ * surface uses for this lift today. The top set follows the movement's own
+ * main percentage and current training max, which is how every main set in the
+ * session already renders, so the ramp cannot disagree with the set it leads to.
  *
  * Everything here is in memory. Nothing is written back, no marker is erased on
  * disk, and only load fields are touched — sets, reps, notes and metadata are
@@ -43,7 +52,13 @@ export type LegacyWarmupItem = {
   percentTm?: number | null;
   targetWeightKg?: number | null;
   systemLoad?: boolean;
+  /**
+   * The writer's cue. Engine items call it `note`; the persisted item the
+   * adapter writes calls it `notes`. Both are read so a stale "bodyweight" cue
+   * is cleared wherever it actually landed.
+   */
   note?: string | null;
+  notes?: string | null;
 };
 
 export type LegacyWarmupRepairContext = {
@@ -188,18 +203,11 @@ function recoverBlock(
   const bodyweightKg = finite(ctx.bodyweightKg);
   if (bodyweightKg == null || bodyweightKg <= 0) return recovered;
 
-  // Exact half: a rung the writer did not clamp is its total minus bodyweight.
-  const clamped: number[] = [];
-  for (const index of block.indices) {
-    const stored = finite(items[index]!.targetWeightKg)!;
-    if (stored > 0) recovered.set(index, stored + bodyweightKg);
-    else clamped.push(index);
-  }
-  if (clamped.length === 0) return recovered;
-
-  // Lossy half: a clamped rung only comes back if the writer can be REPLAYED to
-  // produce exactly this block. Replaying proves the ladder, the top set and the
-  // bodyweight together, and tells us which ladder rung each surviving slot came
+  // A block only comes back if the writer can be REPLAYED to produce exactly
+  // it. Nothing here is recoverable without that: a stored rung is its total
+  // minus the bodyweight of the day it was WRITTEN, and only a matching replay
+  // shows the bodyweight on file is still that one. Replaying also proves the
+  // ladder and the top set, and tells us which rung each surviving slot came
   // from — which a slot count cannot, because the writer collapses rungs.
   const ramp = ctx.rampFractions;
   if (!ramp || ramp.length < block.indices.length) return recovered;
@@ -218,10 +226,10 @@ function recoverBlock(
   }
 
   // The replay matched, so the ladder, the top set and the bodyweight are all
-  // confirmed and every slot's rung is known. Restate the WHOLE block off the
-  // ladder: the stored figure was floored only because bodyweight had to come
-  // out of it, and an ordinary lift's ramp is rounded at the surface against
-  // the lifter's own plates. This is the ramp the same plan would build today.
+  // confirmed and every slot's rung is known. Restate the block off the ladder:
+  // the stored figure was floored only because bodyweight had to come out of
+  // it, and an ordinary lift's ramp is rounded at the surface against the
+  // lifter's own plates. This is the ramp the same plan would build today.
   for (let slot = 0; slot < block.indices.length; slot++) {
     recovered.set(block.indices[slot]!, topWorkingKg * ramp[replay[slot]!.rungIndex]!);
   }
@@ -258,9 +266,10 @@ export function repairLegacySystemLoadWarmups<T extends LegacyWarmupItem>(
     const next: T = { ...item, targetWeightKg: kg };
     delete (next as LegacyWarmupItem).systemLoad;
     // The writer stamped "bodyweight" on a rung it had clamped to zero. It now
-    // carries a load, so the note would contradict the number next to it.
-    if (kg > 0 && item.note === "bodyweight") {
-      delete (next as LegacyWarmupItem).note;
+    // carries a load, so the cue would contradict the number next to it.
+    if (kg > 0) {
+      if (item.note === "bodyweight") delete (next as LegacyWarmupItem).note;
+      if (item.notes === "bodyweight") delete (next as LegacyWarmupItem).notes;
     }
     return next;
   });

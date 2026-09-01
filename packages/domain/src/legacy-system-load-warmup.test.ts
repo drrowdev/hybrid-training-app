@@ -63,12 +63,24 @@ describe("legacy system-load warm-ups (DC-K4)", () => {
   });
 
   it("keeps every field the lifter was asked to perform", () => {
-    const withWork: LegacyWarmupItem[] = [
-      { ...LEGACY_FORWARD_LUNGE[1]!, ...{ sets: 1, reps: 5, notes: "keep" } } as LegacyWarmupItem,
-      LEGACY_FORWARD_LUNGE[3]!,
-    ];
+    const withWork = LEGACY_FORWARD_LUNGE.map((item, index) =>
+      index === 1 ? ({ ...item, sets: 1, reps: 5, notes: "keep" } as LegacyWarmupItem) : item,
+    );
     const repaired = repairLegacySystemLoadWarmups(withWork, ctx());
-    expect(repaired[0]).toMatchObject({ sets: 1, reps: 5, notes: "keep" });
+    expect(repaired[1]).toMatchObject({ sets: 1, reps: 5, notes: "keep", targetWeightKg: 82.5 });
+  });
+
+  it("clears the stale bodyweight cue on a rung that now carries load", () => {
+    // The persisted item calls it `notes`; the engine item calls it `note`.
+    const cued = LEGACY_FORWARD_LUNGE.map((item, index) =>
+      index === 0
+        ? ({ ...item, notes: "bodyweight", note: "bodyweight" } as LegacyWarmupItem)
+        : item,
+    );
+    const repaired = repairLegacySystemLoadWarmups(cued, ctx());
+    expect(repaired[0]?.targetWeightKg).toBe(55);
+    expect(repaired[0]?.notes).toBeUndefined();
+    expect(repaired[0]?.note).toBeUndefined();
   });
 
   it("is idempotent", () => {
@@ -138,12 +150,12 @@ describe("legacy warm-up recovery fails closed", () => {
     expect(repairLegacySystemLoadWarmups(items, ctx())).toBe(items);
   });
 
-  it("recovers the exact rungs but not the clamped one when the ladder disagrees", () => {
+  it("leaves the block alone when the ladder disagrees", () => {
     const repaired = repairLegacySystemLoadWarmups(
       LEGACY_FORWARD_LUNGE,
       ctx({ rampFractions: [0.4, 0.6, 0.8] }),
     );
-    expect(repaired.slice(0, 3).map((i) => i.targetWeightKg)).toEqual([0, 82.5, 110]);
+    expect(repaired.slice(0, 3).map((i) => i.targetWeightKg)).toEqual([0, 2.5, 30]);
   });
 
   it("will not rebuild a lone clamped rung that nothing corroborates", () => {
@@ -154,21 +166,31 @@ describe("legacy warm-up recovery fails closed", () => {
     expect(repairLegacySystemLoadWarmups(items, ctx())).toBe(items);
   });
 
-  it("recovers the exact rungs when there is no training max to rebuild from", () => {
+  it("leaves the block alone when there is no training max to replay against", () => {
     const repaired = repairLegacySystemLoadWarmups(
       LEGACY_FORWARD_LUNGE,
       ctx({ trainingMaxKg: () => null }),
     );
-    expect(repaired.slice(0, 3).map((i) => i.targetWeightKg)).toEqual([0, 82.5, 110]);
+    expect(repaired).toBe(LEGACY_FORWARD_LUNGE);
   });
 
-  it("recovers the exact rungs when the main set has no percentage anchor", () => {
+  it("leaves the block alone when the main set has no percentage anchor", () => {
     const items: LegacyWarmupItem[] = [
       ...LEGACY_FORWARD_LUNGE.slice(0, 3),
       { movementId: "lunge", kind: "main" },
     ];
-    const repaired = repairLegacySystemLoadWarmups(items, ctx());
-    expect(repaired.slice(0, 3).map((i) => i.targetWeightKg)).toEqual([0, 82.5, 110]);
+    expect(repairLegacySystemLoadWarmups(items, ctx())).toBe(items);
+  });
+
+  it("will not restate a positive rung off a bodyweight that has since changed", () => {
+    // Written at 80 kg, so 2.5 meant 82.5. Adding today's 85 kg would call it
+    // 87.5 — heavier than the lifter was ever asked for. The replay no longer
+    // reproduces the block, so nothing moves.
+    const repaired = repairLegacySystemLoadWarmups(
+      LEGACY_FORWARD_LUNGE,
+      ctx({ bodyweightKg: 85 }),
+    );
+    expect(repaired).toBe(LEGACY_FORWARD_LUNGE);
   });
 
   it("rebuilds two blocks of one movement off their own anchors", () => {

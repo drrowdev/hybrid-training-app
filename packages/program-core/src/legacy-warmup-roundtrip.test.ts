@@ -124,8 +124,10 @@ describe("legacy system-load warm-ups round-trip through the real writer (DC-K4)
     const recovered = repaired
       .slice(0, warmupCount)
       .map((item) => item.targetWeightKg);
-    // Exact inversions still stand; the lost rung is not invented.
-    expect(recovered).toEqual([0, 82.5, 110]);
+    // Nothing is touched: without a replay we cannot say the bodyweight on
+    // file is still the one that was subtracted, so even the surviving rungs
+    // are left as they are rather than restated off a number we cannot prove.
+    expect(recovered).toEqual([0, 2.5, 30]);
   });
 
   it("declines when the lifter's bodyweight is no longer the one that wrote the block", () => {
@@ -137,13 +139,16 @@ describe("legacy system-load warm-ups round-trip through the real writer (DC-K4)
 
     const repaired = repairLegacySystemLoadWarmups(items, {
       isSystemLoadMovement: () => false,
-      // Bodyweight moved after the plan was written, so the replay cannot
-      // reproduce the block and the clamped rung stays unrecovered.
+      // Bodyweight moved after the plan was written. Adding today's 85 to the
+      // stored 2.5 would call that rung 87.5 when the lifter was asked for
+      // 82.5 — heavier than the truth. The replay fails, so nothing moves.
       bodyweightKg: 85,
       trainingMaxKg: () => 110,
       rampFractions: [0.5, 0.75, 1],
     });
 
-    expect(repaired.slice(0, warmupCount)[0]!.targetWeightKg).toBe(0);
+    expect(repaired.slice(0, warmupCount).map((item) => item.targetWeightKg)).toEqual([
+      0, 2.5, 30,
+    ]);
   });
 });
