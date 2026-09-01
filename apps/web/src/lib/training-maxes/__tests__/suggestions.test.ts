@@ -1,5 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { evaluateTmSuggestion, SUGGESTION_DELTA_KG, AMRAP_CONFIDENCE_REP_CAP } from "../suggestions";
+import {
+  evaluateTmSuggestion,
+  SUGGESTION_DELTA_KG,
+  AMRAP_CONFIDENCE_REP_CAP,
+  isAmrapSetForTmSuggestion,
+  pickAmrapTopSetsByMovement,
+  planTmSuggestionReconcile,
+  type AmrapSetCandidateInput,
+  type DesiredTmSuggestion,
+  type ExistingTmSuggestion,
+} from "../suggestions";
 
 describe("evaluateTmSuggestion (≥2.5 kg gate, conservative)", () => {
   it("suggests when conservative e1RM beats current TM by ≥ 2.5 kg", () => {
@@ -116,5 +126,206 @@ describe("evaluateTmSuggestion — high-rep confidence gate", () => {
       amrapRpe: 9,
     });
     expect(r).toEqual({ suggest: false, reason: "low-confidence" });
+  });
+});
+
+describe("isAmrapSetForTmSuggestion", () => {
+  it("uses prescribed.isAmrap when a snapshot exists", () => {
+    expect(
+      isAmrapSetForTmSuggestion({ notes: null, prescribed: { isAmrap: true } }),
+    ).toBe(true);
+    expect(
+      isAmrapSetForTmSuggestion({
+        notes: "amrap",
+        prescribed: { isAmrap: false },
+      }),
+    ).toBe(false);
+    expect(
+      isAmrapSetForTmSuggestion({ notes: null, prescribed: {} }),
+    ).toBe(false);
+  });
+
+  it("does not infer AMRAP from raw reps on current rows", () => {
+    expect(
+      isAmrapSetForTmSuggestion({
+        notes: null,
+        prescribed: { isAmrap: false },
+      }),
+    ).toBe(false);
+  });
+
+  it("falls back to an explicit amrap note only when there is no snapshot", () => {
+    expect(
+      isAmrapSetForTmSuggestion({ notes: "AMRAP top set", prescribed: null }),
+    ).toBe(true);
+    expect(
+      isAmrapSetForTmSuggestion({ notes: "felt strong", prescribed: null }),
+    ).toBe(false);
+  });
+});
+
+function set(over: Partial<AmrapSetCandidateInput>): AmrapSetCandidateInput {
+  return {
+    id: "set-1",
+    movementId: "mv-squat",
+    setKind: "main",
+    weightKg: 100,
+    reps: 5,
+    rpe: null,
+    notes: null,
+    skipped: false,
+    prescribed: { isAmrap: true },
+    ...over,
+  };
+}
+
+describe("pickAmrapTopSetsByMovement", () => {
+  it("keeps a 3+ AMRAP logged for 4 reps", () => {
+    const top = pickAmrapTopSetsByMovement([
+      set({ id: "amrap-3", reps: 4, prescribed: { isAmrap: true } }),
+    ]);
+    expect(top.get("mv-squat")?.id).toBe("amrap-3");
+    expect(top.get("mv-squat")?.reps).toBe(4);
+  });
+
+  it("ignores a programmed 5 that is not an AMRAP", () => {
+    const top = pickAmrapTopSetsByMovement([
+      set({ id: "fixed-5", reps: 5, prescribed: { isAmrap: false } }),
+    ]);
+    expect(top.size).toBe(0);
+  });
+
+  it("legacy rows without a snapshot need an amrap note, not just 5 reps", () => {
+    expect(
+      pickAmrapTopSetsByMovement([
+        set({ id: "legacy-5", prescribed: null, notes: null, reps: 5 }),
+      ]).size,
+    ).toBe(0);
+    expect(
+      pickAmrapTopSetsByMovement([
+        set({
+          id: "legacy-amrap",
+          prescribed: null,
+          notes: "amrap",
+          reps: 3,
+        }),
+      ]).get("mv-squat")?.id,
+    ).toBe("legacy-amrap");
+  });
+
+  it("skips skipped and warmup sets, then picks the heaviest", () => {
+    const top = pickAmrapTopSetsByMovement([
+      set({ id: "skip", skipped: true, weightKg: 140 }),
+      set({ id: "wu", setKind: "warmup", weightKg: 130 }),
+      set({ id: "light", weightKg: 100 }),
+      set({ id: "heavy", weightKg: 120 }),
+    ]);
+    expect(top.get("mv-squat")?.id).toBe("heavy");
+  });
+});
+
+function desired(
+  over: Partial<DesiredTmSuggestion> = {},
+): DesiredTmSuggestion {
+  return {
+    movementId: "mv-squat",
+    setLogId: "set-1",
+    currentTmKg: 100,
+    suggestedTmKg: 112.5,
+    source: "derived_amrap",
+    derivedFormula: "brzycki",
+    ...over,
+  };
+}
+
+function existing(
+  over: Partial<ExistingTmSuggestion> = {},
+): ExistingTmSuggestion {
+  return {
+    id: "sug-1",
+    movementId: "mv-squat",
+    derivedFromSetLogId: "set-1",
+    status: "pending",
+    currentTmKg: 100,
+    suggestedTmKg: 112.5,
+    derivedFormula: "brzycki",
+    source: "derived_amrap",
+    ...over,
+  };
+}
+
+describe("planTmSuggestionReconcile", () => {
+  it("is a no-op when the pending row already matches", () => {
+    expect(planTmSuggestionReconcile([desired()], [existing()])).toEqual({
+      deletePendingIds: [],
+      updates: [],
+      inserts: [],
+    });
+  });
+
+  it("drops a pending banner when the source set no longer qualifies", () => {
+    const plan = planTmSuggestionReconcile([], [existing()]);
+    expect(plan.deletePendingIds).toEqual(["sug-1"]);
+    expect(plan.updates).toEqual([]);
+    expect(plan.inserts).toEqual([]);
+  });
+
+  it("updates a pending row when the logged numbers change", () => {
+    const plan = planTmSuggestionReconcile(
+      [desired({ suggestedTmKg: 115 })],
+      [existing()],
+    );
+    expect(plan.updates).toHaveLength(1);
+    expect(plan.updates[0]?.suggestedTmKg).toBe(115);
+    expect(plan.deletePendingIds).toEqual([]);
+    expect(plan.inserts).toEqual([]);
+  });
+
+  it("inserts when a new set now qualifies", () => {
+    const plan = planTmSuggestionReconcile([desired()], []);
+    expect(plan.inserts).toEqual([desired()]);
+  });
+
+  it("never mutates accepted or dismissed history", () => {
+    const plan = planTmSuggestionReconcile(
+      [desired({ setLogId: "set-2", suggestedTmKg: 115 })],
+      [
+        existing({ id: "acc", status: "accepted", derivedFromSetLogId: "set-1" }),
+        existing({
+          id: "dis",
+          status: "dismissed",
+          derivedFromSetLogId: "set-old",
+          suggestedTmKg: 110,
+        }),
+      ],
+    );
+    expect(plan.deletePendingIds).toEqual([]);
+    expect(plan.updates).toEqual([]);
+    expect(plan.inserts).toHaveLength(1);
+  });
+
+  it("does not re-queue an accepted offer for the same set", () => {
+    const plan = planTmSuggestionReconcile(
+      [desired()],
+      [existing({ status: "accepted" })],
+    );
+    expect(plan.inserts).toEqual([]);
+  });
+
+  it("does not resurrect an identical dismissed offer", () => {
+    const plan = planTmSuggestionReconcile(
+      [desired()],
+      [existing({ status: "dismissed" })],
+    );
+    expect(plan.inserts).toEqual([]);
+  });
+
+  it("can create a new pending after dismiss if the numbers changed", () => {
+    const plan = planTmSuggestionReconcile(
+      [desired({ suggestedTmKg: 115 })],
+      [existing({ status: "dismissed", suggestedTmKg: 112.5 })],
+    );
+    expect(plan.inserts).toHaveLength(1);
+    expect(plan.inserts[0]?.suggestedTmKg).toBe(115);
   });
 });

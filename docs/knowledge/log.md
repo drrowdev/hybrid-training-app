@@ -1223,3 +1223,11 @@ DC-C14's regional recovery calculation now has one pure daily-load derivation fo
 Three independent correctness gaps now resolve through shared helpers. Auth completion accepts only app-relative paths and rejects absolute, protocol-relative, backslash, control-character, malformed, and repeatedly encoded redirect targets. Equipment tags for bars, rings, and tracked alternatives now preserve the actual requirement, including either/or and all-of combinations, with the complete seed tag set pinned by a catalog snapshot. Active-block features now choose the block week from the containing Monday and the user's local calendar date at an explicit instant, including mid-week legacy starts and DST edges.
 
 No migration. These changes reuse existing equipment and block fields.
+
+## [2026-09-01] fix | TM banners and auto-deload used the wrong history
+
+Three confirmed bugs, one PR.
+
+Auto-deload looked across every block and sorted only by week number. An old high-week miss could pair with this block's first miss and offer a deload too early. An old high-week hit could hide two real misses this cycle. The walk now stays in this block and uses actual session time, then created time, then week/day. A missing session is skipped, not counted as a hit. Miss math and the 10% drop are unchanged.
+
+TM banners were built only at Finish, and they guessed AMRAP from notes or "at least 5 reps". A stored 3+ set logged for 4 reps never appeared. A programmed 5 did. Editing or deleting the set after Finish left the banner up, because the database nulls the link instead of dropping the row. Finish, later edits, and deletes now share one pending-only rewrite. Accepted and declined rows stay put. Identical dismissed offers are not brought back. Heuristic thresholds are unchanged.

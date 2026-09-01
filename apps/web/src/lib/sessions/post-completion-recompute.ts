@@ -17,6 +17,9 @@
  *      (`recomputeRegionState`). An extra post-hoc working set really is extra
  *      regional load; leaving it out would let DC-V2's load-recency warning
  *      under-report.
+ *   3. Pending TM suggestions for this session — edit or delete of the
+ *      source set must drop or rewrite the banner. Accepted/declined
+ *      history stays put.
  *
  * ## Why it is gated on completion
  *
@@ -83,6 +86,18 @@ export async function recomputeAfterCompletedSessionMutation(args: {
   } catch (e) {
     console.error(
       "recomputeRegionState (post-completion mutation) failed:",
+      e,
+    );
+  }
+
+  try {
+    const { syncTmSuggestionsForSession } = await import(
+      "@/lib/training-maxes/tm-suggestion-sync"
+    );
+    await syncTmSuggestionsForSession(supabase, userId, sessionId);
+  } catch (e) {
+    console.error(
+      "syncTmSuggestionsForSession (post-completion mutation) failed:",
       e,
     );
   }
