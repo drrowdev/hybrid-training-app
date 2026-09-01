@@ -17,6 +17,7 @@ import {
   linksIncludeMainLift,
   moveStation,
   nextLinkId,
+  pruneLinksAcrossSeries,
   pruneLinksToMovements,
   pruneMovementFromLinks,
   removeLink,
@@ -467,6 +468,81 @@ describe("pruning links when lifts leave the slot", () => {
   it("preserves member order while pruning", () => {
     const ordered = [link("link-1", ["c", "a", "b"], "Tri-set")];
     expect(pruneMovementFromLinks(ordered, "a")[0]!.members).toEqual(["c", "b"]);
+  });
+});
+
+describe("pruneLinksAcrossSeries — re-keying links at a template/program switch", () => {
+  // Templates reuse `slot-1`, `slot-2`, … across series, so carrying a series
+  // key's links over unchecked risks silently reattaching them to whatever
+  // unrelated session now fills that key on the new template.
+  it("drops an entire series whose key the new template no longer has", () => {
+    const bySeries = {
+      "slot-1": [link("link-1", ["squat", "bench"], "Tri-set")],
+    };
+    expect(pruneLinksAcrossSeries(bySeries, [])).toEqual({});
+  });
+
+  it("does not leak a link across templates that reuse the same slot key", () => {
+    // Old template's slot-1 held squat+bench; new template's slot-1 holds an
+    // unrelated pair. The link must not silently reattach to the new pair.
+    const bySeries = {
+      "slot-1": [link("link-1", ["squat", "bench"], "Tri-set")],
+    };
+    const out = pruneLinksAcrossSeries(bySeries, [
+      { key: "slot-1", identities: ["deadlift", "row"] },
+    ]);
+    expect(out).toEqual({});
+  });
+
+  it("keeps a link whose series and members are unchanged", () => {
+    const bySeries = {
+      "slot-1": [link("link-1", ["squat", "bench"], "Tri-set")],
+    };
+    const out = pruneLinksAcrossSeries(bySeries, [
+      { key: "slot-1", identities: ["squat", "bench", "catalog:1"] },
+    ]);
+    expect(out).toEqual(bySeries);
+  });
+
+  it("prunes a link down to whichever members the new series still has", () => {
+    const bySeries = {
+      "slot-1": [link("link-1", ["squat", "bench", "catalog:1"], "Tri-set")],
+    };
+    const out = pruneLinksAcrossSeries(bySeries, [
+      { key: "slot-1", identities: ["squat", "bench"] },
+    ]);
+    expect(out["slot-1"]).toHaveLength(1);
+    expect(out["slot-1"]![0]!.members).toEqual(["squat", "bench"]);
+  });
+
+  it("dissolves a link left with a single member and omits the empty series", () => {
+    const bySeries = {
+      "slot-1": [link("link-1", ["squat", "bench"], "Superset")],
+    };
+    const out = pruneLinksAcrossSeries(bySeries, [
+      { key: "slot-1", identities: ["squat"] },
+    ]);
+    expect(out).toEqual({});
+  });
+
+  it("leaves an unrelated series' links untouched", () => {
+    const bySeries = {
+      "slot-1": [link("link-1", ["squat", "bench"], "Tri-set")],
+      "rehab.knee": [link("link-2", ["mobility-a", "mobility-b"])],
+    };
+    const out = pruneLinksAcrossSeries(bySeries, [
+      { key: "slot-1", identities: ["squat", "bench"] },
+      { key: "rehab.knee", identities: ["mobility-a", "mobility-b"] },
+    ]);
+    expect(out).toEqual(bySeries);
+  });
+
+  it("clears every series when switching away from TB entirely", () => {
+    const bySeries = {
+      "slot-1": [link("link-1", ["squat", "bench"], "Tri-set")],
+      "rehab.knee": [link("link-2", ["mobility-a", "mobility-b"])],
+    };
+    expect(pruneLinksAcrossSeries(bySeries, [])).toEqual({});
   });
 });
 

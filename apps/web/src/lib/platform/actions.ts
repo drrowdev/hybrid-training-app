@@ -346,6 +346,103 @@ function deriveActivationMilestoneOverrides(
   return { overrides, error: null };
 }
 
+/**
+ * Every strength-series key the current template can populate, mapped to the
+ * lifts that currently occupy it. This is the one canonical membership source
+ * used to validate a superset link — the engine's own series projection
+ * (`tbTemplateSeries` for weekly templates, `weeklySessions` for Activation)
+ * overlaid with whichever customization is present, so it runs the same way
+ * whether or not a customization blob was sent, and for Activation too, not
+ * only weekly V1 templates.
+ *
+ * This is the server-side twin of `seriesMovementSetsForTemplate` in
+ * `apps/web/src/components/program/ProgramPicker.tsx`, which the wizard uses
+ * to re-key `sessionLinks` at a template switch. They compute the same
+ * membership from two different template representations, so a future change
+ * to one's slot/series logic should be checked against the other to avoid the
+ * two silently drifting apart.
+ */
+function strengthSeriesMembership(
+  programId: string,
+  setupValues: Record<string, unknown>,
+  customization: TbCustomization | undefined,
+): Record<string, string[]> {
+  if (programId !== "tactical-barbell") return {};
+  const templateId =
+    typeof setupValues.templateId === "string" ? setupValues.templateId : undefined;
+  const tbTemplate = templateId ? getTbTemplate(templateId) : undefined;
+  if (!tbTemplate) return {};
+
+  if (tbTemplate.id === "activation") {
+    const membership: Record<string, string[]> = {};
+    for (const session of tbTemplate.weeklySessions) {
+      const phase = activationPhaseForSession(session);
+      const key = activationCustomizationKey(session);
+      if (!phase || !key) continue;
+      const canonical = (session.fixedMovements ?? []).map((m) => m.movement);
+      const config =
+        customization && isTbActivationCustomization(customization)
+          ? customization.phases[phase]?.sessions[key]
+          : undefined;
+      if (config == null) {
+        // Uncustomized (or no config for this session yet) — the template's
+        // own default is what the engine deploys.
+        membership[key] = canonical;
+      } else if (!config.enabled) {
+        membership[key] = [];
+      } else {
+        // A source movement is only gone when explicitly overridden to null;
+        // absent from the map means unchanged, matching how the wizard's own
+        // link editor decides what is still linkable (`activationLinkableMovements`).
+        membership[key] = canonical.filter(
+          (movement) => config.movementOverrides[movement] !== null,
+        );
+      }
+    }
+    return membership;
+  }
+
+  const membership: Record<string, string[]> = {};
+  const customizedSeries =
+    customization && isTbCustomizationV1(customization)
+      ? customization.sessionMovements
+      : undefined;
+  for (const series of tbTemplateSeries(tbTemplate)) {
+    const customized = customizedSeries?.[series.key];
+    // Links are keyed by SLOT, the same identity the engine realises them
+    // against — so a link survives swapping the exercise in that slot.
+    membership[series.key] = customized
+      ? customized.map((movement) => movement.sourceMovement ?? movement.movement)
+      : series.slots.map((slot) => slot.sourceMovement);
+  }
+  return membership;
+}
+// `tbTemplateSeries` (packages/tacticalbarbell) falls back to the template's
+// static `defaultCluster` for a session with no per-session `fixedMovements`
+// (Gladiator/Mass/Grey Man, and Zulu I/A too — its sessions have no
+// `fixedMovements` either), rather than the setup's actual resolved cluster.
+// For a template like Zulu I/A, whose `clusterMin`/`clusterMax` differ, the
+// wizard's own `clusterEditable` gate is true, so a lifter genuinely CAN pick
+// a cluster that diverges from `defaultCluster` — this fallback does not
+// track that pick.
+//
+// It stays safe here because the client-side counterpart, `sessionSeriesFor`
+// in ProgramPicker.tsx (which `seriesMovementSetsForTemplate` builds on), has
+// the exact same fallback: it also returns `template.defaultCluster` rather
+// than the live `cluster` state whenever a template has no `sessionSeries`.
+// Both sides are blind to the lifter's real cluster in the same way, so they
+// stay consistent with EACH OTHER — a link naming a movement outside
+// `defaultCluster` is pruned client-side at the same switch it would be
+// rejected server-side, not silently accepted by one and refused by the
+// other. This is a pre-existing property of both `tbTemplateSeries` and
+// `sessionSeriesFor` (neither introduced or changed by this fix; the slot-
+// claim check elsewhere in this file already relied on the same
+// `tbTemplateSeries` fallback), not something newly introduced here.
+// Making either side track the lifter's actually-resolved cluster is a
+// separate, larger change — it would mean threading the live cluster through
+// both `strengthSeriesMembership` and `seriesMovementSetsForTemplate` — and is
+// out of scope for this fix.
+
 function effectiveActivationMovements(
   customization: TbActivationCustomization,
   startWeekIndex = 0,
@@ -539,22 +636,23 @@ export async function createProgramInstance(
   // A link may only reference lifts the session actually contains. The engine
   // already refuses to realise a link with a missing member, but it does so
   // SILENTLY — the lifter would deploy, and the superset would simply not be
-  // there. When the wizard sends the movement list too, we can say so instead.
+  // there. `strengthSeriesMembership` is the engine's own canonical series
+  // membership (customization overlaid when present, the template's default
+  // otherwise), so this check runs regardless of whether a customization blob
+  // was sent — including canonical weekly templates and canonical Activation,
+  // which previously slipped through unchecked.
   //
   // Rehab series are validated separately below: they exist with or without a
-  // customization, so they cannot live inside this V1-only branch. Echo them
-  // back here so they pass — `findOrphanedLinkMembers` reads an unknown key as
-  // "no movements available" and would condemn every rehab link as orphaned.
-  if (sessionLinks && customization && isTbCustomizationV1(customization)) {
+  // customization, so they cannot live inside this branch. Echo them back here
+  // so they pass — `findOrphanedLinkMembers` reads an unknown key as "no
+  // movements available" and would condemn every rehab link as orphaned.
+  if (sessionLinks && programId === "tactical-barbell") {
     const orphans = findOrphanedLinkMembers(
       sessionLinks,
       Object.fromEntries([
-        ...Object.entries(customization.sessionMovements).map(([key, movements]) => [
-          key,
-          // Links are keyed by SLOT, the same identity the engine realises them
-          // against — so a link survives swapping the exercise in that slot.
-          movements.map((movement) => movement.sourceMovement ?? movement.movement),
-        ]),
+        ...Object.entries(
+          strengthSeriesMembership(programId, setupValues, customization),
+        ),
         ...Object.entries(sessionLinks.bySeries)
           .filter(([key]) => key.startsWith("rehab."))
           .map(([key, links]) => [key, links.flatMap((link) => link.members)]),
@@ -607,11 +705,13 @@ export async function createProgramInstance(
     }
   }
 
-  // Activation's strength series are not enumerable here, so the V1 check
-  // does not run for it — but its rehab protocols ARE, and a link naming a
-  // protocol that no longer exists (ids are reused as ordinals) would attach
-  // to whatever protocol later takes that id. Reject it rather than let a
-  // stale link silently adopt an unrelated protocol.
+  // Activation's rehab protocols must also be checked on their own: a weekly
+  // block's rehab validation above only runs for weekly customizations, and
+  // Activation's strength-series check (in the unconditional block above) does
+  // not cover rehab. A `rehab.*` key naming a protocol that no longer exists
+  // (ids are reused as ordinals) would attach to whatever protocol later takes
+  // that id. Reject it rather than let a stale link silently adopt an
+  // unrelated protocol.
   if (
     sessionLinks &&
     customization &&
@@ -638,8 +738,12 @@ export async function createProgramInstance(
       sessionLinks,
       Object.fromEntries([
         ...known,
-        // Strength series are unverifiable here; echo their own members back so
-        // they pass rather than being condemned as orphans.
+        // Strength series were already checked against `strengthSeriesMembership`
+        // in the unconditional block above (it enumerates Activation's phase
+        // sessions too, via `activationPhaseForSession`/`activationCustomizationKey`),
+        // so a strength key reaching this rehab-focused filter is already known
+        // sound. Echo it back rather than re-deriving it here, so this block
+        // stays about rehab only and doesn't condemn an already-valid link.
         ...Object.entries(sessionLinks.bySeries)
           .filter(([key]) => !key.startsWith("rehab."))
           .map(([key, links]) => [key, links.flatMap((link) => link.members)]),

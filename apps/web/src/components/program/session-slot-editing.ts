@@ -158,6 +158,43 @@ export type AddedRole = "accessory" | "supplemental";
 
 export { catalogMovementLoadKind as catalogSlotKind };
 
+/** A movement entry exactly as it is written to (and read back from) a `TbCustomizationV1` blob. */
+export interface PersistedSessionMovement {
+  movement: string;
+  sourceMovement?: string;
+  role?: AddedRole;
+  kind?: SlotKind;
+  doseOverride?: DoseOverride;
+}
+
+/**
+ * Turn a persisted customization's movements back into editable drafts.
+ *
+ * Copies every field the draft understands, including `doseOverride` — a row
+ * the lifter added and gave its own sets/reps must keep them when the block is
+ * reopened, not silently fall back to the template's default dose. Shared by
+ * the wizard's edit-mode hydration and by tests that chain hydration straight
+ * into `slotPayloadEntry` to prove a no-op edit/save round trip.
+ */
+export function hydrateSessionMovements(
+  sessionMovements: Readonly<Record<string, readonly PersistedSessionMovement[]>>,
+): Record<string, SeriesSlotDraft[]> {
+  return Object.fromEntries(
+    Object.entries(sessionMovements).map(([key, movements]) => [
+      key,
+      movements.map((movement) => ({
+        movement: movement.movement,
+        ...(movement.sourceMovement
+          ? { sourceMovement: movement.sourceMovement }
+          : {}),
+        ...(movement.role ? { role: movement.role } : {}),
+        ...(movement.kind ? { kind: movement.kind } : {}),
+        ...(movement.doseOverride ? { doseOverride: movement.doseOverride } : {}),
+      })),
+    ]),
+  );
+}
+
 /** What a customized session sends for one row. */
 export interface SlotPayloadEntry {
   movement: string;

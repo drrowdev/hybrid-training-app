@@ -14,6 +14,7 @@ import {
   canRemoveRows,
   collapseGroup,
   hasWholeGroup,
+  hydrateSessionMovements,
   isGroupReplaced,
   orderBySection,
   overriddenDose,
@@ -209,6 +210,52 @@ describe("slotPayloadEntry", () => {
     expect(slotPayloadEntry({ movement: "pullup" }, undefined).kind).toBe(
       "bodyweight",
     );
+  });
+});
+
+describe("hydrateSessionMovements — edit hydration and no-op save round trip", () => {
+  // A real persisted `TbCustomizationV1.sessionMovements` blob: one unswapped
+  // main lift (no role, no doseOverride) plus one row the lifter added with
+  // their own sets/reps. This is the exact shape read back from the database
+  // when a customized block is opened for editing.
+  const persisted = {
+    "day-1": [
+      { movement: "bench", sourceMovement: "bench" },
+      {
+        movement: CURL,
+        role: "accessory" as const,
+        doseOverride: { sets: 4, reps: 12 },
+      },
+    ],
+  };
+
+  it("carries doseOverride into the hydrated draft", () => {
+    const hydrated = hydrateSessionMovements(persisted);
+    expect(hydrated["day-1"]![1]).toEqual({
+      movement: CURL,
+      role: "accessory",
+      doseOverride: { sets: 4, reps: 12 },
+    });
+  });
+
+  it("round-trips doseOverride from a real customization straight to the deploy payload with no other edit", () => {
+    // The regression this guards: hydration alone can look correct while a
+    // later step (payload construction) still drops the override. Chaining
+    // the real hydrate step into the real payload step, with the row
+    // completely untouched, proves a no-op edit/save keeps the lifter's dose.
+    const hydrated = hydrateSessionMovements(persisted);
+    const addedRow = hydrated["day-1"]![1]!;
+    const entry = slotPayloadEntry(addedRow, slotOf(SLOTS, addedRow));
+    expect(entry.doseOverride).toEqual({ sets: 4, reps: 12 });
+    expect(entry.role).toBe("accessory");
+  });
+
+  it("does not invent a doseOverride for a row that never had one", () => {
+    const hydrated = hydrateSessionMovements(persisted);
+    const benchRow = hydrated["day-1"]![0]!;
+    expect(benchRow.doseOverride).toBeUndefined();
+    const entry = slotPayloadEntry(benchRow, slotOf(SLOTS, benchRow));
+    expect(entry.doseOverride).toBeUndefined();
   });
 });
 
