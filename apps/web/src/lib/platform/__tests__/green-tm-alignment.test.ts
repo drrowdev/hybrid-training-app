@@ -13,19 +13,24 @@
  */
 import { describe, it, expect } from "vitest";
 import { greenProtocolEngine, greenStrengthBasis, type GreenInstance } from "@hta/green";
+import { roundToIncrement } from "@hta/tacticalbarbell";
 import type { PlatformContext } from "@hta/program-core";
 import { resolveTargetLoadKg } from "@hta/domain";
 import { computeTmAlignment } from "../tm-alignment";
 import { activeProgramTmPercent } from "@/lib/training-maxes/active-program-basis";
+import { roundToPlate } from "@/lib/training-maxes/queries";
 
-// 143 kg does not divide cleanly by the 2.5 kg plate step, so the engine's
-// rounding order (round the TM, then take the session percentage) is visible:
-//   round(143 × 0.90) = 127.5  →  round(127.5 × 0.75) = 95
-// A single multiplication would give round(143 × 0.90 × 0.75) = 97.5. A clean
-// 100 kg fixture gives the same answer both ways and hides the defect.
+// 143 kg does not divide cleanly by the plate step, so the engine's rounding
+// order (round the Training Max, then take the session percentage) is visible.
+// At a 5 kg step and a 90% Training Max the two orders part company:
+//   engine:      round(143 × 0.90, 5) = 130  →  round(130 × 0.75, 5) = 97.5*
+//   raw seeding: round(143 × 0.90, 2.5) via the app's plate rounding = 127.5
+// (*the app rounds the TM at 2.5 kg regardless, so the divergence shows up as a
+// different seeded percentage.) A clean 100 kg fixture gives the same answer
+// either way and hides this entirely.
 const ctx: PlatformContext = {
   oneRepMaxes: { squat: 143, bench: 100, deadlift: 200, press: 70 },
-  roundingKg: 2.5,
+  roundingKg: 5,
 };
 
 function greenInstance(values: Record<string, unknown>): GreenInstance {
@@ -33,16 +38,15 @@ function greenInstance(values: Record<string, unknown>): GreenInstance {
 }
 
 /**
- * What the lifter is shown, through the app's canonical resolver: the saved max
- * scaled by the seeded `tm_percent`, then by the prescription's percentage.
+ * What the lifter is shown. Mirrors production exactly: `queries.ts` stores a
+ * plate-rounded `tmKg` from the saved max and the seeded percentage, and
+ * `resolveTargetLoadKg` then applies the prescription's percentage.
  */
 function renderedKg(oneRm: number, tmPercent: number, percentTm: number): number | null {
+  const roundKg = (kg: number) => Math.round(kg / ctx.roundingKg!) * ctx.roundingKg!;
   return resolveTargetLoadKg(
     { kind: "main", percentTm },
-    {
-      tmKg: oneRm * (tmPercent / 100),
-      roundKg: (kg) => Math.round(kg / ctx.roundingKg!) * ctx.roundingKg!,
-    },
+    { tmKg: roundToPlate((oneRm * tmPercent) / 100), roundKg },
   );
 }
 
@@ -79,24 +83,24 @@ describe("greenStrengthBasis — the basis lives on the nested engines", () => {
 describe("computeTmAlignment — Green Protocol", () => {
   it("DC-K4: seeds the nested engines' Training Max, not a fabricated 100%", () => {
     const inst = greenInstance({ useTrainingMax: true, tmPercent: 0.9 });
-    const align = computeTmAlignment("tactical-barbell-green", inst, ctx.oneRepMaxes, 2.5);
-    // squat: round(143 × 0.90) = 127.5 → 127.5/143 = 89.2%, the engine's own
+    const align = computeTmAlignment("tactical-barbell-green", inst, ctx.oneRepMaxes, ctx.roundingKg);
+    // squat: round(143 × 0.90, 5) = 130 → 130/143 = 90.9%, the engine's own
     // rounded Training Max — not the raw 90%, and nowhere near 100%.
-    expect(align.squat).toBeCloseTo(89.2, 1);
-    expect(align.bench).toBe(90); // round(100 × 0.90) = 90 → divides cleanly
-    expect(align.deadlift).toBe(90); // round(200 × 0.90) = 180
-    expect(align.press).toBeCloseTo(89.3, 1); // round(70 × 0.90) = 62.5
+    expect(align.squat).toBeCloseTo(90.9, 1);
+    expect(align.bench).toBe(90); // round(100 × 0.90, 5) = 90 → divides cleanly
+    expect(align.deadlift).toBe(90); // round(200 × 0.90, 5) = 180
+    expect(align.press).toBeCloseTo(92.9, 1); // round(70 × 0.90, 5) = 65
   });
 
   it("seeds 100% when the nested engines load off the true 1RM", () => {
     const inst = greenInstance({ useTrainingMax: false });
-    const align = computeTmAlignment("tactical-barbell-green", inst, ctx.oneRepMaxes, 2.5);
+    const align = computeTmAlignment("tactical-barbell-green", inst, ctx.oneRepMaxes, ctx.roundingKg);
     expect(align.squat).toBe(100);
   });
 
   it("DC-K4: what the engine prescribes is what the app renders", () => {
     const inst = greenInstance({ useTrainingMax: true, tmPercent: 0.9 });
-    const align = computeTmAlignment("tactical-barbell-green", inst, ctx.oneRepMaxes, 2.5);
+    const align = computeTmAlignment("tactical-barbell-green", inst, ctx.oneRepMaxes, ctx.roundingKg);
 
     // Every strength day of the instance, not just the first.
     const strengthRefs = greenProtocolEngine
@@ -125,6 +129,24 @@ describe("computeTmAlignment — Green Protocol", () => {
     expect(checkedSquat).toBeGreaterThan(0);
   });
 
+  it("DC-K4: the raw Training Max percentage would not reproduce the engine", () => {
+    // The engines round the Training Max to the plate step BEFORE taking the
+    // session percentage, so seeding the raw percentage multiplies in the other
+    // order. At a 5 kg step on a 143 kg squat that is a whole plate step apart:
+    //   engine        round(round(143 × 0.90, 5) = 130 × 0.75, 5) = 100
+    //   raw 90% seed  round(roundToPlate(143 × 0.90) = 127.5 × 0.75, 5) = 95
+    const inst = greenInstance({ useTrainingMax: true, tmPercent: 0.9 });
+    const align = computeTmAlignment(
+      "tactical-barbell-green",
+      inst,
+      ctx.oneRepMaxes,
+      ctx.roundingKg,
+    );
+    const engineKg = roundToIncrement(roundToIncrement(143 * 0.9, 5) * 0.75, 5);
+    expect(renderedKg(143, align.squat!, 75)).toBe(engineKg);
+    expect(renderedKg(143, 90, 75)).not.toBe(engineKg);
+  });
+
   it("seeds nothing when no single basis describes the instance", () => {
     const inst = greenInstance({ useTrainingMax: true, tmPercent: 0.9 });
     const keys = Object.keys(inst.strength);
@@ -135,7 +157,7 @@ describe("computeTmAlignment — Green Protocol", () => {
         [keys[0]!]: { ...inst.strength[keys[0]!], useTrainingMax: false },
       },
     } as GreenInstance;
-    expect(computeTmAlignment("tactical-barbell-green", mixed, ctx.oneRepMaxes, 2.5)).toEqual({});
+    expect(computeTmAlignment("tactical-barbell-green", mixed, ctx.oneRepMaxes, ctx.roundingKg)).toEqual({});
   });
 });
 

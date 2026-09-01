@@ -18,7 +18,9 @@
  *     or the instance's TM% when it was set up to load off a derived TM. Those
  *     engines round the derived TM to a loadable weight BEFORE taking the
  *     session percentage, so the seeded percentage is that rounded Training Max
- *     over the 1RM — seeding the raw TM% renders a plate step heavy.
+ *     over the 1RM. At the default 2.5 kg step the two orders usually agree; the
+ *     ratio is what makes them agree at any step, and it does not depend on the
+ *     app's own rounding increment matching the engine's.
  *   - Green Protocol: strength is delegated to nested TB / Zulu-HT instances, so
  *     the basis is read from those (`greenStrengthBasis`), not off the Green
  *     instance — which carries no basis of its own.

@@ -7,6 +7,11 @@ import { greenStrengthBasis, type GreenInstance } from "@hta/green";
  *
  * Green carries no basis of its own — it delegates strength to nested engines —
  * so it is read through the same canonical reader the alignment pass uses.
+ *
+ * This returns the program's declared percentage, not the per-movement rounded
+ * ratio `computeTmAlignment` seeds, because no 1RM is in hand here to round
+ * against. Both write `training_maxes.tm_percent`; they agree at the default
+ * plate step, and the deployment pass takes precedence when it next runs.
  */
 export function activeProgramTmPercent(
   programFamily: string | null | undefined,

@@ -47,16 +47,32 @@ function pullupItems(engine: ProgramEngine<never>, instance: unknown) {
 describe("Zulu/HT pull-up assistance — prescribe", () => {
   const inst: ZuluHtInstance = zuluHtEngine.setup({ values: { blocks: 1 } }, ctx);
 
-  it("DC-K4: spends the rep share against the lifter's own max clean reps", () => {
-    // 15 clean reps at the wave's 60 / 65 / 70%.
-    const reps = [1, 2, 3].map((week) => {
-      const p = zuluHtEngine.prescribe(inst, `b0-w${week}-s1`, ctx);
-      return p.items.find((it) => it.kind === "assistance")!;
-    });
-    expect(reps.map((it) => it.reps)).toEqual([9, 10, 11]);
-    for (const it of reps) {
-      expect(it.sets).toBe(3);
-      expect(it.setsMax).toBe(5);
+  it("DC-K4: keeps the source's reps whether or not a pull-up max is recorded", () => {
+    // `assistPct` ascends with the wave's other intensity columns while
+    // `assistReps` descends — no rep max reproduces 12/10/8 from 60/65/70%, so
+    // a recorded pull-up max must not silently replace the table's figure.
+    const bare: PlatformContext = {
+      ...ctx,
+      oneRepMaxes: { squat: 150, bench: 100, deadlift: 200, press: 70 },
+    };
+    const repsFor = (c: PlatformContext) =>
+      [1, 2, 3].map(
+        (week) =>
+          zuluHtEngine.prescribe(inst, `b0-w${week}-s1`, c).items.find(
+            (it) => it.kind === "assistance",
+          )!.reps,
+      );
+    expect(repsFor(ctx)).toEqual([12, 10, 8]);
+    expect(repsFor(bare)).toEqual([12, 10, 8]);
+  });
+
+  it("keeps the source's 3–5 set range", () => {
+    for (const week of [1, 2, 3]) {
+      const assist = zuluHtEngine
+        .prescribe(inst, `b0-w${week}-s1`, ctx)
+        .items.find((it) => it.kind === "assistance")!;
+      expect(assist.sets).toBe(3);
+      expect(assist.setsMax).toBe(5);
     }
   });
 
@@ -70,27 +86,12 @@ describe("Zulu/HT pull-up assistance — prescribe", () => {
     }
   });
 
-  it("says what the reps are a share of, and does not claim a weight", () => {
+  it("does not claim a weight", () => {
     const assist = zuluHtEngine
       .prescribe(inst, "b0-w1-s1", ctx)
       .items.find((it) => it.kind === "assistance")!;
-    expect(assist.note).toContain("max clean reps");
     expect(assist.note).not.toMatch(/1RM/i);
-  });
-
-  it("DC-K4: falls back to the source's own reps when no pull-up max is recorded", () => {
-    const bare: PlatformContext = {
-      ...ctx,
-      oneRepMaxes: { squat: 150, bench: 100, deadlift: 200, press: 70 },
-    };
-    const reps = [1, 2, 3].map(
-      (week) =>
-        zuluHtEngine
-          .prescribe(inst, `b0-w${week}-s1`, bare)
-          .items.find((it) => it.kind === "assistance")!,
-    );
-    expect(reps.map((it) => it.reps)).toEqual([12, 10, 8]);
-    for (const it of reps) expect(it.percentOfTm).toBeUndefined();
+    expect(assist.note).not.toMatch(/kg/i);
   });
 });
 
@@ -135,7 +136,7 @@ describe("Zulu/HT pull-up assistance — materialized", () => {
       expect(it.percentTm ?? null).toBeNull();
       expect(it.targetWeightKg ?? null).toBeNull();
     }
-    // 15 clean reps at 60 / 65 / 70% — the lifter's own anchor, not the table's.
+    // The table's own rep figures, unchanged by the lifter's pull-up entry.
     const reps = new Set(items.map((it) => it.reps));
-    expect([...reps].sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([9, 10, 11]);
+    expect([...reps].sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([8, 10, 12]);
   });});
