@@ -46,6 +46,18 @@ vi.mock("@/lib/planner/modifications", () => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      if (name === "insert_set_logs_with_bw_progress") {
+        mockState.upserts.push(
+          ...((args.p_set_logs as Array<Record<string, unknown>>) ?? []),
+        );
+        return { data: [], error: null };
+      }
+      return {
+        data: null,
+        error: { code: "PGRST202", message: "Function not found" },
+      };
+    },
     from: (table: string) => {
       const builder: Record<string, unknown> = {};
       const execute = () => {

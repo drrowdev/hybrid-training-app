@@ -398,7 +398,7 @@ GRANT EXECUTE ON FUNCTION public.create_training_season_atomically(
 ) TO authenticated;
 
 -- Keep the scalar completion RPC available for the previously deployed app.
--- The app calls this additive transition-aware variant after migration 0143;
+-- The app calls this additive transition-aware variant after migration 0144;
 -- it temporarily falls back to the scalar RPC while this migration is pending.
 -- The nullable outbox entry is the receipt for an offline completion attempt.
 -- It is retained with the completed session so a retry has a durable identity.
@@ -946,6 +946,16 @@ SECURITY INVOKER
 SET search_path = public
 AS $$
 BEGIN
+  -- Only the atomic RPCs below can set this transaction-local marker. Older
+  -- app versions write set_logs directly and retain their own legacy RMW path.
+  -- Letting both paths run would credit the same set twice.
+  IF current_setting('app.atomic_bw_progress', true) IS DISTINCT FROM 'on' THEN
+    IF TG_OP = 'DELETE' THEN
+      RETURN OLD;
+    END IF;
+    RETURN NEW;
+  END IF;
+
   IF TG_OP = 'INSERT' THEN
     PERFORM public.reconcile_bw_progress_for_set_log(
       NEW.session_id, NEW.prescription_item_index, NEW.id, NEW.reps,
@@ -986,6 +996,276 @@ CREATE TRIGGER set_logs_reconcile_bw_progress_delete_trg
   BEFORE DELETE ON public.set_logs
   FOR EACH ROW
   EXECUTE FUNCTION public.reconcile_bw_progress_from_set_log();
+
+-- New app versions insert through this boundary. The marker is local to this
+-- RPC transaction, so the reconciliation trigger cannot run for direct writes
+-- from an older app version.
+CREATE OR REPLACE FUNCTION public.insert_set_log_with_bw_progress(
+  p_set_log jsonb
+)
+RETURNS TABLE(id uuid, inserted boolean)
+LANGUAGE plpgsql
+VOLATILE
+SECURITY INVOKER
+SET search_path = public
+AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_session_id uuid := NULLIF(p_set_log->>'session_id', '')::uuid;
+  v_client_log_id uuid := NULLIF(p_set_log->>'client_log_id', '')::uuid;
+  v_set public.set_logs%ROWTYPE;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not signed in.';
+  END IF;
+  IF jsonb_typeof(p_set_log) <> 'object'
+     OR v_session_id IS NULL
+     OR NULLIF(p_set_log->>'movement_id', '') IS NULL THEN
+    RAISE EXCEPTION 'Invalid set log.';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.sessions AS session
+    WHERE session.id = v_session_id
+      AND session.user_id = v_user_id
+      AND session.deleted_at IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Session not found.';
+  END IF;
+
+  PERFORM set_config('app.atomic_bw_progress', 'on', true);
+
+  INSERT INTO public.set_logs (
+    session_id, movement_id, set_index, set_kind, weight_kg, reps,
+    duration_sec, distance_m, rpe, notes, prescription_item_index, skipped,
+    skip_reason, client_log_id, external_load_kg, target_weight_kg,
+    target_reps, prescribed
+  )
+  VALUES (
+    v_session_id,
+    (p_set_log->>'movement_id')::uuid,
+    (p_set_log->>'set_index')::smallint,
+    COALESCE(NULLIF(p_set_log->>'set_kind', ''), 'main')::set_kind,
+    (p_set_log->>'weight_kg')::numeric,
+    (p_set_log->>'reps')::smallint,
+    (p_set_log->>'duration_sec')::integer,
+    (p_set_log->>'distance_m')::integer,
+    (p_set_log->>'rpe')::numeric,
+    p_set_log->>'notes',
+    (p_set_log->>'prescription_item_index')::smallint,
+    COALESCE((p_set_log->>'skipped')::boolean, false),
+    p_set_log->>'skip_reason',
+    v_client_log_id,
+    (p_set_log->>'external_load_kg')::numeric,
+    (p_set_log->>'target_weight_kg')::numeric,
+    (p_set_log->>'target_reps')::smallint,
+    p_set_log->'prescribed'
+  )
+  ON CONFLICT (client_log_id) DO NOTHING
+  RETURNING * INTO v_set;
+
+  IF FOUND THEN
+    RETURN QUERY SELECT v_set.id, true;
+    RETURN;
+  END IF;
+
+  IF v_client_log_id IS NULL THEN
+    RAISE EXCEPTION 'Failed to create set log.';
+  END IF;
+
+  SELECT logged.*
+    INTO v_set
+    FROM public.set_logs AS logged
+    JOIN public.sessions AS session ON session.id = logged.session_id
+   WHERE logged.client_log_id = v_client_log_id
+     AND session.user_id = v_user_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Failed to resolve set log replay.';
+  END IF;
+
+  RETURN QUERY SELECT v_set.id, false;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.insert_set_logs_with_bw_progress(
+  p_set_logs jsonb
+)
+RETURNS TABLE(id uuid, inserted boolean)
+LANGUAGE plpgsql
+VOLATILE
+SECURITY INVOKER
+SET search_path = public
+AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_set_log jsonb;
+  v_family text;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not signed in.';
+  END IF;
+  IF jsonb_typeof(p_set_logs) <> 'array' THEN
+    RAISE EXCEPTION 'Invalid set logs.';
+  END IF;
+
+  -- Obtain every family lock in a stable order before row triggers run. This
+  -- avoids deadlock when two plan-fills contain the same families in a
+  -- different prescription order.
+  FOR v_family IN
+    SELECT DISTINCT NULLIF(item.value->'bw'->>'family', '')
+    FROM jsonb_array_elements(p_set_logs) AS input(value)
+    JOIN public.planned_sessions AS planned
+      ON planned.completed_session_id = NULLIF(input.value->>'session_id', '')::uuid
+     AND planned.user_id = v_user_id
+    CROSS JOIN LATERAL jsonb_array_elements(
+      COALESCE(planned.prescription->'items', '[]'::jsonb)
+    ) WITH ORDINALITY AS item(value, ordinality)
+    WHERE input.value ? 'prescription_item_index'
+      AND item.ordinality - 1 = (input.value->>'prescription_item_index')::integer
+      AND item.value ? 'bw'
+      AND NULLIF(item.value->'bw'->>'family', '') IS NOT NULL
+    ORDER BY 1
+  LOOP
+    PERFORM pg_advisory_xact_lock(
+      hashtextextended('bw-progress:' || v_user_id::text || ':' || v_family, 0)
+    );
+  END LOOP;
+
+  FOR v_set_log IN
+    SELECT value FROM jsonb_array_elements(p_set_logs)
+  LOOP
+    RETURN QUERY
+    SELECT * FROM public.insert_set_log_with_bw_progress(v_set_log);
+  END LOOP;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.update_set_log_with_bw_progress(
+  p_set_log_id uuid,
+  p_session_id uuid,
+  p_values jsonb,
+  p_require_skipped boolean DEFAULT false
+)
+RETURNS boolean
+LANGUAGE plpgsql
+VOLATILE
+SECURITY INVOKER
+SET search_path = public
+AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_updated_id uuid;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not signed in.';
+  END IF;
+  IF jsonb_typeof(p_values) <> 'object' THEN
+    RAISE EXCEPTION 'Invalid set update.';
+  END IF;
+
+  PERFORM set_config('app.atomic_bw_progress', 'on', true);
+
+  UPDATE public.set_logs AS logged
+     SET set_kind = COALESCE(
+           NULLIF(p_values->>'set_kind', '')::set_kind,
+           logged.set_kind
+         ),
+         weight_kg = CASE
+           WHEN p_values ? 'weight_kg' THEN (p_values->>'weight_kg')::numeric
+           ELSE logged.weight_kg
+         END,
+         reps = CASE
+           WHEN p_values ? 'reps' THEN (p_values->>'reps')::smallint
+           ELSE logged.reps
+         END,
+         duration_sec = CASE
+           WHEN p_values ? 'duration_sec' THEN (p_values->>'duration_sec')::integer
+           ELSE logged.duration_sec
+         END,
+         distance_m = CASE
+           WHEN p_values ? 'distance_m' THEN (p_values->>'distance_m')::integer
+           ELSE logged.distance_m
+         END,
+         rpe = CASE
+           WHEN p_values ? 'rpe' THEN (p_values->>'rpe')::numeric
+           ELSE logged.rpe
+         END,
+         notes = CASE
+           WHEN p_values ? 'notes' THEN p_values->>'notes'
+           ELSE logged.notes
+         END,
+         external_load_kg = CASE
+           WHEN p_values ? 'external_load_kg'
+             THEN (p_values->>'external_load_kg')::numeric
+           ELSE logged.external_load_kg
+         END,
+         skipped = CASE
+           WHEN p_values ? 'skipped' THEN (p_values->>'skipped')::boolean
+           ELSE logged.skipped
+         END,
+         skip_reason = CASE
+           WHEN p_values ? 'skipped'
+             THEN CASE WHEN (p_values->>'skipped')::boolean
+               THEN p_values->>'skip_reason'
+               ELSE NULL
+             END
+           ELSE logged.skip_reason
+         END
+    FROM public.sessions AS session
+   WHERE logged.id = p_set_log_id
+     AND logged.session_id = p_session_id
+     AND session.id = logged.session_id
+     AND session.user_id = v_user_id
+     AND session.deleted_at IS NULL
+     AND (NOT p_require_skipped OR logged.skipped)
+  RETURNING logged.id INTO v_updated_id;
+
+  RETURN v_updated_id IS NOT NULL;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.delete_set_log_with_bw_progress(
+  p_set_log_id uuid,
+  p_session_id uuid
+)
+RETURNS boolean
+LANGUAGE plpgsql
+VOLATILE
+SECURITY INVOKER
+SET search_path = public
+AS $$
+DECLARE
+  v_user_id uuid := auth.uid();
+  v_deleted_id uuid;
+BEGIN
+  IF v_user_id IS NULL THEN
+    RAISE EXCEPTION 'Not signed in.';
+  END IF;
+
+  PERFORM set_config('app.atomic_bw_progress', 'on', true);
+
+  DELETE FROM public.set_logs AS logged
+   USING public.sessions AS session
+   WHERE logged.id = p_set_log_id
+     AND logged.session_id = p_session_id
+     AND session.id = logged.session_id
+     AND session.user_id = v_user_id
+     AND session.deleted_at IS NULL
+  RETURNING logged.id INTO v_deleted_id;
+
+  RETURN v_deleted_id IS NOT NULL;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.insert_set_log_with_bw_progress(jsonb)
+  TO authenticated;
+GRANT EXECUTE ON FUNCTION public.insert_set_logs_with_bw_progress(jsonb)
+  TO authenticated;
+GRANT EXECUTE ON FUNCTION public.update_set_log_with_bw_progress(
+  uuid, uuid, jsonb, boolean
+) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.delete_set_log_with_bw_progress(uuid, uuid)
+  TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 

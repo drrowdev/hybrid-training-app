@@ -2,7 +2,7 @@
 
 Status: Accepted (2026-09-01)
 
-Related: migration 0143, offline logging durability
+Related: migration 0144, offline logging durability
 
 ## Context
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   backoffMs,
   classifyActionResult,
+  createOutboxEntryId,
   entriesForSession,
   formDataToPayload,
   nextSeq,
@@ -26,6 +27,14 @@ function entry(over: Partial<OutboxEntry> & { id: string }): OutboxEntry {
 describe("nextSeq", () => {
   it("is at least the wall clock when the queue is empty", () => {
     expect(nextSeq([], 1000)).toBe(1000);
+  });
+
+  describe("createOutboxEntryId", () => {
+    it("always returns an RFC 4122 v4 id for durable server receipts", () => {
+      expect(createOutboxEntryId()).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
+    });
   });
   it("is strictly greater than any existing seq", () => {
     expect(nextSeq([1000, 1005, 1002], 1000)).toBe(1006);

@@ -21,6 +21,7 @@
 import { useEffect, useRef, useState } from "react";
 import { completeSessionResult } from "@/lib/sessions/actions";
 import { enqueue as outboxEnqueue } from "@/lib/offline/outbox";
+import { createOutboxEntryId } from "@/lib/offline/outbox-core";
 import { clearResume } from "@/lib/sessions/session-resume";
 import { useSessionLoggingState } from "./SessionLoggingState";
 
@@ -135,8 +136,7 @@ export function FinishSessionBar({
     // a finished session never restores a stale cursor or rest countdown.
     clearResume(sessionId);
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      const id =
-        globalThis.crypto?.randomUUID?.() ?? `complete-${Date.now()}`;
+      const id = createOutboxEntryId();
       void outboxEnqueue({
         id,
         op: "complete",

@@ -79,7 +79,7 @@ async function replaceHyroxActuals(
   });
   if (!isMissingRpc(error)) return error?.message ?? null;
 
-  // This exists only for the app-first migration window. Once migration 0143
+  // This exists only for the app-first migration window. Once migration 0144
   // is live, the RPC above is the sole write path and is transactional.
   const { error: setDeleteError } = await supabase
     .from("set_logs")

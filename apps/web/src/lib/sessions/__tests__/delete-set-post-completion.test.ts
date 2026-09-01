@@ -12,9 +12,27 @@ const recomputeCalls: Array<Record<string, unknown>> = [];
 const revalidated: string[] = [];
 let recomputed = false;
 let deletedIds: string[] = [];
+let rpcMissing = false;
+const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      rpcCalls.push({ name, args });
+      if (rpcMissing) {
+        return {
+          data: null,
+          error: { code: "PGRST202", message: "Function not found" },
+        };
+      }
+      if (
+        name === "delete_set_log_with_bw_progress" ||
+        name === "update_set_log_with_bw_progress"
+      ) {
+        return { data: true, error: null };
+      }
+      return { data: null, error: null };
+    },
     from: (table: string) => {
       const builder: Record<string, unknown> = {};
       Object.assign(builder, {
@@ -74,6 +92,8 @@ describe("deleteSet — post-completion recompute", () => {
     revalidated.length = 0;
     deletedIds = [];
     recomputed = false;
+    rpcMissing = false;
+    rpcCalls.length = 0;
   });
 
   it("routes the delete through the shared helper", async () => {
@@ -82,7 +102,11 @@ describe("deleteSet — post-completion recompute", () => {
     fd.set("id", SET_ID);
     fd.set("sessionId", SESSION_ID);
     await deleteSet(fd);
-    expect(deletedIds).toEqual([SET_ID]);
+    expect(deletedIds).toEqual([]);
+    expect(rpcCalls).toContainEqual({
+      name: "delete_set_log_with_bw_progress",
+      args: { p_set_log_id: SET_ID, p_session_id: SESSION_ID },
+    });
     expect(recomputeCalls).toEqual([
       {
         supabase: expect.anything(),
@@ -91,6 +115,18 @@ describe("deleteSet — post-completion recompute", () => {
         emptyLogBehavior: "zero-actual",
       },
     ]);
+  });
+
+  it("uses the direct delete only while the atomic RPC is unavailable", async () => {
+    rpcMissing = true;
+    const { deleteSet } = await import("../actions");
+    const fd = new FormData();
+    fd.set("id", SET_ID);
+    fd.set("sessionId", SESSION_ID);
+
+    await deleteSet(fd);
+
+    expect(deletedIds).toEqual([SET_ID]);
   });
 
   it("revalidates Today when the session was already complete", async () => {
@@ -123,6 +159,15 @@ describe("updateStrengthSetInline — post-completion recompute", () => {
     fd.set("reps", "3");
     const res = await updateStrengthSetInline(fd);
     expect(res).toEqual({ ok: true });
+    expect(rpcCalls).toContainEqual({
+      name: "update_set_log_with_bw_progress",
+      args: {
+        p_set_log_id: SET_ID,
+        p_session_id: SESSION_ID,
+        p_values: expect.objectContaining({ reps: 3 }),
+        p_require_skipped: false,
+      },
+    });
     expect(recomputeCalls).toEqual([
       { supabase: expect.anything(), sessionId: SESSION_ID, userId: USER_ID },
     ]);

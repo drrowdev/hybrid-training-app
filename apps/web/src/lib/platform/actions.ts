@@ -1651,7 +1651,7 @@ type LegacyDeploymentResult = {
 
 /**
  * Keeps the immediately preceding app version functional during the short
- * app-first rollout before migration 0143 has installed its RPC.
+ * app-first rollout before migration 0144 has installed its RPC.
  */
 async function deployProgramInstanceLegacy(
   supabase: SupabaseClient,
@@ -1678,7 +1678,22 @@ async function deployProgramInstanceLegacy(
     .select("id")
     .single();
   if (blockError || !block) {
-    return { data: null, error: { message: blockError?.message ?? "Failed to create block" } };
+    // The active-row index is the final guard during a fully stale PostgREST
+    // cache, when neither new RPC is visible. It rejects the old
+    // insert-before-archive flow before it mutates the prior plan.
+    if (blockError?.code === "23505") {
+      return {
+        data: null,
+        error: {
+          message:
+            "Program deployment is temporarily unavailable. Reload and try again.",
+        },
+      };
+    }
+    return {
+      data: null,
+      error: { message: blockError?.message ?? "Failed to create block" },
+    };
   }
   const blockId = block.id as string;
   const priorTmPercent = new Map<string, number | string | null>();
@@ -1838,6 +1853,34 @@ async function deployProgramInstanceLegacy(
   };
 }
 
+async function deployProgramInstanceDuringMigration(
+  supabase: SupabaseClient,
+  user: User,
+  input: LegacyProgramDeployment,
+): Promise<LegacyDeploymentResult> {
+  // A stale PostgREST schema cache can temporarily hide the new deployment
+  // RPC after its active-row indexes already exist. Never run the old
+  // insert-before-archive sequence when the migration function is visible.
+  const { data: workflowsReady, error: readinessError } = await supabase.rpc(
+    "atomic_user_workflows_ready",
+  );
+  if (readinessError && !isMissingRpc(readinessError)) {
+    return { data: null, error: { message: readinessError.message } };
+  }
+  if (workflowsReady === true) {
+    return {
+      data: null,
+      error: {
+        message:
+          "Program deployment is temporarily unavailable. Reload and try again.",
+      },
+    };
+  }
+  // When a fully stale cache cannot see either function, the active-row index
+  // makes the legacy insert fail before it changes an existing program.
+  return deployProgramInstanceLegacy(supabase, user, input);
+}
+
 /**
  * Foreign per-session engine deploy (5/3/1, Tactical Barbell, Green Protocol).
  * Behaviour is byte-identical to the pre-refactor inline flow.
@@ -1956,7 +1999,7 @@ async function createForeignProgramInstance(
     },
   );
   const legacyDeployment = isMissingRpc(atomicDeployment.error)
-    ? await deployProgramInstanceLegacy(supabase, user, deploymentInput)
+    ? await deployProgramInstanceDuringMigration(supabase, user, deploymentInput)
     : null;
   const deployment = legacyDeployment?.data ?? atomicDeployment.data;
   const deploymentError = legacyDeployment?.error ?? atomicDeployment.error;
@@ -2959,7 +3002,7 @@ async function createNativeProgramInstance(
     },
   );
   const legacyDeployment = isMissingRpc(atomicDeployment.error)
-    ? await deployProgramInstanceLegacy(supabase, user, deploymentInput)
+    ? await deployProgramInstanceDuringMigration(supabase, user, deploymentInput)
     : null;
   const deployment = legacyDeployment?.data ?? atomicDeployment.data;
   const deploymentError = legacyDeployment?.error ?? atomicDeployment.error;

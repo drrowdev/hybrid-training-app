@@ -1350,3 +1350,7 @@ The UUID is stored with the first completion in the same transaction, so
 retries return a replay result without moving the completion time or repeating
 once-only work. Online completions retain no receipt. The rollback refuses to
 drop a recorded receipt.
+
+## [2026-09-01] refine | Safe bodyweight progress rollout
+
+New bodyweight progress updates use the new set-write transactions. Direct writes from an older app keep their existing single update, preventing a migrated database from crediting the same set twice. New logging, editing, deletion, and plan-fill paths use the transaction; only a database that has not received migration 0144 uses the older path.

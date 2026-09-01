@@ -24,13 +24,13 @@ BEGIN
     HAVING count(*) > 1
   ) THEN
     RAISE EXCEPTION
-      'Refusing to roll back 0143_atomic_user_workflows: visible active rows are not unique.';
+      'Refusing to roll back 0144_atomic_user_workflows: visible active rows are not unique.';
   END IF;
   IF EXISTS (
     SELECT 1 FROM public.set_logs WHERE external_load_kg IS NOT NULL
   ) THEN
     RAISE EXCEPTION
-      'Refusing to roll back 0143_atomic_user_workflows: set_logs.external_load_kg contains recorded data.';
+      'Refusing to roll back 0144_atomic_user_workflows: set_logs.external_load_kg contains recorded data.';
   END IF;
   IF EXISTS (
     SELECT 1
@@ -38,12 +38,16 @@ BEGIN
     WHERE completion_outbox_entry_id IS NOT NULL
   ) THEN
     RAISE EXCEPTION
-      'Refusing to roll back 0143_atomic_user_workflows: sessions.completion_outbox_entry_id contains recorded data.';
+      'Refusing to roll back 0144_atomic_user_workflows: sessions.completion_outbox_entry_id contains recorded data.';
   END IF;
 END $$;
 
 DROP TRIGGER IF EXISTS set_logs_reconcile_bw_progress_trg ON public.set_logs;
 DROP TRIGGER IF EXISTS set_logs_reconcile_bw_progress_delete_trg ON public.set_logs;
+DROP FUNCTION IF EXISTS public.delete_set_log_with_bw_progress(uuid, uuid);
+DROP FUNCTION IF EXISTS public.update_set_log_with_bw_progress(uuid, uuid, jsonb, boolean);
+DROP FUNCTION IF EXISTS public.insert_set_logs_with_bw_progress(jsonb);
+DROP FUNCTION IF EXISTS public.insert_set_log_with_bw_progress(jsonb);
 DROP FUNCTION IF EXISTS public.reconcile_bw_progress_from_set_log();
 DROP FUNCTION IF EXISTS public.reconcile_bw_progress_for_set_log(
   uuid, smallint, uuid, smallint, integer, numeric, numeric, boolean, integer, timestamptz, boolean, boolean

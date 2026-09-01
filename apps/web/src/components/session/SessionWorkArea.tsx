@@ -40,7 +40,11 @@ import {
   listForSession as outboxListForSession,
   removeAndCountForSession as outboxRemoveAndCountForSession,
 } from "@/lib/offline/outbox";
-import { formDataToPayload, payloadToFormData } from "@/lib/offline/outbox-core";
+import {
+  createOutboxEntryId,
+  formDataToPayload,
+  payloadToFormData,
+} from "@/lib/offline/outbox-core";
 import { startAutoFlush } from "@/lib/offline/flusher";
 import { OfflineSyncBadge } from "./OfflineSyncBadge";
 import { useSessionLoggingState } from "./SessionLoggingState";
@@ -208,9 +212,7 @@ export function SessionWorkArea({
     async (fd: FormData): Promise<AddStrengthSetResult> => {
       // Stable idempotency key: doubles as the optimistic overlay key AND the
       // server-side client_log_id, so a retried offline flush can't double-insert.
-      const clientLogId =
-        globalThis.crypto?.randomUUID?.() ??
-        `cl-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      const clientLogId = createOutboxEntryId();
       fd.set("clientLogId", clientLogId);
       const clientKey = clientLogId;
       const sid = String(fd.get("sessionId") ?? sessionId);

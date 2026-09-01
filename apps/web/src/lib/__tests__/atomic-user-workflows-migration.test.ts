@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const migration = readFileSync(
   fileURLToPath(
     new URL(
-      "../../../../../packages/db/drizzle/0143_atomic_user_workflows.sql",
+      "../../../../../packages/db/drizzle/0144_atomic_user_workflows.sql",
       import.meta.url,
     ),
   ),
@@ -14,7 +14,7 @@ const migration = readFileSync(
 const rollback = readFileSync(
   fileURLToPath(
     new URL(
-      "../../../../../packages/db/rollbacks/0143_atomic_user_workflows.down.sql",
+      "../../../../../packages/db/rollbacks/0144_atomic_user_workflows.down.sql",
       import.meta.url,
     ),
   ),
@@ -30,6 +30,10 @@ const seasonActions = readFileSync(
 );
 const sessionActions = readFileSync(
   fileURLToPath(new URL("../sessions/actions.ts", import.meta.url)),
+  "utf8",
+);
+const offlineFlusher = readFileSync(
+  fileURLToPath(new URL("../offline/flusher.ts", import.meta.url)),
   "utf8",
 );
 const sessionPage = readFileSync(
@@ -49,7 +53,7 @@ const settingsActions = readFileSync(
   "utf8",
 );
 
-describe("0143 atomic user workflows migration", () => {
+describe("0144 atomic user workflows migration", () => {
   it("keeps exactly one visible active program graph under concurrent deployments", () => {
     expect(migration).toMatch(
       /CREATE UNIQUE INDEX IF NOT EXISTS training_blocks_one_visible_active_per_user[\s\S]*WHERE status = 'active' AND deleted_at IS NULL/,
@@ -113,12 +117,24 @@ describe("0143 atomic user workflows migration", () => {
     );
   });
 
-  it("reconciles bodyweight progress from each persisted set-log mutation", () => {
+  it("reconciles only mutations from the atomic set-write RPCs", () => {
     expect(migration).toMatch(
       /reconcile_bw_progress_for_set_log[\s\S]*pg_advisory_xact_lock[\s\S]*accumulated_tut_seconds = GREATEST\([\s\S]*replace_bw_history_entry/,
     );
     expect(migration).toMatch(
-      /CREATE TRIGGER set_logs_reconcile_bw_progress_trg[\s\S]*AFTER INSERT OR UPDATE ON public\.set_logs[\s\S]*reconcile_bw_progress_from_set_log/,
+      /current_setting\('app\.atomic_bw_progress', true\) IS DISTINCT FROM 'on'[\s\S]*CREATE TRIGGER set_logs_reconcile_bw_progress_trg[\s\S]*AFTER INSERT OR UPDATE ON public\.set_logs[\s\S]*reconcile_bw_progress_from_set_log/,
+    );
+    expect(migration).toMatch(
+      /insert_set_log_with_bw_progress[\s\S]*set_config\('app\.atomic_bw_progress', 'on', true\)[\s\S]*INSERT INTO public\.set_logs/,
+    );
+    expect(migration).toMatch(
+      /update_set_log_with_bw_progress[\s\S]*set_config\('app\.atomic_bw_progress', 'on', true\)[\s\S]*UPDATE public\.set_logs/,
+    );
+    expect(migration).toMatch(
+      /delete_set_log_with_bw_progress[\s\S]*set_config\('app\.atomic_bw_progress', 'on', true\)[\s\S]*DELETE FROM public\.set_logs/,
+    );
+    expect(migration).toMatch(
+      /insert_set_logs_with_bw_progress[\s\S]*ORDER BY 1[\s\S]*insert_set_log_with_bw_progress/,
     );
     expect(migration).toContain(
       "Historical values remain NULL rather than guessed.",
@@ -141,11 +157,14 @@ describe("0143 atomic user workflows migration", () => {
   });
 
   it("has a guarded rollback for all added database objects", () => {
-    expect(rollback).toContain("Refusing to roll back 0143_atomic_user_workflows");
+    expect(rollback).toContain("Refusing to roll back 0144_atomic_user_workflows");
     expect(rollback).toContain("DROP TRIGGER IF EXISTS set_logs_reconcile_bw_progress_trg");
     expect(rollback).toContain("DROP FUNCTION IF EXISTS public.deploy_program_instance_atomically");
     expect(rollback).toContain("DROP FUNCTION IF EXISTS public.create_training_season_atomically");
     expect(rollback).toContain("DROP FUNCTION IF EXISTS public.replace_hyrox_session_actuals");
+    expect(rollback).toContain("DROP FUNCTION IF EXISTS public.insert_set_log_with_bw_progress");
+    expect(rollback).toContain("DROP FUNCTION IF EXISTS public.update_set_log_with_bw_progress");
+    expect(rollback).toContain("DROP FUNCTION IF EXISTS public.delete_set_log_with_bw_progress");
     expect(rollback).toContain("set_logs.external_load_kg contains recorded data");
     expect(rollback).toContain("DROP INDEX IF EXISTS public.training_blocks_one_visible_active_per_user");
   });
@@ -159,7 +178,10 @@ describe("0143 atomic user workflows migration", () => {
     expect(sessionActions).toContain("if (transitioned) {");
     expect(sessionActions).toContain("completionEntryId: string | null = null");
     expect(sessionActions).toContain("p_completion_entry_id: completionEntryId");
-    expect(sessionActions).toContain("atomic_user_workflows_ready");
+    expect(sessionActions).toContain("insert_set_log_with_bw_progress");
+    expect(sessionActions).toContain("insert_set_logs_with_bw_progress");
+    expect(sessionActions).toContain("update_set_log_with_bw_progress");
+    expect(sessionActions).toContain("delete_set_log_with_bw_progress");
     expect(sessionPage).toContain('"atomic_user_workflows_ready"');
     expect(sessionPage).toContain("const externalLoadBySetId");
     expect(sessionActions).not.toContain("applyBwSetSideEffects");
@@ -168,7 +190,17 @@ describe("0143 atomic user workflows migration", () => {
     expect(wellnessActions).toContain("isMissingRpc(error)");
     expect(settingsActions).toContain("isMissingRpc(error)");
     expect(platformActions).toContain("isMissingRpc(atomicDeployment.error)");
+    expect(platformActions).toMatch(
+      /deployProgramInstanceDuringMigration[\s\S]*atomic_user_workflows_ready[\s\S]*workflowsReady === true[\s\S]*temporarily unavailable/,
+    );
+    expect(
+      platformActions.match(/deployProgramInstanceDuringMigration/g),
+    ).toHaveLength(3);
+    expect(platformActions).toMatch(
+      /blockError\?\.code === "23505"[\s\S]*temporarily unavailable/,
+    );
     expect(hyroxCompletion).toContain("isMissingRpc(error)");
+    expect(offlineFlusher).toContain("entry.id,");
     expect(rollback).toContain("DROP FUNCTION IF EXISTS public.log_bodyweight_atomically");
     expect(rollback).toContain(
       "sessions.completion_outbox_entry_id contains recorded data",

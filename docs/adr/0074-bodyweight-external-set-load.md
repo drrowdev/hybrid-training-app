@@ -2,7 +2,7 @@
 
 Status: Accepted (2026-09-01)
 
-Related: bodyweight progression plan, migration 0143
+Related: bodyweight progression plan, migration 0144
 
 ## Context
 

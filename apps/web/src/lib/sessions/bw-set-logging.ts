@@ -129,7 +129,7 @@ export async function readBwSetProgress(args: {
 }
 
 /**
- * Compatibility path used only before migration 0143 is available. Once the
+ * Compatibility path used only before migration 0144 is available. Once the
  * migration is present, the set-log trigger owns this write atomically.
  */
 export async function applyLegacyBwSetSideEffects(args: {

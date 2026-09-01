@@ -46,6 +46,7 @@ import { recomputeAfterCompletedSessionMutation } from "./post-completion-recomp
 import { resolveBarWeightKg } from "./bar-kind";
 import { applyPrescriptionSwap } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
+import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 import {
   prescriptionItemsHaveStrength,
   sessionPrescribesStrength,
@@ -387,18 +388,6 @@ export async function addStrengthSet(
     submittedWeightKg: parsed.data.targetWeightKg ?? null,
     submittedReps: parsed.data.targetReps ?? null,
   });
-  const { data: readiness, error: readinessError } = await supabase.rpc(
-    "atomic_user_workflows_ready",
-  );
-  if (
-    readinessError &&
-    readinessError.code !== "PGRST202" &&
-    readinessError.code !== "42883"
-  ) {
-    return { error: readinessError.message };
-  }
-  const useAtomicBwReconciliation = readiness === true;
-
   const insertPayload = {
     session_id: parsed.data.sessionId,
     movement_id: parsed.data.movementId,
@@ -416,10 +405,9 @@ export async function addStrengthSet(
     skipped: isSkipped,
     skip_reason: isSkipped ? (parsed.data.skipReason ?? null) : null,
     client_log_id: clientLogId,
-    ...(useAtomicBwReconciliation &&
-    (snapshot.isBodyweight ||
+    ...(snapshot.isBodyweight ||
       parsed.data.externalLoadKg != null ||
-      parsed.data.loadSource != null)
+      parsed.data.loadSource != null
       ? {
           external_load_kg: isSkipped
             ? null
@@ -434,42 +422,51 @@ export async function addStrengthSet(
     prescribed: snapshot.prescribed,
   };
 
-  // Insert the row. When the client supplies a `client_log_id` (offline outbox
-  // replay), a retried flush of an already-persisted set must NOT double-insert
-  // or re-run the BW side-effects. We insert and treat a unique-violation on
-  // client_log_id (Postgres 23505) as an idempotent success, returning the
-  // existing row's id and skipping the side-effects.
-  const { data: inserted, error } = await supabase
-    .from("set_logs")
-    .insert(insertPayload)
-    // Return the persisted id so the client overlay can hold the REAL set id
-    // (for the edit link) without waiting on a full page revalidation.
-    .select("id")
-    .single();
-
+  // This RPC writes the set and its bodyweight contribution in one transaction.
+  // The direct path is retained only for app-first rollout before migration 0144.
+  const { data: atomicInserted, error: atomicError } = await supabase.rpc(
+    "insert_set_log_with_bw_progress",
+    { p_set_log: insertPayload },
+  );
+  let usedAtomicWrite = !atomicError;
   let isNewRow = true;
-  let rowId: string | undefined = inserted?.id as string | undefined;
-
-  if (error) {
-    if (clientLogId && (error as { code?: string }).code === "23505") {
-      // Duplicate replay — fetch the row already persisted under this key.
-      const { data: existing } = await supabase
-        .from("set_logs")
-        .select("id")
-        .eq("client_log_id", clientLogId)
-        .maybeSingle();
-      if (!existing) return { error: error.message };
-      rowId = existing.id as string;
-      isNewRow = false;
-    } else {
-      return { error: error.message };
+  let rowId: string | undefined;
+  if (atomicError) {
+    if (!isMissingRpc(atomicError)) return { error: atomicError.message };
+    usedAtomicWrite = false;
+    const legacyInsertPayload = { ...insertPayload };
+    delete legacyInsertPayload.external_load_kg;
+    const { data: inserted, error } = await supabase
+      .from("set_logs")
+      .insert(legacyInsertPayload)
+      .select("id")
+      .single();
+    rowId = inserted?.id as string | undefined;
+    if (error) {
+      if (clientLogId && (error as { code?: string }).code === "23505") {
+        const { data: existing } = await supabase
+          .from("set_logs")
+          .select("id")
+          .eq("client_log_id", clientLogId)
+          .maybeSingle();
+        if (!existing) return { error: error.message };
+        rowId = existing.id as string;
+        isNewRow = false;
+      } else {
+        return { error: error.message };
+      }
     }
+  } else {
+    const atomicRow = Array.isArray(atomicInserted)
+      ? (atomicInserted[0] as { id?: string; inserted?: boolean } | undefined)
+      : undefined;
+    rowId = atomicRow?.id;
+    isNewRow = atomicRow?.inserted === true;
   }
   if (!rowId) return { error: "Insert failed" };
 
-  // The set-log trigger atomically reconciles bodyweight progress in the same
-  // transaction as the insert. Read the committed total only for the optimistic
-  // client overlay; this read cannot alter progression state.
+  // The atomic RPC already reconciled this set. The pre-migration fallback
+  // retains its legacy update so the application can be deployed first.
   let bwTut: { family: string; tutAccumulated: number } | undefined;
   if (isNewRow && !isSkipped && parsed.data.prescriptionItemIndex != null) {
     const { data: planned, error: plannedError } = await supabase
@@ -488,18 +485,7 @@ export async function addStrengthSet(
         const { applyLegacyBwSetSideEffects, readBwSetProgress } = await import(
           "@/lib/sessions/bw-set-logging"
         );
-        let reconciledByTrigger = useAtomicBwReconciliation;
-        if (!reconciledByTrigger) {
-          const { data: contribution, error: contributionError } = await supabase
-            .from("bw_set_progress_contributions")
-            .select("set_log_id")
-            .eq("set_log_id", rowId)
-            .maybeSingle();
-          if (!contributionError && contribution) {
-            reconciledByTrigger = true;
-          }
-        }
-        if (reconciledByTrigger) {
+        if (usedAtomicWrite) {
           bwTut =
             (await readBwSetProgress({
               supabase,
@@ -1051,12 +1037,24 @@ export async function deleteSet(formData: FormData): Promise<void> {
     data: { user },
   } = await getAuthUser();
   if (!user) redirect("/login");
-  const { error } = await supabase
-    .from("set_logs")
-    .delete()
-    .eq("id", id)
-    .eq("session_id", sessionId);
-  if (error) throw new Error(error.message);
+  const { data: atomicDeleted, error: atomicDeleteError } = await supabase.rpc(
+    "delete_set_log_with_bw_progress",
+    { p_set_log_id: id, p_session_id: sessionId },
+  );
+  if (atomicDeleteError && !isMissingRpc(atomicDeleteError)) {
+    throw new Error(atomicDeleteError.message);
+  }
+  if (!atomicDeleteError && atomicDeleted !== true) {
+    throw new Error("Set not found.");
+  }
+  if (atomicDeleteError) {
+    const { error } = await supabase
+      .from("set_logs")
+      .delete()
+      .eq("id", id)
+      .eq("session_id", sessionId);
+    if (error) throw new Error(error.message);
+  }
   // Re-stamp planned_sessions.effective_stress_load when this session
   // is already completed. requireCompleted gates the no-op for
   // in-flight sessions.
@@ -1131,19 +1129,6 @@ export async function updateStrengthSetInline(
     data: { user },
   } = await getAuthUser();
   if (!user) return { ok: false, error: "Not signed in." };
-  const { data: readiness, error: readinessError } = await supabase.rpc(
-    "atomic_user_workflows_ready",
-  );
-  if (
-    readinessError &&
-    readinessError.code !== "PGRST202" &&
-    readinessError.code !== "42883"
-  ) {
-    return { ok: false, error: readinessError.message };
-  }
-  const useAtomicBwReconciliation = readiness === true;
-  const persistExternalLoad =
-    useAtomicBwReconciliation && parsed.data.externalLoadKg !== undefined;
   const { data: existing, error: existingError } = await supabase
     .from("set_logs")
     .select("set_kind, skipped, skip_reason, prescription_item_index")
@@ -1153,36 +1138,65 @@ export async function updateStrengthSetInline(
   if (existingError) return { ok: false, error: existingError.message };
   if (!existing) return { ok: false, error: "Set not found." };
 
-  let updateQuery = supabase
-    .from("set_logs")
-    .update({
-      set_kind: parsed.data.setKind,
-      weight_kg: parsed.data.weightKg ?? null,
-      reps: parsed.data.reps ?? null,
-      duration_sec: parsed.data.durationSec ?? null,
-      distance_m: parsed.data.distanceM ?? null,
-      rpe: parsed.data.rpe ?? null,
-      ...(persistExternalLoad
-        ? { external_load_kg: parsed.data.externalLoadKg }
-        : {}),
-      skipped: false,
-      skip_reason: null,
-    })
-    .eq("id", parsed.data.id)
-    .eq("session_id", parsed.data.sessionId);
-  if (existing.skipped) {
-    // Only one concurrent restoration may claim the skipped → performed
-    // transition and its bodyweight progression side effects.
-    updateQuery = updateQuery.eq("skipped", true);
+  const updateValues = {
+    set_kind: parsed.data.setKind,
+    weight_kg: parsed.data.weightKg ?? null,
+    reps: parsed.data.reps ?? null,
+    duration_sec: parsed.data.durationSec ?? null,
+    distance_m: parsed.data.distanceM ?? null,
+    rpe: parsed.data.rpe ?? null,
+    ...(parsed.data.externalLoadKg !== undefined
+      ? { external_load_kg: parsed.data.externalLoadKg }
+      : {}),
+    skipped: false,
+    skip_reason: null,
+  };
+  const { data: atomicUpdated, error: atomicUpdateError } = await supabase.rpc(
+    "update_set_log_with_bw_progress",
+    {
+      p_set_log_id: parsed.data.id,
+      p_session_id: parsed.data.sessionId,
+      p_values: updateValues,
+      p_require_skipped: existing.skipped,
+    },
+  );
+  const usedAtomicUpdate = !atomicUpdateError;
+  if (atomicUpdateError && !isMissingRpc(atomicUpdateError)) {
+    return { ok: false, error: atomicUpdateError.message };
   }
-  const { data, error } = await updateQuery.select("id")
-    .maybeSingle();
+  if (usedAtomicUpdate && atomicUpdated !== true) {
+    return { ok: false, error: "Set not found." };
+  }
 
-  if (error) return { ok: false, error: error.message };
-  if (!data) return { ok: false, error: "Set not found." };
+  if (!usedAtomicUpdate) {
+    let updateQuery = supabase
+      .from("set_logs")
+      .update({
+        set_kind: parsed.data.setKind,
+        weight_kg: parsed.data.weightKg ?? null,
+        reps: parsed.data.reps ?? null,
+        duration_sec: parsed.data.durationSec ?? null,
+        distance_m: parsed.data.distanceM ?? null,
+        rpe: parsed.data.rpe ?? null,
+        skipped: false,
+        skip_reason: null,
+      })
+      .eq("id", parsed.data.id)
+      .eq("session_id", parsed.data.sessionId);
+    if (existing.skipped) {
+      // Only one concurrent restoration may claim the skipped → performed
+      // transition and its bodyweight progression side effects.
+      updateQuery = updateQuery.eq("skipped", true);
+    }
+    const { data, error } = await updateQuery.select("id")
+      .maybeSingle();
+
+    if (error) return { ok: false, error: error.message };
+    if (!data) return { ok: false, error: "Set not found." };
+  }
 
   if (
-    !useAtomicBwReconciliation &&
+    !usedAtomicUpdate &&
     existing.skipped &&
     existing.prescription_item_index != null
   ) {
@@ -1304,20 +1318,48 @@ export async function editSet(formData: FormData): Promise<void> {
 
   const sessionId = String(formData.get("sessionId") ?? "");
   const supabase = await createClient();
-  const { error } = await supabase
-    .from("set_logs")
-    .update({
-      set_kind: parsed.data.setKind,
-      weight_kg: weightKgStored,
-      reps: parsed.data.reps ?? null,
-      duration_sec: parsed.data.durationSec ?? null,
-      distance_m: parsed.data.distanceM ?? null,
-      rpe: parsed.data.rpe ?? null,
-      notes: parsed.data.notes ?? null,
-    })
-    .eq("id", parsed.data.id);
-
-  if (error) throw new Error(error.message);
+  const {
+    data: { user },
+  } = await getAuthUser();
+  if (!user) redirect("/login");
+  const updateValues = {
+    set_kind: parsed.data.setKind,
+    weight_kg: weightKgStored,
+    reps: parsed.data.reps ?? null,
+    duration_sec: parsed.data.durationSec ?? null,
+    distance_m: parsed.data.distanceM ?? null,
+    rpe: parsed.data.rpe ?? null,
+    notes: parsed.data.notes ?? null,
+  };
+  const { data: atomicUpdated, error: atomicUpdateError } = await supabase.rpc(
+    "update_set_log_with_bw_progress",
+    {
+      p_set_log_id: parsed.data.id,
+      p_session_id: sessionId,
+      p_values: updateValues,
+    },
+  );
+  if (atomicUpdateError && !isMissingRpc(atomicUpdateError)) {
+    throw new Error(atomicUpdateError.message);
+  }
+  if (!atomicUpdateError && atomicUpdated !== true) {
+    throw new Error("Set not found.");
+  }
+  if (atomicUpdateError) {
+    const { error } = await supabase
+      .from("set_logs")
+      .update({
+        set_kind: parsed.data.setKind,
+        weight_kg: weightKgStored,
+        reps: parsed.data.reps ?? null,
+        duration_sec: parsed.data.durationSec ?? null,
+        distance_m: parsed.data.distanceM ?? null,
+        rpe: parsed.data.rpe ?? null,
+        notes: parsed.data.notes ?? null,
+      })
+      .eq("id", parsed.data.id);
+    if (error) throw new Error(error.message);
+  }
   // A completed session's logged rows are editable from the read-only card
   // (`ReadOnlySetList` → this route), which is exactly the flow the drawer's
   // ✎ Edit now funnels users into. Correcting a set on a FINISHED session moves
@@ -1327,19 +1369,14 @@ export async function editSet(formData: FormData): Promise<void> {
   // `requireCompleted` default.
   try {
     if (sessionId) {
-      const {
-        data: { user },
-      } = await getAuthUser();
-      if (user) {
-        const { recomputed } = await recomputeAfterCompletedSessionMutation({
-          supabase,
-          sessionId,
-          userId: user.id,
-        });
-        if (recomputed) {
-          revalidatePath("/app");
-          revalidatePath("/app/plan");
-        }
+      const { recomputed } = await recomputeAfterCompletedSessionMutation({
+        supabase,
+        sessionId,
+        userId: user.id,
+      });
+      if (recomputed) {
+        revalidatePath("/app");
+        revalidatePath("/app/plan");
       }
     }
   } catch (e) {
@@ -1983,31 +2020,55 @@ export async function fillSessionFromPlan(
     return { ok: true, inserted: 0 };
   }
 
-  const hasExternalLoad = inserts.some(
-    (insert) => insert.external_load_kg !== undefined,
+  const { error: atomicInsertError } = await supabase.rpc(
+    "insert_set_logs_with_bw_progress",
+    { p_set_logs: inserts },
   );
-  let persistExternalLoad = false;
-  if (hasExternalLoad) {
-    const { data: readiness, error: readinessError } = await supabase.rpc(
-      "atomic_user_workflows_ready",
-    );
-    if (
-      readinessError &&
-      readinessError.code !== "PGRST202" &&
-      readinessError.code !== "42883"
-    ) {
-      return { error: readinessError.message };
-    }
-    persistExternalLoad = readiness === true;
+  if (atomicInsertError && !isMissingRpc(atomicInsertError)) {
+    return { error: atomicInsertError.message };
   }
-  const upsertRows = persistExternalLoad
-    ? inserts
-    : inserts.map(({ external_load_kg: _externalLoadKg, ...insert }) => insert);
-  const { error } = await supabase.from("set_logs").upsert(upsertRows, {
-    onConflict: "client_log_id",
-    ignoreDuplicates: true,
-  });
-  if (error) return { error: error.message };
+  if (atomicInsertError) {
+    // Before migration 0144 the direct write keeps plan fill available. Insert
+    // one row at a time so only newly created rows receive the legacy BW credit.
+    const { applyLegacyBwSetSideEffects } = await import(
+      "@/lib/sessions/bw-set-logging"
+    );
+    for (const insert of inserts) {
+      const legacyInsert = { ...insert };
+      delete legacyInsert.external_load_kg;
+      const { data: inserted, error } = await supabase
+        .from("set_logs")
+        .insert(legacyInsert)
+        .select("id")
+        .single();
+      if (error) {
+        if (
+          legacyInsert.client_log_id &&
+          (error as { code?: string }).code === "23505"
+        ) {
+          continue;
+        }
+        return { error: error.message };
+      }
+      if (!inserted || legacyInsert.prescription_item_index == null) continue;
+      const item = items[legacyInsert.prescription_item_index];
+      if (!item?.bw) continue;
+      const progress = await applyLegacyBwSetSideEffects({
+        supabase,
+        userId: user.id,
+        bw: item.bw,
+        actualReps: legacyInsert.reps ?? null,
+        actualSeconds: legacyInsert.duration_sec ?? null,
+        rir: 2,
+        cleanForm: true,
+        setDateIso: new Date().toISOString(),
+        skipped: false,
+        externalLoadKg: null,
+        throwOnError: true,
+      });
+      if (!progress) return { error: "Couldn't save bodyweight progression." };
+    }
+  }
 
   try {
     const { recomputed } = await recomputeAfterCompletedSessionMutation({
