@@ -1598,7 +1598,7 @@ export async function completeSessionResult(
   // The transition RPC owns the completion receipt and lifecycle transition in
   // one RLS-protected transaction. The legacy call is only for the app-first
   // migration window, when the new function has not reached the database yet.
-  const transition = await supabase.rpc(
+  const { data, error } = await supabase.rpc(
     "complete_training_session_with_transition",
     {
       p_session_id: sessionId,
@@ -1608,24 +1608,26 @@ export async function completeSessionResult(
   );
   let userId: string | null = null;
   let transitioned = false;
-  if (transition.error) {
-    const code = (transition.error as { code?: string }).code;
-    if (code !== "PGRST202" && code !== "42883") {
-      return { error: transition.error.message, errorCode: "transient" };
+  if (error) {
+    if (error.code === "PGRST202" || error.code === "42883") {
+      const legacy = await supabase.rpc("complete_training_session", {
+        p_session_id: sessionId,
+        p_notes: notes ?? null,
+      });
+      if (legacy.error) {
+        return { error: legacy.error.message, errorCode: "transient" };
+      }
+      userId = typeof legacy.data === "string" ? legacy.data : null;
+      transitioned = userId != null;
+    } else {
+      return { error: error.message, errorCode: "transient" };
     }
-    const legacy = await supabase.rpc("complete_training_session", {
-      p_session_id: sessionId,
-      p_notes: notes ?? null,
-    });
-    if (legacy.error) {
-      return { error: legacy.error.message, errorCode: "transient" };
-    }
-    userId = typeof legacy.data === "string" ? legacy.data : null;
-    transitioned = userId != null;
   } else {
-    const row = (
-      Array.isArray(transition.data) ? transition.data[0] : null
-    ) as { user_id?: string; transitioned?: boolean } | null;
+    const completion = Array.isArray(data) ? data[0] : null;
+    const row = completion as {
+      user_id?: string;
+      transitioned?: boolean;
+    } | null;
     userId = row?.user_id ?? null;
     transitioned = row?.transitioned === true;
   }
@@ -1649,7 +1651,7 @@ export async function completeSessionResult(
       .eq("id", userId)
       .maybeSingle()
       .then(({ data }) => data?.timezone ?? "UTC");
-    await Promise.all([
+    const deferredWork = [
       recomputeAfterCompletedSessionMutation({
         supabase,
         sessionId,
@@ -1685,30 +1687,31 @@ export async function completeSessionResult(
       })().catch((e) => {
         console.error("generateTmSuggestionsForSession failed:", e);
       }),
-      ...(transitioned
-        ? [
-            (async () => {
-              const timezone = await timezonePromise;
-              const { applyBwSessionCompletionSideEffects } = await import(
-                "@/lib/sessions/bw-set-logging"
-              );
-              await applyBwSessionCompletionSideEffects({
-                supabase,
-                userId,
-                sessionId,
-                timezone,
-              });
-              const { captureBwDiagnosticsSnapshot } = await import(
-                "@/lib/planner/bw-diagnostics-snapshot"
-              );
-              await captureBwDiagnosticsSnapshot({ supabase, userId });
-              revalidatePath("/app/settings/bodyweight-progression");
-            })().catch((e) => {
-              console.error("BW completion side-effects failed:", e);
-            }),
-          ]
-        : []),
-    ]);
+    ];
+    if (transitioned) {
+      deferredWork.push(
+        (async () => {
+          const timezone = await timezonePromise;
+          const { applyBwSessionCompletionSideEffects } = await import(
+            "@/lib/sessions/bw-set-logging"
+          );
+          await applyBwSessionCompletionSideEffects({
+            supabase,
+            userId,
+            sessionId,
+            timezone,
+          });
+          const { captureBwDiagnosticsSnapshot } = await import(
+            "@/lib/planner/bw-diagnostics-snapshot"
+          );
+          await captureBwDiagnosticsSnapshot({ supabase, userId });
+          revalidatePath("/app/settings/bodyweight-progression");
+        })().catch((e) => {
+          console.error("BW completion side-effects failed:", e);
+        }),
+      );
+    }
+    await Promise.all(deferredWork);
     revalidatePath("/app");
     revalidatePath("/app/stats");
   });

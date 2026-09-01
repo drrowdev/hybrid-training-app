@@ -273,7 +273,7 @@ export function SessionWorkArea({
 
      const result: AddStrengthSetResult = durable.result ?? {
        error:
-         durable.error?.message ??
+         (durable.status === "failed" ? durable.error?.message : undefined) ??
          "Couldn't save this set. Check your connection and retry.",
        errorCode: "transient",
      };

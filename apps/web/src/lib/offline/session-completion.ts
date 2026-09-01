@@ -1,13 +1,12 @@
-import { createClientId } from "./client-id";
 import { enqueue, type EnqueueInput, type EnqueueResult } from "./outbox";
 import {
   runDurableAction,
   type DurableActionResult,
 } from "./durable-action";
-import type { ActionResult } from "./outbox-core";
+import { createOutboxEntryId, type ActionResult } from "./outbox-core";
 
 export function sessionCompletionInput(sessionId: string): EnqueueInput {
-  const completionEntryId = createClientId();
+  const completionEntryId = createOutboxEntryId();
   return {
     id: completionEntryId,
     op: "complete",
