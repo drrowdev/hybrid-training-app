@@ -419,17 +419,29 @@ function strengthSeriesMembership(
 }
 // `tbTemplateSeries` (packages/tacticalbarbell) falls back to the template's
 // static `defaultCluster` for a session with no per-session `fixedMovements`
-// (Gladiator/Mass/Grey Man), rather than the setup's resolved cluster. Every
-// template in that position also has `clusterMin === clusterMax`, and the
-// wizard's own `clusterEditable` gate (`!fixedLoadout && clusterMin !==
-// clusterMax`) is false whenever that holds — so today there is no UI path
-// that lets a lifter's actual cluster diverge from `defaultCluster` for these
-// templates, and this fallback is accurate in practice. It is a pre-existing
-// property of `tbTemplateSeries` (already relied on by the slot-claim check
-// elsewhere in this file), not something this fix introduces; a template that
-// someday allows free-form cluster selection without per-session
-// `fixedMovements` would need `tbTemplateSeries` (or this function) to resolve
-// the setup's actual cluster instead.
+// (Gladiator/Mass/Grey Man, and Zulu I/A too — its sessions have no
+// `fixedMovements` either), rather than the setup's actual resolved cluster.
+// For a template like Zulu I/A, whose `clusterMin`/`clusterMax` differ, the
+// wizard's own `clusterEditable` gate is true, so a lifter genuinely CAN pick
+// a cluster that diverges from `defaultCluster` — this fallback does not
+// track that pick.
+//
+// It stays safe here because the client-side counterpart, `sessionSeriesFor`
+// in ProgramPicker.tsx (which `seriesMovementSetsForTemplate` builds on), has
+// the exact same fallback: it also returns `template.defaultCluster` rather
+// than the live `cluster` state whenever a template has no `sessionSeries`.
+// Both sides are blind to the lifter's real cluster in the same way, so they
+// stay consistent with EACH OTHER — a link naming a movement outside
+// `defaultCluster` is pruned client-side at the same switch it would be
+// rejected server-side, not silently accepted by one and refused by the
+// other. This is a pre-existing property of both `tbTemplateSeries` and
+// `sessionSeriesFor` (neither introduced or changed by this fix; the slot-
+// claim check elsewhere in this file already relied on the same
+// `tbTemplateSeries` fallback), not something newly introduced here.
+// Making either side track the lifter's actually-resolved cluster is a
+// separate, larger change — it would mean threading the live cluster through
+// both `strengthSeriesMembership` and `seriesMovementSetsForTemplate` — and is
+// out of scope for this fix.
 
 function effectiveActivationMovements(
   customization: TbActivationCustomization,
