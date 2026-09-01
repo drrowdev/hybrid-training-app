@@ -14,6 +14,8 @@ stored request must not turn a completed session into a new completion event.
 `sessions.completion_outbox_entry_id` stores the nullable UUID of the offline
 outbox entry that first completes a session. The authenticated completion RPC
 accepts that UUID and writes it in the same transaction as `completed_at`.
+Older queued entries may use a non-UUID identifier. They still complete, but
+their identifier is passed as `NULL` and is not stored as a receipt.
 
 The field is top-level because it is a durable receipt for a user action that
 arrives from outside the completion engine. It is not derived state, and it

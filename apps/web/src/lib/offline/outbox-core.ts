@@ -10,15 +10,16 @@
  *
  * Idempotency: `set` / `cardio` entries use the server-side `client_log_id`
  * (migration 0097) as their `id`, so a retried flush is a no-op insert. A
- * `complete` entry has its own durable UUID, which the completion boundary
- * stores as its receipt on the first successful transition.
+ * New `complete` entries have their own durable UUID, which the completion
+ * boundary stores as its receipt on the first successful transition. Older
+ * non-UUID completion entries remain replayable without a stored receipt.
  */
 
 export type OutboxOp = "set" | "cardio" | "complete";
 
 export type OutboxEntry = {
-  /** Primary key. For set/cardio this is the `client_log_id` (uuid); for
-   * complete it's a generated uuid. */
+  /** Primary key. For set/cardio this is the `client_log_id` (uuid); new
+   * complete entries use a generated uuid, while older entries may not. */
   id: string;
   op: OutboxOp;
   sessionId: string;

@@ -1520,12 +1520,10 @@ export async function completeSessionResult(
 ): Promise<{ ok?: true; error?: string }> {
   const idCheck = z.string().uuid().safeParse(sessionId);
   if (!idCheck.success) return { error: "Invalid session id" };
-  if (
-    completionEntryId != null &&
-    !z.string().uuid().safeParse(completionEntryId).success
-  ) {
-    return { error: "Invalid completion entry id" };
-  }
+  const completionReceipt =
+    completionEntryId != null && z.string().uuid().safeParse(completionEntryId).success
+      ? completionEntryId
+      : null;
 
   const supabase = await createClient();
   // The RLS-protected RPC validates ownership, derives session RPE and duration,
@@ -1536,7 +1534,7 @@ export async function completeSessionResult(
     {
       p_session_id: sessionId,
       p_notes: notes ?? null,
-      p_completion_entry_id: completionEntryId,
+      p_completion_entry_id: completionReceipt,
     },
   );
   let completion: { user_id: string; transitioned: boolean } | null = null;

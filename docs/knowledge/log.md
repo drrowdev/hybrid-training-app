@@ -1354,3 +1354,9 @@ drop a recorded receipt.
 ## [2026-09-01] refine | Safe bodyweight progress rollout
 
 New bodyweight progress updates use the new set-write transactions. Direct writes from an older app keep their existing single update, preventing a migrated database from crediting the same set twice. New logging, editing, deletion, and plan-fill paths use the transaction; only a database that has not received migration 0144 uses the older path.
+
+## [2026-09-01] refine | Preserve queued completion upgrades
+
+Legacy offline completion entries can have non-UUID identifiers. Completion
+normalizes those identifiers to no receipt so the queued session still
+completes, while valid UUID identifiers retain durable replay protection.

@@ -7,6 +7,8 @@ const { after, state } = vi.hoisted(() => ({
     transitionRpcMissing: false,
     rpcCalls: [] as string[],
     transitionRpcArgs: null as Record<string, unknown> | null,
+    afterTasks: [] as Promise<void>[],
+    bwSideEffects: vi.fn(),
   },
 }));
 
@@ -37,6 +39,15 @@ vi.mock("@/lib/supabase/server", () => ({
         error: null,
       };
     },
+    from: (table: string) => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: table === "profiles" ? { timezone: "UTC" } : null,
+          }),
+        }),
+      }),
+    }),
   }),
   getAuthUser: async () => ({
     data: { user: { id: "00000000-0000-4000-8000-000000000001" } },
@@ -46,6 +57,18 @@ vi.mock("@/lib/supabase/server", () => ({
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/server", () => ({ after }));
+vi.mock("@/lib/sessions/post-completion-recompute", () => ({
+  recomputeAfterCompletedSessionMutation: async () => ({ recomputed: false }),
+}));
+vi.mock("@/lib/sessions/bw-set-logging", () => ({
+  applyBwSessionCompletionSideEffects: state.bwSideEffects,
+}));
+vi.mock("@/lib/planner/bw-diagnostics-snapshot", () => ({
+  captureBwDiagnosticsSnapshot: async () => undefined,
+}));
+vi.mock("@/lib/training-maxes/actions", () => ({
+  generateTmSuggestionsForSession: async () => undefined,
+}));
 
 import { completeSessionResult } from "../actions";
 
@@ -56,6 +79,11 @@ describe("completeSessionResult replay", () => {
     state.rpcCalls.length = 0;
     state.transitionRpcArgs = null;
     after.mockReset();
+    state.afterTasks.length = 0;
+    state.bwSideEffects.mockReset();
+    after.mockImplementation((task: () => Promise<void>) => {
+      state.afterTasks.push(task());
+    });
   });
 
   it("schedules replay-safe reconciliation when the completion RPC reports a replay", async () => {
@@ -103,15 +131,36 @@ describe("completeSessionResult replay", () => {
     });
   });
 
-  it("rejects an invalid durable completion entry before calling the database", async () => {
-    await expect(
-      completeSessionResult(
-        "00000000-0000-4000-8000-000000000010",
-        null,
-        "not-a-uuid",
-      ),
-    ).resolves.toEqual({ error: "Invalid completion entry id" });
+  it("completes legacy offline entries without storing an unusable receipt", async () => {
+    const sessionId = "00000000-0000-4000-8000-000000000010";
 
-    expect(state.rpcCalls).toEqual([]);
+    await expect(
+      completeSessionResult(sessionId, null, "complete-1712345678901"),
+    ).resolves.toEqual({ ok: true });
+
+    expect(state.transitionRpcArgs).toEqual({
+      p_session_id: sessionId,
+      p_notes: null,
+      p_completion_entry_id: null,
+    });
+  });
+
+  it("runs bodyweight completion side effects once when a legacy entry is retried", async () => {
+    const sessionId = "00000000-0000-4000-8000-000000000010";
+    const legacyEntryId = "complete-1712345678901";
+    state.transitioned = true;
+
+    await expect(completeSessionResult(sessionId, null, legacyEntryId)).resolves.toEqual({
+      ok: true,
+    });
+    await Promise.all(state.afterTasks);
+
+    state.transitioned = false;
+    await expect(completeSessionResult(sessionId, null, legacyEntryId)).resolves.toEqual({
+      ok: true,
+    });
+    await Promise.all(state.afterTasks);
+
+    expect(state.bwSideEffects).toHaveBeenCalledTimes(1);
   });
 });

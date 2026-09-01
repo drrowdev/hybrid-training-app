@@ -177,7 +177,7 @@ describe("0144 atomic user workflows migration", () => {
     expect(sessionActions).toContain('error.code === "PGRST202"');
     expect(sessionActions).toContain("if (transitioned) {");
     expect(sessionActions).toContain("completionEntryId: string | null = null");
-    expect(sessionActions).toContain("p_completion_entry_id: completionEntryId");
+    expect(sessionActions).toContain("p_completion_entry_id: completionReceipt");
     expect(sessionActions).toContain("insert_set_log_with_bw_progress");
     expect(sessionActions).toContain("insert_set_logs_with_bw_progress");
     expect(sessionActions).toContain("update_set_log_with_bw_progress");
