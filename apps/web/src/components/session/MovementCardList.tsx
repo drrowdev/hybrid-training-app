@@ -302,7 +302,10 @@ export function MovementCardList({
         }
         if (removedIds.has(r.movement.id)) continue;
         seen.add(r.movement.id);
-        out.push({ movement: r.movement, loggedSetCount: r.loggedSetCount });
+        out.push({
+          movement: r.movement,
+          loggedSetCount: setsCount.get(r.movement.id) ?? r.loggedSetCount,
+        });
       }
     } else {
       for (const m of freestyleMovements) {
@@ -310,6 +313,15 @@ export function MovementCardList({
         seen.add(m.id);
         out.push({ movement: m, loggedSetCount: setsCount.get(m.id) ?? 0 });
       }
+    }
+
+    // A queued freestyle set can exist before the server has projected its
+    // movement into `resolvedFreestyle`; include it from the merged set overlay.
+    for (const m of freestyleMovements) {
+      if (seen.has(m.id)) continue;
+      if (removedIds.has(m.id)) continue;
+      seen.add(m.id);
+      out.push({ movement: m, loggedSetCount: setsCount.get(m.id) ?? 0 });
     }
 
     for (const m of pendingFreestyle) {

@@ -18,26 +18,41 @@ import {
   addStrengthSet,
   addCardioBlock,
   completeSessionResult,
+  logCardioSession,
 } from "@/lib/sessions/actions";
 import {
+  claimEntry,
+  deadLetter,
   listPending,
   recordAttempt,
   remove,
+  releaseEntry,
   outboxAvailable,
 } from "./outbox";
 import {
   classifyActionResult,
+  isUuid,
   payloadToFormData,
+  type ActionResult,
   type OutboxEntry,
 } from "./outbox-core";
 
-export type FlushResult = { flushed: number; remaining: number; dropped: number };
+export type FlushResult = {
+  flushed: number;
+  remaining: number;
+  dropped: number;
+  completed: number;
+  completedSessionIds: string[];
+};
 
 let flushing = false;
 
 async function runEntry(
   entry: OutboxEntry,
-): Promise<{ result?: { ok?: true; error?: string }; threw: boolean }> {
+): Promise<{
+  result?: ActionResult;
+  threw: boolean;
+}> {
   try {
     if (entry.op === "set") {
       const result = await addStrengthSet(payloadToFormData(entry.payload));
@@ -47,11 +62,15 @@ async function runEntry(
       const result = await addCardioBlock(payloadToFormData(entry.payload));
       return { result, threw: false };
     }
+    if (entry.op === "cardio_session") {
+      const result = await logCardioSession(payloadToFormData(entry.payload));
+      return { result, threw: false };
+    }
     // complete — redirect-free core; payload carries sessionId + optional notes.
     const result = await completeSessionResult(
       entry.payload.sessionId ?? entry.sessionId,
       entry.payload.notes ?? null,
-      entry.id,
+      isUuid(entry.id) ? entry.id : null,
     );
     return { result, threw: false };
   } catch {
@@ -66,35 +85,71 @@ async function runEntry(
 export async function flushOutbox(): Promise<FlushResult> {
   if (!outboxAvailable() || flushing) {
     const remaining = outboxAvailable() ? (await listPending()).length : 0;
-    return { flushed: 0, remaining, dropped: 0 };
+    return {
+      flushed: 0,
+      remaining,
+      dropped: 0,
+      completed: 0,
+      completedSessionIds: [],
+    };
   }
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
-    return { flushed: 0, remaining: (await listPending()).length, dropped: 0 };
+    return {
+      flushed: 0,
+      remaining: (await listPending()).length,
+      dropped: 0,
+      completed: 0,
+      completedSessionIds: [],
+    };
   }
 
   flushing = true;
   let flushed = 0;
   let dropped = 0;
+  let completed = 0;
+  const completedSessionIds: string[] = [];
   try {
     const pending = await listPending(); // FIFO
     for (const entry of pending) {
-      const { result, threw } = await runEntry(entry);
-      const outcome = classifyActionResult(result, threw);
-      if (outcome === "done") {
-        await remove(entry.id);
-        flushed += 1;
-      } else if (outcome === "drop") {
-        // Permanent validation rejection — discard so it can't wedge the queue.
-        await remove(entry.id);
-        dropped += 1;
-      } else {
-        // Transient (offline / network). Record + STOP to preserve FIFO order.
-        await recordAttempt(entry.id, result?.error ?? "network");
-        break;
+      const leaseToken = await claimEntry(entry.id);
+      // An active lease means another tab is sending this head. Do not overtake
+      // it or FIFO ordering can be broken across tabs.
+      if (!leaseToken) break;
+      try {
+        const { result, threw } = await runEntry(entry);
+        const outcome = classifyActionResult(result, threw);
+        if (outcome === "done") {
+          await remove(entry.id);
+          flushed += 1;
+          if (entry.op === "complete") {
+            completed += 1;
+            completedSessionIds.push(entry.sessionId);
+          }
+        } else if (outcome === "drop") {
+          // Explicit validation rejection — discard so it can't wedge the queue.
+          await remove(entry.id);
+          dropped += 1;
+        } else if (outcome === "dead_letter") {
+          // Ownership/not-found failures cannot recover by retrying. Keep the
+          // row inspectable but skip it so later sessions still make progress.
+          await deadLetter(entry.id, result?.error ?? "permanent failure");
+          dropped += 1;
+        } else {
+          // Transient (offline / network). Record + STOP to preserve FIFO order
+          // unless this row has exhausted its bounded retry budget.
+          const attempt = await recordAttempt(
+            entry.id,
+            result?.error ?? "network",
+          );
+          if (attempt.deadLettered) dropped += 1;
+          else break;
+        }
+      } finally {
+        await releaseEntry(entry.id, leaseToken);
       }
     }
     const remaining = (await listPending()).length;
-    return { flushed, remaining, dropped };
+    return { flushed, remaining, dropped, completed, completedSessionIds };
   } finally {
     flushing = false;
   }

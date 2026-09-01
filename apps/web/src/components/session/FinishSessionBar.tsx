@@ -20,9 +20,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { completeSessionResult } from "@/lib/sessions/actions";
-import { enqueue as outboxEnqueue } from "@/lib/offline/outbox";
-import { createOutboxEntryId } from "@/lib/offline/outbox-core";
+import {
+  enqueueSessionCompletion,
+  runSessionCompletion,
+} from "@/lib/offline/session-completion";
 import { clearResume } from "@/lib/sessions/session-resume";
+import { listForSession as listOutboxForSession } from "@/lib/offline/outbox";
 import { useSessionLoggingState } from "./SessionLoggingState";
 
 /**
@@ -98,6 +101,7 @@ export function FinishSessionBar({
   testId?: string;
 }) {
   const loggingState = useSessionLoggingState();
+  const completionQueued = loggingState?.completionQueued === true;
   const remainingRehabSets = loggingState?.remainingRehabSets ?? 0;
   const rehabBlocked = remainingRehabSets > 0;
   const effectiveDisabled =
@@ -124,45 +128,111 @@ export function FinishSessionBar({
   // Finish-while-offline: completeSession is heavy server work that redirects to
   // the summary, so it can't run offline. When the network is down we instead
   // enqueue a durable `complete` op (after the queued sets) and confirm in place;
-  // the outbox flusher on the session page replays it on reconnect. The ONLINE
-  // path is untouched — the native form action redirects as before.
+  // the outbox flusher on the session page replays it on reconnect.
   const [savedOffline, setSavedOffline] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
+  const completionStored = savedOffline || completionQueued;
+  const registerCompletionQueued = loggingState?.registerCompletionQueued;
+  const queueCompletion = async () => {
+    let pendingEntries;
+    try {
+      pendingEntries = await listOutboxForSession(sessionId);
+    } catch (error) {
+      setFinishError(
+        error instanceof Error
+          ? error.message
+          : "Couldn't check queued session logs. Try again.",
+      );
+      return;
+    }
+    if (pendingEntries.some((entry) => entry.op === "complete")) {
+      setSavedOffline(true);
+      registerCompletionQueued?.(true);
+      return;
+    }
+    const enqueueResult = await enqueueSessionCompletion(sessionId);
+    if (enqueueResult.status === "stored") {
+      setSavedOffline(true);
+      registerCompletionQueued?.(true);
+    } else {
+      setFinishError(
+        enqueueResult.status === "failed"
+          ? enqueueResult.error.message
+          : "Couldn't save the completion on this device. Check your connection and retry.",
+      );
+    }
+  };
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (effectiveDisabled) return;
-    // The session is over either way — drop the resume snapshot so reopening
-    // a finished session never restores a stale cursor or rest countdown.
-    clearResume(sessionId);
+    if (completionQueued) return;
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      const id = createOutboxEntryId();
-      void outboxEnqueue({
-        id,
-        op: "complete",
-        sessionId,
-        payload: { sessionId },
-      }).catch(() => null);
-      setSavedOffline(true);
+      if (finishing) return;
+      setFinishing(true);
+      setFinishError(null);
+      await queueCompletion();
+      setFinishing(false);
       return;
     }
     if (finishing) return;
     setFinishing(true);
     setFinishError(null);
+    let pendingEntries;
     try {
-      const result = await completeSessionResult(sessionId, null);
-      if (result.error) {
-        if (result.error === "not-signed-in") {
-          window.location.assign("/login");
-          return;
-        }
-        setFinishError(result.error);
+      pendingEntries = await listOutboxForSession(sessionId);
+    } catch (error) {
+      setFinishError(
+        error instanceof Error
+          ? error.message
+          : "Couldn't check queued session logs. Try again.",
+      );
+      setFinishing(false);
+      return;
+    }
+    const hasQueuedCompletion = pendingEntries.some(
+      (entry) => entry.op === "complete",
+    );
+    const hasQueuedWork = pendingEntries.some((entry) => entry.op !== "complete");
+    if (hasQueuedCompletion || hasQueuedWork) {
+      if (hasQueuedCompletion) {
+        setSavedOffline(true);
+        registerCompletionQueued?.(true);
+      } else {
+        await queueCompletion();
+      }
+      setFinishing(false);
+      return;
+    }
+    try {
+      const durable = await runSessionCompletion(
+        sessionId,
+        (completionEntryId) =>
+          completeSessionResult(sessionId, null, completionEntryId),
+      );
+      if (durable.status === "queued") {
+        setSavedOffline(true);
+        registerCompletionQueued?.(true);
         setFinishing(false);
         return;
       }
+      if (durable.status === "failed") {
+        setFinishError(
+          durable.result?.error ??
+            durable.error?.message ??
+            "Couldn't finish the session. Check your connection and retry.",
+        );
+        setFinishing(false);
+        return;
+      }
+      clearResume(sessionId);
       window.location.assign(`/app/sessions/${sessionId}?completed=1`);
-    } catch {
-      setFinishError("Couldn't finish the session. Check your connection and retry.");
+    } catch (error) {
+      setFinishError(
+        error instanceof Error
+          ? error.message
+          : "Couldn't finish the session. Check your connection and retry.",
+      );
       setFinishing(false);
     }
   };
@@ -229,7 +299,7 @@ export function FinishSessionBar({
         </span>
       );
     }
-    if (savedOffline) {
+    if (completionStored) {
       return (
         <span
           data-testid="finish-saved-offline"
@@ -293,7 +363,7 @@ export function FinishSessionBar({
         </span>
       );
     }
-    if (savedOffline) {
+    if (completionStored) {
       return (
         <span
           data-testid="finish-saved-offline"
@@ -358,7 +428,7 @@ export function FinishSessionBar({
         >
           {label}
         </span>
-      ) : savedOffline ? (
+      ) : completionStored ? (
         <span
           data-testid="finish-saved-offline"
           className="cp-btn big"

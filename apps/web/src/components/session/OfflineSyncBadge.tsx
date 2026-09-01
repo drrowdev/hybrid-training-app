@@ -27,23 +27,36 @@ export function resolveSyncState(opts: {
   online: boolean;
   pendingCount: number;
   failedCount: number;
+  droppedCount?: number;
   recentlyDrained: boolean;
 }): SyncState {
-  const { online, pendingCount, failedCount, recentlyDrained } = opts;
+  const {
+    online,
+    pendingCount,
+    failedCount,
+    droppedCount = 0,
+    recentlyDrained,
+  } = opts;
   if (!online && pendingCount > 0) return "offline";
-  if (online && failedCount > 0) return "failed";
+  if (online && (failedCount > 0 || droppedCount > 0)) return "failed";
   if (online && pendingCount > 0) return "syncing";
   if (online && pendingCount === 0 && recentlyDrained) return "synced";
   // Offline with an empty queue is not worth a badge: nothing is at risk.
   return "idle";
 }
 
-export function syncLabel(state: SyncState, pendingCount: number): string {
+export function syncLabel(
+  state: SyncState,
+  pendingCount: number,
+  droppedCount = 0,
+): string {
   switch (state) {
     case "offline":
       return `Saved on this device — ${pendingCount} waiting to sync`;
     case "failed":
-      return `Couldn't sync ${pendingCount} — still saved on this device`;
+      return droppedCount > 0
+        ? `Couldn't save ${droppedCount} queued ${droppedCount === 1 ? "entry" : "entries"}`
+        : `Couldn't sync ${pendingCount} — still saved on this device`;
     case "syncing":
       return `Syncing ${pendingCount}…`;
     case "synced":
@@ -56,10 +69,13 @@ export function syncLabel(state: SyncState, pendingCount: number): string {
 export function OfflineSyncBadge({
   pendingCount,
   failedCount = 0,
+  droppedCount = 0,
 }: {
   pendingCount: number;
   /** Queued ops whose last replay attempt errored. */
   failedCount?: number;
+  /** Entries discarded or dead-lettered after a deterministic failure. */
+  droppedCount?: number;
 }) {
   const [online, setOnline] = useState(true);
   // "All sets synced" is only meaningful right after a drain — showing it
@@ -97,6 +113,7 @@ export function OfflineSyncBadge({
     online,
     pendingCount,
     failedCount,
+    droppedCount,
     recentlyDrained,
   });
   if (state === "idle") return null;
@@ -136,7 +153,7 @@ export function OfflineSyncBadge({
           flexShrink: 0,
         }}
       />
-      <span>{syncLabel(state, pendingCount)}</span>
+      <span>{syncLabel(state, pendingCount, droppedCount)}</span>
       {state === "offline" && (
         <span style={{ color: "var(--cp-text-muted)" }}>
           — keep logging, they&apos;ll go up when you reconnect

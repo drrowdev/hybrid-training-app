@@ -1228,6 +1228,10 @@ Review before merge caught three defects in that work, one of them a regression 
 
 No migration. Nothing is rewritten in storage; the correction happens at resolution.
 
+## [2026-09-01] refine | Offline logging durability contract
+
+Offline strength, cardio, and session completion writes now persist through one explicit enqueue contract before network calls. Transient and uncertain results stay FIFO-queued, only typed validation failures are dropped and surfaced, all fallback client ids are RFC 4122 UUIDs, and reload hydrates prescribed plus freestyle overlays into the finish gate without double-rendering after sync. Cardio completion and ad-hoc cardio now carry `client_log_id` through the same durable path. No migration: existing idempotency columns and constraints are sufficient.
+
 ## [2026-09-01] fix | A substituted movement owns its loading maths
 
 The whole-codebase review found a critical sibling of the weighted pull-up bug. Tactical Barbell lets a lifter replace a template slot with any catalog movement, but the saved customization chose the loading kind from the SLOT being replaced. Putting a normal Barbell Row into the Weighted Pull-up slot therefore kept `weighted-bw`: at 75% of a 120 kg max for an 82 kg lifter, the engine subtracted bodyweight and prescribed 7.5 kg instead of 90 kg. The reverse was dangerous: putting the new Weighted Dip into a Bench slot treated its bodyweight-inclusive max like a barbell max and prescribed +90 kg on the belt instead of +7.5 kg.
@@ -1360,3 +1364,50 @@ New bodyweight progress updates use the new set-write transactions. Direct write
 Legacy offline completion entries can have non-UUID identifiers. Completion
 normalizes those identifiers to no receipt so the queued session still
 completes, while valid UUID identifiers retain durable replay protection.
+## [2026-09-01] refine | Offline replay ordering and completion hydration
+
+Independent review of the offline logging durability work found that a newly
+queued write could still reach the server ahead of an older queued write, and
+that a queued completion was not remembered after reload. Foreground writes now
+defer to the FIFO flusher whenever an earlier durable operation exists. Finish
+also queues completion behind pending session work and hydrates the queued
+completion state from the outbox.
+
+A second review found that every PostgreSQL unique conflict was being treated as
+an idempotent cardio replay. Cardio replay now confirms that the exact
+`client_log_id` already exists before acknowledging a conflict; unrelated
+conflicts remain retryable. No migration.
+
+## [2026-09-01] refine | Durable completion and cardio reload hardening
+
+Completion requests now use the durable outbox path even while online, retaining
+the intent and resume state through uncertain or transient responses and clearing
+both only after server confirmation. Reloaded cardio forms detect queued
+`cardio_session` entries before allowing another submit, and completed cardio
+sessions copy duration and RPE from the canonical idempotent row without rerunning
+completion side effects. No migration.
+
+## [2026-09-01] fix | Require durable storage before session completion requests
+
+Session completion now refuses to send a request when IndexedDB cannot store the
+recovery entry. This keeps the completion intent honest on clients where local
+storage is unavailable; ordinary writes may still use a successful server
+response when local queue storage is unavailable. No migration.
+
+## [2026-09-01] refine | Offline logging durability hardening
+
+Offline set, cardio, and completion writes now share one durable enqueue-and-claim contract. Transient failures remain queued with bounded retries, deterministic validation and ownership failures are surfaced as dropped entries without wedging FIFO replay, completion receipts retain their UUID key through the transition RPC, and queued cardio state hydrates safely across reloads. IndexedDB hydration failure leaves cardio usable through the direct fallback while reporting reduced durability. No schema change was added; completion receipt persistence integrates with the pending transition contract in PR #799.
+
+## [2026-09-01] fix | Scope offline status to the active session
+
+Session status now re-reads pending and dead-lettered entries for the active
+session after each global flush, and completion refreshes are scoped by session
+id. Work queued for another session can no longer change the current session's
+badge or resume state. No migration.
+
+## [2026-09-01] fix | Preserve legacy completion entries during replay
+
+Completion replay now forwards a UUID receipt only when the queued entry has
+one. Older timestamp-keyed completion rows pass a null receipt and remain
+eligible for normal success or retry handling. An IndexedDB upgrade fixture
+covers reading those rows from an existing outbox. No migration.

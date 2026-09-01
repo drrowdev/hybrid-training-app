@@ -13,7 +13,11 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CardioLogForm } from "../CardioLogForm";
+import {
+  CardioLogForm,
+  cardioOutboxHydrationState,
+  hasQueuedCardioSession,
+} from "../CardioLogForm";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: () => undefined, push: () => undefined }),
@@ -24,6 +28,43 @@ const noopAction = (async () => ({ ok: true as const })) as unknown as Parameter
 >[0]["action"];
 
 describe("CardioLogForm", () => {
+  it("restores a queued cardio session instead of allowing a new client id", () => {
+    expect(
+      hasQueuedCardioSession([
+        {
+          id: "queued-cardio",
+          op: "cardio_session",
+          sessionId: "session",
+          seq: 1,
+          payload: {},
+          createdAt: 1,
+          attempts: 0,
+        },
+      ]),
+    ).toBe(true);
+    expect(
+      hasQueuedCardioSession([
+        {
+          id: "queued-set",
+          op: "set",
+          sessionId: "session",
+          seq: 1,
+          payload: {},
+          createdAt: 1,
+          attempts: 0,
+        },
+      ]),
+    ).toBe(false);
+  });
+
+  it("allows direct fallback after IndexedDB hydration fails", () => {
+    expect(cardioOutboxHydrationState(null)).toEqual({
+      hydrated: true,
+      queued: false,
+      durabilityWarning: true,
+    });
+  });
+
   it("renders the four required fields + Finish workout submit", () => {
     const html = renderToStaticMarkup(
       <CardioLogForm

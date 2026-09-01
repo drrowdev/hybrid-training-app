@@ -19,10 +19,15 @@
  * so the default flow stays minimal.
  */
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { logCardioSession as logCardioSessionAction } from "@/lib/sessions/actions";
 import { RpeInput } from "@/components/forms/RpeInput";
+import { createClientId } from "@/lib/offline/client-id";
+import { runDurableAction } from "@/lib/offline/durable-action";
+import { formDataToPayload } from "@/lib/offline/outbox-core";
+import { listForSession as listOutboxForSession } from "@/lib/offline/outbox";
+import type { OutboxEntry } from "@/lib/offline/outbox-core";
 
 type LogAction = typeof logCardioSessionAction;
 
@@ -53,6 +58,29 @@ export type CardioLogFormProps = {
 
 const MI_TO_KM = 1.609344;
 
+export function hasQueuedCardioSession(
+  entries: readonly OutboxEntry[],
+): boolean {
+  return entries.some(
+    (entry) =>
+      entry.op === "cardio_session" && entry.status !== "dead_lettered",
+  );
+}
+
+export function cardioOutboxHydrationState(
+  entries: readonly OutboxEntry[] | null,
+): {
+  hydrated: true;
+  queued: boolean;
+  durabilityWarning: boolean;
+} {
+  return {
+    hydrated: true,
+    queued: entries != null && hasQueuedCardioSession(entries),
+    durabilityWarning: entries == null,
+  };
+}
+
 export function CardioLogForm({
   sessionId,
   prescribedDurationMin,
@@ -66,6 +94,33 @@ export function CardioLogForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [savedOffline, setSavedOffline] = useState(false);
+  const [outboxHydrated, setOutboxHydrated] = useState(false);
+  const [durabilityWarning, setDurabilityWarning] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void listOutboxForSession(sessionId)
+      .then((entries) => {
+        if (!active) return;
+        const hydration = cardioOutboxHydrationState(entries);
+        setSavedOffline(hydration.queued);
+        setDurabilityWarning(hydration.durabilityWarning);
+        setOutboxHydrated(hydration.hydrated);
+      })
+      .catch(() => {
+        if (!active) return;
+        // A failed read must not leave the form permanently disabled. The
+        // durable action will still attempt its own enqueue and only fall back
+        // to a direct online write when local storage is unavailable.
+        const hydration = cardioOutboxHydrationState(null);
+        setDurabilityWarning(hydration.durabilityWarning);
+        setOutboxHydrated(hydration.hydrated);
+      });
+    return () => {
+      active = false;
+    };
+  }, [sessionId]);
 
   const durationDefault =
     initialDurationMin != null
@@ -97,6 +152,7 @@ export function CardioLogForm({
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!outboxHydrated) return;
     setError(null);
 
     const fd = new FormData();
@@ -104,6 +160,8 @@ export function CardioLogForm({
     fd.set("completed", completed ? "true" : "false");
     fd.set("actualDurationMin", duration);
     fd.set("modality", modality);
+    const clientLogId = createClientId();
+    fd.set("clientLogId", clientLogId);
     if (movementId) fd.set("movementId", movementId);
     if (rpe.trim()) fd.set("avgRpe", rpe.trim());
     if (notes.trim()) fd.set("notes", notes.trim());
@@ -117,14 +175,42 @@ export function CardioLogForm({
     }
 
     startTransition(async () => {
-      const res = await action(fd);
-      if (res?.error) {
-        setError(res.error);
+      const durable = await runDurableAction(
+        {
+          id: clientLogId,
+          op: "cardio_session",
+          sessionId,
+          payload: formDataToPayload(fd),
+        },
+        () => action(fd),
+      );
+      if (durable.status === "queued") {
+        setSavedOffline(true);
+        return;
+      }
+      if (durable.status === "failed") {
+        setError(
+          durable.result?.error ??
+            durable.error?.message ??
+            "Couldn't save your cardio. Check your connection and retry.",
+        );
         return;
       }
       router.refresh();
     });
   };
+
+  if (savedOffline) {
+    return (
+      <div
+        data-testid="cardio-saved-offline"
+        className="cp-card"
+        style={{ padding: 14, color: "var(--cp-text)" }}
+      >
+        Saved on this device — finishes when you reconnect
+      </div>
+    );
+  }
 
   return (
     <form
@@ -138,6 +224,15 @@ export function CardioLogForm({
         marginInline: -16,
       }}
     >
+      {durabilityWarning && (
+        <div
+          role="status"
+          data-testid="cardio-durability-warning"
+          style={{ fontSize: 12, color: "var(--cp-warning)" }}
+        >
+          Offline saving unavailable
+        </div>
+      )}
       <div
         style={{
           display: "flex",
@@ -339,15 +434,15 @@ export function CardioLogForm({
 
       <button
         type="submit"
-        disabled={pending}
+        disabled={pending || !outboxHydrated}
         data-testid="cardio-log-submit"
         className="cp-btn primary big"
         style={{
           minHeight: 52,
           textAlign: "center",
           justifyContent: "center",
-          opacity: pending ? 0.7 : 1,
-          cursor: pending ? "not-allowed" : "pointer",
+          opacity: pending || !outboxHydrated ? 0.7 : 1,
+          cursor: pending || !outboxHydrated ? "not-allowed" : "pointer",
         }}
       >
         {pending

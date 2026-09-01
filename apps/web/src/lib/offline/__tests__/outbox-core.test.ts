@@ -5,9 +5,11 @@ import {
   createOutboxEntryId,
   entriesForSession,
   formDataToPayload,
+  isUuid,
   nextSeq,
   payloadToFormData,
   sortBySeq,
+  MAX_REPLAY_ATTEMPTS,
   type OutboxEntry,
 } from "../outbox-core";
 
@@ -21,6 +23,8 @@ function entry(over: Partial<OutboxEntry> & { id: string }): OutboxEntry {
     createdAt: over.createdAt ?? 0,
     attempts: over.attempts ?? 0,
     lastError: over.lastError,
+    status: over.status,
+    deadLetterReason: over.deadLetterReason,
   };
 }
 
@@ -34,6 +38,13 @@ describe("nextSeq", () => {
       expect(createOutboxEntryId()).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
       );
+    });
+  });
+
+  describe("isUuid", () => {
+    it("accepts UUID-shaped completion receipts and rejects legacy ids", () => {
+      expect(isUuid("00000000-0000-4000-8000-000000000001")).toBe(true);
+      expect(isUuid("complete-1700000000000")).toBe(false);
     });
   });
   it("is strictly greater than any existing seq", () => {
@@ -70,14 +81,49 @@ describe("classifyActionResult", () => {
   it("retries when the action threw (offline/network)", () => {
     expect(classifyActionResult(undefined, true)).toBe("retry");
   });
-  it("drops when the server returned a validation error (permanent)", () => {
-    expect(classifyActionResult({ error: "Invalid input" }, false)).toBe("drop");
+  it("drops only when the server explicitly returned a validation error", () => {
+    expect(
+      classifyActionResult({ error: "Invalid input", errorCode: "validation" }, false),
+    ).toBe("drop");
+  });
+  it("keeps an unclassified returned error queued", () => {
+    expect(classifyActionResult({ error: "temporary Supabase error" }, false)).toBe(
+      "retry",
+    );
+  });
+  it("keeps a typed transient error queued", () => {
+    expect(
+      classifyActionResult(
+        { error: "session refresh required", errorCode: "transient" },
+        false,
+      ),
+    ).toBe("retry");
+  });
+  it("dead-letters ownership and missing-session failures", () => {
+    expect(
+      classifyActionResult(
+        { error: "Not your session.", errorCode: "forbidden" },
+        false,
+      ),
+    ).toBe("dead_letter");
+    expect(
+      classifyActionResult(
+        { error: "Session not found.", errorCode: "not_found" },
+        false,
+      ),
+    ).toBe("dead_letter");
+  });
+  it("keeps authentication failures retryable for session refresh", () => {
+    expect(
+      classifyActionResult({ error: "Not signed in.", errorCode: "auth" }, false),
+    ).toBe("retry");
   });
   it("is done on a clean ok result", () => {
     expect(classifyActionResult({ ok: true }, false)).toBe("done");
   });
-  it("is done on a bare result with no error", () => {
-    expect(classifyActionResult({}, false)).toBe("done");
+  it("keeps an unacknowledged result queued", () => {
+    expect(classifyActionResult({}, false)).toBe("retry");
+    expect(classifyActionResult(undefined, false)).toBe("retry");
   });
 });
 
@@ -87,6 +133,12 @@ describe("backoffMs", () => {
     expect(backoffMs(2)).toBe(4000);
     expect(backoffMs(3)).toBe(8000);
     expect(backoffMs(10)).toBe(60_000);
+  });
+
+  describe("bounded replay", () => {
+    it("exposes a finite retry budget", () => {
+      expect(MAX_REPLAY_ATTEMPTS).toBe(5);
+    });
   });
   it("never returns below the base for attempt 0", () => {
     expect(backoffMs(0)).toBe(2000);

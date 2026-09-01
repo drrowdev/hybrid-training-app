@@ -14,11 +14,15 @@
 
 import type { LoggedSet } from "@/components/session/SessionLogClient";
 import type { AddStrengthSetResult } from "@/lib/sessions/actions";
+import { payloadToFormData, type OutboxEntry } from "@/lib/offline/outbox-core";
 
 export type OptimisticLog = {
   /** Stable client id for this pending entry (overlay LoggedSet id until confirmed). */
   clientKey: string;
   movementId: string;
+  movementSlug?: string;
+  movementDisplayName?: string;
+  movementPrimaryRegion?: string;
   prescriptionItemIndex: number | null;
   setKind: string;
   weightKg: number | null;
@@ -138,6 +142,10 @@ function numOrNull(v: FormDataEntryValue | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function stringOrEmpty(v: FormDataEntryValue | null): string {
+  return typeof v === "string" ? v : "";
+}
+
 /**
  * Build an `OptimisticLog` from the FormData the focus view submits. Returns
  * null when the essential ids are missing (defensive — the caller then just
@@ -146,6 +154,11 @@ function numOrNull(v: FormDataEntryValue | null): number | null {
 export function optimisticLogFromFormData(
   fd: FormData,
   clientKey: string,
+  metadata?: {
+    movementSlug?: string;
+    movementDisplayName?: string;
+    movementPrimaryRegion?: string;
+  },
 ): OptimisticLog | null {
   const movementId = fd.get("movementId");
   if (typeof movementId !== "string" || movementId === "") return null;
@@ -154,6 +167,13 @@ export function optimisticLogFromFormData(
   return {
     clientKey,
     movementId,
+    movementSlug: metadata?.movementSlug ?? stringOrEmpty(fd.get("movementSlug")),
+    movementDisplayName:
+      metadata?.movementDisplayName ??
+      stringOrEmpty(fd.get("movementDisplayName")),
+    movementPrimaryRegion:
+      metadata?.movementPrimaryRegion ??
+      stringOrEmpty(fd.get("movementPrimaryRegion")),
     prescriptionItemIndex: idxRaw == null ? null : Math.trunc(idxRaw),
     setKind: String(fd.get("setKind") ?? "main"),
     weightKg: skipped ? 0 : numOrNull(fd.get("weightKg")),
@@ -167,6 +187,24 @@ export function optimisticLogFromFormData(
         ? (fd.get("skipReason") as string)
         : null,
   };
+}
+
+/** Rebuild the visible strength overlay after a session page reload. */
+export function hydrateQueuedSetLogs(
+  entries: ReadonlyArray<
+    Pick<OutboxEntry, "id" | "op" | "payload" | "metadata">
+  >,
+): OptimisticLog[] {
+  return entries
+    .filter((entry) => entry.op === "set")
+    .map((entry) =>
+      optimisticLogFromFormData(
+        payloadToFormData(entry.payload),
+        entry.id,
+        entry.metadata,
+      ),
+    )
+    .filter((log): log is OptimisticLog => log != null);
 }
 
 /**
@@ -183,6 +221,7 @@ export function pendingLogToLoggedSet(
   return {
     // Use the real DB id once confirmed so any id-keyed logic gets the true id.
     id: log.serverId ?? log.clientKey,
+    client_log_id: log.clientKey,
     set_index: setIndex,
     set_kind: log.setKind,
     weight_kg: log.weightKg,
@@ -193,7 +232,12 @@ export function pendingLogToLoggedSet(
     skipped: log.skipped,
     skip_reason: log.skipReason,
     prescription_item_index: log.prescriptionItemIndex,
-    movement: { id: log.movementId, slug: "", display_name: "", primary_region: "" },
+    movement: {
+      id: log.movementId,
+      slug: log.movementSlug ?? "",
+      display_name: log.movementDisplayName ?? "",
+      primary_region: log.movementPrimaryRegion ?? "",
+    },
   };
 }
 
@@ -239,25 +283,20 @@ export function dropConfirmed(
 
 /**
  * True when a server-fetched set already represents this pending log, so the
- * overlay entry can be dropped. Matches on (movement_id, prescription_item_index)
- * — the focus view always stamps an explicit index, and the engine never logs
- * two rows at the same prescribed index, so this is an exact reconcile.
+ * overlay entry can be dropped. Client ids are exact for prescribed and
+ * freestyle logs; older prescribed rows fall back to their item index.
  */
 export function serverHasPendingLog(
   serverSets: ReadonlyArray<LoggedSet>,
   log: OptimisticLog,
 ): boolean {
-  if (log.prescriptionItemIndex == null) {
-    // No index to match on — reconcile by movement only is unsafe (would drop
-    // on the first server set for that movement). Keep it until a real index
-    // exists; in practice the focus view always supplies an index.
-    return false;
-  }
   return serverSets.some(
     (s) =>
       s.movement.id === log.movementId &&
-      (s as { prescription_item_index?: number | null }).prescription_item_index ===
-        log.prescriptionItemIndex,
+      (s.client_log_id === log.clientKey ||
+        (s.client_log_id == null && log.prescriptionItemIndex != null &&
+          (s as { prescription_item_index?: number | null })
+            .prescription_item_index === log.prescriptionItemIndex)),
   );
 }
 

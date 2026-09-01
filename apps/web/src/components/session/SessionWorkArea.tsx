@@ -29,23 +29,25 @@ import { MovementCardList } from "./MovementCardList";
 import {
   buildLoggedSetIdOverlay,
   dropConfirmed,
+  hydrateQueuedSetLogs,
   mergeOptimisticSets,
   optimisticLogFromFormData,
   planLogSetOutcome,
+  serverHasPendingLog,
   type OptimisticLog,
 } from "@/lib/sessions/optimistic-log";
 import {
   countForSession as outboxCountForSession,
-  enqueue as outboxEnqueue,
+  listDeadLetteredForSession as outboxListDeadLetteredForSession,
   listForSession as outboxListForSession,
-  removeAndCountForSession as outboxRemoveAndCountForSession,
 } from "@/lib/offline/outbox";
 import {
   createOutboxEntryId,
   formDataToPayload,
-  payloadToFormData,
 } from "@/lib/offline/outbox-core";
+import { runDurableAction } from "@/lib/offline/durable-action";
 import { startAutoFlush } from "@/lib/offline/flusher";
+import { clearResume } from "@/lib/sessions/session-resume";
 import { OfflineSyncBadge } from "./OfflineSyncBadge";
 import { useSessionLoggingState } from "./SessionLoggingState";
 import type { PlateInventoryItem } from "./plate-math";
@@ -188,9 +190,11 @@ export function SessionWorkArea({
   // from "tried and failed" is the difference between "wait" and "something
   // is wrong" for the user.
   const [outboxFailed, setOutboxFailed] = useState(0);
+  const [outboxDropped, setOutboxDropped] = useState(0);
   const loggingState = useSessionLoggingState();
   const registerStrengthLog = loggingState?.registerStrengthLog;
   const rollbackStrengthLog = loggingState?.rollbackStrengthLog;
+  const registerCompletionQueued = loggingState?.registerCompletionQueued;
 
   // Reconcile: whenever a fresh server snapshot lands (any revalidating action —
   // finish / delete / edit / fill / swap — or a reload changes the `sets` prop),
@@ -202,7 +206,9 @@ export function SessionWorkArea({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reconcile the optimistic overlay against a fresh server snapshot; functional updater no-ops when nothing changed
     setPendingLogs((prev) => {
       if (prev.length === 0) return prev;
-      const next = dropConfirmed(prev);
+      const next = dropConfirmed(
+        prev.filter((log) => !serverHasPendingLog(sets, log)),
+      );
       return next.length === prev.length ? prev : next;
     });
     setBwTutOverrides((prev) => (Object.keys(prev).length === 0 ? prev : {}));
@@ -217,12 +223,21 @@ export function SessionWorkArea({
       const clientKey = clientLogId;
       const sid = String(fd.get("sessionId") ?? sessionId);
 
-      const optimistic = optimisticLogFromFormData(fd, clientKey);
-      // Only overlay PRESCRIBED logs (those carry a prescriptionItemIndex we can
-      // reconcile against the server row). Freestyle/off-plan logs have no index
-      // — overlaying them would never reconcile and would double-show once the
-      // server catches up — so they take the plain (awaited) path.
-      const overlay = optimistic && optimistic.prescriptionItemIndex != null;
+      const movementId = fd.get("movementId");
+      const freestyleMovement =
+        typeof movementId === "string"
+          ? resolvedFreestyle?.find(
+              (movement) => movement.movement.id === movementId,
+            )
+          : undefined;
+      const optimistic = optimisticLogFromFormData(fd, clientKey, freestyleMovement
+        ? {
+            movementSlug: freestyleMovement.movement.slug,
+            movementDisplayName: freestyleMovement.movement.display_name,
+            movementPrimaryRegion: freestyleMovement.movement.primary_region,
+          }
+        : undefined);
+      const overlay = optimistic != null;
       if (overlay) {
         setPendingLogs((prev) => [...prev, optimistic]);
       }
@@ -233,48 +248,48 @@ export function SessionWorkArea({
         );
       }
 
-      // Durably enqueue BEFORE the network call so a signal drop or app kill
-      // can't lose the set — it replays from the outbox on reconnect/relaunch.
-      await outboxEnqueue({
-        id: clientLogId,
-        op: "set",
-        sessionId: sid,
-        payload: formDataToPayload(fd),
-      }).catch(() => null);
-
-      let result: AddStrengthSetResult | undefined;
-      let threw = false;
-      try {
-        result = await addStrengthSet(fd);
-      } catch {
-        threw = true;
-      }
-
-      if (threw) {
-        // Offline / network error. Keep the overlay AND the outbox entry; the
-        // flusher replays it when connectivity returns. Report optimistic
-        // success so the logger advances to the next set.
-        const queued = await outboxCountForSession(sid).catch(() => 0);
-        setOutboxPending(queued);
-        return planLogSetOutcome({ kind: "network-error" }).result;
-      }
-
-      // Online resolved — the row is persisted, so drop the durable entry.
-      const queued = await outboxRemoveAndCountForSession(clientLogId, sid).catch(
-        () => 0,
+      const durable = await runDurableAction<AddStrengthSetResult>(
+        {
+          id: clientLogId,
+          op: "set",
+          sessionId: sid,
+          payload: formDataToPayload(fd),
+          metadata: optimistic
+            ? {
+                movementSlug: optimistic.movementSlug,
+                movementDisplayName: optimistic.movementDisplayName,
+                movementPrimaryRegion: optimistic.movementPrimaryRegion,
+              }
+            : undefined,
+        },
+        () => addStrengthSet(fd),
       );
-      setOutboxPending(queued);
 
-      // See `planLogSetOutcome` (defect #1): rollback is keyed on whether
-      // optimistic state was registered at all, never on whether it had an
-      // overlay row — a rejected freestyle log (optimistic, no overlay) must
-      // roll back just as completely as a rejected prescribed one.
-      const outcome = planLogSetOutcome({
-        kind: "resolved",
-        hadOptimistic: optimistic != null,
-        hadOverlay: Boolean(overlay),
-        result: result ?? { ok: true },
-      });
+     if (durable.status === "queued") {
+       const pending = await outboxCountForSession(sid).catch(() => 0);
+       setOutboxPending(pending);
+       return planLogSetOutcome({ kind: "network-error" }).result;
+     }
+
+     const result: AddStrengthSetResult = durable.result ?? {
+       error:
+         (durable.status === "failed" ? durable.error?.message : undefined) ??
+         "Couldn't save this set. Check your connection and retry.",
+       errorCode: "transient",
+     };
+     const pending = await outboxCountForSession(sid).catch(() => 0);
+     setOutboxPending(pending);
+
+     // See `planLogSetOutcome` (defect #1): rollback is keyed on whether
+     // optimistic state was registered at all, never on whether it had an
+     // overlay row — a rejected freestyle log (optimistic, no overlay) must
+     // roll back just as completely as a rejected prescribed one.
+     const outcome = planLogSetOutcome({
+       kind: "resolved",
+       hadOptimistic: optimistic != null,
+       hadOverlay: Boolean(overlay),
+       result,
+     });
 
       if (outcome.dropOverlay) {
         setPendingLogs((prev) => prev.filter((l) => l.clientKey !== clientKey));
@@ -297,7 +312,13 @@ export function SessionWorkArea({
       }
       return outcome.result;
     },
-    [addStrengthSet, sessionId, registerStrengthLog, rollbackStrengthLog],
+    [
+      addStrengthSet,
+      resolvedFreestyle,
+      sessionId,
+      registerStrengthLog,
+      rollbackStrengthLog,
+    ],
   );
 
   // Seed the overlay from a durable outbox (relaunch with unsynced sets) and
@@ -305,16 +326,19 @@ export function SessionWorkArea({
   // snapshot includes the now-persisted rows (the merge dedupes by index).
   useEffect(() => {
     let cancelled = false;
-    void outboxListForSession(sessionId).then((entries) => {
+    void Promise.all([
+      outboxListForSession(sessionId),
+      outboxListDeadLetteredForSession(sessionId),
+    ]).then(([entries, deadLettered]) => {
       if (cancelled) return;
       setOutboxPending(entries.length);
       setOutboxFailed(entries.filter((e) => e.attempts > 0 && e.lastError).length);
-      const seeded = entries
-        .filter((e) => e.op === "set")
-        .map((e) => optimisticLogFromFormData(payloadToFormData(e.payload), e.id))
-        .filter(
-          (l): l is OptimisticLog => l != null && l.prescriptionItemIndex != null,
-        );
+      setOutboxDropped(deadLettered.length);
+      registerCompletionQueued?.(entries.some((entry) => entry.op === "complete"));
+      const seeded = hydrateQueuedSetLogs(entries);
+      for (const log of seeded) {
+        registerStrengthLog?.(log.clientKey, log.prescriptionItemIndex);
+      }
       if (seeded.length === 0) return;
       setPendingLogs((prev) => {
         const seen = new Set(prev.map((l) => l.clientKey));
@@ -324,14 +348,22 @@ export function SessionWorkArea({
     });
     const stop = startAutoFlush((r) => {
       if (cancelled) return;
-      setOutboxPending(r.remaining);
+      if (r.completedSessionIds.includes(sessionId)) clearResume(sessionId);
       // Re-read so a failed replay surfaces as "couldn't sync" rather than
       // sitting silently in the queue looking like it is still in flight.
-      void outboxListForSession(sessionId)
-        .then((entries) => {
+      void Promise.all([
+        outboxListForSession(sessionId),
+        outboxListDeadLetteredForSession(sessionId),
+      ])
+        .then(([entries, deadLettered]) => {
           if (cancelled) return;
+          setOutboxPending(entries.length);
           setOutboxFailed(
             entries.filter((e) => e.attempts > 0 && e.lastError).length,
+          );
+          setOutboxDropped(deadLettered.length);
+          registerCompletionQueued?.(
+            entries.some((entry) => entry.op === "complete"),
           );
         })
         .catch(() => {});
@@ -341,7 +373,7 @@ export function SessionWorkArea({
       cancelled = true;
       stop();
     };
-  }, [sessionId, router]);
+  }, [registerCompletionQueued, registerStrengthLog, router, sessionId]);
 
   const mergedSets = useMemo(
     () => mergeOptimisticSets(sets, pendingLogs),
@@ -393,7 +425,11 @@ export function SessionWorkArea({
 
   return (
     <>
-      <OfflineSyncBadge pendingCount={outboxPending} failedCount={outboxFailed} />
+      <OfflineSyncBadge
+        pendingCount={outboxPending}
+        failedCount={outboxFailed}
+        droppedCount={outboxDropped}
+      />
       <MovementCardList
         sessionId={sessionId}
         isComplete={isComplete}

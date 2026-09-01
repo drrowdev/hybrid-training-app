@@ -37,6 +37,9 @@ import {
 } from "@/components/movement-picker";
 import { addSessionMovementAction } from "@/lib/sessions/session-movement-actions";
 import type { addCardioBlock as addCardioBlockAction } from "@/lib/sessions/actions";
+import { createClientId } from "@/lib/offline/client-id";
+import { runDurableAction } from "@/lib/offline/durable-action";
+import { formDataToPayload } from "@/lib/offline/outbox-core";
 
 type CardioAction = typeof addCardioBlockAction;
 type Mode = "closed" | "menu" | "strength" | "cardio";
@@ -73,6 +76,7 @@ export function AddToWorkout({
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("closed");
   const [error, setError] = useState<string | null>(null);
+  const [savedOffline, setSavedOffline] = useState(false);
   const [pending, startTransition] = useTransition();
   const [cardioMovement, setCardioMovement] =
     useState<MovementSearchResult | null>(null);
@@ -119,6 +123,8 @@ export function AddToWorkout({
     fd.set("sessionId", sessionId);
     fd.set("movementId", cardioMovement.id);
     fd.set("durationSec", String(Math.round(minutes * 60)));
+    const clientLogId = createClientId();
+    fd.set("clientLogId", clientLogId);
     const modality =
       (
         (cardioMovement.equipment ?? "") +
@@ -129,15 +135,43 @@ export function AddToWorkout({
         .slice(0, 40) || "other";
     fd.set("modality", modality);
     startTransition(async () => {
-      const result = await cardioAction(fd);
-      if (result?.error) {
-        setError(result.error);
+      const durable = await runDurableAction(
+        {
+          id: clientLogId,
+          op: "cardio",
+          sessionId,
+          payload: formDataToPayload(fd),
+        },
+        () => cardioAction(fd),
+      );
+      if (durable.status === "queued") {
+        setSavedOffline(true);
+        return;
+      }
+      if (durable.status === "failed") {
+        setError(
+          durable.result?.error ??
+            durable.error?.message ??
+            "Couldn't save your cardio. Check your connection and retry.",
+        );
         return;
       }
       reset();
       router.refresh();
     });
   };
+
+  if (savedOffline) {
+    return (
+      <div
+        data-testid="cardio-saved-offline"
+        className="cp-card"
+        style={{ padding: 14, color: "var(--cp-text)" }}
+      >
+        Saved on this device — syncs when you reconnect
+      </div>
+    );
+  }
 
   if (mode === "closed") {
     if (prominent) {

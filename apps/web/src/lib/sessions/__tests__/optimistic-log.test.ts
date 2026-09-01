@@ -7,6 +7,7 @@ import {
   optimisticLogFromFormData,
   pendingLogToLoggedSet,
   serverHasPendingLog,
+  hydrateQueuedSetLogs,
   mergeOptimisticSets,
   buildLoggedSetIdOverlay,
   dropConfirmed,
@@ -23,6 +24,7 @@ function fd(entries: Record<string, string>): FormData {
 function serverSet(over: Partial<LoggedSet> & { id: string }): LoggedSet {
   return {
     id: over.id,
+    client_log_id: over.client_log_id ?? null,
     set_index: over.set_index ?? 0,
     set_kind: over.set_kind ?? "main",
     weight_kg: over.weight_kg ?? null,
@@ -100,6 +102,49 @@ describe("optimisticLogFromFormData", () => {
   });
 });
 
+describe("hydrateQueuedSetLogs", () => {
+  it("restores both prescribed and freestyle queue entries after reload", () => {
+    const logs = hydrateQueuedSetLogs([
+      {
+        id: "queued-prescribed",
+        op: "set",
+        payload: {
+          movementId: "mv-1",
+          prescriptionItemIndex: "2",
+          reps: "5",
+        },
+      },
+      {
+        id: "queued-freestyle",
+        op: "set",
+        payload: { movementId: "mv-free", reps: "8" },
+        metadata: {
+          movementSlug: "sled-push",
+          movementDisplayName: "Sled Push",
+          movementPrimaryRegion: "knee",
+        },
+      },
+      {
+        id: "completion",
+        op: "complete",
+        payload: { sessionId: "s1" },
+      },
+    ]);
+
+    expect(logs).toHaveLength(2);
+    expect(logs[0]).toMatchObject({
+      clientKey: "queued-prescribed",
+      prescriptionItemIndex: 2,
+    });
+    expect(logs[1]).toMatchObject({
+      clientKey: "queued-freestyle",
+      movementId: "mv-free",
+      prescriptionItemIndex: null,
+      movementDisplayName: "Sled Push",
+    });
+  });
+});
+
 describe("serverHasPendingLog", () => {
   const log: OptimisticLog = {
     clientKey: "k",
@@ -138,6 +183,19 @@ describe("serverHasPendingLog", () => {
 
   it("never reconciles a log with no index (keeps the overlay)", () => {
     expect(serverHasPendingLog([serverSet({ id: "r" })], { ...log, prescriptionItemIndex: null })).toBe(false);
+  });
+
+  it("reconciles a freestyle log by its client id", () => {
+    const freestyle = { ...log, clientKey: "freestyle-key", prescriptionItemIndex: null };
+    const server = [
+      serverSet({
+        id: "real-freestyle",
+        client_log_id: "freestyle-key",
+        movement: { id: "mv-1", slug: "x", display_name: "X", primary_region: "knee" },
+      }),
+    ];
+    expect(serverHasPendingLog(server, freestyle)).toBe(true);
+    expect(mergeOptimisticSets(server, [freestyle])).toHaveLength(1);
   });
 });
 
@@ -288,4 +346,3 @@ describe("dropConfirmed", () => {
     expect(mergeOptimisticSets(serverAfterDelete, afterReconcile)).toHaveLength(0);
   });
 });
-

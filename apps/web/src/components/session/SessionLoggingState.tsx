@@ -24,6 +24,8 @@ type SessionLoggingState = {
     prescriptionItemIndex: number | null,
   ) => void;
   rollbackStrengthLog: (clientId: string) => void;
+  completionQueued: boolean;
+  registerCompletionQueued: (queued: boolean) => void;
 };
 
 const Context = createContext<SessionLoggingState | null>(null);
@@ -44,6 +46,7 @@ export function SessionLoggingStateProvider({
   const [optimisticLogs, setOptimisticLogs] = useState<
     ReadonlyMap<string, number | null>
   >(() => new Map());
+  const [completionQueued, setCompletionQueued] = useState(false);
 
   const registerStrengthLog = useCallback(
     (clientId: string, prescriptionItemIndex: number | null) => {
@@ -64,6 +67,10 @@ export function SessionLoggingStateProvider({
       next.delete(clientId);
       return next;
     });
+  }, []);
+
+  const registerCompletionQueued = useCallback((queued: boolean) => {
+    setCompletionQueued(queued);
   }, []);
 
   const value = useMemo<SessionLoggingState>(() => {
@@ -103,6 +110,8 @@ export function SessionLoggingStateProvider({
       ),
       registerStrengthLog,
       rollbackStrengthLog,
+      completionQueued,
+      registerCompletionQueued,
     };
   }, [
     initialHasStrengthSets,
@@ -112,6 +121,8 @@ export function SessionLoggingStateProvider({
     optimisticLogs,
     registerStrengthLog,
     rollbackStrengthLog,
+    completionQueued,
+    registerCompletionQueued,
   ]);
 
   return <Context.Provider value={value}>{children}</Context.Provider>;
