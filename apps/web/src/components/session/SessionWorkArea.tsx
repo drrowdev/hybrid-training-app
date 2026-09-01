@@ -31,6 +31,7 @@ import {
   dropConfirmed,
   mergeOptimisticSets,
   optimisticLogFromFormData,
+  planLogSetOutcome,
   type OptimisticLog,
 } from "@/lib/sessions/optimistic-log";
 import {
@@ -253,7 +254,7 @@ export function SessionWorkArea({
         // success so the logger advances to the next set.
         const queued = await outboxCountForSession(sid).catch(() => 0);
         setOutboxPending(queued);
-        return { ok: true };
+        return planLogSetOutcome({ kind: "network-error" }).result;
       }
 
       // Online resolved — the row is persisted, so drop the durable entry.
@@ -262,25 +263,37 @@ export function SessionWorkArea({
       );
       setOutboxPending(queued);
 
-      if (!overlay) return result ?? { ok: true };
-      if (result?.error) {
-        // Validation rejection — roll the overlay back so the slot un-logs.
+      // See `planLogSetOutcome` (defect #1): rollback is keyed on whether
+      // optimistic state was registered at all, never on whether it had an
+      // overlay row — a rejected freestyle log (optimistic, no overlay) must
+      // roll back just as completely as a rejected prescribed one.
+      const outcome = planLogSetOutcome({
+        kind: "resolved",
+        hadOptimistic: optimistic != null,
+        hadOverlay: Boolean(overlay),
+        result: result ?? { ok: true },
+      });
+
+      if (outcome.dropOverlay) {
         setPendingLogs((prev) => prev.filter((l) => l.clientKey !== clientKey));
+      }
+      if (outcome.rollbackProvider) {
         rollbackStrengthLog?.(clientKey);
-      } else if (result?.set?.id) {
+      }
+      if (outcome.confirmedServerId) {
         // Mark confirmed with the REAL id, so the edit link works mid-session
         // without a per-set page revalidation. The entry survives until the next
         // server snapshot reconciles it away.
-        const realId = result.set.id;
+        const realId = outcome.confirmedServerId;
         setPendingLogs((prev) =>
           prev.map((l) => (l.clientKey === clientKey ? { ...l, serverId: realId } : l)),
         );
-        if (result.bwTut) {
-          const { family, tutAccumulated } = result.bwTut;
-          setBwTutOverrides((prev) => ({ ...prev, [family]: tutAccumulated }));
-        }
       }
-      return result ?? { ok: true };
+      if (outcome.bwTut) {
+        const { family, tutAccumulated } = outcome.bwTut;
+        setBwTutOverrides((prev) => ({ ...prev, [family]: tutAccumulated }));
+      }
+      return outcome.result;
     },
     [addStrengthSet, sessionId, registerStrengthLog, rollbackStrengthLog],
   );

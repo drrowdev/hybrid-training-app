@@ -13,6 +13,7 @@
  */
 
 import type { LoggedSet } from "@/components/session/SessionLogClient";
+import type { AddStrengthSetResult } from "@/lib/sessions/actions";
 
 export type OptimisticLog = {
   /** Stable client id for this pending entry (overlay LoggedSet id until confirmed). */
@@ -35,6 +36,94 @@ export type OptimisticLog = {
    */
   serverId?: string;
 };
+
+/**
+ * Outcome of a single `logSet` call, decided purely from its inputs so the
+ * decision (defect #1) is unit-testable without mounting `SessionWorkArea`.
+ */
+export type LogSetOutcome = {
+  /** Remove the overlay row so the failed slot doesn't keep showing "logged". */
+  dropOverlay: boolean;
+  /** Undo the provider registration (`registerStrengthLog`) for this key. */
+  rollbackProvider: boolean;
+  /** Server-assigned id to stamp onto the confirmed overlay row, if any. */
+  confirmedServerId: string | null;
+  /** Bodyweight TUT override to apply, if the server returned one. */
+  bwTut: { family: string; tutAccumulated: number } | null;
+  /** What `logSet` itself should return to its caller (the Focus Strip). */
+  result: AddStrengthSetResult;
+};
+
+/**
+ * Decide what `logSet` should do with its optimistic/overlay state once the
+ * server action has settled (or thrown).
+ *
+ * The bug this pins (defect #1): a rejected **freestyle** log has no overlay
+ * row (`hadOverlay` false — freestyle logs carry no `prescriptionItemIndex`
+ * to reconcile against), but it still registered optimistic provider state
+ * via `registerStrengthLog` before the write (`hadOptimistic` true, since
+ * the provider tracks *any* logged movement, prescribed or not). The old
+ * code gated the provider rollback behind `if (overlay)`, so a rejected
+ * freestyle log rolled back nothing and returned before reaching the
+ * rollback at all — `hasStrengthSets` stayed permanently true and Finish
+ * could enable with zero persisted sets. The fix: rollback is keyed on
+ * `hadOptimistic`, never on `hadOverlay`.
+ */
+export function planLogSetOutcome(
+  input:
+    | { kind: "network-error" }
+    | {
+        kind: "resolved";
+        hadOptimistic: boolean;
+        hadOverlay: boolean;
+        result: AddStrengthSetResult;
+      },
+): LogSetOutcome {
+  if (input.kind === "network-error") {
+    // Offline / dropped connection. The outbox already has the durable entry
+    // and will replay it on reconnect — keep every bit of optimistic state
+    // and report success so the logger advances to the next set.
+    return {
+      dropOverlay: false,
+      rollbackProvider: false,
+      confirmedServerId: null,
+      bwTut: null,
+      result: { ok: true },
+    };
+  }
+
+  const { hadOptimistic, hadOverlay, result } = input;
+
+  if (result.error) {
+    // Validation rejection — roll back EVERY bit of optimistic state this
+    // call registered, whether or not it had an overlay entry.
+    return {
+      dropOverlay: hadOverlay,
+      rollbackProvider: hadOptimistic,
+      confirmedServerId: null,
+      bwTut: null,
+      result,
+    };
+  }
+
+  if (!hadOverlay) {
+    return {
+      dropOverlay: false,
+      rollbackProvider: false,
+      confirmedServerId: null,
+      bwTut: null,
+      result,
+    };
+  }
+
+  return {
+    dropOverlay: false,
+    rollbackProvider: false,
+    confirmedServerId: result.set?.id ?? null,
+    bwTut: result.bwTut ?? null,
+    result,
+  };
+}
 
 /** True once the server write has persisted and returned a real id. */
 export function isConfirmed(log: OptimisticLog): boolean {

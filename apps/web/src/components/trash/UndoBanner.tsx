@@ -32,6 +32,11 @@
  */
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  planUndoBannerAction,
+  resolveRestoreOutcome,
+  RESTORE_NETWORK_ERROR_MESSAGE,
+} from "@/lib/trash/restore-outcome";
 
 export type UndoTarget = {
   kind: "session" | "block";
@@ -54,16 +59,22 @@ export function UndoBanner(): React.ReactElement | null {
   const pathname = usePathname();
   const [target, setTarget] = useState<UndoTarget | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
   const timerRef = useRef<number | null>(null);
   const lastPathRef = useRef<string | null>(pathname);
 
-  const dismiss = useCallback(() => {
-    setTarget(null);
+  const clearAutoDismiss = useCallback(() => {
     if (timerRef.current != null) {
       window.clearTimeout(timerRef.current);
       timerRef.current = null;
     }
   }, []);
+
+  const dismiss = useCallback(() => {
+    setTarget(null);
+    setRestoreError(null);
+    clearAutoDismiss();
+  }, [clearAutoDismiss]);
 
   // Subscribe to the global event.
   useEffect(() => {
@@ -71,6 +82,7 @@ export function UndoBanner(): React.ReactElement | null {
       const detail = (e as CustomEvent<UndoTarget>).detail;
       if (!detail || !detail.id || !detail.kind) return;
       setTarget(detail);
+      setRestoreError(null);
       if (timerRef.current != null) window.clearTimeout(timerRef.current);
       timerRef.current = window.setTimeout(() => {
         setTarget(null);
@@ -96,18 +108,31 @@ export function UndoBanner(): React.ReactElement | null {
   const onUndo = useCallback(async () => {
     if (!target || restoring) return;
     setRestoring(true);
+    setRestoreError(null);
+    // A failed restore must not race the 10s auto-dismiss timer — the lifter
+    // needs the banner (and the retry affordance) to stay up until they've
+    // seen the outcome.
+    clearAutoDismiss();
     try {
       const url =
         target.kind === "session"
           ? `/api/sessions/${target.id}/restore`
           : `/api/blocks/${target.id}/restore`;
-      await fetch(url, { method: "POST" });
-    } finally {
-      setRestoring(false);
+      const response = await fetch(url, { method: "POST" });
+      const outcome = resolveRestoreOutcome(response);
+      const action = planUndoBannerAction(outcome);
+      if (action.kind === "show-error") {
+        setRestoreError(action.message);
+        return;
+      }
       dismiss();
       router.refresh();
+    } catch {
+      setRestoreError(RESTORE_NETWORK_ERROR_MESSAGE);
+    } finally {
+      setRestoring(false);
     }
-  }, [target, restoring, dismiss, router]);
+  }, [target, restoring, dismiss, router, clearAutoDismiss]);
 
   if (!target) return null;
 
@@ -120,7 +145,14 @@ export function UndoBanner(): React.ReactElement | null {
       data-id={target.id}
       className="hta-undo-banner"
     >
-      <span className="hta-undo-banner-label">{target.label} deleted</span>
+      <span className="hta-undo-banner-text">
+        <span className="hta-undo-banner-label">{target.label} deleted</span>
+        {restoreError && (
+          <span role="alert" className="hta-undo-banner-error">
+            {restoreError}
+          </span>
+        )}
+      </span>
       <button
         type="button"
         onClick={onUndo}
@@ -153,8 +185,17 @@ export function UndoBanner(): React.ReactElement | null {
           font-size: 14px;
           animation: hta-undo-slide-in 180ms ease-out;
         }
+        .hta-undo-banner-text {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
         .hta-undo-banner-label {
           font-weight: 500;
+        }
+        .hta-undo-banner-error {
+          font-size: 12px;
+          color: var(--cp-danger, #ff8a80);
         }
         .hta-undo-banner-action {
           appearance: none;
