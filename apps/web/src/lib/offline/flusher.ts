@@ -51,6 +51,7 @@ async function runEntry(
     const result = await completeSessionResult(
       entry.payload.sessionId ?? entry.sessionId,
       entry.payload.notes ?? null,
+      entry.id,
     );
     return { result, threw: false };
   } catch {

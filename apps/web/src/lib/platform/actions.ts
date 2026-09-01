@@ -10,12 +10,12 @@
  *
  * Flow (all under the signed-in user's RLS — never the service role):
  *   buildPlatformContext  → engine.setup → buildProgramInstanceWrite
- *   → insert training_blocks → insert planned_sessions
- *   → seed training_maxes.tm_percent → insert program_instances
- *   → archive any prior active block + program instance.
+ *   → materialise the program graph → one database transaction that archives
+ *     any prior active graph and writes the replacement block, sessions,
+ *     training-max alignment, and program instance.
  *
  * Guardrails: explicit auth check, Zod `.strict()` on input, user-scoped client,
- * and best-effort cleanup so a partial failure never leaves an orphan block.
+ * and a database-owned transaction so a partial failure leaves no split plan.
  *
  * A platform block stores its identity in `training_blocks.program_id` /
  * `program_family` (archetype is left NULL); `program_instances` links to it via
@@ -27,6 +27,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { programSegments, type PlatformContext, type ProgramEngine } from "@hta/program-core";
 import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import type { HybridInstance } from "@/lib/programs/hybrid/engine";
 import { resolveHybridTmPercent } from "@/lib/programs/hybrid/engine";
@@ -1605,6 +1606,281 @@ async function computeForeignWrite(
   return { instance, write };
 }
 
+type LegacyProgramDeployment = {
+  block: {
+    programId: string;
+    programFamily: string;
+    startedOn: string;
+    weeks: number;
+    daysPerWeek: number;
+    dayIndexOverrides: {
+      days: number[];
+      twoADay: boolean;
+      placements?: unknown;
+    } | null;
+    cardioSource: string;
+    allowsTwoADays: boolean;
+    accessoryVolume: string;
+    notes: string;
+  };
+  plannedSessions: Array<{
+    weekIndex: number;
+    dayIndex: number;
+    slot: string;
+    title: string;
+    role: string;
+    prescription: Prescription;
+    sessionModality: string | null | undefined;
+    effectiveStressLoad: number | null | undefined;
+  }>;
+  tmPercents: ProgramInstanceWrite["tmPercents"];
+  programInstance: {
+    programId: string;
+    programFamily: string;
+    instance: unknown;
+    setupInput: Record<string, unknown>;
+    displayName: string | null;
+    customizationVersion: number | null;
+  };
+};
+
+type LegacyDeploymentResult = {
+  data: Array<{ block_id: string; program_instance_id: string }> | null;
+  error: { message: string } | null;
+};
+
+/**
+ * Keeps the immediately preceding app version functional during the short
+ * app-first rollout before migration 0144 has installed its RPC.
+ */
+async function deployProgramInstanceLegacy(
+  supabase: SupabaseClient,
+  user: User,
+  input: LegacyProgramDeployment,
+): Promise<LegacyDeploymentResult> {
+  const { data: block, error: blockError } = await supabase
+    .from("training_blocks")
+    .insert({
+      user_id: user.id,
+      archetype: null,
+      program_id: input.block.programId,
+      program_family: input.block.programFamily,
+      started_on: input.block.startedOn,
+      weeks: input.block.weeks,
+      status: "active",
+      days_per_week: input.block.daysPerWeek,
+      day_index_overrides: input.block.dayIndexOverrides,
+      cardio_source: input.block.cardioSource,
+      allows_two_a_days: input.block.allowsTwoADays,
+      accessory_volume: input.block.accessoryVolume,
+      notes: input.block.notes,
+    })
+    .select("id")
+    .single();
+  if (blockError || !block) {
+    // The active-row index is the final guard during a fully stale PostgREST
+    // cache, when neither new RPC is visible. It rejects the old
+    // insert-before-archive flow before it mutates the prior plan.
+    if (blockError?.code === "23505") {
+      return {
+        data: null,
+        error: {
+          message:
+            "Program deployment is temporarily unavailable. Reload and try again.",
+        },
+      };
+    }
+    return {
+      data: null,
+      error: { message: blockError?.message ?? "Failed to create block" },
+    };
+  }
+  const blockId = block.id as string;
+  const priorTmPercent = new Map<string, number | string | null>();
+  const movementIds = input.tmPercents.map((seed) => seed.movementId);
+  if (movementIds.length > 0) {
+    const { data: priorRows, error: priorTmError } = await supabase
+      .from("training_maxes")
+      .select("movement_id, tm_percent")
+      .eq("user_id", user.id)
+      .in("movement_id", movementIds);
+    if (priorTmError) {
+      const { error: deleteError } = await supabase
+        .from("training_blocks")
+        .delete()
+        .eq("id", blockId)
+        .eq("user_id", user.id);
+      return {
+        data: null,
+        error: {
+          message: deleteError
+            ? `Couldn't read training maxes: ${priorTmError.message} (${deleteError.message})`
+            : `Couldn't read training maxes: ${priorTmError.message}`,
+        },
+      };
+    }
+    for (const row of priorRows ?? []) {
+      priorTmPercent.set(
+        row.movement_id as string,
+        (row.tm_percent as number | string | null) ?? null,
+      );
+    }
+  }
+  const cleanUpBlock = async () => {
+    const errors: string[] = [];
+    for (const [movementId, tmPercent] of priorTmPercent) {
+      const { error } = await supabase
+        .from("training_maxes")
+        .update({ tm_percent: tmPercent })
+        .eq("user_id", user.id)
+        .eq("movement_id", movementId);
+      if (error) errors.push(error.message);
+    }
+    const { error } = await supabase
+      .from("planned_sessions")
+      .delete()
+      .eq("block_id", blockId)
+      .eq("user_id", user.id);
+    if (error) errors.push(error.message);
+    const { error: deleteError } = await supabase
+      .from("training_blocks")
+      .delete()
+      .eq("id", blockId)
+      .eq("user_id", user.id);
+    if (deleteError) errors.push(deleteError.message);
+    return errors.length > 0 ? errors.join("; ") : null;
+  };
+
+  const { error: sessionsError } = await supabase.from("planned_sessions").insert(
+    input.plannedSessions.map((session) => ({
+      block_id: blockId,
+      user_id: user.id,
+      week_index: session.weekIndex,
+      day_index: session.dayIndex,
+      slot: session.slot,
+      title: session.title,
+      role: session.role,
+      prescription: session.prescription,
+      session_modality: session.sessionModality,
+      effective_stress_load: session.effectiveStressLoad,
+    })),
+  );
+  if (sessionsError) {
+    const cleanupError = await cleanUpBlock();
+    return {
+      data: null,
+      error: {
+        message: cleanupError
+          ? `Couldn't create planned sessions: ${sessionsError.message} (${cleanupError})`
+          : `Couldn't create planned sessions: ${sessionsError.message}`,
+      },
+    };
+  }
+
+  for (const seed of input.tmPercents) {
+    const { error } = await supabase
+      .from("training_maxes")
+      .update({ tm_percent: seed.tmPercent })
+      .eq("user_id", user.id)
+      .eq("movement_id", seed.movementId);
+    if (error) {
+      const cleanupError = await cleanUpBlock();
+      return {
+        data: null,
+        error: {
+          message: cleanupError
+            ? `Couldn't align training maxes: ${error.message} (${cleanupError})`
+            : `Couldn't align training maxes: ${error.message}`,
+        },
+      };
+    }
+  }
+
+  const { data: programInstance, error: programInstanceError } = await supabase
+    .from("program_instances")
+    .insert({
+      user_id: user.id,
+      program_id: input.programInstance.programId,
+      program_family: input.programInstance.programFamily,
+      instance: input.programInstance.instance,
+      setup_input: input.programInstance.setupInput,
+      display_name: input.programInstance.displayName,
+      customization_version: input.programInstance.customizationVersion,
+      block_id: blockId,
+      status: "active",
+    })
+    .select("id")
+    .single();
+  if (programInstanceError || !programInstance) {
+    const cleanupError = await cleanUpBlock();
+    return {
+      data: null,
+      error: {
+        message: cleanupError
+          ? `${programInstanceError?.message ?? "Failed to create program instance"} (${cleanupError})`
+          : (programInstanceError?.message ?? "Failed to create program instance"),
+      },
+    };
+  }
+
+  const { error: archiveBlockError } = await supabase
+    .from("training_blocks")
+    .update({ status: "archived", archived_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .neq("id", blockId);
+  if (archiveBlockError) {
+    return { data: null, error: { message: archiveBlockError.message } };
+  }
+  const { error: archiveInstanceError } = await supabase
+    .from("program_instances")
+    .update({ status: "archived", updated_at: new Date().toISOString() })
+    .eq("user_id", user.id)
+    .eq("status", "active")
+    .neq("id", programInstance.id);
+  if (archiveInstanceError) {
+    return { data: null, error: { message: archiveInstanceError.message } };
+  }
+
+  return {
+    data: [
+      {
+        block_id: blockId,
+        program_instance_id: programInstance.id as string,
+      },
+    ],
+    error: null,
+  };
+}
+
+async function deployProgramInstanceDuringMigration(
+  supabase: SupabaseClient,
+  user: User,
+  input: LegacyProgramDeployment,
+): Promise<LegacyDeploymentResult> {
+  // A stale PostgREST schema cache can temporarily hide the new deployment
+  // RPC after its active-row indexes already exist. Never run the old
+  // insert-before-archive sequence when the migration function is visible.
+  const { data: workflowsReady, error: readinessError } = await supabase.rpc(
+    "atomic_user_workflows_ready",
+  );
+  if (readinessError && !isMissingRpc(readinessError)) {
+    return { data: null, error: { message: readinessError.message } };
+  }
+  if (workflowsReady === true) {
+    return {
+      data: null,
+      error: {
+        message:
+          "Program deployment is temporarily unavailable. Reload and try again.",
+      },
+    };
+  }
+  // When a fully stale cache cannot see either function, the active-row index
+  // makes the legacy insert fail before it changes an existing program.
+  return deployProgramInstanceLegacy(supabase, user, input);
+}
+
 /**
  * Foreign per-session engine deploy (5/3/1, Tactical Barbell, Green Protocol).
  * Behaviour is byte-identical to the pre-refactor inline flow.
@@ -1644,114 +1920,36 @@ async function createForeignProgramInstance(
     return { ok: false, error: "This program produced no sessions — check your training maxes." };
   }
 
-  // 1) training_blocks — platform block: archetype NULL, identity in program_* columns.
-  const { data: block, error: blockErr } = await supabase
-    .from("training_blocks")
-    .insert({
-      user_id: user.id,
-      archetype: null,
-      program_id: programId,
-      program_family: engine.meta.family,
-      started_on: startedOn,
+  const deploymentInput = {
+    block: {
+      programId,
+      programFamily: engine.meta.family,
+      startedOn,
       weeks: write.weeks,
-      status: "active",
-      days_per_week: write.daysPerWeek,
-      day_index_overrides: write.dayIndexOverrides,
-      // Open cardio days are logged by the user after the fact, so flag the block
-      // external when any are present; otherwise keep the strength-only default.
-      cardio_source: cardioWeekdays && cardioWeekdays.length > 0 ? "external" : "internal",
-      // Per-block antagonist-superset choice (migration 0111, wizard Schedule
-      // step). Applies to ALL programs; default OFF when the toggle is unset so
-      // the per-block value wins over the profile pref at read time.
-      // HYROX two-a-day choice (ADR 0054) — baked into the grid at deploy. Set the
-      // block flag for read-side consistency with the live AM/PM rows.
-      allows_two_a_days: programId === "hyrox" ? !!twoADay : false,
+      daysPerWeek: write.daysPerWeek,
+      dayIndexOverrides: write.dayIndexOverrides,
+      cardioSource:
+        cardioWeekdays && cardioWeekdays.length > 0 ? "external" : "internal",
+      allowsTwoADays: programId === "hyrox" ? !!twoADay : false,
+      accessoryVolume: "medium",
       notes: customization?.displayName ?? engine.meta.name,
-    })
-    .select("id")
-    .single();
-  if (blockErr || !block) {
-    return { ok: false, error: blockErr?.message ?? "Failed to create block" };
-  }
-  const blockId = block.id as string;
-
-  // 2) planned_sessions
-  const rows = write.sessions.map((s) => ({
-    block_id: blockId,
-    user_id: user.id,
-    week_index: s.weekIndex,
-    day_index: s.dayIndex,
-    slot: s.slot,
-    title: s.title,
-    role: s.role,
-    prescription: s.prescription,
-    session_modality: s.sessionModality,
-    effective_stress_load: s.effectiveStressLoad,
-  }));
-  const { error: psErr } = await supabase.from("planned_sessions").insert(rows);
-  if (psErr) {
-    await supabase.from("training_blocks").delete().eq("id", blockId);
-    return { ok: false, error: `Couldn't create planned sessions: ${psErr.message}` };
-  }
-
-  // 3) seed training_maxes.tm_percent so the engine's % render correct weights.
-  //    tm_percent lives on the SHARED training_maxes (per user+movement, not
-  //    block-scoped), so capture the prior values first and restore them on any
-  //    later failure — a half-applied seed would corrupt the user's strength
-  //    state for future programs.
-  const movementIds = write.tmPercents.map((s) => s.movementId);
-  const priorTmPercent = new Map<string, number | string | null>();
-  if (movementIds.length > 0) {
-    const { data: priorRows, error: priorErr } = await supabase
-      .from("training_maxes")
-      .select("movement_id, tm_percent")
-      .eq("user_id", user.id)
-      .in("movement_id", movementIds);
-    if (priorErr) {
-      await supabase.from("planned_sessions").delete().eq("block_id", blockId);
-      await supabase.from("training_blocks").delete().eq("id", blockId);
-      return { ok: false, error: `Couldn't read training maxes: ${priorErr.message}` };
-    }
-    for (const r of priorRows ?? []) {
-      priorTmPercent.set(r.movement_id as string, (r.tm_percent as number | string | null) ?? null);
-    }
-  }
-  const restoreTmPercents = async () => {
-    for (const seed of write.tmPercents) {
-      await supabase
-        .from("training_maxes")
-        .update({ tm_percent: priorTmPercent.get(seed.movementId) ?? null })
-        .eq("user_id", user.id)
-        .eq("movement_id", seed.movementId);
-    }
-  };
-  const rollbackBlock = async () => {
-    await restoreTmPercents();
-    await supabase.from("planned_sessions").delete().eq("block_id", blockId);
-    await supabase.from("training_blocks").delete().eq("id", blockId);
-  };
-
-  for (const seed of write.tmPercents) {
-    const { error: tmErr } = await supabase
-      .from("training_maxes")
-      .update({ tm_percent: seed.tmPercent })
-      .eq("user_id", user.id)
-      .eq("movement_id", seed.movementId);
-    if (tmErr) {
-      await rollbackBlock();
-      return { ok: false, error: `Couldn't align training maxes: ${tmErr.message}` };
-    }
-  }
-
-  // 4) program_instances (the source of truth for program identity).
-  const { data: pi, error: piErr } = await supabase
-    .from("program_instances")
-    .insert({
-      user_id: user.id,
-      program_id: programId,
-      program_family: engine.meta.family,
+    },
+    plannedSessions: write.sessions.map((session) => ({
+      weekIndex: session.weekIndex,
+      dayIndex: session.dayIndex,
+      slot: session.slot,
+      title: session.title,
+      role: session.role,
+      prescription: session.prescription,
+      sessionModality: session.sessionModality,
+      effectiveStressLoad: session.effectiveStressLoad,
+    })),
+    tmPercents: write.tmPercents,
+    programInstance: {
+      programId,
+      programFamily: engine.meta.family,
       instance,
-      setup_input: programSetupAuditInput({
+      setupInput: programSetupAuditInput({
         values: setupValues,
         weekdays,
         startedOn,
@@ -1760,31 +1958,65 @@ async function createForeignProgramInstance(
         ...(sessionLinks ? { sessionLinks } : {}),
         ...(rehabSchedule ? { rehabSchedule } : {}),
       }),
-      display_name: customization?.displayName ?? null,
-      customization_version: customization?.version ?? null,
-      block_id: blockId,
-      status: "active",
-    })
-    .select("id")
-    .single();
-  if (piErr || !pi) {
-    await rollbackBlock();
-    return { ok: false, error: piErr?.message ?? "Failed to create program instance" };
+      displayName: customization?.displayName ?? null,
+      customizationVersion: customization?.version ?? null,
+    },
+  };
+  const atomicDeployment = await supabase.rpc(
+    "deploy_program_instance_atomically",
+    {
+      p_block: {
+        program_id: deploymentInput.block.programId,
+        program_family: deploymentInput.block.programFamily,
+        started_on: deploymentInput.block.startedOn,
+        weeks: deploymentInput.block.weeks,
+        days_per_week: deploymentInput.block.daysPerWeek,
+        day_index_overrides: deploymentInput.block.dayIndexOverrides,
+        cardio_source: deploymentInput.block.cardioSource,
+        allows_two_a_days: deploymentInput.block.allowsTwoADays,
+        accessory_volume: deploymentInput.block.accessoryVolume,
+        notes: deploymentInput.block.notes,
+      },
+      p_planned_sessions: deploymentInput.plannedSessions.map((session) => ({
+        week_index: session.weekIndex,
+        day_index: session.dayIndex,
+        slot: session.slot,
+        title: session.title,
+        role: session.role,
+        prescription: session.prescription,
+        session_modality: session.sessionModality,
+        effective_stress_load: session.effectiveStressLoad,
+      })),
+      p_tm_percents: deploymentInput.tmPercents,
+      p_program_instance: {
+        program_id: deploymentInput.programInstance.programId,
+        program_family: deploymentInput.programInstance.programFamily,
+        instance: deploymentInput.programInstance.instance,
+        setup_input: deploymentInput.programInstance.setupInput,
+        display_name: deploymentInput.programInstance.displayName,
+        customization_version: deploymentInput.programInstance.customizationVersion,
+      },
+    },
+  );
+  const legacyDeployment = isMissingRpc(atomicDeployment.error)
+    ? await deployProgramInstanceDuringMigration(supabase, user, deploymentInput)
+    : null;
+  const deployment = legacyDeployment?.data ?? atomicDeployment.data;
+  const deploymentError = legacyDeployment
+    ? legacyDeployment.error
+    : atomicDeployment.error;
+  const deployed = (
+    deployment as
+      | Array<{ block_id: string; program_instance_id: string }>
+      | null
+  )?.[0];
+  if (deploymentError || !deployed) {
+    return {
+      ok: false,
+      error: deploymentError?.message ?? "Failed to create program instance",
+    };
   }
-
-  // 5) archive any prior active block + program instance (one active at a time).
-  await supabase
-    .from("training_blocks")
-    .update({ status: "archived", archived_at: new Date().toISOString() })
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .neq("id", blockId);
-  await supabase
-    .from("program_instances")
-    .update({ status: "archived", updated_at: new Date().toISOString() })
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .neq("id", pi.id);
+  const blockId = deployed.block_id;
 
   // Clear any half-opened, zero-logged session from the program we just
   // replaced so Today doesn't surface a stale "Resume today's workout".
@@ -1830,7 +2062,12 @@ async function createForeignProgramInstance(
   revalidatePath("/app/plan");
   revalidatePath("/app/stats");
 
-  return { ok: true, blockId, programInstanceId: pi.id as string, skipped: write.skipped.length };
+  return {
+    ok: true,
+    blockId,
+    programInstanceId: deployed.program_instance_id,
+    skipped: write.skipped.length,
+  };
 }
 
 /**
@@ -1916,6 +2153,7 @@ async function updateForeignProgramInstance(
       .eq("block_id", blockId)
       .eq("user_id", user.id)
       .eq("status", "active")
+      .is("deleted_at", null)
       .maybeSingle(),
     supabase
       .from("planned_sessions")
@@ -2469,15 +2707,122 @@ async function updateForeignProgramInstance(
       error: "Couldn't build a safe snapshot of upcoming workouts.",
     };
   }
-  const { error: rewriteErr } = await supabase.rpc(
-    "rewrite_planned_sessions_atomically",
+  const atomicRewrite = await supabase.rpc(
+    "update_program_instance_atomically",
     {
       p_block_id: blockId,
       p_strength_updates: strengthPrescriptionUpdates,
       p_deletions: deletionSnapshots,
       p_insertions: newRows,
+      p_block_metadata: {
+        weeks: newWeeks,
+        days_per_week: write.daysPerWeek,
+        day_index_overrides: write.dayIndexOverrides,
+        cardio_source:
+          args.cardioWeekdays && args.cardioWeekdays.length > 0
+            ? "external"
+            : "internal",
+        notes: customization?.displayName ?? engine.meta.name,
+      },
+      p_tm_percents: write.tmPercents,
+      p_program_instance: {
+        instance,
+        setup_input: programSetupAuditInput({
+          values: args.setupValues,
+          weekdays: args.weekdays,
+          startedOn: blockStartedOn,
+          startWeekIndex: effectiveStartWeekIndex,
+          ...(customization ? { customization } : {}),
+          ...(sessionLinks ? { sessionLinks } : {}),
+          ...(rehabSchedule ? { rehabSchedule } : {}),
+        }),
+        display_name: customization?.displayName ?? null,
+        customization_version: customization?.version ?? null,
+      },
     },
   );
+  let updatedProgramInstanceId = atomicRewrite.data;
+  let rewriteErr = atomicRewrite.error;
+  if (isMissingRpc(rewriteErr)) {
+    const { error: legacyRewriteError } = await supabase.rpc(
+      "rewrite_planned_sessions_atomically",
+      {
+        p_block_id: blockId,
+        p_strength_updates: strengthPrescriptionUpdates,
+        p_deletions: deletionSnapshots,
+        p_insertions: newRows,
+      },
+    );
+    if (legacyRewriteError) {
+      return {
+        ok: false,
+        error: `Couldn't update upcoming workouts: ${legacyRewriteError.message}`,
+      };
+    }
+
+    const { error: blockUpdateError } = await supabase
+      .from("training_blocks")
+      .update({
+        weeks: newWeeks,
+        days_per_week: write.daysPerWeek,
+        day_index_overrides: write.dayIndexOverrides,
+        cardio_source:
+          args.cardioWeekdays && args.cardioWeekdays.length > 0
+            ? "external"
+            : "internal",
+        notes: customization?.displayName ?? engine.meta.name,
+      })
+      .eq("id", blockId)
+      .eq("user_id", user.id);
+    if (blockUpdateError) {
+      return { ok: false, error: `Couldn't update the plan: ${blockUpdateError.message}` };
+    }
+
+    for (const seed of write.tmPercents) {
+      const { error: tmUpdateError } = await supabase
+        .from("training_maxes")
+        .update({ tm_percent: seed.tmPercent })
+        .eq("user_id", user.id)
+        .eq("movement_id", seed.movementId);
+      if (tmUpdateError) {
+        return {
+          ok: false,
+          error: `Couldn't align training maxes: ${tmUpdateError.message}`,
+        };
+      }
+    }
+
+    const { data: legacyProgramInstance, error: programInstanceError } = await supabase
+      .from("program_instances")
+      .update({
+        instance,
+        setup_input: programSetupAuditInput({
+          values: args.setupValues,
+          weekdays: args.weekdays,
+          startedOn: blockStartedOn,
+          startWeekIndex: effectiveStartWeekIndex,
+          ...(customization ? { customization } : {}),
+          ...(sessionLinks ? { sessionLinks } : {}),
+          ...(rehabSchedule ? { rehabSchedule } : {}),
+        }),
+        display_name: customization?.displayName ?? null,
+        customization_version: customization?.version ?? null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("block_id", blockId)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .select("id")
+      .maybeSingle();
+    if (programInstanceError || !legacyProgramInstance) {
+      return {
+        ok: false,
+        error: programInstanceError?.message ?? "Couldn't update the active program instance.",
+      };
+    }
+    updatedProgramInstanceId = legacyProgramInstance.id;
+    rewriteErr = null;
+  }
   if (rewriteErr) {
     return {
       ok: false,
@@ -2485,53 +2830,12 @@ async function updateForeignProgramInstance(
     };
   }
 
-  // 6) Update block metadata (id + started_on unchanged). Re-seed tm_percent so
-  //    regenerated workouts render correct weights — a no-op when the user only
-  //    changed cardio (the common case), since the seeds are identical.
-  const cardioPresent = !!(args.cardioWeekdays && args.cardioWeekdays.length > 0);
-  await supabase
-    .from("training_blocks")
-    .update({
-      weeks: newWeeks,
-      days_per_week: write.daysPerWeek,
-      day_index_overrides: write.dayIndexOverrides,
-      cardio_source: cardioPresent ? "external" : "internal",
-      notes: customization?.displayName ?? engine.meta.name,
-    })
-    .eq("id", blockId)
-    .eq("user_id", user.id);
-
-  for (const seed of write.tmPercents) {
-    await supabase
-      .from("training_maxes")
-      .update({ tm_percent: seed.tmPercent })
-      .eq("user_id", user.id)
-      .eq("movement_id", seed.movementId);
+  if (!updatedProgramInstanceId) {
+    return {
+      ok: false,
+      error: "Couldn't update the active program instance.",
+    };
   }
-
-  // 7) Keep the active program instance in sync (serialised state + wizard input).
-  const { data: pi } = await supabase
-    .from("program_instances")
-    .update({
-      instance,
-      setup_input: programSetupAuditInput({
-        values: args.setupValues,
-        weekdays: args.weekdays,
-        startedOn: blockStartedOn,
-        startWeekIndex: effectiveStartWeekIndex,
-        ...(customization ? { customization } : {}),
-        ...(sessionLinks ? { sessionLinks } : {}),
-        ...(rehabSchedule ? { rehabSchedule } : {}),
-      }),
-      display_name: customization?.displayName ?? null,
-      customization_version: customization?.version ?? null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("block_id", blockId)
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .select("id")
-    .maybeSingle();
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
@@ -2540,7 +2844,7 @@ async function updateForeignProgramInstance(
   return {
     ok: true,
     blockId,
-    programInstanceId: (pi?.id as string) ?? "",
+    programInstanceId: updatedProgramInstanceId as string,
     skipped: write.skipped.length,
     todayLeftAsIs,
   };
@@ -2605,148 +2909,119 @@ async function createNativeProgramInstance(
   const daysPerWeek = instance.daysPerWeek;
   const dayIndexOverrides = instance.dayIndexOverrides;
 
-  // 1) training_blocks — platform block: archetype NULL, identity in program_* columns.
-  const { data: block, error: blockErr } = await supabase
-    .from("training_blocks")
-    .insert({
-      user_id: user.id,
-      archetype: null,
-      program_id: programId,
-      program_family: engine.meta.family,
-      started_on: startedOn,
-      weeks,
-      status: "active",
-      days_per_week: daysPerWeek,
-      day_index_overrides: dayIndexOverrides,
-      // Per-block two-a-day choice (migration 0110, wizard Schedule step).
-      // Hybrid stores an explicit boolean so the per-block value wins over the
-      // profile default at materialisation; default OFF when the toggle is unset.
-      allows_two_a_days: twoADay ?? false,
-      // ADR 0024 — per-block accessory volume (wizard Loadout step). The
-      // instance is what materialisation reads, but the column is the one the
-      // off-plan quick-generate fallback and any block-level query look at, so
-      // keep the row honest rather than leaving it on the 'medium' default.
-      accessory_volume: resolveAccessoryVolumeLevel(instance.accessoryVolume),
-      // Per-block antagonist-superset choice (migration 0111, wizard Schedule
-      // step). Applies to ALL programs; default OFF when the toggle is unset so
-      // the per-block value wins over the profile pref at read time.
-      notes: engine.meta.name,
-    })
-    .select("id")
-    .single();
-  if (blockErr || !block) {
-    return { ok: false, error: blockErr?.message ?? "Failed to create block" };
-  }
-  const blockId = block.id as string;
-
-  // Hybrid's chosen training-max % (wizard Loadout step). Seeded onto
-  // training_maxes.tm_percent for the block's main lifts (3b) so every "% of TM"
-  // render uses the program's loading basis — exactly like the foreign path does
-  // for 5/3/1 / TB. Captured priors are restored on any later failure.
-  const hybridTmPercent = resolveHybridTmPercent(setupValues.tmPercent);
-  const priorTmPercent = new Map<string, number | string | null>();
-  const restoreTmPercents = async () => {
-    for (const [movementId, prior] of priorTmPercent) {
-      await supabase
-        .from("training_maxes")
-        .update({ tm_percent: prior ?? null })
-        .eq("user_id", user.id)
-        .eq("movement_id", movementId);
-    }
-  };
-
-  const deleteBlock = async () => {
-    await supabase.from("training_blocks").delete().eq("id", blockId).eq("user_id", user.id);
-  };
-  const rollbackBlock = async () => {
-    await restoreTmPercents();
-    await supabase.from("planned_sessions").delete().eq("block_id", blockId).eq("user_id", user.id);
-    await deleteBlock();
-  };
-
-  // 2) materialise the WHOLE block via the shared assembly path.
-  const mat = await engine.materializeNative(instance, supabase, user.id, blockId);
+  // Materialise the whole block before starting the database transaction. The
+  // materializer is pure with respect to the block id, so a placeholder is safe.
+  const materializationBlockId = crypto.randomUUID();
+  const mat = await engine.materializeNative(
+    instance,
+    supabase,
+    user.id,
+    materializationBlockId,
+    twoADay ?? false,
+  );
   if (!mat.ok) {
-    await deleteBlock();
     return { ok: false, error: mat.error };
   }
   if (mat.rows.length === 0) {
-    await deleteBlock();
     return { ok: false, error: "This program produced no sessions — check your training maxes." };
   }
-
-  // 3) planned_sessions — rows already carry block_id/user_id/snake_case columns.
-  const { error: psErr } = await supabase.from("planned_sessions").insert(mat.rows);
-  if (psErr) {
-    await deleteBlock();
-    return { ok: false, error: `Couldn't create planned sessions: ${psErr.message}` };
-  }
-
-  // 3b) seed training_maxes.tm_percent for the block's resolved main lifts so
-  //     Hybrid's chosen intensity drives every %-of-TM render. Capture priors
-  //     first so a later failure restores the user's strength state.
-  const seedMovementIds = mat.mainMovementIds;
-  if (seedMovementIds.length > 0) {
-    const { data: priorRows, error: priorErr } = await supabase
-      .from("training_maxes")
-      .select("movement_id, tm_percent")
-      .eq("user_id", user.id)
-      .in("movement_id", seedMovementIds);
-    if (priorErr) {
-      await rollbackBlock();
-      return { ok: false, error: `Couldn't read training maxes: ${priorErr.message}` };
-    }
-    for (const r of priorRows ?? []) {
-      priorTmPercent.set(r.movement_id as string, (r.tm_percent as number | string | null) ?? null);
-    }
-    const { error: seedErr } = await supabase
-      .from("training_maxes")
-      .update({ tm_percent: hybridTmPercent })
-      .eq("user_id", user.id)
-      .in("movement_id", seedMovementIds);
-    if (seedErr) {
-      await rollbackBlock();
-      return { ok: false, error: `Couldn't align training maxes: ${seedErr.message}` };
-    }
-  }
-
-  // 4) program_instances (the source of truth for program identity).
-  const { data: pi, error: piErr } = await supabase
-    .from("program_instances")
-    .insert({
-      user_id: user.id,
-      program_id: programId,
-      program_family: engine.meta.family,
+  const hybridTmPercent = resolveHybridTmPercent(setupValues.tmPercent);
+  const deploymentInput = {
+    block: {
+      programId,
+      programFamily: engine.meta.family,
+      startedOn,
+      weeks,
+      daysPerWeek,
+      dayIndexOverrides,
+      cardioSource: "internal",
+      allowsTwoADays: twoADay ?? false,
+      accessoryVolume: resolveAccessoryVolumeLevel(instance.accessoryVolume),
+      notes: engine.meta.name,
+    },
+    plannedSessions: mat.rows.map((row) => ({
+      weekIndex: row.week_index,
+      dayIndex: row.day_index,
+      slot: row.slot,
+      title: row.title,
+      role: row.role,
+      prescription: row.prescription,
+      sessionModality: row.session_modality,
+      effectiveStressLoad: row.effective_stress_load,
+    })),
+    tmPercents: mat.mainMovementIds.map((movementId) => ({
+      movementId,
+      tmPercent: hybridTmPercent,
+    })),
+    programInstance: {
+      programId,
+      programFamily: engine.meta.family,
       instance,
-      setup_input: programSetupAuditInput({
+      setupInput: programSetupAuditInput({
         values: setupValues,
         weekdays,
         startedOn,
         startWeekIndex,
       }),
-      block_id: blockId,
-      status: "active",
-    })
-    .select("id")
-    .single();
-  if (piErr || !pi) {
-    await rollbackBlock();
-    return { ok: false, error: piErr?.message ?? "Failed to create program instance" };
+      displayName: null,
+      customizationVersion: null,
+    },
+  };
+  const atomicDeployment = await supabase.rpc(
+    "deploy_program_instance_atomically",
+    {
+      p_block: {
+        program_id: deploymentInput.block.programId,
+        program_family: deploymentInput.block.programFamily,
+        started_on: deploymentInput.block.startedOn,
+        weeks: deploymentInput.block.weeks,
+        days_per_week: deploymentInput.block.daysPerWeek,
+        day_index_overrides: deploymentInput.block.dayIndexOverrides,
+        cardio_source: deploymentInput.block.cardioSource,
+        allows_two_a_days: deploymentInput.block.allowsTwoADays,
+        accessory_volume: deploymentInput.block.accessoryVolume,
+        notes: deploymentInput.block.notes,
+      },
+      p_planned_sessions: deploymentInput.plannedSessions.map((session) => ({
+        week_index: session.weekIndex,
+        day_index: session.dayIndex,
+        slot: session.slot,
+        title: session.title,
+        role: session.role,
+        prescription: session.prescription,
+        session_modality: session.sessionModality,
+        effective_stress_load: session.effectiveStressLoad,
+      })),
+      p_tm_percents: deploymentInput.tmPercents,
+      p_program_instance: {
+        program_id: deploymentInput.programInstance.programId,
+        program_family: deploymentInput.programInstance.programFamily,
+        instance: deploymentInput.programInstance.instance,
+        setup_input: deploymentInput.programInstance.setupInput,
+        display_name: deploymentInput.programInstance.displayName,
+        customization_version: deploymentInput.programInstance.customizationVersion,
+      },
+    },
+  );
+  const legacyDeployment = isMissingRpc(atomicDeployment.error)
+    ? await deployProgramInstanceDuringMigration(supabase, user, deploymentInput)
+    : null;
+  const deployment = legacyDeployment?.data ?? atomicDeployment.data;
+  const deploymentError = legacyDeployment
+    ? legacyDeployment.error
+    : atomicDeployment.error;
+  const deployed = (
+    deployment as
+      | Array<{ block_id: string; program_instance_id: string }>
+      | null
+  )?.[0];
+  if (deploymentError || !deployed) {
+    return {
+      ok: false,
+      error: deploymentError?.message ?? "Failed to create program instance",
+    };
   }
-
-  // 5) archive any prior active block + program instance (one active at a time).
-  await supabase
-    .from("training_blocks")
-    .update({ status: "archived", archived_at: new Date().toISOString() })
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .neq("id", blockId);
-  await supabase
-    .from("program_instances")
-    .update({ status: "archived", updated_at: new Date().toISOString() })
-    .eq("user_id", user.id)
-    .eq("status", "active")
-    .neq("id", pi.id);
+  const blockId = deployed.block_id;
 
   // Clear any half-opened, zero-logged session from the program we just
   // replaced so Today doesn't surface a stale "Resume today's workout".
@@ -2766,7 +3041,12 @@ async function createNativeProgramInstance(
   revalidatePath("/app/plan");
   revalidatePath("/app/stats");
 
-  return { ok: true, blockId, programInstanceId: pi.id as string, skipped: 0 };
+  return {
+    ok: true,
+    blockId,
+    programInstanceId: deployed.program_instance_id,
+    skipped: 0,
+  };
 }
 
 /**

@@ -10,7 +10,7 @@
  *
  * Uses the lightweight Supabase mock pattern from `log-cardio-session.test.ts`.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, vi } from "vitest";
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
 const SESSION_ID = "00000000-0000-4000-8000-000000000010";
@@ -19,14 +19,26 @@ const MOVEMENT_ID = "00000000-0000-4000-8000-000000000020";
 const setInserts: Array<Record<string, unknown>> = [];
 const recomputeCalls: Array<Record<string, unknown>> = [];
 const revalidated: string[] = [];
+const rpcCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
 
 /** Flip to simulate an offline-outbox replay hitting the unique index. */
 let insertConflict = false;
 /** What the shared post-completion helper reports back. */
 let recomputed = false;
+let atomicRpcAvailable = false;
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      rpcCalls.push({ name, args });
+      if (atomicRpcAvailable && name === "insert_set_log_with_bw_progress") {
+        return { data: [{ id: "atomic-row", inserted: true }], error: null };
+      }
+      return {
+        data: null,
+        error: { code: "PGRST202", message: "Function not found" },
+      };
+    },
     from: (table: string) => {
       const builder: Record<string, unknown> = {};
       Object.assign(builder, {
@@ -81,12 +93,18 @@ function postHocSet(): FormData {
 }
 
 describe("addStrengthSet — post-completion recompute", () => {
+  beforeAll(async () => {
+    await import("../actions");
+  }, 20_000);
+
   beforeEach(() => {
     setInserts.length = 0;
     recomputeCalls.length = 0;
     revalidated.length = 0;
     insertConflict = false;
     recomputed = false;
+    atomicRpcAvailable = false;
+    rpcCalls.length = 0;
   });
 
   it("routes every new row through the shared post-completion recompute", async () => {
@@ -108,6 +126,24 @@ describe("addStrengthSet — post-completion recompute", () => {
     expect(setInserts).toHaveLength(1);
     expect(setInserts[0]!.prescription_item_index).toBeNull();
     expect(setInserts[0]!.skipped).toBe(false);
+  });
+
+  it("uses one atomic set-write RPC when migration 0144 is available", async () => {
+    atomicRpcAvailable = true;
+    const { addStrengthSet } = await import("../actions");
+    const res = await addStrengthSet(postHocSet());
+
+    expect(res.ok).toBe(true);
+    expect(setInserts).toEqual([]);
+    expect(rpcCalls).toContainEqual({
+      name: "insert_set_log_with_bw_progress",
+      args: {
+        p_set_log: expect.objectContaining({
+          session_id: SESSION_ID,
+          movement_id: MOVEMENT_ID,
+        }),
+      },
+    });
   });
 
   it("revalidates Today + Plan + the session ONLY when the session was complete", async () => {

@@ -151,6 +151,7 @@ export async function getDeloadWeekPreview(
     .eq("block_id", block.id)
     .eq("user_id", userId)
     .eq("status", "active")
+    .is("deleted_at", null)
     .maybeSingle();
   const basePolicy = recoveryWeekPolicyFor(block.program_id as string | null);
   const percent = basePolicy.restOnly

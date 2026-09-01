@@ -68,6 +68,7 @@ export type FocusLoggedSet = {
   /** Stored attribution can differ after a forward-only movement swap. */
   movementId?: string;
   weightKg: number | null;
+  externalLoadKg?: number | null;
   reps: number | null;
   /** Distance in metres for loaded-carry sets (set_logs.distance_m). */
   distanceM?: number | null;
@@ -544,7 +545,9 @@ export function MovementFocusView({
   // default; user can override via the ±2.5 kg stepper. Negative for
   // band-assist.
   const targetExternalLoad = activeItem?.bw?.externalLoadKg ?? 0;
-  const [externalLoadKg, setExternalLoadKg] = useState<number>(targetExternalLoad);
+  const [externalLoadKg, setExternalLoadKg] = useState<number>(
+    initialLoggedSet?.externalLoadKg ?? targetExternalLoad,
+  );
   const [rpe, setRpe] = useState<number | null>(
     initialLoggedSet?.rpe ?? null,
   );
@@ -771,7 +774,11 @@ export function MovementFocusView({
         ? existing.durationSec
         : targetDuration,
     );
-    setExternalLoadKg(targetExternalLoad);
+    setExternalLoadKg(
+      existing && !existing.skipped && existing.externalLoadKg != null
+        ? existing.externalLoadKg
+        : targetExternalLoad,
+    );
     setRpe(existing?.rpe ?? null);
     setError(null);
     setSkipMenuOpen(false);

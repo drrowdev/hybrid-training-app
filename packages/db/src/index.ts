@@ -24,6 +24,7 @@ export * from "./schema/muscle-state";
 export * from "./schema/training-maxes";
 export * from "./schema/movement-nodes";
 export * from "./schema/bw-progress";
+export * from "./schema/bw-set-progress-contributions";
 export * from "./schema/bw-progression-events";
 export * from "./types";
 export * from "./schema/tm-history";

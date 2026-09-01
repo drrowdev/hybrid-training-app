@@ -82,6 +82,9 @@ export const setLogs = pgTable(
     // CONFLICT DO NOTHING so a retried flush can't double-insert. NULL on the
     // regular online path and on legacy rows (partial-unique, NULLs coexist).
     clientLogId: uuid("client_log_id"),
+    // ADR 0074 — actual added or assisted load for a bodyweight set. This is
+    // separate from weight_kg, which records the standard strength load.
+    externalLoadKg: numeric("external_load_kg", { precision: 6, scale: 2 }),
     // ADR 0070 (migration 0128) — prescribed-vs-actual snapshot. These record
     // what the app ASKED for; the columns above record what the user DID.
     //

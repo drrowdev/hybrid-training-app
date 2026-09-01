@@ -12,6 +12,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 import {
   MAX_SEASON_BLOCKS,
   SEASON_EMPHASIS_VALUES,
@@ -72,51 +73,94 @@ export async function createSeason(input: unknown): Promise<SeasonActionResult> 
   if (!user) return { ok: false, error: "Not signed in." };
   const supabase = await createClient();
 
-  // Archive any prior active Season first (one active per user).
-  await supabase
-    .from("training_seasons")
-    .update({ status: "abandoned", updated_at: new Date().toISOString() })
-    .eq("user_id", user.id)
-    .eq("status", "active");
+  const { data: seasonId, error } = await supabase.rpc(
+    "create_training_season_atomically",
+    {
+      p_name: parsed.data.name,
+      p_goal: {
+        goalType: parsed.data.goal?.goalType ?? null,
+        targetDate: parsed.data.goal?.targetDate ?? null,
+        targetEventId: parsed.data.goal?.targetEventId ?? null,
+      },
+      p_blocks: parsed.data.blocks.map((block, position) => ({
+        position,
+        program_id: block.programId,
+        template_ref: block.templateRef ?? null,
+        emphasis: block.emphasis,
+        intent_note: block.intentNote ?? null,
+        planned_weeks: block.plannedWeeks ?? null,
+      })),
+    },
+  );
+  if (error && !isMissingRpc(error)) {
+    return {
+      ok: false,
+      error: error?.message ?? "Couldn't create the season.",
+    };
+  }
+  if (isMissingRpc(error)) {
+    const { error: abandonError } = await supabase
+      .from("training_seasons")
+      .update({ status: "abandoned", updated_at: new Date().toISOString() })
+      .eq("user_id", user.id)
+      .eq("status", "active");
+    if (abandonError) return { ok: false, error: abandonError.message };
 
-  const { data: season, error: sErr } = await supabase
-    .from("training_seasons")
-    .insert({
-      user_id: user.id,
-      name: parsed.data.name,
-      status: "active",
-      ...(parsed.data.goal
-        ? {
-            goal_type: parsed.data.goal.goalType,
-            target_date: parsed.data.goal.targetDate ?? null,
-            target_event_id: parsed.data.goal.targetEventId ?? null,
-          }
-        : {}),
-    })
-    .select("id")
-    .single();
-  if (sErr || !season) return { ok: false, error: sErr?.message ?? "Couldn't create the season." };
-  const seasonId = season.id as string;
-
-  const rows = parsed.data.blocks.map((b, i) => ({
-    season_id: seasonId,
-    user_id: user.id,
-    position: i,
-    program_id: b.programId,
-    template_ref: b.templateRef ?? null,
-    emphasis: b.emphasis,
-    intent_note: b.intentNote ?? null,
-    planned_weeks: b.plannedWeeks ?? null,
-    status: "planned" as const,
-  }));
-  const { error: bErr } = await supabase.from("season_blocks").insert(rows);
-  if (bErr) {
-    await supabase.from("training_seasons").delete().eq("id", seasonId).eq("user_id", user.id);
-    return { ok: false, error: `Couldn't add the blocks: ${bErr.message}` };
+    const { data: legacySeason, error: seasonError } = await supabase
+      .from("training_seasons")
+      .insert({
+        user_id: user.id,
+        name: parsed.data.name,
+        status: "active",
+        ...(parsed.data.goal
+          ? {
+              goal_type: parsed.data.goal.goalType,
+              target_date: parsed.data.goal.targetDate ?? null,
+              target_event_id: parsed.data.goal.targetEventId ?? null,
+            }
+          : {}),
+      })
+      .select("id")
+      .single();
+    if (seasonError || !legacySeason) {
+      return { ok: false, error: seasonError?.message ?? "Couldn't create the season." };
+    }
+    const legacySeasonId = legacySeason.id as string;
+    const { error: blocksError } = await supabase.from("season_blocks").insert(
+      parsed.data.blocks.map((block, position) => ({
+        season_id: legacySeasonId,
+        user_id: user.id,
+        position,
+        program_id: block.programId,
+        template_ref: block.templateRef ?? null,
+        emphasis: block.emphasis,
+        intent_note: block.intentNote ?? null,
+        planned_weeks: block.plannedWeeks ?? null,
+        status: "planned" as const,
+      })),
+    );
+    if (blocksError) {
+      const { error: cleanupError } = await supabase
+        .from("training_seasons")
+        .delete()
+        .eq("id", legacySeasonId)
+        .eq("user_id", user.id);
+      return {
+        ok: false,
+        error: cleanupError
+          ? `Couldn't add the blocks: ${blocksError.message} (${cleanupError.message})`
+          : `Couldn't add the blocks: ${blocksError.message}`,
+      };
+    }
+    revalidateSeason();
+    return { ok: true, seasonId: legacySeasonId };
+  }
+  if (!seasonId) {
+    return { ok: false, error: "Couldn't create the season." };
   }
 
   revalidateSeason();
-  return { ok: true, seasonId };
+  return { ok: true, seasonId: seasonId as string };
 }
 
 const addBlockSchema = z

@@ -42,6 +42,10 @@ vi.mock("../post-completion-recompute", () => ({
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
     auth: { getUser: async () => ({ data: { user: { id: "u-1" } } }) },
+    rpc: async () => ({
+      data: null,
+      error: { code: "PGRST202", message: "Function not found" },
+    }),
     from: (table: string) => {
       const eqs: Array<[string, unknown]> = [];
       const builder: {
@@ -92,7 +96,10 @@ describe("deleteSet / deleteCardio (defect #5)", () => {
     await expect(deleteSet(fd)).resolves.toBeUndefined();
     expect(deleteCalls).toHaveLength(1);
     expect(deleteCalls[0]!.table).toBe("set_logs");
-    expect(deleteCalls[0]!.eqs).toEqual([["id", SET_ID]]);
+    expect(deleteCalls[0]!.eqs).toEqual([
+      ["id", SET_ID],
+      ["session_id", SESSION_ID],
+    ]);
   });
 
   it("deleteSet throws instead of silently ignoring a database error", async () => {

@@ -65,6 +65,7 @@ async function resolveExperienceDivision(
     .select("instance, status, created_at")
     .eq("user_id", userId)
     .eq("program_id", "hyrox")
+    .is("deleted_at", null)
     .order("created_at", { ascending: false })
     .limit(10);
 

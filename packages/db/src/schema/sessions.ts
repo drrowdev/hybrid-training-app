@@ -47,6 +47,8 @@ export const sessions = pgTable("sessions", {
   /** DC-A2: session RPE 0–10. */
   sessionRpe: numeric("session_rpe", { precision: 3, scale: 1 }),
   completedAt: timestamp("completed_at", { withTimezone: true }),
+  /** Durable receipt for the offline outbox entry that completed this session. */
+  completionOutboxEntryId: uuid("completion_outbox_entry_id"),
   /** Two-a-day slot. Default 'single' = legacy one-session-per-day shape. */
   slot: sessionSlot("slot").default("single").notNull(),
   /** Optional explicit planned start time. Defaults applied by the planner from profile AM/PM windows. */

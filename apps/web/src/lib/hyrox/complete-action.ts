@@ -22,6 +22,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 import { maybeCompleteBlock } from "@/lib/planner/completion";
 import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-completion-recompute";
 import type { Prescription } from "@hta/db";
@@ -55,6 +56,66 @@ const completeHyroxSchema = z
   .strict();
 
 export type CompleteHyroxInput = z.input<typeof completeHyroxSchema>;
+
+async function replaceHyroxActuals(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  args: {
+    sessionId: string;
+    cardioLogs: Array<Record<string, unknown>>;
+    setLogs: Array<Record<string, unknown>>;
+    durationMin: number;
+    sessionRpe: number;
+    notes: string | null;
+    completedAt: string | null;
+  },
+): Promise<string | null> {
+  const { error } = await supabase.rpc("replace_hyrox_session_actuals", {
+    p_session_id: args.sessionId,
+    p_cardio_logs: args.cardioLogs,
+    p_set_logs: args.setLogs,
+    p_duration_min: args.durationMin,
+    p_session_rpe: args.sessionRpe,
+    p_notes: args.notes,
+  });
+  if (!isMissingRpc(error)) return error?.message ?? null;
+
+  // This exists only for the app-first migration window. Once migration 0144
+  // is live, the RPC above is the sole write path and is transactional.
+  const { error: setDeleteError } = await supabase
+    .from("set_logs")
+    .delete()
+    .eq("session_id", args.sessionId);
+  if (setDeleteError) return setDeleteError.message;
+
+  const { error: cardioDeleteError } = await supabase
+    .from("cardio_logs")
+    .delete()
+    .eq("session_id", args.sessionId);
+  if (cardioDeleteError) return cardioDeleteError.message;
+
+  if (args.cardioLogs.length > 0) {
+    const { error: cardioInsertError } = await supabase.from("cardio_logs").insert(
+      args.cardioLogs.map((row) => ({ session_id: args.sessionId, ...row })),
+    );
+    if (cardioInsertError) return cardioInsertError.message;
+  }
+  if (args.setLogs.length > 0) {
+    const { error: setInsertError } = await supabase.from("set_logs").insert(
+      args.setLogs.map((row) => ({ session_id: args.sessionId, ...row })),
+    );
+    if (setInsertError) return setInsertError.message;
+  }
+  const { error: sessionUpdateError } = await supabase
+    .from("sessions")
+    .update({
+      duration_min: args.durationMin,
+      session_rpe: args.sessionRpe,
+      notes: args.notes,
+      completed_at: args.completedAt ?? new Date().toISOString(),
+    })
+    .eq("id", args.sessionId);
+  return sessionUpdateError?.message ?? null;
+}
 
 export async function completeHyroxSession(
   raw: CompleteHyroxInput,
@@ -103,37 +164,26 @@ export async function completeHyroxSession(
         : quickFormat === "erg"
           ? "row"
           : "run";
-    const { error: setDeleteError } = await supabase
-      .from("set_logs")
-      .delete()
-      .eq("session_id", sessionId);
-    if (setDeleteError) return { error: setDeleteError.message };
-    const { error: cardioDeleteError } = await supabase
-      .from("cardio_logs")
-      .delete()
-      .eq("session_id", sessionId);
-    if (cardioDeleteError) return { error: cardioDeleteError.message };
-    const { error: cErr } = await supabase.from("cardio_logs").insert({
-      session_id: sessionId,
-      movement_id: null,
-      block_index: 0,
-      modality,
-      duration_sec: totalDurationSec,
-      rpe: sessionRpe,
-      ...(avgHrBpm != null ? { avg_hr_bpm: avgHrBpm } : {}),
-      ...(hrZones ? { hr_zones: hrZones } : {}),
+    const replaceError = await replaceHyroxActuals(supabase, {
+      sessionId,
+      cardioLogs: [
+        {
+          movement_id: null,
+          block_index: 0,
+          modality,
+          duration_sec: totalDurationSec,
+          rpe: sessionRpe,
+          avg_hr_bpm: avgHrBpm ?? null,
+          hr_zones: hrZones ?? null,
+        },
+      ],
+      setLogs: [],
+      durationMin: Math.round(totalDurationSec / 60),
+      sessionRpe,
+      notes: notes ?? null,
+      completedAt: session.completed_at,
     });
-    if (cErr) return { error: cErr.message };
-    const { error: updErr } = await supabase
-      .from("sessions")
-      .update({
-        completed_at: session.completed_at ?? new Date().toISOString(),
-        duration_min: Math.round(totalDurationSec / 60),
-        session_rpe: sessionRpe,
-        notes: notes ?? null,
-      })
-      .eq("id", sessionId);
-    if (updErr) return { error: updErr.message };
+    if (replaceError) return { error: replaceError };
     try {
       await recomputeAfterCompletedSessionMutation({
         supabase,
@@ -157,6 +207,7 @@ export async function completeHyroxSession(
     .eq("user_id", user.id)
     .eq("block_id", blockId)
     .eq("status", "active")
+    .is("deleted_at", null)
     .maybeSingle();
   if (!pi || pi.program_id !== "hyrox") {
     return { error: "Not an active HYROX block." };
@@ -205,66 +256,42 @@ export async function completeHyroxSession(
     for (const m of movs ?? []) movementIdBySlug.set(m.slug as string, m.id as string);
   }
 
-  // Idempotent: structured HYROX sessions are logged ONLY via this action, so
-  // replacing this session's materialized rows on re-completion is safe.
-  const { error: setDeleteError } = await supabase
-    .from("set_logs")
-    .delete()
-    .eq("session_id", sessionId);
-  if (setDeleteError) return { error: setDeleteError.message };
-  const { error: cardioDeleteError } = await supabase
-    .from("cardio_logs")
-    .delete()
-    .eq("session_id", sessionId);
-  if (cardioDeleteError) return { error: cardioDeleteError.message };
-
   const cardioRows = actuals.cardioLogs.map((c) => ({
-    session_id: sessionId,
     movement_id: null,
     block_index: c.blockIndex,
     modality: c.modality,
     duration_sec: c.durationSec,
     rpe: c.rpe,
-    ...(c.avgHrBpm != null ? { avg_hr_bpm: c.avgHrBpm } : {}),
-    ...(c.hrZones ? { hr_zones: c.hrZones } : {}),
+    avg_hr_bpm: c.avgHrBpm ?? null,
+    hr_zones: c.hrZones ?? null,
   }));
-  if (cardioRows.length > 0) {
-    const { error: cErr } = await supabase.from("cardio_logs").insert(cardioRows);
-    if (cErr) return { error: cErr.message };
-  }
 
   const setRows = actuals.setLogs
     .map((s) => {
       const movementId = movementIdBySlug.get(s.slug);
       if (!movementId) return null;
       return {
-        session_id: sessionId,
         movement_id: movementId,
         set_index: s.setIndex,
         set_kind: s.setKind,
         rpe: s.rpe,
-        ...(s.reps != null ? { reps: s.reps } : {}),
-        ...(s.weightKg != null ? { weight_kg: s.weightKg } : {}),
-        ...(s.distanceM != null ? { distance_m: s.distanceM } : {}),
+        reps: s.reps ?? null,
+        weight_kg: s.weightKg ?? null,
+        distance_m: s.distanceM ?? null,
+        duration_sec: null,
       };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
-  if (setRows.length > 0) {
-    const { error: slErr } = await supabase.from("set_logs").insert(setRows);
-    if (slErr) return { error: slErr.message };
-  }
-
-  // Stamp the session complete.
-  const { error: updErr } = await supabase
-    .from("sessions")
-    .update({
-      completed_at: session.completed_at ?? new Date().toISOString(),
-      duration_min: Math.round(totalDurationSec / 60),
-      session_rpe: sessionRpe,
-      notes: notes ?? null,
-    })
-    .eq("id", sessionId);
-  if (updErr) return { error: updErr.message };
+  const replaceError = await replaceHyroxActuals(supabase, {
+    sessionId,
+    cardioLogs: cardioRows,
+    setLogs: setRows,
+    durationMin: Math.round(totalDurationSec / 60),
+    sessionRpe,
+    notes: notes ?? null,
+    completedAt: session.completed_at,
+  });
+  if (replaceError) return { error: replaceError };
 
   // Downstream refresh — best-effort, never blocks completion.
   try {

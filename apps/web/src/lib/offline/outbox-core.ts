@@ -10,15 +10,16 @@
  *
  * Idempotency: `set` / `cardio` entries use the server-side `client_log_id`
  * (migration 0097) as their `id`, so a retried flush is a no-op insert. A
- * `complete` op has no client key — `completeSession` is naturally re-runnable
- * (it re-stamps + recomputes), so we just keep at most one per session.
+ * New `complete` entries have their own durable UUID, which the completion
+ * boundary stores as its receipt on the first successful transition. Older
+ * non-UUID completion entries remain replayable without a stored receipt.
  */
 
 export type OutboxOp = "set" | "cardio" | "complete";
 
 export type OutboxEntry = {
-  /** Primary key. For set/cardio this is the `client_log_id` (uuid); for
-   * complete it's a generated uuid. */
+  /** Primary key. For set/cardio this is the `client_log_id` (uuid); new
+   * complete entries use a generated uuid, while older entries may not. */
   id: string;
   op: OutboxOp;
   sessionId: string;
@@ -31,6 +32,24 @@ export type OutboxEntry = {
   attempts: number;
   lastError?: string;
 };
+
+/** Create a UUID-shaped durable queue id even in a WebView without randomUUID. */
+export function createOutboxEntryId(): string {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+
+  const bytes = new Uint8Array(16);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+  bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 /** Next monotonic sequence number — strictly greater than any existing one and
  * never below wall-clock ms, so ordering is stable across reloads. */

@@ -13,6 +13,11 @@
 
 ---
 
+## [2026-05-29] refine | atomic user workflow boundary
+Program deployment and editing, season replacement, session completion, bodyweight progress, and structured HYROX replacement now use transactional database boundaries. Active visible plans, program instances, and seasons are serialized per user and protected by unique constraints; bodyweight progress is reconciled from persisted set logs so edits, deletes, and plan fills cannot leave stale progress.
+
+---
+
 ## [2026-05-19] ingest | hybrid-training-research-v1.md
 Conceptual framework landed (~72 KB, ~1500 lines). Owns: anchor-filler model, stress-budget concept, five structural rules, durability-as-loading framing, aesthetics-as-explicit-programming framing, conditioning-modality interference profile, six-layer app architecture. First raw source; sets the vocabulary used by v2 and `new`.
 
@@ -1329,3 +1334,29 @@ Offline-outbox logic (owned by a separate PR) was left untouched throughout — 
 Tests: extended `swap-actions.test.ts` and `focus-advance.test.ts`, and rewrote every component/action-level assertion that had previously only checked source text into genuine behavioral tests against the extracted pure decision functions — `planLogSetOutcome` (rollback, five scenarios), `shouldFireOnSaved` (stale-navigation guard), `resolveInitialActiveKey` (resume selection), and `planUndoBannerAction` (recovery affordance survives a failed or network-error restore). `FocusStripLogger.test.tsx`'s SSR tests now assert the hydration-safety property directly: initial `renderToStaticMarkup` output is `firstOpenId`-based regardless of resume state, since `renderToStaticMarkup` never runs the effect that applies resume. Full `apps/web` suite, `tsc --noEmit`, and `eslint` all clean; independent code-review pass found no issues.
 
 No migration.
+
+## [2026-09-01] refine | Bodyweight measurements share one commit
+
+The daily bodyweight prompt and Settings were each saving a dated measurement and the profile's current measurement in separate requests. A failed second request, or overlapping saves, could leave the two values out of sync. Both paths now use one authenticated transaction that locks the user's bodyweight write, updates the dated row, and updates the current profile value together. The daily prompt still preserves existing notes, while the Settings form continues to replace its note.
+
+## [2026-09-01] decision | Record bodyweight external load with the set
+
+External belt, vest, and assistance values are actual set data, not ordinary strength weight. They now live beside the set they belong to, so bodyweight progress can safely replace a set's derived history after an edit or deletion. Older rows retain an unknown external value instead of fabricating one; the existing history stays intact.
+
+## [2026-09-01] refine | Persist the offline completion receipt
+
+The authenticated completion RPC now accepts a durable offline outbox UUID.
+The UUID is stored with the first completion in the same transaction, so
+retries return a replay result without moving the completion time or repeating
+once-only work. Online completions retain no receipt. The rollback refuses to
+drop a recorded receipt.
+
+## [2026-09-01] refine | Safe bodyweight progress rollout
+
+New bodyweight progress updates use the new set-write transactions. Direct writes from an older app keep their existing single update, preventing a migrated database from crediting the same set twice. New logging, editing, deletion, and plan-fill paths use the transaction; only a database that has not received migration 0144 uses the older path.
+
+## [2026-09-01] refine | Preserve queued completion upgrades
+
+Legacy offline completion entries can have non-UUID identifiers. Completion
+normalizes those identifiers to no receipt so the queued session still
+completes, while valid UUID identifiers retain durable replay protection.
