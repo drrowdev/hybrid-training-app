@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { todayYmd } from "@/lib/dates";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
@@ -149,23 +150,33 @@ export async function logBodyweight(formData: FormData): Promise<void> {
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const { error: weError } = await supabase
-    .from("wellness")
-    .upsert(
-      {
-        user_id: user.id,
-        date: parsed.data.date,
-        bodyweight_kg: parsed.data.bodyweightKg,
-        notes: parsed.data.notes ?? null,
-      },
-      { onConflict: "user_id,date" },
-    );
-  if (weError) throw new Error(weError.message);
+  const { error } = await supabase.rpc("log_bodyweight_atomically", {
+    p_date: parsed.data.date,
+    p_bodyweight_kg: parsed.data.bodyweightKg,
+    p_notes: parsed.data.notes ?? null,
+    p_replace_notes: true,
+  });
+  if (error && !isMissingRpc(error)) throw new Error(error.message);
+  if (isMissingRpc(error)) {
+    const { error: wellnessError } = await supabase
+      .from("wellness")
+      .upsert(
+        {
+          user_id: user.id,
+          date: parsed.data.date,
+          bodyweight_kg: parsed.data.bodyweightKg,
+          notes: parsed.data.notes ?? null,
+        },
+        { onConflict: "user_id,date" },
+      );
+    if (wellnessError) throw new Error(wellnessError.message);
 
-  await supabase
-    .from("profiles")
-    .update({ bodyweight_kg: parsed.data.bodyweightKg })
-    .eq("id", user.id);
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update({ bodyweight_kg: parsed.data.bodyweightKg })
+      .eq("id", user.id);
+    if (profileError) throw new Error(profileError.message);
+  }
 
   revalidatePath("/app");
   revalidatePath("/app/settings");

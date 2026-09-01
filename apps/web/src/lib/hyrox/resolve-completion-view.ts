@@ -23,6 +23,7 @@ export async function resolveHyroxCompletionView(
     .eq("user_id", userId)
     .eq("block_id", blockId)
     .eq("status", "active")
+    .is("deleted_at", null)
     .maybeSingle();
   if (!pi || pi.program_id !== "hyrox") return null;
 

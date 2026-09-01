@@ -79,6 +79,7 @@ export async function setHyroxStationOverride(formData: FormData): Promise<Stati
       .eq("user_id", user.id)
       .eq("block_id", blockId)
       .eq("status", "active")
+      .is("deleted_at", null)
       .maybeSingle(),
     supabase.from("profiles").select("gender").eq("id", user.id).maybeSingle(),
   ]);

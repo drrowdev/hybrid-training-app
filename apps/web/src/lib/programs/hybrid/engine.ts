@@ -253,19 +253,22 @@ export async function materializeHybridNative(
   supabase: SupabaseClient,
   userId: string,
   blockId: string,
+  allowsTwoADaysOverride?: boolean,
 ): Promise<NativeMaterializeResult> {
-  // Per-block two-a-day preference (migration 0110) is stored on the block row
-  // by the deploy path, NOT on the instance. Load it and thread it into the
-  // shared context input so the AUTHORITATIVE grid honours the wizard choice.
-  // A null column (legacy blocks) makes the build fall back to the profile
-  // setting — byte-identical to the pre-0110 behaviour.
-  const { data: block } = await supabase
-    .from("training_blocks")
-    .select("allows_two_a_days")
-    .eq("id", blockId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  const allowsTwoADays = (block?.allows_two_a_days as boolean | null | undefined) ?? null;
+  // A new block has not been inserted while its program graph is being built
+  // for the atomic deploy RPC, so that path supplies the chosen value directly.
+  // Existing-block callers retain the stored-value fallback.
+  let allowsTwoADays: boolean | null = allowsTwoADaysOverride ?? null;
+  if (allowsTwoADaysOverride === undefined) {
+    const { data: block } = await supabase
+      .from("training_blocks")
+      .select("allows_two_a_days")
+      .eq("id", blockId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    allowsTwoADays =
+      (block?.allows_two_a_days as boolean | null | undefined) ?? null;
+  }
   const built = await buildBlockAssemblyContext(supabase, userId, {
     ...toContextInput(instance),
     allowsTwoADays,

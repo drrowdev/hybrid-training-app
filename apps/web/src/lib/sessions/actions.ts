@@ -194,8 +194,14 @@ async function resolveSetSnapshot(
   targetWeightKg: number | null;
   targetReps: number | null;
   prescribed: PrescribedSnapshot | null;
+  isBodyweight: boolean;
 }> {
-  const empty = { targetWeightKg: null, targetReps: null, prescribed: null };
+  const empty = {
+    targetWeightKg: null,
+    targetReps: null,
+    prescribed: null,
+    isBodyweight: false,
+  };
   const { prescriptionItemIndex: idx } = args;
   if (idx == null) return empty;
 
@@ -313,6 +319,7 @@ async function resolveSetSnapshot(
       ),
       targetReps: validateSubmittedTarget(args.submittedReps, expected.targetReps),
       prescribed: expected.prescribed,
+      isBodyweight: item.bw != null,
     };
   } catch {
     // Snapshot resolution is best-effort — never block the log.
@@ -380,6 +387,17 @@ export async function addStrengthSet(
     submittedWeightKg: parsed.data.targetWeightKg ?? null,
     submittedReps: parsed.data.targetReps ?? null,
   });
+  const { data: readiness, error: readinessError } = await supabase.rpc(
+    "atomic_user_workflows_ready",
+  );
+  if (
+    readinessError &&
+    readinessError.code !== "PGRST202" &&
+    readinessError.code !== "42883"
+  ) {
+    return { error: readinessError.message };
+  }
+  const useAtomicBwReconciliation = readiness === true;
 
   const insertPayload = {
     session_id: parsed.data.sessionId,
@@ -398,6 +416,16 @@ export async function addStrengthSet(
     skipped: isSkipped,
     skip_reason: isSkipped ? (parsed.data.skipReason ?? null) : null,
     client_log_id: clientLogId,
+    ...(useAtomicBwReconciliation &&
+    (snapshot.isBodyweight ||
+      parsed.data.externalLoadKg != null ||
+      parsed.data.loadSource != null)
+      ? {
+          external_load_kg: isSkipped
+            ? null
+            : (parsed.data.externalLoadKg ?? null),
+        }
+      : {}),
     // Snapshot is kept even on a SKIP: a skipped set is a deviation whose
     // magnitude is exactly "the whole prescribed set" — the most informative
     // row for autoregulation, not the least.
@@ -439,50 +467,62 @@ export async function addStrengthSet(
   }
   if (!rowId) return { error: "Insert failed" };
 
-  // Bodyweight Phase 4 — accumulate TUT + clean_rep_history when the
-  // logged set was prescribed via a BW main-lift item. Failures here
-  // must never block the logging UI. Skipped on a duplicate replay so the
-  // TUT counter isn't double-incremented.
+  // The set-log trigger atomically reconciles bodyweight progress in the same
+  // transaction as the insert. Read the committed total only for the optimistic
+  // client overlay; this read cannot alter progression state.
   let bwTut: { family: string; tutAccumulated: number } | undefined;
-  try {
-    if (
-      isNewRow &&
-      !isSkipped &&
-      parsed.data.prescriptionItemIndex != null
-    ) {
-      const { data: planned, error: plannedError } = await supabase
-        .from("planned_sessions")
-        .select("prescription")
-        .eq("completed_session_id", parsed.data.sessionId)
-        .maybeSingle();
-      if (plannedError) throw new Error(plannedError.message);
+  if (isNewRow && !isSkipped && parsed.data.prescriptionItemIndex != null) {
+    const { data: planned, error: plannedError } = await supabase
+      .from("planned_sessions")
+      .select("prescription")
+      .eq("completed_session_id", parsed.data.sessionId)
+      .maybeSingle();
+    if (plannedError) {
+      console.error("bodyweight progress lookup failed:", plannedError.message);
+    } else {
       const items =
         (planned?.prescription as { items?: PrescriptionItem[] } | null)
           ?.items ?? [];
       const item = items[parsed.data.prescriptionItemIndex];
       if (item?.bw) {
-        const { applyBwSetSideEffects } = await import(
+        const { applyLegacyBwSetSideEffects, readBwSetProgress } = await import(
           "@/lib/sessions/bw-set-logging"
         );
-        const rpe = parsed.data.rpe ?? null;
-        const rir = rpe != null ? Math.max(0, 10 - rpe) : 2;
-        const tutResult = await applyBwSetSideEffects({
-          supabase,
-          userId: user.id,
-          bw: item.bw,
-          actualReps: parsed.data.reps ?? null,
-          actualSeconds: parsed.data.durationSec ?? null,
-          rir,
-          cleanForm: rir >= 1,
-          setDateIso: new Date().toISOString(),
-          skipped: false,
-          externalLoadKg: parsed.data.externalLoadKg ?? null,
-        });
-        bwTut = tutResult ?? undefined;
+        let reconciledByTrigger = useAtomicBwReconciliation;
+        if (!reconciledByTrigger) {
+          const { data: contribution, error: contributionError } = await supabase
+            .from("bw_set_progress_contributions")
+            .select("set_log_id")
+            .eq("set_log_id", rowId)
+            .maybeSingle();
+          if (!contributionError && contribution) {
+            reconciledByTrigger = true;
+          }
+        }
+        if (reconciledByTrigger) {
+          bwTut =
+            (await readBwSetProgress({
+              supabase,
+              userId: user.id,
+              bw: item.bw,
+            })) ?? undefined;
+        } else {
+          bwTut =
+            (await applyLegacyBwSetSideEffects({
+              supabase,
+              userId: user.id,
+              bw: item.bw,
+              actualReps: parsed.data.reps ?? null,
+              actualSeconds: parsed.data.durationSec ?? null,
+              rir: parsed.data.rpe == null ? 2 : Math.max(0, 10 - parsed.data.rpe),
+              cleanForm: parsed.data.rpe == null || parsed.data.rpe <= 9,
+              setDateIso: new Date().toISOString(),
+              skipped: isSkipped,
+              externalLoadKg: parsed.data.externalLoadKg ?? null,
+            })) ?? undefined;
+        }
       }
     }
-  } catch (e) {
-    console.error("applyBwSetSideEffects failed:", e);
   }
 
   // A set added to an ALREADY-COMPLETED session (the drawer's ✎ Edit → full
@@ -1011,8 +1051,15 @@ export async function deleteSet(formData: FormData): Promise<void> {
     data: { user },
   } = await getAuthUser();
   if (!user) redirect("/login");
-  const { error } = await supabase.from("set_logs").delete().eq("id", id);
+  const { error } = await supabase
+    .from("set_logs")
+    .delete()
+    .eq("id", id)
+    .eq("session_id", sessionId);
   if (error) throw new Error(error.message);
+  // Re-stamp planned_sessions.effective_stress_load when this session
+  // is already completed. requireCompleted gates the no-op for
+  // in-flight sessions.
   try {
     const { recomputed } = await recomputeAfterCompletedSessionMutation({
       supabase,
@@ -1084,6 +1131,19 @@ export async function updateStrengthSetInline(
     data: { user },
   } = await getAuthUser();
   if (!user) return { ok: false, error: "Not signed in." };
+  const { data: readiness, error: readinessError } = await supabase.rpc(
+    "atomic_user_workflows_ready",
+  );
+  if (
+    readinessError &&
+    readinessError.code !== "PGRST202" &&
+    readinessError.code !== "42883"
+  ) {
+    return { ok: false, error: readinessError.message };
+  }
+  const useAtomicBwReconciliation = readiness === true;
+  const persistExternalLoad =
+    useAtomicBwReconciliation && parsed.data.externalLoadKg !== undefined;
   const { data: existing, error: existingError } = await supabase
     .from("set_logs")
     .select("set_kind, skipped, skip_reason, prescription_item_index")
@@ -1102,6 +1162,9 @@ export async function updateStrengthSetInline(
       duration_sec: parsed.data.durationSec ?? null,
       distance_m: parsed.data.distanceM ?? null,
       rpe: parsed.data.rpe ?? null,
+      ...(persistExternalLoad
+        ? { external_load_kg: parsed.data.externalLoadKg }
+        : {}),
       skipped: false,
       skip_reason: null,
     })
@@ -1118,7 +1181,11 @@ export async function updateStrengthSetInline(
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: "Set not found." };
 
-  if (existing.skipped && existing.prescription_item_index != null) {
+  if (
+    !useAtomicBwReconciliation &&
+    existing.skipped &&
+    existing.prescription_item_index != null
+  ) {
     try {
       const { data: planned, error: plannedError } = await supabase
         .from("planned_sessions")
@@ -1127,16 +1194,14 @@ export async function updateStrengthSetInline(
         .maybeSingle();
       if (plannedError) throw new Error(plannedError.message);
       const items =
-        (planned?.prescription as { items?: PrescriptionItem[] } | null)
-          ?.items ?? [];
+        (planned?.prescription as { items?: PrescriptionItem[] } | null)?.items ?? [];
       const item = items[existing.prescription_item_index];
       if (item?.bw) {
-        const { applyBwSetSideEffects } = await import(
+        const { applyLegacyBwSetSideEffects } = await import(
           "@/lib/sessions/bw-set-logging"
         );
-        const rir =
-          parsed.data.rpe != null ? Math.max(0, 10 - parsed.data.rpe) : 2;
-        await applyBwSetSideEffects({
+        const rir = parsed.data.rpe != null ? Math.max(0, 10 - parsed.data.rpe) : 2;
+        await applyLegacyBwSetSideEffects({
           supabase,
           userId: user.id,
           bw: item.bw,
@@ -1150,11 +1215,7 @@ export async function updateStrengthSetInline(
           throwOnError: true,
         });
       }
-    } catch (e) {
-      console.error(
-        "applyBwSetSideEffects (updateStrengthSetInline) failed:",
-        e,
-      );
+    } catch (legacyError) {
       const { error: rollbackError } = await supabase
         .from("set_logs")
         .update({
@@ -1176,6 +1237,10 @@ export async function updateStrengthSetInline(
           rollbackError,
         );
       }
+      console.error(
+        "applyLegacyBwSetSideEffects (updateStrengthSetInline) failed:",
+        legacyError,
+      );
       return {
         ok: false,
         error: rollbackError
@@ -1408,8 +1473,8 @@ export async function completeSession(formData: FormData): Promise<void> {
  * (`completeSession`, which redirects to the summary) and the offline outbox
  * flusher (which replays it in the background on reconnect and must NOT
  * navigate). Returns a plain result; all the heavy recompute / side-effects are
- * best-effort and never block the completed_at stamp. Re-runnable: a replay
- * just re-stamps completed_at and recomputes, so duplicate flushes are safe.
+ * best-effort and never block the completed_at stamp. Replays return success
+ * without changing completion state or replaying once-only side effects.
  */
 export async function completeSessionResult(
   sessionId: string,
@@ -1420,27 +1485,48 @@ export async function completeSessionResult(
 
   const supabase = await createClient();
   // The RLS-protected RPC validates ownership, derives session RPE and duration,
-  // and stamps completion. Returning the owning user id avoids a separate
-  // GoTrue lookup while keeping the explicit ownership gate inside Postgres.
-  const { data: userId, error } = await supabase.rpc(
-    "complete_training_session",
+  // and reports whether this call made the completion transition. The scalar
+  // fallback keeps the app usable during the app-first migration window.
+  const { data, error } = await supabase.rpc(
+    "complete_training_session_with_transition",
     {
       p_session_id: sessionId,
       p_notes: notes ?? null,
     },
   );
-  if (error) return { error: error.message };
-  if (!userId) {
+  let completion: { user_id: string; transitioned: boolean } | null = null;
+  if (error) {
+    const transitionRpcMissing =
+      error.code === "PGRST202" || error.code === "42883";
+    if (!transitionRpcMissing) return { error: error.message };
+
+    const { data: legacyUserId, error: legacyError } = await supabase.rpc(
+      "complete_training_session",
+      {
+        p_session_id: sessionId,
+        p_notes: notes ?? null,
+      },
+    );
+    if (legacyError) return { error: legacyError.message };
+    if (typeof legacyUserId === "string") {
+      completion = { user_id: legacyUserId, transitioned: true };
+    }
+  } else {
+    completion = Array.isArray(data)
+      ? (data as Array<{ user_id: string; transitioned: boolean }>)[0] ?? null
+      : null;
+  }
+  if (!completion) {
     const {
       data: { user },
     } = await getAuthUser();
     return { error: user ? "Session not found." : "not-signed-in" };
   }
+  const { user_id: userId, transitioned } = completion;
 
-  // Stats ledgers, TM suggestions and BW diagnostics do not affect the
-  // completion stamp or the summary that follows. Run them after the response
-  // and in parallel so Finish remains a one-tap interaction instead of waiting
-  // for several full-history recomputations.
+  // Stats ledgers and suggestions remain replayable so a retry repairs a
+  // terminated deferred task. The BW progression hook alone must run once: it
+  // records weekly progression from the completion transition.
   after(async () => {
     // Reuse the captured Supabase client. Dynamic request APIs such as
     // `cookies()` are no longer available once `after()` begins.
@@ -1479,6 +1565,16 @@ export async function completeSessionResult(
         console.error("block completion/progression failed:", e);
       }),
       (async () => {
+        const { generateTmSuggestionsForSession } = await import(
+          "@/lib/training-maxes/actions"
+        );
+        await generateTmSuggestionsForSession(sessionId);
+      })().catch((e) => {
+        console.error("generateTmSuggestionsForSession failed:", e);
+      }),
+    ]);
+    if (transitioned) {
+      try {
         const timezone = await timezonePromise;
         const { applyBwSessionCompletionSideEffects } = await import(
           "@/lib/sessions/bw-set-logging"
@@ -1494,10 +1590,10 @@ export async function completeSessionResult(
         );
         await captureBwDiagnosticsSnapshot({ supabase, userId });
         revalidatePath("/app/settings/bodyweight-progression");
-      })().catch((e) => {
+      } catch (e) {
         console.error("BW completion side-effects failed:", e);
-      }),
-    ]);
+      }
+    }
     revalidatePath("/app");
     revalidatePath("/app/stats");
   });
@@ -1669,6 +1765,7 @@ type SetInsert = {
   reps: number | null;
   duration_sec: number | null;
   distance_m: number | null;
+  external_load_kg?: number | null;
   prescription_item_index: number | null;
   client_log_id: string;
   // ADR 0070 — this path resolves the prescription itself, so the snapshot is
@@ -1857,6 +1954,9 @@ export async function fillSessionFromPlan(
       reps: work.reps,
       duration_sec: work.durationSec,
       distance_m: work.distanceM,
+      ...(item.bw?.externalLoadKg != null
+        ? { external_load_kg: item.bw.externalLoadKg }
+        : {}),
       prescription_item_index: missing.itemIndex,
       client_log_id: plannedSetClientId(
         parsed.data.sessionId,
@@ -1875,7 +1975,27 @@ export async function fillSessionFromPlan(
     return { ok: true, inserted: 0 };
   }
 
-  const { error } = await supabase.from("set_logs").upsert(inserts, {
+  const hasExternalLoad = inserts.some(
+    (insert) => insert.external_load_kg !== undefined,
+  );
+  let persistExternalLoad = false;
+  if (hasExternalLoad) {
+    const { data: readiness, error: readinessError } = await supabase.rpc(
+      "atomic_user_workflows_ready",
+    );
+    if (
+      readinessError &&
+      readinessError.code !== "PGRST202" &&
+      readinessError.code !== "42883"
+    ) {
+      return { error: readinessError.message };
+    }
+    persistExternalLoad = readiness === true;
+  }
+  const upsertRows = persistExternalLoad
+    ? inserts
+    : inserts.map(({ external_load_kg: _externalLoadKg, ...insert }) => insert);
+  const { error } = await supabase.from("set_logs").upsert(upsertRows, {
     onConflict: "client_log_id",
     ignoreDuplicates: true,
   });

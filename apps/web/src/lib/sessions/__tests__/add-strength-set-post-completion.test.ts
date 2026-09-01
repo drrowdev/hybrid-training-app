@@ -27,6 +27,10 @@ let recomputed = false;
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
+    rpc: async () => ({
+      data: null,
+      error: { code: "PGRST202", message: "Function not found" },
+    }),
     from: (table: string) => {
       const builder: Record<string, unknown> = {};
       Object.assign(builder, {

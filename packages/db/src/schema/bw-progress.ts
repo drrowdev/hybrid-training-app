@@ -29,6 +29,10 @@ import { movementNodes, type MovementFamily } from "./movement-nodes";
  * reads weeks_at_node + accumulated_tut_seconds, not this column.
  */
 export type CleanRepHistoryEntry = {
+  /** Stable source row for reconciliation after a logged set is changed or removed. */
+  set_log_id?: string;
+  /** Node that received this set's TUT when it was logged. */
+  node_id?: string;
   /** ISO date (YYYY-MM-DD) the qualifying set was logged. */
   date: string;
   reps: number;

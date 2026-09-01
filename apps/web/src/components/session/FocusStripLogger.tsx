@@ -168,6 +168,8 @@ function focusSets(sets: LoggedSet[]): FocusLoggedSet[] {
     id: set.id,
     movementId: set.movement.id,
     weightKg: set.weight_kg == null ? null : Number(set.weight_kg),
+    externalLoadKg:
+      set.external_load_kg == null ? null : Number(set.external_load_kg),
     reps: set.reps,
     distanceM: set.distance_m ?? null,
     durationSec: set.duration_sec ?? null,

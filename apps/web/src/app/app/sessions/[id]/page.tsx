@@ -95,6 +95,12 @@ export default async function SessionDetailPage({
   } = await getAuthUser();
   if (!user) redirect("/login");
 
+  // The production migration intentionally follows the app deploy. Until it is
+  // present, omit its new column so loading an existing session stays available.
+  const { data: atomicWorkflowsReady } = await supabase.rpc(
+    "atomic_user_workflows_ready",
+  );
+
   // Independent reads for this view are batched into a single round-trip
   // (was a ~7-query sequential waterfall). None depend on another's result;
   // the session-row existence check happens right after the batch resolves.
@@ -158,6 +164,21 @@ export default async function SessionDetailPage({
 
   if (!session) notFound();
 
+  const externalLoadBySetId = new Map<string, number | string | null>();
+  if (atomicWorkflowsReady === true) {
+    const { data: externalLoadRows, error } = await supabase
+      .from("set_logs")
+      .select("id, external_load_kg")
+      .eq("session_id", id);
+    if (error) throw new Error(error.message);
+    for (const row of externalLoadRows ?? []) {
+      externalLoadBySetId.set(
+        row.id,
+        (row.external_load_kg as number | string | null) ?? null,
+      );
+    }
+  }
+
   const hapticsEnabled = feedbackPrefs?.haptics_enabled ?? true;
   const timerSoundEnabled = feedbackPrefs?.timer_sound_enabled ?? true;
   // Deliberately NOT part of the profile select above. Until migration 0133 is
@@ -196,6 +217,7 @@ export default async function SessionDetailPage({
       set_index: s.set_index,
       set_kind: s.set_kind,
       weight_kg: s.weight_kg,
+      external_load_kg: externalLoadBySetId.get(s.id) ?? null,
       reps: s.reps,
       duration_sec: s.duration_sec,
       distance_m: s.distance_m,

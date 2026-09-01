@@ -88,6 +88,7 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
     .eq("block_id", blockId)
     .eq("user_id", user.id)
     .eq("status", "active")
+    .is("deleted_at", null)
     .maybeSingle();
   const setupInput = (pi?.setup_input ?? {}) as {
     values?: Record<string, unknown>;

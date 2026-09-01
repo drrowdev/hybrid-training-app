@@ -15,6 +15,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { todayYmd } from "@/lib/dates";
 import {
@@ -63,24 +64,28 @@ export async function persistDailyCheckIn(
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  // Merge-on-conflict upsert writes only `bodyweight_kg`, leaving the
-  // retained legacy wellness columns (and any sleep_hours back-filled
-  // later by the health integration) untouched.
-  const { error } = await supabase
-    .from("wellness")
-    .upsert(
-      { user_id: user.id, date: input.date, bodyweight_kg: cols.bodyweight_kg },
-      { onConflict: "user_id,date" },
-    );
-  if (error) throw new Error(error.message);
+  const { error } = await supabase.rpc("log_bodyweight_atomically", {
+    p_date: input.date,
+    p_bodyweight_kg: cols.bodyweight_kg,
+    p_notes: null,
+    p_replace_notes: false,
+  });
+  if (error && !isMissingRpc(error)) throw new Error(error.message);
+  if (isMissingRpc(error)) {
+    const { error: wellnessError } = await supabase
+      .from("wellness")
+      .upsert(
+        { user_id: user.id, date: input.date, bodyweight_kg: cols.bodyweight_kg },
+        { onConflict: "user_id,date" },
+      );
+    if (wellnessError) throw new Error(wellnessError.message);
 
-  // Mirror bodyweight onto profiles so the rest of the app keeps
-  // working off `profiles.bodyweight_kg` — same convention as the
-  // existing settings::logBodyweight path.
-  if (cols.bodyweight_kg != null) {
-    await supabase
-      .from("profiles")
-      .update({ bodyweight_kg: cols.bodyweight_kg })
-      .eq("id", user.id);
+    if (cols.bodyweight_kg != null) {
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({ bodyweight_kg: cols.bodyweight_kg })
+        .eq("id", user.id);
+      if (profileError) throw new Error(profileError.message);
+    }
   }
 }

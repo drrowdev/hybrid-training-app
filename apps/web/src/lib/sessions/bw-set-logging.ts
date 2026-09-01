@@ -3,9 +3,9 @@
  *
  * Phase 4 plan §B. Called from `lib/sessions/actions.ts`:
  *
- *   - `applyBwSetSideEffects` runs after persisting one set whose
- *     parent `PrescriptionItem.bw` is present. Accumulates TUT and
- *     appends to `clean_rep_history` (capped at 50).
+ *   - PostgreSQL reconciles TUT and clean-rep history with each set-log
+ *     mutation. This module only reads that committed result for the
+ *     live-logging overlay.
  *   - `applyBwSessionCompletionSideEffects` runs after the session
  *     row is marked complete. For each unique BW family touched in
  *     the session it bumps `weeks_at_node` when this is the second
@@ -13,10 +13,8 @@
  *     persists the advance + `bw_progression_events` row when the
  *     gate opens.
  *
- * Failures here MUST NOT block the user's logging or completion
- * flow — they're side-effects, the canonical truth is the set_logs
- * + bw_progress rows themselves. The caller wraps both helpers in
- * try/catch and console.errors any failure.
+ * Completion work is deferred after a successful session transition. Set-log
+ * mutations reconcile progress in their own database transaction.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
@@ -102,14 +100,39 @@ export function isoWeekKey(timestampIso: string, timezone?: string): string {
 // ── Per-set side effect ─────────────────────────────────────────────
 
 /**
- * After a strength set lands in `set_logs`, mirror it into
- * `bw_progress.clean_rep_history` and bump `accumulated_tut_seconds`.
- *
- * Called inside `addStrengthSet` only when the parent prescription
- * item carries a `bw` block. Skipped sets contribute zero (TUT delta
- * is bounded below by 0, and a skipped set's reps/seconds are zero).
+ * Read the database-owned TUT accumulator after a bodyweight set lands.
+ * The `set_logs` trigger has already atomically reconciled this value.
  */
-export async function applyBwSetSideEffects(args: {
+export async function readBwSetProgress(args: {
+  supabase: GenericSupabase;
+  userId: string;
+  bw: NonNullable<PrescriptionItem["bw"]>;
+}): Promise<{ family: string; tutAccumulated: number } | null> {
+  const family = args.bw.family as MovementFamily | undefined;
+  if (!family) return null;
+
+  const { data: row, error } = await args.supabase
+    .from("bw_progress")
+    .select("accumulated_tut_seconds")
+    .eq("user_id", args.userId)
+    .eq("family", family)
+    .maybeSingle();
+  if (error) {
+    console.error("bw_progress read failed:", error.message);
+    return null;
+  }
+  if (!row) return null;
+  return {
+    family,
+    tutAccumulated: Number(row.accumulated_tut_seconds ?? 0),
+  };
+}
+
+/**
+ * Compatibility path used only before migration 0143 is available. Once the
+ * migration is present, the set-log trigger owns this write atomically.
+ */
+export async function applyLegacyBwSetSideEffects(args: {
   supabase: GenericSupabase;
   userId: string;
   bw: NonNullable<PrescriptionItem["bw"]>;
@@ -119,14 +142,7 @@ export async function applyBwSetSideEffects(args: {
   cleanForm: boolean;
   setDateIso: string;
   skipped: boolean;
-  /**
-   * Phase 7 — actual external load applied (vest / belt / ankle /
-   * band assist). Null/undefined ⇒ bodyweight only. Mirrored into
-   * `clean_rep_history[i].external_load_kg` so future prescriptions
-   * can read the user's progression and bump load accordingly.
-   */
   externalLoadKg?: number | null;
-  /** Restore flows roll back the set when progression persistence fails. */
   throwOnError?: boolean;
 }): Promise<{ family: string; tutAccumulated: number } | null> {
   if (args.skipped) return null;
@@ -140,28 +156,25 @@ export async function applyBwSetSideEffects(args: {
     .eq("family", family)
     .maybeSingle();
   if (readErr) {
-    if (args.throwOnError) throw new Error(readErr.message);
     console.error("bw_progress read failed:", readErr.message);
+    if (args.throwOnError) throw new Error(readErr.message);
     return null;
   }
-  if (!rowRaw) return null; // user isn't on the BW path for this family
+  if (!rowRaw) return null;
 
   const row = rowRaw as {
     accumulated_tut_seconds: number;
     clean_rep_history: unknown;
   };
-
   const delta = tutDeltaForSet({
     prescriptionType: args.bw.prescriptionType,
     actualReps: args.actualReps,
     actualSeconds: args.actualSeconds,
     tempoEccentricSec: args.bw.tempoEccentricSec,
   });
-
   const existing = Array.isArray(row.clean_rep_history)
     ? (row.clean_rep_history as Array<Record<string, unknown>>)
     : [];
-
   const entry: Record<string, unknown> = {
     date: args.setDateIso.slice(0, 10),
     rir: args.rir,
@@ -176,25 +189,21 @@ export async function applyBwSetSideEffects(args: {
   }
   if (args.bw.loadSource) entry.load_source = args.bw.loadSource;
 
-  const next = [...existing, entry].slice(-CLEAN_REP_HISTORY_CAP);
-
   const nextTut = (row.accumulated_tut_seconds ?? 0) + delta;
-  const { error: upErr } = await args.supabase
+  const { error: updateErr } = await args.supabase
     .from("bw_progress")
     .update({
       accumulated_tut_seconds: nextTut,
-      clean_rep_history: next,
+      clean_rep_history: [...existing, entry].slice(-CLEAN_REP_HISTORY_CAP),
       updated_at: new Date().toISOString(),
     })
     .eq("user_id", args.userId)
     .eq("family", family);
-  if (upErr) {
-    if (args.throwOnError) throw new Error(upErr.message);
-    console.error("bw_progress update failed:", upErr.message);
+  if (updateErr) {
+    console.error("bw_progress update failed:", updateErr.message);
+    if (args.throwOnError) throw new Error(updateErr.message);
     return null;
   }
-  // Return the new TUT so the caller can hand it back to the client, which
-  // overlays the "Next:" chip counter without a per-set page revalidation.
   return { family, tutAccumulated: nextTut };
 }
 

@@ -30,5 +30,11 @@ export interface NativeProgramEngine<Instance = unknown> {
   describeSetup(): SetupSchema;
   setup(input: ProgramSetupInput, ctx: PlatformContext): Instance;       // returns a JSON-serialisable instance
   timeline(instance: Instance): PlannedSessionSpec[];                     // pure calendar skeleton
-  materializeNative(instance: Instance, supabase: SupabaseClient, userId: string, blockId: string): Promise<NativeMaterializeResult>;
+  materializeNative(
+    instance: Instance,
+    supabase: SupabaseClient,
+    userId: string,
+    blockId: string,
+    allowsTwoADays?: boolean,
+  ): Promise<NativeMaterializeResult>;
 }

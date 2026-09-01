@@ -22,6 +22,7 @@ export type LoggedSet = {
   set_index: number;
   set_kind: string;
   weight_kg: number | string | null;
+  external_load_kg?: number | string | null;
   reps: number | null;
   duration_sec: number | null;
   distance_m: number | null;
