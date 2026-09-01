@@ -175,12 +175,19 @@ export async function swapActiveMovement(
     slug: next.slug as string,
     displayName: next.display_name as string,
   };
-  const { data: planned } = await supabase
+  const { data: planned, error: plannedError } = await supabase
     .from("planned_sessions")
     .select("id, prescription, training_blocks!inner(program_id)")
     .eq("completed_session_id", parsed.data.sessionId)
     .eq("user_id", user.id)
     .maybeSingle();
+  // Fail closed: a transient read error here must NEVER fall through to the
+  // freestyle (`session_movements`) persistence path below — that path is
+  // for a workout with no linked `planned_sessions` row at all, and treating
+  // a read ERROR the same as "no row" would rewrite a planned workout's
+  // movement LIST while leaving its prescription (and the warm-up ladder
+  // rebuilt above) untouched, silently reverting on the next reload.
+  if (plannedError) return { error: plannedError.message };
   // A session materialised from a program that publishes its own warm-up ramp
   // (e.g. the fixed %-of-Training-Max ladder) falls back to THAT ramp — but only
   // for a lifter who has never configured a ladder of their own. An explicit
@@ -209,13 +216,14 @@ export async function swapActiveMovement(
 
   let sessionRx: Prescription | null = null;
   if (!planned?.prescription) {
-    const { data: sessionPrescription } = await supabase
+    const { data: sessionPrescription, error: sessionRxError } = await supabase
       .from("sessions")
       .select("prescription")
       .eq("id", parsed.data.sessionId)
       .eq("user_id", user.id)
       .is("deleted_at", null)
       .maybeSingle();
+    if (sessionRxError) return { error: sessionRxError.message };
     sessionRx =
       (sessionPrescription as { prescription?: Prescription | null } | null)
         ?.prescription ?? null;
@@ -269,6 +277,86 @@ export async function swapActiveMovement(
   }
   const loadWarning = warnings.length > 0 ? warnings.join(" ") : undefined;
 
+  // PERSIST the swap so it survives a reload AND the logger re-derives the new
+  // movement's bodyweight capability (e.g. swapping a weighted sit-up for a GHD
+  // sit-up makes the weight field optional). Forward-only: already-logged
+  // set_logs keep the ORIGINAL movement_id — only the prescription's movement
+  // identity changes, so future sets log against the new movement. The
+  // prescription lives on the linked planned_session for a plan workout, or
+  // directly on the session row for a quick/freestyle one.
+  //
+  // Every read/write/RPC error below is fatal: this action must fail closed
+  // rather than report `ok: true` while the swap only partially landed (the
+  // audit row is written AFTER, and only once, so a failure never claims a
+  // swap that never happened).
+  if (planned?.prescription) {
+    const updated = swapMovementInPrescription(
+      planned.prescription as Prescription,
+      parsed.data.originalMovementId,
+      newMovement,
+      undefined,
+      { rehab: parsed.data.rehab },
+      rebuildContext,
+    );
+    const { error: updateError } = await supabase
+      .from("planned_sessions")
+      .update({ prescription: updated })
+      .eq("id", planned.id as string)
+      .eq("user_id", user.id);
+    if (updateError) return { error: updateError.message };
+  } else if (sessionRx) {
+    const updated = swapMovementInPrescription(
+      sessionRx,
+      parsed.data.originalMovementId,
+      newMovement,
+      undefined,
+      { rehab: parsed.data.rehab },
+      rebuildContext,
+    );
+    const { error: updateError } = await supabase
+      .from("sessions")
+      .update({ prescription: updated })
+      .eq("id", parsed.data.sessionId)
+      .eq("user_id", user.id)
+      .is("deleted_at", null);
+    if (updateError) return { error: updateError.message };
+  } else {
+    // Quick/freestyle workout: `session_movements` IS the persistence layer
+    // for "which movements are in this session" (the page unions it with the
+    // distinct set_logs movements). Persist the swap there, or the action
+    // would report a swap that survives only until the next page load.
+    //
+    // Both RPCs are the same atomic ones the freestyle add/remove actions use:
+    // the add computes MAX(sort_order)+10 and is idempotent, and the remove is
+    // a `DELETE … WHERE NOT EXISTS (set_logs …)`, so a movement the user has
+    // already logged against is kept (its logged work stays visible) instead of
+    // being deleted from under them.
+    const { error: addError } = await supabase.rpc("add_session_movement", {
+      p_session_id: parsed.data.sessionId,
+      p_movement_id: newMovement.id,
+      p_user_id: user.id,
+    });
+    if (addError) return { error: addError.message };
+    // Not wrapped in a DB transaction with the add above (two separate RPCs),
+    // so a failure here CAN leave both movements listed — but reporting it as
+    // an error (rather than silently swallowing it behind `ok: true`) is the
+    // difference between the lifter seeing a stray duplicate entry and being
+    // told the swap didn't fully land. Both RPCs are idempotent, so retrying
+    // the swap resolves it either way.
+    const { error: removeError } = await supabase.rpc(
+      "remove_session_movement",
+      {
+        p_session_id: parsed.data.sessionId,
+        p_movement_id: parsed.data.originalMovementId,
+      },
+    );
+    if (removeError) return { error: removeError.message };
+  }
+
+  // Audit AFTER persistence succeeds — DC-K4 records that an override
+  // happened, and one never happened until the mutation above actually
+  // landed. `recordOverrideEvent` itself stays best-effort (a transient audit
+  // failure must not block the swap the lifter is waiting on).
   await recordOverrideEvent(supabase, {
     userId: user.id,
     eventType: "swap",
@@ -290,65 +378,6 @@ export async function swapActiveMovement(
       prescriptionUpdated: sourcePrescription != null,
     },
   });
-
-  // PERSIST the swap so it survives a reload AND the logger re-derives the new
-  // movement's bodyweight capability (e.g. swapping a weighted sit-up for a GHD
-  // sit-up makes the weight field optional). Forward-only: already-logged
-  // set_logs keep the ORIGINAL movement_id — only the prescription's movement
-  // identity changes, so future sets log against the new movement. The
-  // prescription lives on the linked planned_session for a plan workout, or
-  // directly on the session row for a quick/freestyle one.
-  if (planned?.prescription) {
-    const updated = swapMovementInPrescription(
-      planned.prescription as Prescription,
-      parsed.data.originalMovementId,
-      newMovement,
-      undefined,
-      { rehab: parsed.data.rehab },
-      rebuildContext,
-    );
-    await supabase
-      .from("planned_sessions")
-      .update({ prescription: updated })
-      .eq("id", planned.id as string)
-      .eq("user_id", user.id);
-  } else if (sessionRx) {
-    const updated = swapMovementInPrescription(
-      sessionRx,
-      parsed.data.originalMovementId,
-      newMovement,
-      undefined,
-      { rehab: parsed.data.rehab },
-      rebuildContext,
-    );
-    await supabase
-      .from("sessions")
-      .update({ prescription: updated })
-      .eq("id", parsed.data.sessionId)
-      .eq("user_id", user.id)
-      .is("deleted_at", null);
-  } else {
-    // Quick/freestyle workout: `session_movements` IS the persistence layer
-    // for "which movements are in this session" (the page unions it with the
-    // distinct set_logs movements). Persist the swap there, or the action
-    // would report a swap that survives only until the next page load.
-    //
-    // Both RPCs are the same atomic ones the freestyle add/remove actions use:
-    // the add computes MAX(sort_order)+10 and is idempotent, and the remove is
-    // a `DELETE … WHERE NOT EXISTS (set_logs …)`, so a movement the user has
-    // already logged against is kept (its logged work stays visible) instead of
-    // being deleted from under them.
-    const { error: addError } = await supabase.rpc("add_session_movement", {
-      p_session_id: parsed.data.sessionId,
-      p_movement_id: newMovement.id,
-      p_user_id: user.id,
-    });
-    if (addError) return { error: addError.message };
-    await supabase.rpc("remove_session_movement", {
-      p_session_id: parsed.data.sessionId,
-      p_movement_id: parsed.data.originalMovementId,
-    });
-  }
 
   revalidatePath(`/app/sessions/${parsed.data.sessionId}`);
   revalidatePath("/app");
