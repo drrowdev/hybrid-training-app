@@ -21,6 +21,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ALL_REGIONS, type Region } from "@hta/domain";
 import { computeRegionFreshness, ewmaStep } from "@hta/domain";
 import { todayYmd as todayYmdFn, addDaysToYmd } from "@/lib/dates";
+import { deriveDailyRegionLoad } from "@/lib/engine/region-daily-load";
 
 const LOOKBACK_DAYS = 35;
 
@@ -36,14 +37,6 @@ export type RegionFreshnessLive = {
   /** Number of days inside each window that took any region load. */
   setCounts: { d7: number; d14: number; d28: number };
 };
-
-type MovementRefs = { primary_region: string; secondary_regions: unknown };
-
-function normaliseMovement(m: unknown): MovementRefs | null {
-  if (!m) return null;
-  if (Array.isArray(m)) return (m[0] as MovementRefs) ?? null;
-  return m as MovementRefs;
-}
 
 /**
  * Compute today's per-region freshness from raw `set_logs` + the
@@ -61,7 +54,7 @@ export async function deriveRegionFreshnessLive(
 ): Promise<Map<Region, RegionFreshnessLive>> {
   const sinceIso = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000).toISOString();
 
-  const [{ data: regionStateRows }, { data: sessions }] = await Promise.all([
+  const [regionStateRes, sessionsRes] = await Promise.all([
     supabase
       .from("region_state")
       .select("region, atl, ctl, baseline_tolerance, last_load_date")
@@ -75,6 +68,10 @@ export async function deriveRegionFreshnessLive(
       .gte("performed_at", sinceIso)
       .order("performed_at", { ascending: true }),
   ]);
+  if (regionStateRes.error) throw new Error(regionStateRes.error.message);
+  if (sessionsRes.error) throw new Error(sessionsRes.error.message);
+  const regionStateRows = regionStateRes.data;
+  const sessions = sessionsRes.data;
 
   const baselineByRegion = new Map<Region, number>();
   const lastLoadByRegion = new Map<Region, string | null>();
@@ -83,50 +80,67 @@ export async function deriveRegionFreshnessLive(
     lastLoadByRegion.set(r.region as Region, (r.last_load_date as string | null) ?? null);
   }
 
-  // Per-day per-region load series.
-  const dailyByRegion: Record<Region, Map<string, number>> = Object.fromEntries(
-    ALL_REGIONS.map((r) => [r, new Map<string, number>()]),
-  ) as Record<Region, Map<string, number>>;
+  const dailyByRegion = deriveDailyRegionLoad({
+    userTz: tz,
+    sets: [],
+    cardio: [],
+  });
 
   if (sessions && sessions.length > 0) {
     const sessionIds = sessions.map((s) => s.id);
     const performedAtById = new Map(sessions.map((s) => [s.id, s.performed_at as string]));
-    const { data: sets } = await supabase
-      .from("set_logs")
-      .select(
-        "session_id, weight_kg, reps, rpe, set_kind, movement:movements(primary_region, secondary_regions)",
-      )
-      .in("session_id", sessionIds)
-      .eq("skipped", false)
-      .not("reps", "is", null)
-      .gt("reps", 0);
+    const [setsRes, cardioRes] = await Promise.all([
+      supabase
+        .from("set_logs")
+        .select(
+          "session_id, weight_kg, reps, rpe, set_kind, skipped, movement:movements(primary_region, secondary_regions)",
+        )
+        .in("session_id", sessionIds)
+        .eq("skipped", false)
+        .not("reps", "is", null)
+        .gt("reps", 0),
+      supabase
+        .from("cardio_logs")
+        .select(
+          "session_id, duration_sec, rpe, modality, hr_zones, movement:movements(primary_region, secondary_regions)",
+        )
+        .in("session_id", sessionIds),
+    ]);
+    if (setsRes.error) throw new Error(setsRes.error.message);
+    if (cardioRes.error) throw new Error(cardioRes.error.message);
 
-    for (const row of sets ?? []) {
-      if (row.set_kind === "warmup") continue;
-      const performedAt = performedAtById.get(row.session_id);
-      if (!performedAt) continue;
-      const date = performedAt.slice(0, 10);
-      const movement = normaliseMovement(row.movement);
-      if (!movement) continue;
-      const reps = Number(row.reps);
-      const weight = Number(row.weight_kg ?? 0);
-      const rpe = row.rpe == null ? 7 : Number(row.rpe);
-      if (reps <= 0 || weight <= 0) continue;
-      const setLoad = reps * weight * Math.max(0.3, Math.min(1.0, rpe / 10));
-      const primary = movement.primary_region as Region;
-      if (ALL_REGIONS.includes(primary)) {
-        const prev = dailyByRegion[primary].get(date) ?? 0;
-        dailyByRegion[primary].set(date, prev + setLoad);
-      }
-      if (Array.isArray(movement.secondary_regions)) {
-        for (const r of movement.secondary_regions as string[]) {
-          const region = r as Region;
-          if (ALL_REGIONS.includes(region)) {
-            const prev = dailyByRegion[region].get(date) ?? 0;
-            dailyByRegion[region].set(date, prev + setLoad * 0.5);
-          }
-        }
-      }
+    const daily = deriveDailyRegionLoad({
+      userTz: tz,
+      sets: (setsRes.data ?? []).flatMap((row) => {
+        const performedAt = performedAtById.get(row.session_id);
+        return performedAt
+          ? [{
+              performedAt,
+              weightKg: row.weight_kg,
+              reps: row.reps,
+              rpe: row.rpe,
+              setKind: row.set_kind,
+              skipped: row.skipped,
+              movement: row.movement,
+            }]
+          : [];
+      }),
+      cardio: (cardioRes.data ?? []).flatMap((row) => {
+        const performedAt = performedAtById.get(row.session_id);
+        return performedAt
+          ? [{
+              performedAt,
+              durationSec: row.duration_sec,
+              rpe: row.rpe,
+              modality: row.modality,
+              hrZones: row.hr_zones,
+              movement: row.movement,
+            }]
+          : [];
+      }),
+    });
+    for (const region of ALL_REGIONS) {
+      dailyByRegion.set(region, daily.get(region)!);
     }
   }
 
@@ -135,7 +149,7 @@ export async function deriveRegionFreshnessLive(
 
   const out = new Map<Region, RegionFreshnessLive>();
   for (const region of ALL_REGIONS) {
-    const series = dailyByRegion[region];
+    const series = dailyByRegion.get(region)!;
     const baseline = baselineByRegion.get(region) ?? 0;
     if (baseline <= 0 && series.size === 0) continue;
 

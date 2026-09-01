@@ -13,6 +13,8 @@ type Capture = {
   plannedUpdates: Array<{ id: string; patch: Record<string, unknown> }>;
 };
 
+type ErrorSource = "session" | "planned" | "sets" | "cardio" | "update";
+
 function makeSupa(opts: {
   session: { id: string; completed_at: string | null; user_id?: string } | null;
   planned: { id: string; session_modality: string | null } | null;
@@ -30,6 +32,7 @@ function makeSupa(opts: {
     duration_sec: number;
     inferred_kind: string | null;
   }>;
+  errors?: Partial<Record<ErrorSource, string>>;
 }) {
   const capture: Capture = { plannedUpdates: [] };
   // Default user_id so tests that omit it still authorise.
@@ -42,7 +45,12 @@ function makeSupa(opts: {
         return {
           select: () => ({
             eq: () => ({
-              maybeSingle: async () => ({ data: sessionWithUser, error: null }),
+              maybeSingle: async () => ({
+                data: sessionWithUser,
+                error: opts.errors?.session
+                  ? { message: opts.errors.session }
+                  : null,
+              }),
             }),
           }),
         };
@@ -51,7 +59,12 @@ function makeSupa(opts: {
         return {
           select: () => ({
             eq: () => ({
-              maybeSingle: async () => ({ data: opts.planned, error: null }),
+              maybeSingle: async () => ({
+                data: opts.planned,
+                error: opts.errors?.planned
+                  ? { message: opts.errors.planned }
+                  : null,
+              }),
             }),
           }),
           update: (patch: Record<string, unknown>) => {
@@ -65,7 +78,12 @@ function makeSupa(opts: {
                 return chain;
               },
               then(resolve: (v: unknown) => unknown) {
-                return resolve({ data: null, error: null });
+                return resolve({
+                  data: null,
+                  error: opts.errors?.update
+                    ? { message: opts.errors.update }
+                    : null,
+                });
               },
             };
             return chain;
@@ -75,14 +93,22 @@ function makeSupa(opts: {
       if (table === "set_logs") {
         return {
           select: () => ({
-            eq: async () => ({ data: opts.setLogs, error: null }),
+            eq: async () => ({
+              data: opts.setLogs,
+              error: opts.errors?.sets ? { message: opts.errors.sets } : null,
+            }),
           }),
         };
       }
       if (table === "cardio_logs") {
         return {
           select: () => ({
-            eq: async () => ({ data: opts.cardioLogs, error: null }),
+            eq: async () => ({
+              data: opts.cardioLogs,
+              error: opts.errors?.cardio
+                ? { message: opts.errors.cardio }
+                : null,
+            }),
           }),
         };
       }
@@ -133,6 +159,81 @@ describe("recomputeActualSessionLoad — integration", () => {
       requireCompleted: false,
     });
     expect(capture.plannedUpdates).toHaveLength(0);
+  });
+
+  it("writes zero actual ESL after the final persisted log is deleted", async () => {
+    const { supa, capture } = makeSupa({
+      session: { id: "s1", completed_at: "2026-05-21T18:00:00Z" },
+      planned: { id: "p1", session_modality: "pure_strength" },
+      setLogs: [],
+      cardioLogs: [],
+    });
+    await recomputeActualSessionLoad({
+      supabase: supa as never,
+      sessionId: "s1",
+      requireCompleted: false,
+      emptyLogBehavior: "zero-actual",
+    });
+    expect(capture.plannedUpdates).toEqual([
+      { id: "p1", patch: { effective_stress_load: 0 } },
+    ]);
+  });
+
+  it.each(["session", "planned", "sets", "cardio"] as const)(
+    "fails without writing a partial ESL when the %s query fails",
+    async (source) => {
+      const { supa, capture } = makeSupa({
+        session: { id: "s1", completed_at: "2026-05-21T18:00:00Z" },
+        planned: { id: "p1", session_modality: "pure_strength" },
+        setLogs: [
+          {
+            movement_id: "m",
+            set_kind: "main",
+            weight_kg: 100,
+            reps: 5,
+            rpe: 8,
+            skipped: false,
+          },
+        ],
+        cardioLogs: [],
+        errors: { [source]: `${source} failed` },
+      });
+      await expect(
+        recomputeActualSessionLoad({
+          supabase: supa as never,
+          sessionId: "s1",
+          requireCompleted: false,
+        }),
+      ).rejects.toThrow(`${source} failed`);
+      expect(capture.plannedUpdates).toHaveLength(0);
+    },
+  );
+
+  it("fails when the final ESL write fails", async () => {
+    const { supa, capture } = makeSupa({
+      session: { id: "s1", completed_at: "2026-05-21T18:00:00Z" },
+      planned: { id: "p1", session_modality: "pure_strength" },
+      setLogs: [
+        {
+          movement_id: "m",
+          set_kind: "main",
+          weight_kg: 100,
+          reps: 5,
+          rpe: 8,
+          skipped: false,
+        },
+      ],
+      cardioLogs: [],
+      errors: { update: "update failed" },
+    });
+    await expect(
+      recomputeActualSessionLoad({
+        supabase: supa as never,
+        sessionId: "s1",
+        requireCompleted: false,
+      }),
+    ).rejects.toThrow("update failed");
+    expect(capture.plannedUpdates).toHaveLength(1);
   });
 
   it("no-ops when requireCompleted=true and the session is not yet completed", async () => {
