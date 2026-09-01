@@ -71,9 +71,13 @@ import {
   unresolvedRehabItemIndices,
   rollupFidelity,
   fidelitySummaryLine,
+  isSystemLoadMovementSlug,
+  repairLegacySystemLoadWarmups,
 } from "@hta/domain";
 import type { Prescription } from "@hta/db";
 import { loadBwGateStatesForPrescription } from "@/lib/planner/bw-gate-state-loader";
+import { legacyWarmupRampFractions } from "@/lib/sessions/legacy-warmup-ramp";
+import { DEFAULT_ROUNDING_KG } from "@/lib/platform/rounding";
 import { cardioModalityLabel } from "@/lib/session/cardio-modality-label";
 import { isEmptyInProgressSession, shouldShowStrengthEmptyState } from "@/lib/sessions/empty-state";
 import { isBodyweightCapableEquipment } from "@/lib/sessions/bodyweight-equipment";
@@ -119,7 +123,7 @@ export default async function SessionDetailPage({
     supabase
       .from("profiles")
       .select(
-        "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format, units, bodyweight_kg",
+        "haptics_enabled, timer_sound_enabled, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, timezone, time_format, date_format, units, bodyweight_kg, warmup_scheme",
       )
       .eq("id", user.id)
       .maybeSingle(),
@@ -855,19 +859,24 @@ export default async function SessionDetailPage({
   const cardioModalityByMovementId: Record<string, string | null> = {};
   const bodyweightMovementIds: string[] = [];
   // A max that counts bodyweight (weighted pull-ups / dips) makes a percentage
-  // a TOTAL, not a belt load — the logger has to take bodyweight off it.
+  // a TOTAL, not a belt load — the logger has to take bodyweight off it. That is
+  // a property of the specific movement, not of `body_weight_loaded`, which is
+  // equally true of every lift that can be done unloaded.
   const systemLoadMovementIds: string[] = [];
   // Smart accessory ordering (render-side): equipment + region per movement so
   // the card list can cluster accessories by "station" (don't run back and
   // forth) without changing the stored prescription. See accessory-order.ts.
   const accessoryMetaById: Record<string, { equipment: string | null; region: string | null }> = {};
+  const slugByMovementId = new Map<string, string>();
   if (allMovementIds.length > 0) {
     const { data: movementRows } = await supabase
       .from("movements")
       .select("id, slug, metadata, body_weight_loaded, equipment, primary_region")
       .in("id", allMovementIds);
+    const resolvedMovementIds = new Set<string>();
     for (const row of movementRows ?? []) {
       const rowId = row.id as string;
+      resolvedMovementIds.add(rowId);
       if (cardioMovementIds.has(rowId)) {
         const meta = (row as { metadata?: Record<string, unknown> | null }).metadata;
         const slug = (row as { slug?: string | null }).slug ?? null;
@@ -875,6 +884,8 @@ export default async function SessionDetailPage({
       }
       if (strengthMovementIdSet.has(rowId)) {
         const equipment = (row as { equipment?: string | null }).equipment ?? null;
+        const rowSlug = (row as { slug?: string | null }).slug ?? null;
+        if (rowSlug) slugByMovementId.set(rowId, rowSlug);
         // A movement is bodyweight-CAPABLE (added weight is optional, 0 kg logs
         // fine) when it's flagged body_weight_loaded OR its equipment offers a
         // bodyweight option (e.g. "bodyweight", "bodyweight-or-loaded",
@@ -886,7 +897,7 @@ export default async function SessionDetailPage({
         ) {
           bodyweightMovementIds.push(rowId);
         }
-        if ((row as { body_weight_loaded?: boolean }).body_weight_loaded) {
+        if (isSystemLoadMovementSlug((row as { slug?: string | null }).slug)) {
           systemLoadMovementIds.push(rowId);
         }
         accessoryMetaById[rowId] = {
@@ -895,7 +906,41 @@ export default async function SessionDetailPage({
         };
       }
     }
+    // A movement the catalog could not resolve has no identity to read, so the
+    // item's own marker is all that is left. Items the catalog DID resolve are
+    // already decided above — the marker never overrides it.
+    for (const item of plannedPrescription?.items ?? []) {
+      const id = item.movementId;
+      if (!id || !allMovementIds.includes(id) || resolvedMovementIds.has(id)) continue;
+      if (item.systemLoad === true) systemLoadMovementIds.push(id);
+    }
   }
+
+  // Warm-ups materialised while `body_weight_loaded` stood in for "this max
+  // counts bodyweight" stored a bodyweight-subtracted absolute for ordinary
+  // lifts. The logger resolves loads off this prescription, so restate them
+  // here — the same restatement the fill and the per-set snapshot apply.
+  const systemLoadIdSet = new Set(systemLoadMovementIds);
+  const loggerPrescription: Prescription | null = plannedPrescription
+    ? {
+        ...plannedPrescription,
+        items: repairLegacySystemLoadWarmups(plannedPrescription.items ?? [], {
+          isSystemLoadMovement: (movementId) =>
+            slugByMovementId.has(movementId)
+              ? systemLoadIdSet.has(movementId)
+              : undefined,
+          bodyweightKg,
+          trainingMaxKg: (movementId) => {
+            const slug = slugByMovementId.get(movementId);
+            return slug ? tmBySlug[slug] : undefined;
+          },
+          rampFractions: legacyWarmupRampFractions(
+            (feedbackPrefs as { warmup_scheme?: unknown } | null)?.warmup_scheme,
+          ),
+          roundingKg: DEFAULT_ROUNDING_KG,
+        }),
+      }
+    : null;
 
   return (
     <UnitsProvider units={userUnits}>
@@ -1382,7 +1427,7 @@ export default async function SessionDetailPage({
         lastSetHints={lastSetHints}
         priorBests={priorBests}
         plannedSessionId={(planned?.id as string | undefined) ?? null}
-        prescription={plannedPrescription}
+        prescription={loggerPrescription}
         swapAction={swapPrescriptionItem}
         loggedItemIndices={loggedItemIndices}
         skippedItemIndices={skippedItemIndices}

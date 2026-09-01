@@ -17,6 +17,7 @@
  *     caps it at 3 main lifts (+ optional bodyweight 4th).
  *   - A block is 6 weeks (Grey Man: 12). Retest 1RMs every 6 or 12 weeks.
  */
+import { isSystemLoadEngineKey, SYSTEM_LOAD_ENGINE_KEYS } from "@hta/program-core";
 
 /** A movement key — matches the platform's shared 1RM keys (squat/bench/…). */
 export type TbMovement = string;
@@ -147,15 +148,15 @@ export type TbLiftKind = "barbell" | "weighted-bw" | "bodyweight" | "unanchored"
  * fall through to the barbell path, putting the whole bodyweight-inclusive
  * total on the belt. `defaultLiftKind` is the fallback that makes those paths
  * agree without each one restating the fact.
+ *
+ * Derived from the canonical identity in `@hta/domain` so the engine and the
+ * shared catalog name the same movements.
  */
-export const SYSTEM_LOAD_MOVEMENTS: ReadonlySet<string> = new Set([
-  "weighted-pullup",
-  "weighted-dip",
-]);
+export const SYSTEM_LOAD_MOVEMENTS: ReadonlySet<string> = SYSTEM_LOAD_ENGINE_KEYS;
 
 /** True when this movement's 1RM counts bodyweight as well as added load. */
 export function isSystemLoadMovement(movement: string): boolean {
-  return SYSTEM_LOAD_MOVEMENTS.has(movement);
+  return isSystemLoadEngineKey(movement);
 }
 
 /**

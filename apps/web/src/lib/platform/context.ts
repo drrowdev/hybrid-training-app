@@ -24,6 +24,7 @@ import {
   resolveWarmupPreference,
   warmupSchemeToRamp,
 } from "@/lib/planner/warmups";
+import { DEFAULT_ROUNDING_KG } from "./rounding";
 
 export interface PlatformContextBundle {
   ctx: PlatformContext;
@@ -213,7 +214,7 @@ export async function buildPlatformContext(
   return {
     ctx: {
       oneRepMaxes,
-      roundingKg: opts.roundingKg ?? 2.5,
+      roundingKg: opts.roundingKg ?? DEFAULT_ROUNDING_KG,
       ...(Number.isFinite(bodyweightKg) && bodyweightKg > 0 ? { bodyweightKg } : {}),
       ...(opts.gender ? { gender: opts.gender } : {}),
       ...(warmupRamp ? { warmupRamp } : {}),

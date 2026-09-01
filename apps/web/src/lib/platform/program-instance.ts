@@ -87,7 +87,12 @@ export function buildProgramInstanceWrite<I>(
   // every anchored main lift's basis is 100 (Tactical Barbell, Green Protocol,
   // HYROX); 5/3/1 loads off a real Training Max (< 100). Derive the label noun
   // so plan/preview surfaces read "% 1RM" vs "% TM" correctly.
-  const alignment = computeTmAlignment(engine.meta.family, instance, ctx.oneRepMaxes);
+  const alignment = computeTmAlignment(
+    engine.meta.family,
+    instance,
+    ctx.oneRepMaxes,
+    ctx.roundingKg,
+  );
   const alignmentValues = Object.values(alignment).filter((v): v is number => v != null);
   const loadsOffOneRm =
     alignmentValues.length === 0 || alignmentValues.every((v) => v === 100);

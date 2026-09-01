@@ -723,3 +723,19 @@ export function buildSystemLoadWarmupItems(args: {
  * past it — the maths itself has exactly one home.
  */
 export { addedLoadFromSystemLoad } from "@hta/domain";
+
+/**
+ * What a saved max means for a given movement. Re-exported from `@hta/domain`
+ * for the same reason as the conversion above: the engines and the catalog have
+ * to name these movements identically or a percentage lands on the wrong basis.
+ */
+export {
+  isSystemLoadEngineKey,
+  isSystemLoadMovementSlug,
+  isRepMaxEngineKey,
+  isRepMaxMovementSlug,
+  SYSTEM_LOAD_ENGINE_KEYS,
+  SYSTEM_LOAD_MOVEMENT_SLUGS,
+  REP_MAX_ENGINE_KEYS,
+  REP_MAX_MOVEMENT_SLUGS,
+} from "@hta/domain";

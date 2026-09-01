@@ -91,6 +91,12 @@ export type FocusViewProps = {
    * True when this movement's max counts bodyweight plus belt (weighted
    * pull-ups / dips), so a percentage of it is a total and the prescribed load
    * is that total minus bodyweight.
+   *
+   * Resolved from the movement catalog, so it decides over an item's own
+   * `systemLoad` marker — items materialised while `body_weight_loaded` stood
+   * in for this question carry that marker on ordinary bodyweight-capable
+   * lifts. `undefined` means the catalog had no answer; the marker is then the
+   * only thing to go on.
    */
   isSystemLoad?: boolean;
   /** Saved 1RM from training_maxes.one_rm_kg. Drives TM-anchored PR flash. */
@@ -256,7 +262,7 @@ export function MovementFocusView({
   group,
   tmKg,
   bodyweightKg,
-  isSystemLoad = false,
+  isSystemLoad,
   oneRmKg,
   loggedItemIndices,
   skippedItemIndices,
@@ -419,7 +425,7 @@ export function MovementFocusView({
 
   const targetWeightForItem = useCallback(
     (item: PrescriptionItem): number | null => {
-      const systemLoad = isSystemLoad || item.systemLoad === true;
+      const systemLoad = isSystemLoad ?? item.systemLoad === true;
       const roundKg = (kg: number) =>
         item.kind === "warmup" ? roundWarmupLoadKg(kg, warmupLoadOptions) : roundToPlate(kg);
       return resolveTargetLoadKg(item, {

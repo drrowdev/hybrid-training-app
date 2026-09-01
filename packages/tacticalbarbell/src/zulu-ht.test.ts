@@ -43,11 +43,48 @@ describe("Zulu/HT — timeline", () => {
 });
 
 describe("Zulu/HT — prescribe (heavy + back-off + assistance)", () => {
-  it("week 1, session 1 = heavy Press 4×5 @75% + back-off Squat 4×10 @65% + pull-ups 3×12 @60%", () => {
+  it("week 1, session 1 = heavy Press 4×5 @75% + back-off Squat 4×10 @65% + pull-ups 3–5×12", () => {
     const p = z.prescribe(setup(), "b0-w1-s1", ctx);
     expect(itemsOfKind(p, "main")[0]).toMatchObject({ name: "Overhead Press (heavy)", sets: 4, reps: 5, weightKg: 75, percentOfTm: 0.75 });
     expect(itemsOfKind(p, "supplemental")[0]).toMatchObject({ name: "Squat (back-off)", sets: 4, reps: 10, weightKg: 130, percentOfTm: 0.65 });
-    expect(itemsOfKind(p, "assistance")[0]).toMatchObject({ name: "Pull-Ups (Assistance A)", sets: 3, reps: 12, percentOfTm: 0.6 });
+    // DC-K4: the source's 60% is a share of MAX CLEAN REPS, already spent to
+    // produce the 12 reps. Carrying it as `percentOfTm` hands the adapter a rep
+    // percentage to render as a load percentage.
+    const assist = itemsOfKind(p, "assistance")[0]!;
+    expect(assist).toMatchObject({ name: "Pull-Ups (Assistance A)", sets: 3, setsMax: 5, reps: 12 });
+    expect(assist.percentOfTm).toBeUndefined();
+    expect(assist.weightKg).toBeUndefined();
+  });
+
+  it("DC-K4: the same reps whether or not the lifter has a pull-up entry", () => {
+    // `assistPct` ascends with the wave's other intensity columns while
+    // `assistReps` descends — no single rep max reproduces 12/10/8 from
+    // 60/65/70%, so the table's rep figure is the prescription and a recorded
+    // pull-up max must not silently replace it.
+    const anchored: PlatformContext = {
+      ...ctx,
+      oneRepMaxes: { ...ctx.oneRepMaxes, pullup: 20 },
+    };
+    const repsFor = (c: PlatformContext) =>
+      [1, 2, 3].map(
+        (week) => itemsOfKind(z.prescribe(setup(), `b0-w${week}-s1`, c), "assistance")[0]!.reps,
+      );
+    expect(repsFor(ctx)).toEqual([12, 10, 8]);
+    expect(repsFor(anchored)).toEqual([12, 10, 8]);
+  });
+
+  it("DC-K4: never carries the wave's percentage as a load", () => {
+    const anchored: PlatformContext = {
+      ...ctx,
+      oneRepMaxes: { ...ctx.oneRepMaxes, pullup: 20 },
+    };
+    for (const c of [ctx, anchored]) {
+      for (const week of [1, 2, 3]) {
+        const it = itemsOfKind(z.prescribe(setup(), `b0-w${week}-s1`, c), "assistance")[0]!;
+        expect(it.percentOfTm).toBeUndefined();
+        expect(it.weightKg).toBeUndefined();
+      }
+    }
   });
 
   it("ramps the heavy and back-off barbell lifts with the global warm-up (40/60/80% × 5/5/3), but not bodyweight pull-ups", () => {

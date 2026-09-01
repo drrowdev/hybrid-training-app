@@ -184,6 +184,47 @@ describe("materializeProgram — HYROX two-a-days (ADR 0054)", () => {
     }
   });
 
+  it("DC-K4: the pm work appears once — the am row does not also carry it", () => {
+    const pmDays = new Set(
+      result.sessions.filter((s) => s.slot === "pm").map((s) => `${s.weekIndex}-${s.dayIndex}`),
+    );
+    expect(pmDays.size).toBeGreaterThan(0);
+
+    for (const key of pmDays) {
+      const am = result.sessions.find((s) => `${s.weekIndex}-${s.dayIndex}` === key && s.slot === "am")!;
+      const pm = result.sessions.find((s) => `${s.weekIndex}-${s.dayIndex}` === key && s.slot === "pm")!;
+      expect(am).toBeDefined();
+
+      // The am session is the day's PRIMARY session. Its own items may include
+      // cardio (a run day doubled with an erg), so identity is what matters:
+      // no pm item may be repeated in the am row.
+      const pmSignatures = new Set(
+        pm.prescription.items.map((it) => `${it.kind}|${it.movementName ?? ""}|${it.notes ?? ""}`),
+      );
+      for (const it of am.prescription.items) {
+        expect(pmSignatures.has(`${it.kind}|${it.movementName ?? ""}|${it.notes ?? ""}`)).toBe(false);
+      }
+    }
+  });
+
+  it("DC-K4: the am title reflects the am session, not the pm session's duration", () => {
+    // `enrichTitle` appends the primary cardio duration. When the am prescription
+    // absorbed the pm erg, the am title inherited the pm minutes.
+    const off = materializeProgram(
+      hyroxEngine,
+      inst({ experience: "advanced", sessionsPerWeek: 6 }),
+      ctx,
+      resolve,
+      { weekdays },
+    );
+    const titleByRefBase = new Map(off.sessions.map((s) => [s.ref, s.title]));
+    for (const am of result.sessions.filter((s) => s.slot === "am")) {
+      const single = titleByRefBase.get(am.ref);
+      if (single == null) continue;
+      expect(am.title).toBe(single);
+    }
+  });
+
   it("keeps the (week, day, slot) grid collision-free with doubles", () => {
     const keys = result.sessions.map((s) => `${s.weekIndex}-${s.dayIndex}-${s.slot}`);
     expect(new Set(keys).size).toBe(keys.length);

@@ -114,9 +114,15 @@ describe("Green engine — prescribe conditioning", () => {
     expect(p.items[0]!.durationSec).toBeUndefined();
   });
 
-  it("a deload day yields a recovery note", () => {
+  it("DC-K4: a deload day yields an item the session can carry, not an orphan note", () => {
     const p = gp.prescribe(setup(), "gp-b0-w7-d0", ctx);
-    expect(p.items[0]).toMatchObject({ kind: "note", name: "Deload" });
+    expect(p.items).toHaveLength(1);
+    // A note on its own has nothing to attach to and drops out of the
+    // materialised session, leaving the day blank.
+    expect(p.items[0]).toMatchObject({ kind: "cardio", name: "Deload" });
+    // No duration → reserves no time and adds no aerobic dose to a deload week
+    // that already schedules its own conditioning days.
+    expect(p.items[0]!.durationSec).toBeUndefined();
   });
 });
 

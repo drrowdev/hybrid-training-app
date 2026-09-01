@@ -142,7 +142,7 @@ describe("slotPayloadEntry", () => {
         id: "row-id",
         slug: "bb-row-overhand",
         name: "Barbell Row",
-        kind: catalogSlotKind({ hasOneRm: true, isLoadable: false }),
+        kind: catalogSlotKind({ hasOneRm: true, slug: "bb-row-overhand" }),
       }).kind,
     ).toBe("barbell");
 
@@ -157,7 +157,7 @@ describe("slotPayloadEntry", () => {
         id: "dip-id",
         slug: "weighted-dip",
         name: "Weighted Dip",
-        kind: catalogSlotKind({ hasOneRm: true, isLoadable: true }),
+        kind: catalogSlotKind({ hasOneRm: true, slug: "weighted-dip" }),
       }).kind,
     ).toBe("weighted-bw");
   });

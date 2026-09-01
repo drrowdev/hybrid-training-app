@@ -296,14 +296,21 @@ export const zuluHtEngine: ProgramEngine<ZuluHtInstance> = {
       });
     }
 
+    // The wave's `assistPct` ascends with `heavyPct`/`suppPct` while `assistReps`
+    // descends with their rep columns — it is the intensity column, which the
+    // source reads as a share of MAX REPS here and of the 1RM only if the lifter
+    // adds weight. This item names the bodyweight pull-up, so carrying the share
+    // as `percentOfTm` hands the adapter a rep percentage to render as a load.
+    // The prescription is the table's own rep figure; the share stays as the cue
+    // to scale it, which is all the source claims.
     items.push({
       kind: "assistance",
       name: `Pull-Ups (Assistance ${session.assist})`,
       movementId: "pullup",
       sets: 3,
+      setsMax: 5,
       reps: wave.assistReps,
-      percentOfTm: wave.assistPct,
-      note: `${wave.assistPct * 100}% = of max reps for bodyweight (or of 1RM if weighted). Add 2–3 optional accessories on the ${session.assist} list. 3–5 sets.`,
+      note: `${Math.round(wave.assistPct * 100)}% of your max clean reps. Add 2–3 accessories from the ${session.assist} list.`,
     });
 
     return { items };

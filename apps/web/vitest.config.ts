@@ -17,6 +17,7 @@ export default defineConfig({
     // promise keeps running rather than being cancelled — its delayed
     // resolution can leak into a later test's shared mock state. Raising the
     // ceiling gives busy/CI runners headroom without slowing fast tests.
-    testTimeout: 15000,
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
   },
 });

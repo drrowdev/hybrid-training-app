@@ -89,6 +89,56 @@ export interface GreenInstance {
   strength: Record<string, TbInstance | ZuluHtInstance>;
 }
 
+/**
+ * The basis Green's strength work is loaded against.
+ *
+ * Green owns no percentages of its own — it delegates every strength day to an
+ * embedded Tactical Barbell or Zulu/HT instance, so the basis lives one level
+ * down, once per nested engine. A caller that reads `useTrainingMax`/`tmPercent`
+ * off the Green instance itself finds nothing and silently concludes "true 1RM",
+ * which renders a 125 kg engine target as 140 kg in the app.
+ *
+ * Single home for that question (plan §6.9): the platform asks here rather than
+ * reaching into the nested instances itself.
+ */
+export type GreenStrengthBasis =
+  | { kind: "one-rm" }
+  | { kind: "training-max"; tmPercent: number };
+
+/**
+ * The basis every nested strength engine agrees on, or `null` when they do not.
+ *
+ * `setup` seeds all of them from one choice, so agreement is the normal case.
+ * `null` means the instance cannot be described by a single basis — an empty,
+ * hand-built or legacy instance — and the honest answer is that the caller does
+ * not know, not a guess that happens to be wrong half the time.
+ */
+export function greenStrengthBasis(instance: GreenInstance): GreenStrengthBasis | null {
+  const nested = Object.values(instance.strength ?? {});
+  if (nested.length === 0) return null;
+
+  const bases: GreenStrengthBasis[] = [];
+  for (const inst of nested) {
+    const basis = inst as Partial<TbInstance & ZuluHtInstance>;
+    if (basis.useTrainingMax !== true) {
+      bases.push({ kind: "one-rm" });
+      continue;
+    }
+    const percent = basis.tmPercent;
+    if (typeof percent !== "number" || !Number.isFinite(percent) || percent <= 0 || percent > 1) {
+      return null;
+    }
+    bases.push({ kind: "training-max", tmPercent: percent });
+  }
+
+  const [first, ...rest] = bases as [GreenStrengthBasis, ...GreenStrengthBasis[]];
+  const agrees = (other: GreenStrengthBasis) =>
+    first.kind === "one-rm"
+      ? other.kind === "one-rm"
+      : other.kind === "training-max" && other.tmPercent === first.tmPercent;
+  return rest.every(agrees) ? first : null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Ref encoding — `gp-b{block}-w{week}-d{day}` (one ref per non-rest day)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -423,12 +473,21 @@ export const greenProtocolEngine: ProgramEngine<GreenInstance> = {
     const cell = entry.cell;
 
     if (cell.kind === "deload") {
+      // A note on its own has no item to attach to and drops out of the
+      // materialised session, leaving the day blank. Carry the guidance on a
+      // cardio item instead — with no duration, so the day reserves nothing and
+      // adds no aerobic dose to a deload week that already schedules its own.
       return {
         items: [
           {
-            kind: "note",
+            kind: "cardio",
             name: "Deload",
-            note: "Reduce volume and intensity. Light optional aerobic work only — recover and rebuild.",
+            movementId: "",
+            cardioPlan: {
+              summary: "Reduce volume and intensity.",
+              meta: "optional",
+              effort: "Easy aerobic work only.",
+            },
           },
         ],
       };
