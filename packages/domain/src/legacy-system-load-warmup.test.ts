@@ -77,8 +77,10 @@ describe("legacy system-load warm-ups (DC-K4)", () => {
   });
 
   it("recovers the shared 40/60/80 ladder after its collapsed rungs", () => {
-    // Two sub-bodyweight rungs resolved to the same 0 and collapsed into one
-    // when they were written, so the surviving slots are the ladder's tail.
+    // 110 kg top set, 80 kg lifter: 44 and 66 both clamp to 0, and the writer
+    // keeps the FIRST of a repeated load and drops the second. So the surviving
+    // clamped slot is the 40% rung, not the 60% one — replaying the writer is
+    // what tells them apart, because two slots could align to either end.
     const items: LegacyWarmupItem[] = [
       { movementId: "lunge", kind: "warmup", targetWeightKg: 0, systemLoad: true },
       { movementId: "lunge", kind: "warmup", targetWeightKg: 7.5, systemLoad: true },
@@ -88,7 +90,7 @@ describe("legacy system-load warm-ups (DC-K4)", () => {
       items,
       ctx({ rampFractions: [0.4, 0.6, 0.8] }),
     );
-    expect(repaired.slice(0, 2).map((i) => i.targetWeightKg)).toEqual([66, 87.5]);
+    expect(repaired.slice(0, 2).map((i) => i.targetWeightKg)).toEqual([44, 88]);
   });
 });
 
@@ -170,8 +172,9 @@ describe("legacy warm-up recovery fails closed", () => {
   });
 
   it("rebuilds two blocks of one movement off their own anchors", () => {
-    // Second block ramps to 104.5 (95% of 110). Its two sub-bodyweight rungs
-    // collapsed into one zero, and the top rung floored to 22.5 on the way in.
+    // Second block ramps to 104.5 (95% of 110). Its 50% and 75% rungs both
+    // clamped to 0 and collapsed into the FIRST of the two, and the top rung
+    // floored to 22.5 on the way in.
     const items: LegacyWarmupItem[] = [
       ...LEGACY_FORWARD_LUNGE,
       { movementId: "lunge", kind: "warmup", targetWeightKg: 0, systemLoad: true },
@@ -181,7 +184,7 @@ describe("legacy warm-up recovery fails closed", () => {
     const repaired = repairLegacySystemLoadWarmups(items, ctx());
     expect(repaired[0]!.targetWeightKg).toBe(55);
     // Off 104.5, not off the first block's larger 110 anchor.
-    expect(repaired[4]!.targetWeightKg).toBe(78.375);
-    expect(repaired[5]!.targetWeightKg).toBe(102.5);
+    expect(repaired[4]!.targetWeightKg).toBe(52.25);
+    expect(repaired[5]!.targetWeightKg).toBe(104.5);
   });
 });

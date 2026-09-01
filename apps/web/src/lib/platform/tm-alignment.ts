@@ -30,12 +30,12 @@ import type { TbInstance, ZuluHtInstance } from "@hta/tacticalbarbell";
 import { greenStrengthBasis, type GreenInstance, type GreenStrengthBasis } from "@hta/green";
 import { isRepMaxEngineKey } from "@hta/domain";
 import { ENGINE_KEY_TO_ROLE } from "./movement-keys";
+import { DEFAULT_ROUNDING_KG } from "./rounding";
 
 /** A per-engine-key integer tm_percent (% of true 1RM) to write to training_maxes. */
 export type TmAlignment = Partial<Record<string, number>>;
 
 /** The default plate step, matching the engines' own `ctx.roundingKg` default. */
-const DEFAULT_ROUNDING_KG = 2.5;
 
 function pct(n: number): number {
   return Math.round(n * 1000) / 10; // one decimal place, e.g. 84.9

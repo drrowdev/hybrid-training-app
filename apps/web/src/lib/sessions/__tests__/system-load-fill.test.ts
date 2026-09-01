@@ -239,6 +239,7 @@ describe("fillSessionFromPlan — weighted bodyweight movements", () => {
 });
 
 const LUNGE_ID = "movement-forward-lunge";
+const STEPUP_ID = "movement-step-up";
 
 describe("fillSessionFromPlan — bodyweight-capable lifts are not system loads", () => {
   // A Forward Lunge can be done with no external weight, which is what
@@ -368,6 +369,50 @@ describe("fillSessionFromPlan — bodyweight-capable lifts are not system loads"
     expect(mockState.upserts.map((row) => row.weight_kg)).toEqual([
       55, 82.5, 110, 110,
     ]);
+  });
+
+  it("DC-K4: the shared ladder's collapsed rung comes back as the rung that wrote it", async () => {
+    // No configured ladder, so the writer used the shared 40/60/80 one. At a
+    // 110 kg top set an 80 kg lifter's 44 and 66 kg rungs BOTH clamped to 0,
+    // and the writer kept the first and dropped the second. So two slots were
+    // stored, and the surviving clamped one is the 40% rung — reading the pair
+    // as the ladder's tail would hand the lifter 66 kg instead of 44 kg.
+    mockState.trainingMaxes = [
+      { movement_id: STEPUP_ID, one_rm_kg: 110, tm_percent: 100 },
+    ];
+    mockState.movements = [{ id: STEPUP_ID, slug: "step-up" }];
+    mockState.planned = pullupPrescription([
+      ...[0, 7.5].map((targetWeightKg) => ({
+        movementId: STEPUP_ID,
+        movementSlug: "step-up",
+        kind: "warmup",
+        sets: 1,
+        reps: 5,
+        targetWeightKg,
+        systemLoad: true,
+        ...(targetWeightKg === 0 ? { note: "bodyweight" } : {}),
+      })),
+      {
+        movementId: STEPUP_ID,
+        movementSlug: "step-up",
+        kind: "main",
+        sets: 1,
+        reps: 5,
+        percentTm: 100,
+      },
+    ]);
+    const { fillSessionFromPlan } = await import("../actions");
+    const formData = new FormData();
+    formData.set("sessionId", SESSION_ID);
+
+    await fillSessionFromPlan(formData);
+
+    // 44 and 88 off the ladder, then snapped to what a 20 kg bar and the
+    // default plates can actually hold.
+    expect(mockState.upserts.map((row) => row.weight_kg)).toEqual([45, 87.5, 110]);
+    // The tail-aligned reading of the same two slots would have called the
+    // clamped rung 60% and loaded 66 kg.
+    expect(mockState.upserts[0]?.weight_kg).not.toBe(66);
   });
 
   it("falls back to the stored marker when the catalog cannot resolve the movement", async () => {

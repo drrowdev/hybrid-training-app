@@ -23,11 +23,13 @@
  *    up to the lifter's weight, so the number cannot be un-clamped from the item
  *    itself.
  *
- * A clamped rung is therefore rebuilt from the ramp — but only when the ramp is
- * CORROBORATED by the rungs that survived. If the ladder the app can see today
- * reproduces every recoverable rung, it is the ladder that wrote them and the
- * missing rung follows from it. If it does not, the block is left alone rather
- * than replanned behind the lifter's back.
+ * A clamped rung is therefore rebuilt from the ramp — but only when REPLAYING
+ * the writer against the ladder the app can see today reproduces this block
+ * exactly, rung for rung. That replay proves the ladder, the top set and the
+ * bodyweight at once, and tells us which rung each surviving slot holds, which
+ * a slot count cannot: the writer collapses repeated loads and keeps the first.
+ * If the replay does not match, the block is left alone rather than replanned
+ * behind the lifter's back.
  *
  * Everything here is in memory. Nothing is written back, no marker is erased on
  * disk, and only load fields are touched — sets, reps, notes and metadata are
@@ -41,6 +43,7 @@ export type LegacyWarmupItem = {
   percentTm?: number | null;
   targetWeightKg?: number | null;
   systemLoad?: boolean;
+  note?: string | null;
 };
 
 export type LegacyWarmupRepairContext = {
@@ -140,6 +143,37 @@ function topWorkingKgFor(
 }
 
 /**
+ * Replay `buildSystemLoadWarmupItems` (program-core) for one block: the added
+ * load it would have stored for each ladder rung, dropping a rung whose load
+ * repeats the one before it — exactly as the writer does. Returns the surviving
+ * rungs in order, each tagged with the ladder index it came from.
+ *
+ * Reproducing the collapse is the only way to know which rung a surviving slot
+ * holds. The writer keeps the FIRST of a repeated run, so a slot count alone
+ * cannot be aligned to the ladder from either end.
+ */
+function replayWriter(
+  topWorkingKg: number,
+  bodyweightKg: number,
+  ramp: readonly number[],
+  roundingKg: number,
+): Array<{ rungIndex: number; addedKg: number }> {
+  const out: Array<{ rungIndex: number; addedKg: number }> = [];
+  let previousAddedKg: number | null = null;
+  for (let i = 0; i < ramp.length; i++) {
+    const added = topWorkingKg * ramp[i]! - bodyweightKg;
+    const addedKg =
+      added <= 0
+        ? 0
+        : Math.max(0, roundingKg > 0 ? Math.floor(added / roundingKg) * roundingKg : added);
+    if (previousAddedKg != null && addedKg === previousAddedKg) continue;
+    previousAddedKg = addedKg;
+    out.push({ rungIndex: i, addedKg });
+  }
+  return out;
+}
+
+/**
  * Recovered totals for one block, by index, or an empty map when nothing can be
  * recovered safely.
  */
@@ -163,8 +197,10 @@ function recoverBlock(
   }
   if (clamped.length === 0) return recovered;
 
-  // Lossy half: a clamped rung only comes back if the ladder can be shown to be
-  // the one that wrote this block.
+  // Lossy half: a clamped rung only comes back if the writer can be REPLAYED to
+  // produce exactly this block. Replaying proves the ladder, the top set and the
+  // bodyweight together, and tells us which ladder rung each surviving slot came
+  // from — which a slot count cannot, because the writer collapses rungs.
   const ramp = ctx.rampFractions;
   if (!ramp || ramp.length < block.indices.length) return recovered;
   const topWorkingKg = topWorkingKgFor(
@@ -174,27 +210,20 @@ function recoverBlock(
   );
   if (topWorkingKg == null || topWorkingKg <= 0) return recovered;
 
-  // Consecutive rungs that resolved to the same added load collapsed into one
-  // when they were written, and an ascending ramp only ever collapses its
-  // sub-bodyweight START. So the surviving slots are the ladder's TAIL.
-  const offset = ramp.length - block.indices.length;
-  const tolerance = ctx.roundingKg ?? 2.5;
-  let corroborated = 0;
+  const replay = replayWriter(topWorkingKg, bodyweightKg, ramp, ctx.roundingKg ?? 2.5);
+  if (replay.length !== block.indices.length) return recovered;
   for (let slot = 0; slot < block.indices.length; slot++) {
-    const index = block.indices[slot]!;
-    const exact = recovered.get(index);
-    if (exact == null) continue;
-    const fraction = ramp[offset + slot]!;
-    if (Math.abs(topWorkingKg * fraction - exact) > tolerance) return recovered;
-    corroborated += 1;
+    const stored = finite(items[block.indices[slot]!]!.targetWeightKg)!;
+    if (replay[slot]!.addedKg !== stored) return recovered;
   }
-  // Nothing survived to check the ladder against, so there is no evidence it is
-  // the right one. Better an unprescribed rung than an invented load.
-  if (corroborated === 0) return recovered;
 
-  for (const index of clamped) {
-    const slot = block.indices.indexOf(index);
-    recovered.set(index, topWorkingKg * ramp[offset + slot]!);
+  // The replay matched, so the ladder, the top set and the bodyweight are all
+  // confirmed and every slot's rung is known. Restate the WHOLE block off the
+  // ladder: the stored figure was floored only because bodyweight had to come
+  // out of it, and an ordinary lift's ramp is rounded at the surface against
+  // the lifter's own plates. This is the ramp the same plan would build today.
+  for (let slot = 0; slot < block.indices.length; slot++) {
+    recovered.set(block.indices[slot]!, topWorkingKg * ramp[replay[slot]!.rungIndex]!);
   }
   return recovered;
 }
@@ -228,6 +257,11 @@ export function repairLegacySystemLoadWarmups<T extends LegacyWarmupItem>(
     if (kg == null) return item;
     const next: T = { ...item, targetWeightKg: kg };
     delete (next as LegacyWarmupItem).systemLoad;
+    // The writer stamped "bodyweight" on a rung it had clamped to zero. It now
+    // carries a load, so the note would contradict the number next to it.
+    if (kg > 0 && item.note === "bodyweight") {
+      delete (next as LegacyWarmupItem).note;
+    }
     return next;
   });
 }

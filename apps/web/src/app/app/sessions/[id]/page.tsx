@@ -77,6 +77,7 @@ import {
 import type { Prescription } from "@hta/db";
 import { loadBwGateStatesForPrescription } from "@/lib/planner/bw-gate-state-loader";
 import { legacyWarmupRampFractions } from "@/lib/sessions/legacy-warmup-ramp";
+import { DEFAULT_ROUNDING_KG } from "@/lib/platform/rounding";
 import { cardioModalityLabel } from "@/lib/session/cardio-modality-label";
 import { isEmptyInProgressSession, shouldShowStrengthEmptyState } from "@/lib/sessions/empty-state";
 import { isBodyweightCapableEquipment } from "@/lib/sessions/bodyweight-equipment";
@@ -936,6 +937,7 @@ export default async function SessionDetailPage({
           rampFractions: legacyWarmupRampFractions(
             (feedbackPrefs as { warmup_scheme?: unknown } | null)?.warmup_scheme,
           ),
+          roundingKg: DEFAULT_ROUNDING_KG,
         }),
       }
     : null;
