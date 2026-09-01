@@ -12,6 +12,7 @@ import {
   autoregScaleForBand,
   hasDiscretionaryVolume,
 } from "@/lib/planner/autoreg-volume";
+import { getUserTimezone } from "@/lib/planner/queries";
 
 export type AcceptAutoregResult =
   | { ok: true; sessions: number; scale: number }
@@ -31,7 +32,8 @@ export async function acceptVolumeAutoregResult(): Promise<AcceptAutoregResult> 
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const util = await getCeilingUtilization(supabase, user.id);
+  const timezone = await getUserTimezone(user.id);
+  const util = await getCeilingUtilization(supabase, user.id, timezone);
   if (!util) return { ok: false, error: "No active block" };
 
   const scale = autoregScaleForBand(util.strength.band);
@@ -39,7 +41,11 @@ export async function acceptVolumeAutoregResult(): Promise<AcceptAutoregResult> 
     return { ok: false, error: "Strength volume is not over budget" };
   }
 
-  const active = await getActiveBlockRemainingSessions(supabase, user.id);
+  const active = await getActiveBlockRemainingSessions(
+    supabase,
+    user.id,
+    timezone,
+  );
   if (!active) return { ok: false, error: "No active block" };
 
   const updates = active.remaining

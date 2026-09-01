@@ -16,6 +16,11 @@ import {
   type BulletproofRole,
 } from "@/lib/planner/accessory-roles";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
+import {
+  currentBlockWeekIndexAt,
+  daysBetweenYmd,
+  ymdInTimezone,
+} from "@/lib/dates";
 
 export type TissueStackGap = {
   role: BulletproofRole;
@@ -36,6 +41,8 @@ const ROLE_LABEL: Record<BulletproofRole, string> = {
 export async function getCurrentWeekTissueStackGaps(
   supabase: SupabaseClient,
   userId: string,
+  timezone: string,
+  now = new Date(),
 ): Promise<TissueStackGap[]> {
   const { data: block } = await supabase
     .from("training_blocks")
@@ -58,8 +65,8 @@ export async function getCurrentWeekTissueStackGaps(
     return [];
   }
 
-  const startedOn = new Date(block.started_on + "T00:00:00");
-  const daysSinceStart = Math.floor((Date.now() - startedOn.getTime()) / 86_400_000);
+  const today = ymdInTimezone(now, timezone);
+  const daysSinceStart = daysBetweenYmd(block.started_on, today);
 
   // Gate: don't surface deficits until the block has been running long
   // enough for the user to actually have logged anything against it.
@@ -68,7 +75,7 @@ export async function getCurrentWeekTissueStackGaps(
   //   warning describes lived training, not a brand-new plan.
   if (daysSinceStart < 7) return [];
 
-  const sevenDaysAgoIso = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const sevenDaysAgoIso = new Date(now.getTime() - 7 * 86_400_000).toISOString();
   const { count: recentSessions } = await supabase
     .from("sessions")
     .select("id", { count: "exact", head: true })
@@ -78,7 +85,12 @@ export async function getCurrentWeekTissueStackGaps(
     .gte("completed_at", sevenDaysAgoIso);
   if ((recentSessions ?? 0) < 1) return [];
 
-  const weekIndex = Math.max(0, Math.min(block.weeks - 1, Math.floor(daysSinceStart / 7)));
+  const weekIndex = currentBlockWeekIndexAt(
+    block.started_on,
+    block.weeks,
+    timezone,
+    now,
+  );
 
   const { data: sessions } = await supabase
     .from("planned_sessions")

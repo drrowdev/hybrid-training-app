@@ -178,3 +178,33 @@ export function upcomingMondayYmd(ymd: string): string {
   if (weekday === 0) return ymd;
   return addDaysToYmd(ymd, 7 - weekday);
 }
+
+/**
+ * Current 0-based block week for a user-perceived calendar date.
+ *
+ * Blocks use the Monday containing `startedOn` as week 1, including legacy
+ * blocks whose stored start date was mid-week.
+ */
+export function currentBlockWeekIndex(
+  startedOn: string,
+  weeks: number,
+  today: string,
+): number {
+  const elapsedDays = daysBetweenYmd(mondayOfYmd(startedOn), today);
+  const lastWeekIndex = Math.max(0, weeks - 1);
+  return Math.max(0, Math.min(lastWeekIndex, Math.floor(elapsedDays / 7)));
+}
+
+/** Resolve the current block week at an explicit instant and IANA timezone. */
+export function currentBlockWeekIndexAt(
+  startedOn: string,
+  weeks: number,
+  timezone: string,
+  now: Date,
+): number {
+  return currentBlockWeekIndex(
+    startedOn,
+    weeks,
+    ymdInTimezone(now, timezone),
+  );
+}

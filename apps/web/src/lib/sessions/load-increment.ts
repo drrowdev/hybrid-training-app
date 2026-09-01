@@ -29,6 +29,9 @@ export const DUMBBELL_WEIGHT_STEP: WeightStep = { kg: 1, lb: 2 };
 export function loadIncrementForRequirement(
   requirement: EquipmentRequirement,
 ): WeightStep {
+  if (requirement.kind === "any_of" || requirement.kind === "all_of") {
+    return loadIncrementForRequirement(requirement.requirements[0]);
+  }
   return requirement.kind === "dumbbells"
     ? DUMBBELL_WEIGHT_STEP
     : DEFAULT_WEIGHT_STEP;

@@ -165,4 +165,24 @@ test.describe("@desktop auth", () => {
       page.getByRole("heading", { name: /how many days/i }),
     ).toHaveCount(0);
   });
+
+  test("D: login rejects external and encoded redirect targets", async ({
+    page,
+    baseURL,
+  }) => {
+    const expectedOrigin = new URL(baseURL ?? "http://localhost:3000").origin;
+    for (const target of [
+      "https://evil.example",
+      "//evil.example",
+      "\\\\evil.example\\path",
+      "%2F%2Fevil.example",
+      "/%255Cevil.example",
+    ]) {
+      await page.goto(`/login?${new URLSearchParams({ next: target })}`);
+      await expect(page.locator('input[name="next"]').first()).toHaveValue(
+        "/app",
+      );
+      expect(new URL(page.url()).origin).toBe(expectedOrigin);
+    }
+  });
 });

@@ -16,6 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Prescription } from "@hta/db";
 import { ARCHETYPES, type ArchetypeId } from "@/lib/planner/archetypes";
 import { archetypeDisplayName } from "@/lib/planner/queries";
+import { currentBlockWeekIndexAt } from "@/lib/dates";
 
 export type CeilingBand = "under" | "on-budget" | "at-line" | "over" | "way-over";
 
@@ -130,6 +131,8 @@ async function prescribedCountsFromPlannedSessions(
 export async function getCeilingUtilization(
   supabase: SupabaseClient,
   userId: string,
+  timezone: string,
+  now = new Date(),
 ): Promise<CeilingUtilization | null> {
   // Active block determines week index + prescribed-volume source.
   const { data: block } = await supabase
@@ -141,9 +144,12 @@ export async function getCeilingUtilization(
     .maybeSingle();
   if (!block) return null;
 
-  const startedOn = new Date(block.started_on + "T00:00:00");
-  const daysSinceStart = Math.floor((Date.now() - startedOn.getTime()) / 86_400_000);
-  const weekIndex = Math.max(0, Math.min(block.weeks - 1, Math.floor(daysSinceStart / 7)));
+  const weekIndex = currentBlockWeekIndexAt(
+    block.started_on,
+    block.weeks,
+    timezone,
+    now,
+  );
 
   // Prescribed counts + labels: archetype config for legacy archetype blocks
   // (byte-identical), else read from the materialised planned_sessions for
@@ -175,7 +181,7 @@ export async function getCeilingUtilization(
   // Week window: last 7 days (rolling) instead of strict calendar week —
   // matches the rolling-week pattern used elsewhere (region freshness,
   // muscle volume).
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString();
   const { data: sessions } = await supabase
     .from("sessions")
     .select("id")

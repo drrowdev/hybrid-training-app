@@ -26,11 +26,14 @@ import {
 } from "@/lib/planner/deload-skip";
 import type { Prescription } from "@hta/db";
 import { isUnstartedLinkedSession } from "@/lib/sessions/linked-session-state";
+import { currentBlockWeekIndexAt, ymdInTimezone } from "@/lib/dates";
 
 export type { DeloadSkipOffer } from "@/lib/planner/deload-skip";
 import type { DeloadSkipOffer } from "@/lib/planner/deload-skip";
 
-export async function getDeloadSkipOffer(): Promise<DeloadSkipOffer | null> {
+export async function getDeloadSkipOffer(
+  now = new Date(),
+): Promise<DeloadSkipOffer | null> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -65,9 +68,13 @@ export async function getDeloadSkipOffer(): Promise<DeloadSkipOffer | null> {
   const deloadWeekIndex = resolveDeloadWeekIndex({ archetype, weeks, sessions: deloadSessions });
   if (deloadWeekIndex == null) return null; // maintenance / no-deload block
 
-  const startedOn = new Date(block.started_on + "T00:00:00");
-  const daysSinceStart = Math.floor((Date.now() - startedOn.getTime()) / 86_400_000);
-  const currentWeekIndex = Math.max(0, Math.min(weeks - 1, Math.floor(daysSinceStart / 7)));
+  const tz = await getUserTimezone(user.id);
+  const currentWeekIndex = currentBlockWeekIndexAt(
+    block.started_on,
+    weeks,
+    tz,
+    now,
+  );
 
   // The deload week must still have un-started, not-already-skipped sessions.
   const { data: deloadRows } = await supabase
@@ -105,8 +112,11 @@ export async function getDeloadSkipOffer(): Promise<DeloadSkipOffer | null> {
     .gte("created_at", `${block.started_on}T00:00:00Z`);
 
   // Recovery signal: the most recent logged weeks must all be "recovered".
-  const tz = await getUserTimezone();
-  const rollup = await getWeeklyRecoveryRollup(supabase, user.id, { weeks: 8, tz });
+  const rollup = await getWeeklyRecoveryRollup(supabase, user.id, {
+    weeks: 8,
+    today: ymdInTimezone(now, tz),
+    tz,
+  });
   const recentLoggedRecovered = rollup
     .filter((w) => w.loggedSessions > 0)
     .map((w) => isRecoveredWeek(w).isRecovered);

@@ -23,7 +23,7 @@
 import type { Equipment } from "@/lib/settings/equipment-schema";
 import type { MachineType } from "@/lib/settings/equipment-schema";
 
-export type EquipmentRequirement =
+type SingleEquipmentRequirement =
   | { kind: "barbell" }
   | { kind: "trap_bar" }
   | { kind: "safety_squat_bar" }
@@ -47,6 +47,17 @@ export type EquipmentRequirement =
   | { kind: "pull_up_bar" }
   | { kind: "rings" }
   | { kind: "bodyweight_or_generic" };
+
+export type EquipmentRequirement =
+  | SingleEquipmentRequirement
+  | {
+      kind: "any_of";
+      requirements: readonly [SingleEquipmentRequirement, ...SingleEquipmentRequirement[]];
+    }
+  | {
+      kind: "all_of";
+      requirements: readonly [SingleEquipmentRequirement, ...SingleEquipmentRequirement[]];
+    };
 
 const BARBELL_LIFT_TOKENS = [
   "back_squat",
@@ -231,6 +242,31 @@ export function requirementFromEquipmentTag(
     return { kind: "bodyweight_or_generic" };
   }
 
+  // Gymnastic hardware is tracked independently. Preserve either/or tags as
+  // alternatives instead of making the first implement mandatory.
+  if (t === "bar-or-rings") {
+    return {
+      kind: "any_of",
+      requirements: [{ kind: "pull_up_bar" }, { kind: "rings" }],
+    };
+  }
+  if (t === "bar-belt") {
+    return {
+      kind: "all_of",
+      requirements: [{ kind: "pull_up_bar" }, { kind: "dip_belt" }],
+    };
+  }
+  if (t === "bar" || t === "bar-neutral" || t === "dip-bars") {
+    return { kind: "pull_up_bar" };
+  }
+  if (t === "rings") return { kind: "rings" };
+  if (t === "cable-or-band") {
+    return {
+      kind: "any_of",
+      requirements: [{ kind: "cable" }, { kind: "bands" }],
+    };
+  }
+
   // Specific machines we can match against the user's tracked inventory.
   if (t.includes("leg-press")) return { kind: "machine", machine: "leg_press" };
   if (t.includes("leg-curl")) return { kind: "machine", machine: "leg_curl" };
@@ -259,7 +295,25 @@ export function requirementFromEquipmentTag(
   // name the implement (e.g. `hammer-curl` tagged `dumbbells`, which the slug
   // heuristic would otherwise pass through as bodyweight and wrongly offer to a
   // bodyweight-only user). For an either/or tag with no bodyweight option (e.g.
-  // `dumbbell-or-kb`) we require the first-listed implement.
+  // `dumbbell-or-kb`) both tracked alternatives stay available.
+  if (t === "dumbbell-or-kb") {
+    return {
+      kind: "any_of",
+      requirements: [{ kind: "dumbbells" }, { kind: "kettlebells" }],
+    };
+  }
+  if (t === "barbell-or-db") {
+    return {
+      kind: "any_of",
+      requirements: [{ kind: "barbell" }, { kind: "dumbbells" }],
+    };
+  }
+  if (t === "dumbbells-or-bb") {
+    return {
+      kind: "any_of",
+      requirements: [{ kind: "dumbbells" }, { kind: "barbell" }],
+    };
+  }
   const base = t.includes("-or-") ? (t.split("-or-")[0] ?? t) : t;
   if (base.includes("trap-bar") || base.includes("hex-bar")) return { kind: "trap_bar" };
   if (base.includes("safety-squat") || base.includes("ssb")) return { kind: "safety_squat_bar" };
@@ -315,6 +369,14 @@ export function isEquipmentAvailable(
   equipment: Equipment,
 ): boolean {
   switch (req.kind) {
+    case "any_of":
+      return req.requirements.some((candidate) =>
+        isEquipmentAvailable(candidate, equipment),
+      );
+    case "all_of":
+      return req.requirements.every((candidate) =>
+        isEquipmentAvailable(candidate, equipment),
+      );
     case "bodyweight_or_generic":
       return true;
     case "barbell":
