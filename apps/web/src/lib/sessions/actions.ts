@@ -31,6 +31,7 @@ import {
 } from "./fill-plan-sets";
 import {
   isSystemLoadMovementSlug,
+  repairLegacySystemLoadWarmups,
   resolvePrescriptionSetWork,
   resolvePrescribedSnapshot,
   resolveTargetLoadKg,
@@ -38,6 +39,7 @@ import {
 } from "@hta/domain";
 import type { Prescription, PrescriptionItem, PrescribedSnapshot } from "@hta/db";
 import { isSystemLoadItem, loadSystemLoadMovementIds } from "./system-load";
+import { legacyWarmupRampFractions } from "./legacy-warmup-ramp";
 import { loggedSetKindForItemKind } from "./set-kind";
 import { recomputeAfterCompletedSessionMutation } from "./post-completion-recompute";
 import { resolveBarWeightKg } from "./bar-kind";
@@ -203,7 +205,7 @@ async function resolveSetSnapshot(
       .eq("completed_session_id", args.sessionId)
       .maybeSingle();
     const items = (planned?.prescription as Prescription | null)?.items ?? [];
-    const item = items[idx];
+    let item = items[idx];
     if (!item) return empty;
 
     // Identity guard — the index must still address the slot being logged.
@@ -230,7 +232,7 @@ async function resolveSetSnapshot(
           .maybeSingle(),
         supabase
           .from("profiles")
-          .select("tm_percent_default, bodyweight_kg")
+          .select("tm_percent_default, bodyweight_kg, warmup_scheme")
           .maybeSingle(),
         supabase
           .from("movements")
@@ -262,6 +264,18 @@ async function resolveSetSnapshot(
       const slug = (movementRes.data as { slug?: string | null } | null)?.slug ?? null;
       if (slug != null) {
         isSystemLoad = isSystemLoadMovementSlug(slug);
+      }
+      // Same restatement the logger and the fill apply, so the server expects
+      // the corrected number rather than rejecting it as a deviation.
+      if (slug != null && !isSystemLoad) {
+        const repaired = repairLegacySystemLoadWarmups(items, {
+          isSystemLoadMovement: (movementId) =>
+            movementId === item.movementId ? false : undefined,
+          bodyweightKg,
+          trainingMaxKg: () => tmKg,
+          rampFractions: legacyWarmupRampFractions(profileRes.data?.warmup_scheme),
+        });
+        item = repaired[idx] ?? item;
       }
     }
 
@@ -1684,7 +1698,7 @@ export async function fillSessionFromPlan(
     supabase
       .from("profiles")
       .select(
-        "tm_percent_default, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, bodyweight_kg",
+        "tm_percent_default, barbell_kg, trap_bar_kg, plate_inventory_kg, equipment, bodyweight_kg, warmup_scheme",
       )
       .eq("id", user.id)
       .maybeSingle(),
@@ -1751,6 +1765,16 @@ export async function fillSessionFromPlan(
     supabase,
     items.map((item) => item.movementId),
   );
+  // Warm-ups materialised while `body_weight_loaded` stood in for "this max
+  // counts bodyweight" stored a bodyweight-subtracted absolute for ordinary
+  // lifts. Restate them before anything reads a load, so the fill writes the
+  // same number the logger shows.
+  items = repairLegacySystemLoadWarmups(items, {
+    isSystemLoadMovement: (movementId) => systemLoadByMovementId.get(movementId),
+    bodyweightKg,
+    trainingMaxKg: (movementId) => tmByMovementId.get(movementId),
+    rampFractions: legacyWarmupRampFractions(profileRes.data?.warmup_scheme),
+  });
   const missingSets = planMissingPrescriptionSets(
     parsed.data.sessionId,
     items,

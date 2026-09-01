@@ -13,6 +13,7 @@ export * from "./prescribed-snapshot";
 export * from "./system-load";
 export * from "./movement-load-identity";
 export * from "./target-load";
+export * from "./legacy-system-load-warmup";
 export * from "./prescription-fidelity";
 export * from "./rehab-section";
 export * from "./types";

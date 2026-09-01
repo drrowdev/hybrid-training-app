@@ -324,6 +324,52 @@ describe("fillSessionFromPlan — bodyweight-capable lifts are not system loads"
     expect(mockState.upserts[0]?.weight_kg).toBe(30);
   });
 
+  it("DC-K4: a legacy lunge warm-up ramp is restated as the totals it meant", async () => {
+    // The exact shape an old plan stored: bodyweight already subtracted into an
+    // absolute, a `systemLoad` marker, and no percentage to fall back on. The
+    // lightest rung was clamped to 0 on the way in. Top set 110 kg, lifter
+    // 80 kg, a 50/75/100 ladder — so the ramp was always 55 / 82.5 / 110.
+    mockState.trainingMaxes = [
+      { movement_id: LUNGE_ID, one_rm_kg: 110, tm_percent: 100 },
+    ];
+    mockState.profile = {
+      ...mockState.profile,
+      warmup_scheme: {
+        setCount: 3,
+        percentLadder: [50, 75, 100],
+        repLadder: [5, 5, 3],
+      },
+    };
+    mockState.planned = pullupPrescription([
+      ...[0, 2.5, 30].map((targetWeightKg) => ({
+        movementId: LUNGE_ID,
+        movementSlug: "forward-lunge",
+        kind: "warmup",
+        sets: 1,
+        reps: 5,
+        targetWeightKg,
+        systemLoad: true,
+      })),
+      {
+        movementId: LUNGE_ID,
+        movementSlug: "forward-lunge",
+        kind: "main",
+        sets: 1,
+        reps: 5,
+        percentTm: 100,
+      },
+    ]);
+    const { fillSessionFromPlan } = await import("../actions");
+    const formData = new FormData();
+    formData.set("sessionId", SESSION_ID);
+
+    await fillSessionFromPlan(formData);
+
+    expect(mockState.upserts.map((row) => row.weight_kg)).toEqual([
+      55, 82.5, 110, 110,
+    ]);
+  });
+
   it("falls back to the stored marker when the catalog cannot resolve the movement", async () => {
     mockState.planned = pullupPrescription([
       {
