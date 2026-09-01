@@ -66,6 +66,12 @@ describe("resolveLoadIncrement", () => {
     expect(
       resolveLoadIncrement({ slug: "suitcase-carry", equipment: "dumbbell-or-kb" }),
     ).toEqual(DUMBBELL_WEIGHT_STEP);
+    expect(
+      resolveLoadIncrement({
+        slug: "reverse-wrist-curl",
+        equipment: "dumbbells-or-bb",
+      }),
+    ).toEqual(DUMBBELL_WEIGHT_STEP);
   });
 
   it("defaults when nothing identifies the movement", () => {

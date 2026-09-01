@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAuthUser } from "@/lib/supabase/server";
+import { safeAppRedirectPath } from "@/lib/auth/redirect-path";
 import { LoginForm } from "./login-form";
 import { BrandMark } from "@/components/brand/BrandMark";
 
@@ -10,15 +11,16 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ next?: string; error?: string }>;
 }) {
-  const { next = "/app", error } = await searchParams;
+  const { next: requestedNext, error } = await searchParams;
+  const next = safeAppRedirectPath(requestedNext);
 
   // Already signed in (e.g. the native shell relaunching with a live
   // session): skip the form and land straight on the destination. Guard
-  // against open-redirect by only honouring same-origin relative paths.
+  // against open redirects with the same guard used by every auth completion.
   const {
     data: { user },
   } = await getAuthUser();
-  if (user) redirect(next.startsWith("/") ? next : "/app");
+  if (user) redirect(next);
 
   return (
     <main

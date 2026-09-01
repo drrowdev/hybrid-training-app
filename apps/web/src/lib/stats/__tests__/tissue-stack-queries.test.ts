@@ -78,7 +78,7 @@ afterEach(() => {
 describe("getCurrentWeekTissueStackGaps — banner gating", () => {
   it("returns [] when there is no active block", async () => {
     const supabase = makeStub({ training_blocks: [] });
-    const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID);
+    const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID, "UTC");
     expect(out).toEqual([]);
   });
 
@@ -126,7 +126,7 @@ describe("getCurrentWeekTissueStackGaps — banner gating", () => {
         movements: [{ id: "mv-empty", bulletproof_roles: [] }],
       });
 
-      const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID);
+      const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID, "UTC");
       expect(out).toEqual([]);
     },
   );
@@ -169,7 +169,7 @@ describe("getCurrentWeekTissueStackGaps — banner gating", () => {
         movements: [{ id: "mv-empty", bulletproof_roles: [] }],
       });
 
-      const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID);
+      const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID, "UTC");
       expect(out).toEqual([]);
     },
   );
@@ -196,7 +196,7 @@ describe("getCurrentWeekTissueStackGaps — banner gating", () => {
       planned_sessions: [],
       movements: [],
     });
-    const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID);
+    const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID, "UTC");
     expect(out).toEqual([]);
   });
 
@@ -221,7 +221,7 @@ describe("getCurrentWeekTissueStackGaps — banner gating", () => {
       planned_sessions: [],
       movements: [],
     });
-    const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID);
+    const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID, "UTC");
     expect(out).toEqual([]);
   });
 
@@ -265,7 +265,7 @@ describe("getCurrentWeekTissueStackGaps — banner gating", () => {
       },
       { sessions: 1 },
     );
-    const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID);
+    const out = await getCurrentWeekTissueStackGaps(supabase, USER_ID, "UTC");
     // We don't pin the exact gap list — that's the planner's contract.
     // The gate-behaviour assertion is "≥ 1 gap surfaced once the
     // floor + the recent-session gate both pass".
@@ -275,5 +275,79 @@ describe("getCurrentWeekTissueStackGaps — banner gating", () => {
       expect(g.label).toBeTruthy();
       expect(g.label).not.toMatch(/^DC-/);
     }
+  });
+
+  it("selects the week from the user's local Monday", async () => {
+    const now = new Date("2026-05-18T02:30:00Z");
+    const completedAt = new Date("2026-05-17T12:00:00Z").toISOString();
+    const tables = {
+      training_blocks: [
+        {
+          id: "blk-1",
+          user_id: USER_ID,
+          status: "active",
+          deleted_at: null,
+          started_on: "2026-05-06",
+          weeks: 6,
+          program_id: null,
+          archetype: "strength_anchor",
+        },
+      ],
+      sessions: [
+        {
+          id: "s-1",
+          user_id: USER_ID,
+          completed_at: completedAt,
+          deleted_at: null,
+        },
+      ],
+      planned_sessions: [
+        {
+          block_id: "blk-1",
+          week_index: 1,
+          prescription: {
+            items: [
+              { movementId: "mv-covered" },
+              { movementId: "mv-carry-2" },
+            ],
+          },
+        },
+        {
+          block_id: "blk-1",
+          week_index: 2,
+          prescription: { items: [{ movementId: "mv-empty" }] },
+        },
+      ],
+      movements: [
+        {
+          id: "mv-covered",
+          bulletproof_roles: [
+            "heavy_isometric",
+            "hsr",
+            "alfredson_eccentric",
+            "plyometric_low",
+            "carry",
+          ],
+        },
+        { id: "mv-carry-2", bulletproof_roles: ["carry"] },
+        { id: "mv-empty", bulletproof_roles: [] },
+      ],
+    };
+
+    const losAngeles = await getCurrentWeekTissueStackGaps(
+      makeStub(tables, { sessions: 1 }),
+      USER_ID,
+      "America/Los_Angeles",
+      now,
+    );
+    const helsinki = await getCurrentWeekTissueStackGaps(
+      makeStub(tables, { sessions: 1 }),
+      USER_ID,
+      "Europe/Helsinki",
+      now,
+    );
+
+    expect(losAngeles).toEqual([]);
+    expect(helsinki.length).toBeGreaterThan(0);
   });
 });

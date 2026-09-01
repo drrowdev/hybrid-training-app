@@ -1217,3 +1217,9 @@ No migration. The catalog already owns `body_weight_loaded`, and the training-ma
 ## [2026-09-01] refine | Align persisted and live recovery load state
 
 DC-C14's regional recovery calculation now has one pure daily-load derivation for both the persisted ledger and the live snapshot. It applies the same strength and cardio rules, skips, warm-up filter, defaults, region weights, and user-local day conversion in both places. Completed-session edits now use one guarded refresh path; removing the final logged item writes zero actual session load while a session originally completed without logs still preserves its planned adherence meaning. Failed reads or the final write stop the actual-load refresh before a partial value can be saved. Regression coverage includes Los Angeles and Helsinki midnight/DST boundaries plus a persisted-versus-live differential fixture. No migration: existing session and planned-session fields carry the required state.
+
+## [2026-09-01] fix | Auth redirects, equipment tags, and block weeks use one answer each
+
+Three independent correctness gaps now resolve through shared helpers. Auth completion accepts only app-relative paths and rejects absolute, protocol-relative, backslash, control-character, malformed, and repeatedly encoded redirect targets. Equipment tags for bars, rings, and tracked alternatives now preserve the actual requirement, including either/or and all-of combinations, with the complete seed tag set pinned by a catalog snapshot. Active-block features now choose the block week from the containing Monday and the user's local calendar date at an explicit instant, including mid-week legacy starts and DST edges.
+
+No migration. These changes reuse existing equipment and block fields.

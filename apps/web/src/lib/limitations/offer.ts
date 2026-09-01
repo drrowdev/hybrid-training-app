@@ -12,6 +12,7 @@ import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
 import { readLimitationsContext } from "@/lib/planner/limitations-context";
 import { getActiveBlockRemainingSessions } from "@/lib/planner/remaining-sessions";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
+import { getUserTimezone } from "@/lib/planner/queries";
 import {
   buildLimitationResponse,
   type LimitationResponsePlan,
@@ -40,7 +41,12 @@ export async function getLimitationResponseOffer(): Promise<LimitationResponseOf
   } = await getAuthUser();
   if (!user) return null;
 
-  const active = await getActiveBlockRemainingSessions(supabase, user.id);
+  const timezone = await getUserTimezone(user.id);
+  const active = await getActiveBlockRemainingSessions(
+    supabase,
+    user.id,
+    timezone,
+  );
   if (!active || active.remaining.length === 0) return null;
 
   const ctx = await readLimitationsContext(supabase, user.id);

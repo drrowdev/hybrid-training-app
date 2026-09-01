@@ -1,0 +1,333 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`requirementFromEquipmentTag — DB equipment column mapping > requirementFromEquipmentTag — complete seed catalog > pins the resolution of every equipment tag in the catalog 1`] = `
+{
+  "ab-wheel": null,
+  "anchor": null,
+  "band": {
+    "kind": "bands",
+  },
+  "band-anchor": {
+    "kind": "bands",
+  },
+  "bar": {
+    "kind": "pull_up_bar",
+  },
+  "bar-belt": {
+    "kind": "all_of",
+    "requirements": [
+      {
+        "kind": "pull_up_bar",
+      },
+      {
+        "kind": "dip_belt",
+      },
+    ],
+  },
+  "bar-neutral": {
+    "kind": "pull_up_bar",
+  },
+  "bar-or-rings": {
+    "kind": "any_of",
+    "requirements": [
+      {
+        "kind": "pull_up_bar",
+      },
+      {
+        "kind": "rings",
+      },
+    ],
+  },
+  "barbell": {
+    "kind": "barbell",
+  },
+  "barbell-bench": {
+    "kind": "barbell",
+  },
+  "barbell-bench-high": {
+    "kind": "barbell",
+  },
+  "barbell-blocks": {
+    "kind": "barbell",
+  },
+  "barbell-box": {
+    "kind": "barbell",
+  },
+  "barbell-decline-bench": {
+    "kind": "barbell",
+  },
+  "barbell-floor": {
+    "kind": "barbell",
+  },
+  "barbell-floor-seated": {
+    "kind": "barbell",
+  },
+  "barbell-incline-bench": {
+    "kind": "barbell",
+  },
+  "barbell-or-bodyweight": {
+    "kind": "bodyweight_or_generic",
+  },
+  "barbell-or-db": {
+    "kind": "any_of",
+    "requirements": [
+      {
+        "kind": "barbell",
+      },
+      {
+        "kind": "dumbbells",
+      },
+    ],
+  },
+  "barbell-rack": {
+    "kind": "barbell",
+  },
+  "barbell-ssb": {
+    "kind": "safety_squat_bar",
+  },
+  "bench": null,
+  "bench-dumbbells": {
+    "kind": "dumbbells",
+  },
+  "bodyweight": {
+    "kind": "bodyweight_or_generic",
+  },
+  "bodyweight-anchor": {
+    "kind": "bodyweight_or_generic",
+  },
+  "bodyweight-or-band": {
+    "kind": "bodyweight_or_generic",
+  },
+  "bodyweight-or-loaded": {
+    "kind": "bodyweight_or_generic",
+  },
+  "bodyweight-or-machine": {
+    "kind": "bodyweight_or_generic",
+  },
+  "bodyweight-wall": {
+    "kind": "bodyweight_or_generic",
+  },
+  "box": null,
+  "cable": {
+    "kind": "cable",
+  },
+  "cable-ankle": {
+    "kind": "cable",
+  },
+  "cable-bar": {
+    "kind": "cable",
+  },
+  "cable-or-band": {
+    "kind": "any_of",
+    "requirements": [
+      {
+        "kind": "cable",
+      },
+      {
+        "kind": "bands",
+      },
+    ],
+  },
+  "cable-pulldown": {
+    "kind": "cable",
+  },
+  "cable-rope": {
+    "kind": "cable",
+  },
+  "cable-row": {
+    "kind": "cable",
+  },
+  "cable-v": {
+    "kind": "cable",
+  },
+  "decline-bench": null,
+  "decline-bench-plate": null,
+  "dip-bars": {
+    "kind": "pull_up_bar",
+  },
+  "dip-belt": {
+    "kind": "dip_belt",
+  },
+  "dumbbell": {
+    "kind": "dumbbells",
+  },
+  "dumbbell-bench": {
+    "kind": "dumbbells",
+  },
+  "dumbbell-or-bw": {
+    "kind": "bodyweight_or_generic",
+  },
+  "dumbbell-or-kb": {
+    "kind": "any_of",
+    "requirements": [
+      {
+        "kind": "dumbbells",
+      },
+      {
+        "kind": "kettlebells",
+      },
+    ],
+  },
+  "dumbbells": {
+    "kind": "dumbbells",
+  },
+  "dumbbells-bench": {
+    "kind": "dumbbells",
+  },
+  "dumbbells-bench-high": {
+    "kind": "dumbbells",
+  },
+  "dumbbells-decline-bench": {
+    "kind": "dumbbells",
+  },
+  "dumbbells-incline-bench": {
+    "kind": "dumbbells",
+  },
+  "dumbbells-or-bb": {
+    "kind": "any_of",
+    "requirements": [
+      {
+        "kind": "dumbbells",
+      },
+      {
+        "kind": "barbell",
+      },
+    ],
+  },
+  "elliptical": null,
+  "erg": null,
+  "ez-bar": {
+    "kind": "barbell",
+  },
+  "ez-bar-bench": {
+    "kind": "barbell",
+  },
+  "ghd-machine": {
+    "kind": "machine_generic",
+  },
+  "gripper": null,
+  "hurdles": null,
+  "jump-rope": null,
+  "kettlebell": {
+    "kind": "kettlebells",
+  },
+  "kettlebells": {
+    "kind": "kettlebells",
+  },
+  "landmine": null,
+  "machine": {
+    "kind": "machine_generic",
+  },
+  "machine-abduction": {
+    "kind": "machine_generic",
+  },
+  "machine-adduction": {
+    "kind": "machine_generic",
+  },
+  "machine-belt-squat": {
+    "kind": "machine_generic",
+  },
+  "machine-chest-press": {
+    "kind": "machine",
+    "machine": "chest_press",
+  },
+  "machine-glute-kickback": {
+    "kind": "machine_generic",
+  },
+  "machine-hack": {
+    "kind": "machine",
+    "machine": "hack_squat",
+  },
+  "machine-lateral": {
+    "kind": "machine_generic",
+  },
+  "machine-leg-curl": {
+    "kind": "machine",
+    "machine": "leg_curl",
+  },
+  "machine-leg-curl-lying": {
+    "kind": "machine",
+    "machine": "leg_curl",
+  },
+  "machine-leg-curl-seated": {
+    "kind": "machine",
+    "machine": "leg_curl",
+  },
+  "machine-leg-ext": {
+    "kind": "machine",
+    "machine": "leg_extension",
+  },
+  "machine-leg-press": {
+    "kind": "machine",
+    "machine": "leg_press",
+  },
+  "machine-or-bw": {
+    "kind": "bodyweight_or_generic",
+  },
+  "machine-pec-deck": {
+    "kind": "machine_generic",
+  },
+  "machine-pendulum": {
+    "kind": "machine_generic",
+  },
+  "machine-reverse-hyper": {
+    "kind": "machine_generic",
+  },
+  "machine-reverse-pec": {
+    "kind": "machine_generic",
+  },
+  "machine-row": {
+    "kind": "machine",
+    "machine": "seated_row",
+  },
+  "machine-seated-calf": {
+    "kind": "machine_generic",
+  },
+  "med-ball": null,
+  "mountain-bike": null,
+  "open-water": null,
+  "outdoor-hill": null,
+  "plate": null,
+  "plates": null,
+  "pool": null,
+  "preacher-dumbbell": {
+    "kind": "dumbbells",
+  },
+  "preacher-ez": {
+    "kind": "barbell",
+  },
+  "preacher-or-incline": null,
+  "rack-pins": null,
+  "rings": {
+    "kind": "rings",
+  },
+  "road-bike": null,
+  "rucksack": null,
+  "rucksack-outdoor": null,
+  "shoes": null,
+  "shoes-track": null,
+  "ski-erg": null,
+  "sled": null,
+  "smith": {
+    "kind": "machine",
+    "machine": "smith_machine",
+  },
+  "smith-bench": {
+    "kind": "machine",
+    "machine": "smith_machine",
+  },
+  "spin-bike": null,
+  "stair-machine": {
+    "kind": "machine_generic",
+  },
+  "stationary-bike": null,
+  "step": null,
+  "t-bar": null,
+  "track": null,
+  "trap-bar": {
+    "kind": "trap_bar",
+  },
+  "treadmill": null,
+  "wall-or-weighted": null,
+}
+`;

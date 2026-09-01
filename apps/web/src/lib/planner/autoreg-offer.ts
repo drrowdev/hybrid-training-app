@@ -15,6 +15,7 @@ import {
   suppressAutoregForBlockTiming,
   type AutoregTrimChange,
 } from "@/lib/planner/autoreg-volume";
+import { getUserTimezone } from "@/lib/planner/queries";
 
 /** Per-session breakdown of the accessory sets a trim would drop. */
 export type AutoregSessionPreview = {
@@ -46,13 +47,18 @@ export async function getVolumeAutoregOffer(): Promise<VolumeAutoregOffer | null
   } = await getAuthUser();
   if (!user) return null;
 
-  const util = await getCeilingUtilization(supabase, user.id);
+  const timezone = await getUserTimezone(user.id);
+  const util = await getCeilingUtilization(supabase, user.id, timezone);
   if (!util) return null;
 
   const scale = autoregScaleForBand(util.strength.band);
   if (scale === null) return null; // only over / way-over trigger an offer.
 
-  const active = await getActiveBlockRemainingSessions(supabase, user.id);
+  const active = await getActiveBlockRemainingSessions(
+    supabase,
+    user.id,
+    timezone,
+  );
   if (!active) return null;
 
   // Field bug: a future-dated deploy (or a block with nothing logged yet) made

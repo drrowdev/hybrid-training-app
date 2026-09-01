@@ -13,6 +13,7 @@ import {
 } from "@/lib/planner/remaining-sessions";
 import { buildLimitationResponse, buildSelectedUpdates } from "./response";
 import { recordLimitationAdjustments } from "./record-adjustments";
+import { getUserTimezone } from "@/lib/planner/queries";
 import { REGIONS, resolveRegion } from "./region";
 import {
   limitationFormSchema,
@@ -414,7 +415,12 @@ export async function applyLimitationResponseResult(): Promise<ApplyLimitationRe
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const active = await getActiveBlockRemainingSessions(supabase, user.id);
+  const timezone = await getUserTimezone(user.id);
+  const active = await getActiveBlockRemainingSessions(
+    supabase,
+    user.id,
+    timezone,
+  );
   if (!active || active.remaining.length === 0) {
     return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
   }
@@ -494,7 +500,12 @@ export async function applyLimitationResponseSelection(
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const active = await getActiveBlockRemainingSessions(supabase, user.id);
+  const timezone = await getUserTimezone(user.id);
+  const active = await getActiveBlockRemainingSessions(
+    supabase,
+    user.id,
+    timezone,
+  );
   if (!active || active.remaining.length === 0) {
     return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
   }
