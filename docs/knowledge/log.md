@@ -1386,3 +1386,10 @@ both only after server confirmation. Reloaded cardio forms detect queued
 `cardio_session` entries before allowing another submit, and completed cardio
 sessions copy duration and RPE from the canonical idempotent row without rerunning
 completion side effects. No migration.
+
+## [2026-09-01] fix | Require durable storage before session completion requests
+
+Session completion now refuses to send a request when IndexedDB cannot store the
+recovery entry. This keeps the completion intent honest on clients where local
+storage is unavailable; ordinary writes may still use a successful server
+response when local queue storage is unavailable. No migration.

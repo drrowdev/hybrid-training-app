@@ -41,6 +41,18 @@ describe("runDurableAction", () => {
     expect(result.status).toBe("failed");
   });
 
+  it("can require local durability before sending a mutation", async () => {
+    vi.mocked(enqueue).mockResolvedValue({ status: "unavailable" });
+    const action = vi.fn().mockResolvedValue({ ok: true as const });
+
+    const result = await runDurableAction(input, action, {
+      requireDurableEnqueue: true,
+    });
+
+    expect(result.status).toBe("failed");
+    expect(action).not.toHaveBeenCalled();
+  });
+
   it("keeps a transient returned error in a durable queue", async () => {
     vi.mocked(enqueue).mockResolvedValue({ status: "stored", entry });
 

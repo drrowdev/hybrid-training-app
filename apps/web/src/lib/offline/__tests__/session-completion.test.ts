@@ -84,4 +84,14 @@ describe("enqueueSessionCompletion", () => {
     );
     expect(remove).not.toHaveBeenCalled();
   });
+
+  it("does not request completion when local durability is unavailable", async () => {
+    vi.mocked(enqueue).mockResolvedValue({ status: "unavailable" });
+    const action = vi.fn().mockResolvedValue({ ok: true as const });
+
+    const result = await runSessionCompletion(sessionId, action);
+
+    expect(result.status).toBe("failed");
+    expect(action).not.toHaveBeenCalled();
+  });
 });

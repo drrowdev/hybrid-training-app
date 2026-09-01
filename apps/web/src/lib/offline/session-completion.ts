@@ -19,7 +19,9 @@ export function runSessionCompletion<T extends ActionResult>(
   sessionId: string,
   action: () => Promise<T>,
 ): Promise<DurableActionResult<T>> {
-  return runDurableAction(sessionCompletionInput(sessionId), action);
+  return runDurableAction(sessionCompletionInput(sessionId), action, {
+    requireDurableEnqueue: true,
+  });
 }
 
 /** Store completion intent before attempting a finish request. */

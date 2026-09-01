@@ -17,6 +17,15 @@ export type DurableActionResult<T extends ActionResult> =
   | { status: "queued"; result?: T; entry: OutboxEntry }
   | { status: "failed"; result?: T; error?: Error };
 
+export type DurableActionOptions = {
+  /**
+   * Some mutations, such as session completion, must never be sent without a
+   * local recovery record because an uncertain response can include side
+   * effects that cannot be safely repeated from the UI.
+   */
+  requireDurableEnqueue?: boolean;
+};
+
 /**
  * Persist an operation before attempting its server action. A stored entry
  * makes thrown and transient returned errors safe to acknowledge locally;
@@ -25,6 +34,7 @@ export type DurableActionResult<T extends ActionResult> =
 export async function runDurableAction<T extends ActionResult>(
   input: EnqueueInput,
   action: () => Promise<T>,
+  options: DurableActionOptions = {},
 ): Promise<DurableActionResult<T>> {
   let stored: EnqueueResult;
   try {
@@ -36,6 +46,16 @@ export async function runDurableAction<T extends ActionResult>(
     };
   }
   const entry = stored.status === "stored" ? stored.entry : null;
+
+  if (!entry && options.requireDurableEnqueue) {
+    return {
+      status: "failed",
+      error:
+        stored.status === "failed"
+          ? stored.error
+          : new Error("Could not save the operation on this device."),
+    };
+  }
 
   if (entry) {
     let waitForEarlier = true;
