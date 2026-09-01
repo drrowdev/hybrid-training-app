@@ -20,12 +20,15 @@ import {
   defaultClusterFor,
   initialRehabByDay,
   relevantBenchmarkKeysFor,
+  seriesMovementSetsForTemplate,
   startScheduleFor,
   validateClusterClient,
   toggleMultiSelect,
   type PickerProgram,
   type PickerTbTemplate,
 } from "./ProgramPicker";
+import { pruneLinksAcrossSeries } from "./session-link-editing";
+import { attachProtocols, pruneRehabLinks } from "@/lib/rehab-protocols/attachment";
 import { hybridProgramEngine } from "@/lib/programs/hybrid/engine";
 
 const OPERATOR: PickerTbTemplate = {
@@ -271,6 +274,162 @@ describe("validateClusterClient", () => {
   it("accepts a valid Zulu A/B cluster", () => {
     const v = validateClusterClient(ZULU, ZULU.defaultCluster);
     expect(v.ok).toBe(true);
+  });
+});
+
+// Real Activation fixture with `activationPhases`, for template-switch tests
+// below. `ACTIVATION` above omits it since other suites don't need it.
+const ACTIVATION_WITH_PHASES: PickerTbTemplate = {
+  ...ACTIVATION,
+  activationPhases: [
+    {
+      key: "base",
+      label: "Base",
+      weeks: "1-4",
+      sessions: [
+        {
+          key: "activation.base.base-1",
+          label: "Base 1",
+          type: "strength",
+          defaultDay: 1,
+          movements: [
+            { sourceMovement: "squat", role: "main" },
+            { sourceMovement: "pushup", role: "supplemental", kind: "unanchored" },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+describe("seriesMovementSetsForTemplate — canonical membership for pruning links at a switch", () => {
+  it("returns [] for no template", () => {
+    expect(seriesMovementSetsForTemplate(null)).toEqual([]);
+  });
+
+  it("projects a split template's real sessionSeries keys and sourceMovement identities", () => {
+    expect(seriesMovementSetsForTemplate(ZULU_TB3)).toEqual([
+      {
+        key: "slot-1",
+        identities: [
+          "bench",
+          "squat",
+          "overhead-press",
+          "hanging-leg-raise",
+          "hanging-knee-raise",
+          "toes-to-bar",
+        ],
+      },
+      {
+        key: "slot-2",
+        identities: ["deadlift", "weighted-pullup", "barbell-row", "back-extension"],
+      },
+    ]);
+  });
+
+  it("synthesizes slot-N series from the default cluster for a template with no sessionSeries", () => {
+    // Operator has no `sessionSeries`, so every one of its 3 weekly sessions
+    // falls back to the same defaultCluster — unlike Zulu, every slot-N here
+    // carries an identical identity set.
+    expect(seriesMovementSetsForTemplate(OPERATOR)).toEqual([
+      { key: "slot-1", identities: ["squat", "bench", "deadlift"] },
+      { key: "slot-2", identities: ["squat", "bench", "deadlift"] },
+      { key: "slot-3", identities: ["squat", "bench", "deadlift"] },
+    ]);
+  });
+
+  it("projects Activation's phase sessions by their own keys, not slot-N", () => {
+    expect(seriesMovementSetsForTemplate(ACTIVATION_WITH_PHASES)).toEqual([
+      { key: "activation.base.base-1", identities: ["squat", "pushup"] },
+    ]);
+  });
+
+  it("does not leak a link across templates that both reuse slot-2 (real templates, not synthetic fixtures)", () => {
+    // A link saved under Zulu's slot-2 ("Day 2 · B": deadlift + weighted-pullup)
+    // must not silently reattach when the user switches to Operator, whose
+    // slot-2 is an unrelated cluster day that only coincidentally shares one
+    // lift (deadlift/squat overlap aside — here neither survives as a pair).
+    const bySeries = {
+      "slot-2": [
+        { id: "link-1", name: "Superset", members: ["deadlift", "weighted-pullup"] },
+      ],
+    };
+    const afterSwitchToOperator = pruneLinksAcrossSeries(
+      bySeries,
+      seriesMovementSetsForTemplate(OPERATOR),
+    );
+    // "deadlift" survives as a valid identity on Operator's slot-2, but its
+    // partner "weighted-pullup" does not — a link needs >=2 members, so it
+    // dissolves entirely rather than resurfacing as a stray single-member link.
+    expect(afterSwitchToOperator).toEqual({});
+  });
+
+  it("keeps a link whose series and identities are unchanged by the switch", () => {
+    const bySeries = {
+      "slot-1": [
+        { id: "link-1", name: "Tri-set", members: ["bench", "squat"] },
+      ],
+    };
+    const afterReselectingSameTemplate = pruneLinksAcrossSeries(
+      bySeries,
+      seriesMovementSetsForTemplate(ZULU_TB3),
+    );
+    expect(afterReselectingSameTemplate).toEqual(bySeries);
+  });
+
+  it("clears every link when switching away from TB (no series at all)", () => {
+    const bySeries = {
+      "slot-1": [
+        { id: "link-1", name: "Tri-set", members: ["bench", "squat"] },
+      ],
+    };
+    expect(pruneLinksAcrossSeries(bySeries, seriesMovementSetsForTemplate(null))).toEqual({});
+  });
+
+  it("dropping rehab.* state on a switch does not erase a valid rehab link — deploy always rebuilds it fresh from the attached protocol's library entry", () => {
+    // `seriesMovementSetsForTemplate` only knows about strength series, so
+    // pruning against it strips any `rehab.*` key regardless of whether that
+    // protocol is still attached — this mirrors what a template switch does to
+    // live `sessionLinks` state. Deploy time never reads that state for rehab:
+    // it rebuilds `rehab.*` straight from the library for whatever protocols
+    // are attached (`outgoingLinks = {...pruneRehabLinks(...), ...rehabLinkEntries}`,
+    // ProgramPicker.tsx), so the stripped state has zero effect on the payload.
+    const RHAB = "elbow-protocol";
+    const sessionLinksAfterSwitch = pruneLinksAcrossSeries(
+      {
+        "slot-1": [{ id: "link-1", name: "Tri-set", members: ["bench", "squat"] }],
+        [`rehab.${RHAB}`]: [{ id: "link-2", name: "Superset", members: ["a", "b"] }],
+      },
+      seriesMovementSetsForTemplate(OPERATOR),
+    );
+    expect(sessionLinksAfterSwitch[`rehab.${RHAB}`]).toBeUndefined();
+
+    const libraryId = "aaaaaaaa-1111-4111-8111-111111111111";
+    const attached = attachProtocols(
+      [
+        {
+          libraryId,
+          name: "Elbow",
+          items: [{ movementId: "m", movementName: "Elbow", sets: 3, reps: 10 }],
+        },
+      ],
+      { [libraryId]: RHAB },
+    );
+    const libraryLinksForLib1 = [
+      { id: "link-2", name: "Superset", members: ["a", "b"] },
+    ];
+    const rehabLinkEntries = attached.flatMap((protocol) =>
+      libraryLinksForLib1.length > 0
+        ? ([[`rehab.${protocol.localId}`, libraryLinksForLib1]] as const)
+        : [],
+    );
+    const outgoingLinks = {
+      ...pruneRehabLinks(sessionLinksAfterSwitch, attached),
+      ...Object.fromEntries(rehabLinkEntries),
+    };
+    // The protocol's link reappears in the deployed payload even though the
+    // template switch had already stripped it out of wizard state.
+    expect(outgoingLinks[`rehab.${RHAB}`]).toEqual(libraryLinksForLib1);
   });
 });
 
@@ -798,6 +957,76 @@ describe("ProgramPicker rendering", () => {
     // The circuit states its own shape rather than a sets × reps line.
     const triad = html.indexOf('data-testid="tb-dose-slot-1-ab-triad"');
     expect(html.slice(triad, triad + 80)).toContain("3 rounds × 5");
+  });
+
+  it("keeps a custom row's saved dose when re-entering the wizard (regression)", () => {
+    // Bug: edit-mode hydration copied movement/sourceMovement/role/kind but
+    // dropped the persisted doseOverride, so a saved 4×12 accessory row
+    // silently reverted to its default dose on the very next edit — and
+    // saving any other change would then deploy and permanently lose it.
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+        editContext={{
+          blockId: "11111111-1111-4111-8111-111111111111",
+          programId: "tactical-barbell",
+          setupValues: { templateId: "zulu" },
+          strengthWeekdays: [0, 1, 3, 4],
+          cardioWeekdays: [],
+          startedOn: "2026-01-05",
+          accessoriesEnabled: false,
+          customization: {
+            version: 1,
+            dayTypes: [
+              "strength",
+              "strength",
+              "rest",
+              "strength",
+              "strength",
+              "rest",
+              "rest",
+            ],
+            sessionMovements: {
+              "slot-1": [
+                { movement: "bench", sourceMovement: "bench" },
+                { movement: "squat", sourceMovement: "squat" },
+                {
+                  movement: "overhead-press",
+                  sourceMovement: "overhead-press",
+                },
+                {
+                  movement: "hanging-leg-raise",
+                  sourceMovement: "hanging-leg-raise",
+                  kind: "unanchored",
+                },
+                {
+                  movement: "hanging-knee-raise",
+                  sourceMovement: "hanging-knee-raise",
+                  kind: "unanchored",
+                },
+                {
+                  movement: "toes-to-bar",
+                  sourceMovement: "toes-to-bar",
+                  kind: "unanchored",
+                },
+                {
+                  movement: "barbell-curl",
+                  role: "accessory",
+                  doseOverride: { sets: 4, reps: 12 },
+                },
+              ],
+            },
+          },
+        } as never}
+      />,
+    );
+
+    const start = html.indexOf('data-testid="tb-dose-slot-1-barbell-curl"');
+    expect(start).toBeGreaterThan(-1);
+    expect(html.slice(start, start + 120)).toContain("4 \u00D7 12");
   });
 
   it("no longer offers the Tactical Barbell accessory toggle", () => {
