@@ -1584,19 +1584,21 @@ export async function completeSessionResult(
   sessionId: string,
   notes: string | null,
   completionEntryId: string | null = null,
-): Promise<{ ok?: true; error?: string }> {
+): Promise<{ ok?: true; error?: string; errorCode?: ActionErrorCode }> {
   const idCheck = z.string().uuid().safeParse(sessionId);
-  if (!idCheck.success) return { error: "Invalid session id" };
+  if (!idCheck.success) {
+    return { error: "Invalid session id", errorCode: "validation" };
+  }
   const completionReceipt =
     completionEntryId != null && z.string().uuid().safeParse(completionEntryId).success
       ? completionEntryId
       : null;
 
   const supabase = await createClient();
-  // The RLS-protected RPC validates ownership, derives session RPE and duration,
-  // and reports whether this call made the completion transition. The scalar
-  // fallback keeps the app usable during the app-first migration window.
-  const { data, error } = await supabase.rpc(
+  // The transition RPC owns the completion receipt and lifecycle transition in
+  // one RLS-protected transaction. The legacy call is only for the app-first
+  // migration window, when the new function has not reached the database yet.
+  const transition = await supabase.rpc(
     "complete_training_session_with_transition",
     {
       p_session_id: sessionId,
@@ -1604,29 +1606,30 @@ export async function completeSessionResult(
       p_completion_entry_id: completionReceipt,
     },
   );
-  let completion: { user_id: string; transitioned: boolean } | null = null;
-  if (error) {
-    const transitionRpcMissing =
-      error.code === "PGRST202" || error.code === "42883";
-    if (!transitionRpcMissing) return { error: error.message };
-
-    const { data: legacyUserId, error: legacyError } = await supabase.rpc(
-      "complete_training_session",
-      {
-        p_session_id: sessionId,
-        p_notes: notes ?? null,
-      },
-    );
-    if (legacyError) return { error: legacyError.message };
-    if (typeof legacyUserId === "string") {
-      completion = { user_id: legacyUserId, transitioned: true };
+  let userId: string | null = null;
+  let transitioned = false;
+  if (transition.error) {
+    const code = (transition.error as { code?: string }).code;
+    if (code !== "PGRST202" && code !== "42883") {
+      return { error: transition.error.message, errorCode: "transient" };
     }
+    const legacy = await supabase.rpc("complete_training_session", {
+      p_session_id: sessionId,
+      p_notes: notes ?? null,
+    });
+    if (legacy.error) {
+      return { error: legacy.error.message, errorCode: "transient" };
+    }
+    userId = typeof legacy.data === "string" ? legacy.data : null;
+    transitioned = userId != null;
   } else {
-    completion = Array.isArray(data)
-      ? (data as Array<{ user_id: string; transitioned: boolean }>)[0] ?? null
-      : null;
+    const row = (
+      Array.isArray(transition.data) ? transition.data[0] : null
+    ) as { user_id?: string; transitioned?: boolean } | null;
+    userId = row?.user_id ?? null;
+    transitioned = row?.transitioned === true;
   }
-  if (!completion) {
+  if (!userId) {
     const {
       data: { user },
     } = await getAuthUser();
@@ -1634,11 +1637,9 @@ export async function completeSessionResult(
       ? { error: "Session not found.", errorCode: "not_found" }
       : { error: "not-signed-in", errorCode: "auth" };
   }
-  const { user_id: userId, transitioned } = completion;
-
-  // Stats ledgers and suggestions remain replayable so a retry repairs a
-  // terminated deferred task. The BW progression hook alone must run once: it
-  // records weekly progression from the completion transition.
+  // Stats ledgers and TM suggestions remain replayable so a retry repairs a
+  // terminated deferred task. BW completion side effects are transition-only.
+  // Run the refresh work after the response so Finish stays a one-tap action.
   after(async () => {
     // Reuse the captured Supabase client. Dynamic request APIs such as
     // `cookies()` are no longer available once `after()` begins.
@@ -1684,28 +1685,30 @@ export async function completeSessionResult(
       })().catch((e) => {
         console.error("generateTmSuggestionsForSession failed:", e);
       }),
+      ...(transitioned
+        ? [
+            (async () => {
+              const timezone = await timezonePromise;
+              const { applyBwSessionCompletionSideEffects } = await import(
+                "@/lib/sessions/bw-set-logging"
+              );
+              await applyBwSessionCompletionSideEffects({
+                supabase,
+                userId,
+                sessionId,
+                timezone,
+              });
+              const { captureBwDiagnosticsSnapshot } = await import(
+                "@/lib/planner/bw-diagnostics-snapshot"
+              );
+              await captureBwDiagnosticsSnapshot({ supabase, userId });
+              revalidatePath("/app/settings/bodyweight-progression");
+            })().catch((e) => {
+              console.error("BW completion side-effects failed:", e);
+            }),
+          ]
+        : []),
     ]);
-    if (transitioned) {
-      try {
-        const timezone = await timezonePromise;
-        const { applyBwSessionCompletionSideEffects } = await import(
-          "@/lib/sessions/bw-set-logging"
-        );
-        await applyBwSessionCompletionSideEffects({
-          supabase,
-          userId,
-          sessionId,
-          timezone,
-        });
-        const { captureBwDiagnosticsSnapshot } = await import(
-          "@/lib/planner/bw-diagnostics-snapshot"
-        );
-        await captureBwDiagnosticsSnapshot({ supabase, userId });
-        revalidatePath("/app/settings/bodyweight-progression");
-      } catch (e) {
-        console.error("BW completion side-effects failed:", e);
-      }
-    }
     revalidatePath("/app");
     revalidatePath("/app/stats");
   });

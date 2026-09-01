@@ -1,8 +1,11 @@
 import { classifyActionResult, type ActionResult, type OutboxEntry } from "./outbox-core";
 import {
+  claimEntry,
+  deadLetter,
   enqueue,
   hasEarlierPending,
   remove,
+  releaseEntry,
   type EnqueueInput,
   type EnqueueResult,
 } from "./outbox";
@@ -67,36 +70,55 @@ export async function runDurableAction<T extends ActionResult>(
     if (waitForEarlier) return { status: "queued", entry };
   }
 
-  let result: T;
-  try {
-    result = await action();
-  } catch (error) {
-    if (entry) return { status: "queued", entry };
-    return {
-      status: "failed",
-      error: error instanceof Error ? error : new Error(String(error)),
-    };
+  let leaseToken: string | null = null;
+  if (entry) {
+    try {
+      leaseToken = await claimEntry(entry.id);
+    } catch {
+      // Do not send without a durable claim; the flusher can retry later.
+      return { status: "queued", entry };
+    }
+    if (!leaseToken) return { status: "queued", entry };
   }
 
-  const outcome = classifyActionResult(result, false);
-  if (outcome === "retry" && entry) {
-    return { status: "queued", result, entry };
-  }
-  if (outcome === "drop") {
-    if (entry) await remove(entry.id);
-    return { status: "failed", result };
-  }
-  if (entry) {
-    // A successful server write is authoritative even if local cleanup fails;
-    // idempotent replay will safely converge on a later flush.
-    let cleanupError: Error | undefined;
+  try {
+    let result: T;
     try {
-      await remove(entry.id);
+      result = await action();
     } catch (error) {
-      cleanupError = error instanceof Error ? error : new Error(String(error));
+      if (entry) return { status: "queued", entry };
+      return {
+        status: "failed",
+        error: error instanceof Error ? error : new Error(String(error)),
+      };
     }
-    return { status: "server", result, entry, cleanupError };
+
+    const outcome = classifyActionResult(result, false);
+    if (outcome === "retry" && entry) {
+      return { status: "queued", result, entry };
+    }
+    if (outcome === "drop") {
+      if (entry) await remove(entry.id);
+      return { status: "failed", result };
+    }
+    if (outcome === "dead_letter") {
+      if (entry) await deadLetter(entry.id, result.error ?? "permanent failure");
+      return { status: "failed", result };
+    }
+    if (entry) {
+      // A successful server write is authoritative even if local cleanup fails;
+      // idempotent replay will safely converge on a later flush.
+      let cleanupError: Error | undefined;
+      try {
+        await remove(entry.id);
+      } catch (error) {
+        cleanupError = error instanceof Error ? error : new Error(String(error));
+      }
+      return { status: "server", result, entry, cleanupError };
+    }
+    if (outcome === "retry") return { status: "failed", result };
+    return { status: "server", result, entry };
+  } finally {
+    if (entry && leaseToken) await releaseEntry(entry.id, leaseToken);
   }
-  if (outcome === "retry") return { status: "failed", result };
-  return { status: "server", result, entry };
 }

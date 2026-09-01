@@ -1,11 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { runDurableAction } from "../durable-action";
-import { enqueue, hasEarlierPending, remove } from "../outbox";
+import {
+  claimEntry,
+  deadLetter,
+  enqueue,
+  hasEarlierPending,
+  remove,
+  releaseEntry,
+} from "../outbox";
 
 vi.mock("../outbox", () => ({
+  claimEntry: vi.fn(),
+  deadLetter: vi.fn(),
   enqueue: vi.fn(),
   hasEarlierPending: vi.fn(),
   remove: vi.fn(),
+  releaseEntry: vi.fn(),
 }));
 
 const input = {
@@ -25,10 +35,15 @@ const entry = {
 describe("runDurableAction", () => {
   beforeEach(() => {
     vi.mocked(enqueue).mockReset();
+    vi.mocked(claimEntry).mockReset();
+    vi.mocked(deadLetter).mockReset();
     vi.mocked(hasEarlierPending).mockReset();
     vi.mocked(remove).mockReset();
+    vi.mocked(releaseEntry).mockReset();
     vi.mocked(hasEarlierPending).mockResolvedValue(false);
+    vi.mocked(claimEntry).mockResolvedValue("lease");
     vi.mocked(remove).mockResolvedValue(undefined);
+    vi.mocked(releaseEntry).mockResolvedValue(undefined);
   });
 
   it("does not claim success when both local durability and the network fail", async () => {
@@ -93,5 +108,21 @@ describe("runDurableAction", () => {
 
     expect(result.status).toBe("queued");
     expect(remove).not.toHaveBeenCalled();
+  });
+
+  it("shares the durable claim with a concurrent foreground action", async () => {
+    vi.mocked(enqueue).mockResolvedValue({ status: "stored", entry });
+    vi.mocked(claimEntry)
+      .mockResolvedValueOnce("lease")
+      .mockResolvedValueOnce(null);
+    const action = vi.fn().mockResolvedValue({ ok: true as const });
+
+    const [first, second] = await Promise.all([
+      runDurableAction(input, action),
+      runDurableAction(input, action),
+    ]);
+
+    expect(action).toHaveBeenCalledOnce();
+    expect([first.status, second.status].sort()).toEqual(["queued", "server"]);
   });
 });

@@ -1,14 +1,22 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { enqueue, hasEarlierPending, remove } from "../outbox";
+import {
+  claimEntry,
+  enqueue,
+  hasEarlierPending,
+  remove,
+  releaseEntry,
+} from "../outbox";
 import {
   enqueueSessionCompletion,
   runSessionCompletion,
 } from "../session-completion";
 
 vi.mock("../outbox", () => ({
+  claimEntry: vi.fn(),
   enqueue: vi.fn(),
   hasEarlierPending: vi.fn(),
   remove: vi.fn(),
+  releaseEntry: vi.fn(),
 }));
 
 const sessionId = "00000000-0000-4000-8000-000000000001";
@@ -18,8 +26,12 @@ describe("enqueueSessionCompletion", () => {
     vi.mocked(enqueue).mockReset();
     vi.mocked(hasEarlierPending).mockReset();
     vi.mocked(remove).mockReset();
+    vi.mocked(claimEntry).mockReset();
+    vi.mocked(releaseEntry).mockReset();
     vi.mocked(hasEarlierPending).mockResolvedValue(false);
     vi.mocked(remove).mockResolvedValue(undefined);
+    vi.mocked(claimEntry).mockResolvedValue("lease");
+    vi.mocked(releaseEntry).mockResolvedValue(undefined);
   });
 
   it("returns a failure instead of claiming completion when local storage rejects", async () => {
@@ -38,7 +50,7 @@ describe("enqueueSessionCompletion", () => {
         id: "00000000-0000-4000-8000-000000000002",
         op: "complete",
         sessionId,
-        payload: { sessionId },
+        payload: { sessionId, completionEntryId: "receipt" },
         seq: 1,
         createdAt: 1,
         attempts: 0,
@@ -52,7 +64,10 @@ describe("enqueueSessionCompletion", () => {
       expect.objectContaining({
         op: "complete",
         sessionId,
-        payload: { sessionId },
+        payload: expect.objectContaining({
+          sessionId,
+          completionEntryId: expect.any(String),
+        }),
       }),
     );
   });
@@ -64,7 +79,7 @@ describe("enqueueSessionCompletion", () => {
         id: "00000000-0000-4000-8000-000000000002",
         op: "complete",
         sessionId,
-        payload: { sessionId },
+        payload: { sessionId, completionEntryId: "receipt" },
         seq: 1,
         createdAt: 1,
         attempts: 0,
@@ -79,6 +94,9 @@ describe("enqueueSessionCompletion", () => {
 
     expect(result.status).toBe("queued");
     expect(action).toHaveBeenCalledOnce();
+    expect(action).toHaveBeenCalledWith(
+      vi.mocked(enqueue).mock.calls[0]?.[0].id,
+    );
     expect(vi.mocked(enqueue).mock.invocationCallOrder[0]).toBeLessThan(
       action.mock.invocationCallOrder[0]!,
     );

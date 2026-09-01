@@ -7,19 +7,21 @@ import {
 import type { ActionResult } from "./outbox-core";
 
 export function sessionCompletionInput(sessionId: string): EnqueueInput {
+  const completionEntryId = createClientId();
   return {
-    id: createClientId(),
+    id: completionEntryId,
     op: "complete",
     sessionId,
-    payload: { sessionId },
+    payload: { sessionId, completionEntryId },
   };
 }
 
 export function runSessionCompletion<T extends ActionResult>(
   sessionId: string,
-  action: () => Promise<T>,
+  action: (completionEntryId: string) => Promise<T>,
 ): Promise<DurableActionResult<T>> {
-  return runDurableAction(sessionCompletionInput(sessionId), action, {
+  const input = sessionCompletionInput(sessionId);
+  return runDurableAction(input, () => action(input.id), {
     requireDurableEnqueue: true,
   });
 }

@@ -74,7 +74,7 @@ export function OfflineSyncBadge({
   pendingCount: number;
   /** Queued ops whose last replay attempt errored. */
   failedCount?: number;
-  /** Entries discarded after an explicit deterministic validation error. */
+  /** Entries discarded or dead-lettered after a deterministic failure. */
   droppedCount?: number;
 }) {
   const [online, setOnline] = useState(true);

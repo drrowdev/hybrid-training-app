@@ -38,17 +38,14 @@ import {
 } from "@/lib/sessions/optimistic-log";
 import {
   countForSession as outboxCountForSession,
-  enqueue as outboxEnqueue,
-  hasEarlierPending as outboxHasEarlierPending,
+  listDeadLetteredForSession as outboxListDeadLetteredForSession,
   listForSession as outboxListForSession,
-  removeAndCountForSession as outboxRemoveAndCountForSession,
-  type EnqueueResult,
 } from "@/lib/offline/outbox";
 import {
   createOutboxEntryId,
   formDataToPayload,
-  classifyActionResult,
 } from "@/lib/offline/outbox-core";
+import { runDurableAction } from "@/lib/offline/durable-action";
 import { startAutoFlush } from "@/lib/offline/flusher";
 import { clearResume } from "@/lib/sessions/session-resume";
 import { OfflineSyncBadge } from "./OfflineSyncBadge";
@@ -251,11 +248,8 @@ export function SessionWorkArea({
         );
       }
 
-      // Durably enqueue BEFORE the network call so a signal drop or app kill
-      // can't lose the set — it replays from the outbox on reconnect/relaunch.
-      let enqueueResult: EnqueueResult;
-      try {
-        enqueueResult = await outboxEnqueue({
+      const durable = await runDurableAction<AddStrengthSetResult>(
+        {
           id: clientLogId,
           op: "set",
           sessionId: sid,
@@ -267,96 +261,35 @@ export function SessionWorkArea({
                 movementPrimaryRegion: optimistic.movementPrimaryRegion,
               }
             : undefined,
-        });
-      } catch (error) {
-        enqueueResult = {
-          status: "failed",
-          error: error instanceof Error ? error : new Error(String(error)),
-        };
-      }
-      const queued = enqueueResult.status === "stored";
-      if (enqueueResult.status === "stored") {
-        let waitForEarlier = true;
-        try {
-          waitForEarlier = await outboxHasEarlierPending(enqueueResult.entry.seq);
-        } catch {
-          // Do not overtake an older operation when queue inspection is uncertain.
-        }
-        if (waitForEarlier) {
-          const pending = await outboxCountForSession(sid).catch(() => 0);
-          setOutboxPending(pending);
-          return { ok: true };
-        }
-      }
+        },
+        () => addStrengthSet(fd),
+      );
 
-      let result: AddStrengthSetResult | undefined;
-      try {
-        result = await addStrengthSet(fd);
-      } catch (error) {
-        if (queued) {
-          const pending = await outboxCountForSession(sid).catch(() => 0);
-          setOutboxPending(pending);
-          return { ok: true };
-        }
-        setPendingLogs((prev) => prev.filter((l) => l.clientKey !== clientKey));
-        rollbackStrengthLog?.(clientKey);
-        return {
-          error:
-            error instanceof Error
-              ? error.message
-              : "Couldn't save this set. Check your connection and retry.",
-          errorCode: "transient",
-        };
-      }
+     if (durable.status === "queued") {
+       const pending = await outboxCountForSession(sid).catch(() => 0);
+       setOutboxPending(pending);
+       return planLogSetOutcome({ kind: "network-error" }).result;
+     }
 
-      const outcome = classifyActionResult(result, false);
-      if (outcome === "retry") {
-        if (queued) {
-          const pending = await outboxCountForSession(sid).catch(() => 0);
-          setOutboxPending(pending);
-          return planLogSetOutcome({ kind: "network-error" }).result;
-        }
-        setPendingLogs((prev) => prev.filter((l) => l.clientKey !== clientKey));
-        rollbackStrengthLog?.(clientKey);
-        return result ?? {
-          error: "Couldn't save this set. Check your connection and retry.",
-          errorCode: "transient",
-        };
-      }
+     const result: AddStrengthSetResult = durable.result ?? {
+       error:
+         durable.error?.message ??
+         "Couldn't save this set. Check your connection and retry.",
+       errorCode: "transient",
+     };
+     const pending = await outboxCountForSession(sid).catch(() => 0);
+     setOutboxPending(pending);
 
-      if (outcome === "drop") {
-        if (queued) {
-          const pending = await outboxRemoveAndCountForSession(clientLogId, sid).catch(
-            () => 0,
-          );
-          setOutboxPending(pending);
-        }
-        setPendingLogs((prev) => prev.filter((l) => l.clientKey !== clientKey));
-        rollbackStrengthLog?.(clientKey);
-        return result ?? {
-          error: "This set could not be saved.",
-          errorCode: "validation",
-        };
-      }
-
-      // Online resolved — the row is persisted, so drop the durable entry.
-      if (queued) {
-        const pending = await outboxRemoveAndCountForSession(clientLogId, sid).catch(
-          () => 0,
-        );
-        setOutboxPending(pending);
-      }
-
-      // See `planLogSetOutcome` (defect #1): rollback is keyed on whether
-      // optimistic state was registered at all, never on whether it had an
-      // overlay row — a rejected freestyle log (optimistic, no overlay) must
-      // roll back just as completely as a rejected prescribed one.
-      const outcome = planLogSetOutcome({
-        kind: "resolved",
-        hadOptimistic: optimistic != null,
-        hadOverlay: Boolean(overlay),
-        result: result ?? { ok: true },
-      });
+     // See `planLogSetOutcome` (defect #1): rollback is keyed on whether
+     // optimistic state was registered at all, never on whether it had an
+     // overlay row — a rejected freestyle log (optimistic, no overlay) must
+     // roll back just as completely as a rejected prescribed one.
+     const outcome = planLogSetOutcome({
+       kind: "resolved",
+       hadOptimistic: optimistic != null,
+       hadOverlay: Boolean(overlay),
+       result,
+     });
 
       if (outcome.dropOverlay) {
         setPendingLogs((prev) => prev.filter((l) => l.clientKey !== clientKey));
@@ -393,10 +326,14 @@ export function SessionWorkArea({
   // snapshot includes the now-persisted rows (the merge dedupes by index).
   useEffect(() => {
     let cancelled = false;
-    void outboxListForSession(sessionId).then((entries) => {
+    void Promise.all([
+      outboxListForSession(sessionId),
+      outboxListDeadLetteredForSession(sessionId),
+    ]).then(([entries, deadLettered]) => {
       if (cancelled) return;
       setOutboxPending(entries.length);
       setOutboxFailed(entries.filter((e) => e.attempts > 0 && e.lastError).length);
+      setOutboxDropped(deadLettered.length);
       registerCompletionQueued?.(entries.some((entry) => entry.op === "complete"));
       const seeded = hydrateQueuedSetLogs(entries);
       for (const log of seeded) {
@@ -411,17 +348,20 @@ export function SessionWorkArea({
     });
     const stop = startAutoFlush((r) => {
       if (cancelled) return;
-      setOutboxPending(r.remaining);
-      if (r.dropped > 0) setOutboxDropped((count) => count + r.dropped);
-      if (r.completed > 0) clearResume(sessionId);
+      if (r.completedSessionIds.includes(sessionId)) clearResume(sessionId);
       // Re-read so a failed replay surfaces as "couldn't sync" rather than
       // sitting silently in the queue looking like it is still in flight.
-      void outboxListForSession(sessionId)
-        .then((entries) => {
+      void Promise.all([
+        outboxListForSession(sessionId),
+        outboxListDeadLetteredForSession(sessionId),
+      ])
+        .then(([entries, deadLettered]) => {
           if (cancelled) return;
+          setOutboxPending(entries.length);
           setOutboxFailed(
             entries.filter((e) => e.attempts > 0 && e.lastError).length,
           );
+          setOutboxDropped(deadLettered.length);
           registerCompletionQueued?.(
             entries.some((entry) => entry.op === "complete"),
           );

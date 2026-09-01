@@ -61,7 +61,24 @@ const MI_TO_KM = 1.609344;
 export function hasQueuedCardioSession(
   entries: readonly OutboxEntry[],
 ): boolean {
-  return entries.some((entry) => entry.op === "cardio_session");
+  return entries.some(
+    (entry) =>
+      entry.op === "cardio_session" && entry.status !== "dead_lettered",
+  );
+}
+
+export function cardioOutboxHydrationState(
+  entries: readonly OutboxEntry[] | null,
+): {
+  hydrated: true;
+  queued: boolean;
+  durabilityWarning: boolean;
+} {
+  return {
+    hydrated: true,
+    queued: entries != null && hasQueuedCardioSession(entries),
+    durabilityWarning: entries == null,
+  };
 }
 
 export function CardioLogForm({
@@ -79,22 +96,26 @@ export function CardioLogForm({
   const [error, setError] = useState<string | null>(null);
   const [savedOffline, setSavedOffline] = useState(false);
   const [outboxHydrated, setOutboxHydrated] = useState(false);
+  const [durabilityWarning, setDurabilityWarning] = useState(false);
 
   useEffect(() => {
     let active = true;
     void listOutboxForSession(sessionId)
       .then((entries) => {
         if (!active) return;
-        setSavedOffline(hasQueuedCardioSession(entries));
-        setOutboxHydrated(true);
+        const hydration = cardioOutboxHydrationState(entries);
+        setSavedOffline(hydration.queued);
+        setDurabilityWarning(hydration.durabilityWarning);
+        setOutboxHydrated(hydration.hydrated);
       })
-      .catch((hydrationError) => {
+      .catch(() => {
         if (!active) return;
-        setError(
-          hydrationError instanceof Error
-            ? hydrationError.message
-            : "Couldn't check queued cardio. Reload and try again.",
-        );
+        // A failed read must not leave the form permanently disabled. The
+        // durable action will still attempt its own enqueue and only fall back
+        // to a direct online write when local storage is unavailable.
+        const hydration = cardioOutboxHydrationState(null);
+        setDurabilityWarning(hydration.durabilityWarning);
+        setOutboxHydrated(hydration.hydrated);
       });
     return () => {
       active = false;
@@ -203,6 +224,15 @@ export function CardioLogForm({
         marginInline: -16,
       }}
     >
+      {durabilityWarning && (
+        <div
+          role="status"
+          data-testid="cardio-durability-warning"
+          style={{ fontSize: 12, color: "var(--cp-warning)" }}
+        >
+          Offline saving unavailable
+        </div>
+      )}
       <div
         style={{
           display: "flex",

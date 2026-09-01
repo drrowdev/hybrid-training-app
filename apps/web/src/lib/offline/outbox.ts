@@ -14,6 +14,7 @@
  */
 
 import {
+  MAX_REPLAY_ATTEMPTS,
   nextSeq,
   sortBySeq,
   type OutboxEntry,
@@ -68,6 +69,10 @@ function reqToPromise<T>(req: IDBRequest<T>): Promise<T> {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error("indexedDB request failed"));
   });
+}
+
+function isActive(entry: OutboxEntry): boolean {
+  return entry.status !== "dead_lettered";
 }
 
 async function readAll(): Promise<OutboxEntry[]> {
@@ -151,7 +156,12 @@ export async function enqueue(input: EnqueueInput): Promise<EnqueueResult> {
 
 /** All pending entries, FIFO. Empty when IndexedDB is unavailable. */
 export async function listPending(): Promise<OutboxEntry[]> {
-  return readAll();
+  return (await readAll()).filter(isActive);
+}
+
+/** Terminal rows kept for the sync badge and support diagnostics. */
+export async function listDeadLettered(): Promise<OutboxEntry[]> {
+  return (await readAll()).filter((entry) => !isActive(entry));
 }
 
 /** Whether an older durable operation is still waiting ahead of this one. */
@@ -166,16 +176,121 @@ export async function listForSession(sessionId: string): Promise<OutboxEntry[]> 
   const rows = await reqToPromise(
     txStore(db, "readonly").index("by_session").getAll(sessionId),
   );
-  return sortBySeq(rows as OutboxEntry[]);
+  return sortBySeq((rows as OutboxEntry[]).filter(isActive));
+}
+
+/** Terminal rows for one session, kept out of the active logging surface. */
+export async function listDeadLetteredForSession(
+  sessionId: string,
+): Promise<OutboxEntry[]> {
+  if (!hasIDB()) return [];
+  const db = await openDb();
+  const rows = await reqToPromise(
+    txStore(db, "readonly").index("by_session").getAll(sessionId),
+  );
+  return sortBySeq(
+    (rows as OutboxEntry[]).filter((entry) => !isActive(entry)),
+  );
 }
 
 /** Count pending writes for one session without deserialising the queue. */
 export async function countForSession(sessionId: string): Promise<number> {
   if (!hasIDB()) return 0;
   const db = await openDb();
-  return reqToPromise(
-    txStore(db, "readonly").index("by_session").count(sessionId),
+  const rows = await reqToPromise(
+    txStore(db, "readonly").index("by_session").getAll(sessionId),
   );
+  return (rows as OutboxEntry[]).filter(isActive).length;
+}
+
+/**
+ * Claim one row before its network call. The claim is persisted in the same
+ * IndexedDB transaction that reads the row, so a foreground action and a
+ * flusher in different tabs cannot send the same entry concurrently.
+ */
+export async function claimEntry(id: string): Promise<string | null> {
+  if (!hasIDB()) return null;
+  const db = await openDb();
+  return new Promise<string | null>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    let token: string | null = null;
+    const request = store.get(id);
+    request.onsuccess = () => {
+      const entry = request.result as OutboxEntry | undefined;
+      if (!entry || !isActive(entry)) return;
+      const now = Date.now();
+      if (
+        entry.leaseToken &&
+        typeof entry.leaseExpiresAt === "number" &&
+        entry.leaseExpiresAt > now
+      ) {
+        return;
+      }
+      token = `${now}-${Math.random().toString(36).slice(2)}`;
+      entry.leaseToken = token;
+      entry.leaseExpiresAt = now + 60_000;
+      store.put(entry);
+    };
+    request.onerror = () => tx.abort();
+    tx.oncomplete = () => resolve(token);
+    tx.onerror = () =>
+      reject(tx.error ?? new Error("indexedDB claim failed"));
+    tx.onabort = () =>
+      reject(tx.error ?? new Error("indexedDB claim aborted"));
+  });
+}
+
+/** Release a claim only when the caller still owns its token. */
+export async function releaseEntry(id: string, token: string): Promise<void> {
+  if (!hasIDB()) return;
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    const request = store.get(id);
+    request.onsuccess = () => {
+      const entry = request.result as OutboxEntry | undefined;
+      if (entry?.leaseToken === token) {
+        delete entry.leaseToken;
+        delete entry.leaseExpiresAt;
+        store.put(entry);
+      }
+    };
+    request.onerror = () => tx.abort();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () =>
+      reject(tx.error ?? new Error("indexedDB release failed"));
+    tx.onabort = () =>
+      reject(tx.error ?? new Error("indexedDB release aborted"));
+  });
+}
+
+/** Mark a terminal failure without deleting its audit trail. */
+export async function deadLetter(id: string, reason: string): Promise<void> {
+  if (!hasIDB()) return;
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    const request = store.get(id);
+    request.onsuccess = () => {
+      const entry = request.result as OutboxEntry | undefined;
+      if (!entry) return;
+      entry.status = "dead_lettered";
+      entry.deadLetterReason = reason;
+      entry.lastError = reason;
+      delete entry.leaseToken;
+      delete entry.leaseExpiresAt;
+      store.put(entry);
+    };
+    request.onerror = () => tx.abort();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () =>
+      reject(tx.error ?? new Error("indexedDB dead-letter failed"));
+    tx.onabort = () =>
+      reject(tx.error ?? new Error("indexedDB dead-letter aborted"));
+  });
 }
 
 /** Remove an entry once it has been confirmed persisted (or permanently
@@ -201,9 +316,9 @@ export async function removeAndCountForSession(
     removeReq.onsuccess = () => {
       // Queue the count only after WebKit has acknowledged the delete request,
       // then resolve after the whole transaction commits.
-      const countReq = store.index("by_session").count(sessionId);
+      const countReq = store.index("by_session").getAll(sessionId);
       countReq.onsuccess = () => {
-        remaining = countReq.result;
+        remaining = (countReq.result as OutboxEntry[]).filter(isActive).length;
       };
       countReq.onerror = () => {
         tx.abort();
@@ -220,17 +335,39 @@ export async function removeAndCountForSession(
   });
 }
 
-/** Record a failed attempt (transient/network) so retries can back off and the
- * UI can surface a stuck entry. */
-export async function recordAttempt(id: string, error: string): Promise<void> {
-  if (!hasIDB()) return;
+/** Record a failed attempt and dead-letter after the bounded retry limit. */
+export async function recordAttempt(
+  id: string,
+  error: string,
+): Promise<{ deadLettered: boolean }> {
+  if (!hasIDB()) return { deadLettered: false };
   const db = await openDb();
-  const store = txStore(db, "readwrite");
-  const entry = (await reqToPromise(store.get(id))) as OutboxEntry | undefined;
-  if (!entry) return;
-  entry.attempts += 1;
-  entry.lastError = error;
-  await reqToPromise(store.put(entry));
+  return new Promise<{ deadLettered: boolean }>((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    const store = tx.objectStore(STORE);
+    let deadLettered = false;
+    const request = store.get(id);
+    request.onsuccess = () => {
+      const entry = request.result as OutboxEntry | undefined;
+      if (!entry || !isActive(entry)) return;
+      entry.attempts += 1;
+      entry.lastError = error;
+      if (entry.attempts >= MAX_REPLAY_ATTEMPTS) {
+        entry.status = "dead_lettered";
+        entry.deadLetterReason = error;
+        delete entry.leaseToken;
+        delete entry.leaseExpiresAt;
+        deadLettered = true;
+      }
+      store.put(entry);
+    };
+    request.onerror = () => tx.abort();
+    tx.oncomplete = () => resolve({ deadLettered });
+    tx.onerror = () =>
+      reject(tx.error ?? new Error("indexedDB attempt recording failed"));
+    tx.onabort = () =>
+      reject(tx.error ?? new Error("indexedDB attempt recording aborted"));
+  });
 }
 
 /** True when IndexedDB is usable in this runtime. */

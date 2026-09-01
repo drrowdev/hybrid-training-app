@@ -13,6 +13,7 @@
  * New `complete` entries have their own durable UUID, which the completion
  * boundary stores as its receipt on the first successful transition. Older
  * non-UUID completion entries remain replayable without a stored receipt.
+ * `cardio_session` entries use the same server-side key.
  */
 
 export type OutboxOp = "set" | "cardio" | "cardio_session" | "complete";
@@ -50,6 +51,12 @@ export type OutboxEntry = {
   createdAt: number;
   attempts: number;
   lastError?: string;
+  /** Terminal entries remain inspectable but never block active FIFO replay. */
+  status?: "pending" | "dead_lettered";
+  deadLetterReason?: string;
+  /** Cross-tab replay lease. */
+  leaseToken?: string;
+  leaseExpiresAt?: number;
 };
 
 /** Create a UUID-shaped durable queue id even in a WebView without randomUUID. */
@@ -69,6 +76,8 @@ export function createOutboxEntryId(): string {
   const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
+/** A flaky connection cannot retry one poison row forever. */
+export const MAX_REPLAY_ATTEMPTS = 5;
 
 /** Next monotonic sequence number — strictly greater than any existing one and
  * never below wall-clock ms, so ordering is stable across reloads. */
@@ -94,9 +103,8 @@ export function entriesForSession(
   return sortBySeq(entries.filter((e) => e.sessionId === sessionId));
 }
 
-/** How a failed flush attempt should be treated. Only an explicit validation
- * code is permanent; returned errors without that code remain queued. */
-export type FlushOutcome = "done" | "retry" | "drop";
+/** How a failed flush attempt should be treated. */
+export type FlushOutcome = "done" | "retry" | "drop" | "dead_letter";
 
 export function classifyActionResult(
   result: ActionResult | undefined,
@@ -105,7 +113,14 @@ export function classifyActionResult(
   if (threw) return "retry"; // network/offline — keep queued
   if (!result) return "retry"; // no server acknowledgement — keep queued
   if (result?.error) {
-    return result.errorCode === "validation" ? "drop" : "retry";
+    if (result.errorCode === "validation") return "drop";
+    if (
+      result.errorCode === "not_found" ||
+      result.errorCode === "forbidden"
+    ) {
+      return "dead_letter";
+    }
+    return "retry";
   }
   return result.ok === true ? "done" : "retry";
 }

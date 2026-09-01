@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { addStrengthSet, completeSessionResult } from "@/lib/sessions/actions";
 import {
+  claimEntry,
+  deadLetter,
   listPending,
   outboxAvailable,
   recordAttempt,
   remove,
+  releaseEntry,
 } from "../outbox";
 import { flushOutbox } from "../flusher";
 import type { OutboxEntry } from "../outbox-core";
@@ -17,10 +20,13 @@ vi.mock("@/lib/sessions/actions", () => ({
 }));
 
 vi.mock("../outbox", () => ({
+  claimEntry: vi.fn(),
+  deadLetter: vi.fn(),
   listPending: vi.fn(),
   outboxAvailable: vi.fn(),
   recordAttempt: vi.fn(),
   remove: vi.fn(),
+  releaseEntry: vi.fn(),
 }));
 
 const entry: OutboxEntry = {
@@ -39,12 +45,19 @@ describe("flushOutbox", () => {
   beforeEach(() => {
     queue = [entry];
     vi.mocked(addStrengthSet).mockReset();
+    vi.mocked(completeSessionResult).mockReset();
     vi.mocked(listPending).mockImplementation(async () => [...queue]);
     vi.mocked(outboxAvailable).mockReturnValue(true);
+    vi.mocked(claimEntry).mockResolvedValue("lease");
+    vi.mocked(deadLetter).mockImplementation(async (id) => {
+      queue = queue.filter((item) => item.id !== id);
+    });
     vi.mocked(recordAttempt).mockReset();
+    vi.mocked(recordAttempt).mockResolvedValue({ deadLettered: false });
     vi.mocked(remove).mockImplementation(async (id) => {
       queue = queue.filter((item) => item.id !== id);
     });
+    vi.mocked(releaseEntry).mockResolvedValue(undefined);
   });
 
   it("keeps a transient returned error queued and stops the FIFO drain", async () => {
@@ -60,6 +73,7 @@ describe("flushOutbox", () => {
       remaining: 1,
       dropped: 0,
       completed: 0,
+      completedSessionIds: [],
     });
     expect(recordAttempt).toHaveBeenCalledWith(
       entry.id,
@@ -81,6 +95,7 @@ describe("flushOutbox", () => {
       remaining: 0,
       dropped: 1,
       completed: 0,
+      completedSessionIds: [],
     });
     expect(remove).toHaveBeenCalledWith(entry.id);
   });
@@ -90,7 +105,10 @@ describe("flushOutbox", () => {
       {
         ...entry,
         op: "complete",
-        payload: { sessionId: entry.sessionId },
+        payload: {
+          sessionId: entry.sessionId,
+          completionEntryId: entry.id,
+        },
       },
     ];
     vi.mocked(completeSessionResult).mockResolvedValue({ ok: true });
@@ -102,7 +120,91 @@ describe("flushOutbox", () => {
       remaining: 0,
       dropped: 0,
       completed: 1,
+      completedSessionIds: [entry.sessionId],
     });
     expect(remove).toHaveBeenCalledWith(entry.id);
+    expect(completeSessionResult).toHaveBeenCalledWith(
+      entry.sessionId,
+      null,
+      entry.id,
+    );
+  });
+
+  it("skips a terminal poison head and continues the global FIFO", async () => {
+    const nextEntry = {
+      ...entry,
+      id: "00000000-0000-4000-8000-000000000003",
+      seq: 2,
+    };
+    queue = [entry, nextEntry];
+    vi.mocked(addStrengthSet)
+      .mockResolvedValueOnce({
+        error: "Not your session.",
+        errorCode: "forbidden",
+      })
+      .mockResolvedValueOnce({ ok: true });
+
+    const result = await flushOutbox();
+
+    expect(result).toEqual({
+      flushed: 1,
+      remaining: 0,
+      dropped: 1,
+      completed: 0,
+      completedSessionIds: [],
+    });
+    expect(deadLetter).toHaveBeenCalledWith(entry.id, "Not your session.");
+    expect(addStrengthSet).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not overtake a FIFO head leased by another tab", async () => {
+    const nextEntry = {
+      ...entry,
+      id: "00000000-0000-4000-8000-000000000003",
+      seq: 2,
+    };
+    queue = [entry, nextEntry];
+    vi.mocked(claimEntry).mockResolvedValueOnce(null);
+
+    const result = await flushOutbox();
+
+    expect(result).toEqual({
+      flushed: 0,
+      remaining: 2,
+      dropped: 0,
+      completed: 0,
+      completedSessionIds: [],
+    });
+    expect(addStrengthSet).not.toHaveBeenCalled();
+  });
+
+  it("dead-letters an exhausted transient head and still flushes later work", async () => {
+    const nextEntry = {
+      ...entry,
+      id: "00000000-0000-4000-8000-000000000003",
+      seq: 2,
+    };
+    queue = [{ ...entry, attempts: 4 }, nextEntry];
+    vi.mocked(addStrengthSet)
+      .mockResolvedValueOnce({
+        error: "temporary service failure",
+        errorCode: "transient",
+      })
+      .mockResolvedValueOnce({ ok: true });
+    vi.mocked(recordAttempt).mockImplementationOnce(async (id) => {
+      queue = queue.filter((item) => item.id !== id);
+      return { deadLettered: true };
+    });
+
+    const result = await flushOutbox();
+
+    expect(result).toEqual({
+      flushed: 1,
+      remaining: 0,
+      dropped: 1,
+      completed: 0,
+      completedSessionIds: [],
+    });
+    expect(addStrengthSet).toHaveBeenCalledTimes(2);
   });
 });

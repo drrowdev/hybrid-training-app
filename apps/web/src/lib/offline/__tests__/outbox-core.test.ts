@@ -8,6 +8,7 @@ import {
   nextSeq,
   payloadToFormData,
   sortBySeq,
+  MAX_REPLAY_ATTEMPTS,
   type OutboxEntry,
 } from "../outbox-core";
 
@@ -21,6 +22,8 @@ function entry(over: Partial<OutboxEntry> & { id: string }): OutboxEntry {
     createdAt: over.createdAt ?? 0,
     attempts: over.attempts ?? 0,
     lastError: over.lastError,
+    status: over.status,
+    deadLetterReason: over.deadLetterReason,
   };
 }
 
@@ -88,6 +91,25 @@ describe("classifyActionResult", () => {
       ),
     ).toBe("retry");
   });
+  it("dead-letters ownership and missing-session failures", () => {
+    expect(
+      classifyActionResult(
+        { error: "Not your session.", errorCode: "forbidden" },
+        false,
+      ),
+    ).toBe("dead_letter");
+    expect(
+      classifyActionResult(
+        { error: "Session not found.", errorCode: "not_found" },
+        false,
+      ),
+    ).toBe("dead_letter");
+  });
+  it("keeps authentication failures retryable for session refresh", () => {
+    expect(
+      classifyActionResult({ error: "Not signed in.", errorCode: "auth" }, false),
+    ).toBe("retry");
+  });
   it("is done on a clean ok result", () => {
     expect(classifyActionResult({ ok: true }, false)).toBe("done");
   });
@@ -103,6 +125,12 @@ describe("backoffMs", () => {
     expect(backoffMs(2)).toBe(4000);
     expect(backoffMs(3)).toBe(8000);
     expect(backoffMs(10)).toBe(60_000);
+  });
+
+  describe("bounded replay", () => {
+    it("exposes a finite retry budget", () => {
+      expect(MAX_REPLAY_ATTEMPTS).toBe(5);
+    });
   });
   it("never returns below the base for attempt 0", () => {
     expect(backoffMs(0)).toBe(2000);

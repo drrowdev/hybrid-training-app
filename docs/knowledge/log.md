@@ -1393,3 +1393,14 @@ Session completion now refuses to send a request when IndexedDB cannot store the
 recovery entry. This keeps the completion intent honest on clients where local
 storage is unavailable; ordinary writes may still use a successful server
 response when local queue storage is unavailable. No migration.
+
+## [2026-09-01] refine | Offline logging durability hardening
+
+Offline set, cardio, and completion writes now share one durable enqueue-and-claim contract. Transient failures remain queued with bounded retries, deterministic validation and ownership failures are surfaced as dropped entries without wedging FIFO replay, completion receipts retain their UUID key through the transition RPC, and queued cardio state hydrates safely across reloads. IndexedDB hydration failure leaves cardio usable through the direct fallback while reporting reduced durability. No schema change was added; completion receipt persistence integrates with the pending transition contract in PR #799.
+
+## [2026-09-01] fix | Scope offline status to the active session
+
+Session status now re-reads pending and dead-lettered entries for the active
+session after each global flush, and completion refreshes are scoped by session
+id. Work queued for another session can no longer change the current session's
+badge or resume state. No migration.

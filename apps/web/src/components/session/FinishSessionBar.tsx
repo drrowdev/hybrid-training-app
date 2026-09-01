@@ -207,7 +207,8 @@ export function FinishSessionBar({
     try {
       const durable = await runSessionCompletion(
         sessionId,
-        () => completeSessionResult(sessionId, null),
+        (completionEntryId) =>
+          completeSessionResult(sessionId, null, completionEntryId),
       );
       if (durable.status === "queued") {
         setSavedOffline(true);

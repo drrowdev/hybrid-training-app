@@ -13,7 +13,11 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { CardioLogForm, hasQueuedCardioSession } from "../CardioLogForm";
+import {
+  CardioLogForm,
+  cardioOutboxHydrationState,
+  hasQueuedCardioSession,
+} from "../CardioLogForm";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: () => undefined, push: () => undefined }),
@@ -51,6 +55,14 @@ describe("CardioLogForm", () => {
         },
       ]),
     ).toBe(false);
+  });
+
+  it("allows direct fallback after IndexedDB hydration fails", () => {
+    expect(cardioOutboxHydrationState(null)).toEqual({
+      hydrated: true,
+      queued: false,
+      durabilityWarning: true,
+    });
   });
 
   it("renders the four required fields + Finish workout submit", () => {
