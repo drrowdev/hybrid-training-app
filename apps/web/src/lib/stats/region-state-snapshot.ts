@@ -102,7 +102,7 @@ export async function deriveRegionFreshnessLive(
       supabase
         .from("cardio_logs")
         .select(
-          "session_id, duration_sec, rpe, modality, hr_zones, movement:movements(primary_region, secondary_regions)",
+          "*, movement:movements(primary_region, secondary_regions)",
         )
         .in("session_id", sessionIds),
     ]);
@@ -134,6 +134,7 @@ export async function deriveRegionFreshnessLive(
               rpe: row.rpe,
               modality: row.modality,
               hrZones: row.hr_zones,
+              swimResult: row.swim_result,
               movement: row.movement,
             }]
           : [];

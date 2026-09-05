@@ -6,6 +6,7 @@ import {
   type EditCardioMode,
 } from "@/components/session/EditCardioForm";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { findSwimWorkoutForSession } from "@/lib/swim/navigation";
 
 export default async function EditCardioPage({
   params,
@@ -19,6 +20,8 @@ export default async function EditCardioPage({
     data: { user },
   } = await getAuthUser();
   if (!user) redirect("/login");
+  const swimWorkoutId = await findSwimWorkoutForSession(supabase, user.id, id);
+  if (swimWorkoutId) redirect(`/app/swim/${swimWorkoutId}?edit=1`);
 
   const { data: block } = await supabase
     .from("cardio_logs")

@@ -15,6 +15,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const fromCalls: string[] = [];
 let currentUser: { id: string; email: string; created_at: string } | null = null;
+let swimmingAvailable = true;
+let swimReadFails = false;
 
 function makeBuilder(table: string) {
   const result =
@@ -30,7 +32,12 @@ function makeBuilder(table: string) {
           },
           error: null,
         }
-      : { data: [], error: null };
+      : {
+          data: [],
+          error: swimReadFails && table === "swim_workouts"
+            ? { message: "read unavailable" }
+            : null,
+        };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const builder: any = {
     select() {
@@ -46,7 +53,7 @@ function makeBuilder(table: string) {
       return Promise.resolve(result);
     },
     // Thenable so `await supabase.from(t).select(...).order(...)` resolves.
-    then(onFulfilled: (v: { data: unknown; error: null }) => unknown) {
+    then(onFulfilled: (v: { data: unknown; error: { message: string } | null }) => unknown) {
       return Promise.resolve(result).then(onFulfilled);
     },
   };
@@ -64,11 +71,16 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => fakeClient),
   getAuthUser: vi.fn(async () => ({ data: { user: currentUser } })),
 }));
+vi.mock("@/lib/swim/capability", () => ({
+  swimSchemaAvailable: vi.fn(async () => swimmingAvailable),
+}));
 
 import { GET } from "../route";
 
 beforeEach(() => {
   fromCalls.length = 0;
+  swimmingAvailable = true;
+  swimReadFails = false;
   currentUser = { id: "u1", email: "u1@example.test", created_at: "2026-01-01T00:00:00Z" };
 });
 
@@ -84,6 +96,8 @@ const REQUIRED_TABLES = [
   "session_movements",
   "set_logs",
   "cardio_logs",
+  "swim_plans",
+  "swim_workouts",
   "wellness",
   "limitations",
   "limitation_events",
@@ -107,6 +121,8 @@ const REQUIRED_SECTIONS = [
   "session_movements",
   "set_logs",
   "cardio_logs",
+  "swim_plans",
+  "swim_workouts",
   "wellness",
   "limitations",
   "limitation_events",
@@ -138,6 +154,29 @@ const FORBIDDEN_TABLES = [
 ];
 
 describe("GET /api/me/export", () => {
+  it("DC-SW8 exports swim history without depending on the new-setup flag", async () => {
+    const body = await (await GET()).json();
+    expect(body.swimming_schema_available).toBe(true);
+    expect(body.swim_plans).toEqual([]);
+    expect(body.swim_workouts).toEqual([]);
+  });
+
+  it("preserves app-first export before the additive swimming migration", async () => {
+    swimmingAvailable = false;
+    const body = await (await GET()).json();
+    expect(body.swimming_schema_available).toBe(false);
+    expect(fromCalls).not.toContain("swim_plans");
+    expect(fromCalls).not.toContain("swim_workouts");
+    expect(body.sessions).toEqual([]);
+  });
+
+  it("does not return a success-shaped export with missing swim history", async () => {
+    swimReadFails = true;
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(await response.json()).not.toHaveProperty("swim_workouts");
+  });
+
   it("returns 401 when unauthenticated", async () => {
     currentUser = null;
     const res = await GET();

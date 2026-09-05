@@ -2,6 +2,35 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## Standalone pool swimming - 2026-09-05 working branch
+
+ADR 0079 authorizes additive swim storage and access-rule implementation, not a
+production migration. This branch implements the standalone slice only. Swim
+plans/workouts are independent of primary programs, blocks and seasons. Combined
+swimming on a primary program's cardio-only slots is still pending.
+
+Read [`docs/knowledge/pool-swimming.md`](docs/knowledge/pool-swimming.md) and
+DC-SW1 through DC-SW9 before extending the track. The generator must continue to
+accept explicit slot intents, including zero-slot weeks. Course-specific native
+distance and millisecond results are authoritative; generic cardio summaries
+exist for compatibility and shared workload only.
+
+The dedicated Stockholm test is available, but its database/admin credentials
+have not been supplied. Remote acceptance remains blocked; no database migration
+or seeded remote test has run. Do not treat mocked migration/action tests or
+local static browser previews as RLS, concurrency or mobile/offline release proof. Do not use
+production or rehearsal databases, or generic app-credential fallbacks, to run
+seeded tests. Production was not migrated.
+
+New setup uses `POOL_SWIMMING_ENABLED=true` plus the installed schema capability.
+Existing swim history and queued finishes remain available when setup is off.
+The swim knowledge page lists the dedicated-test variables and catalog
+prerequisites. The feature must remain gated until real acceptance passes.
+
+Local work includes domain/engine and web regressions, four package typechecks,
+the web production build, and static mobile/desktop previews. These do not
+replace the pending authenticated database and browser acceptance.
+
 **Last updated:** 2026-08-17 (Strava integration removal; migrations through 0129 — no new migration)
 
 ## Where we are

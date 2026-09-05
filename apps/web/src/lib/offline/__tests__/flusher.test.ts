@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { addStrengthSet, completeSessionResult } from "@/lib/sessions/actions";
+import { completeSwimWorkoutResult } from "@/lib/swim/actions";
 import {
   claimEntry,
   deadLetter,
@@ -17,6 +18,9 @@ vi.mock("@/lib/sessions/actions", () => ({
   addStrengthSet: vi.fn(),
   completeSessionResult: vi.fn(),
   logCardioSession: vi.fn(),
+}));
+vi.mock("@/lib/swim/actions", () => ({
+  completeSwimWorkoutResult: vi.fn(),
 }));
 
 vi.mock("../outbox", () => ({
@@ -43,9 +47,11 @@ describe("flushOutbox", () => {
   let queue: OutboxEntry[];
 
   beforeEach(() => {
+    vi.clearAllMocks();
     queue = [entry];
     vi.mocked(addStrengthSet).mockReset();
     vi.mocked(completeSessionResult).mockReset();
+    vi.mocked(completeSwimWorkoutResult).mockReset();
     vi.mocked(listPending).mockImplementation(async () => [...queue]);
     vi.mocked(outboxAvailable).mockReturnValue(true);
     vi.mocked(claimEntry).mockResolvedValue("lease");
@@ -150,6 +156,48 @@ describe("flushOutbox", () => {
       null,
     );
     expect(remove).toHaveBeenCalledWith("complete-1700000000000");
+  });
+
+  it("ADR0079 replays native swimming actuals with the durable receipt and reports completion", async () => {
+    queue = [{
+      ...entry,
+      op: "swim_complete",
+      payload: { workoutId: "swim-id", result: '{"totalLengths":12}', sessionId: entry.sessionId },
+    }];
+    vi.mocked(completeSwimWorkoutResult).mockResolvedValue({ ok: true });
+    const result = await flushOutbox();
+    const payload = vi.mocked(completeSwimWorkoutResult).mock.calls[0]![0];
+    expect(payload.get("clientLogId")).toBe(entry.id);
+    expect(payload.get("result")).toBe('{"totalLengths":12}');
+    expect(result.completedSessionIds).toEqual([entry.sessionId]);
+    expect(completeSessionResult).not.toHaveBeenCalled();
+  });
+
+  it("ADR0079 an uncertain swim response keeps its exact payload ahead of later work", async () => {
+    const swim = { ...entry, op: "swim_complete" as const, payload: { result: '{"totalLengths":12}' } };
+    queue = [swim, { ...entry, id: "next", seq: 2 }];
+    vi.mocked(completeSwimWorkoutResult).mockRejectedValue(new Error("network lost after commit"));
+    await flushOutbox();
+    expect(queue[0]).toEqual(swim);
+    expect(addStrengthSet).not.toHaveBeenCalled();
+    vi.mocked(completeSwimWorkoutResult).mockResolvedValue({ ok: true });
+    vi.mocked(addStrengthSet).mockResolvedValue({ ok: true });
+    const result = await flushOutbox();
+    expect(result.flushed).toBe(2);
+    expect(result.completedSessionIds).toEqual([entry.sessionId]);
+  });
+
+  it("keeps rejected native swim entries inspectable while later non-swim work continues", async () => {
+    queue = [
+      { ...entry, op: "swim_complete" },
+      { ...entry, id: "00000000-0000-4000-8000-000000000003", seq: 2 },
+    ];
+    vi.mocked(completeSwimWorkoutResult).mockResolvedValue({ error: "Split lengths exceed your total.", errorCode: "validation" });
+    vi.mocked(addStrengthSet).mockResolvedValue({ ok: true });
+    const result = await flushOutbox();
+    expect(result).toMatchObject({ dropped: 1, flushed: 1, remaining: 0, completed: 0 });
+    expect(deadLetter).toHaveBeenCalledWith(entry.id, "Split lengths exceed your total.");
+    expect(remove).not.toHaveBeenCalledWith(entry.id);
   });
 
   it("skips a terminal poison head and continues the global FIFO", async () => {

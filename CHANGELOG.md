@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Standalone pool swimming (ADR 0079, Slice 1)
+- Added swim setup, multiweek plans, Today/Plan access, whole-pool-length
+  workouts, set progress, actual results and durable offline completion.
+- Optional paired 200/400 assessments and reviewed next-week changes preserve
+  issued targets and completed history. Weekly distance stays separate by pool.
+- Pause, reviewed resume dates, finish, archive and session Trash retain swim
+  history. Export includes the native swim records.
+- Additive migration 0145 and an empty-only guarded rollback are included.
+  Setup remains capability-gated and off by default. No production migration
+  has been applied; real database/mobile acceptance remains blocked.
+- Filling an existing program's cardio slots and Garmin support are not part
+  of this slice.
+
 ### Plan refreshes preserve moved workouts
 - Workouts moved to another day now keep that placement when Edit plan or a
   rehab update refreshes the active plan. Older same-week moves are also

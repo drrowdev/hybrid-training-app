@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SwimCalendar } from "@/components/swim/SwimCalendar";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   archetypeDisplayName,
@@ -649,6 +650,7 @@ export default async function TodayPage() {
             stacks below the main column. */}
         <div className="today-grid">
           <div className="today-main" style={{ display: "grid", gap: 18, minWidth: 0 }}>
+            <SwimCalendar todayOnly />
             {raceCheckInProps && <RaceCheckInCard {...raceCheckInProps} />}
 
             {taperBannerProps && <TaperBanner {...taperBannerProps} />}

@@ -1444,3 +1444,30 @@ live data was exported or restored, no source database objects/settings were
 changed, and Vercel's live region was not changed. Rehearsal resources are paused
 to return free-plan capacity to swim testing. The roadmap records the remaining
 approval, access, restore and cutover gates; production remains in Dublin.
+
+## [2026-09-05] refine | Native pool swimming contracts and evidence
+
+Added the original pool-swimming knowledge page and DC-SW1 through DC-SW9.
+Separated native course arithmetic, optional 200/400 assessment, bounded
+heuristics, immutable issued history, lifecycle and shared workload contracts.
+The independent evidence supports directional choices, not universal safe ramps,
+injury probabilities or adult-novice critical-speed validity. Added explicit
+outcome signals and revision thresholds for uncalibrated dose/rest/progression
+rules. This records implementation contracts, not production migration or
+completed database/browser acceptance. Combined cardio-slot binding remains the
+next slice.
+
+## [2026-09-05] refine | Standalone swimming implementation and acceptance boundary
+
+Connected standalone setup, optional assessment, multiweek workouts, native
+actual logging, FIFO offline completion, reviewed next-week decisions and
+pause/resume/history to Today and Plan. Structured results feed the existing
+load ledger once and are included in personal exports. Additive migration 0145
+includes authenticated atomic writes, ownership checks and an empty-only
+rollback; no remote migration has been applied.
+
+Local domain/engine, web, typecheck, build and static mobile/desktop review
+support integration confidence only. The dedicated test still needs owner-local
+database/admin credentials, migrated catalog data and genuine authenticated
+database/browser acceptance. Setup remains off by default; standalone is not
+release-proven. Combined cardio-slot content and Garmin remain separate work.

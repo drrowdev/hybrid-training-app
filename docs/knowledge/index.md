@@ -23,6 +23,11 @@ The three research files. Never edited; new sources appended here when ingested.
 
 The maintained-by-AI layer. These pages are rewritten as new sources arrive; they cite raw sources via the index. The eventual home is `docs/knowledge/` in the repo.
 
+- [`pool-swimming.md`](./pool-swimming.md) - Original standalone prescriptions,
+  exact course measurements, optional assessment, versioned adaptation, shared
+  logging and evidence limits. ADR 0079 / DC-SW1 through DC-SW9; combined
+  cardio-slot use remains a later slice.
+
 | File | One-line summary |
 |---|---|
 | [`hybrid-training-app-plan.md`](./hybrid-training-app-plan.md) | **Master orchestrator.** Scope, product identity, architecture (stack, repo layout, data model, RLS, GDPR), 6-phase roadmap, engineering practices (testing, observability, security, schema discipline, knowledge-as-wiki §6.10), 8 open questions, AI onboarding protocol (Phases A–F). |

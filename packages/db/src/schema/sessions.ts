@@ -15,6 +15,7 @@ import {
   smallint,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -107,7 +108,9 @@ export const sessions = pgTable("sessions", {
    * the Trash page is the only place that selects the inverse.
    */
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
-});
+}, (t) => ({
+  ownerIdKey: uniqueIndex("sessions_user_id_id_key").on(t.userId, t.id),
+}));
 
 export const sessionInsert = createInsertSchema(sessions);
 export const sessionSelect = createSelectSchema(sessions);

@@ -48,6 +48,7 @@ type CardioRow = {
   rpe: number | string | null;
   modality: string | null;
   hr_zones: unknown;
+  swim_result?: unknown;
   movement: unknown;
 };
 
@@ -97,7 +98,7 @@ export async function recomputeRegionState(
   // populated it (PR #162 + audit I3).
   const { data: cardioRaw, error: cardioError } = await supabase
     .from("cardio_logs")
-    .select("session_id, duration_sec, rpe, modality, hr_zones, movement:movements(primary_region, secondary_regions)")
+    .select("*, movement:movements(primary_region, secondary_regions)")
     .in("session_id", sessionIds);
   if (cardioError) throw new Error(cardioError.message);
 
@@ -118,6 +119,7 @@ export async function recomputeRegionState(
     rpe: c.rpe,
     modality: c.modality,
     hr_zones: c.hr_zones,
+    swim_result: c.swim_result,
     movement: c.movement,
   }));
 
@@ -138,6 +140,7 @@ export async function recomputeRegionState(
       rpe: row.rpe,
       modality: row.modality,
       hrZones: row.hr_zones,
+      swimResult: row.swim_result,
       movement: row.movement,
     })),
   });

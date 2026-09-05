@@ -20,6 +20,7 @@ import {
   completeSessionResult,
   logCardioSession,
 } from "@/lib/sessions/actions";
+import { completeSwimWorkoutResult } from "@/lib/swim/actions";
 import {
   claimEntry,
   deadLetter,
@@ -64,6 +65,12 @@ async function runEntry(
     }
     if (entry.op === "cardio_session") {
       const result = await logCardioSession(payloadToFormData(entry.payload));
+      return { result, threw: false };
+    }
+    if (entry.op === "swim_complete") {
+      const result = await completeSwimWorkoutResult(
+        payloadToFormData({ ...entry.payload, clientLogId: entry.id }),
+      );
       return { result, threw: false };
     }
     // complete — redirect-free core; payload carries sessionId + optional notes.
@@ -121,13 +128,14 @@ export async function flushOutbox(): Promise<FlushResult> {
         if (outcome === "done") {
           await remove(entry.id);
           flushed += 1;
-          if (entry.op === "complete") {
+          if (entry.op === "complete" || entry.op === "swim_complete") {
             completed += 1;
             completedSessionIds.push(entry.sessionId);
           }
         } else if (outcome === "drop") {
-          // Explicit validation rejection — discard so it can't wedge the queue.
-          await remove(entry.id);
+          // Native swim drafts need the rejection after a different tab flushes.
+          if (entry.op === "swim_complete") await deadLetter(entry.id, result?.error ?? "Review your swim entries.");
+          else await remove(entry.id);
           dropped += 1;
         } else if (outcome === "dead_letter") {
           // Ownership/not-found failures cannot recover by retrying. Keep the

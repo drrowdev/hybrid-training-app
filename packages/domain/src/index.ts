@@ -16,4 +16,5 @@ export * from "./target-load";
 export * from "./legacy-system-load-warmup";
 export * from "./prescription-fidelity";
 export * from "./rehab-section";
+export * from "./swimming";
 export * from "./types";

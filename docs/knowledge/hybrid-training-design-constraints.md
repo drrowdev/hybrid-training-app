@@ -557,4 +557,65 @@ For each Open Conflict OC-1 through OC-22 above, the deliverable is one of:
 
 ---
 
-**End of design constraints.** Total: **108 constraints** (103 active + 5 ⏸ [BACKLOG]) across 22 sections (A–V) + **0 open conflicts remaining** + **0 plan §7 questions remaining** (Q5 deferred to pre-launch with Gmail-sender interim; Q8 accepted). Constraints document is **ready for Phase E**.
+**Original Phase D total:** **108 constraints** (103 active + 5 ⏸ [BACKLOG]) across 22 sections (A–V) + **0 open conflicts remaining** + **0 plan §7 questions remaining** (Q5 deferred to pre-launch with Gmail-sender interim; Q8 accepted).
+
+## SW. Native pool swimming (ADR 0079, 2026-09-05)
+
+These nine additional constraints govern the additive swim track. Evidence,
+engineering choices and calibration limits are separated in
+[`pool-swimming.md`](./pool-swimming.md). The original primary-program contracts
+remain in force.
+
+- **DC-SW1 - Exact native measurements [DEF].** A pool is a bounded, reduced
+  positive rational length with native `m` or `yd` units. Work uses integer whole
+  lengths and integer milliseconds. Totals, formatting and comparison share one
+  pure implementation. `100/3 m` and `33.33 m` are different courses. Rounded
+  generic cardio projections never become swim truth. Prescriptions, observations
+  and results snapshot their conditions and versions.
+- **DC-SW2 - Optional, condition-specific assessment [EV/DEF].** The supported
+  paired assessment uses exact 200/400 native distances, compatible course,
+  stroke, equipment and protocol, and valid positive timings with plausible
+  ordering. Its critical-speed estimate is not a laboratory threshold; native
+  yards have weaker physiological support. No arbitrary-distance extrapolation,
+  no pace guessed from experience, and no mandatory maximal test. Someone unable
+  to swim one whole length receives learning guidance.
+- **DC-SW3 - Useful whole-length prescriptions [DEF].** Deterministic generation
+  accepts explicit dated slot intents, including empty weeks. Scaling preserves
+  an easy start, purpose-specific main work and an easy finish; unavailable
+  equipment is not prescribed. An impossible budget fails with an actionable
+  error. Without verified pace the time budget is a stopping limit, not a promised
+  finish time. DC-D7/DC-N2 remain binding; no general threshold goal.
+- **DC-SW4 - Reproducible, bounded progression [DEF to calibrate].** The next
+  related week is proposed from persisted settled work, completion, reported
+  effort and compatible actual volume/time, not an incremented fitness counter.
+  Poor completion or high effort holds/reduces; missing effort is not success.
+  Improving, plateau and missed/high-effort fixtures must yield meaningfully
+  different exact outputs. One main dose lever changes within its versioned cap;
+  hold if one whole length would exceed it. Never carry missed volume forward.
+- **DC-SW5 - Decisions preserve issued history [DEF].** Accepted, rejected and
+  overridden progression/benchmark proposals retain their exact consulted
+  inputs, rules and versions. Only future unstarted work may change. Original
+  and subsequent issued versions remain available. A persisted session link
+  defines started; a browser progress cursor does not.
+- **DC-SW6 - Honest analytics [DEF].** Weekly distance/frequency/adherence and
+  planned-versus-actual use native course-specific data. Benchmarks and best
+  efforts compare only compatible conditions. Paused dates and deleted sessions
+  do not masquerade as missed or completed work. Generic historical swimming
+  still counts toward shared workload, but provides no inferred native pace.
+- **DC-SW7 - Independent lifecycle [DEF].** Pause/finish/archive retain targets
+  and history without replacing a primary program. Resume previews fresh dates
+  for acceptance, never catch-up. Started swims can finish after archive, with
+  actual workload credited but no progression of a replacement plan. Session
+  trash/undo retains the link; hard purge may clear it while retaining targets.
+- **DC-SW8 - Owned, atomic single logging [DEF].** Composite ownership links and
+  RLS protect plans, workouts and sessions. Concurrent starts obtain one ordinary
+  session. One serialized completion atomically writes the native result, its
+  single aggregate cardio summary and the durable receipt. Same/new UUID retries
+  cannot add work twice. Generic writes cannot add or contradict structured swim
+  results. Stale edits fail. Export/account deletion include the new data.
+- **DC-SW9 - One shared safety/load path [EV/DEF].** Structured stroke/equipment
+  exposure reaches the existing regional workload path once per aggregate swim,
+  including shoulder/elbow and relevant lower-body regions. Existing generic
+  swimming retains its behavior. Generation/start/future changes use current
+  limitations; historical actuals are not rejected for a newly added limitation.
+  No separate injury model or purported quantitative swim injury-risk ratio.

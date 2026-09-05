@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { findSwimWorkoutForSession } from "@/lib/swim/navigation";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import {
   addCardioBlock,
@@ -94,6 +95,8 @@ export default async function SessionDetailPage({
     data: { user },
   } = await getAuthUser();
   if (!user) redirect("/login");
+  const swimWorkoutId = await findSwimWorkoutForSession(supabase, user.id, id);
+  if (swimWorkoutId) redirect(`/app/swim/${swimWorkoutId}`);
 
   // The production migration intentionally follows the app deploy. Until it is
   // present, omit its new column so loading an existing session stays available.
