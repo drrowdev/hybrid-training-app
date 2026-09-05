@@ -269,6 +269,37 @@ Stats adherence is intentionally not in scope here; its empty-state pass is owne
 
 ## Open follow-ups
 
+### Stockholm production hosting
+
+**Status:** Deferred by the owner on 2026-09-05. Resume pool-swimming delivery
+first; its standalone and combined experiences do not depend on relocating
+production.
+
+**Goal:** Reduce latency for Helsinki by placing production Supabase in Stockholm
+(`eu-north-1`) and Vercel functions in the matching region (`arn1`). The live
+database and actual app deployment currently remain together in Dublin.
+
+**Current state:** An empty Stockholm rehearsal destination was provisioned, but
+no live data was exported or restored, no source database objects or settings were
+changed, and no app switchover occurred. Keep rehearsal resources paused while
+the separate Stockholm swim test project supports feature development.
+
+**Before resuming:** Obtain renewed owner approval for data handling and
+rehearsal, privately configure existing source access, and prove a complete,
+Supabase-compatible restore including Auth, actual Storage files and required
+configuration. Source inspection/export remains non-mutating; missing access
+must not be worked around with production helper functions, roles or grants.
+Verify destination isolation and current free-project capacity. Schedule and
+approve the final write freeze and coordinated database/app cutover separately.
+A return to the old database after accepting new writes requires reconciliation,
+not simply switching the app URL back.
+
+**References:** [Changing project region](https://supabase.com/docs/guides/troubleshooting/change-project-region-eWJo5Z),
+[backup and restore](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore),
+[Vercel regions](https://vercel.com/docs/regions). Supabase regions cannot be
+changed in place; the paid clone feature retains the source region and is not a
+cross-region migration path.
+
 ### Bodyweight progression engine
 Proper push-up / pull-up / squat progression ladders with rep-based "training max" equivalents (e.g. `5 strict pull-ups` is a 1RM-equivalent that should drive band-assisted / weighted-vest progression). Currently bodyweight-only blocks fall back to accessories-only with RPE intensity ÔÇö the `BodyweightOnlyBanner` flags this as early support. Scope when picked up: a parallel main-lift slot for bodyweight movements, a rep-floor / rep-ceiling progression mechanic, and weighted-vest / dip-belt / band-assist tooling that the picker already understands.
 
@@ -289,6 +320,7 @@ Proper push-up / pull-up / squat progression ladders with rep-based "training ma
 
 ## Still open
 
+- **Stockholm production hosting** — deferred on 2026-09-05; complete swimming first.
 - **#13 Phase auto-shift on race calendar** — unchanged. Still gated on a notifications inbox UI.
 - **#16 TAPER auto-detection with Accept/Dismiss** — unchanged. Bundle with #13.
 - **Open follow-up: Notifications inbox** — referenced in `Related` above. Needs its own design pass before #13 / #16 can land their Accept/Dismiss UX.

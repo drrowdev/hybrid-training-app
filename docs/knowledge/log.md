@@ -1434,3 +1434,13 @@ the actual slot availability, including recovery weeks. Claude Opus 5 reviewed
 the binding refinement. The owner selected return to the program's regular
 cardio workouts when swimming is paused; started/completed swims retain history.
 ADR 0079 and its index entry now record the accepted implementation direction.
+
+## [2026-09-05] decision | Defer production region migration and resume swimming
+
+The owner moved the production Stockholm relocation back to the roadmap to
+resume the original standalone and combined pool-swimming delivery. A Stockholm
+test project and separate empty rehearsal destination were provisioned, but no
+live data was exported or restored, no source database objects/settings were
+changed, and Vercel's live region was not changed. Rehearsal resources are paused
+to return free-plan capacity to swim testing. The roadmap records the remaining
+approval, access, restore and cutover gates; production remains in Dublin.
