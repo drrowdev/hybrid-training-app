@@ -183,6 +183,8 @@ interface SwimSlotOutcomeBase {
   readonly slotId: string;
   readonly dateISO: string;
   readonly intent: SwimSlotIntent["intent"];
+  /** Resolved at generation; older stored/reconstructed outcomes may lack it. */
+  readonly budgetMinutes?: number | undefined;
   /** Where the date came from: an added swim day or a bound cardio slot. */
   readonly source: SwimSlotIntent["source"];
 }
@@ -790,6 +792,7 @@ export function generateSwimPlan(input: SwimPlanInput): SwimResult<SwimPlan> {
         slotId: slot.slotId,
         dateISO: slot.dateISO,
         intent: slot.intent,
+        budgetMinutes,
         source: slot.source,
       };
       if (learning) {
@@ -1129,6 +1132,14 @@ function isFutureUnstarted(outcome: SwimSlotOutcome, scope: SwimFutureScope): bo
   );
 }
 
+function slotBudgetMinutes(slot: SwimSlotOutcome, defaultMinutes: number): number {
+  if (slot.budgetMinutes !== undefined) return slot.budgetMinutes;
+  if (slot.kind === "workout") return slot.issued.budget.minutes;
+  if (slot.kind === "guidance") return slot.guidance.minutes;
+  const previousBudget = slot.conflict.details?.budgetMinutes;
+  return typeof previousBudget === "number" ? previousBudget : defaultMinutes;
+}
+
 /**
  * Reissue future unstarted work with a new dose. Started, past and completed
  * workouts keep the prescription they were issued with, and every reissued slot
@@ -1149,6 +1160,7 @@ export function applySwimProposal(
         slotId: slot.slotId,
         dateISO: slot.dateISO,
         intent: slot.intent,
+        budgetMinutes: slotBudgetMinutes(slot, plan.setup.sessionBudgetMinutes),
         source: slot.source,
       })),
     })),

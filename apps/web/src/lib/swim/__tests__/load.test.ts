@@ -122,7 +122,9 @@ describe("DC-SW9 single structured swimming load", () => {
         fetch: async (input, init) => {
           const url = new URL(String(input));
           let data: unknown = [];
-          if (url.pathname.endsWith("/sessions")) {
+          if (url.pathname.endsWith("/rpc/swim_storage_ready")) {
+            data = true;
+          } else if (url.pathname.endsWith("/sessions")) {
             expect(url.searchParams.get("deleted_at")).toBe("is.null");
             expect(url.searchParams.get("completed_at")).toBe("not.is.null");
             data = deleted ? [] : [{ id: "session-1", performed_at: "2026-09-05T09:00:00Z" }];

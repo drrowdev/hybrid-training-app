@@ -112,6 +112,17 @@ describe("ADR0079 swimming SQL boundary", () => {
     expect(cardio.indexOf("RAISE EXCEPTION")).toBeLessThan(cardio.indexOf("FOR v_session_id IN"));
   });
 
+  it("DC-SW7 checks active plan status under the skip lock before changing any workout", () => {
+    const skip = functionBody("swim_skip_workout");
+    const lock = skip.indexOf("FOR UPDATE OF p;");
+    const activeGuard = skip.indexOf("IF v_plan.status <> 'active'");
+    expect(skip).toContain("SELECT p.* INTO v_plan FROM public.swim_plans");
+    expect(lock).toBeGreaterThan(0);
+    expect(activeGuard).toBeGreaterThan(lock);
+    expect(activeGuard).toBeLessThan(skip.indexOf("SELECT * INTO v_workout"));
+    expect(skip.indexOf("SELECT * INTO v_workout")).toBeLessThan(skip.indexOf("UPDATE public.swim_workouts"));
+  });
+
   it("rechecks limitations at start with the same active-row and muscle rules", () => {
     expect(sql).toContain("PERFORM public.swim_assert_start_safety(v_workout.definition->'issued')");
     expect(sql).toContain("BEFORE INSERT OR UPDATE OR DELETE ON public.limitations");

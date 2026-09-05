@@ -106,6 +106,7 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
 
   beforeAll(async () => {
     admin = createSmokeClient(smokeEnv!);
+    expect(await rpc(admin, "swim_storage_ready")).toBe(true);
     // The dedicated project must have its normal catalog seed. Never create
     // replacement global catalog rows as a fallback in an acceptance test.
     easyMovementId = await getMovementIdBySlug(admin, "swim-easy");
@@ -166,6 +167,28 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
     const remaining = await alice.from("swim_plans").select("id").eq("status", "active");
     expect(remaining.error).toBeNull();
     expect(remaining.data).toHaveLength(0);
+  });
+
+  it.each(["paused", "finished", "archived"] as const)("DC-SW7 rejects direct skips on a %s plan without changing history or resume candidates", async (status) => {
+    const created = await createPlan();
+    await rpc(alice, "swim_set_plan_status", {
+      p_plan_id: created.plan.id, p_expected_revision: created.plan.revision, p_status: status,
+    });
+    const beforePlan = await alice.from("swim_plans").select("*").eq("id", created.plan.id).single();
+    const beforeWorkouts = await alice.from("swim_workouts").select("*").eq("plan_id", created.plan.id).order("id");
+    expect(beforePlan.error).toBeNull();
+    expect(beforeWorkouts.error).toBeNull();
+    const skipped = await alice.rpc("swim_skip_workout", {
+      p_workout_id: created.workouts[0]!.id, p_expected_revision: created.workouts[0]!.revision,
+      p_reason: "No pool access",
+    });
+    expect(skipped.error?.code).toBe("P0001");
+    const afterPlan = await alice.from("swim_plans").select("*").eq("id", created.plan.id).single();
+    const afterWorkouts = await alice.from("swim_workouts").select("*").eq("plan_id", created.plan.id).order("id");
+    expect(afterPlan.error).toBeNull();
+    expect(afterWorkouts.error).toBeNull();
+    expect(afterPlan.data).toEqual(beforePlan.data);
+    expect(afterWorkouts.data).toEqual(beforeWorkouts.data);
   });
 
   it("serializes starts and completions; new-UUID replay never overwrites actuals", async () => {

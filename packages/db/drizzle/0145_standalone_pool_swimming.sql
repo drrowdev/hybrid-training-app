@@ -1066,11 +1066,15 @@ CREATE FUNCTION public.swim_skip_workout(p_workout_id uuid, p_expected_revision 
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY DEFINER
 SET search_path = pg_catalog, public SET row_security = on
 AS $$
-DECLARE v_workout public.swim_workouts;
+DECLARE v_workout public.swim_workouts; v_plan public.swim_plans;
 BEGIN
   IF auth.uid() IS NULL THEN RAISE EXCEPTION 'Not signed in.'; END IF;
-  PERFORM 1 FROM public.swim_plans p JOIN public.swim_workouts w ON w.plan_id = p.id
+  SELECT p.* INTO v_plan FROM public.swim_plans p JOIN public.swim_workouts w ON w.plan_id = p.id
     WHERE w.id = p_workout_id AND p.user_id = auth.uid() FOR UPDATE OF p;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Swimming workout not found.'; END IF;
+  IF v_plan.status <> 'active' THEN
+    RAISE EXCEPTION 'Only an active swim plan can skip workouts.';
+  END IF;
   SELECT * INTO v_workout FROM public.swim_workouts
     WHERE id = p_workout_id AND user_id = auth.uid()
       AND status = 'scheduled' AND session_id IS NULL FOR UPDATE;

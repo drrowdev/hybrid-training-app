@@ -22,6 +22,8 @@ import { ALL_REGIONS, type Region } from "@hta/domain";
 import { computeRegionFreshness, ewmaStep } from "@hta/domain";
 import { todayYmd as todayYmdFn, addDaysToYmd } from "@/lib/dates";
 import { deriveDailyRegionLoad } from "@/lib/engine/region-daily-load";
+import { cardioLoadQuery } from "@/lib/engine/cardio-load-projection";
+import { swimSchemaAvailable } from "@/lib/swim/capability";
 
 const LOOKBACK_DAYS = 35;
 
@@ -89,6 +91,7 @@ export async function deriveRegionFreshnessLive(
   if (sessions && sessions.length > 0) {
     const sessionIds = sessions.map((s) => s.id);
     const performedAtById = new Map(sessions.map((s) => [s.id, s.performed_at as string]));
+    const hasSwimming = await swimSchemaAvailable(supabase);
     const [setsRes, cardioRes] = await Promise.all([
       supabase
         .from("set_logs")
@@ -99,11 +102,7 @@ export async function deriveRegionFreshnessLive(
         .eq("skipped", false)
         .not("reps", "is", null)
         .gt("reps", 0),
-      supabase
-        .from("cardio_logs")
-        .select(
-          "*, movement:movements(primary_region, secondary_regions)",
-        )
+      cardioLoadQuery(supabase, hasSwimming)
         .in("session_id", sessionIds),
     ]);
     if (setsRes.error) throw new Error(setsRes.error.message);
@@ -134,7 +133,7 @@ export async function deriveRegionFreshnessLive(
               rpe: row.rpe,
               modality: row.modality,
               hrZones: row.hr_zones,
-              swimResult: row.swim_result,
+              swimResult: "swim_result" in row ? row.swim_result : undefined,
               movement: row.movement,
             }]
           : [];

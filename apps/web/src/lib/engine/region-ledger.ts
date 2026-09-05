@@ -18,6 +18,8 @@ import { finalEwma } from "@hta/domain";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayYmd, ymdInTimezone } from "@/lib/dates";
 import { deriveDailyRegionLoad } from "./region-daily-load";
+import { cardioLoadQuery } from "./cardio-load-projection";
+import { swimSchemaAvailable } from "@/lib/swim/capability";
 
 const REGIONS = [
   "foot_ankle_calf",
@@ -96,9 +98,9 @@ export async function recomputeRegionState(
   // Cardio falls back to duration × rpe-derived load. Pulls `hr_zones` so
   // we can use a time-in-zone weighted intensity when HR zones have
   // populated it (PR #162 + audit I3).
-  const { data: cardioRaw, error: cardioError } = await supabase
-    .from("cardio_logs")
-    .select("*, movement:movements(primary_region, secondary_regions)")
+  const { data: cardioRaw, error: cardioError } = await cardioLoadQuery(
+    supabase, await swimSchemaAvailable(supabase),
+  )
     .in("session_id", sessionIds);
   if (cardioError) throw new Error(cardioError.message);
 
@@ -119,7 +121,7 @@ export async function recomputeRegionState(
     rpe: c.rpe,
     modality: c.modality,
     hr_zones: c.hr_zones,
-    swim_result: c.swim_result,
+    swim_result: "swim_result" in c ? c.swim_result : undefined,
     movement: c.movement,
   }));
 

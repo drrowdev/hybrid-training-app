@@ -186,7 +186,9 @@ export async function editSwimResult(form: FormData): Promise<ActionResult> {
 export async function skipSwimWorkout(workoutId: string, revision: number, reason: string): Promise<ActionResult> {
   try {
     const { client, user } = await swimContext();
-    await ownedSwimWorkout(client, user.id, workoutId);
+    const workout = await ownedSwimWorkout(client, user.id, workoutId);
+    const { plan } = await ownedSwimPlan(client, user.id, workout.plan_id);
+    if (plan.status !== "active") throw new SwimActionError("Only an active swim plan can skip workouts.", "validation");
     const why = z.string().trim().min(1).max(1000).parse(reason);
     await storage.skipSwimWorkout(client, workoutId, z.number().int().positive().parse(revision), why);
     refreshSwims();

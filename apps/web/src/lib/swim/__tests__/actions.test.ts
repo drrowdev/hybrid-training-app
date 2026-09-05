@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { swimFixture, userId, planId, sessionId, receiptId } from "./fixtures";
-import { completeSwimWorkoutResult, createSwimPlan, startSwimWorkout, editSwimResult, decideSwimProposal, previewSwimResume, resumeSwimPlan, proposeSwimBenchmark, decideSwimBenchmark } from "../actions";
+import { completeSwimWorkoutResult, createSwimPlan, startSwimWorkout, editSwimResult, decideSwimProposal, previewSwimResume, resumeSwimPlan, proposeSwimBenchmark, decideSwimBenchmark, skipSwimWorkout } from "../actions";
 import { SWIM_ASSESSMENT_VERSION } from "@hta/domain";
 import * as queries from "../queries";
 import * as storage from "../storage";
@@ -82,6 +82,27 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("ADR0079 server actions", () => {
+  it.each(["paused", "finished", "archived"] as const)("DC-SW7 rejects a skip on a %s plan before storage mutation", async (status) => {
+    const { plan, workouts } = swimFixture();
+    vi.mocked(storage.getSwimWorkout).mockResolvedValue(workouts[0]!);
+    vi.mocked(storage.listSwimPlans).mockResolvedValue([{ ...plan, status }]);
+    expect(await skipSwimWorkout(workouts[0]!.id, 1, "No pool access")).toMatchObject({ errorCode: "validation" });
+    expect(storage.skipSwimWorkout).not.toHaveBeenCalled();
+  });
+  it("DC-SW7 still skips an unstarted workout in an active plan", async () => {
+    const workout = swimFixture().workouts[0]!;
+    vi.mocked(storage.getSwimWorkout).mockResolvedValue(workout);
+    expect(await skipSwimWorkout(workout.id, 1, "No pool access")).toEqual({ ok: true });
+    expect(storage.skipSwimWorkout).toHaveBeenCalledWith(mock.client, workout.id, 1, "No pool access");
+  });
+  it("DC-SW7 reports a plan-status race as a validation error", async () => {
+    const workout = swimFixture().workouts[0]!;
+    vi.mocked(storage.getSwimWorkout).mockResolvedValue(workout);
+    vi.mocked(storage.skipSwimWorkout).mockRejectedValueOnce(
+      new Error("Plan became inactive", { cause: { code: "P0001" } }),
+    );
+    expect(await skipSwimWorkout(workout.id, 1, "No pool access")).toMatchObject({ errorCode: "validation" });
+  });
   it("completion bypasses setup/safety gates and accepts late archived work through the durable boundary", async () => {
     vi.mocked(requireSwimSetup).mockRejectedValue(new Error("Setup disabled"));
     vi.mocked(assertSwimSafety).mockRejectedValue(new Error("New limitation"));
