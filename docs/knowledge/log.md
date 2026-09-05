@@ -1411,3 +1411,26 @@ Completion replay now forwards a UUID receipt only when the queued entry has
 one. Older timestamp-keyed completion rows pass a null receipt and remain
 eligible for normal success or retry handling. An IndexedDB upgrade fixture
 covers reading those rows from an existing outbox. No migration.
+
+## [2026-09-05] decision | Pool swimming architecture proposed for owner approval
+
+Recorded proposed ADR 0079 after inspecting the live single-active-program
+constraints, standalone session logging, offline completion and program-owned
+recovery boundaries. The proposal keeps swimming independent of primary block
+replacement while sharing calendar composition and one cardio workload path.
+Claude Opus 5 challenged the design; ownership foreign keys, generic-write
+guards, reproducible decision inputs and pause/trash behavior were tightened.
+Additive swim storage and access policies require owner approval before
+implementation. No migration or user-facing swim behavior has shipped.
+
+## [2026-09-05] decision | Swimming fills assigned cardio days
+
+The owner approved additive swim-data storage and access-rule implementation,
+without authorizing a production migration. Combined swimming must be selectable
+as the progressive workout source for an existing program's cardio days:
+Tactical Barbell keeps strength and its assigned cardio slots, while swimming
+supplies their content without duplicate workouts or load. The swim week follows
+the actual slot availability, including recovery weeks. Claude Opus 5 reviewed
+the binding refinement. The owner selected return to the program's regular
+cardio workouts when swimming is paused; started/completed swims retain history.
+ADR 0079 and its index entry now record the accepted implementation direction.
