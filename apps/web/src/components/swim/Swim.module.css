@@ -34,6 +34,9 @@
 .step:last-child { border: 0; }
 .step[data-done="true"] { opacity: .65; }
 .stepTitle { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-weight: 600; }
+.repeatCount { min-width: 42px; color: var(--cp-text-soft); font-variant-numeric: tabular-nums; }
+.repeatChoices { display: flex; flex-wrap: wrap; gap: 8px; }
+.splitRow { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 8px; }
 .details summary { min-height: 44px; cursor: pointer; color: var(--cp-text-soft); padding: 10px 0; }
 .details[open] { display: grid; gap: 16px; }
 .tableWrap { overflow-x: auto; }
@@ -41,3 +44,4 @@
 .table th, .table td { padding: 12px 10px; border-bottom: 1px solid var(--cp-border); white-space: nowrap; }
 .table th { color: var(--cp-text-soft); font-weight: 500; }
 @media (max-width: 420px) { .section { padding: 16px; } .columns { gap: 10px; } .button, .secondary { padding-inline: 14px; } }
+@media (max-width: 420px) { .splitRow { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); } .splitRow > button { grid-column: 2; justify-self: end; } }

@@ -175,6 +175,8 @@ export async function loadSwimWorkoutView(client: SupabaseClient, userId: string
       stroke: row.result.snapshot.strokes[0] ?? "freestyle", equipment: [...row.result.snapshot.equipment],
       strokes: [...row.result.snapshot.strokes],
       course: formatPoolCourse(row.result.snapshot.course),
+      distance: formatSwimDistance(row.result.lengths, row.result.snapshot.course),
+      pool: row.result.snapshot.course,
     } : null,
   };
 }

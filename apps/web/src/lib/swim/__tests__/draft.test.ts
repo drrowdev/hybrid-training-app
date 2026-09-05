@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { persistSwimDraft, readSwimDraft, swimDraftKey } from "../draft";
+import { initialSwimDraft, persistSwimDraft, readSwimDraft, swimDraftKey, swimSplitDraftRows, swimSplitDraftText } from "../draft";
+import { workoutPresentation } from "../presentation";
+import { swimFixture } from "./fixtures";
+import type { SwimWorkoutView } from "../view-types";
 
 describe("ADR0079 poolside progress survives reload", () => {
   it("preserves tapped rounds, exact actual entry and the uncertain completion receipt", () => {
@@ -37,5 +40,33 @@ describe("ADR0079 poolside progress survives reload", () => {
   });
   it.each([null, "{", "[]", '{"checked":[123]}'])("ignores malformed local drafts", (value) => {
     expect(readSwimDraft(value)).toBeNull();
+  });
+  it("round-trips incomplete split rows without dropping typed values", () => {
+    const rows = [{ lengths: "4", time: "2:10.123" }, { lengths: "", time: "1:" }];
+    expect(swimSplitDraftRows(swimSplitDraftText(rows))).toEqual(rows);
+    expect(swimSplitDraftRows("4, 2:10\n")).toEqual([{ lengths: "4", time: "2:10" }]);
+    expect(swimSplitDraftRows(swimSplitDraftText([{ lengths: "", time: "" }]))).toEqual([{ lengths: "", time: "" }]);
+  });
+  it("does not silently discard malformed legacy split content", () => {
+    expect(swimSplitDraftRows("4, 2:10, extra")).toEqual([{ lengths: "4", time: "2:10, extra" }]);
+  });
+  it("initializes and resets result edits from the actual course, equipment and fractional effort", () => {
+    const workout: SwimWorkoutView = {
+      ...workoutPresentation(swimFixture().workouts[0]!.definition.issued),
+      id: "workout", revision: 3, sessionId: "session", status: "completed", planStatus: "active",
+      date: "2026-09-07", provisional: false, deleted: false,
+      result: {
+        lengths: 12, timeMs: 123_456, rpe: 7.5, notes: "Saved",
+        reason: "Changed pool", stroke: "backstroke", equipment: ["fins"],
+        pool: { numerator: 100, denominator: 3, unit: "m" },
+      },
+    };
+    expect(initialSwimDraft(workout)).toMatchObject({
+      lengths: "12", time: "2:03.456", rpe: "7.5", notes: "Saved",
+      reason: "Changed pool", equipment: ["fins"], poolLength: "100/3", poolUnit: "m",
+    });
+    const edited = { ...initialSwimDraft(workout), notes: "Unsaved", poolLength: "50" };
+    expect(edited).not.toEqual(initialSwimDraft(workout));
+    expect(initialSwimDraft(workout).notes).toBe("Saved");
   });
 });

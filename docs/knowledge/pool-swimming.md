@@ -23,8 +23,8 @@ direction of the rules, not a copied workout catalogue or validated dosing model
 
 ## Measurement rules
 
-`packages/domain/src/swimming.ts` owns the native data, validation, totals,
-formatting and compatibility projection. `packages/engine/src/swimming.ts`
+The swimming modules in `packages/domain/src/` own native data, validation,
+totals, formatting and compatibility projection. `packages/engine/src/swimming.ts`
 owns deterministic prescriptions and next-week recommendations. Neither performs
 I/O or depends on React or the database.
 
@@ -33,6 +33,9 @@ Lengths are integers and observations retain integer milliseconds. Converting
 yards to metres for a generic summary does not change the native course. A
 100/3 m pool is not a 33.33 m pool. The database's kilometre and second fields
 are rounded compatibility summaries, never a source for swimming benchmarks.
+Custom pool entry accepts decimal or fractional lengths, including `33 1/3`,
+through `swim-pool-input.ts`; the stored rational is not exposed as separate
+numerator/denominator controls.
 
 The optional paired assessment requires exact 200 and 400 native units under
 matching conditions. Its estimate in milliseconds per 100 native units is
@@ -52,12 +55,24 @@ Whole-length workouts preserve easy preparation, key main work and an easy
 finish. Time without verified pace is a stopping budget. It does not claim the
 distance can be completed at an invented speed. A budget that cannot support a
 valid session returns a conflict.
+Each slot retains its own time budget when future work is reissued, including
+slots that could not fit a workout. A plan-wide default must not replace that
+slot's accepted limit.
 
 Future weeks are provisional. Recommendations use settled issued targets and
 actual work, with explicit effort missingness and compatible course data.
 Accept/reject/override decisions retain consulted inputs and rule versions.
 Started targets are frozen; accepting a new benchmark cannot rewrite them.
 Missed work never increases a later session.
+
+## Poolside controls
+
+`swim-workout-progress.ts` groups sets from their structural identities while
+retaining the existing per-repeat progress IDs. The workout shows each set once,
+with mark-next, undo and optional individual-repeat controls. Split times use
+optional length/time rows; partial drafts keep what the swimmer typed. Completed
+results show native distance alongside lengths and elapsed time. Failed form
+submissions retain the entered values.
 
 ## Heuristics and revision policy
 
@@ -106,6 +121,10 @@ remove populated swim storage.
 Release proof requires genuine two-user database and mobile/offline runs on a
 confirmed dedicated non-production environment. Pure and mocked tests do not
 substitute for those acceptance runs.
+
+`pnpm test:coverage` uses the existing Vitest runner for the complete domain and
+engine packages, enforcing the repository's 80% minimum for lines, statements,
+functions and branches. Coverage does not substitute for database acceptance.
 
 ### Dedicated acceptance environment
 

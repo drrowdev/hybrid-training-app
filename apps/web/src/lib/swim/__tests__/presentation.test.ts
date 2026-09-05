@@ -15,13 +15,16 @@ const workout: SwimWorkout = {
 };
 
 describe("ADR0079 poolside ordered workout", () => {
-  it("renders every round and repeat with native distances, effort and rest", () => {
+  it("groups repeats while preserving every round and individual progress identity", () => {
     const view = workoutPresentation(workout);
-    expect(view.steps).toHaveLength(4);
-    expect(new Set(view.steps.map((step) => step.id)).size).toBe(4);
+    expect(view.steps).toHaveLength(2);
+    expect(new Set(view.steps.map((step) => step.id)).size).toBe(2);
+    expect(view.steps.map((step) => step.repeatIds)).toEqual([
+      ["0:0:0:0", "0:0:0:1"], ["0:1:0:0", "0:1:0:1"],
+    ]);
     expect(view.total).toContain("200");
     expect(view.total).toContain("yd");
-    expect(view.steps[0]).toMatchObject({ detail: "Freestyle · Fins", effort: "Easy", rest: "Rest 30 sec" });
+    expect(view.steps[0]).toMatchObject({ title: "2 × 50 yd", detail: "Freestyle · Fins", effort: "Easy", rest: "Rest 30 sec" });
   });
   it("does not fabricate pace for an uncalibrated workout", () => {
     expect(workoutPresentation(workout).steps.every((step) => step.pace === undefined)).toBe(true);

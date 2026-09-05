@@ -15,10 +15,11 @@ export type SwimWorkoutView = {
   strokes: string[];
   equipment: string[];
   pool: { numerator: number; denominator: number; unit: "m" | "yd" };
-  steps: { id: string; section: string; title: string; detail: string; rest: string; effort: string; pace?: string }[];
+  steps: { id: string; repeatIds: string[]; section: string; title: string; detail: string; rest: string; effort: string; pace?: string }[];
   result: null | {
     lengths: number; timeMs: number; rpe?: number; notes?: string; reason?: string; splits?: string; stroke: string;
     equipment?: string[]; course?: string; strokes?: string[];
+    distance?: string; pool?: SwimWorkoutView["pool"];
   };
 
   deleted: boolean;

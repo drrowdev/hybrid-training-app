@@ -17,4 +17,6 @@ export * from "./legacy-system-load-warmup";
 export * from "./prescription-fidelity";
 export * from "./rehab-section";
 export * from "./swimming";
+export * from "./swim-pool-input";
+export * from "./swim-workout-progress";
 export * from "./types";

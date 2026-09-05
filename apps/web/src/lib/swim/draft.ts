@@ -11,10 +11,46 @@ export type SwimDraft = {
   stroke?: string;
   equipment?: string[];
   pool?: string;
+  poolLength?: string;
   poolNumerator?: string;
   poolDenominator?: string;
   poolUnit?: string;
 };
+
+export function initialSwimDraft(workout: SwimWorkoutView): SwimDraft {
+  const pool = workout.result?.pool ?? workout.pool;
+  return {
+    checked: [],
+    lengths: workout.result ? String(workout.result.lengths) : "",
+    time: workout.result ? formatSwimTime(workout.result.timeMs) : "",
+    rpe: workout.result?.rpe != null ? String(workout.result.rpe) : "",
+    notes: workout.result?.notes ?? workout.notes ?? "",
+    reason: workout.result?.reason ?? "",
+    splits: workout.result?.splits ?? "",
+    stroke: "planned",
+    equipment: workout.result?.equipment ?? workout.equipment,
+    pool: "planned",
+    poolLength: formatPoolLengthInput(pool),
+    poolNumerator: String(pool.numerator),
+    poolDenominator: String(pool.denominator),
+    poolUnit: pool.unit,
+  };
+}
+
+export type SwimSplitDraft = { lengths: string; time: string };
+
+export function swimSplitDraftRows(value: string): SwimSplitDraft[] {
+  return value.split(/\r?\n/).filter((line) => line.trim() !== "").map((line) => {
+    const separator = line.indexOf(",");
+    return separator < 0
+      ? { lengths: line.trim(), time: "" }
+      : { lengths: line.slice(0, separator).trim(), time: line.slice(separator + 1).trim() };
+  });
+}
+
+export function swimSplitDraftText(rows: readonly SwimSplitDraft[]): string {
+  return rows.map((row) => `${row.lengths}, ${row.time}`).join("\n");
+}
 
 export function swimDraftKey(userId: string, workoutId: string): string {
   return `hta:swim:${userId}:${workoutId}`;
@@ -42,7 +78,7 @@ export function readSwimDraft(value: string | null): SwimDraft | null {
     }
     if (draft.queuedId !== undefined && typeof draft.queuedId !== "string") return null;
     if (draft.acceptedId !== undefined && typeof draft.acceptedId !== "string") return null;
-    for (const key of ["stroke", "pool", "poolNumerator", "poolDenominator", "poolUnit"] as const) {
+    for (const key of ["stroke", "pool", "poolLength", "poolNumerator", "poolDenominator", "poolUnit"] as const) {
       if (draft[key] !== undefined && typeof draft[key] !== "string") return null;
     }
     if (draft.equipment !== undefined && (!Array.isArray(draft.equipment) || !draft.equipment.every((piece) => typeof piece === "string"))) return null;
@@ -51,3 +87,6 @@ export function readSwimDraft(value: string | null): SwimDraft | null {
     return null;
   }
 }
+import { formatPoolLengthInput } from "@hta/domain";
+import { formatSwimTime } from "./time";
+import type { SwimWorkoutView } from "./view-types";

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MAX_POOL_LENGTHS, MAX_SESSION_BUDGET_MINUTES, MAX_COURSE_DENOMINATOR } from "@hta/domain";
+import { MAX_POOL_LENGTHS, MAX_SESSION_BUDGET_MINUTES } from "@hta/domain";
 import { createSwimPlan } from "@/lib/swim/actions";
 import styles from "./Swim.module.css";
 
@@ -64,7 +64,10 @@ export function SetupForm({ today }: { today: string }) {
   }
 
   return (
-    <form action={submit} className={styles.form}>
+    <form method="post" onSubmit={(event) => {
+      event.preventDefault();
+      submit(new FormData(event.currentTarget));
+    }} className={styles.form}>
       <section className={styles.section}>
         <h2>Your swimming</h2>
         <label className={styles.field}>Goal
@@ -100,10 +103,9 @@ export function SetupForm({ today }: { today: string }) {
         </label>
         {pool === "custom" && <>
           <div className={styles.columns}>
-            <label className={styles.field}>Length numerator<input name="poolNumerator" type="number" min="1" max="1000000" step="1" required defaultValue="100" /></label>
-            <label className={styles.field}>Length denominator<input name="poolDenominator" type="number" min="1" max={MAX_COURSE_DENOMINATOR} step="1" required defaultValue="3" /></label>
+            <label className={styles.field}>Custom pool length<input name="poolLength" maxLength={64} required placeholder="33 1/3" /></label>
+            <label className={styles.field}>Unit<select name="poolUnit"><option value="m">Metres</option><option value="yd">Yards</option></select></label>
           </div>
-          <label className={styles.field}>Unit<select name="poolUnit"><option value="m">Metres</option><option value="yd">Yards</option></select></label>
         </>}
       </section>
       <section className={styles.section}>
@@ -124,10 +126,9 @@ export function SetupForm({ today }: { today: string }) {
         <details className={styles.details}><summary>Pool event</summary>
           <label className={styles.field}>Event date<input name="eventDate" type="date" min={today} /></label>
           <div className={styles.columns}>
-            <label className={styles.field}>Distance numerator<input name="eventNumerator" type="number" min="1" max="1000000" step="1" /></label>
-            <label className={styles.field}>Distance denominator<input name="eventDenominator" type="number" min="1" max="1000000" step="1" defaultValue="1" /></label>
+            <label className={styles.field}>Distance<input name="eventDistance" type="number" min="1" max="1000000" step="any" /></label>
+            <label className={styles.field}>Unit<select name="eventUnit"><option value="m">Metres</option><option value="yd">Yards</option></select></label>
           </div>
-          <label className={styles.field}>Distance unit<select name="eventUnit"><option value="m">Metres</option><option value="yd">Yards</option></select></label>
         </details>
         <BenchmarkFields />
       </section>

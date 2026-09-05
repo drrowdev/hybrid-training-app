@@ -1,6 +1,6 @@
 import { z } from "zod";
 import {
-  parsePoolCourse, lengthsForNativeDistance, estimateCriticalSwimSpeed,
+  parsePoolCourse, parsePoolLengthInput, lengthsForNativeDistance, estimateCriticalSwimSpeed,
   SWIM_ASSESSMENT_VERSION, validateSwimSetup,
   type PoolCourse, type SwimObservation, type SwimSetup,
 } from "@hta/domain";
@@ -15,6 +15,21 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(
     return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
   }, "Choose a valid date.",
 );
+
+function courseFromFields(pool: "25m" | "50m" | "25yd" | "custom", fields: {
+  poolLength?: string | undefined; poolNumerator: unknown; poolDenominator: unknown; poolUnit: unknown;
+}): PoolCourse {
+  const unit = pool === "custom" ? z.enum(["m", "yd"]).parse(fields.poolUnit) : pool === "25yd" ? "yd" : "m";
+  const course = pool === "custom" && fields.poolLength !== undefined
+    ? parsePoolLengthInput(fields.poolLength, unit)
+    : parsePoolCourse({
+      lengthNumerator: pool === "custom" ? Number(fields.poolNumerator) : pool === "50m" ? 50 : 25,
+      lengthDenominator: pool === "custom" ? Number(fields.poolDenominator) : 1,
+      unit,
+    });
+  if (!course.ok) throw new SwimInputError(course.error.message);
+  return course.value;
+}
 
 export function parseBenchmarkForm(form: FormData, course: PoolCourse): SwimObservation | null {
   const time200 = String(form.get("time200") ?? "").trim();
@@ -41,31 +56,29 @@ export function parseBenchmarkForm(form: FormData, course: PoolCourse): SwimObse
 
 export function parseSetupForm(form: FormData) {
   const pool = z.enum(["25m", "50m", "25yd", "custom"]).parse(form.get("pool"));
-  const course = parsePoolCourse({
-    lengthNumerator: pool === "custom" ? Number(form.get("poolNumerator")) : pool === "50m" ? 50 : 25,
-    lengthDenominator: pool === "custom" ? Number(form.get("poolDenominator")) : 1,
-    unit: pool === "custom" ? z.enum(["m", "yd"]).parse(form.get("poolUnit")) : pool === "25yd" ? "yd" : "m",
+  const course = courseFromFields(pool, {
+    poolLength: form.has("poolLength") ? String(form.get("poolLength")) : undefined,
+    poolNumerator: form.get("poolNumerator"), poolDenominator: form.get("poolDenominator"), poolUnit: form.get("poolUnit"),
   });
-  if (!course.ok) throw new SwimInputError(course.error.message);
   const goal = z.enum(["technique", "base", "endurance"]).parse(form.get("goal"));
   const experience = z.enum(["beginner", "returning", "regular", "trained"]).parse(form.get("experience"));
   const weekdays = z.array(z.coerce.number().int().min(0).max(6)).min(1).max(7).parse(form.getAll("weekdays"));
   if (new Set(weekdays).size !== weekdays.length) throw new SwimInputError("Choose each swim day once.");
   const startDate = date.parse(form.get("startDate"));
   const weeks = z.coerce.number().int().min(2).max(16).parse(form.get("weeks"));
-  const observation = parseBenchmarkForm(form, course.value);
+  const observation = parseBenchmarkForm(form, course);
   const eventDate = String(form.get("eventDate") ?? "");
-  const eventNumerator = String(form.get("eventNumerator") ?? "");
-  const event = eventDate || eventNumerator ? {
+  const eventDistance = String(form.get("eventDistance") ?? form.get("eventNumerator") ?? "");
+  const event = eventDate || eventDistance ? {
     dateISO: date.parse(eventDate),
-    distance: z.coerce.number().positive().max(1000000).parse(eventNumerator) /
-      z.coerce.number().positive().max(1000000).parse(form.get("eventDenominator")),
+    distance: z.coerce.number().positive().max(1000000).parse(eventDistance) /
+      (form.has("eventDistance") ? 1 : z.coerce.number().positive().max(1000000).parse(form.get("eventDenominator"))),
     unit: z.enum(["m", "yd"]).parse(form.get("eventUnit")),
   } : undefined;
   const setup: SwimSetup = {
     goal: goal === "endurance" ? "endurance" : "technique_base",
     experience: experience === "beginner" ? "learning" : experience === "regular" ? "recreational" : experience,
-    course: course.value,
+    course,
     knownStrokes: z.array(stroke).parse(form.getAll("strokes")),
     equipment: z.array(equipment).parse(form.getAll("equipment")),
     recentComfortableLengths: z.coerce.number().int().min(0).max(2000).parse(form.get("comfortableLengths")),
@@ -90,6 +103,7 @@ export const actualFormSchema = z.object({
   stroke: z.enum(["planned", "freestyle", "backstroke", "breaststroke", "butterfly", "individual_medley", "choice", "kick"]),
   equipment: z.string().default("[]"),
   pool: z.enum(["planned", "25m", "50m", "25yd", "custom"]).default("planned"),
+  poolLength: z.string().max(64).optional(),
   poolNumerator: z.string().default(""),
   poolDenominator: z.string().default(""),
   poolUnit: z.string().default(""),
@@ -104,18 +118,12 @@ export function parseActualForm(form: FormData) {
   let course: PoolCourse | null = null;
   if (fields.pool !== "planned") {
     if (fields.confirmPool !== "on") throw new SwimInputError("Confirm the pool used for this result.");
-    const parsed = parsePoolCourse({
-      lengthNumerator: fields.pool === "custom" ? Number(fields.poolNumerator) : fields.pool === "50m" ? 50 : 25,
-      lengthDenominator: fields.pool === "custom" ? Number(fields.poolDenominator) : 1,
-      unit: fields.pool === "custom" ? z.enum(["m", "yd"]).parse(fields.poolUnit) : fields.pool === "25yd" ? "yd" : "m",
-    });
-    if (!parsed.ok) throw new SwimInputError(parsed.error.message);
-    course = parsed.value;
+    course = courseFromFields(fields.pool, fields);
   }
 
   const splits = fields.splits.trim() ? fields.splits.trim().split(/\r?\n/).map((line) => {
     const [lengths, time, extra] = line.split(",").map((value) => value.trim());
-    if (extra !== undefined || !lengths || !time) throw new SwimInputError("Enter each split as lengths, minutes:seconds.");
+    if (extra !== undefined || !lengths || !time) throw new SwimInputError("Enter a length count and time for each split.");
     return { lengths: z.coerce.number().int().min(1).max(2000).parse(lengths), timeMs: parseSwimTime(time) };
   }) : [];
   if (splits.reduce((sum, split) => sum + split.lengths, 0) > fields.lengths) throw new SwimInputError("Split lengths exceed your total.");

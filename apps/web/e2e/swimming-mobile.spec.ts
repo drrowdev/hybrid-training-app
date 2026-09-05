@@ -52,4 +52,52 @@ test.describe("ADR0079 standalone swimming", () => {
     await page.getByRole("link", { name: "Swimming", exact: true }).click();
     await expect(page).toHaveURL(/\/app\/swim$/);
   });
+
+  test("custom pool entry survives validation and compact repeats retain progress", async ({
+    page, context, freshUser, admin, baseURL, seedConfig,
+  }) => {
+    await markOnboarded(admin, freshUser.userId);
+    await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
+    await page.goto("/app/swim/setup");
+    await page.getByLabel("Pool length", { exact: true }).selectOption("custom");
+    await page.getByLabel("Custom pool length", { exact: true }).fill("33.33");
+    await page.getByLabel("Recent comfortable continuous lengths").fill("6");
+    await page.getByLabel("Weeks", { exact: true }).fill("2");
+    await page.getByText("200 / 400 assessment (optional)", { exact: true }).click();
+    await page.getByLabel("200 time").fill("4:00");
+    await page.getByLabel("400 time").fill("8:30");
+    await page.getByLabel("Swum on", { exact: true }).fill(await page.getByLabel("Start date", { exact: true }).inputValue());
+    await page.getByRole("checkbox", { name: /Verified times/ }).check();
+    await page.getByRole("button", { name: "Create swim plan" }).click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByLabel("Custom pool length", { exact: true })).toHaveValue("33.33");
+    await expect(page.getByLabel("200 time")).toHaveValue("4:00");
+    await page.getByLabel("Custom pool length", { exact: true }).fill("33 1/3");
+    await page.getByRole("button", { name: "Create swim plan" }).click();
+    await expect(page).toHaveURL(/\/app\/swim\?plan=/);
+
+    await page.goto("/app/plan");
+    await page.getByRole("link", { name: /Pool swim/ }).first().click();
+    await page.getByRole("button", { name: "Start swim" }).click();
+    await page.getByRole("button", { name: "Mark next", exact: true }).first().click();
+    await expect(page.locator("output").first()).toHaveText(/^1\//);
+    await page.reload();
+    await expect(page.locator("output").first()).toHaveText(/^1\//);
+
+    await page.getByRole("link", { name: "Log swim", exact: true }).click();
+    await page.getByLabel("Whole lengths", { exact: true }).fill("6");
+    await page.getByLabel("Time · min:sec", { exact: true }).fill("8:12.345");
+    await page.getByText("Notes, changes and splits", { exact: true }).click();
+    await page.getByLabel("Changed or skipped work", { exact: true }).fill("Stopped early");
+    await page.getByRole("button", { name: "Add split", exact: true }).click();
+    await page.getByLabel("Split 1 lengths", { exact: true }).fill("4");
+    await page.getByLabel("Split 1 time", { exact: true }).fill("2:15.125");
+    await page.getByRole("button", { name: "Finish swim", exact: true }).click();
+    const result = page.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
+    await expect(result.getByText("200 m", { exact: true })).toBeVisible({ timeout: 25000 });
+    await result.getByRole("button", { name: "Edit result", exact: true }).click();
+    await page.getByText("Notes, changes and splits", { exact: true }).click();
+    await expect(page.getByLabel("Split 1 lengths", { exact: true })).toHaveValue("4");
+    await expect(page.getByLabel("Split 1 time", { exact: true })).toHaveValue("2:15.125");
+  });
 });

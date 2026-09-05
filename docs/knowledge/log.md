@@ -1471,3 +1471,17 @@ support integration confidence only. The dedicated test still needs owner-local
 database/admin credentials, migrated catalog data and genuine authenticated
 database/browser acceptance. Setup remains off by default; standalone is not
 release-proven. Combined cardio-slot content and Garmin remain separate work.
+
+## [2026-09-05] refine | Readable poolside controls and review fixes
+
+Replaced storage-shaped pool/event inputs and split text entry with ordinary
+distance inputs and optional split rows. Compact set groups preserve existing
+repeat-progress identities, with mark-next/undo and individual controls; result
+summaries show actual native distance. Failed form submissions retain inputs.
+Independent review also closed per-slot time-budget loss during reissue,
+inactive-plan skip mutations, and unnecessary cardio-history blob reads.
+Local checks do not replace the still-pending real database/browser acceptance.
+
+The existing Vitest runner now has its matching coverage provider and a
+`test:coverage` command enforcing the 80% contract across the full domain and
+engine packages.

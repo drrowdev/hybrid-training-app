@@ -32,6 +32,28 @@ describe("ADR0079 swimming form boundaries", () => {
     expect(value.observation).toBeNull();
     expect(value.weekdays).toEqual([1, 4]);
   });
+  it.each([
+    ["33 1/3", 100, 3],
+    ["33.33", 3333, 100],
+  ])("DC-SW1 accepts a readable custom length %s", (text, numerator, denominator) => {
+    const form = setup();
+    form.set("poolLength", String(text));
+    form.delete("poolNumerator");
+    form.delete("poolDenominator");
+    expect(parseSetupForm(form).setup.course).toEqual({ numerator, denominator, unit: "m" });
+  });
+  it("does not fall back to legacy fields when the new length input is invalid", () => {
+    const form = setup();
+    form.set("poolLength", "not a length");
+    expect(() => parseSetupForm(form)).toThrow();
+  });
+  it("accepts an ordinary event distance without exposing a fraction representation", () => {
+    const form = setup();
+    form.set("eventDate", "2026-10-10");
+    form.set("eventDistance", "400");
+    form.set("eventUnit", "m");
+    expect(parseSetupForm(form).setup.event).toMatchObject({ distance: 400, unit: "m" });
+  });
   it("requires explicit verification for paired-distance assessment", () => {
     const form = setup();
     form.set("time200", "4:00"); form.set("time400", "8:30");
@@ -105,5 +127,13 @@ describe("ADR0079 swimming form boundaries", () => {
   it("does not round partial lengths into completed distance", () => {
     const form = actual(); form.set("lengths", "2.5");
     expect(() => parseActualForm(form)).toThrow();
+  });
+  it("DC-SW1 accepts the same readable custom pool input when logging actual work", () => {
+    const form = actual();
+    form.set("pool", "custom");
+    form.set("poolLength", "33 1/3");
+    form.set("poolUnit", "m");
+    form.set("confirmPool", "on");
+    expect(parseActualForm(form).course).toEqual({ numerator: 100, denominator: 3, unit: "m" });
   });
 });

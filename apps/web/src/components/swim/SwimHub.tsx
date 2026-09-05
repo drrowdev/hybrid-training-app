@@ -59,10 +59,14 @@ export function SwimHub({ plan }: { plan: SwimHubView }) {
               <button className={styles.secondary} disabled={pending} onClick={() => run(() => decideSwimProposal(plan.id, plan.revision, proposal.id, "rejected"))}>Reject</button>
             </div>
             {proposal.kind === "week" && <details className={styles.details}><summary>Choose a different week</summary>
-              <form className={styles.form} action={(form) => run(() => decideSwimProposal(
-                plan.id, plan.revision, proposal.id, "overridden",
-                String(form.get("repeats")), String(form.get("reason")),
-              ))}>
+              <form className={styles.form} method="post" onSubmit={(event) => {
+                event.preventDefault();
+                const form = new FormData(event.currentTarget);
+                run(() => decideSwimProposal(
+                  plan.id, plan.revision, proposal.id, "overridden",
+                  String(form.get("repeats")), String(form.get("reason")),
+                ));
+              }}>
                 <label className={styles.field}>Main repeats<input name="repeats" type="number" min="1" max="2000" defaultValue={proposal.mainRepeats} required /></label>
                 <label className={styles.field}>Reason<textarea name="reason" maxLength={1000} required /></label>
                 <button className={styles.secondary} disabled={pending}>Apply my choice</button>
@@ -108,7 +112,9 @@ export function SwimHub({ plan }: { plan: SwimHubView }) {
       </section>
       {editable && <section className={styles.section}>
         <h2>New assessment</h2>
-        <form className={styles.form} action={(form) => {
+        <form className={styles.form} method="post" onSubmit={(event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
           setError(null);
           startTransition(async () => {
             try {
@@ -133,7 +139,9 @@ export function SwimHub({ plan }: { plan: SwimHubView }) {
       </section>}
       <section className={styles.section}>
         <h2>Manage plan</h2>
-        {plan.status === "paused" && <form className={styles.form} action={(form) => {
+        {plan.status === "paused" && <form className={styles.form} method="post" onSubmit={(event) => {
+          event.preventDefault();
+          const form = new FormData(event.currentTarget);
           setError(null);
           startTransition(async () => {
             try {

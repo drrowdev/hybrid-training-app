@@ -11,6 +11,9 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   issued targets and completed history. Weekly distance stays separate by pool.
 - Pause, reviewed resume dates, finish, archive and session Trash retain swim
   history. Export includes the native swim records.
+- Custom pool lengths accept ordinary numbers or fractions. Compact repeat sets,
+  optional split rows and actual-distance summaries simplify poolside logging.
+- Plan updates retain each workout's time limit; only active plans allow skips.
 - Additive migration 0145 and an empty-only guarded rollback are included.
   Setup remains capability-gated and off by default. No production migration
   has been applied; real database/mobile acceptance remains blocked.

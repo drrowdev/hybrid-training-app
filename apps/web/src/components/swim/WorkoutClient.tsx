@@ -2,33 +2,25 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MAX_POOL_LENGTHS } from "@hta/domain";
+import { MAX_POOL_LENGTHS, formatPoolLengthInput, swimRepeatProgress } from "@hta/domain";
 import Link from "next/link";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
+import { RpeInput } from "@/components/forms/RpeInput";
 import { startSwimWorkout, skipSwimWorkout, editSwimResult } from "@/lib/swim/actions";
 import { enqueue, listForSession, listDeadLettered } from "@/lib/offline/outbox";
 import { createOutboxEntryId } from "@/lib/offline/outbox-core";
 import { flushOutbox, startAutoFlush } from "@/lib/offline/flusher";
 import { formatSwimTime, parseSwimTime } from "@/lib/swim/time";
-import { persistSwimDraft, readSwimDraft, swimDraftKey, type SwimDraft } from "@/lib/swim/draft";
+import { initialSwimDraft, persistSwimDraft, readSwimDraft, swimDraftKey, type SwimDraft } from "@/lib/swim/draft";
 import type { SwimWorkoutView } from "@/lib/swim/view-types";
 import { SWIM_EQUIPMENT_LABEL, SWIM_STROKE_LABEL } from "@/lib/swim/presentation";
 import styles from "./Swim.module.css";
+import { SplitFields } from "./SplitFields";
 
 export function WorkoutClient({ workout, userId, edit = false }: { workout: SwimWorkoutView; userId: string; edit?: boolean }) {
   const router = useRouter();
   const key = swimDraftKey(userId, workout.id);
-  const [draft, setDraft] = useState<SwimDraft>({
-    checked: [], lengths: workout.result ? String(workout.result.lengths) : "",
-    time: workout.result ? formatSwimTime(workout.result.timeMs) : "",
-    rpe: workout.result?.rpe != null ? String(workout.result.rpe) : "",
-    notes: workout.result?.notes ?? workout.notes ?? "", reason: workout.result?.reason ?? "",
-    splits: workout.result?.splits ?? "",
-    stroke: "planned",
-    equipment: workout.result?.equipment ?? workout.equipment,
-    pool: "planned", poolNumerator: String(workout.pool.numerator),
-    poolDenominator: String(workout.pool.denominator), poolUnit: workout.pool.unit,
-  });
+  const [draft, setDraft] = useState<SwimDraft>(() => initialSwimDraft(workout));
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sync, setSync] = useState<"idle" | "queued" | "saved" | "checking">("idle");
@@ -108,9 +100,30 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
     return () => { alive = false; stop(); };
   }, [workout.sessionId, workout.result, router, draft.queuedId, draft.acceptedId]);
 
-  function change(field: keyof SwimDraft, value: string) {
+  function change(field: Exclude<keyof SwimDraft, "checked" | "equipment">, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
   }
+
+  function toggleRepeat(id: string, checked: boolean) {
+    setDraft((current) => ({
+      ...current,
+      checked: checked ? [...new Set([...current.checked, id])] : current.checked.filter((value) => value !== id),
+    }));
+  }
+
+  function advanceRepeats(ids: readonly string[], undo = false) {
+    setDraft((current) => {
+      const progress = swimRepeatProgress(ids, current.checked);
+      const id = undo ? progress.undoId : progress.nextId;
+      if (!id) return current;
+      return { ...current, checked: undo ? current.checked.filter((value) => value !== id) : [...current.checked, id] };
+    });
+  }
+
+  const poolLength = draft.poolLength ??
+    (draft.poolNumerator && draft.poolDenominator
+      ? `${draft.poolNumerator}/${draft.poolDenominator}`
+      : formatPoolLengthInput(workout.pool));
 
   function start() {
     setError(null);
@@ -137,7 +150,7 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
           notes: draft.notes, reason: draft.reason, splits: draft.splits,
           stroke: draft.stroke ?? "planned",
           equipment: JSON.stringify(draft.equipment ?? workout.equipment),
-          pool: draft.pool ?? "planned", poolNumerator: draft.poolNumerator ?? "",
+          pool: draft.pool ?? "planned", poolLength, poolNumerator: draft.poolNumerator ?? "",
           poolDenominator: draft.poolDenominator ?? "", poolUnit: draft.poolUnit ?? "",
           confirmPool: String(form.get("confirmPool") ?? ""),
           expectedRevision: String(workout.revision),
@@ -176,11 +189,12 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
 
   const completed = !workout.sourceGone && (!!workout.result || sync === "saved");
   const canLog = !!workout.sessionId && !workout.deleted && !workout.sourceGone && (!completed || editing);
+  const controlsDisabled = pending || !ready || sync === "queued" || sync === "checking";
   return (
     <>
       <section className={styles.section}>
         <div className={styles.actions}><p className={styles.distance}>{workout.total}</p><span className={styles.muted}>{workout.course}</span></div>
-        <p className={styles.muted}>{workout.date} · {workout.budgetMinutes} min budget{workout.provisional && !workout.sessionId ? " · Provisional" : ""}</p>
+        <p className={styles.muted}>{workout.date} · Up to {workout.budgetMinutes} min{workout.provisional && !workout.sessionId ? " · Provisional" : ""}</p>
         {workout.calibrationLabel && <p className={styles.muted}>{workout.calibrationLabel}</p>}
         {!workout.sessionId && workout.status === "scheduled" && workout.planStatus === "active" && (
           <button className={styles.button} disabled={pending} onClick={start}>{pending ? "Starting…" : "Start swim"}</button>
@@ -198,35 +212,62 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
       <section className={styles.section}>
         <h2>Workout</h2>
         <ol className={styles.steps}>
-          {workout.steps.map((step) => (
-            <li key={step.id} className={styles.step} data-done={draft.checked.includes(step.id)}>
+          {workout.steps.map((step) => {
+            const progress = swimRepeatProgress(step.repeatIds, draft.checked);
+            return <li key={step.id} className={styles.step} data-done={progress.completed === progress.total}>
               <div className={styles.stepTitle}><span>{step.section}</span><span>{step.title}</span></div>
               <p className={styles.muted}>{step.detail}</p>
               <p className={styles.muted}>{step.effort} · {step.rest}{step.pace ? ` · ${step.pace}` : ""}</p>
-              {workout.sessionId && !completed && !workout.deleted && !workout.sourceGone && <label className={styles.choice}>
-                <input type="checkbox" aria-label={`Mark ${step.section}, ${step.title} done`} checked={draft.checked.includes(step.id)} disabled={!ready || sync === "queued"} onChange={(event) => {
-                  setDraft((current) => ({ ...current, checked: event.target.checked ? [...current.checked, step.id] : current.checked.filter((id) => id !== step.id) }));
-                }} />Done
-              </label>}
+              {workout.sessionId && !completed && !workout.deleted && !workout.sourceGone && (
+                step.repeatIds.length === 1 ? <label className={styles.choice}>
+                  <input type="checkbox" aria-label={`Mark ${step.section}, ${step.title} done`}
+                    checked={progress.completed === 1} disabled={controlsDisabled}
+                    onChange={(event) => toggleRepeat(step.repeatIds[0]!, event.target.checked)} />Done
+                </label> : <>
+                  <div className={styles.actions}>
+                    <output className={styles.repeatCount} aria-label={`${step.section} progress`}>{progress.completed}/{progress.total}</output>
+                    <button type="button" className={styles.secondary} disabled={controlsDisabled || !progress.nextId}
+                      onClick={() => advanceRepeats(step.repeatIds)}>Mark next</button>
+                    <button type="button" className={styles.secondary} disabled={controlsDisabled || !progress.undoId}
+                      onClick={() => advanceRepeats(step.repeatIds, true)}>Undo</button>
+                  </div>
+                  <details className={styles.details}>
+                    <summary>Individual repeats</summary>
+                    <div className={styles.repeatChoices}>
+                      {step.repeatIds.map((id, index) => <label className={styles.choice} key={id}>
+                        <input type="checkbox" aria-label={`Mark ${step.section}, repeat ${index + 1} done`}
+                          checked={draft.checked.includes(id)} disabled={controlsDisabled}
+                          onChange={(event) => toggleRepeat(id, event.target.checked)} />{index + 1}
+                      </label>)}
+                    </div>
+                  </details>
+                </>
+              )}
             </li>
-          ))}
+          })}
         </ol>
       </section>
       {completed && !editing && workout.result && <section className={styles.section}>
         <h2>Your swim</h2>
+        {workout.result.distance && <p className={styles.distance}>{workout.result.distance}</p>}
         <p>{workout.result.lengths} lengths · {formatSwimTime(workout.result.timeMs)}{workout.result.rpe != null ? ` · RPE ${workout.result.rpe}` : ""}</p>
         {workout.result.course && <p className={styles.muted}>{workout.result.course}</p>}
         {workout.result.notes && <p className={styles.muted}>{workout.result.notes}</p>}
         {!workout.deleted && <button className={styles.secondary} onClick={() => setEditing(true)}>Edit result</button>}
       </section>}
-      {canLog && <form id="swim-result" action={submit} className={styles.section}>
+      {canLog && <form id="swim-result" method="post" onSubmit={(event) => {
+        event.preventDefault();
+        submit(new FormData(event.currentTarget));
+      }} className={styles.section}>
         <h2>{editing ? "Edit your swim" : "Log your swim"}</h2>
-        <fieldset className={styles.formFields} disabled={pending || !ready || sync === "queued"} aria-label="Swim result">
+        <fieldset className={styles.formFields} disabled={controlsDisabled} aria-label="Swim result">
         <div className={styles.columns}>
           <label className={styles.field}>Whole lengths<input type="number" min="1" max={MAX_POOL_LENGTHS} step="1" required value={draft.lengths} onChange={(event) => change("lengths", event.target.value)} /></label>
           <label className={styles.field}>Time · min:sec<input required placeholder="18:30.000" value={draft.time} onChange={(event) => change("time", event.target.value)} /></label>
         </div>
-        <label className={styles.field}>Effort · RPE (optional)<input type="number" min="0" max="10" step="0.1" value={draft.rpe} onChange={(event) => change("rpe", event.target.value)} /></label>
+        <RpeInput name="rpe" context="cardio" value={draft.rpe === "" ? null : Number(draft.rpe)}
+          onChange={(value) => change("rpe", value == null ? "" : String(value))} />
+        {draft.rpe !== "" && !Number.isInteger(Number(draft.rpe)) && <p className={styles.muted}>Recorded effort: {draft.rpe}</p>}
         <details className={styles.details}>
           <summary>Notes, changes and splits</summary>
           <label className={styles.field}>Notes<textarea rows={2} maxLength={2000} value={draft.notes} onChange={(event) => change("notes", event.target.value)} /></label>
@@ -250,19 +291,22 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
           </select></label>
           {draft.pool === "custom" && <>
             <div className={styles.columns}>
-              <label className={styles.field}>Length numerator<input type="number" min="1" required value={draft.poolNumerator} onChange={(event) => change("poolNumerator", event.target.value)} /></label>
-              <label className={styles.field}>Length denominator<input type="number" min="1" required value={draft.poolDenominator} onChange={(event) => change("poolDenominator", event.target.value)} /></label>
+              <label className={styles.field}>Custom pool length<input maxLength={64} required placeholder="33 1/3"
+                value={poolLength} onChange={(event) => change("poolLength", event.target.value)} /></label>
+              <label className={styles.field}>Unit<select value={draft.poolUnit} onChange={(event) => change("poolUnit", event.target.value)}><option value="m">Metres</option><option value="yd">Yards</option></select></label>
             </div>
-            <label className={styles.field}>Unit<select value={draft.poolUnit} onChange={(event) => change("poolUnit", event.target.value)}><option value="m">Metres</option><option value="yd">Yards</option></select></label>
           </>}
           {draft.pool && draft.pool !== "planned" && <label className={styles.choice}><input type="checkbox" name="confirmPool" required />Use this pool for my result</label>}
-          <label className={styles.field}>Splits · lengths, min:sec<textarea rows={3} placeholder={"4, 2:10.000\n4, 2:15.000"} value={draft.splits} onChange={(event) => change("splits", event.target.value)} /></label>
+          <SplitFields value={draft.splits} onChange={(value) => change("splits", value)} />
         </details>
         </fieldset>
-        <button className={styles.button} disabled={pending || !ready || sync === "queued"}>{pending ? "Saving…" : editing ? "Save changes" : sync === "queued" ? "Waiting to sync" : "Finish swim"}</button>
-        {editing && <button type="button" className={styles.secondary} onClick={() => setEditing(false)}>Cancel</button>}
+        <button className={styles.button} disabled={controlsDisabled}>{pending ? "Saving…" : editing ? "Save changes" : sync === "queued" ? "Waiting to sync" : "Finish swim"}</button>
+        {editing && <button type="button" className={styles.secondary} disabled={pending}
+          onClick={() => { setDraft(initialSwimDraft(workout)); setEditing(false); }}>Cancel</button>}
       </form>}
-      {!workout.sessionId && workout.status === "scheduled" && workout.planStatus === "active" && <form action={(form) => {
+      {!workout.sessionId && workout.status === "scheduled" && workout.planStatus === "active" && <form method="post" onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
         setError(null);
         startTransition(async () => {
           try {
@@ -277,7 +321,7 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
         </details>
       </form>}
       {error && <p role="alert" className={styles.error}>{error}</p>}
-      {workout.sessionId && !workout.deleted && !workout.sourceGone && sync !== "queued" && (
+      {workout.sessionId && !workout.deleted && !workout.sourceGone && sync !== "queued" && sync !== "checking" && (
         <DeleteSessionButton sessionId={workout.sessionId} label="Swim" redirectTo="/app/swim" variant="menu" />
       )}
     </>
