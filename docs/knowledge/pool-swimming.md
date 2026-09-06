@@ -189,6 +189,11 @@ The web config selects `src/**/*.test.ts`, with 20,000 ms test and hook
 timeouts. Tests are sequential by default; files may run in parallel.
 The command below selects only the swim smoke file and explicitly disables
 file/test concurrency and retries without changing either timeout.
+`--passWithNoTests=false` overrides the web default. The Node/tsx validator
+requires the exact smoke-file identity, at least 30 unique cases, every assertion
+passed, and consistent explicit Vitest 2.1.9 counters. Suite totals include nested
+`describe` blocks; they are not the number of files. There is no JSON
+`numSkippedTests` counter: skipped/pending/todo assertions are rejected directly.
 
 Run only after the official Supabase CLI/Docker stack is healthy and the
 full checked-in migration chain and movement catalog have been applied to
@@ -199,11 +204,14 @@ The API origin below must be the instance's actual loopback origin.
 ```sh
 REPO=/home/runner/work/hybrid-training-app/hybrid-training-app
 cd "$REPO/apps/web"
+umask 077
 OUT=$(mktemp -d /tmp/swim-acceptance.XXXXXX)
 : "${SMOKE_SUPABASE_ANON_KEY:?Set the disposable local anon key}"
 : "${SMOKE_SUPABASE_SERVICE_ROLE_KEY:?Set the disposable local service key}"
+TESTED_SHA=$(git -C "$REPO" rev-parse HEAD)
+CONFIG_SHA256=$(sha256sum "$REPO/apps/web/vitest.config.ts" | cut -d ' ' -f 1)
 {
-  git -C "$REPO" rev-parse HEAD
+  printf '%s\n' "$TESTED_SHA"
   git -C "$REPO" status --short
   sha256sum "$REPO/apps/web/vitest.config.ts"
   node --version
@@ -218,20 +226,25 @@ env -u NEXT_PUBLIC_SUPABASE_URL -u NEXT_PUBLIC_SUPABASE_ANON_KEY \
   SWIM_TEST_PROJECT_REF=local SMOKE_SUPABASE_URL=http://127.0.0.1:54321 \
   pnpm exec vitest run --config vitest.config.ts \
   src/lib/swim/__tests__/storage-rpc.smoke.test.ts \
+  --passWithNoTests=false \
   --fileParallelism=false --sequence.concurrent=false --retry=0 \
   --reporter=verbose --reporter=json --outputFile="$OUT/rpc.json" \
   > "$OUT/rpc.log" 2>&1 || rpc_status=$?
 printf 'RPC exit: %s\n' "$rpc_status" >> "$OUT/manifest.txt"
-cat "$OUT/rpc.log"
-jq -r '.testResults[].assertionResults[] |
-  [.fullName, (if (.failureMessages | join("\n") | test("timed out|timeout"; "i"))
-    then "timeout" elif .status == "pending" then "skipped" else .status end),
-   (.failureMessages | join("\n"))] | @tsv' "$OUT/rpc.json"
-test "$rpc_status" -eq 0
+ledger_status=0
+pnpm exec tsx src/lib/swim/__tests__/storage-rpc-report.ts \
+  "$OUT/rpc.json" "$TESTED_SHA" "$CONFIG_SHA256" > "$OUT/ledger.json" \
+  2> "$OUT/ledger-error.json" || ledger_status=$?
+cat "$OUT/ledger.json" "$OUT/ledger-error.json"
+test "$rpc_status" -eq 0 && test "$ledger_status" -eq 0
 ```
 
-Retain the original JSON, runner log (including hook/file-level errors) and
-manifest together, after checking for secrets. JSON records every collected
+Keep the original JSON, runner log (including hook/file-level errors) and
+manifest in the private ephemeral directory; scrub secrets before reading or
+publishing diagnostics. Do not print or upload raw logs. The ledger includes the
+tested SHA, config path/hash, suite, totals and per-case statuses, but omits raw
+failure messages. Missing/unreadable/empty/malformed reports fail closed.
+JSON records every collected
 case's identity, status and failure messages; timeout failures are failures,
 not skips. Missing JSON or zero collected tests is a blocked run, not a pass.
 All 30 current cases must execute and pass, including the isolated DC-SW8

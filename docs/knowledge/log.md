@@ -1519,3 +1519,14 @@ initialization; no healthy reference stack or fresh database acceptance was
 obtained. The terminal initialization cause was not retained, and the prior
 stale-update hang is still undiagnosed. See HANDOFF.md for evidence limits.
 No SQL/grant/migration, workflow, hosted database, combined-mode or merge changes.
+
+## [2026-09-06] refine | Fail-closed swim RPC acceptance reporting
+
+The web RPC command now overrides `passWithNoTests` and validates its JSON with
+existing Node/tsx tooling. The ledger requires the exact smoke file, at least 30
+unique passing cases and consistent explicit Vitest 2.1.9 counts, including
+nested-suite counters; missing, malformed, partial and non-passed reports fail.
+Focused existing-runner tests cover the reporting gate independently of database
+readiness. The printable ledger records SHA/config/case evidence without raw
+failure messages; original diagnostics remain private until scrubbed.
+This reporting refinement is not fresh RPC, mobile or shared-load acceptance.
