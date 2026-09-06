@@ -287,6 +287,22 @@ every required variable.
 - Every change to wiki pages appends to `docs/knowledge/log.md`.
 - Every new wiki page is added to `docs/knowledge/index.md`.
 - Architectural decisions land as ADRs in `docs/adr/00NN-*.md`.
+- Copilot cloud development setup lives in
+  `.github/workflows/copilot-setup-steps.yml`. It installs the existing
+  pnpm workspace with the root `packageManager` version (`pnpm@10.33.2`),
+  installs Playwright Chromium plus Linux browser dependencies, and verifies a
+  headless Chromium launch. It does not run full builds/tests, start services,
+  configure databases, seed data, configure secrets, change runners, disable
+  the integrated firewall, or alter billing. The workflow only becomes active
+  for future cloud-agent sessions after the file is merged to the default
+  branch; until then it can be exercised as an ordinary Actions workflow on the
+  PR branch. If secrets are needed later, configure them in GitHub at Settings
+  > Secrets and variables > Agents; local `.env*` files are not uploaded
+  automatically. Build-only placeholders remain
+  `https://placeholder.supabase.co` and
+  `sb_publishable_test_for_ci_build_only`; they do not enable authenticated
+  E2E. Real DB/RLS/browser tests require owner-approved dedicated TEST
+  configuration and strict target checks.
 - **Engine constants + the live engine spec are mirrored in two places:**
   the in-repo `docs/knowledge/hybrid-training-design-constraints.md`
   (CP-2 table) + `hybrid-training-engine-live.md`, AND a private
