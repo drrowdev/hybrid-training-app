@@ -31,9 +31,73 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-06 (approved loopback reference attempt; acceptance still blocked)
+**Last updated:** 2026-09-06 (prearmed reference diagnosis; acceptance still blocked)
 
 ### Latest PR802 runner-local reference acceptance
+
+Executed [reviewed plan 5559384497](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5559384497)
+at `ebe4a672a13b86f7490acd7c001463c45a6d31ea`; the UTF-8 API body, preserving
+CRLF, matched SHA-256 `77d7312444d6f58572a56e1214f1d05017033f8a16108ceeb618a2d1904a2bb6`.
+One official CLI 2.116.0 default-service `start --debug --network-id` ran
+13:08:37.300–13:09:41.583 UTC, **exit 1 after 64.28 seconds; zero retries**.
+Storage bootstrap again reported
+`getaddrinfo EAI_AGAIN supabase_db_pr802-34034907387-reference`.
+Postgres 17.6 reached readiness; Realtime exited 0, Storage 1. No application
+migration or seed was configured for initialization. This is a platform-bootstrap
+failure, not application SQL evidence or diagnosis of the historical stale-update hang.
+
+New discriminating evidence, rather than another unobserved attempt:
+
+| Frozen hypothesis | Observation and limit |
+| --- | --- |
+| H1: missing advertised DB name | Contradicted at captured bootstrap times. DB `DNSNames` included `supabase_db_pr802-34034907387-reference`, `db`, `db.supabase.internal`, and its short container ID. Healthy DB snapshots at 13:09:35.473, 37.484 and 39.498 retained that metadata during Storage execution. Advertisement is not proof of a successful lookup. |
+| H2: different network or early DB disconnect | Contradicted by captured lifecycle/attachment evidence. DB connected at 13:09:20.767, Storage at 13:09:34.641, on the same exact network. Storage exited 1 at 13:09:40.274; DB disconnected afterward at 13:09:40.405. No intervening DB disconnect was recorded. |
+| H3: differing runtime resolver behavior despite correct metadata | Unresolved. Read-only archive API captured all three generated resolver files: byte-identical, `nameserver 127.0.0.11`, options `edns0 trust-ad ndots:0`. HostConfig DNS overrides were empty. Realtime exit 0 does not establish a successful DB connection; neither matching files nor endpoint metadata proves DNS forwarding or policy behavior. |
+
+Both daemon event streams were armed before startup: exact project-label
+container filter and a separate exact-network-ID filter. Retained 27 container
+and 8 network events, plus event-driven/two-second snapshots. The network stream
+also included its earlier create event; lifecycle evidence did not depend on a
+post-failure history query. DB/Realtime logs and official debug stderr were
+retained; Storage's separate container log was unavailable before auto-removal.
+No discretionary DNS query, service diagnostic exec, sidecar or network override
+was used. Official defaults supplied `host.docker.internal:host-gateway`; no
+agent-added hosts/DNS flags were supplied.
+
+Boundary/fidelity: local Docker 28.0.4, Ubuntu 24.04.4, Node 22.23.2 and pnpm
+10.33.2; offline frozen install passed with the prior lockfile hash unchanged.
+The CLI archive matched the previously pinned digest. Bridge
+`pr802-34034907387-loopback`, ID
+`0e10f31b49a5be1229a18605d26ccf21e38b0f392816f71bcef205a911b2a98f`,
+had only the approved loopback option, default NAT, IPv6 disabled and initially
+empty membership. All three observed containers attached only there; the sole
+effective publication was `127.0.0.1:54322 -> 5432/tcp`. The unmodified CLI selected
+`ghcr.io/supabase/postgres:17.6.1.165` (rather than the prior ECR reference), with
+the same recorded digest `sha256:28f0e16a019e648089fc1a6d333549a55548f6019c15ae4bd7cd58b989027518`.
+Realtime/Storage retained their prior ECR versions and digests. No registry
+configuration changed. Full service/API readiness, roles/grants/Auth claims,
+public reachability and egress-policy fidelity remain unestablished.
+
+The **entire acceptance inventory below remains unmet**, unchanged from source
+`c811a505d4a6b2b06f5d55f1b3b97753aa415cf1`. Before startup, at 13:07:46.493,
+recorded all 30 unique expanded RPC names and the broader table; inventory hash
+`2bcd0242f51f2a543e8a2add8ff48c7fe583f4d0812ec7a8f84512f8c9d0213c`.
+Web-config before/after hash remains `06ec8efe0d66e896cbf9b906882a75fd9c9c1e201b0256710e2d1929f1b05c6d`.
+**0/30 RPC cases executed; no application migrations/catalog, RPC validator/ledger,
+mobile build/server, authenticated offline/concurrency or actual shared-load run.**
+No stale-update request or lock snapshot was applicable. No criterion was waived.
+
+Cleanup verified at 13:11:53 UTC, inside the 20-minute total bound: the official
+CLI removed all three exact containers, the DB volume and labeled bridge.
+Exact-ID/name checks and exact-label listings confirmed zero remnants.
+The observer lingered closing streams after flushing the terminal lifecycle
+events; only that exact observer process was stopped. No prune or unrelated
+deletion occurred. Raw artifacts remain private outside git (700 directories,
+600 files), redacted before reading; they are ephemeral, not durable attachments.
+Only evidence documentation changed. No repair, alternate network method, next
+task, combined implementation, merge or deployment was attempted or authorized.
+
+### Earlier approved loopback reference attempt
 
 Executed the [owner-approved plan](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5559175285)
 under [the updated authority](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5559195573),
