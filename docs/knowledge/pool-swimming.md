@@ -261,3 +261,61 @@ dispose of this run's local stack rather than reuse it or mask the failure.
 SQL/schema/RLS/grant changes require a separately approved additive migration
 and rollback proposal. Mobile and actual shared-load-ledger acceptance remain
 blocked until the real RPC suite is fully green.
+
+### Manual Actions reference acceptance
+
+Implementation authority:
+[PR802 comment 5560014710](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5560014710),
+UTF-8 SHA-256 `51de59db9fafb423c94af16ae4afb611ddf509ae0ef672984f4c897787330e5a`
+(CRLF preserved). This path is implemented, **not yet executed or accepted**.
+The coordinator reviews the complete committed path and obtains independent
+code review before manually dispatching existing `ci.yml` on the reviewed head
+branch, with `swim_acceptance=true`, `expected_sha=<reviewed 40-character SHA>`,
+`migrate_production=false` and `allow_undeployed=false`. Compare the resulting
+run's actual `head_sha` and branch to that review; a branch is not immutable.
+
+[`apps/web/scripts/swim-acceptance.ts`](../../apps/web/scripts/swim-acceptance.ts)
+rechecks the manual Actions context and checkout before resource creation.
+The job is independent of core CI, has read-only contents permission and no
+hosted-secret fallback. Its first step rejects conflicting production inputs
+before checkout/install. Normal CI remains enabled; a green swim job does not
+override a failed identity check or make the entire workflow green.
+
+The runner uses official CLI 2.116.0, the pinned/published Linux archive digest,
+one run-labeled loopback bridge on local Docker ≥28, and unchanged default
+services. Separate private `bin/`, `project/` and process-home directories live
+under runner temp outside checkout. Repository dotenv files and inherited
+database/platform/proxy overrides are rejected, not silently redirected.
+Startup is attempted once. Effective Docker publications, membership, image
+digests and API/DB health are checked; this is not external reachability or
+egress-policy proof. A repeated `EAI_AGAIN` is a failure, not permission to
+change networks, services or SQL.
+
+The existing migration/catalog commands run only against the validated disposable
+URI. Their source baseline is
+[`packages/db/package.json@a7c652b`](https://github.com/drrowdev/hybrid-training-app/blob/a7c652bcc5e94935b4cf86582a45f10a662465b1/packages/db/package.json);
+the seed entrypoint is
+[`packages/db/seeds/run.ts@a7c652b`](https://github.com/drrowdev/hybrid-training-app/blob/a7c652bcc5e94935b4cf86582a45f10a662465b1/packages/db/seeds/run.ts).
+All 146 migrations, seed-slug consistency and migration drift are checked.
+Source/config hashes are compared before and after.
+
+The runner imports the unchanged
+[`storage-rpc-report.ts@a7c652b`](https://github.com/drrowdev/hybrid-training-app/blob/a7c652bcc5e94935b4cf86582a45f10a662465b1/apps/web/src/lib/swim/__tests__/storage-rpc-report.ts)
+directly with a fresh private report path. It requires both successful process
+exit and the positive canonical ledger for the complete current file, at least
+30 unique passing cases. Web config, individual 20-second limits and no-retry
+selection are unchanged. Pure helper tests do not execute RPCs.
+
+Bounds: job 45 minutes; main runner 35 minutes including a 3-minute cleanup
+reserve; startup ≤20 minutes; RPC process ≤12 minutes (also limited by remaining
+total time). Near an RPC process timeout, bounded read-only activity/lock
+diagnostics are retained privately before cancellation. No repair or retry.
+`finally` cleanup and an `always()` verification step remove only recorded,
+ownership-checked resources/process groups; reused/unidentifiable PIDs are not
+killed. Cleanup failure preserves the original failed stage. Forced cancellation
+without observed cleanup remains **unconfirmed**.
+
+`GITHUB_STEP_SUMMARY` retains stage results and a sanitized manifest/case ledger.
+Raw logs, status keys, reports and diagnostics stay private and ephemeral;
+nothing uploads them. This job does not waive the broader ADR0079/DC-SW1–SW9
+release inventory, authorize combined implementation, deployment or merging.
