@@ -104,4 +104,5 @@ Scripts and CI guards that protect the data layer / schema.
 
 | File | One-line summary |
 |---|---|
+| [`.github/workflows/copilot-setup-steps.yml`](../../.github/workflows/copilot-setup-steps.yml) | **Copilot cloud setup.** Standard `ubuntu-latest` setup-only workflow for future Copilot cloud-agent sessions: checkout, pinned pnpm setup using root `packageManager`, Node 22, frozen install, Playwright Chromium/Linux dependencies, and headless launch verification. No DB, secrets, services, build/test duplication, runner changes, firewall changes, or billing changes. |
 | [`packages/db/scripts/check-migration-drift.ts`](../../packages/db/scripts/check-migration-drift.ts) | **Migration drift guard.** Cross-checks `packages/db/drizzle/meta/_journal.json` against `drizzle.__drizzle_migrations` by SHA-256 of each .sql file and fails if any expected migration is missing from the DB. Wired into the pre-push hook (full mode) and CI (offline file-shape mode). Catches the migrator silent-skip bug. Run via `pnpm --filter @hta/db db:check`. |
