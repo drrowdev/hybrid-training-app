@@ -1416,3 +1416,6 @@ covers reading those rows from an existing outbox. No migration.
 
 ## [2026-09-06] bootstrap | Copilot cloud setup workflow
 Added the setup-only `.github/workflows/copilot-setup-steps.yml` for future GitHub Copilot cloud-agent sessions. The workflow uses standard `ubuntu-latest`, read-only contents permission, bounded setup steps, frozen pnpm install from the root `packageManager`, Playwright Chromium/Linux dependency installation, and a headless launch check; it intentionally avoids database services, migrations, seeds, secrets, production credentials, build/test duplication, runner changes, firewall changes, and billing changes. It becomes available to cloud sessions only after merge to the default branch and can be verified as an ordinary Actions workflow on this PR branch.
+
+## [2026-09-06] fix | Allow the observed Copilot cloud commit email
+Added only `198982749+Copilot@users.noreply.github.com`, observed as the author email on all three PR #801 commits, to the CI identity guard's existing allowlist. Preserved exact author AND committer email matching and the original three entries; clarified local/cloud labels and replaced owner-impersonation/rebase guidance with account-appropriate email guidance. This email-string check is not actor authentication. No engine constraints, setup workflow, dependencies, or other workflow settings changed.
