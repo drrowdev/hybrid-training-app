@@ -11,9 +11,9 @@ import { SEED_MOVEMENTS } from "../../../packages/db/seeds/movements";
 import {
   CLI_ASSET, CLI_SHA256, CLI_VERSION, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
   containerSchema, networkSchema, outcome, processIdentity, requireAcceptance, requireArchive,
-  requireCleanupState, requireContainer, requireFreshReport, requireLocalStatus,
+  requireCleanupState, requireFreshReport, requireLocalStatus,
   requireManualContext, requireNetwork, requireNoInheritedTargets, requirePrivateLocation,
-  requireProcess, requireReadyStack, resourceSchema,
+  requireProcess, requireReadyStack, requireStartupContainer, resourceSchema,
   type Container, type ProcessResult, type Resources,
 } from "./swim-acceptance-guards";
 import {
@@ -346,8 +346,12 @@ async function main(cleanupOnly: boolean) {
             for (const container of containers) {
               snapshots.set(container.Id, container);
               if (!container.State.Running) continue;
-              try { requireContainer(container, project, state.networkId!); }
-              catch { unsafe = true; stopStartup?.(); }
+              try { requireStartupContainer(container, project, state.networkId!); }
+              catch (error) {
+                manifest.startupViolation ??= safeFailureCause(error);
+                unsafe = true;
+                stopStartup?.();
+              }
             }
           } catch { unavailable++; }
           await sleep(2_000, undefined, { signal: stopSleep.signal }).catch(() => {});

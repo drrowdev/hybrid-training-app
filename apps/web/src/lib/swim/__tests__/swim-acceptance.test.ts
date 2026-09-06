@@ -8,7 +8,7 @@ import {
   containerSchema, outcome, processIdentity, requireAcceptance, requireArchive, requireCleanupState,
   requireContainer, requireFreshReport, requireLocalStatus, requireManualContext,
   requireNetwork, requireNoInheritedTargets, requirePrivateLocation, requireProcess, requireReadyStack,
-  resourceSchema, type Container, type Network, type Resources,
+  requireStartupContainer, resourceSchema, type Container, type Network, type Resources,
 } from "../../../../scripts/swim-acceptance-guards";
 import {
   acceptanceAssert, AcceptanceReporting, formatAcceptanceSummary,
@@ -166,6 +166,147 @@ describe("selected container inspection (fixtures/static template, not Docker Go
     expect(() => requireReadyStack(values, network, project)).not.toThrow();
     values[2]!.State.Health = { Status: "unhealthy" };
     expect(() => requireReadyStack(values, network, project)).toThrow();
+  });
+});
+
+describe("startup-only bootstrap classification (synthetic inspection fixtures)", () => {
+  const job = (image = "public.ecr.aws/supabase/realtime:v2.129.3"): Container => ({
+    ...container("realtime", 99),
+    Name: "/interesting_elbakyan",
+    Config: { Image: image, Labels: { [PROJECT_LABEL]: project, "com.docker.compose.project": project } },
+    State: { Running: true, Status: "running", Health: null },
+  });
+  const images = ["", "public.ecr.aws/", "ghcr.io/"].flatMap((prefix) =>
+    ["supabase/realtime:v2.129.3", "supabase/storage-api:v1.70.3", "supabase/gotrue:v2.196.0"]
+      .map((image) => `${prefix}${image}`));
+  const digest = `@sha256:${"abcdef0123456789".repeat(4)}`;
+
+  it.each(images.flatMap((image) => [image, `${image}${digest}`]))(
+    "accepts only startup for official reference %s without changing inspected identity", (image) => {
+      const value = job(image);
+      const original = structuredClone(value);
+      expect(() => requireStartupContainer(value, project, networkId)).not.toThrow();
+      expect(value).toEqual(original);
+      expect(() => requireContainer(value, project, networkId)).toThrow();
+      expect(() => requireContainer(value, project, networkId, true)).toThrow();
+    },
+  );
+
+  it("allows exposed but unpublished ports, volume mounts and the owned network name mode", () => {
+    const value = job();
+    value.HostConfig.NetworkMode = `${project}-loopback`;
+    value.NetworkSettings.Ports = { "4000/tcp": null };
+    value.Mounts = [{ Type: "volume", Name: `supabase_db_${project}` }, { Type: "volume" }];
+    expect(() => requireStartupContainer(value, project, networkId)).not.toThrow();
+  });
+
+  it.each([PROJECT_LABEL, "com.docker.compose.project"])("requires the exact %s label", (label) => {
+    for (const replacement of ["other", "", undefined]) {
+      const value = job();
+      if (replacement === undefined) delete value.Config.Labels![label];
+      else value.Config.Labels![label] = replacement;
+      expect(() => requireStartupContainer(value, project, networkId)).toThrow("Foreign startup job");
+    }
+    const value = job();
+    value.Config.Labels = null;
+    expect(() => requireStartupContainer(value, project, networkId)).toThrow("Foreign startup job");
+  });
+
+  it.each<Container["NetworkSettings"]["Networks"]>([
+    {}, { foreign: { NetworkID: "e".repeat(64) } },
+    { ...job().NetworkSettings.Networks, extra: { NetworkID: "e".repeat(64) } },
+    { ...job().NetworkSettings.Networks, extra: { NetworkID: networkId } },
+  ])("rejects missing, foreign or multiple networks: %j", (networks) => {
+    const value = job();
+    value.NetworkSettings.Networks = networks;
+    expect(() => requireStartupContainer(value, project, networkId)).toThrow("Unexpected container network");
+  });
+
+  it.each(["host", "bridge", "none", "other-loopback", "e".repeat(64)])("rejects network mode %s", (mode) => {
+    const value = job();
+    value.HostConfig.NetworkMode = mode;
+    expect(() => requireStartupContainer(value, project, networkId)).toThrow("Unexpected container network");
+  });
+
+  it.each(["127.0.0.1", "0.0.0.0", "::", "::1", "", "192.0.2.1"])(
+    "rejects every host publication, including %j", (host) => {
+      const value = job();
+      value.NetworkSettings.Ports = { "4000/tcp": null, "5432/tcp": [{ HostIp: host, HostPort: "54322" }] };
+      expect(() => requireStartupContainer(value, project, networkId)).toThrow("Startup job publication forbidden");
+    },
+  );
+
+  it.each(["bind", "tmpfs", "", "other", "Volume"])("rejects mount type %j alongside volumes", (type) => {
+    const value = job();
+    value.Mounts = [{ Type: "volume" }, { Type: type }];
+    expect(() => requireStartupContainer(value, project, networkId)).toThrow("Unexpected startup job mount");
+  });
+
+  it.each([
+    "supabase/realtime:latest", "supabase/realtime:v2.129.4", "supabase/storage-api:v1.70.4",
+    "supabase/gotrue:v2.196.1", "supabase/postgres:v2.129.3", "other/realtime:v2.129.3",
+    "docker.io/supabase/realtime:v2.129.3", "example.invalid/supabase/realtime:v2.129.3",
+    "public.ecr.aws/other/realtime:v2.129.3", "public.ecr.aws/supabase/realtime:v2.129.3-extra",
+    "ghcr.io/supabase/realtime", "supabase/realtime", `supabase/realtime${digest}`,
+    `supabase/realtime:v2.129.3${digest}${digest}`,
+    `supabase/realtime:v2.129.3@sha256:${"a".repeat(63)}`,
+    `supabase/realtime:v2.129.3@sha256:${"a".repeat(65)}`,
+    `supabase/realtime:v2.129.3@sha256:${"A".repeat(64)}`,
+    `supabase/realtime:v2.129.3@sha256:${"g".repeat(64)}`,
+    `supabase/realtime:v2.129.3@sha512:${"a".repeat(64)}`,
+    `supabase/realtime:v2.129.3${digest}/extra`,
+    `supabase/realtime:v2.129.3${digest}\n`, `supabase/realtime:v2.129.3@bad${digest}`,
+    "supabase/realtime:v2.129.3@sha256:", "",
+  ])("rejects unapproved or malformed Config.Image %j", (image) => {
+    const value = job(image);
+    expect(() => requireStartupContainer(value, project, networkId)).toThrow("Unexpected startup job image");
+  });
+
+  it("does not use the resolved image ID as the approved reference", () => {
+    const value = job();
+    value.Config.Image = value.Image;
+    expect(() => requireStartupContainer(value, project, networkId)).toThrow("Unexpected startup job image");
+  });
+
+  it.each(["/supabase_realtime_other", "/supabase_", `/supabase_realtime_${project}_extra`])(
+    "never falls back to bootstrap classification for named service %s", (name) => {
+      const value = job();
+      value.Name = name;
+      expect(() => requireStartupContainer(value, project, networkId)).toThrow("Foreign container");
+    },
+  );
+
+  it("preserves named startup rules without requiring temporary-job restrictions or readiness", () => {
+    for (const name of DEFAULT_SERVICES) {
+      const value = container(name);
+      value.State.Health = { Status: "starting" };
+      expect(() => requireContainer(value, project, networkId)).not.toThrow();
+      expect(() => requireStartupContainer(value, project, networkId)).not.toThrow();
+      expect(() => requireContainer(value, project, networkId, true)).toThrow("Service not ready");
+      value.Config.Labels![PROJECT_LABEL] = "other";
+      expect(() => requireStartupContainer(value, project, networkId)).toThrow("Foreign container");
+    }
+  });
+
+  it("rejects a leftover bootstrap job even when network membership includes it", () => {
+    const containers = [...DEFAULT_SERVICES.map((name, index) => container(name, index + 1)), job()];
+    const network = { ...bridge(), Containers: Object.fromEntries(containers.map((c) => [c.Id, {}])) };
+    expect(() => requireReadyStack(containers, network, project)).toThrow("Incomplete default service set");
+  });
+
+  it("retains a safe classified reason for an unsafe transient", () => {
+    const value = job("private-invalid-image");
+    let cause;
+    try { requireStartupContainer(value, project, networkId); }
+    catch (error) { cause = safeFailureCause(error); }
+    expect(cause).toEqual({ classification: "guard", message: "Unexpected startup job image" });
+    expect(formatAcceptanceSummary(cause)).not.toContain("private-invalid-image");
+  });
+
+  it("wires startup classification and safe cause recording before stop in the observer (static check)", () => {
+    const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
+    expect(source).toMatch(/try \{ requireStartupContainer\(container, project, state\.networkId!\); \}\s+catch \(error\) \{\s+manifest\.startupViolation \?\?= safeFailureCause\(error\);\s+unsafe = true;\s+stopStartup\?\.\(\);/);
+    expect(source.match(/requireStartupContainer\(/g)).toHaveLength(1);
   });
 });
 
@@ -431,6 +572,20 @@ describe("disposable targets and effective Docker publications", () => {
     expect(() => requireReadyStack(containers.slice(1), network, project)).toThrow();
     containers[0]!.NetworkSettings.Ports = {};
     expect(() => requireReadyStack(containers, network, project)).toThrow();
+  });
+  it("rejects unhealthy, stopped or foreign services and foreign network membership at readiness", () => {
+    const containers = DEFAULT_SERVICES.map((name, index) => container(name, index + 1));
+    const network = { ...bridge(), Containers: Object.fromEntries(containers.map((c) => [c.Id, {}])) };
+    for (const change of [
+      { State: { Running: true, Status: "running", Health: { Status: "unhealthy" } } },
+      { State: { Running: false, Status: "exited", Health: null } },
+      { Config: { ...containers[0]!.Config, Labels: { [PROJECT_LABEL]: "other" } } },
+      { Name: "/supabase_db_other" },
+    ]) {
+      expect(() => requireReadyStack([{ ...containers[0]!, ...change }, ...containers.slice(1)], network, project)).toThrow();
+    }
+    network.Containers["e".repeat(64)] = {};
+    expect(() => requireReadyStack(containers, network, project)).toThrow("Unexpected network membership");
   });
 });
 
