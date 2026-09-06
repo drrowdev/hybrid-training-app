@@ -1,8 +1,7 @@
-import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
-  appendFileSync, chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync,
+  appendFileSync, chmodSync, closeSync, existsSync, lstatSync, mkdirSync,
   readFileSync, readdirSync, realpathSync, renameSync, writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -17,6 +16,10 @@ import {
   requireProcess, requireReadyStack, resourceSchema,
   type Container, type ProcessResult, type Resources,
 } from "./swim-acceptance-guards";
+import {
+  acceptanceAssert as assert, AcceptanceReporting, formatAcceptanceSummary,
+  openPrivateCommandLog, safeFailureCause,
+} from "./swim-acceptance-reporting";
 import { RPC_CONFIG, RPC_SUITE, readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -45,13 +48,10 @@ async function main(cleanupOnly: boolean) {
   let deadline = started + LIMITS.total - LIMITS.cleanup;
   let cancelling = false;
   let sequence = 0;
-  let primary: string | undefined;
-  let currentStage = "preflight";
+  const reporting = new AcceptanceReporting();
   const active = new Map<number, () => void>();
   const secrets = new Set<string>();
   const manifest: Record<string, unknown> = { testedSha: process.env.EXPECTED_SHA, project };
-  const stages: { name: string; status: string; at: string; result?: ProcessResult }[] = [];
-  let lastResult: ProcessResult | undefined;
   let state: Resources = { project, sha: process.env.EXPECTED_SHA!, createdAt: started,
     containers: [], volumes: [], processes: [], cleanup: "unconfirmed" };
   const save = () => {
@@ -59,26 +59,11 @@ async function main(cleanupOnly: boolean) {
     renameSync(`${statePath}.new`, statePath);
   };
   const summary = (heading: string, data: unknown) => {
-    let text = JSON.stringify(data, null, 2);
-    for (const secret of secrets) text = text.replaceAll(secret, "[redacted]");
-    text = text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    const text = formatAcceptanceSummary(data, secrets);
     appendFileSync(process.env.GITHUB_STEP_SUMMARY!, `\n### ${heading}\n<pre>${text}</pre>\n`);
   };
-  const stage = async <T>(name: string, action: () => Promise<T>): Promise<T> => {
-    currentStage = name;
-    lastResult = undefined;
-    stages.push({ name, status: "running", at: new Date().toISOString() });
-    summary("Swim acceptance stage", stages.at(-1));
-    try {
-      const value = await action();
-      stages.at(-1)!.status = "passed";
-      return value;
-    } catch (error) {
-      stages.at(-1)!.status = "failed";
-      stages.at(-1)!.result = lastResult;
-      throw error;
-    }
-  };
+  const stage = <T>(name: string, action: () => Promise<T>) =>
+    reporting.stage(name, action, (entry) => summary("Swim acceptance stage", entry));
 
   if (cleanupOnly) {
     assert(process.env.SWIM_ACCEPTANCE_DIR === directory);
@@ -126,7 +111,8 @@ async function main(cleanupOnly: boolean) {
     assert(!cancelling && Date.now() < deadline, "Run cancelled or total time exhausted");
     const duration = Math.min(options.timeout ?? 60_000, deadline - Date.now());
     const log = join(directory, `${cleanupOnly ? "cleanup" : "run"}-${started}-${++sequence}.log`);
-    const fd = openSync(log, "wx", 0o600);
+    const commandLog = openPrivateCommandLog(log);
+    const { fd } = commandLog;
     let text = "";
     let timedOut = false;
     let killed: Promise<void> | undefined;
@@ -155,7 +141,7 @@ async function main(cleanupOnly: boolean) {
       options.onSpawn?.(terminate);
     }
     child.stdout?.on("data", (chunk: Buffer) => {
-      appendFileSync(log, chunk);
+      commandLog.append(chunk);
       text += chunk.toString("utf8");
       if (text.length > 8 * 1024 * 1024) { timedOut = true; terminate(); }
     });
@@ -184,7 +170,6 @@ async function main(cleanupOnly: boolean) {
       }
     }
     closeSync(fd);
-    lastResult = result;
     if (!options.allowFailure) requireProcess(result);
     return { text: text.trim(), result, log };
   }
@@ -222,7 +207,10 @@ async function main(cleanupOnly: boolean) {
     save();
     let failed = false;
     const attempt = async (fn: () => Promise<unknown>) => {
-      try { await fn(); } catch { failed = true; }
+      try { await fn(); } catch (error) {
+        failed = true;
+        reporting.recordFailure("resource cleanup", error, true);
+      }
     };
     for (const recorded of [...state.processes]) await attempt(async () => {
       try { process.kill(-recorded.pid, 0); } catch {
@@ -283,12 +271,12 @@ async function main(cleanupOnly: boolean) {
     manifest.sourceSha256After = hash(JSON.stringify(after));
     manifest.configSha256After = hash(readFileSync(RPC_CONFIG));
     manifest.rpcSourceSha256After = hash(readFileSync(RPC_SUITE));
-    assert.deepEqual(after, sourceHashes);
+    assert.deepEqual(after, sourceHashes, "Tracked acceptance sources changed");
     if (manifest.localConfigSha256) {
       manifest.localConfigSha256After = hash(readFileSync(join(directory, "project/supabase/config.toml")));
-      assert(manifest.localConfigSha256After === manifest.localConfigSha256);
+      assert(manifest.localConfigSha256After === manifest.localConfigSha256, "Local CLI configuration changed");
     }
-    assert(git("status", "--porcelain", "--untracked-files=all") === "");
+    assert(git("status", "--porcelain", "--untracked-files=all") === "", "Checkout changed during acceptance");
     requireManualContext(process.env, git("rev-parse", "HEAD"));
   };
   const cli = join(directory, "bin/supabase");
@@ -476,19 +464,32 @@ async function main(cleanupOnly: boolean) {
       manifest.ledger = ledger;
       requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);
     });
-  } catch {
-    primary = currentStage;
+  } catch (error) {
+    if (!reporting.failures.primary) reporting.recordFailure("acceptance", error);
   } finally {
     if (!cleanupOnly && sourceFiles.length > 0) {
-      try { requireUnchanged(); } catch { primary ??= "source changed during acceptance"; }
+      try { requireUnchanged(); } catch (error) {
+        reporting.recordFailure("source verification", error);
+      }
     }
-    try { await cleanup(); } catch { state.cleanup = "unconfirmed"; }
+    try { await cleanup(); } catch (error) {
+      state.cleanup = "unconfirmed";
+      reporting.recordFailure("cleanup", error, true);
+    }
     process.off("SIGINT", cancel);
     process.off("SIGTERM", cancel);
-    summary(cleanupOnly ? "Swim cleanup verification" : "Swim acceptance result", {
-      ...outcome(primary, state.cleanup === "verified"), stages, manifest,
-    });
+    const primary = reporting.failures.primary?.stage;
     if (primary || state.cleanup !== "verified") process.exitCode = 1;
+    try {
+      summary(cleanupOnly ? "Swim cleanup verification" : "Swim acceptance result", {
+        ...outcome(primary, state.cleanup === "verified"), stages: reporting.stages,
+        failures: reporting.failures, manifest,
+      });
+    } catch (error) {
+      reporting.recordFailure("summary publication", error);
+      console.error(formatAcceptanceSummary({ failures: reporting.failures, cleanup: state.cleanup }, secrets));
+      process.exitCode = 1;
+    }
   }
 }
 
@@ -498,9 +499,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.error("Unsupported swim acceptance arguments");
     process.exitCode = 1;
   } else {
-    void main(args[0] === "--cleanup").catch(() => {
-      // Errors may embed URLs, status JSON or SQL; only fixed text leaves this process.
-      console.error("Swim acceptance preflight/reporting failed; cleanup is unconfirmed if resources were created");
+    void main(args[0] === "--cleanup").catch((error) => {
+      console.error(formatAcceptanceSummary({
+        failure: safeFailureCause(error),
+        cleanup: "unconfirmed if resources were created",
+      }));
       process.exitCode = 1;
     });
   }

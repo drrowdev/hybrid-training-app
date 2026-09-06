@@ -1581,3 +1581,15 @@ cleanup. HANDOFF and the swim wiki describe the coordinator's review/dispatch
 boundary. No workflow dispatch or database startup occurred in this implementation
 turn. No runtime swim, SQL/schema/RLS/grants, fixtures or dependencies changed;
 the broader standalone acceptance inventory remains unmet.
+
+## [2026-09-06] refine | Preserve safe acceptance failures and private command output
+
+Corrected the reporting and log-writer defects in the
+[acceptance runner@ecb267f](https://github.com/drrowdev/hybrid-training-app/blob/ecb267f239d08a13a0e10dbeec4648c09983054d/apps/web/scripts/swim-acceptance.ts)
+under PR802 authorization 5560307838. Locally authored guard reasons are distinct
+from withheld parser/error details; primary, source-verification and cleanup
+failures remain separate. Command logs use exclusive append creation with 0600
+permissions. Production-used helper regressions and unchanged canonical-helper
+tests passed (183 tests); web typecheck and scoped ESLint passed. No workflow
+dispatch, database/container execution or live acceptance occurred. Standalone
+release acceptance remains outstanding; coordinator review is next.
