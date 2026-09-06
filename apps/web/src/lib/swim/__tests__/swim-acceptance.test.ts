@@ -1,3 +1,7 @@
+import assert from "node:assert/strict";
+import { closeSync, lstatSync, mkdtempSync, readFileSync, rmSync, writeSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   CLI_ASSET, CLI_SHA256, DEFAULT_SERVICES, LIMITS, PROJECT_LABEL, RUN_LABEL,
@@ -6,6 +10,10 @@ import {
   requireNetwork, requireNoInheritedTargets, requirePrivateLocation, requireProcess, requireReadyStack,
   resourceSchema, type Container, type Network, type Resources,
 } from "../../../../scripts/swim-acceptance-guards";
+import {
+  acceptanceAssert, AcceptanceReporting, formatAcceptanceSummary,
+  openPrivateCommandLog, safeFailureCause,
+} from "../../../../scripts/swim-acceptance-reporting";
 import { MIN_RPC_CASES, RPC_SUITE, validateSwimRpcReport } from "./storage-rpc-report";
 
 const sha = "a".repeat(40);
@@ -52,7 +60,7 @@ const report = () => ({
   numTotalTestSuites: 2, numPassedTestSuites: 2, numFailedTestSuites: 0, numPendingTestSuites: 0,
   testResults: [{ name: RPC_SUITE, status: "passed",
     assertionResults: Array.from({ length: MIN_RPC_CASES }, (_, i) => ({
-      fullName: `synthetic runner guard case ${i}`, status: "passed", failureMessages: [],
+      fullName: `synthetic runner guard case ${i}`, status: "passed", failureMessages: [] as string[],
     })) }],
 });
 const ledger = () => validateSwimRpcReport(JSON.stringify(report()), sha, configHash);
@@ -140,6 +148,11 @@ describe("disposable targets and effective Docker publications", () => {
     value.NetworkSettings.Ports["5432/tcp"]![0]!.HostIp = host;
     expect(() => requireContainer(value, project, networkId)).toThrow();
   });
+  it("rejects an unexpected HostPort even on loopback", () => {
+    const value = container();
+    value.NetworkSettings.Ports["5432/tcp"]![0]!.HostPort = "54329";
+    expect(() => requireContainer(value, project, networkId)).toThrow();
+  });
   it("checks both address families, port, ownership, network and health", () => {
     const value = container();
     expect(() => requireContainer(value, project, networkId, true)).not.toThrow();
@@ -153,6 +166,146 @@ describe("disposable targets and effective Docker publications", () => {
     const multiNetwork = container();
     multiNetwork.NetworkSettings.Networks.extra = { NetworkID: "d".repeat(64) };
     expect(() => requireContainer(multiNetwork, project, networkId)).toThrow();
+  });
+
+  describe("production acceptance reporting (synthetic evidence only)", () => {
+    const noSummary = () => {};
+    const unsafe = 'synthetic-private-key "quoted"\nhttps://private.invalid/status?key=synthetic-only <secret>';
+
+    it("retains a useful guard reason after a successful process without blaming that process", async () => {
+      const reporting = new AcceptanceReporting();
+      await expect(reporting.stage("RPC report", async () => {
+        requireProcess(passed);
+        requireFreshReport({ size: 0, mtimeMs: 150, isFile: true }, 100, 200);
+      }, noSummary)).rejects.toThrow();
+      expect(reporting.stages[0]).toMatchObject({
+        status: "failed",
+        failure: { classification: "guard", message: "RPC report missing, empty or stale" },
+      });
+      expect(reporting.stages[0]).not.toHaveProperty("result");
+      expect(reporting.stages[0]!.failure).not.toHaveProperty("result");
+      expect(reporting.failures.primary?.cause).toEqual(reporting.stages[0]!.failure);
+      expect(formatAcceptanceSummary(reporting)).not.toContain('"code": 0');
+    });
+
+    it("attributes process failure to its own result, not a later successful command", async () => {
+      const reporting = new AcceptanceReporting();
+      const failed = { code: 1, signal: null, timedOut: false };
+      await expect(reporting.stage("startup", async () => {
+        requireProcess(passed);
+        requireProcess(failed);
+      }, noSummary)).rejects.toThrow();
+      expect(reporting.failures.primary?.cause).toMatchObject({ classification: "process", result: failed });
+      await reporting.stage("next stage", async () => requireProcess(passed), noSummary);
+      expect(reporting.stages[1]).not.toHaveProperty("failure");
+      expect(reporting.failures.primary?.cause.result).toEqual(failed);
+    });
+
+    it.each([
+      ["parser", () => JSON.parse(`{"key":${unsafe}}`)],
+      ["unexpected", () => { throw new Error(unsafe); }],
+      ["unexpected", () => resourceSchema.parse({ project: unsafe })],
+      ["unexpected", () => { throw { message: unsafe, stack: unsafe }; }],
+      ["assertion", () => assert.deepEqual({ key: unsafe }, {})],
+      ["assertion", () => assert(false, unsafe)],
+    ])("withholds unsafe %s errors, including unregistered explicit assertion messages", async (classification, action) => {
+      const reporting = new AcceptanceReporting();
+      await expect(reporting.stage("status", async () => action(), noSummary)).rejects.toBeDefined();
+      expect(reporting.failures.primary?.cause.classification).toBe(classification);
+      const output = formatAcceptanceSummary(reporting);
+      for (const value of ["synthetic-private-key", "private.invalid", "https://", "<secret>", "stack"]) {
+        expect(output).not.toContain(value);
+      }
+    });
+
+    it("does not trust an arbitrary error merely because its message matches a guard", () => {
+      expect(safeFailureCause(new Error("Unexpected local API")).classification).toBe("unexpected");
+    });
+
+    it("withholds unsafe signal material even on a classified process failure", () => {
+      let cause;
+      try { requireProcess({ code: null, signal: unsafe, timedOut: false }); }
+      catch (error) { cause = safeFailureCause(error); }
+      expect(cause).toMatchObject({ classification: "process", result: { signal: "unknown-signal" } });
+      expect(formatAcceptanceSummary(cause)).not.toContain("private.invalid");
+    });
+
+    it("retains canonical ledger issues without publishing raw assertion failures", async () => {
+      const input = report();
+      input.success = false;
+      input.numFailedTests = 1;
+      input.numPassedTests--;
+      input.testResults[0]!.assertionResults[0]!.status = "failed";
+      input.testResults[0]!.assertionResults[0]!.failureMessages.push(unsafe);
+      const value = validateSwimRpcReport(JSON.stringify(input), sha, configHash);
+      const reporting = new AcceptanceReporting();
+      await expect(reporting.stage("RPC ledger", async () => {
+        requireAcceptance(passed, value, sha, configHash);
+      }, noSummary)).rejects.toThrow();
+      const output = formatAcceptanceSummary({ failures: reporting.failures, ledger: value });
+      expect(output).toContain("Positive canonical RPC ledger required");
+      expect(output).toContain("Non-passed RPC assertion");
+      expect(output).not.toContain("private.invalid");
+      expect(reporting.failures.primary?.cause).not.toHaveProperty("result");
+    });
+
+    it("publishes only authored assertion text and redacts JSON-escaped secrets before HTML escaping", () => {
+      let cause;
+      try { acceptanceAssert.deepEqual({ key: unsafe }, {}, "Local <guard> & failed"); }
+      catch (error) { cause = safeFailureCause(error); }
+      const output = formatAcceptanceSummary({ cause, secret: unsafe }, [unsafe]);
+      expect(output).toContain("Local &lt;guard&gt; &amp; failed");
+      expect(output).toContain("[redacted]");
+      expect(output).not.toContain("synthetic-private-key");
+      expect(output).not.toContain("private.invalid");
+      expect(output).not.toContain("actual");
+    });
+
+    it("keeps original, source-verification and cleanup failures distinct and fails closed", async () => {
+      const reporting = new AcceptanceReporting();
+      await expect(reporting.stage("migrations", async () => {
+        requireProcess({ code: 1, signal: null, timedOut: false });
+      }, noSummary)).rejects.toThrow();
+      const original = reporting.failures.primary;
+      reporting.recordFailure("source verification", new Error(unsafe));
+      try { requireCleanupState({ project: "other" } as Resources, project, sha); }
+      catch (error) { reporting.recordFailure("cleanup", error, true); }
+      expect(reporting.failures.primary).toBe(original);
+      expect(reporting.failures.secondary[0]?.stage).toBe("source verification");
+      expect(reporting.failures.cleanup[0]).toMatchObject({
+        stage: "cleanup", cause: { classification: "guard", message: "Foreign cleanup state" },
+      });
+      expect(outcome(reporting.failures.primary?.stage, false).success).toBe(false);
+      expect(formatAcceptanceSummary(reporting)).not.toContain("private.invalid");
+    });
+
+    it("reports cleanup-only failures without inventing a primary failure", () => {
+      const reporting = new AcceptanceReporting();
+      reporting.recordFailure("cleanup", new Error(unsafe), true);
+      expect(reporting.failures.primary).toBeNull();
+      expect(reporting.failures.cleanup[0]?.cause.classification).toBe("unexpected");
+      expect(outcome(reporting.failures.primary?.stage, false).success).toBe(false);
+    });
+  });
+
+  describe("production private command logs", () => {
+    it("preserves interleaved captured stdout and descriptor stderr with exclusive 0600 creation", () => {
+      const directory = mkdtempSync(join(tmpdir(), "swim-acceptance-log-"));
+      const path = join(directory, "command.log");
+      try {
+        const log = openPrivateCommandLog(path);
+        try {
+          log.append(Buffer.from("stdout-1\n"));
+          writeSync(log.fd, "stderr-1\n");
+          log.append(Buffer.from("stdout-2\n"));
+          writeSync(log.fd, "stderr-2\n");
+          expect(readFileSync(path, "utf8")).toBe("stdout-1\nstderr-1\nstdout-2\nstderr-2\n");
+          expect(lstatSync(path).mode & 0o777).toBe(0o600);
+          expect(() => openPrivateCommandLog(path)).toThrow();
+          expect(readFileSync(path, "utf8")).toBe("stdout-1\nstderr-1\nstdout-2\nstderr-2\n");
+        } finally { closeSync(log.fd); }
+      } finally { rmSync(directory, { recursive: true, force: true }); }
+    });
   });
   it("requires all official default services and exact API/database publications", () => {
     const containers = DEFAULT_SERVICES.map((name, index) => container(name, index + 1));

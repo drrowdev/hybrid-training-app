@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import { acceptanceAssert as assert, processFailure } from "./swim-acceptance-reporting";
 import { isAbsolute, relative, sep } from "node:path";
 import { z } from "zod";
 import { getSwimRpcTestEnv } from "../src/lib/swim/__tests__/storage-rpc-config";
@@ -134,7 +134,7 @@ export function requireReadyStack(containers: Container[], network: Network, pro
 
 export type ProcessResult = { code: number | null; signal: string | null; timedOut: boolean };
 export function requireProcess(result: ProcessResult) {
-  assert(result.code === 0 && result.signal === null && !result.timedOut, "Process failed or timed out");
+  if (result.code !== 0 || result.signal !== null || result.timedOut) throw processFailure(result);
 }
 export function requireFreshReport(
   info: { size: number; mtimeMs: number; isFile: boolean }, started: number, now: number,
