@@ -267,8 +267,8 @@ blocked until the real RPC suite is fully green.
 Implementation authority:
 [PR802 comment 5560014710](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5560014710),
 UTF-8 SHA-256 `51de59db9fafb423c94af16ae4afb611ddf509ae0ef672984f4c897787330e5a`
-(CRLF preserved). This path is implemented; subsequent runs have not reached
-application acceptance (see the pinned-default correction below).
+(CRLF preserved). This path is implemented; run 34054970331 reached all 30 RPC
+cases but did not pass application acceptance (see safe diagnostics below).
 The coordinator reviews the complete committed path and obtains independent
 code review before manually dispatching existing `ci.yml` on the reviewed head
 branch, with `swim_acceptance=true`, `expected_sha=<reviewed 40-character SHA>`,
@@ -372,3 +372,47 @@ causation remains unproven. No new runner/DB/workflow execution occurred in this
 correction turn. All 146 migrations/catalog and 30 actual RPC cases, followed by
 the frozen standalone release inventory, remain required; helper tests are not
 acceptance. Coordinator delta review precedes the next exact-head run.
+
+### Safe RPC failure diagnostics
+
+[Run 34054970331](https://github.com/drrowdev/hybrid-training-app/actions/runs/34054970331)
+at `27971943ca9b34fa75d85c57793f1e74b667a7e3` passed core/identity, official
+12-service readiness, all existing HTTP probes, all 146 unchanged migrations,
+catalog seed/consistency and cleanup. All 30 authenticated RPC cases executed:
+**2 passed, 28 failed, none pending/todo, no process timeout**. The shared
+`createPlan` path suggests a common failure, but the canonical safe ledger
+deliberately omits messages. The root cause is not yet known.
+
+Implemented [authorization 5561913579](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561913579),
+verified API body SHA-256
+`7431dc1bbb483fb71a571569e040e6398ca246b4382d8d77dbb7e7899c8119c2`.
+`apps/web/scripts/swim-rpc-diagnostics.ts` uses Vitest 2.1.9 `onFinished` alongside
+the existing verbose/JSON reporters. The runner supplies only
+`SWIM_RPC_DIAGNOSTICS_PATH` inside its existing private directory. The reporter
+creates a fresh exclusive 0600 regular JSONL sidecar; publication checks location,
+file type, mode, freshness, size, exact fields and allowed values without following
+symlinks. Raw messages/details/hints/stacks, environment and sidecar contents are
+never published.
+
+The sanitized manifest groups counts by exact SQLSTATE/PostgREST code, fixed
+category and SHA-256 fingerprint of message data after UUID/number/quoted-literal
+normalization. Associations retain canonical-verified case identity, phase and
+allowlisted RPC; hook/collection records use a fixed suite identity. Small
+compile-time subsets of tracked identifiers and exact non-interpolated migration
+0145 exception literals provide optional context. Unmatched context is omitted,
+not guessed; fingerprints are grouping evidence, not a database diagnosis.
+
+Collection bounds: 8 cause levels, 1,024 tasks with depth 16, 256 error records,
+8 KiB per message/identity, 2 KiB per JSONL record and 1 MiB per file. Cycles and
+overflow are explicit partial evidence. Collector failure or missing/unreadable/
+invalid files are unavailable evidence; invalid-record counts are explicit.
+Without canonical cases, no unverified names are published. Diagnostic completeness
+cannot make a failing run pass or a passing run fail: canonical JSON, the positive
+30-case ledger and process result remain authoritative, including on report errors.
+The existing sanitized publisher and cleanup path are unchanged.
+
+Synthetic helper and actual Vitest-reporter fixtures prove only reporting behavior.
+No database/container run, workflow dispatch/rerun, migration or speculative repair
+was performed in this implementation. Independent exact-head delta review and the
+coordinator's one new-head run remain next. All standalone DC-SW1–SW9 gates still
+precede combined implementation; Garmin remains later.

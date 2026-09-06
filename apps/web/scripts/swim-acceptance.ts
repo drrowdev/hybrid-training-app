@@ -21,6 +21,7 @@ import {
   openPrivateCommandLog, publishAcceptanceSummary, safeFailureCause,
 } from "./swim-acceptance-reporting";
 import { RPC_CONFIG, RPC_SUITE, readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
+import { DIAGNOSTICS_ENV, DIAGNOSTICS_FILE, readSwimRpcDiagnostics } from "./swim-rpc-diagnostics";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
@@ -443,8 +444,10 @@ async function main(cleanupOnly: boolean) {
       const { result } = await command("pnpm", ["exec", "vitest", "run", "--config", "vitest.config.ts",
         "src/lib/swim/__tests__/storage-rpc.smoke.test.ts", "--passWithNoTests=false",
         "--fileParallelism=false", "--sequence.concurrent=false", "--retry=0",
-        "--reporter=verbose", "--reporter=json", `--outputFile=${reportPath}`], {
-        cwd: web, env: target.rpcEnv, timeout: LIMITS.rpc, allowFailure: true,
+        "--reporter=verbose", "--reporter=json", "--reporter=./scripts/swim-rpc-diagnostics.ts",
+        `--outputFile=${reportPath}`], {
+        cwd: web, env: { ...target.rpcEnv, [DIAGNOSTICS_ENV]: join(directory, DIAGNOSTICS_FILE) },
+        timeout: LIMITS.rpc, allowFailure: true,
         diagnose: async () => {
           await command("docker", ["exec", target.dbId, "psql", "-X", "-U", "postgres", "-d", "postgres",
             "-v", "ON_ERROR_STOP=1", "-c",
@@ -454,12 +457,17 @@ async function main(cleanupOnly: boolean) {
         },
       });
       manifest.rpcProcess = result;
-      requireUnchanged();
-      const info = lstatSync(reportPath);
-      requireFreshReport({ size: info.size, mtimeMs: info.mtimeMs, isFile: info.isFile() }, rpcStarted, Date.now());
-      chmodSync(reportPath, 0o600);
-      const ledger = readSwimRpcReport(reportPath, state.sha, manifest.configSha256 as string);
-      manifest.ledger = ledger;
+      let ledger: ReturnType<typeof readSwimRpcReport> | undefined;
+      try {
+        requireUnchanged();
+        const info = lstatSync(reportPath);
+        requireFreshReport({ size: info.size, mtimeMs: info.mtimeMs, isFile: info.isFile() }, rpcStarted, Date.now());
+        chmodSync(reportPath, 0o600);
+        ledger = readSwimRpcReport(reportPath, state.sha, manifest.configSha256 as string);
+        manifest.ledger = ledger;
+      } finally {
+        manifest.rpcDiagnostics = readSwimRpcDiagnostics(directory, rpcStarted, ledger);
+      }
       requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);
     });
   } catch (error) {

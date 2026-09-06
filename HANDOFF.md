@@ -31,7 +31,29 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-06 (pinned-default service correction; no execution this turn)
+**Last updated:** 2026-09-06 (safe RPC diagnostics; no database/workflow execution this turn)
+
+### PR802 safe RPC failure diagnostics
+
+[Run 34054970331](https://github.com/drrowdev/hybrid-training-app/actions/runs/34054970331)
+at `27971943ca9b34fa75d85c57793f1e74b667a7e3` passed core/identity, official
+12-service readiness, all existing HTTP probes, all 146 unchanged migrations,
+catalog seed/consistency and cleanup. All 30 authenticated RPC cases executed:
+**2 passed, 28 failed, none pending/todo; no process timeout**. Many failures
+share `createPlan`; the root cause remains unknown, not 28 established defects.
+
+[Authorization 5561913579](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561913579)
+adds a third Vitest reporter, an exclusive private 0600 diagnostic sidecar and
+strictly validated grouped evidence in the existing sanitized manifest. Only
+canonical case identities, fixed classifications/allowlists and normalized-message
+SHA-256 fingerprints may be published; no raw backend messages or sidecar contents.
+Bounds and missing/invalid evidence produce explicit partial/unavailable status.
+Canonical JSON, process outcome, the 30-case gate and cleanup remain authoritative.
+
+Focused synthetic reporter tests do not establish real RPC acceptance. Independent
+exact-head review precedes the coordinator's next manual run; no rerun was made
+here. No SQL/access-policy repair is proposed. The full standalone release
+inventory remains required before combined work; Garmin remains later.
 
 ### PR802 pinned-default service correction
 
