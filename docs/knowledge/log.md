@@ -1590,6 +1590,8 @@ under PR802 authorization 5560307838. Locally authored guard reasons are distinc
 from withheld parser/error details; primary, source-verification and cleanup
 failures remain separate. Command logs use exclusive append creation with 0600
 permissions. Production-used helper regressions and unchanged canonical-helper
-tests passed (183 tests); web typecheck and scoped ESLint passed. No workflow
-dispatch, database/container execution or live acceptance occurred. Standalone
+tests passed (183 tests); web typecheck, scoped ESLint and secret scanning passed.
+CodeQL found no Actions alerts; JavaScript analysis was skipped because its
+database was too large, so that scan remains unverified. No workflow dispatch,
+database/container execution or live acceptance occurred. Standalone
 release acceptance remains outstanding; coordinator review is next.
