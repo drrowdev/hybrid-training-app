@@ -21,7 +21,11 @@ if (!url) {
   process.exit(1);
 }
 
-const sql = postgres(url, { prepare: false, ssl: "require", max: 4 });
+const sql = postgres(url, {
+  prepare: false,
+  ssl: process.env.PGSSLMODE === "verify-full" ? true : "require",
+  max: 4,
+});
 const db = drizzle(sql);
 
 async function main() {
