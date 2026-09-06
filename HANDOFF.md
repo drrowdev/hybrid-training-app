@@ -31,7 +31,97 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-06 (limited PR802 follow-up; acceptance still blocked)
+**Last updated:** 2026-09-06 (approved loopback reference attempt; acceptance still blocked)
+
+### Latest PR802 runner-local reference acceptance
+
+Executed the [owner-approved plan](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5559175285)
+under [the updated authority](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5559195573),
+starting at exact source `c811a505d4a6b2b06f5d55f1b3b97753aa415cf1`.
+Both API comment-body SHA-256 values matched the approved values. The same
+PR/head/base were retained; no runtime, SQL, grant, dependency or workflow changed.
+
+**Observed outcome: platform startup failed, not application migration failure.**
+One official Supabase CLI 2.116.0 `start --debug --network-id` attempt ran from
+12:31:15 to 12:32:53 UTC, exiting 1 after 98.79 seconds within the 20-minute
+startup/diagnostic bound. No startup retry, service exclusion, health-check
+override, replacement stack or network-policy change followed.
+The terminal stdout reported `LegacyDbSetupError: error running container: exit 1`.
+Retained stderr identified Storage bootstrap's Node process failing with
+`getaddrinfo EAI_AGAIN supabase_db_pr802-c085dcdb-reference`.
+Docker events confirm Storage exited 1; Realtime bootstrap and Postgres exited 0.
+Postgres 17.6 had logged readiness before the failure. The mechanism behind the
+container-name lookup failure (resolver, policy or transient failure) remains
+unproven; this evidence does not diagnose the historical stale-update RPC.
+
+Prerequisites and boundary evidence:
+
+- Ubuntu 24.04.4, local `unix:///var/run/docker.sock`, Docker client/server
+  28.0.4, Node 22.23.2 and pnpm 10.33.2 were verified on this runner.
+  [Setup job 101486151083](https://github.com/drrowdev/hybrid-training-app/actions/runs/34033086318/job/101486151083)
+  reports successful dependency and Chromium installation/launch steps; its
+  running-job log endpoint returned 404, so the exact setup checkout command
+  was not independently recovered.
+- Offline frozen installation succeeded using the installed store. Repository
+  and installed lockfile hashes both remained
+  `5e495320c855704b2e065f0d7b4c95b22ed07c3b8ad0e390705573b9550f9130`.
+  No ordinary online install was needed. No inherited database/Supabase target
+  overrides, repository environment files or active config credential references
+  were present.
+- Official CLI archive digest:
+  `5b3031cb297d51b25be4c284e4c852254460ec722ec221d3b81b07d55acfd158`.
+  An initialization-only executable/directory name collision was corrected by
+  separating `bin/` and `project/` before any service start. Generated defaults
+  were retained except the unique project ID. Disposable migration paths were
+  empty and the default seed file absent; none of the 146 application migrations
+  was available to automatic platform initialization.
+- Created exactly one task-labeled bridge, `pr802-c085dcdb-loopback`, ID
+  `16a8eaad4c15bd2eac403a3c9fc94d25c3604cc108464aa23819c5e3ca2679e3`.
+  Verified `host_binding_ipv4=127.0.0.1`, default NAT, IPv6 disabled and empty
+  initial membership. No existing network/daemon/firewall/DNS configuration
+  was changed. Docker's normal temporary bridge rules were within approval.
+- All three containers recorded by project-labeled Docker lifecycle events
+  were captured on that bridge alone: Postgres `17.6.1.165`, Realtime
+  `v2.129.3`, Storage API `v1.70.3`. The sole captured published mapping was
+  `127.0.0.1:54322 -> 5432/tcp`; neither bootstrap helper published a host port.
+  Database-internal wildcard listeners are not host-published wildcard bindings.
+  This is a partial startup manifest, not a healthy default-service manifest.
+  The failed startup auto-removed containers before final live socket/API/DB
+  verification; no full readiness, public-reachability or egress-fidelity claim
+  is made.
+
+**Acceptance inventory fixed before startup, all application criteria unmet.**
+At the source SHA above, ADR 0079's delivery gates (lines 263–284), DC-SW1–SW9
+and the swim wiki remain authoritative. The private pre-execution inventory
+recorded every current RPC case name and these separate pass conditions:
+
+| Required evidence | This pass |
+| --- | --- |
+| Exact native courses/whole lengths/timings; suitable verified assessment or effort/learning path (DC-SW1/2) | Unexecuted |
+| Purpose-preserving scaling/slot budgets; fixed improving/plateau/missed-high-effort simulations; bounded no-catch-up progression (DC-SW3/4) | Unexecuted |
+| Real benchmark/progression accept/reject/override, auditable versions, immutable started targets, stale/concurrent start/move/accept rejection (DC-SW5/8) | Unexecuted |
+| Native analytics, compatible best efforts and generic history without inferred calibration (DC-SW6) | Unexecuted |
+| Pause/resume/finish/archive/replacement, archived offline finish, trash/undo/purge and unchanged primary prescriptions (DC-SW7) | Unexecuted |
+| All 30 source RPC cases, authenticated ownership/isolation, atomic receipt/summary, same/new-UUID replay, export/account deletion (DC-SW8) | **0 executed; all 30 blocked**, not passed or skipped acceptance |
+| Both existing mobile cases plus real persistence/reload/scaling, durable FIFO offline reload/replay and two-context server-canonical isolation | **0 executed; both blocked**; authored cases alone do not cover all obligations |
+| Actual `region_state` effects once across finish/replay/edit/trash/undo, stroke/equipment regions, generic history and new limitations (DC-SW9) | Unexecuted; action `ok` would not prove recomputation |
+| Healthy official services, unchanged 146 migrations/catalog, roles/grants/Auth claims, fresh successful canonical RPC ledger | Blocked before application migration; no RPC report/validator or mobile build/server invoked |
+
+No pure test, typecheck or lint result from an earlier pass is counted as fresh
+acceptance here. The web config and 20-second test/hook limits stayed unchanged.
+No SQL/REST stale-update diagnostic or activity/lock snapshot was applicable:
+the RPC suite was never reached.
+
+Raw stdout/stderr, incremental container/database logs, image digests, config
+metadata and lifecycle events were retained outside git in a mode-700 ephemeral
+directory with mode-600 evidence files, scrubbed before inspection/publication.
+These temporary paths are not durable artifacts. The official CLI removed the
+three recorded containers and database volume; the exact empty task bridge was
+then removed. Final checks found **zero task containers, volumes or networks**
+and no relevant host listeners. No prune, unrelated deletion or process-name
+kill was used. No further task, combined work, merge or deployment was initiated.
+The coordinator can review the concrete startup evidence; the failed method
+does not authorize an alternate network method.
 
 ### Earlier 2026-09-06 acceptance report (non-reference stack)
 
@@ -107,7 +197,7 @@ What actually ran, against real Postgres:
   above (a test-fixture bug and a real suspected hang) and the not-yet-run
   Playwright/RLS-script suites remain open before that claim can be made.
 
-### Latest 2026-09-06 limited PR802 follow-up
+### Earlier 2026-09-06 limited PR802 follow-up
 
 Started at approved HEAD `53ebc46de0c5efbe8b050a5e29a9ee50f37440f7` on the
 same PR/head/base branches. No SQL, schema, RLS, grants, workflow or runtime
