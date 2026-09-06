@@ -1595,3 +1595,16 @@ CodeQL found no Actions alerts; JavaScript analysis was skipped because its
 database was too large, so that scan remains unverified. No workflow dispatch,
 database/container execution or live acceptance occurred. Standalone
 release acceptance remains outstanding; coordinator review is next.
+
+## [2026-09-06] refine | Mirror safe swim acceptance summaries to job stdout
+
+Under PR802 authorization 5560545875, the
+[reporting path@33ec5343](https://github.com/drrowdev/hybrid-training-app/blob/33ec5343d6a018327678fa0f7a40a6f0ed853c52/apps/web/scripts/swim-acceptance.ts#L61-L64)
+now publishes the same sanitized/escaped summary to stdout with the literal
+`[swim-acceptance-summary]` marker before appending `GITHUB_STEP_SUMMARY`.
+Append failures still throw; existing primary/secondary/cleanup handling remains.
+All 185 targeted helper/report/config tests, web typecheck and scoped ESLint
+passed in the cloud workspace. No helper, database or workflow was executed.
+For failed run 34044560802 at that source SHA, the primary cause, database stages
+reached and cleanup outcome remain unobserved. No workflow, guard, runtime swim,
+SQL, dependency or network changes; standalone acceptance remains outstanding.

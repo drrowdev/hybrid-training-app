@@ -18,7 +18,7 @@ import {
 } from "./swim-acceptance-guards";
 import {
   acceptanceAssert as assert, AcceptanceReporting, formatAcceptanceSummary,
-  openPrivateCommandLog, safeFailureCause,
+  openPrivateCommandLog, publishAcceptanceSummary, safeFailureCause,
 } from "./swim-acceptance-reporting";
 import { RPC_CONFIG, RPC_SUITE, readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
 
@@ -58,10 +58,8 @@ async function main(cleanupOnly: boolean) {
     writeFileSync(`${statePath}.new`, JSON.stringify(state), { mode: 0o600 });
     renameSync(`${statePath}.new`, statePath);
   };
-  const summary = (heading: string, data: unknown) => {
-    const text = formatAcceptanceSummary(data, secrets);
-    appendFileSync(process.env.GITHUB_STEP_SUMMARY!, `\n### ${heading}\n<pre>${text}</pre>\n`);
-  };
+  const summary = (heading: string, data: unknown) =>
+    publishAcceptanceSummary(process.env.GITHUB_STEP_SUMMARY!, heading, data, secrets);
   const stage = <T>(name: string, action: () => Promise<T>) =>
     reporting.stage(name, action, (entry) => summary("Swim acceptance stage", entry));
 

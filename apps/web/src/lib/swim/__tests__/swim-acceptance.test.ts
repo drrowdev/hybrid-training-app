@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { closeSync, lstatSync, mkdtempSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CLI_ASSET, CLI_SHA256, DEFAULT_SERVICES, LIMITS, PROJECT_LABEL, RUN_LABEL,
   outcome, processIdentity, requireAcceptance, requireArchive, requireCleanupState,
@@ -12,7 +12,7 @@ import {
 } from "../../../../scripts/swim-acceptance-guards";
 import {
   acceptanceAssert, AcceptanceReporting, formatAcceptanceSummary,
-  openPrivateCommandLog, safeFailureCause,
+  openPrivateCommandLog, publishAcceptanceSummary, safeFailureCause,
 } from "../../../../scripts/swim-acceptance-reporting";
 import { MIN_RPC_CASES, RPC_SUITE, validateSwimRpcReport } from "./storage-rpc-report";
 
@@ -259,6 +259,68 @@ describe("disposable targets and effective Docker publications", () => {
       expect(output).not.toContain("synthetic-private-key");
       expect(output).not.toContain("private.invalid");
       expect(output).not.toContain("actual");
+    });
+
+    it("appends the same sanitized summary to stdout and the summary file", () => {
+      const directory = mkdtempSync(join(tmpdir(), "swim-acceptance-summary-"));
+      const path = join(directory, "summary.md");
+      const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+      try {
+        const reporting = new AcceptanceReporting();
+        try { acceptanceAssert(false, "Local <guard> & failed"); }
+        catch (error) { reporting.recordFailure("status", error); }
+        reporting.recordFailure("source verification", new Error(unsafe));
+        const secrets = [localStatus().ANON_KEY, localStatus().SERVICE_ROLE_KEY, 'synthetic-key "quoted"\r\n<&>'];
+        const data = { failures: reporting.failures, evidence: secrets };
+        const text = formatAcceptanceSummary(data, secrets);
+        const summary = `\n### Swim acceptance result\n<pre>${text}</pre>\n`;
+        publishAcceptanceSummary(path, "Swim acceptance result", data, secrets);
+        publishAcceptanceSummary(path, "Swim acceptance result", data, secrets);
+        expect(stdout.mock.calls).toEqual([
+          [`[swim-acceptance-summary]${summary}`], [`[swim-acceptance-summary]${summary}`],
+        ]);
+        expect(readFileSync(path, "utf8")).toBe(summary.repeat(2));
+        for (const output of [stdout.mock.calls[0]![0] as string, readFileSync(path, "utf8")]) {
+          expect(output).toContain("Local &lt;guard&gt; &amp; failed");
+          expect(output).toContain("[redacted]");
+          expect(output).toContain("Unexpected acceptance error; details withheld");
+          for (const value of [...secrets, "synthetic-key", "synthetic-private-key", "private.invalid", "<secret>", "stack"]) {
+            expect(output).not.toContain(value);
+          }
+        }
+      } finally {
+        stdout.mockRestore();
+        rmSync(directory, { recursive: true, force: true });
+      }
+    });
+
+    it("keeps safe stdout evidence and throws when the summary destination is unwritable", async () => {
+      const directory = mkdtempSync(join(tmpdir(), "swim-acceptance-summary-"));
+      const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+      try {
+        const reporting = new AcceptanceReporting();
+        await expect(reporting.stage("startup", async () => {
+          requireProcess({ code: 1, signal: null, timedOut: false });
+        }, noSummary)).rejects.toThrow();
+        reporting.recordFailure("cleanup", new Error(unsafe), true);
+        const primary = reporting.failures.primary;
+        const data = { ...outcome(primary?.stage, false), stages: reporting.stages, failures: reporting.failures };
+        const text = formatAcceptanceSummary(data);
+        expect(() => publishAcceptanceSummary(directory, "Swim acceptance result", data)).toThrow();
+        expect(stdout.mock.calls).toEqual([
+          [`[swim-acceptance-summary]\n### Swim acceptance result\n<pre>${text}</pre>\n`],
+        ]);
+        expect(text).toContain('"success": false');
+        expect(text).toContain('"cleanup": "unconfirmed"');
+        expect(reporting.failures.primary).toBe(primary);
+        expect(reporting.failures.cleanup).toHaveLength(1);
+        for (const value of [directory, "synthetic-private-key", "private.invalid", "stack"]) {
+          expect(stdout.mock.calls[0]![0]).not.toContain(value);
+        }
+      } finally {
+        stdout.mockRestore();
+        rmSync(directory, { recursive: true, force: true });
+      }
     });
 
     it("keeps original, source-verification and cleanup failures distinct and fails closed", async () => {

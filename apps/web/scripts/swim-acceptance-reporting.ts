@@ -101,6 +101,15 @@ export function formatAcceptanceSummary(data: unknown, secrets: Iterable<string>
   return text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+export function publishAcceptanceSummary(
+  path: string, heading: string, data: unknown, secrets: Iterable<string> = [],
+) {
+  const text = formatAcceptanceSummary(data, secrets);
+  const summary = `\n### ${heading}\n<pre>${text}</pre>\n`;
+  console.log(`[swim-acceptance-summary]${summary}`);
+  appendFileSync(path, summary);
+}
+
 export function openPrivateCommandLog(path: string) {
   const fd = openSync(path, "ax", 0o600);
   return { fd, append: (chunk: Buffer) => appendFileSync(path, chunk) };
