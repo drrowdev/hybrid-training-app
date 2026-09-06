@@ -267,7 +267,7 @@ blocked until the real RPC suite is fully green.
 Implementation authority:
 [PR802 comment 5560014710](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5560014710),
 UTF-8 SHA-256 `51de59db9fafb423c94af16ae4afb611ddf509ae0ef672984f4c897787330e5a`
-(CRLF preserved). This path is implemented; run 34054970331 reached all 30 RPC
+(CRLF preserved). This path is implemented; run 34059019498 reached all 30 RPC
 cases but did not pass application acceptance (see safe diagnostics below).
 The coordinator reviews the complete committed path and obtains independent
 code review before manually dispatching existing `ci.yml` on the reviewed head
@@ -375,13 +375,16 @@ acceptance. Coordinator delta review precedes the next exact-head run.
 
 ### Safe RPC failure diagnostics
 
-[Run 34054970331](https://github.com/drrowdev/hybrid-training-app/actions/runs/34054970331)
-at `27971943ca9b34fa75d85c57793f1e74b667a7e3` passed core/identity, official
+[Run 34059019498](https://github.com/drrowdev/hybrid-training-app/actions/runs/34059019498)
+at `418beb8f662a7f8267609d73fac9c4b32a7452f3` passed official
 12-service readiness, all existing HTTP probes, all 146 unchanged migrations,
 catalog seed/consistency and cleanup. All 30 authenticated RPC cases executed:
-**2 passed, 28 failed, none pending/todo, no process timeout**. The shared
-`createPlan` path suggests a common failure, but the canonical safe ledger
-deliberately omits messages. The root cause is not yet known.
+**2 passed, 28 failed, none pending/todo, no process timeout**. Diagnostics were
+complete with zero invalid records. All 28 failures share SQLSTATE `42501`,
+category `permission`, one fingerprint and `swim_create_plan`. One common
+permission failure is known; its denied object is not. Migration 0145's static
+grants are not runtime privilege evidence, and missing `P0001` does not establish
+that `auth.uid()` completed.
 
 Implemented [authorization 5561913579](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561913579),
 verified API body SHA-256
@@ -397,10 +400,19 @@ never published.
 The sanitized manifest groups counts by exact SQLSTATE/PostgREST code, fixed
 category and SHA-256 fingerprint of message data after UUID/number/quoted-literal
 normalization. Associations retain canonical-verified case identity, phase and
-allowlisted RPC; hook/collection records use a fixed suite identity. Small
-compile-time subsets of tracked identifiers and exact non-interpolated migration
-0145 exception literals provide optional context. Unmatched context is omitted,
-not guessed; fingerprints are grouping evidence, not a database diagnosis.
+allowlisted RPC; hook/collection records use a fixed suite identity.
+[Authorization 5562164313](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5562164313)
+expands compile-time identifiers anchored in migration 0145's objects and
+creation/validation path, plus the existing `extensions` schema vocabulary.
+Whole-token exact membership and exact non-interpolated exception literals remain.
+The optional closed `deniedKind` is required only for code `42501`, from that
+code-bearing cause's bounded message start: table, function, schema, sequence,
+column, type, rls-policy, role or unknown. It appears only in associations, never
+the group key. `unknownPermissionKinds` counts unsupported/incomplete permission
+classification separately from collector failures and invalid records; absence
+means a different/no code. Names still come only from the identifier allowlist.
+Unmatched context is omitted, not guessed; fingerprints are grouping evidence,
+not a database diagnosis.
 
 Collection bounds: 8 cause levels, 1,024 tasks with depth 16, 256 error records,
 8 KiB per message/identity, 2 KiB per JSONL record and 1 MiB per file. Cycles and
@@ -411,8 +423,13 @@ cannot make a failing run pass or a passing run fail: canonical JSON, the positi
 30-case ledger and process result remain authoritative, including on report errors.
 The existing sanitized publisher and cleanup path are unchanged.
 
-Synthetic helper and actual Vitest-reporter fixtures prove only reporting behavior.
-No database/container run, workflow dispatch/rerun, migration or speculative repair
-was performed in this implementation. Independent exact-head delta review and the
-coordinator's one new-head run remain next. All standalone DC-SW1–SW9 gates still
-precede combined implementation; Garmin remains later.
+All 458 targeted reporter/helper/report/config tests, web typecheck and scoped
+lint passed. Synthetic helper and actual Vitest-reporter fixtures prove only
+reporting behavior. No database/container run, workflow dispatch/rerun, migration
+or repair was performed. Independent exact-head delta review precedes the
+coordinator's one new-head run through the unchanged reference workflow. If the
+richer result still cannot identify the object, even with a known denial kind,
+stop this approach and propose bounded read-only privilege evidence: no third
+vocabulary pass, guessed grant or identical rerun. Any access-policy/schema/grant/
+user-data remedy needs owner approval and an additive migration with rollback.
+All standalone DC-SW1–SW9 gates still precede combined implementation.

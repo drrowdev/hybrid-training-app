@@ -22,16 +22,61 @@ const rpcNames = [
 ] as const;
 const errorClasses = ["Error", "AssertionError", "PostgrestError", "TypeError", "SyntaxError", "RangeError", "Other"] as const;
 const categories = ["permission", "constraint", "undefined-object", "schema-cache", "domain", "unclassified"] as const;
+const deniedKinds = ["table", "function", "schema", "sequence", "column", "type", "rls-policy", "role", "unknown"] as const;
+type DeniedKind = typeof deniedKinds[number];
+const denialPrefixes: ReadonlyArray<readonly [DeniedKind, string]> = [
+  ["table", "permission denied for table "],
+  ["function", "permission denied for function "],
+  ["schema", "permission denied for schema "],
+  ["sequence", "permission denied for sequence "],
+  ["column", "permission denied for column "],
+  ["type", "permission denied for type "],
+  ["rls-policy", "new row violates row-level security policy for table "],
+  ["rls-policy", 'new row violates row-level security policy "'],
+  ["rls-policy", "query would be affected by row-level security policy for table "],
+  ["role", "permission denied to set role "],
+  ["role", "must be member of role "],
+];
 const codeCategories: Record<string, typeof categories[number]> = {
   "42501": "permission", "23502": "constraint", "23503": "constraint", "23505": "constraint",
   "23514": "constraint", "42P01": "undefined-object", "42703": "undefined-object",
   "42883": "undefined-object", PGRST202: "schema-cache", PGRST204: "schema-cache", P0001: "domain",
 };
-// Deliberately small subsets of identifiers and literal exceptions in migration 0145.
+// Compile-time object vocabulary, anchored in packages/db/drizzle/0145_standalone_pool_swimming.sql.
 const identifiers = [
-  "public", "swim_plans", "swim_workouts", "sessions", "cardio_logs",
+  // Schemas: 0145:6,89; extensions: 0090_byoai_pgcrypto_search_path.sql:27.
+  "public", "auth", "pg_catalog", "extensions",
+  // Tables, roles, column, type and named constraints/indexes/policies: 0145:5-83,713.
+  "swim_plans", "swim_workouts", "sessions", "cardio_logs", "users", "planned_sessions",
+  "set_logs", "session_movements", "profiles", "limitations", "movements",
+  "swim_writer", "anon", "authenticated", "service_role", "swim_result", "session_slot",
   "swim_workouts_owned_plan_fk", "swim_workouts_owned_session_fk",
+  "sessions_user_id_id_key", "swim_plans_one_active_per_user", "swim_plans_owner_status_idx",
+  "swim_workouts_owner_date_idx", "swim_workouts_plan_idx", "cardio_logs_one_swim_result_per_session",
+  "swim_plans_owner", "swim_workouts_owner",
+  // RPCs and helpers: 0145:7,57,78,87-1369 (function definitions and calls).
   ...rpcNames, "swim_validate_plan", "swim_validate_workout", "swim_validate_plan_binding",
+  "uid", "set_updated_at", "complete_training_session_with_transition",
+  "swim_bounded_integer", "swim_local_today", "swim_array_append_only", "swim_validate_course",
+  "swim_validate_labels", "swim_validate_snapshot", "swim_validate_prescription",
+  "swim_validate_observation", "swim_validate_verified_calibration", "swim_validate_state_append",
+  "swim_validate_workout_append", "swim_validate_result", "swim_result_summary",
+  "swim_validate_result_course", "swim_forget_purged_actuals", "swim_guard_cardio",
+  "swim_guard_session", "swim_invalidate_session_source", "swim_guard_strength",
+  "swim_prescription_regions", "swim_serialize_limitation_change", "swim_assert_start_safety",
+  // Triggers: 0145:56-59,584,653,678,714-721,744-749,810.
+  "swim_plans_set_updated_at", "swim_workouts_set_updated_at", "swim_workouts_purge_actuals",
+  "cardio_logs_swim_guard", "sessions_swim_guard", "sessions_swim_source_revision",
+  "sessions_swim_purge_revision", "set_logs_swim_guard", "session_movements_swim_guard",
+  "limitations_swim_serialization",
+  // Builtins: 0145:10-46,94-163,230-269,398,492,529,607,668,805,962-964,1048,1085.
+  "gen_random_uuid", "now", "format", "jsonb_typeof", "trunc", "jsonb_array_length",
+  "cardinality", "jsonb_array_elements", "count", "array_position", "array_append",
+  "jsonb_build_array", "jsonb_array_elements_text", "array_agg", "unnest", "btrim", "round",
+  "jsonb_build_object", "to_jsonb", "pg_advisory_xact_lock", "hashtextextended", "jsonb_agg",
+  "jsonb_set", "length",
+  // Types used by the creation/validation path: 0145:17-46,87-98,119-135.
+  "uuid", "text", "date", "integer", "jsonb", "timestamptz", "bigint", "numeric", "boolean", "void",
 ] as const;
 const domainMessages = {
   "not-signed-in": "Not signed in.",
@@ -57,9 +102,10 @@ const recordSchema = z.object({
   kind: z.literal("error"), phase: z.enum(["test", "hook", "collection"]),
   caseHash: sha.optional(), errorClass: z.enum(errorClasses), hasCause: z.boolean(),
   code: code.optional(), category: z.enum(categories), rpc: z.enum(rpcNames).optional(),
+  deniedKind: z.enum(deniedKinds).optional(),
   fingerprint: sha, identifiers: z.array(z.enum(identifiers)).max(identifiers.length),
   domainMessageId: z.enum(Object.keys(domainMessages) as [keyof typeof domainMessages, ...Array<keyof typeof domainMessages>]).optional(),
-}).strict();
+}).strict().refine((record) => (record.code === "42501") === (record.deniedKind !== undefined));
 type Diagnostic = z.infer<typeof recordSchema>;
 const statusSchema = z.object({
   kind: z.literal("collector"), status: z.enum(["complete", "partial", "unavailable"]),
@@ -74,6 +120,8 @@ const object = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" ? value as Record<string, unknown> : {};
 const member = <T extends string>(values: readonly T[], value: unknown): T | undefined =>
   typeof value === "string" ? values.find((allowed) => allowed === value) : undefined;
+const denialKindFor = (text: string): DeniedKind =>
+  denialPrefixes.find(([, prefix]) => text.startsWith(prefix) && text.slice(prefix.length).trim().length > 0)?.[0] ?? "unknown";
 
 function normalizedMessage(text: string) {
   return text
@@ -122,10 +170,17 @@ export function collectSwimRpcDiagnostics(files: Files = [], errors: unknown[] =
         }
       }
       const parsedCode = code.safeParse(value.code);
-      if (parsedCode.success) record.code = parsedCode.data;
+      if (parsedCode.success) {
+        record.code = parsedCode.data;
+        // Follow the selected code's own bounded message, never a wrapper or another cause.
+        if (record.code === "42501") {
+          record.deniedKind = Buffer.byteLength(text) <= DIAGNOSTICS_LIMITS.messageBytes ? denialKindFor(text) : "unknown";
+        } else delete record.deniedKind;
+      }
       current = value.cause;
     }
     record.category = incomplete ? "unclassified" : categoryFor(record.code);
+    if (incomplete && record.code === "42501") record.deniedKind = "unknown";
     // Incomplete chains must not masquerade as a fully observed message.
     record.fingerprint = digest(incomplete ? "<incomplete>" : normalizedMessage(message));
     records.push(record);
@@ -230,10 +285,11 @@ type Association = Omit<Diagnostic, "kind" | "caseHash" | "code" | "category" | 
 };
 type Group = Pick<Diagnostic, "code" | "category" | "fingerprint"> & { count: number; associations: Association[] };
 type Evidence = {
-  status: "complete" | "partial" | "unavailable"; reason: Reason; invalidRecords: number; groups: Group[];
+  status: "complete" | "partial" | "unavailable"; reason: Reason; invalidRecords: number;
+  unknownPermissionKinds: number; groups: Group[];
 };
 const unavailable = (reason: Reason, invalidRecords = 0): Evidence =>
-  ({ status: "unavailable", reason, invalidRecords, groups: [] });
+  ({ status: "unavailable", reason, invalidRecords, unknownPermissionKinds: 0, groups: [] });
 
 export function projectSwimRpcDiagnostics(text: string, ledger?: Ledger): Evidence {
   try {
@@ -255,7 +311,7 @@ export function projectSwimRpcDiagnostics(text: string, ledger?: Ledger): Eviden
       ? ledger.suites[0]!.cases.map((test) => test.name) : [];
     const canonical = new Map(names.filter((name) => Buffer.byteLength(name) <= DIAGNOSTICS_LIMITS.messageBytes)
       .slice(0, DIAGNOSTICS_LIMITS.tasks).map((name) => [digest(name), name]));
-    const evidence: Evidence = { status, reason, invalidRecords: 0, groups: [] };
+    const evidence: Evidence = { status, reason, invalidRecords: 0, unknownPermissionKinds: 0, groups: [] };
     const partial = (value: Reason) => {
       evidence.status = "partial";
       if (evidence.reason === "collected") evidence.reason = value;
@@ -267,9 +323,10 @@ export function projectSwimRpcDiagnostics(text: string, ledger?: Ledger): Eviden
         (parsed.data.category !== categoryFor(parsed.data.code) && parsed.data.category !== "unclassified")) {
         evidence.invalidRecords++; partial("invalid-records"); continue;
       }
-      const { caseHash, code, category, fingerprint, phase, errorClass, hasCause, identifiers, rpc, domainMessageId } = parsed.data;
+      const { caseHash, code, category, fingerprint, phase, errorClass, hasCause, identifiers, rpc, domainMessageId, deniedKind } = parsed.data;
+      if (deniedKind === "unknown") evidence.unknownPermissionKinds++;
       const safe = { phase, errorClass, hasCause, identifiers, ...(rpc ? { rpc } : {}),
-        ...(domainMessageId ? { domainMessageId } : {}) };
+        ...(domainMessageId ? { domainMessageId } : {}), ...(deniedKind ? { deniedKind } : {}) };
       const name = caseHash ? canonical.get(caseHash) : undefined;
       if (safe.phase === "test" && !name) { evidence.invalidRecords++; partial("case-unverified"); }
       let group = evidence.groups.find((group) =>

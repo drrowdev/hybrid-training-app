@@ -72,18 +72,124 @@ describe("safe RPC diagnostics (synthetic reporting evidence, not swim acceptanc
     if (suite.type !== "suite" || second.type !== "suite") throw new Error("Expected synthetic suites");
     suite.tasks.push(...second.tasks);
     const evidence = projectSwimRpcDiagnostics(serialized(files), ledger());
-    expect(evidence).toMatchObject({ status: "complete", invalidRecords: 0 });
+    expect(evidence).toMatchObject({ status: "complete", invalidRecords: 0, unknownPermissionKinds: 0 });
     expect(evidence.groups).toHaveLength(1);
     expect(evidence.groups[0]).toMatchObject({
       code: "42501", category: "permission", count: 3,
       associations: [{ case: caseName, suite: DIAGNOSTICS_SUITE, phase: "test",
-        errorClass: "Error", hasCause: true, rpc: "swim_create_plan", identifiers: ["swim_plans", "swim_create_plan"], count: 2 },
+        errorClass: "Error", hasCause: true, rpc: "swim_create_plan", deniedKind: "table",
+        identifiers: ["swim_plans", "swim_create_plan"], count: 2 },
       { case: `${caseName} 1`, phase: "test", rpc: "swim_create_plan", count: 1 }],
     });
     expect(evidence.groups[0]!.fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(evidence.groups[0]).not.toHaveProperty("deniedKind");
     const nested = postgrest();
     Object.assign(nested.cause, { cause: { message: "deepest message", code: "23503" } });
     expect(collectSwimRpcDiagnostics(file([nested])).records[0]).toMatchObject({ code: "23503", category: "constraint" });
+    expect(collectSwimRpcDiagnostics(file([nested])).records[0]).not.toHaveProperty("deniedKind");
+  });
+
+  it.each([
+    ["table", 'permission denied for table "profiles"'],
+    ["function", 'permission denied for function "uid"'],
+    ["schema", 'permission denied for schema "auth"'],
+    ["sequence", 'permission denied for sequence "private_sequence"'],
+    ["column", 'permission denied for column "swim_result" of relation "cardio_logs"'],
+    ["type", 'permission denied for type "session_slot"'],
+    ["rls-policy", 'new row violates row-level security policy for table "swim_plans"'],
+    ["rls-policy", 'new row violates row-level security policy "swim_plans_owner" for table "swim_plans"'],
+    ["rls-policy", 'query would be affected by row-level security policy for table "swim_plans"'],
+    ["role", 'permission denied to set role "swim_writer"'],
+    ["role", 'must be member of role "swim_writer"'],
+  ])("classifies fixed PostgreSQL %s prefixes on the nested code-bearing entry", (deniedKind, message) => {
+    const evidence = projectSwimRpcDiagnostics(serialized(file([postgrest(message)])), ledger());
+    expect(evidence).toMatchObject({ status: "complete", invalidRecords: 0, unknownPermissionKinds: 0 });
+    expect(evidence.groups[0]).toMatchObject({
+      code: "42501", category: "permission", associations: [{ deniedKind, case: caseName, rpc: "swim_create_plan" }],
+    });
+    expect(formatAcceptanceSummary(evidence)).not.toContain("private_sequence");
+  });
+  it.each([
+    "unsupported permission failure", "permission denied for database private_database",
+    "permission denied for table", "permission denied for table ", "permission denied for table \n",
+    'swim_create_plan: permission denied for table "swim_plans"',
+    'prefix permission denied for table "swim_plans"', ' permission denied for table "swim_plans"',
+    'Permission denied for table "swim_plans"', 'permission denied for tables "swim_plans"',
+    'behörighet nekad för schema "auth"', "", undefined, null, 42,
+  ])("counts unsupported/incomplete permission message %j without collector failure", (message) => {
+    const evidence = projectSwimRpcDiagnostics(serialized(file([{
+      message: 'permission denied for schema "auth"', cause: { code: "42501", message },
+    }])), ledger());
+    expect(evidence).toMatchObject({
+      status: "complete", reason: "collected", invalidRecords: 0, unknownPermissionKinds: 1,
+      groups: [{ code: "42501", category: "permission", associations: [{ deniedKind: "unknown" }] }],
+    });
+  });
+  it.each(["23503", "P0001", "PGRST202", "42501\n", undefined])(
+    "omits denial kind for final non-permission/absent code %j despite permission text", (code) => {
+      const evidence = projectSwimRpcDiagnostics(serialized(file([{
+        code, message: 'permission denied for schema "auth"',
+      }])), ledger());
+      expect(evidence.unknownPermissionKinds).toBe(0);
+      expect(evidence.groups[0]!.associations[0]).not.toHaveProperty("deniedKind");
+    },
+  );
+  it("keeps denial class tied to the selected code across conflicting cause entries", () => {
+    const records = collectSwimRpcDiagnostics(file([
+      { code: "42501", message: "permission denied for schema auth",
+        cause: { code: "42501", message: "permission denied for function uid" } },
+      { code: "23503", message: "permission denied for table profiles",
+        cause: { code: "42501", message: "unsupported", cause: { message: "permission denied for function uid" } } },
+      { code: "42501", message: "permission denied for function uid",
+        cause: { message: "permission denied for schema auth" } },
+      { code: "42501", message: "permission denied for schema auth",
+        cause: { code: "P0001", message: "Not signed in." } },
+      { code: "42501", message: "swim_create_plan: permission denied for schema auth",
+        cause: { message: "permission denied for function uid" } },
+    ])).records;
+    expect(records.map((record) => record.deniedKind)).toEqual(["function", "unknown", "function", undefined, "unknown"]);
+    expect(records[3]).not.toHaveProperty("deniedKind");
+  });
+  it("preserves the code/category/fingerprint group and canonical ledger across denial kinds", () => {
+    const canonical = ledger();
+    const before = JSON.stringify(canonical);
+    const evidence = projectSwimRpcDiagnostics(serialized(file([
+      ...["table", "schema"].map((kind) => ({
+        code: "42501", message: `permission denied for ${kind} "private_object"`, cause: { message: "shared failure" },
+      })),
+      { code: "42501", message: "unsupported", cause: { message: "shared failure" } },
+      { code: "42501", message: "unsupported", cause: { message: "shared failure" } },
+      { message: "shared failure" },
+    ])), canonical);
+    expect(evidence).toMatchObject({ status: "complete", invalidRecords: 0, unknownPermissionKinds: 2 });
+    expect(evidence.groups).toHaveLength(2);
+    expect(evidence.groups[0]).toEqual({
+      code: "42501", category: "permission", fingerprint: hash("shared failure"), count: 4,
+      associations: ["table", "schema", "unknown"].map((deniedKind) => ({
+        phase: "test", errorClass: "Other", hasCause: true, identifiers: [], deniedKind,
+        suite: DIAGNOSTICS_SUITE, case: caseName, count: deniedKind === "unknown" ? 2 : 1,
+      })),
+    });
+    expect(evidence.groups[1]!.associations[0]).not.toHaveProperty("deniedKind");
+    expect(JSON.stringify(canonical)).toBe(before);
+    expect(formatAcceptanceSummary(evidence)).not.toContain("private_object");
+  });
+  it("reports unknown denial kinds on bounded incomplete chains without inventing unseen codes", () => {
+    const cycle = { code: "42501", message: "permission denied for schema auth", cause: undefined as unknown };
+    cycle.cause = cycle;
+    let deep: unknown = { code: "42501", message: "permission denied for function uid" };
+    for (let index = 0; index < DIAGNOSTICS_LIMITS.causes; index++) deep = { cause: deep };
+    const large = { code: "42501", message: "permission denied for table " + "x".repeat(DIAGNOSTICS_LIMITS.messageBytes) };
+    for (const error of [cycle, large, { code: "42501", message: "permission denied for schema auth", cause: deep }]) {
+      const evidence = projectSwimRpcDiagnostics(serialized(file([error])), ledger());
+      expect(evidence).toMatchObject({ status: "partial", invalidRecords: 0, unknownPermissionKinds: 1,
+        groups: [{ code: "42501", category: "unclassified", fingerprint: hash("<incomplete>"),
+          associations: [{ deniedKind: "unknown" }] }] });
+    }
+    const unseen = projectSwimRpcDiagnostics(serialized(file([deep])), ledger());
+    expect(unseen).toMatchObject({ status: "partial", unknownPermissionKinds: 0 });
+    expect(unseen.groups[0]).not.toHaveProperty("code");
+    expect(unseen.groups[0]!.associations[0]).not.toHaveProperty("deniedKind");
   });
 
   it("normalizes UUIDs, numbers and quoted literals without run/project salts or other serialized fields", () => {
@@ -148,7 +254,46 @@ describe("safe RPC diagnostics (synthetic reporting evidence, not swim acceptanc
     }
     const allowed = source.slice(source.indexOf("const rpcNames"), source.indexOf("const errorClasses")) +
       source.slice(source.indexOf("const identifiers"), source.indexOf("const domainMessages"));
-    for (const [, identifier] of allowed.matchAll(/"([a-z_]+)"/g)) expect(sql).toContain(identifier);
+    const schemaSql = readFileSync(new URL("../../../../../../packages/db/drizzle/0090_byoai_pgcrypto_search_path.sql", import.meta.url), "utf8");
+    for (const [, identifier] of allowed.matchAll(/"([a-z_]+)"/g)) {
+      const anchor = identifier === "extensions" ? schemaSql : sql;
+      expect(anchor).toMatch(new RegExp(`\\b${identifier}\\b`));
+      expect(collectSwimRpcDiagnostics(file([{ message: `"${identifier}"` }])).records[0]!.identifiers)
+        .toEqual([identifier]);
+    }
+  });
+  it.each([
+    "auth", "pg_catalog", "extensions", "profiles", "users", "swim_writer", "session_slot", "swim_result",
+    "swim_plans_owner", "swim_plans_one_active_per_user", "sessions_user_id_id_key",
+    "uid", "pg_advisory_xact_lock", "hashtextextended", "jsonb_array_elements",
+    "swim_bounded_integer", "swim_validate_course", "swim_validate_labels", "swim_validate_snapshot",
+    "swim_validate_prescription", "swim_validate_observation", "swim_validate_verified_calibration",
+    "swim_validate_state_append", "swim_validate_workout_append", "swim_assert_start_safety",
+    "swim_plans_set_updated_at",
+  ])("retains only exact whole-token membership for added object %s", (identifier) => {
+    for (const message of [identifier, `"${identifier}"`, `public."${identifier}"`]) {
+      const evidence = projectSwimRpcDiagnostics(serialized(file([postgrest(message)])), ledger());
+      expect(evidence.groups[0]!.associations[0]!.identifiers).toContain(identifier);
+    }
+    for (const token of [
+      `private_${identifier}`, `${identifier}_private`, `${identifier}$private`, `${identifier}é`,
+      `${identifier}\u0301`, `"private.${identifier}"`, `"${identifier}""private"`, identifier.toUpperCase(),
+    ]) {
+      const evidence = projectSwimRpcDiagnostics(serialized(file([postgrest(`permission denied for function ${token}`)])), ledger());
+      expect(evidence.groups[0]!.associations[0]!.identifiers).not.toContain(identifier);
+      expect(formatAcceptanceSummary(evidence)).not.toContain(token);
+    }
+  });
+  it("classifies hostile unlisted targets without publishing their names or request fields", () => {
+    const secret = 'private_target <script> ::warning:: https://private.invalid';
+    const error = postgrest(`permission denied for function "${secret}"`);
+    Object.assign(error.cause, { schema: secret, table: secret, column: secret, details: secret, hint: secret });
+    const evidence = projectSwimRpcDiagnostics(serialized(file([error])), ledger());
+    expect(evidence).toMatchObject({ status: "complete", unknownPermissionKinds: 0,
+      groups: [{ associations: [{ deniedKind: "function", identifiers: ["swim_create_plan"] }] }] });
+    for (const raw of ["private_target", "<script>", "::warning::", "https://", "details", "hint"]) {
+      expect(formatAcceptanceSummary(evidence)).not.toContain(raw);
+    }
   });
 
   it("retains unknown errors but withholds hostile case names and all raw secret-like fields", () => {
@@ -232,7 +377,7 @@ describe("safe RPC diagnostics (synthetic reporting evidence, not swim acceptanc
     vi.spyOn(fs, "writeFileSync").mockImplementationOnce(() => { throw new Error("synthetic-private-write-failure"); });
     expect(writeSwimRpcDiagnostics(directory, path, file([postgrest()]), [])).toBe(false);
     expect(readSwimRpcDiagnostics(directory, 0, ledger())).toEqual({
-      status: "unavailable", reason: "collector-failure", invalidRecords: 0, groups: [],
+      status: "unavailable", reason: "collector-failure", invalidRecords: 0, unknownPermissionKinds: 0, groups: [],
     });
     expect(stdout).not.toHaveBeenCalled();
     expect(stderr).not.toHaveBeenCalled();
@@ -243,7 +388,7 @@ describe("safe RPC diagnostics (synthetic reporting evidence, not swim acceptanc
     writeSwimRpcDiagnostics(directory, path, file([postgrest()]), []);
     vi.spyOn(fs, "readSync").mockImplementationOnce(() => { throw new Error("synthetic-private-read-failure"); });
     expect(readSwimRpcDiagnostics(directory, 0, ledger())).toEqual({
-      status: "unavailable", reason: "sidecar-unavailable", invalidRecords: 0, groups: [],
+      status: "unavailable", reason: "sidecar-unavailable", invalidRecords: 0, unknownPermissionKinds: 0, groups: [],
     });
   });
 
@@ -252,11 +397,14 @@ describe("safe RPC diagnostics (synthetic reporting evidence, not swim acceptanc
     { code: "42501\n" }, { category: "invented" }, { rpc: "swim_create_plan_extra" },
     { fingerprint: "a".repeat(64) + "\n" }, { hasCause: "yes" }, { identifiers: ["private_table"] },
     { domainMessageId: "Invalid swimming setup." }, { caseHash: "not-a-hash" },
+    { deniedKind: "private_target" }, { deniedKind: "table\n" }, { deniedKind: null }, { deniedKind: undefined },
+    { code: "23503", category: "constraint", deniedKind: "table" },
+    { code: undefined, category: "unclassified", deniedKind: "unknown" },
   ])("rejects invalid record fields and counts them explicitly: %j", (change) => {
     const collection = collectSwimRpcDiagnostics(file([postgrest()]));
     const text = JSON.stringify(collection.status) + "\n" + JSON.stringify({ ...collection.records[0], ...change });
     expect(projectSwimRpcDiagnostics(text, ledger())).toMatchObject({
-      status: "partial", reason: "invalid-records", invalidRecords: 1, groups: [],
+      status: "partial", reason: "invalid-records", invalidRecords: 1, unknownPermissionKinds: 0, groups: [],
     });
   });
   it("rejects malformed records, unknown status keys, inconsistent counts and invalid phase identities", () => {
@@ -402,8 +550,9 @@ describe("safe RPC diagnostics (synthetic reporting evidence, not swim acceptanc
     const evidence = readSwimRpcDiagnostics(directory, 0, kind === "collection" ? undefined : ledger());
     expect(evidence.reason).toBe(kind === "collection" ? "canonical-cases-unavailable" : "collected");
     if (kind === "fail") {
+      expect(evidence.unknownPermissionKinds).toBe(1);
       expect(evidence.groups[0]).toMatchObject({ code: "42501",
-        associations: [{ case: caseName, phase: "test", rpc: "swim_create_plan", hasCause: true }] });
+        associations: [{ case: caseName, phase: "test", rpc: "swim_create_plan", hasCause: true, deniedKind: "unknown" }] });
     }
     if (kind === "hook" || kind === "collection") {
       expect(evidence.groups.some((group) => group.associations.some((item) => item.phase === kind))).toBe(true);

@@ -31,16 +31,18 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-06 (safe RPC diagnostics; no database/workflow execution this turn)
+**Last updated:** 2026-09-06 (RPC diagnostic context correction; no database/workflow execution this turn)
 
 ### PR802 safe RPC failure diagnostics
 
-[Run 34054970331](https://github.com/drrowdev/hybrid-training-app/actions/runs/34054970331)
-at `27971943ca9b34fa75d85c57793f1e74b667a7e3` passed core/identity, official
+[Run 34059019498](https://github.com/drrowdev/hybrid-training-app/actions/runs/34059019498)
+at `418beb8f662a7f8267609d73fac9c4b32a7452f3` passed official
 12-service readiness, all existing HTTP probes, all 146 unchanged migrations,
 catalog seed/consistency and cleanup. All 30 authenticated RPC cases executed:
-**2 passed, 28 failed, none pending/todo; no process timeout**. Many failures
-share `createPlan`; the root cause remains unknown, not 28 established defects.
+**2 passed, 28 failed, none pending/todo; no process timeout**. All 28 failures
+share SQLSTATE `42501`, category `permission`,
+one fingerprint and `swim_create_plan`. Diagnostics were complete with zero
+invalid records. The denied object remains unknown, not 28 established defects.
 
 [Authorization 5561913579](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561913579)
 adds a third Vitest reporter, an exclusive private 0600 diagnostic sidecar and
@@ -50,10 +52,21 @@ SHA-256 fingerprints may be published; no raw backend messages or sidecar conten
 Bounds and missing/invalid evidence produce explicit partial/unavailable status.
 Canonical JSON, process outcome, the 30-case gate and cleanup remain authoritative.
 
-Focused synthetic reporter tests do not establish real RPC acceptance. Independent
-exact-head review precedes the coordinator's next manual run; no rerun was made
-here. No SQL/access-policy repair is proposed. The full standalone release
-inventory remains required before combined work; Garmin remains later.
+[Authorization 5562164313](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5562164313)
+expands only source-anchored diagnostic identifiers and adds a closed `deniedKind`
+from the selected `42501` cause's own bounded message. It appears only in
+associations; code/category/fingerprint grouping is unchanged. Unknown permission
+kinds are counted separately from invalid records and collector failure.
+Static grants do not establish runtime privileges; missing `P0001` does not prove
+`auth.uid()` completed. No SQL/access-policy repair is identified or approved.
+
+All 458 targeted reporter/helper/report/config tests, web typecheck and scoped lint
+passed; synthetic evidence is not real RPC acceptance. Independent exact-head
+delta review must precede the coordinator's one new-head reference run; none ran
+here. If richer diagnostics still lack a relevant target, stop this approach and
+propose bounded read-only privilege evidence, not a third vocabulary pass or a
+guessed grant. Any remedy needs owner approval and an additive migration with
+rollback. Full standalone acceptance still precedes combined work.
 
 ### PR802 pinned-default service correction
 

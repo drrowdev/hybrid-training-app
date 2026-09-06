@@ -1699,3 +1699,35 @@ lint passed; synthetic reporting fixtures are not real swim acceptance.
 No Docker/Supabase/database execution, workflow dispatch/rerun or merge occurred.
 Independent exact-head review precedes the coordinator's next new-head run.
 The full standalone DC-SW1–SW9 inventory remains required before combined work.
+
+## [2026-09-06] refine | Correct RPC diagnostic identifier and denial context
+
+Implemented [PR802 authorization 5562164313](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5562164313)
+at source `418beb8f662a7f8267609d73fac9c4b32a7452f3`; exact API body SHA-256
+matched `619b805adb8f0fc776dce98baa57f40ca2a714cad58abfce6770692d197baeaf`.
+[Run 34059019498](https://github.com/drrowdev/hybrid-training-app/actions/runs/34059019498)
+passed official default-service startup/readiness, all existing HTTP probes,
+146 unchanged migrations, catalog consistency and cleanup. RPC outcomes remain
+**2 passed, 28 failed, none pending/todo, no process timeout**. Complete diagnostics
+with zero invalid records show one shared `42501` permission fingerprint and
+`swim_create_plan`; the denied object remains unknown. Static grants do not prove
+runtime privileges; missing `P0001` does not prove `auth.uid()` completed.
+
+Only the reporter/projector, its focused tests and status documentation changed.
+The compile-time vocabulary now includes source-anchored schemas, helpers,
+validators and related objects. Closed `deniedKind` follows the selected `42501`
+cause's bounded message and appears only in associations. Unknown permission kinds
+are counted separately from invalid records/collector failure. Exact membership,
+strict validation, private-file/bounds/no-throw guarantees and the original
+code/category/fingerprint group key remain; canonical JSON, 30-case acceptance,
+outcomes and cleanup are unchanged.
+
+All 458 targeted reporter/helper/report/config tests, web typecheck and scoped
+lint passed in the coding workspace. These are synthetic reporting checks, not
+live acceptance. No database/container/workflow execution, SQL/access-policy
+repair, feature work or merge occurred. Independent exact-head delta review
+precedes one new-head run through the unchanged reference workflow. If richer
+context still lacks a relevant target, stop vocabulary passes and propose bounded
+read-only privilege evidence. Any remedy needs owner approval and a reviewed
+additive migration with rollback. Full standalone DC-SW1–SW9 acceptance remains
+required before combined implementation.
