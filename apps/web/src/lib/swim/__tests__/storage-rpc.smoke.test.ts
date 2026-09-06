@@ -3,11 +3,11 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { SwimActualResult, SwimPlanDefinition, SwimPlanState, SwimWorkoutDefinition } from "@hta/db";
 import type { SwimWorkout } from "@hta/domain";
-import { createSmokeClient, getMovementIdBySlug, RUN_ID } from "../../../../e2e-rpc/setup";
+import { createSmokeClient, createSmokeSession, getMovementIdBySlug, RUN_ID } from "../../../../e2e-rpc/setup";
 import type { SwimCompletion, SwimPlanWithWorkouts, SwimWorkoutRow } from "../storage";
 import { getSwimRpcTestEnv } from "./storage-rpc-config";
 
-// Run with the existing e2e-rpc config and --dir src/lib/swim/__tests__.
+// Run with apps/web/vitest.config.ts; see the pool-swimming wiki's JSON ledger command.
 // Never consume the app's production credentials or apply migrations here.
 const smokeEnv = getSwimRpcTestEnv();
 const anonKey = smokeEnv?.anonKey;
@@ -70,6 +70,7 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
   let alice: SupabaseClient;
   let bob: SupabaseClient;
   let aliceId: string;
+  let bobId: string;
   let easyMovementId: string;
   let intervalMovementId: string;
   const users = new Set<string>();
@@ -112,7 +113,7 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
     easyMovementId = await getMovementIdBySlug(admin, "swim-easy");
     intervalMovementId = await getMovementIdBySlug(admin, "swim-intervals");
     ({ id: aliceId, client: alice } = await user("alice"));
-    bob = (await user("bob")).client;
+    ({ id: bobId, client: bob } = await user("bob"));
     expect(await rpc(alice, "swim_storage_ready")).toBe(true);
   });
 
@@ -133,19 +134,85 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
     }
   });
 
-  it("enforces two-user visibility, write ownership and composite owner foreign keys", async () => {
+  it("DC-SW8 hides Alice's plan from Bob", async () => {
     const created = await createPlan();
-    const other = await createPlan(bob);
     const hidden = await bob.from("swim_plans").select("id").eq("id", created.plan.id);
     expect(hidden.error).toBeNull();
     expect(hidden.data).toEqual([]);
-    expect((await bob.rpc("swim_start_workout", { p_workout_id: created.workouts[0]!.id, p_expected_revision: 1 })).error).not.toBeNull();
-    expect((await alice.from("swim_workouts").update({ plan_id: other.plan.id }).eq("id", created.workouts[0]!.id)).error).not.toBeNull();
+  });
+
+  it("DC-SW8 rejects Bob starting Alice's workout", async () => {
+    const created = await createPlan();
+    const response = await bob.rpc("swim_start_workout", { p_workout_id: created.workouts[0]!.id, p_expected_revision: 1 });
+    expect(response.error?.code).toBe("P0001");
+    expect(response.error?.message).toBe("Swimming workout not found.");
+    const unchanged = await alice.from("swim_workouts").select("*").eq("id", created.workouts[0]!.id).single();
+    expect(unchanged.error).toBeNull();
+    expect(unchanged.data).toEqual(created.workouts[0]);
+  });
+
+  it("DC-SW8 rejects direct authenticated workout reassignment", async () => {
+    const created = await createPlan();
+    const other = await createPlan(bob);
+    const response = await alice.from("swim_workouts").update({ plan_id: other.plan.id }).eq("id", created.workouts[0]!.id);
+    expect(response.error?.code).toBe("42501");
+    const unchanged = await alice.from("swim_workouts").select("*").eq("id", created.workouts[0]!.id).single();
+    expect(unchanged.error).toBeNull();
+    expect(unchanged.data).toEqual(created.workouts[0]);
+  });
+
+  it("DC-SW8 rejects a cross-owner plan link with the ownership foreign key", async () => {
+    const created = await createPlan();
+    const other = await createPlan(bob);
     const crossPlan = await admin.from("swim_workouts").update({ plan_id: other.plan.id }).eq("id", created.workouts[0]!.id);
     expect(crossPlan.error?.code).toBe("23503");
-    const otherStarted = await start(other.workouts[0]!, bob);
-    const crossSession = await admin.from("swim_workouts").update({ session_id: otherStarted.session_id }).eq("id", created.workouts[0]!.id);
+    expect(crossPlan.error?.message).toContain("swim_workouts_owned_plan_fk");
+    const unchanged = await admin.from("swim_workouts").select("*")
+      .in("plan_id", [created.plan.id, other.plan.id]).order("id");
+    expect(unchanged.error).toBeNull();
+    expect(unchanged.data).toEqual([...created.workouts, ...other.workouts].sort((a, b) => a.id.localeCompare(b.id)));
+  });
+
+  it("DC-SW8 rejects an unlinked cross-owner session with the ownership foreign key", async () => {
+    const created = await createPlan();
+    const otherSessionId = await createSmokeSession(admin, bobId, "unlinked-owner-fk");
+    const beforeSession = await admin.from("sessions").select("*").eq("id", otherSessionId).single();
+    expect(beforeSession.error).toBeNull();
+    expect(beforeSession.data?.user_id).toBe(bobId);
+    const beforeLinks = await admin.from("swim_workouts").select("id").eq("session_id", otherSessionId);
+    expect(beforeLinks.error).toBeNull();
+    expect(beforeLinks.data).toEqual([]);
+
+    const crossSession = await admin.from("swim_workouts").update({ session_id: otherSessionId }).eq("id", created.workouts[0]!.id);
     expect(crossSession.error?.code).toBe("23503");
+    expect(crossSession.error?.message).toContain("swim_workouts_owned_session_fk");
+    const unchanged = await alice.from("swim_workouts").select("*").eq("plan_id", created.plan.id).order("id");
+    expect(unchanged.error).toBeNull();
+    expect(unchanged.data).toEqual([...created.workouts].sort((a, b) => a.id.localeCompare(b.id)));
+    const afterLinks = await admin.from("swim_workouts").select("id").eq("session_id", otherSessionId);
+    expect(afterLinks.error).toBeNull();
+    expect(afterLinks.data).toEqual([]);
+    const afterSession = await admin.from("sessions").select("*").eq("id", otherSessionId).single();
+    expect(afterSession.error).toBeNull();
+    expect(afterSession.data).toEqual(beforeSession.data);
+  });
+
+  it("DC-SW8 rejects duplicate same-owner session links with the unique constraint", async () => {
+    const created = await createPlan();
+    const started = await start(created.workouts[0]!);
+    expect(started.session_id).not.toBeNull();
+    const before = await alice.from("swim_workouts").select("*").eq("plan_id", created.plan.id).order("id");
+    expect(before.error).toBeNull();
+    const duplicate = await admin.from("swim_workouts").update({ session_id: started.session_id }).eq("id", created.workouts[1]!.id);
+    expect(duplicate.error?.code).toBe("23505");
+    expect(duplicate.error?.message).toContain("swim_workouts_session_id_key");
+    const after = await alice.from("swim_workouts").select("*").eq("plan_id", created.plan.id).order("id");
+    expect(after.error).toBeNull();
+    expect(after.data).toEqual(before.data);
+  });
+
+  it("DC-SW7 creates standalone swim plans without primary program, block or season rows", async () => {
+    await createPlan();
     for (const table of ["training_blocks", "program_instances", "training_seasons"]) {
       const { count, error } = await admin.from(table).select("id", { count: "exact", head: true }).eq("user_id", aliceId);
       expect(error).toBeNull();

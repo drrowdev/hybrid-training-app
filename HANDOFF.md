@@ -15,12 +15,12 @@ accept explicit slot intents, including zero-slot weeks. Course-specific native
 distance and millisecond results are authoritative; generic cardio summaries
 exist for compatibility and shared workload only.
 
-The dedicated Stockholm test is available, but its database/admin credentials
-have not been supplied. Remote acceptance remains blocked; no database migration
-or seeded remote test has run. Do not treat mocked migration/action tests or
-local static browser previews as RLS, concurrency or mobile/offline release proof. Do not use
-production or rehearsal databases, or generic app-credential fallbacks, to run
-seeded tests. Production was not migrated.
+The current PR802 continuation authorizes disposable localhost services on the
+cloud runner only, not hosted credentials. Reference-stack acceptance remains
+blocked; see the latest result below. Do not treat mocked tests, static browser
+previews or the earlier hand-built stack as reference-platform, concurrency or
+mobile/offline release proof. Never use production/rehearsal databases or
+generic app-credential fallbacks for seeded tests. Production was not migrated.
 
 New setup uses `POOL_SWIMMING_ENABLED=true` plus the installed schema capability.
 Existing swim history and queued finishes remain available when setup is off.
@@ -31,9 +31,13 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-06 (remote standalone acceptance pass; see below)
+**Last updated:** 2026-09-06 (limited PR802 follow-up; acceptance still blocked)
 
-### 2026-09-06 remote standalone acceptance pass (cloud-only, disposable infra)
+### Earlier 2026-09-06 acceptance report (non-reference stack)
+
+Historical report, not independently reproduced in the latest continuation.
+The 19/24 ledger is incomplete: three non-passing case identities are unknown.
+It does not establish official platform fidelity or standalone readiness.
 
 Ran in a GitHub-hosted cloud sandbox with **no live/test cloud credentials** and
 **no local-filesystem access**. Did not touch production, billing, or any hosted
@@ -73,10 +77,8 @@ What actually ran, against real Postgres:
   returning quickly, both under the manual gateway and via a minimal
   standalone Node/`@supabase/supabase-js` repro script that bypassed vitest
   entirely. All other calls in the same script (create/update/read) return in
-  under 100 ms. This looks like a real stuck-lock/stuck-request condition
-  worth investigating with fresh eyes (advisory lock, `FOR UPDATE` ordering,
-  or PostgREST/connection-pool interaction), not an artifact of vitest or the
-  manual reverse proxy — but time ran out before root-causing it further. The
+  under 100 ms. Root cause remains unknown: database locks, transport retries
+  and manual-platform effects are hypotheses, not findings. The
   RPC/E2E hosted-ref guards' new narrow **local-only test mode**
   (`SWIM_RPC_TEST_LOCAL=true` / `E2E_SWIM_LOCAL=1` +
   `SWIM_TEST_PROJECT_REF=local`, loopback-only, added this pass) is what made
@@ -92,10 +94,8 @@ What actually ran, against real Postgres:
   (confirmed via a minimal repro: two containers on a custom bridge network,
   `nslookup` returns `REFUSED`); the CLI's edge runtime also cannot reach
   `deno.land` (blocked domain here). Worked around with a hand-wired,
-  IP-addressed set of standalone containers instead — a genuine disposable,
-  local, synthetic-only stack, but more fragile than the CLI's own tooling
-  would have been, and likely responsible for at least some of the residual
-  flakiness above.
+  IP-addressed set of standalone containers instead. This did not establish
+  reference-platform fidelity and must not be repeated as acceptance.
 - A narrow, additive fix was needed to run the movement-catalog seed
   (`packages/db/seeds/db-ssl.ts` + updated `packages/db/seeds/run.ts`): it
   only allows skipping TLS when `PGSSLMODE=disable` **and** `DATABASE_URL`'s
@@ -106,6 +106,48 @@ What actually ran, against real Postgres:
   Postgres-backed acceptance evidence for the first time. The two findings
   above (a test-fixture bug and a real suspected hang) and the not-yet-run
   Playwright/RLS-script suites remain open before that claim can be made.
+
+### Latest 2026-09-06 limited PR802 follow-up
+
+Started at approved HEAD `53ebc46de0c5efbe8b050a5e29a9ee50f37440f7` on the
+same PR/head/base branches. No SQL, schema, RLS, grants, workflow or runtime
+swimming behavior changed.
+
+- Local E2E fixture/app URLs now require identical normalized origins,
+  including ports. Existing HTTP/loopback/URL restrictions remain.
+- Split ownership/isolation into independent RPC cases. The session FK uses
+  an unlinked Bob-owned ordinary session and requires `23503`; duplicate
+  same-owner links separately require `23505`. Rejected writes must preserve
+  links/state. These RPC assertions are **unexecuted**, not fixed-and-green.
+- The [swim wiki](docs/knowledge/pool-swimming.md#per-case-rpc-report-on-the-disposable-local-reference-stack)
+  documents the actual web Vitest config, unchanged 20-second test/hook
+  limits, serial/no-retry JSON reporting and timeout/cleanup caveats.
+- Pure guard validation: **108/108 passed** using the existing Vitest 2.1.9
+  and web config. Frozen pnpm installation failed on checked-in
+  `ms-feed-*.pkgs.visualstudio.com` tarball DNS resolution. Four exact
+  lockfile-pinned native test-tool packages were installed only in `/tmp`
+  to run those guards; no lockfile rewrite. Full web typecheck/lint remain
+  dependency-blocked. In-repo docs drift and whitespace checks passed.
+- RPC reporter verification with execution disabled failed before collection
+  (`@supabase/supabase-js` unresolved): **0 cases collected, 1 failed suite**.
+  All 30 current RPC cases remain unexecuted; none is counted as passing or
+  skipped acceptance. The PR delivery comment carries the observed ledger.
+- One official attempt: Ubuntu 24.04.4, Docker 28.0.4, Supabase CLI 2.116.0,
+  default generated config in `/tmp`, five-minute outer bound. Image pulls
+  encountered rate limits then completed; `supabase start` exited 1 during
+  schema initialization and cleaned up its containers/network/volumes.
+  The retained stderr ends at `Initialising schema...` / `Stopping containers...`;
+  stdout was discarded to avoid recording credentials, so the terminal cause
+  was not retained. Do not infer a confirmed DNS or SQL cause from this run.
+  No retry, bypass, substitute stack or grant patch followed.
+- No application migrations/catalog, JWT/REST/grant/Storage checks, stale-RPC
+  direct SQL/REST/client comparison, mobile scenarios or actual load-ledger
+  checks ran. The reference stack never became healthy. Further environment
+  attempts need renewed authorization; any diagnosed SQL change needs an
+  independently approved additive migration/rollback proposal.
+
+Standalone acceptance remains blocked; PR802 remains draft. Combined swimming,
+Garmin, production changes and merging are not authorized by this follow-up.
 
 ## Where we are
 

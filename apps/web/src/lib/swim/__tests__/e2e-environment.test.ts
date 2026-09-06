@@ -100,6 +100,7 @@ describe("localhost-only swim E2E environment mode", () => {
     "not a URL",
   ])("rejects a widened localhost target: %s", (url) => {
     expect(isDedicatedSwimEnvironment({ ...local(), E2E_SUPABASE_URL: url })).toBe(false);
+    expect(isDedicatedSwimEnvironment({ ...local(), NEXT_PUBLIC_SUPABASE_URL: url })).toBe(false);
   });
 
   it("never lets a hosted supabase.co URL through local mode", () => {
@@ -113,6 +114,29 @@ describe("localhost-only swim E2E environment mode", () => {
   it("requires NEXT_PUBLIC_SUPABASE_URL to match when set, same as hosted mode", () => {
     expect(isDedicatedSwimEnvironment({ ...local(), NEXT_PUBLIC_SUPABASE_URL: local().E2E_SUPABASE_URL })).toBe(true);
     expect(isDedicatedSwimEnvironment({ ...local(), NEXT_PUBLIC_SUPABASE_URL: "https://project-b.supabase.co" })).toBe(false);
+  });
+
+  it.each([
+    ["http://127.0.0.1:54321", "http://127.0.0.1:54321/"],
+    ["http://LOCALHOST:54321/", "http://localhost:54321"],
+    ["http://localhost:80", "http://localhost/"],
+    ["http://[::1]:54321", "http://[0:0:0:0:0:0:0:1]:54321/"],
+  ])("accepts the same normalized local origin: %s and %s", (fixtureUrl, appUrl) => {
+    expect(swimE2EEnabled({
+      ...local(), E2E_SUPABASE_URL: fixtureUrl, NEXT_PUBLIC_SUPABASE_URL: appUrl,
+    })).toBe(true);
+  });
+
+  it.each([
+    "http://127.0.0.1:54322",
+    "http://127.0.0.1",
+    "http://localhost:54321",
+    "http://[::1]:54321",
+    "",
+  ])("rejects a different or empty application origin: %s", (appUrl) => {
+    const env = { ...local(), NEXT_PUBLIC_SUPABASE_URL: appUrl };
+    expect(isDedicatedSwimEnvironment(env)).toBe(false);
+    expect(() => swimE2EEnabled(env)).toThrow();
   });
 
   it("keeps the hosted mode's own guard behavior unaffected by E2E_SWIM_LOCAL being absent", () => {
