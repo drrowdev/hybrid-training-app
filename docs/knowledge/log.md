@@ -18,11 +18,6 @@ Program deployment and editing, season replacement, session completion, bodyweig
 
 ---
 
-## [2026-09-06] bootstrap | Copilot cloud setup workflow
-Added the setup-only `.github/workflows/copilot-setup-steps.yml` for future GitHub Copilot cloud-agent sessions. The workflow uses standard `ubuntu-latest`, read-only contents permission, bounded setup steps, frozen pnpm install from the root `packageManager`, Playwright Chromium/Linux dependency installation, and a headless launch check; it intentionally avoids database services, migrations, seeds, secrets, production credentials, build/test duplication, runner changes, firewall changes, and billing changes. It becomes available to cloud sessions only after merge to the default branch and can be verified as an ordinary Actions workflow on this PR branch.
-
----
-
 ## [2026-05-19] ingest | hybrid-training-research-v1.md
 Conceptual framework landed (~72 KB, ~1500 lines). Owns: anchor-filler model, stress-budget concept, five structural rules, durability-as-loading framing, aesthetics-as-explicit-programming framing, conditioning-modality interference profile, six-layer app architecture. First raw source; sets the vocabulary used by v2 and `new`.
 
@@ -1416,3 +1411,8 @@ Completion replay now forwards a UUID receipt only when the queued entry has
 one. Older timestamp-keyed completion rows pass a null receipt and remain
 eligible for normal success or retry handling. An IndexedDB upgrade fixture
 covers reading those rows from an existing outbox. No migration.
+
+---
+
+## [2026-09-06] bootstrap | Copilot cloud setup workflow
+Added the setup-only `.github/workflows/copilot-setup-steps.yml` for future GitHub Copilot cloud-agent sessions. The workflow uses standard `ubuntu-latest`, read-only contents permission, bounded setup steps, frozen pnpm install from the root `packageManager`, Playwright Chromium/Linux dependency installation, and a headless launch check; it intentionally avoids database services, migrations, seeds, secrets, production credentials, build/test duplication, runner changes, firewall changes, and billing changes. It becomes available to cloud sessions only after merge to the default branch and can be verified as an ordinary Actions workflow on this PR branch.
