@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { SEED_MOVEMENTS } from "../../../packages/db/seeds/movements";
 import {
-  CLI_ASSET, CLI_SHA256, CLI_VERSION, LIMITS, PROJECT_LABEL, RUN_LABEL,
+  CLI_ASSET, CLI_SHA256, CLI_VERSION, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
   containerSchema, networkSchema, outcome, processIdentity, requireAcceptance, requireArchive,
   requireCleanupState, requireContainer, requireFreshReport, requireLocalStatus,
   requireManualContext, requireNetwork, requireNoInheritedTargets, requirePrivateLocation,
@@ -27,13 +27,6 @@ const web = join(root, "apps/web");
 const hash = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args],
   { encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
-const inspectFormat = `{"Id":{{json .Id}},"Name":{{json .Name}},"Image":{{json .Image}},
-  "Config":{"Image":{{json .Config.Image}},"Labels":{{json .Config.Labels}}},
-  "State":{"Running":{{json .State.Running}},"Status":{{json .State.Status}},
-    "Health":{{if .State.Health}}{"Status":{{json .State.Health.Status}}}{{else}}null{{end}}},
-  "HostConfig":{"NetworkMode":{{json .HostConfig.NetworkMode}}},
-  "NetworkSettings":{"Networks":{{json .NetworkSettings.Networks}},"Ports":{{json .NetworkSettings.Ports}}},
-  "Mounts":{{json .Mounts}}}`.replace(/\s+/g, " ");
 
 async function main(cleanupOnly: boolean) {
   // Fail before any filesystem/resource creation outside the reviewed manual job.
@@ -181,7 +174,7 @@ async function main(cleanupOnly: boolean) {
   };
   const inspect = async (ids: string[]) => {
     if (ids.length === 0) return [];
-    const { text } = await docker(["inspect", "--format", inspectFormat, ...ids]);
+    const { text } = await docker(["inspect", "--format", INSPECT_FORMAT, ...ids]);
     return text.split("\n").map((line) => containerSchema.parse(JSON.parse(line)));
   };
   const network = async () => {
