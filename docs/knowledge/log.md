@@ -1673,3 +1673,29 @@ No runner, container/database execution, workflow dispatch or merge occurred.
 All 146 migrations/catalog, 30 actual RPC cases and the frozen standalone
 DC-SW1–SW9 inventory remain required. No acceptance waiver, workflow, SQL,
 dependency, runtime/image/version/network change; coordinator review is next.
+
+## [2026-09-06] refine | Add safe RPC failure diagnostics without changing acceptance
+
+Implemented [PR802 authorization 5561913579](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561913579)
+at source `27971943ca9b34fa75d85c57793f1e74b667a7e3`; its exact API body
+SHA-256 matched `7431dc1bbb483fb71a571569e040e6398ca246b4382d8d77dbb7e7899c8119c2`.
+[Run 34054970331](https://github.com/drrowdev/hybrid-training-app/actions/runs/34054970331)
+passed core/identity, official 12-service readiness, existing HTTP probes, all
+146 unchanged migrations, catalog seed/consistency and cleanup. RPC execution
+was **2/30 passed, 28 failed, none pending/todo, no process timeout**. Many failures
+share `createPlan`; root cause remains unknown. Earlier run facts above remain
+historical evidence, not the latest result.
+
+The third Vitest reporter writes a bounded exclusive private sidecar; its reader
+publishes only validated classifications, canonical case/phase/RPC associations,
+allowlisted context and normalized-message SHA-256 groups through the existing
+sanitized summary. Missing, invalid, overflow and collector-failure evidence is
+explicit. Canonical JSON, process result, minimum 30-case gate, existing health
+requests and cleanup remain unchanged. No SQL/schema/access policy, workflow,
+RPC suite/config/payload/assertion, dependency or runtime feature changed.
+
+All 391 targeted workspace helper/report/config tests, web typecheck and scoped
+lint passed; synthetic reporting fixtures are not real swim acceptance.
+No Docker/Supabase/database execution, workflow dispatch/rerun or merge occurred.
+Independent exact-head review precedes the coordinator's next new-head run.
+The full standalone DC-SW1–SW9 inventory remains required before combined work.
