@@ -65,3 +65,57 @@ describe("ADR0079 dedicated E2E environment guard", () => {
     expect(isDedicatedSwimEnvironment({ ...dedicated, E2E_SUPABASE_ANON_KEY: key, E2E_SUPABASE_SERVICE_ROLE_KEY: key })).toBe(true);
   });
 });
+
+describe("localhost-only swim E2E environment mode", () => {
+  const local = () => ({
+    E2E_SWIM_NONPROD: "1",
+    E2E_SWIM_LOCAL: "1",
+    E2E_SUPABASE_URL: "http://127.0.0.1:54321",
+    E2E_SUPABASE_ANON_KEY: ["sb", "publishable", "0123456789abcdefghijklmnopqrstuv"].join("_"),
+    E2E_SUPABASE_SERVICE_ROLE_KEY: ["sb", "secret", "0123456789abcdefghijklmnopqrstuv"].join("_"),
+    SWIM_TEST_PROJECT_REF: "local",
+  });
+
+  it("accepts a bare loopback origin acknowledged with SWIM_TEST_PROJECT_REF=local", () => {
+    expect(isDedicatedSwimEnvironment(local())).toBe(true);
+    expect(swimE2EEnabled(local())).toBe(true);
+  });
+
+  it("does not activate local mode without the exact E2E_SWIM_LOCAL flag", () => {
+    expect(isDedicatedSwimEnvironment({ ...local(), E2E_SWIM_LOCAL: undefined })).toBe(false);
+    expect(isDedicatedSwimEnvironment({ ...local(), E2E_SWIM_LOCAL: "true" })).toBe(false);
+  });
+
+  it("rejects any non-'local' project reference in local mode, even a real-looking one", () => {
+    expect(isDedicatedSwimEnvironment({ ...local(), SWIM_TEST_PROJECT_REF: "project-a" })).toBe(false);
+  });
+
+  it.each([
+    "https://127.0.0.1:54321", // not http
+    "http://example.com:54321", // not loopback
+    "http://127.0.0.1:54321/rest/v1", // path
+    "http://127.0.0.1:54321?token=1", // query
+    "http://127.0.0.1:54321#frag", // fragment
+    "http://admin@127.0.0.1:54321", // credentials
+    "not a URL",
+  ])("rejects a widened localhost target: %s", (url) => {
+    expect(isDedicatedSwimEnvironment({ ...local(), E2E_SUPABASE_URL: url })).toBe(false);
+  });
+
+  it("never lets a hosted supabase.co URL through local mode", () => {
+    expect(isDedicatedSwimEnvironment({ ...local(), E2E_SUPABASE_URL: "https://project-a.supabase.co" })).toBe(false);
+  });
+
+  it("still requires non-placeholder credentials in local mode", () => {
+    expect(isDedicatedSwimEnvironment({ ...local(), E2E_SUPABASE_ANON_KEY: "replace-me" })).toBe(false);
+  });
+
+  it("requires NEXT_PUBLIC_SUPABASE_URL to match when set, same as hosted mode", () => {
+    expect(isDedicatedSwimEnvironment({ ...local(), NEXT_PUBLIC_SUPABASE_URL: local().E2E_SUPABASE_URL })).toBe(true);
+    expect(isDedicatedSwimEnvironment({ ...local(), NEXT_PUBLIC_SUPABASE_URL: "https://project-b.supabase.co" })).toBe(false);
+  });
+
+  it("keeps the hosted mode's own guard behavior unaffected by E2E_SWIM_LOCAL being absent", () => {
+    expect(isDedicatedSwimEnvironment(dedicated)).toBe(true);
+  });
+});
