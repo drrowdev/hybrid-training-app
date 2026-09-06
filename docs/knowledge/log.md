@@ -1552,3 +1552,20 @@ readiness and external reachability were not established. See
 for evidence limits and the explicitly unmet criteria. Only acceptance
 documentation changed; no runtime/SQL/grant/dependency/workflow, combined-mode,
 merge or deployment action was taken.
+
+## [2026-09-06] verify | Prearmed reference observation narrows bootstrap hypotheses
+
+At `ebe4a672a13b86f7490acd7c001463c45a6d31ea`, executed approved PR802
+plan 5559384497 with live project-container and exact-network event streams
+armed before one official CLI 2.116.0 startup. It exited 1 after 64.28 seconds,
+without retry: Storage again reported DB-name `getaddrinfo EAI_AGAIN`.
+During Storage execution the DB advertised the expected DNS name and remained
+on the same network until after Storage failed. This contradicts H1/H2 at the
+observed metadata/timeline level, not proof of working DNS. All three generated
+resolver files were captured without exec and matched; H3 remains unresolved.
+No application migration, RPC, mobile/offline or shared-load acceptance ran;
+the full pre-execution inventory remains unmet. The CLI removed the exact task
+containers, volume and bridge, verified absent within the total bound. See
+[`HANDOFF.md`](../../HANDOFF.md#latest-pr802-runner-local-reference-acceptance)
+for timestamps, hashes, image-reference differences and capture limitations.
+No runtime, SQL, fixture, dependency, workflow or environment-policy repair.
