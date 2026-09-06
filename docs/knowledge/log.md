@@ -1629,3 +1629,25 @@ passed. Fixtures/static-template checks do not execute Docker's Go renderer.
 No runner, Docker/Supabase/database execution, workflow dispatch or merge occurred;
 coordinator review and a later exact-head run must verify rendering and cleanup.
 Full standalone acceptance remains outstanding; no DC-SW1–SW9 contract changed.
+
+## [2026-09-06] refine | Classify official bootstrap jobs only during startup
+
+Implemented [PR802 authorization 5561109891](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561109891)
+(verified UTF-8 SHA-256 `fa4881aee0995da3b45921c4f0c8fb930629c39c35afd3126fadcb50d238c2ee`).
+[Run 34049409389](https://github.com/drrowdev/hybrid-training-app/actions/runs/34049409389)
+at `f57f16ab9ebc29f2c2f3bbb0fba8d9a4323ee97b` stopped on an official unnamed
+Realtime bootstrap job, not unsafe publication or DNS failure; optional-Health
+inspection and both cleanup paths succeeded. The
+[observer@f57f16a](https://github.com/drrowdev/hybrid-training-app/blob/f57f16ab9ebc29f2c2f3bbb0fba8d9a4323ee97b/apps/web/scripts/swim-acceptance.ts#L334-L374)
+now uses a separate startup validator: both exact project labels, the existing
+single-network/mode check, no host publication, volume-only mounts and nine exact
+approved image references with at most one valid SHA-256 digest suffix.
+`/supabase_` names still take the original named path; the
+[13-service readiness contract@f57f16a](https://github.com/drrowdev/hybrid-training-app/blob/f57f16ab9ebc29f2c2f3bbb0fba8d9a4323ee97b/apps/web/scripts/swim-acceptance-guards.ts#L131-L143)
+and ownership-checked cleanup are unchanged. The first safe classified violation
+is retained before stopping startup. All 271 targeted helper/report/config Vitest
+tests, web typecheck and scoped ESLint passed; fixtures/static wiring are not real
+Docker/DB acceptance. No runner, Docker/Supabase/DB, workflow execution or merge
+was performed. Coordinator delta review and a later exact-head run remain pending;
+migrations/catalog/RPC and full standalone acceptance remain unproven.
+No DC-SW1–SW9, image/runtime/network configuration or swim-feature change.

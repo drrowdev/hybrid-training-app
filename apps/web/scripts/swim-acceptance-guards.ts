@@ -112,12 +112,16 @@ export const containerSchema = z.object({
   Mounts: z.array(z.object({ Type: z.string(), Name: z.string().optional() })),
 });
 export type Container = z.infer<typeof containerSchema>;
-export function requireContainer(container: Container, project: string, networkId: string, ready = false) {
-  assert(container.Config.Labels?.[PROJECT_LABEL] === project &&
-    container.Name.startsWith("/supabase_") && container.Name.endsWith(`_${project}`), "Foreign container");
+function requireContainerNetwork(container: Container, project: string, networkId: string) {
   const networks = Object.values(container.NetworkSettings.Networks);
   assert(networks.length === 1 && networks[0]!.NetworkID === networkId &&
     [networkId, `${project}-loopback`].includes(container.HostConfig.NetworkMode), "Unexpected container network");
+}
+
+export function requireContainer(container: Container, project: string, networkId: string, ready = false) {
+  assert(container.Config.Labels?.[PROJECT_LABEL] === project &&
+    container.Name.startsWith("/supabase_") && container.Name.endsWith(`_${project}`), "Foreign container");
+  requireContainerNetwork(container, project, networkId);
   for (const bindings of Object.values(container.NetworkSettings.Ports)) {
     for (const binding of bindings ?? []) {
       assert(binding.HostIp === "127.0.0.1" && /^(8083|54321|54322|54323|54324|54327)$/.test(binding.HostPort),
@@ -126,6 +130,30 @@ export function requireContainer(container: Container, project: string, networkI
   }
   if (ready) assert(container.State.Running &&
     (!container.State.Health || container.State.Health.Status === "healthy"), "Service not ready");
+}
+
+const BOOTSTRAP_IMAGES = new Set([
+  "supabase/realtime:v2.129.3",
+  "public.ecr.aws/supabase/realtime:v2.129.3",
+  "ghcr.io/supabase/realtime:v2.129.3",
+  "supabase/storage-api:v1.70.3",
+  "public.ecr.aws/supabase/storage-api:v1.70.3",
+  "ghcr.io/supabase/storage-api:v1.70.3",
+  "supabase/gotrue:v2.196.0",
+  "public.ecr.aws/supabase/gotrue:v2.196.0",
+  "ghcr.io/supabase/gotrue:v2.196.0",
+]);
+
+export function requireStartupContainer(container: Container, project: string, networkId: string) {
+  if (container.Name.startsWith("/supabase_")) return requireContainer(container, project, networkId);
+  assert(container.Config.Labels?.[PROJECT_LABEL] === project &&
+    container.Config.Labels?.["com.docker.compose.project"] === project, "Foreign startup job");
+  requireContainerNetwork(container, project, networkId);
+  assert(Object.values(container.NetworkSettings.Ports).every((bindings) => (bindings ?? []).length === 0),
+    "Startup job publication forbidden");
+  assert(container.Mounts.every((mount) => mount.Type === "volume"), "Unexpected startup job mount");
+  const image = container.Config.Image.replace(/@sha256:[a-f0-9]{64}$/, "");
+  assert(BOOTSTRAP_IMAGES.has(image), "Unexpected startup job image");
 }
 
 export function requireReadyStack(containers: Container[], network: Network, project: string) {
