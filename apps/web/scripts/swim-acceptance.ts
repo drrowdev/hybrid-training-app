@@ -22,6 +22,7 @@ import {
 } from "./swim-acceptance-reporting";
 import { RPC_CONFIG, RPC_SUITE, readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
 import { DIAGNOSTICS_ENV, DIAGNOSTICS_FILE, readSwimRpcDiagnostics } from "./swim-rpc-diagnostics";
+import { observeAuthPrivileges } from "./swim-auth-privileges";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
@@ -437,6 +438,7 @@ async function main(cleanupOnly: boolean) {
       manifest.catalog = { seedCount: SEED_MOVEMENTS.length, globalCount: slugs.length, slugsSha256: hash(text) };
       requireUnchanged();
     });
+    manifest.authPrivileges = await observeAuthPrivileges(command, target.dbId);
     await stage("complete authenticated RPC file and positive ledger", async () => {
       const reportPath = join(directory, "rpc.json");
       assert(!existsSync(reportPath));

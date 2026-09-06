@@ -433,3 +433,62 @@ stop this approach and propose bounded read-only privilege evidence: no third
 vocabulary pass, guessed grant or identical rerun. Any access-policy/schema/grant/
 user-data remedy needs owner approval and an additive migration with rollback.
 All standalone DC-SW1–SW9 gates still precede combined implementation.
+
+### Read-only auth privilege evidence
+
+[Run 34061180463](https://github.com/drrowdev/hybrid-training-app/actions/runs/34061180463)
+at `fc364e2534e361c378e0f88a887c3504b44bc009` supersedes the denied-object
+uncertainty above: all 28 failures identify schema `auth`, with complete
+diagnostics, zero invalid records and zero unknown permission kinds. Core/identity,
+official default services/readiness, 146 unchanged migrations, catalog consistency
+and both cleanup paths passed. RPC remains **2 passed, 28 failed, none
+pending/todo, no timeout**. Actual owners, grant options, role membership and
+effective privileges have not yet been observed.
+
+[Authorization 5562400372](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5562400372)
+adds `apps/web/scripts/swim-auth-privileges.ts` and one call from the existing
+runner, after successful migration/catalog checks and before RPC. The fixed query
+uses the already verified owned `target.dbId` and private postgres psql channel.
+It begins READ ONLY, sets a 5-second statement timeout and rolls back. The command
+uses both capture and allowFailure, with a 10-second maximum still clipped by the
+existing deadline and cleanup reserve. The existing 8 MiB stdout cap and child
+termination behavior are unchanged; logs stay private.
+
+Only fixed catalog objects are resolved: postgres, swim_writer, supabase_admin,
+auth/public schemas, `auth.uid()` and
+`public.swim_create_plan(date,date,jsonb,jsonb,jsonb)`. OID predicates are guarded
+against missing roles/objects; owner lookup is restricted to those objects.
+The strict projection reports connection identity as postgres/other, role flags,
+membership/inherited access, effective schema/function privileges and grant
+options, three closed owner classifications, and the exact creation function's
+SECURITY DEFINER/stored row_security classification. Unknown owners become
+`other`; missing owners do not. Duplicate row_security entries or required NULLs
+are unavailable, not false privileges or an assumed setting. Raw config, ACLs,
+function bodies, arbitrary names, user data and backend errors are not published.
+No auth or swimming function is executed as a probe.
+
+`manifest.authPrivileges` is either available with the validated observation or
+unavailable with a fixed reason: command-failed, timeout-or-output-limit,
+invalid-output, or missing-or-ambiguous-catalog. A timeout/overflow discards even
+otherwise valid captured data. Diagnostic failure never replaces the original
+RPC result, alters the 30-case gate or skips cleanup.
+
+Migration 0145's authored grant is not proof of grant authority at runtime.
+Effective EXECUTE includes PUBLIC and inherited privileges; a true swim_writer
+result for `auth.uid()` does **not** establish that this migration granted it.
+Schema USAGE and grant-option evidence discriminate the current failure.
+The observed image is `ghcr.io/supabase/postgres:17.6.1.165`, digest
+`28f0e16a019e648089fc1a6d333549a55548f6019c15ae4bd7cd58b989027518`.
+Do not substitute an older baseline or infer catalog facts from a fingerprint.
+
+All 293 targeted acceptance-helper tests, web typecheck and scoped lint passed;
+fixtures establish reporting behavior only. This implementation did not execute
+Docker, a database, Supabase or a workflow, and changes no access policy, migration,
+runtime feature, service, network, dependency or canonical RPC report.
+Independent exact-head review and fresh guards precede one new-head manual run
+through the unchanged workflow. If evidence remains insufficient, record exactly
+what is missing and reassess, with no identical rerun or diagnostic expansion.
+Any access correction requires a specific owner decision and independently
+reviewed additive migration/rollback, not a repeated grant or privilege bypass.
+Full standalone [DC-SW1–SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+acceptance still precedes combined implementation.

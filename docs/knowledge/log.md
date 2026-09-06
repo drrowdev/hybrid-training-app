@@ -1731,3 +1731,33 @@ context still lacks a relevant target, stop vocabulary passes and propose bounde
 read-only privilege evidence. Any remedy needs owner approval and a reviewed
 additive migration with rollback. Full standalone DC-SW1–SW9 acceptance remains
 required before combined implementation.
+
+## [2026-09-06] refine | Add bounded read-only auth privilege evidence
+
+Implemented [PR802 authorization 5562400372](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5562400372)
+from `fc364e2534e361c378e0f88a887c3504b44bc009`; exact API body SHA-256
+matched `75145b0b21f9a2196dcff9aca3782859c68fdbf7f8b7f663d848879164fb5f86`.
+[Run 34061180463](https://github.com/drrowdev/hybrid-training-app/actions/runs/34061180463)
+passed core/identity, official default-service readiness, 146 unchanged migrations,
+catalog consistency and both cleanup paths. RPC remains **2 passed, 28 failed,
+none pending/todo, no timeout**; all failures identify schema `auth`, with zero
+invalid records or unknown permission kinds. Runtime grant authority remains
+unobserved; no further reporter-vocabulary change is needed.
+
+The [fixed observation](./pool-swimming.md#read-only-auth-privilege-evidence)
+uses the existing verified private postgres channel between catalog checks and
+RPC, with READ ONLY, a 5-second statement timeout, a 10-second command maximum
+within existing deadlines, and unchanged capture/termination bounds. Only strict
+booleans/closed enums enter the sanitized manifest. Missing/ambiguous objects,
+duplicate fields/settings, malformed output and process failures become explicit
+unavailable evidence. The original RPC gate, reports, process outcome and cleanup
+remain authoritative. Effective EXECUTE is not proof that migration 0145 granted it.
+
+All 293 targeted acceptance-helper tests, web typecheck and scoped lint passed.
+These are synthetic reporting tests, not live privilege or standalone acceptance
+evidence. No database/container/workflow execution, access repair, migration,
+feature/UI work, service/network change or merge occurred. Independent exact-head
+review and fresh guards precede one new-head manual run; insufficient evidence
+requires reassessment, not an identical rerun or diagnostic expansion. Any access
+correction remains a separate owner decision with reviewed additive migration and
+rollback. Standalone DC-SW1–SW9 acceptance remains required before combined work.
