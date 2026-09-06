@@ -1530,3 +1530,25 @@ Focused existing-runner tests cover the reporting gate independently of database
 readiness. The printable ledger records SHA/config/case evidence without raw
 failure messages; original diagnostics remain private until scrubbed.
 This reporting refinement is not fresh RPC, mobile or shared-load acceptance.
+
+## [2026-09-06] verify | Approved loopback reference startup blocked before application acceptance
+
+At source `c811a505d4a6b2b06f5d55f1b3b97753aa415cf1`, verified PR802's
+approved plan/authority hashes and recorded all 30 RPC cases plus the broader
+ADR0079/DC-SW1–SW9 acceptance criteria before execution. Offline frozen
+installation succeeded. One official CLI 2.116.0 startup on the approved
+task-owned, loopback-publishing, default-NAT bridge exited 1 after 98.79 seconds:
+Storage bootstrap failed resolving the project database container name
+(`getaddrinfo EAI_AGAIN`). Postgres had reached readiness; no application
+migration/catalog, RPC, mobile or shared-load acceptance ran. This is retained
+platform-startup evidence, not a SQL failure or diagnosis of the stale-update
+hang. No retry or substitute network/stack followed.
+
+Captured project-container membership and the sole published loopback mapping,
+retained private diagnostics and image digests, then verified removal of all
+three task containers, the database volume and the exact bridge. Full service
+readiness and external reachability were not established. See
+[`HANDOFF.md`](../../HANDOFF.md#latest-pr802-runner-local-reference-acceptance)
+for evidence limits and the explicitly unmet criteria. Only acceptance
+documentation changed; no runtime/SQL/grant/dependency/workflow, combined-mode,
+merge or deployment action was taken.
