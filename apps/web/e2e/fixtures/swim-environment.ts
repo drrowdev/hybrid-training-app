@@ -17,17 +17,18 @@ const LOCAL_PROJECT_REF = "local";
  */
 function isLocalSwimEnvironment(env: Record<string, string | undefined>): boolean {
   if (env.SWIM_TEST_PROJECT_REF !== LOCAL_PROJECT_REF) return false;
-  const matches = (value: string | undefined) => {
-    if (!value || !URL.canParse(value)) return false;
+  const localOrigin = (value: string | undefined): string | null => {
+    if (!value || !URL.canParse(value)) return null;
     const target = new URL(value);
     const isLoopback =
       target.hostname === "127.0.0.1" || target.hostname === "localhost" || target.hostname === "[::1]";
     return target.protocol === "http:" && isLoopback &&
       target.username === "" && target.password === "" &&
-      target.pathname === "/" && target.search === "" && target.hash === "";
+      target.pathname === "/" && target.search === "" && target.hash === "" ? target.origin : null;
   };
-  return matches(env.E2E_SUPABASE_URL) &&
-    (env.NEXT_PUBLIC_SUPABASE_URL === undefined || matches(env.NEXT_PUBLIC_SUPABASE_URL));
+  const fixtureOrigin = localOrigin(env.E2E_SUPABASE_URL);
+  return fixtureOrigin !== null &&
+    (env.NEXT_PUBLIC_SUPABASE_URL === undefined || localOrigin(env.NEXT_PUBLIC_SUPABASE_URL) === fixtureOrigin);
 }
 
 export function isDedicatedSwimEnvironment(env: Record<string, string | undefined>): boolean {

@@ -1503,3 +1503,19 @@ Narrowly fixed the movement-catalog seed's TLS handling
 (`packages/db/seeds/db-ssl.ts`) to allow disposable loopback Postgres without
 weakening the hosted/`verify-full` default. No production, billing, or merge
 action taken.
+
+## [2026-09-06] refine | PR802 limited guard, fixture and acceptance reporting follow-up
+
+Bound local E2E fixture/app URLs to the same normalized origin and isolated
+ownership, composite FK and duplicate-session RPC assertions (DC-SW8), retaining
+independent primary-program isolation (DC-SW7). The existing web Vitest runner
+passed 108 pure guard cases. Documented its unchanged 20-second timeouts and
+per-case JSON command in the swim wiki. Revised RPC assertions remain unexecuted:
+the reporter attempt failed before collection on an unresolved dependency;
+frozen install also encountered unavailable checked-in tarball hosts.
+
+One bounded official Supabase CLI/Docker attempt exited during schema
+initialization; no healthy reference stack or fresh database acceptance was
+obtained. The terminal initialization cause was not retained, and the prior
+stale-update hang is still undiagnosed. See HANDOFF.md for evidence limits.
+No SQL/grant/migration, workflow, hosted database, combined-mode or merge changes.

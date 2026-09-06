@@ -151,7 +151,11 @@ a CI/sandbox runner, never a hosted project): set `SWIM_RPC_TEST_LOCAL=true`
 (RPC) or `E2E_SWIM_LOCAL=1` (Playwright) alongside
 `SWIM_TEST_PROJECT_REF=local` as an explicit acknowledgement. In this mode the
 target URL must use `http:` and a loopback host (`127.0.0.1`, `localhost` or
-`[::1]`) with no path, query, fragment or embedded credentials; the existing
+`[::1]`) with no path, query, fragment or embedded credentials. If
+`NEXT_PUBLIC_SUPABASE_URL` is supplied, its normalized origin must exactly
+equal the fixture origin, including the port; loopback aliases are not
+interchangeable. Supply that same origin at app build, startup and fixture
+execution. The existing
 hosted-ref/URL guard is otherwise unchanged and still applies whenever this
 local flag is absent. This never accepts arbitrary URLs and never silently
 falls back — both the local flag and `SWIM_TEST_PROJECT_REF=local` must be
@@ -176,3 +180,71 @@ Drizzle cannot describe a column-specific composite `SET NULL` action.
 Migration 0145's `ON DELETE SET NULL (session_id)` is authoritative: review any
 future generated migration that touches this foreign key rather than replacing
 it with a whole-key null or `NO ACTION`.
+
+### Per-case RPC report on the disposable local reference stack
+
+The swim smoke file lives under `apps/web/src`, so use **web
+`vitest.config.ts`**, not `test:rpc-smoke` or `e2e-rpc/vitest.config.ts`.
+The web config selects `src/**/*.test.ts`, with 20,000 ms test and hook
+timeouts. Tests are sequential by default; files may run in parallel.
+The command below selects only the swim smoke file and explicitly disables
+file/test concurrency and retries without changing either timeout.
+
+Run only after the official Supabase CLI/Docker stack is healthy and the
+full checked-in migration chain and movement catalog have been applied to
+that disposable instance. Load both `SMOKE_SUPABASE_*_KEY` values only from
+that local CLI instance, never inherited application or hosted credentials.
+The API origin below must be the instance's actual loopback origin.
+
+```sh
+REPO=/home/runner/work/hybrid-training-app/hybrid-training-app
+cd "$REPO/apps/web"
+OUT=$(mktemp -d /tmp/swim-acceptance.XXXXXX)
+: "${SMOKE_SUPABASE_ANON_KEY:?Set the disposable local anon key}"
+: "${SMOKE_SUPABASE_SERVICE_ROLE_KEY:?Set the disposable local service key}"
+{
+  git -C "$REPO" rev-parse HEAD
+  git -C "$REPO" status --short
+  sha256sum "$REPO/apps/web/vitest.config.ts"
+  node --version
+  pnpm --version
+  pnpm exec vitest --version
+  printf '%s\n' 'web config; test/hook 20000ms; concurrency false; retry 0'
+} > "$OUT/manifest.txt"
+rpc_status=0
+env -u NEXT_PUBLIC_SUPABASE_URL -u NEXT_PUBLIC_SUPABASE_ANON_KEY \
+  -u SUPABASE_SERVICE_ROLE_KEY \
+  SWIM_RPC_TEST_NONPRODUCTION=true SWIM_RPC_TEST_LOCAL=true \
+  SWIM_TEST_PROJECT_REF=local SMOKE_SUPABASE_URL=http://127.0.0.1:54321 \
+  pnpm exec vitest run --config vitest.config.ts \
+  src/lib/swim/__tests__/storage-rpc.smoke.test.ts \
+  --fileParallelism=false --sequence.concurrent=false --retry=0 \
+  --reporter=verbose --reporter=json --outputFile="$OUT/rpc.json" \
+  > "$OUT/rpc.log" 2>&1 || rpc_status=$?
+printf 'RPC exit: %s\n' "$rpc_status" >> "$OUT/manifest.txt"
+cat "$OUT/rpc.log"
+jq -r '.testResults[].assertionResults[] |
+  [.fullName, (if (.failureMessages | join("\n") | test("timed out|timeout"; "i"))
+    then "timeout" elif .status == "pending" then "skipped" else .status end),
+   (.failureMessages | join("\n"))] | @tsv' "$OUT/rpc.json"
+test "$rpc_status" -eq 0
+```
+
+Retain the original JSON, runner log (including hook/file-level errors) and
+manifest together, after checking for secrets. JSON records every collected
+case's identity, status and failure messages; timeout failures are failures,
+not skips. Missing JSON or zero collected tests is a blocked run, not a pass.
+All 30 current cases must execute and pass, including the isolated DC-SW8
+ownership/FK/uniqueness cases; skipped tests never satisfy the gate.
+The historical 19/24 report lacks three non-passing case identities and is
+not a substitute for this fresh ledger.
+
+A Vitest timeout does **not** cancel an in-flight RPC. Before retrying a failed
+run or relying on `afterAll` user deletion, inspect the synthetic stack's
+`pg_stat_activity`, `pg_locks` and blocker PIDs. Bound diagnostic database,
+REST and app-client requests independently; do not raise test timeouts or
+patch grants to obtain a pass. If requests/cleanup remain stuck, stop and
+dispose of this run's local stack rather than reuse it or mask the failure.
+SQL/schema/RLS/grant changes require a separately approved additive migration
+and rollback proposal. Mobile and actual shared-load-ledger acceptance remain
+blocked until the real RPC suite is fully green.
