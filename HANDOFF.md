@@ -15,12 +15,12 @@ accept explicit slot intents, including zero-slot weeks. Course-specific native
 distance and millisecond results are authoritative; generic cardio summaries
 exist for compatibility and shared workload only.
 
-The dedicated Stockholm test is available, but its database/admin credentials
-have not been supplied. Remote acceptance remains blocked; no database migration
-or seeded remote test has run. Do not treat mocked migration/action tests or
-local static browser previews as RLS, concurrency or mobile/offline release proof. Do not use
-production or rehearsal databases, or generic app-credential fallbacks, to run
-seeded tests. Production was not migrated.
+The current PR802 continuation authorizes disposable localhost services on the
+cloud runner only, not hosted credentials. Reference-stack acceptance remains
+blocked; see the latest result below. Do not treat mocked tests, static browser
+previews or the earlier hand-built stack as reference-platform, concurrency or
+mobile/offline release proof. Never use production/rehearsal databases or
+generic app-credential fallbacks for seeded tests. Production was not migrated.
 
 New setup uses `POOL_SWIMMING_ENABLED=true` plus the installed schema capability.
 Existing swim history and queued finishes remain available when setup is off.
@@ -31,7 +31,388 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-08-17 (Strava integration removal; migrations through 0129 — no new migration)
+**Last updated:** 2026-09-06 (read-only auth privilege evidence artifact; no database/workflow execution this turn)
+
+### PR802 read-only auth privilege evidence
+
+[Run 34061180463](https://github.com/drrowdev/hybrid-training-app/actions/runs/34061180463)
+at `fc364e2534e361c378e0f88a887c3504b44bc009` passed core/identity, official
+default-service readiness, all 146 unchanged migrations, catalog consistency
+and both cleanup paths. The RPC ledger remains **2 passed, 28 failed, none
+pending/todo, no timeout**. Complete diagnostics identify schema `auth` in all
+28 failures, with zero invalid records and zero unknown permission kinds.
+This supersedes the unknown-denied-object status below.
+
+[Authorization 5562400372](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5562400372)
+is implemented as one fixed catalog observation after migration/catalog checks
+and before the unchanged RPC invocation. It uses the verified owned DB container
+and existing private postgres command channel: READ ONLY, 5-second statement
+timeout, at most 10 seconds under the existing deadline/cleanup reserve, and the
+unchanged 8 MiB capture cap. Only validated booleans and closed classifications
+reach `manifest.authPrivileges`. Missing/ambiguous catalog data, malformed output
+and process failures are explicit unavailable evidence, never an acceptance gate.
+No permissions, migrations, reporter vocabulary, workflow or cleanup changed.
+
+Actual owners, grant options and effective privileges remain **unobserved**.
+Effective EXECUTE on `auth.uid()` may come from PUBLIC or inherited grants; it
+cannot prove migration 0145's grant applied. See the
+[query contract and interpretation limits](docs/knowledge/pool-swimming.md#read-only-auth-privilege-evidence).
+All 293 targeted acceptance-helper tests, web typecheck and scoped lint passed;
+synthetic fixtures are reporting tests, not database acceptance.
+Independent exact-head review and fresh execution guards must precede one
+new-head manual run. No database/container/workflow execution occurred here.
+If that observation is insufficient, record the missing evidence and reassess,
+without an identical rerun or diagnostic expansion. Access correction is a
+separate owner decision with independently reviewed additive migration/rollback.
+Full standalone DC-SW1–SW9 acceptance remains required before combined work.
+
+### PR802 safe RPC failure diagnostics
+
+[Run 34059019498](https://github.com/drrowdev/hybrid-training-app/actions/runs/34059019498)
+at `418beb8f662a7f8267609d73fac9c4b32a7452f3` passed official
+12-service readiness, all existing HTTP probes, all 146 unchanged migrations,
+catalog seed/consistency and cleanup. All 30 authenticated RPC cases executed:
+**2 passed, 28 failed, none pending/todo; no process timeout**. All 28 failures
+share SQLSTATE `42501`, category `permission`,
+one fingerprint and `swim_create_plan`. Diagnostics were complete with zero
+invalid records. The denied object remains unknown, not 28 established defects.
+
+[Authorization 5561913579](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561913579)
+adds a third Vitest reporter, an exclusive private 0600 diagnostic sidecar and
+strictly validated grouped evidence in the existing sanitized manifest. Only
+canonical case identities, fixed classifications/allowlists and normalized-message
+SHA-256 fingerprints may be published; no raw backend messages or sidecar contents.
+Bounds and missing/invalid evidence produce explicit partial/unavailable status.
+Canonical JSON, process outcome, the 30-case gate and cleanup remain authoritative.
+
+[Authorization 5562164313](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5562164313)
+expands only source-anchored diagnostic identifiers and adds a closed `deniedKind`
+from the selected `42501` cause's own bounded message. It appears only in
+associations; code/category/fingerprint grouping is unchanged. Unknown permission
+kinds are counted separately from invalid records and collector failure.
+Static grants do not establish runtime privileges; missing `P0001` does not prove
+`auth.uid()` completed. No SQL/access-policy repair is identified or approved.
+
+All 458 targeted reporter/helper/report/config tests, web typecheck and scoped lint
+passed; synthetic evidence is not real RPC acceptance. Independent exact-head
+delta review must precede the coordinator's one new-head reference run; none ran
+here. If richer diagnostics still lack a relevant target, stop this approach and
+propose bounded read-only privilege evidence, not a third vocabulary pass or a
+guessed grant. Any remedy needs owner approval and an additive migration with
+rollback. Full standalone acceptance still precedes combined work.
+
+### PR802 pinned-default service correction
+
+Our prior 13-service default assumption incorrectly included optional imgproxy.
+[Authorization 5561453075](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561453075)
+corrects the pinned CLI 2.116.0 contract to 12 services, not an acceptance waiver.
+The [native init/gate source anchors](docs/knowledge/pool-swimming.md#pinned-default-service-contract)
+establish the defaults. Fresh config is checked before startup without changing
+service flags; strict service/membership equality, readiness, ownership,
+publications and cleanup remain. Current inspected expected/observed/missing/
+unexpected names are retained before readiness assertion. Both existing HEAD
+probes and all GET probes remain unchanged.
+
+[Run 34051805797](https://github.com/drrowdev/hybrid-training-app/actions/runs/34051805797)
+at `9257aeb20582edf681aac49b2a00d3a5f9efc226` passed core/identity, official startup
+and cleanup, then failed `Incomplete default service set` before application
+migrations/catalog/RPC. Its historical snapshots show 12 permanent names without
+imgproxy plus an earlier temporary job, not final current membership or proof of
+exclusive runtime causation. The correction has only helper/static validation;
+the coordinator must review the delta before one new-head run. All 146 unchanged
+migrations/catalog, 30 actual RPC cases and the frozen standalone acceptance
+inventory remain required. No runner/container/DB, workflow dispatch or merge
+was performed in this correction turn.
+
+### PR802 manual Actions implementation
+
+Implemented [authorization 5560014710](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5560014710):
+the existing CI workflow has an isolated, manual `swim_acceptance` job with an
+`expected_sha` gate, a disposable reference runner and pure guard tests. See the
+[execution instructions](docs/knowledge/pool-swimming.md#manual-actions-reference-acceptance).
+This turn did not dispatch a workflow or start Docker/Supabase. The coordinator
+must review the committed execution path independently before dispatch.
+
+The new job can prove only reference startup, unchanged migrations/catalog and
+the complete RPC file. Standalone mobile/offline/two-context, lifecycle,
+benchmark and actual-load acceptance remain outstanding. Identity/core CI remain
+enabled; the older identity allowlist may fail independently and still blocks
+merge. No production migration, runtime swim, SQL, fixture or dependency changed.
+
+### Latest PR802 runner-local reference acceptance
+
+Executed [reviewed plan 5559384497](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5559384497)
+at `ebe4a672a13b86f7490acd7c001463c45a6d31ea`; the UTF-8 API body, preserving
+CRLF, matched SHA-256 `77d7312444d6f58572a56e1214f1d05017033f8a16108ceeb618a2d1904a2bb6`.
+One official CLI 2.116.0 default-service `start --debug --network-id` ran
+13:08:37.300–13:09:41.583 UTC, **exit 1 after 64.28 seconds; zero retries**.
+Storage bootstrap again reported
+`getaddrinfo EAI_AGAIN supabase_db_pr802-34034907387-reference`.
+Postgres 17.6 reached readiness; Realtime exited 0, Storage 1. No application
+migration or seed was configured for initialization. This is a platform-bootstrap
+failure, not application SQL evidence or diagnosis of the historical stale-update hang.
+
+New discriminating evidence, rather than another unobserved attempt:
+
+| Frozen hypothesis | Observation and limit |
+| --- | --- |
+| H1: missing advertised DB name | Contradicted at captured bootstrap times. DB `DNSNames` included `supabase_db_pr802-34034907387-reference`, `db`, `db.supabase.internal`, and its short container ID. Healthy DB snapshots at 13:09:35.473, 37.484 and 39.498 retained that metadata during Storage execution. Advertisement is not proof of a successful lookup. |
+| H2: different network or early DB disconnect | Contradicted by captured lifecycle/attachment evidence. DB connected at 13:09:20.767, Storage at 13:09:34.641, on the same exact network. Storage exited 1 at 13:09:40.274; DB disconnected afterward at 13:09:40.405. No intervening DB disconnect was recorded. |
+| H3: differing runtime resolver behavior despite correct metadata | Unresolved. Read-only archive API captured all three generated resolver files: byte-identical, `nameserver 127.0.0.11`, options `edns0 trust-ad ndots:0`. HostConfig DNS overrides were empty. Realtime exit 0 does not establish a successful DB connection; neither matching files nor endpoint metadata proves DNS forwarding or policy behavior. |
+
+Both daemon event streams were armed before startup: exact project-label
+container filter and a separate exact-network-ID filter. Retained 27 container
+and 8 network events, plus event-driven/two-second snapshots. The network stream
+also included its earlier create event; lifecycle evidence did not depend on a
+post-failure history query. DB/Realtime logs and official debug stderr were
+retained; Storage's separate container log was unavailable before auto-removal.
+No discretionary DNS query, service diagnostic exec, sidecar or network override
+was used. Official defaults supplied `host.docker.internal:host-gateway`; no
+agent-added hosts/DNS flags were supplied.
+
+Boundary/fidelity: local Docker 28.0.4, Ubuntu 24.04.4, Node 22.23.2 and pnpm
+10.33.2; offline frozen install passed with the prior lockfile hash unchanged.
+The CLI archive matched the previously pinned digest. Bridge
+`pr802-34034907387-loopback`, ID
+`0e10f31b49a5be1229a18605d26ccf21e38b0f392816f71bcef205a911b2a98f`,
+had only the approved loopback option, default NAT, IPv6 disabled and initially
+empty membership. All three observed containers attached only there; the sole
+effective publication was `127.0.0.1:54322 -> 5432/tcp`. The unmodified CLI selected
+`ghcr.io/supabase/postgres:17.6.1.165` (rather than the prior ECR reference), with
+the same recorded digest `sha256:28f0e16a019e648089fc1a6d333549a55548f6019c15ae4bd7cd58b989027518`.
+Realtime/Storage retained their prior ECR versions and digests. No registry
+configuration changed. Full service/API readiness, roles/grants/Auth claims,
+public reachability and egress-policy fidelity remain unestablished.
+
+The **entire acceptance inventory below remains unmet**, unchanged from source
+`c811a505d4a6b2b06f5d55f1b3b97753aa415cf1`. Before startup, at 13:07:46.493,
+recorded all 30 unique expanded RPC names and the broader table; inventory hash
+`2bcd0242f51f2a543e8a2add8ff48c7fe583f4d0812ec7a8f84512f8c9d0213c`.
+Web-config before/after hash remains `06ec8efe0d66e896cbf9b906882a75fd9c9c1e201b0256710e2d1929f1b05c6d`.
+**0/30 RPC cases executed; no application migrations/catalog, RPC validator/ledger,
+mobile build/server, authenticated offline/concurrency or actual shared-load run.**
+No stale-update request or lock snapshot was applicable. No criterion was waived.
+
+Cleanup verified at 13:11:53 UTC, inside the 20-minute total bound: the official
+CLI removed all three exact containers, the DB volume and labeled bridge.
+Exact-ID/name checks and exact-label listings confirmed zero remnants.
+The observer lingered closing streams after flushing the terminal lifecycle
+events; only that exact observer process was stopped. No prune or unrelated
+deletion occurred. Raw artifacts remain private outside git (700 directories,
+600 files), redacted before reading; they are ephemeral, not durable attachments.
+Only evidence documentation changed. No repair, alternate network method, next
+task, combined implementation, merge or deployment was attempted in this pass.
+
+### Earlier approved loopback reference attempt
+
+Executed the [owner-approved plan](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5559175285)
+under [the updated authority](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5559195573),
+starting at exact source `c811a505d4a6b2b06f5d55f1b3b97753aa415cf1`.
+Both API comment-body SHA-256 values matched the approved values. The same
+PR/head/base were retained; no runtime, SQL, grant, dependency or workflow changed.
+
+**Observed outcome: platform startup failed, not application migration failure.**
+One official Supabase CLI 2.116.0 `start --debug --network-id` attempt ran from
+12:31:15 to 12:32:53 UTC, exiting 1 after 98.79 seconds within the 20-minute
+startup/diagnostic bound. No startup retry, service exclusion, health-check
+override, replacement stack or network-policy change followed.
+The terminal stdout reported `LegacyDbSetupError: error running container: exit 1`.
+Retained stderr identified Storage bootstrap's Node process failing with
+`getaddrinfo EAI_AGAIN supabase_db_pr802-c085dcdb-reference`.
+Docker events confirm Storage exited 1; Realtime bootstrap and Postgres exited 0.
+Postgres 17.6 had logged readiness before the failure. The mechanism behind the
+container-name lookup failure (resolver, policy or transient failure) remains
+unproven; this evidence does not diagnose the historical stale-update RPC.
+
+Prerequisites and boundary evidence:
+
+- Ubuntu 24.04.4, local `unix:///var/run/docker.sock`, Docker client/server
+  28.0.4, Node 22.23.2 and pnpm 10.33.2 were verified on this runner.
+  [Setup job 101486151083](https://github.com/drrowdev/hybrid-training-app/actions/runs/34033086318/job/101486151083)
+  reports successful dependency and Chromium installation/launch steps; its
+  running-job log endpoint returned 404, so the exact setup checkout command
+  was not independently recovered.
+- Offline frozen installation succeeded using the installed store. Repository
+  and installed lockfile hashes both remained
+  `5e495320c855704b2e065f0d7b4c95b22ed07c3b8ad0e390705573b9550f9130`.
+  No ordinary online install was needed. No inherited database/Supabase target
+  overrides, repository environment files or active config credential references
+  were present.
+- Official CLI archive digest:
+  `5b3031cb297d51b25be4c284e4c852254460ec722ec221d3b81b07d55acfd158`.
+  An initialization-only executable/directory name collision was corrected by
+  separating `bin/` and `project/` before any service start. Generated defaults
+  were retained except the unique project ID. Disposable migration paths were
+  empty and the default seed file absent; none of the 146 application migrations
+  was available to automatic platform initialization.
+- Created exactly one task-labeled bridge, `pr802-c085dcdb-loopback`, ID
+  `16a8eaad4c15bd2eac403a3c9fc94d25c3604cc108464aa23819c5e3ca2679e3`.
+  Verified `host_binding_ipv4=127.0.0.1`, default NAT, IPv6 disabled and empty
+  initial membership. No existing network/daemon/firewall/DNS configuration
+  was changed. Docker's normal temporary bridge rules were within approval.
+- All three containers recorded by project-labeled Docker lifecycle events
+  were captured on that bridge alone: Postgres `17.6.1.165`, Realtime
+  `v2.129.3`, Storage API `v1.70.3`. The sole captured published mapping was
+  `127.0.0.1:54322 -> 5432/tcp`; neither bootstrap helper published a host port.
+  Database-internal wildcard listeners are not host-published wildcard bindings.
+  This is a partial startup manifest, not a healthy default-service manifest.
+  The failed startup auto-removed containers before final live socket/API/DB
+  verification; no full readiness, public-reachability or egress-fidelity claim
+  is made.
+
+**Acceptance inventory fixed before startup, all application criteria unmet.**
+At the source SHA above, ADR 0079's delivery gates (lines 263–284), DC-SW1–SW9
+and the swim wiki remain authoritative. The private pre-execution inventory
+recorded every current RPC case name and these separate pass conditions:
+
+The inventory was written at 12:30:34 UTC, before the 12:31:15 startup; its
+SHA-256 is `a7846389c8030b34674139e01f52e5d3c087a84b6297b20f0af601db4253c6e8`.
+The unchanged web config's before/after SHA-256 is
+`06ec8efe0d66e896cbf9b906882a75fd9c9c1e201b0256710e2d1929f1b05c6d`.
+
+| Required evidence | This pass |
+| --- | --- |
+| Exact native courses/whole lengths/timings; suitable verified assessment or effort/learning path (DC-SW1/2) | Unexecuted |
+| Purpose-preserving scaling/slot budgets; fixed improving/plateau/missed-high-effort simulations; bounded no-catch-up progression (DC-SW3/4) | Unexecuted |
+| Real benchmark/progression accept/reject/override, auditable versions, immutable started targets, stale/concurrent start/move/accept rejection (DC-SW5/8) | Unexecuted |
+| Native analytics, compatible best efforts and generic history without inferred calibration (DC-SW6) | Unexecuted |
+| Pause/resume/finish/archive/replacement, archived offline finish, trash/undo/purge and unchanged primary prescriptions (DC-SW7) | Unexecuted |
+| All 30 source RPC cases, authenticated ownership/isolation, atomic receipt/summary, same/new-UUID replay, export/account deletion (DC-SW8) | **0 executed; all 30 blocked**, not passed or skipped acceptance |
+| Both existing mobile cases plus real persistence/reload/scaling, durable FIFO offline reload/replay and two-context server-canonical isolation | **0 executed; both blocked**; authored cases alone do not cover all obligations |
+| Actual `region_state` effects once across finish/replay/edit/trash/undo, stroke/equipment regions, generic history and new limitations (DC-SW9) | Unexecuted; action `ok` would not prove recomputation |
+| Healthy official services, unchanged 146 migrations/catalog, roles/grants/Auth claims, fresh successful canonical RPC ledger | Blocked before application migration; no RPC report/validator or mobile build/server invoked |
+
+No pure test, typecheck or lint result from an earlier pass is counted as fresh
+acceptance here. The web config and 20-second test/hook limits stayed unchanged.
+No SQL/REST stale-update diagnostic or activity/lock snapshot was applicable:
+the RPC suite was never reached.
+
+Raw stdout/stderr, incremental container/database logs, image digests, config
+metadata and lifecycle events were retained outside git in a mode-700 ephemeral
+directory with mode-600 evidence files, scrubbed before inspection/publication.
+These temporary paths are not durable artifacts. The official CLI removed the
+three recorded containers and database volume; the exact empty task bridge was
+then removed. Final checks found **zero task containers, volumes or networks**
+and no relevant host listeners. No prune, unrelated deletion or process-name
+kill was used. No further task, combined work, merge or deployment was initiated.
+The coordinator can review the concrete startup evidence; the failed method
+does not authorize an alternate network method.
+
+### Earlier 2026-09-06 acceptance report (non-reference stack)
+
+Historical report, not independently reproduced in the latest continuation.
+The 19/24 ledger is incomplete: three non-passing case identities are unknown.
+It does not establish official platform fidelity or standalone readiness.
+
+Ran in a GitHub-hosted cloud sandbox with **no live/test cloud credentials** and
+**no local-filesystem access**. Did not touch production, billing, or any hosted
+Supabase project. Nothing here was merged; this is a follow-up PR against the
+feature branch.
+
+What actually ran, against real Postgres:
+
+- Full migration chain (all 146 migrations, including `0145_standalone_pool_swimming.sql`)
+  applied cleanly to a disposable, throwaway Postgres 17 container (official
+  `supabase/postgres` image) started via plain `docker run` on the runner —
+  **not** `supabase start` (see blocker below). Movement catalog seed ran
+  successfully against it (333 movements, including `swim-easy`/`swim-intervals`).
+- A minimal hand-built Auth (GoTrue) + REST (PostgREST) + reverse-proxy (nginx)
+  stack was stood up manually, pointed at that same disposable Postgres, to
+  emulate a single hosted-style Supabase URL. This let the actual
+  `apps/web/src/lib/swim/__tests__/storage-rpc.smoke.test.ts` suite run for
+  real against real RPC/Postgres for the first time (previously always skipped
+  for lack of environment). Result: **19 of 24 tests passed** executing real
+  SQL/RPC round trips (ownership, cross-user visibility, exact-once
+  completion, pause/resume/archive, trash/undo/purge, limitations gating, etc.
+  all verified against live Postgres, not text assertions).
+- One genuine, 100%-reproducible **test bug** was found (not an app bug): the
+  "enforces two-user visibility..." test expects a `23503` (foreign-key
+  violation) from a cross-user `session_id` reassignment, but `swim_workouts`
+  also has a plain `UNIQUE` constraint on `session_id` — since the target
+  session already belongs to another workout, Postgres raises `23505` (unique
+  violation) before the ownership FK is ever reached. The migration's
+  constraints are correct and intentional; the test's expected error code for
+  that specific fixture is unreachable. **Not fixed in this pass** — flagged
+  here rather than silently reworking the assertion under time pressure.
+- **New, reproducible finding, not resolved in this pass:** calling
+  `swim_update_plan` twice in a row with the *same* (now-stale) arguments
+  — the exact sequence the "appends decisions and issued versions atomically
+  and rejects stale or started edits" test exercises to assert a `40001`
+  (`serialization_failure`) rejection — reliably **hangs** rather than
+  returning quickly, both under the manual gateway and via a minimal
+  standalone Node/`@supabase/supabase-js` repro script that bypassed vitest
+  entirely. All other calls in the same script (create/update/read) return in
+  under 100 ms. Root cause remains unknown: database locks, transport retries
+  and manual-platform effects are hypotheses, not findings. The
+  RPC/E2E hosted-ref guards' new narrow **local-only test mode**
+  (`SWIM_RPC_TEST_LOCAL=true` / `E2E_SWIM_LOCAL=1` +
+  `SWIM_TEST_PROJECT_REF=local`, loopback-only, added this pass) is what made
+  it possible to discover this at all — it is real, additive test-harness
+  capability, not a workaround.
+- Playwright `apps/web/e2e/swimming-mobile.spec.ts` (authenticated mobile
+  browser scenarios) and `packages/db/integration-tests/{rls,region-ledger}.mjs`
+  were **not** reached in this pass given the time spent stabilizing the
+  manual Auth/REST gateway and root-causing the two findings above.
+- **Blocker (environment, not code):** `supabase start`/the Supabase CLI's own
+  compose-style stack could not be used because this sandbox's Docker
+  embedded DNS resolver (127.0.0.11) does not resolve container names
+  (confirmed via a minimal repro: two containers on a custom bridge network,
+  `nslookup` returns `REFUSED`); the CLI's edge runtime also cannot reach
+  `deno.land` (blocked domain here). Worked around with a hand-wired,
+  IP-addressed set of standalone containers instead. This did not establish
+  reference-platform fidelity and must not be repeated as acceptance.
+- A narrow, additive fix was needed to run the movement-catalog seed
+  (`packages/db/seeds/db-ssl.ts` + updated `packages/db/seeds/run.ts`): it
+  only allows skipping TLS when `PGSSLMODE=disable` **and** `DATABASE_URL`'s
+  host is loopback, preserving the existing hosted/`verify-full` behavior
+  otherwise.
+- **Standalone gate: not yet ready to declare green.** Schema/migration/seed
+  layer and the majority (19/24) of RPC smoke coverage now have genuine
+  Postgres-backed acceptance evidence for the first time. The two findings
+  above (a test-fixture bug and a real suspected hang) and the not-yet-run
+  Playwright/RLS-script suites remain open before that claim can be made.
+
+### Earlier 2026-09-06 limited PR802 follow-up
+
+Started at approved HEAD `53ebc46de0c5efbe8b050a5e29a9ee50f37440f7` on the
+same PR/head/base branches. No SQL, schema, RLS, grants, workflow or runtime
+swimming behavior changed.
+
+- Local E2E fixture/app URLs now require identical normalized origins,
+  including ports. Existing HTTP/loopback/URL restrictions remain.
+- Split ownership/isolation into independent RPC cases. The session FK uses
+  an unlinked Bob-owned ordinary session and requires `23503`; duplicate
+  same-owner links separately require `23505`. Rejected writes must preserve
+  links/state. These RPC assertions are **unexecuted**, not fixed-and-green.
+- The [swim wiki](docs/knowledge/pool-swimming.md#per-case-rpc-report-on-the-disposable-local-reference-stack)
+  documents the actual web Vitest config, unchanged 20-second test/hook
+  limits, serial/no-retry JSON reporting and timeout/cleanup caveats.
+- Pure guard validation: **108/108 passed** using the existing Vitest 2.1.9
+  and web config. Frozen pnpm installation failed on checked-in
+  `ms-feed-*.pkgs.visualstudio.com` tarball DNS resolution. Four exact
+  lockfile-pinned native test-tool packages were installed only in `/tmp`
+  to run those guards; no lockfile rewrite. Full web typecheck/lint remain
+  dependency-blocked. In-repo docs drift and whitespace checks passed.
+- RPC reporter verification with execution disabled failed before collection
+  (`@supabase/supabase-js` unresolved): **0 cases collected, 1 failed suite**.
+  All 30 current RPC cases remain unexecuted; none is counted as passing or
+  skipped acceptance. The PR delivery comment carries the observed ledger.
+- One official attempt: Ubuntu 24.04.4, Docker 28.0.4, Supabase CLI 2.116.0,
+  default generated config in `/tmp`, five-minute outer bound. Image pulls
+  encountered rate limits then completed; `supabase start` exited 1 during
+  schema initialization and cleaned up its containers/network/volumes.
+  The retained stderr ends at `Initialising schema...` / `Stopping containers...`;
+  stdout was discarded to avoid recording credentials, so the terminal cause
+  was not retained. Do not infer a confirmed DNS or SQL cause from this run.
+  No retry, bypass, substitute stack or grant patch followed.
+- No application migrations/catalog, JWT/REST/grant/Storage checks, stale-RPC
+  direct SQL/REST/client comparison, mobile scenarios or actual load-ledger
+  checks ran. The reference stack never became healthy. Further environment
+  attempts need renewed authorization; any diagnosed SQL change needs an
+  independently approved additive migration/rollback proposal.
+
+Standalone acceptance remains blocked; PR802 remains draft. Combined swimming,
+Garmin, production changes and merging are not authorized by this follow-up.
 
 ## Where we are
 

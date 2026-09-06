@@ -145,6 +145,22 @@ The preflight checks reject missing/template values and URLs that do not match
 the acknowledged project. Do not use the generic E2E fixture's app-credential
 fallback for swimming.
 
+A separate, narrower mode exists for a disposable, synthetic, **loopback-only**
+Postgres/Auth/REST stack (for example a local Supabase-compatible stack run on
+a CI/sandbox runner, never a hosted project): set `SWIM_RPC_TEST_LOCAL=true`
+(RPC) or `E2E_SWIM_LOCAL=1` (Playwright) alongside
+`SWIM_TEST_PROJECT_REF=local` as an explicit acknowledgement. In this mode the
+target URL must use `http:` and a loopback host (`127.0.0.1`, `localhost` or
+`[::1]`) with no path, query, fragment or embedded credentials. If
+`NEXT_PUBLIC_SUPABASE_URL` is supplied, its normalized origin must exactly
+equal the fixture origin, including the port; loopback aliases are not
+interchangeable. Supply that same origin at app build, startup and fixture
+execution. The existing
+hosted-ref/URL guard is otherwise unchanged and still applies whenever this
+local flag is absent. This never accepts arbitrary URLs and never silently
+falls back — both the local flag and `SWIM_TEST_PROJECT_REF=local` must be
+set together, or the existing hosted guard runs as before.
+
 Before applying any migration, independently pin `DATABASE_URL` to the same
 acknowledged project: the direct database hostname, or the project-qualified
 username on an official pooler hostname, must identify that project. A valid
@@ -164,3 +180,315 @@ Drizzle cannot describe a column-specific composite `SET NULL` action.
 Migration 0145's `ON DELETE SET NULL (session_id)` is authoritative: review any
 future generated migration that touches this foreign key rather than replacing
 it with a whole-key null or `NO ACTION`.
+
+### Per-case RPC report on the disposable local reference stack
+
+The swim smoke file lives under `apps/web/src`, so use **web
+`vitest.config.ts`**, not `test:rpc-smoke` or `e2e-rpc/vitest.config.ts`.
+The web config selects `src/**/*.test.ts`, with 20,000 ms test and hook
+timeouts. Tests are sequential by default; files may run in parallel.
+The command below selects only the swim smoke file and explicitly disables
+file/test concurrency and retries without changing either timeout.
+`--passWithNoTests=false` overrides the web default. The Node/tsx validator
+requires the exact smoke-file identity, at least 30 unique cases, every assertion
+passed, and consistent explicit Vitest 2.1.9 counters. Suite totals include nested
+`describe` blocks; they are not the number of files. There is no JSON
+`numSkippedTests` counter: skipped/pending/todo assertions are rejected directly.
+
+Run only after the official Supabase CLI/Docker stack is healthy and the
+full checked-in migration chain and movement catalog have been applied to
+that disposable instance. Load both `SMOKE_SUPABASE_*_KEY` values only from
+that local CLI instance, never inherited application or hosted credentials.
+The API origin below must be the instance's actual loopback origin.
+
+```sh
+REPO=/home/runner/work/hybrid-training-app/hybrid-training-app
+cd "$REPO/apps/web"
+umask 077
+OUT=$(mktemp -d /tmp/swim-acceptance.XXXXXX)
+: "${SMOKE_SUPABASE_ANON_KEY:?Set the disposable local anon key}"
+: "${SMOKE_SUPABASE_SERVICE_ROLE_KEY:?Set the disposable local service key}"
+TESTED_SHA=$(git -C "$REPO" rev-parse HEAD)
+CONFIG_SHA256=$(sha256sum "$REPO/apps/web/vitest.config.ts" | cut -d ' ' -f 1)
+{
+  printf '%s\n' "$TESTED_SHA"
+  git -C "$REPO" status --short
+  sha256sum "$REPO/apps/web/vitest.config.ts"
+  node --version
+  pnpm --version
+  pnpm exec vitest --version
+  printf '%s\n' 'web config; test/hook 20000ms; concurrency false; retry 0'
+} > "$OUT/manifest.txt"
+rpc_status=0
+env -u NEXT_PUBLIC_SUPABASE_URL -u NEXT_PUBLIC_SUPABASE_ANON_KEY \
+  -u SUPABASE_SERVICE_ROLE_KEY \
+  SWIM_RPC_TEST_NONPRODUCTION=true SWIM_RPC_TEST_LOCAL=true \
+  SWIM_TEST_PROJECT_REF=local SMOKE_SUPABASE_URL=http://127.0.0.1:54321 \
+  pnpm exec vitest run --config vitest.config.ts \
+  src/lib/swim/__tests__/storage-rpc.smoke.test.ts \
+  --passWithNoTests=false \
+  --fileParallelism=false --sequence.concurrent=false --retry=0 \
+  --reporter=verbose --reporter=json --outputFile="$OUT/rpc.json" \
+  > "$OUT/rpc.log" 2>&1 || rpc_status=$?
+printf 'RPC exit: %s\n' "$rpc_status" >> "$OUT/manifest.txt"
+ledger_status=0
+pnpm exec tsx src/lib/swim/__tests__/storage-rpc-report.ts \
+  "$OUT/rpc.json" "$TESTED_SHA" "$CONFIG_SHA256" > "$OUT/ledger.json" \
+  2> "$OUT/ledger-error.json" || ledger_status=$?
+cat "$OUT/ledger.json" "$OUT/ledger-error.json"
+test "$rpc_status" -eq 0 && test "$ledger_status" -eq 0
+```
+
+Keep the original JSON, runner log (including hook/file-level errors) and
+manifest in the private ephemeral directory; scrub secrets before reading or
+publishing diagnostics. Do not print or upload raw logs. The ledger includes the
+tested SHA, config path/hash, suite, totals and per-case statuses, but omits raw
+failure messages. Missing/unreadable/empty/malformed reports fail closed.
+JSON records every collected
+case's identity, status and failure messages; timeout failures are failures,
+not skips. Missing JSON or zero collected tests is a blocked run, not a pass.
+All 30 current cases must execute and pass, including the isolated DC-SW8
+ownership/FK/uniqueness cases; skipped tests never satisfy the gate.
+The historical 19/24 report lacks three non-passing case identities and is
+not a substitute for this fresh ledger.
+
+A Vitest timeout does **not** cancel an in-flight RPC. Before retrying a failed
+run or relying on `afterAll` user deletion, inspect the synthetic stack's
+`pg_stat_activity`, `pg_locks` and blocker PIDs. Bound diagnostic database,
+REST and app-client requests independently; do not raise test timeouts or
+patch grants to obtain a pass. If requests/cleanup remain stuck, stop and
+dispose of this run's local stack rather than reuse it or mask the failure.
+SQL/schema/RLS/grant changes require a separately approved additive migration
+and rollback proposal. Mobile and actual shared-load-ledger acceptance remain
+blocked until the real RPC suite is fully green.
+
+### Manual Actions reference acceptance
+
+Implementation authority:
+[PR802 comment 5560014710](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5560014710),
+UTF-8 SHA-256 `51de59db9fafb423c94af16ae4afb611ddf509ae0ef672984f4c897787330e5a`
+(CRLF preserved). This path is implemented; run 34059019498 reached all 30 RPC
+cases but did not pass application acceptance (see safe diagnostics below).
+The coordinator reviews the complete committed path and obtains independent
+code review before manually dispatching existing `ci.yml` on the reviewed head
+branch, with `swim_acceptance=true`, `expected_sha=<reviewed 40-character SHA>`,
+`migrate_production=false` and `allow_undeployed=false`. Compare the resulting
+run's actual `head_sha` and branch to that review; a branch is not immutable.
+
+[`apps/web/scripts/swim-acceptance.ts`](../../apps/web/scripts/swim-acceptance.ts)
+rechecks the manual Actions context and checkout before resource creation.
+The job is independent of core CI, has read-only contents permission and no
+hosted-secret fallback. Its first step rejects conflicting production inputs
+before checkout/install. Normal CI remains enabled; a green swim job does not
+override a failed identity check or make the entire workflow green.
+
+The runner uses official CLI 2.116.0, the pinned/published Linux archive digest,
+one run-labeled loopback bridge on local Docker ≥28, and unchanged default
+services. Separate private `bin/`, `project/` and process-home directories live
+under runner temp outside checkout. Repository dotenv files and inherited
+database/platform/proxy overrides are rejected, not silently redirected.
+Startup is attempted once. Effective Docker publications, membership, image
+digests and API/DB health are checked; this is not external reachability or
+egress-policy proof. A repeated `EAI_AGAIN` is a failure, not permission to
+change networks, services or SQL.
+
+The existing migration/catalog commands run only against the validated disposable
+URI. Their source baseline is
+[`packages/db/package.json@a7c652b`](https://github.com/drrowdev/hybrid-training-app/blob/a7c652bcc5e94935b4cf86582a45f10a662465b1/packages/db/package.json);
+the seed entrypoint is
+[`packages/db/seeds/run.ts@a7c652b`](https://github.com/drrowdev/hybrid-training-app/blob/a7c652bcc5e94935b4cf86582a45f10a662465b1/packages/db/seeds/run.ts).
+All 146 migrations, seed-slug consistency and migration drift are checked.
+Source/config hashes are compared before and after.
+
+The runner imports the unchanged
+[`storage-rpc-report.ts@a7c652b`](https://github.com/drrowdev/hybrid-training-app/blob/a7c652bcc5e94935b4cf86582a45f10a662465b1/apps/web/src/lib/swim/__tests__/storage-rpc-report.ts)
+directly with a fresh private report path. It requires both successful process
+exit and the positive canonical ledger for the complete current file, at least
+30 unique passing cases. Web config, individual 20-second limits and no-retry
+selection are unchanged. Pure helper tests do not execute RPCs.
+
+Bounds: job 45 minutes; main runner 35 minutes including a 3-minute cleanup
+reserve; startup ≤20 minutes; RPC process ≤12 minutes (also limited by remaining
+total time). Near an RPC process timeout, bounded read-only activity/lock
+diagnostics are retained privately before cancellation. No repair or retry.
+`finally` cleanup and an `always()` verification step remove only recorded,
+ownership-checked resources/process groups; reused/unidentifiable PIDs are not
+killed. Cleanup failure preserves the original failed stage. Forced cancellation
+without observed cleanup remains **unconfirmed**.
+
+`GITHUB_STEP_SUMMARY` retains stage results and a sanitized manifest/case ledger.
+Raw logs, status keys, reports and diagnostics stay private and ephemeral;
+nothing uploads them. This job does not waive the broader ADR0079/DC-SW1–SW9
+release inventory, authorize combined implementation, deployment or merging.
+
+### Pinned-default service contract
+
+Our prior **13-service default assumption was wrong**: it included optional
+imgproxy. [PR802 authorization 5561453075](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561453075)
+(verified UTF-8 SHA-256 `5789b863f0c9f345491bb9b9d412491340019803f4cd40bcb40a1badfe33c1eb`)
+corrects the harness, not the acceptance criteria.
+
+Official CLI v2.116.0 resolves to commit
+`997a1e69a4a83466964ed874d3a604c88a7b3866`. The native init chain is
+[`init.handler.ts@997a1e6`](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli/src/legacy/commands/init/init.handler.ts#L29-L40)
+→ [`project-init.ts@997a1e6`](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli/src/shared/init/project-init.ts#L301-L322)
+→ [`project-init.templates.ts@997a1e6`](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli/src/shared/init/project-init.templates.ts#L1-L156).
+That template disables `db.pooler` (43–44), comments image transformation
+(131–132), and enables the required core sections. Its
+[`renderCliConfigTemplate`](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli/src/shared/init/project-init.templates.ts#L467-L472)
+only substitutes project ID and OrioleDB version.
+[`start.gates.ts@997a1e6`](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli/src/legacy/commands/start/start.gates.ts#L116-L172)
+gates imgproxy on image transformation. The Dockerfile lists possible images,
+not the enabled default service set.
+
+The exact pinned set is **db, kong, auth, inbucket, realtime, rest, storage,
+pg_meta, studio, edge_runtime, analytics, vector**. Before startup, the runner
+checks the actual fresh config section by section: api/auth/realtime/local_smtp/
+studio/storage/edge_runtime/analytics enabled, db.pooler disabled, and no active
+storage.image_transformation section. Missing, duplicate or malformed relevant
+sections/flags fail; comments and other sections cannot satisfy a gate.
+`storage.vector` remains at its native true default; it is not a container gate.
+No flag is rewritten to pass. Inherited overrides remain forbidden and generated
+config hashes are compared before/after. Optional features or a CLI bump require
+a separately reviewed contract update, not silent omission of configured services.
+
+Current post-start inspected expected/observed/missing/unexpected container names
+are retained before the exact-set assertion, separately from historical startup
+snapshots. Missing services, extras (including imgproxy), leftover bootstrap jobs,
+unhealthy/foreign containers and unsafe publications remain failures.
+All existing health requests are unchanged:
+[`health-check.ts@997a1e6`](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli/src/legacy/shared/db-bootstrap/health-check.ts#L237-L256)
+uses HEAD for `/rest-admin/v1/ready` and `/functions/v1/_internal/health`
+(path constants at 44 and 58). GET `/auth/v1/health`, `/rest/v1/` and
+`/storage/v1/status`, authentication, redirect rejection, body cancellation
+and status checks remain.
+
+[Run 34051805797](https://github.com/drrowdev/hybrid-training-app/actions/runs/34051805797)
+at `9257aeb20582edf681aac49b2a00d3a5f9efc226` passed core/identity, official
+startup and cleanup, but failed the old service-set assertion before application
+migrations/catalog/RPC. Historical snapshots showing 12 permanent names and an
+earlier temporary job are not current membership evidence; exclusive runtime
+causation remains unproven. No new runner/DB/workflow execution occurred in this
+correction turn. All 146 migrations/catalog and 30 actual RPC cases, followed by
+the frozen standalone release inventory, remain required; helper tests are not
+acceptance. Coordinator delta review precedes the next exact-head run.
+
+### Safe RPC failure diagnostics
+
+[Run 34059019498](https://github.com/drrowdev/hybrid-training-app/actions/runs/34059019498)
+at `418beb8f662a7f8267609d73fac9c4b32a7452f3` passed official
+12-service readiness, all existing HTTP probes, all 146 unchanged migrations,
+catalog seed/consistency and cleanup. All 30 authenticated RPC cases executed:
+**2 passed, 28 failed, none pending/todo, no process timeout**. Diagnostics were
+complete with zero invalid records. All 28 failures share SQLSTATE `42501`,
+category `permission`, one fingerprint and `swim_create_plan`. One common
+permission failure is known; its denied object is not. Migration 0145's static
+grants are not runtime privilege evidence, and missing `P0001` does not establish
+that `auth.uid()` completed.
+
+Implemented [authorization 5561913579](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561913579),
+verified API body SHA-256
+`7431dc1bbb483fb71a571569e040e6398ca246b4382d8d77dbb7e7899c8119c2`.
+`apps/web/scripts/swim-rpc-diagnostics.ts` uses Vitest 2.1.9 `onFinished` alongside
+the existing verbose/JSON reporters. The runner supplies only
+`SWIM_RPC_DIAGNOSTICS_PATH` inside its existing private directory. The reporter
+creates a fresh exclusive 0600 regular JSONL sidecar; publication checks location,
+file type, mode, freshness, size, exact fields and allowed values without following
+symlinks. Raw messages/details/hints/stacks, environment and sidecar contents are
+never published.
+
+The sanitized manifest groups counts by exact SQLSTATE/PostgREST code, fixed
+category and SHA-256 fingerprint of message data after UUID/number/quoted-literal
+normalization. Associations retain canonical-verified case identity, phase and
+allowlisted RPC; hook/collection records use a fixed suite identity.
+[Authorization 5562164313](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5562164313)
+expands compile-time identifiers anchored in migration 0145's objects and
+creation/validation path, plus the existing `extensions` schema vocabulary.
+Whole-token exact membership and exact non-interpolated exception literals remain.
+The optional closed `deniedKind` is required only for code `42501`, from that
+code-bearing cause's bounded message start: table, function, schema, sequence,
+column, type, rls-policy, role or unknown. It appears only in associations, never
+the group key. `unknownPermissionKinds` counts unsupported/incomplete permission
+classification separately from collector failures and invalid records; absence
+means a different/no code. Names still come only from the identifier allowlist.
+Unmatched context is omitted, not guessed; fingerprints are grouping evidence,
+not a database diagnosis.
+
+Collection bounds: 8 cause levels, 1,024 tasks with depth 16, 256 error records,
+8 KiB per message/identity, 2 KiB per JSONL record and 1 MiB per file. Cycles and
+overflow are explicit partial evidence. Collector failure or missing/unreadable/
+invalid files are unavailable evidence; invalid-record counts are explicit.
+Without canonical cases, no unverified names are published. Diagnostic completeness
+cannot make a failing run pass or a passing run fail: canonical JSON, the positive
+30-case ledger and process result remain authoritative, including on report errors.
+The existing sanitized publisher and cleanup path are unchanged.
+
+All 458 targeted reporter/helper/report/config tests, web typecheck and scoped
+lint passed. Synthetic helper and actual Vitest-reporter fixtures prove only
+reporting behavior. No database/container run, workflow dispatch/rerun, migration
+or repair was performed. Independent exact-head delta review precedes the
+coordinator's one new-head run through the unchanged reference workflow. If the
+richer result still cannot identify the object, even with a known denial kind,
+stop this approach and propose bounded read-only privilege evidence: no third
+vocabulary pass, guessed grant or identical rerun. Any access-policy/schema/grant/
+user-data remedy needs owner approval and an additive migration with rollback.
+All standalone DC-SW1–SW9 gates still precede combined implementation.
+
+### Read-only auth privilege evidence
+
+[Run 34061180463](https://github.com/drrowdev/hybrid-training-app/actions/runs/34061180463)
+at `fc364e2534e361c378e0f88a887c3504b44bc009` supersedes the denied-object
+uncertainty above: all 28 failures identify schema `auth`, with complete
+diagnostics, zero invalid records and zero unknown permission kinds. Core/identity,
+official default services/readiness, 146 unchanged migrations, catalog consistency
+and both cleanup paths passed. RPC remains **2 passed, 28 failed, none
+pending/todo, no timeout**. Actual owners, grant options, role membership and
+effective privileges have not yet been observed.
+
+[Authorization 5562400372](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5562400372)
+adds `apps/web/scripts/swim-auth-privileges.ts` and one call from the existing
+runner, after successful migration/catalog checks and before RPC. The fixed query
+uses the already verified owned `target.dbId` and private postgres psql channel.
+It begins READ ONLY, sets a 5-second statement timeout and rolls back. The command
+uses both capture and allowFailure, with a 10-second maximum still clipped by the
+existing deadline and cleanup reserve. The existing 8 MiB stdout cap and child
+termination behavior are unchanged; logs stay private.
+
+Only fixed catalog objects are resolved: postgres, swim_writer, supabase_admin,
+auth/public schemas, `auth.uid()` and
+`public.swim_create_plan(date,date,jsonb,jsonb,jsonb)`. OID predicates are guarded
+against missing roles/objects; owner lookup is restricted to those objects.
+The strict projection reports connection identity as postgres/other, role flags,
+membership/inherited access, effective schema/function privileges and grant
+options, three closed owner classifications, and the exact creation function's
+SECURITY DEFINER/stored row_security classification. Unknown owners become
+`other`; missing owners do not. Duplicate row_security entries or required NULLs
+are unavailable, not false privileges or an assumed setting. Raw config, ACLs,
+function bodies, arbitrary names, user data and backend errors are not published.
+No auth or swimming function is executed as a probe.
+
+`manifest.authPrivileges` is either available with the validated observation or
+unavailable with a fixed reason: command-failed, timeout-or-output-limit,
+invalid-output, or missing-or-ambiguous-catalog. A timeout/overflow discards even
+otherwise valid captured data. Diagnostic failure never replaces the original
+RPC result, alters the 30-case gate or skips cleanup.
+
+Migration 0145's authored grant is not proof of grant authority at runtime.
+Effective EXECUTE includes PUBLIC and inherited privileges; a true swim_writer
+result for `auth.uid()` does **not** establish that this migration granted it.
+Schema USAGE and grant-option evidence discriminate the current failure.
+The observed image is `ghcr.io/supabase/postgres:17.6.1.165`, digest
+`28f0e16a019e648089fc1a6d333549a55548f6019c15ae4bd7cd58b989027518`.
+Do not substitute an older baseline or infer catalog facts from a fingerprint.
+
+All 293 targeted acceptance-helper tests, web typecheck and scoped lint passed;
+fixtures establish reporting behavior only. This implementation did not execute
+Docker, a database, Supabase or a workflow, and changes no access policy, migration,
+runtime feature, service, network, dependency or canonical RPC report.
+Independent exact-head review and fresh guards precede one new-head manual run
+through the unchanged workflow. If evidence remains insufficient, record exactly
+what is missing and reassess, with no identical rerun or diagnostic expansion.
+Any access correction requires a specific owner decision and independently
+reviewed additive migration/rollback, not a repeated grant or privilege bypass.
+Full standalone [DC-SW1–SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+acceptance still precedes combined implementation.

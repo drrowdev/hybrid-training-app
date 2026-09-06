@@ -19,6 +19,17 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   has been applied; real database/mobile acceptance remains blocked.
 - Filling an existing program's cardio slots and Garmin support are not part
   of this slice.
+- A cloud-only acceptance pass added a narrow, loopback-only local test mode
+  to the RPC/Playwright hosted-ref guards and ran the migration chain, catalog
+  seed and RPC smoke suite against a disposable synthetic Postgres stack for
+  the first time (reported 19/24, incomplete case ledger; not a reference
+  platform). A follow-up binds fixture/app local origins exactly, isolates
+  ownership-FK and duplicate-session fixtures, and documents per-case web
+  Vitest JSON reporting. All 108 guard tests pass; revised RPC cases remain
+  unexecuted. One official Supabase attempt failed during initialization.
+  The suspected stale `swim_update_plan` hang remains undiagnosed; mobile
+  and actual shared-load acceptance are blocked. No production or hosted
+  database was touched.
 
 ### Plan refreshes preserve moved workouts
 - Workouts moved to another day now keep that placement when Edit plan or a

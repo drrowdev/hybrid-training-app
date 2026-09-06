@@ -6,10 +6,36 @@ function credential(value: string | undefined, role: "anon" | "service"): boolea
     /^eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{20,}$/.test(value);
 }
 
+const LOCAL_PROJECT_REF = "local";
+
+/**
+ * Narrow localhost-only mode for a disposable Supabase stack run on a CI
+ * runner (e.g. the official Supabase CLI/Docker), never a hosted project.
+ * Requires the literal `SWIM_TEST_PROJECT_REF=local` acknowledgement plus a
+ * bare loopback `http:` origin, so it cannot be widened into accepting an
+ * arbitrary URL.
+ */
+function isLocalSwimEnvironment(env: Record<string, string | undefined>): boolean {
+  if (env.SWIM_TEST_PROJECT_REF !== LOCAL_PROJECT_REF) return false;
+  const localOrigin = (value: string | undefined): string | null => {
+    if (!value || !URL.canParse(value)) return null;
+    const target = new URL(value);
+    const isLoopback =
+      target.hostname === "127.0.0.1" || target.hostname === "localhost" || target.hostname === "[::1]";
+    return target.protocol === "http:" && isLoopback &&
+      target.username === "" && target.password === "" &&
+      target.pathname === "/" && target.search === "" && target.hash === "" ? target.origin : null;
+  };
+  const fixtureOrigin = localOrigin(env.E2E_SUPABASE_URL);
+  return fixtureOrigin !== null &&
+    (env.NEXT_PUBLIC_SUPABASE_URL === undefined || localOrigin(env.NEXT_PUBLIC_SUPABASE_URL) === fixtureOrigin);
+}
+
 export function isDedicatedSwimEnvironment(env: Record<string, string | undefined>): boolean {
   if (env.E2E_SWIM_NONPROD !== "1" || !credential(env.E2E_SUPABASE_ANON_KEY, "anon") ||
     !credential(env.E2E_SUPABASE_SERVICE_ROLE_KEY, "service") ||
     !env.SWIM_TEST_PROJECT_REF || !/^[a-z0-9-]+$/.test(env.SWIM_TEST_PROJECT_REF)) return false;
+  if (env.E2E_SWIM_LOCAL === "1") return isLocalSwimEnvironment(env);
   const expected = `https://${env.SWIM_TEST_PROJECT_REF}.supabase.co`;
   const matches = (value: string | undefined) => value === expected || value === `${expected}/`;
   return matches(env.E2E_SUPABASE_URL) &&

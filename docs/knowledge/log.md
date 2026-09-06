@@ -1485,3 +1485,279 @@ Local checks do not replace the still-pending real database/browser acceptance.
 The existing Vitest runner now has its matching coverage provider and a
 `test:coverage` command enforcing the 80% contract across the full domain and
 engine packages.
+
+## [2026-09-06] verify | First real Postgres/RPC acceptance pass, cloud-only
+
+Added a narrow, loopback-only local test mode to the RPC and Playwright
+hosted-ref guards (`SWIM_RPC_TEST_LOCAL`/`E2E_SWIM_LOCAL` +
+`SWIM_TEST_PROJECT_REF=local`), keeping the existing hosted-ref guard
+unchanged otherwise. Used it to run the full migration chain, the movement
+catalog seed, and the `storage-rpc.smoke.test.ts` suite against a disposable,
+synthetic Postgres/Auth/REST stack for the first time (19/24 passing with
+real SQL/RPC round trips). Found one reproducible test-fixture bug (an
+expected error code unreachable due to constraint-check ordering) and one
+reproducible suspected hang (repeating `swim_update_plan` with stale
+arguments) — neither fixed yet; see HANDOFF.md for detail. Playwright and the
+`packages/db/integration-tests` RLS/region-ledger scripts were not reached.
+Narrowly fixed the movement-catalog seed's TLS handling
+(`packages/db/seeds/db-ssl.ts`) to allow disposable loopback Postgres without
+weakening the hosted/`verify-full` default. No production, billing, or merge
+action taken.
+
+## [2026-09-06] refine | PR802 limited guard, fixture and acceptance reporting follow-up
+
+Bound local E2E fixture/app URLs to the same normalized origin and isolated
+ownership, composite FK and duplicate-session RPC assertions (DC-SW8), retaining
+independent primary-program isolation (DC-SW7). The existing web Vitest runner
+passed 108 pure guard cases. Documented its unchanged 20-second timeouts and
+per-case JSON command in the swim wiki. Revised RPC assertions remain unexecuted:
+the reporter attempt failed before collection on an unresolved dependency;
+frozen install also encountered unavailable checked-in tarball hosts.
+
+One bounded official Supabase CLI/Docker attempt exited during schema
+initialization; no healthy reference stack or fresh database acceptance was
+obtained. The terminal initialization cause was not retained, and the prior
+stale-update hang is still undiagnosed. See HANDOFF.md for evidence limits.
+No SQL/grant/migration, workflow, hosted database, combined-mode or merge changes.
+
+## [2026-09-06] refine | Fail-closed swim RPC acceptance reporting
+
+The web RPC command now overrides `passWithNoTests` and validates its JSON with
+existing Node/tsx tooling. The ledger requires the exact smoke file, at least 30
+unique passing cases and consistent explicit Vitest 2.1.9 counts, including
+nested-suite counters; missing, malformed, partial and non-passed reports fail.
+Focused existing-runner tests cover the reporting gate independently of database
+readiness. The printable ledger records SHA/config/case evidence without raw
+failure messages; original diagnostics remain private until scrubbed.
+This reporting refinement is not fresh RPC, mobile or shared-load acceptance.
+
+## [2026-09-06] verify | Approved loopback reference startup blocked before application acceptance
+
+At source `c811a505d4a6b2b06f5d55f1b3b97753aa415cf1`, verified PR802's
+approved plan/authority hashes and recorded all 30 RPC cases plus the broader
+ADR0079/DC-SW1–SW9 acceptance criteria before execution. Offline frozen
+installation succeeded. One official CLI 2.116.0 startup on the approved
+task-owned, loopback-publishing, default-NAT bridge exited 1 after 98.79 seconds:
+Storage bootstrap failed resolving the project database container name
+(`getaddrinfo EAI_AGAIN`). Postgres had reached readiness; no application
+migration/catalog, RPC, mobile or shared-load acceptance ran. This is retained
+platform-startup evidence, not a SQL failure or diagnosis of the stale-update
+hang. No retry or substitute network/stack followed.
+
+Captured project-container membership and the sole published loopback mapping,
+retained private diagnostics and image digests, then verified removal of all
+three task containers, the database volume and the exact bridge. Full service
+readiness and external reachability were not established. See
+[`HANDOFF.md`](../../HANDOFF.md#latest-pr802-runner-local-reference-acceptance)
+for evidence limits and the explicitly unmet criteria. Only acceptance
+documentation changed; no runtime/SQL/grant/dependency/workflow, combined-mode,
+merge or deployment action was taken.
+
+## [2026-09-06] verify | Prearmed reference observation narrows bootstrap hypotheses
+
+At `ebe4a672a13b86f7490acd7c001463c45a6d31ea`, executed approved PR802
+plan 5559384497 with live project-container and exact-network event streams
+armed before one official CLI 2.116.0 startup. It exited 1 after 64.28 seconds,
+without retry: Storage again reported DB-name `getaddrinfo EAI_AGAIN`.
+During Storage execution the DB advertised the expected DNS name and remained
+on the same network until after Storage failed. This contradicts H1/H2 at the
+observed metadata/timeline level, not proof of working DNS. All three generated
+resolver files were captured without exec and matched; H3 remains unresolved.
+No application migration, RPC, mobile/offline or shared-load acceptance ran;
+the full pre-execution inventory remains unmet. The CLI removed the exact task
+containers, volume and bridge, verified absent within the total bound. See
+[`HANDOFF.md`](../../HANDOFF.md#latest-pr802-runner-local-reference-acceptance)
+for timestamps, hashes, image-reference differences and capture limitations.
+No runtime, SQL, fixture, dependency, workflow or environment-policy repair.
+
+## [2026-09-06] refine | Implement isolated manual swim reference acceptance
+
+Implemented coordinator authorization 5560014710 on PR802: existing CI manual
+inputs, isolated non-cancelling swim concurrency, an expected-SHA preflight,
+guarded official disposable-stack orchestration and focused pure Vitest tests.
+The runner reuses the canonical local-target/report helpers, checks unchanged
+migrations/catalog and records sanitized stage/ledger evidence with exact-resource
+cleanup. HANDOFF and the swim wiki describe the coordinator's review/dispatch
+boundary. No workflow dispatch or database startup occurred in this implementation
+turn. No runtime swim, SQL/schema/RLS/grants, fixtures or dependencies changed;
+the broader standalone acceptance inventory remains unmet.
+
+## [2026-09-06] refine | Preserve safe acceptance failures and private command output
+
+Corrected the reporting and log-writer defects in the
+[acceptance runner@ecb267f](https://github.com/drrowdev/hybrid-training-app/blob/ecb267f239d08a13a0e10dbeec4648c09983054d/apps/web/scripts/swim-acceptance.ts)
+under PR802 authorization 5560307838. Locally authored guard reasons are distinct
+from withheld parser/error details; primary, source-verification and cleanup
+failures remain separate. Command logs use exclusive append creation with 0600
+permissions. Production-used helper regressions and unchanged canonical-helper
+tests passed (183 tests); web typecheck, scoped ESLint and secret scanning passed.
+CodeQL found no Actions alerts; JavaScript analysis was skipped because its
+database was too large, so that scan remains unverified. No workflow dispatch,
+database/container execution or live acceptance occurred. Standalone
+release acceptance remains outstanding; coordinator review is next.
+
+## [2026-09-06] refine | Mirror safe swim acceptance summaries to job stdout
+
+Under PR802 authorization 5560545875, the
+[reporting path@33ec5343](https://github.com/drrowdev/hybrid-training-app/blob/33ec5343d6a018327678fa0f7a40a6f0ed853c52/apps/web/scripts/swim-acceptance.ts#L61-L64)
+now publishes the same sanitized/escaped summary to stdout with the literal
+`[swim-acceptance-summary]` marker before appending `GITHUB_STEP_SUMMARY`.
+Append failures still throw; existing primary/secondary/cleanup handling remains.
+All 185 targeted helper/report/config tests, web typecheck and scoped ESLint
+passed in the cloud workspace. No helper, database or workflow was executed.
+For failed run 34044560802 at that source SHA, the primary cause, database stages
+reached and cleanup outcome remain unobserved. No workflow, guard, runtime swim,
+SQL, dependency or network changes; standalone acceptance remains outstanding.
+
+## [2026-09-06] refine | Handle absent Docker Health in selected inspection
+
+Under [PR802 authorization 5560849623](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5560849623)
+(verified UTF-8 SHA-256 `f066c6317268982f52387e7e809279a971ee5373c5a9524cd5571a7c41952c0e`),
+corrected the [selected template@fcb1003](https://github.com/drrowdev/hybrid-training-app/blob/fcb100353077af1c12c80dd89bebe7db89106219/apps/web/scripts/swim-acceptance.ts#L30-L36)
+to use optional-map `index` lookups, retaining `.Id` for Docker's JSON-map fallback.
+[Docker CLI v28.0.4 source@b8034c0](https://github.com/docker/cli/blob/b8034c0ed70494a90c133461d145cd072d920d7c/cli/command/inspect/inspector.go#L99-L134)
+confirms strict missing-key handling after typed execution fails.
+[Run 34046741441](https://github.com/drrowdev/hybrid-training-app/actions/runs/34046741441)
+passed core CI, identity and default-service startup (exit 0, no timeout,
+`EAI_AGAIN` false), then failed inspection/readiness with process exit 1 before
+migrations/catalog/RPC. Four Health-bearing snapshots and 11 unavailable
+observations do not establish a Health-less service count; raw Docker stderr
+was not retrieved, so exclusive runtime causation is unproven. Cleanup remains
+unconfirmed. All other selected fields, guards and stdout reporting are unchanged.
+All 197 targeted helper/report/config Vitest tests, web typecheck and scoped ESLint
+passed. Fixtures/static-template checks do not execute Docker's Go renderer.
+No runner, Docker/Supabase/database execution, workflow dispatch or merge occurred;
+coordinator review and a later exact-head run must verify rendering and cleanup.
+Full standalone acceptance remains outstanding; no DC-SW1–SW9 contract changed.
+
+## [2026-09-06] refine | Classify official bootstrap jobs only during startup
+
+Implemented [PR802 authorization 5561109891](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561109891)
+(verified UTF-8 SHA-256 `fa4881aee0995da3b45921c4f0c8fb930629c39c35afd3126fadcb50d238c2ee`).
+[Run 34049409389](https://github.com/drrowdev/hybrid-training-app/actions/runs/34049409389)
+at `f57f16ab9ebc29f2c2f3bbb0fba8d9a4323ee97b` stopped on an official unnamed
+Realtime bootstrap job, not unsafe publication or DNS failure; optional-Health
+inspection and both cleanup paths succeeded. The
+[observer@f57f16a](https://github.com/drrowdev/hybrid-training-app/blob/f57f16ab9ebc29f2c2f3bbb0fba8d9a4323ee97b/apps/web/scripts/swim-acceptance.ts#L334-L374)
+now uses a separate startup validator: both exact project labels, the existing
+single-network/mode check, no host publication, volume-only mounts and nine exact
+approved image references with at most one valid SHA-256 digest suffix.
+`/supabase_` names still take the original named path; the
+[13-service readiness contract@f57f16a](https://github.com/drrowdev/hybrid-training-app/blob/f57f16ab9ebc29f2c2f3bbb0fba8d9a4323ee97b/apps/web/scripts/swim-acceptance-guards.ts#L131-L143)
+and ownership-checked cleanup are unchanged. The first safe classified violation
+is retained before stopping startup. All 271 targeted helper/report/config Vitest
+tests, web typecheck and scoped ESLint passed; fixtures/static wiring are not real
+Docker/DB acceptance. No runner, Docker/Supabase/DB, workflow execution or merge
+was performed. Coordinator delta review and a later exact-head run remain pending;
+migrations/catalog/RPC and full standalone acceptance remain unproven.
+No DC-SW1–SW9, image/runtime/network configuration or swim-feature change.
+
+## [2026-09-06] refine | Correct our pinned-default service assumption
+
+Implemented [PR802 authorization 5561453075](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561453075),
+with its UTF-8 body hash verified. Our prior 13-service assumption (including the
+historical entry above) incorrectly treated optional imgproxy as a default.
+The [native init/template/gate sources@997a1e6](./pool-swimming.md#pinned-default-service-contract)
+establish exactly 12 services. The runner now validates the fresh generated
+config before startup and retains current inspected service-name differences
+before readiness, without changing service flags or any health request.
+Exact service/membership, ownership, publication and cleanup checks remain.
+
+[Run 34051805797](https://github.com/drrowdev/hybrid-training-app/actions/runs/34051805797)
+at `9257aeb20582edf681aac49b2a00d3a5f9efc226` passed core/identity, official
+startup and cleanup, then failed the old exact-set assertion before application
+migrations/catalog/RPC. Historical snapshots are not current membership or
+exclusive-causation proof. All 317 targeted helper/report/config Vitest tests,
+web typecheck and scoped ESLint passed; these are not Docker/DB acceptance.
+No runner, container/database execution, workflow dispatch or merge occurred.
+All 146 migrations/catalog, 30 actual RPC cases and the frozen standalone
+DC-SW1–SW9 inventory remain required. No acceptance waiver, workflow, SQL,
+dependency, runtime/image/version/network change; coordinator review is next.
+
+## [2026-09-06] refine | Add safe RPC failure diagnostics without changing acceptance
+
+Implemented [PR802 authorization 5561913579](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561913579)
+at source `27971943ca9b34fa75d85c57793f1e74b667a7e3`; its exact API body
+SHA-256 matched `7431dc1bbb483fb71a571569e040e6398ca246b4382d8d77dbb7e7899c8119c2`.
+[Run 34054970331](https://github.com/drrowdev/hybrid-training-app/actions/runs/34054970331)
+passed core/identity, official 12-service readiness, existing HTTP probes, all
+146 unchanged migrations, catalog seed/consistency and cleanup. RPC execution
+was **2/30 passed, 28 failed, none pending/todo, no process timeout**. Many failures
+share `createPlan`; root cause remains unknown. Earlier run facts above remain
+historical evidence, not the latest result.
+
+The third Vitest reporter writes a bounded exclusive private sidecar; its reader
+publishes only validated classifications, canonical case/phase/RPC associations,
+allowlisted context and normalized-message SHA-256 groups through the existing
+sanitized summary. Missing, invalid, overflow and collector-failure evidence is
+explicit. Canonical JSON, process result, minimum 30-case gate, existing health
+requests and cleanup remain unchanged. No SQL/schema/access policy, workflow,
+RPC suite/config/payload/assertion, dependency or runtime feature changed.
+
+All 391 targeted workspace helper/report/config tests, web typecheck and scoped
+lint passed; synthetic reporting fixtures are not real swim acceptance.
+No Docker/Supabase/database execution, workflow dispatch/rerun or merge occurred.
+Independent exact-head review precedes the coordinator's next new-head run.
+The full standalone DC-SW1–SW9 inventory remains required before combined work.
+
+## [2026-09-06] refine | Correct RPC diagnostic identifier and denial context
+
+Implemented [PR802 authorization 5562164313](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5562164313)
+at source `418beb8f662a7f8267609d73fac9c4b32a7452f3`; exact API body SHA-256
+matched `619b805adb8f0fc776dce98baa57f40ca2a714cad58abfce6770692d197baeaf`.
+[Run 34059019498](https://github.com/drrowdev/hybrid-training-app/actions/runs/34059019498)
+passed official default-service startup/readiness, all existing HTTP probes,
+146 unchanged migrations, catalog consistency and cleanup. RPC outcomes remain
+**2 passed, 28 failed, none pending/todo, no process timeout**. Complete diagnostics
+with zero invalid records show one shared `42501` permission fingerprint and
+`swim_create_plan`; the denied object remains unknown. Static grants do not prove
+runtime privileges; missing `P0001` does not prove `auth.uid()` completed.
+
+Only the reporter/projector, its focused tests and status documentation changed.
+The compile-time vocabulary now includes source-anchored schemas, helpers,
+validators and related objects. Closed `deniedKind` follows the selected `42501`
+cause's bounded message and appears only in associations. Unknown permission kinds
+are counted separately from invalid records/collector failure. Exact membership,
+strict validation, private-file/bounds/no-throw guarantees and the original
+code/category/fingerprint group key remain; canonical JSON, 30-case acceptance,
+outcomes and cleanup are unchanged.
+
+All 458 targeted reporter/helper/report/config tests, web typecheck and scoped
+lint passed in the coding workspace. These are synthetic reporting checks, not
+live acceptance. No database/container/workflow execution, SQL/access-policy
+repair, feature work or merge occurred. Independent exact-head delta review
+precedes one new-head run through the unchanged reference workflow. If richer
+context still lacks a relevant target, stop vocabulary passes and propose bounded
+read-only privilege evidence. Any remedy needs owner approval and a reviewed
+additive migration with rollback. Full standalone DC-SW1–SW9 acceptance remains
+required before combined implementation.
+
+## [2026-09-06] refine | Add bounded read-only auth privilege evidence
+
+Implemented [PR802 authorization 5562400372](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5562400372)
+from `fc364e2534e361c378e0f88a887c3504b44bc009`; exact API body SHA-256
+matched `75145b0b21f9a2196dcff9aca3782859c68fdbf7f8b7f663d848879164fb5f86`.
+[Run 34061180463](https://github.com/drrowdev/hybrid-training-app/actions/runs/34061180463)
+passed core/identity, official default-service readiness, 146 unchanged migrations,
+catalog consistency and both cleanup paths. RPC remains **2 passed, 28 failed,
+none pending/todo, no timeout**; all failures identify schema `auth`, with zero
+invalid records or unknown permission kinds. Runtime grant authority remains
+unobserved; no further reporter-vocabulary change is needed.
+
+The [fixed observation](./pool-swimming.md#read-only-auth-privilege-evidence)
+uses the existing verified private postgres channel between catalog checks and
+RPC, with READ ONLY, a 5-second statement timeout, a 10-second command maximum
+within existing deadlines, and unchanged capture/termination bounds. Only strict
+booleans/closed enums enter the sanitized manifest. Missing/ambiguous objects,
+duplicate fields/settings, malformed output and process failures become explicit
+unavailable evidence. The original RPC gate, reports, process outcome and cleanup
+remain authoritative. Effective EXECUTE is not proof that migration 0145 granted it.
+
+All 293 targeted acceptance-helper tests, web typecheck and scoped lint passed.
+These are synthetic reporting tests, not live privilege or standalone acceptance
+evidence. No database/container/workflow execution, access repair, migration,
+feature/UI work, service/network change or merge occurred. Independent exact-head
+review and fresh guards precede one new-head manual run; insufficient evidence
+requires reassessment, not an identical rerun or diagnostic expansion. Any access
+correction remains a separate owner decision with reviewed additive migration and
+rollback. Standalone DC-SW1–SW9 acceptance remains required before combined work.
