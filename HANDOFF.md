@@ -95,7 +95,7 @@ events; only that exact observer process was stopped. No prune or unrelated
 deletion occurred. Raw artifacts remain private outside git (700 directories,
 600 files), redacted before reading; they are ephemeral, not durable attachments.
 Only evidence documentation changed. No repair, alternate network method, next
-task, combined implementation, merge or deployment was attempted or authorized.
+task, combined implementation, merge or deployment was attempted in this pass.
 
 ### Earlier approved loopback reference attempt
 
