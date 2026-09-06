@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
-  CLI_ASSET, CLI_SHA256, DEFAULT_SERVICES, LIMITS, PROJECT_LABEL, RUN_LABEL,
-  outcome, processIdentity, requireAcceptance, requireArchive, requireCleanupState,
+  CLI_ASSET, CLI_SHA256, DEFAULT_SERVICES, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
+  containerSchema, outcome, processIdentity, requireAcceptance, requireArchive, requireCleanupState,
   requireContainer, requireFreshReport, requireLocalStatus, requireManualContext,
   requireNetwork, requireNoInheritedTargets, requirePrivateLocation, requireProcess, requireReadyStack,
   resourceSchema, type Container, type Network, type Resources,
@@ -111,6 +111,61 @@ describe("manual swim acceptance preflight (no Docker or RPC execution)", () => 
   });
   it("retains bounded process ceilings and a cleanup reserve", () => {
     expect(LIMITS).toEqual({ total: 35 * 60_000, cleanup: 3 * 60_000, startup: 20 * 60_000, rpc: 12 * 60_000 });
+  });
+});
+
+describe("selected container inspection (fixtures/static template, not Docker Go rendering)", () => {
+  it("keeps the production projection selective, with .Id JSON spelling and safe optional-map lookups", () => {
+    expect(INSPECT_FORMAT).toBe([
+      '{"Id":{{json .Id}},"Name":{{json .Name}},"Image":{{json .Image}},',
+      '"Config":{"Image":{{json .Config.Image}},"Labels":{{json .Config.Labels}}},',
+      '"State":{"Running":{{json .State.Running}},"Status":{{json .State.Status}},',
+      '"Health":{{with (index .State "Health")}}{"Status":{{json (index . "Status")}}}{{else}}null{{end}}},',
+      '"HostConfig":{"NetworkMode":{{json .HostConfig.NetworkMode}}},',
+      '"NetworkSettings":{"Networks":{{json .NetworkSettings.Networks}},"Ports":{{json .NetworkSettings.Ports}}},',
+      '"Mounts":{{json .Mounts}}}',
+    ].join(" "));
+  });
+
+  it.each([
+    ["missing", { Running: true, Status: "running" }],
+    ["null", { Running: true, Status: "running", Health: null }],
+    ["healthy", { Running: true, Status: "running", Health: { Status: "healthy" } }],
+  ])("accepts %s Health without bypassing readiness, ownership, network or publication guards", (_, state) => {
+    const value = containerSchema.parse({ ...container(), State: state });
+    expect(value.State).toEqual(state);
+    expect(() => requireContainer(value, project, networkId, true)).not.toThrow();
+    expect(() => requireContainer(value, "other", networkId, true)).toThrow();
+    expect(() => requireContainer(value, project, "d".repeat(64), true)).toThrow();
+    value.State.Running = false;
+    expect(() => requireContainer(value, project, networkId, true)).toThrow();
+    value.State.Running = true;
+    value.NetworkSettings.Ports["5432/tcp"]![0]!.HostIp = "0.0.0.0";
+    expect(() => requireContainer(value, project, networkId, true)).toThrow();
+  });
+
+  it.each(["unhealthy", "starting", ""])("retains %j Health for inspection but rejects readiness", (status) => {
+    const value = containerSchema.parse({ ...container(),
+      State: { Running: true, Status: "running", Health: { Status: status } } });
+    expect(value.State.Health).toEqual({ Status: status });
+    expect(() => requireContainer(value, project, networkId)).not.toThrow();
+    expect(() => requireContainer(value, project, networkId, true)).toThrow();
+  });
+
+  it.each([{}, { Status: null }, { Status: 1 }, false])("rejects malformed Health metadata: %j", (health) => {
+    expect(() => containerSchema.parse({ ...container(),
+      State: { Running: true, Status: "running", Health: health } })).toThrow();
+  });
+
+  it("checks a complete mixed-Health stack and still rejects an unhealthy service", () => {
+    const containers = DEFAULT_SERVICES.map((name, index) => container(name, index + 1));
+    delete containers[2]!.State.Health;
+    containers[3]!.State.Health = null;
+    const values = containers.map((value) => containerSchema.parse(value));
+    const network = { ...bridge(), Containers: Object.fromEntries(values.map((c) => [c.Id, {}])) };
+    expect(() => requireReadyStack(values, network, project)).not.toThrow();
+    values[2]!.State.Health = { Status: "unhealthy" };
+    expect(() => requireReadyStack(values, network, project)).toThrow();
   });
 });
 

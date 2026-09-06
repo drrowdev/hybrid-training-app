@@ -1608,3 +1608,24 @@ passed in the cloud workspace. No helper, database or workflow was executed.
 For failed run 34044560802 at that source SHA, the primary cause, database stages
 reached and cleanup outcome remain unobserved. No workflow, guard, runtime swim,
 SQL, dependency or network changes; standalone acceptance remains outstanding.
+
+## [2026-09-06] refine | Handle absent Docker Health in selected inspection
+
+Under [PR802 authorization 5560849623](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5560849623)
+(verified UTF-8 SHA-256 `f066c6317268982f52387e7e809279a971ee5373c5a9524cd5571a7c41952c0e`),
+corrected the [selected template@fcb1003](https://github.com/drrowdev/hybrid-training-app/blob/fcb100353077af1c12c80dd89bebe7db89106219/apps/web/scripts/swim-acceptance.ts#L30-L36)
+to use optional-map `index` lookups, retaining `.Id` for Docker's JSON-map fallback.
+[Docker CLI v28.0.4 source@b8034c0](https://github.com/docker/cli/blob/b8034c0ed70494a90c133461d145cd072d920d7c/cli/command/inspect/inspector.go#L99-L134)
+confirms strict missing-key handling after typed execution fails.
+[Run 34046741441](https://github.com/drrowdev/hybrid-training-app/actions/runs/34046741441)
+passed core CI, identity and default-service startup (exit 0, no timeout,
+`EAI_AGAIN` false), then failed inspection/readiness with process exit 1 before
+migrations/catalog/RPC. Four Health-bearing snapshots and 11 unavailable
+observations do not establish a Health-less service count; raw Docker stderr
+was not retrieved, so exclusive runtime causation is unproven. Cleanup remains
+unconfirmed. All other selected fields, guards and stdout reporting are unchanged.
+All 197 targeted helper/report/config Vitest tests, web typecheck and scoped ESLint
+passed. Fixtures/static-template checks do not execute Docker's Go renderer.
+No runner, Docker/Supabase/database execution, workflow dispatch or merge occurred;
+coordinator review and a later exact-head run must verify rendering and cleanup.
+Full standalone acceptance remains outstanding; no DC-SW1–SW9 contract changed.

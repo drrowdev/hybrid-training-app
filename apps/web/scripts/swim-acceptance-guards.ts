@@ -90,6 +90,16 @@ export function requireNetwork(network: Network, project: string, empty = false)
   if (empty) assert(Object.keys(network.Containers ?? {}).length === 0, "Task network not empty");
 }
 
+// Keep .Id: these lookups use Docker's JSON-map fallback, not the typed .ID.
+// index handles absent Health map keys but cannot index the typed ContainerState.
+export const INSPECT_FORMAT = `{"Id":{{json .Id}},"Name":{{json .Name}},"Image":{{json .Image}},
+  "Config":{"Image":{{json .Config.Image}},"Labels":{{json .Config.Labels}}},
+  "State":{"Running":{{json .State.Running}},"Status":{{json .State.Status}},
+    "Health":{{with (index .State "Health")}}{"Status":{{json (index . "Status")}}}{{else}}null{{end}}},
+  "HostConfig":{"NetworkMode":{{json .HostConfig.NetworkMode}}},
+  "NetworkSettings":{"Networks":{{json .NetworkSettings.Networks}},"Ports":{{json .NetworkSettings.Ports}}},
+  "Mounts":{{json .Mounts}}}`.replace(/\s+/g, " ");
+
 export const containerSchema = z.object({
   Id: id, Name: z.string(), Image: id.or(z.string().regex(/^sha256:[a-f0-9]{64}$/)),
   Config: z.object({ Image: z.string(), Labels: labels }),
