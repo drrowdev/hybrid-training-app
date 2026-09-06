@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   CLI_ASSET, CLI_SHA256, DEFAULT_SERVICES, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
-  containerSchema, outcome, processIdentity, requireAcceptance, requireArchive, requireCleanupState,
+  containerSchema, outcome, processIdentity, readyServiceNames, requireAcceptance, requireArchive, requireCleanupState,
   requireContainer, requireFreshReport, requireLocalStatus, requireManualContext,
-  requireNetwork, requireNoInheritedTargets, requirePrivateLocation, requireProcess, requireReadyStack,
+  requireNetwork, requireNoInheritedTargets, requirePinnedDefaultConfig, requirePrivateLocation, requireProcess, requireReadyStack,
   requireStartupContainer, resourceSchema, type Container, type Network, type Resources,
 } from "../../../../scripts/swim-acceptance-guards";
 import {
@@ -111,6 +111,123 @@ describe("manual swim acceptance preflight (no Docker or RPC execution)", () => 
   });
   it("retains bounded process ceilings and a cleanup reserve", () => {
     expect(LIMITS).toEqual({ total: 35 * 60_000, cleanup: 3 * 60_000, startup: 20 * 60_000, rpc: 12 * 60_000 });
+  });
+});
+
+describe("pinned native init service configuration (no CLI execution)", () => {
+  // Service-relevant projection of project-init.templates.ts at CLI v2.116.0.
+  const config = `project_id = "synthetic"
+[api]
+enabled = true
+[api.tls]
+enabled = false
+[db]
+major_version = 17
+[db.pooler]
+enabled = false
+[db.migrations]
+enabled = true
+[realtime]
+enabled = true
+[studio]
+enabled = true
+[local_smtp]
+enabled = true
+[storage]
+enabled = true
+[storage.s3_protocol]
+enabled = true
+# [storage.image_transformation]
+# enabled = true
+[storage.analytics]
+enabled = false
+[storage.vector]
+enabled = true
+[auth]
+enabled = true
+[auth.external.apple]
+enabled = false
+[edge_runtime]
+enabled = true
+[analytics]
+enabled = true
+`;
+  const required = ["api", "auth", "realtime", "local_smtp", "studio", "storage", "edge_runtime", "analytics", "db.pooler"];
+  const stanza = (section: string) => `[${section}]\nenabled = ${section === "db.pooler" ? "false" : "true"}`;
+
+  it("accepts native defaults, including enabled storage.vector and commented image transformation", () => {
+    expect(() => requirePinnedDefaultConfig(config)).not.toThrow();
+    expect(() => requirePinnedDefaultConfig(config.replaceAll("\n", "\r\n"))).not.toThrow();
+    expect(() => requirePinnedDefaultConfig(config.replaceAll("enabled =", "  enabled  ="))).not.toThrow();
+    expect(() => requirePinnedDefaultConfig(config.replaceAll("enabled = true", "enabled = true # comment"))).not.toThrow();
+    expect(() => requirePinnedDefaultConfig(config.replace("[api]", "[api] # enabled = false"))).not.toThrow();
+    expect(() => requirePinnedDefaultConfig(config.replace("[api]", "# [api]\n# enabled = false\n[api]"))).not.toThrow();
+  });
+
+  it.each(required)("rejects missing, inverted, duplicate or malformed %s sections/flags", (section) => {
+    const block = stanza(section);
+    for (const replacement of [
+      "", `# ${block.replace("\n", "\n# ")}`, `[${section}]`,
+      block.replace(/= (true|false)/, `= ${section === "db.pooler" ? "true" : "false"}`),
+      `${block}\n${block}`, `${block}\nenabled = true`,
+      `${block}\nenabled = false`, `${block}\nenabled = "true"`,
+      block.replace(`[${section}]`, `[${section}`),
+      block.replace(`[${section}]`, `[${section}]]`),
+      block.replace(`[${section}]`, `[[${section}]]`),
+      block.replace(`[${section}]`, `[${section}] trailing`),
+      block.replace(`[${section}]`, `["${section}"]`),
+      block.replace("enabled =", "# enabled ="),
+      block.replace("enabled =", "enabled :"),
+      block.replace("enabled =", '"enabled" ='),
+      block.replace(/= (true|false)/, "= TRUE"),
+      block.replace(/= (true|false)/, '= "true"'),
+      block.replace(/= (true|false)/, "= 1"),
+      block.replace(/= (true|false)/, "= true trailing"),
+      block.replace(/= (true|false)/, "= # true"),
+      block.replace(/= (true|false)/, "=\ntrue"),
+      `[${section}]\n# enabled = true\n[${section}.unrelated]\nenabled = true`,
+      `[${section}]\n[${section}.unrelated]\nenabled = false`,
+    ]) {
+      expect(() => requirePinnedDefaultConfig(config.replace(block, replacement)), replacement).toThrow();
+    }
+  });
+
+  it.each(["true", "false", '"true"', ""])("rejects an active image-transformation section with flag %j", (flag) => {
+    expect(() => requirePinnedDefaultConfig(`${config}\n[storage.image_transformation]\nenabled = ${flag}`)).toThrow();
+  });
+
+  it.each([
+    "[storage.image_transformation]", "[storage.image_transformation] # enabled = false",
+    "[storage.image_transformation.extra]", "[storage.image_transformation",
+    '["storage"."image_transformation"]', "[storage . image_transformation]",
+    "[[storage.image_transformation]]",
+  ])("rejects non-default image-transformation syntax %s even without an enabled line", (section) => {
+    expect(() => requirePinnedDefaultConfig(`${config}\n${section}`)).toThrow();
+  });
+
+  it("rejects dotted/inline gate overrides and multiline syntax outside the generated format", () => {
+    for (const changed of [
+      `storage.image_transformation.enabled = true\n${config}`,
+      `storage = { image_transformation = { enabled = true } }\n${config}`,
+      config.replace("[storage]", "[storage]\nimage_transformation = { enabled = true }"),
+      config.replace("[storage]", "[storage]\nimage_transformation.enabled = true"),
+      config.replace("[api]", 'extra = """\n[api]'),
+    ]) expect(() => requirePinnedDefaultConfig(changed)).toThrow();
+  });
+
+  it("does not expose malformed config values in safe failures", () => {
+    let cause;
+    try { requirePinnedDefaultConfig(config.replace("[api]", "[private-invalid-section")); }
+    catch (error) { cause = safeFailureCause(error); }
+    expect(cause).toEqual({ classification: "guard", message: "Malformed generated config section" });
+    expect(formatAcceptanceSummary(cause)).not.toContain("private-invalid-section");
+  });
+
+  it("validates the freshly read, hashed config before bridge creation/startup (static wiring)", () => {
+    const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
+    expect(source).toContain('const generatedConfig = readFileSync(configPath, "utf8");');
+    expect(source).toMatch(/manifest\.localConfigSha256 = hash\(generatedConfig\);\s+requirePinnedDefaultConfig\(generatedConfig\);/);
+    expect(source.indexOf("requirePinnedDefaultConfig(generatedConfig)")).toBeLessThan(source.indexOf('await stage("loopback task bridge"'));
   });
 });
 
@@ -566,12 +683,59 @@ describe("disposable targets and effective Docker publications", () => {
     });
   });
   it("requires all official default services and exact API/database publications", () => {
+    expect(DEFAULT_SERVICES).toEqual([
+      "db", "kong", "auth", "inbucket", "realtime", "rest", "storage",
+      "pg_meta", "studio", "edge_runtime", "analytics", "vector",
+    ]);
     const containers = DEFAULT_SERVICES.map((name, index) => container(name, index + 1));
     const network = { ...bridge(), Containers: Object.fromEntries(containers.map((c) => [c.Id, {}])) };
     expect(() => requireReadyStack(containers, network, project)).not.toThrow();
     expect(() => requireReadyStack(containers.slice(1), network, project)).toThrow();
     containers[0]!.NetworkSettings.Ports = {};
     expect(() => requireReadyStack(containers, network, project)).toThrow();
+  });
+  it.each(DEFAULT_SERVICES)("rejects missing required service %s even with matching network membership", (missing) => {
+    const containers = DEFAULT_SERVICES.filter((name) => name !== missing).map((name, index) => container(name, index + 1));
+    const network = { ...bridge(), Containers: Object.fromEntries(containers.map((c) => [c.Id, {}])) };
+    expect(() => requireReadyStack(containers, network, project)).toThrow("Incomplete default service set");
+    expect(readyServiceNames(containers, project)).toMatchObject({
+      missing: [`/supabase_${missing}_${project}`], unexpected: [],
+    });
+  });
+  it.each(["imgproxy", "unknown", "db"])("rejects extra/duplicate %s even with matching network membership", (extra) => {
+    const containers = [...DEFAULT_SERVICES.map((name, index) => container(name, index + 1)), container(extra, 99)];
+    const network = { ...bridge(), Containers: Object.fromEntries(containers.map((c) => [c.Id, {}])) };
+    expect(() => requireReadyStack(containers, network, project)).toThrow("Incomplete default service set");
+  });
+  it.each(["0.0.0.0", "::", "::1", "", "192.0.2.1"])("rejects non-default binding %j at full-stack readiness", (host) => {
+    const containers = DEFAULT_SERVICES.map((name, index) => container(name, index + 1));
+    const network = { ...bridge(), Containers: Object.fromEntries(containers.map((c) => [c.Id, {}])) };
+    containers[0]!.NetworkSettings.Ports["5432/tcp"]![0]!.HostIp = host;
+    expect(() => requireReadyStack(containers, network, project)).toThrow();
+  });
+  it("retains only current service names, including missing, extra and leftover job identities", () => {
+    const containers = DEFAULT_SERVICES.map((name, index) => container(name, index + 1));
+    const expected = containers.map((c) => c.Name).sort();
+    expect(readyServiceNames(containers, project)).toEqual({ expected, observed: expected, missing: [], unexpected: [] });
+    const current = [...containers.slice(1), container("imgproxy", 99),
+      { ...container("realtime", 100), Name: "/interesting_elbakyan" }];
+    expect(readyServiceNames(current, project)).toEqual({
+      expected, observed: current.map((c) => c.Name).sort(),
+      missing: [`/supabase_db_${project}`],
+      unexpected: ["/interesting_elbakyan", `/supabase_imgproxy_${project}`],
+    });
+    const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
+    expect(source).toMatch(/const containers = await inspect\(ids\);\s+manifest\.serviceNames = readyServiceNames\(containers, project\);\s+const bridge = await network\(\);\s+requireReadyStack\(containers, bridge, project\);/);
+  });
+  it("withholds non-name inspection fields and malformed names from service diagnostics", () => {
+    const value = container();
+    value.Name = "/private-invalid-name\nhttps://private.invalid";
+    value.Config.Labels!["private-label"] = "private-label-value";
+    value.Config.Image = "private-image-value";
+    const names = readyServiceNames([value], project);
+    expect(names.observed).toEqual(["[invalid container name]"]);
+    expect(names.unexpected).toEqual(["[invalid container name]"]);
+    expect(formatAcceptanceSummary(names)).not.toContain("private");
   });
   it("rejects unhealthy, stopped or foreign services and foreign network membership at readiness", () => {
     const containers = DEFAULT_SERVICES.map((name, index) => container(name, index + 1));
