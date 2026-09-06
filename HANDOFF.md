@@ -31,7 +31,40 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-06 (RPC diagnostic context correction; no database/workflow execution this turn)
+**Last updated:** 2026-09-06 (read-only auth privilege evidence artifact; no database/workflow execution this turn)
+
+### PR802 read-only auth privilege evidence
+
+[Run 34061180463](https://github.com/drrowdev/hybrid-training-app/actions/runs/34061180463)
+at `fc364e2534e361c378e0f88a887c3504b44bc009` passed core/identity, official
+default-service readiness, all 146 unchanged migrations, catalog consistency
+and both cleanup paths. The RPC ledger remains **2 passed, 28 failed, none
+pending/todo, no timeout**. Complete diagnostics identify schema `auth` in all
+28 failures, with zero invalid records and zero unknown permission kinds.
+This supersedes the unknown-denied-object status below.
+
+[Authorization 5562400372](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5562400372)
+is implemented as one fixed catalog observation after migration/catalog checks
+and before the unchanged RPC invocation. It uses the verified owned DB container
+and existing private postgres command channel: READ ONLY, 5-second statement
+timeout, at most 10 seconds under the existing deadline/cleanup reserve, and the
+unchanged 8 MiB capture cap. Only validated booleans and closed classifications
+reach `manifest.authPrivileges`. Missing/ambiguous catalog data, malformed output
+and process failures are explicit unavailable evidence, never an acceptance gate.
+No permissions, migrations, reporter vocabulary, workflow or cleanup changed.
+
+Actual owners, grant options and effective privileges remain **unobserved**.
+Effective EXECUTE on `auth.uid()` may come from PUBLIC or inherited grants; it
+cannot prove migration 0145's grant applied. See the
+[query contract and interpretation limits](docs/knowledge/pool-swimming.md#read-only-auth-privilege-evidence).
+All 293 targeted acceptance-helper tests, web typecheck and scoped lint passed;
+synthetic fixtures are reporting tests, not database acceptance.
+Independent exact-head review and fresh execution guards must precede one
+new-head manual run. No database/container/workflow execution occurred here.
+If that observation is insufficient, record the missing evidence and reassess,
+without an identical rerun or diagnostic expansion. Access correction is a
+separate owner decision with independently reviewed additive migration/rollback.
+Full standalone DC-SW1–SW9 acceptance remains required before combined work.
 
 ### PR802 safe RPC failure diagnostics
 

@@ -15,6 +15,9 @@ import {
   openPrivateCommandLog, publishAcceptanceSummary, safeFailureCause,
 } from "../../../../scripts/swim-acceptance-reporting";
 import { MIN_RPC_CASES, RPC_SUITE, validateSwimRpcReport } from "./storage-rpc-report";
+import {
+  AUTH_PRIVILEGES_SQL, observeAuthPrivileges, projectAuthPrivilegeOutput,
+} from "../../../../scripts/swim-auth-privileges";
 
 const sha = "a".repeat(40);
 const configHash = "b".repeat(64);
@@ -64,6 +67,262 @@ const report = () => ({
     })) }],
 });
 const ledger = () => validateSwimRpcReport(JSON.stringify(report()), sha, configHash);
+
+describe("auth privilege observation (synthetic reporting evidence, no database execution)", () => {
+  const observation = {
+    connectionRole: "postgres",
+    postgresSuperuser: false,
+    postgresInherit: true,
+    postgresMemberOfSupabaseAdmin: false,
+    postgresInheritsSupabaseAdmin: false,
+    postgresAuthUsage: true,
+    postgresAuthUsageGrantOption: false,
+    swimWriterAuthUsage: false,
+    swimWriterPublicUsage: true,
+    postgresAuthUidExecute: true,
+    swimWriterAuthUidExecute: true,
+    postgresAuthUidExecuteGrantOption: false,
+    authOwner: "supabase_admin",
+    authUidOwner: "supabase_auth_admin",
+    swimCreatePlanOwner: "swim_writer",
+    swimWriterLogin: false,
+    swimWriterSuperuser: false,
+    swimWriterInherit: false,
+    swimWriterBypassRls: false,
+    swimCreatePlanSecurityDefiner: true,
+    swimCreatePlanRowSecurity: "on",
+  };
+  const text = (value: Record<string, unknown> = observation) => JSON.stringify(Object.entries(value));
+  const invalid = { status: "unavailable", reason: "invalid-output" };
+  const missing = { status: "unavailable", reason: "missing-or-ambiguous-catalog" };
+  const unsafe = '<private> https://private.invalid/?key=synthetic-only\nprivate-role';
+  const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
+
+  it("uses only the fixed, exact-signature, null-safe catalog query in a bounded read-only transaction", () => {
+    const migration = readFileSync(new URL(
+      "../../../../../../packages/db/drizzle/0145_standalone_pool_swimming.sql", import.meta.url,
+    ), "utf8");
+    expect(migration).toContain("CREATE ROLE swim_writer NOLOGIN NOINHERIT NOBYPASSRLS;");
+    expect(migration).toMatch(/CREATE FUNCTION public\.swim_create_plan\(\s+p_started_on date, p_ends_on date, p_definition jsonb, p_state jsonb, p_workouts jsonb\s+\)/);
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION auth.uid() TO swim_writer;");
+    expect(AUTH_PRIVILEGES_SQL.trim().split(";").map((part) => part.trim())).toEqual([
+      "BEGIN READ ONLY", "SET LOCAL statement_timeout = '5s'", expect.stringMatching(/^WITH refs AS/), "ROLLBACK", "",
+    ]);
+    expect([...AUTH_PRIVILEGES_SQL.matchAll(/to_regrole\('([^']+)'\)/g)].map((m) => m[1]))
+      .toEqual(["postgres", "swim_writer", "supabase_admin"]);
+    expect([...AUTH_PRIVILEGES_SQL.matchAll(/to_regnamespace\('([^']+)'\)/g)].map((m) => m[1]))
+      .toEqual(["auth", "public"]);
+    expect([...AUTH_PRIVILEGES_SQL.matchAll(/to_regprocedure\('([^']+)'\)/g)].map((m) => m[1]))
+      .toEqual(["auth.uid()", "public.swim_create_plan(date,date,jsonb,jsonb,jsonb)"]);
+    expect(AUTH_PRIVILEGES_SQL).toContain("uid.oid = refs.uid AND uid.prokind = 'f'");
+    expect(AUTH_PRIVILEGES_SQL).toContain("plan.oid = refs.create_plan AND plan.prokind = 'f'");
+    const predicates = [
+      ["postgres", "admin", "pg_has_role", "MEMBER"],
+      ["postgres", "admin", "pg_has_role", "USAGE"],
+      ["postgres", "auth", "has_schema_privilege", "USAGE"],
+      ["postgres", "auth", "has_schema_privilege", "USAGE WITH GRANT OPTION"],
+      ["writer", "auth", "has_schema_privilege", "USAGE"],
+      ["writer", "public", "has_schema_privilege", "USAGE"],
+      ["postgres", "uid", "has_function_privilege", "EXECUTE"],
+      ["writer", "uid", "has_function_privilege", "EXECUTE"],
+      ["postgres", "uid", "has_function_privilege", "EXECUTE WITH GRANT OPTION"],
+    ];
+    for (const [role, object, predicate, privilege] of predicates) {
+      expect(AUTH_PRIVILEGES_SQL).toContain(
+        `CASE WHEN ${role}.oid IS NOT NULL AND ${object}.oid IS NOT NULL\n` +
+        `      THEN pg_catalog.${predicate}(${role}.oid, ${object}.oid, '${privilege}') END`,
+      );
+    }
+    expect(AUTH_PRIVILEGES_SQL.match(/pg_catalog\.(?:has_schema_privilege|has_function_privilege|pg_has_role)\(/g))
+      .toHaveLength(predicates.length);
+    expect([...AUTH_PRIVILEGES_SQL.matchAll(/json_build_array\('([^']+)'/g)].map((m) => m[1]))
+      .toEqual(Object.keys(observation));
+    expect([...AUTH_PRIVILEGES_SQL.matchAll(/(?:FROM|JOIN) (pg_catalog\.\w+)/g)].map((m) => m[1]))
+      .toEqual([
+        "pg_catalog.pg_roles", "pg_catalog.pg_roles", "pg_catalog.pg_roles",
+        "pg_catalog.pg_namespace", "pg_catalog.pg_namespace", "pg_catalog.pg_proc", "pg_catalog.pg_proc",
+        "pg_catalog.pg_roles", "pg_catalog.pg_roles", "pg_catalog.pg_roles", "pg_catalog.unnest",
+      ]);
+    expect(AUTH_PRIVILEGES_SQL).not.toMatch(/\b(?:SET ROLE|GRANT\s+(?:USAGE|EXECUTE)|CREATE|ALTER|INSERT|UPDATE|DELETE|prosrc|proacl|nspacl)\b/i);
+    expect(AUTH_PRIVILEGES_SQL).not.toMatch(/(?:SELECT|PERFORM)\s+(?:auth|public)\./i);
+    expect(AUTH_PRIVILEGES_SQL).not.toContain("${");
+  });
+
+  it("classifies only fixed owner names and the exact function's stored row_security, never raw config", () => {
+    for (const alias of ["auth_owner", "uid_owner", "plan_owner"]) {
+      expect(AUTH_PRIVILEGES_SQL).toContain(`WHEN ${alias}.oid IS NULL THEN NULL`);
+      expect(AUTH_PRIVILEGES_SQL).toContain(
+        `WHEN ${alias}.rolname IN ('supabase_admin', 'supabase_auth_admin', 'postgres', 'swim_writer')\n` +
+        `      THEN ${alias}.rolname ELSE 'other' END`,
+      );
+    }
+    expect(AUTH_PRIVILEGES_SQL).toContain("FROM pg_catalog.unnest(plan.proconfig)");
+    expect(AUTH_PRIVILEGES_SQL).toContain("WHERE setting IS NULL OR pg_catalog.split_part(setting, '=', 1) = 'row_security'");
+    expect(AUTH_PRIVILEGES_SQL).toContain("WHEN plan.oid IS NULL THEN NULL");
+    expect(AUTH_PRIVILEGES_SQL).toContain("WHEN config.count = 0 THEN 'absent'");
+    expect(AUTH_PRIVILEGES_SQL).toContain("WHEN config.count <> 1 OR config.value IS NULL THEN NULL");
+    expect(AUTH_PRIVILEGES_SQL).toContain("WHEN config.value = 'row_security=on' THEN 'on'");
+    expect(AUTH_PRIVILEGES_SQL).toContain("WHEN config.value = 'row_security=off' THEN 'off'");
+    expect(AUTH_PRIVILEGES_SQL).not.toMatch(/json_build_array\('[^']+',\s*\w+\.proconfig/);
+  });
+
+  it("retains effective EXECUTE independently of missing schema usage or grant options", () => {
+    expect(projectAuthPrivilegeOutput(text())).toEqual({ status: "available", observation });
+    expect(projectAuthPrivilegeOutput(`\n${text()}\n`)).toEqual({ status: "available", observation });
+  });
+
+  it.each(Object.entries(observation).filter(([, value]) => typeof value === "boolean").map(([key]) => key))(
+    "preserves both true and false for %s without treating either as a gate", (key) => {
+      for (const value of [true, false]) {
+        const input = { ...observation, [key]: value };
+        expect(projectAuthPrivilegeOutput(text(input))).toEqual({ status: "available", observation: input });
+      }
+    },
+  );
+  it.each([
+    ["connectionRole", ["postgres", "other"]],
+    ["authOwner", ["supabase_admin", "supabase_auth_admin", "postgres", "swim_writer", "other"]],
+    ["authUidOwner", ["supabase_admin", "supabase_auth_admin", "postgres", "swim_writer", "other"]],
+    ["swimCreatePlanOwner", ["supabase_admin", "supabase_auth_admin", "postgres", "swim_writer", "other"]],
+    ["swimCreatePlanRowSecurity", ["on", "off", "absent", "other"]],
+  ] as const)("accepts only the closed %s enum", (key, values) => {
+    for (const value of values) {
+      const input = { ...observation, [key]: value };
+      expect(projectAuthPrivilegeOutput(text(input))).toEqual({ status: "available", observation: input });
+    }
+    for (const value of [unsafe, "", "unknown", true, 1, "ON"]) {
+      expect(projectAuthPrivilegeOutput(text({ ...observation, [key]: value }))).toEqual(invalid);
+    }
+  });
+  it.each(Object.keys(observation))("rejects missing, NULL, hostile, duplicate or unexpected %s evidence", (key) => {
+    expect(projectAuthPrivilegeOutput(text({ ...observation, [key]: null }))).toEqual(missing);
+    for (const value of [unsafe, "true", "false", 0, 1, {}, [], { [unsafe]: true }]) {
+      expect(projectAuthPrivilegeOutput(text({ ...observation, [key]: value }))).toEqual(invalid);
+    }
+    const entries = Object.entries(observation);
+    expect(projectAuthPrivilegeOutput(JSON.stringify(entries.filter(([name]) => name !== key)))).toEqual(invalid);
+    expect(projectAuthPrivilegeOutput(JSON.stringify([...entries, [key, true]]))).toEqual(invalid);
+    expect(projectAuthPrivilegeOutput(JSON.stringify(entries.map(([name, value]) =>
+      [name === key ? unsafe : name, value])))).toEqual(invalid);
+    const duplicate = entries.map(([name, value]) => [name === key ? "connectionRole" : name, value]);
+    if (key !== "connectionRole") expect(projectAuthPrivilegeOutput(JSON.stringify(duplicate))).toEqual(invalid);
+  });
+  it.each(["", "null", "false", "[]", "{}", "[[]]", unsafe])("withholds malformed output %j", (input) => {
+    expect(projectAuthPrivilegeOutput(input)).toEqual(invalid);
+  });
+  it("rejects extra fields, prototype keys, duplicate rows and non-protocol JSON", () => {
+    for (const input of [
+      JSON.stringify(observation), text({ ...observation, proconfig: unsafe }),
+      text({ ...observation, ["__proto__"]: unsafe }), `${text()}\n${text()}`,
+      JSON.stringify([Object.entries(observation), Object.entries(observation)]),
+      `BEGIN\n${text()}\nROLLBACK`, `${text()}\n${unsafe}`,
+    ]) expect(projectAuthPrivilegeOutput(input)).toEqual(invalid);
+  });
+
+  it("uses the private production command with capture AND allowFailure and no target/env override", async () => {
+    const command = vi.fn(async (_executable, _args, options) => {
+      const result = { code: 1, signal: null, timedOut: false };
+      if (!options.allowFailure) requireProcess(result);
+      return { text: unsafe, result, log: unsafe };
+    });
+    expect(await observeAuthPrivileges(command, networkId)).toEqual({ status: "unavailable", reason: "command-failed" });
+    expect(command.mock.calls).toEqual([["docker", [
+      "exec", networkId, "psql", "-XqAt", "-U", "postgres", "-d", "postgres",
+      "-v", "ON_ERROR_STOP=1", "-c", AUTH_PRIVILEGES_SQL,
+    ], { capture: true, allowFailure: true, timeout: 10_000 }]]);
+    expect(source).toMatch(/manifest\.catalog = [^\n]+;\s+requireUnchanged\(\);\s+}\);\s+manifest\.authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+await stage\("complete authenticated RPC file and positive ledger"/);
+    expect(source.match(/await observeAuthPrivileges\(/g)).toHaveLength(1);
+    expect(source).toContain("Math.min(options.timeout ?? 60_000, deadline - Date.now())");
+    expect(source).toContain('stdio: ["ignore", options.capture ? "pipe" : fd, fd]');
+    expect(source).toContain("if (text.length > 8 * 1024 * 1024) { timedOut = true; terminate(); }");
+    expect(source).toContain("if (!options.allowFailure) requireProcess(result);");
+  });
+  it.each([
+    [{ code: 1, signal: null, timedOut: false }, "command-failed"],
+    [{ code: null, signal: "SIGTERM", timedOut: false }, "command-failed"],
+    [{ code: 0, signal: "SIGTERM", timedOut: false }, "command-failed"],
+    [{ code: null, signal: "spawn-error", timedOut: false }, "command-failed"],
+    [{ code: null, signal: unsafe, timedOut: false }, "command-failed"],
+    [{ code: 0, signal: null, timedOut: true }, "timeout-or-output-limit"],
+    [{ code: null, signal: "SIGKILL", timedOut: true }, "timeout-or-output-limit"],
+  ] as const)("projects process failure without publishing result or output: %j", async (result, reason) => {
+    const command = vi.fn().mockResolvedValue({ text: text(), result, log: unsafe });
+    expect(await observeAuthPrivileges(command, networkId)).toEqual({ status: "unavailable", reason });
+    expect(command).toHaveBeenCalledTimes(1);
+  });
+  it("discards oversize capture when the existing command cap terminates its child", async () => {
+    const command = vi.fn().mockResolvedValue({
+      text: unsafe.repeat(Math.ceil(8 * 1024 * 1024 / unsafe.length)),
+      result: { code: null, signal: "SIGTERM", timedOut: true },
+    });
+    expect(await observeAuthPrivileges(command, networkId)).toEqual({ status: "unavailable", reason: "timeout-or-output-limit" });
+  });
+  it("does not throw or publish raw command exceptions, including deadline cancellation", async () => {
+    for (const error of [new Error(unsafe), new Error("Run cancelled or total time exhausted"), { detail: unsafe }]) {
+      const command = vi.fn().mockRejectedValue(error);
+      expect(await observeAuthPrivileges(command, networkId)).toEqual({ status: "unavailable", reason: "command-failed" });
+      expect(command).toHaveBeenCalledTimes(1);
+    }
+  });
+  it.each(["available", "missing", "invalid", "failed"] as const)(
+    "keeps the original 30-case RPC and cleanup outcome with %s observation (DC-SW8)", async (evidence) => {
+      for (const rpcOutcome of ["passed", "process-failed", "ledger-failed"] as const) {
+        for (const cleaned of [true, false]) {
+          const command = vi.fn().mockResolvedValue({
+            text: evidence === "missing" ? text({ ...observation, authOwner: null }) : evidence === "invalid" ? unsafe : text(),
+            result: { ...passed, code: evidence === "failed" ? 1 : 0 },
+          });
+          const reporting = new AcceptanceReporting();
+          const manifest = { authPrivileges: await observeAuthPrivileges(command, networkId) };
+          expect(manifest.authPrivileges.status).toBe(evidence === "available" ? "available" : "unavailable");
+          const canonical = ledger();
+          const result = { ...passed, code: rpcOutcome === "process-failed" ? 1 : 0 };
+          if (rpcOutcome === "ledger-failed") canonical.success = false;
+          const rpc = vi.fn(async () => requireAcceptance(result, canonical, sha, configHash));
+          const cleanup = vi.fn(async () => {
+            if (!cleaned) reporting.recordFailure("cleanup", new Error(unsafe), true);
+          });
+          try { await reporting.stage("RPC", rpc, () => {}); } catch { /* original RPC failure */ }
+          finally { await cleanup(); }
+          expect(rpc).toHaveBeenCalledTimes(1);
+          expect(cleanup).toHaveBeenCalledTimes(1);
+          expect(canonical.suites[0]?.cases).toHaveLength(MIN_RPC_CASES);
+          expect(reporting.failures.primary?.stage).toBe(rpcOutcome === "passed" ? undefined : "RPC");
+          expect(reporting.failures.secondary).toEqual([]);
+          expect(outcome(reporting.failures.primary?.stage, cleaned).success).toBe(rpcOutcome === "passed" && cleaned);
+          const output = formatAcceptanceSummary({ manifest, failures: reporting.failures });
+          expect(output).not.toContain("private");
+          expect(output).not.toContain('"log"');
+        }
+      }
+    },
+  );
+  it("publishes only the projection through the existing stdout and StepSummary path", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "swim-auth-privileges-"));
+    const path = join(directory, "summary.md");
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      for (const input of [text(), text({ ...observation, authOwner: unsafe }), unsafe]) {
+        const command = vi.fn().mockResolvedValue({ text: input, result: passed, log: unsafe });
+        const manifest = { authPrivileges: await observeAuthPrivileges(command, networkId) };
+        const formatted = formatAcceptanceSummary({ manifest });
+        publishAcceptanceSummary(path, "Swim acceptance result", { manifest });
+        expect(stdout.mock.calls.at(-1)).toEqual([
+          `[swim-acceptance-summary]\n### Swim acceptance result\n<pre>${formatted}</pre>\n`,
+        ]);
+        expect(formatted).not.toContain("private");
+        expect(formatted).not.toContain("proconfig");
+        expect(formatted).not.toContain("BEGIN");
+        expect(formatted).not.toContain('"log"');
+      }
+      expect(readFileSync(path, "utf8")).toBe(stdout.mock.calls.map(([value]) =>
+        (value as string).replace("[swim-acceptance-summary]", "")).join(""));
+    } finally {
+      stdout.mockRestore();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("manual swim acceptance preflight (no Docker or RPC execution)", () => {
   it("requires the reviewed manual standard-runner context and checked-out SHA", () => {
