@@ -95,6 +95,11 @@ At the source SHA above, ADR 0079's delivery gates (lines 263–284), DC-SW1–S
 and the swim wiki remain authoritative. The private pre-execution inventory
 recorded every current RPC case name and these separate pass conditions:
 
+The inventory was written at 12:30:34 UTC, before the 12:31:15 startup; its
+SHA-256 is `a7846389c8030b34674139e01f52e5d3c087a84b6297b20f0af601db4253c6e8`.
+The unchanged web config's before/after SHA-256 is
+`06ec8efe0d66e896cbf9b906882a75fd9c9c1e201b0256710e2d1929f1b05c6d`.
+
 | Required evidence | This pass |
 | --- | --- |
 | Exact native courses/whole lengths/timings; suitable verified assessment or effort/learning path (DC-SW1/2) | Unexecuted |
