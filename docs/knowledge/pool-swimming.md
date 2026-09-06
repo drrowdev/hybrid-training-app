@@ -145,6 +145,18 @@ The preflight checks reject missing/template values and URLs that do not match
 the acknowledged project. Do not use the generic E2E fixture's app-credential
 fallback for swimming.
 
+A separate, narrower mode exists for a disposable, synthetic, **loopback-only**
+Postgres/Auth/REST stack (for example a local Supabase-compatible stack run on
+a CI/sandbox runner, never a hosted project): set `SWIM_RPC_TEST_LOCAL=true`
+(RPC) or `E2E_SWIM_LOCAL=1` (Playwright) alongside
+`SWIM_TEST_PROJECT_REF=local` as an explicit acknowledgement. In this mode the
+target URL must use `http:` and a loopback host (`127.0.0.1`, `localhost` or
+`[::1]`) with no path, query, fragment or embedded credentials; the existing
+hosted-ref/URL guard is otherwise unchanged and still applies whenever this
+local flag is absent. This never accepts arbitrary URLs and never silently
+falls back — both the local flag and `SWIM_TEST_PROJECT_REF=local` must be
+set together, or the existing hosted guard runs as before.
+
 Before applying any migration, independently pin `DATABASE_URL` to the same
 acknowledged project: the direct database hostname, or the project-qualified
 username on an official pooler hostname, must identify that project. A valid

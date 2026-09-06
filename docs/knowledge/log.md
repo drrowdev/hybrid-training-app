@@ -1485,3 +1485,21 @@ Local checks do not replace the still-pending real database/browser acceptance.
 The existing Vitest runner now has its matching coverage provider and a
 `test:coverage` command enforcing the 80% contract across the full domain and
 engine packages.
+
+## [2026-09-06] verify | First real Postgres/RPC acceptance pass, cloud-only
+
+Added a narrow, loopback-only local test mode to the RPC and Playwright
+hosted-ref guards (`SWIM_RPC_TEST_LOCAL`/`E2E_SWIM_LOCAL` +
+`SWIM_TEST_PROJECT_REF=local`), keeping the existing hosted-ref guard
+unchanged otherwise. Used it to run the full migration chain, the movement
+catalog seed, and the `storage-rpc.smoke.test.ts` suite against a disposable,
+synthetic Postgres/Auth/REST stack for the first time (19/24 passing with
+real SQL/RPC round trips). Found one reproducible test-fixture bug (an
+expected error code unreachable due to constraint-check ordering) and one
+reproducible suspected hang (repeating `swim_update_plan` with stale
+arguments) — neither fixed yet; see HANDOFF.md for detail. Playwright and the
+`packages/db/integration-tests` RLS/region-ledger scripts were not reached.
+Narrowly fixed the movement-catalog seed's TLS handling
+(`packages/db/seeds/db-ssl.ts`) to allow disposable loopback Postgres without
+weakening the hosted/`verify-full` default. No production, billing, or merge
+action taken.

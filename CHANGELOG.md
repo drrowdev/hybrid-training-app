@@ -19,6 +19,13 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   has been applied; real database/mobile acceptance remains blocked.
 - Filling an existing program's cardio slots and Garmin support are not part
   of this slice.
+- A cloud-only acceptance pass added a narrow, loopback-only local test mode
+  to the RPC/Playwright hosted-ref guards and ran the migration chain, catalog
+  seed and RPC smoke suite against a disposable synthetic Postgres stack for
+  the first time (19/24 RPC smoke tests passing with real SQL). Two findings
+  remain open (a test-fixture error-code mismatch and a suspected
+  `swim_update_plan` re-issue hang); mobile Playwright acceptance was not
+  reached. No production or hosted database was touched.
 
 ### Plan refreshes preserve moved workouts
 - Workouts moved to another day now keep that placement when Edit plan or a

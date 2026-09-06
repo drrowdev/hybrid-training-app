@@ -31,7 +31,81 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-08-17 (Strava integration removal; migrations through 0129 — no new migration)
+**Last updated:** 2026-09-06 (remote standalone acceptance pass; see below)
+
+### 2026-09-06 remote standalone acceptance pass (cloud-only, disposable infra)
+
+Ran in a GitHub-hosted cloud sandbox with **no live/test cloud credentials** and
+**no local-filesystem access**. Did not touch production, billing, or any hosted
+Supabase project. Nothing here was merged; this is a follow-up PR against the
+feature branch.
+
+What actually ran, against real Postgres:
+
+- Full migration chain (all 146 migrations, including `0145_standalone_pool_swimming.sql`)
+  applied cleanly to a disposable, throwaway Postgres 17 container (official
+  `supabase/postgres` image) started via plain `docker run` on the runner —
+  **not** `supabase start` (see blocker below). Movement catalog seed ran
+  successfully against it (333 movements, including `swim-easy`/`swim-intervals`).
+- A minimal hand-built Auth (GoTrue) + REST (PostgREST) + reverse-proxy (nginx)
+  stack was stood up manually, pointed at that same disposable Postgres, to
+  emulate a single hosted-style Supabase URL. This let the actual
+  `apps/web/src/lib/swim/__tests__/storage-rpc.smoke.test.ts` suite run for
+  real against real RPC/Postgres for the first time (previously always skipped
+  for lack of environment). Result: **19 of 24 tests passed** executing real
+  SQL/RPC round trips (ownership, cross-user visibility, exact-once
+  completion, pause/resume/archive, trash/undo/purge, limitations gating, etc.
+  all verified against live Postgres, not text assertions).
+- One genuine, 100%-reproducible **test bug** was found (not an app bug): the
+  "enforces two-user visibility..." test expects a `23503` (foreign-key
+  violation) from a cross-user `session_id` reassignment, but `swim_workouts`
+  also has a plain `UNIQUE` constraint on `session_id` — since the target
+  session already belongs to another workout, Postgres raises `23505` (unique
+  violation) before the ownership FK is ever reached. The migration's
+  constraints are correct and intentional; the test's expected error code for
+  that specific fixture is unreachable. **Not fixed in this pass** — flagged
+  here rather than silently reworking the assertion under time pressure.
+- **New, reproducible finding, not resolved in this pass:** calling
+  `swim_update_plan` twice in a row with the *same* (now-stale) arguments
+  — the exact sequence the "appends decisions and issued versions atomically
+  and rejects stale or started edits" test exercises to assert a `40001`
+  (`serialization_failure`) rejection — reliably **hangs** rather than
+  returning quickly, both under the manual gateway and via a minimal
+  standalone Node/`@supabase/supabase-js` repro script that bypassed vitest
+  entirely. All other calls in the same script (create/update/read) return in
+  under 100 ms. This looks like a real stuck-lock/stuck-request condition
+  worth investigating with fresh eyes (advisory lock, `FOR UPDATE` ordering,
+  or PostgREST/connection-pool interaction), not an artifact of vitest or the
+  manual reverse proxy — but time ran out before root-causing it further. The
+  RPC/E2E hosted-ref guards' new narrow **local-only test mode**
+  (`SWIM_RPC_TEST_LOCAL=true` / `E2E_SWIM_LOCAL=1` +
+  `SWIM_TEST_PROJECT_REF=local`, loopback-only, added this pass) is what made
+  it possible to discover this at all — it is real, additive test-harness
+  capability, not a workaround.
+- Playwright `apps/web/e2e/swimming-mobile.spec.ts` (authenticated mobile
+  browser scenarios) and `packages/db/integration-tests/{rls,region-ledger}.mjs`
+  were **not** reached in this pass given the time spent stabilizing the
+  manual Auth/REST gateway and root-causing the two findings above.
+- **Blocker (environment, not code):** `supabase start`/the Supabase CLI's own
+  compose-style stack could not be used because this sandbox's Docker
+  embedded DNS resolver (127.0.0.11) does not resolve container names
+  (confirmed via a minimal repro: two containers on a custom bridge network,
+  `nslookup` returns `REFUSED`); the CLI's edge runtime also cannot reach
+  `deno.land` (blocked domain here). Worked around with a hand-wired,
+  IP-addressed set of standalone containers instead — a genuine disposable,
+  local, synthetic-only stack, but more fragile than the CLI's own tooling
+  would have been, and likely responsible for at least some of the residual
+  flakiness above.
+- A narrow, additive fix was needed to run the movement-catalog seed
+  (`packages/db/seeds/db-ssl.ts` + updated `packages/db/seeds/run.ts`): it
+  only allows skipping TLS when `PGSSLMODE=disable` **and** `DATABASE_URL`'s
+  host is loopback, preserving the existing hosted/`verify-full` behavior
+  otherwise.
+- **Standalone gate: not yet ready to declare green.** Schema/migration/seed
+  layer and the majority (19/24) of RPC smoke coverage now have genuine
+  Postgres-backed acceptance evidence for the first time. The two findings
+  above (a test-fixture bug and a real suspected hang) and the not-yet-run
+  Playwright/RLS-script suites remain open before that claim can be made.
 
 ## Where we are
 
