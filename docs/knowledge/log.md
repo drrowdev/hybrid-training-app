@@ -1569,3 +1569,15 @@ containers, volume and bridge, verified absent within the total bound. See
 [`HANDOFF.md`](../../HANDOFF.md#latest-pr802-runner-local-reference-acceptance)
 for timestamps, hashes, image-reference differences and capture limitations.
 No runtime, SQL, fixture, dependency, workflow or environment-policy repair.
+
+## [2026-09-06] refine | Implement isolated manual swim reference acceptance
+
+Implemented coordinator authorization 5560014710 on PR802: existing CI manual
+inputs, isolated non-cancelling swim concurrency, an expected-SHA preflight,
+guarded official disposable-stack orchestration and focused pure Vitest tests.
+The runner reuses the canonical local-target/report helpers, checks unchanged
+migrations/catalog and records sanitized stage/ledger evidence with exact-resource
+cleanup. HANDOFF and the swim wiki describe the coordinator's review/dispatch
+boundary. No workflow dispatch or database startup occurred in this implementation
+turn. No runtime swim, SQL/schema/RLS/grants, fixtures or dependencies changed;
+the broader standalone acceptance inventory remains unmet.

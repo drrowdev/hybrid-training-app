@@ -31,7 +31,22 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-06 (prearmed reference diagnosis; acceptance still blocked)
+**Last updated:** 2026-09-06 (manual Actions acceptance implementation; not executed)
+
+### PR802 manual Actions implementation
+
+Implemented [authorization 5560014710](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5560014710):
+the existing CI workflow has an isolated, manual `swim_acceptance` job with an
+`expected_sha` gate, a disposable reference runner and pure guard tests. See the
+[execution instructions](docs/knowledge/pool-swimming.md#manual-actions-reference-acceptance).
+This turn did not dispatch a workflow or start Docker/Supabase. The coordinator
+must review the committed execution path independently before dispatch.
+
+The new job can prove only reference startup, unchanged migrations/catalog and
+the complete RPC file. Standalone mobile/offline/two-context, lifecycle,
+benchmark and actual-load acceptance remain outstanding. Identity/core CI remain
+enabled; the older identity allowlist may fail independently and still blocks
+merge. No production migration, runtime swim, SQL, fixture or dependency changed.
 
 ### Latest PR802 runner-local reference acceptance
 
