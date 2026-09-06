@@ -11,9 +11,51 @@ export const PROJECT_LABEL = "com.supabase.cli.project";
 export const RUN_LABEL = "app.hta.swim-acceptance";
 export const LIMITS = { total: 35 * 60_000, cleanup: 3 * 60_000, startup: 20 * 60_000, rpc: 12 * 60_000 };
 export const DEFAULT_SERVICES = [
-  "db", "kong", "auth", "inbucket", "realtime", "rest", "storage", "imgproxy",
+  "db", "kong", "auth", "inbucket", "realtime", "rest", "storage",
   "pg_meta", "studio", "edge_runtime", "analytics", "vector",
 ] as const;
+
+export function requirePinnedDefaultConfig(config: string) {
+  const required = new Map([
+    ["api", true], ["auth", true], ["realtime", true], ["local_smtp", true],
+    ["studio", true], ["storage", true], ["edge_runtime", true], ["analytics", true],
+    ["db.pooler", false],
+  ]);
+  const sections = new Set<string>();
+  const enabled = new Map<string, boolean>();
+  let section = "";
+  // Native init emits single-line bare-key assignments and bare section names,
+  // not arbitrary TOML. Reject unfamiliar syntax rather than infer a service gate.
+  for (const raw of config.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (line.startsWith("[")) {
+      const header = /^\[([a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*)*)\]\s*(?:#.*)?$/.exec(line);
+      assert(header, "Malformed generated config section");
+      section = header[1]!;
+      assert(section !== "storage.image_transformation" &&
+        !section.startsWith("storage.image_transformation."), "Non-default image transformation configuration");
+      assert(!sections.has(section), "Duplicate generated config section");
+      sections.add(section);
+      continue;
+    }
+    const assignment = /^([a-z_][a-z0-9_]*)\s*=\s*(.*)$/.exec(line);
+    assert(assignment && !/^(?:"""|'''|\{)/.test(assignment[2]!),
+      "Malformed generated config assignment");
+    const [, key, value] = assignment;
+    assert(section !== "" || key === "project_id", "Unexpected generated root assignment");
+    assert(section !== "storage" || key !== "image_transformation", "Non-default image transformation configuration");
+    if (key === "enabled" && required.has(section)) {
+      const flag = /^(true|false)\s*(?:#.*)?$/.exec(value!);
+      assert(flag, "Malformed required service enabled flag");
+      assert(!enabled.has(section), "Duplicate required service enabled flag");
+      enabled.set(section, flag[1] === "true");
+    }
+  }
+  for (const [name, expected] of required) {
+    assert(sections.has(name) && enabled.get(name) === expected, "Pinned default service configuration required");
+  }
+}
 
 type Env = Record<string, string | undefined>;
 export function requireManualContext(env: Env, head: string) {
@@ -154,6 +196,17 @@ export function requireStartupContainer(container: Container, project: string, n
   assert(container.Mounts.every((mount) => mount.Type === "volume"), "Unexpected startup job mount");
   const image = container.Config.Image.replace(/@sha256:[a-f0-9]{64}$/, "");
   assert(BOOTSTRAP_IMAGES.has(image), "Unexpected startup job image");
+}
+
+export function readyServiceNames(containers: Container[], project: string) {
+  const expected = DEFAULT_SERVICES.map((service) => `/supabase_${service}_${project}`).sort();
+  const observed = containers.map(({ Name }) =>
+    /^\/[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(Name) ? Name : "[invalid container name]").sort();
+  return {
+    expected, observed,
+    missing: expected.filter((name) => !observed.includes(name)),
+    unexpected: observed.filter((name) => !expected.includes(name)),
+  };
 }
 
 export function requireReadyStack(containers: Container[], network: Network, project: string) {

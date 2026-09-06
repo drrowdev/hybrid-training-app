@@ -31,7 +31,30 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-06 (manual Actions acceptance implementation; not executed)
+**Last updated:** 2026-09-06 (pinned-default service correction; no execution this turn)
+
+### PR802 pinned-default service correction
+
+Our prior 13-service default assumption incorrectly included optional imgproxy.
+[Authorization 5561453075](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561453075)
+corrects the pinned CLI 2.116.0 contract to 12 services, not an acceptance waiver.
+The [native init/gate source anchors](docs/knowledge/pool-swimming.md#pinned-default-service-contract)
+establish the defaults. Fresh config is checked before startup without changing
+service flags; strict service/membership equality, readiness, ownership,
+publications and cleanup remain. Current inspected expected/observed/missing/
+unexpected names are retained before readiness assertion. Both existing HEAD
+probes and all GET probes remain unchanged.
+
+[Run 34051805797](https://github.com/drrowdev/hybrid-training-app/actions/runs/34051805797)
+at `9257aeb20582edf681aac49b2a00d3a5f9efc226` passed core/identity, official startup
+and cleanup, then failed `Incomplete default service set` before application
+migrations/catalog/RPC. Its historical snapshots show 12 permanent names without
+imgproxy plus an earlier temporary job, not final current membership or proof of
+exclusive runtime causation. The correction has only helper/static validation;
+the coordinator must review the delta before one new-head run. All 146 unchanged
+migrations/catalog, 30 actual RPC cases and the frozen standalone acceptance
+inventory remain required. No runner/container/DB, workflow dispatch or merge
+was performed in this correction turn.
 
 ### PR802 manual Actions implementation
 

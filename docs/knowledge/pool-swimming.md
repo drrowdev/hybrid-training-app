@@ -267,7 +267,8 @@ blocked until the real RPC suite is fully green.
 Implementation authority:
 [PR802 comment 5560014710](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5560014710),
 UTF-8 SHA-256 `51de59db9fafb423c94af16ae4afb611ddf509ae0ef672984f4c897787330e5a`
-(CRLF preserved). This path is implemented, **not yet executed or accepted**.
+(CRLF preserved). This path is implemented; subsequent runs have not reached
+application acceptance (see the pinned-default correction below).
 The coordinator reviews the complete committed path and obtains independent
 code review before manually dispatching existing `ci.yml` on the reviewed head
 branch, with `swim_acceptance=true`, `expected_sha=<reviewed 40-character SHA>`,
@@ -319,3 +320,55 @@ without observed cleanup remains **unconfirmed**.
 Raw logs, status keys, reports and diagnostics stay private and ephemeral;
 nothing uploads them. This job does not waive the broader ADR0079/DC-SW1–SW9
 release inventory, authorize combined implementation, deployment or merging.
+
+### Pinned-default service contract
+
+Our prior **13-service default assumption was wrong**: it included optional
+imgproxy. [PR802 authorization 5561453075](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561453075)
+(verified UTF-8 SHA-256 `5789b863f0c9f345491bb9b9d412491340019803f4cd40bcb40a1badfe33c1eb`)
+corrects the harness, not the acceptance criteria.
+
+Official CLI v2.116.0 resolves to commit
+`997a1e69a4a83466964ed874d3a604c88a7b3866`. The native init chain is
+[`init.handler.ts@997a1e6`](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli/src/legacy/commands/init/init.handler.ts#L29-L40)
+→ [`project-init.ts@997a1e6`](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli/src/shared/init/project-init.ts#L301-L322)
+→ [`project-init.templates.ts@997a1e6`](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli/src/shared/init/project-init.templates.ts#L1-L156).
+That template disables `db.pooler` (43–44), comments image transformation
+(131–132), and enables the required core sections. Its
+[`renderCliConfigTemplate`](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli/src/shared/init/project-init.templates.ts#L467-L472)
+only substitutes project ID and OrioleDB version.
+[`start.gates.ts@997a1e6`](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli/src/legacy/commands/start/start.gates.ts#L116-L172)
+gates imgproxy on image transformation. The Dockerfile lists possible images,
+not the enabled default service set.
+
+The exact pinned set is **db, kong, auth, inbucket, realtime, rest, storage,
+pg_meta, studio, edge_runtime, analytics, vector**. Before startup, the runner
+checks the actual fresh config section by section: api/auth/realtime/local_smtp/
+studio/storage/edge_runtime/analytics enabled, db.pooler disabled, and no active
+storage.image_transformation section. Missing, duplicate or malformed relevant
+sections/flags fail; comments and other sections cannot satisfy a gate.
+`storage.vector` remains at its native true default; it is not a container gate.
+No flag is rewritten to pass. Inherited overrides remain forbidden and generated
+config hashes are compared before/after. Optional features or a CLI bump require
+a separately reviewed contract update, not silent omission of configured services.
+
+Current post-start inspected expected/observed/missing/unexpected container names
+are retained before the exact-set assertion, separately from historical startup
+snapshots. Missing services, extras (including imgproxy), leftover bootstrap jobs,
+unhealthy/foreign containers and unsafe publications remain failures.
+All existing health requests are unchanged:
+[`health-check.ts@997a1e6`](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli/src/legacy/shared/db-bootstrap/health-check.ts#L237-L256)
+uses HEAD for `/rest-admin/v1/ready` and `/functions/v1/_internal/health`
+(path constants at 44 and 58). GET `/auth/v1/health`, `/rest/v1/` and
+`/storage/v1/status`, authentication, redirect rejection, body cancellation
+and status checks remain.
+
+[Run 34051805797](https://github.com/drrowdev/hybrid-training-app/actions/runs/34051805797)
+at `9257aeb20582edf681aac49b2a00d3a5f9efc226` passed core/identity, official
+startup and cleanup, but failed the old service-set assertion before application
+migrations/catalog/RPC. Historical snapshots showing 12 permanent names and an
+earlier temporary job are not current membership evidence; exclusive runtime
+causation remains unproven. No new runner/DB/workflow execution occurred in this
+correction turn. All 146 migrations/catalog and 30 actual RPC cases, followed by
+the frozen standalone release inventory, remain required; helper tests are not
+acceptance. Coordinator delta review precedes the next exact-head run.

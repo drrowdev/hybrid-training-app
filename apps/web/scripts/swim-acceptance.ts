@@ -10,9 +10,9 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { SEED_MOVEMENTS } from "../../../packages/db/seeds/movements";
 import {
   CLI_ASSET, CLI_SHA256, CLI_VERSION, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
-  containerSchema, networkSchema, outcome, processIdentity, requireAcceptance, requireArchive,
+  containerSchema, networkSchema, outcome, processIdentity, readyServiceNames, requireAcceptance, requireArchive,
   requireCleanupState, requireFreshReport, requireLocalStatus,
-  requireManualContext, requireNetwork, requireNoInheritedTargets, requirePrivateLocation,
+  requireManualContext, requireNetwork, requireNoInheritedTargets, requirePinnedDefaultConfig, requirePrivateLocation,
   requireProcess, requireReadyStack, requireStartupContainer, resourceSchema,
   type Container, type ProcessResult, type Resources,
 } from "./swim-acceptance-guards";
@@ -320,7 +320,9 @@ async function main(cleanupOnly: boolean) {
       assert(!existsSync(join(directory, "project/supabase/seed.sql")));
       const migrations = join(directory, "project/supabase/migrations");
       assert(!existsSync(migrations) || readdirSync(migrations).length === 0);
-      manifest.localConfigSha256 = hash(readFileSync(configPath));
+      const generatedConfig = readFileSync(configPath, "utf8");
+      manifest.localConfigSha256 = hash(generatedConfig);
+      requirePinnedDefaultConfig(generatedConfig);
     });
     await stage("loopback task bridge", async () => {
       const { text } = await docker(["network", "create", "--driver", "bridge",
@@ -379,6 +381,7 @@ async function main(cleanupOnly: boolean) {
     const target = await stage("effective publications and reference health", async () => {
       const { containers: ids } = await recordResources();
       const containers = await inspect(ids);
+      manifest.serviceNames = readyServiceNames(containers, project);
       const bridge = await network();
       requireReadyStack(containers, bridge, project);
       const services = [];

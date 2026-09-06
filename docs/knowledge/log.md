@@ -1651,3 +1651,25 @@ Docker/DB acceptance. No runner, Docker/Supabase/DB, workflow execution or merge
 was performed. Coordinator delta review and a later exact-head run remain pending;
 migrations/catalog/RPC and full standalone acceptance remain unproven.
 No DC-SW1–SW9, image/runtime/network configuration or swim-feature change.
+
+## [2026-09-06] refine | Correct our pinned-default service assumption
+
+Implemented [PR802 authorization 5561453075](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5561453075),
+with its UTF-8 body hash verified. Our prior 13-service assumption (including the
+historical entry above) incorrectly treated optional imgproxy as a default.
+The [native init/template/gate sources@997a1e6](./pool-swimming.md#pinned-default-service-contract)
+establish exactly 12 services. The runner now validates the fresh generated
+config before startup and retains current inspected service-name differences
+before readiness, without changing service flags or any health request.
+Exact service/membership, ownership, publication and cleanup checks remain.
+
+[Run 34051805797](https://github.com/drrowdev/hybrid-training-app/actions/runs/34051805797)
+at `9257aeb20582edf681aac49b2a00d3a5f9efc226` passed core/identity, official
+startup and cleanup, then failed the old exact-set assertion before application
+migrations/catalog/RPC. Historical snapshots are not current membership or
+exclusive-causation proof. All 317 targeted helper/report/config Vitest tests,
+web typecheck and scoped ESLint passed; these are not Docker/DB acceptance.
+No runner, container/database execution, workflow dispatch or merge occurred.
+All 146 migrations/catalog, 30 actual RPC cases and the frozen standalone
+DC-SW1–SW9 inventory remain required. No acceptance waiver, workflow, SQL,
+dependency, runtime/image/version/network change; coordinator review is next.
