@@ -18,7 +18,7 @@ import {
 } from "./swim-acceptance-guards";
 import {
   acceptanceAssert as assert, AcceptanceReporting, formatAcceptanceSummary,
-  openPrivateCommandLog, publishAcceptanceSummary, safeFailureCause,
+  openPrivateCommandLog, publishAcceptanceSummary, readMigrationDiagnostic, safeFailureCause,
 } from "./swim-acceptance-reporting";
 import { RPC_CONFIG, RPC_SUITE, readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
 import { DIAGNOSTICS_ENV, DIAGNOSTICS_FILE, readSwimRpcDiagnostics } from "./swim-rpc-diagnostics";
@@ -425,7 +425,17 @@ async function main(cleanupOnly: boolean) {
     });
     await stage("unchanged migrations", async () => {
       requireUnchanged();
-      await command("pnpm", ["--filter", "@hta/db", "db:migrate"], { env: target.dbEnv, timeout: 180_000 });
+      const { result, log } = await command("pnpm", ["--filter", "@hta/db", "db:migrate"], {
+        env: target.dbEnv, timeout: 180_000, allowFailure: true,
+      });
+      if (result.code !== 0) {
+        try {
+          manifest.migrationDiagnostic = readMigrationDiagnostic(log);
+        } catch {
+          manifest.migrationDiagnostic = "unavailable";
+        }
+      }
+      requireProcess(result);
       requireUnchanged();
     });
     await stage("global catalog and migration consistency", async () => {
