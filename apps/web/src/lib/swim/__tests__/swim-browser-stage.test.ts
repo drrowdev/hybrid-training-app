@@ -1,13 +1,14 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  BROWSER_LIMITS, SWIM_BROWSER_CASES, prepareSwimBrowserReport, projectBrowserFailure,
-  readSwimBrowserReport, requireFreePort, requireNoEnvFiles, waitForBrowserReady,
+  BROWSER_LIMITS, SWIM_BROWSER_CASES, buildBrowserEnv, prepareSwimBrowserReport, projectBrowserFailure,
+  readSwimBrowserReport, sealSwimBrowserReport, requireFreePort, requireNoEnvFiles, waitForBrowserReady,
 } from "../../../../scripts/swim-browser-acceptance";
 import {
-  requireSwimBrowserCache, runSwimBrowserStage, type BrowserCommand,
+  requireSwimBrowserCache, requireSwimBrowserInstallation, runSwimBrowserStage, type BrowserCommand,
 } from "../../../../scripts/swim-browser-stage";
 import { AcceptanceReporting, safeFailureCause } from "../../../../scripts/swim-acceptance-reporting";
 
@@ -19,10 +20,17 @@ vi.mock("../../../../scripts/swim-browser-acceptance", async (importOriginal) =>
     requireFreePort: vi.fn(async () => {}),
     waitForBrowserReady: vi.fn(async () => ({ status: "ready" })),
     prepareSwimBrowserReport: vi.fn(actual.prepareSwimBrowserReport),
+    sealSwimBrowserReport: vi.fn(),
     readSwimBrowserReport: vi.fn(),
   };
 });
 const root = resolve(__dirname, "../../../../../..");
+const installed = createRequire(join(root, "apps/web/package.json"));
+const playwrightTest = createRequire(installed.resolve("@playwright/test/package.json"));
+const playwright = createRequire(playwrightTest.resolve("playwright/package.json"));
+const { registry, registryDirectory } = playwright("playwright-core/lib/coreBundle").registry;
+const browserExecutables = ["chromium", "chromium-headless-shell", "ffmpeg"].map((name) =>
+  relative(registryDirectory, registry.findExecutable(name).executablePath()));
 const temporary: string[] = [];
 const passed = { code: 0, signal: null, timedOut: false };
 const stopped = { code: null, signal: "SIGTERM", timedOut: false };
@@ -48,8 +56,12 @@ function setup() {
   const cache = join(temp, "swim-browser-cache-swim-acceptance-123-1");
   mkdirSync(runDirectory, { mode: 0o700 });
   mkdirSync(cache, { mode: 0o700 });
+  for (const path of browserExecutables) {
+    mkdirSync(dirname(join(cache, path)), { recursive: true, mode: 0o700 });
+    writeFileSync(join(cache, path), "synthetic executable; never launched", { mode: 0o700 });
+  }
   const cacheEnv = { GITHUB_JOB: "swim-acceptance", GITHUB_RUN_ID: "123", GITHUB_RUN_ATTEMPT: "1",
-    RUNNER_TEMP: temp, PLAYWRIGHT_BROWSERS_PATH: cache };
+    RUNNER_TEMP: temp, HTA_SWIM_BROWSER_CACHE: cache };
   const server = deferred<{ result: typeof stopped | typeof passed }>();
   const browser = deferred<{ result: typeof stopped | typeof passed }>();
   const browserStarted = deferred<void>();
@@ -57,6 +69,7 @@ function setup() {
   const manifest: Record<string, unknown> = {};
   const reporting = new AcceptanceReporting();
   const events: string[] = [];
+  vi.mocked(sealSwimBrowserReport).mockReset().mockImplementation(() => { events.push("seal"); });
   let terminal: (() => void) | undefined;
   let closed = false;
   const close = () => {
@@ -116,6 +129,14 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     expect(start![2]).toMatchObject({ timeout: 410_000, allowFailure: true });
     expect(build![2]).toMatchObject({ timeout: 180_000, cwd: join(root, "apps/web") });
     expect(start![2].env).toEqual(build![2].env);
+    const production = buildBrowserEnv(h.options.target, {
+      runDirectory: h.options.runDirectory, reportPath: join(h.options.runDirectory, "browser.json"),
+      outputDir: join(h.options.runDirectory, "browser-output"),
+    });
+    expect(build![2].env).toEqual(production);
+    expect(browser![2].env).toEqual({ ...production, PLAYWRIGHT_BROWSERS_PATH: h.cache });
+    expect(build![2].env).not.toHaveProperty("HTA_SWIM_BROWSER_CACHE");
+    expect(build![2].env).not.toHaveProperty("PLAYWRIGHT_BROWSERS_PATH");
     expect(browser![1]).toEqual(["exec", "playwright", "test",
       "--config=playwright.swim-reference.config.ts", "--project=mobile-chromium", "--workers=1", "--retries=0"]);
     expect(browser![2]).toMatchObject({ timeout: 330_000, allowFailure: true,
@@ -124,7 +145,9 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
         HTA_SWIM_BROWSER_OUTPUT_DIR: join(h.options.runDirectory, "browser-output") } });
     h.browser.resolve({ result: passed });
     await run;
-    expect(h.events).toEqual(["build", "start", "browser", "report", "stop-server"]);
+    expect(h.events).toEqual(["build", "start", "browser", "seal", "report", "stop-server"]);
+    expect(sealSwimBrowserReport).toHaveBeenCalledWith(vi.mocked(prepareSwimBrowserReport).mock.results[0]!.value);
+    expect(readSwimBrowserReport).toHaveBeenCalledWith(vi.mocked(prepareSwimBrowserReport).mock.results[0]!.value);
     expect(h.manifest.browser).toEqual({ success: true, cases: 4 });
   });
 
@@ -140,6 +163,7 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
       if (phase === "readiness") vi.mocked(waitForBrowserReady).mockRejectedValueOnce(error);
       await expect(runSwimBrowserStage(h.options)).rejects.toThrow();
       expect(prepareSwimBrowserReport).not.toHaveBeenCalled();
+      expect(sealSwimBrowserReport).not.toHaveBeenCalled();
       expect(readSwimBrowserReport).not.toHaveBeenCalled();
       expect(h.stopServer).toHaveBeenCalledTimes(phase === "readiness" ? 1 : 0);
       if (phase === "budget") expect(h.command).not.toHaveBeenCalled();
@@ -173,6 +197,88 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
       expect(h.reporting.failures.primary?.cause.message).toBe("browser-server-exited");
     });
 
+  it.each([passed, { code: 1, signal: null, timedOut: false }])(
+    "seals actual writer modes and retains the same authored failed-case projection: %j", async (result) => {
+      const actual = await vi.importActual<typeof import("../../../../scripts/swim-browser-acceptance")>(
+        "../../../../scripts/swim-browser-acceptance");
+      const h = setup();
+      vi.mocked(sealSwimBrowserReport).mockImplementation(actual.sealSwimBrowserReport);
+      let reportError: unknown;
+      vi.mocked(readSwimBrowserReport).mockImplementation((ticket) => {
+        try { return actual.readSwimBrowserReport(ticket); }
+        catch (error) { reportError = error; throw error; }
+      });
+      const run = runSwimBrowserStage(h.options);
+      const caught = run.catch((error: unknown) => error);
+      await h.browserStarted.promise;
+      const ticket = vi.mocked(prepareSwimBrowserReport).mock.results.at(-1)!.value;
+      // Leave timestamp precision behind without changing the ticket's freshness contract.
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      const files = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
+      const report = {
+        config: {
+          version: "1.60.0", rootDir: join(root, "apps/web/e2e"), workers: 1,
+          fullyParallel: false, forbidOnly: true, globalTimeout: 300_000,
+          projects: [{
+            id: "mobile-chromium", name: "mobile-chromium", testDir: join(root, "apps/web/e2e"),
+            outputDir: ticket.paths.outputDir, repeatEach: 1, retries: 0, timeout: 30_000,
+            testMatch: files.map((file) => join(root, "apps/web", file)), testIgnore: [],
+          }],
+        },
+        suites: files.map((file) => ({
+          title: basename(file), file: basename(file), specs: [],
+          suites: [{
+            title: SWIM_BROWSER_CASES.find((item) => item.file === file)!.describe,
+            file: basename(file),
+            specs: SWIM_BROWSER_CASES.filter((item) => item.file === file).map((item) => ({
+              title: item.title, file: basename(file), ok: false,
+              tests: [{
+                timeout: 30_000, projectId: "mobile-chromium", projectName: "mobile-chromium",
+                expectedStatus: "passed", status: "unexpected",
+                results: [{ retry: 0, status: "failed", errors: [{ message: "synthetic-private-detail" }] }],
+              }],
+            })),
+          }],
+        })),
+        errors: [], stats: { expected: 0, unexpected: 4, flaky: 0, skipped: 0 },
+      };
+      writeFileSync(ticket.paths.reportPath, JSON.stringify(report), { mode: 0o644 });
+      chmodSync(ticket.paths.reportPath, 0o644);
+      mkdirSync(ticket.paths.outputDir, { mode: 0o755 });
+      chmodSync(ticket.paths.outputDir, 0o755);
+      expect(sealSwimBrowserReport).not.toHaveBeenCalled();
+      h.browser.resolve({ result });
+      const primary = await caught;
+      expect(lstatSync(ticket.paths.reportPath).mode & 0o777).toBe(0o600);
+      expect(lstatSync(ticket.paths.outputDir).mode & 0o777).toBe(0o700);
+      expect(h.manifest.browserLedger).toEqual(projectBrowserFailure(reportError));
+      expect(h.manifest.browserLedger).toMatchObject({
+        success: false, counts: report.stats,
+        cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "failed", attempts: 1 })),
+      });
+      expect(JSON.stringify(h.manifest)).not.toContain("synthetic-private-detail");
+      if (result.code === 0) expect(primary).toBe(reportError);
+      else expect(safeFailureCause(primary)).toMatchObject({ classification: "process", result });
+      expect(() => actual.readSwimBrowserReport(ticket)).toThrow();
+    });
+
+  it.each([passed, { code: 1, signal: null, timedOut: false }])(
+    "retains sealer failure without reading an unsealed report: %j", async (result) => {
+      const h = setup();
+      const failure = new Error("synthetic sealer failure");
+      vi.mocked(sealSwimBrowserReport).mockImplementationOnce(() => { throw failure; });
+      const run = runSwimBrowserStage(h.options);
+      const caught = run.catch((error: unknown) => error);
+      await h.browserStarted.promise;
+      h.browser.resolve({ result });
+      const primary = await caught;
+      expect(readSwimBrowserReport).not.toHaveBeenCalled();
+      expect(h.manifest.browserLedger).toEqual(projectBrowserFailure(failure));
+      if (result.code === 0) expect(primary).toBe(failure);
+      else expect(safeFailureCause(primary)).toMatchObject({ classification: "process", result });
+      expect(h.stopServer).toHaveBeenCalledOnce();
+    });
+
   it("uses physical close during readiness and drains the losing readiness operation", async () => {
     const h = setup();
     let drained = false;
@@ -201,6 +307,7 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     h.controller.abort();
     await vi.waitFor(() => expect(h.stopBrowser).toHaveBeenCalledOnce());
     expect(readSwimBrowserReport).not.toHaveBeenCalled();
+    expect(sealSwimBrowserReport).not.toHaveBeenCalled();
     h.browser.resolve({ result: stopped });
     await rejected;
     expect(readSwimBrowserReport).toHaveBeenCalledOnce();
@@ -208,11 +315,14 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     expect(h.reporting.failures.primary?.cause.message).toBe("browser-cancelled");
   });
 
-  it.each([passed, { code: 1, signal: null, timedOut: false }])(
+  it.each([passed, { code: 1, signal: null, timedOut: false }, { ...stopped, timedOut: true }])(
     "reads every attempted report and preserves process failure precedence: %j", async (result) => {
       const h = setup();
       const reportError = new Error("synthetic report failure");
-      vi.mocked(readSwimBrowserReport).mockImplementationOnce(() => { throw reportError; });
+      vi.mocked(readSwimBrowserReport).mockImplementationOnce(() => {
+        expect(sealSwimBrowserReport).toHaveBeenCalledOnce();
+        throw reportError;
+      });
       const run = runSwimBrowserStage(h.options);
       const caught = run.catch((error: unknown) => error);
       await h.browserStarted.promise;
@@ -268,6 +378,7 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     await h.browserStarted.promise;
     h.browser.reject(failure);
     await rejected;
+    expect(h.events).toEqual(["build", "start", "browser", "seal", "report", "stop-server"]);
     expect(readSwimBrowserReport).toHaveBeenCalledOnce();
     expect(h.stopServer).toHaveBeenCalledOnce();
   });
@@ -330,19 +441,74 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     expect(h.reporting.failures.primary?.cause.message).toBe("browser-cancelled");
   });
 
-  it("fails a slow shutdown but still awaits completion instead of leaving a writer", async () => {
+  it("observes a slow successful shutdown and still awaits completion instead of leaving a writer", async () => {
     vi.useFakeTimers();
     const h = setup();
     h.stopServer.mockImplementation(() => { h.events.push("stop-server"); });
     const run = runSwimBrowserStage(h.options);
-    const rejected = expect(run).rejects.toThrow("Browser shutdown timed out");
     await h.browserStarted.promise;
     h.browser.resolve({ result: passed });
     await vi.advanceTimersByTimeAsync(10_001);
     expect(h.stopServer).toHaveBeenCalledOnce();
     expect(h.manifest.browser).toBeUndefined();
+    expect(h.manifest.browserShutdownDelayed).toBe(true);
     h.close();
     h.server.resolve({ result: stopped });
+    await run;
+    expect(h.manifest.browser).toEqual({ success: true, cases: 4 });
+    expect(h.reporting.failures.primary).toBeNull();
+    expect(h.reporting.failures.cleanup).toHaveLength(0);
+  });
+
+  it.each([
+    { ...stopped, timedOut: true }, { code: 1, signal: null, timedOut: false },
+    { code: null, signal: "spawn-error", timedOut: false },
+  ])("still fails a slow shutdown with a genuinely bad result: %j", async (result) => {
+    vi.useFakeTimers();
+    const h = setup();
+    h.stopServer.mockImplementation(() => {});
+    const run = runSwimBrowserStage(h.options);
+    const rejected = expect(run).rejects.toThrow("Browser server shutdown failed");
+    await h.browserStarted.promise;
+    h.browser.resolve({ result: passed });
+    await vi.advanceTimersByTimeAsync(10_001);
+    expect(h.manifest.browser).toBeUndefined();
+    h.close();
+    h.server.resolve({ result });
+    await rejected;
+    expect(h.reporting.failures.cleanup).toHaveLength(1);
+  });
+
+  it("awaits a slow browser writer before sealing even after cancellation", async () => {
+    vi.useFakeTimers();
+    const h = setup();
+    h.stopBrowser.mockImplementation(() => {});
+    const run = runSwimBrowserStage(h.options);
+    const rejected = expect(run).rejects.toThrow("browser-cancelled");
+    await h.browserStarted.promise;
+    h.controller.abort();
+    await vi.advanceTimersByTimeAsync(10_001);
+    expect(h.stopBrowser).toHaveBeenCalledOnce();
+    expect(sealSwimBrowserReport).not.toHaveBeenCalled();
+    expect(readSwimBrowserReport).not.toHaveBeenCalled();
+    h.browser.resolve({ result: stopped });
+    await rejected;
+    expect(sealSwimBrowserReport).toHaveBeenCalledOnce();
+    expect(h.stopServer).toHaveBeenCalledOnce();
+  });
+
+  it("retains a stop error even when the command is eventually reaped successfully", async () => {
+    const h = setup();
+    const failure = new Error("synthetic stop failure");
+    h.stopServer.mockImplementation(() => {
+      h.close();
+      h.server.resolve({ result: stopped });
+      throw failure;
+    });
+    const run = runSwimBrowserStage(h.options);
+    const rejected = expect(run).rejects.toBe(failure);
+    await h.browserStarted.promise;
+    h.browser.resolve({ result: passed });
     await rejected;
     expect(h.reporting.failures.cleanup).toHaveLength(1);
   });
@@ -356,7 +522,7 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     expect(source.indexOf("options.onTerminal?.()")).toBeLessThan(source.indexOf("await killed;"));
     expect(source.indexOf('await stage("mobile browser acceptance"'))
       .toBeGreaterThan(source.indexOf("}), reporting);", source.indexOf("await enforceIdentityProofAfterRpc")));
-    for (const file of ["apps/web/e2e", "apps/web/playwright.swim-reference.config.ts"]) expect(source).toContain(`"${file}"`);
+    expect(source).toContain('"apps/web/playwright.swim-reference.config.ts"');
   });
 });
 
@@ -370,7 +536,7 @@ describe("workflow-owned browser cache", () => {
       const h = setup();
       const env = { ...h.options.cacheEnv };
       let checkout = root;
-      if (kind === "override") env.PLAYWRIGHT_BROWSERS_PATH = join(h.temp, "other");
+      if (kind === "override") env.HTA_SWIM_BROWSER_CACHE = join(h.temp, "other");
       if (kind === "symlink") {
         rmSync(h.cache, { recursive: true });
         symlinkSync(h.options.runDirectory, h.cache);
@@ -382,6 +548,37 @@ describe("workflow-owned browser cache", () => {
       expect(() => requireSwimBrowserCache(env, checkout, h.options.runDirectory)).toThrow();
     });
 
+  it("rejects a root Playwright override even when it names the validated control path", () => {
+    const h = setup();
+    for (const path of [h.cache, "", "0", join(h.temp, "other")]) {
+      expect(() => requireSwimBrowserCache({ ...h.options.cacheEnv, PLAYWRIGHT_BROWSERS_PATH: path },
+        root, h.options.runDirectory)).toThrow();
+    }
+  });
+
+  it.each(browserExecutables)("refuses missing pinned executable %s before any app work", async (path) => {
+    const h = setup();
+    expect(() => requireSwimBrowserInstallation(h.cache, join(root, "apps/web"))).not.toThrow();
+    rmSync(join(h.cache, path));
+    mkdirSync(join(h.cache, "chromium-unrelated"), { mode: 0o700 });
+    writeFileSync(join(h.cache, "chromium-unrelated/chrome"), "not the pinned install", { mode: 0o700 });
+    await expect(runSwimBrowserStage(h.options)).rejects.toThrow();
+    expect(h.command).not.toHaveBeenCalled();
+    expect(prepareSwimBrowserReport).not.toHaveBeenCalled();
+  });
+
+  it.each(["non-executable", "symlink"] as const)("rejects a %s pinned executable", async (kind) => {
+    const h = setup();
+    const path = join(h.cache, browserExecutables[0]!);
+    if (kind === "non-executable") chmodSync(path, 0o600);
+    else {
+      rmSync(path);
+      symlinkSync(join(h.cache, browserExecutables[1]!), path);
+    }
+    await expect(runSwimBrowserStage(h.options)).rejects.toThrow();
+    expect(h.command).not.toHaveBeenCalled();
+  });
+
   it("creates a fresh private fixed cache and installs the locked browser only in the swim job", () => {
     const source = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
     const job = source.slice(source.indexOf("  swim-acceptance:"), source.indexOf("  prod-migrate:"));
@@ -389,6 +586,13 @@ describe("workflow-owned browser cache", () => {
     expect(job).toContain('cache="$temp/swim-browser-cache-swim-acceptance-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"');
     expect(job).toContain('[[ ! -e "$cache" && ! -L "$cache" ]]');
     expect(job).toContain('mkdir -m 700 -- "$cache"');
+    expect(job).toContain("printf 'HTA_SWIM_BROWSER_CACHE=%s\\n'");
+    expect(job).not.toContain("printf 'PLAYWRIGHT_BROWSERS_PATH=");
+    expect(job.match(/PLAYWRIGHT_BROWSERS_PATH: \$\{\{ env.HTA_SWIM_BROWSER_CACHE \}\}/g)).toHaveLength(2);
+    for (const name of ["Install Chromium system dependencies", "Install owned Chromium"]) {
+      const step = job.slice(job.indexOf(`- name: ${name}`)).split("\n      - name:")[0]!;
+      expect(step).toContain("PLAYWRIGHT_BROWSERS_PATH: ${{ env.HTA_SWIM_BROWSER_CACHE }}");
+    }
     expect(job).not.toContain("actions/cache");
     expect(job).toContain("pnpm --filter @hta/web exec playwright install-deps chromium");
     expect(job).toContain("pnpm --filter @hta/web exec playwright install chromium");

@@ -1,11 +1,11 @@
-import { lstatSync, realpathSync } from "node:fs";
+import { accessSync, constants, lstatSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { isAbsolute, join, relative, sep } from "node:path";
 import { requirePrivateLocation, requireProcess, type ProcessResult } from "./swim-acceptance-guards";
 import { acceptanceAssert as assert, type AcceptanceReporting } from "./swim-acceptance-reporting";
 import {
   BROWSER_LIMITS, SWIM_BROWSER_CASES, browserBudget, buildBrowserEnv, prepareSwimBrowserReport,
-  projectBrowserFailure, readSwimBrowserReport, requireNoEnvFiles, requireFreePort,
+  projectBrowserFailure, readSwimBrowserReport, sealSwimBrowserReport, requireNoEnvFiles, requireFreePort,
   requirePrivateBrowserPaths, waitForBrowserReady, type BrowserReportTicket,
 } from "./swim-browser-acceptance";
 
@@ -24,7 +24,8 @@ export function requireSwimBrowserCache(
   const temp = realpathSync(env.RUNNER_TEMP!);
   const cache = join(temp,
     `swim-browser-cache-swim-acceptance-${env.GITHUB_RUN_ID}-${env.GITHUB_RUN_ATTEMPT}`);
-  assert(env.PLAYWRIGHT_BROWSERS_PATH === cache, "Unexpected browser cache");
+  assert(env.HTA_SWIM_BROWSER_CACHE === cache && env.PLAYWRIGHT_BROWSERS_PATH === undefined,
+    "Unexpected browser cache");
   requirePrivateLocation(cache, temp, realpathSync(root));
   const fromHome = relative(join(runDirectory, "home"), cache);
   assert(fromHome === ".." || fromHome.startsWith(`..${sep}`) || isAbsolute(fromHome),
@@ -33,6 +34,30 @@ export function requireSwimBrowserCache(
   assert(stat.isDirectory() && !stat.isSymbolicLink() && realpathSync(cache) === cache &&
     stat.uid === process.getuid?.() && (stat.mode & 0o7777) === 0o700, "Private browser cache required");
   return cache;
+}
+
+export function requireSwimBrowserInstallation(cache: string, web: string) {
+  const installed = createRequire(join(web, "package.json"));
+  assert(installed("@playwright/test/package.json").version === "1.60.0",
+    "Unexpected installed Playwright version");
+  const test = createRequire(installed.resolve("@playwright/test/package.json"));
+  const playwright = createRequire(test.resolve("playwright/package.json"));
+  assert(playwright("playwright-core/package.json").version === "1.60.0",
+    "Unexpected installed Playwright version");
+  // The pinned registry resolves browsers.json revisions and platform-specific executable paths.
+  const { registry, registryDirectory } = playwright("playwright-core/lib/coreBundle").registry;
+  for (const name of ["chromium", "chromium-headless-shell", "ffmpeg"]) {
+    const executable = registry.findExecutable(name)?.executablePath();
+    assert(typeof executable === "string", "Pinned browser executable required");
+    const path = relative(registryDirectory, executable);
+    assert(path && !isAbsolute(path) && path !== ".." && !path.startsWith(`..${sep}`),
+      "Unexpected browser executable path");
+    const expected = join(cache, path);
+    const stat = lstatSync(expected);
+    assert(stat.isFile() && !stat.isSymbolicLink() && realpathSync(expected) === expected &&
+      stat.uid === process.getuid?.(), "Pinned browser installation required");
+    accessSync(expected, constants.X_OK);
+  }
 }
 
 type Completion = { ok: true; value: CommandResult } | { ok: false; error: unknown };
@@ -84,8 +109,7 @@ export async function runSwimBrowserStage(options: {
   const drain = async (completion: Promise<Completion>, stop: (() => void) | undefined,
     done: boolean, name: string) => {
     const timer = setTimeout(() => {
-      try { assert(false, "Browser shutdown timed out"); }
-      catch (error) { collect(name, error, true); }
+      manifest.browserShutdownDelayed = true;
     }, BROWSER_LIMITS.shutdown);
     try {
       if (!done) {
@@ -98,10 +122,9 @@ export async function runSwimBrowserStage(options: {
     browserBudget(options.deadline - Date.now());
     checkLive();
     const cache = requireSwimBrowserCache(options.cacheEnv, root, runDirectory);
-    const env = { ...buildBrowserEnv(options.target, paths), PLAYWRIGHT_BROWSERS_PATH: cache };
+    const env = buildBrowserEnv(options.target, paths);
+    requireSwimBrowserInstallation(cache, web);
     const installed = createRequire(join(web, "package.json"));
-    assert(installed("@playwright/test/package.json").version === "1.60.0",
-      "Unexpected installed Playwright version");
     const next = installed.resolve("next/dist/bin/next");
     requirePrivateBrowserPaths(paths, web);
     requireNoEnvFiles(root);
@@ -127,7 +150,8 @@ export async function runSwimBrowserStage(options: {
     browser = settle(command("pnpm", ["exec", "playwright", "test",
       "--config=playwright.swim-reference.config.ts", "--project=mobile-chromium",
       "--workers=1", "--retries=0"], {
-      cwd: web, env, timeout: BROWSER_LIMITS.browserCommand, allowFailure: true,
+      cwd: web, env: { ...env, PLAYWRIGHT_BROWSERS_PATH: cache },
+      timeout: BROWSER_LIMITS.browserCommand, allowFailure: true,
       onSpawn: (stop) => { stopBrowser = stop; },
     }));
     void browser.then(() => { browserDone = true; });
@@ -143,6 +167,7 @@ export async function runSwimBrowserStage(options: {
       let reportFailed = false;
       let reportError: unknown;
       try {
+        sealSwimBrowserReport(ticket!);
         manifest.browserLedger = readSwimBrowserReport(ticket!);
       } catch (error) {
         reportFailed = true;

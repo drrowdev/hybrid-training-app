@@ -296,10 +296,16 @@ async function main(cleanupOnly: boolean) {
     if (cleanupOnly) return;
     await stage("source and runner preflight", async () => {
       sourceFiles = git("ls-files", "-z", "--", "packages/db", "packages/domain", "packages/engine",
-        "apps/web/src/lib/swim", "apps/web/e2e-rpc/setup.ts", "apps/web/scripts",
-        "apps/web/vitest.config.ts", "apps/web/e2e", "apps/web/playwright.swim-reference.config.ts",
-        "apps/web/package.json", "package.json", "pnpm-lock.yaml",
-        "pnpm-workspace.yaml", ".github/workflows/ci.yml").split("\0").filter(Boolean);
+        "packages/green", "packages/hyrox", "packages/program-core", "packages/tacticalbarbell",
+        "packages/tb-conditioning", "packages/ui", "packages/wendler",
+        "apps/web/src", "apps/web/public", "apps/web/e2e-rpc/setup.ts", "apps/web/scripts",
+        "apps/web/vitest.config.ts", "apps/web/e2e/swimming-mobile.spec.ts",
+        "apps/web/e2e/swimming-persistence-mobile.spec.ts", "apps/web/e2e/fixtures",
+        "apps/web/e2e/global-setup.ts", "apps/web/playwright.config.ts",
+        "apps/web/playwright.swim-reference.config.ts", "apps/web/next.config.*",
+        "apps/web/tsconfig.json", "apps/web/postcss.config.*", "apps/web/package.json",
+        "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.base.json",
+        ".github/workflows/ci.yml").split("\0").filter(Boolean);
       sourceHashes = sources();
       const journal = JSON.parse(readFileSync(join(root, "packages/db/drizzle/meta/_journal.json"), "utf8"));
       assert(journal.entries.length === 148 && sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === 148);

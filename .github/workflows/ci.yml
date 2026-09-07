@@ -430,20 +430,25 @@ jobs:
           [[ "$GITHUB_JOB" == "swim-acceptance" ]]
           [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ && "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
           [[ -z "${PLAYWRIGHT_BROWSERS_PATH+x}" ]]
+          [[ -z "${HTA_SWIM_BROWSER_CACHE+x}" ]]
           temp="$(realpath -e "$RUNNER_TEMP")"
           checkout="$(realpath -e "$GITHUB_WORKSPACE")"
           cache="$temp/swim-browser-cache-swim-acceptance-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           [[ "$cache" != "$checkout" && "$cache" != "$checkout/"* ]]
           [[ ! -e "$cache" && ! -L "$cache" ]]
           mkdir -m 700 -- "$cache"
-          printf 'PLAYWRIGHT_BROWSERS_PATH=%s\n' "$cache" >> "$GITHUB_ENV"
+          printf 'HTA_SWIM_BROWSER_CACHE=%s\n' "$cache" >> "$GITHUB_ENV"
 
       - name: Install Chromium system dependencies
         timeout-minutes: 5
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ env.HTA_SWIM_BROWSER_CACHE }}
         run: pnpm --filter @hta/web exec playwright install-deps chromium
 
       - name: Install owned Chromium
         timeout-minutes: 5
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ env.HTA_SWIM_BROWSER_CACHE }}
         run: pnpm --filter @hta/web exec playwright install chromium
 
       - name: Run guarded reference acceptance
