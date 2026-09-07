@@ -436,6 +436,20 @@ All standalone DC-SW1–SW9 gates still precede combined implementation.
 
 ### Shared completion integration — current 148 status
 
+**Latest syntax repair:** nonqualifying
+[run 34137048733](https://github.com/drrowdev/hybrid-training-app/actions/runs/34137048733)
+at `07ef1d5e4a695352621d1c945050d137c2aa3413` localized complete structured native
+SQLSTATE `42601` to phase `migrate`, migrationIndex `147`, statementIndex `0`,
+without SCID. Shutdown and main/final cleanup closed; Core CI passed; no HTTP
+cases executed. Parenthesizing only the shared-body-hash IF CASE in up/down
+prevents its internal THEN from ending the PL/pgSQL condition. Historical hash
+reconstruction preserves every other byte outside the existing diagnostic RAISE
+expressions. No body, attribute, ACL or journal change is involved, and no ACL
+cause is established. Normal acceptance is restored in source with the diagnostic
+branch dormant and unchanged. Ordinary acceptance remains pending exact-head
+review and coordinator-owned execution; the following integration checkpoints
+are historical, not runtime proof of this repair.
+
 The [approved remainder](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5569058128)
 is implemented on accepted `b338e0d7`, with HTTP/proof checkpoint `df790b09`.
 No accepted runtime, migration, rollback, observer, timeout or permission logic

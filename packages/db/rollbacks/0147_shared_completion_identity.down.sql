@@ -38,9 +38,9 @@ BEGIN
 
     IF v_shared.oid IS NULL OR v_helper.oid IS NULL
        OR pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(v_shared.prosrc, 'UTF8')), 'hex')
-          IS DISTINCT FROM CASE WHEN v_amended
+          IS DISTINCT FROM (CASE WHEN v_amended
             THEN 'cca40717ed9133607ea0706838ed999beea84af6a90336c66f61abe8b1690b3d'
-            ELSE '7d123bec0bbca374ea5ddad133640d86ff46ee3e36d6b00611a9d8d1d76b4a4d' END
+            ELSE '7d123bec0bbca374ea5ddad133640d86ff46ee3e36d6b00611a9d8d1d76b4a4d' END)
        OR v_shared.proowner IS DISTINCT FROM v_postgres
        OR v_shared.prolang IS DISTINCT FROM (SELECT oid FROM pg_catalog.pg_language WHERE lanname = 'plpgsql')
        OR v_shared.prokind IS DISTINCT FROM 'f'

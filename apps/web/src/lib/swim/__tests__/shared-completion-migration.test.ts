@@ -31,13 +31,25 @@ function guard(source: string) {
 const diagnosticRaises = /RAISE EXCEPTION USING MESSAGE = 'SCID\/'[\s\S]*?;/g;
 const originalRaise = "RAISE EXCEPTION 'Shared completion identity contract mismatch.';";
 const withoutDiagnostics = (source: string) => source.replace(diagnosticRaises, originalRaise);
+const withoutCaseParentheses = (source: string) => source
+  .replace("IS DISTINCT FROM (CASE WHEN v_amended", "IS DISTINCT FROM CASE WHEN v_amended")
+  .replace(
+    "'7d123bec0bbca374ea5ddad133640d86ff46ee3e36d6b00611a9d8d1d76b4a4d' END)",
+    "'7d123bec0bbca374ea5ddad133640d86ff46ee3e36d6b00611a9d8d1d76b4a4d' END",
+  );
 
 describe("shared completion identity migration (DC-SW8)", () => {
   it.each([
     ["up", up, "b5ab2cbd0c4b67ea7984a0bdcdd1ee5526bd068dc2f424dfb37f3e619c871fde"],
     ["down", down, "eb4a5a102b305bc3554387e3fe13d317c99a51c0e5cd0413438fa349b6685f38"],
-  ])("%s preserves every byte outside the four RAISE expressions from 730ecff", (_, source, expected) => {
-    expect(hash(withoutDiagnostics(source))).toBe(expected);
+  ])("%s preserves every byte outside the four RAISE expressions and CASE parentheses from 730ecff", (_, source, expected) => {
+    for (const literal of [
+      "IS DISTINCT FROM (CASE WHEN v_amended",
+      "'7d123bec0bbca374ea5ddad133640d86ff46ee3e36d6b00611a9d8d1d76b4a4d' END)",
+    ]) {
+      expect(source.split(literal)).toHaveLength(2);
+    }
+    expect(hash(withoutCaseParentheses(withoutDiagnostics(source)))).toBe(expected);
     const raises = [...guard(source).matchAll(diagnosticRaises)].map((match) => match[0]);
     expect(raises).toHaveLength(4);
     for (const [index, name] of ["roles", "attributes", "acl", "privileges"].entries()) {
@@ -50,6 +62,17 @@ describe("shared completion identity migration (DC-SW8)", () => {
     expect(source).not.toMatch(/SCID\/1\/(?:roles|attributes|acl|privileges)\/(?:pre|post)\/\w+\/[tfu]+/);
   });
 
+  it.each([["up", up], ["down", down]])("%s parenthesizes the shared-body IF CASE (DC-SW8)", (_, source) => {
+    expect(guard(source)).toContain(
+      "IF v_shared.oid IS NULL OR v_helper.oid IS NULL\n"
+      + "       OR pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(v_shared.prosrc, 'UTF8')), 'hex')\n"
+      + "          IS DISTINCT FROM (CASE WHEN v_amended\n"
+      + "            THEN 'cca40717ed9133607ea0706838ed999beea84af6a90336c66f61abe8b1690b3d'\n"
+      + "            ELSE '7d123bec0bbca374ea5ddad133640d86ff46ee3e36d6b00611a9d8d1d76b4a4d' END)\n"
+      + "       OR v_shared.proowner IS DISTINCT FROM v_postgres",
+    );
+  });
+
   it.each([["up", up], ["down", down]])("%s diagnoses every original expected condition in its original order", (_, source) => {
     const predicates = [...guard(withoutDiagnostics(source)).matchAll(
       /IF ([\s\S]*?) THEN\s+RAISE EXCEPTION 'Shared completion identity contract mismatch\.';/g,
@@ -60,7 +83,7 @@ describe("shared completion identity migration (DC-SW8)", () => {
       const diagnostic = raises[index]!.replace(/\s+/g, " ");
       let offset = 0;
       for (const clause of clauses) {
-        const expected = clause.replace(/IS DISTINCT FROM|IS NOT NULL|IS NULL/g, (operator) =>
+        const expected = withoutCaseParentheses(clause).replace(/IS DISTINCT FROM|IS NOT NULL|IS NULL/g, (operator) =>
           operator === "IS DISTINCT FROM" ? "IS NOT DISTINCT FROM" :
             operator === "IS NULL" ? "IS NOT NULL" : "IS NULL").replace(/\s+/g, " ");
         const position = diagnostic.indexOf(expected, offset);

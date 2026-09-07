@@ -1828,3 +1828,22 @@ No database/Docker/Supabase/workflow execution or merge occurred.
 Exact-head review and subsequent temporary execution remain coordinator-owned.
 [Current status](./pool-swimming.md#shared-completion-integration--current-148-status).
 Full standalone DC-SW1–SW9 acceptance still precedes combined swimming and Garmin.
+
+## [2026-09-07] refine | Shared completion syntax repair and normal acceptance restoration
+
+Nonqualifying [run 34137048733](https://github.com/drrowdev/hybrid-training-app/actions/runs/34137048733)
+at `07ef1d5e4a695352621d1c945050d137c2aa3413` localized complete structured native
+SQLSTATE `42601` to phase `migrate`, migrationIndex `147`, statementIndex `0`,
+without SCID. Shutdown and main/final cleanup closed; Core CI passed; no HTTP
+cases executed. The syntax-only up/down repair parenthesizes the shared-body-hash
+IF CASE so its internal THEN does not terminate the PL/pgSQL condition.
+Historical hashes remain pinned; no function body, attribute, ACL or journal
+changed, and the evidence does not establish an ACL cause.
+
+Normal acceptance is restored in source; the diagnostic branch remains dormant
+and unchanged. Evidence tests gate only POSIX-private-file fixtures on Windows
+and pin both unchanged migration scripts. Focused static checks do not establish
+runtime acceptance. Ordinary acceptance remains pending exact-head review and
+coordinator-owned execution. No database/container/workflow execution or merge
+occurred in this repair.
+[Current status](./pool-swimming.md#shared-completion-integration--current-148-status).

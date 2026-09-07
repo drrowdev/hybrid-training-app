@@ -37,6 +37,7 @@ const scid = "SCID/1/acl/pre/shared/ftftfttu";
 const native = () => Reflect.construct(postgres.PostgresError, [
   { message: scid, code: "P0001", severity: "ERROR" },
 ]) as postgres.PostgresError;
+const posixIt = it.skipIf(process.platform === "win32");
 
 describe("structured migration evidence (DC-SW8; no database)", () => {
   it("owns the same strict bare SCID codebook", () => {
@@ -65,6 +66,12 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
   }
 
   describe("migration entry (DC-SW8; fixture clients only)", () => {
+    it("pins normal migration and separate-normalizer evidence scripts", () => {
+      const { scripts } = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
+      expect(scripts["db:migrate"]).toBe("tsx scripts/normalize-migrations-lf.ts && drizzle-kit migrate");
+      expect(scripts["db:migrate:evidence"]).toBe("tsx scripts/normalize-migrations-lf.ts && tsx scripts/migrate-with-evidence.ts");
+    });
+
     it("verifies installed CLI-context pg absence, driver and exact dependency parity without connecting", async () => {
       expect(verifyMigrationDependencyParity()).toEqual({
         driver: "postgres", kit: "0.30.6", orm: "0.44.7", postgres: "3.4.9", pgAbsent: true,
@@ -81,7 +88,7 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
       } finally { await client.end({ timeout: 0 }); }
     });
 
-    it("invokes one migration with default ledger config and durably closes before shutdown", () => fixture(async (path) => {
+    posixIt("invokes one migration with default ledger config and durably closes before shutdown", () => fixture(async (path) => {
       const fake = runtime();
       fake.end.mockImplementation(async () => {
         const fd = vi.mocked(fsyncSync).mock.calls.at(-1)![0];
@@ -102,7 +109,7 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
       expect(fake.readMigrations).not.toHaveBeenCalled();
     }));
 
-    it.each(["config", "dependencies", "client", "migrate"] as const)(
+    posixIt.each(["config", "dependencies", "client", "migrate"] as const)(
       "captures actual structured %s failures and preserves the primary exception", (phase) => fixture(async (path) => {
         const fake = runtime();
         const error = phase === "migrate" ? new DrizzleQueryError("canonical", ["private"], native()) : new Error("private-phase-data");
@@ -122,7 +129,7 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
       }),
     );
 
-    it("starts before config loading and rejects changed config before creating a client", () => fixture(async (path) => {
+    posixIt("starts before config loading and rejects changed config before creating a client", () => fixture(async (path) => {
       const fake = runtime();
       fake.loadConfig.mockImplementation(async () => {
         expect(readFileSync(path, "utf8")).toBe('{"event":"started","version":1}\n');
@@ -140,7 +147,7 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
       expect(fake.loadDependencies).not.toHaveBeenCalled();
     });
 
-    it.each(["begin", "file", "connection"])("keeps a plain %s failure complete with unknown position", (kind) => fixture(async (path) => {
+    posixIt.each(["begin", "file", "connection"])("keeps a plain %s failure complete with unknown position", (kind) => fixture(async (path) => {
       const fake = runtime();
       fake.migrate.mockRejectedValue(new Error(kind));
       const result = await runMigrationWithEvidence(path, fake);
@@ -150,7 +157,7 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
       });
     }));
 
-    it("keeps migration failure primary when end rejects", () => fixture(async (path) => {
+    posixIt("keeps migration failure primary when end rejects", () => fixture(async (path) => {
       const fake = runtime();
       const primary = native();
       fake.migrate.mockRejectedValue(primary);
@@ -164,7 +171,7 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
       });
     }));
 
-    it("bounds a hung end after the original failure is already durable", () => fixture(async (path) => {
+    posixIt("bounds a hung end after the original failure is already durable", () => fixture(async (path) => {
       vi.useFakeTimers();
       try {
         const fake = runtime();
@@ -182,7 +189,7 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
       } finally { vi.useRealTimers(); }
     }));
 
-    it("retains the durable terminal if later evidence cannot be appended", () => fixture(async (path, directory) => {
+    posixIt("retains the durable terminal if later evidence cannot be appended", () => fixture(async (path, directory) => {
       const fake = runtime();
       const primary = native();
       fake.migrate.mockRejectedValue(primary);
@@ -199,7 +206,7 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
       expect(readMigrationEvidence(path)).toMatchObject({ status: "complete", terminal: { error: { sqlstate: "P0001" } }, shutdown: null });
     }));
 
-    it("attempts shutdown even when terminal recording fails, without replacing the primary", () => fixture(async (path) => {
+    posixIt("attempts shutdown even when terminal recording fails, without replacing the primary", () => fixture(async (path) => {
       const fake = runtime();
       const primary = native();
       fake.migrate.mockImplementation(async () => {
@@ -268,7 +275,7 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
     }
   });
 
-  it("writes one exclusive private bounded file and requires a durable terminal", () => fixture((path) => {
+  posixIt("writes one exclusive private bounded file and requires a durable terminal", () => fixture((path) => {
     const writer = openMigrationEvidence(path);
     expect(readMigrationEvidence(path)).toEqual({ status: "incomplete" });
     expect(() => openMigrationEvidence(path)).toThrow();
@@ -280,15 +287,18 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
     expect(() => writer.terminal(terminal)).toThrow();
   }));
 
-  it("rejects invalid paths and modes before creation", () => fixture((path, directory) => {
+  it("rejects invalid paths before creation", () => fixture((path, directory) => {
     for (const invalid of ["", MIGRATION_EVIDENCE_FILE, join(directory, "arbitrary.json"), path + "/../other"]) {
       expect(() => openMigrationEvidence(invalid)).toThrow();
     }
+  }));
+
+  posixIt("rejects invalid modes before creation", () => fixture((path, directory) => {
     chmodSync(directory, 0o755);
     expect(() => openMigrationEvidence(path)).toThrow();
   }));
 
-  it("rejects symlinks, hardlinks, replacement identity and changed modes", () => fixture((path, directory) => {
+  posixIt("rejects symlinks, hardlinks, replacement identity and changed modes", () => fixture((path, directory) => {
     const writer = openMigrationEvidence(path);
     writer.terminal(terminal);
     const other = join(directory, "other");
@@ -309,7 +319,7 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
     expect(readMigrationEvidence(other)).toEqual({ status: "incomplete" });
   }));
 
-  it("rejects missing, oversized, malformed, extra or invalid records", () => fixture((path) => {
+  posixIt("rejects missing, oversized, malformed, extra or invalid records", () => fixture((path) => {
     expect(readMigrationEvidence(path)).toEqual({ status: "incomplete" });
     const writer = openMigrationEvidence(path);
     writer.terminal(terminal);

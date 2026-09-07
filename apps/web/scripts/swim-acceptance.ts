@@ -34,7 +34,7 @@ import {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
 // Temporary source-only switch. The unchanged normal CLI must be restored before acceptance.
-const MIGRATION_DIAGNOSTIC_ONLY = true;
+const MIGRATION_DIAGNOSTIC_ONLY = false;
 const migrationEvidenceCommand: MigrationEvidenceCommand = "db:migrate:evidence";
 const hash = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args],

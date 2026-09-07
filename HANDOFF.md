@@ -31,7 +31,24 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-07 (148 remainder integrated; no database/workflow execution)
+**Last updated:** 2026-09-07 (syntax-only repair; normal acceptance pending)
+
+### PR802 migration syntax repair — current status
+
+Nonqualifying [run 34137048733](https://github.com/drrowdev/hybrid-training-app/actions/runs/34137048733)
+at `07ef1d5e4a695352621d1c945050d137c2aa3413` produced complete structured
+native SQLSTATE `42601`, phase `migrate`, migrationIndex `147`, statementIndex `0`,
+with no SCID. Shutdown and main/final cleanup closed; Core CI passed.
+No HTTP cases executed. The bare shared-body-hash `IF CASE` exposed its internal
+`THEN` to the PL/pgSQL condition parser. The up/down repair adds only parentheses
+around that CASE; bodies, attributes, ACLs and the journal remain unchanged.
+This is not evidence of an ACL cause.
+
+Normal acceptance is restored in source; the diagnostic branch remains dormant
+and unchanged. Ordinary migration/catalog/round-trip/service/HTTP acceptance
+is still pending exact-head review and coordinator-owned execution. No runtime
+acceptance or release claim is made. The integration notes below are historical
+checkpoints, not proof that the repaired path has run.
 
 ### PR802 shared completion — current 148 status
 
