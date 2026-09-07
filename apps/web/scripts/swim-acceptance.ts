@@ -22,7 +22,7 @@ import {
 } from "./swim-acceptance-reporting";
 import { RPC_CONFIG, RPC_SUITE, readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
 import { DIAGNOSTICS_ENV, DIAGNOSTICS_FILE, readSwimRpcDiagnostics } from "./swim-rpc-diagnostics";
-import { observeAuthPrivileges } from "./swim-auth-privileges";
+import { checkAuthBoundary, enforceAuthBoundaryAfterRpc, observeAuthPrivileges } from "./swim-auth-privileges";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
@@ -284,11 +284,11 @@ async function main(cleanupOnly: boolean) {
         "pnpm-workspace.yaml", ".github/workflows/ci.yml").split("\0").filter(Boolean);
       sourceHashes = sources();
       const journal = JSON.parse(readFileSync(join(root, "packages/db/drizzle/meta/_journal.json"), "utf8"));
-      assert(journal.entries.length === 146 && sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === 146);
+      assert(journal.entries.length === 147 && sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === 147);
       manifest.sourceSha256 = hash(JSON.stringify(sourceHashes));
       manifest.configSha256 = hash(readFileSync(RPC_CONFIG));
       manifest.rpcSourceSha256 = hash(readFileSync(RPC_SUITE));
-      manifest.migrationCount = 146;
+      manifest.migrationCount = 147;
       writeFileSync(join(directory, "source-hashes.json"), JSON.stringify(sourceHashes), { mode: 0o600 });
       assert(process.version.startsWith("v22.") && process.platform === "linux" && process.arch === "x64");
       assert((await command("pnpm", ["--version"], { capture: true })).text === "10.33.2");
@@ -438,8 +438,11 @@ async function main(cleanupOnly: boolean) {
       manifest.catalog = { seedCount: SEED_MOVEMENTS.length, globalCount: slugs.length, slugsSha256: hash(text) };
       requireUnchanged();
     });
-    manifest.authPrivileges = await observeAuthPrivileges(command, target.dbId);
-    await stage("complete authenticated RPC file and positive ledger", async () => {
+    const authPrivileges = await observeAuthPrivileges(command, target.dbId);
+    manifest.authPrivileges = authPrivileges;
+    const authBoundary = checkAuthBoundary(authPrivileges, "up");
+    manifest.authBoundary = authBoundary;
+    await enforceAuthBoundaryAfterRpc(authBoundary, () => stage("complete authenticated RPC file and positive ledger", async () => {
       const reportPath = join(directory, "rpc.json");
       assert(!existsSync(reportPath));
       const rpcStarted = Date.now();
@@ -457,7 +460,7 @@ async function main(cleanupOnly: boolean) {
           { timeout: 10_000 });
           manifest.rpcDiagnostic = "bounded read-only activity/locks captured privately before cancellation";
         },
-      });
+        });
       manifest.rpcProcess = result;
       let ledger: ReturnType<typeof readSwimRpcReport> | undefined;
       try {
@@ -471,7 +474,7 @@ async function main(cleanupOnly: boolean) {
         manifest.rpcDiagnostics = readSwimRpcDiagnostics(directory, rpcStarted, ledger);
       }
       requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);
-    });
+    }), reporting);
   } catch (error) {
     if (!reporting.failures.primary) reporting.recordFailure("acceptance", error);
   } finally {

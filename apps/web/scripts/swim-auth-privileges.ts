@@ -1,5 +1,36 @@
 import { z } from "zod";
 import type { ProcessResult } from "./swim-acceptance-guards";
+import { acceptanceAssert, type AcceptanceReporting } from "./swim-acceptance-reporting";
+
+// Pinned prosrc MD5 equality checks from 0145/0146, not caller-supplied expectations.
+export const SWIM_FUNCTION_CONTRACTS = [
+  ["swim_local_today", "", "sql", "s", false, "da547ef0a54753f58484457237a6b261", "aa9c18164e2953f79526d00298e5557a"],
+  ["swim_assert_start_safety", "jsonb", "plpgsql", "v", false, "a4a6e14ba9beff435e9d0f4bb8289d3b", "9590a28ad178ea631a561bf4666acb76"],
+  ["swim_create_plan", "date,date,jsonb,jsonb,jsonb", "plpgsql", "v", true, "189b523e5aaa22bc021ac967370792b9", "732a84239559ea42cddfa92b34e76008"],
+  ["swim_start_workout", "uuid,integer", "plpgsql", "v", true, "56ddb7e24af67490f11f3c48a209de94", "34d72608d4b43c45f048d92c33f17b98"],
+  ["swim_set_plan_status", "uuid,integer,text", "plpgsql", "v", true, "ceac4e04200bf815e803fc426392117e", "cc013c6a3475b421ab1d49ed9284fc42"],
+  ["swim_skip_workout", "uuid,integer,text", "plpgsql", "v", true, "b65003b0ee45a9fd293188115d043533", "9d52fa2a62e73d40b3c55653b07ae71a"],
+  ["swim_update_plan", "uuid,integer,jsonb,jsonb,jsonb", "plpgsql", "v", true, "d1d79b3b03af189a8a7138d299edbac8", "4213a780ac7e9b5f82b1e2f76b54e406"],
+  ["swim_resume_plan", "uuid,integer,jsonb,jsonb,jsonb", "plpgsql", "v", true, "82a35ffbf86d9eb0cfa2ad689a99471b", "831b4fb8761890802adda635e185bbe1"],
+  ["swim_complete_workout", "uuid,integer,jsonb,uuid,uuid,text,boolean", "plpgsql", "v", true, "f0c0c34bc65e1c222740d8cb929e5dfb", "360c98a1f8f63e0fd9fe137fdde032ce"],
+  ["swim_edit_result", "uuid,integer,jsonb,text,boolean,boolean", "plpgsql", "v", true, "05a6f31b63d82c444f26567709ba1d91", "76bde3a44c3887a59d70187debc9e73a"],
+] as const;
+
+// Tuple positions: fixed name, attributes match, original body match, up body match.
+const functionEvidence = z.array(z.tuple([z.enum([
+  "swim_local_today", "swim_assert_start_safety", "swim_create_plan", "swim_start_workout",
+  "swim_set_plan_status", "swim_skip_workout", "swim_update_plan", "swim_resume_plan",
+  "swim_complete_workout", "swim_edit_result",
+]), z.boolean(), z.boolean(), z.boolean()])).length(10).refine(
+  (entries) => new Set(entries.map(([name]) => name)).size === 10,
+);
+// Present: attributes/body match, effective writer/service/anon/authenticated EXECUTE,
+// PUBLIC EXECUTE ACL entry, other non-owner direct grantee. Absence retains all other evidence.
+const helperEvidence = z.union([
+  z.tuple([z.literal("absent")]),
+  z.tuple([z.literal("present"), z.boolean(), z.boolean(), z.boolean(),
+    z.boolean(), z.boolean(), z.boolean(), z.boolean()]),
+]);
 
 const owner = z.enum(["supabase_admin", "supabase_auth_admin", "postgres", "swim_writer", "other"]);
 const privileges = z.object({
@@ -24,6 +55,12 @@ const privileges = z.object({
   swimWriterBypassRls: z.boolean(),
   swimCreatePlanSecurityDefiner: z.boolean(),
   swimCreatePlanRowSecurity: z.enum(["on", "off", "absent", "other"]),
+  serviceRoleAuthUsage: z.boolean(),
+  serviceRoleAuthUidExecute: z.boolean(),
+  serviceRoleLocalTodayExecute: z.boolean(),
+  serviceRoleSafetyExecute: z.boolean(),
+  helper: helperEvidence,
+  functions: functionEvidence,
 }).strict();
 
 type UnavailableReason = "command-failed" | "timeout-or-output-limit" | "invalid-output" | "missing-or-ambiguous-catalog";
@@ -43,7 +80,13 @@ WITH refs AS (
     pg_catalog.to_regnamespace('auth')::oid AS auth,
     pg_catalog.to_regnamespace('public')::oid AS public,
     pg_catalog.to_regprocedure('auth.uid()')::oid AS uid,
-    pg_catalog.to_regprocedure('public.swim_create_plan(date,date,jsonb,jsonb,jsonb)')::oid AS create_plan
+    pg_catalog.to_regprocedure('public.swim_create_plan(date,date,jsonb,jsonb,jsonb)')::oid AS create_plan,
+    pg_catalog.to_regrole('service_role')::oid AS service,
+    pg_catalog.to_regrole('anon')::oid AS anon,
+    pg_catalog.to_regrole('authenticated')::oid AS authenticated,
+    pg_catalog.to_regprocedure('public.swim_request_user_id()')::oid AS helper,
+    pg_catalog.to_regprocedure('public.swim_local_today()')::oid AS today,
+    pg_catalog.to_regprocedure('public.swim_assert_start_safety(jsonb)')::oid AS safety
 )
 SELECT pg_catalog.json_build_array(
   pg_catalog.json_build_array('connectionRole', CASE WHEN current_user = 'postgres' THEN 'postgres' ELSE 'other' END),
@@ -99,7 +142,58 @@ SELECT pg_catalog.json_build_array(
     WHEN config.count <> 1 OR config.value IS NULL THEN NULL
     WHEN config.value = 'row_security=on' THEN 'on'
     WHEN config.value = 'row_security=off' THEN 'off'
-    ELSE 'other' END)
+    ELSE 'other' END),
+  pg_catalog.json_build_array('serviceRoleAuthUsage',
+    CASE WHEN refs.service IS NOT NULL AND auth.oid IS NOT NULL
+      THEN pg_catalog.has_schema_privilege(refs.service, auth.oid, 'USAGE') END),
+  pg_catalog.json_build_array('serviceRoleAuthUidExecute',
+    CASE WHEN refs.service IS NOT NULL AND uid.oid IS NOT NULL
+      THEN pg_catalog.has_function_privilege(refs.service, uid.oid, 'EXECUTE') END),
+  pg_catalog.json_build_array('serviceRoleLocalTodayExecute',
+    CASE WHEN refs.service IS NOT NULL AND refs.today IS NOT NULL
+      THEN pg_catalog.has_function_privilege(refs.service, refs.today, 'EXECUTE') END),
+  pg_catalog.json_build_array('serviceRoleSafetyExecute',
+    CASE WHEN refs.service IS NOT NULL AND refs.safety IS NOT NULL
+      THEN pg_catalog.has_function_privilege(refs.service, refs.safety, 'EXECUTE') END),
+  pg_catalog.json_build_array('helper', CASE
+    WHEN helper_count.count = 0 THEN pg_catalog.json_build_array('absent')
+    WHEN helper_count.count <> 1 OR helper.oid IS NULL OR helper_lang.oid IS NULL
+      OR refs.postgres IS NULL OR refs.swim_writer IS NULL OR refs.service IS NULL
+      OR refs.anon IS NULL OR refs.authenticated IS NULL THEN NULL
+    ELSE pg_catalog.json_build_array('present',
+      helper.proowner = refs.postgres AND helper.pronargs = 0
+        AND helper.prorettype = 'pg_catalog.uuid'::pg_catalog.regtype
+        AND helper_lang.lanname = 'sql' AND helper.provolatile = 's'
+        AND helper.prosecdef AND NOT helper.proleakproof
+        AND COALESCE(helper.proconfig = ARRAY['search_path=pg_catalog']::text[], false)
+        AND helper.prosrc = ' SELECT auth.uid() ',
+      pg_catalog.has_function_privilege(refs.swim_writer, helper.oid, 'EXECUTE'),
+      pg_catalog.has_function_privilege(refs.service, helper.oid, 'EXECUTE'),
+      pg_catalog.has_function_privilege(refs.anon, helper.oid, 'EXECUTE'),
+      pg_catalog.has_function_privilege(refs.authenticated, helper.oid, 'EXECUTE'),
+      EXISTS (SELECT 1 FROM pg_catalog.aclexplode(
+        COALESCE(helper.proacl, pg_catalog.acldefault('f', helper.proowner))) acl
+        WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'),
+      EXISTS (SELECT 1 FROM pg_catalog.aclexplode(
+        COALESCE(helper.proacl, pg_catalog.acldefault('f', helper.proowner))) acl
+        WHERE acl.grantee NOT IN (helper.proowner, refs.swim_writer, refs.service))
+    ) END),
+  pg_catalog.json_build_array('functions', pg_catalog.json_build_array(
+    ${SWIM_FUNCTION_CONTRACTS.map(([name, args, language, volatility, definer, original, up]) => `(
+      SELECT CASE WHEN f.oid IS NULL OR l.oid IS NULL OR refs.swim_writer IS NULL THEN NULL
+        ELSE pg_catalog.json_build_array('${name}',
+          f.proowner = refs.swim_writer AND l.lanname = '${language}'
+          AND f.provolatile = '${volatility}' AND f.prosecdef = ${definer}
+          AND NOT f.proleakproof
+          AND COALESCE(f.proconfig @> ARRAY['search_path=pg_catalog, public'${definer ? ", 'row_security=on'" : ""}]::text[]
+            AND f.proconfig <@ ARRAY['search_path=pg_catalog, public'${definer ? ", 'row_security=on'" : ""}]::text[]
+            AND pg_catalog.cardinality(f.proconfig) = ${definer ? 2 : 1}, false),
+          pg_catalog.md5(f.prosrc) = '${original}', pg_catalog.md5(f.prosrc) = '${up}') END
+      FROM (SELECT pg_catalog.to_regprocedure('public.${name}(${args})')::oid AS oid) exact
+      LEFT JOIN pg_catalog.pg_proc f ON f.oid = exact.oid AND f.prokind = 'f'
+      LEFT JOIN pg_catalog.pg_language l ON l.oid = f.prolang
+    )`).join(",\n    ")}
+  ))
 )
 FROM refs
 LEFT JOIN pg_catalog.pg_roles postgres ON postgres.oid = refs.postgres
@@ -112,6 +206,12 @@ LEFT JOIN pg_catalog.pg_proc plan ON plan.oid = refs.create_plan AND plan.prokin
 LEFT JOIN pg_catalog.pg_roles auth_owner ON auth_owner.oid = auth.nspowner
 LEFT JOIN pg_catalog.pg_roles uid_owner ON uid_owner.oid = uid.proowner
 LEFT JOIN pg_catalog.pg_roles plan_owner ON plan_owner.oid = plan.proowner
+LEFT JOIN pg_catalog.pg_proc helper ON helper.oid = refs.helper AND helper.prokind = 'f'
+LEFT JOIN pg_catalog.pg_language helper_lang ON helper_lang.oid = helper.prolang
+LEFT JOIN LATERAL (
+  SELECT count(*) AS count FROM pg_catalog.pg_proc f
+  WHERE f.pronamespace = refs.public AND f.proname = 'swim_request_user_id'
+) helper_count ON true
 LEFT JOIN LATERAL (
   SELECT count(*) AS count, min(setting) AS value
   FROM pg_catalog.unnest(plan.proconfig) AS settings(setting)
@@ -130,12 +230,51 @@ export function projectAuthPrivilegeOutput(text: string): AuthPrivilegeEvidence 
     const keys = parsed.data.map(([key]) => key);
     if (keys.length !== Object.keys(privileges.shape).length || new Set(keys).size !== keys.length ||
         keys.some((key) => !Object.hasOwn(privileges.shape, key))) return unavailable("invalid-output");
-    if (parsed.data.some(([, value]) => value === null)) return unavailable("missing-or-ambiguous-catalog");
+    const containsNull = (value: unknown): boolean =>
+      value === null || (Array.isArray(value) && value.some(containsNull));
+    if (parsed.data.some(([, value]) => containsNull(value))) return unavailable("missing-or-ambiguous-catalog");
     const result = privileges.safeParse(Object.fromEntries(parsed.data));
     return result.success ? { status: "available", observation: result.data } : unavailable("invalid-output");
   } catch {
     return unavailable("invalid-output");
   }
+}
+
+export type AuthBoundaryResult = "matched" | "unavailable" | "mismatched";
+
+export function checkAuthBoundary(
+  evidence: AuthPrivilegeEvidence, expected: "up" | "rolled-back",
+): AuthBoundaryResult {
+  if (evidence.status !== "available") return "unavailable";
+  const o = evidence.observation;
+  const helperMatches = expected === "rolled-back" ? o.helper[0] === "absent"
+    : o.helper[0] === "present" && o.helper[1] && o.helper[2] && o.helper[3]
+      && !o.helper[4] && !o.helper[5] && !o.helper[6] && !o.helper[7];
+  return o.connectionRole === "postgres" && !o.swimWriterLogin && !o.swimWriterSuperuser
+    && !o.swimWriterInherit && !o.swimWriterBypassRls && !o.swimWriterAuthUsage
+    && o.swimWriterPublicUsage && o.serviceRoleAuthUsage && o.serviceRoleAuthUidExecute
+    && o.serviceRoleLocalTodayExecute && o.serviceRoleSafetyExecute
+    && o.swimCreatePlanOwner === "swim_writer" && o.swimCreatePlanSecurityDefiner
+    && o.swimCreatePlanRowSecurity === "on" && helperMatches
+    && o.functions.every(([, attributes, original, up]) => attributes && (expected === "up" ? up : original))
+    ? "matched" : "mismatched";
+}
+
+// The RPC stage records its own failure first. Never throw from a finally or mask it.
+export async function enforceAuthBoundaryAfterRpc(
+  boundary: AuthBoundaryResult, rpc: () => Promise<unknown>,
+  reporting: Pick<AcceptanceReporting, "recordFailure">,
+): Promise<void> {
+  let failed = false;
+  let primary: unknown;
+  try { await rpc(); } catch (error) { failed = true; primary = error; }
+  try {
+    acceptanceAssert(boundary === "matched", "Swimming identity boundary unavailable or mismatched");
+  } catch (error) {
+    reporting.recordFailure("swimming identity boundary", error);
+    if (!failed) throw error;
+  }
+  if (failed) throw primary;
 }
 
 type PrivateCommand = (
