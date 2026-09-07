@@ -50,6 +50,33 @@ describe("shared completion identity migration (DC-SW8)", () => {
     expect(source).not.toMatch(/SCID\/1\/(?:roles|attributes|acl|privileges)\/(?:pre|post)\/\w+\/[tfu]+/);
   });
 
+  it.each([["up", up], ["down", down]])("%s diagnoses every original expected condition in its original order", (_, source) => {
+    const predicates = [...guard(withoutDiagnostics(source)).matchAll(
+      /IF ([\s\S]*?) THEN\s+RAISE EXCEPTION 'Shared completion identity contract mismatch\.';/g,
+    )].map((match) => match[1]!.split(/\s+OR\s+/));
+    expect(predicates.map((clauses) => clauses.length)).toEqual([6, 48, 2, 10]);
+    const raises = [...guard(source).matchAll(diagnosticRaises)].map((match) => match[0]);
+    for (const [index, clauses] of predicates.entries()) {
+      const diagnostic = raises[index]!.replace(/\s+/g, " ");
+      let offset = 0;
+      for (const clause of clauses) {
+        const expected = clause.replace(/IS DISTINCT FROM|IS NOT NULL|IS NULL/g, (operator) =>
+          operator === "IS DISTINCT FROM" ? "IS NOT DISTINCT FROM" :
+            operator === "IS NULL" ? "IS NOT NULL" : "IS NULL").replace(/\s+/g, " ");
+        const position = diagnostic.indexOf(expected, offset);
+        expect(position, expected).toBeGreaterThanOrEqual(offset);
+        offset = position + expected.length;
+      }
+    }
+    const acl = raises[2]!;
+    expect(acl).toContain("v_proc.proacl IS NULL");
+    expect(acl).toContain("pg_catalog.aclexplode(v_proc.proacl) acl WHERE acl.grantee = v_anon");
+    expect(acl).toContain("pg_catalog.aclexplode(v_proc.proacl) acl WHERE acl.grantee = 0");
+    for (const condition of ["acl.grantor = v_postgres", "acl.privilege_type = 'EXECUTE'", "NOT acl.is_grantable"]) {
+      expect(acl).toContain(`bool_and(${condition})`);
+    }
+  });
+
   it("pins the full 0144 definition and changes exactly one identity expression", () => {
     const original = definition(baseline);
     expect(hash(original)).toBe("7a55fb642551dfa62237ab25c4def383c177094d0ccd7fbb02edd83d38a198b3");
