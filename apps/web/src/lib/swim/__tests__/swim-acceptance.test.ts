@@ -468,6 +468,38 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     expect(projectAuthPrivilegeOutput(text({ ...observation, phase: "rolled-back" }))).toEqual(invalid);
   });
 
+  const levelObservation = (level: 146 | 147 | 148) => ({
+    ...observation,
+    helper: level === 146 ? ["absent"]
+      : ["present", true, true, true, false, level === 148, false, false, level === 147, level === 148],
+    shared: {
+      ...observation.shared, original: level !== 148, amended: level === 148,
+      originalAcl: level !== 148, amendedAcl: level === 148, anon: level !== 148, public: level !== 148,
+    },
+    functions: SWIM_FUNCTION_CONTRACTS.map(([name]) => [name, true, level === 146, level !== 146]),
+  });
+
+  it.each(Object.keys(observation.shared) as (keyof typeof observation.shared)[])(
+    "DC-SW8 rejects flipped shared %s evidence at every closed level", (key) => {
+      for (const level of [146, 147, 148] as const) {
+        const input = levelObservation(level);
+        expect(checkAuthBoundary(projectAuthPrivilegeOutput(text(input)), level)).toBe("matched");
+        input.shared[key] = !input.shared[key];
+        const evidence = projectAuthPrivilegeOutput(text(input));
+        expect(evidence.status).toBe("available");
+        expect(checkAuthBoundary(evidence, level)).toBe("mismatched");
+      }
+    },
+  );
+
+  it.each([[148, 147], [147, 148]] as const)(
+    "DC-SW8 rejects level %i evidence against expected %i", (actual, expected) => {
+      const evidence = projectAuthPrivilegeOutput(text(levelObservation(actual)));
+      expect(checkAuthBoundary(evidence, actual)).toBe("matched");
+      expect(checkAuthBoundary(evidence, expected)).toBe("mismatched");
+    },
+  );
+
   it("rejects each forbidden caller, missing permitted caller, role flag and service capability", () => {
     expect(checkAuthBoundary(projectAuthPrivilegeOutput(text()), 148)).toBe("matched");
     for (let index = 1; index < observation.helper.length; index++) {
