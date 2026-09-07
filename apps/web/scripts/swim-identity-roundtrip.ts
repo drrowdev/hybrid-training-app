@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MIN_RPC_CASES, type readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
 import { acceptanceAssert, type AcceptanceReporting } from "./swim-acceptance-reporting";
 import {
   checkAuthBoundary, enforceAuthBoundaryAfterRpc, observeAuthPrivileges, observeSwimFunctionAcls,
@@ -11,6 +12,22 @@ export const IDENTITY_FILES = {
 } as const;
 export const IDENTITY_PHASES = ["initial-up", "rolled-back", "restored-up"] as const;
 export const SERVICE_CASES = ["missing", "subject-a", "subject-b"] as const;
+export const IDENTITY_HELPER_RPC_CASES = [
+  "DC-SW8 denies anonymous identity-helper invocation",
+  "DC-SW8 denies authenticated identity-helper invocation",
+  "DC-SW8 permits service identity-helper invocation with a UUID-or-null result",
+] as const;
+
+export function requireIdentityHelperRpcCases(ledger: Pick<ReturnType<typeof readSwimRpcReport>, "suites">): void {
+  const cases = ledger.suites.flatMap((suite) => suite.cases);
+  const prefix = "ADR0079 dedicated authenticated swim RPCs (DC-SW6/DC-SW7) ";
+  acceptanceAssert(cases.length >= MIN_RPC_CASES + IDENTITY_HELPER_RPC_CASES.length
+    && IDENTITY_HELPER_RPC_CASES.every((name) => {
+      const matches = cases.filter((test) => test.name === prefix + name);
+      return matches.length === 1 && matches[0]!.status === "passed";
+    }), "Swimming identity helper RPC cases missing or not passed");
+}
+
 type Phase = typeof IDENTITY_PHASES[number];
 type ServiceCase = typeof SERVICE_CASES[number];
 type Outcome = "matched" | "mismatched" | "unavailable" | "not-attempted";
@@ -90,7 +107,7 @@ BEGIN
   END;
   RAISE EXCEPTION USING ERRCODE = 'XX000', MESSAGE = 'Safety unexpectedly returned';`
     : `PERFORM public.swim_assert_start_safety('${JSON.stringify(prescription)}'::jsonb);`}
-END
+END;
 $probe$;
 SELECT '[["case","${testCase}"],["identity",true],["today",true],["safety",true],["helper",${phase === "rolled-back" ? '"absent"' : "true"}]]';
 ROLLBACK;

@@ -31,7 +31,7 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-07 (identity integration Slice A; no database/workflow execution)
+**Last updated:** 2026-09-07 (identity integration Slice B; no database/workflow execution)
 
 ### PR802 identity integration — Slice A
 
@@ -57,10 +57,34 @@ These synthetic/source checks do **not** prove the repair works. Last actual
 tested `1af9874f7e88700a2b8687beadffd79b28818d59`: **2 passed, 28 auth-schema
 failures**. The original 30 RPC tests were neither changed nor executed here.
 
-Slice B (temporary down/up and direct service caller proof, additive HTTP cases)
-and real 147-migration/native-RLS/RPC/service/rollback proof remain pending.
-No Slice-A-only manual run: the complete integrated proof bundle needs exact-head
-review first. No database, Docker, Supabase, workflow execution or merge occurred.
+### PR802 identity integration — Slice B
+
+[Slice B](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5566424679)
+is implemented on accepted Slice A `45533beb`. The runtime checkpoint is
+`39519785`. The runner uses the same owned private postgres channel for one exact,
+source-verified 0146 down/up round trip after normal 147 migrations and seed.
+DDL uses unchanged whole-file `psql -c`, command-local 30s statement/5s lock
+timeouts and the existing deadline. No journal bookkeeping or migration rerun.
+
+Initial-up, rolled-back/before-reapply and restored-up evidence includes the
+accepted boundary, private normalized ten-function ACL comparison and three
+isolated service-role contexts per phase. Both invokers use native same-request
+identity/date checks; missing-identity safety accepts only the authored domain
+exception. These synthetic callers are not JWT/RLS or writer-repair proof.
+`manifest.identityProof` exposes only closed outcomes/counts, not private values.
+DDL/consistency failure stops before RPC; ordinary failed proof is enforced only
+after RPC once restored, preserving the RPC failure as primary.
+
+The unchanged original 30 HTTP cases have three additive helper-access cases.
+The existing canonical gate remains intact; an additional check requires all
+three named cases and at least 33 total cases. A 404 is non-invocability only,
+not ACL proof. Focused helper/config/report tests, typecheck and scoped lint are
+static validation only; the HTTP suite was not executed.
+
+Real 147-migration/native-RLS/RPC/service/down-up proof remains pending. The last
+actual run above remains **2 passed / 28 auth-schema failures**. Independent
+exact-integrated-head review precedes the coordinator's one temporary run.
+No database, Docker, Supabase, workflow execution or merge occurred.
 Full standalone DC-SW1–SW9 acceptance still precedes combined swimming; Garmin
 also remains later.
 
