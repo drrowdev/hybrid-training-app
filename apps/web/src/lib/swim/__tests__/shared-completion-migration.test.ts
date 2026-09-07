@@ -28,7 +28,28 @@ function guard(source: string) {
   return source.slice(source.indexOf("DO $migration$"), source.indexOf("    IF v_phase = 0 THEN"));
 }
 
+const diagnosticRaises = /RAISE EXCEPTION USING MESSAGE = 'SCID\/'[\s\S]*?;/g;
+const originalRaise = "RAISE EXCEPTION 'Shared completion identity contract mismatch.';";
+const withoutDiagnostics = (source: string) => source.replace(diagnosticRaises, originalRaise);
+
 describe("shared completion identity migration (DC-SW8)", () => {
+  it.each([
+    ["up", up, "b5ab2cbd0c4b67ea7984a0bdcdd1ee5526bd068dc2f424dfb37f3e619c871fde"],
+    ["down", down, "eb4a5a102b305bc3554387e3fe13d317c99a51c0e5cd0413438fa349b6685f38"],
+  ])("%s preserves every byte outside the four RAISE expressions from 730ecff", (_, source, expected) => {
+    expect(hash(withoutDiagnostics(source))).toBe(expected);
+    const raises = [...guard(source).matchAll(diagnosticRaises)].map((match) => match[0]);
+    expect(raises).toHaveLength(4);
+    for (const [index, name] of ["roles", "attributes", "acl", "privileges"].entries()) {
+      expect(raises[index]).toContain(`'SCID/' || '1/${name}/'`);
+      expect(raises[index]).toContain("CASE WHEN v_phase = 1 THEN 'post' ELSE 'pre' END");
+      expect(raises[index]).toContain("CASE WHEN bit THEN 't' WHEN NOT bit THEN 'f' ELSE 'u' END");
+      expect(raises[index]).toContain("WITH ORDINALITY AS evidence(bit, position)");
+      expect(raises[index]).not.toMatch(/ERRCODE|SQLSTATE|format\(|EXECUTE\s|v_\w+\.\w+::text/i);
+    }
+    expect(source).not.toMatch(/SCID\/1\/(?:roles|attributes|acl|privileges)\/(?:pre|post)\/\w+\/[tfu]+/);
+  });
+
   it("pins the full 0144 definition and changes exactly one identity expression", () => {
     const original = definition(baseline);
     expect(hash(original)).toBe("7a55fb642551dfa62237ab25c4def383c177094d0ccd7fbb02edd83d38a198b3");
@@ -105,7 +126,7 @@ describe("shared completion identity migration (DC-SW8)", () => {
     for (const field of ["proargdefaults", "proallargtypes", "proargmodes", "proargnames"]) {
       expect(checks).toContain(`v_helper.${field} IS NOT NULL`);
     }
-    expect(checks.match(/RAISE EXCEPTION '[^']+';/g)).toEqual(
+    expect(withoutDiagnostics(checks).match(/RAISE EXCEPTION '[^']+';/g)).toEqual(
       Array(4).fill("RAISE EXCEPTION 'Shared completion identity contract mismatch.';"),
     );
   });
@@ -120,7 +141,7 @@ describe("shared completion identity migration (DC-SW8)", () => {
       + "        ELSE ARRAY[v_postgres, v_service, v_writer]\n"
       + "          || CASE WHEN v_amended THEN ARRAY[v_authenticated] ELSE ARRAY[]::oid[] END END;",
     );
-    expect(checks.match(/COALESCE\(v_proc\.proacl, pg_catalog\.acldefault\('f', v_proc\.proowner\)\)/g)).toHaveLength(2);
+    expect(withoutDiagnostics(checks).match(/COALESCE\(v_proc\.proacl, pg_catalog\.acldefault\('f', v_proc\.proowner\)\)/g)).toHaveLength(2);
     expect(checks).toContain("array_agg(acl.grantee ORDER BY acl.grantee)");
     expect(checks).toContain("IS DISTINCT FROM (SELECT array_agg(grantee ORDER BY grantee) FROM unnest(v_expected) grantee)");
     expect(checks).toContain("bool_and(acl.grantor = v_postgres AND acl.privilege_type = 'EXECUTE' AND NOT acl.is_grantable)");

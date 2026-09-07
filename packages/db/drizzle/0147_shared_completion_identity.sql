@@ -17,7 +17,14 @@ BEGIN
   IF current_user IS DISTINCT FROM 'postgres'
      OR v_postgres IS NULL OR v_authenticated IS NULL OR v_service IS NULL
      OR v_writer IS NULL OR v_anon IS NULL THEN
-    RAISE EXCEPTION 'Shared completion identity contract mismatch.';
+    RAISE EXCEPTION USING MESSAGE = 'SCID/' || '1/roles/'
+      || CASE WHEN v_phase = 1 THEN 'post' ELSE 'pre' END || '/roles/'
+      || (SELECT string_agg(CASE WHEN bit THEN 't' WHEN NOT bit THEN 'f' ELSE 'u' END, '' ORDER BY position)
+          FROM unnest(ARRAY[
+            current_user IS NOT DISTINCT FROM 'postgres',
+            v_postgres IS NOT NULL, v_authenticated IS NOT NULL, v_service IS NOT NULL,
+            v_writer IS NOT NULL, v_anon IS NOT NULL
+          ]) WITH ORDINALITY AS evidence(bit, position));
   END IF;
 
   -- Check the exact prior state before mutation and the exact amended state afterward.
@@ -76,7 +83,59 @@ BEGIN
        OR v_helper.provariadic IS DISTINCT FROM 0::oid
        OR v_helper.prosupport IS DISTINCT FROM 0::pg_catalog.regproc
        OR v_helper.probin IS NOT NULL OR v_helper.prosqlbody IS NOT NULL THEN
-      RAISE EXCEPTION 'Shared completion identity contract mismatch.';
+      RAISE EXCEPTION USING MESSAGE = 'SCID/' || '1/attributes/'
+        || CASE WHEN v_phase = 1 THEN 'post' ELSE 'pre' END || '/both/'
+        || (SELECT string_agg(CASE WHEN bit THEN 't' WHEN NOT bit THEN 'f' ELSE 'u' END, '' ORDER BY position)
+            FROM unnest(ARRAY[
+              v_shared.oid IS NOT NULL, v_helper.oid IS NOT NULL,
+              pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(v_shared.prosrc, 'UTF8')), 'hex')
+                IS NOT DISTINCT FROM CASE WHEN v_amended
+                  THEN 'cca40717ed9133607ea0706838ed999beea84af6a90336c66f61abe8b1690b3d'
+                  ELSE '7d123bec0bbca374ea5ddad133640d86ff46ee3e36d6b00611a9d8d1d76b4a4d' END,
+              v_shared.proowner IS NOT DISTINCT FROM v_postgres,
+              v_shared.prolang IS NOT DISTINCT FROM (SELECT oid FROM pg_catalog.pg_language WHERE lanname = 'plpgsql'),
+              v_shared.prokind IS NOT DISTINCT FROM 'f',
+              v_shared.provolatile IS NOT DISTINCT FROM 'v',
+              v_shared.prosecdef IS NOT DISTINCT FROM false,
+              v_shared.proleakproof IS NOT DISTINCT FROM false,
+              v_shared.proisstrict IS NOT DISTINCT FROM false,
+              v_shared.proparallel IS NOT DISTINCT FROM 'u',
+              v_shared.proconfig IS NOT DISTINCT FROM ARRAY['search_path=public']::text[],
+              v_shared.pronargs IS NOT DISTINCT FROM 3::smallint,
+              v_shared.pronargdefaults IS NOT DISTINCT FROM 1::smallint,
+              pg_catalog.pg_get_expr(v_shared.proargdefaults, 0) IS NOT DISTINCT FROM 'NULL::uuid',
+              v_shared.proargtypes IS NOT DISTINCT FROM '2950 25 2950'::pg_catalog.oidvector,
+              v_shared.proallargtypes IS NOT DISTINCT FROM ARRAY[2950,25,2950,2950,16]::oid[],
+              v_shared.proargmodes IS NOT DISTINCT FROM ARRAY['i','i','i','t','t']::"char"[],
+              v_shared.proargnames IS NOT DISTINCT FROM ARRAY['p_session_id','p_notes','p_completion_entry_id','user_id','transitioned']::text[],
+              v_shared.prorettype IS NOT DISTINCT FROM 'record'::pg_catalog.regtype,
+              v_shared.proretset IS NOT DISTINCT FROM true,
+              v_shared.provariadic IS NOT DISTINCT FROM 0::oid,
+              v_shared.prosupport IS NOT DISTINCT FROM 0::pg_catalog.regproc,
+              v_shared.probin IS NULL, v_shared.prosqlbody IS NULL,
+              pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(v_helper.prosrc, 'UTF8')), 'hex')
+                IS NOT DISTINCT FROM 'c628b78ce1d2a3b15ddbaf7b0a5838fa26c925d332103e53f34ba73b9b227604',
+              v_helper.proowner IS NOT DISTINCT FROM v_postgres,
+              v_helper.prolang IS NOT DISTINCT FROM (SELECT oid FROM pg_catalog.pg_language WHERE lanname = 'sql'),
+              v_helper.prokind IS NOT DISTINCT FROM 'f',
+              v_helper.provolatile IS NOT DISTINCT FROM 's',
+              v_helper.prosecdef IS NOT DISTINCT FROM true,
+              v_helper.proleakproof IS NOT DISTINCT FROM false,
+              v_helper.proisstrict IS NOT DISTINCT FROM false,
+              v_helper.proparallel IS NOT DISTINCT FROM 'u',
+              v_helper.proconfig IS NOT DISTINCT FROM ARRAY['search_path=pg_catalog']::text[],
+              v_helper.pronargs IS NOT DISTINCT FROM 0::smallint,
+              v_helper.pronargdefaults IS NOT DISTINCT FROM 0::smallint,
+              v_helper.proargdefaults IS NULL,
+              v_helper.proargtypes IS NOT DISTINCT FROM ''::pg_catalog.oidvector,
+              v_helper.proallargtypes IS NULL, v_helper.proargmodes IS NULL,
+              v_helper.proargnames IS NULL,
+              v_helper.prorettype IS NOT DISTINCT FROM 'uuid'::pg_catalog.regtype,
+              v_helper.proretset IS NOT DISTINCT FROM false,
+              v_helper.provariadic IS NOT DISTINCT FROM 0::oid,
+              v_helper.prosupport IS NOT DISTINCT FROM 0::pg_catalog.regproc,
+              v_helper.probin IS NULL, v_helper.prosqlbody IS NULL
+            ]) WITH ORDINALITY AS evidence(bit, position));
     END IF;
 
     FOR v_proc IN SELECT * FROM pg_catalog.pg_proc WHERE oid IN (v_shared.oid, v_helper.oid) LOOP
@@ -91,7 +150,27 @@ BEGIN
          OR (SELECT bool_and(acl.grantor = v_postgres AND acl.privilege_type = 'EXECUTE' AND NOT acl.is_grantable)
             FROM pg_catalog.aclexplode(COALESCE(v_proc.proacl, pg_catalog.acldefault('f', v_proc.proowner))) acl)
           IS DISTINCT FROM true THEN
-        RAISE EXCEPTION 'Shared completion identity contract mismatch.';
+        RAISE EXCEPTION USING MESSAGE = 'SCID/' || '1/acl/'
+          || CASE WHEN v_phase = 1 THEN 'post' ELSE 'pre' END || '/'
+          || CASE WHEN v_proc.oid = v_shared.oid THEN 'shared' ELSE 'helper' END || '/'
+          || (SELECT string_agg(CASE WHEN bit THEN 't' WHEN NOT bit THEN 'f' ELSE 'u' END, '' ORDER BY position)
+              FROM unnest(ARRAY[
+                (SELECT array_agg(acl.grantee ORDER BY acl.grantee)
+                   FROM pg_catalog.aclexplode(COALESCE(v_proc.proacl, pg_catalog.acldefault('f', v_proc.proowner))) acl)
+                  IS NOT DISTINCT FROM (SELECT array_agg(grantee ORDER BY grantee) FROM unnest(v_expected) grantee),
+                (SELECT bool_and(acl.grantor = v_postgres AND acl.privilege_type = 'EXECUTE' AND NOT acl.is_grantable)
+                   FROM pg_catalog.aclexplode(COALESCE(v_proc.proacl, pg_catalog.acldefault('f', v_proc.proowner))) acl)
+                  IS NOT DISTINCT FROM true,
+                v_proc.proacl IS NULL,
+                EXISTS (SELECT 1 FROM pg_catalog.aclexplode(v_proc.proacl) acl WHERE acl.grantee = v_anon),
+                EXISTS (SELECT 1 FROM pg_catalog.aclexplode(v_proc.proacl) acl WHERE acl.grantee = 0),
+                (SELECT bool_and(acl.grantor = v_postgres)
+                   FROM pg_catalog.aclexplode(COALESCE(v_proc.proacl, pg_catalog.acldefault('f', v_proc.proowner))) acl),
+                (SELECT bool_and(acl.privilege_type = 'EXECUTE')
+                   FROM pg_catalog.aclexplode(COALESCE(v_proc.proacl, pg_catalog.acldefault('f', v_proc.proowner))) acl),
+                (SELECT bool_and(NOT acl.is_grantable)
+                   FROM pg_catalog.aclexplode(COALESCE(v_proc.proacl, pg_catalog.acldefault('f', v_proc.proowner))) acl)
+              ]) WITH ORDINALITY AS evidence(bit, position));
       END IF;
     END LOOP;
 
@@ -105,7 +184,21 @@ BEGIN
        OR pg_catalog.has_function_privilege(v_writer, v_helper.oid, 'EXECUTE') IS DISTINCT FROM true
        OR pg_catalog.has_function_privilege(v_postgres, v_helper.oid, 'EXECUTE') IS DISTINCT FROM true
        OR pg_catalog.has_function_privilege(v_anon, v_helper.oid, 'EXECUTE') IS DISTINCT FROM false THEN
-      RAISE EXCEPTION 'Shared completion identity contract mismatch.';
+      RAISE EXCEPTION USING MESSAGE = 'SCID/' || '1/privileges/'
+        || CASE WHEN v_phase = 1 THEN 'post' ELSE 'pre' END || '/both/'
+        || (SELECT string_agg(CASE WHEN bit THEN 't' WHEN NOT bit THEN 'f' ELSE 'u' END, '' ORDER BY position)
+            FROM unnest(ARRAY[
+              pg_catalog.has_function_privilege(v_authenticated, v_shared.oid, 'EXECUTE') IS NOT DISTINCT FROM true,
+              pg_catalog.has_function_privilege(v_service, v_shared.oid, 'EXECUTE') IS NOT DISTINCT FROM true,
+              pg_catalog.has_function_privilege(v_writer, v_shared.oid, 'EXECUTE') IS NOT DISTINCT FROM true,
+              pg_catalog.has_function_privilege(v_postgres, v_shared.oid, 'EXECUTE') IS NOT DISTINCT FROM true,
+              pg_catalog.has_function_privilege(v_anon, v_shared.oid, 'EXECUTE') IS NOT DISTINCT FROM (NOT v_amended),
+              pg_catalog.has_function_privilege(v_authenticated, v_helper.oid, 'EXECUTE') IS NOT DISTINCT FROM v_amended,
+              pg_catalog.has_function_privilege(v_service, v_helper.oid, 'EXECUTE') IS NOT DISTINCT FROM true,
+              pg_catalog.has_function_privilege(v_writer, v_helper.oid, 'EXECUTE') IS NOT DISTINCT FROM true,
+              pg_catalog.has_function_privilege(v_postgres, v_helper.oid, 'EXECUTE') IS NOT DISTINCT FROM true,
+              pg_catalog.has_function_privilege(v_anon, v_helper.oid, 'EXECUTE') IS NOT DISTINCT FROM false
+            ]) WITH ORDINALITY AS evidence(bit, position));
     END IF;
 
     IF v_phase = 0 THEN
