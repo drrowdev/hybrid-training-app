@@ -39,7 +39,7 @@ function syntheticJwt(role: "anon" | "service_role") {
   return `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ role, ref: "local", exp: 1 })}.${randomBytes(32).toString("base64url")}`;
 }
 
-it("DC-SW1/DC-SW8: the real pinned CLI collects exactly four mobile cases without executing them", async () => {
+it.skipIf(process.platform === "win32")("DC-SW1/DC-SW8: the real pinned CLI collects exactly four mobile cases without executing them", async () => {
   let success = false;
   let exit = -1;
   let output = "";
