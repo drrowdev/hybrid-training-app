@@ -141,7 +141,7 @@ BEGIN
     FOR v_proc IN SELECT * FROM pg_catalog.pg_proc WHERE oid IN (v_shared.oid, v_helper.oid) LOOP
       v_expected := CASE WHEN v_proc.oid = v_shared.oid
         THEN ARRAY[v_postgres, v_authenticated, v_service, v_writer]
-          || CASE WHEN v_amended THEN ARRAY[]::oid[] ELSE ARRAY[0]::oid[] END
+          || CASE WHEN v_amended THEN ARRAY[]::oid[] ELSE ARRAY[0::oid, v_anon]::oid[] END
         ELSE ARRAY[v_postgres, v_service, v_writer]
           || CASE WHEN v_amended THEN ARRAY[v_authenticated] ELSE ARRAY[]::oid[] END END;
       IF (SELECT array_agg(acl.grantee ORDER BY acl.grantee)
@@ -320,7 +320,7 @@ END;
 $$;
 
       GRANT EXECUTE ON FUNCTION public.swim_request_user_id() TO authenticated;
-      REVOKE EXECUTE ON FUNCTION public.complete_training_session_with_transition(uuid, text, uuid) FROM PUBLIC;
+      REVOKE EXECUTE ON FUNCTION public.complete_training_session_with_transition(uuid, text, uuid) FROM PUBLIC, anon;
     END IF;
   END LOOP;
 END $migration$;

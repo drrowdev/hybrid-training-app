@@ -234,7 +234,7 @@ SELECT pg_catalog.json_build_array(
         SELECT COALESCE(
           array_agg(acl.grantee ORDER BY acl.grantee) = (
             SELECT array_agg(grantee ORDER BY grantee)
-            FROM unnest(ARRAY[refs.postgres, refs.authenticated, refs.service, refs.swim_writer${amended ? "" : ", 0::oid"}]) grantee)
+            FROM unnest(ARRAY[refs.postgres, refs.authenticated, refs.service, refs.swim_writer${amended ? "" : ", 0::oid, refs.anon"}]) grantee)
           AND bool_and(acl.grantor = refs.postgres AND acl.privilege_type = 'EXECUTE' AND NOT acl.is_grantable), false)
         FROM pg_catalog.aclexplode(COALESCE(shared.proacl, pg_catalog.acldefault('f', shared.proowner))) acl
       ))`).join(",\n")},
