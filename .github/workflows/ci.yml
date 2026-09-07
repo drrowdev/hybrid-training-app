@@ -385,7 +385,7 @@ jobs:
           pnpm --filter @hta/web test:rpc-smoke
 
   swim-acceptance:
-    name: disposable swim RPC acceptance
+    name: disposable swim RPC and browser acceptance
     if: github.event_name == 'workflow_dispatch' && inputs.swim_acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -422,6 +422,29 @@ jobs:
 
       - name: Install
         run: pnpm install --frozen-lockfile
+
+      - name: Create owned browser cache
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ "$GITHUB_JOB" == "swim-acceptance" ]]
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ && "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          [[ -z "${PLAYWRIGHT_BROWSERS_PATH+x}" ]]
+          temp="$(realpath -e "$RUNNER_TEMP")"
+          checkout="$(realpath -e "$GITHUB_WORKSPACE")"
+          cache="$temp/swim-browser-cache-swim-acceptance-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          [[ "$cache" != "$checkout" && "$cache" != "$checkout/"* ]]
+          [[ ! -e "$cache" && ! -L "$cache" ]]
+          mkdir -m 700 -- "$cache"
+          printf 'PLAYWRIGHT_BROWSERS_PATH=%s\n' "$cache" >> "$GITHUB_ENV"
+
+      - name: Install Chromium system dependencies
+        timeout-minutes: 5
+        run: pnpm --filter @hta/web exec playwright install-deps chromium
+
+      - name: Install owned Chromium
+        timeout-minutes: 5
+        run: pnpm --filter @hta/web exec playwright install chromium
 
       - name: Run guarded reference acceptance
         run: pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts
