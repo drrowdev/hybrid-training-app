@@ -161,7 +161,8 @@ SELECT pg_catalog.json_build_array(
       OR refs.postgres IS NULL OR refs.swim_writer IS NULL OR refs.service IS NULL
       OR refs.anon IS NULL OR refs.authenticated IS NULL THEN NULL
     ELSE pg_catalog.json_build_array('present',
-      helper.proowner = refs.postgres AND helper.pronargs = 0
+      helper.proowner = refs.postgres AND helper.pronargs = 0 AND NOT helper.proretset
+        AND helper.proallargtypes IS NULL
         AND helper.prorettype = 'pg_catalog.uuid'::pg_catalog.regtype
         AND helper_lang.lanname = 'sql' AND helper.provolatile = 's'
         AND helper.prosecdef AND NOT helper.proleakproof
@@ -183,6 +184,8 @@ SELECT pg_catalog.json_build_array(
       SELECT CASE WHEN f.oid IS NULL OR l.oid IS NULL OR refs.swim_writer IS NULL THEN NULL
         ELSE pg_catalog.json_build_array('${name}',
           f.proowner = refs.swim_writer AND l.lanname = '${language}'
+          AND NOT f.proretset
+          AND f.prorettype = 'pg_catalog.${name === "swim_local_today" ? "date" : name === "swim_assert_start_safety" ? "void" : "jsonb"}'::pg_catalog.regtype
           AND f.provolatile = '${volatility}' AND f.prosecdef = ${definer}
           AND NOT f.proleakproof
           AND COALESCE(f.proconfig @> ARRAY['search_path=pg_catalog, public'${definer ? ", 'row_security=on'" : ""}]::text[]

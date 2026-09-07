@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { closeSync, lstatSync, mkdtempSync, readFileSync, rmSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,7 +17,8 @@ import {
 } from "../../../../scripts/swim-acceptance-reporting";
 import { MIN_RPC_CASES, RPC_SUITE, validateSwimRpcReport } from "./storage-rpc-report";
 import {
-  AUTH_PRIVILEGES_SQL, observeAuthPrivileges, projectAuthPrivilegeOutput,
+  AUTH_PRIVILEGES_SQL, SWIM_FUNCTION_CONTRACTS, checkAuthBoundary,
+  enforceAuthBoundaryAfterRpc, observeAuthPrivileges, projectAuthPrivilegeOutput,
 } from "../../../../scripts/swim-auth-privileges";
 
 const sha = "a".repeat(40);
@@ -91,6 +93,12 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     swimWriterBypassRls: false,
     swimCreatePlanSecurityDefiner: true,
     swimCreatePlanRowSecurity: "on",
+    serviceRoleAuthUsage: true,
+    serviceRoleAuthUidExecute: true,
+    serviceRoleLocalTodayExecute: true,
+    serviceRoleSafetyExecute: true,
+    helper: ["present", true, true, true, false, false, false, false],
+    functions: SWIM_FUNCTION_CONTRACTS.map(([name]) => [name, true, false, true]),
   };
   const text = (value: Record<string, unknown> = observation) => JSON.stringify(Object.entries(value));
   const invalid = { status: "unavailable", reason: "invalid-output" };
@@ -109,11 +117,13 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       "BEGIN READ ONLY", "SET LOCAL statement_timeout = '5s'", expect.stringMatching(/^WITH refs AS/), "ROLLBACK", "",
     ]);
     expect([...AUTH_PRIVILEGES_SQL.matchAll(/to_regrole\('([^']+)'\)/g)].map((m) => m[1]))
-      .toEqual(["postgres", "swim_writer", "supabase_admin"]);
+      .toEqual(["postgres", "swim_writer", "supabase_admin", "service_role", "anon", "authenticated"]);
     expect([...AUTH_PRIVILEGES_SQL.matchAll(/to_regnamespace\('([^']+)'\)/g)].map((m) => m[1]))
       .toEqual(["auth", "public"]);
     expect([...AUTH_PRIVILEGES_SQL.matchAll(/to_regprocedure\('([^']+)'\)/g)].map((m) => m[1]))
-      .toEqual(["auth.uid()", "public.swim_create_plan(date,date,jsonb,jsonb,jsonb)"]);
+      .toEqual(["auth.uid()", "public.swim_create_plan(date,date,jsonb,jsonb,jsonb)",
+        "public.swim_request_user_id()", "public.swim_local_today()", "public.swim_assert_start_safety(jsonb)",
+        ...SWIM_FUNCTION_CONTRACTS.map(([name, args]) => `public.${name}(${args})`)]);
     expect(AUTH_PRIVILEGES_SQL).toContain("uid.oid = refs.uid AND uid.prokind = 'f'");
     expect(AUTH_PRIVILEGES_SQL).toContain("plan.oid = refs.create_plan AND plan.prokind = 'f'");
     const predicates = [
@@ -134,17 +144,16 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       );
     }
     expect(AUTH_PRIVILEGES_SQL.match(/pg_catalog\.(?:has_schema_privilege|has_function_privilege|pg_has_role)\(/g))
-      .toHaveLength(predicates.length);
-    expect([...AUTH_PRIVILEGES_SQL.matchAll(/json_build_array\('([^']+)'/g)].map((m) => m[1]))
+      .toHaveLength(predicates.length + 8);
+    expect([...AUTH_PRIVILEGES_SQL.matchAll(/json_build_array\('([^']+)'/g)].map((m) => m[1])
+      .filter((name) => !["absent", "present", ...SWIM_FUNCTION_CONTRACTS.map(([name]) => name)].includes(name)))
       .toEqual(Object.keys(observation));
-    expect([...AUTH_PRIVILEGES_SQL.matchAll(/(?:FROM|JOIN) (pg_catalog\.\w+)/g)].map((m) => m[1]))
-      .toEqual([
-        "pg_catalog.pg_roles", "pg_catalog.pg_roles", "pg_catalog.pg_roles",
-        "pg_catalog.pg_namespace", "pg_catalog.pg_namespace", "pg_catalog.pg_proc", "pg_catalog.pg_proc",
-        "pg_catalog.pg_roles", "pg_catalog.pg_roles", "pg_catalog.pg_roles", "pg_catalog.unnest",
-      ]);
-    expect(AUTH_PRIVILEGES_SQL).not.toMatch(/\b(?:SET ROLE|GRANT\s+(?:USAGE|EXECUTE)|CREATE|ALTER|INSERT|UPDATE|DELETE|prosrc|proacl|nspacl)\b/i);
-    expect(AUTH_PRIVILEGES_SQL).not.toMatch(/(?:SELECT|PERFORM)\s+(?:auth|public)\./i);
+    expect(new Set([...AUTH_PRIVILEGES_SQL.matchAll(/(?:FROM|JOIN) (pg_catalog\.\w+)/g)].map((m) => m[1])))
+      .toEqual(new Set(["pg_catalog.pg_roles", "pg_catalog.pg_namespace", "pg_catalog.pg_proc",
+        "pg_catalog.pg_language", "pg_catalog.unnest", "pg_catalog.aclexplode"]));
+    expect(AUTH_PRIVILEGES_SQL).not.toMatch(/\b(?:SET ROLE|GRANT\s+(?:USAGE|EXECUTE)|CREATE|ALTER|INSERT|UPDATE|DELETE|nspacl)\b/i);
+    expect(AUTH_PRIVILEGES_SQL.replace("' SELECT auth.uid() '", "''"))
+      .not.toMatch(/(?:SELECT|PERFORM)\s+(?:auth|public)\./i);
     expect(AUTH_PRIVILEGES_SQL).not.toContain("${");
   });
 
@@ -230,7 +239,8 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       "exec", networkId, "psql", "-XqAt", "-U", "postgres", "-d", "postgres",
       "-v", "ON_ERROR_STOP=1", "-c", AUTH_PRIVILEGES_SQL,
     ], { capture: true, allowFailure: true, timeout: 10_000 }]]);
-    expect(source).toMatch(/manifest\.catalog = [^\n]+;\s+requireUnchanged\(\);\s+}\);\s+manifest\.authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+await stage\("complete authenticated RPC file and positive ledger"/);
+    expect(source).toMatch(/manifest\.catalog = [^\n]+;\s+requireUnchanged\(\);\s+}\);\s+const authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+manifest\.authPrivileges = authPrivileges;\s+const authBoundary = checkAuthBoundary\(authPrivileges, "up"\);\s+manifest\.authBoundary = authBoundary;\s+await enforceAuthBoundaryAfterRpc\(authBoundary, \(\) => stage\("complete authenticated RPC file and positive ledger"/);
+    expect(source).toContain("requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);\n    }), reporting);");
     expect(source.match(/await observeAuthPrivileges\(/g)).toHaveLength(1);
     expect(source).toContain("Math.min(options.timeout ?? 60_000, deadline - Date.now())");
     expect(source).toContain('stdio: ["ignore", options.capture ? "pipe" : fd, fd]');
@@ -282,14 +292,21 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
           const cleanup = vi.fn(async () => {
             if (!cleaned) reporting.recordFailure("cleanup", new Error(unsafe), true);
           });
-          try { await reporting.stage("RPC", rpc, () => {}); } catch { /* original RPC failure */ }
+          try {
+            await enforceAuthBoundaryAfterRpc(checkAuthBoundary(manifest.authPrivileges, "up"),
+              () => reporting.stage("RPC", rpc, () => {}), reporting);
+          } catch { /* RPC remains primary; boundary alone also fails acceptance. */ }
           finally { await cleanup(); }
           expect(rpc).toHaveBeenCalledTimes(1);
           expect(cleanup).toHaveBeenCalledTimes(1);
           expect(canonical.suites[0]?.cases).toHaveLength(MIN_RPC_CASES);
-          expect(reporting.failures.primary?.stage).toBe(rpcOutcome === "passed" ? undefined : "RPC");
-          expect(reporting.failures.secondary).toEqual([]);
-          expect(outcome(reporting.failures.primary?.stage, cleaned).success).toBe(rpcOutcome === "passed" && cleaned);
+          const boundaryFailed = evidence !== "available";
+          expect(reporting.failures.primary?.stage).toBe(rpcOutcome !== "passed" ? "RPC"
+            : boundaryFailed ? "swimming identity boundary" : undefined);
+          expect(reporting.failures.secondary.map((failure) => failure.stage))
+            .toEqual(rpcOutcome !== "passed" && boundaryFailed ? ["swimming identity boundary"] : []);
+          expect(outcome(reporting.failures.primary?.stage, cleaned).success)
+            .toBe(rpcOutcome === "passed" && !boundaryFailed && cleaned);
           const output = formatAcceptanceSummary({ manifest, failures: reporting.failures });
           expect(output).not.toContain("private");
           expect(output).not.toContain('"log"');
@@ -320,6 +337,202 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     } finally {
       stdout.mockRestore();
       rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("requires all 147 journal entries and SQL files and records 147 without filtering out 0146", () => {
+    expect(source).toContain("journal.entries.length === 147");
+    expect(source).toContain('sourceFiles.filter((f) => /^packages\\/db\\/drizzle\\/[^/]+\\.sql$/.test(f)).length === 147');
+    expect(source).toContain("manifest.migrationCount = 147;");
+    const journal = JSON.parse(readFileSync(new URL(
+      "../../../../../../packages/db/drizzle/meta/_journal.json", import.meta.url,
+    ), "utf8")) as { entries: { tag: string }[] };
+    expect(journal.entries).toHaveLength(147);
+    expect(journal.entries.at(-1)?.tag).toBe("0146_swim_request_identity");
+  });
+
+  it("pins all ten exact original/up bodies and distinct invoker/definer attributes to reviewed source", () => {
+    for (const [file, bodyIndex] of [
+      ["0145_standalone_pool_swimming.sql", 5], ["0146_swim_request_identity.sql", 6],
+    ] as const) {
+      const sql = readFileSync(new URL(`../../../../../../packages/db/drizzle/${file}`, import.meta.url), "utf8");
+      for (const contract of SWIM_FUNCTION_CONTRACTS) {
+        const [name, args, language, volatility, definer] = contract;
+        const definition = sql.match(new RegExp(
+          `CREATE (?:OR REPLACE )?FUNCTION public\\.${name}\\((.*?)\\)(.*?)AS \\$\\$(.*?)\\$\\$;`, "s",
+        ));
+        expect(definition, name).not.toBeNull();
+        expect(createHash("md5").update(definition![3]).digest("hex")).toBe(contract[bodyIndex]);
+        expect(definition![2]).toContain(`LANGUAGE ${language} ${volatility === "s" ? "STABLE" : "VOLATILE"}`);
+        expect(definition![2]).toContain(`SECURITY ${definer ? "DEFINER" : "INVOKER"}`);
+        const returnType = name === "swim_local_today" ? "date" : name === "swim_assert_start_safety" ? "void" : "jsonb";
+        expect(definition![2]).toContain(`RETURNS ${returnType}`);
+        expect(AUTH_PRIVILEGES_SQL).toContain(`f.prorettype = 'pg_catalog.${returnType}'::pg_catalog.regtype`);
+        expect(definition![2]).toContain("SET search_path = pg_catalog, public");
+        expect(definition![2].includes("SET row_security = on")).toBe(definer);
+        expect(AUTH_PRIVILEGES_SQL).toContain(`to_regprocedure('public.${name}(${args})')`);
+        expect(AUTH_PRIVILEGES_SQL).toContain(`f.provolatile = '${volatility}' AND f.prosecdef = ${definer}`);
+      }
+    }
+    for (const fragment of [
+      "f.proowner = refs.swim_writer AND l.lanname",
+      "AND NOT f.proleakproof",
+      "AND NOT f.proretset",
+      "f.proconfig @> ARRAY['search_path=pg_catalog, public', 'row_security=on']",
+      "f.proconfig <@ ARRAY['search_path=pg_catalog, public', 'row_security=on']",
+      "pg_catalog.cardinality(f.proconfig) = 2",
+      "f.proconfig @> ARRAY['search_path=pg_catalog, public']",
+      "f.proconfig <@ ARRAY['search_path=pg_catalog, public']",
+      "pg_catalog.cardinality(f.proconfig) = 1",
+    ]) expect(AUTH_PRIVILEGES_SQL).toContain(fragment);
+  });
+
+  it("checks the exact private helper contract and treats default NULL ACL as unsafe, not absent", () => {
+    for (const fragment of [
+      "WHEN helper_count.count = 0 THEN pg_catalog.json_build_array('absent')",
+      "WHEN helper_count.count <> 1 OR helper.oid IS NULL OR helper_lang.oid IS NULL",
+      "helper.proowner = refs.postgres AND helper.pronargs = 0 AND NOT helper.proretset",
+      "AND helper.proallargtypes IS NULL",
+      "helper.prorettype = 'pg_catalog.uuid'::pg_catalog.regtype",
+      "helper_lang.lanname = 'sql' AND helper.provolatile = 's'",
+      "helper.prosecdef AND NOT helper.proleakproof",
+      "helper.proconfig = ARRAY['search_path=pg_catalog']::text[]",
+      "helper.prosrc = ' SELECT auth.uid() '",
+      "acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'",
+      "acl.grantee NOT IN (helper.proowner, refs.swim_writer, refs.service)",
+    ]) expect(AUTH_PRIVILEGES_SQL).toContain(fragment);
+    expect(AUTH_PRIVILEGES_SQL.match(/COALESCE\(helper\.proacl, pg_catalog\.acldefault\('f', helper\.proowner\)\)/g))
+      .toHaveLength(2);
+    expect(AUTH_PRIVILEGES_SQL).not.toContain("helper.proacl IS NULL");
+    expect(AUTH_PRIVILEGES_SQL).not.toMatch(/(?:to_regrole|has_function_privilege)\('PUBLIC'/i);
+    for (const role of ["swim_writer", "service", "anon", "authenticated"]) {
+      expect(AUTH_PRIVILEGES_SQL).toContain(`pg_catalog.has_function_privilege(refs.${role}, helper.oid, 'EXECUTE')`);
+    }
+    // Default PUBLIC EXECUTE implies effective anon/authenticated access and an unapproved grantee.
+    const evidence = projectAuthPrivilegeOutput(text({
+      ...observation, helper: ["present", true, true, true, true, true, true, true],
+    }));
+    expect(evidence.status).toBe("available");
+    expect(checkAuthBoundary(evidence, "up")).toBe("mismatched");
+  });
+
+  it.each(["up", "original", "neither"] as const)("preserves ten-function evidence with %s bodies and legitimate helper absence", (mode) => {
+    const functions = SWIM_FUNCTION_CONTRACTS.map(([name]) => [name, true, mode === "original", mode === "up"]);
+    for (const helper of [observation.helper, ["absent"]]) {
+      const input = { ...observation, functions, helper };
+      const evidence = projectAuthPrivilegeOutput(text(input));
+      expect(evidence).toEqual({ status: "available", observation: input });
+      expect(checkAuthBoundary(evidence, "up")).toBe(mode === "up" && helper[0] === "present" ? "matched" : "mismatched");
+      expect(checkAuthBoundary(evidence, "rolled-back"))
+        .toBe(mode === "original" && helper[0] === "absent" ? "matched" : "mismatched");
+    }
+  });
+
+  it("rejects ambiguous helper/function facts and closed-tuple violations without losing evidence on absence", () => {
+    for (const helper of [["absent", true], ["present"], ["other"], ["absent", unsafe],
+      [...observation.helper, false], { presence: "absent" }]) {
+      expect(projectAuthPrivilegeOutput(text({ ...observation, helper }))).toEqual(invalid);
+    }
+    for (let index = 1; index < observation.helper.length; index++) {
+      const helper = [...observation.helper];
+      helper[index] = unsafe;
+      expect(projectAuthPrivilegeOutput(text({ ...observation, helper }))).toEqual(invalid);
+    }
+    expect(projectAuthPrivilegeOutput(text({ ...observation, helper: null }))).toEqual(missing);
+    for (const functions of [
+      observation.functions.slice(1), [...observation.functions, observation.functions[0]],
+      observation.functions.map((entry, index) => index === 1 ? observation.functions[0] : entry),
+      observation.functions.map((entry, index) => index === 0 ? [unsafe, ...entry.slice(1)] : entry),
+      observation.functions.map((entry, index) => index === 0 ? [...entry, false] : entry),
+    ]) expect(projectAuthPrivilegeOutput(text({ ...observation, functions }))).toEqual(invalid);
+    for (let index = 0; index < 10; index++) {
+      const functions = [...observation.functions];
+      for (const value of [null, ["swim_local_today", null, true, false]]) {
+        expect(projectAuthPrivilegeOutput(text({
+          ...observation, functions: functions.map((entry, i) => i === index ? value : entry),
+        }))).toEqual(missing);
+      }
+    }
+    expect(projectAuthPrivilegeOutput(text({ ...observation, phase: "rolled-back" }))).toEqual(invalid);
+  });
+
+  it("rejects each forbidden caller, missing permitted caller, role flag and service capability", () => {
+    expect(checkAuthBoundary(projectAuthPrivilegeOutput(text()), "up")).toBe("matched");
+    for (let index = 1; index < observation.helper.length; index++) {
+      const helper = [...observation.helper];
+      helper[index] = !helper[index];
+      expect(checkAuthBoundary(projectAuthPrivilegeOutput(text({ ...observation, helper })), "up")).toBe("mismatched");
+    }
+    for (const key of [
+      "swimWriterLogin", "swimWriterSuperuser", "swimWriterInherit", "swimWriterBypassRls", "swimWriterAuthUsage",
+      "swimWriterPublicUsage", "serviceRoleAuthUsage", "serviceRoleAuthUidExecute",
+      "serviceRoleLocalTodayExecute", "serviceRoleSafetyExecute", "swimCreatePlanSecurityDefiner",
+    ] as const) {
+      expect(checkAuthBoundary(projectAuthPrivilegeOutput(text({
+        ...observation, [key]: !observation[key],
+      })), "up")).toBe("mismatched");
+    }
+    for (const [key, value] of [["connectionRole", "other"], ["swimCreatePlanOwner", "postgres"],
+      ["swimCreatePlanRowSecurity", "off"]]) {
+      expect(checkAuthBoundary(projectAuthPrivilegeOutput(text({ ...observation, [key]: value })), "up"))
+        .toBe("mismatched");
+    }
+    for (let index = 0; index < 10; index++) {
+      for (const slot of [1, 3]) {
+        const functions = observation.functions.map((entry) => [...entry]);
+        functions[index][slot] = false;
+        expect(checkAuthBoundary(projectAuthPrivilegeOutput(text({ ...observation, functions })), "up"))
+          .toBe("mismatched");
+      }
+    }
+  });
+
+  it.each(["matched", "unavailable", "mismatched"] as const)(
+    "attempts canonical process/ledger for every outcome with %s boundary and preserves the primary failure", async (boundary) => {
+      for (const processPassed of [true, false]) {
+        for (const ledgerPassed of [true, false]) {
+          const reporting = new AcceptanceReporting();
+          const canonical = ledger();
+          canonical.success = ledgerPassed;
+          const result = { ...passed, code: processPassed ? 0 : 1 };
+          let rpcError: unknown;
+          let thrown: unknown;
+          const rpc = vi.fn(() => reporting.stage("RPC", async () => {
+            expect(reporting.failures.primary).toBeNull();
+            try { requireAcceptance(result, canonical, sha, configHash); }
+            catch (error) { rpcError = error; throw error; }
+          }, () => {}));
+          try { await enforceAuthBoundaryAfterRpc(boundary, rpc, reporting); } catch (error) { thrown = error; }
+          const rpcPassed = processPassed && ledgerPassed;
+          expect(rpc).toHaveBeenCalledTimes(1);
+          expect(canonical.suites[0]?.cases).toHaveLength(30);
+          expect(reporting.failures.primary?.stage).toBe(!rpcPassed ? "RPC"
+            : boundary !== "matched" ? "swimming identity boundary" : undefined);
+          expect(reporting.failures.secondary.map(({ stage }) => stage))
+            .toEqual(!rpcPassed && boundary !== "matched" ? ["swimming identity boundary"] : []);
+          if (!rpcPassed) expect(thrown).toBe(rpcError);
+          else if (boundary === "matched") expect(thrown).toBeUndefined();
+          else expect(thrown).toBeInstanceOf(Error);
+        }
+      }
+    },
+  );
+
+  it("preserves raw RPC/parser throw identity privately while publishing only authored failures", async () => {
+    for (const error of [new Error(unsafe), new SyntaxError(unsafe), undefined]) {
+      const reporting = new AcceptanceReporting();
+      const rpc = vi.fn(() => reporting.stage("RPC", async () => { throw error; }, () => {}));
+      let caught = false;
+      try { await enforceAuthBoundaryAfterRpc("unavailable", rpc, reporting); }
+      catch (actual) { caught = true; expect(actual).toBe(error); }
+      expect(caught).toBe(true);
+      expect(rpc).toHaveBeenCalledTimes(1);
+      expect(reporting.failures.primary?.stage).toBe("RPC");
+      expect(reporting.failures.secondary[0]?.stage).toBe("swimming identity boundary");
+      const output = formatAcceptanceSummary(reporting.failures);
+      expect(output).not.toContain("private");
+      expect(output).not.toContain(unsafe);
+      expect(reporting.failures.secondary[0]?.cause.classification).toBe("guard");
     }
   });
 });
