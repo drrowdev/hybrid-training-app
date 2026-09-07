@@ -2,7 +2,9 @@ import nodeAssert, { AssertionError } from "node:assert/strict";
 import { appendFileSync, closeSync, constants as fsConstants, fstatSync, openSync, readSync } from "node:fs";
 import { constants } from "node:os";
 import type { ProcessResult } from "./swim-acceptance-guards";
-import { parseMigrationScid, type MigrationDiagnostic } from "../../../packages/db/scripts/migrate-evidence";
+import {
+  parseMigrationScid, type MigrationDiagnostic, type readMigrationEvidence,
+} from "../../../packages/db/scripts/migrate-evidence";
 export { MIGRATION_DIAGNOSTIC_FIELDS } from "../../../packages/db/scripts/migrate-evidence";
 
 type FailureCause = {
@@ -93,6 +95,25 @@ export class AcceptanceReporting {
       throw error;
     }
   }
+}
+
+export function finishMigrationEvidenceAttempt(
+  result: ProcessResult, evidence: ReturnType<typeof readMigrationEvidence>,
+  manifest: Record<string, unknown>, reporting: AcceptanceReporting,
+): never {
+  manifest.qualifying = false;
+  manifest.migrationEvidence = evidence;
+  const secondary = (message: string) => reporting.failures.secondary.push({
+    stage: "migration evidence", cause: { classification: "guard", message },
+  });
+  if (evidence.status === "incomplete") secondary("Migration evidence incomplete");
+  else if (!evidence.shutdown) secondary("Migration shutdown evidence unavailable");
+  else if (evidence.shutdown.status === "failed" || evidence.shutdown.status === "timed-out") {
+    secondary("Migration shutdown failed or timed out");
+  }
+  // A failed child remains primary; evidence collection never changes its process result.
+  if (result.code !== 0 || result.signal !== null || result.timedOut) throw processFailure(result);
+  acceptanceAssert(false, "NON-QUALIFYING: normal-migration-still-required");
 }
 
 export function formatAcceptanceSummary(data: unknown, secrets: Iterable<string> = []) {
