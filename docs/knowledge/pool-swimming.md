@@ -436,7 +436,27 @@ All standalone DC-SW1–SW9 gates still precede combined implementation.
 
 ### Shared completion integration — current 148 status
 
-**Latest anonymous ACL correction:** nonqualifying
+**2026-09-07 current status:** the coordinator confirms the database milestone
+passed. PR803 wires the first four-case mobile browser execution, preserving R1's
+safe failed-case ledger and single-use report ticket. The stage seals only after
+the writer command settles, keeps process failures primary, validates the pinned
+installation before app work, and scopes the cache override to Playwright.
+Source hashing includes the consumed app/workspace roots and only the two swim
+specs plus their fixtures/setup. Both commands remain awaited; ten seconds of
+shutdown delay is observational, not a completion guarantee or a failure alone.
+
+Code checkpoint `230f09b0`: all 575 focused stage/acceptance/helper tests, web
+typecheck and scoped lint passed on the GitHub runner. Real browser reference
+execution remains pending combined R1+R2 exact-head review and core CI in
+parallel, then the coordinator's **one normal-148 + four-browser-case reference**
+after all gates and fresh checks. No browser/database execution, dispatch/rerun
+or merge occurred in this slice. This does not establish full standalone
+[DC-SW1–SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+or production acceptance.
+
+The remaining checkpoints below are historical.
+
+**Earlier anonymous ACL correction:** nonqualifying
 [run 34154417199](https://github.com/drrowdev/hybrid-training-app/actions/runs/34154417199)
 at `4b1f51afffa4976c26016097ca939661e9417112` produced complete `P0001` at
 migration 147, statement 0, with `SCID` acl/pre/shared `ftfttttt`. This proves
@@ -453,7 +473,7 @@ transient and the post-RPC empty-result identity check is unchanged.
 Normal acceptance is restored in source with the unchanged diagnostic branch
 dormant. 522 focused static tests, web typecheck and scoped lint passed.
 Five phases, four DDL steps, 15 service contexts, same-level restoration and all
-36 HTTP cases remain unchanged. Runtime acceptance awaits exact-final-head review
+36 HTTP cases remain unchanged. At that checkpoint, runtime acceptance awaited exact-final-head review
 and the coordinator's ordinary 148 run. No database/container execution,
 workflow dispatch/rerun or merge occurred in this correction.
 
@@ -499,9 +519,9 @@ New negative fixtures exercise each of the 11 shared fields at 146/147/148,
 both 147↔148 mismatches, and boundary-independent restored147/restored148 drift.
 **526 focused migration/helper/round-trip/config/report tests**, web typecheck
 and scoped lint passed. Static fixtures do not prove runtime repair.
-The 148 integration **has not run against the real temporary stack**.
-Last actual [147 run 34096598017](https://github.com/drrowdev/hybrid-training-app/actions/runs/34096598017)
-remains **24/33 passed**; `40001` and remaining completion behavior are not proved
+At that checkpoint, the 148 integration **had not run against the real temporary stack**.
+The then-last [147 run 34096598017](https://github.com/drrowdev/hybrid-training-app/actions/runs/34096598017)
+was **24/33 passed**; `40001` and remaining completion behavior were not proved
 resolved. Independent exact-head review precedes the coordinator's temporary run.
 No database/Docker/Supabase/workflow execution or merge occurred here.
 All [DC-SW1–SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)

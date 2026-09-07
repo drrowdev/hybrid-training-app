@@ -16,8 +16,8 @@ distance and millisecond results are authoritative; generic cardio summaries
 exist for compatibility and shared workload only.
 
 The current PR802 continuation authorizes disposable localhost services on the
-cloud runner only, not hosted credentials. Reference-stack acceptance remains
-blocked; see the latest result below. Do not treat mocked tests, static browser
+cloud runner only, not hosted credentials. The database milestone passed;
+the first four-case browser reference remains pending. Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
 generic app-credential fallbacks for seeded tests. Production was not migrated.
@@ -29,11 +29,27 @@ prerequisites. The feature must remain gated until real acceptance passes.
 
 Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
-replace the pending authenticated database and browser acceptance.
+replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-07 (exact anonymous ACL correction; normal acceptance pending)
+**Last updated:** 2026-09-07 (PR803 browser finishing slice)
 
-### PR802 anonymous completion correction — current status
+### PR803 browser integration — current status
+
+The coordinator confirms the database milestone passed. The first four-case
+mobile browser execution is wired: sealed reports after command reaping,
+child-only validated browser cache, complete bounded source inputs, and awaited
+shutdown with delay observations distinct from failures. R1 remains unchanged.
+
+Code checkpoint `230f09b0`: 575 focused stage/acceptance/helper tests, web
+typecheck and scoped lint passed on the GitHub runner. These are static results,
+not browser execution. The coordinator owns combined R1+R2 exact-head review and
+core CI in parallel, then **one normal-148 + four-browser-case reference** after
+all gates and fresh checks. No browser/database execution or workflow dispatch
+occurred in this slice. Full standalone
+[DC-SW1–SW9](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+and production acceptance are not established.
+
+### PR802 anonymous completion correction — earlier checkpoint
 
 [Run 34154417199](https://github.com/drrowdev/hybrid-training-app/actions/runs/34154417199)
 at `4b1f51afffa4976c26016097ca939661e9417112` produced complete `P0001` evidence
