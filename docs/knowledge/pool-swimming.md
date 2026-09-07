@@ -436,7 +436,28 @@ All standalone DC-SW1–SW9 gates still precede combined implementation.
 
 ### Shared completion integration — current 148 status
 
-**Latest syntax repair:** nonqualifying
+**Latest anonymous ACL correction:** nonqualifying
+[run 34154417199](https://github.com/drrowdev/hybrid-training-app/actions/runs/34154417199)
+at `4b1f51afffa4976c26016097ca939661e9417112` produced complete `P0001` at
+migration 147, statement 0, with `SCID` acl/pre/shared `ftfttttt`. This proves
+direct `anon` and `PUBLIC` grants and matching grantor/EXECUTE/no-grant-option
+shape, not the absence of other grantees. The exact prior normalized set now
+includes both; 0147 up revokes both and down restores both. Unknown extra or
+missing grantees and wrong grantor/options still abort. No raw ACL ordering
+guarantee, helper/body/RLS/journal change or broader cause is claimed.
+
+The completion caller now short-circuits positively absent identity (including
+the official missing-session error) to its existing auth result. Other Auth
+errors preserve the cookie-bearing RPC path; signed-in permission errors remain
+transient and the post-RPC empty-result identity check is unchanged.
+Normal acceptance is restored in source with the unchanged diagnostic branch
+dormant. 522 focused static tests, web typecheck and scoped lint passed.
+Five phases, four DDL steps, 15 service contexts, same-level restoration and all
+36 HTTP cases remain unchanged. Runtime acceptance awaits exact-final-head review
+and the coordinator's ordinary 148 run. No database/container execution,
+workflow dispatch/rerun or merge occurred in this correction.
+
+**Earlier syntax-only checkpoint:** nonqualifying
 [run 34137048733](https://github.com/drrowdev/hybrid-training-app/actions/runs/34137048733)
 at `07ef1d5e4a695352621d1c945050d137c2aa3413` localized complete structured native
 SQLSTATE `42601` to phase `migrate`, migrationIndex `147`, statementIndex `0`,

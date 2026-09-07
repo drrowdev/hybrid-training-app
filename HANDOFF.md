@@ -31,9 +31,31 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-07 (syntax-only repair; normal acceptance pending)
+**Last updated:** 2026-09-07 (exact anonymous ACL correction; normal acceptance pending)
 
-### PR802 migration syntax repair — current status
+### PR802 anonymous completion correction — current status
+
+[Run 34154417199](https://github.com/drrowdev/hybrid-training-app/actions/runs/34154417199)
+at `4b1f51afffa4976c26016097ca939661e9417112` produced complete `P0001` evidence
+at migration 147, statement 0: `SCID` acl/pre/shared `ftfttttt`. Direct `anon`
+and `PUBLIC` grants exist; the old exact set fails, while grantor/EXECUTE/
+no-grant-option checks match. Other unexpected grantees are not ruled out.
+
+0147 up/down now require the exact prior normalized set including `anon` and
+`PUBLIC`, revoke both on up, and restore both on down. Missing/extra grantees
+or wrong grantor/options still abort; raw ACL ordering is not promised.
+Helper grants, function bodies, RLS and journal are unchanged. Completion now
+returns its existing auth result before RPC only for positively absent identity,
+including the official missing-session error. Other Auth errors still reach the
+cookie-bearing RPC; signed-in permission errors remain transient.
+
+Normal acceptance is restored in source; the diagnostic branch stays dormant.
+522 focused static tests, web typecheck and scoped lint passed. All five phases,
+15 service contexts and 36 HTTP cases remain unchanged. Runtime acceptance is
+pending exact-final-head review and the coordinator's ordinary 148 run; no
+database/container execution, workflow dispatch/rerun or merge occurred here.
+
+### PR802 migration syntax repair — earlier checkpoint
 
 Nonqualifying [run 34137048733](https://github.com/drrowdev/hybrid-training-app/actions/runs/34137048733)
 at `07ef1d5e4a695352621d1c945050d137c2aa3413` produced complete structured

@@ -1847,3 +1847,24 @@ runtime acceptance. Ordinary acceptance remains pending exact-head review and
 coordinator-owned execution. No database/container/workflow execution or merge
 occurred in this repair.
 [Current status](./pool-swimming.md#shared-completion-integration--current-148-status).
+
+## [2026-09-07] refine | Exact anonymous completion ACL correction and caller guard
+
+[Run 34154417199](https://github.com/drrowdev/hybrid-training-app/actions/runs/34154417199)
+at `4b1f51afffa4976c26016097ca939661e9417112` produced complete `P0001` at
+147/0, `SCID` acl/pre/shared `ftfttttt`: direct `anon`/`PUBLIC` grants exist,
+the old exact set fails, and grantor/EXECUTE/no-grant-option shape matches.
+Other grantees are not ruled out. Coherent 0147 up/down now require the exact
+prior set including both anonymous grants, revoke both on up, and restore the
+normalized prior grants on down; raw ACL ordering is not promised. Historical
+hashes and strict abort conditions remain pinned; helper/body/RLS/journal are
+unchanged.
+
+Completion returns the existing auth result before RPC only for positively
+absent identity, including the official missing-session error. Other Auth errors
+retain the cookie-bearing RPC path; signed-in permission errors remain transient.
+Normal acceptance is restored in source. 522 focused synthetic/static tests,
+web typecheck and scoped lint passed; runtime acceptance remains pending
+exact-final-head review and the coordinator's ordinary 148 run. No database/
+container execution, workflow dispatch/rerun or merge occurred here.
+[Current status](./pool-swimming.md#shared-completion-integration--current-148-status).
