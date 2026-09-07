@@ -434,6 +434,47 @@ vocabulary pass, guessed grant or identical rerun. Any access-policy/schema/gran
 user-data remedy needs owner approval and an additive migration with rollback.
 All standalone DC-SW1–SW9 gates still precede combined implementation.
 
+### Shared completion integration — current 148 status
+
+The [approved remainder](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5569058128)
+is implemented on accepted `b338e0d7`, with HTTP/proof checkpoint `df790b09`.
+No accepted runtime, migration, rollback, observer, timeout or permission logic
+was changed. All three counts remain 148. Closed expectations distinguish 146
+(helper absent/original bodies), 147 (private helper/original shared routine),
+and 148 (authenticated own-ID helper access/amended shared routine, anonymous
+shared completion denied). The exact five-phase round trip applies **0147 down,
+0146 down, 0146 up, 0147 up**, comparing same-level restoration at 147 and 148,
+with **15 isolated service contexts** across initial148/first147/rolled-back146/
+restored147/restored148. These synthetic service contexts are not HTTP/Auth/RLS proof.
+
+The original 30 HTTP cases, payloads and assertions remain unchanged. The
+previously additive authenticated helper denial is replaced by exact Alice/Bob
+own-ID assertions; anonymous denial and service UUID-or-null success remain.
+Added shared HTTP cases cover a ready non-swim owner's completion, identity,
+durable receipt and same/new-entry replay; another user's empty result with
+unchanged owner session/log data; and anonymous shared non-invocability at restored148.
+They reuse real Auth/session fixtures and a seeded movement, not replacement catalog
+rows. All six helper/shared names are mandatory in the existing suite:
+**36 unique cases collected only**, with 33 literal `it` declarations plus three
+`it.each` rows. Denials still accept only 401/403 with 42501 or 404/PGRST202;
+404 proves non-invocability, not ACL correctness. Catalog proof and successful
+endpoint calls remain required. The 20-second per-test limit and no retries remain.
+
+New negative fixtures exercise each of the 11 shared fields at 146/147/148,
+both 147↔148 mismatches, and boundary-independent restored147/restored148 drift.
+**526 focused migration/helper/round-trip/config/report tests**, web typecheck
+and scoped lint passed. Static fixtures do not prove runtime repair.
+The 148 integration **has not run against the real temporary stack**.
+Last actual [147 run 34096598017](https://github.com/drrowdev/hybrid-training-app/actions/runs/34096598017)
+remains **24/33 passed**; `40001` and remaining completion behavior are not proved
+resolved. Independent exact-head review precedes the coordinator's temporary run.
+No database/Docker/Supabase/workflow execution or merge occurred here.
+All [DC-SW1–SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+standalone acceptance remains required before combined swimming; Garmin is later.
+
+The following Slice A/B sections describe historical checkpoints, superseded by
+the current status above; their outcomes are not new successes.
+
 ### Identity integration — Slice A current status
 
 Core `5e3c938f23fcefcca5e51f09937e93ee68d92664` is independently accepted:
