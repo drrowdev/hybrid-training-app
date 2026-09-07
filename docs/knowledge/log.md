@@ -1761,3 +1761,25 @@ review and fresh guards precede one new-head manual run; insufficient evidence
 requires reassessment, not an identical rerun or diagnostic expansion. Any access
 correction remains a separate owner decision with reviewed additive migration and
 rollback. Standalone DC-SW1–SW9 acceptance remains required before combined work.
+
+## [2026-09-07] refine | Swimming identity integration Slice A
+
+Implemented [Slice A](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5566040440)
+and its [reviewed integration contract](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5566040448).
+Core `5e3c938f23fcefcca5e51f09937e93ee68d92664` is independently accepted;
+0146/down/journal/core tests are unchanged. The runner now requires 147 migrations
+and observes the closed helper/service/ten-function contract, retaining evidence
+on legitimate helper absence and identifying default PUBLIC ACLs as unsafe.
+Boundary enforcement follows the attempted canonical RPC stage, preserving RPC
+as primary on failure and separately recording failed boundary evidence.
+
+All 315 focused helper tests, web typecheck and scoped lint pass. These are
+synthetic/source checks, not runtime repair proof; the original 30 RPC tests were
+not modified or executed. Last actual run 34063418887 at
+`1af9874f7e88700a2b8687beadffd79b28818d59` remains 2 passed / 28 auth-schema
+failures. [Current status](./pool-swimming.md#identity-integration--slice-a-current-status):
+Slice B and real 147-migration/native-RLS/RPC/service/down-up proof remain pending.
+No database/Docker/Supabase/workflow execution, service/network/dependency change
+or merge occurred. No Slice-A-only manual run; exact-head review of the complete
+integrated proof bundle precedes execution. Full standalone DC-SW1–SW9 acceptance
+still precedes combined swimming; Garmin remains later.

@@ -434,7 +434,42 @@ vocabulary pass, guessed grant or identical rerun. Any access-policy/schema/gran
 user-data remedy needs owner approval and an additive migration with rollback.
 All standalone DC-SW1–SW9 gates still precede combined implementation.
 
-### Read-only auth privilege evidence
+### Identity integration — Slice A current status
+
+Core `5e3c938f23fcefcca5e51f09937e93ee68d92664` is independently accepted:
+0146, its rollback, journal and core tests remain unchanged. The approved
+service-role caller compatibility is part of that core.
+[Slice A](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5566040440)
+now requires all 147 migrations in the journal, SQL-file count and manifest.
+
+The existing private read-only observer retains its 5-second SQL/10-second
+command bounds, 8 MiB capture cap and no-throw projection. Added evidence is
+closed: four service baseline capabilities, the helper's exact attributes/body
+and permitted callers, and all ten functions' pinned attributes/original/up body
+matches. Helper absence is explicit and preserves the other evidence; only a
+caller-owned rolled-back expectation permits it. NULL function ACLs are expanded
+with `acldefault`: default PUBLIC EXECUTE is an unsafe boundary, not absence.
+No raw bodies, ACLs, settings, arbitrary names or backend errors are published.
+
+`manifest.authBoundary` records matched/unavailable/mismatched before RPC.
+Enforcement waits until the original canonical RPC stage has been attempted.
+RPC failure remains primary, boundary failure is separately recorded, and an
+otherwise successful run fails if the boundary is unavailable or mismatched.
+The canonical positive ledger and cleanup gates are unchanged.
+
+All 315 focused helper tests, web typecheck and scoped lint pass, using synthetic
+evidence and pinned source contracts only. This is **not repair acceptance**.
+Last actual [run 34063418887](https://github.com/drrowdev/hybrid-training-app/actions/runs/34063418887)
+was at `1af9874f7e88700a2b8687beadffd79b28818d59`: **2 passed, 28 auth-schema
+failures**. The original 30 RPC cases were not changed or executed in Slice A.
+Slice B and real 147-migration/native-RLS/RPC/service/down-up proof remain pending.
+No database/container/Supabase/workflow execution or merge occurred.
+Do not dispatch a Slice-A-only run; review the complete integrated proof bundle
+before execution. Full standalone
+[DC-SW1–SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+acceptance remains required before combined swimming; Garmin remains later.
+
+### Earlier read-only auth privilege evidence
 
 [Run 34061180463](https://github.com/drrowdev/hybrid-training-app/actions/runs/34061180463)
 at `fc364e2534e361c378e0f88a887c3504b44bc009` supersedes the denied-object

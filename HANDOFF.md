@@ -31,9 +31,40 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-06 (read-only auth privilege evidence artifact; no database/workflow execution this turn)
+**Last updated:** 2026-09-07 (identity integration Slice A; no database/workflow execution)
 
-### PR802 read-only auth privilege evidence
+### PR802 identity integration — Slice A
+
+Core `5e3c938f23fcefcca5e51f09937e93ee68d92664` (0146, rollback, journal and
+core tests) is independently accepted and unchanged here. The owner-approved
+service-role compatibility amendment is included in that core.
+[Slice A](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5566040440)
+is implemented: all three runner counts require 147, and closed catalog evidence
+covers the four service capabilities, private helper boundary and ten functions'
+attributes/original/up body equivalence. Legitimate helper absence retains the
+other evidence; only a caller-owned rolled-back expectation accepts it.
+NULL ACLs use default PUBLIC EXECUTE and fail the up boundary, not observation.
+
+The observation remains read-only/no-throw with the same private paths, 8 MiB
+capture cap and 5-second SQL/10-second command bounds. The runner records the
+boundary before RPC but enforces it only after the canonical RPC stage is attempted.
+RPC failure stays primary; boundary failure is separately recorded. A successful
+RPC stage cannot override unavailable or mismatched boundary evidence.
+
+All 315 focused acceptance-helper tests, web typecheck and scoped lint pass.
+These synthetic/source checks do **not** prove the repair works. Last actual
+[run 34063418887](https://github.com/drrowdev/hybrid-training-app/actions/runs/34063418887)
+tested `1af9874f7e88700a2b8687beadffd79b28818d59`: **2 passed, 28 auth-schema
+failures**. The original 30 RPC tests were neither changed nor executed here.
+
+Slice B (temporary down/up and direct service caller proof, additive HTTP cases)
+and real 147-migration/native-RLS/RPC/service/rollback proof remain pending.
+No Slice-A-only manual run: the complete integrated proof bundle needs exact-head
+review first. No database, Docker, Supabase, workflow execution or merge occurred.
+Full standalone DC-SW1–SW9 acceptance still precedes combined swimming; Garmin
+also remains later.
+
+### Earlier PR802 read-only auth privilege evidence
 
 [Run 34061180463](https://github.com/drrowdev/hybrid-training-app/actions/runs/34061180463)
 at `fc364e2534e361c378e0f88a887c3504b44bc009` passed core/identity, official
