@@ -30,6 +30,7 @@ import { checkAuthBoundary, observeAuthPrivileges } from "./swim-auth-privileges
 import {
   createIdentityRoundTripProof, enforceIdentityProofAfterRpc, requireIdentityHelperRpcCases, runIdentityRoundTrip,
 } from "./swim-identity-roundtrip";
+import { runSwimBrowserStage } from "./swim-browser-stage";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
@@ -90,7 +91,7 @@ async function main(cleanupOnly: boolean) {
     appendFileSync(process.env.GITHUB_ENV!, `SWIM_ACCEPTANCE_DIR=${directory}\n`);
     summary("Swim acceptance scope", {
       ...manifest, cleanup: "unconfirmed until a terminal cleanup record; forced cancellation may prevent observation",
-      scope: "Reference startup, unchanged migrations/catalog and complete swim RPC file only; not standalone release acceptance",
+      scope: "Reference startup, unchanged migrations/catalog, complete swim RPC file and four mobile browser cases; not standalone release acceptance",
     });
   }
   process.umask(0o077);
@@ -98,8 +99,10 @@ async function main(cleanupOnly: boolean) {
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH, HOME: join(directory, "home"), CI: "true", LANG: "C.UTF-8", NODE_ENV: "test",
   };
+  const browserCancellation = new AbortController();
   const cancel = () => {
     cancelling = true;
+    browserCancellation.abort();
     for (const terminate of active.values()) terminate();
   };
   process.on("SIGINT", cancel);
@@ -109,6 +112,7 @@ async function main(cleanupOnly: boolean) {
     executable: string, args: string[], options: {
       cwd?: string; env?: Record<string, string>; timeout?: number; capture?: boolean; separateStdout?: boolean;
       allowFailure?: boolean; diagnose?: () => Promise<void>; onSpawn?: (stop: () => void) => void;
+      onTerminal?: () => void;
     } = {},
   ) {
     assert(!cancelling && Date.now() < deadline, "Run cancelled or total time exhausted");
@@ -152,8 +156,15 @@ async function main(cleanupOnly: boolean) {
       });
     }, Math.max(1, duration - 15_000));
     const result = await new Promise<ProcessResult>((done) => {
-      child.once("error", () => done({ code: null, signal: "spawn-error", timedOut }));
-      child.once("close", (code, signal) => done({ code, signal, timedOut }));
+      let terminal = false;
+      const finish = (result: ProcessResult) => {
+        if (terminal) return;
+        terminal = true;
+        options.onTerminal?.();
+        done(result);
+      };
+      child.once("error", () => finish({ code: null, signal: "spawn-error", timedOut }));
+      child.once("close", (code, signal) => finish({ code, signal, timedOut }));
     });
     clearTimeout(timeout);
     if (diagnostic) clearTimeout(diagnostic);
@@ -286,7 +297,8 @@ async function main(cleanupOnly: boolean) {
     await stage("source and runner preflight", async () => {
       sourceFiles = git("ls-files", "-z", "--", "packages/db", "packages/domain", "packages/engine",
         "apps/web/src/lib/swim", "apps/web/e2e-rpc/setup.ts", "apps/web/scripts",
-        "apps/web/vitest.config.ts", "apps/web/package.json", "package.json", "pnpm-lock.yaml",
+        "apps/web/vitest.config.ts", "apps/web/e2e", "apps/web/playwright.swim-reference.config.ts",
+        "apps/web/package.json", "package.json", "pnpm-lock.yaml",
         "pnpm-workspace.yaml", ".github/workflows/ci.yml").split("\0").filter(Boolean);
       sourceHashes = sources();
       const journal = JSON.parse(readFileSync(join(root, "packages/db/drizzle/meta/_journal.json"), "utf8"));
@@ -524,6 +536,16 @@ async function main(cleanupOnly: boolean) {
       requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);
       requireIdentityHelperRpcCases(ledger);
     }), reporting);
+    await stage("mobile browser acceptance", () => runSwimBrowserStage({
+      command, root, runDirectory: directory, deadline, cacheEnv: process.env,
+      target: {
+        url: target.rpcEnv.SMOKE_SUPABASE_URL,
+        anonKey: target.rpcEnv.SMOKE_SUPABASE_ANON_KEY,
+        serviceRoleKey: target.rpcEnv.SMOKE_SUPABASE_SERVICE_ROLE_KEY,
+        projectRef: target.rpcEnv.SWIM_TEST_PROJECT_REF,
+      },
+      signal: browserCancellation.signal, manifest, reporting,
+    }));
   } catch (error) {
     if (!reporting.failures.primary) reporting.recordFailure("acceptance", error);
   } finally {
