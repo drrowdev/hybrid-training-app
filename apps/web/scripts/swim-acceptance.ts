@@ -287,11 +287,11 @@ async function main(cleanupOnly: boolean) {
         "pnpm-workspace.yaml", ".github/workflows/ci.yml").split("\0").filter(Boolean);
       sourceHashes = sources();
       const journal = JSON.parse(readFileSync(join(root, "packages/db/drizzle/meta/_journal.json"), "utf8"));
-      assert(journal.entries.length === 147 && sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === 147);
+      assert(journal.entries.length === 148 && sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === 148);
       manifest.sourceSha256 = hash(JSON.stringify(sourceHashes));
       manifest.configSha256 = hash(readFileSync(RPC_CONFIG));
       manifest.rpcSourceSha256 = hash(readFileSync(RPC_SUITE));
-      manifest.migrationCount = 147;
+      manifest.migrationCount = 148;
       writeFileSync(join(directory, "source-hashes.json"), JSON.stringify(sourceHashes), { mode: 0o600 });
       assert(process.version.startsWith("v22.") && process.platform === "linux" && process.arch === "x64");
       assert((await command("pnpm", ["--version"], { capture: true })).text === "10.33.2");
@@ -443,7 +443,7 @@ async function main(cleanupOnly: boolean) {
     });
     const authPrivileges = await observeAuthPrivileges(command, target.dbId);
     manifest.authPrivileges = authPrivileges;
-    const authBoundary = checkAuthBoundary(authPrivileges, "up");
+    const authBoundary = checkAuthBoundary(authPrivileges, 148);
     manifest.authBoundary = authBoundary;
     const identityProof = createIdentityRoundTripProof();
     manifest.identityProof = identityProof;

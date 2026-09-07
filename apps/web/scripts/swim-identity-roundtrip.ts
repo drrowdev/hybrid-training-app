@@ -3,14 +3,19 @@ import { MIN_RPC_CASES, type readSwimRpcReport } from "../src/lib/swim/__tests__
 import { acceptanceAssert, type AcceptanceReporting } from "./swim-acceptance-reporting";
 import {
   checkAuthBoundary, enforceAuthBoundaryAfterRpc, observeAuthPrivileges, observeSwimFunctionAcls,
-  type AuthBoundaryResult, type AuthPrivilegeEvidence, type PrivateCommand,
+  type AuthBoundaryResult, type AuthPrivilegeEvidence, type IdentityLevel, type PrivateCommand,
 } from "./swim-auth-privileges";
 
 export const IDENTITY_FILES = {
+  sharedDown: "packages/db/rollbacks/0147_shared_completion_identity.down.sql",
   down: "packages/db/rollbacks/0146_swim_request_identity.down.sql",
   up: "packages/db/drizzle/0146_swim_request_identity.sql",
+  sharedUp: "packages/db/drizzle/0147_shared_completion_identity.sql",
 } as const;
-export const IDENTITY_PHASES = ["initial-up", "rolled-back", "restored-up"] as const;
+export const IDENTITY_PHASES = ["initial-148", "first-147", "rolled-back-146", "restored-147", "restored-148"] as const;
+const PHASE_LEVELS: Record<Phase, IdentityLevel> = {
+  "initial-148": 148, "first-147": 147, "rolled-back-146": 146, "restored-147": 147, "restored-148": 148,
+};
 export const SERVICE_CASES = ["missing", "subject-a", "subject-b"] as const;
 export const IDENTITY_HELPER_RPC_CASES = [
   "DC-SW8 denies anonymous identity-helper invocation",
@@ -32,10 +37,11 @@ type Phase = typeof IDENTITY_PHASES[number];
 type ServiceCase = typeof SERVICE_CASES[number];
 type Outcome = "matched" | "mismatched" | "unavailable" | "not-attempted";
 type PhaseProof = {
-  boundary: Outcome; acls: Outcome; callers: Record<ServiceCase, Outcome>; attempted: number; matched: number;
+  boundary: Outcome; acls: Outcome; restoration: Outcome;
+  callers: Record<ServiceCase, Outcome>; attempted: number; matched: number;
 };
 export type IdentityRoundTripProof = {
-  ddl: Record<"down" | "up", "not-attempted" | "running" | "completed" | "aborted">;
+  ddl: Record<keyof typeof IDENTITY_FILES, "not-attempted" | "running" | "completed" | "aborted">;
   phases: Record<Phase, PhaseProof>;
   consistency: "not-attempted" | "matched" | "aborted";
   result: Outcome;
@@ -43,13 +49,14 @@ export type IdentityRoundTripProof = {
 
 export function createIdentityRoundTripProof(): IdentityRoundTripProof {
   const phase = (): PhaseProof => ({
-    boundary: "not-attempted", acls: "not-attempted",
+    boundary: "not-attempted", acls: "not-attempted", restoration: "not-attempted",
     callers: { missing: "not-attempted", "subject-a": "not-attempted", "subject-b": "not-attempted" },
     attempted: 0, matched: 0,
   });
   return {
-    ddl: { down: "not-attempted", up: "not-attempted" },
-    phases: { "initial-up": phase(), "rolled-back": phase(), "restored-up": phase() },
+    ddl: { sharedDown: "not-attempted", down: "not-attempted", up: "not-attempted", sharedUp: "not-attempted" },
+    phases: { "initial-148": phase(), "first-147": phase(), "rolled-back-146": phase(),
+      "restored-147": phase(), "restored-148": phase() },
     consistency: "not-attempted", result: "not-attempted",
   };
 }
@@ -94,7 +101,7 @@ BEGIN
     (SELECT timezone FROM public.profiles WHERE id = auth.uid()), 'UTC'))::date THEN
     RAISE EXCEPTION USING ERRCODE = 'XX000', MESSAGE = 'Date comparison failed';
   END IF;
-  ${phase === "rolled-back" ? "" : `IF public.swim_request_user_id() IS DISTINCT FROM auth.uid() THEN
+  ${PHASE_LEVELS[phase] === 146 ? "" : `IF public.swim_request_user_id() IS DISTINCT FROM auth.uid() THEN
     RAISE EXCEPTION USING ERRCODE = 'XX000', MESSAGE = 'Helper comparison failed';
   END IF;`}
   ${missing ? `BEGIN
@@ -109,7 +116,7 @@ BEGIN
     : `PERFORM public.swim_assert_start_safety('${JSON.stringify(prescription)}'::jsonb);`}
 END;
 $probe$;
-SELECT '[["case","${testCase}"],["identity",true],["today",true],["safety",true],["helper",${phase === "rolled-back" ? '"absent"' : "true"}]]';
+SELECT '[["case","${testCase}"],["identity",true],["today",true],["safety",true],["helper",${PHASE_LEVELS[phase] === 146 ? '"absent"' : "true"}]]';
 ROLLBACK;
 `;
 }
@@ -121,7 +128,7 @@ export function projectServiceProbe(text: string, phase: Phase, testCase: Servic
       z.tuple([z.literal("identity"), z.boolean()]),
       z.tuple([z.literal("today"), z.boolean()]),
       z.tuple([z.literal("safety"), z.boolean()]),
-      z.tuple([z.literal("helper"), phase === "rolled-back" ? z.literal("absent") : z.boolean()]),
+      z.tuple([z.literal("helper"), PHASE_LEVELS[phase] === 146 ? z.literal("absent") : z.boolean()]),
     ]).safeParse(JSON.parse(text));
     if (!parsed.success) return "unavailable";
     return parsed.data.slice(1).every(([, value]) => value === true || value === "absent") ? "matched" : "mismatched";
@@ -144,11 +151,20 @@ export async function runIdentityRoundTrip(options: {
   const { command, dbId, initial, proof } = options;
   proof.result = "unavailable";
   let initialAcls: string | null = null;
+  const firstEvidence: Partial<Record<IdentityLevel, string>> = {};
   const observe = async (phase: Phase, evidence: AuthPrivilegeEvidence) => {
     const current = proof.phases[phase];
-    current.boundary = checkAuthBoundary(evidence, phase === "rolled-back" ? "rolled-back" : "up");
+    const level = PHASE_LEVELS[phase];
+    current.boundary = checkAuthBoundary(evidence, level);
+    const comparison = evidence.status === "available" ? JSON.stringify({
+      ...evidence.observation,
+      functions: [...evidence.observation.functions].sort(([a], [b]) => a.localeCompare(b)),
+    }) : undefined;
+    if (!phase.startsWith("restored-")) firstEvidence[level] = comparison;
+    current.restoration = comparison === undefined || firstEvidence[level] === undefined
+      ? "unavailable" : comparison === firstEvidence[level] ? "matched" : "mismatched";
     const acls = await observeSwimFunctionAcls(command, dbId);
-    if (phase === "initial-up") initialAcls = acls;
+    if (phase === "initial-148") initialAcls = acls;
     current.acls = acls === null || initialAcls === null ? "unavailable" : acls === initialAcls ? "matched" : "mismatched";
     for (const testCase of SERVICE_CASES) {
       current.attempted++;
@@ -171,8 +187,11 @@ export async function runIdentityRoundTrip(options: {
     roleAvailable = succeeded(result) && text.trim() === "t";
   } catch { /* The fixed assertion below owns the procedural failure. */ }
   acceptanceAssert(roleAvailable, "Swimming service role assumption failed");
-  await observe("initial-up", initial);
-  for (const direction of ["down", "up"] as const) {
+  await observe("initial-148", initial);
+  for (const [direction, phase] of [
+    ["sharedDown", "first-147"], ["down", "rolled-back-146"],
+    ["up", "restored-147"], ["sharedUp", "restored-148"],
+  ] as const) {
     proof.ddl[direction] = "running";
     let completed = false;
     try {
@@ -184,17 +203,22 @@ export async function runIdentityRoundTrip(options: {
     } catch { /* Never retry DDL in an unknown disposable schema state. */ }
     proof.ddl[direction] = completed ? "completed" : "aborted";
     acceptanceAssert(completed, "Swimming identity DDL round trip failed");
-    await observe(direction === "down" ? "rolled-back" : "restored-up", await observeAuthPrivileges(command, dbId));
+    await observe(phase, await observeAuthPrivileges(command, dbId));
   }
   proof.consistency = "aborted";
   await options.checkConsistency();
   proof.consistency = "matched";
-  proof.result = IDENTITY_PHASES.every((phase) => {
+  proof.result = identityProofComplete(proof) ? "matched" : "mismatched";
+}
+
+function identityProofComplete(proof: IdentityRoundTripProof): boolean {
+  return Object.keys(IDENTITY_FILES).every((key) => proof.ddl[key as keyof typeof IDENTITY_FILES] === "completed")
+    && proof.consistency === "matched" && IDENTITY_PHASES.every((phase) => {
     const current = proof.phases[phase];
-    return current.boundary === "matched" && current.acls === "matched"
+    return current.boundary === "matched" && current.acls === "matched" && current.restoration === "matched"
       && current.attempted === SERVICE_CASES.length && current.matched === SERVICE_CASES.length
       && SERVICE_CASES.every((testCase) => current.callers[testCase] === "matched");
-  }) ? "matched" : "mismatched";
+  });
 }
 
 export function enforceIdentityProofAfterRpc(
@@ -206,7 +230,8 @@ export function enforceIdentityProofAfterRpc(
     let primary: unknown;
     try { await rpc(); } catch (error) { failed = true; primary = error; }
     try {
-      acceptanceAssert(proof.result === "matched", "Swimming identity round-trip proof unavailable or mismatched");
+      acceptanceAssert(proof.result === "matched" && identityProofComplete(proof),
+        "Swimming identity round-trip proof unavailable or mismatched");
     } catch (error) {
       reporting.recordFailure("swimming identity round-trip proof", error);
       if (!failed) throw error;

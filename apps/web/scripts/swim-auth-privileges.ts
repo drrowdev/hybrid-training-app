@@ -2,6 +2,12 @@ import { z } from "zod";
 import type { ProcessResult } from "./swim-acceptance-guards";
 import { acceptanceAssert, type AcceptanceReporting } from "./swim-acceptance-reporting";
 
+export type IdentityLevel = 146 | 147 | 148;
+export const SHARED_COMPLETION_BODY_PINS = {
+  original: "7d123bec0bbca374ea5ddad133640d86ff46ee3e36d6b00611a9d8d1d76b4a4d",
+  amended: "cca40717ed9133607ea0706838ed999beea84af6a90336c66f61abe8b1690b3d",
+} as const;
+
 // Pinned prosrc MD5 equality checks from 0145/0146, not caller-supplied expectations.
 export const SWIM_FUNCTION_CONTRACTS = [
   ["swim_local_today", "", "sql", "s", false, "da547ef0a54753f58484457237a6b261", "aa9c18164e2953f79526d00298e5557a"],
@@ -29,8 +35,15 @@ const functionEvidence = z.array(z.tuple([z.enum([
 const helperEvidence = z.union([
   z.tuple([z.literal("absent")]),
   z.tuple([z.literal("present"), z.boolean(), z.boolean(), z.boolean(),
-    z.boolean(), z.boolean(), z.boolean(), z.boolean()]),
+    z.boolean(), z.boolean(), z.boolean(), z.boolean(), z.boolean(), z.boolean()]),
 ]);
+
+const sharedEvidence = z.object({
+  attributes: z.boolean(), original: z.boolean(), amended: z.boolean(),
+  originalAcl: z.boolean(), amendedAcl: z.boolean(),
+  authenticated: z.boolean(), service: z.boolean(), writer: z.boolean(), owner: z.boolean(),
+  anon: z.boolean(), public: z.boolean(),
+}).strict();
 
 const owner = z.enum(["supabase_admin", "supabase_auth_admin", "postgres", "swim_writer", "other"]);
 const privileges = z.object({
@@ -60,6 +73,7 @@ const privileges = z.object({
   serviceRoleLocalTodayExecute: z.boolean(),
   serviceRoleSafetyExecute: z.boolean(),
   helper: helperEvidence,
+  shared: sharedEvidence,
   functions: functionEvidence,
 }).strict();
 
@@ -85,6 +99,7 @@ WITH refs AS (
     pg_catalog.to_regrole('anon')::oid AS anon,
     pg_catalog.to_regrole('authenticated')::oid AS authenticated,
     pg_catalog.to_regprocedure('public.swim_request_user_id()')::oid AS helper,
+    pg_catalog.to_regprocedure('public.complete_training_session_with_transition(uuid,text,uuid)')::oid AS shared,
     pg_catalog.to_regprocedure('public.swim_local_today()')::oid AS today,
     pg_catalog.to_regprocedure('public.swim_assert_start_safety(jsonb)')::oid AS safety
 )
@@ -166,6 +181,13 @@ SELECT pg_catalog.json_build_array(
         AND helper.prorettype = 'pg_catalog.uuid'::pg_catalog.regtype
         AND helper_lang.lanname = 'sql' AND helper.provolatile = 's'
         AND helper.prosecdef AND NOT helper.proleakproof
+        AND NOT helper.proisstrict AND helper.proparallel = 'u'
+        AND helper.pronargdefaults = 0 AND helper.proargdefaults IS NULL
+        AND helper.proargtypes = ''::pg_catalog.oidvector
+        AND helper.proargmodes IS NULL AND helper.proargnames IS NULL
+        AND helper.provariadic = 0 AND helper.prosupport = 0
+        AND helper.probin IS NULL AND helper.prosqlbody IS NULL
+        AND pg_catalog.has_function_privilege(refs.postgres, helper.oid, 'EXECUTE')
         AND COALESCE(helper.proconfig = ARRAY['search_path=pg_catalog']::text[], false)
         AND helper.prosrc = ' SELECT auth.uid() ',
       pg_catalog.has_function_privilege(refs.swim_writer, helper.oid, 'EXECUTE'),
@@ -177,7 +199,53 @@ SELECT pg_catalog.json_build_array(
         WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'),
       EXISTS (SELECT 1 FROM pg_catalog.aclexplode(
         COALESCE(helper.proacl, pg_catalog.acldefault('f', helper.proowner))) acl
-        WHERE acl.grantee NOT IN (helper.proowner, refs.swim_writer, refs.service))
+        WHERE acl.grantee NOT IN (helper.proowner, refs.swim_writer, refs.service, refs.authenticated)),
+      ${[false, true].map((amended) => `(
+        SELECT COALESCE(
+          array_agg(acl.grantee ORDER BY acl.grantee) = (
+            SELECT array_agg(grantee ORDER BY grantee)
+            FROM unnest(ARRAY[refs.postgres, refs.service, refs.swim_writer${amended ? ", refs.authenticated" : ""}]) grantee)
+          AND bool_and(acl.grantor = refs.postgres AND acl.privilege_type = 'EXECUTE' AND NOT acl.is_grantable), false)
+        FROM pg_catalog.aclexplode(COALESCE(helper.proacl, pg_catalog.acldefault('f', helper.proowner))) acl
+      )`).join(",\n")}
+    ) END),
+  pg_catalog.json_build_array('shared', CASE
+    WHEN shared.oid IS NULL OR shared_lang.oid IS NULL OR refs.postgres IS NULL
+      OR refs.authenticated IS NULL OR refs.service IS NULL OR refs.swim_writer IS NULL
+      OR refs.anon IS NULL THEN NULL
+    ELSE pg_catalog.json_build_array(
+      pg_catalog.json_build_array('attributes',
+        shared.proowner = refs.postgres AND shared_lang.lanname = 'plpgsql'
+        AND shared.provolatile = 'v' AND NOT shared.prosecdef AND NOT shared.proleakproof
+        AND NOT shared.proisstrict AND shared.proparallel = 'u'
+        AND shared.proconfig IS NOT DISTINCT FROM ARRAY['search_path=public']::text[]
+        AND shared.pronargs = 3 AND shared.pronargdefaults = 1
+        AND pg_catalog.pg_get_expr(shared.proargdefaults, 0) IS NOT DISTINCT FROM 'NULL::uuid'
+        AND shared.proargtypes = '2950 25 2950'::pg_catalog.oidvector
+        AND shared.proallargtypes IS NOT DISTINCT FROM ARRAY[2950,25,2950,2950,16]::oid[]
+        AND shared.proargmodes IS NOT DISTINCT FROM ARRAY['i','i','i','t','t']::"char"[]
+        AND shared.proargnames IS NOT DISTINCT FROM ARRAY['p_session_id','p_notes','p_completion_entry_id','user_id','transitioned']::text[]
+        AND shared.prorettype = 'record'::pg_catalog.regtype AND shared.proretset
+        AND shared.provariadic = 0 AND shared.prosupport = 0
+        AND shared.probin IS NULL AND shared.prosqlbody IS NULL),
+      pg_catalog.json_build_array('original', pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(shared.prosrc, 'UTF8')), 'hex') = '${SHARED_COMPLETION_BODY_PINS.original}'),
+      pg_catalog.json_build_array('amended', pg_catalog.encode(pg_catalog.sha256(pg_catalog.convert_to(shared.prosrc, 'UTF8')), 'hex') = '${SHARED_COMPLETION_BODY_PINS.amended}'),
+      ${[false, true].map((amended) => `pg_catalog.json_build_array('${amended ? "amendedAcl" : "originalAcl"}', (
+        SELECT COALESCE(
+          array_agg(acl.grantee ORDER BY acl.grantee) = (
+            SELECT array_agg(grantee ORDER BY grantee)
+            FROM unnest(ARRAY[refs.postgres, refs.authenticated, refs.service, refs.swim_writer${amended ? "" : ", 0::oid"}]) grantee)
+          AND bool_and(acl.grantor = refs.postgres AND acl.privilege_type = 'EXECUTE' AND NOT acl.is_grantable), false)
+        FROM pg_catalog.aclexplode(COALESCE(shared.proacl, pg_catalog.acldefault('f', shared.proowner))) acl
+      ))`).join(",\n")},
+      pg_catalog.json_build_array('authenticated', pg_catalog.has_function_privilege(refs.authenticated, shared.oid, 'EXECUTE')),
+      pg_catalog.json_build_array('service', pg_catalog.has_function_privilege(refs.service, shared.oid, 'EXECUTE')),
+      pg_catalog.json_build_array('writer', pg_catalog.has_function_privilege(refs.swim_writer, shared.oid, 'EXECUTE')),
+      pg_catalog.json_build_array('owner', pg_catalog.has_function_privilege(refs.postgres, shared.oid, 'EXECUTE')),
+      pg_catalog.json_build_array('anon', pg_catalog.has_function_privilege(refs.anon, shared.oid, 'EXECUTE')),
+      pg_catalog.json_build_array('public', EXISTS (SELECT 1 FROM pg_catalog.aclexplode(
+        COALESCE(shared.proacl, pg_catalog.acldefault('f', shared.proowner))) acl
+        WHERE acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'))
     ) END),
   pg_catalog.json_build_array('functions', pg_catalog.json_build_array(
     ${SWIM_FUNCTION_CONTRACTS.map(([name, args, language, volatility, definer, original, up]) => `(
@@ -211,6 +279,8 @@ LEFT JOIN pg_catalog.pg_roles uid_owner ON uid_owner.oid = uid.proowner
 LEFT JOIN pg_catalog.pg_roles plan_owner ON plan_owner.oid = plan.proowner
 LEFT JOIN pg_catalog.pg_proc helper ON helper.oid = refs.helper AND helper.prokind = 'f'
 LEFT JOIN pg_catalog.pg_language helper_lang ON helper_lang.oid = helper.prolang
+LEFT JOIN pg_catalog.pg_proc shared ON shared.oid = refs.shared AND shared.prokind = 'f'
+LEFT JOIN pg_catalog.pg_language shared_lang ON shared_lang.oid = shared.prolang
 LEFT JOIN LATERAL (
   SELECT count(*) AS count FROM pg_catalog.pg_proc f
   WHERE f.pronamespace = refs.public AND f.proname = 'swim_request_user_id'
@@ -234,9 +304,15 @@ export function projectAuthPrivilegeOutput(text: string): AuthPrivilegeEvidence 
     if (keys.length !== Object.keys(privileges.shape).length || new Set(keys).size !== keys.length ||
         keys.some((key) => !Object.hasOwn(privileges.shape, key))) return unavailable("invalid-output");
     const containsNull = (value: unknown): boolean =>
-      value === null || (Array.isArray(value) && value.some(containsNull));
+      value === null || (Array.isArray(value) && value.some(containsNull))
+      || (typeof value === "object" && value !== null && Object.values(value).some(containsNull));
     if (parsed.data.some(([, value]) => containsNull(value))) return unavailable("missing-or-ambiguous-catalog");
-    const result = privileges.safeParse(Object.fromEntries(parsed.data));
+    const input = Object.fromEntries(parsed.data);
+    const shared = pairs.safeParse(input.shared);
+    if (!shared.success || shared.data.length !== Object.keys(sharedEvidence.shape).length
+      || new Set(shared.data.map(([key]) => key)).size !== shared.data.length) return unavailable("invalid-output");
+    input.shared = Object.fromEntries(shared.data);
+    const result = privileges.safeParse(input);
     return result.success ? { status: "available", observation: result.data } : unavailable("invalid-output");
   } catch {
     return unavailable("invalid-output");
@@ -246,20 +322,28 @@ export function projectAuthPrivilegeOutput(text: string): AuthPrivilegeEvidence 
 export type AuthBoundaryResult = "matched" | "unavailable" | "mismatched";
 
 export function checkAuthBoundary(
-  evidence: AuthPrivilegeEvidence, expected: "up" | "rolled-back",
+  evidence: AuthPrivilegeEvidence, expected: IdentityLevel,
 ): AuthBoundaryResult {
   if (evidence.status !== "available") return "unavailable";
   const o = evidence.observation;
-  const helperMatches = expected === "rolled-back" ? o.helper[0] === "absent"
+  if (![146, 147, 148].includes(expected)) return "mismatched";
+  const helperMatches = expected === 146 ? o.helper[0] === "absent"
     : o.helper[0] === "present" && o.helper[1] && o.helper[2] && o.helper[3]
-      && !o.helper[4] && !o.helper[5] && !o.helper[6] && !o.helper[7];
+      && !o.helper[4] && o.helper[5] === (expected === 148) && !o.helper[6] && !o.helper[7]
+      && o.helper[8] === (expected === 147) && o.helper[9] === (expected === 148);
+  const s = o.shared;
+  const sharedMatches = s.attributes && s.authenticated && s.service && s.writer && s.owner
+    && s.original === (expected !== 148) && s.amended === (expected === 148)
+    && s.originalAcl === (expected !== 148) && s.amendedAcl === (expected === 148)
+    && s.anon === (expected !== 148) && s.public === (expected !== 148);
   return o.connectionRole === "postgres" && !o.swimWriterLogin && !o.swimWriterSuperuser
     && !o.swimWriterInherit && !o.swimWriterBypassRls && !o.swimWriterAuthUsage
     && o.swimWriterPublicUsage && o.serviceRoleAuthUsage && o.serviceRoleAuthUidExecute
     && o.serviceRoleLocalTodayExecute && o.serviceRoleSafetyExecute
     && o.swimCreatePlanOwner === "swim_writer" && o.swimCreatePlanSecurityDefiner
-    && o.swimCreatePlanRowSecurity === "on" && helperMatches
-    && o.functions.every(([, attributes, original, up]) => attributes && (expected === "up" ? up : original))
+    && o.swimCreatePlanRowSecurity === "on" && helperMatches && sharedMatches
+    && o.functions.every(([, attributes, original, up]) =>
+      attributes && original === (expected === 146) && up === (expected !== 146))
     ? "matched" : "mismatched";
 }
 
