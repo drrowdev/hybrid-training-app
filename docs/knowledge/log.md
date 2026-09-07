@@ -1885,3 +1885,14 @@ exact-head review and core CI in parallel, then **one normal-148 +
 four-browser-case reference** after all gates and fresh checks. These static
 results establish neither full standalone DC-SW1–SW9 nor production acceptance.
 [Current status](./pool-swimming.md#shared-completion-integration--current-148-status).
+
+## [2026-09-07] refine | PR803 collection-only loader regression and shutdown fix
+
+The pinned real Playwright `--list` regression reproduced exit 1 along the
+config/browser-helper/reporting/migration-evidence import boundary (loader code
+unknown). A pure extraction retains the same authored-error WeakMap and reporting
+exports; collection now exits 0 with exactly four known mobile cases and no
+executed results. Next 16.2.6 own-stop exit 143 is separately pinned and tested.
+Report absence is distinguished only after ticket/root validation; symlinks and
+other file errors remain rejected. 256 scoped tests, web typecheck and scoped
+lint pass. No live reference, server, browser, database or workflow dispatch ran.

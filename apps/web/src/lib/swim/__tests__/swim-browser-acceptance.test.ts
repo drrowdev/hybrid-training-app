@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import {
-  chmodSync, fchmodSync, fstatSync, linkSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync,
+  chmodSync, fchmodSync, fstatSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync,
 } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -13,6 +13,8 @@ import {
   requireNoEnvFiles, requirePrivateBrowserPaths, sealSwimBrowserReport, SWIM_BROWSER_CASES, validateSwimBrowserReport, waitForBrowserReady,
   type BrowserPaths,
 } from "../../../../scripts/swim-browser-acceptance";
+import { acceptanceAssert, processFailure, safeFailureCause } from "../../../../scripts/swim-acceptance-errors";
+import * as reporting from "../../../../scripts/swim-acceptance-reporting";
 
 const webRoot = resolve(__dirname, "../../../..");
 const paths: BrowserPaths = {
@@ -28,13 +30,14 @@ const temporary: string[] = [];
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return { ...actual, fstatSync: vi.fn(actual.fstatSync), fchmodSync: vi.fn(actual.fchmodSync),
-    openSync: vi.fn(actual.openSync) };
+    openSync: vi.fn(actual.openSync), lstatSync: vi.fn(actual.lstatSync) };
 });
 afterEach(() => {
   vi.restoreAllMocks();
   vi.mocked(fstatSync).mockImplementation(fs.fstatSync);
   vi.mocked(fchmodSync).mockReset().mockImplementation(fs.fchmodSync);
   vi.mocked(openSync).mockReset().mockImplementation(fs.openSync);
+  vi.mocked(lstatSync).mockReset().mockImplementation(fs.lstatSync);
   for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true });
 });
 function privatePaths() {
@@ -88,6 +91,36 @@ function report(location = paths) {
 }
 
 describe("browser environment and static config", () => {
+  it("shares authored errors and the same WeakMap across the pure and reporting entry points", async () => {
+    expect(reporting.acceptanceAssert).toBe(acceptanceAssert);
+    expect(reporting.processFailure).toBe(processFailure);
+    expect(reporting.safeFailureCause).toBe(safeFailureCause);
+    for (const action of [
+      () => acceptanceAssert(false, "browser-budget"),
+      () => acceptanceAssert.deepEqual("private-actual", "private-expected", "browser-budget"),
+      () => acceptanceAssert.match("private-actual", /^expected$/, "browser-budget"),
+      () => browserBudget(0),
+    ]) {
+      let caught: unknown;
+      try { action(); } catch (error) { caught = error; }
+      const cause = safeFailureCause(caught);
+      expect(cause).toEqual({ classification: "guard", message: "browser-budget" });
+      expect(reporting.safeFailureCause(caught)).toBe(cause);
+      const stages = new reporting.AcceptanceReporting();
+      await expect(stages.stage("collection", async () => { throw caught; }, () => {})).rejects.toBe(caught);
+      expect(stages.failures.primary?.cause).toBe(cause);
+      expect(safeFailureCause(new Error("browser-budget")).classification).toBe("unexpected");
+    }
+    const result = { code: 1, signal: null, timedOut: false };
+    const error = processFailure(result);
+    expect(reporting.safeFailureCause(error)).toBe(safeFailureCause(error));
+    expect(safeFailureCause(error)).toMatchObject({ classification: "process", result });
+    let unlabelled: unknown;
+    try { acceptanceAssert.deepEqual("private-actual", "private-expected"); } catch (error) { unlabelled = error; }
+    expect(safeFailureCause(unlabelled).classification).toBe("assertion");
+    expect(safeFailureCause(new SyntaxError("private-parser")).classification).toBe("parser");
+  });
+
   it("maps only explicit local values with coherent application keys", () => {
     const env = buildBrowserEnv(target, paths);
     expect(requireBrowserEnvironment(env)).toEqual(paths);
@@ -317,6 +350,55 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
 });
 
 describe.skipIf(process.platform === "win32")("private POSIX report fixtures", () => {
+  it.each([sealSwimBrowserReport, readSwimBrowserReport])(
+    "%s distinguishes absence at read, including a previously written and removed report", (consume) => {
+      const location = privatePaths();
+      const ticket = prepareReport(location);
+      writeFileSync(location.reportPath, "previously present", { mode: 0o600 });
+      rmSync(location.reportPath);
+      let caught: unknown;
+      try { consume(ticket); } catch (error) { caught = error; }
+      expect(projectBrowserFailure(caught)).toEqual({ success: false, code: "browser-report-absent" });
+      expect(reporting.safeFailureCause(caught)).toEqual({ classification: "guard", message: "browser-report-absent" });
+      expect(openSync).not.toHaveBeenCalled();
+    },
+  );
+  it.each([sealSwimBrowserReport, readSwimBrowserReport])(
+    "%s validates tickets and roots before classifying absence", (consume) => {
+      for (const kind of ["forged", "missing-root", "replaced-root", "public-root"]) {
+        const location = privatePaths();
+        const ticket = prepareReport(location);
+        if (kind === "missing-root") rmSync(location.runDirectory, { recursive: true });
+        if (kind === "replaced-root") {
+          renameSync(location.runDirectory, `${location.runDirectory}-old`);
+          mkdirSync(location.runDirectory, { mode: 0o700 });
+        }
+        if (kind === "public-root") chmodSync(location.runDirectory, 0o755);
+        expect(() => consume(kind === "forged" ? { ...ticket } : ticket)).toThrow("browser-report-file");
+      }
+      expect(openSync).not.toHaveBeenCalled();
+    },
+  );
+  it.each([sealSwimBrowserReport, readSwimBrowserReport])(
+    "%s never classifies symlinks, access errors or a vanished root as report absence", (consume) => {
+      for (const kind of ["dangling-symlink", "loop-symlink", "access", "root-race"]) {
+        const location = privatePaths();
+        const ticket = prepareReport(location);
+        if (kind === "dangling-symlink") symlinkSync(join(location.runDirectory, "missing"), location.reportPath);
+        if (kind === "loop-symlink") symlinkSync(location.reportPath, location.reportPath);
+        vi.mocked(lstatSync).mockImplementation((...args: Parameters<typeof fs.lstatSync>) => {
+          if (args[0] === location.reportPath) {
+            if (kind === "access") throw Object.assign(new Error("private-access"), { code: "EACCES" });
+            if (kind === "root-race") rmSync(location.runDirectory, { recursive: true });
+          }
+          return fs.lstatSync(...args);
+        });
+        expect(() => consume(ticket)).toThrow("browser-report-file");
+        vi.mocked(lstatSync).mockImplementation(fs.lstatSync);
+      }
+    },
+  );
+
   it.each(["public", "private", "missing-output"])("seals %s modes without consuming or refreshing the report", (mode) => {
     const location = privatePaths();
     const ticket = prepareReport(location);
