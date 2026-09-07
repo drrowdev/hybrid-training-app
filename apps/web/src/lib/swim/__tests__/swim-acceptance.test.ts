@@ -97,10 +97,16 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     serviceRoleAuthUidExecute: true,
     serviceRoleLocalTodayExecute: true,
     serviceRoleSafetyExecute: true,
-    helper: ["present", true, true, true, false, false, false, false],
+    helper: ["present", true, true, true, false, true, false, false, false, true],
+    shared: {
+      attributes: true, original: false, amended: true, originalAcl: false, amendedAcl: true,
+      authenticated: true, service: true, writer: true, owner: true, anon: false, public: false,
+    },
     functions: SWIM_FUNCTION_CONTRACTS.map(([name]) => [name, true, false, true]),
   };
-  const text = (value: Record<string, unknown> = observation) => JSON.stringify(Object.entries(value));
+  const text = (value: Record<string, unknown> = observation) => JSON.stringify(Object.entries(value)
+    .map(([key, entry]) => [key, key === "shared" && entry !== null && typeof entry === "object"
+      ? Object.entries(entry) : entry]));
   const invalid = { status: "unavailable", reason: "invalid-output" };
   const missing = { status: "unavailable", reason: "missing-or-ambiguous-catalog" };
   const unsafe = '<private> https://private.invalid/?key=synthetic-only\nprivate-role';
@@ -122,7 +128,8 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       .toEqual(["auth", "public"]);
     expect([...AUTH_PRIVILEGES_SQL.matchAll(/to_regprocedure\('([^']+)'\)/g)].map((m) => m[1]))
       .toEqual(["auth.uid()", "public.swim_create_plan(date,date,jsonb,jsonb,jsonb)",
-        "public.swim_request_user_id()", "public.swim_local_today()", "public.swim_assert_start_safety(jsonb)",
+        "public.swim_request_user_id()", "public.complete_training_session_with_transition(uuid,text,uuid)",
+        "public.swim_local_today()", "public.swim_assert_start_safety(jsonb)",
         ...SWIM_FUNCTION_CONTRACTS.map(([name, args]) => `public.${name}(${args})`)]);
     expect(AUTH_PRIVILEGES_SQL).toContain("uid.oid = refs.uid AND uid.prokind = 'f'");
     expect(AUTH_PRIVILEGES_SQL).toContain("plan.oid = refs.create_plan AND plan.prokind = 'f'");
@@ -144,9 +151,10 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       );
     }
     expect(AUTH_PRIVILEGES_SQL.match(/pg_catalog\.(?:has_schema_privilege|has_function_privilege|pg_has_role)\(/g))
-      .toHaveLength(predicates.length + 8);
+      .toHaveLength(predicates.length + 14);
     expect([...AUTH_PRIVILEGES_SQL.matchAll(/json_build_array\('([^']+)'/g)].map((m) => m[1])
-      .filter((name) => !["absent", "present", ...SWIM_FUNCTION_CONTRACTS.map(([name]) => name)].includes(name)))
+      .filter((name) => !["absent", "present", ...Object.keys(observation.shared),
+        ...SWIM_FUNCTION_CONTRACTS.map(([name]) => name)].includes(name)))
       .toEqual(Object.keys(observation));
     expect(new Set([...AUTH_PRIVILEGES_SQL.matchAll(/(?:FROM|JOIN) (pg_catalog\.\w+)/g)].map((m) => m[1])))
       .toEqual(new Set(["pg_catalog.pg_roles", "pg_catalog.pg_namespace", "pg_catalog.pg_proc",
@@ -239,7 +247,7 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       "exec", networkId, "psql", "-XqAt", "-U", "postgres", "-d", "postgres",
       "-v", "ON_ERROR_STOP=1", "-c", AUTH_PRIVILEGES_SQL,
     ], { capture: true, allowFailure: true, timeout: 10_000 }]]);
-    expect(source).toMatch(/manifest\.catalog = [^\n]+;\s+requireUnchanged\(\);\s+}\);\s+const authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+manifest\.authPrivileges = authPrivileges;\s+const authBoundary = checkAuthBoundary\(authPrivileges, "up"\);\s+manifest\.authBoundary = authBoundary;/);
+    expect(source).toMatch(/manifest\.catalog = [^\n]+;\s+requireUnchanged\(\);\s+}\);\s+const authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+manifest\.authPrivileges = authPrivileges;\s+const authBoundary = checkAuthBoundary\(authPrivileges, 148\);\s+manifest\.authBoundary = authBoundary;/);
     expect(source).toContain('await enforceIdentityProofAfterRpc(authBoundary, identityProof, () => stage("complete authenticated RPC file and positive ledger"');
     expect(source).toContain("requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);\n      requireIdentityHelperRpcCases(ledger);\n    }), reporting);");
     expect(source.match(/await observeAuthPrivileges\(/g)).toHaveLength(1);
@@ -294,7 +302,7 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
             if (!cleaned) reporting.recordFailure("cleanup", new Error(unsafe), true);
           });
           try {
-            await enforceAuthBoundaryAfterRpc(checkAuthBoundary(manifest.authPrivileges, "up"),
+            await enforceAuthBoundaryAfterRpc(checkAuthBoundary(manifest.authPrivileges, 148),
               () => reporting.stage("RPC", rpc, () => {}), reporting);
           } catch { /* RPC remains primary; boundary alone also fails acceptance. */ }
           finally { await cleanup(); }
@@ -341,15 +349,15 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     }
   });
 
-  it("requires all 147 journal entries and SQL files and records 147 without filtering out 0146", () => {
-    expect(source).toContain("journal.entries.length === 147");
-    expect(source).toContain('sourceFiles.filter((f) => /^packages\\/db\\/drizzle\\/[^/]+\\.sql$/.test(f)).length === 147');
-    expect(source).toContain("manifest.migrationCount = 147;");
+  it("requires all 148 journal entries and SQL files and records 148 without filtering out 0147", () => {
+    expect(source).toContain("journal.entries.length === 148");
+    expect(source).toContain('sourceFiles.filter((f) => /^packages\\/db\\/drizzle\\/[^/]+\\.sql$/.test(f)).length === 148');
+    expect(source).toContain("manifest.migrationCount = 148;");
     const journal = JSON.parse(readFileSync(new URL(
       "../../../../../../packages/db/drizzle/meta/_journal.json", import.meta.url,
     ), "utf8")) as { entries: { tag: string }[] };
-    expect(journal.entries).toHaveLength(147);
-    expect(journal.entries.at(-1)?.tag).toBe("0146_swim_request_identity");
+    expect(journal.entries).toHaveLength(148);
+    expect(journal.entries.at(-1)?.tag).toBe("0147_shared_completion_identity");
   });
 
   it("pins all ten exact original/up bodies and distinct invoker/definer attributes to reviewed source", () => {
@@ -400,10 +408,10 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       "helper.proconfig = ARRAY['search_path=pg_catalog']::text[]",
       "helper.prosrc = ' SELECT auth.uid() '",
       "acl.grantee = 0 AND acl.privilege_type = 'EXECUTE'",
-      "acl.grantee NOT IN (helper.proowner, refs.swim_writer, refs.service)",
+      "acl.grantee NOT IN (helper.proowner, refs.swim_writer, refs.service, refs.authenticated)",
     ]) expect(AUTH_PRIVILEGES_SQL).toContain(fragment);
     expect(AUTH_PRIVILEGES_SQL.match(/COALESCE\(helper\.proacl, pg_catalog\.acldefault\('f', helper\.proowner\)\)/g))
-      .toHaveLength(2);
+      .toHaveLength(4);
     expect(AUTH_PRIVILEGES_SQL).not.toContain("helper.proacl IS NULL");
     expect(AUTH_PRIVILEGES_SQL).not.toMatch(/(?:to_regrole|has_function_privilege)\('PUBLIC'/i);
     for (const role of ["swim_writer", "service", "anon", "authenticated"]) {
@@ -411,10 +419,10 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     }
     // Default PUBLIC EXECUTE implies effective anon/authenticated access and an unapproved grantee.
     const evidence = projectAuthPrivilegeOutput(text({
-      ...observation, helper: ["present", true, true, true, true, true, true, true],
+      ...observation, helper: ["present", true, true, true, true, true, true, true, false, false],
     }));
     expect(evidence.status).toBe("available");
-    expect(checkAuthBoundary(evidence, "up")).toBe("mismatched");
+    expect(checkAuthBoundary(evidence, 148)).toBe("mismatched");
   });
 
   it.each(["up", "original", "neither"] as const)("preserves ten-function evidence with %s bodies and legitimate helper absence", (mode) => {
@@ -423,8 +431,11 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       const input = { ...observation, functions, helper };
       const evidence = projectAuthPrivilegeOutput(text(input));
       expect(evidence).toEqual({ status: "available", observation: input });
-      expect(checkAuthBoundary(evidence, "up")).toBe(mode === "up" && helper[0] === "present" ? "matched" : "mismatched");
-      expect(checkAuthBoundary(evidence, "rolled-back"))
+      expect(checkAuthBoundary(evidence, 148)).toBe(mode === "up" && helper[0] === "present" ? "matched" : "mismatched");
+      const original = projectAuthPrivilegeOutput(text({ ...input, shared: {
+        ...observation.shared, original: true, amended: false, originalAcl: true, amendedAcl: false, anon: true, public: true,
+      } }));
+      expect(checkAuthBoundary(original, 146))
         .toBe(mode === "original" && helper[0] === "absent" ? "matched" : "mismatched");
     }
   });
@@ -458,11 +469,11 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
   });
 
   it("rejects each forbidden caller, missing permitted caller, role flag and service capability", () => {
-    expect(checkAuthBoundary(projectAuthPrivilegeOutput(text()), "up")).toBe("matched");
+    expect(checkAuthBoundary(projectAuthPrivilegeOutput(text()), 148)).toBe("matched");
     for (let index = 1; index < observation.helper.length; index++) {
       const helper = [...observation.helper];
       helper[index] = !helper[index];
-      expect(checkAuthBoundary(projectAuthPrivilegeOutput(text({ ...observation, helper })), "up")).toBe("mismatched");
+      expect(checkAuthBoundary(projectAuthPrivilegeOutput(text({ ...observation, helper })), 148)).toBe("mismatched");
     }
     for (const key of [
       "swimWriterLogin", "swimWriterSuperuser", "swimWriterInherit", "swimWriterBypassRls", "swimWriterAuthUsage",
@@ -471,18 +482,18 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     ] as const) {
       expect(checkAuthBoundary(projectAuthPrivilegeOutput(text({
         ...observation, [key]: !observation[key],
-      })), "up")).toBe("mismatched");
+      })), 148)).toBe("mismatched");
     }
     for (const [key, value] of [["connectionRole", "other"], ["swimCreatePlanOwner", "postgres"],
       ["swimCreatePlanRowSecurity", "off"]]) {
-      expect(checkAuthBoundary(projectAuthPrivilegeOutput(text({ ...observation, [key]: value })), "up"))
+      expect(checkAuthBoundary(projectAuthPrivilegeOutput(text({ ...observation, [key]: value })), 148))
         .toBe("mismatched");
     }
     for (let index = 0; index < 10; index++) {
       for (const slot of [1, 3]) {
         const functions = observation.functions.map((entry) => [...entry]);
         functions[index][slot] = false;
-        expect(checkAuthBoundary(projectAuthPrivilegeOutput(text({ ...observation, functions })), "up"))
+        expect(checkAuthBoundary(projectAuthPrivilegeOutput(text({ ...observation, functions })), 148))
           .toBe("mismatched");
       }
     }

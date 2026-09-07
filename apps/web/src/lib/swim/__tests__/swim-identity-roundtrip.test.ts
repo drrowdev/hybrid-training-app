@@ -18,6 +18,7 @@ const unsafe = '<private> https://private.invalid/?key=synthetic-only\nprivate-r
 const files = Object.fromEntries(Object.values(IDENTITY_FILES).map((file) =>
   [file, readFileSync(new URL(`../../../../../../${file}`, import.meta.url), "utf8")]));
 const acls = JSON.stringify(SWIM_FUNCTION_CONTRACTS.map(([name]) => [name, "a".repeat(32)]));
+const amended = (phase: Phase) => phase === "initial-148" || phase === "restored-148";
 const observation = (phase: Phase) => ({
   connectionRole: "postgres", postgresSuperuser: false, postgresInherit: true,
   postgresMemberOfSupabaseAdmin: false, postgresInheritsSupabaseAdmin: false,
@@ -29,25 +30,35 @@ const observation = (phase: Phase) => ({
   swimCreatePlanSecurityDefiner: true, swimCreatePlanRowSecurity: "on",
   serviceRoleAuthUsage: true, serviceRoleAuthUidExecute: true,
   serviceRoleLocalTodayExecute: true, serviceRoleSafetyExecute: true,
-  helper: phase === "rolled-back" ? ["absent"] : ["present", true, true, true, false, false, false, false],
-  functions: SWIM_FUNCTION_CONTRACTS.map(([name]) => [name, true, phase === "rolled-back", phase !== "rolled-back"]),
+  helper: phase === "rolled-back-146" ? ["absent"]
+    : ["present", true, true, true, false, amended(phase), false, false, !amended(phase), amended(phase)],
+  shared: {
+    attributes: true, original: !amended(phase), amended: amended(phase),
+    originalAcl: !amended(phase), amendedAcl: amended(phase),
+    authenticated: true, service: true, writer: true, owner: true, anon: !amended(phase), public: !amended(phase),
+  },
+  functions: SWIM_FUNCTION_CONTRACTS.map(([name]) => [name, true, phase === "rolled-back-146", phase !== "rolled-back-146"]),
 });
-const evidence = (phase: Phase) => projectAuthPrivilegeOutput(JSON.stringify(Object.entries(observation(phase))));
+const catalogOutput = (value: ReturnType<typeof observation>) => JSON.stringify(Object.entries(value)
+  .map(([key, entry]) => [key, key === "shared" ? Object.entries(value.shared) : entry]));
+const evidence = (phase: Phase) => projectAuthPrivilegeOutput(catalogOutput(observation(phase)));
 const probeOutput = (phase: Phase, testCase: ServiceCase) => JSON.stringify([
   ["case", testCase], ["identity", true], ["today", true], ["safety", true],
-  ["helper", phase === "rolled-back" ? "absent" : true],
+  ["helper", phase === "rolled-back-146" ? "absent" : true],
 ]);
 
 function harness(change?: (response: Awaited<ReturnType<PrivateCommand>>, index: number) => Awaited<ReturnType<PrivateCommand>>) {
-  let phase: Phase = "initial-up";
+  let phase: Phase = "initial-148";
   let index = 0;
   const proof = createIdentityRoundTripProof();
   const command = vi.fn<PrivateCommand>(async (_executable, args) => {
     const sql = args.at(-1)!;
     let text = "";
-    if (sql === files[IDENTITY_FILES.down]) phase = "rolled-back";
-    else if (sql === files[IDENTITY_FILES.up]) phase = "restored-up";
-    else if (sql === AUTH_PRIVILEGES_SQL) text = JSON.stringify(Object.entries(observation(phase)));
+    if (sql === files[IDENTITY_FILES.sharedDown]) phase = "first-147";
+    else if (sql === files[IDENTITY_FILES.down]) phase = "rolled-back-146";
+    else if (sql === files[IDENTITY_FILES.up]) phase = "restored-147";
+    else if (sql === files[IDENTITY_FILES.sharedUp]) phase = "restored-148";
+    else if (sql === AUTH_PRIVILEGES_SQL) text = catalogOutput(observation(phase));
     else if (sql === SWIM_FUNCTION_ACLS_SQL) text = acls;
     else if (sql.includes("SELECT current_user")) text = "t\n";
     else {
@@ -60,7 +71,7 @@ function harness(change?: (response: Awaited<ReturnType<PrivateCommand>>, index:
   });
   const verifiedSql = vi.fn((file: typeof IDENTITY_FILES[keyof typeof IDENTITY_FILES]) => files[file]!);
   const checkConsistency = vi.fn(async () => {});
-  const options = { command, dbId, initial: evidence("initial-up"), proof, verifiedSql, checkConsistency };
+  const options = { command, dbId, initial: evidence("initial-148"), proof, verifiedSql, checkConsistency };
   return { ...options, run: () => runIdentityRoundTrip(options) };
 }
 
@@ -68,9 +79,13 @@ describe("identity round trip (synthetic only; no database execution)", () => {
   it("hands off each exact tracked complete file once and bounds the private owned channel", async () => {
     const h = harness();
     await h.run();
-    expect(h.command).toHaveBeenCalledTimes(17);
-    expect(h.verifiedSql.mock.calls).toEqual([[IDENTITY_FILES.down], [IDENTITY_FILES.up]]);
-    for (const [index, file] of [[5, IDENTITY_FILES.down], [11, IDENTITY_FILES.up]] as const) {
+    expect(h.command).toHaveBeenCalledTimes(29);
+    expect(h.verifiedSql.mock.calls).toEqual([
+      [IDENTITY_FILES.sharedDown], [IDENTITY_FILES.down], [IDENTITY_FILES.up], [IDENTITY_FILES.sharedUp],
+    ]);
+    for (const [index, file] of [
+      [5, IDENTITY_FILES.sharedDown], [11, IDENTITY_FILES.down], [17, IDENTITY_FILES.up], [23, IDENTITY_FILES.sharedUp],
+    ] as const) {
       expect(h.command.mock.calls[index]).toEqual(["docker", [
         "exec", "-e", "PGOPTIONS=-c statement_timeout=30s -c lock_timeout=5s", dbId,
         "psql", "-XqAt", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", files[file],
@@ -84,12 +99,12 @@ describe("identity round trip (synthetic only; no database execution)", () => {
       expect(options).toEqual({ capture: true, allowFailure: true, timeout: args.includes("-e") ? 30_000 : 10_000 });
     }
     expect(h.checkConsistency).toHaveBeenCalledOnce();
-    expect(h.proof.ddl).toEqual({ down: "completed", up: "completed" });
+    expect(h.proof.ddl).toEqual({ sharedDown: "completed", down: "completed", up: "completed", sharedUp: "completed" });
     expect(h.proof.consistency).toBe("matched");
     expect(h.proof.result).toBe("matched");
     for (const phase of IDENTITY_PHASES) {
       expect(h.proof.phases[phase]).toEqual({
-        boundary: "matched", acls: "matched", attempted: 3, matched: 3,
+        boundary: "matched", acls: "matched", restoration: "matched", attempted: 3, matched: 3,
         callers: { missing: "matched", "subject-a": "matched", "subject-b": "matched" },
       });
     }
@@ -108,7 +123,7 @@ describe("identity round trip (synthetic only; no database execution)", () => {
     expect(runner).toContain('"src/lib/swim/__tests__/storage-rpc.smoke.test.ts", "--passWithNoTests=false"');
   });
 
-  it.each([0, 5, 11])("stops on procedural failure at command %i with no retry/RPC", async (index) => {
+  it.each([0, 5, 11, 17, 23])("stops on procedural failure at command %i with no retry/RPC", async (index) => {
     for (const result of [
       { ...success, code: 1 }, { ...success, signal: "SIGTERM" }, { ...success, timedOut: true },
     ]) {
@@ -120,12 +135,12 @@ describe("identity round trip (synthetic only; no database execution)", () => {
       expect(h.checkConsistency).not.toHaveBeenCalled();
       expect(rpc).not.toHaveBeenCalled();
       expect(h.proof.result).not.toBe("matched");
-      if (index > 0) expect(h.proof.ddl[index === 5 ? "down" : "up"]).toBe("aborted");
+      if (index > 0) expect(h.proof.ddl[({ 5: "sharedDown", 11: "down", 17: "up", 23: "sharedUp" } as const)[index as 5 | 11 | 17 | 23]]).toBe("aborted");
       expect(JSON.stringify(h.proof)).not.toContain(unsafe);
     }
   });
 
-  it.each([0, 5, 11])("sanitizes a thrown private command at procedural step %i", async (index) => {
+  it.each([0, 5, 11, 17, 23])("sanitizes a thrown private command at procedural step %i", async (index) => {
     const h = harness((response, i) => { if (i === index) throw new Error(unsafe); return response; });
     await expect(h.run()).rejects.not.toThrow(unsafe);
     expect(h.command).toHaveBeenCalledTimes(index + 1);
@@ -142,10 +157,10 @@ describe("identity round trip (synthetic only; no database execution)", () => {
     await expect(restored.run()).rejects.toBe(primary);
     expect(restored.proof.consistency).toBe("aborted");
     expect(restored.proof.result).not.toBe("matched");
-    expect(restored.verifiedSql).toHaveBeenCalledTimes(2);
+    expect(restored.verifiedSql).toHaveBeenCalledTimes(4);
   });
 
-  it.each([1, 2, 3, 4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16])(
+  it.each([1, 2, 3, 4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28])(
     "records failed evidence at command %i but attempts RPC after exact restore", async (index) => {
       for (const failure of ["malformed", "nonzero", "timeout", "signal", "throw"] as const) {
         const h = harness((response, i) => {
@@ -157,11 +172,11 @@ describe("identity round trip (synthetic only; no database execution)", () => {
         });
         await h.run();
         expect(h.proof.result).toBe("mismatched");
-        expect(h.proof.ddl.up).toBe("completed");
+        expect(h.proof.ddl.sharedUp).toBe("completed");
         const rpc = vi.fn(async () => {});
         await expect(enforceIdentityProofAfterRpc("matched", h.proof, rpc, new AcceptanceReporting())).rejects.toThrow();
         expect(rpc).toHaveBeenCalledOnce();
-        expect(h.command).toHaveBeenCalledTimes(17);
+        expect(h.command).toHaveBeenCalledTimes(29);
         expect(JSON.stringify(h.proof)).not.toContain(unsafe);
       }
     },
@@ -171,21 +186,21 @@ describe("identity round trip (synthetic only; no database execution)", () => {
     const h = harness();
     h.initial.status = "unavailable";
     await h.run();
-    expect(h.proof.phases["initial-up"].boundary).toBe("unavailable");
+    expect(h.proof.phases["initial-148"].boundary).toBe("unavailable");
     expect(h.proof.result).toBe("mismatched");
-    for (const index of [7, 13]) {
+    for (const index of [7, 13, 19, 25]) {
       const changed = harness((response, i) => i === index ? { ...response, text: acls.replace(/a{32}/, "b".repeat(32)) } : response);
       await changed.run();
       expect(changed.proof.result).toBe("mismatched");
     }
-    for (const index of [6, 12]) {
+    for (const [index, phase] of [[6, "first-147"], [12, "rolled-back-146"], [18, "restored-147"], [24, "restored-148"]] as const) {
       for (const change of [
-        { helper: ["present", true, true, true, true, false, false, false] },
+        { helper: ["present", true, true, true, true, false, false, false, true, false] },
         { functions: SWIM_FUNCTION_CONTRACTS.map(([name]) => [name, false, true, true]) },
-        { functions: SWIM_FUNCTION_CONTRACTS.map(([name]) => [name, true, index !== 6, index === 6]) },
+        { functions: SWIM_FUNCTION_CONTRACTS.map(([name]) => [name, true, phase !== "rolled-back-146", phase === "rolled-back-146"]) },
       ]) {
         const changed = harness((response, i) => i === index ? { ...response,
-          text: JSON.stringify(Object.entries({ ...observation(index === 6 ? "rolled-back" : "restored-up"), ...change })),
+          text: catalogOutput({ ...observation(phase), ...change }),
         } : response);
         await changed.run();
         expect(changed.proof.result).toBe("mismatched");
@@ -197,7 +212,9 @@ describe("identity round trip (synthetic only; no database execution)", () => {
     "preserves RPC process/ledger failure identity and secondary proof/boundary failures (%s)", async (boundary) => {
       for (const proofResult of ["matched", "mismatched", "unavailable", "not-attempted"] as const) {
         for (const failure of ["none", "process", "ledger"] as const) {
-          const proof = createIdentityRoundTripProof();
+          const h = harness();
+          await h.run();
+          const proof = h.proof;
           proof.result = proofResult;
           const reporting = new AcceptanceReporting();
           let primary: unknown;
@@ -251,7 +268,7 @@ describe("service caller SQL and strict private evidence", () => {
       expect(sql).toContain("SET LOCAL request.jwt.claim.sub =");
       expect(sql).toContain("SET LOCAL request.jwt.claims =");
       expect(sql.trim().endsWith("ROLLBACK;")).toBe(true);
-      expect(sql.includes("public.swim_request_user_id()")).toBe(phase !== "rolled-back");
+      expect(sql.includes("public.swim_request_user_id()")).toBe(phase !== "rolled-back-146");
       expect(sql).toContain("public.swim_local_today() IS DISTINCT FROM (now() AT TIME ZONE COALESCE(");
       expect(sql).toContain("public.swim_assert_start_safety(");
       expect(sql).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|GRANT|COMMIT)\b/);
@@ -272,7 +289,7 @@ describe("service caller SQL and strict private evidence", () => {
   });
 
   it("keeps the easy fixture identical in shape without replacing seeded catalog rows", () => {
-    const sql = serviceProbeSql("initial-up", "subject-a");
+    const sql = serviceProbeSql("initial-148", "subject-a");
     const fixture = JSON.parse(sql.match(/swim_assert_start_safety\('([^']+)'::jsonb\)/)![1]);
     expect(fixture.totalLengths).toBe(3);
     expect(fixture.sections.map((section: { kind: string }) => section.kind)).toEqual(["warmup", "main", "cooldown"]);
@@ -291,9 +308,9 @@ describe("service caller SQL and strict private evidence", () => {
       JSON.stringify([pairs[0], pairs[1], pairs[1], pairs[3], pairs[4]]),
       valid.replace('"subject-a"', '"subject-b"'), valid.replace("true", "null"),
       valid.replace("true", '"true"'), valid.replace('"identity"', '"phase"'),
-      probeOutput(phase === "rolled-back" ? "initial-up" : "rolled-back", "subject-a"),
+      probeOutput(phase === "rolled-back-146" ? "initial-148" : "rolled-back-146", "subject-a"),
     ]) expect(projectServiceProbe(text, phase, "subject-a")).toBe("unavailable");
-    for (const key of ["identity", "today", "safety", ...(phase === "rolled-back" ? [] : ["helper"])]) {
+    for (const key of ["identity", "today", "safety", ...(phase === "rolled-back-146" ? [] : ["helper"])]) {
       expect(projectServiceProbe(valid.replace(`"${key}",true`, `"${key}",false`), phase, "subject-a")).toBe("mismatched");
     }
   });
