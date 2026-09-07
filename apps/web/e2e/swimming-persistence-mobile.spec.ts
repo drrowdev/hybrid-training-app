@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Page } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { test as seededTest, expect } from "./fixtures/seed";
@@ -9,7 +10,9 @@ import type { SwimPlanRow, SwimWorkoutRow } from "../src/lib/swim/storage";
 
 const mobile = { viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true };
 
-const test = seededTest.extend({
+const test = seededTest.extend<{
+  secondUser: { email: string; password: string; userId: string };
+}>({
   // Validate before seedConfig can enable any user creation or sign-in.
   seedConfig: async ({ baseURL }, use) => {
     if (!swimE2EEnabled(process.env) || process.env.E2E_SWIM_LOCAL !== "1") {
@@ -34,6 +37,24 @@ const test = seededTest.extend({
     }
     // eslint-disable-next-line react-hooks/rules-of-hooks -- Playwright fixture callback.
     await use({ supabaseUrl, anonKey, serviceRoleKey });
+  },
+  secondUser: async ({ admin }, use) => {
+    const email = `e2e+${randomUUID()}@hta-e2e.com`;
+    const password = randomUUID();
+    const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+    expect(created.error).toBeNull();
+    if (!created.data.user) throw new Error("Missing synthetic second user.");
+    const userId = created.data.user.id;
+    try {
+      // eslint-disable-next-line react-hooks/rules-of-hooks -- Playwright fixture callback.
+      await use({ email, password, userId });
+    } finally {
+      const deleted = await admin.auth.admin.deleteUser(userId);
+      expect(deleted.error).toBeNull();
+      const remaining = await admin.auth.admin.getUserById(userId);
+      expect(remaining.data.user).toBeNull();
+      expect(remaining.error?.status).toBe(404);
+    }
   },
 });
 
@@ -130,6 +151,74 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
       await openSavedWorkout(secondPage, planURL, saved);
       await expect(secondPage.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();
       expect(await savedState(admin, freshUser.userId)).toEqual(saved);
+    } finally {
+      await secondContext.close();
+    }
+  });
+
+  test("DC-SW1/DC-SW8: two mobile users retain distinct usable plans and cannot start or change each other's workouts", async ({
+    page, context, browser, freshUser, secondUser, seedConfig, admin, baseURL,
+  }) => {
+    expect(secondUser.userId).not.toBe(freshUser.userId);
+    await markOnboarded(admin, freshUser.userId);
+    await markOnboarded(admin, secondUser.userId);
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    const secondContext = await browser.newContext({ ...mobile, baseURL });
+    try {
+      await signInAs(secondContext, secondUser, seedConfig, baseURL!);
+      const secondPage = await secondContext.newPage();
+      const firstPlanURL = await createPlan(page, "25yd");
+      const secondPlanURL = await createPlan(secondPage, "50m");
+      const firstSaved = await savedState(admin, freshUser.userId);
+      const secondSaved = await savedState(admin, secondUser.userId);
+      expect(firstSaved.plans[0].id).toBe(new URL(firstPlanURL).searchParams.get("plan"));
+      expect(secondSaved.plans[0].id).toBe(new URL(secondPlanURL).searchParams.get("plan"));
+      expect(firstSaved.plans[0].id).not.toBe(secondSaved.plans[0].id);
+      expect(firstSaved.plans[0].definition.setup.course).toEqual({ numerator: 25, denominator: 1, unit: "yd" });
+      expect(secondSaved.plans[0].definition.setup.course).toEqual({ numerator: 50, denominator: 1, unit: "m" });
+      const ids = [...firstSaved.workouts, ...secondSaved.workouts].map((workout) => workout.id);
+      expect(new Set(ids).size).toBe(8);
+      for (const workout of [...firstSaved.workouts, ...secondSaved.workouts]) {
+        expect(workout.status).toBe("scheduled");
+        expect(workout.session_id).toBeNull();
+      }
+      const firstWorkoutURL = await openSavedWorkout(page, firstPlanURL, firstSaved);
+      const secondWorkoutURL = await openSavedWorkout(secondPage, secondPlanURL, secondSaved);
+      for (const ownerPage of [page, secondPage]) {
+        await expect(ownerPage.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();
+      }
+
+      for (const { visitor, foreignURL } of [
+        { visitor: page, foreignURL: secondWorkoutURL },
+        { visitor: secondPage, foreignURL: firstWorkoutURL },
+      ]) {
+        for (const url of [foreignURL, `${foreignURL}?edit=1`]) {
+          await visitor.goto(url);
+          await expect(visitor).toHaveURL(url);
+          // The owned workout route calls Next's notFound(), including for edit=1.
+          await expect(visitor.getByRole("heading", { name: "404", exact: true })).toBeVisible();
+          await expect(visitor.getByRole("heading", { name: "Workout", exact: true })).toHaveCount(0);
+          await expect(visitor.getByRole("button", { name: /^(Start swim|Skip swim|Finish swim|Save changes|Edit result)$/ })).toHaveCount(0);
+          await expect(visitor.getByRole("link", { name: "Log swim", exact: true })).toHaveCount(0);
+          await expect(visitor.getByRole("group", { name: "Swim result", exact: true })).toHaveCount(0);
+        }
+      }
+      await openSavedWorkout(page, firstPlanURL, firstSaved);
+      await openSavedWorkout(secondPage, secondPlanURL, secondSaved);
+      expect(await savedState(admin, freshUser.userId)).toEqual(firstSaved);
+      expect(await savedState(admin, secondUser.userId)).toEqual(secondSaved);
+
+      for (const ownerPage of [page, secondPage]) {
+        await ownerPage.getByRole("button", { name: "Start swim", exact: true }).click();
+        await expect(ownerPage.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+      }
+      const firstStarted = await savedState(admin, freshUser.userId);
+      const secondStarted = await savedState(admin, secondUser.userId);
+      expect(firstStarted.workouts[0].status).toBe("started");
+      expect(secondStarted.workouts[0].status).toBe("started");
+      expect(firstStarted.workouts[0].session_id).toEqual(expect.any(String));
+      expect(secondStarted.workouts[0].session_id).toEqual(expect.any(String));
+      expect(firstStarted.workouts[0].session_id).not.toBe(secondStarted.workouts[0].session_id);
     } finally {
       await secondContext.close();
     }
