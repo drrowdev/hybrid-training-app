@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, closeSync, lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inspect } from "node:util";
@@ -13,7 +14,7 @@ import {
   requireStartupContainer, resourceSchema, type Container, type Network, type Resources,
 } from "../../../../scripts/swim-acceptance-guards";
 import {
-  acceptanceAssert, AcceptanceReporting, formatAcceptanceSummary,
+  acceptanceAssert, AcceptanceReporting, commandStdout, formatAcceptanceSummary,
   decodeMigrationDiagnostic, MIGRATION_DIAGNOSTIC_FIELDS, MIGRATION_DIAGNOSTIC_MAX_BYTES,
   openPrivateCommandLog, publishAcceptanceSummary, readMigrationDiagnostic, safeFailureCause,
 } from "../../../../scripts/swim-acceptance-reporting";
@@ -194,7 +195,8 @@ describe("migration diagnostics (DC-SW8; synthetic logs only)", () => {
     const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
     const stage = source.slice(source.indexOf('await stage("unchanged migrations"'),
       source.indexOf('await stage("global catalog'));
-    expect(stage).toMatch(/requireUnchanged\(\);\s+const \{ result, log \} = await command\("pnpm", \["--filter", "@hta\/db", "db:migrate"\], \{\s+env: target\.dbEnv, timeout: 180_000, allowFailure: true,\s+\}\);/);
+    expect(stage).toMatch(/requireUnchanged\(\);\s+const \{ result, log \} = await command\("pnpm", \["--filter", "@hta\/db", "db:migrate"\], \{\s+env: target\.dbEnv, timeout: 180_000, allowFailure: true, separateStdout: true,\s+\}\);/);
+    expect(source.match(/separateStdout: true/g)).toHaveLength(1);
     expect(stage).toMatch(/if \(result\.code !== 0\) \{\s+try \{\s+manifest\.migrationDiagnostic = readMigrationDiagnostic\(log\);\s+\} catch \{\s+manifest\.migrationDiagnostic = "unavailable";\s+\}\s+\}\s+requireProcess\(result\);\s+requireUnchanged\(\);/);
     expect(source.match(/readMigrationDiagnostic\(log\)/g)).toHaveLength(1);
     for (const diagnostic of [evidence, "unavailable"]) {
@@ -391,8 +393,9 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     expect(source).toContain("requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);\n      requireIdentityHelperRpcCases(ledger);\n    }), reporting);");
     expect(source.match(/await observeAuthPrivileges\(/g)).toHaveLength(1);
     expect(source).toContain("Math.min(options.timeout ?? 60_000, deadline - Date.now())");
-    expect(source).toContain('stdio: ["ignore", options.capture ? "pipe" : fd, fd]');
-    expect(source).toContain("if (text.length > 8 * 1024 * 1024) { timedOut = true; terminate(); }");
+    expect(source).toContain('stdio: ["ignore", stdout.stdio, fd]');
+    expect(source).toContain("commandStdout(commandLog, options, () => { timedOut = true; terminate(); })");
+    expect(source).toContain('child.stdout?.on("data", stdout.onData)');
     expect(source).toContain("if (!options.allowFailure) requireProcess(result);");
   });
   it.each([
@@ -1319,6 +1322,93 @@ describe("disposable targets and effective Docker publications", () => {
   });
 
   describe("production private command logs", () => {
+    async function fixture(options: { capture?: boolean; separateStdout?: boolean }, oversized = false) {
+      const directory = mkdtempSync(join(tmpdir(), "swim-stdout-routing-"));
+      const path = join(directory, "command.log");
+      const log = openPrivateCommandLog(path);
+      const diagnostic = "PostgresError: SCID/1/roles/pre/roles/tttttt\n";
+      const size = oversized ? 8 * 1024 * 1024 : 8;
+      let timedOut = false;
+      let acknowledged = false;
+      let ready = false;
+      const stdout = commandStdout(log, options, () => {
+        timedOut = true;
+        child.kill("SIGTERM");
+      });
+      const child = spawn(process.execPath, ["-e", `
+        const { writeSync } = require("node:fs");
+        const diagnostic = ${JSON.stringify(diagnostic)};
+        if (${oversized}) writeSync(2, diagnostic);
+        process.on("message", () => {
+          if (${oversized}) process.stdout.write("x");
+          else {
+            writeSync(2, diagnostic);
+            process.disconnect();
+          }
+        });
+        process.stdout.write(Buffer.alloc(${size}, "x"), () => process.send("ready"));
+      `], { stdio: ["ignore", stdout.stdio, log.fd, "ipc"] });
+      const acknowledge = () => {
+        if (!ready || acknowledged || (child.stdout && stdout.text.length !== size)) return;
+        acknowledged = true;
+        child.send("continue");
+      };
+      child.stdout?.on("data", (chunk: Buffer) => {
+        stdout.onData(chunk);
+        acknowledge();
+      });
+      child.on("message", () => { ready = true; acknowledge(); });
+      const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+        child.once("close", (code, signal) => resolve({ code, signal }));
+      });
+      let spawnFailed = false;
+      child.once("error", () => { spawnFailed = true; });
+      const watchdog = setTimeout(() => { child.kill("SIGKILL"); }, 4_000);
+      try {
+        const result = await closed;
+        expect(spawnFailed).toBe(false);
+        expect(acknowledged).toBe(true);
+        expect(lstatSync(path).mode & 0o777).toBe(0o600);
+        expect(() => openPrivateCommandLog(path)).toThrow();
+        return {
+          ...result, timedOut, text: stdout.text,
+          log: readFileSync(path, "utf8"), evidence: readMigrationDiagnostic(path), diagnostic,
+        };
+      } finally {
+        clearTimeout(watchdog);
+        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+        await closed;
+        expect(child.exitCode !== null || child.signalCode !== null || spawnFailed).toBe(true);
+        closeSync(log.fd);
+        rmSync(directory, { recursive: true });
+        expect(existsSync(directory)).toBe(false);
+      }
+    }
+
+    it.each([{}, { capture: true }])("retains corrupt combined append with options %j", async (options) => {
+      const result = await fixture(options);
+      expect(result).toMatchObject({ code: 0, signal: null, timedOut: false, evidence: "unavailable" });
+      expect(result.log).toBe(`xxxxxxxx${result.diagnostic}`);
+      expect(result.text).toBe("capture" in options ? "xxxxxxxx" : "");
+    });
+
+    it.each([{ separateStdout: true }, { capture: true, separateStdout: true }])(
+      "separates newline-less stdout through the production helper with options %j", async (options) => {
+        const result = await fixture(options);
+        expect(result).toMatchObject({ code: 0, signal: null, timedOut: false, text: "xxxxxxxx",
+          evidence: { version: 1, guard: "roles", phase: "pre", object: "roles", bits: "tttttt" } });
+        expect(result.log).toBe(result.diagnostic);
+      },
+    );
+
+    it("terminates oversized separated stdout at the unchanged capture bound without logging it", async () => {
+      const result = await fixture({ separateStdout: true }, true);
+      expect(result).toMatchObject({ code: null, signal: "SIGTERM", timedOut: true });
+      expect(result.text.length).toBe(8 * 1024 * 1024 + 1);
+      expect(result.log).toBe(result.diagnostic);
+      expect(result.evidence).toMatchObject({ guard: "roles", bits: "tttttt" });
+    });
+
     it("preserves interleaved captured stdout and descriptor stderr with exclusive 0600 creation", () => {
       const directory = mkdtempSync(join(tmpdir(), "swim-acceptance-log-"));
       const path = join(directory, "command.log");
