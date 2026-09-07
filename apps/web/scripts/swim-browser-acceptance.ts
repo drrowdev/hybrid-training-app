@@ -1,5 +1,5 @@
 import {
-  closeSync, constants, fstatSync, lstatSync, openSync, readSync, readdirSync, realpathSync,
+  closeSync, constants, fchmodSync, fstatSync, lstatSync, openSync, readSync, readdirSync, realpathSync,
   type Stats,
 } from "node:fs";
 import { request } from "node:http";
@@ -44,6 +44,13 @@ type FailureCode = "browser-environment" | "browser-paths" | "browser-env-files"
   "browser-port" | "browser-budget" | "browser-readiness-timeout" | "browser-cancelled" |
   "browser-server-exited" | "browser-report-file" | "browser-report-schema" | "browser-failed";
 const failures = new WeakMap<object, FailureCode>();
+const failureLedgers = new WeakMap<object, {
+  cases: Array<(typeof SWIM_BROWSER_CASES)[number] & {
+    status: z.infer<typeof resultStatusSchema>; testStatus: z.infer<typeof testStatusSchema>;
+    expectedStatus: z.infer<typeof resultStatusSchema>; attempts: number;
+  }>;
+  counts: { expected: number; unexpected: number; flaky: number; skipped: number };
+}>();
 
 function requireCondition(value: unknown, code: FailureCode): asserts value {
   try { assert(value, code); } catch (error) {
@@ -56,6 +63,7 @@ export function projectBrowserFailure(error: unknown) {
   return {
     success: false as const,
     code: error && typeof error === "object" ? failures.get(error) ?? "browser-failed" : "browser-failed",
+    ...(error && typeof error === "object" ? failureLedgers.get(error) : undefined),
   };
 }
 
@@ -193,7 +201,7 @@ function absent(path: string) {
 }
 function identity(a: Stats, b: Stats) { return a.dev === b.dev && a.ino === b.ino; }
 
-export function requirePrivateBrowserPaths(paths: BrowserPaths, webRoot: string) {
+function requirePrivateBrowserRoot(paths: BrowserPaths, webRoot: string) {
   requireBrowserPaths(paths);
   try {
     requireCondition(isAbsolute(webRoot) && realpathSync(webRoot) === webRoot, "browser-paths");
@@ -204,6 +212,13 @@ export function requirePrivateBrowserPaths(paths: BrowserPaths, webRoot: string)
     const root = lstatSync(paths.runDirectory);
     requireCondition(root.isDirectory() && owned(root, 0o700) &&
       realpathSync(paths.runDirectory) === paths.runDirectory, "browser-paths");
+    return root;
+  } catch { failure("browser-paths"); }
+}
+
+export function requirePrivateBrowserPaths(paths: BrowserPaths, webRoot: string) {
+  const root = requirePrivateBrowserRoot(paths, webRoot);
+  try {
     if (!absent(paths.outputDir)) {
       const output = lstatSync(paths.outputDir);
       requireCondition(output.isDirectory() && owned(output, 0o700) &&
@@ -225,19 +240,60 @@ export function prepareSwimBrowserReport(paths: BrowserPaths, webRoot: string): 
   return ticket;
 }
 
+export function sealSwimBrowserReport(ticket: BrowserReportTicket) {
+  try {
+    requireCondition(tickets.has(ticket), "browser-report-file");
+    const originalRoot = tickets.get(ticket)!;
+    const checkRoot = () => requireCondition(
+      identity(originalRoot, requirePrivateBrowserRoot(ticket.paths, ticket.webRoot)), "browser-report-file",
+    );
+    checkRoot();
+    const seal = (path: string, directory: boolean) => {
+      let fd: number | undefined;
+      try {
+        checkRoot();
+        try {
+          fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW |
+            (directory ? constants.O_DIRECTORY : constants.O_NONBLOCK));
+        } catch (error) {
+          if (directory && (error as NodeJS.ErrnoException).code === "ENOENT") {
+            requireCondition(absent(path), "browser-report-file");
+            return;
+          }
+          throw error;
+        }
+        const stat = fstatSync(fd);
+        requireCondition(typeof process.getuid === "function" && stat.uid === process.getuid() &&
+          (directory ? stat.isDirectory() : stat.isFile() && stat.nlink === 1 &&
+            stat.size > 0 && stat.size <= MAX_REPORT_BYTES), "browser-report-file");
+        checkRoot();
+        requireCondition(identity(stat, lstatSync(path)), "browser-report-file");
+        fchmodSync(fd, directory ? 0o700 : 0o600);
+        requireCondition(identity(stat, lstatSync(path)), "browser-report-file");
+        checkRoot();
+      } finally { if (fd !== undefined) closeSync(fd); }
+    };
+    seal(ticket.paths.reportPath, false);
+    seal(ticket.paths.outputDir, true);
+  } catch { failure("browser-report-file"); }
+}
+
 // Playwright 1.60.0 JSONReport types and src/reporters/json.ts: rootDir-relative
 // locations, merged file-suite wrappers, then describe suites and individual specs.
+const resultStatusSchema = z.enum(["passed", "failed", "timedOut", "skipped", "interrupted"]);
+const testStatusSchema = z.enum(["expected", "unexpected", "flaky", "skipped"]);
 const resultSchema = z.object({
-  retry: z.literal(0), status: z.literal("passed"), error: z.undefined().optional(),
-  errors: z.array(z.unknown()).length(0),
+  retry: z.number().int().min(0).max(99), status: resultStatusSchema,
+  error: z.unknown().transform((value) => value !== undefined),
+  errors: z.array(z.unknown()).transform((value) => value.length),
 });
 const specSchema = z.object({
-  file: z.string(), title: z.string(), ok: z.literal(true),
+  file: z.string(), title: z.string(), ok: z.boolean(),
   tests: z.array(z.object({
     timeout: z.literal(30_000),
     projectId: z.literal(PROJECT), projectName: z.literal(PROJECT),
-    expectedStatus: z.literal("passed"), status: z.literal("expected"),
-    results: z.array(resultSchema).length(1),
+    expectedStatus: resultStatusSchema, status: testStatusSchema,
+    results: z.array(resultSchema).min(1).max(100),
   })).length(1),
 });
 const suiteSchema = z.object({
@@ -255,9 +311,10 @@ const reportSchema = z.object({
       testMatch: z.array(z.string()), testIgnore: z.array(z.string()).length(0),
     })).length(1),
   }),
-  suites: z.array(z.unknown()).length(2), errors: z.array(z.unknown()).length(0),
+  suites: z.array(z.unknown()).length(2), errors: z.array(z.unknown()).transform((value) => value.length),
   stats: z.object({
-    expected: z.literal(4), unexpected: z.literal(0), flaky: z.literal(0), skipped: z.literal(0),
+    expected: z.number().int().min(0).max(4), unexpected: z.number().int().min(0).max(4),
+    flaky: z.number().int().min(0).max(4), skipped: z.number().int().min(0).max(4),
   }),
 });
 
@@ -278,6 +335,7 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
       return canonical;
     };
     const seen = new Set<number>();
+    const specs = new Map<number, z.infer<typeof specSchema>>();
     const files = new Set<string>();
     for (const rawFile of report.suites) {
       const fileSuite = suiteSchema.parse(rawFile);
@@ -296,14 +354,40 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
           expected.file === file && expected.describe === describe.title && expected.title === spec.title);
         requireCondition(index >= 0 && !seen.has(index), "browser-report-schema");
         seen.add(index);
+        specs.set(index, spec);
       }
     }
     requireCondition(seen.size === 4, "browser-report-schema");
+    const allPassed = [...specs.values()].every((spec) => {
+      const test = spec.tests[0]!;
+      const result = test.results[0]!;
+      return spec.ok && test.status === "expected" && test.expectedStatus === "passed" &&
+        test.results.length === 1 && result.retry === 0 && result.status === "passed" &&
+        !result.error && result.errors === 0;
+    });
+    try {
+      requireCondition(allPassed && report.errors === 0 && report.stats.expected === 4 &&
+        report.stats.unexpected === 0 && report.stats.flaky === 0 && report.stats.skipped === 0,
+      "browser-failed");
+    } catch (error) {
+      if (error && typeof error === "object") failureLedgers.set(error, {
+        counts: { ...report.stats },
+        cases: SWIM_BROWSER_CASES.map((item, index) => {
+          const test = specs.get(index)!.tests[0]!;
+          return { ...item, status: test.results.at(-1)!.status, testStatus: test.status,
+            expectedStatus: test.expectedStatus, attempts: test.results.length };
+        }),
+      });
+      throw error;
+    }
     return {
       success: true as const, counts: { expected: 4, unexpected: 0, flaky: 0, skipped: 0 },
       cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "passed" as const })),
     };
-  } catch { failure("browser-report-schema"); }
+  } catch (error) {
+    if (error && typeof error === "object" && failures.has(error)) throw error;
+    failure("browser-report-schema");
+  }
 }
 
 export function readSwimBrowserReport(ticket: BrowserReportTicket) {

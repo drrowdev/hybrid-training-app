@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import {
-  chmodSync, fstatSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync,
+  chmodSync, fchmodSync, fstatSync, linkSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync,
 } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -10,7 +10,7 @@ import type { JSONReport, JSONReportSpec } from "@playwright/test/reporter";
 import {
   BROWSER_LIMITS, browserBudget, buildBrowserEnv, prepareSwimBrowserReport, projectBrowserFailure,
   readSwimBrowserReport, requireBrowserEnvironment, requireBrowserPaths, requireFreePort,
-  requireNoEnvFiles, requirePrivateBrowserPaths, SWIM_BROWSER_CASES, validateSwimBrowserReport, waitForBrowserReady,
+  requireNoEnvFiles, requirePrivateBrowserPaths, sealSwimBrowserReport, SWIM_BROWSER_CASES, validateSwimBrowserReport, waitForBrowserReady,
   type BrowserPaths,
 } from "../../../../scripts/swim-browser-acceptance";
 
@@ -27,11 +27,14 @@ const target = {
 const temporary: string[] = [];
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
-  return { ...actual, fstatSync: vi.fn(actual.fstatSync) };
+  return { ...actual, fstatSync: vi.fn(actual.fstatSync), fchmodSync: vi.fn(actual.fchmodSync),
+    openSync: vi.fn(actual.openSync) };
 });
 afterEach(() => {
   vi.restoreAllMocks();
   vi.mocked(fstatSync).mockImplementation(fs.fstatSync);
+  vi.mocked(fchmodSync).mockReset().mockImplementation(fs.fchmodSync);
+  vi.mocked(openSync).mockReset().mockImplementation(fs.openSync);
   for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true });
 });
 function privatePaths() {
@@ -179,7 +182,7 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
   it.each([
     "version", "project", "root", "extra", "missing", "duplicate", "unknown", "wrong-path", "describe",
     "skipped", "flaky", "unexpected", "retry", "result", "test", "ok", "error", "stats", "malformed",
-    "global-error", "failed-result", "interrupted", "expected-failure", "no-result", "no-test",
+    "global-error", "failed-result", "timed-out", "interrupted", "expected-failure", "no-result", "no-test",
     "extra-project", "test-project", "test-timeout", "output", "test-match", "test-dir", "repeat",
     "project-retry", "project-timeout", "nested", "suite-path", "file-wrapper", "absolute-wrong-path",
     "spec-missing", "spec-extra", "stats-flaky", "stats-skipped", "stats-unexpected",
@@ -208,6 +211,7 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
       case "stats": fixture.stats.expected = 3; break;
       case "global-error": Object.assign(fixture, { errors: [{ message: "private-payload" }] }); break;
       case "failed-result": test.results[0]!.status = "failed"; break;
+      case "timed-out": test.results[0]!.status = "timedOut"; break;
       case "interrupted": test.results[0]!.status = "interrupted"; break;
       case "expected-failure": test.expectedStatus = "failed"; break;
       case "no-result": test.results = []; break;
@@ -235,7 +239,18 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
       validateSwimBrowserReport(mode === "malformed" ? "private-payload" : JSON.stringify(fixture), paths, webRoot);
       expect.fail("Expected report rejection");
     } catch (error) {
-      expect(projectBrowserFailure(error)).toEqual({ success: false, code: "browser-report-schema" });
+      const outcomeFailure = [
+        "skipped", "flaky", "unexpected", "retry", "result", "ok", "error", "stats",
+        "global-error", "failed-result", "timed-out", "interrupted", "expected-failure",
+        "stats-flaky", "stats-skipped", "stats-unexpected",
+      ].includes(mode);
+      const projection = projectBrowserFailure(error);
+      expect(projection).toMatchObject({
+        success: false, code: outcomeFailure ? "browser-failed" : "browser-report-schema",
+      });
+      if (outcomeFailure) expect(projection.cases).toHaveLength(4);
+      else expect(projection).toEqual({ success: false, code: "browser-report-schema" });
+      expect(JSON.stringify(projection)).not.toContain("private-payload");
     }
   });
   it("does not project unknown errors or assertion payloads", () => {
@@ -249,9 +264,163 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
     result.attachments = [{ name: "private-attachment", contentType: "text/plain", path: "/unread/private-path" }];
     expect(JSON.stringify(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot))).not.toContain("private-");
   });
+  it("throws the authored failure with only fixed identities, statuses and counts", () => {
+    const fixture = report();
+    const spec = fixture.suites[0]!.suites[0]!.specs[0]!;
+    spec.ok = false;
+    const test = spec.tests[0]!;
+    test.status = "unexpected";
+    const result = test.results[0]!;
+    result.status = "failed";
+    Object.assign(result, {
+      error: { message: "private-message", stack: "private-stack", location: { file: "private-file" } },
+      errors: [{ message: "private-errors", snippet: "private-snippet" }],
+      stdout: [{ text: "private-stdout" }], stderr: [{ text: "private-stderr" }],
+      attachments: [{ name: "private-attachment", path: "private-path" }],
+      annotations: [{ type: "private-annotation", description: "private-description" }],
+    });
+    fixture.stats = { expected: 3, unexpected: 1, flaky: 0, skipped: 0 };
+    let caught: unknown;
+    try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot); }
+    catch (error) { caught = error; }
+    expect(caught).toBeInstanceOf(Error);
+    const projection = projectBrowserFailure(caught);
+    expect(projection).toEqual({
+      success: false, code: "browser-failed", counts: fixture.stats,
+      cases: SWIM_BROWSER_CASES.map((item, index) => ({
+        ...item, status: index === 0 ? "failed" : "passed",
+        testStatus: index === 0 ? "unexpected" : "expected", expectedStatus: "passed", attempts: 1,
+      })),
+    });
+    expect(JSON.stringify(projection)).not.toContain("private-");
+    expect(projectBrowserFailure(caught)).toEqual(projection);
+  });
+  it.each(["status", "test-status", "expected-status", "attempts", "retry", "stats", "fraction", "ok"])(
+    "rejects malformed outcome %s without a partial ledger", (mode) => {
+      const fixture = report();
+      const spec = fixture.suites[0]!.suites[0]!.specs[0]!;
+      const test = spec.tests[0]!;
+      if (mode === "status") Object.assign(test.results[0]!, { status: "private-status" });
+      if (mode === "test-status") Object.assign(test, { status: "private-status" });
+      if (mode === "expected-status") Object.assign(test, { expectedStatus: "private-status" });
+      if (mode === "attempts") test.results = Array.from({ length: 101 }, () => test.results[0]!);
+      if (mode === "retry") test.results[0]!.retry = -1;
+      if (mode === "stats") fixture.stats.expected = 5;
+      if (mode === "fraction") fixture.stats.expected = 1.5;
+      if (mode === "ok") Object.assign(spec, { ok: "private-ok" });
+      let caught: unknown;
+      try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot); }
+      catch (error) { caught = error; }
+      expect(projectBrowserFailure(caught)).toEqual({ success: false, code: "browser-report-schema" });
+    },
+  );
 });
 
 describe.skipIf(process.platform === "win32")("private POSIX report fixtures", () => {
+  it.each(["public", "private", "missing-output"])("seals %s modes without consuming or refreshing the report", (mode) => {
+    const location = privatePaths();
+    const ticket = prepareReport(location);
+    writeFileSync(location.reportPath, JSON.stringify(report(location)), { mode: 0o600 });
+    chmodSync(location.reportPath, mode === "public" ? 0o644 : 0o600);
+    if (mode !== "missing-output") {
+      mkdirSync(location.outputDir);
+      chmodSync(location.outputDir, mode === "public" ? 0o755 : 0o700);
+      mkdirSync(join(location.outputDir, "child"));
+    }
+    const before = fs.statSync(location.reportPath);
+    sealSwimBrowserReport(ticket);
+    sealSwimBrowserReport(ticket);
+    expect(fs.statSync(location.reportPath).mode & 0o7777).toBe(0o600);
+    expect(fs.statSync(location.reportPath).mtimeMs).toBe(before.mtimeMs);
+    if (mode !== "missing-output") expect(fs.statSync(location.outputDir).mode & 0o7777).toBe(0o700);
+    expect(readSwimBrowserReport(ticket).success).toBe(true);
+    expect(() => readSwimBrowserReport(ticket)).toThrow("browser-report-file");
+    expect(() => sealSwimBrowserReport(ticket)).toThrow("browser-report-file");
+  });
+  it.each(["symlink", "hardlink", "directory", "empty", "large", "output-symlink", "output-file",
+    "root", "root-mode", "root-owner", "forged"])("refuses unsafe sealing: %s", (mode) => {
+    const location = privatePaths();
+    const ticket = prepareReport(location);
+    const outside = join(resolve(location.runDirectory, ".."), "outside");
+    writeFileSync(outside, "outside", { mode: 0o644 });
+    chmodSync(outside, 0o644);
+    writeFileSync(location.reportPath, JSON.stringify(report(location)), { mode: 0o600 });
+    if (["symlink", "hardlink", "directory"].includes(mode)) {
+      rmSync(location.reportPath);
+      if (mode === "symlink") symlinkSync(outside, location.reportPath);
+      if (mode === "hardlink") linkSync(outside, location.reportPath);
+      if (mode === "directory") mkdirSync(location.reportPath);
+    }
+    if (mode === "empty") writeFileSync(location.reportPath, "");
+    if (mode === "large") writeFileSync(location.reportPath, Buffer.alloc(8 * 1024 * 1024 + 1));
+    if (mode === "output-symlink") symlinkSync(resolve(location.runDirectory, ".."), location.outputDir);
+    if (mode === "output-file") writeFileSync(location.outputDir, "");
+    if (mode === "root") {
+      renameSync(location.runDirectory, `${location.runDirectory}-old`);
+      mkdirSync(location.runDirectory, { mode: 0o700 });
+    }
+    if (mode === "root-mode") chmodSync(location.runDirectory, 0o755);
+    if (mode === "root-owner") {
+      vi.spyOn(process as NodeJS.Process & { getuid(): number }, "getuid").mockReturnValue(process.getuid!() + 1);
+    }
+    expect(() => sealSwimBrowserReport(mode === "forged" ? { ...ticket } : ticket)).toThrow("browser-report-file");
+    expect(fs.statSync(outside).mode & 0o7777).toBe(0o644);
+    if (["root", "root-mode", "root-owner", "forged"].includes(mode)) expect(openSync).not.toHaveBeenCalled();
+    for (const call of vi.mocked(openSync).mock.results) {
+      if (call.type === "return") expect(() => fs.fstatSync(call.value)).toThrow();
+    }
+  });
+  it("does not treat output access errors as optional absence", () => {
+    const location = privatePaths();
+    const ticket = prepareReport(location);
+    writeFileSync(location.reportPath, JSON.stringify(report(location)), { mode: 0o600 });
+    vi.mocked(openSync).mockImplementation((path, flags, mode) => {
+      if (path === location.outputDir) throw Object.assign(new Error("private-access"), { code: "EACCES" });
+      return fs.openSync(path, flags, mode);
+    });
+    expect(() => sealSwimBrowserReport(ticket)).toThrow("browser-report-file");
+    for (const call of vi.mocked(openSync).mock.results) {
+      if (call.type === "return") expect(() => fs.fstatSync(call.value)).toThrow();
+    }
+  });
+  it.each(["report-owner", "output-owner", "identity", "chmod"])("closes descriptors on sealing %s failure", (mode) => {
+    const location = privatePaths();
+    const ticket = prepareReport(location);
+    writeFileSync(location.reportPath, JSON.stringify(report(location)), { mode: 0o600 });
+    mkdirSync(location.outputDir, { mode: 0o700 });
+    vi.mocked(fstatSync).mockImplementation((...args: Parameters<typeof fs.fstatSync>) => {
+      const stat = fs.fstatSync(...args);
+      if ((mode === "report-owner" && stat.isFile()) || (mode === "output-owner" && stat.isDirectory())) {
+        Object.assign(stat, { uid: Number(stat.uid) + 1 });
+      }
+      if (mode === "identity") Object.assign(stat, { ino: Number(stat.ino) + 1 });
+      return stat;
+    });
+    if (mode === "chmod") vi.mocked(fchmodSync).mockImplementation(() => { throw new Error("private-chmod"); });
+    expect(() => sealSwimBrowserReport(ticket)).toThrow("browser-report-file");
+    for (const call of vi.mocked(openSync).mock.results) {
+      if (call.type === "return") expect(() => fs.fstatSync(call.value)).toThrow();
+    }
+  });
+  it("keeps reader freshness and failure projection checks after sealing", () => {
+    const location = privatePaths();
+    const ticket = prepareReport(location);
+    const fixture = report(location);
+    fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!.status = "failed";
+    writeFileSync(location.reportPath, JSON.stringify(fixture), { mode: 0o600 });
+    sealSwimBrowserReport(ticket);
+    let caught: unknown;
+    try { readSwimBrowserReport(ticket); } catch (error) { caught = error; }
+    expect(projectBrowserFailure(caught)).toMatchObject({ success: false, code: "browser-failed" });
+    expect(projectBrowserFailure(caught).cases?.[0]?.status).toBe("failed");
+    expect(() => readSwimBrowserReport(ticket)).toThrow();
+    const stale = privatePaths();
+    const staleTicket = prepareReport(stale);
+    writeFileSync(stale.reportPath, JSON.stringify(report(stale)), { mode: 0o600 });
+    utimesSync(stale.reportPath, new Date(0), new Date(0));
+    sealSwimBrowserReport(staleTicket);
+    expect(() => readSwimBrowserReport(staleTicket)).toThrow("browser-report-file");
+  });
   it("requires an absent report, reads one fresh private file, and consumes the ticket", () => {
     const location = privatePaths();
     const ticket = prepareReport(location);
