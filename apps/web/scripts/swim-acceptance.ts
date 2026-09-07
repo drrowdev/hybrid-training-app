@@ -22,7 +22,8 @@ import {
 } from "./swim-acceptance-reporting";
 import { RPC_CONFIG, RPC_SUITE, readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
 import { DIAGNOSTICS_ENV, DIAGNOSTICS_FILE, readSwimRpcDiagnostics } from "./swim-rpc-diagnostics";
-import { checkAuthBoundary, enforceAuthBoundaryAfterRpc, observeAuthPrivileges } from "./swim-auth-privileges";
+import { checkAuthBoundary, observeAuthPrivileges } from "./swim-auth-privileges";
+import { createIdentityRoundTripProof, enforceIdentityProofAfterRpc, runIdentityRoundTrip } from "./swim-identity-roundtrip";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
@@ -442,7 +443,25 @@ async function main(cleanupOnly: boolean) {
     manifest.authPrivileges = authPrivileges;
     const authBoundary = checkAuthBoundary(authPrivileges, "up");
     manifest.authBoundary = authBoundary;
-    await enforceAuthBoundaryAfterRpc(authBoundary, () => stage("complete authenticated RPC file and positive ledger", async () => {
+    const identityProof = createIdentityRoundTripProof();
+    manifest.identityProof = identityProof;
+    await stage("identity down-up round trip", () => runIdentityRoundTrip({
+      command, dbId: target.dbId, initial: authPrivileges, proof: identityProof,
+      verifiedSql: (file) => {
+        requireUnchanged();
+        const bytes = readFileSync(join(root, file));
+        assert(hash(bytes) === sourceHashes[file], "Tracked identity SQL changed");
+        const sql = bytes.toString("utf8");
+        assert(Buffer.from(sql, "utf8").equals(bytes), "Identity SQL is not exact UTF-8");
+        return sql;
+      },
+      checkConsistency: async () => {
+        requireUnchanged();
+        await command("pnpm", ["--filter", "@hta/db", "db:check"], { env: target.dbEnv, timeout: 60_000 });
+        requireUnchanged();
+      },
+    }));
+    await enforceIdentityProofAfterRpc(authBoundary, identityProof, () => stage("complete authenticated RPC file and positive ledger", async () => {
       const reportPath = join(directory, "rpc.json");
       assert(!existsSync(reportPath));
       const rpcStarted = Date.now();

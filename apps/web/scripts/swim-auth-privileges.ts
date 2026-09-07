@@ -280,7 +280,7 @@ export async function enforceAuthBoundaryAfterRpc(
   if (failed) throw primary;
 }
 
-type PrivateCommand = (
+export type PrivateCommand = (
   executable: string, args: string[], options: { capture: true; allowFailure: true; timeout: number },
 ) => Promise<{ text: string; result: ProcessResult }>;
 
@@ -296,5 +296,44 @@ export async function observeAuthPrivileges(command: PrivateCommand, dbId: strin
     return projectAuthPrivilegeOutput(text);
   } catch {
     return unavailable("command-failed");
+  }
+
+}
+
+// Private comparison material only: normalize default ACLs and entry ordering.
+// Never attach these fingerprints to the public privilege observation/manifest.
+export const SWIM_FUNCTION_ACLS_SQL = `
+  BEGIN READ ONLY;
+  SET LOCAL statement_timeout = '5s';
+  SELECT pg_catalog.json_build_array(
+    ${SWIM_FUNCTION_CONTRACTS.map(([name, args]) => `(
+      SELECT pg_catalog.json_build_array('${name}', CASE WHEN f.oid IS NULL THEN NULL ELSE
+        pg_catalog.md5(COALESCE((
+          SELECT pg_catalog.json_agg(
+            pg_catalog.json_build_array(a.grantor, a.grantee, a.privilege_type, a.is_grantable)
+            ORDER BY a.grantor, a.grantee, a.privilege_type, a.is_grantable
+          )::text FROM pg_catalog.aclexplode(
+            COALESCE(f.proacl, pg_catalog.acldefault('f', f.proowner))) a
+        ), '[]')) END)
+      FROM (SELECT pg_catalog.to_regprocedure('public.${name}(${args})')::oid AS oid) exact
+      LEFT JOIN pg_catalog.pg_proc f ON f.oid = exact.oid AND f.prokind = 'f'
+    )`).join(",\n")}
+  );
+  ROLLBACK;
+  `;
+
+export async function observeSwimFunctionAcls(command: PrivateCommand, dbId: string): Promise<string | null> {
+    try {
+      const { text, result } = await command("docker", [
+        "exec", dbId, "psql", "-XqAt", "-U", "postgres", "-d", "postgres",
+        "-v", "ON_ERROR_STOP=1", "-c", SWIM_FUNCTION_ACLS_SQL,
+      ], { capture: true, allowFailure: true, timeout: 10_000 });
+      if (result.timedOut || result.code !== 0 || result.signal !== null) return null;
+      const parsed = z.array(z.tuple([z.string(), z.string().regex(/^[a-f0-9]{32}$/)]))
+        .length(SWIM_FUNCTION_CONTRACTS.length).safeParse(JSON.parse(text));
+      if (!parsed.success || parsed.data.some(([name], index) => name !== SWIM_FUNCTION_CONTRACTS[index]![0])) return null;
+      return JSON.stringify(parsed.data);
+    } catch {
+      return null;
   }
 }
