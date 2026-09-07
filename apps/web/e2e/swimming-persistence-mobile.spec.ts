@@ -104,7 +104,8 @@ async function openSavedWorkout(page: Page, planURL: string, saved: Awaited<Retu
   await expect(page).toHaveURL(new URL(`/app/swim/${workout.id}`, planURL).href);
   const view = workoutPresentation(workout.definition.issued);
   await expect(page.getByRole("heading", { name: view.title, exact: true })).toBeVisible();
-  await expect(page.getByText(view.course, { exact: true })).toBeVisible();
+  const summary = page.locator("main > section").first();
+  await expect(summary.getByText(view.course, { exact: true })).toBeVisible();
   const prescription = page.getByRole("heading", { name: "Workout", exact: true }).locator("..");
   const steps = prescription.getByRole("listitem");
   await expect(steps).toHaveCount(view.steps.length);
