@@ -153,8 +153,11 @@ export async function waitForBrowserReady(options: Readonly<{
   requireCondition(Number.isSafeInteger(timeoutMs) && timeoutMs > 0 && timeoutMs <= BROWSER_LIMITS.ready,
     "browser-budget");
   const controller = new AbortController();
+  let observing = true;
   let stopped: FailureCode | undefined;
-  const stop = (code: FailureCode) => { stopped ??= code; controller.abort(); };
+  const stop = (code: FailureCode) => {
+    if (observing) { stopped ??= code; controller.abort(); }
+  };
   const cancel = () => stop("browser-cancelled");
   options.signal.addEventListener("abort", cancel, { once: true });
   if (options.signal.aborted) cancel();
@@ -173,6 +176,7 @@ export async function waitForBrowserReady(options: Readonly<{
     if (stopped) failure(stopped);
     return { status: "ready" as const };
   } finally {
+    observing = false;
     clearTimeout(timer);
     options.signal.removeEventListener("abort", cancel);
     controller.abort();
@@ -210,14 +214,14 @@ export function requirePrivateBrowserPaths(paths: BrowserPaths, webRoot: string)
 }
 
 export type BrowserReportTicket = Readonly<{
-  paths: BrowserPaths; webRoot: string; startedAt: number; root: Stats;
+  paths: BrowserPaths; webRoot: string; startedAt: number;
 }>;
-const tickets = new WeakSet<BrowserReportTicket>();
+const tickets = new WeakMap<BrowserReportTicket, Stats>();
 export function prepareSwimBrowserReport(paths: BrowserPaths, webRoot: string): BrowserReportTicket {
   const root = requirePrivateBrowserPaths(paths, webRoot);
   requireCondition(absent(paths.reportPath), "browser-report-file");
-  const ticket = Object.freeze({ paths: Object.freeze({ ...paths }), webRoot, startedAt: Date.now(), root });
-  tickets.add(ticket);
+  const ticket = Object.freeze({ paths: Object.freeze({ ...paths }), webRoot, startedAt: Date.now() });
+  tickets.set(ticket, root);
   return ticket;
 }
 
@@ -230,6 +234,7 @@ const resultSchema = z.object({
 const specSchema = z.object({
   file: z.string(), title: z.string(), ok: z.literal(true),
   tests: z.array(z.object({
+    timeout: z.literal(30_000),
     projectId: z.literal(PROJECT), projectName: z.literal(PROJECT),
     expectedStatus: z.literal("passed"), status: z.literal("expected"),
     results: z.array(resultSchema).length(1),
@@ -306,14 +311,15 @@ export function readSwimBrowserReport(ticket: BrowserReportTicket) {
   let text: string;
   try {
     requireCondition(tickets.has(ticket), "browser-report-file");
+    const originalRoot = tickets.get(ticket)!;
     tickets.delete(ticket);
     const root = requirePrivateBrowserPaths(ticket.paths, ticket.webRoot);
-    requireCondition(identity(root, ticket.root), "browser-report-file");
+    requireCondition(identity(root, originalRoot), "browser-report-file");
     const path = ticket.paths.reportPath;
     const before = lstatSync(path);
     const valid = (stat: Stats) => stat.isFile() && owned(stat, 0o600) && stat.nlink === 1 &&
       stat.size > 0 && stat.size <= MAX_REPORT_BYTES &&
-      stat.mtimeMs >= ticket.startedAt && stat.mtimeMs <= Date.now();
+      stat.mtimeMs >= ticket.startedAt && Math.floor(stat.mtimeMs) <= Date.now();
     requireCondition(valid(before), "browser-report-file");
     fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const opened = fstatSync(fd);

@@ -1,15 +1,16 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
 import {
-  chmodSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync,
+  chmodSync, fstatSync, linkSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync,
 } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
-import { basename, join, resolve } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import type { JSONReport, JSONReportSpec } from "@playwright/test/reporter";
 import {
   BROWSER_LIMITS, browserBudget, buildBrowserEnv, prepareSwimBrowserReport, projectBrowserFailure,
   readSwimBrowserReport, requireBrowserEnvironment, requireBrowserPaths, requireFreePort,
-  requireNoEnvFiles, SWIM_BROWSER_CASES, validateSwimBrowserReport, waitForBrowserReady,
+  requireNoEnvFiles, requirePrivateBrowserPaths, SWIM_BROWSER_CASES, validateSwimBrowserReport, waitForBrowserReady,
   type BrowserPaths,
 } from "../../../../scripts/swim-browser-acceptance";
 
@@ -24,7 +25,15 @@ const target = {
   anonKey: `sb_publishable_${"a".repeat(24)}`, serviceRoleKey: `sb_secret_${"b".repeat(24)}`,
 };
 const temporary: string[] = [];
-afterEach(() => { for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true }); });
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, fstatSync: vi.fn(actual.fstatSync) };
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.mocked(fstatSync).mockImplementation(fs.fstatSync);
+  for (const path of temporary.splice(0)) rmSync(path, { recursive: true, force: true });
+});
 function privatePaths() {
   const parent = mkdtempSync(join(tmpdir(), "swim-browser-unit-"));
   temporary.push(parent);
@@ -32,9 +41,16 @@ function privatePaths() {
   mkdirSync(runDirectory, { mode: 0o700 });
   return { runDirectory, reportPath: join(runDirectory, "browser.json"), outputDir: join(runDirectory, "browser-output") };
 }
+function prepareReport(location: BrowserPaths) {
+  // Model time spent in the command, rather than rely on sub-millisecond filesystem timestamps.
+  const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() - 1_000);
+  try { return prepareSwimBrowserReport(location, webRoot); }
+  finally { clock.mockRestore(); }
+}
 
 // Matches the pinned JSONReport types and JSONReporter file-suite serialization.
 function report(location = paths) {
+  const posix = (path: string) => path.split(sep).join("/");
   const suites = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))].map((file) => ({
     title: basename(file), file: basename(file), line: 0, column: 0, specs: [],
     suites: [{
@@ -56,12 +72,12 @@ function report(location = paths) {
   })) satisfies JSONReport["suites"];
   return {
     config: {
-      version: "1.60.0", rootDir: join(webRoot, "e2e"), workers: 1, fullyParallel: false,
+      version: "1.60.0", rootDir: posix(join(webRoot, "e2e")), workers: 1, fullyParallel: false,
       forbidOnly: true, globalTimeout: 300_000,
       projects: [{
-        id: "mobile-chromium", name: "mobile-chromium", testDir: join(webRoot, "e2e"),
-        outputDir: location.outputDir, repeatEach: 1, retries: 0, timeout: 30_000, metadata: {},
-        testMatch: [...new Set(SWIM_BROWSER_CASES.map(({ file }) => join(webRoot, file)))], testIgnore: [],
+        id: "mobile-chromium", name: "mobile-chromium", testDir: posix(join(webRoot, "e2e")),
+        outputDir: posix(location.outputDir), repeatEach: 1, retries: 0, timeout: 30_000, metadata: {},
+        testMatch: [...new Set(SWIM_BROWSER_CASES.map(({ file }) => posix(join(webRoot, file))))], testIgnore: [],
       }] satisfies JSONReport["config"]["projects"],
     },
     suites, errors: [], stats: { expected: 4, unexpected: 0, flaky: 0, skipped: 0 },
@@ -101,6 +117,8 @@ describe("browser environment and static config", () => {
       expect(() => requireBrowserPaths({ ...paths, reportPath })).toThrow();
     }
     expect(() => requireBrowserPaths({ ...paths, outputDir: join(tmpdir(), "browser-output") })).toThrow();
+    expect(() => buildBrowserEnv({ ...target, url: "http://127.0.0.1:54322" }, paths)).toThrow();
+    expect(() => buildBrowserEnv({ ...target, projectRef: "remote" }, paths)).toThrow();
   });
   it("pins the isolated config without importing or collecting Playwright", () => {
     const source = readFileSync(join(webRoot, "playwright.swim-reference.config.ts"), "utf8");
@@ -110,12 +128,27 @@ describe("browser environment and static config", () => {
     expect(source).toContain('reporter: [["json", { outputFile: paths.reportPath }]]');
     for (const media of ["trace", "screenshot", "video"]) expect(source).toContain(`${media}: "off"`);
     expect(source.indexOf("requireBrowserEnvironment(process.env)")).toBeLessThan(source.indexOf("defineConfig({"));
+    for (const setting of [
+      "fullyParallel: false", "forbidOnly: true", "retries: 0", "workers: 1",
+      "timeout: BROWSER_LIMITS.testTimeout", "globalTimeout: BROWSER_LIMITS.globalTimeout",
+      "outputDir: paths.outputDir", "viewport: { width: 375, height: 812 }",
+      "isMobile: false", "hasTouch: true",
+    ]) expect(source).toContain(setting);
+    const helper = readFileSync(join(webRoot, "scripts/swim-browser-acceptance.ts"), "utf8");
+    expect(helper).not.toMatch(/process\.env|dotenv|from ["']\.\/swim-acceptance["']/);
+    for (const item of SWIM_BROWSER_CASES) {
+      const spec = readFileSync(join(webRoot, item.file), "utf8");
+      expect(spec).toContain(`test.describe("${item.describe}"`);
+      expect(spec).toContain(`test("${item.title}"`);
+    }
   });
   it("rejects insufficient budgets without clamping", () => {
     for (const value of [589_999, -1, NaN, Infinity, 590_000.5]) expect(() => browserBudget(value)).toThrow();
     expect(browserBudget(590_000)).toBe(BROWSER_LIMITS);
     expect(BROWSER_LIMITS.required).toBe(BROWSER_LIMITS.build + BROWSER_LIMITS.ready +
       BROWSER_LIMITS.browserCommand + BROWSER_LIMITS.shutdown + BROWSER_LIMITS.allowance);
+    expect(BROWSER_LIMITS.serverLifetime).toBe(BROWSER_LIMITS.ready + BROWSER_LIMITS.browserCommand +
+      BROWSER_LIMITS.shutdown + BROWSER_LIMITS.allowance);
   });
   it("rejects environment files by name while preserving templates", () => {
     const directory = mkdtempSync(join(tmpdir(), "swim-env-unit-"));
@@ -146,6 +179,10 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
   it.each([
     "version", "project", "root", "extra", "missing", "duplicate", "unknown", "wrong-path", "describe",
     "skipped", "flaky", "unexpected", "retry", "result", "test", "ok", "error", "stats", "malformed",
+    "global-error", "failed-result", "interrupted", "expected-failure", "no-result", "no-test",
+    "extra-project", "test-project", "test-timeout", "output", "test-match", "test-dir", "repeat",
+    "project-retry", "project-timeout", "nested", "suite-path", "file-wrapper", "absolute-wrong-path",
+    "spec-missing", "spec-extra", "stats-flaky", "stats-skipped", "stats-unexpected",
   ])("rejects %s even with a successful command", (mode) => {
     const fixture = report();
     const spec = fixture.suites[0]!.suites[0]!.specs[0]!;
@@ -169,6 +206,30 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
       case "ok": spec.ok = false; break;
       case "error": test.results[0]!.errors = [{ message: "private-payload" }]; break;
       case "stats": fixture.stats.expected = 3; break;
+      case "global-error": Object.assign(fixture, { errors: [{ message: "private-payload" }] }); break;
+      case "failed-result": test.results[0]!.status = "failed"; break;
+      case "interrupted": test.results[0]!.status = "interrupted"; break;
+      case "expected-failure": test.expectedStatus = "failed"; break;
+      case "no-result": test.results = []; break;
+      case "no-test": spec.tests = []; break;
+      case "extra-project": fixture.config.projects.push(fixture.config.projects[0]!); break;
+      case "test-project": test.projectId = "other"; break;
+      case "test-timeout": test.timeout = 60_000; break;
+      case "output": fixture.config.projects[0]!.outputDir = tmpdir(); break;
+      case "test-match": fixture.config.projects[0]!.testMatch = ["**/*.spec.ts"]; break;
+      case "test-dir": fixture.config.projects[0]!.testDir = tmpdir(); break;
+      case "repeat": fixture.config.projects[0]!.repeatEach = 2; break;
+      case "project-retry": fixture.config.projects[0]!.retries = 1; break;
+      case "project-timeout": fixture.config.projects[0]!.timeout = 60_000; break;
+      case "nested": Object.assign(fixture.suites[0]!.suites[0]!, { suites: [{}] }); break;
+      case "suite-path": fixture.suites[0]!.suites[0]!.file = "elsewhere.spec.ts"; break;
+      case "file-wrapper": fixture.suites[0]!.title = "other"; break;
+      case "absolute-wrong-path": spec.file = join(tmpdir(), spec.file); break;
+      case "spec-missing": fixture.suites[0]!.suites[0]!.specs.pop(); break;
+      case "spec-extra": fixture.suites[0]!.suites[0]!.specs.push(spec); break;
+      case "stats-flaky": fixture.stats.flaky = 1; break;
+      case "stats-skipped": fixture.stats.skipped = 1; break;
+      case "stats-unexpected": fixture.stats.unexpected = 1; break;
     }
     try {
       validateSwimBrowserReport(mode === "malformed" ? "private-payload" : JSON.stringify(fixture), paths, webRoot);
@@ -180,12 +241,20 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
   it("does not project unknown errors or assertion payloads", () => {
     expect(projectBrowserFailure(new Error("private-payload"))).toEqual({ success: false, code: "browser-failed" });
   });
+  it("does not inspect or project diagnostics and attachment payloads", () => {
+    const fixture = report();
+    const result = fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!;
+    result.stdout = [{ text: "private-stdout" }];
+    result.stderr = [{ text: "private-stderr" }];
+    result.attachments = [{ name: "private-attachment", contentType: "text/plain", path: "/unread/private-path" }];
+    expect(JSON.stringify(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot))).not.toContain("private-");
+  });
 });
 
 describe.skipIf(process.platform === "win32")("private POSIX report fixtures", () => {
   it("requires an absent report, reads one fresh private file, and consumes the ticket", () => {
     const location = privatePaths();
-    const ticket = prepareSwimBrowserReport(location, webRoot);
+    const ticket = prepareReport(location);
     writeFileSync(location.reportPath, JSON.stringify(report(location)), { mode: 0o600 });
     expect(readSwimBrowserReport(ticket).success).toBe(true);
     expect(() => readSwimBrowserReport(ticket)).toThrow();
@@ -194,7 +263,7 @@ describe.skipIf(process.platform === "win32")("private POSIX report fixtures", (
   it.each(["absent", "mode", "root-mode", "symlink", "hardlink", "stale", "future", "directory", "large", "empty"])(
     "rejects %s reports", (mode) => {
       const location = privatePaths();
-      const ticket = prepareSwimBrowserReport(location, webRoot);
+      const ticket = prepareReport(location);
       if (mode !== "absent") writeFileSync(location.reportPath, JSON.stringify(report(location)), { mode: 0o600 });
       if (mode === "mode") chmodSync(location.reportPath, 0o644);
       if (mode === "root-mode") chmodSync(location.runDirectory, 0o755);
@@ -211,6 +280,49 @@ describe.skipIf(process.platform === "win32")("private POSIX report fixtures", (
       expect(() => readSwimBrowserReport(ticket)).toThrow();
     },
   );
+  it("rejects forged tickets, replaced roots, and symlinked output directories", () => {
+    const location = privatePaths();
+    const ticket = prepareReport(location);
+    expect(() => readSwimBrowserReport({ ...ticket })).toThrow("browser-report-file");
+    renameSync(location.runDirectory, `${location.runDirectory}-old`);
+    mkdirSync(location.runDirectory, { mode: 0o700 });
+    writeFileSync(location.reportPath, JSON.stringify(report(location)), { mode: 0o600 });
+    expect(() => readSwimBrowserReport(ticket)).toThrow("browser-report-file");
+    symlinkSync(`${location.runDirectory}-old`, location.outputDir);
+    expect(() => requirePrivateBrowserPaths(location, webRoot)).toThrow("browser-paths");
+  });
+  it("rejects symlinked root ancestors without reading a report", () => {
+    const location = privatePaths();
+    const parent = resolve(location.runDirectory, "..");
+    const alias = `${parent}-alias`;
+    temporary.push(alias);
+    symlinkSync(parent, alias);
+    const noncanonical = {
+      runDirectory: join(alias, basename(location.runDirectory)),
+      reportPath: join(alias, basename(location.runDirectory), "browser.json"),
+      outputDir: join(alias, basename(location.runDirectory), "browser-output"),
+    };
+    expect(() => requirePrivateBrowserPaths(noncanonical, webRoot)).toThrow("browser-paths");
+  });
+  it.each(["identity", "growth", "mtime", "owner"])("rejects descriptor %s changes", (mode) => {
+    const location = privatePaths();
+    const ticket = prepareReport(location);
+    writeFileSync(location.reportPath, JSON.stringify(report(location)), { mode: 0o600 });
+    const original = fs.fstatSync;
+    let calls = 0;
+    vi.mocked(fstatSync).mockImplementation((...args: Parameters<typeof fs.fstatSync>) => {
+      const stat = original(...args);
+      if (++calls === 2) {
+        if (mode === "identity") Object.assign(stat, { ino: Number(stat.ino) + 1 });
+        if (mode === "growth") Object.assign(stat, { size: Number(stat.size) + 1 });
+        if (mode === "mtime") Object.assign(stat, { mtimeMs: Number(stat.mtimeMs) - 1 });
+        if (mode === "owner") Object.assign(stat, { uid: Number(stat.uid) + 1 });
+      }
+      return stat;
+    });
+    expect(() => readSwimBrowserReport(ticket)).toThrow("browser-report-file");
+    expect(calls).toBe(2);
+  });
 });
 
 describe("test-owned loopback readiness", () => {
@@ -243,5 +355,42 @@ describe("test-owned loopback readiness", () => {
     await expect(waitForBrowserReady({
       serverExit: new Promise<never>(() => {}), signal: new AbortController().signal, timeoutMs: 20,
     })).rejects.toThrow("browser-readiness-timeout");
+  });
+  it("waits for HTTP success, rejects delayed exit, and drains in-flight timeout work", async () => {
+    let hanging = false;
+    let requests = 0;
+    let requested!: () => void;
+    const firstRequest = new Promise<void>((done) => { requested = done; });
+    const server = createServer((_req, res) => {
+      requests++;
+      requested();
+      if (!hanging) { res.statusCode = 503; res.end(); }
+    });
+    await new Promise<void>((done) => server.listen(3210, "127.0.0.1", done));
+    try {
+      let exit!: () => void;
+      const serverExit = new Promise<void>((done) => { exit = done; });
+      const waiting = waitForBrowserReady({ serverExit, signal: new AbortController().signal });
+      await firstRequest;
+      exit();
+      await expect(waiting).rejects.toThrow("browser-server-exited");
+      expect(requests).toBeGreaterThan(0);
+      hanging = true;
+      await expect(waitForBrowserReady({
+        serverExit: new Promise<never>(() => {}), signal: new AbortController().signal, timeoutMs: 30,
+      })).rejects.toThrow("browser-readiness-timeout");
+    } finally { await new Promise<void>((done) => server.close(() => done())); }
+  });
+  it("rejects pre-cancellation and invalid readiness budgets", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(waitForBrowserReady({
+      serverExit: new Promise<never>(() => {}), signal: controller.signal,
+    })).rejects.toThrow("browser-cancelled");
+    for (const timeoutMs of [0, -1, NaN, Infinity, 60_001]) {
+      await expect(waitForBrowserReady({
+        serverExit: new Promise<never>(() => {}), signal: new AbortController().signal, timeoutMs,
+      })).rejects.toThrow("browser-budget");
+    }
   });
 });
