@@ -38,6 +38,8 @@ export function requireSwimBrowserCache(
 
 export function requireSwimBrowserInstallation(cache: string, web: string) {
   const installed = createRequire(join(web, "package.json"));
+  assert(installed("next/package.json").version === "16.2.6",
+    "Unexpected installed Next version");
   assert(installed("@playwright/test/package.json").version === "1.60.0",
     "Unexpected installed Playwright version");
   const test = createRequire(installed.resolve("@playwright/test/package.json"));
@@ -191,6 +193,7 @@ export async function runSwimBrowserStage(options: {
         const result = completion.value.result;
         assert(!earlyClose, "browser-server-exited");
         assert(!result.timedOut && (result.code === 0 ||
+          (stopRequested && result.code === 143 && result.signal === null) ||
           result.signal === "SIGTERM" || result.signal === "SIGKILL"), "Browser server shutdown failed");
       } catch (error) { collect("browser server shutdown", error, true); }
     }

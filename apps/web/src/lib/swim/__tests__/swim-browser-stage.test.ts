@@ -11,6 +11,7 @@ import {
   requireSwimBrowserCache, requireSwimBrowserInstallation, runSwimBrowserStage, type BrowserCommand,
 } from "../../../../scripts/swim-browser-stage";
 import { AcceptanceReporting, safeFailureCause } from "../../../../scripts/swim-acceptance-reporting";
+import type { ProcessResult } from "../../../../scripts/swim-acceptance-guards";
 
 vi.mock("../../../../scripts/swim-browser-acceptance", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../scripts/swim-browser-acceptance")>();
@@ -34,6 +35,7 @@ const browserExecutables = ["chromium", "chromium-headless-shell", "ffmpeg"].map
 const temporary: string[] = [];
 const passed = { code: 0, signal: null, timedOut: false };
 const stopped = { code: null, signal: "SIGTERM", timedOut: false };
+const nextStopped = { code: 143, signal: null, timedOut: false };
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (error: unknown) => void;
@@ -62,8 +64,8 @@ function setup() {
   }
   const cacheEnv = { GITHUB_JOB: "swim-acceptance", GITHUB_RUN_ID: "123", GITHUB_RUN_ATTEMPT: "1",
     RUNNER_TEMP: temp, HTA_SWIM_BROWSER_CACHE: cache };
-  const server = deferred<{ result: typeof stopped | typeof passed }>();
-  const browser = deferred<{ result: typeof stopped | typeof passed }>();
+  const server = deferred<{ result: ProcessResult }>();
+  const browser = deferred<{ result: ProcessResult }>();
   const browserStarted = deferred<void>();
   const controller = new AbortController();
   const manifest: Record<string, unknown> = {};
@@ -181,7 +183,35 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     expect(h.stopServer).toHaveBeenCalledOnce();
   });
 
-  it.each([passed, { code: 1, signal: null, timedOut: false }, { ...stopped, timedOut: true }])(
+  it("accepts pinned Next's exit 143 only after requesting its stop", async () => {
+    const h = setup();
+    h.stopServer.mockImplementation(() => {
+      h.close();
+      h.server.resolve({ result: nextStopped });
+    });
+    const run = runSwimBrowserStage(h.options);
+    await h.browserStarted.promise;
+    h.browser.resolve({ result: passed });
+    await run;
+    expect(h.stopServer).toHaveBeenCalledOnce();
+    expect(h.manifest.browserServerProcess).toEqual(nextStopped);
+    expect(h.reporting.failures.primary).toBeNull();
+    expect(h.reporting.failures.cleanup).toHaveLength(0);
+  });
+
+  it("rejects unrequested exit 143 even without a terminal callback", async () => {
+    const h = setup();
+    const run = runSwimBrowserStage(h.options);
+    const rejected = expect(run).rejects.toThrow("Browser server shutdown failed");
+    await h.browserStarted.promise;
+    h.server.resolve({ result: nextStopped });
+    await vi.waitFor(() => expect(h.manifest.browser).toBeUndefined());
+    h.browser.resolve({ result: passed });
+    await rejected;
+    expect(h.stopServer).not.toHaveBeenCalled();
+  });
+
+  it.each([passed, nextStopped, { code: 1, signal: null, timedOut: false }, { ...stopped, timedOut: true }])(
     "fails on physical close before delayed server completion: %j", async (result) => {
       const h = setup();
       const run = runSwimBrowserStage(h.options);
@@ -462,6 +492,7 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
 
   it.each([
     { ...stopped, timedOut: true }, { code: 1, signal: null, timedOut: false },
+    { ...nextStopped, timedOut: true }, { ...nextStopped, signal: "SIGINT" },
     { code: null, signal: "spawn-error", timedOut: false },
   ])("still fails a slow shutdown with a genuinely bad result: %j", async (result) => {
     vi.useFakeTimers();
@@ -527,6 +558,16 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
 });
 
 describe("workflow-owned browser cache", () => {
+  it("rejects an unsupported installed Next version before resolving browser executables", () => {
+    const h = setup();
+    const web = join(h.temp, "web");
+    mkdirSync(join(web, "node_modules/next"), { recursive: true, mode: 0o700 });
+    writeFileSync(join(web, "package.json"), "{}", { mode: 0o600 });
+    writeFileSync(join(web, "node_modules/next/package.json"),
+      JSON.stringify({ version: "16.2.5" }), { mode: 0o600 });
+    expect(() => requireSwimBrowserInstallation(h.cache, web)).toThrow("Unexpected installed Next version");
+  });
+
   it("accepts RUNNER_TEMP inside the OS home but outside the overridden per-run HOME", () => {
     const h = setup();
     expect(requireSwimBrowserCache({ ...h.options.cacheEnv, HOME: h.temp }, root, h.options.runDirectory)).toBe(h.cache);
