@@ -683,6 +683,49 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     functions: SWIM_FUNCTION_CONTRACTS.map(([name]) => [name, true, level === 146, level !== 146]),
   });
 
+  it("DC-SW8 pins exact shared prior and amended ACL sets without relaxing grantor or options", () => {
+    for (const callers of [
+      "refs.postgres, refs.authenticated, refs.service, refs.swim_writer, 0::oid, refs.anon",
+      "refs.postgres, refs.authenticated, refs.service, refs.swim_writer",
+    ]) {
+      expect(AUTH_PRIVILEGES_SQL.split(`FROM unnest(ARRAY[${callers}]) grantee)`)).toHaveLength(2);
+    }
+    const shared = AUTH_PRIVILEGES_SQL.slice(AUTH_PRIVILEGES_SQL.indexOf("pg_catalog.json_build_array('shared'"));
+    expect(shared.match(/AND bool_and\(acl.grantor = refs.postgres AND acl.privilege_type = 'EXECUTE' AND NOT acl.is_grantable\), false\)/g))
+      .toHaveLength(2);
+  });
+
+  it.each([146, 147] as const)("DC-SW8 rejects prior %i missing direct anon even with PUBLIC effective access", (level) => {
+    const input = levelObservation(level);
+    input.shared.originalAcl = false;
+    expect(input.shared).toMatchObject({ anon: true, public: true });
+    expect(checkAuthBoundary(projectAuthPrivilegeOutput(text(input)), level)).toBe("mismatched");
+  });
+
+  it.each([146, 147, 148] as const)("DC-SW8 rejects an unknown extra shared grantee at %i", (level) => {
+    const input = levelObservation(level);
+    input.shared.originalAcl = false;
+    input.shared.amendedAcl = false;
+    expect(checkAuthBoundary(projectAuthPrivilegeOutput(text(input)), level)).toBe("mismatched");
+  });
+
+  it.each(["grant option", "wrong grantor"])("DC-SW8 rejects shared %s evidence with otherwise matching callers", () => {
+    for (const level of [146, 147, 148] as const) {
+      const input = levelObservation(level);
+      input.shared.originalAcl = false;
+      input.shared.amendedAcl = false;
+      expect(checkAuthBoundary(projectAuthPrivilegeOutput(text(input)), level)).toBe("mismatched");
+    }
+  });
+
+  it("DC-SW8 rejects direct and effective anon at 148 even after PUBLIC denial", () => {
+    const input = levelObservation(148);
+    input.shared.amendedAcl = false;
+    input.shared.anon = true;
+    expect(input.shared.public).toBe(false);
+    expect(checkAuthBoundary(projectAuthPrivilegeOutput(text(input)), 148)).toBe("mismatched");
+  });
+
   it.each(Object.keys(observation.shared) as (keyof typeof observation.shared)[])(
     "DC-SW8 rejects flipped shared %s evidence at every closed level", (key) => {
       for (const level of [146, 147, 148] as const) {

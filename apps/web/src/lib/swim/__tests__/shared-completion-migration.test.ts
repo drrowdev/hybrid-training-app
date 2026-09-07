@@ -42,14 +42,25 @@ describe("shared completion identity migration (DC-SW8)", () => {
   it.each([
     ["up", up, "b5ab2cbd0c4b67ea7984a0bdcdd1ee5526bd068dc2f424dfb37f3e619c871fde"],
     ["down", down, "eb4a5a102b305bc3554387e3fe13d317c99a51c0e5cd0413438fa349b6685f38"],
-  ])("%s preserves every byte outside the four RAISE expressions and CASE parentheses from 730ecff", (_, source, expected) => {
+  ])("%s preserves every byte outside the four RAISE expressions, CASE parentheses and exact anonymous ACL correction from 730ecff", (direction, source, expected) => {
+    const aclCorrections = [
+      ["ARRAY[0::oid, v_anon]::oid[]", "ARRAY[0]::oid[]"],
+      direction === "up"
+        ? [`REVOKE EXECUTE ON FUNCTION ${shared} FROM PUBLIC, anon;`, `REVOKE EXECUTE ON FUNCTION ${shared} FROM PUBLIC;`]
+        : [`GRANT EXECUTE ON FUNCTION ${shared} TO PUBLIC, anon;`, `GRANT EXECUTE ON FUNCTION ${shared} TO PUBLIC;`],
+    ] as const;
     for (const literal of [
       "IS DISTINCT FROM (CASE WHEN v_amended",
       "'7d123bec0bbca374ea5ddad133640d86ff46ee3e36d6b00611a9d8d1d76b4a4d' END)",
     ]) {
       expect(source.split(literal)).toHaveLength(2);
     }
-    expect(hash(withoutCaseParentheses(withoutDiagnostics(source)))).toBe(expected);
+    let historical = source;
+    for (const [corrected, original] of aclCorrections) {
+      expect(source.split(corrected)).toHaveLength(2);
+      historical = historical.replace(corrected, original);
+    }
+    expect(hash(withoutCaseParentheses(withoutDiagnostics(historical)))).toBe(expected);
     const raises = [...guard(source).matchAll(diagnosticRaises)].map((match) => match[0]);
     expect(raises).toHaveLength(4);
     for (const [index, name] of ["roles", "attributes", "acl", "privileges"].entries()) {
@@ -187,7 +198,7 @@ describe("shared completion identity migration (DC-SW8)", () => {
     expect(checks).toContain(
       "v_expected := CASE WHEN v_proc.oid = v_shared.oid\n"
       + "        THEN ARRAY[v_postgres, v_authenticated, v_service, v_writer]\n"
-      + "          || CASE WHEN v_amended THEN ARRAY[]::oid[] ELSE ARRAY[0]::oid[] END\n"
+      + "          || CASE WHEN v_amended THEN ARRAY[]::oid[] ELSE ARRAY[0::oid, v_anon]::oid[] END\n"
       + "        ELSE ARRAY[v_postgres, v_service, v_writer]\n"
       + "          || CASE WHEN v_amended THEN ARRAY[v_authenticated] ELSE ARRAY[]::oid[] END END;",
     );
@@ -212,8 +223,8 @@ describe("shared completion identity migration (DC-SW8)", () => {
       .toBe(guard(up));
     for (const [source, amendedPhase, changes] of [
       [up, 1, `GRANT EXECUTE ON FUNCTION ${helper} TO authenticated;\n`
-        + `      REVOKE EXECUTE ON FUNCTION ${shared} FROM PUBLIC;`],
-      [down, 0, `GRANT EXECUTE ON FUNCTION ${shared} TO PUBLIC;\n`
+        + `      REVOKE EXECUTE ON FUNCTION ${shared} FROM PUBLIC, anon;`],
+      [down, 0, `GRANT EXECUTE ON FUNCTION ${shared} TO PUBLIC, anon;\n`
         + `      REVOKE EXECUTE ON FUNCTION ${helper} FROM authenticated;`],
     ] as const) {
       expect(source).not.toContain("--> statement-breakpoint");
