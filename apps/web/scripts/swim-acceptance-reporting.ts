@@ -115,6 +115,23 @@ export function openPrivateCommandLog(path: string) {
   return { fd, append: (chunk: Buffer) => appendFileSync(path, chunk) };
 }
 
+export function commandStdout(
+  log: ReturnType<typeof openPrivateCommandLog>,
+  options: { capture?: boolean; separateStdout?: boolean },
+  onLimit: () => void,
+) {
+  let text = "";
+  return {
+    stdio: options.capture || options.separateStdout ? "pipe" as const : log.fd,
+    get text() { return text; },
+    onData(chunk: Buffer) {
+      if (!options.separateStdout) log.append(chunk);
+      text += chunk.toString("utf8");
+      if (text.length > 8 * 1024 * 1024) onLimit();
+    },
+  };
+}
+
 export const MIGRATION_DIAGNOSTIC_MAX_BYTES = 256 * 1024;
 
 // Version 1 codebook, in SQL vector order. t/f/u mean true/false/unknown.

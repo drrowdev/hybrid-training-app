@@ -17,7 +17,7 @@ import {
   type Container, type ProcessResult, type Resources,
 } from "./swim-acceptance-guards";
 import {
-  acceptanceAssert as assert, AcceptanceReporting, formatAcceptanceSummary,
+  acceptanceAssert as assert, AcceptanceReporting, commandStdout, formatAcceptanceSummary,
   openPrivateCommandLog, publishAcceptanceSummary, readMigrationDiagnostic, safeFailureCause,
 } from "./swim-acceptance-reporting";
 import { RPC_CONFIG, RPC_SUITE, readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
@@ -100,7 +100,7 @@ async function main(cleanupOnly: boolean) {
 
   async function command(
     executable: string, args: string[], options: {
-      cwd?: string; env?: Record<string, string>; timeout?: number; capture?: boolean;
+      cwd?: string; env?: Record<string, string>; timeout?: number; capture?: boolean; separateStdout?: boolean;
       allowFailure?: boolean; diagnose?: () => Promise<void>; onSpawn?: (stop: () => void) => void;
     } = {},
   ) {
@@ -109,12 +109,12 @@ async function main(cleanupOnly: boolean) {
     const log = join(directory, `${cleanupOnly ? "cleanup" : "run"}-${started}-${++sequence}.log`);
     const commandLog = openPrivateCommandLog(log);
     const { fd } = commandLog;
-    let text = "";
     let timedOut = false;
     let killed: Promise<void> | undefined;
+    const stdout = commandStdout(commandLog, options, () => { timedOut = true; terminate(); });
     const child = spawn(executable, args, {
       cwd: options.cwd ?? root, env: { ...env, ...options.env }, detached: true,
-      stdio: ["ignore", options.capture ? "pipe" : fd, fd],
+      stdio: ["ignore", stdout.stdio, fd],
     });
     const terminate = () => {
       if (!child.pid) return;
@@ -136,11 +136,7 @@ async function main(cleanupOnly: boolean) {
       }
       options.onSpawn?.(terminate);
     }
-    child.stdout?.on("data", (chunk: Buffer) => {
-      commandLog.append(chunk);
-      text += chunk.toString("utf8");
-      if (text.length > 8 * 1024 * 1024) { timedOut = true; terminate(); }
-    });
+    child.stdout?.on("data", stdout.onData);
     const timeout = setTimeout(() => { timedOut = true; terminate(); }, Math.max(1, duration - 2_000));
     let diagnosis: Promise<void> | undefined;
     const diagnostic = options.diagnose && setTimeout(() => {
@@ -167,7 +163,7 @@ async function main(cleanupOnly: boolean) {
     }
     closeSync(fd);
     if (!options.allowFailure) requireProcess(result);
-    return { text: text.trim(), result, log };
+    return { text: stdout.text.trim(), result, log };
   }
   const docker = (args: string[]) => command("docker", args, { capture: true, timeout: 15_000 });
   const list = async (kind: "container" | "volume" | "network") => {
@@ -426,7 +422,7 @@ async function main(cleanupOnly: boolean) {
     await stage("unchanged migrations", async () => {
       requireUnchanged();
       const { result, log } = await command("pnpm", ["--filter", "@hta/db", "db:migrate"], {
-        env: target.dbEnv, timeout: 180_000, allowFailure: true,
+        env: target.dbEnv, timeout: 180_000, allowFailure: true, separateStdout: true,
       });
       if (result.code !== 0) {
         try {
