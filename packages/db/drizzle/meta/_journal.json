@@ -1023,6 +1023,13 @@
       "when": 1788739200000,
       "tag": "0145_standalone_pool_swimming",
       "breakpoints": false
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1788825600000,
+      "tag": "0146_swim_request_identity",
+      "breakpoints": false
     }
   ]
 }
