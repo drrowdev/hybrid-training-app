@@ -23,7 +23,9 @@ import {
 import { RPC_CONFIG, RPC_SUITE, readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
 import { DIAGNOSTICS_ENV, DIAGNOSTICS_FILE, readSwimRpcDiagnostics } from "./swim-rpc-diagnostics";
 import { checkAuthBoundary, observeAuthPrivileges } from "./swim-auth-privileges";
-import { createIdentityRoundTripProof, enforceIdentityProofAfterRpc, runIdentityRoundTrip } from "./swim-identity-roundtrip";
+import {
+  createIdentityRoundTripProof, enforceIdentityProofAfterRpc, requireIdentityHelperRpcCases, runIdentityRoundTrip,
+} from "./swim-identity-roundtrip";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
@@ -493,6 +495,7 @@ async function main(cleanupOnly: boolean) {
         manifest.rpcDiagnostics = readSwimRpcDiagnostics(directory, rpcStarted, ledger);
       }
       requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);
+      requireIdentityHelperRpcCases(ledger);
     }), reporting);
   } catch (error) {
     if (!reporting.failures.primary) reporting.recordFailure("acceptance", error);

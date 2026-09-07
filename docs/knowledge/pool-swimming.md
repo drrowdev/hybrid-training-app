@@ -462,10 +462,48 @@ evidence and pinned source contracts only. This is **not repair acceptance**.
 Last actual [run 34063418887](https://github.com/drrowdev/hybrid-training-app/actions/runs/34063418887)
 was at `1af9874f7e88700a2b8687beadffd79b28818d59`: **2 passed, 28 auth-schema
 failures**. The original 30 RPC cases were not changed or executed in Slice A.
-Slice B and real 147-migration/native-RLS/RPC/service/down-up proof remain pending.
-No database/container/Supabase/workflow execution or merge occurred.
-Do not dispatch a Slice-A-only run; review the complete integrated proof bundle
-before execution. Full standalone
+Slice B is now implemented below; real 147-migration/native-RLS/RPC/service/down-up
+proof remains pending.
+
+### Identity integration — Slice B current status
+
+[Slice B assignment](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5566424679)
+implements the [reviewed contract](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5566040448)
+on accepted Slice A `45533beb`, with runtime checkpoint `39519785`.
+Core SQL/down/journal/core tests remain unchanged.
+
+After normal 147 migrations and seed, the same owned private postgres channel
+executes exactly one tracked down file and one tracked up file, each as unchanged
+source-hash-verified whole-file `psql -c`. Command-local statement/lock timeouts
+are 30s/5s, with a 30s command maximum clipped by the existing deadline.
+The 147 ledger is untouched; restored catalog/body/attribute evidence and normal
+`db:check`, not a no-op migration rerun, supply consistency checks.
+
+All three honest phases (initial-up, rolled-back/before-reapply, restored-up)
+record closed boundary/ACL-comparison/caller outcomes and counts. Normalized ACL
+comparison material for the ten fixed signatures stays private. Each phase has
+three separate read-only service-role transactions: missing identity and two
+synthetic subjects, both claim settings reset, native identity checked before
+both invokers, and full rollback. Up states also compare helper/native identity.
+Date checks use the same request; they prove executability, not identity
+sensitivity. The missing-identity safety case handles only P0001 with the exact
+authored domain message. No application/Auth rows or replacement catalog rows
+are created, and these SQL contexts are not real user/RLS acceptance.
+
+DDL/consistency failure stops before RPC and leaves cleanup unchanged. Ordinary
+metadata/probe failure cannot preempt the RPC attempt after restoration; failed
+proof is enforced afterward, separately from any primary RPC failure.
+The original 30 HTTP cases are unchanged, with three additional required cases:
+anonymous/authenticated helper non-invocability and service UUID-or-null return.
+Denials accept only 401/403 with 42501 or 404/PGRST202; a 404 is not ACL proof.
+The canonical validator/config remain unchanged; an additional runner assertion
+requires the three named cases and at least 33 total cases.
+
+Focused synthetic helper/config/report tests, web typecheck and scoped lint are
+not migration proof. No database/container/Supabase/workflow execution or merge
+occurred; last actual run 34063418887 remains **2 passed / 28 auth-schema failures**.
+Independent review of the exact complete integrated head precedes the
+coordinator-only temporary run. Full standalone
 [DC-SW1–SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
 acceptance remains required before combined swimming; Garmin remains later.
 

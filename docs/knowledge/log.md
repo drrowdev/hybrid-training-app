@@ -1783,3 +1783,24 @@ No database/Docker/Supabase/workflow execution, service/network/dependency chang
 or merge occurred. No Slice-A-only manual run; exact-head review of the complete
 integrated proof bundle precedes execution. Full standalone DC-SW1–SW9 acceptance
 still precedes combined swimming; Garmin remains later.
+
+## [2026-09-07] refine | Swimming identity integration Slice B
+
+Implemented [Slice B](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5566424679)
+on accepted Slice A `45533beb`, preserving accepted core0146/down/journal/tests.
+Runtime checkpoint `39519785` adds one exact source-verified down/up round trip
+through the same owned private postgres channel, three isolated service cases
+per phase, private normalized ten-function ACL comparison and deferred proof
+enforcement after restored-state RPC. Procedural DDL/consistency failures stop;
+ordinary failed evidence cannot mask the canonical RPC attempt after restore.
+Three additive HTTP helper-access cases are required after the unchanged
+canonical gate, including service callability; no original case was changed.
+
+Focused synthetic helper/config/report tests, typecheck and scoped lint are not
+real runtime proof. The original HTTP suite was not executed. Last actual run
+34063418887 at `1af9874f7e88700a2b8687beadffd79b28818d59` remains **2 passed /
+28 auth-schema failures**. Real147/native-RLS/RPC/service/down-up proof remains
+pending after independent exact-integrated-head review and coordinator-only
+temporary execution. No database/Docker/Supabase/workflow execution or merge
+occurred. [Current status](./pool-swimming.md#identity-integration--slice-b-current-status).
+Standalone DC-SW1–SW9 acceptance still precedes combined swimming; Garmin is later.

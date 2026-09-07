@@ -239,8 +239,9 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       "exec", networkId, "psql", "-XqAt", "-U", "postgres", "-d", "postgres",
       "-v", "ON_ERROR_STOP=1", "-c", AUTH_PRIVILEGES_SQL,
     ], { capture: true, allowFailure: true, timeout: 10_000 }]]);
-    expect(source).toMatch(/manifest\.catalog = [^\n]+;\s+requireUnchanged\(\);\s+}\);\s+const authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+manifest\.authPrivileges = authPrivileges;\s+const authBoundary = checkAuthBoundary\(authPrivileges, "up"\);\s+manifest\.authBoundary = authBoundary;\s+await enforceAuthBoundaryAfterRpc\(authBoundary, \(\) => stage\("complete authenticated RPC file and positive ledger"/);
-    expect(source).toContain("requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);\n    }), reporting);");
+    expect(source).toMatch(/manifest\.catalog = [^\n]+;\s+requireUnchanged\(\);\s+}\);\s+const authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+manifest\.authPrivileges = authPrivileges;\s+const authBoundary = checkAuthBoundary\(authPrivileges, "up"\);\s+manifest\.authBoundary = authBoundary;/);
+    expect(source).toContain('await enforceIdentityProofAfterRpc(authBoundary, identityProof, () => stage("complete authenticated RPC file and positive ledger"');
+    expect(source).toContain("requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);\n      requireIdentityHelperRpcCases(ledger);\n    }), reporting);");
     expect(source.match(/await observeAuthPrivileges\(/g)).toHaveLength(1);
     expect(source).toContain("Math.min(options.timeout ?? 60_000, deadline - Date.now())");
     expect(source).toContain('stdio: ["ignore", options.capture ? "pipe" : fd, fd]');

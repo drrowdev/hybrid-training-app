@@ -134,6 +134,27 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
     }
   });
 
+  it("DC-SW8 denies anonymous identity-helper invocation", async () => {
+    const anonymous = createClient(smokeEnv!.url, anonKey!, { auth: { autoRefreshToken: false, persistSession: false } });
+    const response = await anonymous.rpc("swim_request_user_id");
+    expect(["401/42501", "403/42501", "404/PGRST202"]).toContain(`${response.status}/${response.error?.code}`);
+    expect(response.data).toBeNull();
+  });
+
+  it("DC-SW8 denies authenticated identity-helper invocation", async () => {
+    const response = await alice.rpc("swim_request_user_id");
+    expect(["401/42501", "403/42501", "404/PGRST202"]).toContain(`${response.status}/${response.error?.code}`);
+    expect(response.data).toBeNull();
+  });
+
+  it("DC-SW8 permits service identity-helper invocation with a UUID-or-null result", async () => {
+    const response = await admin.rpc("swim_request_user_id");
+    expect(response.error).toBeNull();
+    expect(response.status).toBe(200);
+    expect(response.data === null || (typeof response.data === "string"
+      && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(response.data))).toBe(true);
+  });
+
   it("DC-SW8 hides Alice's plan from Bob", async () => {
     const created = await createPlan();
     const hidden = await bob.from("swim_plans").select("id").eq("id", created.plan.id);

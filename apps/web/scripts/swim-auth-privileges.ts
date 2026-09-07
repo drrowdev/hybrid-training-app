@@ -297,7 +297,6 @@ export async function observeAuthPrivileges(command: PrivateCommand, dbId: strin
   } catch {
     return unavailable("command-failed");
   }
-
 }
 
 // Private comparison material only: normalize default ACLs and entry ordering.
@@ -323,17 +322,17 @@ export const SWIM_FUNCTION_ACLS_SQL = `
   `;
 
 export async function observeSwimFunctionAcls(command: PrivateCommand, dbId: string): Promise<string | null> {
-    try {
-      const { text, result } = await command("docker", [
-        "exec", dbId, "psql", "-XqAt", "-U", "postgres", "-d", "postgres",
-        "-v", "ON_ERROR_STOP=1", "-c", SWIM_FUNCTION_ACLS_SQL,
-      ], { capture: true, allowFailure: true, timeout: 10_000 });
-      if (result.timedOut || result.code !== 0 || result.signal !== null) return null;
-      const parsed = z.array(z.tuple([z.string(), z.string().regex(/^[a-f0-9]{32}$/)]))
-        .length(SWIM_FUNCTION_CONTRACTS.length).safeParse(JSON.parse(text));
-      if (!parsed.success || parsed.data.some(([name], index) => name !== SWIM_FUNCTION_CONTRACTS[index]![0])) return null;
-      return JSON.stringify(parsed.data);
-    } catch {
-      return null;
+  try {
+    const { text, result } = await command("docker", [
+      "exec", dbId, "psql", "-XqAt", "-U", "postgres", "-d", "postgres",
+      "-v", "ON_ERROR_STOP=1", "-c", SWIM_FUNCTION_ACLS_SQL,
+    ], { capture: true, allowFailure: true, timeout: 10_000 });
+    if (result.timedOut || result.code !== 0 || result.signal !== null) return null;
+    const parsed = z.array(z.tuple([z.string(), z.string().regex(/^[a-f0-9]{32}$/)]))
+      .length(SWIM_FUNCTION_CONTRACTS.length).safeParse(JSON.parse(text));
+    if (!parsed.success || parsed.data.some(([name], index) => name !== SWIM_FUNCTION_CONTRACTS[index]![0])) return null;
+    return JSON.stringify(parsed.data);
+  } catch {
+    return null;
   }
 }
