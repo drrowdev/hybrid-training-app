@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, closeSync, existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { inspect } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -72,6 +72,42 @@ const report = () => ({
     })) }],
 });
 const ledger = () => validateSwimRpcReport(JSON.stringify(report()), sha, configHash);
+
+describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
+  it("extends the existing tracked-input list to consumed app roots without unrelated e2e or generated files", () => {
+    const root = resolve(__dirname, "../../../../../..");
+    const source = readFileSync(join(root, "apps/web/scripts/swim-acceptance.ts"), "utf8");
+    const list = source.slice(source.indexOf('sourceFiles = git("ls-files"'), source.indexOf('sourceHashes = sources();'));
+    const paths = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]!)
+      .slice(3).filter((path) => path !== "\\0");
+    for (const path of [
+      "apps/web/src", "apps/web/public", "apps/web/scripts", "apps/web/package.json",
+      "apps/web/next.config.*", "apps/web/tsconfig.json", "apps/web/postcss.config.*",
+      "apps/web/e2e/swimming-mobile.spec.ts", "apps/web/e2e/swimming-persistence-mobile.spec.ts",
+      "apps/web/e2e/fixtures", "apps/web/e2e/global-setup.ts",
+      "apps/web/playwright.config.ts", "apps/web/playwright.swim-reference.config.ts",
+      "apps/web/e2e-rpc/setup.ts", "apps/web/vitest.config.ts",
+      "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.base.json", ".github/workflows/ci.yml",
+    ]) expect(paths).toContain(path);
+    const webPackage = JSON.parse(readFileSync(join(root, "apps/web/package.json"), "utf8"));
+    for (const name of Object.keys(webPackage.dependencies).filter((name) => name.startsWith("@hta/"))) {
+      expect(paths).toContain(`packages/${name.slice(5)}`);
+    }
+    expect(paths).toContain("packages/tb-conditioning");
+    expect(paths).not.toContain("apps/web/e2e");
+    const files = execFileSync("git", ["-C", root, "ls-files", "-z", "--", ...paths],
+      { encoding: "utf8" }).split("\0").filter(Boolean);
+    expect(files).toContain("packages/db/drizzle/meta/_journal.json");
+    expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(148);
+    expect(files).toContain("apps/web/next.config.ts");
+    expect(files).toContain("apps/web/postcss.config.mjs");
+    expect(files.filter((file) => file.startsWith("apps/web/e2e/")).every((file) =>
+      file.startsWith("apps/web/e2e/fixtures/") || paths.includes(file))).toBe(true);
+    expect(files.some((file) => /(?:^|\/)(?:\.next|node_modules|test-results|playwright-report|browser-output)(?:\/|$)|(?:next-env\.d\.ts|tsconfig\.tsbuildinfo|browser\.json)$/.test(file))).toBe(false);
+    expect(source).toContain('assert.deepEqual(after, sourceHashes, "Tracked acceptance sources changed")');
+    expect(source).toContain('assert(git("status", "--porcelain", "--untracked-files=all") === "", "Checkout changed during acceptance")');
+  });
+});
 
 describe("migration diagnostics (DC-SW8; synthetic logs only)", () => {
   const token = "SCID/1/acl/pre/shared/ftftfttu";
