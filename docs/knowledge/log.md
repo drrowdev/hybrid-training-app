@@ -1804,3 +1804,27 @@ pending after independent exact-integrated-head review and coordinator-only
 temporary execution. No database/Docker/Supabase/workflow execution or merge
 occurred. [Current status](./pool-swimming.md#identity-integration--slice-b-current-status).
 Standalone DC-SW1–SW9 acceptance still precedes combined swimming; Garmin is later.
+
+## [2026-09-07] refine | Shared completion 148 remainder integration
+
+Completed the [approved remainder](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5569058128)
+on accepted runtime `b338e0d7`, with coherent HTTP/proof checkpoint `df790b09`.
+Original 30 RPC cases and accepted runtime/SQL remain unchanged. Authenticated
+helper access now asserts Alice's/Bob's exact own IDs; anonymous helper denial
+and service UUID-or-null callability remain. Three shared HTTP cases add owner
+non-swim completion/receipt/replay, cross-owner empty-result/non-mutation and
+anonymous denial. Six mandatory names require 36 cases; collection-only inspection
+found 36 unique cases (33 literal `it` declarations plus three parameterized rows).
+
+Closed 146/147/148 expectations and ordered 0147 down/0146 down/0146 up/0147 up
+retain five phases and 15 service contexts. Added negative tests flip all 11
+shared fields at each level, cross-check 147↔148, and independently mismatch
+restoration while restored147/restored148 boundaries match.
+526 focused static migration/helper/round-trip/config/report tests, web typecheck
+and scoped ESLint passed. The 148 integration is implemented but **has not run
+against the real temporary stack**; last actual147 run 34096598017 remains
+**24/33 passed**, and `40001`/remaining completion behavior are not proved resolved.
+No database/Docker/Supabase/workflow execution or merge occurred.
+Exact-head review and subsequent temporary execution remain coordinator-owned.
+[Current status](./pool-swimming.md#shared-completion-integration--current-148-status).
+Full standalone DC-SW1–SW9 acceptance still precedes combined swimming and Garmin.

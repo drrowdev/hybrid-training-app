@@ -31,7 +31,38 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending authenticated database and browser acceptance.
 
-**Last updated:** 2026-09-07 (identity integration Slice B; no database/workflow execution)
+**Last updated:** 2026-09-07 (148 remainder integrated; no database/workflow execution)
+
+### PR802 shared completion — current 148 status
+
+The [approved remainder](https://github.com/drrowdev/hybrid-training-app/pull/802#issuecomment-5569058128)
+is implemented on accepted runtime checkpoint `b338e0d7`; HTTP/proof checkpoint
+`df790b09` preserves that runtime and every original 30 RPC case. The helper now
+requires Alice's and Bob's exact authenticated own IDs, retains anonymous denial
+and service UUID-or-null callability, and adds non-swim owner completion/receipt/
+same-and-new-entry replay, cross-owner empty-result/non-mutation, and anonymous
+shared-completion denial. Six mandatory names require at least 36 cases.
+Collection-only inspection found **36 unique cases** (33 literal `it` declarations
+plus three `it.each` rows); none were executed against a database.
+
+All three runner counts remain 148. Closed 146/147/148 evidence distinguishes
+helper absence, original private-helper access, and amended authenticated own-ID
+access/shared anonymous denial. The five phases are initial148 → first147 →
+rolled-back146 → restored147 → restored148, with exact ordered **0147 down,
+0146 down, 0146 up, 0147 up** and **15 isolated service contexts**. New synthetic
+tests flip all 11 shared fields at every level, reject 147↔148 evidence, and
+separately reject restoration drift while restored147/restored148 boundaries match.
+
+**526 focused static tests**, web typecheck and scoped ESLint passed. This is
+implemented integration, **not real temporary-stack acceptance**. Last actual
+[147 run 34096598017](https://github.com/drrowdev/hybrid-training-app/actions/runs/34096598017)
+remains **24/33 passed**; `40001` and remaining completion behavior are not proved
+resolved. No SQL/runtime/production changes, database/container execution,
+workflow dispatch or merge occurred. Exact-head review and the subsequent
+temporary run belong to the coordinator. Full standalone acceptance still
+precedes combined swimming and Garmin.
+
+The Slice A/B notes below record earlier checkpoints, not current run results.
 
 ### PR802 identity integration — Slice A
 
@@ -81,8 +112,8 @@ three named cases and at least 33 total cases. A 404 is non-invocability only,
 not ACL proof. Focused helper/config/report tests, typecheck and scoped lint are
 static validation only; the HTTP suite was not executed.
 
-Real 147-migration/native-RLS/RPC/service/down-up proof remains pending. The last
-actual run above remains **2 passed / 28 auth-schema failures**. Independent
+At this earlier checkpoint, real 147-migration/native-RLS/RPC/service/down-up proof
+was pending and the last run was **2 passed / 28 auth-schema failures**. Independent
 exact-integrated-head review precedes the coordinator's one temporary run.
 No database, Docker, Supabase, workflow execution or merge occurred.
 Full standalone DC-SW1–SW9 acceptance still precedes combined swimming; Garmin
