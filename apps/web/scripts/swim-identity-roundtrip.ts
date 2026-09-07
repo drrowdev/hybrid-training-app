@@ -19,8 +19,11 @@ const PHASE_LEVELS: Record<Phase, IdentityLevel> = {
 export const SERVICE_CASES = ["missing", "subject-a", "subject-b"] as const;
 export const IDENTITY_HELPER_RPC_CASES = [
   "DC-SW8 denies anonymous identity-helper invocation",
-  "DC-SW8 denies authenticated identity-helper invocation",
+  "DC-SW8 returns each authenticated caller's exact identity",
   "DC-SW8 permits service identity-helper invocation with a UUID-or-null result",
+  "DC-SW8 completes an owner's non-swim session with a durable receipt and same/new-entry replay",
+  "DC-SW8 returns no shared completion for another user's session and preserves owner data",
+  "DC-SW8 denies anonymous shared-completion invocation",
 ] as const;
 
 export function requireIdentityHelperRpcCases(ledger: Pick<ReturnType<typeof readSwimRpcReport>, "suites">): void {

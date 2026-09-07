@@ -47,7 +47,9 @@ const probeOutput = (phase: Phase, testCase: ServiceCase) => JSON.stringify([
   ["helper", phase === "rolled-back-146" ? "absent" : true],
 ]);
 
-function harness(change?: (response: Awaited<ReturnType<PrivateCommand>>, index: number) => Awaited<ReturnType<PrivateCommand>>) {
+function harness(change?: (
+  response: Awaited<ReturnType<PrivateCommand>>, index: number, context: { phase: Phase; sql: string },
+) => Awaited<ReturnType<PrivateCommand>>) {
   let phase: Phase = "initial-148";
   let index = 0;
   const proof = createIdentityRoundTripProof();
@@ -67,7 +69,7 @@ function harness(change?: (response: Awaited<ReturnType<PrivateCommand>>, index:
       text = probeOutput(phase, testCase!);
     }
     const response = { text, result: success };
-    return change ? change(response, index++) : response;
+    return change ? change(response, index++, { phase, sql }) : response;
   });
   const verifiedSql = vi.fn((file: typeof IDENTITY_FILES[keyof typeof IDENTITY_FILES]) => files[file]!);
   const checkConsistency = vi.fn(async () => {});
@@ -208,6 +210,23 @@ describe("identity round trip (synthetic only; no database execution)", () => {
     }
   });
 
+  it.each(["restored-147", "restored-148"] as const)(
+    "rejects independent restoration drift while the %s boundary still matches", async (restored) => {
+      for (const change of [{ postgresInherit: false }, { authUidOwner: "postgres" }]) {
+        const h = harness((response, _index, { phase, sql }) =>
+          phase === restored && sql === AUTH_PRIVILEGES_SQL
+            ? { ...response, text: catalogOutput({ ...observation(phase), ...change }) } : response);
+        await h.run();
+        expect(h.proof.phases[restored].boundary).toBe("matched");
+        expect(h.proof.phases[restored].restoration).toBe("mismatched");
+        expect(h.proof.phases[restored].acls).toBe("matched");
+        expect(h.proof.phases[restored].matched).toBe(3);
+        expect(h.proof.result).toBe("mismatched");
+        expect(h.proof.ddl.sharedUp).toBe("completed");
+      }
+    },
+  );
+
   it.each(["matched", "mismatched", "unavailable"] as const)(
     "preserves RPC process/ledger failure identity and secondary proof/boundary failures (%s)", async (boundary) => {
       for (const proofResult of ["matched", "mismatched", "unavailable", "not-attempted"] as const) {
@@ -235,7 +254,7 @@ describe("identity round trip (synthetic only; no database execution)", () => {
 });
 
 describe("service caller SQL and strict private evidence", () => {
-  it("requires all three additive HTTP cases after the unchanged original minimum and canonical gate", () => {
+  it("requires all six additive HTTP cases after the unchanged original minimum and canonical gate", () => {
     type Cases = Parameters<typeof requireIdentityHelperRpcCases>[0]["suites"][number]["cases"];
     const original: Cases = Array.from({ length: 30 }, (_, index) => ({ name: `original-${index}`, status: "passed" }));
     const helperCases = IDENTITY_HELPER_RPC_CASES.map((name) => ({
@@ -253,7 +272,9 @@ describe("service caller SQL and strict private evidence", () => {
       expect(() => check([...original, ...helperCases.filter((_, i) => i !== index), { name: "unrelated", status: "passed" }])).toThrow();
     }
     const source = readFileSync(new URL("./storage-rpc.smoke.test.ts", import.meta.url), "utf8");
-    expect(source.match(/\bit\("/g)).toHaveLength(30);
+    expect(IDENTITY_HELPER_RPC_CASES).toHaveLength(6);
+    expect(new Set(IDENTITY_HELPER_RPC_CASES).size).toBe(6);
+    expect(source.match(/\bit\("/g)).toHaveLength(33);
     expect(source).toContain('it.each(["paused", "finished", "archived"] as const)');
     for (const name of IDENTITY_HELPER_RPC_CASES) expect(source).toContain(`it("${name}",`);
     expect(source.match(/"401\/42501", "403\/42501", "404\/PGRST202"/g)).toHaveLength(2);

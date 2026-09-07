@@ -141,10 +141,13 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
     expect(response.data).toBeNull();
   });
 
-  it("DC-SW8 denies authenticated identity-helper invocation", async () => {
-    const response = await alice.rpc("swim_request_user_id");
-    expect(["401/42501", "403/42501", "404/PGRST202"]).toContain(`${response.status}/${response.error?.code}`);
-    expect(response.data).toBeNull();
+  it("DC-SW8 returns each authenticated caller's exact identity", async () => {
+    for (const [client, id] of [[alice, aliceId], [bob, bobId]] as const) {
+      const response = await client.rpc("swim_request_user_id");
+      expect(response.error).toBeNull();
+      expect(response.status).toBe(200);
+      expect(response.data).toBe(id);
+    }
   });
 
   it("DC-SW8 permits service identity-helper invocation with a UUID-or-null result", async () => {
@@ -153,6 +156,75 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
     expect(response.status).toBe(200);
     expect(response.data === null || (typeof response.data === "string"
       && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(response.data))).toBe(true);
+  });
+
+  async function nonSwimSession() {
+    const sessionId = await createSmokeSession(admin, aliceId, "shared-completion");
+    const movementId = await getMovementIdBySlug(admin, "bench-press-flat");
+    await rpc(alice, "add_session_movement", {
+      p_session_id: sessionId, p_movement_id: movementId, p_user_id: aliceId,
+    });
+    const logged = await alice.from("set_logs").insert({
+      session_id: sessionId, movement_id: movementId, set_index: 0, reps: 5, weight_kg: 60, rpe: 7,
+    }).select("*").single();
+    expect(logged.error).toBeNull();
+    const linked = await alice.from("swim_workouts").select("id").eq("session_id", sessionId);
+    expect(linked.error).toBeNull();
+    expect(linked.data).toEqual([]);
+    return { sessionId, log: logged.data };
+  }
+
+  it("DC-SW8 completes an owner's non-swim session with a durable receipt and same/new-entry replay", async () => {
+    const { sessionId, log } = await nonSwimSession();
+    const entryId = randomUUID();
+    const args = { p_session_id: sessionId, p_notes: "Completed strength workout", p_completion_entry_id: entryId };
+    expect(await rpc(alice, "complete_training_session_with_transition", args))
+      .toEqual([{ user_id: aliceId, transitioned: true }]);
+    const completed = await alice.from("sessions").select("*").eq("id", sessionId).single();
+    expect(completed.error).toBeNull();
+    expect(completed.data).toMatchObject({
+      user_id: aliceId, completion_outbox_entry_id: entryId, notes: args.p_notes, session_rpe: 7,
+    });
+    expect(completed.data?.completed_at).toEqual(expect.any(String));
+    for (const replayId of [entryId, randomUUID()]) {
+      expect(await rpc(alice, "complete_training_session_with_transition", {
+        ...args, p_notes: "Replay must not replace notes", p_completion_entry_id: replayId,
+      })).toEqual([{ user_id: aliceId, transitioned: false }]);
+      const unchanged = await alice.from("sessions").select("*").eq("id", sessionId).single();
+      expect(unchanged.error).toBeNull();
+      expect(unchanged.data).toEqual(completed.data);
+    }
+    const logs = await alice.from("set_logs").select("*").eq("session_id", sessionId);
+    expect(logs.error).toBeNull();
+    expect(logs.data).toEqual([log]);
+  });
+
+  it("DC-SW8 returns no shared completion for another user's session and preserves owner data", async () => {
+    const { sessionId, log } = await nonSwimSession();
+    const before = await alice.from("sessions").select("*").eq("id", sessionId).single();
+    expect(before.error).toBeNull();
+    expect(before.data?.completed_at).toBeNull();
+    const response = await bob.rpc("complete_training_session_with_transition", {
+      p_session_id: sessionId, p_notes: "Not the owner", p_completion_entry_id: randomUUID(),
+    });
+    expect(response.error).toBeNull();
+    expect(response.status).toBe(200);
+    expect(response.data).toEqual([]);
+    const after = await alice.from("sessions").select("*").eq("id", sessionId).single();
+    expect(after.error).toBeNull();
+    expect(after.data).toEqual(before.data);
+    const logs = await alice.from("set_logs").select("*").eq("session_id", sessionId);
+    expect(logs.error).toBeNull();
+    expect(logs.data).toEqual([log]);
+  });
+
+  it("DC-SW8 denies anonymous shared-completion invocation", async () => {
+    const anonymous = createClient(smokeEnv!.url, anonKey!, { auth: { autoRefreshToken: false, persistSession: false } });
+    const response = await anonymous.rpc("complete_training_session_with_transition", {
+      p_session_id: randomUUID(), p_notes: null, p_completion_entry_id: randomUUID(),
+    });
+    expect(["401/42501", "403/42501", "404/PGRST202"]).toContain(`${response.status}/${response.error?.code}`);
+    expect(response.data).toBeNull();
   });
 
   it("DC-SW8 hides Alice's plan from Bob", async () => {
