@@ -151,7 +151,8 @@ export function projectMigrationError(error: unknown, canonical?: () => Canonica
       }
       const statement = own(current, "query");
       if (statement !== undefined) {
-        if (typeof statement !== "string" || statement.length > 2 * 1024 * 1024 || query !== undefined) {
+        if (typeof statement !== "string" || statement.length > 2 * 1024 * 1024 ||
+            (query !== undefined && query !== statement)) {
           throw new Error("Ambiguous query");
         }
         query = statement;

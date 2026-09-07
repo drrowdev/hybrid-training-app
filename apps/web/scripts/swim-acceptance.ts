@@ -8,6 +8,10 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { SEED_MOVEMENTS } from "../../../packages/db/seeds/movements";
+import type { MigrationEvidenceCommand } from "../../../packages/db/scripts/migrate-with-evidence";
+import {
+  MIGRATION_EVIDENCE_ENV, MIGRATION_EVIDENCE_FILE, readMigrationEvidence,
+} from "../../../packages/db/scripts/migrate-evidence";
 import {
   CLI_ASSET, CLI_SHA256, CLI_VERSION, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
   containerSchema, networkSchema, outcome, processIdentity, readyServiceNames, requireAcceptance, requireArchive,
@@ -17,7 +21,7 @@ import {
   type Container, type ProcessResult, type Resources,
 } from "./swim-acceptance-guards";
 import {
-  acceptanceAssert as assert, AcceptanceReporting, commandStdout, formatAcceptanceSummary,
+  acceptanceAssert as assert, AcceptanceReporting, commandStdout, finishMigrationEvidenceAttempt, formatAcceptanceSummary,
   openPrivateCommandLog, publishAcceptanceSummary, readMigrationDiagnostic, safeFailureCause,
 } from "./swim-acceptance-reporting";
 import { RPC_CONFIG, RPC_SUITE, readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
@@ -29,6 +33,9 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
+// Temporary source-only switch. The unchanged normal CLI must be restored before acceptance.
+const MIGRATION_DIAGNOSTIC_ONLY = true;
+const migrationEvidenceCommand: MigrationEvidenceCommand = "db:migrate:evidence";
 const hash = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args],
   { encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -420,6 +427,20 @@ async function main(cleanupOnly: boolean) {
       return { ...local, dbId: db.Id };
     });
     await stage("unchanged migrations", async () => {
+      if (MIGRATION_DIAGNOSTIC_ONLY) {
+        requireUnchanged();
+        manifest.qualifying = false;
+        const evidencePath = join(directory, MIGRATION_EVIDENCE_FILE);
+        const { result, log } = await command("pnpm", ["--filter", "@hta/db", migrationEvidenceCommand], {
+          env: { ...target.dbEnv, [MIGRATION_EVIDENCE_ENV]: evidencePath },
+          timeout: 180_000, allowFailure: true, separateStdout: true,
+        });
+        if (result.code !== 0) {
+          try { manifest.migrationStderrDiagnostic = readMigrationDiagnostic(log); }
+          catch { manifest.migrationStderrDiagnostic = "unavailable"; }
+        }
+        finishMigrationEvidenceAttempt(result, readMigrationEvidence(evidencePath), manifest, reporting);
+      }
       requireUnchanged();
       const { result, log } = await command("pnpm", ["--filter", "@hta/db", "db:migrate"], {
         env: target.dbEnv, timeout: 180_000, allowFailure: true, separateStdout: true,

@@ -14,7 +14,7 @@ import {
   requireStartupContainer, resourceSchema, type Container, type Network, type Resources,
 } from "../../../../scripts/swim-acceptance-guards";
 import {
-  acceptanceAssert, AcceptanceReporting, commandStdout, formatAcceptanceSummary,
+  acceptanceAssert, AcceptanceReporting, commandStdout, finishMigrationEvidenceAttempt, formatAcceptanceSummary,
   decodeMigrationDiagnostic, MIGRATION_DIAGNOSTIC_FIELDS, MIGRATION_DIAGNOSTIC_MAX_BYTES,
   openPrivateCommandLog, publishAcceptanceSummary, readMigrationDiagnostic, safeFailureCause,
 } from "../../../../scripts/swim-acceptance-reporting";
@@ -196,9 +196,9 @@ describe("migration diagnostics (DC-SW8; synthetic logs only)", () => {
     const stage = source.slice(source.indexOf('await stage("unchanged migrations"'),
       source.indexOf('await stage("global catalog'));
     expect(stage).toMatch(/requireUnchanged\(\);\s+const \{ result, log \} = await command\("pnpm", \["--filter", "@hta\/db", "db:migrate"\], \{\s+env: target\.dbEnv, timeout: 180_000, allowFailure: true, separateStdout: true,\s+\}\);/);
-    expect(source.match(/separateStdout: true/g)).toHaveLength(1);
+    expect(source.match(/separateStdout: true/g)).toHaveLength(2);
     expect(stage).toMatch(/if \(result\.code !== 0\) \{\s+try \{\s+manifest\.migrationDiagnostic = readMigrationDiagnostic\(log\);\s+\} catch \{\s+manifest\.migrationDiagnostic = "unavailable";\s+\}\s+\}\s+requireProcess\(result\);\s+requireUnchanged\(\);/);
-    expect(source.match(/readMigrationDiagnostic\(log\)/g)).toHaveLength(1);
+    expect(source.match(/readMigrationDiagnostic\(log\)/g)).toHaveLength(2);
     for (const diagnostic of [evidence, "unavailable"]) {
       const reporting = new AcceptanceReporting();
       const result = { code: 1, signal: null, timedOut: false };
@@ -208,6 +208,68 @@ describe("migration diagnostics (DC-SW8; synthetic logs only)", () => {
       expect(formatAcceptanceSummary({ migrationDiagnostic: diagnostic, failures: reporting.failures }))
         .not.toContain("PostgresError");
     }
+  });
+
+  it("pins a single diagnostic sibling to source, with a child-only fixed path and no downstream acceptance", () => {
+    const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
+    const branch = source.slice(source.indexOf("if (MIGRATION_DIAGNOSTIC_ONLY)"),
+      source.indexOf('const { result, log } = await command("pnpm", ["--filter", "@hta/db", "db:migrate"]'));
+    expect(source).toContain("const MIGRATION_DIAGNOSTIC_ONLY = true;");
+    expect(source).toContain('import type { MigrationEvidenceCommand } from "../../../packages/db/scripts/migrate-with-evidence";');
+    expect(source).toContain('const migrationEvidenceCommand: MigrationEvidenceCommand = "db:migrate:evidence";');
+    expect(branch.match(/await command\(/g)).toHaveLength(1);
+    expect(branch).toContain("manifest.qualifying = false;");
+    expect(branch).toContain("const evidencePath = join(directory, MIGRATION_EVIDENCE_FILE);");
+    expect(branch).toContain("env: { ...target.dbEnv, [MIGRATION_EVIDENCE_ENV]: evidencePath }");
+    expect(branch).toContain("finishMigrationEvidenceAttempt(result, readMigrationEvidence(evidencePath), manifest, reporting);");
+    expect(branch).not.toMatch(/GITHUB_ENV|process\.env|db:seed|round.?trip|HTTP/);
+    expect(source).not.toContain("readMigrationDiagnostic(evidencePath)");
+  });
+
+  it("never qualifies a successful diagnostic child and preserves its authored stop reason", async () => {
+    const reporting = new AcceptanceReporting();
+    const manifest: Record<string, unknown> = {};
+    const evidence = { status: "complete" as const, terminal: {
+      event: "terminal" as const, phase: "migrate" as const, status: "success" as const,
+      error: null, position: { status: "unmatched" as const },
+    }, shutdown: { event: "shutdown" as const, status: "closed" as const, error: null } };
+    const downstream = vi.fn();
+    await expect(reporting.stage("unchanged migrations", async () => {
+      finishMigrationEvidenceAttempt({ code: 0, signal: null, timedOut: false }, evidence, manifest, reporting);
+      downstream();
+    }, () => {})).rejects.toThrow();
+    expect(downstream).not.toHaveBeenCalled();
+    expect(manifest.qualifying).toBe(false);
+    expect(reporting.failures.primary?.cause).toEqual({
+      classification: "guard", message: "NON-QUALIFYING: normal-migration-still-required",
+    });
+  });
+
+  it("keeps original failed process results primary and incomplete collectors explicitly secondary", async () => {
+    for (const result of [
+      { code: 1, signal: null, timedOut: false },
+      { code: null, signal: "SIGTERM", timedOut: true },
+      { code: 0, signal: null, timedOut: true },
+    ]) {
+      const reporting = new AcceptanceReporting();
+      const manifest = {};
+      await expect(reporting.stage("unchanged migrations", async () => {
+        finishMigrationEvidenceAttempt(result, { status: "incomplete" }, manifest, reporting);
+      }, () => {})).rejects.toThrow();
+      expect(reporting.failures.primary?.cause).toMatchObject({ classification: "process", result });
+      expect(reporting.failures.secondary).toHaveLength(1);
+      expect(manifest).toMatchObject({ qualifying: false, migrationEvidence: { status: "incomplete" } });
+    }
+  });
+
+  it("does not call missing or started-only evidence a diagnostic success even on exit zero", () => {
+    const reporting = new AcceptanceReporting();
+    const manifest = {};
+    expect(() => finishMigrationEvidenceAttempt(
+      { code: 0, signal: null, timedOut: false }, { status: "incomplete" }, manifest, reporting,
+    )).toThrow();
+    expect(reporting.failures.secondary).toHaveLength(1);
+    expect(manifest).toMatchObject({ qualifying: false, migrationEvidence: { status: "incomplete" } });
   });
 });
 
