@@ -8,7 +8,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { isDedicatedSwimEnvironment } from "../e2e/fixtures/swim-environment";
-import { acceptanceAssert as assert } from "./swim-acceptance-reporting";
+import { acceptanceAssert as assert } from "./swim-acceptance-errors";
 
 export const SWIM_BROWSER_CASES = Object.freeze([
   Object.freeze({
@@ -42,7 +42,7 @@ const MAX_REPORT_BYTES = 8 * 1024 * 1024;
 type Env = Readonly<Record<string, string | undefined>>;
 type FailureCode = "browser-environment" | "browser-paths" | "browser-env-files" |
   "browser-port" | "browser-budget" | "browser-readiness-timeout" | "browser-cancelled" |
-  "browser-server-exited" | "browser-report-file" | "browser-report-schema" | "browser-failed";
+  "browser-server-exited" | "browser-report-absent" | "browser-report-file" | "browser-report-schema" | "browser-failed";
 const failures = new WeakMap<object, FailureCode>();
 const failureLedgers = new WeakMap<object, {
   cases: Array<(typeof SWIM_BROWSER_CASES)[number] & {
@@ -240,6 +240,15 @@ export function prepareSwimBrowserReport(paths: BrowserPaths, webRoot: string): 
   return ticket;
 }
 
+function presentReport(path: string, checkRoot: () => void) {
+  try { return lstatSync(path); }
+  catch (error) {
+    checkRoot();
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") failure("browser-report-absent");
+    throw error;
+  }
+}
+
 export function sealSwimBrowserReport(ticket: BrowserReportTicket) {
   try {
     requireCondition(tickets.has(ticket), "browser-report-file");
@@ -248,6 +257,7 @@ export function sealSwimBrowserReport(ticket: BrowserReportTicket) {
       identity(originalRoot, requirePrivateBrowserRoot(ticket.paths, ticket.webRoot)), "browser-report-file",
     );
     checkRoot();
+    presentReport(ticket.paths.reportPath, checkRoot);
     const seal = (path: string, directory: boolean) => {
       let fd: number | undefined;
       try {
@@ -275,7 +285,10 @@ export function sealSwimBrowserReport(ticket: BrowserReportTicket) {
     };
     seal(ticket.paths.reportPath, false);
     seal(ticket.paths.outputDir, true);
-  } catch { failure("browser-report-file"); }
+  } catch (error) {
+    if (error && typeof error === "object" && failures.get(error) === "browser-report-absent") throw error;
+    failure("browser-report-file");
+  }
 }
 
 // Playwright 1.60.0 JSONReport types and src/reporters/json.ts: rootDir-relative
@@ -400,7 +413,9 @@ export function readSwimBrowserReport(ticket: BrowserReportTicket) {
     const root = requirePrivateBrowserPaths(ticket.paths, ticket.webRoot);
     requireCondition(identity(root, originalRoot), "browser-report-file");
     const path = ticket.paths.reportPath;
-    const before = lstatSync(path);
+    const before = presentReport(path, () => requireCondition(
+      identity(root, requirePrivateBrowserPaths(ticket.paths, ticket.webRoot)), "browser-report-file",
+    ));
     const valid = (stat: Stats) => stat.isFile() && owned(stat, 0o600) && stat.nlink === 1 &&
       stat.size > 0 && stat.size <= MAX_REPORT_BYTES &&
       stat.mtimeMs >= ticket.startedAt && Math.floor(stat.mtimeMs) <= Date.now();
@@ -421,7 +436,10 @@ export function readSwimBrowserReport(ticket: BrowserReportTicket) {
     }
     requireCondition(identity(root, requirePrivateBrowserPaths(ticket.paths, ticket.webRoot)), "browser-report-file");
     text = buffer.toString("utf8");
-  } catch { failure("browser-report-file"); }
+  } catch (error) {
+    if (error && typeof error === "object" && failures.get(error) === "browser-report-absent") throw error;
+    failure("browser-report-file");
+  }
   finally { if (fd !== undefined) closeSync(fd); }
   return validateSwimBrowserReport(text, ticket.paths, ticket.webRoot);
 }

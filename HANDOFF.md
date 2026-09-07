@@ -49,6 +49,17 @@ occurred in this slice. Full standalone
 [DC-SW1–SW9](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
 and production acceptance are not established.
 
+The collection-only regression added from source
+`5f82776876a2bb60b607a9c2dc04d0c3b80416a9` reproduced exit 1 with the
+config/browser-helper/reporting/migration-evidence paths associated with the
+failure (loader code unknown). Extracting the unchanged shared error primitives
+removed that import boundary: pinned Playwright `--list` now collects exactly
+four mobile cases from two files, with zero executed results. The Next 16.2.6
+own-stop exit-143 fix is committed separately. Missing reports are classified
+only after ticket/root validation, not described as “never written.”
+256 scoped synthetic/collection tests, web typecheck and scoped lint pass.
+No browser, server, database or workflow dispatch ran; live reference remains pending.
+
 ### PR802 anonymous completion correction — earlier checkpoint
 
 [Run 34154417199](https://github.com/drrowdev/hybrid-training-app/actions/runs/34154417199)
