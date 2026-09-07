@@ -1,7 +1,11 @@
 import nodeAssert, { AssertionError } from "node:assert/strict";
-import { appendFileSync, openSync } from "node:fs";
+import { appendFileSync, closeSync, constants as fsConstants, fstatSync, openSync, readSync } from "node:fs";
 import { constants } from "node:os";
 import type { ProcessResult } from "./swim-acceptance-guards";
+import {
+  parseMigrationScid, type MigrationDiagnostic, type readMigrationEvidence,
+} from "../../../packages/db/scripts/migrate-evidence";
+export { MIGRATION_DIAGNOSTIC_FIELDS } from "../../../packages/db/scripts/migrate-evidence";
 
 type FailureCause = {
   classification: "guard" | "process" | "assertion" | "parser" | "unexpected";
@@ -93,6 +97,25 @@ export class AcceptanceReporting {
   }
 }
 
+export function finishMigrationEvidenceAttempt(
+  result: ProcessResult, evidence: ReturnType<typeof readMigrationEvidence>,
+  manifest: Record<string, unknown>, reporting: AcceptanceReporting,
+): never {
+  manifest.qualifying = false;
+  manifest.migrationEvidence = evidence;
+  const secondary = (message: string) => reporting.failures.secondary.push({
+    stage: "migration evidence", cause: { classification: "guard", message },
+  });
+  if (evidence.status === "incomplete") secondary("Migration evidence incomplete");
+  else if (!evidence.shutdown) secondary("Migration shutdown evidence unavailable");
+  else if (evidence.shutdown.status === "failed" || evidence.shutdown.status === "timed-out") {
+    secondary("Migration shutdown failed or timed out");
+  }
+  // A failed child remains primary; evidence collection never changes its process result.
+  if (result.code !== 0 || result.signal !== null || result.timedOut) throw processFailure(result);
+  acceptanceAssert(false, "NON-QUALIFYING: normal-migration-still-required");
+}
+
 export function formatAcceptanceSummary(data: unknown, secrets: Iterable<string> = []) {
   let text = JSON.stringify(data, null, 2);
   for (const secret of secrets) {
@@ -113,4 +136,72 @@ export function publishAcceptanceSummary(
 export function openPrivateCommandLog(path: string) {
   const fd = openSync(path, "ax", 0o600);
   return { fd, append: (chunk: Buffer) => appendFileSync(path, chunk) };
+}
+
+export function commandStdout(
+  log: ReturnType<typeof openPrivateCommandLog>,
+  options: { capture?: boolean; separateStdout?: boolean },
+  onLimit: () => void,
+) {
+  let text = "";
+  return {
+    stdio: options.capture || options.separateStdout ? "pipe" as const : log.fd,
+    get text() { return text; },
+    onData(chunk: Buffer) {
+      if (!options.separateStdout) log.append(chunk);
+      text += chunk.toString("utf8");
+      if (text.length > 8 * 1024 * 1024) onLimit();
+    },
+  };
+}
+
+export const MIGRATION_DIAGNOSTIC_MAX_BYTES = 256 * 1024;
+
+type MigrationEvidence = MigrationDiagnostic | "unavailable";
+
+export function decodeMigrationDiagnostic(text: string): MigrationEvidence {
+  if (typeof text !== "string" || Buffer.byteLength(text, "utf8") > MIGRATION_DIAGNOSTIC_MAX_BYTES) {
+    return "unavailable";
+  }
+  let found: MigrationDiagnostic | undefined;
+  let inQuery = false;
+  for (const line of text.split("\n")) {
+    if (line.includes("DrizzleQueryError: Failed query:") || /^ *query:/.test(line) ||
+        /^ *(?:DO |RAISE |SELECT |CONTEXT:|STATEMENT:|QUERY:)/.test(line)) inQuery = true;
+    if (!line.includes("SCID/")) continue;
+    // Runtime concatenation leaves this incomplete fragment in SQL/query echoes.
+    // It can never supply evidence, even if the actual exception is absent.
+    if (line.includes("'SCID/'") && !/SCID\/[^'"]/.test(line)) continue;
+    // Do not strip controls, unquote source, or search inside arbitrary messages.
+    const match = /^ {0,8}(\[cause\]: )?(?:PostgresError|error): SCID\/(1)\/(roles|attributes|acl|privileges)\/(pre|post)\/(roles|both|shared|helper)\/([tfu]{1,48})$/.exec(line);
+    if (!match || (inQuery && !match[1])) return "unavailable";
+    const value = parseMigrationScid(`SCID/${match[2]}/${match[3]}/${match[4]}/${match[5]}/${match[6]}`);
+    if (!value) return "unavailable";
+    if (found && JSON.stringify(found) !== JSON.stringify(value)) return "unavailable";
+    found = value;
+  }
+  return found ?? "unavailable";
+}
+
+// Only the completed migration command's own exclusive 0600 log is passed here.
+export function readMigrationDiagnostic(path: string): MigrationEvidence {
+  const fd = openSync(path, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK);
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || (stat.mode & 0o777) !== 0o600) return "unavailable";
+    const length = Math.min(stat.size, MIGRATION_DIAGNOSTIC_MAX_BYTES);
+    const start = stat.size - length;
+    const tail = Buffer.alloc(length);
+    let read = 0;
+    while (read < length) {
+      const count = readSync(fd, tail, read, length - read, start + read);
+      if (!count) return "unavailable";
+      read += count;
+    }
+    if (fstatSync(fd).size !== stat.size) return "unavailable";
+    // Never interpret a line whose prefix fell outside the bounded tail.
+    const boundary = start > 0 ? tail.indexOf(10) : -1;
+    if (start > 0 && boundary === -1) return "unavailable";
+    return decodeMigrationDiagnostic(tail.subarray(boundary + 1).toString("utf8"));
+  } finally { closeSync(fd); }
 }

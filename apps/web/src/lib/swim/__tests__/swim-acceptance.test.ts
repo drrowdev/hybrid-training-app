@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, lstatSync, mkdtempSync, readFileSync, rmSync, writeSync } from "node:fs";
+import { chmodSync, closeSync, existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { inspect } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import {
   CLI_ASSET, CLI_SHA256, DEFAULT_SERVICES, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
@@ -12,8 +14,9 @@ import {
   requireStartupContainer, resourceSchema, type Container, type Network, type Resources,
 } from "../../../../scripts/swim-acceptance-guards";
 import {
-  acceptanceAssert, AcceptanceReporting, formatAcceptanceSummary,
-  openPrivateCommandLog, publishAcceptanceSummary, safeFailureCause,
+  acceptanceAssert, AcceptanceReporting, commandStdout, finishMigrationEvidenceAttempt, formatAcceptanceSummary,
+  decodeMigrationDiagnostic, MIGRATION_DIAGNOSTIC_FIELDS, MIGRATION_DIAGNOSTIC_MAX_BYTES,
+  openPrivateCommandLog, publishAcceptanceSummary, readMigrationDiagnostic, safeFailureCause,
 } from "../../../../scripts/swim-acceptance-reporting";
 import { MIN_RPC_CASES, RPC_SUITE, validateSwimRpcReport } from "./storage-rpc-report";
 import {
@@ -69,6 +72,206 @@ const report = () => ({
     })) }],
 });
 const ledger = () => validateSwimRpcReport(JSON.stringify(report()), sha, configHash);
+
+describe("migration diagnostics (DC-SW8; synthetic logs only)", () => {
+  const token = "SCID/1/acl/pre/shared/ftftfttu";
+  const rendering = `PostgresError: ${token}`;
+  const evidence = { version: 1, guard: "acl", phase: "pre", object: "shared", bits: "ftftfttu" };
+  const migration = readFileSync(new URL(
+    "../../../../../../packages/db/drizzle/0147_shared_completion_identity.sql", import.meta.url,
+  ), "utf8");
+
+  it.each([
+    ["roles", "pre", "roles", 6],
+    ["attributes", "pre", "both", 48],
+    ["attributes", "post", "both", 48],
+    ["acl", "pre", "shared", 8],
+    ["acl", "post", "shared", 8],
+    ["acl", "pre", "helper", 8],
+    ["acl", "post", "helper", 8],
+    ["privileges", "pre", "both", 10],
+    ["privileges", "post", "both", 10],
+  ] as const)("decodes only the fixed %s/%s/%s vector", (guard, phase, object, length) => {
+    expect(MIGRATION_DIAGNOSTIC_FIELDS[guard]).toHaveLength(length);
+    const bits = "tfu".repeat(length).slice(0, length);
+    const line = `PostgresError: SCID/1/${guard}/${phase}/${object}/${bits}`;
+    const decoded = decodeMigrationDiagnostic(line);
+    expect(decoded).toEqual({ version: 1, guard, phase, object, bits });
+    expect(Object.keys(decoded)).toEqual(["version", "guard", "phase", "object", "bits"]);
+    expect(decodeMigrationDiagnostic(line.slice(0, -1))).toBe("unavailable");
+    expect(decodeMigrationDiagnostic(`${line}t`)).toBe("unavailable");
+  });
+
+  it("decodes Node's nested driver cause despite literal-only SQL echoes", () => {
+    class PostgresError extends Error {}
+    class DrizzleQueryError extends Error {}
+    const cause = Object.assign(new PostgresError(token), {
+      name: "PostgresError", code: "P0001", severity: "ERROR", detail: "synthetic-private-detail",
+    });
+    const error = Object.assign(new DrizzleQueryError(`Failed query: ${migration}\nparams: `, { cause }), {
+      name: "DrizzleQueryError", query: migration, params: [],
+    });
+    const text = inspect(error, { colors: false });
+    expect(text).toContain("[cause]: PostgresError:");
+    expect(decodeMigrationDiagnostic(text)).toEqual(evidence);
+    expect(formatAcceptanceSummary(decodeMigrationDiagnostic(text))).not.toContain("synthetic-private-detail");
+    expect(decodeMigrationDiagnostic(migration)).toBe("unavailable");
+    expect(decodeMigrationDiagnostic(inspect({ query: migration }))).toBe("unavailable");
+  });
+
+  it("deduplicates identical actual exception renderings", () => {
+    expect(decodeMigrationDiagnostic(`${rendering}\n${rendering}`)).toEqual(evidence);
+    expect(decodeMigrationDiagnostic(`${rendering}\n  [cause]: ${rendering}\nerror: ${token}`)).toEqual(evidence);
+  });
+
+  it.each([
+    "",
+    token,
+    "RAISE EXCEPTION USING MESSAGE = 'SCID/' || '1/acl/';",
+    `RAISE EXCEPTION '${token}';`,
+    `SELECT '${rendering}';`,
+    `query: '${rendering}'`,
+    `query: '\n${rendering}\n'`,
+    `DrizzleQueryError: Failed query: SELECT '\n${rendering}\n'`,
+    `CONTEXT: ${rendering}`,
+    `NOTICE: ${token}`,
+    `Error: ${token}`,
+    `PostgresError: ${token}/extra`,
+    `PostgresError: ${token} `,
+    rendering.replace("/1/", "/2/"),
+    rendering.replace("/acl/", "/unknown/"),
+    rendering.replace("/pre/", "/unknown/"),
+    rendering.replace("/shared/", "/unknown/"),
+    rendering.replace("/shared/", "/both/"),
+    "PostgresError: SCID/1/roles/post/roles/tttttt",
+    "PostgresError: SCID/1/attributes/pre/helper/" + "t".repeat(48),
+    "PostgresError: SCID/1/privileges/pre/shared/tttttttttt",
+    rendering.replace("ftftfttu", "ftftftt0"),
+    `${rendering}\n${rendering.replace("/pre/", "/post/")}`,
+    `${rendering}\n${rendering.replace("ftftfttu", "tttttttt")}`,
+    `${rendering}\n${rendering.replace("/1/", "/2/")}`,
+    `${rendering}\nSELECT '${token}';`,
+    `\x1b[31m${rendering}\x1b[0m`,
+    `discard\r${rendering}`,
+    `${rendering}\rhidden`,
+    `${rendering}\x00`,
+    `${rendering}\x08`,
+    `${rendering}\x7f`,
+    `${rendering}\u009b0m`,
+    `${rendering}\u202e`,
+    rendering.replace("/pre/", "/p\x1b[0mre/"),
+    `${rendering}\n${rendering}\x1b[1A`,
+    `${rendering}\n${"x".repeat(MIGRATION_DIAGNOSTIC_MAX_BYTES)}`,
+    `${rendering}\n${"é".repeat(MIGRATION_DIAGNOSTIC_MAX_BYTES / 2)}`,
+  ])("fails closed for malformed, conflicting, source or unsafe input %#", (text) => {
+    expect(decodeMigrationDiagnostic(text)).toBe("unavailable");
+  });
+
+  it("reads only a bounded tail and never treats a clipped line as an exception", () => {
+    const directory = mkdtempSync(join(tmpdir(), "swim-migration-log-"));
+    const path = join(directory, "command.log");
+    const log = openPrivateCommandLog(path);
+    closeSync(log.fd);
+    try {
+      log.append(Buffer.from(`PostgresError: SCID/1/roles/pre/roles/ffffff\n${"x".repeat(MIGRATION_DIAGNOSTIC_MAX_BYTES)}\n${rendering}\n`));
+      expect(readMigrationDiagnostic(path)).toEqual(evidence);
+      const clippedPath = join(directory, "clipped.log");
+      const clipped = openPrivateCommandLog(clippedPath);
+      closeSync(clipped.fd);
+      // The tail starts at a syntactically valid error, but its omitted prefix was SQL.
+      clipped.append(Buffer.from(`SELECT '${rendering}\n${"x".repeat(MIGRATION_DIAGNOSTIC_MAX_BYTES - rendering.length - 1)}`));
+      expect(readMigrationDiagnostic(clippedPath)).toBe("unavailable");
+      const link = join(directory, "link.log");
+      symlinkSync(path, link);
+      expect(() => readMigrationDiagnostic(link)).toThrow();
+      chmodSync(path, 0o644);
+      expect(readMigrationDiagnostic(path)).toBe("unavailable");
+      expect(() => readMigrationDiagnostic(join(directory, "absent.log"))).toThrow();
+      expect(readMigrationDiagnostic(directory)).toBe("unavailable");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("keeps success, diagnostic failures and process failures separate at the migration call site", () => {
+    const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
+    const stage = source.slice(source.indexOf('await stage("unchanged migrations"'),
+      source.indexOf('await stage("global catalog'));
+    expect(stage).toMatch(/requireUnchanged\(\);\s+const \{ result, log \} = await command\("pnpm", \["--filter", "@hta\/db", "db:migrate"\], \{\s+env: target\.dbEnv, timeout: 180_000, allowFailure: true, separateStdout: true,\s+\}\);/);
+    expect(source.match(/separateStdout: true/g)).toHaveLength(2);
+    expect(stage).toMatch(/if \(result\.code !== 0\) \{\s+try \{\s+manifest\.migrationDiagnostic = readMigrationDiagnostic\(log\);\s+\} catch \{\s+manifest\.migrationDiagnostic = "unavailable";\s+\}\s+\}\s+requireProcess\(result\);\s+requireUnchanged\(\);/);
+    expect(source.match(/readMigrationDiagnostic\(log\)/g)).toHaveLength(2);
+    for (const diagnostic of [evidence, "unavailable"]) {
+      const reporting = new AcceptanceReporting();
+      const result = { code: 1, signal: null, timedOut: false };
+      try { requireProcess(result); } catch (error) { reporting.recordFailure("unchanged migrations", error); }
+      expect(reporting.failures.primary?.cause).toMatchObject({ classification: "process", result });
+      expect(outcome(reporting.failures.primary?.stage, true).success).toBe(false);
+      expect(formatAcceptanceSummary({ migrationDiagnostic: diagnostic, failures: reporting.failures }))
+        .not.toContain("PostgresError");
+    }
+  });
+
+  it("pins a single diagnostic sibling to source, with a child-only fixed path and no downstream acceptance", () => {
+    const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
+    const branch = source.slice(source.indexOf("if (MIGRATION_DIAGNOSTIC_ONLY)"),
+      source.indexOf('const { result, log } = await command("pnpm", ["--filter", "@hta/db", "db:migrate"]'));
+    expect(source).toContain("const MIGRATION_DIAGNOSTIC_ONLY = false;");
+    expect(source).toContain('import type { MigrationEvidenceCommand } from "../../../packages/db/scripts/migrate-with-evidence";');
+    expect(source).toContain('const migrationEvidenceCommand: MigrationEvidenceCommand = "db:migrate:evidence";');
+    expect(branch.match(/await command\(/g)).toHaveLength(1);
+    expect(branch).toContain("manifest.qualifying = false;");
+    expect(branch).toContain("const evidencePath = join(directory, MIGRATION_EVIDENCE_FILE);");
+    expect(branch).toContain("env: { ...target.dbEnv, [MIGRATION_EVIDENCE_ENV]: evidencePath }");
+    expect(branch).toContain("finishMigrationEvidenceAttempt(result, readMigrationEvidence(evidencePath), manifest, reporting);");
+    expect(branch).not.toMatch(/GITHUB_ENV|process\.env|db:seed|round.?trip|HTTP/);
+    expect(source).not.toContain("readMigrationDiagnostic(evidencePath)");
+  });
+
+  it("never qualifies a successful diagnostic child and preserves its authored stop reason", async () => {
+    const reporting = new AcceptanceReporting();
+    const manifest: Record<string, unknown> = {};
+    const evidence = { status: "complete" as const, terminal: {
+      event: "terminal" as const, phase: "migrate" as const, status: "success" as const,
+      error: null, position: { status: "unmatched" as const },
+    }, shutdown: { event: "shutdown" as const, status: "closed" as const, error: null } };
+    const downstream = vi.fn();
+    await expect(reporting.stage("unchanged migrations", async () => {
+      finishMigrationEvidenceAttempt({ code: 0, signal: null, timedOut: false }, evidence, manifest, reporting);
+      downstream();
+    }, () => {})).rejects.toThrow();
+    expect(downstream).not.toHaveBeenCalled();
+    expect(manifest.qualifying).toBe(false);
+    expect(reporting.failures.primary?.cause).toEqual({
+      classification: "guard", message: "NON-QUALIFYING: normal-migration-still-required",
+    });
+  });
+
+  it("keeps original failed process results primary and incomplete collectors explicitly secondary", async () => {
+    for (const result of [
+      { code: 1, signal: null, timedOut: false },
+      { code: null, signal: "SIGTERM", timedOut: true },
+      { code: 0, signal: null, timedOut: true },
+    ]) {
+      const reporting = new AcceptanceReporting();
+      const manifest = {};
+      await expect(reporting.stage("unchanged migrations", async () => {
+        finishMigrationEvidenceAttempt(result, { status: "incomplete" }, manifest, reporting);
+      }, () => {})).rejects.toThrow();
+      expect(reporting.failures.primary?.cause).toMatchObject({ classification: "process", result });
+      expect(reporting.failures.secondary).toHaveLength(1);
+      expect(manifest).toMatchObject({ qualifying: false, migrationEvidence: { status: "incomplete" } });
+    }
+  });
+
+  it("does not call missing or started-only evidence a diagnostic success even on exit zero", () => {
+    const reporting = new AcceptanceReporting();
+    const manifest = {};
+    expect(() => finishMigrationEvidenceAttempt(
+      { code: 0, signal: null, timedOut: false }, { status: "incomplete" }, manifest, reporting,
+    )).toThrow();
+    expect(reporting.failures.secondary).toHaveLength(1);
+    expect(manifest).toMatchObject({ qualifying: false, migrationEvidence: { status: "incomplete" } });
+  });
+});
 
 describe("auth privilege observation (synthetic reporting evidence, no database execution)", () => {
   const observation = {
@@ -252,8 +455,9 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     expect(source).toContain("requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);\n      requireIdentityHelperRpcCases(ledger);\n    }), reporting);");
     expect(source.match(/await observeAuthPrivileges\(/g)).toHaveLength(1);
     expect(source).toContain("Math.min(options.timeout ?? 60_000, deadline - Date.now())");
-    expect(source).toContain('stdio: ["ignore", options.capture ? "pipe" : fd, fd]');
-    expect(source).toContain("if (text.length > 8 * 1024 * 1024) { timedOut = true; terminate(); }");
+    expect(source).toContain('stdio: ["ignore", stdout.stdio, fd]');
+    expect(source).toContain("commandStdout(commandLog, options, () => { timedOut = true; terminate(); })");
+    expect(source).toContain('child.stdout?.on("data", stdout.onData)');
     expect(source).toContain("if (!options.allowFailure) requireProcess(result);");
   });
   it.each([
@@ -477,6 +681,49 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       originalAcl: level !== 148, amendedAcl: level === 148, anon: level !== 148, public: level !== 148,
     },
     functions: SWIM_FUNCTION_CONTRACTS.map(([name]) => [name, true, level === 146, level !== 146]),
+  });
+
+  it("DC-SW8 pins exact shared prior and amended ACL sets without relaxing grantor or options", () => {
+    for (const callers of [
+      "refs.postgres, refs.authenticated, refs.service, refs.swim_writer, 0::oid, refs.anon",
+      "refs.postgres, refs.authenticated, refs.service, refs.swim_writer",
+    ]) {
+      expect(AUTH_PRIVILEGES_SQL.split(`FROM unnest(ARRAY[${callers}]) grantee)`)).toHaveLength(2);
+    }
+    const shared = AUTH_PRIVILEGES_SQL.slice(AUTH_PRIVILEGES_SQL.indexOf("pg_catalog.json_build_array('shared'"));
+    expect(shared.match(/AND bool_and\(acl.grantor = refs.postgres AND acl.privilege_type = 'EXECUTE' AND NOT acl.is_grantable\), false\)/g))
+      .toHaveLength(2);
+  });
+
+  it.each([146, 147] as const)("DC-SW8 rejects prior %i missing direct anon even with PUBLIC effective access", (level) => {
+    const input = levelObservation(level);
+    input.shared.originalAcl = false;
+    expect(input.shared).toMatchObject({ anon: true, public: true });
+    expect(checkAuthBoundary(projectAuthPrivilegeOutput(text(input)), level)).toBe("mismatched");
+  });
+
+  it.each([146, 147, 148] as const)("DC-SW8 rejects an unknown extra shared grantee at %i", (level) => {
+    const input = levelObservation(level);
+    input.shared.originalAcl = false;
+    input.shared.amendedAcl = false;
+    expect(checkAuthBoundary(projectAuthPrivilegeOutput(text(input)), level)).toBe("mismatched");
+  });
+
+  it.each(["grant option", "wrong grantor"])("DC-SW8 rejects shared %s evidence with otherwise matching callers", () => {
+    for (const level of [146, 147, 148] as const) {
+      const input = levelObservation(level);
+      input.shared.originalAcl = false;
+      input.shared.amendedAcl = false;
+      expect(checkAuthBoundary(projectAuthPrivilegeOutput(text(input)), level)).toBe("mismatched");
+    }
+  });
+
+  it("DC-SW8 rejects direct and effective anon at 148 even after PUBLIC denial", () => {
+    const input = levelObservation(148);
+    input.shared.amendedAcl = false;
+    input.shared.anon = true;
+    expect(input.shared.public).toBe(false);
+    expect(checkAuthBoundary(projectAuthPrivilegeOutput(text(input)), 148)).toBe("mismatched");
   });
 
   it.each(Object.keys(observation.shared) as (keyof typeof observation.shared)[])(
@@ -1180,6 +1427,93 @@ describe("disposable targets and effective Docker publications", () => {
   });
 
   describe("production private command logs", () => {
+    async function fixture(options: { capture?: boolean; separateStdout?: boolean }, oversized = false) {
+      const directory = mkdtempSync(join(tmpdir(), "swim-stdout-routing-"));
+      const path = join(directory, "command.log");
+      const log = openPrivateCommandLog(path);
+      const diagnostic = "PostgresError: SCID/1/roles/pre/roles/tttttt\n";
+      const size = oversized ? 8 * 1024 * 1024 : 8;
+      let timedOut = false;
+      let acknowledged = false;
+      let ready = false;
+      const stdout = commandStdout(log, options, () => {
+        timedOut = true;
+        child.kill("SIGTERM");
+      });
+      const child = spawn(process.execPath, ["-e", `
+        const { writeSync } = require("node:fs");
+        const diagnostic = ${JSON.stringify(diagnostic)};
+        if (${oversized}) writeSync(2, diagnostic);
+        process.on("message", () => {
+          if (${oversized}) process.stdout.write("x");
+          else {
+            writeSync(2, diagnostic);
+            process.disconnect();
+          }
+        });
+        process.stdout.write(Buffer.alloc(${size}, "x"), () => process.send("ready"));
+      `], { stdio: ["ignore", stdout.stdio, log.fd, "ipc"] });
+      const acknowledge = () => {
+        if (!ready || acknowledged || (child.stdout && stdout.text.length !== size)) return;
+        acknowledged = true;
+        child.send("continue");
+      };
+      child.stdout?.on("data", (chunk: Buffer) => {
+        stdout.onData(chunk);
+        acknowledge();
+      });
+      child.on("message", () => { ready = true; acknowledge(); });
+      const closed = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve) => {
+        child.once("close", (code, signal) => resolve({ code, signal }));
+      });
+      let spawnFailed = false;
+      child.once("error", () => { spawnFailed = true; });
+      const watchdog = setTimeout(() => { child.kill("SIGKILL"); }, 4_000);
+      try {
+        const result = await closed;
+        expect(spawnFailed).toBe(false);
+        expect(acknowledged).toBe(true);
+        expect(lstatSync(path).mode & 0o777).toBe(0o600);
+        expect(() => openPrivateCommandLog(path)).toThrow();
+        return {
+          ...result, timedOut, text: stdout.text,
+          log: readFileSync(path, "utf8"), evidence: readMigrationDiagnostic(path), diagnostic,
+        };
+      } finally {
+        clearTimeout(watchdog);
+        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+        await closed;
+        expect(child.exitCode !== null || child.signalCode !== null || spawnFailed).toBe(true);
+        closeSync(log.fd);
+        rmSync(directory, { recursive: true });
+        expect(existsSync(directory)).toBe(false);
+      }
+    }
+
+    it.each([{}, { capture: true }])("retains corrupt combined append with options %j", async (options) => {
+      const result = await fixture(options);
+      expect(result).toMatchObject({ code: 0, signal: null, timedOut: false, evidence: "unavailable" });
+      expect(result.log).toBe(`xxxxxxxx${result.diagnostic}`);
+      expect(result.text).toBe("capture" in options ? "xxxxxxxx" : "");
+    });
+
+    it.each([{ separateStdout: true }, { capture: true, separateStdout: true }])(
+      "separates newline-less stdout through the production helper with options %j", async (options) => {
+        const result = await fixture(options);
+        expect(result).toMatchObject({ code: 0, signal: null, timedOut: false, text: "xxxxxxxx",
+          evidence: { version: 1, guard: "roles", phase: "pre", object: "roles", bits: "tttttt" } });
+        expect(result.log).toBe(result.diagnostic);
+      },
+    );
+
+    it("terminates oversized separated stdout at the unchanged capture bound without logging it", async () => {
+      const result = await fixture({ separateStdout: true }, true);
+      expect(result).toMatchObject({ code: null, signal: "SIGTERM", timedOut: true });
+      expect(result.text.length).toBe(8 * 1024 * 1024 + 1);
+      expect(result.log).toBe(result.diagnostic);
+      expect(result.evidence).toMatchObject({ guard: "roles", bits: "tttttt" });
+    });
+
     it("preserves interleaved captured stdout and descriptor stderr with exclusive 0600 creation", () => {
       const directory = mkdtempSync(join(tmpdir(), "swim-acceptance-log-"));
       const path = join(directory, "command.log");
