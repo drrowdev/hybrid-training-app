@@ -2,6 +2,8 @@ import nodeAssert, { AssertionError } from "node:assert/strict";
 import { appendFileSync, closeSync, constants as fsConstants, fstatSync, openSync, readSync } from "node:fs";
 import { constants } from "node:os";
 import type { ProcessResult } from "./swim-acceptance-guards";
+import { parseMigrationScid, type MigrationDiagnostic } from "../../../packages/db/scripts/migrate-evidence";
+export { MIGRATION_DIAGNOSTIC_FIELDS } from "../../../packages/db/scripts/migrate-evidence";
 
 type FailureCause = {
   classification: "guard" | "process" | "assertion" | "parser" | "unexpected";
@@ -134,42 +136,6 @@ export function commandStdout(
 
 export const MIGRATION_DIAGNOSTIC_MAX_BYTES = 256 * 1024;
 
-// Version 1 codebook, in SQL vector order. t/f/u mean true/false/unknown.
-// Attribute and privilege bits are expected-condition matches, not raw values.
-export const MIGRATION_DIAGNOSTIC_FIELDS = {
-  roles: ["actor", "postgresPresent", "authenticatedPresent", "servicePresent", "writerPresent", "anonPresent"],
-  attributes: [
-    "sharedPresent", "helperPresent",
-    "sharedBody", "sharedOwner", "sharedLanguage", "sharedKind", "sharedVolatility",
-    "sharedSecurity", "sharedLeakproof", "sharedStrict", "sharedParallel", "sharedConfig",
-    "sharedArity", "sharedDefaultCount", "sharedDefault", "sharedArgTypes", "sharedAllArgTypes",
-    "sharedArgModes", "sharedArgNames", "sharedReturnType", "sharedReturnsSet", "sharedVariadic",
-    "sharedSupport", "sharedBinAbsent", "sharedSqlBodyAbsent",
-    "helperBody", "helperOwner", "helperLanguage", "helperKind", "helperVolatility",
-    "helperSecurity", "helperLeakproof", "helperStrict", "helperParallel", "helperConfig",
-    "helperArity", "helperDefaultCount", "helperDefaultAbsent", "helperArgTypes",
-    "helperAllArgTypesAbsent", "helperArgModesAbsent", "helperArgNamesAbsent",
-    "helperReturnType", "helperReturnsSet", "helperVariadic", "helperSupport",
-    "helperBinAbsent", "helperSqlBodyAbsent",
-  ],
-  // First two use normalized ACLs; direct membership uses the stored ACL.
-  acl: [
-    "exactMembership", "exactGrantorPrivilegeOptions", "defaultAcl",
-    "directAnon", "directPublic", "allExpectedGrantors", "allExecute", "noGrantOptions",
-  ],
-  privileges: [
-    "sharedAuthenticated", "sharedService", "sharedWriter", "sharedOwner", "sharedAnon",
-    "helperAuthenticated", "helperService", "helperWriter", "helperOwner", "helperAnon",
-  ],
-} as const;
-
-type MigrationDiagnostic = {
-  version: 1;
-  guard: keyof typeof MIGRATION_DIAGNOSTIC_FIELDS;
-  phase: "pre" | "post";
-  object: "roles" | "both" | "shared" | "helper";
-  bits: string;
-};
 type MigrationEvidence = MigrationDiagnostic | "unavailable";
 
 export function decodeMigrationDiagnostic(text: string): MigrationEvidence {
@@ -188,16 +154,8 @@ export function decodeMigrationDiagnostic(text: string): MigrationEvidence {
     // Do not strip controls, unquote source, or search inside arbitrary messages.
     const match = /^ {0,8}(\[cause\]: )?(?:PostgresError|error): SCID\/(1)\/(roles|attributes|acl|privileges)\/(pre|post)\/(roles|both|shared|helper)\/([tfu]{1,48})$/.exec(line);
     if (!match || (inQuery && !match[1])) return "unavailable";
-    const guard = match[3] as MigrationDiagnostic["guard"];
-    const phase = match[4] as MigrationDiagnostic["phase"];
-    const object = match[5] as MigrationDiagnostic["object"];
-    const bits = match[6]!;
-    if (bits.length !== MIGRATION_DIAGNOSTIC_FIELDS[guard].length ||
-        (guard === "roles" ? object !== "roles" || phase !== "pre" :
-          guard === "acl" ? object !== "shared" && object !== "helper" : object !== "both")) {
-      return "unavailable";
-    }
-    const value: MigrationDiagnostic = { version: 1, guard, phase, object, bits };
+    const value = parseMigrationScid(`SCID/${match[2]}/${match[3]}/${match[4]}/${match[5]}/${match[6]}`);
+    if (!value) return "unavailable";
     if (found && JSON.stringify(found) !== JSON.stringify(value)) return "unavailable";
     found = value;
   }
