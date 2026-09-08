@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SwimHub } from "@/components/swim/SwimHub";
-import { nextSwimHubView, type SwimHubView } from "../view-types";
+import { nextConfirmedView, nextSwimHubView, type SwimHubView } from "../view-types";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh() {} }) }));
 vi.mock("../actions", () => ({}));
@@ -19,6 +19,10 @@ function view(revision: number, status: SwimHubView["status"] = "active", id = "
 }
 
 describe("DC-SW7 monotonic swim hub view", () => {
+  it("retains the Hub export as the same generic policy, not a divergent reducer", () => {
+    expect(nextSwimHubView).toBe(nextConfirmedView);
+  });
+
   it.each(["props", "confirmed"] as const)("accepts a higher same-plan revision from %s", (source) => {
     const current = view(3);
     const incoming = view(4, "paused");
