@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
 import { runInNewContext } from "node:vm";
+import { EventEmitter } from "node:events";
 import { createClient } from "@supabase/supabase-js";
 import { ScriptTarget, transpileModule } from "typescript";
 import type { JSONReport, JSONReportSpec } from "@playwright/test/reporter";
@@ -19,7 +20,7 @@ import {
 import { acceptanceAssert, processFailure, safeFailureCause } from "../../../../scripts/swim-acceptance-errors";
 import * as reporting from "../../../../scripts/swim-acceptance-reporting";
 import {
-  ALERT_ANNOTATION_TYPE, alertAnnotation, authAbsenceBackend, projectAlertObservations, readAlertAnnotations, unavailableAlert,
+  ALERT_ANNOTATION_TYPE, alertAnnotation, authAbsenceBackend, c2HttpClass, c2Location, c2Transport, projectAlertObservations, readAlertAnnotations, unavailableAlert,
 } from "../../../../scripts/swim-alert-membership";
 
 const webRoot = resolve(__dirname, "../../../..");
@@ -248,7 +249,14 @@ describe("DC-SW8 failure-only C2 Auth absence", () => {
     expect(observation.match(/getUserById\(/g)).toHaveLength(1);
     expect(observation.match(/\.click\(/g)).toHaveLength(1);
     expect(observation.match(/toHaveURL\(/g)).toHaveLength(1);
-    expect(observation).not.toMatch(/Promise\.race|expect\.poll|signOut|deleteUser|cleanup|\.goto|\.reload|\.close\(|\.url\(|setInterval|timeout:|console\.|JSON\.|\.message|\.metadata/);
+    expect(observation).not.toMatch(/Promise\.race|expect\.poll|signOut|deleteUser|cleanup|\.goto|\.reload|\.close\(|setInterval|timeout:|console\.|JSON\.|\.message|\.metadata/);
+    expect(observation.match(/page\.url\(\)/g)).toHaveLength(1);
+    expect(observation).toContain('if (diagnostic.backend === "not-reached" && active())');
+    expect(observation).not.toMatch(/next-action|\.headers\(|\.postData|\.body\(|\.text\(|\.json\(|\.finished\(|\.route\(|removeAllListeners/);
+    for (const [event, callback] of [["request", "onRequest"], ["response", "onResponse"], ["requestfailed", "onRequestFailed"]]) {
+      expect(observation).toContain(`page.on("${event}", ${callback})`);
+      expect(observation).toContain(`page.off("${event}", ${callback})`);
+    }
     expect(c2).toContain("const deleted = await admin.auth.admin.getUserById(primary.userId);");
     expect(c2).toContain("await assertNativeGone(admin, own);");
     expect(c2).toContain("await assertCustomGone(admin, primary.userId, custom);");
@@ -309,11 +317,12 @@ describe("DC-SW8 failure-only C2 Auth absence", () => {
       compilerOptions: { target: ScriptTarget.ES2022 },
     }).outputText;
     const execute = runInNewContext(compiled, {
-      page: { getByRole: () => ({ click }), isClosed: () => closed },
+      page: { getByRole: () => ({ click }), isClosed: () => closed,
+        on: () => {}, off: () => {}, url: () => "http://127.0.0.1:3210/app/settings/account" },
       accountPage: async () => {}, primary, testInfo, baseURL: "http://127.0.0.1:3210",
       seedConfig: { supabaseUrl: "http://127.0.0.1:54321", serviceRoleKey: "synthetic-service" },
       expect: () => ({ toHaveURL: url }), createClient: client, fetch: transport,
-      alertAnnotation: annotate, authAbsenceBackend, unavailableAlert,
+      alertAnnotation: annotate, authAbsenceBackend, c2HttpClass, c2Location, c2Transport, unavailableAlert,
       AbortController, Response, URL, performance: { now: () => now }, setTimeout: timer, clearTimeout: clear,
     }) as () => Promise<void>;
     try {
@@ -339,9 +348,227 @@ describe("DC-SW8 failure-only C2 Auth absence", () => {
       }
       expect(testInfo.annotations).toEqual(mode === "success" || mode === "annotation-error" ? [] : [
         alertAnnotation({ ...unavailableAlert("c2-auth-absence"),
-          backend: mode === "absent" ? "reached" : mode === "present" ? "not-reached" : "unavailable" }),
+          backend: mode === "absent" ? "reached" : mode === "present" ? "not-reached" : "unavailable",
+          ...(mode === "present" ? { control: "account-page", result: "request-unseen" } : {}) }),
       ]);
     } finally { logged.mockRestore(); }
+  });
+});
+
+describe("DC-SW8 passive C2 location and response metadata", () => {
+  const baseURL = "http://127.0.0.1:3210";
+  const accountURL = `${baseURL}/app/settings/account`;
+  const locations = ["account-page", "login-page", "home-page", "deleted-home", "other-page", "unavailable"] as const;
+  const transports = ["request-unseen", "request-pending", "request-failed", "http-2xx", "http-3xx", "http-4xx", "http-5xx", "unavailable"] as const;
+
+  it.each([
+    ["/app/settings/account", "account-page"], ["/login", "login-page"],
+    ["/login?next=%2Fapp#form", "login-page"], ["/", "home-page"], ["/?deleted=1", "deleted-home"],
+    ["/?", "other-page"], ["/#", "other-page"], ["/?deleted=1#", "other-page"],
+    ["/?deleted=1&extra=private", "other-page"], ["/?deleted=01", "other-page"],
+    ["/?deleted=%31", "other-page"], ["/?deleted=1&deleted=1", "other-page"],
+    ["/app/settings/account/", "other-page"], ["/app/settings/Account", "other-page"],
+    ["/login-extra", "other-page"], ["/log%69n", "other-page"],
+    ["/private/../login", "other-page"], ["/private", "other-page"],
+  ])("classifies a closed location without leaking its input %#", (suffix, expected) => {
+    expect(c2Location(`${baseURL}${suffix}`, baseURL)).toBe(expected);
+  });
+
+  it("rejects malformed locations and never labels foreign origins as known pages", () => {
+    for (const raw of [undefined, null, 1, {}, [], "/login", "bad-url", "file:///login", "javascript:void(0)", "http://["]) {
+      expect(c2Location(raw, baseURL)).toBe("unavailable");
+    }
+    for (const raw of ["https://example.invalid/login", "http://127.0.0.1:3211/login", "https://127.0.0.1:3210/?deleted=1"]) {
+      expect(c2Location(raw, baseURL)).toBe("other-page");
+    }
+    for (const invalidBase of [null, {}, "bad-base", `${baseURL}/other`, `${baseURL}/?q=1`]) {
+      expect(c2Location(accountURL, invalidBase)).toBe("unavailable");
+    }
+  });
+
+  it("classifies only valid response-header status classes and bounded primitive transport states", () => {
+    for (const [status, expected] of [[200, "http-2xx"], [299, "http-2xx"], [300, "http-3xx"], [399, "http-3xx"],
+      [400, "http-4xx"], [499, "http-4xx"], [500, "http-5xx"], [599, "http-5xx"]] as const) {
+      expect(c2HttpClass(status)).toBe(expected);
+      for (const failed of [false, true]) expect(c2Transport(1, expected, failed, false)).toBe(expected);
+    }
+    for (const status of [undefined, null, "200", 199, 600, 200.5, NaN, Infinity, {}]) {
+      expect(c2HttpClass(status)).toBe("unavailable");
+    }
+    expect(c2Transport(0, null, false, false)).toBe("request-unseen");
+    expect(c2Transport(1, null, false, false)).toBe("request-pending");
+    expect(c2Transport(1, null, true, false)).toBe("request-failed");
+    for (const args of [[2, null, false, false], [1, null, false, true], [0, "http-2xx", false, false],
+      [0, null, true, false], [1, "200", false, false], [1, null, 0, false], [1, null, false, undefined],
+      [NaN, null, false, false], ["1", null, false, false]] as const) {
+      expect(c2Transport(args[0], args[1], args[2], args[3])).toBe("unavailable");
+    }
+  });
+
+  it("keeps C2-only values exclusive to not-reached C2, with strict round-trip and size limits", () => {
+    let maximum = 0;
+    for (const control of locations) for (const result of transports) {
+      const value = { ...unavailableAlert("c2-auth-absence"), backend: "not-reached", control, result };
+      const annotation = alertAnnotation(value)!;
+      expect(annotation).toBeDefined();
+      maximum = Math.max(maximum, annotation.description.length);
+      expect(readAlertAnnotations(Array(16).fill(annotation))).toEqual([value]);
+      expect(readAlertAnnotations(Array(17).fill(annotation))).toBeUndefined();
+      expect(projectAlertObservations(9, [value as ReturnType<typeof unavailableAlert>])).toEqual([value]);
+      for (const backend of ["reached", "unavailable"]) {
+        const allowed = control === "unavailable" && result === "unavailable";
+        expect(!!alertAnnotation({ ...value, backend })).toBe(allowed);
+        expect(!!readAlertAnnotations([{ ...annotation, description: annotation.description.replace("backend=not-reached", `backend=${backend}`) }])).toBe(allowed);
+      }
+      for (const point of ["a1-pause", "a2-post-start", "a2-edit", "c4-owner-1-start", "c4-owner-2-start"] as const) {
+        if (control !== "unavailable") expect(alertAnnotation({ ...unavailableAlert(point), control })).toBeUndefined();
+        if (result !== "unavailable") expect(alertAnnotation({ ...unavailableAlert(point), result })).toBeUndefined();
+        if (control !== "unavailable" || result !== "unavailable") {
+          expect(readAlertAnnotations([{ ...annotation, description: annotation.description.replace("c2-auth-absence", point) }])).toBeUndefined();
+        }
+      }
+    }
+    expect(maximum).toBe(127);
+    expect(maximum).toBeLessThanOrEqual(160);
+    const value = { ...unavailableAlert("c2-auth-absence"), backend: "not-reached", control: "login-page", result: "http-5xx" };
+    const annotation = alertAnnotation(value)!;
+    for (const index of SWIM_BROWSER_CASES.keys()) {
+      if (index !== 9) expect(projectAlertObservations(index, readAlertAnnotations([annotation]))).toEqual(unavailableObservations(index));
+    }
+    expect(readAlertAnnotations([annotation, alertAnnotation({ ...value, result: "request-pending" })!])).toBeUndefined();
+    for (const malformed of ["HTTP-5xx", "http-500", "request-completed", "http-2xx\nprivate"]) {
+      expect(alertAnnotation({ ...value, result: malformed })).toBeUndefined();
+    }
+    expect(JSON.stringify(annotation)).not.toMatch(/private|127\.0|https?:|status=|user|error/);
+  });
+
+  it.each([
+    ["unseen", "request-unseen"], ["native-form", "request-pending"], ["hydrated", "http-2xx"],
+    ["redirect", "http-3xx"], ["client-response", "http-4xx"], ["server-response", "http-5xx"],
+    ["failed", "request-failed"], ["headers-then-failed", "http-2xx"], ["failed-then-headers", "http-2xx"],
+    ["unrelated", "request-unseen"], ["unrelated-with-owned", "http-2xx"],
+    ["multiple-posts", "unavailable"], ["same-request-twice", "unavailable"],
+    ["wrong-response-identity", "unavailable"], ["wrong-failed-identity", "unavailable"],
+    ["duplicate-response", "unavailable"], ["status-invalid", "unavailable"],
+    ["method-getter", "unavailable"], ["url-getter", "unavailable"], ["response-request-getter", "unavailable"],
+    ["response-status-getter", "unavailable"], ["failed-method-getter", "unavailable"],
+    ["method-value", "unavailable"], ["url-value", "unavailable"], ["url-malformed", "unavailable"],
+    ["register-request", "unavailable"], ["register-response", "unavailable"], ["register-failed", "unavailable"],
+    ["register-request-before", "unavailable"], ["register-response-before", "unavailable"], ["register-failed-before", "unavailable"],
+    ["detach-request", "request-unseen"], ["detach-response", "request-unseen"], ["detach-failed", "request-unseen"],
+    ["page-url-getter", "request-unseen"], ["page-url-late", "unavailable"], ["page-url-interrupted", "unavailable"],
+    ["success", "request-unseen"], ["click-failure", "request-unseen"],
+    ["auth-absent", "unavailable"], ["auth-unavailable", "unavailable"],
+  ])("executes guarded owned listeners from source with no network: %s", async (mode, expected) => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-account-mobile.spec.ts"), "utf8");
+    const c2 = source.slice(source.indexOf('test("C2 DC-SW8:'));
+    const block = c2.slice(c2.indexOf("await accountPage(page, primary);"), c2.indexOf("expect((await context.cookies())"));
+    const events = new EventEmitter();
+    const eventNames = ["request", "response", "requestfailed"];
+    const unrelatedListener = () => {};
+    for (const event of eventNames) events.on(event, unrelatedListener);
+    const original = new Error("Original assertion");
+    const trap = () => { throw new Error("Private getter"); };
+    const unused = vi.fn(trap);
+    const request = (method = "POST", url = accountURL) => ({
+      method: () => method, url: () => url,
+      headers: unused, allHeaders: unused, postData: unused, postDataJSON: unused, failure: unused,
+    });
+    const owned = request();
+    const response = (paired: unknown = owned, status = 200) => ({
+      request: () => paired, status: () => status,
+      headers: unused, body: unused, text: unused, json: unused, finished: unused,
+    });
+    const primary = { userId: "private-primary" };
+    let now = 0;
+    const testInfo = { status: "passed", annotations: [] as unknown[] };
+    const getUserById = vi.fn(async () => mode === "auth-absent"
+      ? { data: { user: null }, error: { status: 404 } }
+      : mode === "auth-unavailable" ? { data: { user: null }, error: null }
+        : { data: { user: { id: primary.userId } }, error: null });
+    const on = vi.fn((event: string, callback: (...args: unknown[]) => void) => {
+      if (event === ({ "register-request-before": "request", "register-response-before": "response", "register-failed-before": "requestfailed" } as Record<string, string>)[mode]) trap();
+      events.on(event, callback);
+      if (event === ({ "register-request": "request", "register-response": "response", "register-failed": "requestfailed" } as Record<string, string>)[mode]) trap();
+    });
+    const off = vi.fn((event: string, callback: (...args: unknown[]) => void) => {
+      events.off(event, callback);
+      if (event === ({ "detach-request": "request", "detach-response": "response", "detach-failed": "requestfailed" } as Record<string, string>)[mode]) trap();
+    });
+    const location = vi.fn(() => {
+      if (mode === "page-url-getter") return trap();
+      if (mode === "page-url-late") now = 1001;
+      if (mode === "page-url-interrupted") testInfo.status = "interrupted";
+      return accountURL;
+    });
+    const click = vi.fn(async () => {
+      if (mode === "click-failure") throw original;
+      const emitting = [
+        "native-form", "hydrated", "redirect", "client-response", "server-response", "failed", "headers-then-failed",
+        "failed-then-headers", "multiple-posts", "same-request-twice", "wrong-response-identity", "wrong-failed-identity",
+        "duplicate-response", "status-invalid", "response-status-getter", "unrelated-with-owned",
+      ];
+      if (emitting.includes(mode)) events.emit("request", owned);
+      if (["hydrated", "headers-then-failed", "duplicate-response", "unrelated-with-owned"].includes(mode)) events.emit("response", response());
+      if (mode === "redirect") events.emit("response", response(owned, 303));
+      if (mode === "client-response") events.emit("response", response(owned, 403));
+      if (mode === "server-response") events.emit("response", response(owned, 503));
+      if (["failed", "headers-then-failed", "failed-then-headers"].includes(mode)) events.emit("requestfailed", owned);
+      if (mode === "failed-then-headers") events.emit("response", response());
+      if (mode === "multiple-posts") events.emit("request", request());
+      if (mode === "same-request-twice") events.emit("request", owned);
+      if (mode === "wrong-response-identity") events.emit("response", response(request()));
+      if (mode === "wrong-failed-identity") events.emit("requestfailed", request());
+      if (mode === "duplicate-response") events.emit("response", response());
+      if (mode === "status-invalid") events.emit("response", response(owned, 0));
+      if (mode === "method-getter") events.emit("request", { get method() { return trap(); } });
+      if (mode === "method-value") events.emit("request", { method: () => 1 });
+      if (mode === "url-value") events.emit("request", { method: () => "POST", url: () => null });
+      if (mode === "url-malformed") events.emit("request", request("POST", "malformed-url"));
+      if (mode === "url-getter") events.emit("request", { method: () => "POST", url: trap });
+      if (mode === "response-request-getter") events.emit("response", { request: trap });
+      if (mode === "response-status-getter") events.emit("response", { request: () => owned, get status() { return trap(); } });
+      if (mode === "failed-method-getter") events.emit("requestfailed", { method: trap });
+      if (mode === "unrelated" || mode === "unrelated-with-owned") {
+        for (const other of [request("GET"), request("POST", `${baseURL}/unrelated`), request("POST", `${accountURL}?other=1`)]) {
+          events.emit("request", other);
+          events.emit("response", { request: () => other, status: unused });
+          events.emit("requestfailed", other);
+        }
+      }
+    });
+    const urlAssertion = vi.fn(async () => { if (mode !== "success") throw original; });
+    const compiled = transpileModule(`(async () => { ${block} })`, { compilerOptions: { target: ScriptTarget.ES2022 } }).outputText;
+    const execute = runInNewContext(compiled, {
+      page: { on, off, getByRole: () => ({ click }), isClosed: () => false, url: location },
+      accountPage: async () => {}, primary, testInfo, baseURL,
+      seedConfig: {}, createClient: () => ({ auth: { admin: { getUserById } } }),
+      expect: () => ({ toHaveURL: urlAssertion }), alertAnnotation, authAbsenceBackend, c2HttpClass, c2Location, c2Transport, unavailableAlert,
+      AbortController, URL, performance: { now: () => now }, setTimeout: () => 1, clearTimeout: () => {},
+    }) as () => Promise<void>;
+    if (mode === "success") await expect(execute()).resolves.toBeUndefined();
+    else await expect(execute()).rejects.toBe(original);
+    expect(click).toHaveBeenCalledOnce();
+    expect(urlAssertion).toHaveBeenCalledTimes(mode === "click-failure" ? 0 : 1);
+    expect(on.mock.calls.map(([event]) => event)).toEqual(eventNames);
+    expect(off.mock.calls).toEqual(on.mock.calls);
+    for (const event of eventNames) expect(events.listeners(event)).toEqual([unrelatedListener]);
+    expect(unused).not.toHaveBeenCalled();
+    if (mode === "success" || mode === "click-failure") {
+      expect(getUserById).not.toHaveBeenCalled();
+      expect(location).not.toHaveBeenCalled();
+      expect(testInfo.annotations).toEqual([]);
+    } else {
+      expect(getUserById).toHaveBeenCalledOnce();
+      const unavailable = ["auth-unavailable", "page-url-late", "page-url-interrupted"].includes(mode);
+      const backend = mode === "auth-absent" ? "reached" : unavailable ? "unavailable" : "not-reached";
+      expect(testInfo.annotations).toEqual([alertAnnotation({
+        ...unavailableAlert("c2-auth-absence"), backend,
+        control: backend !== "not-reached" || mode === "page-url-getter" ? "unavailable" : "account-page",
+        result: expected,
+      })]);
+      expect(location).toHaveBeenCalledTimes(mode.startsWith("auth-") ? 0 : 1);
+    }
   });
 });
 

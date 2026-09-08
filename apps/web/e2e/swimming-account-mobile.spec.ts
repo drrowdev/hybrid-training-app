@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import type { Page } from "@playwright/test";
+import type { Page, Request, Response as PlaywrightResponse } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { NewMovement, NewSession, NewSessionMovement, NewSetLog } from "@hta/db";
 import type { SwimActualResult, SwimSetup } from "@hta/domain";
@@ -10,7 +10,7 @@ import { signInAs } from "./fixtures/auth";
 import { markOnboarded } from "./fixtures/seed-blocks";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { addDaysToYmd } from "../src/lib/dates";
-import { alertAnnotation, authAbsenceBackend, unavailableAlert } from "../scripts/swim-alert-membership";
+import { alertAnnotation, authAbsenceBackend, c2HttpClass, c2Location, c2Transport, unavailableAlert, type C2HttpClass } from "../scripts/swim-alert-membership";
 import {
   standaloneWeekRequests, type StandalonePlanDefinition, type StandaloneWorkoutDefinition,
 } from "../src/lib/swim/model";
@@ -428,44 +428,104 @@ test.describe("ADR0079 mobile swimming account acceptance", () => {
       assertNativeExport(before, kept, own);
 
       await accountPage(page, primary);
-      await page.getByRole("button", { name: "Delete account (GDPR Art. 17)", exact: true }).click();
-      try {
-        await expect(page).toHaveURL(new URL("/?deleted=1", baseURL!).href);
-      } catch (error) {
+      let matchedRequest: Request | null = null;
+      let matchCount = 0;
+      let statusClass: C2HttpClass | null = null;
+      let failed = false;
+      let invalid = false;
+      let expectedAccountURL: string | undefined;
+      try { expectedAccountURL = new URL("/app/settings/account", baseURL!).href; }
+      catch { invalid = true; }
+      const matches = (request: Request) => {
+        const method = request.method();
+        if (typeof method !== "string") { invalid = true; return false; }
+        if (method !== "POST") return false;
+        const url = request.url();
+        if (typeof url !== "string" || !URL.canParse(url)) { invalid = true; return false; }
+        return expectedAccountURL !== undefined && url === expectedAccountURL;
+      };
+      const onRequest = (request: Request) => {
         try {
-          const diagnostic = unavailableAlert("c2-auth-absence");
-          const controller = new AbortController();
-          const deadline = performance.now() + 1000;
-          const interrupted = () => testInfo.status === "timedOut" ||
-            testInfo.status === "interrupted" || page.isClosed();
-          const active = () => !controller.signal.aborted && !interrupted() && performance.now() < deadline;
-          const expiry = setTimeout(() => controller.abort(), 1000);
-          try {
-            if (active()) {
-              const observer = createClient(seedConfig.supabaseUrl, seedConfig.serviceRoleKey, {
-                auth: { persistSession: false, autoRefreshToken: false },
-                global: { fetch: async (input, init) => {
-                  try { return await fetch(input, { ...init, signal: controller.signal }); }
-                  // The SDK logs rejected fetch errors; expose only an unavailable response.
-                  catch { return new Response(null, { status: 503 }); }
-                } },
-              });
-              const sample = await observer.auth.admin.getUserById(primary.userId);
-              if (active()) diagnostic.backend = authAbsenceBackend(sample.data.user, sample.error, primary.userId);
-            }
-          } catch {
-            diagnostic.backend = "unavailable";
-          } finally {
-            controller.abort();
-            clearTimeout(expiry);
+          if (!matches(request)) return;
+          matchCount = Math.min(matchCount + 1, 2);
+          if (matchCount !== 1) { invalid = true; return; }
+          matchedRequest = request;
+        } catch { invalid = true; }
+      };
+      const onResponse = (response: PlaywrightResponse) => {
+        try {
+          const request = response.request();
+          if (request !== matchedRequest) {
+            if (matches(request)) invalid = true;
+            return;
           }
-          if (interrupted() || performance.now() >= deadline) diagnostic.backend = "unavailable";
-          const annotation = alertAnnotation(diagnostic);
-          if (annotation) testInfo.annotations.push(annotation);
-        } catch {
-          // Observation or annotation failure must never replace the original URL assertion.
+          const observed = c2HttpClass(response.status());
+          if (observed === "unavailable" || statusClass !== null) { invalid = true; return; }
+          statusClass = observed;
+        } catch { invalid = true; }
+      };
+      const onRequestFailed = (request: Request) => {
+        try {
+          if (request === matchedRequest) failed = true;
+          else if (matches(request)) invalid = true;
+        } catch { invalid = true; }
+      };
+      try {
+        try { page.on("request", onRequest); } catch { invalid = true; }
+        try { page.on("response", onResponse); } catch { invalid = true; }
+        try { page.on("requestfailed", onRequestFailed); } catch { invalid = true; }
+        await page.getByRole("button", { name: "Delete account (GDPR Art. 17)", exact: true }).click();
+        try {
+          await expect(page).toHaveURL(new URL("/?deleted=1", baseURL!).href);
+        } catch (error) {
+          try {
+            const diagnostic = unavailableAlert("c2-auth-absence");
+            const controller = new AbortController();
+            const deadline = performance.now() + 1000;
+            const interrupted = () => testInfo.status === "timedOut" ||
+              testInfo.status === "interrupted" || page.isClosed();
+            const active = () => !controller.signal.aborted && !interrupted() && performance.now() < deadline;
+            const expiry = setTimeout(() => controller.abort(), 1000);
+            try {
+              if (active()) {
+                const observer = createClient(seedConfig.supabaseUrl, seedConfig.serviceRoleKey, {
+                  auth: { persistSession: false, autoRefreshToken: false },
+                  global: { fetch: async (input, init) => {
+                    try { return await fetch(input, { ...init, signal: controller.signal }); }
+                    // The SDK logs rejected fetch errors; expose only an unavailable response.
+                    catch { return new Response(null, { status: 503 }); }
+                  } },
+                });
+                const sample = await observer.auth.admin.getUserById(primary.userId);
+                if (active()) diagnostic.backend = authAbsenceBackend(sample.data.user, sample.error, primary.userId);
+                if (diagnostic.backend === "not-reached" && active()) {
+                  try { diagnostic.control = c2Location(page.url(), baseURL); }
+                  catch { diagnostic.control = "unavailable"; }
+                  diagnostic.result = c2Transport(matchCount, statusClass, failed, invalid);
+                }
+              }
+            } catch {
+              diagnostic.backend = "unavailable";
+            } finally {
+              controller.abort();
+              clearTimeout(expiry);
+            }
+            if (interrupted() || performance.now() >= deadline) diagnostic.backend = "unavailable";
+            if (diagnostic.backend !== "not-reached") {
+              diagnostic.control = "unavailable";
+              diagnostic.result = "unavailable";
+            }
+            const annotation = alertAnnotation(diagnostic);
+            if (annotation) testInfo.annotations.push(annotation);
+          } catch {
+            // Observation or annotation failure must never replace the original URL assertion.
+          }
+          throw error;
         }
-        throw error;
+      } finally {
+        try { page.off("request", onRequest); } catch { /* Preserve the original outcome. */ }
+        try { page.off("response", onResponse); } catch { /* Preserve the original outcome. */ }
+        try { page.off("requestfailed", onRequestFailed); } catch { /* Preserve the original outcome. */ }
       }
       expect((await context.cookies()).filter((cookie) =>
         /^sb-.+-auth-token(?:\.\d+)?$/.test(cookie.name) && cookie.value !== "").length).toBe(0);
