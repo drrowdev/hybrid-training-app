@@ -446,18 +446,34 @@ PR805 checkpoint `3c060e3d` wires exactly six cases: the original four unchanged
 plus A1 lifecycle ([DC-SW7](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05))
 and A2 regional load (DC-SW9). The closed catalog supplies exact file, per-file
 identity/count and total gates; no wildcard selection. All six must pass once,
-retry 0, errors 0. A1 statuses are scoped to the current-plan summary; A2 remains
-unchanged. Safe ledgers project bounded measured final-attempt `durationMs` with
+retry 0, errors 0. Safe ledgers project bounded measured final-attempt `durationMs` with
 `attempts`, not retry totals or a promise of test duration. The 30-second case
 and all other execution limits remain unchanged.
 
-686 targeted static tests, web typecheck and scoped lint passed; real `--list`
-collected six cases across three files with no executed results. **Six-case live
-acceptance remains pending.** The coordinator owns final exact-head Opus review,
-core CI, fresh guards and one live reference on this branch. B/C remain
-unselected. No live browser/app-server/database/container run or workflow
-dispatch occurred here; all nine standalone gates and production acceptance
-are not established.
+The expanded [run 34182254665](https://github.com/drrowdev/hybrid-training-app/actions/runs/34182254665)
+at `a67123db2f237b82b378c1eb0b9070adb45155c1` passed normal 148 / 15 service
+contexts / 36 HTTP cases and the original four browser cases, with verified
+cleanup. A1 failed at the checked `deleteUser` error assertion in 8.596s; A2
+failed at Log swim visibility after Start in 7.809s. Neither was a test timeout;
+actual error values and causes remain unknown.
+
+Narrow recovery `4e778395809c88504cd2379b0c189712af642547` uses exactly one
+existing global `bench-press-flat` row for A1 without catalog writes, preserving
+all five nonempty snapshots and checked cleanup. Start swim gates on readiness;
+its specific SSR-disabled regression failed before the fix and passes afterward.
+A2 now polls the owned saved workout for `started` plus a nonempty session link
+before the unchanged Log swim assertion and native/region/oracle comparisons.
+The readiness hole is real, not a proven exclusive cause of the observed A2
+failure. **Custom-movement account-deletion regression remains OPEN in C as a
+privacy/release concern**, not fixed or passed by this fixture correction.
+
+265 targeted component/pure tests, web typecheck, scoped lint and secret scanning
+passed on the GitHub runner. CodeQL analysis was skipped (database too large).
+No live browser/server/DB/Docker run, credential access or CI dispatch occurred
+in this recovery. **New-head six-case live acceptance remains pending** final
+exact-head Opus review, core CI and fresh guards before one reference on this
+branch. B/C remain unselected; all nine standalone gates and production
+acceptance are not established.
 
 **Earlier PR803 wiring checkpoint:** the coordinator confirmed the database
 milestone passed. PR803 wired the first four-case mobile execution, preserving R1's
