@@ -18,6 +18,8 @@ const knownSources = [
   "packages/db/scripts/migrate-evidence.ts",
   "apps/web/e2e/swimming-mobile.spec.ts",
   "apps/web/e2e/swimming-persistence-mobile.spec.ts",
+  "apps/web/e2e/swimming-lifecycle-load-mobile.spec.ts",
+  "apps/web/e2e/swimming-decisions-offline-mobile.spec.ts",
 ] as const;
 const loaderCodes = [
   "ERR_REQUIRE_ESM", "ERR_MODULE_NOT_FOUND", "ERR_UNKNOWN_FILE_EXTENSION",
@@ -32,7 +34,7 @@ function syntheticJwt(role: "anon" | "service_role") {
   return `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ role, ref: "local", exp: 1 })}.${randomBytes(32).toString("base64url")}`;
 }
 
-it.skipIf(process.platform === "win32")("DC-SW1/DC-SW7/DC-SW8/DC-SW9: the real pinned CLI collects the exact declared mobile cohort without executing it", async () => {
+it.skipIf(process.platform === "win32")("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9: the real pinned CLI collects the exact declared mobile cohort without executing it", async () => {
   let success = false;
   let exit = -1;
   let output = "";
@@ -91,6 +93,7 @@ it.skipIf(process.platform === "win32")("DC-SW1/DC-SW7/DC-SW8/DC-SW9: the real p
     assert.equal(report.config.version, "1.60.0");
     assert.equal(report.config.rootDir, join(web, "e2e"));
     assert.deepEqual(report.errors, []);
+    assert.equal(expectedFiles.length, 4);
     assert.equal(report.suites.length, expectedFiles.length);
     const collected = report.suites.flatMap((file) => {
       const expectedCases = expected.filter(([name]) => name === file.file);
@@ -113,6 +116,7 @@ it.skipIf(process.platform === "win32")("DC-SW1/DC-SW7/DC-SW8/DC-SW9: the real p
       });
     });
     assert.equal(collected.length, SWIM_BROWSER_CASES.length);
+    assert.equal(collected.length, 8);
     assert.deepEqual(collected.sort(), [...expected].sort());
     success = true;
   } catch {

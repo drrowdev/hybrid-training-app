@@ -19,6 +19,7 @@ import {
   openPrivateCommandLog, publishAcceptanceSummary, readMigrationDiagnostic, safeFailureCause,
 } from "../../../../scripts/swim-acceptance-reporting";
 import { MIN_RPC_CASES, RPC_SUITE, validateSwimRpcReport } from "./storage-rpc-report";
+import { SWIM_BROWSER_CASES } from "../../../../scripts/swim-browser-acceptance";
 import {
   AUTH_PRIVILEGES_SQL, SWIM_FUNCTION_CONTRACTS, checkAuthBoundary,
   enforceAuthBoundaryAfterRpc, observeAuthPrivileges, projectAuthPrivilegeOutput,
@@ -193,8 +194,19 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
     const root = resolve(__dirname, "../../../../../..");
     const source = readFileSync(join(root, "apps/web/scripts/swim-acceptance.ts"), "utf8");
     const list = source.slice(source.indexOf('sourceFiles = git("ls-files"'), source.indexOf('sourceHashes = sources();'));
+    expect(source).toContain('import { SWIM_BROWSER_CASES } from "./swim-browser-acceptance";');
+    expect(source.match(/git\("ls-files"/g)).toHaveLength(1);
+    expect(list).toContain('...SWIM_BROWSER_CASES.map(({ file }) => `apps/web/${file}`),');
+    expect(list.trim()).toMatch(/^sourceFiles = git\("ls-files", "-z", "--",[\s\S]*"\.github\/workflows\/ci\.yml"\)\.split\("\\0"\)\.filter\(Boolean\);$/);
+    const declaredPaths = SWIM_BROWSER_CASES.map(({ file }) => `apps/web/${file}`);
+    expect([...new Set(declaredPaths)]).toEqual([
+      "apps/web/e2e/swimming-mobile.spec.ts",
+      "apps/web/e2e/swimming-persistence-mobile.spec.ts",
+      "apps/web/e2e/swimming-lifecycle-load-mobile.spec.ts",
+      "apps/web/e2e/swimming-decisions-offline-mobile.spec.ts",
+    ]);
     const paths = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]!)
-      .slice(3).filter((path) => path !== "\\0");
+      .slice(3).filter((path) => path !== "\\0").concat(declaredPaths);
     for (const path of [
       "apps/web/src", "apps/web/public", "apps/web/scripts", "apps/web/package.json",
       "apps/web/next.config.*", "apps/web/tsconfig.json", "apps/web/postcss.config.*",
@@ -212,6 +224,8 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
     expect(paths).not.toContain("apps/web/e2e");
     const files = execFileSync("git", ["-C", root, "ls-files", "-z", "--", ...paths],
       { encoding: "utf8" }).split("\0").filter(Boolean);
+    expect(files).toEqual([...new Set(files)].sort());
+    for (const path of declaredPaths) expect(files).toContain(path);
     expect(files).toContain("packages/db/drizzle/meta/_journal.json");
     expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(148);
     expect(files).toContain("apps/web/next.config.ts");
