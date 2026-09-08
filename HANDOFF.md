@@ -16,9 +16,9 @@ distance and millisecond results are authoritative; generic cardio summaries
 exist for compatibility and shared workload only.
 
 The current PR802 continuation authorizes disposable localhost services on the
-cloud runner only, not hosted credentials. The normal-148 database and eight-case
-browser reference passed at `95cbfb53`; the eleven-case integration is source-only,
-with collection now passed and live acceptance pending.
+cloud runner only, not hosted credentials. The latest eleven-UI-flow reference
+at `9fe3e4da` passed 10/11; C2 remains red. The appended direct Auth-API C3 case
+is source-only, with twelve-case collection passed and live acceptance pending.
 Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
@@ -33,7 +33,7 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-08 (PR805 account media-scope correction; eleven-case collection passed)
+**Last updated:** 2026-09-08 (PR805 positive Auth-API C3; twelve-case collection passed)
 
 ### PR805 expanded browser cohort — current status
 
@@ -57,7 +57,7 @@ Code checkpoint `2e831c2313689f44424811aa3ff439be35ebac22`, tested tree
 - D: PR808 `bddddd16e355ce5df5a9dcbf50e81c272503b583`,
   assessment blob `a2f19c74c1cac7534fed57c67bb7a83e068e5011`.
 
-The registry appends C1/C2/D after the original eight: eleven identities/six
+That checkpoint appended C1/C2/D after the original eight: eleven identities/six
 files, counts 2/2/2/2/2/1. Only three closed source IDs were added. The existing
 single fingerprint invocation includes all declared specs. Only owned Next
 start receives a new environment object binding the already validated local
@@ -76,7 +76,7 @@ or source repair was attempted at that checkpoint. Typecheck, scoped lint and se
 CodeQL did not complete (Actions failed; JavaScript database too large).
 No live browser/app/server/DB/Docker/CI invocation or additional worker occurred.
 
-**Collection now PASSED:** source commit `e2e4862bed308e4ea1270b50d6aaac9bac565ba6`,
+**Earlier eleven-case collection PASSED:** source commit `e2e4862bed308e4ea1270b50d6aaac9bac565ba6`,
 tested tree `84f95c16324bdeb903ad5acbc49b539817233f24`, moves the same account
 privacy comment and `test.use` options to file scope and removes only the obsolete
 three-line header. Playwright 1.60.0 rejects these worker-scoped media options
@@ -88,6 +88,28 @@ files, zero executed results/errors and checked private cleanup:
 `success=true`, exit 0, `loaderCode=unknown`, `sources=[]`. Web typecheck and
 scoped lint passed. No case executed; no app/account-deletion/cascade failure was
 observed in either collection attempt.
+
+**Current evidence and C3:** [run 34283532254](https://github.com/drrowdev/hybrid-training-app/actions/runs/34283532254)
+at `9fe3e4da` passed 10/11 UI flows, including A1/B1/D, A2, offline recovery and
+export. Only C2 failed (7402ms, account source line 479): Account POST HTTP5xx
+headers, still on Account, exact synthetic Auth user present at the bounded later
+sample. This does not locate an Auth error, SQL cause or exact throw site.
+Native16/normal148/catalog/5phase4DDL/15contexts/36HTTP/core/main/final cleanup passed.
+
+Code `bc4ce939ea610563ac515540ac46371eb4572d77`, tested tree
+`a247d1df538a01c76cb1ac329837d989fa95e860`, appends only C3 after the original
+eleven registry identities (C2 index9, D index10, C3 index11): twelve cases/six
+files, 2/2/2/2/3/1. These are **eleven UI flows plus one direct Auth-API acceptance
+case**, not twelve UI flows. C3 uses fresh control/custom-linked accounts and the
+unchanged arrangements, deletes each once via the existing harness admin, and
+requires Auth404 and exact row disappearance, with linked-user preservation
+between deletions. Separate inline API assertions retain safe source attribution.
+No C1/C2/fixture/product/schema/configuration change or new diagnostic protocol.
+All 414 targeted helper/collection tests passed, including actual Playwright 1.60.0
+`--list`: twelve exact identities/six files, zero executed results/errors and
+checked private cleanup. Web typecheck/scoped lint/secret scan passed.
+No live deletion was run; teardown is never acceptance. See the
+[C3 outcome boundaries](docs/knowledge/pool-swimming.md#shared-completion-integration--current-148-status).
 
 **C2 remains OPEN**: no deletion/cascade/survivor or foreign-key-cause claim.
 Custom movement and both references remain until the real Delete action;
@@ -103,7 +125,7 @@ to the account file. Identical worker hashes or zero recycling are not claimed.
 The coordinator next owns actual Astra START+TERMINAL/artifact even on failure,
 then one complete integration+remainder exact-head Opus review and core-only CI.
 Accepted full head/core and fresh guards/full execution-path review are required before
-one normal Native16/14836/eleven-browser reference through workflow `279507729`,
+one normal Native16/14836/twelve-case reference through workflow `279507729`,
 the existing branch route, exact `expected_sha`, and both production flags false.
 PR807/808 remain frozen source artifacts, not merge candidates; only the
 coordinator may close them unmerged after eventual live acceptance.

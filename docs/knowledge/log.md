@@ -2046,3 +2046,36 @@ accepted full head/core and fresh execution guards permit the first normal
 Native16/14836/eleven-browser reference. C2 and all wider standalone gates remain
 open; no runtime or production-readiness claim. See
 [current status](./pool-swimming.md#shared-completion-integration--current-148-status).
+
+## [2026-09-08] refine | PR805 positive Auth-API deletion boundary C3
+
+Code `bc4ce939ea610563ac515540ac46371eb4572d77`, tested tree
+`a247d1df538a01c76cb1ac329837d989fa95e860`, appends only C3 to the existing account
+spec and casebook. Original eleven UI identities/order remain (C2 index9, D
+index10); C3 index11 is a direct Auth-API acceptance case, not a twelfth UI flow.
+Twelve cases/six files have counts 2/2/2/2/3/1. Fresh isolated native-only and
+custom-linked accounts reuse unchanged arrangements; each direct deletion must
+return no error and prove Auth404/owned-row absence, with linked data intact after
+the control deletion. Inline outcomes preserve existing safe source attribution.
+No C1/C2/D/fixture/product/SQL/RLS/configuration or diagnostic-protocol change.
+Old4/6/8/11 reports and total-preserving missing-C3/D substitutions remain rejected;
+duplicate mutation now handles one/two/three-case files.
+
+All 414 targeted helper/collection tests passed after adding the missing twelfth
+empty annotation pin. Actual pinned Playwright 1.60.0 `--list` proved twelve exact
+identities/six files, zero executed results/errors and checked private cleanup.
+Web typecheck, scoped lint, diff check and secret scan passed. Commit author and
+committer were explicitly set and verified as Copilot with the 223556219 address,
+with both AI trailers. The configured signing service failed before commit
+creation; the ordinary fast-forward code commit is unsigned.
+
+Historical [run 34283532254](https://github.com/drrowdev/hybrid-training-app/actions/runs/34283532254)
+at `9fe3e4da` passed 10/11 UI flows; only C2 failed (7402ms, line479), with Account
+POST HTTP5xx headers, Account location and exact synthetic Auth presence at the
+bounded later sample. No Auth code, SQL cause or precise throw site is established.
+Native16/normal148/catalog/5phase4DDL/15contexts/36HTTP/core/main/final cleanup passed.
+C3 is unexecuted, not a deletion fix or release acceptance. No live activation,
+private runtime-log access or repeat UI probe occurred. All caps remain enforced;
+coordinator exact-final-head review/core and fresh guards precede one new-head
+twelve-case reference on the existing route. See
+[current scope and outcome boundaries](./pool-swimming.md#shared-completion-integration--current-148-status).

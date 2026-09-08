@@ -436,7 +436,47 @@ All standalone DC-SW1–SW9 gates still precede combined implementation.
 
 ### Shared completion integration — current 148 status
 
-**2026-09-08 current status:** `95cbfb537884e65e2ec3ba6b67cf3c7ff303628a` is the
+**2026-09-08 current status:** [run 34283532254](https://github.com/drrowdev/hybrid-training-app/actions/runs/34283532254)
+at `9fe3e4da` passed 10/11 original UI flows, including A1/B1/D, A2, offline
+recovery and export. Only C2 failed (7402ms, account source line 479): real Account
+POST HTTP5xx headers, Account location and the exact synthetic Auth user still
+present at the bounded later sample. This is not an observed Auth error code,
+SQL cause or exact throw site, and does not exclude every post-delete/app-side
+possibility. Native16/normal148/catalog/5phase4DDL/15contexts/36HTTP/core/main/final
+cleanup passed.
+
+Code `bc4ce939ea610563ac515540ac46371eb4572d77`, tested tree
+`a247d1df538a01c76cb1ac329837d989fa95e860`, adds the positive lower-layer C3 case:
+**eleven original UI flows plus one direct Auth-API acceptance case**, twelve
+identities across the same six files (2/2/2/2/3/1). The original eleven registry
+identities/order remain; C2 stays index9, D index10, C3 appends at index11.
+Fresh native-only and native-plus-custom-reference accounts use the unchanged
+C2 arrangement helpers. Exact owned records are read before deletion; each user
+gets one existing harness Auth admin deletion, mandatory no-error/Auth404/row-
+absence assertions, and the linked user/data must survive the control deletion.
+Separate inline 5xx booleans and no-error assertions use existing safe source-line
+projection, not messages/codes/bodies or a new protocol. C1/C2/D, teardown, product,
+schema, runtime configuration and source-fingerprint mechanism remain unchanged.
+
+All 414 targeted helper/collection tests passed, including actual pinned
+Playwright 1.60.0 `--list`: twelve exact identities/six files, zero executed
+results/errors, checked private cleanup. Web typecheck/scoped lint/secret scan
+passed. **C3 has not executed; no deletion success is claimed.**
+
+Interpret only observed positive-boundary outcomes:
+- Control passes, linked deletion fails: reproduction below the app for this data
+  shape, supporting investigation but naming no constraint.
+- Both direct deletions pass while C2 fails: investigate app boundary/configuration/
+  timing, not speculative database repairs.
+- Arrangement or control fails: no custom-reference comparison is proved.
+- C2 and C3 pass: current acceptance only; historical failures remain unexplained.
+
+If C2 and C3 fail at deletion after the control passed, keep both red and preserve
+other results; reproduction is not release acceptance. No branch authorizes a
+migration, grant, RLS/trigger change, ordered purge or production action; any needed
+change requires source review and applicable owner/operator confirmation.
+
+**Earlier eight-flow milestone:** `95cbfb537884e65e2ec3ba6b67cf3c7ff303628a` is the
 immutable eight-flow milestone.
 [Core 34258052509](https://github.com/drrowdev/hybrid-training-app/actions/runs/34258052509)
 and [full 34258502119](https://github.com/drrowdev/hybrid-training-app/actions/runs/34258502119)
@@ -457,7 +497,7 @@ PR805 code checkpoint `2e831c2313689f44424811aa3ff439be35ebac22`, tested tree
 - PR808 D head `bddddd16e355ce5df5a9dcbf50e81c272503b583`:
   `swimming-assessment-mobile.spec.ts`, blob `a2f19c74c1cac7534fed57c67bb7a83e068e5011`.
 
-The original eight identities stay in order, followed by C1/C2/D: eleven closed
+That checkpoint kept the original eight identities in order, followed by C1/C2/D: eleven closed
 identities/six files, counts 2/2/2/2/2/1. Attribution adds only account, assessment
 and swim-storage IDs; privacy, the two-location cap, durations, ignored
 annotations and alert-v2 are unchanged. All six declared paths enter the existing
@@ -465,7 +505,7 @@ single tracked-source fingerprint call. The owned Next start command alone gets
 a new environment object with the canonical service-key alias from its validated
 local snapshot, never from a later-mutated target or shared/build/browser env.
 
-This remains **source-only**, not eleven-flow acceptance. At `d5936320`,
+That integration checkpoint was **source-only**, not eleven-flow acceptance. At `d5936320`,
 one targeted helper/collection/fingerprint/stage run passed 771 tests but failed
 the actual pinned Playwright 1.60.0 `--list` regression through the same dedicated
 config: `success=false`, exit 1, loader code unknown, account-spec source attribution.
@@ -493,7 +533,7 @@ deletion/cascade failure. All fixtures, bodies, guards and configured workers/
 retries remain unchanged; file-level media overrides protect generic collection
 too, only for this file. No identical-worker-hash or zero-recycling guarantee.
 
-C covers authenticated in-memory export and real account deletion; C2 retains
+C1/C2 cover authenticated in-memory export and real account deletion; C2 retains
 the user-owned custom movement plus set-log/session-movement references until
 Delete. **C2 remains OPEN**; teardown is not product proof. A future failure must
 be mapped to its exact arrangement/export/UI/deletion/survivor checkpoint before
@@ -508,19 +548,18 @@ evidence. No production readiness or combined-swimming claim.
 
 Limits stay 30s/case, 300s global, 330s command, 590s phase, 410s server,
 35m total/3m cleanup, 45m job; CLI 2.116/default12, private 700/600, source pins and
-exact resource cleanup remain. Eleven nominal 30s maxima total 330s; this is not
-a ten-case physical limit or permission to increase caps. Observed eight-flow
-37.185s plus nominal new-case 90s is capacity reasoning, not a runtime guarantee.
-If evidence shows overrun, choose a proof-preserving split or different closed
-cohort, never raise caps, retry blindly or drop regressions. A global timeout can
+exact resource cleanup remain. Twelve nominal 30s maxima total 360s, not a promise
+of fit within the 300s global cap. There is no ten-case physical limit or permission
+to increase caps. If evidence shows overrun, choose a coherent proof-preserving
+split, never raise caps, retry blindly or drop regressions. A global timeout can
 leave missing cases or empty results and strict `browser-report-schema` rejection
 without a ledger; schema failure or wall clock alone proves neither timeout nor
 corruption. No numeric timeout-case threshold is asserted.
 
 The coordinator next owns actual Astra START+TERMINAL/artifact even on failure,
 then one complete integration+remainder exact-head Opus review and core-only CI.
-Accepted full head/core and fresh guards/full execution-path review are required
-before one normal Native16/14836/eleven-browser
+Accepted full head/core, fresh head/base, no-writer/no-CI guards and full
+execution-path review are required before one normal Native16/14836/twelve-case
 reference via existing workflow `279507729` branch route, exact `expected_sha`,
 both production flags false. PR807/808 remain frozen source artifacts, not merge
 candidates; coordinator-only closure unmerged may follow eventual live acceptance.
