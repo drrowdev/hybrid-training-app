@@ -267,7 +267,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(await primary.snapshot()).toEqual(primary.initial);
     await page.goto(url);
     await page.getByRole("button", { name: "Pause", exact: true }).click();
-    await expect(page.getByText("Paused", { exact: true })).toBeVisible();
+    await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible();
     const paused = await savedPlan(admin, freshUser.userId, planId);
     lifecycleTransition(started.plan, paused.plan, "paused");
     expect(paused.workouts).toEqual(started.workouts);
@@ -295,7 +295,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(await savedPlan(admin, freshUser.userId, planId)).toEqual(paused);
     expect(await primary.snapshot()).toEqual(primary.initial);
     await page.getByRole("button", { name: "Accept dates and resume", exact: true }).click();
-    await expect(page.getByText("Active", { exact: true })).toBeVisible();
+    await expect(page.locator("main > section").first().getByText("Active", { exact: true })).toBeVisible();
     const resumed = await savedPlan(admin, freshUser.userId, planId);
     lifecycleTransition(paused.plan, resumed.plan, "active");
     expect(resumed.workouts.find((row) => row.id === first.id)).toEqual(protectedSwim);
@@ -316,7 +316,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       ["Archive", "archived", "Archived"],
     ] as const) {
       await page.getByRole("button", { name: control, exact: true }).click();
-      await expect(page.getByText(label, { exact: true })).toBeVisible();
+      await expect(page.locator("main > section").first().getByText(label, { exact: true })).toBeVisible();
       const saved = await savedPlan(admin, freshUser.userId, planId);
       lifecycleTransition(previous.plan, saved.plan, status);
       expect(saved.workouts).toEqual(resumed.workouts);
@@ -325,7 +325,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       previous = saved;
     }
     await page.reload();
-    await expect(page.getByText("Archived", { exact: true })).toBeVisible();
+    await expect(page.locator("main > section").first().getByText("Archived", { exact: true })).toBeVisible();
     expect(await savedPlan(admin, freshUser.userId, planId)).toEqual(previous);
     expect(await primary.snapshot()).toEqual(primary.initial);
   });
