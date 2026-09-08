@@ -436,7 +436,44 @@ All standalone DC-SW1–SW9 gates still precede combined implementation.
 
 ### Shared completion integration — current 148 status
 
-**2026-09-08 current status:** the original four browser cases and normal
+**2026-09-08 current status:** exact head
+`e46c443e8e06cb31616cb6082c3d0fbbbca7c050` is the immutable six-flow milestone.
+[Core 34243771485](https://github.com/drrowdev/hybrid-training-app/actions/runs/34243771485)
+and [full 34244354544](https://github.com/drrowdev/hybrid-training-app/actions/runs/34244354544)
+passed; full terminal was 15:29:26Z. All six browser cases passed once, with zero
+skipped/flaky/unexpected cases, in 6844/4962/5278/9967/6815/7525ms (41391ms combined).
+Native16 pins/checks/cleanup, normal148/catalog/5phase4DDL/15contexts/36HTTP, core,
+main and final cleanup passed. This is not full standalone or release acceptance.
+
+PR805 source checkpoint `8e5a4a155f6e94a5c4f201074dbd74cdd1c4ca8a` adds B1/B2
+to the unchanged six: eight closed identities across four files. The exact
+[PR806](https://github.com/drrowdev/hybrid-training-app/pull/806) source head is
+`32947ae5eb9e99070006e3a74b5c4df0a33dce60`; imported blob
+`f16b37ee260135344db8adf171f33f57640eef75` is byte-for-byte unchanged.
+B1 covers bounded improving progression and immutable issued history
+([DC-SW4/SW5](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05));
+B2 covers committed lost-response durability and global FIFO (DC-SW8).
+A retains DC-SW7/SW9 and its actual regional-row oracle; B has no regional proof.
+Plateau, missed/high-effort, reject/override and scaling variants remain required.
+
+This integration is **source/collection-only**: 735 targeted helper/collection/
+fingerprint/stage tests, web typecheck and scoped lint passed on the GitHub runner.
+The real pinned CLI `--list` through the dedicated config collected eight exact
+triples/four files, zero execution results/errors, expected status passed, and
+verified private cleanup under the normal skip policy. All four declared spec
+paths are derived inside the existing single `git ls-files` fingerprint call.
+No live browser/server/DB/Docker run or workflow dispatch occurred in this task.
+
+Limits remain 30s/case, 300s global, 330s command, 590s phase, 410s server,
+35m total, 3m cleanup and 45m job. Eight nominal limits total 240s, but setup
+overhead and B durations are unmeasured; B2's own 30s is the material timing risk.
+Do not raise limits, retry, add sleeps or split the accepted source without real
+evidence. Complete-head review/core CI and fresh guards precede one ordinary
+native-gated eight-case reference; no unchanged e46 rerun. PR806 is frozen source,
+not a future independent merge candidate. Coordinator-only closure as superseded
+may follow live acceptance, retaining its history/link. PR803/807/808 are untouched.
+
+**Earlier PR803/805 wiring and recovery:** the original four browser cases and normal
 148 migrations / 15 service contexts / 36 HTTP cases passed in
 [run 34176424048](https://github.com/drrowdev/hybrid-training-app/actions/runs/34176424048)
 at `4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. Opus 5 turn 19 accepted integration;
@@ -470,10 +507,9 @@ privacy/release concern**, not fixed or passed by this fixture correction.
 265 targeted component/pure tests, web typecheck, scoped lint and secret scanning
 passed on the GitHub runner. CodeQL analysis was skipped (database too large).
 No live browser/server/DB/Docker run, credential access or CI dispatch occurred
-in this recovery. **New-head six-case live acceptance remains pending** final
-exact-head Opus review, core CI and fresh guards before one reference on this
-branch. B/C remain unselected; all nine standalone gates and production
-acceptance are not established.
+in this recovery. Its pending six-case reference was subsequently satisfied by
+the e46 milestone above. All nine standalone gates and production acceptance
+are not established.
 
 **Earlier PR803 wiring checkpoint:** the coordinator confirmed the database
 milestone passed. PR803 wired the first four-case mobile execution, preserving R1's

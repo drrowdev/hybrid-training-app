@@ -17,7 +17,8 @@ exist for compatibility and shared workload only.
 
 The current PR802 continuation authorizes disposable localhost services on the
 cloud runner only, not hosted credentials. The normal-148 database and first
-four-case browser reference passed; the expanded six-case reference is pending.
+six-case browser reference passed at e46; the expanded eight-case reference is
+source/collection-only, with live acceptance pending.
 Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
@@ -32,9 +33,37 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-08 (PR805 narrow A recovery; new-head live pending)
+**Last updated:** 2026-09-08 (PR805 eight-case source integration; live eight pending)
 
 ### PR805 expanded browser cohort — current status
+
+The immutable six-flow milestone is `e46c443e8e06cb31616cb6082c3d0fbbbca7c050`:
+[full run 34244354544](https://github.com/drrowdev/hybrid-training-app/actions/runs/34244354544)
+passed at 2026-09-08 15:29:26Z, after
+[core run 34243771485](https://github.com/drrowdev/hybrid-training-app/actions/runs/34243771485)
+passed. All six passed once, with zero skipped/flaky/unexpected cases; durations
+were 6844/4962/5278/9967/6815/7525ms (41391ms combined). Native16 pins/checks/cleanup,
+normal148/catalog/5phase4DDL/15contexts/36HTTP, core, main and final cleanup passed.
+This is not full standalone or release acceptance.
+
+Source checkpoint `8e5a4a155f6e94a5c4f201074dbd74cdd1c4ca8a` appends B1
+([DC-SW4/SW5](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05))
+and B2 (DC-SW8) beside the unchanged six, preserving A's DC-SW7/SW9 regional-row
+proof. PR806's accepted blob `f16b37ee260135344db8adf171f33f57640eef75` is imported
+exactly. All declared specs now enter the single tracked-source fingerprint call.
+735 targeted tests, web typecheck and scoped lint passed; actual pinned CLI
+`--list` collected eight exact triples/four files, zero results/errors, normal
+skip policy and verified private cleanup. No live eight-case run occurred.
+
+All limits remain unchanged; B runtime, particularly B2's own 30s budget, is
+unmeasured. B has no regional proof; plateau, missed/high-effort, reject/override
+and scaling variants remain required later work. Exact complete-head review,
+core CI and fresh head/base/liveRef/ownership guards precede one ordinary
+native-gated eight-case reference, not an unchanged e46 rerun. PR806 remains a
+frozen source artifact, not a future merge candidate; only the coordinator may
+close it as superseded after live acceptance. PR803/807/808 remain untouched.
+
+#### Earlier PR805 wiring and recovery
 
 The original four cases plus normal 148 migrations, 15 service contexts and
 36 HTTP cases passed in [run 34176424048](https://github.com/drrowdev/hybrid-training-app/actions/runs/34176424048)
@@ -67,9 +96,9 @@ in C as a privacy/release concern**; no deletion fix or passing regression is cl
 passed on the GitHub runner; the new SSR test failed before the guard and passed
 afterward. CodeQL analysis was skipped because its database was too large.
 No live browser/server/DB/Docker run, credential access or CI dispatch occurred
-in this recovery. Final exact-head Opus review, core CI and fresh guards must
-precede **one new-head six-case live reference on this branch**. B/C remain
-unselected; all nine standalone gates and production acceptance remain unproven.
+in this recovery. Its pending six-case reference was subsequently satisfied by
+the e46 milestone above. All nine standalone gates and production acceptance
+remain unproven.
 
 ### PR803 browser integration — earlier checkpoint
 

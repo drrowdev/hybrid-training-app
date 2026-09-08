@@ -1948,3 +1948,30 @@ Final exact-head Opus review, core CI and fresh guards precede one new-head
 six-case live reference; no new live acceptance is claimed. B/C remain
 unselected. [Current status](./pool-swimming.md#shared-completion-integration--current-148-status)
 and [DC-SW3/SW7/SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).
+
+## [2026-09-08] refine | PR805 exact B integration after the live six-flow milestone
+
+The immutable `e46c443e8e06cb31616cb6082c3d0fbbbca7c050` six-flow milestone passed
+[core 34243771485](https://github.com/drrowdev/hybrid-training-app/actions/runs/34243771485)
+and [full 34244354544](https://github.com/drrowdev/hybrid-training-app/actions/runs/34244354544)
+(terminal 15:29:26Z). Six cases passed once, zero skipped/flaky/unexpected, in
+6844/4962/5278/9967/6815/7525ms; native16, normal148/catalog/5phase4DDL/15contexts/
+36HTTP and main/final cleanup passed. No full standalone or release claim.
+
+Code checkpoint `8e5a4a155f6e94a5c4f201074dbd74cdd1c4ca8a`, tested tree
+`03f8053d578dd3525587445e6e0ee948989b6099`, imports PR806 head
+`32947ae5eb9e99070006e3a74b5c4df0a33dce60`'s exact B blob
+`f16b37ee260135344db8adf171f33f57640eef75`. B1/B2 extend the unchanged six with
+[DC-SW4/SW5/SW8](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05),
+preserving A's SW7/SW9 regional-row proof. Closed attribution adds only the B
+spec, swim-queries and outbox-core IDs; every declared spec is fingerprinted
+inside the single tracked-file invocation. Existing diagnostics and limits remain.
+
+735 targeted tests, actual pinned CLI collection (eight exact triples/four files,
+zero results/errors, normal skip policy, private cleanup), web typecheck, scoped
+lint and secret scan passed. This is source/collection-only, not live-eight
+acceptance. B2's 30s and setup overhead remain unmeasured. No runtime/DB/CI dispatch,
+additional agent, product change or branch/stack operation occurred. PR806 remains
+frozen source, not a future merge candidate; coordinator closure can follow live
+acceptance. PR803/807/808 remain untouched. Wider progression variants and full
+standalone gates remain required; see [current status](./pool-swimming.md#shared-completion-integration--current-148-status).
