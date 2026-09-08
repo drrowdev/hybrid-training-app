@@ -106,11 +106,11 @@ async function confirmPlanStatus(
     while (active()) {
       const sample = await admin.from("swim_plans").select("id,user_id,status")
         .eq("user_id", userId).eq("id", planId).abortSignal(controller.signal).single();
+      if (!active()) return "not-confirmed-expired" as const;
       if (sample.error || !sample.data || sample.data.id !== planId || sample.data.user_id !== userId ||
         !["active", "paused", "finished", "archived"].includes(sample.data.status)) {
         return "read-error" as const;
       }
-      if (!active()) return "not-confirmed-expired" as const;
       if (sample.data.status === status) return "reached" as const;
       const remaining = deadline - performance.now();
       if (remaining <= 0) return "not-confirmed-expired" as const;
@@ -125,7 +125,7 @@ async function confirmPlanStatus(
       });
     }
     return "not-confirmed-expired" as const;
-  })().catch(() => "read-error" as const);
+  })().catch(() => active() ? "read-error" as const : "not-confirmed-expired" as const);
   try {
     return await polling;
   } finally {
