@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { SwimHub } from "@/components/swim/SwimHub";
 import { nextConfirmedView, nextSwimHubView, type SwimHubView } from "../view-types";
@@ -103,6 +104,31 @@ describe("DC-SW7 lifecycle controls and parent navigation SSR", () => {
     expect(navigation!.indexOf("?plan=selected")).toBeLessThan(navigation!.indexOf("?plan=other"));
     expect(html.indexOf("</header>")).toBeLessThan(html.indexOf("<nav"));
     expect(html.indexOf("</nav>")).toBeLessThan(html.indexOf("<section"));
+  });
+
+  describe("DC-SW7 Hub request wiring (source, not browser interaction)", () => {
+    it("uses the same lazy per-instance gate for all dispatches and all disabled controls", () => {
+      const source = readFileSync(new URL("../../../components/swim/SwimHub.tsx", import.meta.url), "utf8");
+      expect(source).toContain("const [requestGate] = useState(createRequestGate)");
+      expect(source.match(/void requestGate\(async \(\) => \{/g)).toHaveLength(3);
+      expect(source.match(/}, setRequestBusy\)/g)).toHaveLength(3);
+      expect(source.match(/disabled=\{requestBusy\}/g)).toHaveLength(12);
+      expect(source).not.toMatch(/useTransition|startTransition|disabled=\{pending\}|router\.refresh|useRouter/);
+      const paths = source.split("void requestGate(async () => {").slice(1);
+      expect(paths[0]).toContain("await action()");
+      expect(paths[1]).toContain("await proposeSwimBenchmark(");
+      expect(paths[2]).toContain("await previewSwimResume(");
+      for (const path of paths) {
+        expect(path).toContain("setError(null)");
+        expect(path).toContain("catch { setError(");
+      }
+      expect(paths[0]).toContain('nextSwimHubView(current, view, "confirmed")');
+      expect(paths[0]).toContain("setPreview(null)");
+      expect(paths[0]).toContain("setBenchmark(null)");
+      expect(source).toContain("[result.warning, result.refreshWarning]");
+      expect(source).toContain('warnings.map((warning, index) => <p key={index} role="status" className={styles.warning}>{warning}</p>)');
+      expect(source.match(/setWarnings\(\[\]\)/g)).toHaveLength(1);
+    });
   });
 
   it.each(["paused", "finished", "archived"] as const)("does not offer setup for %s while another own plan is active", (status) => {

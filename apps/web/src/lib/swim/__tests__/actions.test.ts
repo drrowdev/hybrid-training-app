@@ -59,6 +59,21 @@ function benchmarkForm() {
   return form;
 }
 
+function mockSavedPlan() {
+  const returnedPlan = { ...swimFixture().plan, revision: 7 };
+  const view: SwimHubView = {
+    id: returnedPlan.id, revision: returnedPlan.revision, status: returnedPlan.status,
+    goal: "Technique & base", course: "25 yd", dates: "2026-09-07 – 2026-09-27", today: "2026-09-12",
+    workouts: [], proposals: [], analytics: { weeks: [], bests: [], benchmarks: [] },
+  };
+  vi.mocked(storage.updateSwimPlan).mockResolvedValueOnce({ plan: returnedPlan, workouts: [] });
+  vi.spyOn(queries, "loadSwimHubView").mockImplementationOnce(async (_client, _userId, row) => {
+    expect(row).toBe(returnedPlan);
+    return view;
+  });
+  return view;
+}
+
 function mockSavedEdit() {
   let workout = { ...swimFixture().history[0]!.workout, revision: 1 };
   let notes: string | null = "Existing note";
@@ -286,7 +301,8 @@ describe("ADR0079 server actions", () => {
     const plateau = history.map((row) => ({ ...row, result: row.result ? { ...row.result, rpe: 7 } : null }));
     vi.spyOn(queries, "loadSwimHistory").mockResolvedValue(plateau);
     const candidate = queries.deriveSwimWeekCandidate(plan, plateau, "2026-09-12")!;
-    expect(await decideSwimProposal(plan.id, plan.revision, candidate.id, "accepted")).toEqual({ ok: true });
+    const view = mockSavedPlan();
+    expect(await decideSwimProposal(plan.id, plan.revision, candidate.id, "accepted")).toEqual({ ok: true, view });
     const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
     expect(saved.state.decisions[0]).toMatchObject({
       id: candidate.id, decision: "accepted", inputSnapshot: { sourceFingerprint: candidate.exactInputs.sourceFingerprint },
@@ -304,7 +320,8 @@ describe("ADR0079 server actions", () => {
     const { plan, history } = swimFixture();
     vi.spyOn(queries, "loadSwimHistory").mockResolvedValue(history);
     const candidate = queries.deriveSwimWeekCandidate(plan, history, "2026-09-12")!;
-    expect(await decideSwimProposal(plan.id, plan.revision, candidate.id, "rejected")).toEqual({ ok: true });
+    const view = mockSavedPlan();
+    expect(await decideSwimProposal(plan.id, plan.revision, candidate.id, "rejected")).toEqual({ ok: true, view });
     expect(vi.mocked(storage.updateSwimPlan).mock.calls[0]![1]).toMatchObject({
       workouts: [], state: { decisions: [expect.objectContaining({ decision: "rejected" })] },
     });
@@ -315,9 +332,12 @@ describe("ADR0079 server actions", () => {
     vi.spyOn(queries, "loadSwimHistory").mockResolvedValue(history);
     const candidate = queries.deriveSwimWeekCandidate(plan, history, "2026-09-12")!;
     const repeats = candidate.proposal.from.mainRepeats + 5;
+    const view = mockSavedPlan();
     const result = await decideSwimProposal(plan.id, plan.revision, candidate.id, "overridden", String(repeats), "More repeats");
     expect(result.ok).toBe(true);
     expect(result.warning).toBeTruthy();
+    expect(result.view).toBe(view);
+    expect(result).not.toHaveProperty("refreshWarning");
     const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
     expect(saved.state.decisions[0]).toMatchObject({
       decision: "overridden", inputSnapshot: {
@@ -401,7 +421,8 @@ describe("ADR0079 server actions", () => {
     expect(proposed.preview).toBeDefined();
     expect(proposed.preview?.observation.verified).toBe(true);
     expect(storage.updateSwimPlan).not.toHaveBeenCalled();
-    expect(await decideSwimBenchmark(plan.id, proposed.preview!, "accepted")).toEqual({ ok: true });
+    const view = mockSavedPlan();
+    expect(await decideSwimBenchmark(plan.id, proposed.preview!, "accepted")).toEqual({ ok: true, view });
     const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
     expect(saved.state.observations).toEqual([proposed.preview!.observation]);
     expect(saved.state.acceptedCalibration).toHaveProperty("unit", "yd");
@@ -413,7 +434,8 @@ describe("ADR0079 server actions", () => {
   });
   it("retains a rejected assessment without changing pace targets or requiring new safety clearance", async () => {
     const proposed = await proposeSwimBenchmark(planId, 1, benchmarkForm());
-    expect(await decideSwimBenchmark(planId, proposed.preview!, "rejected")).toEqual({ ok: true });
+    const view = mockSavedPlan();
+    expect(await decideSwimBenchmark(planId, proposed.preview!, "rejected")).toEqual({ ok: true, view });
     expect(vi.mocked(storage.updateSwimPlan).mock.calls[0]![1]).toMatchObject({
       workouts: [], state: { acceptedCalibration: null, observations: [proposed.preview!.observation],
         decisions: [expect.objectContaining({ decision: "rejected" })] },

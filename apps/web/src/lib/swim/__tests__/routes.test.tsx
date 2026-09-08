@@ -46,6 +46,7 @@ describe("ADR0079 reachable standalone routes", () => {
     const page = await SwimPage({ searchParams: Promise.resolve({}) });
     expect(loadSwimHubView).toHaveBeenCalledWith({}, userId, swimFixture().plan);
     expect(elements(page).some((element) => element.type === SwimHub)).toBe(true);
+    expect(elements(page).find((element) => element.type === SwimHub)?.key).toBe("view");
     expect(elements(page).filter((element) => element.type === PageHeader)).toHaveLength(0);
     expect(elements(page).find((element) => element.type === SwimHub)?.props).toEqual({
       plan: { id: "view" }, setupEnabled: false,
