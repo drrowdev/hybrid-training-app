@@ -16,7 +16,7 @@ test.describe("ADR0079 standalone swimming", () => {
     await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
     await page.goto("/app/program");
     await page.getByRole("link", { name: /Pool swimming/ }).click();
-    await page.getByLabel("Pool length", { exact: true }).selectOption("25yd");
+    await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
     await page.getByLabel("Recent comfortable continuous lengths").fill("4");
     await page.getByLabel("Weeks", { exact: true }).fill("4");
     await page.getByRole("button", { name: "Create swim plan" }).click();
@@ -59,7 +59,7 @@ test.describe("ADR0079 standalone swimming", () => {
     await markOnboarded(admin, freshUser.userId);
     await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
     await page.goto("/app/swim/setup");
-    await page.getByLabel("Pool length", { exact: true }).selectOption("custom");
+    await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("custom");
     await page.getByLabel("Custom pool length", { exact: true }).fill("33.33");
     await page.getByLabel("Recent comfortable continuous lengths").fill("6");
     await page.getByLabel("Weeks", { exact: true }).fill("2");

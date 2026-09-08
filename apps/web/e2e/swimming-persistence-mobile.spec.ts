@@ -60,7 +60,7 @@ const test = seededTest.extend<{
 
 async function createPlan(page: Page, pool: "25yd" | "50m") {
   await page.goto("/app/swim/setup");
-  await page.getByLabel("Pool length", { exact: true }).selectOption(pool);
+  await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption(pool);
   await page.getByLabel("Recent comfortable continuous lengths").fill("4");
   await page.getByLabel("Weeks", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
