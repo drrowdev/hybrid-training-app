@@ -436,42 +436,77 @@ All standalone DC-SW1–SW9 gates still precede combined implementation.
 
 ### Shared completion integration — current 148 status
 
-**2026-09-08 current status:** exact head
-`e46c443e8e06cb31616cb6082c3d0fbbbca7c050` is the immutable six-flow milestone.
-[Core 34243771485](https://github.com/drrowdev/hybrid-training-app/actions/runs/34243771485)
-and [full 34244354544](https://github.com/drrowdev/hybrid-training-app/actions/runs/34244354544)
-passed; full terminal was 15:29:26Z. All six browser cases passed once, with zero
-skipped/flaky/unexpected cases, in 6844/4962/5278/9967/6815/7525ms (41391ms combined).
-Native16 pins/checks/cleanup, normal148/catalog/5phase4DDL/15contexts/36HTTP, core,
-main and final cleanup passed. This is not full standalone or release acceptance.
+**2026-09-08 current status:** `95cbfb537884e65e2ec3ba6b67cf3c7ff303628a` is the
+immutable eight-flow milestone.
+[Core 34258052509](https://github.com/drrowdev/hybrid-training-app/actions/runs/34258052509)
+and [full 34258502119](https://github.com/drrowdev/hybrid-training-app/actions/runs/34258502119)
+passed; full terminal was 17:44:42Z. All eight passed once, no unexpected,
+skipped, retried or flaky-labelled cases, in
+5039/2831/4215/7711/4466/5175/3274/4474ms (37185ms total).
+Native16/all148/catalog/5phase4DDL/15contexts/36HTTP, core, main and final cleanup
+passed. The prior A1 Preview click timeout remains **unexplained**; the shared 5s
+readiness checkpoint is not a cause/fix proof. Preserve it and all eight flows.
+PR806 was closed unmerged as superseded; source branch `32947ae5eb9e99070006e3a74b5c4df0a33dce60`
+and exact B blob `f16b37ee260135344db8adf171f33f57640eef75` remain retained.
 
-PR805 source checkpoint `8e5a4a155f6e94a5c4f201074dbd74cdd1c4ca8a` adds B1/B2
-to the unchanged six: eight closed identities across four files. The exact
-[PR806](https://github.com/drrowdev/hybrid-training-app/pull/806) source head is
-`32947ae5eb9e99070006e3a74b5c4df0a33dce60`; imported blob
-`f16b37ee260135344db8adf171f33f57640eef75` is byte-for-byte unchanged.
-B1 covers bounded improving progression and immutable issued history
-([DC-SW4/SW5](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05));
-B2 covers committed lost-response durability and global FIFO (DC-SW8).
-A retains DC-SW7/SW9 and its actual regional-row oracle; B has no regional proof.
-Plateau, missed/high-effort, reject/override and scaling variants remain required.
+PR805 code checkpoint `2e831c2313689f44424811aa3ff439be35ebac22`, tested tree
+`3ab5bd91777c36b62916f556be7ad635c38751a3`, imports two byte-for-byte specs:
 
-This integration is **source/collection-only**: 735 targeted helper/collection/
-fingerprint/stage tests, web typecheck and scoped lint passed on the GitHub runner.
-The real pinned CLI `--list` through the dedicated config collected eight exact
-triples/four files, zero execution results/errors, expected status passed, and
-verified private cleanup under the normal skip policy. All four declared spec
-paths are derived inside the existing single `git ls-files` fingerprint call.
-No live browser/server/DB/Docker run or workflow dispatch occurred in this task.
+- PR807 C head `327444f02c1849e26b89051c9c755411a0fb760a`:
+  `swimming-account-mobile.spec.ts`, blob `045205b5852cbd36f613286cad7465531f7ba03b`.
+- PR808 D head `bddddd16e355ce5df5a9dcbf50e81c272503b583`:
+  `swimming-assessment-mobile.spec.ts`, blob `a2f19c74c1cac7534fed57c67bb7a83e068e5011`.
 
-Limits remain 30s/case, 300s global, 330s command, 590s phase, 410s server,
-35m total, 3m cleanup and 45m job. Eight nominal limits total 240s, but setup
-overhead and B durations are unmeasured; B2's own 30s is the material timing risk.
-Do not raise limits, retry, add sleeps or split the accepted source without real
-evidence. Complete-head review/core CI and fresh guards precede one ordinary
-native-gated eight-case reference; no unchanged e46 rerun. PR806 is frozen source,
-not a future independent merge candidate. Coordinator-only closure as superseded
-may follow live acceptance, retaining its history/link. PR803/807/808 are untouched.
+The original eight identities stay in order, followed by C1/C2/D: eleven closed
+identities/six files, counts 2/2/2/2/2/1. Attribution adds only account, assessment
+and swim-storage IDs; privacy, the two-location cap, durations, ignored
+annotations and alert-v2 are unchanged. All six declared paths enter the existing
+single tracked-source fingerprint call. The owned Next start command alone gets
+a new environment object with the canonical service-key alias from its validated
+local snapshot, never from a later-mutated target or shared/build/browser env.
+
+This is **source-only, collection blocked**, not eleven-flow acceptance.
+One targeted helper/collection/fingerprint/stage run passed 771 tests but failed
+the actual pinned Playwright 1.60.0 `--list` regression through the same dedicated
+config: `success=false`, exit 1, loader code unknown, account-spec source attribution.
+Eleven exact triples/six files, no report results/errors and successful checked
+private cleanup are not proved by that failure. No causal loader/import claim
+is established. Exact imports and strict rejection remain; no alternate config,
+loader, source weakening or app/SQL repair. Web typecheck, scoped lint and secret
+scan passed. CodeQL was incomplete: Actions failed, JavaScript database too large.
+No live browser/app/server/DB/Docker/CI invocation or additional worker occurred.
+
+C covers authenticated in-memory export and real account deletion; C2 retains
+the user-owned custom movement plus set-log/session-movement references until
+Delete. **C2 remains OPEN**; teardown is not product proof. A future failure must
+be mapped to its exact arrangement/export/UI/deletion/survivor checkpoint before
+claiming a cascade or foreign-key cause. D preserves rejected native trials,
+history, future-only acceptance, exact decisions/revisions, original/started
+targets and both reloads
+([DC-SW2/SW5/SW6/SW8](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)).
+A's DC-SW7/SW9 lifecycle/regional proof remains intact. All nine standalone gates
+remain incomplete: broader progression (plateau/missed/high-effort/reject/override/
+scaling), concurrency, analytics, lifecycle and safety/load variants still need
+evidence. No production readiness or combined-swimming claim.
+
+Limits stay 30s/case, 300s global, 330s command, 590s phase, 410s server,
+35m total/3m cleanup, 45m job; CLI 2.116/default12, private 700/600, source pins and
+exact resource cleanup remain. Eleven nominal 30s maxima total 330s; this is not
+a ten-case physical limit or permission to increase caps. Observed eight-flow
+37.185s plus nominal new-case 90s is capacity reasoning, not a runtime guarantee.
+If evidence shows overrun, choose a proof-preserving split or different closed
+cohort, never raise caps, retry blindly or drop regressions. A global timeout can
+leave missing cases or empty results and strict `browser-report-schema` rejection
+without a ledger; schema failure or wall clock alone proves neither timeout nor
+corruption. No numeric timeout-case threshold is asserted.
+
+First resolve the bounded account collection remainder without weakening source
+or gate. The coordinator then owns exact complete-head Opus review/core/fresh
+guards/full execution-path review before one normal Native16/14836/eleven-browser
+reference via existing workflow `279507729` branch route, exact `expected_sha`,
+both production flags false. PR807/808 remain frozen source artifacts, not merge
+candidates; coordinator-only closure unmerged may follow eventual live acceptance.
+PR803/native stack804 are unchanged.
 
 **Earlier PR803/805 wiring and recovery:** the original four browser cases and normal
 148 migrations / 15 service contexts / 36 HTTP cases passed in
