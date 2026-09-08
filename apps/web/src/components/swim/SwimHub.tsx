@@ -10,6 +10,8 @@ import {
 } from "@/lib/swim/actions";
 import type { SwimHubView, SwimResumePreview } from "@/lib/swim/view-types";
 import type { SwimBenchmarkPreview } from "@/lib/swim/model";
+import type { ActionResult } from "@/lib/offline/outbox-core";
+import { SWIM_REFRESH_WARNING } from "@/lib/swim/action-feedback";
 import { BenchmarkFields } from "./SetupForm";
 import styles from "./Swim.module.css";
 
@@ -21,15 +23,22 @@ export function SwimHub({ plan }: { plan: SwimHubView }) {
   const [preview, setPreview] = useState<SwimResumePreview | null>(null);
   const [benchmark, setBenchmark] = useState<SwimBenchmarkPreview | null>(null);
 
-  function run(action: () => Promise<{ error?: string; warning?: string }>) {
+  function run(action: () => Promise<ActionResult & { warning?: string }>) {
     setError(null);
     setWarning(null);
     startTransition(async () => {
       try {
         const result = await action();
-        if (result.error) setError(result.error);
-        else { setWarning(result.warning ?? null); setPreview(null); setBenchmark(null); router.refresh(); }
-      } catch { setError("Could not save this change. Try again."); }
+        if (!result || result.ok !== true || result.error || result.errorCode) {
+          setError(result?.error || "Could not save this change. Try again.");
+          return;
+        }
+        setWarning(result.warning ?? null);
+        setPreview(null);
+        setBenchmark(null);
+      } catch { setError("Could not save this change. Try again."); return; }
+      try { router.refresh(); }
+      catch { setWarning(SWIM_REFRESH_WARNING); }
     });
   }
   const editable = plan.status === "active" || plan.status === "paused";
