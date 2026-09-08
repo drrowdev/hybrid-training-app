@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { validateSwimWorkout } from "@hta/domain";
+import { generateSwimPlan } from "@hta/engine";
 import { WorkoutClient } from "@/components/swim/WorkoutClient";
+import { parseSetupForm } from "../forms";
+import { standaloneWeekRequests } from "../model";
 import { workoutPresentation } from "../presentation";
 import type { SwimWorkoutView } from "../view-types";
 import { swimFixture, userId, sessionId } from "./fixtures";
@@ -21,6 +25,44 @@ function workoutView(): SwimWorkoutView {
 }
 
 describe("DC-SW3 poolside workout controls", () => {
+  it.each([
+    "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10",
+    "2026-09-11", "2026-09-12", "2026-09-13",
+  ])("keeps C1 first steps single-repeat with setup starting %s", (startDate) => {
+    // SetupForm defaults, with only C1's pool, comfortable lengths and weeks changed.
+    const form = new FormData();
+    for (const [name, value] of Object.entries({
+      goal: "base", experience: "beginner", pool: "25yd",
+      comfortableLengths: "4", timeBudgetMinutes: "30", weeks: "4", startDate,
+      strokes: "freestyle", time200: "", time400: "", benchmarkDate: "",
+      benchmarkStroke: "freestyle", eventDate: "", eventDistance: "", eventUnit: "m",
+    })) form.set(name, value);
+    form.append("weekdays", "1");
+    form.append("weekdays", "4");
+    const input = parseSetupForm(form);
+    expect(input.observation).toBeNull();
+    const generated = generateSwimPlan({
+      setup: input.setup, calibration: null,
+      weeks: standaloneWeekRequests(input.startDate, input.weeks, input.weekdays),
+    });
+    expect(generated.ok).toBe(true);
+    if (!generated.ok) throw new Error(generated.error.message);
+    expect(generated.value.weeks).toHaveLength(4);
+    const slots = generated.value.weeks.flatMap((week) => week.slots);
+    expect(slots.length).toBeGreaterThan(0);
+    const firstStepRepeatCounts = slots.map((slot) => {
+      expect(slot.kind).toBe("workout");
+      if (slot.kind !== "workout") throw new Error("Expected a C1 workout");
+      expect(validateSwimWorkout(slot.issued)).toEqual([]);
+      const { steps } = workoutPresentation(slot.issued);
+      expect(steps.length).toBeGreaterThan(0);
+      const firstStep = steps[0]!;
+      expect(firstStep.repeatIds.length).toBeGreaterThan(0);
+      return firstStep.repeatIds.length;
+    });
+    expect(firstStepRepeatCounts).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
+  });
+
   it("reaches actual logging without scrolling through every repeat", () => {
     const html = renderToStaticMarkup(<WorkoutClient workout={workoutView()} userId={userId} />);
     expect(html).toContain('href="#swim-result"');
