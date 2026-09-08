@@ -311,10 +311,10 @@ const locationSchema = z.object({
   file: z.string().min(1).max(4_096),
   line: z.number().int().min(1).max(1_000_000),
   column: z.number().int().min(1).max(1_000_000),
-});
+}).strip();
 const errorAttributionSchema = z.preprocess(
   (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {},
-  z.object({ location: locationSchema.optional() }),
+  z.object({ location: locationSchema.optional() }).strip(),
 );
 const resultSchema = z.object({
   retry: z.number().int().min(0).max(99), status: resultStatusSchema,

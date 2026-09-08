@@ -386,7 +386,7 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
     expect(projection.counts).toEqual(fixture.stats);
   });
   it.each([
-    undefined, "/unread/private-path", "seed.ts", "fixtures/seed.ts", "e2e/fixtures/seed.ts",
+    undefined, "/unread/private-path", "x".repeat(4_096), "seed.ts", "fixtures/seed.ts", "e2e/fixtures/seed.ts",
     `${webRoot}/e2e/fixtures/../fixtures/seed.ts`, `${webRoot}/e2e/fixtures/./seed.ts`,
     `${webRoot}/e2e//fixtures/seed.ts`, `${webRoot}/e2e/fixtures/SEED.ts`,
     `${webRoot}/e2e/fixtures/seed.ts/private`, `${webRoot}/e2e/fixtures/seed.ts.bak`,
