@@ -68,6 +68,11 @@ async function main() {
     const tmp = join(probeDirectory, "tmp");
     mkdirSync(home, { mode: 0o700 });
     mkdirSync(tmp, { mode: 0o700 });
+    for (const directory of [home, tmp]) {
+      const stat = lstatSync(directory);
+      assert(stat.isDirectory() && !stat.isSymbolicLink() && realpathSync(directory) === directory &&
+        stat.uid === process.getuid?.() && (stat.mode & 0o7777) === 0o700);
+    }
     stage = "cache";
     const cache = requireSwimBrowserCache(process.env, root, probeDirectory);
     // Both the Node launcher and browser use private profiles/artifacts, without inherited proxies/credentials.
@@ -182,6 +187,7 @@ async function main() {
     } catch { cleanup = false; }
     try {
       if (probeDirectory) {
+        assert(cleanup);
         const current = lstatSync(probeDirectory);
         assert(original && current.isDirectory() && !current.isSymbolicLink());
         assert.equal(realpathSync(probeDirectory), probeDirectory);
