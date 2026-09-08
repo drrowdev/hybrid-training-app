@@ -197,152 +197,159 @@ async function assertHistory(page: Page, today: string, accepted: boolean) {
   }
 }
 
-test("DC-SW2/DC-SW5/DC-SW6/DC-SW8: rejected native trials persist before acceptance updates only future unstarted swims", async ({
-  page, context, freshUser, seedConfig, admin, baseURL,
-}) => {
-  await markOnboarded(admin, freshUser.userId);
-  const profile = await admin.from("profiles").update({ timezone: "UTC" }).eq("id", freshUser.userId)
-    .select("id,timezone").single();
-  expect(profile.error === null).toBe(true);
-  expect(profile.data).toEqual({ id: freshUser.userId, timezone: "UTC" });
-  await signInAs(context, freshUser, seedConfig, baseURL!);
-  await page.goto("/app/swim/setup");
-  const serverToday = await page.getByLabel("Start date", { exact: true }).inputValue();
-  expect(serverToday).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-  await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
-  await page.getByRole("combobox", { name: "Swimming experience", exact: true }).selectOption("regular");
-  await page.getByLabel("Recent comfortable continuous lengths", { exact: true }).fill("16");
-  await page.getByLabel("Minutes per swim", { exact: true }).fill("30");
-  await page.getByLabel("Weeks", { exact: true }).fill("2");
-  for (const day of ["Mon", "Thu"]) await expect(page.getByRole("checkbox", { name: day, exact: true })).toBeChecked();
-  await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
-  await expect(page).toHaveURL(/\/app\/swim\?plan=[^&]+$/);
-  const planURL = page.url();
-  const created = await savedState(admin, freshUser.userId);
-  expect(created.plan.id).toBe(new URL(planURL).searchParams.get("plan"));
-  expect(created.plan.definition).toMatchObject({
-    setup: { course, equipment: [], knownStrokes: ["freestyle"], recentComfortableLengths: 16, sessionBudgetMinutes: 30 },
-    schedule: { startDate: serverToday, weeks: 2, weekdays: [1, 4] },
-  });
-  expect(created.plan.state.observations).toEqual([]);
-  expect(created.plan.state.acceptedCalibration).toBeNull();
-  expect(created.plan.state.decisions).toHaveLength(1);
-  expect(created.plan.state.decisions[0].kind).toBe("setup");
-  for (const row of created.workouts) {
-    expect(row.status).toBe("scheduled");
-    expect(row.session_id).toBeNull();
-    expect(row.definition.original).toEqual(row.definition.issued);
-    expect(row.definition.modifications).toEqual([]);
-    expect(row.definition.issued.snapshot.calibration).toBeNull();
-    const items = row.definition.issued.sections.flatMap((section) => section.items);
-    expect(items.length).toBeGreaterThan(0);
-    for (const item of items) {
-      expect(item.stroke).toBe("freestyle");
-      expect(item.equipment).toEqual([]);
-      expect(item.targetMsPerRepeat).toBeUndefined();
-    }
-  }
-  const future = created.workouts.filter((row) => row.scheduled_date > serverToday && row.status === "scheduled" && row.session_id === null);
-  expect(future.length).toBeGreaterThan(1);
-  const owner = createClient(seedConfig.supabaseUrl, seedConfig.anonKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-  const signedIn = await owner.auth.signInWithPassword({ email: freshUser.email, password: freshUser.password });
-  expect(signedIn.error === null).toBe(true);
-  expect(signedIn.data.user?.id).toBe(freshUser.userId);
-  const started = await startSwimWorkout(owner, future[0].id, future[0].revision);
-  expect(started.id).toBe(future[0].id);
-  expect(started.user_id).toBe(freshUser.userId);
-  expect(started.status).toBe("started");
-  expect(started.session_id).toEqual(expect.any(String));
-  expect(started.session_id?.length).toBeGreaterThan(0);
-  const original = await savedState(admin, freshUser.userId);
-  expect(original.workouts.filter((row) => row.status === "started")).toEqual([started]);
-  expect(original.workouts.filter((row) => row.session_id !== null)).toEqual([started]);
-  for (const row of original.workouts) {
-    const prior = created.workouts.find((entry) => entry.id === row.id)!;
-    expect(row.definition).toEqual(prior.definition);
-    if (row.id !== started.id) expect(row).toEqual(prior);
-  }
-  const eligibleIds = original.workouts.filter((row) =>
-    row.scheduled_date > serverToday && row.status === "scheduled" && row.session_id === null,
-  ).map((row) => row.id).sort();
-  expect(eligibleIds.length).toBeGreaterThan(0);
+test.describe("ADR0079 mobile swimming assessment decisions and native history", () => {
+  test.skip(
+    !swimE2EEnabled(process.env),
+    "Blocked: swimming E2E was not explicitly requested.",
+  );
 
-  await page.goto(planURL);
-  const first = await reviewAssessment(page, serverToday, rejectedTimes);
-  expect(await savedState(admin, freshUser.userId)).toEqual(original);
-  await first.getByRole("button", { name: "Reject assessment", exact: true }).click();
-  await expect(first.getByRole("button", { name: "Reject assessment", exact: true })).toHaveCount(0);
-  const rejected = await savedState(admin, freshUser.userId);
-  const rejectedDecision = assertDecision(original, rejected, observation(serverToday, rejectedTimes), "rejected");
-  expect(rejected.plan.state.acceptedCalibration).toBeNull();
-  expect(rejected.workouts).toEqual(original.workouts);
-  await assertHistory(page, serverToday, false);
-  await page.reload();
-  expect(await savedState(admin, freshUser.userId)).toEqual(rejected);
-  await assertHistory(page, serverToday, false);
-
-  const second = await reviewAssessment(page, serverToday, acceptedTimes);
-  expect(await savedState(admin, freshUser.userId)).toEqual(rejected);
-  await second.getByRole("button", { name: "Accept assessment", exact: true }).click();
-  await expect(second.getByRole("button", { name: "Accept assessment", exact: true })).toHaveCount(0);
-  const accepted = await savedState(admin, freshUser.userId);
-  const acceptedObservation = observation(serverToday, acceptedTimes);
-  const acceptedDecision = assertDecision(rejected, accepted, acceptedObservation, "accepted");
-  expect(acceptedDecision.id).not.toBe(rejectedDecision.id);
-  expect(accepted.plan.state.decisions.filter((entry) => entry.kind === "assessment").map((entry) => entry.decision))
-    .toEqual(["rejected", "accepted"]);
-  expect(accepted.plan.state.observations).toEqual([observation(serverToday, rejectedTimes), acceptedObservation]);
-  expect(accepted.plan.state.acceptedCalibration).toMatchObject({
-    msPer100: acceptedPace, unit: "yd", course, stroke: "freestyle", equipment: [],
-    observation: acceptedObservation, version: SWIM_ASSESSMENT_VERSION,
-  });
-  expect(accepted.workouts.map((row) => row.id)).toEqual(original.workouts.map((row) => row.id));
-  const changedIds = accepted.workouts.filter((row) =>
-    JSON.stringify(row) !== JSON.stringify(rejected.workouts.find((prior) => prior.id === row.id)),
-  ).map((row) => row.id).sort();
-  expect(changedIds).toEqual(eligibleIds);
-  for (const row of accepted.workouts) {
-    const prior = rejected.workouts.find((entry) => entry.id === row.id)!;
-    const initial = original.workouts.find((entry) => entry.id === row.id)!;
-    expect(row.definition.original).toEqual(initial.definition.original);
-    if (!eligibleIds.includes(row.id)) {
-      expect(row).toEqual(initial);
-      continue;
-    }
-    const modifications = row.definition.modifications;
-    expect(modifications).toHaveLength(prior.definition.modifications.length + 1);
-    expect(modifications.slice(0, -1)).toEqual(prior.definition.modifications);
-    expect(modifications[modifications.length - 1]).toMatchObject({
-      decisionId: acceptedDecision.id, previous: prior.definition.issued,
+  test("DC-SW2/DC-SW5/DC-SW6/DC-SW8: rejected native trials persist before acceptance updates only future unstarted swims", async ({
+    page, context, freshUser, seedConfig, admin, baseURL,
+  }) => {
+    await markOnboarded(admin, freshUser.userId);
+    const profile = await admin.from("profiles").update({ timezone: "UTC" }).eq("id", freshUser.userId)
+      .select("id,timezone").single();
+    expect(profile.error === null).toBe(true);
+    expect(profile.data).toEqual({ id: freshUser.userId, timezone: "UTC" });
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    await page.goto("/app/swim/setup");
+    const serverToday = await page.getByLabel("Start date", { exact: true }).inputValue();
+    expect(serverToday).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
+    await page.getByRole("combobox", { name: "Swimming experience", exact: true }).selectOption("regular");
+    await page.getByLabel("Recent comfortable continuous lengths", { exact: true }).fill("16");
+    await page.getByLabel("Minutes per swim", { exact: true }).fill("30");
+    await page.getByLabel("Weeks", { exact: true }).fill("2");
+    for (const day of ["Mon", "Thu"]) await expect(page.getByRole("checkbox", { name: day, exact: true })).toBeChecked();
+    await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/swim\?plan=[^&]+$/);
+    const planURL = page.url();
+    const created = await savedState(admin, freshUser.userId);
+    expect(created.plan.id).toBe(new URL(planURL).searchParams.get("plan"));
+    expect(created.plan.definition).toMatchObject({
+      setup: { course, equipment: [], knownStrokes: ["freestyle"], recentComfortableLengths: 16, sessionBudgetMinutes: 30 },
+      schedule: { startDate: serverToday, weeks: 2, weekdays: [1, 4] },
     });
-    expect(modifications[modifications.length - 1].id.length).toBeGreaterThan(0);
-    const issued = row.definition.issued;
-    expect(issued).not.toEqual(prior.definition.issued);
-    expect(issued).toEqual({
-      ...prior.definition.issued,
-      sections: prior.definition.issued.sections.map((section) => ({
-        ...section, items: section.items.map((item) => ({
-          ...item, targetMsPerRepeat: Math.round(acceptedPace * SWIM_EFFORT_PACE_FACTORS[item.effort] * item.lengths * 25 / 100),
+    expect(created.plan.state.observations).toEqual([]);
+    expect(created.plan.state.acceptedCalibration).toBeNull();
+    expect(created.plan.state.decisions).toHaveLength(1);
+    expect(created.plan.state.decisions[0].kind).toBe("setup");
+    for (const row of created.workouts) {
+      expect(row.status).toBe("scheduled");
+      expect(row.session_id).toBeNull();
+      expect(row.definition.original).toEqual(row.definition.issued);
+      expect(row.definition.modifications).toEqual([]);
+      expect(row.definition.issued.snapshot.calibration).toBeNull();
+      const items = row.definition.issued.sections.flatMap((section) => section.items);
+      expect(items.length).toBeGreaterThan(0);
+      for (const item of items) {
+        expect(item.stroke).toBe("freestyle");
+        expect(item.equipment).toEqual([]);
+        expect(item.targetMsPerRepeat).toBeUndefined();
+      }
+    }
+    const future = created.workouts.filter((row) => row.scheduled_date > serverToday && row.status === "scheduled" && row.session_id === null);
+    expect(future.length).toBeGreaterThan(1);
+    const owner = createClient(seedConfig.supabaseUrl, seedConfig.anonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const signedIn = await owner.auth.signInWithPassword({ email: freshUser.email, password: freshUser.password });
+    expect(signedIn.error === null).toBe(true);
+    expect(signedIn.data.user?.id).toBe(freshUser.userId);
+    const started = await startSwimWorkout(owner, future[0].id, future[0].revision);
+    expect(started.id).toBe(future[0].id);
+    expect(started.user_id).toBe(freshUser.userId);
+    expect(started.status).toBe("started");
+    expect(started.session_id).toEqual(expect.any(String));
+    expect(started.session_id?.length).toBeGreaterThan(0);
+    const original = await savedState(admin, freshUser.userId);
+    expect(original.workouts.filter((row) => row.status === "started")).toEqual([started]);
+    expect(original.workouts.filter((row) => row.session_id !== null)).toEqual([started]);
+    for (const row of original.workouts) {
+      const prior = created.workouts.find((entry) => entry.id === row.id)!;
+      expect(row.definition).toEqual(prior.definition);
+      if (row.id !== started.id) expect(row).toEqual(prior);
+    }
+    const eligibleIds = original.workouts.filter((row) =>
+      row.scheduled_date > serverToday && row.status === "scheduled" && row.session_id === null,
+    ).map((row) => row.id).sort();
+    expect(eligibleIds.length).toBeGreaterThan(0);
+
+    await page.goto(planURL);
+    const first = await reviewAssessment(page, serverToday, rejectedTimes);
+    expect(await savedState(admin, freshUser.userId)).toEqual(original);
+    await first.getByRole("button", { name: "Reject assessment", exact: true }).click();
+    await expect(first.getByRole("button", { name: "Reject assessment", exact: true })).toHaveCount(0);
+    const rejected = await savedState(admin, freshUser.userId);
+    const rejectedDecision = assertDecision(original, rejected, observation(serverToday, rejectedTimes), "rejected");
+    expect(rejected.plan.state.acceptedCalibration).toBeNull();
+    expect(rejected.workouts).toEqual(original.workouts);
+    await assertHistory(page, serverToday, false);
+    await page.reload();
+    expect(await savedState(admin, freshUser.userId)).toEqual(rejected);
+    await assertHistory(page, serverToday, false);
+
+    const second = await reviewAssessment(page, serverToday, acceptedTimes);
+    expect(await savedState(admin, freshUser.userId)).toEqual(rejected);
+    await second.getByRole("button", { name: "Accept assessment", exact: true }).click();
+    await expect(second.getByRole("button", { name: "Accept assessment", exact: true })).toHaveCount(0);
+    const accepted = await savedState(admin, freshUser.userId);
+    const acceptedObservation = observation(serverToday, acceptedTimes);
+    const acceptedDecision = assertDecision(rejected, accepted, acceptedObservation, "accepted");
+    expect(acceptedDecision.id).not.toBe(rejectedDecision.id);
+    expect(accepted.plan.state.decisions.filter((entry) => entry.kind === "assessment").map((entry) => entry.decision))
+      .toEqual(["rejected", "accepted"]);
+    expect(accepted.plan.state.observations).toEqual([observation(serverToday, rejectedTimes), acceptedObservation]);
+    expect(accepted.plan.state.acceptedCalibration).toMatchObject({
+      msPer100: acceptedPace, unit: "yd", course, stroke: "freestyle", equipment: [],
+      observation: acceptedObservation, version: SWIM_ASSESSMENT_VERSION,
+    });
+    expect(accepted.workouts.map((row) => row.id)).toEqual(original.workouts.map((row) => row.id));
+    const changedIds = accepted.workouts.filter((row) =>
+      JSON.stringify(row) !== JSON.stringify(rejected.workouts.find((prior) => prior.id === row.id)),
+    ).map((row) => row.id).sort();
+    expect(changedIds).toEqual(eligibleIds);
+    for (const row of accepted.workouts) {
+      const prior = rejected.workouts.find((entry) => entry.id === row.id)!;
+      const initial = original.workouts.find((entry) => entry.id === row.id)!;
+      expect(row.definition.original).toEqual(initial.definition.original);
+      if (!eligibleIds.includes(row.id)) {
+        expect(row).toEqual(initial);
+        continue;
+      }
+      const modifications = row.definition.modifications;
+      expect(modifications).toHaveLength(prior.definition.modifications.length + 1);
+      expect(modifications.slice(0, -1)).toEqual(prior.definition.modifications);
+      expect(modifications[modifications.length - 1]).toMatchObject({
+        decisionId: acceptedDecision.id, previous: prior.definition.issued,
+      });
+      expect(modifications[modifications.length - 1].id.length).toBeGreaterThan(0);
+      const issued = row.definition.issued;
+      expect(issued).not.toEqual(prior.definition.issued);
+      expect(issued).toEqual({
+        ...prior.definition.issued,
+        sections: prior.definition.issued.sections.map((section) => ({
+          ...section, items: section.items.map((item) => ({
+            ...item, targetMsPerRepeat: Math.round(acceptedPace * SWIM_EFFORT_PACE_FACTORS[item.effort] * item.lengths * 25 / 100),
+          })),
         })),
-      })),
-      snapshot: {
-        ...prior.definition.issued.snapshot, protocol: "css_200_400",
-        versions: { ...prior.definition.issued.snapshot.versions, assessment: SWIM_ASSESSMENT_VERSION },
-        calibration: {
-          msPer100: acceptedPace, unit: "yd", protocol: "css_200_400", observedOn: serverToday,
-          heuristic: true, version: SWIM_ASSESSMENT_VERSION, observation: acceptedObservation,
+        snapshot: {
+          ...prior.definition.issued.snapshot, protocol: "css_200_400",
+          versions: { ...prior.definition.issued.snapshot.versions, assessment: SWIM_ASSESSMENT_VERSION },
+          calibration: {
+            msPer100: acceptedPace, unit: "yd", protocol: "css_200_400", observedOn: serverToday,
+            heuristic: true, version: SWIM_ASSESSMENT_VERSION, observation: acceptedObservation,
+          },
         },
-      },
-    });
-    expect(row).toEqual({
-      ...prior, revision: prior.revision + 1, updated_at: row.updated_at,
-      definition: { ...prior.definition, issued, modifications },
-    });
-  }
-  await assertHistory(page, serverToday, true);
-  await page.reload();
-  expect(await savedState(admin, freshUser.userId)).toEqual(accepted);
-  await assertHistory(page, serverToday, true);
+      });
+      expect(row).toEqual({
+        ...prior, revision: prior.revision + 1, updated_at: row.updated_at,
+        definition: { ...prior.definition, issued, modifications },
+      });
+    }
+    await assertHistory(page, serverToday, true);
+    await page.reload();
+    expect(await savedState(admin, freshUser.userId)).toEqual(accepted);
+    await assertHistory(page, serverToday, true);
+  });
 });
