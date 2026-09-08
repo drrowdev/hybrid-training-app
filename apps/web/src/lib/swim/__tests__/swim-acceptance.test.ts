@@ -74,6 +74,121 @@ const report = () => ({
 const ledger = () => validateSwimRpcReport(JSON.stringify(report()), sha, configHash);
 
 describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
+  it("gates the unchanged normal reference on one required synthetic probe after the owned install", () => {
+    const root = resolve(__dirname, "../../../../../..");
+    const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+    const job = workflow.split("\n  swim-acceptance:\n")[1]!.split("\n  prod-migrate:")[0]!;
+    expect(job).toContain("if: github.event_name == 'workflow_dispatch' && inputs.swim_acceptance");
+    expect(job).toContain("timeout-minutes: 45");
+    const steps = job.split("      - name: ");
+    const install = steps.findIndex((step) => step.startsWith("Install owned Chromium\n"));
+    expect(install).toBeGreaterThan(0);
+    expect(steps[install]).toBe("Install owned Chromium\n" +
+      "        timeout-minutes: 5\n        env:\n" +
+      "          PLAYWRIGHT_BROWSERS_PATH: ${{ env.HTA_SWIM_BROWSER_CACHE }}\n" +
+      "        run: pnpm --filter @hta/web exec playwright install chromium\n\n");
+    expect(steps[install + 1]).toBe("Prove synthetic announcer exclusion\n" +
+      "        timeout-minutes: 2\n" +
+      "        run: pnpm --filter @hta/web exec tsx scripts/swim-alert-announcer-probe.ts\n\n");
+    expect(steps[install + 2]).toBe("Run guarded reference acceptance\n" +
+      "        run: pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts\n\n");
+    expect(steps[install + 3]).toBe("Verify task cleanup\n" +
+      "        if: always()\n        run: |\n" +
+      '          if [ -n "${SWIM_ACCEPTANCE_DIR:-}" ]; then\n' +
+      "            pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts --cleanup\n" +
+      "          fi\n");
+    expect(job.match(/scripts\/swim-alert-announcer-probe\.ts/g)).toHaveLength(1);
+    expect(job).not.toContain("continue-on-error");
+  });
+  it("statically pins probe setup order, process-local isolation and guarded owned cleanup", () => {
+    const root = resolve(__dirname, "../../../../../..");
+    const probe = readFileSync(join(root, "apps/web/scripts/swim-alert-announcer-probe.ts"), "utf8");
+    const ordered = [
+      '["-C", root, "rev-parse", "HEAD"]',
+      "requireManualContext(process.env, head)",
+      "probeDirectory = mkdtempSync(",
+      "requirePrivateLocation(probeDirectory, temp, root)",
+      'mkdirSync(home, { mode: 0o700 })', 'mkdirSync(tmp, { mode: 0o700 })',
+      "requireSwimBrowserCache(process.env, root, probeDirectory)",
+      "PLAYWRIGHT_BROWSERS_PATH: cache",
+      "for (const key of Object.keys(process.env)) delete process.env[key]",
+      "Object.assign(process.env, env)",
+      "requireSwimBrowserInstallation(cache, web)",
+      'const installed = createRequire(join(web, "package.json"))',
+      'const test = createRequire(installed.resolve("@playwright/test/package.json"))',
+      'const playwright = createRequire(test.resolve("playwright/package.json"))',
+      'playwright("playwright-core")',
+      "const executable = chromium.executablePath()",
+      "executable.startsWith(`${cache}${sep}`) && realpathSync(executable) === executable",
+      "browser = await chromium.launch({ env, timeout: Math.min(10_000, remaining()) })",
+      "await close()",
+      "assert(cleanup)",
+      "const current = lstatSync(probeDirectory)",
+      "realpathSync(probeDirectory), probeDirectory",
+      "current.uid, process.getuid?.()", "current.mode & 0o7777, 0o700",
+      "current.dev, original.dev", "current.ino, original.ino",
+      "rmSync(probeDirectory, { recursive: true })",
+      'if (!cleanup) failure ??= "cleanup"',
+      "publishAcceptanceSummary(summary,",
+    ];
+    let previous = -1;
+    for (const token of ordered) {
+      const at = probe.indexOf(token);
+      expect(at, token).toBeGreaterThan(previous);
+      previous = at;
+    }
+    expect(probe).toContain('HOME: home, TMPDIR: tmp, TMP: tmp, TEMP: tmp');
+    expect(probe.match(/mkdtempSync\(/g)).toHaveLength(1);
+    expect(probe.match(/rmSync\(/g)).toHaveLength(1);
+    expect(probe).not.toMatch(/GITHUB_ENV|console\.|error\.|stdout|stderr|page\.goto|baseURL|channel:|executablePath:|install",|download/i);
+    expect(probe).toContain("Date.now() + 55_000");
+    expect(probe).toContain("}, 60_000)");
+    expect(probe).toContain("failure ??= timedOut ? \"timeout\" : stage");
+    expect(probe).toContain("if (!success) process.exitCode = 1");
+    expect(probe).toContain('protocol: "swim-announcer-synthetic-v1"');
+    expect(probe).toContain("assert.equal(rows.length, 16)");
+    expect(probe).toContain("executedRows: rows.length, rows");
+    expect(probe).toContain("passed: countsMatch && categoryMatches && visibilityMatches");
+    expect(probe.indexOf("rows.push(")).toBeLessThan(probe.indexOf("assert(rows.at(-1)!.passed)"));
+  });
+  it("keeps the probe static import graph free of early Playwright runtime initialization", () => {
+    const root = resolve(__dirname, "../../../../../..");
+    const seen = new Set<string>();
+    const visit = (file: string) => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      const source = readFileSync(file, "utf8");
+      for (const match of source.matchAll(/(?:import|export)\s+(type\s+)?[^;]*?\sfrom\s+["']([^"']+)["']/g)) {
+        if (match[1]) continue;
+        const target = match[2]!;
+        expect(target).not.toMatch(/playwright/);
+        if (target.startsWith(".")) visit(resolve(file, "..", `${target}.ts`));
+        else expect(target.startsWith("node:") || target === "zod").toBe(true);
+      }
+    };
+    visit(join(root, "apps/web/scripts/swim-alert-announcer-probe.ts"));
+    expect(seen.size).toBeGreaterThan(4);
+  });
+  it("uses the actual candidate callback at every alert site while retaining C2 positive visibility", () => {
+    const root = resolve(__dirname, "../../../../../..");
+    for (const file of [
+      "scripts/swim-alert-announcer-probe.ts", "e2e/swimming-lifecycle-load-mobile.spec.ts",
+      "e2e/swimming-persistence-mobile.spec.ts",
+    ]) {
+      const source = readFileSync(join(root, "apps/web", file), "utf8");
+      expect(source).toContain(".evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)");
+      expect(source).not.toContain("getRootNode()");
+      if (file.startsWith("e2e/")) {
+        expect(source).not.toMatch(/getByRole\("alert"\)\.(?:count|filter|and|first)\(/);
+        expect(source).toContain('if (count < 0) return "error" as const');
+        expect(source).toContain("expect(lateAlertCount).toBe(0)");
+      }
+    }
+    const c2 = readFileSync(join(root, "apps/web/e2e/swimming-mobile.spec.ts"), "utf8");
+    expect(c2).toContain('await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toBeVisible();');
+    const afterAlert = c2.slice(c2.indexOf('await expect(page.getByRole("alert")'));
+    expect(afterAlert).toMatch(/toHaveValue\("33\.33"\)/);
+  });
   it("extends the existing tracked-input list to consumed app roots without unrelated e2e or generated files", () => {
     const root = resolve(__dirname, "../../../../../..");
     const source = readFileSync(join(root, "apps/web/scripts/swim-acceptance.ts"), "utf8");
