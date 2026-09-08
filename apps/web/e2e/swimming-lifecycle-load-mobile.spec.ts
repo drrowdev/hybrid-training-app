@@ -12,6 +12,10 @@ import { structuredSwimRegions } from "../src/lib/swim/load";
 import { cardioIntensityScalar, normaliseHrZones } from "../src/lib/engine/cardio-intensity";
 import { CARDIO_LOAD_SCALAR, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "../src/lib/engine/set-load";
 import type { SwimPlanRow, SwimWorkoutRow } from "../src/lib/swim/storage";
+import {
+  SWIM_ALERT_CODEBOOK, alertAnnotation, classifyAlertNodes, pauseBackend,
+  unavailableAlert, validateAlertCategory,
+} from "../scripts/swim-alert-membership";
 
 const test = seededTest.extend({
   // Match the persistence spec: reject unsafe targets before any fixture writes.
@@ -237,7 +241,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
 
   test("A1, DC-SW7: pause, preview, resume, finish and archive preserve primary training and issued swims", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
-  }) => {
+  }, testInfo) => {
     await markOnboarded(admin, freshUser.userId);
     const primary = await primaryBaseline(admin, freshUser.userId);
     await signInAs(context, freshUser, seedConfig, baseURL!);
@@ -303,18 +307,31 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const backendBudget = deadline - performance.now();
     expect(backendBudget).toBeGreaterThan(0);
     let expiry: ReturnType<typeof setTimeout> | undefined;
+    const diagnostic = unavailableAlert("a1-pause");
     try {
       // Bound polling and the late sample without a sleep or a renewed deadline.
       const expired = new Promise<"pending">((resolve) => {
         expiry = setTimeout(() => resolve("pending"), backendBudget);
       });
+      const captureAlert = async () => {
+        if (performance.now() >= deadline) return;
+        const category = await Promise.race([
+          page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)
+            .then(validateAlertCategory, () => "unavailable" as const),
+          expired.then(() => "unavailable" as const),
+        ]);
+        diagnostic.category = performance.now() < deadline ? category : "unavailable";
+      };
       const polling = (async () => {
         while (performance.now() < deadline) {
           if (await page.getByRole("alert").count() > 0) return "alert" as const;
           if (performance.now() >= deadline) return "pending" as const;
           const saved = await savedPlan(admin, freshUser.userId, planId);
           if (performance.now() >= deadline) return "pending" as const;
-          if (saved.plan.status === "paused") return "backend" as const;
+          if (saved.plan.status === "paused") {
+            Object.assign(diagnostic, pauseBackend(saved.plan.status, saved.plan.revision, started.plan.revision));
+            return "backend" as const;
+          }
         }
         return "pending" as const;
       })().then(
@@ -322,6 +339,26 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
         () => "error" as const,
       );
       const backendOutcome = await Promise.race([polling, expired]);
+      if (backendOutcome === "alert" && performance.now() < deadline) {
+        const controller = new AbortController();
+        void expired.then(() => controller.abort());
+        try {
+          // Diagnostic read only: keep the owned goal even when alert won the poll.
+          await Promise.race([
+            Promise.all([
+              captureAlert(),
+              (async () => {
+                const sample = await admin.from("swim_plans").select("status,revision")
+                  .eq("user_id", freshUser.userId).eq("id", planId).abortSignal(controller.signal).single();
+                if (performance.now() < deadline && !sample.error && sample.data) {
+                  Object.assign(diagnostic, pauseBackend(sample.data.status, sample.data.revision, started.plan.revision));
+                }
+              })().catch(() => undefined),
+            ]),
+            expired,
+          ]);
+        } finally { controller.abort(); }
+      }
       expect(backendOutcome).not.toBe("error");
       expect(backendOutcome).not.toBe("alert");
       expect(backendOutcome).toBe("backend");
@@ -334,9 +371,15 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
         page.getByRole("alert").count().then((count) => count, () => "error" as const),
         expired,
       ]);
+      if (typeof lateAlertCount === "number" && performance.now() < deadline) {
+        if (lateAlertCount > 0) await captureAlert();
+        else diagnostic.category = "absent";
+      }
       expect(lateAlertCount).toBe(0);
     } finally {
       clearTimeout(expiry);
+      const annotation = alertAnnotation(diagnostic);
+      if (annotation) testInfo.annotations.push(annotation);
     }
     const paused = await savedPlan(admin, freshUser.userId, planId);
     lifecycleTransition(started.plan, paused.plan, "paused");
@@ -402,7 +445,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
 
   test("A2, DC-SW9: native UI completion, edit, trash and recovery replace regional load exactly once", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
-  }) => {
+  }, testInfo) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
     const timezone = await userTimezone(admin, userId);
@@ -417,7 +460,24 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       const saved = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id);
       return saved?.status === "started" && typeof saved.session_id === "string" && saved.session_id.length > 0;
     }).toBe(true);
-    await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+    const diagnostic = { ...unavailableAlert("a2-post-start"), backend: "reached" as const };
+    let observing = true;
+    // One concurrent sample, not a new wait window or continuous late-alert coverage.
+    void page.getByRole("alert").count().then(async (count) => {
+      if (!observing) return;
+      if (count === 0) { diagnostic.category = "absent"; return; }
+      const category = validateAlertCategory(
+        await page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK),
+      );
+      if (observing) diagnostic.category = category;
+    }).catch(() => { if (observing) diagnostic.category = "unavailable"; });
+    try {
+      await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+    } finally {
+      observing = false;
+      const annotation = alertAnnotation(diagnostic);
+      if (annotation) testInfo.annotations.push(annotation);
+    }
     const started = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)!;
     expect(started.status).toBe("started");
     const sessionId = started.session_id;
