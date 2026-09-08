@@ -2,11 +2,15 @@ import { randomUUID } from "node:crypto";
 import type { Page } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Prescription } from "@hta/db";
+import { ALL_REGIONS, finalEwma, type Region, type SwimActualResult } from "@hta/domain";
 import { test as seededTest, expect } from "./fixtures/seed";
 import { signInAs } from "./fixtures/auth";
 import { markOnboarded, seedRecentBlock, seedPlannedSessionsForBlock } from "./fixtures/seed-blocks";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
-import { addDaysToYmd } from "../src/lib/dates";
+import { addDaysToYmd, todayYmd, ymdInTimezone } from "../src/lib/dates";
+import { structuredSwimRegions } from "../src/lib/swim/load";
+import { cardioIntensityScalar, normaliseHrZones } from "../src/lib/engine/cardio-intensity";
+import { CARDIO_LOAD_SCALAR, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "../src/lib/engine/set-load";
 import type { SwimPlanRow, SwimWorkoutRow } from "../src/lib/swim/storage";
 
 const test = seededTest.extend({
@@ -84,7 +88,10 @@ async function savedPlan(admin: SupabaseClient, userId: string, planId: string) 
 }
 
 async function primaryBaseline(admin: SupabaseClient, userId: string) {
-  const blockId = await seedRecentBlock(admin, userId, { status: "active", weeks: 2 });
+  const timezone = await userTimezone(admin, userId);
+  const blockId = await seedRecentBlock(admin, userId, {
+    status: "active", weeks: 2, startedOn: addDaysToYmd(todayYmd(timezone), -7),
+  });
   const plannedIds = await seedPlannedSessionsForBlock(admin, userId, blockId, {
     totalSessions: 2, loggedCount: 1,
   });
@@ -139,6 +146,90 @@ function lifecycleTransition(before: SwimPlanRow, after: SwimPlanRow, status: Sw
   expect(Number.isFinite(Date.parse(after.state.lifecycle!.at(-1)!.recordedAt))).toBe(true);
 }
 
+async function userTimezone(admin: SupabaseClient, userId: string) {
+  const profile = await admin.from("profiles").select("timezone").eq("id", userId).single();
+  expect(profile.error).toBeNull();
+  if (typeof profile.data?.timezone !== "string") throw new Error("Missing synthetic user's timezone.");
+  return profile.data.timezone;
+}
+
+type NativeSession = {
+  id: string; user_id: string; performed_at: string; completed_at: string | null;
+  deleted_at: string | null; completion_outbox_entry_id: string | null;
+  duration_min: number | null; session_rpe: number | string | null;
+};
+type NativeLog = {
+  id: string; session_id: string; client_log_id: string | null; modality: string;
+  duration_sec: number; distance_km: number | string; rpe: number | string | null;
+  hr_zones: unknown; swim_result: SwimActualResult;
+};
+type RegionRow = {
+  user_id: string; region: Region; atl: number | string; ctl: number | string;
+  baseline_tolerance: number | string; last_load_date: string | null; updated_at: string;
+};
+
+async function nativeRows(admin: SupabaseClient, userId: string, sessionId: string) {
+  const [session, logs] = await Promise.all([
+    admin.from("sessions")
+      .select("id,user_id,performed_at,completed_at,deleted_at,completion_outbox_entry_id,duration_min,session_rpe")
+      .eq("user_id", userId).eq("id", sessionId).single<NativeSession>(),
+    admin.from("cardio_logs")
+      .select("id,session_id,client_log_id,modality,duration_sec,distance_km,rpe,hr_zones,swim_result")
+      .eq("session_id", sessionId).returns<NativeLog[]>(),
+  ]);
+  expect(session.error).toBeNull();
+  expect(logs.error).toBeNull();
+  if (!session.data || !logs.data) throw new Error("Missing native session rows.");
+  expect(session.data.id).toBe(sessionId);
+  expect(session.data.user_id).toBe(userId);
+  return { session: session.data, logs: logs.data };
+}
+
+async function regionRows(admin: SupabaseClient, userId: string) {
+  const result = await admin.from("region_state")
+    .select("user_id,region,atl,ctl,baseline_tolerance,last_load_date,updated_at")
+    .eq("user_id", userId).order("region").returns<RegionRow[]>();
+  expect(result.error).toBeNull();
+  if (!result.data) throw new Error("Missing region query result.");
+  return result.data;
+}
+
+function assertLedger(
+  rows: RegionRow[], userId: string, timezone: string, session: NativeSession,
+  log: NativeLog, previous: RegionRow[] = [],
+) {
+  expect(rows.map((row) => row.region).sort()).toEqual([...ALL_REGIONS].sort());
+  const exposure = structuredSwimRegions(log.swim_result);
+  if (!exposure) throw new Error("Expected native swimming exposure.");
+  const day = ymdInTimezone(new Date(session.performed_at), timezone);
+  const load = log.duration_sec / 60 * cardioIntensityScalar({
+    hrZones: normaliseHrZones(log.hr_zones), durationSec: log.duration_sec,
+    rpe: log.rpe === null ? null : Number(log.rpe),
+  }) * CARDIO_LOAD_SCALAR;
+  expect(load).toBeGreaterThan(0);
+  for (const row of rows) {
+    expect(row.user_id).toBe(userId);
+    const updated = Date.parse(row.updated_at);
+    expect(Number.isFinite(updated)).toBe(true);
+    expect(updated).toBeGreaterThanOrEqual(Date.parse(session.performed_at));
+    const old = previous.find((value) => value.region === row.region);
+    if (old) expect(updated).toBeGreaterThan(Date.parse(old.updated_at));
+    // Attribute the actual session instant, not its planned swim date. Compare
+    // the once-only lower-level EWMA to the persisted numeric(10,4) values.
+    const asOf = ymdInTimezone(new Date(row.updated_at), timezone);
+    expect(asOf >= day).toBe(true);
+    const weight = (exposure.primaryRegions.includes(row.region) ? PRIMARY_REGION_WEIGHT : 0) +
+      (exposure.secondaryRegions.includes(row.region) ? SECONDARY_REGION_WEIGHT : 0);
+    const series = new Map<string, number>(weight > 0 ? [[day, load * weight]] : []);
+    const atl = Number(finalEwma(series, day, asOf, 7).toFixed(4));
+    const ctl = Number(finalEwma(series, day, asOf, 28).toFixed(4));
+    expect(Number(row.atl)).toBe(atl);
+    expect(Number(row.ctl)).toBe(ctl);
+    expect(Number(row.baseline_tolerance)).toBe(ctl);
+    expect(row.last_load_date).toBe(weight > 0 ? day : null);
+  }
+}
+
 test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
   test.use({ viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true });
   test.skip(!swimE2EEnabled(process.env), "Blocked: swimming E2E was not explicitly requested.");
@@ -152,7 +243,13 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const { url, planId } = await createPlan(page);
     const created = await savedPlan(admin, freshUser.userId, planId);
     expect(created.plan.status).toBe("active");
+    expect(created.plan.revision).toBeGreaterThan(0);
     expect(created.plan.state.lifecycle ?? []).toEqual([]);
+    for (const row of created.workouts) {
+      expect(row.status).toBe("scheduled");
+      expect(row.session_id).toBeNull();
+      expect(row.definition.issued.totalLengths).toBeGreaterThan(0);
+    }
     expect(await primary.snapshot()).toEqual(primary.initial);
     const first = created.workouts[0];
     await page.getByRole("link").and(page.locator(`[href="/app/swim/${first.id}"]`)).click();
@@ -165,6 +262,9 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(protectedSwim.revision).toBe(first.revision + 1);
     expect(protectedSwim.definition).toEqual(first.definition);
     expect(protectedSwim.scheduled_date).toBe(first.scheduled_date);
+    expect(started.plan.revision).toBe(created.plan.revision + 1);
+    expect(started.plan.state).toEqual(created.plan.state);
+    expect(await primary.snapshot()).toEqual(primary.initial);
     await page.goto(url);
     await page.getByRole("button", { name: "Pause", exact: true }).click();
     await expect(page.getByText("Paused", { exact: true })).toBeVisible();
@@ -205,7 +305,10 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       });
     }
     expect(resumed.plan.state.decisions).toHaveLength(paused.plan.state.decisions.length + 1);
+    expect(resumed.plan.state.decisions.slice(0, -1)).toEqual(paused.plan.state.decisions);
     expect(resumed.plan.state.decisions.at(-1)).toMatchObject({ kind: "schedule", decision: "accepted" });
+    expect(resumed.plan.state.pauseSnapshot).toEqual(paused.plan.state.pauseSnapshot);
+    expect(resumed.plan.ends_on).toBe([...dates, paused.plan.ends_on].sort().at(-1));
     expect(await primary.snapshot()).toEqual(primary.initial);
     let previous = resumed;
     for (const [control, status, label] of [
@@ -225,5 +328,139 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await expect(page.getByText("Archived", { exact: true })).toBeVisible();
     expect(await savedPlan(admin, freshUser.userId, planId)).toEqual(previous);
     expect(await primary.snapshot()).toEqual(primary.initial);
+  });
+
+  test("A2, DC-SW9: native UI completion, edit, trash and recovery replace regional load exactly once", async ({
+    page, context, freshUser, seedConfig, admin, baseURL,
+  }) => {
+    const userId = freshUser.userId;
+    await markOnboarded(admin, userId);
+    const timezone = await userTimezone(admin, userId);
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    expect(await regionRows(admin, userId)).toEqual([]);
+    const { planId } = await createPlan(page);
+    const scheduled = await savedPlan(admin, userId, planId);
+    const workout = scheduled.workouts[0];
+    await page.getByRole("link").and(page.locator(`[href="/app/swim/${workout.id}"]`)).click();
+    await page.getByRole("button", { name: "Start swim", exact: true }).click();
+    await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+    const started = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)!;
+    expect(started.status).toBe("started");
+    const sessionId = started.session_id;
+    if (!sessionId) throw new Error("Missing started native session ID.");
+    const before = await nativeRows(admin, userId, sessionId);
+    expect(before.session.completed_at).toBeNull();
+    expect(before.session.deleted_at).toBeNull();
+    expect(before.logs).toHaveLength(0);
+    expect(await regionRows(admin, userId)).toEqual([]);
+
+    await page.getByRole("link", { name: "Log swim", exact: true }).click();
+    await page.getByLabel("Whole lengths", { exact: true }).fill("16");
+    await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
+    await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
+    await page.getByText("Notes, changes and splits", { exact: true }).click();
+    await page.getByRole("combobox", { name: "Stroke", exact: true }).selectOption("breaststroke");
+    await page.getByRole("button", { name: "Finish swim", exact: true }).click();
+    const result = page.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
+    await expect(result).toContainText("16 lengths · 15:00 · RPE 6");
+    const completed = await nativeRows(admin, userId, sessionId);
+    expect(completed.logs).toHaveLength(1);
+    const originalLog = completed.logs[0];
+    expect(originalLog.id).toEqual(expect.any(String));
+    expect(originalLog.session_id).toBe(sessionId);
+    expect(originalLog.modality).toBe("swimming");
+    expect(originalLog.client_log_id).toEqual(expect.any(String));
+    expect(completed.session.completion_outbox_entry_id).toBe(originalLog.client_log_id);
+    expect(completed.session.completed_at).toEqual(expect.any(String));
+    expect(completed.session.performed_at).toBe(before.session.performed_at);
+    expect(completed.session.deleted_at).toBeNull();
+    expect(completed.session.duration_min).toBe(15);
+    expect(Number(completed.session.session_rpe)).toBe(6);
+    expect(originalLog.duration_sec).toBe(900);
+    expect(Number(originalLog.rpe)).toBe(6);
+    // The generic projection is numeric(7,3); native lengths/course stay exact.
+    expect(Number(originalLog.distance_km)).toBe(0.366);
+    expect(originalLog.swim_result).toMatchObject({
+      version: 1, lengths: 16, timeMs: 900000, rpe: 6,
+      snapshot: { course: workout.definition.issued.snapshot.course, strokes: ["breaststroke"], equipment: [] },
+    });
+    const completedWorkout = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)!;
+    expect(completedWorkout).toMatchObject({
+      status: "completed", session_id: sessionId, revision: started.revision + 1,
+      scheduled_date: workout.scheduled_date, definition: started.definition,
+    });
+    const completedRegions = await regionRows(admin, userId);
+    assertLedger(completedRegions, userId, timezone, completed.session, originalLog);
+    expect(Number(completedRegions.find((row) => row.region === "adductor_groin")!.atl)).toBeGreaterThan(0);
+
+    await result.getByRole("button", { name: "Edit result", exact: true }).click();
+    await page.getByLabel("Whole lengths", { exact: true }).fill("12");
+    await page.getByLabel("Time · min:sec", { exact: true }).fill("10:00");
+    await page.getByRole("radio", { name: "8 tough", exact: true }).click();
+    await page.getByText("Notes, changes and splits", { exact: true }).click();
+    await page.getByRole("combobox", { name: "Stroke", exact: true }).selectOption("freestyle");
+    await page.getByRole("checkbox", { name: "Pull buoy", exact: true }).check();
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    await expect(result).toContainText("12 lengths · 10:00 · RPE 8");
+    const edited = await nativeRows(admin, userId, sessionId);
+    expect(edited.logs).toHaveLength(1);
+    const editedLog = edited.logs[0];
+    expect(editedLog).toMatchObject({
+      id: originalLog.id, session_id: sessionId, client_log_id: originalLog.client_log_id,
+      modality: "swimming", duration_sec: 600,
+    });
+    expect(Number(editedLog.rpe)).toBe(8);
+    expect(Number(editedLog.distance_km)).toBe(0.274);
+    expect(editedLog.swim_result).toMatchObject({
+      version: 1, lengths: 12, timeMs: 600000, rpe: 8,
+      snapshot: { course: originalLog.swim_result.snapshot.course, strokes: ["freestyle"], equipment: ["pull_buoy"] },
+      provenance: originalLog.swim_result.provenance,
+    });
+    expect(edited.session).toEqual({
+      ...completed.session, duration_min: 10, session_rpe: edited.session.session_rpe,
+    });
+    expect(Number(edited.session.session_rpe)).toBe(8);
+    const editedWorkout = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)!;
+    expect(editedWorkout).toMatchObject({
+      status: "completed", session_id: sessionId, revision: completedWorkout.revision + 1,
+      scheduled_date: workout.scheduled_date,
+    });
+    expect(editedWorkout.definition.issued).toEqual(workout.definition.issued);
+    expect(editedWorkout.definition.resultHistory).toHaveLength(1);
+    expect(editedWorkout.definition.resultHistory![0]).toMatchObject({
+      result: originalLog.swim_result, revision: completedWorkout.revision,
+    });
+    const editedRegions = await regionRows(admin, userId);
+    assertLedger(editedRegions, userId, timezone, edited.session, editedLog, completedRegions);
+    expect(Number(editedRegions.find((row) => row.region === "adductor_groin")!.atl)).toBe(0);
+
+    await page.getByRole("button", { name: "Delete swim", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/swim$/);
+    const trashed = await nativeRows(admin, userId, sessionId);
+    expect(trashed.session).toEqual({ ...edited.session, deleted_at: expect.any(String) });
+    expect(Number.isFinite(Date.parse(trashed.session.deleted_at!))).toBe(true);
+    expect(trashed.logs).toEqual(edited.logs);
+    expect((await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)).toEqual(editedWorkout);
+    // No other completed sessions exist for this fresh user: deletion removes
+    // the seven rows altogether, rather than storing seven zero-valued rows.
+    expect(await regionRows(admin, userId)).toEqual([]);
+
+    await page.goto(`/app/swim/${workout.id}`);
+    await page.getByRole("link", { name: "Restore from Trash", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/settings\/trash$/);
+    const trashItem = page.getByTestId("trash-item").and(page.locator(`[data-id="${sessionId}"]`));
+    await expect(trashItem).toHaveAttribute("data-kind", "session");
+    await trashItem.getByRole("button", { name: "Recover", exact: true }).click();
+    await expect(trashItem).toHaveCount(0);
+    const restored = await nativeRows(admin, userId, sessionId);
+    expect(restored).toEqual(edited);
+    expect((await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)).toEqual(editedWorkout);
+    const restoredRegions = await regionRows(admin, userId);
+    assertLedger(restoredRegions, userId, timezone, restored.session, restored.logs[0], editedRegions);
+    await page.goto(`/app/sessions/${sessionId}`);
+    await expect(page).toHaveURL(new RegExp(`/app/swim/${workout.id}$`));
+    await expect(result).toContainText("12 lengths · 10:00 · RPE 8");
+    expect(await nativeRows(admin, userId, sessionId)).toEqual(edited);
+    expect(await regionRows(admin, userId)).toEqual(restoredRegions);
   });
 });
