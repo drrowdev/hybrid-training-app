@@ -436,8 +436,31 @@ All standalone DC-SW1–SW9 gates still precede combined implementation.
 
 ### Shared completion integration — current 148 status
 
-**2026-09-07 current status:** the coordinator confirms the database milestone
-passed. PR803 wires the first four-case mobile browser execution, preserving R1's
+**2026-09-08 current status:** the original four browser cases and normal
+148 migrations / 15 service contexts / 36 HTTP cases passed in
+[run 34176424048](https://github.com/drrowdev/hybrid-training-app/actions/runs/34176424048)
+at `4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. Opus 5 turn 19 accepted integration;
+turn 20 accepted both A source cases.
+
+PR805 checkpoint `c8072969` wires exactly six cases: the original four unchanged,
+plus A1 lifecycle ([DC-SW7](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05))
+and A2 regional load (DC-SW9). The closed catalog supplies exact file, per-file
+identity/count and total gates; no wildcard selection. All six must pass once,
+retry 0, errors 0. A1 statuses are scoped to the current-plan summary; A2 remains
+unchanged. Safe ledgers project bounded measured final-attempt `durationMs` with
+`attempts`, not retry totals or a promise of test duration. The 30-second case
+and all other execution limits remain unchanged.
+
+686 targeted static tests, web typecheck and scoped lint passed; real `--list`
+collected six cases across three files with no executed results. **Six-case live
+acceptance remains pending.** The coordinator owns final exact-head Opus review,
+core CI, fresh guards and one live reference on this branch. B/C remain
+unselected. No live browser/app-server/database/container run or workflow
+dispatch occurred here; all nine standalone gates and production acceptance
+are not established.
+
+**Earlier PR803 wiring checkpoint:** the coordinator confirmed the database
+milestone passed. PR803 wired the first four-case mobile execution, preserving R1's
 safe failed-case ledger and single-use report ticket. The stage seals only after
 the writer command settles, keeps process failures primary, validates the pinned
 installation before app work, and scopes the cache override to Playwright.

@@ -1896,3 +1896,28 @@ executed results. Next 16.2.6 own-stop exit 143 is separately pinned and tested.
 Report absence is distinguished only after ticket/root validation; symlinks and
 other file errors remain rejected. 256 scoped tests, web typecheck and scoped
 lint pass. No live reference, server, browser, database or workflow dispatch ran.
+
+## [2026-09-08] refine | PR805 first expanded swimming cohort wired; live pending
+
+The first-four milestone passed in
+[run 34176424048](https://github.com/drrowdev/hybrid-training-app/actions/runs/34176424048)
+at `4f2aa4af480f61df83bbc38b09f29afbbbf5729b`, including normal 148 migrations,
+15 service contexts and 36 HTTP cases. Opus 5 turn 19 accepted integration and
+turn 20 accepted both A source cases.
+
+Checkpoint `c8072969` wires exactly the unchanged original four plus A1
+([DC-SW7](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05))
+and A2 (DC-SW9). Strict catalog-derived collection and execution gates require
+six cases across three files, with no missing, skipped, retried or flaky cases.
+A1 status assertions use the current-plan summary; A2 is unchanged. Safe success
+and failure ledgers include bounded measured final-attempt `durationMs` and
+attempt count, not a duration guarantee. Existing execution limits are unchanged.
+
+686 targeted helper/collection/runner tests, web typecheck and scoped lint passed.
+The real pinned `--list` collected six identities without execution. Secret
+scanning passed; CodeQL analysis was skipped because its database was too large.
+No live browser/app-server/database/container run or workflow dispatch occurred.
+Six-case live acceptance remains pending coordinator-owned final exact-head
+Opus review, core CI, fresh guards and one reference on this branch. B/C remain
+unselected; this does not complete all nine gates or establish production
+acceptance. [Current status](./pool-swimming.md#shared-completion-integration--current-148-status).
