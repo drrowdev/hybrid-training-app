@@ -90,10 +90,49 @@ export type AlertCategory = (typeof SWIM_ALERT_CODEBOOK)[number]["category"] |
   "absent" | "multiple" | "detached" | "unreadable" | "unclassified" | "unavailable";
 export type AlertBackend = "reached" | "not-reached" | "unavailable";
 export type AlertRevision = "unchanged" | "advanced" | "other" | "unavailable";
+export type AlertControl = "start" | "log" | "plan-inactive" | "removed" |
+  "unavailable-page" | "not-found" | "none" | "unavailable";
+export type AlertResult = "editing" | "summary" | "none" | "unavailable";
 export type AlertPoint = "a1-pause" | "a2-post-start" | "a2-edit" | "c4-owner-1-start" | "c4-owner-2-start";
 export type AlertObservation = {
   point: AlertPoint; category: AlertCategory; backend: AlertBackend; revision: AlertRevision;
+  control: AlertControl; result: AlertResult;
 };
+
+// Only known, visible WorkoutClient/WorkoutPage branches (plus Next's notFound heading).
+// These are sample-time matches, not hydration, action-outcome or latency evidence.
+export function classifyWorkoutViewNodes(
+  nodes: Pick<Element, "isConnected" | "localName" | "textContent" | "getAttribute">[],
+): Pick<AlertObservation, "control" | "result"> {
+  const unavailable = { control: "unavailable", result: "unavailable" } as const;
+  try {
+    const controls: AlertControl[] = [];
+    const results: AlertResult[] = [];
+    for (const node of nodes) {
+      if (!node.isConnected) return unavailable;
+      const text = node.textContent;
+      const tag = node.localName;
+      if (tag === "button" && (text === "Start swim" || text === "Starting…")) controls.push("start");
+      else if (tag === "a" && text === "Log swim") controls.push("log");
+      else if (tag === "a" && text === "Restore from Trash") controls.push("removed");
+      else if (node.getAttribute("role") === "status" &&
+        (text === "Plan paused" || text === "Plan finished" || text === "Plan archived")) controls.push("plan-inactive");
+      else if (node.getAttribute("role") === "status" && text === "Result removed") controls.push("removed");
+      else if (node.getAttribute("role") === "status" && text === "Swimming is currently unavailable.") controls.push("unavailable-page");
+      else if (tag === "h1" && text === "404") controls.push("not-found");
+      else if (tag === "h2" && text === "Edit your swim") results.push("editing");
+      else if (tag === "h2" && text === "Your swim") results.push("summary");
+      else return unavailable;
+      if (!node.isConnected) return unavailable;
+    }
+    if (controls.length > 1 || results.length > 1) return unavailable;
+    const control = controls[0] ?? "none";
+    const result = results[0] ?? "none";
+    if (result !== "none" && ["start", "plan-inactive", "unavailable-page", "not-found"].includes(control) ||
+      result === "editing" && control === "removed" || result === "summary" && control === "log") return unavailable;
+    return { control, result };
+  } catch { return unavailable; }
+}
 
 // Passed directly to locator.evaluateAll: no module/global closure, no raw text return.
 export function classifyAlertNodes(
@@ -133,13 +172,18 @@ export function validateAlertCategory(value: unknown): AlertCategory {
   ) ? value as AlertCategory : "unavailable";
 }
 
-export const ALERT_ANNOTATION_TYPE = "hta-swim-alert-membership-v1";
+export const ALERT_ANNOTATION_TYPE = "hta-swim-alert-membership-v2";
 const POINTS: readonly AlertPoint[] = ["a1-pause", "a2-post-start", "a2-edit", "c4-owner-1-start", "c4-owner-2-start"];
 const BACKENDS: readonly AlertBackend[] = ["reached", "not-reached", "unavailable"];
 const REVISIONS: readonly AlertRevision[] = ["unchanged", "advanced", "other", "unavailable"];
+const CONTROLS: readonly AlertControl[] = [
+  "start", "log", "plan-inactive", "removed", "unavailable-page", "not-found", "none", "unavailable",
+];
+const RESULTS: readonly AlertResult[] = ["editing", "summary", "none", "unavailable"];
 
 export function unavailableAlert(point: AlertPoint): AlertObservation {
-  return { point, category: "unavailable", backend: "unavailable", revision: "unavailable" };
+  return { point, category: "unavailable", backend: "unavailable", revision: "unavailable",
+    control: "unavailable", result: "unavailable" };
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -147,11 +191,13 @@ function record(value: unknown): value is Record<string, unknown> {
 }
 
 function validObservation(value: unknown): value is AlertObservation {
-  if (!record(value) || Object.keys(value).sort().join(",") !== "backend,category,point,revision") return false;
+  if (!record(value) || Object.keys(value).sort().join(",") !== "backend,category,control,point,result,revision") return false;
   return POINTS.some((point) => point === value.point) &&
     validateAlertCategory(value.category) === value.category &&
     BACKENDS.some((backend) => backend === value.backend) &&
     REVISIONS.some((revision) => revision === value.revision) &&
+    CONTROLS.some((control) => control === value.control) &&
+    RESULTS.some((result) => result === value.result) &&
     (value.point === "a1-pause" || value.revision === "unavailable");
 }
 
@@ -159,7 +205,7 @@ export function alertAnnotation(value: unknown) {
   if (!validObservation(value)) return undefined;
   return {
     type: ALERT_ANNOTATION_TYPE,
-    description: `point=${value.point};category=${value.category};backend=${value.backend};revision=${value.revision}`,
+    description: `point=${value.point};category=${value.category};backend=${value.backend};revision=${value.revision};control=${value.control};result=${value.result}`,
   };
 }
 
@@ -172,8 +218,8 @@ export function readAlertAnnotations(value: unknown): AlertObservation[] | undef
     if (Object.keys(annotation).sort().join(",") !== "description,type" ||
       typeof annotation.description !== "string" || annotation.description.length > 160) return undefined;
     const parts = annotation.description.split(";");
-    if (parts.length !== 4) return undefined;
-    const keys = ["point", "category", "backend", "revision"];
+    if (parts.length !== 6) return undefined;
+    const keys = ["point", "category", "backend", "revision", "control", "result"];
     const parsed: Record<string, unknown> = {};
     for (const [index, part] of parts.entries()) {
       const pair = part.split("=");
