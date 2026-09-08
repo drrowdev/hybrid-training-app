@@ -559,4 +559,64 @@ test.describe("ADR0079 mobile swimming account acceptance", () => {
       await survivorContext.close();
     }
   });
+
+  test("C3 DC-SW8: Auth admin deletes native and custom-linked synthetic accounts without the app action", async ({
+    accounts: [control, linked], admin,
+  }) => {
+    const native = await arrangeNative(control, "yd");
+    const referenced = await arrangeNative(linked, "yd");
+    const custom = await arrangeReferencedCustomMovement(linked);
+    expect(custom.sessionId).not.toBe(referenced.sessionId);
+    expect(isDeepStrictEqual(await nativeRows(admin, native), native.rows)).toBe(true);
+    expect(isDeepStrictEqual(await nativeRows(admin, referenced), referenced.rows)).toBe(true);
+    const profiles = await Promise.all([control, linked].map((account) =>
+      admin.from("profiles").select("*").eq("id", account.userId).single()));
+    for (const [index, profile] of profiles.entries()) {
+      expect(profile.error === null).toBe(true);
+      expect(profile.data?.id === [control.userId, linked.userId][index]).toBe(true);
+    }
+    const readCustom = async () => {
+      const results = await Promise.all([
+        admin.from("movements").select("*").eq("user_id", linked.userId).eq("id", custom.movementId).single(),
+        admin.from("sessions").select("*").eq("user_id", linked.userId).eq("id", custom.sessionId).single(),
+        admin.from("set_logs").select("*").eq("id", custom.setId)
+          .eq("session_id", custom.sessionId).eq("movement_id", custom.movementId).single(),
+        admin.from("session_movements").select("*").eq("user_id", linked.userId)
+          .eq("session_id", custom.sessionId).eq("movement_id", custom.movementId).single(),
+      ]);
+      for (const result of results) {
+        expect(result.error === null).toBe(true);
+        expect(result.data !== null).toBe(true);
+      }
+      return results.map((result) => result.data);
+    };
+    const customBefore = await readCustom();
+
+    const controlDeletion = await admin.auth.admin.deleteUser(control.userId);
+    expect(controlDeletion.error?.status !== undefined && controlDeletion.error.status >= 500 && controlDeletion.error.status < 600).toBe(false);
+    expect(controlDeletion.error === null).toBe(true);
+    const controlAfter = await admin.auth.admin.getUserById(control.userId);
+    expect(controlAfter.data.user === null).toBe(true);
+    expect(controlAfter.error?.status).toBe(404);
+    await assertNativeGone(admin, native);
+
+    const linkedUser = await admin.auth.admin.getUserById(linked.userId);
+    expect(linkedUser.error === null).toBe(true);
+    expect(linkedUser.data.user?.id === linked.userId).toBe(true);
+    expect(linkedUser.data.user?.email === linked.email).toBe(true);
+    expect(isDeepStrictEqual(await nativeRows(admin, referenced), referenced.rows)).toBe(true);
+    const linkedProfile = await admin.from("profiles").select("*").eq("id", linked.userId).single();
+    expect(linkedProfile.error === null).toBe(true);
+    expect(isDeepStrictEqual(linkedProfile.data, profiles[1].data)).toBe(true);
+    expect(isDeepStrictEqual(await readCustom(), customBefore)).toBe(true);
+
+    const linkedDeletion = await admin.auth.admin.deleteUser(linked.userId);
+    expect(linkedDeletion.error?.status !== undefined && linkedDeletion.error.status >= 500 && linkedDeletion.error.status < 600).toBe(false);
+    expect(linkedDeletion.error === null).toBe(true);
+    const linkedAfter = await admin.auth.admin.getUserById(linked.userId);
+    expect(linkedAfter.data.user === null).toBe(true);
+    expect(linkedAfter.error?.status).toBe(404);
+    await assertNativeGone(admin, referenced);
+    await assertCustomGone(admin, linked.userId, custom);
+  });
 });

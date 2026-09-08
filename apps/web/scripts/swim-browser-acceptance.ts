@@ -65,6 +65,11 @@ export const SWIM_BROWSER_CASES = Object.freeze([
     describe: "ADR0079 mobile swimming assessment decisions and native history",
     title: "DC-SW2/DC-SW5/DC-SW6/DC-SW8: rejected native trials persist before acceptance updates only future unstarted swims",
   }),
+  Object.freeze({
+    file: "e2e/swimming-account-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming account acceptance",
+    title: "C3 DC-SW8: Auth admin deletes native and custom-linked synthetic accounts without the app action",
+  }),
 ]);
 const EXPECTED_FILES = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
 
