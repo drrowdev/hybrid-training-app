@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runInNewContext } from "node:vm";
 import {
-  ALERT_ANNOTATION_TYPE, SWIM_ALERT_CODEBOOK, alertAnnotation, classifyAlertNodes,
+  ALERT_ANNOTATION_TYPE, SWIM_ALERT_CODEBOOK, alertAnnotation, classifyAlertNodes, classifyWorkoutViewNodes,
   pauseBackend, projectAlertObservations, readAlertAnnotations, startBackend,
   unavailableAlert, validateAlertCategory,
 } from "../../../../scripts/swim-alert-membership";
@@ -111,7 +111,7 @@ describe("reserved alert annotation protocol", () => {
   it("round-trips only the ordered, bounded closed grammar and deduplicates identical observations", () => {
     expect(annotation).toEqual({
       type: ALERT_ANNOTATION_TYPE,
-      description: "point=a1-pause;category=client-save;backend=unavailable;revision=unavailable",
+      description: "point=a1-pause;category=client-save;backend=unavailable;revision=unavailable;control=unavailable;result=unavailable",
     });
     expect(readAlertAnnotations([annotation, annotation])).toEqual([observation]);
     expect(projectAlertObservations(4, readAlertAnnotations([annotation, annotation]))).toEqual([observation]);
@@ -187,11 +187,53 @@ describe("reserved alert annotation protocol", () => {
     }
   });
   it("never reads unrelated descriptions, including skip, or accepts a different reserved version", () => {
-    for (const type of ["skip", "private", `${ALERT_ANNOTATION_TYPE}-extra`, "hta-swim-alert-membership-v2"]) {
+    for (const type of ["skip", "private", `${ALERT_ANNOTATION_TYPE}-extra`, "hta-swim-alert-membership-v1"]) {
       expect(readAlertAnnotations([{
         type, get description() { throw new Error("must not read private text"); },
       }, annotation])).toEqual([observation]);
     }
+  });
+  it("round-trips every v2 view enum separately from the frozen category vocabulary within the existing caps", () => {
+    expect(ALERT_ANNOTATION_TYPE).toBe("hta-swim-alert-membership-v2");
+    for (const control of ["start", "log", "plan-inactive", "removed", "unavailable-page", "not-found", "none", "unavailable"]) {
+      for (const result of ["editing", "summary", "none", "unavailable"]) {
+        const value = { ...unavailableAlert("a2-post-start"), control, result };
+        const encoded = alertAnnotation(value)!;
+        expect(encoded.description.length).toBeLessThanOrEqual(160);
+        expect(encoded.description.split(";").map((part) => part.split("=")[0])).toEqual(
+          ["point", "category", "backend", "revision", "control", "result"],
+        );
+        expect(readAlertAnnotations(Array(16).fill(encoded))).toEqual([value]);
+        expect(readAlertAnnotations(Array(17).fill(encoded))).toBeUndefined();
+      }
+    }
+    const longest = alertAnnotation({ ...unavailableAlert("c4-owner-1-start"),
+      category: "server-validation", control: "unavailable-page" })!;
+    expect(longest.description.length).toBeLessThanOrEqual(160);
+    for (const point of ["a1-pause", "a2-post-start", "a2-edit", "c4-owner-1-start", "c4-owner-2-start"] as const) {
+      expect(unavailableAlert(point)).toEqual({ point, category: "unavailable", backend: "unavailable",
+        revision: "unavailable", control: "unavailable", result: "unavailable" });
+    }
+  });
+  it.each(["control", "result"] as const)("fails closed on missing, hostile, reordered or conflicting %s metadata", (field) => {
+    for (const value of [undefined, null, false, {}, [], 0, "private-payload", "START", "Summary", "unavailable ", "none;raw=private"]) {
+      expect(alertAnnotation({ ...observation, [field]: value })).toBeUndefined();
+      const invalid = { ...annotation, description: annotation.description.replace(`${field}=unavailable`, `${field}=${String(value)}`) };
+      expect(readAlertAnnotations([invalid])).toBeUndefined();
+      expect(projectAlertObservations(4, readAlertAnnotations([invalid]))).toEqual([unavailableAlert("a1-pause")]);
+    }
+    const missing = { ...observation };
+    Reflect.deleteProperty(missing, field);
+    expect(alertAnnotation(missing)).toBeUndefined();
+    const parts = annotation.description.split(";");
+    for (let i = 0; i < parts.length - 1; i++) {
+      const reordered = [...parts];
+      [reordered[i], reordered[i + 1]] = [reordered[i + 1]!, reordered[i]!];
+      expect(readAlertAnnotations([{ ...annotation, description: reordered.join(";") }])).toBeUndefined();
+    }
+    expect(readAlertAnnotations([annotation, alertAnnotation({ ...observation, [field]: "none" })])).toBeUndefined();
+    expect(validateAlertCategory("editing")).toBe("unavailable");
+    expect(validateAlertCategory("plan-inactive")).toBe("unavailable");
   });
   it("reduces owned backend snapshots to closed goals and relative revisions", () => {
     expect(pauseBackend("paused", 2, 1)).toEqual({ backend: "reached", revision: "advanced" });
@@ -208,5 +250,51 @@ describe("reserved alert annotation protocol", () => {
     expect(startBackend("started", "")).toBe("not-reached");
     expect(startBackend("private-status", null)).toBe("unavailable");
     expect(startBackend("started", undefined)).toBe("unavailable");
+  });
+
+  describe("DC-SW9 tracked visible workout branches", () => {
+    const viewNode = (localName: string, textContent: string, role: string | null = null) => ({
+      localName, textContent, isConnected: true, getAttribute: (key: string) => key === "role" ? role : null,
+    });
+    const unavailable = { control: "unavailable", result: "unavailable" };
+    it("classifies exact source-derived matches without a closure or returning text", () => {
+      const classify = runInNewContext(`(${classifyWorkoutViewNodes.toString()})`) as typeof classifyWorkoutViewNodes;
+      for (const [tag, text, role, control, result] of [
+        ["button", "Start swim", null, "start", "none"], ["button", "Starting…", null, "start", "none"],
+        ["a", "Log swim", null, "log", "none"], ["a", "Restore from Trash", null, "removed", "none"],
+        ["p", "Plan paused", "status", "plan-inactive", "none"],
+        ["p", "Plan finished", "status", "plan-inactive", "none"],
+        ["p", "Plan archived", "status", "plan-inactive", "none"],
+        ["p", "Result removed", "status", "removed", "none"],
+        ["p", "Swimming is currently unavailable.", "status", "unavailable-page", "none"],
+        ["h1", "404", null, "not-found", "none"],
+        ["h2", "Edit your swim", null, "none", "editing"],
+        ["h2", "Your swim", null, "none", "summary"],
+      ]) {
+        expect(classify([viewNode(tag!, text!, role)])).toEqual({ control, result });
+      }
+      expect(classify([])).toEqual({ control: "none", result: "none" });
+      expect(classify([viewNode("a", "Log swim"), viewNode("h2", "Edit your swim")])).toEqual({ control: "log", result: "editing" });
+      expect(classify([viewNode("a", "Restore from Trash"), viewNode("h2", "Your swim")])).toEqual({ control: "removed", result: "summary" });
+    });
+    it("rejects conflicting, detached, unreadable, partial and lookalike matches without raw projection", () => {
+      for (const nodes of [
+        [viewNode("button", "Start swim"), viewNode("a", "Log swim")],
+        [viewNode("button", "Start swim"), viewNode("button", "Start swim")],
+        [viewNode("h2", "Your swim"), viewNode("h2", "Edit your swim")],
+        [viewNode("button", "Start swim"), viewNode("h2", "Your swim")],
+        [viewNode("a", "Log swim"), viewNode("h2", "Your swim")],
+        [viewNode("h1", "404"), viewNode("h2", "Edit your swim")],
+        [viewNode("p", "Plan paused")], [viewNode("p", "Start swim")],
+        [viewNode("button", "Start swim private-payload")],
+        [viewNode("h2", "Your swim private-payload")],
+        [{ ...viewNode("a", "Log swim"), isConnected: false }],
+        [{ ...viewNode("a", "Log swim"), get textContent(): string { throw new Error("private-payload"); } }],
+        [{ ...viewNode("a", "Log swim"), get textContent() { this.isConnected = false; return "Log swim"; } }],
+      ]) {
+        expect(classifyWorkoutViewNodes(nodes)).toEqual(unavailable);
+        expect(JSON.stringify(classifyWorkoutViewNodes(nodes))).not.toContain("private");
+      }
+    });
   });
 });

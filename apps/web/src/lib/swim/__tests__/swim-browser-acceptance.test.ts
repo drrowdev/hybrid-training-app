@@ -243,12 +243,45 @@ describe("browser environment and static config", () => {
       expect(source).toContain("void expired.then(() => controller.abort())");
     }
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
-    const start = source.slice(source.indexOf('test("A2,')).split('const started =')[0]!;
+    const start = source.slice(source.indexOf('const diagnostic = unavailableAlert("a2-post-start")')).split('const started =')[0]!;
     expect(start).toContain('saved?.status === "started" && typeof saved.session_id === "string" && saved.session_id.length > 0');
     expect(start).toContain("}).toBe(true);");
     expect(start).toContain('await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();');
-    expect(start).not.toMatch(/timeout:|setTimeout|deadline|await.*capture|Promise\.all/);
-    expect(start).toContain("observing = false;");
+    expect(start).not.toMatch(/setTimeout|deadline|response\.finished|void page|observing/);
+    const ordered = [
+      "const { origin, pathname } = new URL(page.url());",
+      "page.waitForRequest(", "page.waitForResponse(",
+      "const transport = Promise.all([requestWaiter, responseWaiter])",
+      'await page.getByRole("button", { name: "Start swim", exact: true }).click();',
+      "await expect.poll(", "}).toBe(true);",
+      'diagnostic.backend = "reached";',
+      "await Promise.allSettled([(async () =>",
+      'await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();',
+      "} catch (error) {", "await captureFailureView(diagnostic).catch(() => undefined);", "throw error;",
+      "})(), transport]);",
+      'if (uiOutcome.status === "rejected") throw uiOutcome.reason;',
+      "if (!transportOutcome.value.ok) throw transportOutcome.value.error;",
+      "} finally {", "await Promise.allSettled([requestWaiter, responseWaiter, transport]);",
+      "alertAnnotation(diagnostic)",
+    ];
+    let position = -1;
+    for (const part of ordered) {
+      const next = start.indexOf(part, position + 1);
+      expect(next, part).toBeGreaterThan(position);
+      position = next;
+    }
+    for (const part of [
+      'if (actionRequest || request.method() !== "POST") return false;',
+      "target.origin !== origin || target.pathname !== pathname",
+      '!request.headers()["next-action"]', "actionRequest = request;",
+      "response.request() === actionRequest", 'expect(requestOutcome).toBe("seen");',
+      'expect(responseOutcome.outcome).toBe("seen");', "expect(responseOutcome.paired).toBe(true);",
+      "expect(responseOutcome.status).toBe(200);",
+      '(error: unknown) => ({ ok: false, error } as const)',
+    ]) expect(start).toContain(part);
+    expect(start.match(/timeout: 5000/g)).toHaveLength(2);
+    expect(start.slice(start.indexOf("await expect.poll("), start.indexOf('await expect(page.getByRole("link"')))
+      .not.toMatch(/await (transport|requestWaiter|responseWaiter)|timeout:/);
   });
   it("DC-SW9: bounds A2 edit transport, concurrent owned observations and the unchanged UI goal", () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
@@ -279,6 +312,10 @@ describe("browser environment and static config", () => {
       "const remaining = deadline - performance.now();",
       "expect(remaining).toBeGreaterThan(0);",
       'await expect(result).toContainText("12 lengths · 10:00 · RPE 8", { timeout: remaining });',
+      "} catch (error) {",
+      "controller.abort();",
+      "await captureFailureView(editDiagnostic).catch(() => undefined);",
+      "throw error;",
       "} finally {",
       "controller.abort();",
       "clearTimeout(editExpiry);",
@@ -319,6 +356,31 @@ describe("browser environment and static config", () => {
     expect(native).toContain("signal ? await Promise.allSettled(reads)");
     expect(native).toContain(": await Promise.all(reads)");
     expect(native.slice(native.indexOf('admin.from("cardio_logs")'), native.indexOf("const reads"))).not.toContain("user_id");
+  });
+  it("DC-SW9: captures only after the two failed UI assertions, bounds reads, drains ownership and retains the original errors", () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const a2 = source.slice(source.indexOf('test("A2,'));
+    const capture = a2.slice(a2.indexOf("async function captureFailureView"), a2.indexOf("const userId ="));
+    expect(a2.match(/await captureFailureView\(/g)).toHaveLength(2);
+    expect(capture).toContain('diagnostic.category = "unavailable";');
+    expect(capture).toContain('diagnostic.control = "unavailable";');
+    expect(capture).toContain('diagnostic.result = "unavailable";');
+    for (const part of [
+      'testInfo.status === "timedOut"', 'testInfo.status === "interrupted"', "page.isClosed()",
+      "const budget = 1000;",
+      "if (interrupted()) return;",
+      ".filter({ visible: true }).evaluateAll(classifyWorkoutViewNodes).then(",
+      ".evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK).then(",
+      "count < 0", 'category === "unreadable" ? "unavailable"',
+      "reads.push(view);", "reads.push(alert);", "reads.push(sample);",
+      "setTimeout(() => resolve(undefined), budget)",
+      "if (value && !interrupted() && performance.now() < deadline)",
+      "clearTimeout(expiry);", "if (!settled && reads.length > 0) await page.close().catch(() => undefined);",
+      "await Promise.allSettled(reads);",
+    ]) expect(capture).toContain(part);
+    expect(capture.match(/evaluateAll\(/g)).toHaveLength(2);
+    expect(capture).not.toMatch(/admin\.|nativeRows|savedPlan|\.backend\s*=|\.revision\s*=|annotations\.push|\.first\(|\.click\(|\.reload\(|waitForTimeout|\.textContent|\.allTextContents|\.url\(|screenshot/);
+    expect(a2).not.toMatch(/setTimeout.*5000|response\.finished|test\.setTimeout|test\.skip|\.first\(/);
   });
   it("rejects insufficient budgets without clamping", () => {
     for (const value of [589_999, -1, NaN, Infinity, 590_000.5]) expect(() => browserBudget(value)).toThrow();
@@ -657,14 +719,16 @@ describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
           alertObservations: unavailableObservations(index),
         })),
       });
+    },
+  );
 
-      describe("reserved browser alert failed-case projection", () => {
+  describe("reserved browser alert failed-case projection", () => {
         const observations = [
           { ...unavailableAlert("c4-owner-1-start"), category: "client-start", backend: "reached" },
           { ...unavailableAlert("c4-owner-2-start"), category: "unclassified", backend: "not-reached" },
           { ...unavailableAlert("a1-pause"), category: "client-save", backend: "reached", revision: "advanced" },
-          { ...unavailableAlert("a2-post-start"), category: "absent", backend: "reached" },
-          { ...unavailableAlert("a2-edit"), category: "server-fixed", backend: "reached" },
+          { ...unavailableAlert("a2-post-start"), category: "absent", backend: "reached", control: "start", result: "none" },
+          { ...unavailableAlert("a2-edit"), category: "server-fixed", backend: "reached", control: "log", result: "editing" },
         ] as const;
         function caseTest(fixture: ReturnType<typeof report>, index: number) {
           return fixture.suites.flatMap((suite) => suite.suites[0]!.specs)[index]!.tests[0]!;
@@ -698,7 +762,7 @@ describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
             );
           },
         );
-        it.each(["wrong-case", "conflict", "hostile", "revision", "overflow"])(
+        it.each(["wrong-case", "conflict", "hostile", "revision", "overflow", "control", "result", "order", "v1", "view-conflict"])(
           "rejects %s beside two A2 points without losing the failed six-case ledger", (mode) => {
             const fixture = report();
             const result = caseTest(fixture, 5).results[0]!;
@@ -711,6 +775,11 @@ describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
               case "hostile": annotations = [...valid, { ...valid[1], description: `${valid[1]!.description};raw=private-payload` }]; break;
               case "revision": annotations = [valid[0], { ...valid[1], description: valid[1]!.description.replace("revision=unavailable", "revision=advanced") }]; break;
               case "overflow": annotations = Array(17).fill(valid[1]); break;
+              case "control": annotations = [{ ...valid[0], description: valid[0]!.description.replace("control=start", "control=private-payload") }]; break;
+              case "result": annotations = [{ ...valid[1], description: valid[1]!.description.replace("result=editing", "result=private-payload") }]; break;
+              case "order": annotations = [{ ...valid[0], description: valid[0]!.description.replace("control=start;result=none", "result=none;control=start") }]; break;
+              case "v1": annotations = valid.map((item) => ({ ...item, type: "hta-swim-alert-membership-v1" })); break;
+              case "view-conflict": annotations = [...valid, alertAnnotation({ ...observations[4], result: "summary" })]; break;
             }
             Object.assign(result, { annotations });
             const projection = rejectedReport(fixture);
@@ -773,6 +842,7 @@ describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
                 stdout: [{ text: raw }, { text: annotation.description }], stderr: [{ text: raw }],
                 annotations: [
                   { type: "skip", description: raw }, { type: raw, description: annotation.description },
+                  { type: "hta-swim-alert-membership-v1", description: raw },
                   ...(valid && index === 4 ? [annotation] : []),
                 ],
               });
@@ -811,9 +881,7 @@ describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
             expect(JSON.stringify(projection)).not.toContain("private");
           }
         });
-      });
-    },
-  );
+  });
   it.each([null, false, 0, "", { location: null }])("preserves result.error presence %#", (error) => {
     const fixture = report();
     Object.assign(fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!, { error });

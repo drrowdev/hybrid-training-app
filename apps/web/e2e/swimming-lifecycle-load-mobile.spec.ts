@@ -13,8 +13,8 @@ import { cardioIntensityScalar, normaliseHrZones } from "../src/lib/engine/cardi
 import { CARDIO_LOAD_SCALAR, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "../src/lib/engine/set-load";
 import type { SwimPlanRow, SwimWorkoutRow } from "../src/lib/swim/storage";
 import {
-  SWIM_ALERT_CODEBOOK, alertAnnotation, classifyAlertNodes, pauseBackend,
-  unavailableAlert, validateAlertCategory,
+  SWIM_ALERT_CODEBOOK, alertAnnotation, classifyAlertNodes, classifyWorkoutViewNodes, pauseBackend,
+  unavailableAlert, validateAlertCategory, type AlertObservation,
 } from "../scripts/swim-alert-membership";
 
 const test = seededTest.extend({
@@ -456,6 +456,50 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
   test("A2, DC-SW9: native UI completion, edit, trash and recovery replace regional load exactly once", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
   }, testInfo) => {
+    async function captureFailureView(diagnostic: AlertObservation) {
+      diagnostic.category = "unavailable";
+      diagnostic.control = "unavailable";
+      diagnostic.result = "unavailable";
+      const interrupted = () => testInfo.status === "timedOut" || testInfo.status === "interrupted" || page.isClosed();
+      const budget = 1000;
+      if (interrupted()) return;
+      const deadline = performance.now() + budget;
+      let expiry: ReturnType<typeof setTimeout> | undefined;
+      let settled = false;
+      const reads: Promise<unknown>[] = [];
+      try {
+        // One immediate visible-branch read; none describes only these tracked matches.
+        const view = page.getByRole("button", { name: /^(Start swim|Starting…)$/ })
+          .or(page.getByRole("link", { name: /^(Log swim|Restore from Trash)$/ }))
+          .or(page.getByRole("status").filter({ hasText: /^(Plan paused|Plan finished|Plan archived|Result removed|Swimming is currently unavailable\.)$/ }))
+          .or(page.getByRole("heading", { name: /^(Edit your swim|Your swim)$/, level: 2 }))
+          .or(page.getByRole("heading", { name: "404", exact: true, level: 1 }))
+          .filter({ visible: true }).evaluateAll(classifyWorkoutViewNodes).then(
+            (value) => value, () => ({ control: "unavailable", result: "unavailable" } as const),
+          );
+        reads.push(view);
+        const alert = page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK).then(
+          ({ count, category }) => count < 0 || category === "unreadable" ? "unavailable" as const : validateAlertCategory(category),
+          () => "unavailable" as const,
+        );
+        reads.push(alert);
+        const sample = Promise.all([view, alert]).then((value) => { settled = true; return value; });
+        reads.push(sample);
+        const value = await Promise.race([
+          sample,
+          new Promise<undefined>((resolve) => { expiry = setTimeout(() => resolve(undefined), budget); }),
+        ]);
+        if (value && !interrupted() && performance.now() < deadline) {
+          Object.assign(diagnostic, value[0], { category: value[1] });
+        }
+      } finally {
+        clearTimeout(expiry);
+        // A race is not cancellation. Only this already-failed test's page may be closed.
+        // Collection is capped; closing/draining remains best-effort, not a forced-close guarantee.
+        if (!settled && reads.length > 0) await page.close().catch(() => undefined);
+        await Promise.allSettled(reads);
+      }
+    }
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
     const timezone = await userTimezone(admin, userId);
@@ -465,22 +509,57 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const scheduled = await savedPlan(admin, userId, planId);
     const workout = scheduled.workouts[0];
     await page.getByRole("link").and(page.locator(`[href="/app/swim/${workout.id}"]`)).click();
-    await page.getByRole("button", { name: "Start swim", exact: true }).click();
-    await expect.poll(async () => {
-      const saved = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id);
-      return saved?.status === "started" && typeof saved.session_id === "string" && saved.session_id.length > 0;
-    }).toBe(true);
-    const diagnostic = { ...unavailableAlert("a2-post-start"), backend: "reached" as const };
-    let observing = true;
-    // One concurrent sample, not a new wait window or continuous late-alert coverage.
-    void page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK).then(({ category }) => {
-      if (!observing) return;
-      diagnostic.category = validateAlertCategory(category);
-    }).catch(() => { if (observing) diagnostic.category = "unavailable"; });
+    const diagnostic = unavailableAlert("a2-post-start");
+    const { origin, pathname } = new URL(page.url());
+    let actionRequest: Request | undefined;
+    const requestWaiter = page.waitForRequest((request) => {
+      if (actionRequest || request.method() !== "POST") return false;
+      const target = new URL(request.url());
+      if (target.origin !== origin || target.pathname !== pathname ||
+        !request.headers()["next-action"]) return false;
+      actionRequest = request;
+      return true;
+    }, { timeout: 5000 }).then(
+      () => "seen" as const,
+      (error: unknown) => error instanceof errors.TimeoutError ? "timeout" as const : "error" as const,
+    );
+    const responseWaiter = page.waitForResponse(
+      (response) => actionRequest !== undefined && response.request() === actionRequest,
+      { timeout: 5000 },
+    ).then(
+      (response) => ({ outcome: "seen", paired: response.request() === actionRequest, status: response.status() }),
+      (error: unknown) => ({
+        outcome: error instanceof errors.TimeoutError ? "timeout" : "error", paired: false, status: null,
+      }),
+    );
+    const transport = Promise.all([requestWaiter, responseWaiter]).then(([requestOutcome, responseOutcome]) => {
+      expect(requestOutcome).toBe("seen");
+      expect(responseOutcome.outcome).toBe("seen");
+      expect(responseOutcome.paired).toBe(true);
+      expect(responseOutcome.status).toBe(200);
+    }).then(() => ({ ok: true } as const), (error: unknown) => ({ ok: false, error } as const));
     try {
-      await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Start swim", exact: true }).click();
+      await expect.poll(async () => {
+        const saved = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id);
+        return saved?.status === "started" && typeof saved.session_id === "string" && saved.session_id.length > 0;
+      }).toBe(true);
+      diagnostic.backend = "reached";
+      // Start the original separate UI window immediately; HTTP 200 is transport-only.
+      const [uiOutcome, transportOutcome] = await Promise.allSettled([(async () => {
+        try {
+          await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+        } catch (error) {
+          await captureFailureView(diagnostic).catch(() => undefined);
+          throw error;
+        }
+      })(), transport]);
+      // Retain the original UI error even when transport also failed.
+      if (uiOutcome.status === "rejected") throw uiOutcome.reason;
+      if (transportOutcome.status === "rejected") throw transportOutcome.reason;
+      if (!transportOutcome.value.ok) throw transportOutcome.value.error;
     } finally {
-      observing = false;
+      await Promise.allSettled([requestWaiter, responseWaiter, transport]);
       const annotation = alertAnnotation(diagnostic);
       if (annotation) testInfo.annotations.push(annotation);
     }
@@ -664,7 +743,14 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       expect(observationOutcome).toBe("backend");
       const remaining = deadline - performance.now();
       expect(remaining).toBeGreaterThan(0);
-      await expect(result).toContainText("12 lengths · 10:00 · RPE 8", { timeout: remaining });
+      try {
+        await expect(result).toContainText("12 lengths · 10:00 · RPE 8", { timeout: remaining });
+      } catch (error) {
+        // Stop old observation writes before the later failure-only sample.
+        controller.abort();
+        await captureFailureView(editDiagnostic).catch(() => undefined);
+        throw error;
+      }
     } finally {
       controller.abort();
       clearTimeout(editExpiry);
