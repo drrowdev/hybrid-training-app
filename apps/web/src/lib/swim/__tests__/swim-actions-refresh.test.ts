@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { revalidatePath } from "next/cache";
 import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-completion-recompute";
-import { startSwimWorkout, changeSwimPlanStatus, editSwimResult, completeSwimWorkoutResult, skipSwimWorkout, previewSwimResume, resumeSwimPlan } from "../actions";
+import { startSwimWorkout, changeSwimPlanStatus, editSwimResult, completeSwimWorkoutResult, skipSwimWorkout, previewSwimResume, resumeSwimPlan, proposeSwimWeek, decideSwimProposal, proposeSwimBenchmark, decideSwimBenchmark } from "../actions";
 import * as storage from "../storage";
 import * as queries from "../queries";
 import { assertSwimSafety } from "../safety";
@@ -31,7 +31,7 @@ vi.mock("../storage", () => ({
   getSwimWorkout: vi.fn(), listSwimPlans: vi.fn(), listSwimWorkouts: vi.fn(),
   startSwimWorkout: vi.fn(), setSwimPlanStatus: vi.fn(), editSwimResult: vi.fn(),
   getSwimResult: vi.fn(), completeSwimWorkout: vi.fn(), skipSwimWorkout: vi.fn(),
-  resumeSwimPlan: vi.fn(),
+  resumeSwimPlan: vi.fn(), updateSwimPlan: vi.fn(),
 }));
 
 const loadSwimHubView = queries.loadSwimHubView;
@@ -416,6 +416,7 @@ describe.each(["paused", "finished", "archived", "resume"] as const)("DC-SW7 con
       ok: true, ...(refreshFails || viewFails ? { warning: SWIM_REFRESH_WARNING } : {}),
       ...(viewFails ? {} : { view: confirmedView }),
     });
+    if (!result.view) expect(result.warning || ("refreshWarning" in result && result.refreshWarning)).toBeTruthy();
     expect(mutation).toHaveBeenCalledOnce();
     expect(queries.loadSwimHubView).toHaveBeenCalledOnce();
     expect(queries.loadSwimHubView).toHaveBeenCalledWith(mock.client, userId, returnedPlan);
@@ -493,6 +494,148 @@ describe.each(["paused", "finished", "archived", "resume"] as const)("DC-SW7 con
     expect(revalidatePath).not.toHaveBeenCalled();
     expect(queries.loadSwimHubView).not.toHaveBeenCalled();
   });
+});
+
+describe.each([
+  ["progression", "accepted"], ["progression", "rejected"], ["progression", "overridden"],
+  ["assessment", "accepted"], ["assessment", "rejected"],
+] as const)("DC-SW5/DC-K4 confirmed %s %s", (kind, choice) => {
+  async function prepare() {
+    vi.setSystemTime(new Date("2026-09-12T12:00:00Z"));
+    const { plan, history } = swimFixture();
+    vi.spyOn(queries, "loadSwimHistory").mockResolvedValue(history);
+    const returnedPlan = { ...plan, revision: 7 };
+    vi.mocked(storage.updateSwimPlan).mockResolvedValue({ plan: returnedPlan, workouts: [] });
+    const candidate = queries.deriveSwimWeekCandidate(plan, history, "2026-09-12")!;
+    const form = new FormData();
+    for (const [key, value] of Object.entries({
+      time200: "3:20.000", time400: "7:00.000", verified: "on",
+      benchmarkStroke: "freestyle", benchmarkDate: "2026-09-05",
+    })) form.set(key, value);
+    const preview = (await proposeSwimBenchmark(planId, 1, form)).preview!;
+    vi.mocked(storage.listSwimPlans).mockClear();
+    vi.mocked(storage.listSwimWorkouts).mockClear();
+    return {
+      returnedPlan,
+      call: () => kind === "progression"
+        ? decideSwimProposal(planId, 1, candidate.id, choice, String(candidate.proposal.from.mainRepeats + 5), "More repeats")
+        : decideSwimBenchmark(planId, preview, choice as "accepted" | "rejected"),
+    };
+  }
+
+  it.each([[false, false], [true, false], [false, true], [true, true]])(
+    "preserves the single commit and both warnings: refresh failure=%s view failure=%s",
+    async (refreshFails, viewFails) => {
+      const { returnedPlan, call } = await prepare();
+      if (refreshFails) vi.mocked(revalidatePath).mockImplementation(() => { throw new Error("Refresh unavailable"); });
+      if (viewFails) vi.mocked(queries.loadSwimHubView).mockRejectedValueOnce(new Error("View unavailable"));
+      const result = await call();
+      const input = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
+      const principleWarning = choice === "overridden" ? expect.any(String) : undefined;
+      expect(result).toEqual({
+        ok: true, ...(viewFails ? {} : { view: confirmedView }),
+        ...(principleWarning ? { warning: principleWarning } : {}),
+        ...(refreshFails || viewFails ? { [kind === "progression" ? "refreshWarning" : "warning"]: SWIM_REFRESH_WARNING } : {}),
+      });
+      if (choice === "overridden") {
+        expect(result.warning).toBeTruthy();
+        expect(input.state.decisions.at(-1)?.inputSnapshot).toMatchObject({ engineDecision: { warning: result.warning } });
+      }
+      if (!result.view) expect(result.warning || ("refreshWarning" in result && result.refreshWarning)).toBeTruthy();
+      else expect(result.view).toBe(confirmedView);
+      expect(storage.updateSwimPlan).toHaveBeenCalledOnce();
+      expect(queries.loadSwimHubView).toHaveBeenCalledOnce();
+      expect(vi.mocked(queries.loadSwimHubView).mock.calls[0]![2]).toBe(returnedPlan);
+      expect(storage.listSwimPlans).toHaveBeenCalledOnce();
+      expect(storage.listSwimWorkouts).toHaveBeenCalledOnce();
+      expect(input.expectedRevision).toBe(1);
+      expect(input.state.decisions.at(-1)).toMatchObject({
+        decision: choice, ruleVersion: expect.any(String), generatorVersion: expect.any(String),
+      });
+      if (choice === "rejected") expect(input.workouts).toEqual([]);
+      else {
+        expect(input.workouts.length).toBeGreaterThan(0);
+        expect(input.workouts.every((row) => row.scheduled_date > "2026-09-12")).toBe(true);
+      }
+      expect(revalidatePath).toHaveBeenCalledTimes(refreshFails ? 1 : 6);
+      const calls = [storage.updateSwimPlan, revalidatePath, queries.loadSwimHubView]
+        .map((fn) => vi.mocked(fn).mock.invocationCallOrder[0]!);
+      expect(calls).toEqual([...calls].sort((a, b) => a - b));
+    },
+  );
+
+  it("projects the actual returned plan without a second plan read", async () => {
+    const { returnedPlan, call } = await prepare();
+    vi.mocked(queries.loadSwimHubView).mockImplementation(loadSwimHubView);
+    const result = await call();
+    expect(result.view).toMatchObject({ id: returnedPlan.id, revision: returnedPlan.revision, status: returnedPlan.status });
+    expect(storage.listSwimPlans).toHaveBeenCalledOnce();
+    expect(storage.listSwimWorkouts).toHaveBeenCalledTimes(2);
+    expect(storage.updateSwimPlan).toHaveBeenCalledOnce();
+  });
+
+  it.each([undefined, "42501", "40001", "P0001", "23505", "23514"])(
+    "preserves RPC rejection %s, without projection, refresh, or retry", async (code) => {
+      const { call } = await prepare();
+      vi.mocked(storage.updateSwimPlan).mockRejectedValueOnce(new Error("RPC unavailable", { cause: { code } }));
+      expect(await call()).toEqual({
+        error: code === "42501" ? "You cannot change this swim." : "RPC unavailable",
+        errorCode: code === undefined ? "transient" : code === "42501" ? "forbidden" : "validation",
+      });
+      expect(storage.updateSwimPlan).toHaveBeenCalledOnce();
+      expect(queries.loadSwimHubView).not.toHaveBeenCalled();
+      expect(revalidatePath).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["auth", "ownership", "revision", "read", "safety"] as const)(
+    "retains pre-write %s rejection", async (failure) => {
+      if (failure === "safety" && choice === "rejected") return;
+      const { call } = await prepare();
+      if (failure === "auth") mock.user = null;
+      if (failure === "ownership") vi.mocked(storage.listSwimPlans).mockResolvedValue([]);
+      if (failure === "revision") vi.mocked(storage.listSwimPlans).mockResolvedValue([{ ...swimFixture().plan, revision: 3 }]);
+      if (failure === "read") vi.mocked(storage.listSwimPlans).mockRejectedValueOnce(new Error("Read unavailable"));
+      if (failure === "safety") vi.mocked(assertSwimSafety).mockRejectedValueOnce(new Error("Safety unavailable"));
+      const result = await call();
+      expect(result).toHaveProperty("error");
+      expect(result).not.toHaveProperty("ok");
+      expect(result).not.toHaveProperty("warning");
+      expect(result).not.toHaveProperty("refreshWarning");
+      expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+      expect(queries.loadSwimHubView).not.toHaveBeenCalled();
+      expect(revalidatePath).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("DC-SW4 read-only week review", () => {
+  it.each(["success", "view", "history", "candidate", "revision"] as const)(
+    "returns a canonical view or ordinary %s error without invalidation or mutation", async (outcome) => {
+      vi.setSystemTime(new Date("2026-09-12T12:00:00Z"));
+      const { plan, history } = swimFixture();
+      vi.spyOn(queries, "loadSwimHistory").mockResolvedValue(history);
+      if (outcome === "view") vi.mocked(queries.loadSwimHubView).mockRejectedValueOnce(new Error("View unavailable"));
+      if (outcome === "history") vi.mocked(queries.loadSwimHistory).mockRejectedValueOnce(new Error("History unavailable"));
+      if (outcome === "candidate") vi.spyOn(queries, "deriveSwimWeekCandidate").mockReturnValueOnce(null);
+      const result = await proposeSwimWeek(planId, outcome === "revision" ? 3 : 1);
+      if (outcome === "success") {
+        expect(result).toEqual({ ok: true, view: confirmedView });
+        expect(queries.loadSwimHubView).toHaveBeenCalledWith(mock.client, userId, plan);
+        expect(storage.listSwimPlans).toHaveBeenCalledOnce();
+      } else {
+        expect(result).toHaveProperty("error");
+        expect(result).not.toHaveProperty("ok");
+        expect(result).not.toHaveProperty("view");
+        expect(result).not.toHaveProperty("warning");
+        expect(result).not.toHaveProperty("refreshWarning");
+      }
+      expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+      expect(storage.setSwimPlanStatus).not.toHaveBeenCalled();
+      expect(storage.resumeSwimPlan).not.toHaveBeenCalled();
+      expect(revalidatePath).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("guarded edit phases and unchanged refresh callers", () => {
