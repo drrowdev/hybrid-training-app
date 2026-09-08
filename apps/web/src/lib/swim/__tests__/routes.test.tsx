@@ -4,7 +4,7 @@ import SwimPage from "@/app/app/swim/page";
 import SwimWorkoutPage from "@/app/app/swim/[workoutId]/page";
 import { SwimHub } from "@/components/swim/SwimHub";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { WorkoutClient } from "@/components/swim/WorkoutClient";
+import { WorkoutScreen } from "@/components/swim/WorkoutScreen";
 import { getSwimCapability } from "../capability";
 import { listSwimPlans } from "../storage";
 import { loadSwimHubView, loadSwimWorkoutView } from "../queries";
@@ -22,7 +22,7 @@ vi.mock("../capability", () => ({ getSwimCapability: vi.fn() }));
 vi.mock("../storage", () => ({ listSwimPlans: vi.fn() }));
 vi.mock("../queries", () => ({ loadSwimHubView: vi.fn(), loadSwimWorkoutView: vi.fn() }));
 vi.mock("@/components/swim/SwimHub", () => ({ SwimHub: () => null }));
-vi.mock("@/components/swim/WorkoutClient", () => ({ WorkoutClient: () => null }));
+vi.mock("@/components/swim/WorkoutScreen", () => ({ WorkoutScreen: () => null }));
 
 function elements(node: unknown): ReactElement<Record<string, unknown>>[] {
   if (Array.isArray(node)) return node.flatMap(elements);
@@ -80,7 +80,10 @@ describe("ADR0079 reachable standalone routes", () => {
   });
   it("keeps the structured workout and edit link reachable after setup is disabled", async () => {
     const page = await SwimWorkoutPage({ params: Promise.resolve({ workoutId: "workout" }), searchParams: Promise.resolve({ edit: "1" }) });
-    expect(elements(page).find((element) => element.type === WorkoutClient)?.props).toMatchObject({ userId, edit: true });
+    const screen = elements(page).find((element) => element.type === WorkoutScreen)!;
+    expect(screen.props).toEqual({ workout: { id: "workout", title: "Pool swim" }, userId, edit: true });
+    expect(screen.key).toBe("workout");
+    expect(elements(page).filter((element) => element.type === PageHeader)).toHaveLength(1);
   });
   it("does not fall back to a generic editor for missing structured work", async () => {
     vi.mocked(loadSwimWorkoutView).mockResolvedValue(null);

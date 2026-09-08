@@ -6,7 +6,8 @@ import * as storage from "../storage";
 import * as queries from "../queries";
 import { assertSwimSafety } from "../safety";
 import { SWIM_REFRESH_WARNING } from "../action-feedback";
-import type { SwimHubView } from "../view-types";
+import type { SwimHubView, SwimWorkoutView } from "../view-types";
+import { workoutPresentation } from "../presentation";
 import { swimFixture, userId, planId, sessionId, receiptId } from "./fixtures";
 
 const mock = vi.hoisted(() => ({
@@ -33,6 +34,16 @@ vi.mock("../storage", () => ({
 }));
 
 const loadSwimHubView = queries.loadSwimHubView;
+const swimWorkoutViewFromRow = queries.swimWorkoutViewFromRow;
+const returnedWorkout: storage.SwimWorkoutRow = {
+  ...swimFixture().workouts[0]!, revision: 2, status: "started", session_id: sessionId,
+};
+const confirmedWorkoutView: SwimWorkoutView = {
+  ...workoutPresentation(returnedWorkout.definition.issued),
+  id: returnedWorkout.id, revision: returnedWorkout.revision, status: "started", sessionId,
+  planStatus: "active", date: returnedWorkout.scheduled_date,
+  provisional: false, deleted: false, sourceGone: false, result: null,
+};
 const confirmedView: SwimHubView = {
   id: planId, revision: 7, status: "paused", goal: "Technique & base",
   course: "25 yd", dates: "2026-09-07 – 2026-09-27", today: "2026-09-08",
@@ -54,6 +65,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-09-08T12:00:00Z"));
   vi.spyOn(queries, "loadSwimHubView").mockResolvedValue(confirmedView);
+  vi.spyOn(queries, "swimWorkoutViewFromRow").mockResolvedValue(confirmedWorkoutView);
   mock.user = { id: userId };
   const { plan, workouts, history } = swimFixture();
   const workout = { ...workouts[0]!, session_id: sessionId, status: "started" as const };
@@ -67,7 +79,7 @@ beforeEach(() => {
   vi.mocked(storage.listSwimPlans).mockResolvedValue([plan]);
   vi.mocked(storage.listSwimWorkouts).mockResolvedValue(workouts);
   vi.mocked(storage.getSwimResult).mockResolvedValue(history[0]!.result!);
-  vi.mocked(storage.startSwimWorkout).mockResolvedValue(workout);
+  vi.mocked(storage.startSwimWorkout).mockResolvedValue(returnedWorkout);
   vi.mocked(storage.setSwimPlanStatus).mockResolvedValue({ ...plan, revision: 7, status: "paused" });
   const reply = { workout, session_id: sessionId, cardio_log_id: receiptId, transitioned: false };
   vi.mocked(storage.editSwimResult).mockResolvedValue(reply);
@@ -86,7 +98,7 @@ describe.each(actions)("$name post-save refresh boundary", ({ name, call, mutati
   it("returns confirmed success and a nonempty warning when cache refresh throws, without retrying", async () => {
     vi.mocked(revalidatePath).mockImplementation(() => { throw new Error("Cache unavailable"); });
     const result = await call();
-    expect(result).toEqual({ ok: true, warning: expect.stringMatching(/\S/), ...(name === "Plan status" ? { view: confirmedView } : {}) });
+    expect(result).toEqual({ ok: true, warning: expect.stringMatching(/\S/), ...(name === "Plan status" ? { view: confirmedView } : name === "Start" ? { view: confirmedWorkoutView } : {}) });
     expect(mutation).toHaveBeenCalledOnce();
     expect(revalidatePath).toHaveBeenCalledOnce();
     expect(vi.mocked(mutation).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(revalidatePath).mock.invocationCallOrder[0]!);
@@ -97,7 +109,7 @@ describe.each(actions)("$name post-save refresh boundary", ({ name, call, mutati
   });
 
   it("returns success without a warning after normal refresh", async () => {
-    expect(await call()).toEqual({ ok: true, ...(name === "Plan status" ? { view: confirmedView } : {}) });
+    expect(await call()).toEqual({ ok: true, ...(name === "Plan status" ? { view: confirmedView } : name === "Start" ? { view: confirmedWorkoutView } : {}) });
     expect(mutation).toHaveBeenCalledOnce();
     expect(revalidatePath).toHaveBeenCalledWith("/app/swim/[workoutId]", "page");
     if (name === "Edit") expect(revalidatePath).toHaveBeenCalledWith(`/app/sessions/${sessionId}`);
@@ -114,6 +126,7 @@ describe.each(actions)("$name post-save refresh boundary", ({ name, call, mutati
     expect(revalidatePath).not.toHaveBeenCalled();
     expect(recomputeAfterCompletedSessionMutation).not.toHaveBeenCalled();
     expect(queries.loadSwimHubView).not.toHaveBeenCalled();
+    expect(queries.swimWorkoutViewFromRow).not.toHaveBeenCalled();
   });
 
   it("preserves auth failure without mutation or warning", async () => {
@@ -122,6 +135,7 @@ describe.each(actions)("$name post-save refresh boundary", ({ name, call, mutati
     expect(mutation).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
     expect(queries.loadSwimHubView).not.toHaveBeenCalled();
+    expect(queries.swimWorkoutViewFromRow).not.toHaveBeenCalled();
   });
 
   it("preserves ownership failure without mutation or warning", async () => {
@@ -134,6 +148,63 @@ describe.each(actions)("$name post-save refresh boundary", ({ name, call, mutati
     expect(mutation).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
     expect(queries.loadSwimHubView).not.toHaveBeenCalled();
+    expect(queries.swimWorkoutViewFromRow).not.toHaveBeenCalled();
+  });
+});
+
+describe("DC-SW7 confirmed Start view", () => {
+  it.each([
+    [false, "success"], [true, "success"],
+    [false, "null"], [true, "null"],
+    [false, "throw"], [true, "throw"],
+  ] as const)("keeps the commit with refresh failure=%s and projection=%s", async (refreshFails, projection) => {
+    if (refreshFails) vi.mocked(revalidatePath).mockImplementation(() => { throw new Error("Private refresh failure"); });
+    if (projection === "null") vi.mocked(queries.swimWorkoutViewFromRow).mockResolvedValueOnce(null);
+    if (projection === "throw") vi.mocked(queries.swimWorkoutViewFromRow).mockRejectedValueOnce(new Error("Private history failure"));
+    expect(await startSwimWorkout(returnedWorkout.id, 1)).toEqual({
+      ok: true, ...(refreshFails || projection !== "success" ? { warning: SWIM_REFRESH_WARNING } : {}),
+      ...(projection === "success" ? { view: confirmedWorkoutView } : {}),
+    });
+    expect(storage.startSwimWorkout).toHaveBeenCalledOnce();
+    expect(storage.startSwimWorkout).toHaveBeenCalledWith(mock.client, returnedWorkout.id, 1);
+    expect(queries.swimWorkoutViewFromRow).toHaveBeenCalledOnce();
+    expect(queries.swimWorkoutViewFromRow).toHaveBeenCalledWith(mock.client, userId, returnedWorkout);
+    expect(vi.mocked(queries.swimWorkoutViewFromRow).mock.calls[0]![2]).toBe(returnedWorkout);
+    expect(storage.getSwimWorkout).toHaveBeenCalledOnce();
+    expect(revalidatePath).toHaveBeenCalled();
+    expect(vi.mocked(storage.startSwimWorkout).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(revalidatePath).mock.invocationCallOrder[0]!);
+    expect(vi.mocked(revalidatePath).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(queries.swimWorkoutViewFromRow).mock.invocationCallOrder[0]!);
+    expect(recomputeAfterCompletedSessionMutation).not.toHaveBeenCalled();
+  });
+
+  it("projects the actual committed session and revision without rereading the workout", async () => {
+    vi.mocked(queries.swimWorkoutViewFromRow).mockImplementation(swimWorkoutViewFromRow);
+    mock.client.from.mockImplementation((table: string) => ({
+      select: () => ({
+        in: async () => ({ error: null, data: table === "sessions" ? [{
+          id: sessionId, completed_at: null, deleted_at: null, notes: null,
+        }] : [] }),
+      }),
+    }));
+    expect(await startSwimWorkout(returnedWorkout.id, 1)).toEqual({ ok: true, view: confirmedWorkoutView });
+    expect(storage.getSwimWorkout).toHaveBeenCalledOnce();
+    expect(storage.startSwimWorkout).toHaveBeenCalledOnce();
+    expect(storage.listSwimPlans).toHaveBeenCalledOnce();
+    expect(mock.client.from.mock.calls.map(([table]) => table)).toEqual(["sessions", "cardio_logs"]);
+  });
+
+  it.each(["safety", "revision", "read", "missing"] as const)("preserves %s rejection before writing or projecting", async (failure) => {
+    vi.mocked(storage.getSwimWorkout).mockResolvedValue(swimFixture().workouts[0]!);
+    if (failure === "safety") vi.mocked(assertSwimSafety).mockRejectedValueOnce(new Error("Safety unavailable"));
+    if (failure === "read") vi.mocked(storage.getSwimWorkout).mockRejectedValueOnce(new Error("Read unavailable"));
+    if (failure === "missing") vi.mocked(storage.getSwimWorkout).mockResolvedValueOnce(null);
+    const result = await startSwimWorkout(returnedWorkout.id, failure === "revision" ? 0 : 1);
+    expect(result).toMatchObject({ error: expect.any(String), errorCode: failure === "revision" ? "validation" : failure === "missing" ? "not_found" : "transient" });
+    expect(result).not.toHaveProperty("ok");
+    expect(result).not.toHaveProperty("view");
+    expect(storage.startSwimWorkout).not.toHaveBeenCalled();
+    expect(queries.swimWorkoutViewFromRow).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 });
 

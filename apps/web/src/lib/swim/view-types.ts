@@ -46,11 +46,13 @@ export type SwimHubView = {
     };
   };
 
-export function nextSwimHubView(current: SwimHubView, incoming: SwimHubView, source: "props" | "confirmed"): SwimHubView {
+export function nextConfirmedView<T extends { id: string; revision: number }>(current: T, incoming: T, source: "props" | "confirmed"): T {
   if (current.id !== incoming.id) return source === "props" ? incoming : current;
   if (incoming.revision > current.revision || (source === "props" && incoming.revision === current.revision)) return incoming;
   return current;
 }
+
+export const nextSwimHubView = nextConfirmedView<SwimHubView>;
 
 export type SwimResumePreview = {
     planId: string; revision: number; startDate: string;
