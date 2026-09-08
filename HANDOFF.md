@@ -16,9 +16,9 @@ distance and millisecond results are authoritative; generic cardio summaries
 exist for compatibility and shared workload only.
 
 The current PR802 continuation authorizes disposable localhost services on the
-cloud runner only, not hosted credentials. The normal-148 database and first
-six-case browser reference passed at e46; the expanded eight-case reference is
-source/collection-only, with live acceptance pending.
+cloud runner only, not hosted credentials. The normal-148 database and eight-case
+browser reference passed at `95cbfb53`; the eleven-case integration is source-only,
+with collection blocked and live acceptance pending.
 Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
@@ -33,37 +33,72 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-08 (PR805 eight-case source integration; live eight pending)
+**Last updated:** 2026-09-08 (PR805 exact C/D integration; eleven-case collection blocked)
 
 ### PR805 expanded browser cohort — current status
 
-The immutable six-flow milestone is `e46c443e8e06cb31616cb6082c3d0fbbbca7c050`:
-[full run 34244354544](https://github.com/drrowdev/hybrid-training-app/actions/runs/34244354544)
-passed at 2026-09-08 15:29:26Z, after
-[core run 34243771485](https://github.com/drrowdev/hybrid-training-app/actions/runs/34243771485)
-passed. All six passed once, with zero skipped/flaky/unexpected cases; durations
-were 6844/4962/5278/9967/6815/7525ms (41391ms combined). Native16 pins/checks/cleanup,
-normal148/catalog/5phase4DDL/15contexts/36HTTP, core, main and final cleanup passed.
-This is not full standalone or release acceptance.
+The immutable eight-flow milestone is `95cbfb537884e65e2ec3ba6b67cf3c7ff303628a`:
+[full run 34258502119](https://github.com/drrowdev/hybrid-training-app/actions/runs/34258502119)
+passed at 17:44:42Z, after
+[core 34258052509](https://github.com/drrowdev/hybrid-training-app/actions/runs/34258052509).
+All eight passed once, without unexpected/skipped/retried/flaky-labelled cases,
+in 5039/2831/4215/7711/4466/5175/3274/4474ms (37185ms total).
+Native16/all148/catalog/5phase4DDL/15contexts/36HTTP, core, main and final cleanup
+passed. The prior A1 Preview click timeout remains **unexplained**, not fixed by
+the shared 5s readiness checkpoint. Keep that checkpoint and all eight flows
+unchanged in later cohorts. PR806 was closed unmerged as superseded; its
+`32947ae5eb9e99070006e3a74b5c4df0a33dce60` source branch is retained.
 
-Source checkpoint `8e5a4a155f6e94a5c4f201074dbd74cdd1c4ca8a` appends B1
-([DC-SW4/SW5](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05))
-and B2 (DC-SW8) beside the unchanged six, preserving A's DC-SW7/SW9 regional-row
-proof. PR806's accepted blob `f16b37ee260135344db8adf171f33f57640eef75` is imported
-exactly. All declared specs now enter the single tracked-source fingerprint call.
-735 targeted tests, web typecheck and scoped lint passed; actual pinned CLI
-`--list` collected eight exact triples/four files, zero results/errors, normal
-skip policy and verified private cleanup. No live eight-case run occurred.
+Code checkpoint `2e831c2313689f44424811aa3ff439be35ebac22`, tested tree
+`3ab5bd91777c36b62916f556be7ad635c38751a3`, imports exactly:
 
-All limits remain unchanged; B runtime, particularly B2's own 30s budget, is
-unmeasured. B has no regional proof; plateau, missed/high-effort, reject/override
-and scaling variants remain required later work. Exact complete-head review,
-core CI and fresh head/base/liveRef/ownership guards precede one ordinary
-native-gated eight-case reference, not an unchanged e46 rerun. PR806 remains a
-frozen source artifact, not a future merge candidate; only the coordinator may
-close it as superseded after live acceptance. PR803/807/808 remain untouched.
+- C: PR807 `327444f02c1849e26b89051c9c755411a0fb760a`,
+  account blob `045205b5852cbd36f613286cad7465531f7ba03b`.
+- D: PR808 `bddddd16e355ce5df5a9dcbf50e81c272503b583`,
+  assessment blob `a2f19c74c1cac7534fed57c67bb7a83e068e5011`.
+
+The registry appends C1/C2/D after the original eight: eleven identities/six
+files, counts 2/2/2/2/2/1. Only three closed source IDs were added. The existing
+single fingerprint invocation includes all declared specs. Only owned Next
+start receives a new environment object binding the already validated local
+service key; shared/build/browser environments remain unchanged.
+[DC-SW2/SW5/SW6/SW8](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+are covered by the imported positive cases; SW7/SW9 regressions remain intact.
+
+**Collection is BLOCKED, not passed:** the one targeted four-file run passed
+771 helper/fingerprint/synthetic-stage tests, but the real pinned Playwright
+1.60.0 `--list` through the same dedicated config exited 1. Existing safe summary:
+`success=false`, `loaderCode=unknown`, source
+`apps/web/e2e/swimming-account-mobile.spec.ts`. Eleven exact collected triples,
+zero report results/errors, and successful checked collection cleanup are not
+established by that failed regression. Both exact blobs are preserved; no loader
+or source repair was attempted. Typecheck, scoped lint and secret scan passed.
+CodeQL did not complete (Actions failed; JavaScript database too large).
+No live browser/app/server/DB/Docker/CI invocation or additional worker occurred.
+
+**C2 remains OPEN**: no deletion/cascade/survivor or foreign-key-cause claim.
+Custom movement and both references remain until the real Delete action;
+failure-preserving teardown is not product proof. D's rejection, native history,
+future-only acceptance, original/started targets and both reloads are unchanged.
+All nine standalone gates remain incomplete; wider progression, concurrency,
+lifecycle, analytics and safety/load variants still require evidence.
+No production readiness or combined-swimming acceptance is claimed.
+
+All limits and privacy/resource safeguards remain unchanged. The next bounded
+follow-up must establish the account collection checkpoint without weakening
+the exact source or gate. Once collection is resolved, the coordinator owns
+complete-head Opus review/core/fresh guards/full execution-path review before
+one normal Native16/14836/eleven-browser reference through workflow `279507729`,
+the existing branch route, exact `expected_sha`, and both production flags false.
+PR807/808 remain frozen source artifacts, not merge candidates; only the
+coordinator may close them unmerged after eventual live acceptance.
 
 #### Earlier PR805 wiring and recovery
+
+The earlier six-flow milestone `e46c443e8e06cb31616cb6082c3d0fbbbca7c050` passed
+[full 34244354544](https://github.com/drrowdev/hybrid-training-app/actions/runs/34244354544)
+at 15:29:26Z after core 34243771485, with all six passing once (41391ms total)
+and native/database/main/final cleanup passing.
 
 The original four cases plus normal 148 migrations, 15 service contexts and
 36 HTTP cases passed in [run 34176424048](https://github.com/drrowdev/hybrid-training-app/actions/runs/34176424048)

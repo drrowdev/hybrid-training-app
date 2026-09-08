@@ -1975,3 +1975,44 @@ additional agent, product change or branch/stack operation occurred. PR806 remai
 frozen source, not a future merge candidate; coordinator closure can follow live
 acceptance. PR803/807/808 remain untouched. Wider progression variants and full
 standalone gates remain required; see [current status](./pool-swimming.md#shared-completion-integration--current-148-status).
+
+## [2026-09-08] refine | PR805 exact C/D integration with collection blocked
+
+The real eight-flow milestone `95cbfb537884e65e2ec3ba6b67cf3c7ff303628a` passed
+[core 34258052509](https://github.com/drrowdev/hybrid-training-app/actions/runs/34258052509)
+and [full 34258502119](https://github.com/drrowdev/hybrid-training-app/actions/runs/34258502119)
+(17:44:42Z). All eight passed once, zero unexpected/skipped/retried/flaky-labelled
+cases, in 5039/2831/4215/7711/4466/5175/3274/4474ms (37185ms total).
+Native16/all148/catalog/5phase4DDL/15contexts/36HTTP, core/main/final cleanup passed.
+The prior A1 Preview click timeout remains unexplained; preserve its shared 5s
+checkpoint and all eight regressions. PR806 is closed unmerged as superseded,
+with branch32947 retained. All nine standalone gates remain incomplete.
+
+Code commit `2e831c2313689f44424811aa3ff439be35ebac22`, tested tree
+`3ab5bd91777c36b62916f556be7ad635c38751a3`, preserves exact C/D source:
+PR807 `327444f02c1849e26b89051c9c755411a0fb760a`, account blob
+`045205b5852cbd36f613286cad7465531f7ba03b`; PR808
+`bddddd16e355ce5df5a9dcbf50e81c272503b583`, assessment blob
+`a2f19c74c1cac7534fed57c67bb7a83e068e5011`. Append C1/C2/D only, eleven identities
+across six files (2/2/2/2/2/1), three closed attribution IDs, current-stage
+server-only captured local-key binding and its reviewed tests. Preserve the
+single fingerprint call, all newer lifecycle tests, limits and privacy protocol.
+[DC-SW2/SW5/SW6/SW8](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+are the new source coverage; SW7/SW9 remain unchanged.
+
+One targeted four-file run: 771 tests passed, one collection regression failed.
+Actual pinned Playwright 1.60.0 `--list` used the same dedicated config; safe summary
+was `success=false`, exit 1, loader unknown, account-spec attribution. Eleven
+exact collected triples/six files, no report errors/results and successful checked
+private cleanup remain unproved. No cause is established or source/loader repair
+attempted. Typecheck/scoped lint/secret scan passed. CodeQL did not complete
+(Actions failed; JavaScript database too large). No live browser/app/server/DB/
+Docker/CI invocation, additional worker or branch/stack change occurred.
+
+C2 remains open, with the custom movement and both references preserved until
+the real Account Delete action; no cascade/FK cause or survivor proof is claimed.
+D's positive rejection/acceptance/history case is unchanged and unexecuted.
+Resolve collection before coordinator complete-head review/core/fresh guards and
+one normal Native16/14836/eleven-browser reference. PR807/808 stay frozen, unmerged.
+No full standalone or production-readiness claim. See
+[current status and follow-up bounds](./pool-swimming.md#shared-completion-integration--current-148-status).
