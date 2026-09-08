@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 import SwimPage from "@/app/app/swim/page";
 import SwimWorkoutPage from "@/app/app/swim/[workoutId]/page";
 import { SwimHub } from "@/components/swim/SwimHub";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { WorkoutClient } from "@/components/swim/WorkoutClient";
 import { getSwimCapability } from "../capability";
 import { listSwimPlans } from "../storage";
@@ -43,12 +44,39 @@ describe("ADR0079 reachable standalone routes", () => {
     const page = await SwimPage({ searchParams: Promise.resolve({}) });
     expect(loadSwimHubView).toHaveBeenCalledWith({}, userId, swimFixture().plan);
     expect(elements(page).some((element) => element.type === SwimHub)).toBe(true);
+    expect(elements(page).filter((element) => element.type === PageHeader)).toHaveLength(0);
+    expect(elements(page).find((element) => element.type === SwimHub)?.props).toEqual({
+      plan: { id: "view" }, setupEnabled: false,
+      plans: [{ id: swimFixture().plan.id, startedOn: "2026-09-07", status: "active" }],
+    });
   });
   it("does not query additive tables on an old schema", async () => {
     vi.mocked(getSwimCapability).mockResolvedValue({ storageAvailable: false, setupEnabled: false });
-    await SwimPage({ searchParams: Promise.resolve({}) });
+    const page = await SwimPage({ searchParams: Promise.resolve({}) });
     expect(listSwimPlans).not.toHaveBeenCalled();
     expect(loadSwimHubView).not.toHaveBeenCalled();
+    expect(elements(page).filter((element) => element.type === PageHeader)).toHaveLength(1);
+    expect(elements(page).filter((element) => element.type === SwimHub)).toHaveLength(0);
+  });
+  it("retains one page header and setup action with no plan", async () => {
+    vi.mocked(getSwimCapability).mockResolvedValue({ storageAvailable: true, setupEnabled: true });
+    vi.mocked(listSwimPlans).mockResolvedValue([]);
+    const page = await SwimPage({ searchParams: Promise.resolve({}) });
+    const headers = elements(page).filter((element) => element.type === PageHeader);
+    expect(headers).toHaveLength(1);
+    expect(elements(headers[0]!.props.actions).map((element) => element.props.href)).toContain("/app/swim/setup");
+    expect(elements(page).filter((element) => element.type === SwimHub)).toHaveLength(0);
+  });
+  it("passes only own thin choices and selects the requested plan", async () => {
+    const { plan } = swimFixture();
+    const other = { ...plan, id: "other", status: "paused" as const };
+    vi.mocked(listSwimPlans).mockResolvedValue([plan, other, { ...plan, id: "foreign", user_id: "foreign" }]);
+    const page = await SwimPage({ searchParams: Promise.resolve({ plan: other.id }) });
+    expect(loadSwimHubView).toHaveBeenCalledWith({}, userId, other);
+    expect(elements(page).find((element) => element.type === SwimHub)?.props.plans).toEqual([
+      { id: plan.id, startedOn: plan.started_on, status: "active" },
+      { id: other.id, startedOn: other.started_on, status: "paused" },
+    ]);
   });
   it("keeps the structured workout and edit link reachable after setup is disabled", async () => {
     const page = await SwimWorkoutPage({ params: Promise.resolve({ workoutId: "workout" }), searchParams: Promise.resolve({ edit: "1" }) });

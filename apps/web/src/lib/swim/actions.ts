@@ -24,9 +24,9 @@ import {
   type StandalonePlanDefinition, type StandaloneWorkoutDefinition, type SwimBenchmarkPreview,
 } from "./model";
 import {
-  swimToday, loadSwimHistory, deriveSwimWeekCandidate, persistedSwimPlan, swimInputId,
+  swimToday, loadSwimHistory, deriveSwimWeekCandidate, persistedSwimPlan, swimInputId, loadSwimHubView,
 } from "./queries";
-import type { SwimResumePreview } from "./view-types";
+import type { SwimHubView, SwimResumePreview } from "./view-types";
 import { formatPoolCourse } from "@hta/domain";
 import { formatSwimTime } from "./time";
 import { SWIM_REFRESH_WARNING } from "./action-feedback";
@@ -41,6 +41,17 @@ function refreshSavedSwim(sessionId?: string): ActionResult & { warning?: string
   try {
     refreshSwims(sessionId);
     return { ok: true };
+  } catch {
+    return { ok: true, warning: SWIM_REFRESH_WARNING };
+  }
+}
+
+async function confirmedPlanView(
+  client: Parameters<typeof loadSwimHubView>[0], userId: string, plan: storage.SwimPlanRow,
+): Promise<ActionResult & { warning?: string; view?: SwimHubView }> {
+  const refreshed = refreshSavedSwim();
+  try {
+    return { ...refreshed, view: await loadSwimHubView(client, userId, plan) };
   } catch {
     return { ok: true, warning: SWIM_REFRESH_WARNING };
   }
@@ -206,13 +217,16 @@ export async function skipSwimWorkout(workoutId: string, revision: number, reaso
   } catch (error) { return swimActionFailure(error); }
 }
 
-export async function changeSwimPlanStatus(planId: string, revision: number, status: "paused" | "finished" | "archived"): Promise<ActionResult & { warning?: string }> {
+export async function changeSwimPlanStatus(planId: string, revision: number, status: "paused" | "finished" | "archived"): Promise<ActionResult & { warning?: string; view?: SwimHubView }> {
+  let context: Awaited<ReturnType<typeof swimContext>>;
+  let returnedPlan: storage.SwimPlanRow;
   try {
-    const { client, user } = await swimContext();
+    context = await swimContext();
+    const { client, user } = context;
     await ownedSwimPlan(client, user.id, planId, revision);
-    await storage.setSwimPlanStatus(client, planId, revision, z.enum(["paused", "finished", "archived"]).parse(status));
+    returnedPlan = await storage.setSwimPlanStatus(client, planId, revision, z.enum(["paused", "finished", "archived"]).parse(status));
   } catch (error) { return swimActionFailure(error); }
-  return refreshSavedSwim();
+  return confirmedPlanView(context.client, context.user.id, returnedPlan);
 }
 
 export async function proposeSwimWeek(planId: string, revision: number): Promise<ActionResult> {
@@ -358,12 +372,15 @@ export async function previewSwimResume(planId: string, revision: number, startD
   } catch (error) { return swimActionFailure(error); }
 }
 
-export async function resumeSwimPlan(preview: SwimResumePreview): Promise<ActionResult> {
+export async function resumeSwimPlan(preview: SwimResumePreview): Promise<ActionResult & { warning?: string; view?: SwimHubView }> {
+  let context: Awaited<ReturnType<typeof swimContext>>;
+  let returnedPlan: storage.SwimPlanRow;
   try {
     const fresh = await previewSwimResume(preview.planId, preview.revision, preview.startDate);
     if (fresh.error) return fresh;
     if (JSON.stringify(fresh.preview) !== JSON.stringify(preview)) throw new SwimActionError("These dates changed. Preview them again.", "validation");
-    const { client, user } = await swimContext();
+    context = await swimContext();
+    const { client, user } = context;
     const { plan, workouts } = await ownedSwimPlan(client, user.id, preview.planId, preview.revision);
     const updates = preview.dates.map((entry) => {
       const row = workouts.find((workout) => workout.id === entry.id)!;
@@ -371,11 +388,11 @@ export async function resumeSwimPlan(preview: SwimResumePreview): Promise<Action
     });
     await checkWorkouts(client, user.id, updates.map((row) => row.definition.issued));
     const record = decision("schedule", "accepted", { preview });
-    await storage.resumeSwimPlan(client, {
+    const resumed = await storage.resumeSwimPlan(client, {
       planId: plan.id, expectedRevision: preview.revision, definition: plan.definition,
       state: { ...plan.state, decisions: [...plan.state.decisions, record] }, workouts: updates,
     });
-    refreshSwims();
-    return { ok: true };
+    returnedPlan = resumed.plan;
   } catch (error) { return swimActionFailure(error); }
+  return confirmedPlanView(context.client, context.user.id, returnedPlan);
 }

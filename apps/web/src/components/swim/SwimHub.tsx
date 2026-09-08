@@ -8,22 +8,31 @@ import {
   changeSwimPlanStatus, previewSwimResume, resumeSwimPlan,
   decideSwimBenchmark,
 } from "@/lib/swim/actions";
-import type { SwimHubView, SwimResumePreview } from "@/lib/swim/view-types";
+import { nextSwimHubView, type SwimHubView, type SwimResumePreview } from "@/lib/swim/view-types";
 import type { SwimBenchmarkPreview } from "@/lib/swim/model";
 import type { ActionResult } from "@/lib/offline/outbox-core";
 import { SWIM_REFRESH_WARNING } from "@/lib/swim/action-feedback";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { BenchmarkFields } from "./SetupForm";
 import styles from "./Swim.module.css";
 
-export function SwimHub({ plan }: { plan: SwimHubView }) {
+export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
+  plan: SwimHubView;
+  plans: { id: string; startedOn: string; status: SwimHubView["status"] }[];
+  setupEnabled: boolean;
+}) {
   const router = useRouter();
+  const [heldPlan, setPlan] = useState(incomingPlan);
+  const plan = nextSwimHubView(heldPlan, incomingPlan, "props");
+  if (plan !== heldPlan) setPlan(plan);
+  const choices = plans.map((choice) => choice.id === plan.id ? { ...choice, status: plan.status } : choice);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [preview, setPreview] = useState<SwimResumePreview | null>(null);
   const [benchmark, setBenchmark] = useState<SwimBenchmarkPreview | null>(null);
 
-  function run(action: () => Promise<ActionResult & { warning?: string }>) {
+  function run(action: () => Promise<ActionResult & { warning?: string; view?: SwimHubView }>) {
     setError(null);
     setWarning(null);
     startTransition(async () => {
@@ -33,6 +42,8 @@ export function SwimHub({ plan }: { plan: SwimHubView }) {
           setError(result?.error || "Could not save this change. Try again.");
           return;
         }
+        const view = result.view;
+        if (view) setPlan((current) => nextSwimHubView(current, view, "confirmed"));
         setWarning(result.warning ?? null);
         setPreview(null);
         setBenchmark(null);
@@ -44,6 +55,14 @@ export function SwimHub({ plan }: { plan: SwimHubView }) {
   const editable = plan.status === "active" || plan.status === "paused";
   return (
     <>
+      <PageHeader title="Swimming" back={{ href: "/app/plan", label: "Plan" }}
+        actions={setupEnabled && !choices.some((choice) => choice.status === "active")
+          ? <Link href="/app/swim/setup" className={styles.button}>Set up swimming</Link> : undefined} />
+      {choices.length > 1 && <nav className={styles.actions} aria-label="Swim plans">
+        {choices.map((choice) => <Link key={choice.id} href={`/app/swim?plan=${choice.id}`} className={styles.secondary} aria-current={choice.id === plan.id ? "page" : undefined}>
+          {choice.startedOn} · {({ active: "Active", paused: "Paused", finished: "Finished", archived: "Archived" })[choice.status]}
+        </Link>)}
+      </nav>}
       <section className={styles.section}>
         <h2>{plan.goal}</h2>
         <p className={styles.muted}>{plan.course} · {plan.dates}</p>
