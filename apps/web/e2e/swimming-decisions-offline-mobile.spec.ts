@@ -117,10 +117,14 @@ async function queueRows(page: Page): Promise<OutboxEntry[]> {
     open.onerror = () => reject(new Error("Native outbox unavailable."));
     open.onsuccess = () => {
       const db = open.result;
-      const tx = db.transaction("outbox", "readonly");
-      const request = tx.objectStore("outbox").getAll();
-      tx.oncomplete = () => { db.close(); resolve(request.result as OutboxEntry[]); };
-      tx.onerror = () => { db.close(); reject(new Error("Native outbox read failed.")); };
+      const failed = () => { db.close(); reject(new Error("Native outbox read failed.")); };
+      try {
+        const tx = db.transaction("outbox", "readonly");
+        const request = tx.objectStore("outbox").getAll();
+        tx.oncomplete = () => { db.close(); resolve(request.result as OutboxEntry[]); };
+        tx.onerror = failed;
+        tx.onabort = failed;
+      } catch { failed(); }
     };
   }));
   return sortBySeq(rows);
@@ -130,7 +134,7 @@ function durable(entries: OutboxEntry[]) {
   return entries.map(({ id, op, sessionId, seq, createdAt, payload }) => ({ id, op, sessionId, seq, createdAt, payload }));
 }
 
-async function completionRows(client: SupabaseClient, userId: string, workoutId: string, sessionId: string) {
+async function observeCompletionRows(client: SupabaseClient, userId: string, workoutId: string, sessionId: string) {
   const [workout, session, logs] = await Promise.all([
     client.from("swim_workouts").select("*").eq("user_id", userId).eq("id", workoutId).single(),
     client.from("sessions").select("id,user_id,completed_at,completion_outbox_entry_id,duration_min,session_rpe,notes")
@@ -138,10 +142,21 @@ async function completionRows(client: SupabaseClient, userId: string, workoutId:
     client.from("cardio_logs").select("id,session_id,client_log_id,swim_result,duration_sec,distance_km,rpe,notes")
       .eq("session_id", sessionId).order("id"),
   ]);
+  if (workout.error || session.error || logs.error) throw new Error("Synthetic completion observation failed.");
+  return { workout, session, logs };
+}
+
+function assertCompletionRows(
+  { workout, session, logs }: Awaited<ReturnType<typeof observeCompletionRows>>, sessionId: string,
+) {
   expect(!workout.error && !session.error && !logs.error, "Synthetic completion rows readable").toBe(true);
   if (!workout.data || !session.data || !logs.data) throw new Error("Missing synthetic completion rows.");
   same(workout.data.session_id, sessionId);
   return { workout: workout.data, session: session.data, logs: logs.data };
+}
+
+async function completionRows(client: SupabaseClient, userId: string, workoutId: string, sessionId: string) {
+  return assertCompletionRows(await observeCompletionRows(client, userId, workoutId, sessionId), sessionId);
 }
 
 function committed(rows: Awaited<ReturnType<typeof completionRows>>, entry: OutboxEntry) {
@@ -318,111 +333,189 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     }
     same(durable(await queueRows(page)), durable(original));
 
-    const lost = Promise.withResolvers<void>();
-    const replayArrived = Promise.withResolvers<void>();
+    type RequestObservation = { ordinal: number; identityMatches: boolean };
+    type CompletionObservation = RequestObservation & {
+      rows: Awaited<ReturnType<typeof observeCompletionRows>>;
+    };
+    function assertRequest(observation: RequestObservation) {
+      expect(observation.ordinal).toBeLessThanOrEqual(3);
+      expect(observation.identityMatches, "Owned native completion request identity").toBe(true);
+    }
+    const lost = Promise.withResolvers<CompletionObservation | Error>();
+    const replayArrived = Promise.withResolvers<CompletionObservation | Error>();
     const allowReplay = Promise.withResolvers<void>();
-    const subsequentArrived = Promise.withResolvers<void>();
+    const subsequentArrived = Promise.withResolvers<RequestObservation & {
+      queue: OutboxEntry[]; head: Awaited<ReturnType<typeof observeCompletionRows>>;
+    } | Error>();
     const allowSubsequent = Promise.withResolvers<void>();
-    const drained = Promise.withResolvers<void>();
+    const drained = Promise.withResolvers<CompletionObservation | Error>();
+    const failed = Promise.withResolvers<Error>();
+    let handlerFailure: Error | undefined;
+    let stopping = false;
+    let cleanupFailed = false;
+    let primaryFailure: unknown;
+    let bodyFailed = false;
+    function failHandler() {
+      handlerFailure ??= new Error("B2 owned completion route failed.");
+      failed.resolve(handlerFailure);
+    }
+    async function checked<T>(pending: Promise<T | Error>): Promise<T> {
+      const result = await Promise.race([pending, failed.promise]);
+      if (handlerFailure) throw handlerFailure;
+      if (result instanceof Error) throw result;
+      return result;
+    }
     let sends = 0;
-    let firstCommit: Awaited<ReturnType<typeof completionRows>> | undefined;
     const ownedPaths = new Set(started.map((row) => `/app/swim/${row.id}`));
     await context.route((url) => url.origin === new URL(baseURL!).origin && ownedPaths.has(url.pathname), async (route) => {
-      const request = route.request();
-      if (request.method() !== "POST" || !request.headers()["next-action"]) {
-        await route.continue();
-        return;
+      let settled = false;
+      async function abort() {
+        if (!settled) {
+          await route.abort("failed");
+          settled = true;
+        }
       }
-      const ordinal = ++sends;
-      expect(ordinal).toBeLessThanOrEqual(3);
-      const entry = original[ordinal === 3 ? 1 : 0];
-      // The caller URL can be the OTHER workout. Identify the queued action by its native IDs.
-      const body = request.postData() ?? "";
-      expect([entry.id, entry.sessionId, entry.payload.workoutId].every((id) => body.includes(id)),
-        "Owned native completion request identity").toBe(true);
-      if (ordinal === 2) {
-        replayArrived.resolve();
-        await allowReplay.promise;
-      }
-      if (ordinal === 3) {
-        same(durable(await queueRows(secondPage)), durable([original[1]]));
-        same(await completionRows(actor, freshUser.userId, started[0].id, original[0].sessionId), firstCommit);
-        subsequentArrived.resolve();
-        await allowSubsequent.promise;
-      }
-      const response = await route.fetch();
-      const rows = await completionRows(actor, freshUser.userId, entry.payload.workoutId, entry.sessionId);
-      committed(rows, entry);
-      if (ordinal === 1) {
-        firstCommit = rows;
-        // Receipt, result and session are observed committed BEFORE discarding the response.
-        await context.setOffline(true);
-        await route.abort("failed");
-        lost.resolve();
-      } else {
-        if (ordinal === 2) same(rows, firstCommit);
-        await route.fulfill({ response });
-        if (ordinal === 3) drained.resolve();
+      try {
+        if (stopping || handlerFailure) { await abort(); return; }
+        const request = route.request();
+        if (request.method() !== "POST") {
+          await route.continue();
+          settled = true;
+          return;
+        }
+        const ordinal = ++sends;
+        const entry = original[ordinal === 3 ? 1 : 0];
+        // The caller URL can be the OTHER workout. Identify the queued action by its native IDs.
+        const body = request.postData() ?? "";
+        const identityMatches = !!request.headers()["next-action"] &&
+          [entry.id, entry.sessionId, entry.payload.workoutId].every((id) => body.includes(id));
+        if (ordinal > 3 || !identityMatches) {
+          failHandler();
+          await abort();
+          return;
+        }
+        if (ordinal === 3) {
+          const queue = await queueRows(secondPage);
+          const head = await observeCompletionRows(actor, freshUser.userId, started[0].id, original[0].sessionId);
+          subsequentArrived.resolve({ ordinal, identityMatches, queue, head });
+          await allowSubsequent.promise;
+        }
+        if (stopping || handlerFailure) { await abort(); return; }
+        const response = await route.fetch();
+        const rows = await observeCompletionRows(actor, freshUser.userId, entry.payload.workoutId, entry.sessionId);
+        if (stopping || handlerFailure) { await abort(); return; }
+        if (ordinal === 1) {
+          // Capture receipt, result and session BEFORE discarding the response.
+          await context.setOffline(true);
+          await abort();
+          lost.resolve({ ordinal, identityMatches, rows });
+        } else {
+          if (ordinal === 2) {
+            replayArrived.resolve({ ordinal, identityMatches, rows });
+            await allowReplay.promise;
+          }
+          if (stopping || handlerFailure) { await abort(); return; }
+          await route.fulfill({ response });
+          settled = true;
+          if (ordinal === 3) drained.resolve({ ordinal, identityMatches, rows });
+        }
+      } catch {
+        failHandler();
+        try { await abort(); } catch { cleanupFailed = true; }
       }
     });
     try {
-      await context.setOffline(false);
-      await lost.promise;
-      await expect.poll(async () => {
+      await checked(context.setOffline(false));
+      const loss = await checked(lost.promise);
+      assertRequest(loss);
+      const firstCommit = assertCompletionRows(loss.rows, original[0].sessionId);
+      committed(firstCommit, original[0]);
+      await checked(expect.poll(async () => {
         const rows = await queueRows(secondPage);
         return rows.length === 2 && rows.every((row) => !row.leaseToken) &&
           rows[0].attempts > 0 && rows[0].attempts < MAX_REPLAY_ATTEMPTS;
-      }).toBe(true);
-      same(durable(await queueRows(secondPage)), durable(original));
+      }).toBe(true));
+      same(durable(await checked(queueRows(secondPage))), durable(original));
       expect(sends).toBe(1);
-      await expect(page.getByRole("button", { name: "Waiting to sync", exact: true })).toBeDisabled();
-      await expect(secondPage.getByRole("button", { name: "Waiting to sync", exact: true })).toBeDisabled();
+      await checked(expect(page.getByRole("button", { name: "Waiting to sync", exact: true })).toBeDisabled());
+      await checked(expect(secondPage.getByRole("button", { name: "Waiting to sync", exact: true })).toBeDisabled());
 
       // Relaunch only after the failed drain released its lease; IDB stays in this context.
-      await page.close();
-      await context.setOffline(false);
-      await replayArrived.promise;
-      const reopened = await context.newPage();
-      await reopened.goto(`/app/swim/${started[0].id}`);
-      await expect(reopened.getByRole("heading", { name: "Your swim", exact: true })).toBeVisible();
-      await expect(reopened.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
-      same(durable(await queueRows(reopened)), durable(original));
-      const waiting = await queueRows(reopened);
+      await checked(page.close());
+      await checked(context.setOffline(false));
+      const reopened = await checked(context.newPage());
+      await checked(reopened.goto(`/app/swim/${started[0].id}`));
+      const replayed = await checked(replayArrived.promise);
+      assertRequest(replayed);
+      const replay = assertCompletionRows(replayed.rows, original[0].sessionId);
+      committed(replay, original[0]);
+      same(replay, firstCommit);
+      await checked(expect(reopened.getByRole("heading", { name: "Your swim", exact: true })).toBeVisible());
+      await checked(expect(reopened.getByRole("button", { name: "Edit result", exact: true })).toBeVisible());
+      same(durable(await checked(queueRows(reopened))), durable(original));
+      const waiting = await checked(queueRows(reopened));
       expect(waiting[0].leaseToken !== undefined).toBe(true);
       expect(waiting[0].attempts).toBeLessThan(MAX_REPLAY_ATTEMPTS);
       expect(waiting[1].leaseToken).toBeUndefined();
       expect(waiting[1].attempts).toBe(0);
       expect(sends).toBe(2);
-      const untouched = await completionRows(actor, freshUser.userId, started[1].id, original[1].sessionId);
+      const untouched = await checked(completionRows(actor, freshUser.userId, started[1].id, original[1].sessionId));
       expect(untouched.workout.status).toBe("started");
       expect(untouched.session.completed_at).toBeNull();
       expect(untouched.session.completion_outbox_entry_id).toBeNull();
       expect(untouched.logs).toHaveLength(0);
 
       allowReplay.resolve();
-      await subsequentArrived.promise;
-      same(durable(await queueRows(reopened)), durable([original[1]]));
+      const subsequent = await checked(subsequentArrived.promise);
+      assertRequest(subsequent);
+      same(durable(subsequent.queue), durable([original[1]]));
+      same(assertCompletionRows(subsequent.head, original[0].sessionId), firstCommit);
+      same(durable(await checked(queueRows(reopened))), durable([original[1]]));
       allowSubsequent.resolve();
-      await drained.promise;
-      await expect.poll(async () => (await queueRows(reopened)).length).toBe(0);
+      const final = await checked(drained.promise);
+      assertRequest(final);
+      committed(assertCompletionRows(final.rows, original[1].sessionId), original[1]);
+      await checked(expect.poll(async () => (await queueRows(reopened)).length).toBe(0));
       expect(sends).toBe(3);
-      same(await completionRows(actor, freshUser.userId, started[0].id, original[0].sessionId), firstCommit);
-      committed(await completionRows(actor, freshUser.userId, started[1].id, original[1].sessionId), original[1]);
-      await secondPage.reload();
+      same(await checked(completionRows(actor, freshUser.userId, started[0].id, original[0].sessionId)), firstCommit);
+      committed(await checked(completionRows(actor, freshUser.userId, started[1].id, original[1].sessionId)), original[1]);
+      await checked(secondPage.reload());
       for (const [index, tab] of [reopened, secondPage].entries()) {
-        await expect(tab.getByRole("heading", { name: "Your swim", exact: true })).toBeVisible();
+        await checked(expect(tab.getByRole("heading", { name: "Your swim", exact: true })).toBeVisible());
         const result = tab.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
-        await expect(result).toContainText(`${original[index].payload.lengths} lengths`);
-        await expect(result).toContainText(index === 0 ? "20:00" : "21:00");
-        await expect(result).toContainText("RPE 5");
-        await expect(tab.getByRole("button", { name: "Finish swim", exact: true })).toHaveCount(0);
-        await expect(tab.getByRole("button", { name: "Waiting to sync", exact: true })).toHaveCount(0);
-        await expect(tab.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
+        await checked(expect(result).toContainText(`${original[index].payload.lengths} lengths`));
+        await checked(expect(result).toContainText(index === 0 ? "20:00" : "21:00"));
+        await checked(expect(result).toContainText("RPE 5"));
+        await checked(expect(tab.getByRole("button", { name: "Finish swim", exact: true })).toHaveCount(0));
+        await checked(expect(tab.getByRole("button", { name: "Waiting to sync", exact: true })).toHaveCount(0));
+        await checked(expect(tab.getByRole("button", { name: "Edit result", exact: true })).toBeVisible());
       }
+    } catch (error) {
+      bodyFailed = true;
+      primaryFailure = error;
     } finally {
+      stopping = true;
+      try { await context.setOffline(true); } catch { cleanupFailed = true; }
       allowReplay.resolve();
       allowSubsequent.resolve();
-      await context.unrouteAll({ behavior: "wait" });
+      const stopped = new Error("B2 route observation stopped.");
+      lost.resolve(stopped);
+      replayArrived.resolve(stopped);
+      subsequentArrived.resolve(stopped);
+      drained.resolve(stopped);
+      failed.resolve(stopped);
+      try {
+        await context.unrouteAll({ behavior: "wait" });
+        await expect.poll(async () => (await queueRows(secondPage)).every((row) => !row.leaseToken)).toBe(true);
+      } catch { cleanupFailed = true; }
     }
+    if (cleanupFailed) {
+      const cleanupFailure = new Error("B2 owned route cleanup failed.");
+      if (bodyFailed) throw new AggregateError([primaryFailure, cleanupFailure], "B2 failed with incomplete cleanup.");
+      if (handlerFailure) throw new AggregateError([handlerFailure, cleanupFailure], "B2 failed with incomplete cleanup.");
+      throw cleanupFailure;
+    }
+    if (bodyFailed) throw primaryFailure;
+    if (handlerFailure) throw handlerFailure;
   });
 });
