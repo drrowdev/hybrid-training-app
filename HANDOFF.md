@@ -16,8 +16,9 @@ distance and millisecond results are authoritative; generic cardio summaries
 exist for compatibility and shared workload only.
 
 The current PR802 continuation authorizes disposable localhost services on the
-cloud runner only, not hosted credentials. The database milestone passed;
-the first four-case browser reference remains pending. Do not treat mocked tests, static browser
+cloud runner only, not hosted credentials. The normal-148 database and first
+four-case browser reference passed; the expanded six-case reference is pending.
+Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
 generic app-credential fallbacks for seeded tests. Production was not migrated.
@@ -31,9 +32,31 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-07 (PR803 browser finishing slice)
+**Last updated:** 2026-09-08 (PR805 six-case wiring; live pending)
 
-### PR803 browser integration — current status
+### PR805 expanded browser cohort — current status
+
+The original four cases plus normal 148 migrations, 15 service contexts and
+36 HTTP cases passed in [run 34176424048](https://github.com/drrowdev/hybrid-training-app/actions/runs/34176424048)
+at `4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. Opus 5 turn 19 accepted the
+integration; turn 20 accepted both A source cases.
+
+Wiring checkpoint `c8072969` declares exactly those unchanged four plus A1
+([DC-SW7](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05))
+and A2 (DC-SW9), across three files. Catalog-derived equality gates require all
+six to pass exactly once, without retries, skips or errors. A1 status assertions
+use the current-plan summary; A2 is unchanged. Safe ledgers now include measured
+`durationMs` for the final attempt alongside `attempts`, not summed retries or
+a runtime guarantee. All execution limits remain unchanged.
+
+686 targeted helper/collection/runner tests, web typecheck and scoped lint
+passed. Real `--list` collected six cases with no executed results. No live
+browser/app-server/database/container run or workflow dispatch occurred.
+The coordinator owns final exact-head Opus review, core CI, fresh guards and
+**one six-case live reference on this branch**. B/C remain unselected; this is
+not completion of all nine standalone gates or production acceptance.
+
+### PR803 browser integration — earlier checkpoint
 
 The coordinator confirms the database milestone passed. The first four-case
 mobile browser execution is wired: sealed reports after command reaping,
@@ -58,7 +81,8 @@ four mobile cases from two files, with zero executed results. The Next 16.2.6
 own-stop exit-143 fix is committed separately. Missing reports are classified
 only after ticket/root validation, not described as “never written.”
 256 scoped synthetic/collection tests, web typecheck and scoped lint pass.
-No browser, server, database or workflow dispatch ran; live reference remains pending.
+No browser, server, database or workflow dispatch ran in that slice; the later
+first-four milestone is recorded above.
 
 ### PR802 anonymous completion correction — earlier checkpoint
 
