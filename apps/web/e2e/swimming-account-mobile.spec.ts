@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { NewMovement, NewSession, NewSessionMovement, NewSetLog } from "@hta/db";
 import type { SwimActualResult, SwimSetup } from "@hta/domain";
 import { generateSwimPlan, SWIM_GENERATOR_VERSION } from "@hta/engine";
 import { test as seededTest, expect } from "./fixtures/seed";
@@ -22,8 +23,10 @@ import {
 // owned Next server command's options.env and carry the accepted common fixes.
 const mobile = { viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true };
 type Row = Record<string, unknown> & { id: string };
+type CustomIds = { movementId: string; sessionId: string; setId: string };
 type Account = {
   email: string; password: string; userId: string; client: SupabaseClient;
+  custom?: CustomIds;
 };
 
 const test = seededTest.extend<{ accounts: [Account, Account] }>({
@@ -98,6 +101,27 @@ async function cleanupAccount(admin: SupabaseClient, account: Account) {
   expect(existing.error === null).toBe(true);
   expect(existing.data.user.id).toBe(account.userId);
   expect(existing.data.user.email === account.email && /^e2e\+.+@hta-e2e\.com$/.test(account.email)).toBe(true);
+  if (account.custom) {
+    const { movementId, sessionId, setId } = account.custom;
+    const session = await admin.from("sessions").select("id, user_id").eq("id", sessionId).maybeSingle();
+    const movement = await admin.from("movements").select("id, user_id").eq("id", movementId).maybeSingle();
+    expect(session.error === null && movement.error === null).toBe(true);
+    expect(!session.data || session.data.user_id === account.userId).toBe(true);
+    expect(!movement.data || movement.data.user_id === account.userId).toBe(true);
+    // Teardown only: never remove either RESTRICT reference before Account deletion.
+    // Exact allocated IDs also cover a partially failed fixture arrangement.
+    const sets = await admin.from("set_logs").delete().eq("id", setId)
+      .eq("session_id", sessionId).eq("movement_id", movementId);
+    expect(sets.error === null).toBe(true);
+    const links = await admin.from("session_movements").delete().eq("user_id", account.userId)
+      .eq("session_id", sessionId).eq("movement_id", movementId);
+    expect(links.error === null).toBe(true);
+    const removedSession = await admin.from("sessions").delete().eq("user_id", account.userId).eq("id", sessionId);
+    expect(removedSession.error === null).toBe(true);
+    const removedMovement = await admin.from("movements").delete().eq("user_id", account.userId).eq("id", movementId);
+    expect(removedMovement.error === null).toBe(true);
+    await assertCustomGone(admin, account.userId, account.custom);
+  }
   const deleted = await admin.auth.admin.deleteUser(account.userId);
   expect(deleted.error === null).toBe(true);
   const remaining = await admin.auth.admin.getUserById(account.userId);
@@ -198,6 +222,95 @@ async function arrangeNative(account: Account, unit: "yd" | "m") {
 }
 
 type NativeFixture = Awaited<ReturnType<typeof arrangeNative>>;
+
+async function arrangeReferencedCustomMovement(account: Account) {
+  const ids: CustomIds = { movementId: randomUUID(), sessionId: randomUUID(), setId: randomUUID() };
+  account.custom = ids;
+  const movement: NewMovement = {
+    id: ids.movementId, userId: account.userId,
+    slug: `synthetic-account-row-${ids.movementId}`, displayName: `Synthetic row ${ids.movementId}`,
+    pattern: "pull", primaryRegion: "shoulder_scapular", primaryMuscles: ["lats", "mid_back"],
+    equipment: "dumbbells-incline-bench", isCompound: true, isSupported: true, stability: "supported",
+  };
+  const insertedMovement = await account.client.from("movements").insert({
+    id: movement.id, user_id: movement.userId, slug: movement.slug, display_name: movement.displayName,
+    pattern: movement.pattern, primary_region: movement.primaryRegion, primary_muscles: movement.primaryMuscles,
+    equipment: movement.equipment, is_compound: movement.isCompound, is_supported: movement.isSupported,
+    stability: movement.stability,
+  }).select("id, user_id").single();
+  expect(insertedMovement.error === null).toBe(true);
+  expect(insertedMovement.data?.id).toBe(ids.movementId);
+  expect(insertedMovement.data?.user_id).toBe(account.userId);
+
+  const session: NewSession = {
+    id: ids.sessionId, userId: account.userId, title: `Synthetic strength ${ids.sessionId}`, slot: "single",
+  };
+  const insertedSession = await account.client.from("sessions").insert({
+    id: session.id, user_id: session.userId, title: session.title, slot: session.slot,
+  }).select("id, user_id").single();
+  expect(insertedSession.error === null).toBe(true);
+  expect(insertedSession.data?.id).toBe(ids.sessionId);
+  expect(insertedSession.data?.user_id).toBe(account.userId);
+
+  const link: NewSessionMovement = {
+    sessionId: ids.sessionId, movementId: ids.movementId, userId: account.userId, sortOrder: 0,
+  };
+  const insertedLink = await account.client.from("session_movements").insert({
+    session_id: link.sessionId, movement_id: link.movementId, user_id: link.userId, sort_order: link.sortOrder,
+  }).select("session_id, movement_id, user_id").single();
+  expect(insertedLink.error === null).toBe(true);
+  expect(insertedLink.data?.session_id).toBe(ids.sessionId);
+  expect(insertedLink.data?.movement_id).toBe(ids.movementId);
+  expect(insertedLink.data?.user_id).toBe(account.userId);
+
+  const set: NewSetLog = {
+    id: ids.setId, sessionId: ids.sessionId, movementId: ids.movementId,
+    setIndex: 0, setKind: "main", reps: 8, weightKg: "12.00", rpe: "6.0",
+  };
+  const insertedSet = await account.client.from("set_logs").insert({
+    id: set.id, session_id: set.sessionId, movement_id: set.movementId,
+    set_index: set.setIndex, set_kind: set.setKind, reps: set.reps, weight_kg: set.weightKg, rpe: set.rpe,
+  }).select("id, session_id, movement_id").single();
+  expect(insertedSet.error === null).toBe(true);
+  expect(insertedSet.data?.id).toBe(ids.setId);
+  expect(insertedSet.data?.session_id).toBe(ids.sessionId);
+  expect(insertedSet.data?.movement_id).toBe(ids.movementId);
+  const swimLinks = await account.client.from("swim_workouts").select("id")
+    .eq("user_id", account.userId).eq("session_id", ids.sessionId);
+  expect(swimLinks.error === null).toBe(true);
+  expect(swimLinks.data?.length).toBe(0);
+  return ids;
+}
+
+async function assertCustomGone(admin: SupabaseClient, userId: string, ids: CustomIds) {
+  const results = await Promise.all([
+    admin.from("movements").select("id").eq("user_id", userId).eq("id", ids.movementId),
+    admin.from("sessions").select("id").eq("user_id", userId).eq("id", ids.sessionId),
+    admin.from("set_logs").select("id").eq("session_id", ids.sessionId)
+      .eq("movement_id", ids.movementId).eq("id", ids.setId),
+    admin.from("session_movements").select("session_id").eq("user_id", userId)
+      .eq("session_id", ids.sessionId).eq("movement_id", ids.movementId),
+  ]);
+  for (const result of results) {
+    expect(result.error === null).toBe(true);
+    expect(result.data?.length).toBe(0);
+  }
+}
+
+async function assertNativeGone(admin: SupabaseClient, ids: NativeIds) {
+  const results = await Promise.all([
+    admin.from("profiles").select("id").eq("id", ids.userId),
+    admin.from("swim_plans").select("id").eq("user_id", ids.userId).eq("id", ids.planId),
+    admin.from("swim_workouts").select("id").eq("user_id", ids.userId).in("id", ids.workoutIds),
+    admin.from("sessions").select("id").eq("user_id", ids.userId).eq("id", ids.sessionId),
+    admin.from("cardio_logs").select("id").eq("session_id", ids.sessionId).eq("id", ids.cardioId),
+  ]);
+  for (const result of results) {
+    expect(result.error === null).toBe(true);
+    expect(result.data?.length).toBe(0);
+  }
+}
+
 type ExportPayload = Record<string, unknown> & {
   user: { id: string }; profile: Record<string, unknown> & { id: string };
   swim_plans: Row[]; swim_workouts: Row[]; sessions: Row[]; cardio_logs: Row[];
@@ -257,7 +370,8 @@ function assertNativeExport(body: ExportPayload, own: NativeFixture, other: Nati
 }
 
 test.describe("ADR0079 mobile swimming account acceptance", () => {
-  test.use(mobile);
+  // Generic collection must not write account/export artifacts on a retry either.
+  test.use({ ...mobile, trace: "off", screenshot: "off", video: "off" });
   test.skip(!swimE2EEnabled(process.env), "Blocked: swimming E2E was not explicitly requested.");
 
   test("C1 DC-SW1/DC-SW8: Account exports native records and isolates synthetic users", async ({
@@ -283,6 +397,61 @@ test.describe("ADR0079 mobile swimming account acceptance", () => {
       await response.dispose();
     } finally {
       await anonymous.close();
+    }
+  });
+
+  test("C2 DC-SW8: Account deletion cascades with a referenced user-owned custom movement and preserves a survivor", async ({
+    page, context, browser, accounts: [primary, survivor], seedConfig, admin, baseURL,
+  }) => {
+    // Named positive regression for A1's auth-deletion cleanup failure:
+    // 0001/0003 cascade from auth.users; set_logs and 0059 session_movements
+    // RESTRICT movement deletion. The observed code/order is not proved.
+    // No expected failure, global-movement substitute or pre-deletion cleanup.
+    const own = await arrangeNative(primary, "yd");
+    const kept = await arrangeNative(survivor, "m");
+    const custom = await arrangeReferencedCustomMovement(primary);
+    expect(custom.sessionId).not.toBe(own.sessionId);
+    await signInAs(context, primary, seedConfig, baseURL!);
+    const survivorContext = await browser.newContext({ ...mobile, baseURL, storageState: { cookies: [], origins: [] } });
+    try {
+      await signInAs(survivorContext, survivor, seedConfig, baseURL!);
+      const survivorPage = await survivorContext.newPage();
+      const before = await exportFromAccount(survivorPage, survivor);
+      assertNativeExport(before, kept, own);
+
+      await accountPage(page, primary);
+      await page.getByRole("button", { name: "Delete account (GDPR Art. 17)", exact: true }).click();
+      await expect(page).toHaveURL(new URL("/?deleted=1", baseURL!).href);
+      expect((await context.cookies()).filter((cookie) =>
+        /^sb-.+-auth-token(?:\.\d+)?$/.test(cookie.name) && cookie.value !== "").length).toBe(0);
+
+      // Product deletion is proved before teardown, through the harness admin,
+      // never through dead primary cookies or redirect alone.
+      const deleted = await admin.auth.admin.getUserById(primary.userId);
+      expect(deleted.data.user === null).toBe(true);
+      expect(deleted.error?.status).toBe(404);
+      await assertNativeGone(admin, own);
+      await assertCustomGone(admin, primary.userId, custom);
+
+      const survivingUser = await admin.auth.admin.getUserById(survivor.userId);
+      expect(survivingUser.error === null).toBe(true);
+      expect(survivingUser.data.user?.id).toBe(survivor.userId);
+      expect(survivingUser.data.user?.email === survivor.email).toBe(true);
+      expect(isDeepStrictEqual(await nativeRows(admin, kept), kept.rows)).toBe(true);
+      const after = await exportFromAccount(survivorPage, survivor);
+      assertNativeExport(after, kept, own);
+      expect(isDeepStrictEqual(after.profile, before.profile)).toBe(true);
+      const serialized = JSON.stringify(after);
+      for (const id of [custom.sessionId, custom.movementId, custom.setId]) {
+        expect(serialized.includes(id)).toBe(false);
+      }
+      const workout = kept.rows.swim_workouts.find((row) => row.session_id === kept.sessionId)!;
+      await survivorPage.goto(`/app/swim/${workout.id}`);
+      await expect(survivorPage).toHaveURL(new URL(`/app/swim/${workout.id}`, baseURL!).href);
+      await expect(survivorPage.getByRole("heading", { name: "Your swim", exact: true })).toBeVisible();
+      expect(isDeepStrictEqual(await nativeRows(admin, kept), kept.rows)).toBe(true);
+    } finally {
+      await survivorContext.close();
     }
   });
 });
