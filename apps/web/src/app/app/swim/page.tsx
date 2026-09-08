@@ -20,20 +20,16 @@ export default async function SwimPage({ searchParams }: { searchParams: Promise
   const view = selected ? await loadSwimHubView(client, user.id, selected) : null;
   return (
     <main className={styles.page}>
-      <PageHeader title="Swimming" back={{ href: "/app/plan", label: "Plan" }}
+      {!view && <PageHeader title="Swimming" back={{ href: "/app/plan", label: "Plan" }}
         actions={capability.setupEnabled && !plans.some((plan) => plan.status === "active")
-          ? <Link href="/app/swim/setup" className={styles.button}>Set up swimming</Link> : undefined} />
+          ? <Link href="/app/swim/setup" className={styles.button}>Set up swimming</Link> : undefined} />}
       {!capability.storageAvailable && <p role="status">Swimming is currently unavailable.</p>}
       {capability.storageAvailable && !view && <section className={styles.section}>
         <h2>No swim plan yet</h2>
         {!capability.setupEnabled && <p className={styles.muted}>Swimming setup is currently unavailable.</p>}
       </section>}
-      {plans.length > 1 && <nav className={styles.actions} aria-label="Swim plans">
-        {plans.map((plan) => <Link key={plan.id} href={`/app/swim?plan=${plan.id}`} className={styles.secondary} aria-current={plan.id === selected?.id ? "page" : undefined}>
-          {plan.started_on} · {({ active: "Active", paused: "Paused", finished: "Finished", archived: "Archived" })[plan.status]}
-        </Link>)}
-      </nav>}
-      {view && <SwimHub key={view.id} plan={view} />}
+      {view && <SwimHub key={view.id} plan={view} setupEnabled={capability.setupEnabled}
+        plans={plans.map((plan) => ({ id: plan.id, startedOn: plan.started_on, status: plan.status }))} />}
     </main>
   );
 }
