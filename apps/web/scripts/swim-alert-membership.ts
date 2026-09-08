@@ -90,9 +90,12 @@ export type AlertCategory = (typeof SWIM_ALERT_CODEBOOK)[number]["category"] |
   "absent" | "multiple" | "detached" | "unreadable" | "unclassified" | "unavailable";
 export type AlertBackend = "reached" | "not-reached" | "unavailable";
 export type AlertRevision = "unchanged" | "advanced" | "other" | "unavailable";
+export type C2Location = "account-page" | "login-page" | "home-page" | "deleted-home" | "other-page" | "unavailable";
+export type C2HttpClass = "http-2xx" | "http-3xx" | "http-4xx" | "http-5xx";
+export type C2Transport = "request-unseen" | "request-pending" | "request-failed" | C2HttpClass | "unavailable";
 export type AlertControl = "start" | "log" | "plan-inactive" | "removed" |
-  "unavailable-page" | "not-found" | "none" | "unavailable";
-export type AlertResult = "editing" | "summary" | "none" | "unavailable";
+  "unavailable-page" | "not-found" | "none" | C2Location;
+export type AlertResult = "editing" | "summary" | "none" | C2Transport;
 export type AlertPoint = "a1-pause" | "a2-post-start" | "a2-edit" | "c4-owner-1-start" | "c4-owner-2-start" | "c2-auth-absence";
 export type AlertObservation = {
   point: AlertPoint; category: AlertCategory; backend: AlertBackend; revision: AlertRevision;
@@ -180,6 +183,9 @@ const CONTROLS: readonly AlertControl[] = [
   "start", "log", "plan-inactive", "removed", "unavailable-page", "not-found", "none", "unavailable",
 ];
 const RESULTS: readonly AlertResult[] = ["editing", "summary", "none", "unavailable"];
+const C2_LOCATIONS: readonly C2Location[] = ["account-page", "login-page", "home-page", "deleted-home", "other-page", "unavailable"];
+const C2_HTTP_CLASSES: readonly C2HttpClass[] = ["http-2xx", "http-3xx", "http-4xx", "http-5xx"];
+const C2_TRANSPORTS: readonly C2Transport[] = ["request-unseen", "request-pending", "request-failed", ...C2_HTTP_CLASSES, "unavailable"];
 
 export function unavailableAlert(point: AlertPoint): AlertObservation {
   return { point, category: "unavailable", backend: "unavailable", revision: "unavailable",
@@ -196,11 +202,12 @@ function validObservation(value: unknown): value is AlertObservation {
     validateAlertCategory(value.category) === value.category &&
     BACKENDS.some((backend) => backend === value.backend) &&
     REVISIONS.some((revision) => revision === value.revision) &&
-    CONTROLS.some((control) => control === value.control) &&
-    RESULTS.some((result) => result === value.result) &&
     (value.point === "a1-pause" || value.revision === "unavailable") &&
-    (value.point !== "c2-auth-absence" || value.category === "unavailable" &&
-      value.control === "unavailable" && value.result === "unavailable");
+    (value.point === "c2-auth-absence"
+      ? value.category === "unavailable" && (value.backend === "not-reached"
+        ? C2_LOCATIONS.some((control) => control === value.control) && C2_TRANSPORTS.some((result) => result === value.result)
+        : value.control === "unavailable" && value.result === "unavailable")
+      : CONTROLS.some((control) => control === value.control) && RESULTS.some((result) => result === value.result));
 }
 
 export function alertAnnotation(value: unknown) {
@@ -271,4 +278,38 @@ export function authAbsenceBackend(user: unknown, error: unknown, expectedId: un
     if (error === null && record(user) && user.id === expectedId) return "not-reached";
   } catch { return "unavailable"; }
   return "unavailable";
+}
+
+export function c2Location(location: unknown, baseURL: unknown): C2Location {
+  try {
+    if (typeof location !== "string" || typeof baseURL !== "string") return "unavailable";
+    const base = new URL(baseURL);
+    const current = new URL(location);
+    if (![base, current].every((url) => ["http:", "https:"].includes(url.protocol) && !url.username && !url.password) ||
+      base.pathname !== "/" || base.search || base.hash) return "unavailable";
+    if (current.origin !== base.origin || current.href !== location) return "other-page";
+    if (current.pathname === "/app/settings/account") return "account-page";
+    if (current.pathname === "/login") return "login-page";
+    if (location === new URL("/?deleted=1", base).href) return "deleted-home";
+    if (location === new URL("/", base).href) return "home-page";
+    return "other-page";
+  } catch { return "unavailable"; }
+}
+
+// Response headers only: neither body completion nor an action/deletion outcome.
+export function c2HttpClass(status: unknown): C2HttpClass | "unavailable" {
+  if (typeof status !== "number" || !Number.isInteger(status)) return "unavailable";
+  if (status >= 200 && status < 300) return "http-2xx";
+  if (status >= 300 && status < 400) return "http-3xx";
+  if (status >= 400 && status < 500) return "http-4xx";
+  if (status >= 500 && status < 600) return "http-5xx";
+  return "unavailable";
+}
+
+export function c2Transport(matchCount: unknown, statusClass: unknown, failed: unknown, invalid: unknown): C2Transport {
+  if (invalid !== false || typeof failed !== "boolean" || (matchCount !== 0 && matchCount !== 1)) return "unavailable";
+  if (matchCount === 0) return statusClass === null && !failed ? "request-unseen" : "unavailable";
+  if (C2_HTTP_CLASSES.some((value) => value === statusClass)) return statusClass as C2HttpClass;
+  if (statusClass !== null) return "unavailable";
+  return failed ? "request-failed" : "request-pending";
 }
