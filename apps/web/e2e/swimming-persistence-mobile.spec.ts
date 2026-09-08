@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Page } from "@playwright/test";
+import { errors, type Page, type Request } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { test as seededTest, expect } from "./fixtures/seed";
 import { signInAs } from "./fixtures/auth";
@@ -208,9 +208,83 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
       expect(await savedState(admin, freshUser.userId)).toEqual(firstSaved);
       expect(await savedState(admin, secondUser.userId)).toEqual(secondSaved);
 
-      for (const ownerPage of [page, secondPage]) {
+      for (const { ownerPage, ownerUserId, workoutId } of [
+        { ownerPage: page, ownerUserId: freshUser.userId, workoutId: firstSaved.workouts[0].id },
+        { ownerPage: secondPage, ownerUserId: secondUser.userId, workoutId: secondSaved.workouts[0].id },
+      ]) {
+        const { origin, pathname } = new URL(ownerPage.url());
+        let actionRequest: Request | undefined;
+        const requestWaiter = ownerPage.waitForRequest((request) => {
+          if (actionRequest || request.method() !== "POST") return false;
+          const target = new URL(request.url());
+          if (target.origin !== origin || target.pathname !== pathname ||
+            !request.headers()["next-action"]) return false;
+          actionRequest = request;
+          return true;
+        }, { timeout: 5000 }).then(
+          () => "seen" as const,
+          (error: unknown) => error instanceof errors.TimeoutError ? "timeout" as const : "error" as const,
+        );
+        const responseWaiter = ownerPage.waitForResponse(
+          (response) => actionRequest !== undefined && response.request() === actionRequest,
+          { timeout: 5000 },
+        ).then(
+          (response) => ({ outcome: "seen", paired: response.request() === actionRequest, status: response.status() }),
+          (error: unknown) => ({
+            outcome: error instanceof errors.TimeoutError ? "timeout" : "error", paired: false, status: null,
+          }),
+        );
         await ownerPage.getByRole("button", { name: "Start swim", exact: true }).click();
-        await expect(ownerPage.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+        const deadline = performance.now() + 5000;
+        expect(deadline - performance.now()).toBeGreaterThan(0);
+        const requestOutcome = await requestWaiter;
+        expect(requestOutcome).toBe("seen");
+        expect(deadline - performance.now()).toBeGreaterThan(0);
+        const responseOutcome = await responseWaiter;
+        expect(responseOutcome.outcome).toBe("seen");
+        expect(responseOutcome.paired).toBe(true);
+        expect(responseOutcome.status).toBe(200);
+
+        const backendBudget = deadline - performance.now();
+        expect(backendBudget).toBeGreaterThan(0);
+        let expiry: ReturnType<typeof setTimeout> | undefined;
+        try {
+          // Bound polling and the late sample without a sleep or a renewed deadline.
+          const expired = new Promise<"pending">((resolve) => {
+            expiry = setTimeout(() => resolve("pending"), backendBudget);
+          });
+          const polling = (async () => {
+            while (performance.now() < deadline) {
+              if (await ownerPage.getByRole("alert").count() > 0) return "alert" as const;
+              if (performance.now() >= deadline) return "pending" as const;
+              const saved = await savedState(admin, ownerUserId);
+              if (performance.now() >= deadline) return "pending" as const;
+              const workout = saved.workouts.find((row) => row.id === workoutId);
+              if (workout?.status === "started" &&
+                typeof workout.session_id === "string" && workout.session_id.length > 0) return "backend" as const;
+            }
+            return "pending" as const;
+          })().then(
+            (outcome) => outcome,
+            () => "error" as const,
+          );
+          const backendOutcome = await Promise.race([polling, expired]);
+          expect(backendOutcome).not.toBe("error");
+          expect(backendOutcome).not.toBe("alert");
+          expect(backendOutcome).toBe("backend");
+          const visibilityBudget = deadline - performance.now();
+          expect(visibilityBudget).toBeGreaterThan(0);
+          await expect(ownerPage.getByRole("link", { name: "Log swim", exact: true })).toBeVisible({ timeout: visibilityBudget });
+          expect(deadline - performance.now()).toBeGreaterThan(0);
+          // One late sample, not continuous alert coverage during rendering.
+          const lateAlertCount = await Promise.race([
+            ownerPage.getByRole("alert").count().then((count) => count, () => "error" as const),
+            expired,
+          ]);
+          expect(lateAlertCount).toBe(0);
+        } finally {
+          clearTimeout(expiry);
+        }
       }
       const firstStarted = await savedState(admin, freshUser.userId);
       const secondStarted = await savedState(admin, secondUser.userId);
