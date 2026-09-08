@@ -262,14 +262,16 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
             if (performance.now() >= deadline) return;
             const category = await Promise.race([
               ownerPage.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)
-                .then(validateAlertCategory, () => "unavailable" as const),
+                .then(({ category }) => category).then(validateAlertCategory, () => "unavailable" as const),
               expired.then(() => "unavailable" as const),
             ]);
             diagnostic.category = performance.now() < deadline ? category : "unavailable";
           };
           const polling = (async () => {
             while (performance.now() < deadline) {
-              if (await ownerPage.getByRole("alert").count() > 0) return "alert" as const;
+              const { count } = await ownerPage.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK);
+              if (count < 0) return "error" as const;
+              if (count > 0) return "alert" as const;
               if (performance.now() >= deadline) return "pending" as const;
               const saved = await savedState(admin, ownerUserId);
               if (performance.now() >= deadline) return "pending" as const;
@@ -314,11 +316,12 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
           expect(deadline - performance.now()).toBeGreaterThan(0);
           // One late sample, not continuous alert coverage during rendering.
           const lateAlertCount = await Promise.race([
-            ownerPage.getByRole("alert").count().then((count) => count, () => "error" as const),
+            ownerPage.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)
+              .then(({ count }) => count, () => "error" as const),
             expired,
           ]);
           if (typeof lateAlertCount === "number" && performance.now() < deadline) {
-            if (lateAlertCount > 0) await captureAlert();
+            if (lateAlertCount !== 0) await captureAlert();
             else diagnostic.category = "absent";
           }
           expect(lateAlertCount).toBe(0);

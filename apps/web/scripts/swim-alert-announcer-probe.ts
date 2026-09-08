@@ -1,71 +1,105 @@
 // Server-free proof: pnpm --filter @hta/web exec tsx scripts/swim-alert-announcer-probe.ts
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
-import { lstatSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, type Stats } from "node:fs";
 import { createRequire } from "node:module";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import type { Browser } from "@playwright/test";
+import { dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { Browser, Locator } from "@playwright/test";
+import { requireManualContext, requirePrivateLocation } from "./swim-acceptance-guards";
+import { requireSwimBrowserCache, requireSwimBrowserInstallation } from "./swim-browser-stage";
+import { publishAcceptanceSummary } from "./swim-acceptance-reporting";
+import { classifyAlertNodes, SWIM_ALERT_CODEBOOK } from "./swim-alert-membership";
+
+type Failure = "context" | "cache" | "installation" | "resolve" | "launch" | "assert" | "timeout" | "cleanup";
+type Row = {
+  shape: string; titleBearing: boolean;
+  oldCount: number; correctedCount: number; positiveCount: number; oldGenuineCount: number;
+  oldVisible: boolean; correctedVisible: boolean;
+  countsMatch: boolean; categoryMatches: boolean; visibilityMatches: boolean; passed: boolean;
+};
 
 async function main() {
-  const installed = createRequire(import.meta.url);
-  const versions = {
-    playwright: installed("@playwright/test/package.json").version,
-    next: installed("next/package.json").version,
-  };
-  assert.equal(versions.playwright, "1.60.0");
-  assert.equal(versions.next, "16.2.6");
-  console.log(JSON.stringify(versions));
-  const cache = mkdtempSync(join(realpathSync(tmpdir()), "swim-announcer-probe-"));
-  const original = lstatSync(cache);
-  assert.equal(original.mode & 0o7777, 0o700);
-  process.env.PLAYWRIGHT_BROWSERS_PATH = cache;
-  // Load only after selecting the uniquely owned cache. Never substitute an executable/channel.
-  const { chromium, expect } = installed("@playwright/test") as typeof import("@playwright/test");
-  const env: NodeJS.ProcessEnv = {
-    PATH: process.env.PATH ?? "", HOME: cache, TMPDIR: cache,
-    LANG: "C.UTF-8", NODE_ENV: "test", CI: "true", PLAYWRIGHT_BROWSERS_PATH: cache,
-  };
   const deadline = Date.now() + 55_000;
   const remaining = () => {
     const budget = deadline - Date.now();
-    assert(budget > 0);
+    if (budget <= 0) { timedOut = true; throw new Error("timeout"); }
     return budget;
   };
   let browser: Browser | undefined;
-  let success = false;
+  let closing: Promise<void> | undefined;
+  let probeDirectory: string | undefined;
+  let original: Stats | undefined;
+  let stage: Failure = "context";
+  let failure: Failure | null = null;
   let timedOut = false;
-  const setup = { missingBundle: false, installed: false, launched: false, installTimedOut: false, downloadFailed: false };
+  let cleanup = true;
+  const rows: Row[] = [];
+  const pins = { playwright: false, next: false, core: false };
+  const summary = process.env.GITHUB_STEP_SUMMARY!;
+  const close = () => {
+    if (browser && !closing) closing = browser.close();
+    return closing;
+  };
   const timer = setTimeout(() => {
     timedOut = true;
-    void browser?.close().catch(() => {});
+    failure ??= "timeout";
+    void close()?.catch(() => { cleanup = false; });
   }, 60_000);
   try {
-    try {
-      browser = await chromium.launch({ env, timeout: Math.min(10_000, remaining()) });
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes("Executable doesn't exist")) throw error;
-      setup.missingBundle = true;
-      // Only a missing bundled browser permits installation, through the already pinned CLI.
-      await new Promise<void>((resolve, reject) => {
-        execFile(process.execPath, [installed.resolve("@playwright/test/cli"), "install", "chromium"], {
-          env, timeout: Math.min(40_000, remaining()), maxBuffer: 1024 * 1024,
-        }, (error, stdout, stderr) => {
-          if (error) {
-            setup.installTimedOut = error.killed === true;
-            setup.downloadFailed = /Failed to download|Download failed/.test(`${stdout}\n${stderr}`);
-            reject(error);
-          } else {
-            setup.installed = true;
-            resolve();
-          }
-        });
-      });
-      browser = await chromium.launch({ env, timeout: Math.min(10_000, remaining()) });
-    }
-    setup.launched = true;
+    const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."));
+    const head = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], {
+      encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: Math.min(5000, remaining()),
+    }).trim();
+    requireManualContext(process.env, head);
+    assert.equal(realpathSync(process.env.GITHUB_WORKSPACE!), root);
+    assert(typeof summary === "string" && summary.length > 0);
+    const web = realpathSync(join(root, "apps/web"));
+    const temp = realpathSync(process.env.RUNNER_TEMP!);
+    assert(lstatSync(temp).isDirectory());
+    requirePrivateLocation(join(temp, "swim-announcer-probe"), temp, root);
+    probeDirectory = mkdtempSync(join(temp, "swim-announcer-probe-"));
+    original = lstatSync(probeDirectory);
+    requirePrivateLocation(probeDirectory, temp, root);
+    assert(original.isDirectory() && !original.isSymbolicLink() &&
+      original.uid === process.getuid?.() && (original.mode & 0o7777) === 0o700 &&
+      realpathSync(probeDirectory) === probeDirectory);
+    const home = join(probeDirectory, "home");
+    const tmp = join(probeDirectory, "tmp");
+    mkdirSync(home, { mode: 0o700 });
+    mkdirSync(tmp, { mode: 0o700 });
+    stage = "cache";
+    const cache = requireSwimBrowserCache(process.env, root, probeDirectory);
+    // Both the Node launcher and browser use private profiles/artifacts, without inherited proxies/credentials.
+    const env = {
+      PATH: "/usr/local/bin:/usr/bin:/bin", HOME: home, TMPDIR: tmp, TMP: tmp, TEMP: tmp,
+      LANG: "C.UTF-8", NODE_ENV: "test", CI: "true", PLAYWRIGHT_BROWSERS_PATH: cache,
+    };
+    for (const key of Object.keys(process.env)) delete process.env[key];
+    Object.assign(process.env, env);
+    stage = "installation";
+    requireSwimBrowserInstallation(cache, web);
+    stage = "resolve";
+    const installed = createRequire(join(web, "package.json"));
+    const test = createRequire(installed.resolve("@playwright/test/package.json"));
+    const playwright = createRequire(test.resolve("playwright/package.json"));
+    pins.playwright = installed("@playwright/test/package.json").version === "1.60.0";
+    pins.next = installed("next/package.json").version === "16.2.6";
+    pins.core = playwright("playwright-core/package.json").version === "1.60.0";
+    assert(Object.values(pins).every(Boolean));
+    const { chromium } = playwright("playwright-core") as typeof import("@playwright/test");
+    const { expect } = installed("@playwright/test") as typeof import("@playwright/test");
+    const executable = chromium.executablePath();
+    assert(executable.startsWith(`${cache}${sep}`) && realpathSync(executable) === executable);
+    stage = "launch";
+    browser = await chromium.launch({ env, timeout: Math.min(10_000, remaining()) });
+    stage = "assert";
     const page = await browser.newPage();
-    assert.equal(page.url(), "about:blank");
+    const visible = async (locator: Locator) => {
+      const timeout = Math.min(1000, remaining());
+      try { await expect(locator).toBeVisible({ timeout }); return true; }
+      catch { return false; }
+    };
     for (const titleBearing of [false, true]) {
       for (const shape of [
         "alone", "inside-main", "outside-main", "light-lookalike", "other-shadow",
@@ -88,6 +122,7 @@ async function main() {
           const main = document.querySelector("main")!;
           const alert = document.createElement("div");
           alert.role = "alert";
+          alert.setAttribute("data-probe-genuine", "");
           alert.textContent = "Synthetic validation";
           if (shape === "inside-main" || shape === "multiple-genuine") main.appendChild(alert.cloneNode(true));
           if (shape === "outside-main" || shape === "multiple-genuine") document.body.appendChild(alert.cloneNode(true));
@@ -104,70 +139,70 @@ async function main() {
             alert.id = "synthetic-other";
             shadow.appendChild(alert);
           }
-          if (shape === "nested-next-host") main.appendChild(host);
+          if (shape === "nested-next-host") {
+            main.appendChild(host);
+            announcer.setAttribute("data-probe-genuine", "");
+          }
         }, { shape, titleBearing });
         const old = page.getByRole("alert");
         const oldCount = await old.count();
-        const correctedCount = await old.evaluateAll((nodes) => nodes.filter((node) => {
-          const root = node.getRootNode();
-          return !(root instanceof ShadowRoot && root.host.localName === "next-route-announcer" &&
-            root.host.parentNode === document.body && node.id === "__next-route-announcer__");
-        }).length);
+        const { count: correctedCount, category } = await old.evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK);
         // Conservative positive oracle: reserved-ID lookalikes also fail, never falsely pass.
         const positive = old.and(page.locator(":not(#__next-route-announcer__)"));
         const positiveCount = await positive.count();
+        const oldGenuineCount = await old.and(page.locator("[data-probe-genuine]")).count();
         const genuineCount = shape === "alone" ? 0 : shape === "multiple-genuine" ? 2 : 1;
-        assert.equal(oldCount, shape === "nested-next-host" ? 1 : genuineCount + 1);
-        assert.equal(correctedCount, genuineCount);
-        assert.equal(positiveCount,
-          shape === "light-lookalike" || shape === "nested-next-host" ? 0 : genuineCount);
-        let oldVisible: boolean | undefined;
-        let correctedVisible: boolean | undefined;
-        if (shape === "alone" || shape === "inside-main") {
-          remaining();
-          try {
-            await expect(old).toBeVisible();
-            oldVisible = true;
-          } catch { oldVisible = false; }
-          assert.equal(oldVisible, shape === "alone");
-          if (shape === "inside-main") {
-            remaining();
-            await expect(positive).toBeVisible();
-            correctedVisible = true;
-          }
-        }
-        console.log(JSON.stringify({
-          shape, titleBearing, oldCount, correctedCount, positiveCount, oldVisible, correctedVisible,
-        }));
+        const expectedPositive = shape === "light-lookalike" || shape === "nested-next-host" ? 0 : genuineCount;
+        const oldVisible = await visible(old);
+        const correctedVisible = await visible(positive);
+        const countsMatch = oldCount === (shape === "nested-next-host" ? 1 : genuineCount + 1) &&
+          correctedCount === genuineCount && positiveCount === expectedPositive && oldGenuineCount === genuineCount;
+        const categoryMatches = category === (genuineCount === 0 ? "absent" : genuineCount > 1 ? "multiple" : "unclassified");
+        const visibilityMatches = oldVisible === (shape === "alone" || shape === "nested-next-host") &&
+          correctedVisible === (expectedPositive === 1);
+        const bounded = (count: number) => Number.isSafeInteger(count) && count >= 0 && count <= 3 ? count : -1;
+        rows.push({
+          shape, titleBearing, oldCount: bounded(oldCount), correctedCount: bounded(correctedCount),
+          positiveCount: bounded(positiveCount), oldGenuineCount: bounded(oldGenuineCount),
+          oldVisible, correctedVisible, countsMatch, categoryMatches, visibilityMatches,
+          passed: countsMatch && categoryMatches && visibilityMatches,
+        });
+        assert(rows.at(-1)!.passed);
       }
     }
+    remaining();
+    assert.equal(rows.length, 16);
+    assert(rows.every((row) => row.passed));
     assert(!timedOut);
-    success = true;
+  } catch {
+    failure ??= timedOut ? "timeout" : stage;
   } finally {
     try {
-      await browser?.close();
-    } finally {
-      clearTimeout(timer);
-      console.log(JSON.stringify({ ...setup, timedOut }));
-    }
-    if (success) {
-      const current = lstatSync(cache);
-      assert(current.isDirectory() && !current.isSymbolicLink());
-      assert.equal(realpathSync(cache), cache);
-      assert.equal(current.uid, process.getuid?.());
-      assert.equal(current.mode & 0o7777, 0o700);
-      assert.equal(current.dev, original.dev);
-      assert.equal(current.ino, original.ino);
-      rmSync(cache, { recursive: true });
-    }
+      await close();
+    } catch { cleanup = false; }
+    try {
+      if (probeDirectory) {
+        const current = lstatSync(probeDirectory);
+        assert(original && current.isDirectory() && !current.isSymbolicLink());
+        assert.equal(realpathSync(probeDirectory), probeDirectory);
+        assert.equal(current.uid, process.getuid?.());
+        assert.equal(current.mode & 0o7777, 0o700);
+        assert.equal(current.dev, original.dev);
+        assert.equal(current.ino, original.ino);
+        rmSync(probeDirectory, { recursive: true });
+      }
+    } catch { cleanup = false; }
+    clearTimeout(timer);
   }
+  if (!cleanup) failure ??= "cleanup";
+  const success = failure === null && rows.length === 16 && rows.every((row) => row.passed) && cleanup;
+  if (!success) process.exitCode = 1;
+  // Synthetic proof only: no app cases, database evidence or release authorization.
+  publishAcceptanceSummary(summary, "Swim synthetic announcer proof", {
+    protocol: "swim-announcer-synthetic-v1", success, pins, executedRows: rows.length, rows,
+    allChecks: rows.length === 16 && rows.every((row) => row.passed), cleanup, failure,
+  });
 }
 
-void main().then(
-  () => console.log(JSON.stringify({ success: true })),
-  () => {
-    // Preserve partial synthetic evidence, never print exception payloads or private cache paths.
-    console.log(JSON.stringify({ success: false }));
-    process.exitCode = 1;
-  },
-);
+// The existing publisher writes marked console evidence before attempting the summary file.
+void main().catch(() => { process.exitCode = 1; });
