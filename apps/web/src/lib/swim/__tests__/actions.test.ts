@@ -5,6 +5,7 @@ import { SWIM_ASSESSMENT_VERSION } from "@hta/domain";
 import * as queries from "../queries";
 import * as storage from "../storage";
 import type { SwimHubView } from "../view-types";
+import { workoutPresentation } from "../presentation";
 import { requireSwimSetup, requireSwimStorage } from "../capability";
 import { assertSwimSafety } from "../safety";
 import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-completion-recompute";
@@ -186,8 +187,22 @@ describe("ADR0079 server actions", () => {
     vi.mocked(assertSwimSafety).mockRejectedValue(new Error("Review an active limitation."));
     expect(await startSwimWorkout(swimFixture().workouts[0]!.id, 1)).toHaveProperty("error");
     expect(storage.startSwimWorkout).not.toHaveBeenCalled();
-    vi.mocked(storage.getSwimWorkout).mockResolvedValue({ ...swimFixture().workouts[0]!, session_id: sessionId });
-    expect(await startSwimWorkout(swimFixture().workouts[0]!.id, 1)).toEqual({ ok: true });
+    const returnedWorkout: storage.SwimWorkoutRow = {
+      ...swimFixture().workouts[0]!, session_id: sessionId, status: "started", revision: 2,
+    };
+    const view = {
+      ...workoutPresentation(returnedWorkout.definition.issued),
+      id: returnedWorkout.id, revision: 2, sessionId, status: returnedWorkout.status,
+      planStatus: "active" as const, date: returnedWorkout.scheduled_date,
+      provisional: false, deleted: false, sourceGone: false, result: null,
+    };
+    vi.mocked(storage.getSwimWorkout).mockResolvedValue(returnedWorkout);
+    vi.mocked(storage.startSwimWorkout).mockResolvedValueOnce(returnedWorkout);
+    vi.spyOn(queries, "swimWorkoutViewFromRow").mockResolvedValueOnce(view);
+    expect(await startSwimWorkout(returnedWorkout.id, 2)).toEqual({ ok: true, view });
+    expect(storage.startSwimWorkout).toHaveBeenCalledOnce();
+    expect(storage.startSwimWorkout).toHaveBeenCalledWith(mock.client, returnedWorkout.id, 2);
+    expect(vi.mocked(queries.swimWorkoutViewFromRow).mock.calls[0]![2]).toBe(returnedWorkout);
   });
   it("routes a native result edit through its boundary and recomputes shared load", async () => {
     const existing = swimFixture().history[0]!.result!;

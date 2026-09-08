@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { validateSwimWorkout } from "@hta/domain";
 import { generateSwimPlan } from "@hta/engine";
 import { WorkoutClient } from "@/components/swim/WorkoutClient";
+import { WorkoutScreen } from "@/components/swim/WorkoutScreen";
 import { parseSetupForm } from "../forms";
 import { standaloneWeekRequests } from "../model";
 import { workoutPresentation } from "../presentation";
@@ -64,23 +65,39 @@ describe("DC-SW3 poolside workout controls", () => {
   });
 
   it("reaches actual logging without scrolling through every repeat", () => {
-    const html = renderToStaticMarkup(<WorkoutClient workout={workoutView()} userId={userId} />);
+    const html = renderToStaticMarkup(<WorkoutScreen workout={workoutView()} userId={userId} />);
     expect(html).toContain('href="#swim-result"');
     expect(html).toContain('id="swim-result"');
   });
 
   it("does not offer the logging shortcut before starting", () => {
     const workout = { ...workoutView(), status: "scheduled" as const, sessionId: null };
-    const html = renderToStaticMarkup(<WorkoutClient workout={workout} userId={userId} />);
+    const html = renderToStaticMarkup(<WorkoutScreen workout={workout} userId={userId} />);
     expect(html).not.toContain('href="#swim-result"');
     expect(html).not.toContain('id="swim-result"');
   });
 
   it("disables Start swim before hydration and draft loading", () => {
     const workout = { ...workoutView(), status: "scheduled" as const, sessionId: null };
-    const html = renderToStaticMarkup(<WorkoutClient workout={workout} userId={userId} />);
+    const html = renderToStaticMarkup(<WorkoutScreen workout={workout} userId={userId} />);
     const buttons = html.match(/<button\b[^>]*>Start swim<\/button>/g);
     expect(buttons).toHaveLength(1);
     expect(buttons![0]).toMatch(/\sdisabled=""/);
+  });
+
+  it("renders a progress checkbox for a view with a session, without claiming hydration readiness", () => {
+    const workout = workoutView();
+    expect(workout.steps[0]!.repeatIds).toHaveLength(1);
+    const html = renderToStaticMarkup(<WorkoutScreen workout={workout} userId={userId} />);
+    const checkboxes = html.match(/<input\b[^>]*type="checkbox"[^>]*aria-label="Mark [^"]* done"[^>]*>/g);
+    expect(checkboxes?.length).toBeGreaterThan(0);
+    expect(checkboxes![0]).toContain('disabled=""');
+  });
+
+  it("adds no DOM around the existing revision-keyed child", () => {
+    const workout = workoutView();
+    expect(renderToStaticMarkup(<WorkoutScreen workout={workout} userId={userId} edit />))
+      .toBe(renderToStaticMarkup(<WorkoutClient workout={workout} userId={userId} edit
+        onConfirmed={() => {}} warning={null} setWarning={() => {}} />));
   });
 });

@@ -18,13 +18,16 @@ import { SWIM_EQUIPMENT_LABEL, SWIM_STROKE_LABEL } from "@/lib/swim/presentation
 import styles from "./Swim.module.css";
 import { SplitFields } from "./SplitFields";
 
-export function WorkoutClient({ workout, userId, edit = false }: { workout: SwimWorkoutView; userId: string; edit?: boolean }) {
+export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warning, setWarning }: {
+  workout: SwimWorkoutView; userId: string; edit?: boolean;
+  onConfirmed: (view: SwimWorkoutView) => void;
+  warning: string | null; setWarning: (warning: string | null) => void;
+}) {
   const router = useRouter();
   const key = swimDraftKey(userId, workout.id);
   const [draft, setDraft] = useState<SwimDraft>(() => initialSwimDraft(workout));
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [warning, setWarning] = useState<string | null>(null);
   const [sync, setSync] = useState<"idle" | "queued" | "saved" | "checking">("idle");
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(edit);
@@ -138,6 +141,7 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
           return;
         }
         setWarning(result.warning ?? null);
+        if (result.view) onConfirmed(result.view);
       } catch { setError("Connect to start this swim, then try again."); return; }
       try { router.refresh(); }
       catch { setWarning(SWIM_REFRESH_WARNING); }

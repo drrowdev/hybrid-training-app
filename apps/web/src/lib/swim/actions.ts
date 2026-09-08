@@ -24,9 +24,9 @@ import {
   type StandalonePlanDefinition, type StandaloneWorkoutDefinition, type SwimBenchmarkPreview,
 } from "./model";
 import {
-  swimToday, loadSwimHistory, deriveSwimWeekCandidate, persistedSwimPlan, swimInputId, loadSwimHubView,
+  swimToday, loadSwimHistory, deriveSwimWeekCandidate, persistedSwimPlan, swimInputId, loadSwimHubView, swimWorkoutViewFromRow,
 } from "./queries";
-import type { SwimHubView, SwimResumePreview } from "./view-types";
+import type { SwimHubView, SwimResumePreview, SwimWorkoutView } from "./view-types";
 import { formatPoolCourse } from "@hta/domain";
 import { formatSwimTime } from "./time";
 import { SWIM_REFRESH_WARNING } from "./action-feedback";
@@ -152,14 +152,23 @@ export async function createSwimPlan(form: FormData): Promise<ActionResult & { p
   } catch (error) { return swimActionFailure(error); }
 }
 
-export async function startSwimWorkout(workoutId: string, revision: number): Promise<ActionResult & { warning?: string }> {
+export async function startSwimWorkout(workoutId: string, revision: number): Promise<ActionResult & { warning?: string; view?: SwimWorkoutView }> {
+  let context: Awaited<ReturnType<typeof swimContext>>;
+  let returnedWorkout: storage.SwimWorkoutRow;
   try {
-    const { client, user } = await swimContext();
+    context = await swimContext();
+    const { client, user } = context;
     const workout = await ownedSwimWorkout(client, user.id, workoutId);
     if (!workout.session_id) await checkWorkouts(client, user.id, [workout.definition.issued]);
-    await storage.startSwimWorkout(client, workoutId, z.number().int().positive().parse(revision));
+    returnedWorkout = await storage.startSwimWorkout(client, workoutId, z.number().int().positive().parse(revision));
   } catch (error) { return swimActionFailure(error); }
-  return refreshSavedSwim();
+  const refreshed = refreshSavedSwim();
+  try {
+    const view = await swimWorkoutViewFromRow(context.client, context.user.id, returnedWorkout);
+    return view ? { ...refreshed, view } : { ok: true, warning: SWIM_REFRESH_WARNING };
+  } catch {
+    return { ok: true, warning: SWIM_REFRESH_WARNING };
+  }
 }
 
 export async function completeSwimWorkoutResult(form: FormData): Promise<ActionResult> {
