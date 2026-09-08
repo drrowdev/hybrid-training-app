@@ -140,7 +140,51 @@ describe("reserved alert annotation protocol", () => {
     }
     expect(alertAnnotation({ ...observation, raw: "private" })).toBeUndefined();
     expect(alertAnnotation({ ...observation, point: "a2-post-start", revision: "advanced" })).toBeUndefined();
-    expect(projectAlertObservations(5, [observation])).toEqual([unavailableAlert("a2-post-start")]);
+    expect(projectAlertObservations(5, [observation])).toEqual([
+      unavailableAlert("a2-post-start"), unavailableAlert("a2-edit"),
+    ]);
+  });
+  it.each(["a2-post-start", "a2-edit"] as const)("validates %s without inventing a submitted revision", (point) => {
+    const value = { ...unavailableAlert(point), category: "server-fixed" as const, backend: "reached" as const };
+    const encoded = alertAnnotation(value)!;
+    expect(readAlertAnnotations([encoded, encoded])).toEqual([value]);
+    expect(projectAlertObservations(5, readAlertAnnotations([encoded, encoded]))).toEqual(
+      (["a2-post-start", "a2-edit"] as const).map((item) => item === point ? value : unavailableAlert(item)),
+    );
+    for (const revision of ["unchanged", "advanced", "other", 42, "private-revision"]) {
+      expect(alertAnnotation({ ...value, revision })).toBeUndefined();
+    }
+    for (const hostile of [
+      { ...encoded, raw: "private-payload" },
+      { ...encoded, description: encoded.description.replace(point, point.toUpperCase()) },
+      { ...encoded, description: encoded.description.replace(point, "a2-other") },
+      { ...encoded, description: encoded.description.replace("server-fixed", "private-payload") },
+      { ...encoded, description: `${encoded.description};raw=private-payload` },
+      { ...encoded, description: `${encoded.description};point=${point}` },
+      { ...encoded, description: encoded.description.repeat(100) },
+      { ...encoded, description: encoded.description.replace("revision=unavailable", "revision=advanced") },
+      alertAnnotation({ ...value, category: "absent" }),
+    ]) {
+      expect(readAlertAnnotations([encoded, hostile])).toBeUndefined();
+      expect(projectAlertObservations(5, readAlertAnnotations([encoded, hostile]))).toEqual([
+        unavailableAlert("a2-post-start"), unavailableAlert("a2-edit"),
+      ]);
+    }
+    for (const index of [3, 4]) {
+      expect(projectAlertObservations(index, [value])).toEqual(projectAlertObservations(index, undefined));
+    }
+  });
+  it("projects both A2 points in order with unavailable defaults and no cross-case evidence", () => {
+    const start = { ...unavailableAlert("a2-post-start"), category: "absent" as const, backend: "reached" as const };
+    const edit = { ...unavailableAlert("a2-edit"), category: "client-save" as const, backend: "not-reached" as const };
+    expect(projectAlertObservations(5, readAlertAnnotations([
+      alertAnnotation(edit), alertAnnotation(start), alertAnnotation(edit), alertAnnotation(start),
+    ]))).toEqual([start, edit]);
+    for (const values of [undefined, [], [observation], [start, edit, observation]]) {
+      expect(projectAlertObservations(5, values)).toEqual([
+        unavailableAlert("a2-post-start"), unavailableAlert("a2-edit"),
+      ]);
+    }
   });
   it("never reads unrelated descriptions, including skip, or accepts a different reserved version", () => {
     for (const type of ["skip", "private", `${ALERT_ANNOTATION_TYPE}-extra`, "hta-swim-alert-membership-v2"]) {

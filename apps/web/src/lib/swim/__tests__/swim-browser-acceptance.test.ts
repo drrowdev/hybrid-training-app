@@ -104,7 +104,8 @@ function rejectedReport(fixture: unknown) {
 
 function unavailableObservations(index: number) {
   return index === 3 ? [unavailableAlert("c4-owner-1-start"), unavailableAlert("c4-owner-2-start")] :
-    index === 4 ? [unavailableAlert("a1-pause")] : index === 5 ? [unavailableAlert("a2-post-start")] : [];
+    index === 4 ? [unavailableAlert("a1-pause")] :
+      index === 5 ? [unavailableAlert("a2-post-start"), unavailableAlert("a2-edit")] : [];
 }
 
 describe("browser environment and static config", () => {
@@ -249,6 +250,76 @@ describe("browser environment and static config", () => {
     expect(start).not.toMatch(/timeout:|setTimeout|deadline|await.*capture|Promise\.all/);
     expect(start).toContain("observing = false;");
   });
+  it("DC-SW9: bounds A2 edit transport, concurrent owned observations and the unchanged UI goal", () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const edit = source.slice(source.indexOf('const editDiagnostic = unavailableAlert("a2-edit")'),
+      source.indexOf("const edited = await nativeRows"));
+    const ordered = [
+      'page.locator("#swim-result").evaluate(',
+      "form instanceof HTMLFormElement && form.checkValidity()",
+      "const { origin, pathname } = new URL(page.url());",
+      "page.waitForRequest(",
+      "page.waitForResponse(",
+      'await page.getByRole("button", { name: "Save changes", exact: true }).click();',
+      "const deadline = performance.now() + 5000;",
+      "const polling = (async () =>",
+      "nativeRows(admin, userId, sessionId, controller.signal)",
+      "owned.push(backend);",
+      '.evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)',
+      "owned.push(alert);",
+      "await Promise.all([backend, alert])",
+      "const requestOutcome = await requestWaiter;",
+      'expect(requestOutcome).toBe("seen");',
+      "const responseOutcome = await responseWaiter;",
+      'expect(responseOutcome.outcome).toBe("seen");',
+      "expect(responseOutcome.paired).toBe(true);",
+      "expect(responseOutcome.status).toBe(200);",
+      "await Promise.race([polling, expired])",
+      'expect(observationOutcome).toBe("backend");',
+      "const remaining = deadline - performance.now();",
+      "expect(remaining).toBeGreaterThan(0);",
+      'await expect(result).toContainText("12 lengths · 10:00 · RPE 8", { timeout: remaining });',
+      "} finally {",
+      "controller.abort();",
+      "clearTimeout(editExpiry);",
+      "await Promise.allSettled(owned);",
+      "alertAnnotation(editDiagnostic)",
+    ];
+    let position = -1;
+    for (const part of ordered) {
+      const next = edit.indexOf(part, position + 1);
+      expect(next, part).toBeGreaterThan(position);
+      position = next;
+    }
+    for (const part of [
+      'if (actionRequest || request.method() !== "POST") return false;',
+      "target.origin !== origin || target.pathname !== pathname",
+      '!request.headers()["next-action"]',
+      "actionRequest = request;",
+      "response.request() === actionRequest",
+      'error instanceof errors.TimeoutError ? "timeout"',
+      "const active = () => !controller.signal.aborted && performance.now() < deadline;",
+      "const intervals = [100, 250, 500, 1000];",
+      "if (!active()) return",
+      'sample.logs.length === 1 && log.id === originalLog.id',
+      "log.client_log_id === originalLog.client_log_id",
+      'expect(observationOutcome).not.toBe("backend-read-error");',
+      'expect(observationOutcome).not.toBe("alert-read-error");',
+      'expect(observationOutcome).not.toBe("alert-structural-error");',
+      'expect(observationOutcome).not.toBe("observation-error");',
+      'controller.signal.removeEventListener("abort", finish);',
+    ]) expect(edit).toContain(part);
+    expect(edit.match(/timeout: 5000/g)).toHaveLength(2);
+    expect(edit.match(/performance\.now\(\) \+ 5000/g)).toHaveLength(1);
+    expect(edit).not.toMatch(/\.first\(|reload\(|waitForTimeout|timeout: 0|\.revision\s*=|\.postData|\.text\(|\.json\(|\.allHeaders\(/);
+    const native = source.slice(source.indexOf("async function nativeRows("), source.indexOf("async function regionRows("));
+    expect(native).toContain('signal?: AbortSignal');
+    expect(native).toContain('.eq("user_id", userId).eq("id", sessionId)');
+    expect(native).toContain('expect(session.data.user_id).toBe(userId);');
+    expect(native).toContain("signal ? await Promise.allSettled(reads)");
+    expect(native).toContain(": await Promise.all(reads)");
+    expect(native.slice(native.indexOf('admin.from("cardio_logs")'), native.indexOf("const reads"))).not.toContain("user_id");
+  });
   it("rejects insufficient budgets without clamping", () => {
     for (const value of [589_999, -1, NaN, Infinity, 590_000.5]) expect(() => browserBudget(value)).toThrow();
     expect(browserBudget(590_000)).toBe(BROWSER_LIMITS);
@@ -350,7 +421,7 @@ describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
       expect(failure.cases?.[5]).toEqual({
         ...SWIM_BROWSER_CASES[5], status: "timedOut", testStatus: "expected",
         expectedStatus: "passed", attempts: 1, durationMs: duration, attributedSources: [{ source: "unknown" }],
-        alertObservations: [unavailableAlert("a2-post-start")],
+        alertObservations: [unavailableAlert("a2-post-start"), unavailableAlert("a2-edit")],
       });
       expect(JSON.stringify([success, failure])).not.toContain("private-");
     },
@@ -593,13 +664,14 @@ describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
           { ...unavailableAlert("c4-owner-2-start"), category: "unclassified", backend: "not-reached" },
           { ...unavailableAlert("a1-pause"), category: "client-save", backend: "reached", revision: "advanced" },
           { ...unavailableAlert("a2-post-start"), category: "absent", backend: "reached" },
+          { ...unavailableAlert("a2-edit"), category: "server-fixed", backend: "reached" },
         ] as const;
         function caseTest(fixture: ReturnType<typeof report>, index: number) {
           return fixture.suites.flatMap((suite) => suite.suites[0]!.specs)[index]!.tests[0]!;
         }
         it("projects only validated attempt annotations at their known points, capped and deduplicated per case", () => {
           const fixture = report();
-          for (const [index, selected] of [[3, observations.slice(0, 2)], [4, [observations[2]]], [5, [observations[3]]]] as const) {
+          for (const [index, selected] of [[3, observations.slice(0, 2)], [4, [observations[2]]], [5, observations.slice(3)]] as const) {
             const result = caseTest(fixture, index).results[0]!;
             result.status = "failed";
             result.annotations = selected.flatMap((item) => [alertAnnotation(item)!, alertAnnotation(item)!]);
@@ -608,10 +680,47 @@ describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
           expect(projection.code).toBe("browser-failed");
           expect(projection.cases).toHaveLength(6);
           expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual([
-            [], [], [], observations.slice(0, 2), [observations[2]], [observations[3]],
+            [], [], [], observations.slice(0, 2), [observations[2]], observations.slice(3),
           ]);
           expect(projection.cases?.map(({ file, describe, title }) => ({ file, describe, title }))).toEqual(SWIM_BROWSER_CASES);
         });
+        it.each(["a2-post-start", "a2-edit"] as const)(
+          "retains the A2 failure ledger and defaults the other point when only %s was captured", (point) => {
+            const fixture = report();
+            const result = caseTest(fixture, 5).results[0]!;
+            const selected = observations.find((item) => item.point === point)!;
+            result.status = "failed";
+            result.annotations = [alertAnnotation(selected)!];
+            const projection = rejectedReport(fixture);
+            expect(projection.code).toBe("browser-failed");
+            expect(projection.cases?.[5]?.alertObservations).toEqual(
+              observations.slice(3).map((item) => item.point === point ? selected : unavailableAlert(item.point)),
+            );
+          },
+        );
+        it.each(["wrong-case", "conflict", "hostile", "revision", "overflow"])(
+          "rejects %s beside two A2 points without losing the failed six-case ledger", (mode) => {
+            const fixture = report();
+            const result = caseTest(fixture, 5).results[0]!;
+            result.status = "failed";
+            const valid = observations.slice(3).map((item) => alertAnnotation(item)!);
+            let annotations: unknown = valid;
+            switch (mode) {
+              case "wrong-case": annotations = [...valid, alertAnnotation(observations[2])]; break;
+              case "conflict": annotations = [...valid, alertAnnotation({ ...observations[4], backend: "not-reached" })]; break;
+              case "hostile": annotations = [...valid, { ...valid[1], description: `${valid[1]!.description};raw=private-payload` }]; break;
+              case "revision": annotations = [valid[0], { ...valid[1], description: valid[1]!.description.replace("revision=unavailable", "revision=advanced") }]; break;
+              case "overflow": annotations = Array(17).fill(valid[1]); break;
+            }
+            Object.assign(result, { annotations });
+            const projection = rejectedReport(fixture);
+            expect(projection).toMatchObject({ success: false, code: "browser-failed", counts: fixture.stats });
+            expect(projection.cases).toHaveLength(6);
+            expect(projection.cases?.[5]?.status).toBe("failed");
+            expect(projection.cases?.[5]?.alertObservations).toEqual(unavailableObservations(5));
+            expect(JSON.stringify(projection)).not.toContain("private-");
+          },
+        );
         it.each([
           "missing", "invalid", "partial", "prefixed", "suffixed", "long", "extra-key", "duplicate-key",
           "conflicting", "wrong-case", "unknown-type", "wrong-version", "test-only", "overflow",

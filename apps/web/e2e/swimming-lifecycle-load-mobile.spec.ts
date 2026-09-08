@@ -173,15 +173,22 @@ type RegionRow = {
   baseline_tolerance: number | string; last_load_date: string | null; updated_at: string;
 };
 
-async function nativeRows(admin: SupabaseClient, userId: string, sessionId: string) {
-  const [session, logs] = await Promise.all([
-    admin.from("sessions")
-      .select("id,user_id,performed_at,completed_at,deleted_at,completion_outbox_entry_id,duration_min,session_rpe")
-      .eq("user_id", userId).eq("id", sessionId).single<NativeSession>(),
-    admin.from("cardio_logs")
-      .select("id,session_id,client_log_id,modality,duration_sec,distance_km,rpe,hr_zones,swim_result")
-      .eq("session_id", sessionId).returns<NativeLog[]>(),
-  ]);
+async function nativeRows(admin: SupabaseClient, userId: string, sessionId: string, signal?: AbortSignal) {
+  const sessionQuery = admin.from("sessions")
+    .select("id,user_id,performed_at,completed_at,deleted_at,completion_outbox_entry_id,duration_min,session_rpe")
+    .eq("user_id", userId).eq("id", sessionId);
+  const logsQuery = admin.from("cardio_logs")
+    .select("id,session_id,client_log_id,modality,duration_sec,distance_km,rpe,hr_zones,swim_result")
+    .eq("session_id", sessionId).returns<NativeLog[]>();
+  const reads = [
+    (signal ? sessionQuery.abortSignal(signal) : sessionQuery).single<NativeSession>(),
+    signal ? logsQuery.abortSignal(signal) : logsQuery,
+  ] as const;
+  const [session, logs] = signal ? await Promise.allSettled(reads).then(([session, logs]) => {
+    if (session.status === "rejected") throw session.reason;
+    if (logs.status === "rejected") throw logs.reason;
+    return [session.value, logs.value] as const;
+  }) : await Promise.all(reads);
   expect(session.error).toBeNull();
   expect(logs.error).toBeNull();
   if (!session.data || !logs.data) throw new Error("Missing native session rows.");
@@ -533,8 +540,138 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await page.getByText("Notes, changes and splits", { exact: true }).click();
     await page.getByRole("combobox", { name: "Stroke", exact: true }).selectOption("freestyle");
     await page.getByRole("checkbox", { name: "Pull buoy", exact: true }).check();
-    await page.getByRole("button", { name: "Save changes", exact: true }).click();
-    await expect(result).toContainText("12 lengths · 10:00 · RPE 8");
+    const editDiagnostic = unavailableAlert("a2-edit");
+    const controller = new AbortController();
+    const owned: Promise<unknown>[] = [];
+    let editExpiry: ReturnType<typeof setTimeout> | undefined;
+    try {
+      expect(await page.locator("#swim-result").evaluate(
+        (form) => form instanceof HTMLFormElement && form.checkValidity(),
+      )).toBe(true);
+      const { origin, pathname } = new URL(page.url());
+      let actionRequest: Request | undefined;
+      const requestWaiter = page.waitForRequest((request) => {
+        if (actionRequest || request.method() !== "POST") return false;
+        const target = new URL(request.url());
+        if (target.origin !== origin || target.pathname !== pathname ||
+          !request.headers()["next-action"]) return false;
+        actionRequest = request;
+        return true;
+      }, { timeout: 5000 }).then(
+        () => "seen" as const,
+        (error: unknown) => error instanceof errors.TimeoutError ? "timeout" as const : "error" as const,
+      );
+      const responseWaiter = page.waitForResponse(
+        (response) => actionRequest !== undefined && response.request() === actionRequest,
+        { timeout: 5000 },
+      ).then(
+        (response) => ({ outcome: "seen", paired: response.request() === actionRequest, status: response.status() }),
+        (error: unknown) => ({
+          outcome: error instanceof errors.TimeoutError ? "timeout" : "error", paired: false, status: null,
+        }),
+      );
+      owned.push(requestWaiter, responseWaiter);
+      await page.getByRole("button", { name: "Save changes", exact: true }).click();
+      const deadline = performance.now() + 5000;
+      const observationBudget = deadline - performance.now();
+      expect(observationBudget).toBeGreaterThan(0);
+      const expired = new Promise<"expired">((resolve) => {
+        editExpiry = setTimeout(() => {
+          controller.abort();
+          resolve("expired");
+        }, observationBudget);
+      });
+      const active = () => !controller.signal.aborted && performance.now() < deadline;
+      // Start both reads before transport assertions; an alert cannot suppress the owned goal sample.
+      const polling = (async () => {
+        const intervals = [100, 250, 500, 1000];
+        let attempt = 0;
+        while (active()) {
+          const backend = nativeRows(admin, userId, sessionId, controller.signal).then((sample) => {
+            if (!active()) return "expired" as const;
+            expect(Array.isArray(sample.logs)).toBe(true);
+            for (const log of sample.logs) {
+              expect(typeof log.id === "string" && typeof log.client_log_id === "string" &&
+                log.session_id === sessionId && typeof log.swim_result?.lengths === "number" &&
+                typeof log.swim_result?.timeMs === "number" && typeof log.swim_result?.rpe === "number" &&
+                Array.isArray(log.swim_result?.snapshot?.strokes) &&
+                Array.isArray(log.swim_result?.snapshot?.equipment)).toBe(true);
+            }
+            const log = sample.logs[0];
+            const reached = sample.logs.length === 1 && log.id === originalLog.id &&
+              log.client_log_id === originalLog.client_log_id &&
+              log.swim_result.lengths === 12 && log.swim_result.timeMs === 600000 &&
+              log.swim_result.rpe === 8 && log.swim_result.snapshot.strokes.length === 1 &&
+              log.swim_result.snapshot.strokes[0] === "freestyle" &&
+              log.swim_result.snapshot.equipment.length === 1 &&
+              log.swim_result.snapshot.equipment[0] === "pull_buoy";
+            editDiagnostic.backend = reached ? "reached" : "not-reached";
+            return reached ? "reached" as const : "not-reached" as const;
+          }).catch(() => {
+            if (!active()) return "expired" as const;
+            editDiagnostic.backend = "unavailable";
+            return "read-error" as const;
+          });
+          owned.push(backend);
+          const alert = page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)
+            .then(({ count, category }) => {
+              if (!active()) return "expired" as const;
+              editDiagnostic.category = validateAlertCategory(category);
+              return count < 0 ? "structural-error" as const : count > 0 ? "alert" as const : "absent" as const;
+            }, () => {
+              if (!active()) return "expired" as const;
+              editDiagnostic.category = "unavailable";
+              return "read-error" as const;
+            });
+          owned.push(alert);
+          const [backendOutcome, alertOutcome] = await Promise.all([backend, alert]);
+          if (!active()) return "expired" as const;
+          if (backendOutcome === "read-error") return "backend-read-error" as const;
+          if (alertOutcome === "read-error") return "alert-read-error" as const;
+          if (alertOutcome === "structural-error") return "alert-structural-error" as const;
+          if (alertOutcome === "alert") return "alert" as const;
+          if (backendOutcome === "reached") return "backend" as const;
+          const remaining = deadline - performance.now();
+          if (remaining <= 0) return "expired" as const;
+          await new Promise<void>((resolve) => {
+            const finish = () => {
+              clearTimeout(timer);
+              controller.signal.removeEventListener("abort", finish);
+              resolve();
+            };
+            const timer = setTimeout(finish, Math.min(intervals[Math.min(attempt++, intervals.length - 1)], remaining));
+            controller.signal.addEventListener("abort", finish, { once: true });
+          });
+        }
+        return "expired" as const;
+      })().then((outcome) => outcome, () => "observation-error" as const);
+      owned.push(polling);
+      expect(deadline - performance.now()).toBeGreaterThan(0);
+      const requestOutcome = await requestWaiter;
+      expect(requestOutcome).toBe("seen");
+      expect(deadline - performance.now()).toBeGreaterThan(0);
+      const responseOutcome = await responseWaiter;
+      expect(responseOutcome.outcome).toBe("seen");
+      expect(responseOutcome.paired).toBe(true);
+      expect(responseOutcome.status).toBe(200);
+      expect(deadline - performance.now()).toBeGreaterThan(0);
+      const observationOutcome = await Promise.race([polling, expired]);
+      expect(observationOutcome).not.toBe("backend-read-error");
+      expect(observationOutcome).not.toBe("alert-read-error");
+      expect(observationOutcome).not.toBe("alert-structural-error");
+      expect(observationOutcome).not.toBe("observation-error");
+      expect(observationOutcome).not.toBe("alert");
+      expect(observationOutcome).toBe("backend");
+      const remaining = deadline - performance.now();
+      expect(remaining).toBeGreaterThan(0);
+      await expect(result).toContainText("12 lengths · 10:00 · RPE 8", { timeout: remaining });
+    } finally {
+      controller.abort();
+      clearTimeout(editExpiry);
+      await Promise.allSettled(owned);
+      const annotation = alertAnnotation(editDiagnostic);
+      if (annotation) testInfo.annotations.push(annotation);
+    }
     const edited = await nativeRows(admin, userId, sessionId);
     expect(edited.logs).toHaveLength(1);
     const editedLog = edited.logs[0];

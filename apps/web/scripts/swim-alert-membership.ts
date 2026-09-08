@@ -90,7 +90,7 @@ export type AlertCategory = (typeof SWIM_ALERT_CODEBOOK)[number]["category"] |
   "absent" | "multiple" | "detached" | "unreadable" | "unclassified" | "unavailable";
 export type AlertBackend = "reached" | "not-reached" | "unavailable";
 export type AlertRevision = "unchanged" | "advanced" | "other" | "unavailable";
-export type AlertPoint = "a1-pause" | "a2-post-start" | "c4-owner-1-start" | "c4-owner-2-start";
+export type AlertPoint = "a1-pause" | "a2-post-start" | "a2-edit" | "c4-owner-1-start" | "c4-owner-2-start";
 export type AlertObservation = {
   point: AlertPoint; category: AlertCategory; backend: AlertBackend; revision: AlertRevision;
 };
@@ -134,7 +134,7 @@ export function validateAlertCategory(value: unknown): AlertCategory {
 }
 
 export const ALERT_ANNOTATION_TYPE = "hta-swim-alert-membership-v1";
-const POINTS: readonly AlertPoint[] = ["a1-pause", "a2-post-start", "c4-owner-1-start", "c4-owner-2-start"];
+const POINTS: readonly AlertPoint[] = ["a1-pause", "a2-post-start", "a2-edit", "c4-owner-1-start", "c4-owner-2-start"];
 const BACKENDS: readonly AlertBackend[] = ["reached", "not-reached", "unavailable"];
 const REVISIONS: readonly AlertRevision[] = ["unchanged", "advanced", "other", "unavailable"];
 
@@ -191,7 +191,7 @@ export function readAlertAnnotations(value: unknown): AlertObservation[] | undef
 // Existing six-case order: original isolation C4, then A1/A2; no new case identities.
 export function projectAlertObservations(caseIndex: number, observations: AlertObservation[] | undefined) {
   const points: readonly AlertPoint[] = caseIndex === 3 ? ["c4-owner-1-start", "c4-owner-2-start"] :
-    caseIndex === 4 ? ["a1-pause"] : caseIndex === 5 ? ["a2-post-start"] : [];
+    caseIndex === 4 ? ["a1-pause"] : caseIndex === 5 ? ["a2-post-start", "a2-edit"] : [];
   const valid = observations?.every((item) => points.includes(item.point));
   return points.map((point) => (valid && observations?.find((item) => item.point === point)) || unavailableAlert(point));
 }
