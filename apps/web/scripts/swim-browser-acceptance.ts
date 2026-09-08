@@ -40,6 +40,16 @@ export const SWIM_BROWSER_CASES = Object.freeze([
     describe: "ADR0079 mobile swimming lifecycle and regional load",
     title: "A2, DC-SW9: native UI completion, edit, trash and recovery replace regional load exactly once",
   }),
+  Object.freeze({
+    file: "e2e/swimming-decisions-offline-mobile.spec.ts",
+    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    title: "B1 DC-SW4/DC-SW5: settled history advances only the unstarted next-week target once",
+  }),
+  Object.freeze({
+    file: "e2e/swimming-decisions-offline-mobile.spec.ts",
+    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    title: "B2 DC-SW8: native completion survives a committed lost response and replays before another session",
+  }),
 ]);
 const EXPECTED_FILES = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
 
@@ -55,6 +65,9 @@ const ATTRIBUTED_SOURCES = [
   ["e2e/swimming-mobile.spec.ts", "swimming-mobile"],
   ["e2e/swimming-persistence-mobile.spec.ts", "swimming-persistence-mobile"],
   ["e2e/swimming-lifecycle-load-mobile.spec.ts", "swimming-lifecycle-load-mobile"],
+  ["e2e/swimming-decisions-offline-mobile.spec.ts", "swimming-decisions-offline-mobile"],
+  ["src/lib/swim/queries.ts", "swim-queries"],
+  ["src/lib/offline/outbox-core.ts", "outbox-core"],
   ["e2e/global-setup.ts", "global-setup"],
   ["e2e/fixtures/seed.ts", "seed"],
   ["e2e/fixtures/auth.ts", "auth"],

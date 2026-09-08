@@ -31,6 +31,7 @@ import {
   createIdentityRoundTripProof, enforceIdentityProofAfterRpc, requireIdentityHelperRpcCases, runIdentityRoundTrip,
 } from "./swim-identity-roundtrip";
 import { runSwimBrowserStage } from "./swim-browser-stage";
+import { SWIM_BROWSER_CASES } from "./swim-browser-acceptance";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
@@ -299,8 +300,8 @@ async function main(cleanupOnly: boolean) {
         "packages/green", "packages/hyrox", "packages/program-core", "packages/tacticalbarbell",
         "packages/tb-conditioning", "packages/ui", "packages/wendler",
         "apps/web/src", "apps/web/public", "apps/web/e2e-rpc/setup.ts", "apps/web/scripts",
-        "apps/web/vitest.config.ts", "apps/web/e2e/swimming-mobile.spec.ts",
-        "apps/web/e2e/swimming-persistence-mobile.spec.ts", "apps/web/e2e/fixtures",
+        "apps/web/vitest.config.ts", ...SWIM_BROWSER_CASES.map(({ file }) => `apps/web/${file}`),
+        "apps/web/e2e/fixtures",
         "apps/web/e2e/global-setup.ts", "apps/web/playwright.config.ts",
         "apps/web/playwright.swim-reference.config.ts", "apps/web/next.config.*",
         "apps/web/tsconfig.json", "apps/web/postcss.config.*", "apps/web/package.json",
