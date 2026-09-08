@@ -1921,3 +1921,30 @@ Six-case live acceptance remains pending coordinator-owned final exact-head
 Opus review, core CI, fresh guards and one reference on this branch. B/C remain
 unselected; this does not complete all nine gates or establish production
 acceptance. [Current status](./pool-swimming.md#shared-completion-integration--current-148-status).
+
+## [2026-09-08] refine | PR805 narrow A recovery; new-head live pending
+
+[Run 34182254665](https://github.com/drrowdev/hybrid-training-app/actions/runs/34182254665)
+on `a67123db2f237b82b378c1eb0b9070adb45155c1` passed normal 148 migrations,
+15 service contexts, 36 HTTP cases and the original four browser cases; cleanup
+was verified. A1 failed at the checked `deleteUser` error assertion in 8.596s;
+A2 failed at Log swim visibility after Start in 7.809s. Not test timeouts;
+actual error values and causes remain unknown.
+
+Code `4e778395809c88504cd2379b0c189712af642547` corrects A1 to read exactly
+one existing global `bench-press-flat` row, preserving all five nonempty primary
+snapshots and checked cleanup. Start swim now gates on readiness; its specific
+SSR-disabled regression fails before the fix and passes after it. A2 polls the
+owned saved workout for `started` and a nonempty session link before its unchanged
+Log swim assertion, retaining all native/region/oracle comparisons. This does
+not establish the exclusive A2 cause. **Custom-movement account-deletion
+regression remains OPEN in C as a privacy/release concern**, not fixed or passed.
+
+265 targeted component/pure tests, web typecheck, scoped lint and secret scanning
+passed on the GitHub runner. CodeQL analysis was skipped because its database
+was too large. No live browser/server/DB/Docker run, credential access, CI
+dispatch, schema/access-rule or limit change occurred in this recovery.
+Final exact-head Opus review, core CI and fresh guards precede one new-head
+six-case live reference; no new live acceptance is claimed. B/C remain
+unselected. [Current status](./pool-swimming.md#shared-completion-integration--current-148-status)
+and [DC-SW3/SW7/SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).

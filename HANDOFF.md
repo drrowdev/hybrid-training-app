@@ -32,7 +32,7 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-08 (PR805 six-case wiring; live pending)
+**Last updated:** 2026-09-08 (PR805 narrow A recovery; new-head live pending)
 
 ### PR805 expanded browser cohort — current status
 
@@ -44,17 +44,32 @@ integration; turn 20 accepted both A source cases.
 Wiring checkpoint `3c060e3d` declares exactly those unchanged four plus A1
 ([DC-SW7](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05))
 and A2 (DC-SW9), across three files. Catalog-derived equality gates require all
-six to pass exactly once, without retries, skips or errors. A1 status assertions
-use the current-plan summary; A2 is unchanged. Safe ledgers now include measured
+six to pass exactly once, without retries, skips or errors. Safe ledgers include measured
 `durationMs` for the final attempt alongside `attempts`, not summed retries or
 a runtime guarantee. All execution limits remain unchanged.
 
-686 targeted helper/collection/runner tests, web typecheck and scoped lint
-passed. Real `--list` collected six cases with no executed results. No live
-browser/app-server/database/container run or workflow dispatch occurred.
-The coordinator owns final exact-head Opus review, core CI, fresh guards and
-**one six-case live reference on this branch**. B/C remain unselected; this is
-not completion of all nine standalone gates or production acceptance.
+[Run 34182254665](https://github.com/drrowdev/hybrid-training-app/actions/runs/34182254665)
+at `a67123db2f237b82b378c1eb0b9070adb45155c1` passed normal 148 migrations,
+15 service contexts, 36 HTTP cases and the original four browser cases; cleanup
+was verified. A1 failed at the checked `deleteUser` error assertion (8.596s);
+A2 failed at Log swim visibility after Start (7.809s). These were not test
+timeouts. Actual error values and causes remain unknown.
+
+Recovery code `4e778395809c88504cd2379b0c189712af642547` reads exactly one
+global `bench-press-flat` row for A1, retaining all five nonempty snapshots and
+checked cleanup. Start swim now waits for readiness, with a specific SSR-disabled
+button regression; A2 polls the owned saved workout for `started` and a nonempty
+session link before its unchanged Log swim assertion. This is not proof of the
+exclusive A2 cause. **Custom-movement account-deletion regression remains OPEN
+in C as a privacy/release concern**; no deletion fix or passing regression is claimed.
+
+265 targeted component/pure tests, web typecheck, scoped lint and secret scanning
+passed on the GitHub runner; the new SSR test failed before the guard and passed
+afterward. CodeQL analysis was skipped because its database was too large.
+No live browser/server/DB/Docker run, credential access or CI dispatch occurred
+in this recovery. Final exact-head Opus review, core CI and fresh guards must
+precede **one new-head six-case live reference on this branch**. B/C remain
+unselected; all nine standalone gates and production acceptance remain unproven.
 
 ### PR803 browser integration — earlier checkpoint
 
