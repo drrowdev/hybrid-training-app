@@ -192,11 +192,14 @@ export async function completeSwimWorkoutResult(form: FormData): Promise<ActionR
   } catch (error) { return swimActionFailure(error); }
 }
 
-export async function editSwimResult(form: FormData): Promise<ActionResult & { warning?: string }> {
+export async function editSwimResult(form: FormData): Promise<ActionResult & { warning?: string; view?: SwimWorkoutView }> {
+  let context: Awaited<ReturnType<typeof swimContext>>;
+  let returnedWorkout: storage.SwimWorkoutRow;
   let sessionId: string;
   try {
     const fields = parseActualForm(form);
-    const { client, user } = await swimContext();
+    context = await swimContext();
+    const { client, user } = context;
     const workout = await ownedSwimWorkout(client, user.id, fields.workoutId);
     if (workout.session_id !== fields.sessionId) throw new SwimActionError("This session does not belong to the swim.", "forbidden");
     const existing = await storage.getSwimResult(client, fields.sessionId);
@@ -208,9 +211,16 @@ export async function editSwimResult(form: FormData): Promise<ActionResult & { w
       allowChangedCourse: !!fields.course || !poolCourseEquals(existing.snapshot.course, workout.definition.issued.snapshot.course),
     });
     await recomputeAfterCompletedSessionMutation({ supabase: client, userId: user.id, sessionId: edited.session_id });
+    returnedWorkout = edited.workout;
     sessionId = edited.session_id;
   } catch (error) { return swimActionFailure(error); }
-  return refreshSavedSwim(sessionId);
+  const refreshed = refreshSavedSwim(sessionId);
+  try {
+    const view = await swimWorkoutViewFromRow(context.client, context.user.id, returnedWorkout);
+    return view ? { ...refreshed, view } : { ok: true, warning: SWIM_REFRESH_WARNING };
+  } catch {
+    return { ok: true, warning: SWIM_REFRESH_WARNING };
+  }
 }
 
 export async function skipSwimWorkout(workoutId: string, revision: number, reason: string): Promise<ActionResult> {
