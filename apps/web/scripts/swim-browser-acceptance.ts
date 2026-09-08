@@ -29,7 +29,18 @@ export const SWIM_BROWSER_CASES = Object.freeze([
     describe: "ADR0079 mobile swimming persistence and isolation",
     title: "DC-SW1/DC-SW8: two mobile users retain distinct usable plans and cannot start or change each other's workouts",
   }),
+  Object.freeze({
+    file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming lifecycle and regional load",
+    title: "A1, DC-SW7: pause, preview, resume, finish and archive preserve primary training and issued swims",
+  }),
+  Object.freeze({
+    file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming lifecycle and regional load",
+    title: "A2, DC-SW9: native UI completion, edit, trash and recovery replace regional load exactly once",
+  }),
 ]);
+const EXPECTED_FILES = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
 
 export const BROWSER_LIMITS = Object.freeze({
   build: 180_000, ready: 60_000, browserCommand: 330_000, shutdown: 10_000,
@@ -42,6 +53,7 @@ const MAX_REPORT_BYTES = 8 * 1024 * 1024;
 const ATTRIBUTED_SOURCES = [
   ["e2e/swimming-mobile.spec.ts", "swimming-mobile"],
   ["e2e/swimming-persistence-mobile.spec.ts", "swimming-persistence-mobile"],
+  ["e2e/swimming-lifecycle-load-mobile.spec.ts", "swimming-lifecycle-load-mobile"],
   ["e2e/global-setup.ts", "global-setup"],
   ["e2e/fixtures/seed.ts", "seed"],
   ["e2e/fixtures/auth.ts", "auth"],
@@ -58,7 +70,7 @@ const failures = new WeakMap<object, FailureCode>();
 const failureLedgers = new WeakMap<object, {
   cases: Array<(typeof SWIM_BROWSER_CASES)[number] & {
     status: z.infer<typeof resultStatusSchema>; testStatus: z.infer<typeof testStatusSchema>;
-    expectedStatus: z.infer<typeof resultStatusSchema>; attempts: number;
+    expectedStatus: z.infer<typeof resultStatusSchema>; attempts: number; durationMs: number;
     attributedSources: AttributedSource[];
   }>;
   counts: { expected: number; unexpected: number; flaky: number; skipped: number };
@@ -318,6 +330,8 @@ const errorAttributionSchema = z.preprocess(
 );
 const resultSchema = z.object({
   retry: z.number().int().min(0).max(99), status: resultStatusSchema,
+  // Measured attempt runtime, bounded by the command budget, not a timeout guarantee.
+  duration: z.number().finite().min(0).max(BROWSER_LIMITS.browserCommand),
   error: z.unknown().transform((value) => value !== undefined),
   errorLocation: locationSchema.optional(),
   errors: z.array(errorAttributionSchema),
@@ -366,10 +380,12 @@ const reportSchema = z.object({
       testMatch: z.array(z.string()), testIgnore: z.array(z.string()).length(0),
     })).length(1),
   }),
-  suites: z.array(z.unknown()).length(2), errors: z.array(z.unknown()).transform((value) => value.length),
+  suites: z.array(z.unknown()).length(EXPECTED_FILES.length), errors: z.array(z.unknown()).transform((value) => value.length),
   stats: z.object({
-    expected: z.number().int().min(0).max(4), unexpected: z.number().int().min(0).max(4),
-    flaky: z.number().int().min(0).max(4), skipped: z.number().int().min(0).max(4),
+    expected: z.number().int().min(0).max(SWIM_BROWSER_CASES.length),
+    unexpected: z.number().int().min(0).max(SWIM_BROWSER_CASES.length),
+    flaky: z.number().int().min(0).max(SWIM_BROWSER_CASES.length),
+    skipped: z.number().int().min(0).max(SWIM_BROWSER_CASES.length),
   }),
 });
 
@@ -381,11 +397,10 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
     const project = report.config.projects[0]!;
     requireCondition(report.config.rootDir === posix(rootDir) && project.testDir === posix(rootDir) &&
       project.outputDir === posix(paths.outputDir), "browser-report-schema");
-    const expectedFiles = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
     requireCondition(JSON.stringify([...project.testMatch].sort()) ===
-      JSON.stringify(expectedFiles.map((file) => posix(join(webRoot, file))).sort()), "browser-report-schema");
+      JSON.stringify(EXPECTED_FILES.map((file) => posix(join(webRoot, file))).sort()), "browser-report-schema");
     const canonicalFile = (file: string) => {
-      const canonical = expectedFiles.find((expected) => resolve(rootDir, file) === join(webRoot, expected));
+      const canonical = EXPECTED_FILES.find((expected) => resolve(rootDir, file) === join(webRoot, expected));
       requireCondition(canonical, "browser-report-schema");
       return canonical;
     };
@@ -400,8 +415,10 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
         fileSuite.suites?.length === 1, "browser-report-schema");
       files.add(file);
       const describe = suiteSchema.parse(fileSuite.suites[0]);
+      const expectedCases = SWIM_BROWSER_CASES.filter((item) => item.file === file);
       requireCondition(canonicalFile(describe.file) === file && !describe.suites?.length &&
-        describe.specs.length === 2, "browser-report-schema");
+        expectedCases.every((item) => item.describe === describe.title) &&
+        describe.specs.length === expectedCases.length, "browser-report-schema");
       for (const rawSpec of describe.specs) {
         const spec = specSchema.parse(rawSpec);
         requireCondition(canonicalFile(spec.file) === file, "browser-report-schema");
@@ -412,7 +429,7 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
         specs.set(index, spec);
       }
     }
-    requireCondition(seen.size === 4, "browser-report-schema");
+    requireCondition(seen.size === SWIM_BROWSER_CASES.length, "browser-report-schema");
     const allPassed = [...specs.values()].every((spec) => {
       const test = spec.tests[0]!;
       const result = test.results[0]!;
@@ -421,7 +438,7 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
         !result.error && result.errors === 0;
     });
     try {
-      requireCondition(allPassed && report.errors === 0 && report.stats.expected === 4 &&
+      requireCondition(allPassed && report.errors === 0 && report.stats.expected === SWIM_BROWSER_CASES.length &&
         report.stats.unexpected === 0 && report.stats.flaky === 0 && report.stats.skipped === 0,
       "browser-failed");
     } catch (error) {
@@ -429,16 +446,19 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
         counts: { ...report.stats },
         cases: SWIM_BROWSER_CASES.map((item, index) => {
           const test = specs.get(index)!.tests[0]!;
+          // Like status, durationMs belongs to the final attempt, not the sum of retries.
           return { ...item, status: test.results.at(-1)!.status, testStatus: test.status,
-            expectedStatus: test.expectedStatus, attempts: test.results.length,
+            expectedStatus: test.expectedStatus, attempts: test.results.length, durationMs: test.results.at(-1)!.duration,
             attributedSources: attributedSources(test.results, webRoot) };
         }),
       });
       throw error;
     }
     return {
-      success: true as const, counts: { expected: 4, unexpected: 0, flaky: 0, skipped: 0 },
-      cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "passed" as const })),
+      success: true as const, counts: { expected: SWIM_BROWSER_CASES.length, unexpected: 0, flaky: 0, skipped: 0 },
+      cases: SWIM_BROWSER_CASES.map((item, index) => ({
+        ...item, status: "passed" as const, attempts: 1, durationMs: specs.get(index)!.tests[0]!.results[0]!.duration,
+      })),
     };
   } catch (error) {
     if (error && typeof error === "object" && failures.has(error)) throw error;

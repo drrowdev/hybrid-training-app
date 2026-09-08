@@ -86,7 +86,7 @@ function report(location = paths) {
         testMatch: [...new Set(SWIM_BROWSER_CASES.map(({ file }) => posix(join(webRoot, file))))], testIgnore: [],
       }] satisfies JSONReport["config"]["projects"],
     },
-    suites, errors: [], stats: { expected: 4, unexpected: 0, flaky: 0, skipped: 0 },
+    suites, errors: [], stats: { expected: SWIM_BROWSER_CASES.length, unexpected: 0, flaky: 0, skipped: 0 },
   };
 }
 
@@ -100,6 +100,38 @@ function rejectedReport(fixture: unknown) {
 }
 
 describe("browser environment and static config", () => {
+  it("DC-SW1/DC-SW7/DC-SW8/DC-SW9: preserves the original four identities and appends only A1/A2", () => {
+    expect(SWIM_BROWSER_CASES).toEqual([
+      {
+        file: "e2e/swimming-mobile.spec.ts", describe: "ADR0079 standalone swimming",
+        title: "blockless setup, local progress, offline finish and native history",
+      },
+      {
+        file: "e2e/swimming-mobile.spec.ts", describe: "ADR0079 standalone swimming",
+        title: "custom pool entry survives validation and compact repeats retain progress",
+      },
+      {
+        file: "e2e/swimming-persistence-mobile.spec.ts",
+        describe: "ADR0079 mobile swimming persistence and isolation",
+        title: "DC-SW1/DC-SW8: native course and planned workouts survive reload and a second same-user mobile context",
+      },
+      {
+        file: "e2e/swimming-persistence-mobile.spec.ts",
+        describe: "ADR0079 mobile swimming persistence and isolation",
+        title: "DC-SW1/DC-SW8: two mobile users retain distinct usable plans and cannot start or change each other's workouts",
+      },
+      {
+        file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
+        describe: "ADR0079 mobile swimming lifecycle and regional load",
+        title: "A1, DC-SW7: pause, preview, resume, finish and archive preserve primary training and issued swims",
+      },
+      {
+        file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
+        describe: "ADR0079 mobile swimming lifecycle and regional load",
+        title: "A2, DC-SW9: native UI completion, edit, trash and recovery replace regional load exactly once",
+      },
+    ]);
+  });
   it("shares authored errors and the same WeakMap across the pure and reporting entry points", async () => {
     expect(reporting.acceptanceAssert).toBe(acceptanceAssert);
     expect(reporting.processFailure).toBe(processFailure);
@@ -212,22 +244,93 @@ describe("browser environment and static config", () => {
   });
 });
 
-describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
-  it("accepts real-shaped file wrappers and emits only fixed names/counts", () => {
+describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
+  it("accepts real-shaped file wrappers and emits only fixed identities, counts and measured attempt durations", () => {
     const fixture = report();
     fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!.stdout = [{ text: "private-payload" }];
     const ledger = validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot);
-    expect(ledger.success).toBe(true);
-    expect(ledger.cases).toHaveLength(4);
+    expect(ledger).toEqual({
+      success: true, counts: { expected: 6, unexpected: 0, flaky: 0, skipped: 0 },
+      cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "passed", attempts: 1, durationMs: 1 })),
+    });
     expect(JSON.stringify(ledger)).not.toContain("private-payload");
   });
+  it("rejects the passing original-four report after cohort expansion", () => {
+    const fixture = report();
+    fixture.suites.pop();
+    fixture.config.projects[0]!.testMatch.pop();
+    fixture.stats.expected = 4;
+    expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
+  });
+  it.each(SWIM_BROWSER_CASES)("requires $title exactly once with no retry, skip or error", (item) => {
+    for (const mode of ["missing", "unexecuted", "duplicate", "identity", "retry", "skipped", "flaky", "error"]) {
+      const fixture = report();
+      const suite = fixture.suites.find((file) => file.file === basename(item.file))!.suites[0]!;
+      const index = suite.specs.findIndex((spec) => spec.title === item.title);
+      const test = suite.specs[index]!.tests[0]!;
+      switch (mode) {
+        case "missing": suite.specs.splice(index, 1); break;
+        case "unexecuted": test.results = []; break;
+        case "duplicate": suite.specs[1 - index] = suite.specs[index]!; break;
+        case "identity": suite.specs[index]!.title = "private-identity"; break;
+        case "retry": test.results[0]!.retry = 1; break;
+        case "skipped": test.status = "skipped"; test.results[0]!.status = "skipped"; break;
+        case "flaky": test.status = "flaky"; break;
+        case "error": test.results[0]!.errors = [{ message: "private-error" }]; break;
+      }
+      const projection = rejectedReport(fixture);
+      expect(projection.code).toBe(["missing", "unexecuted", "duplicate", "identity"].includes(mode)
+        ? "browser-report-schema" : "browser-failed");
+      expect(JSON.stringify(projection)).not.toContain("private-");
+    }
+  });
+  it.each([undefined, null, -1, NaN, Infinity, -Infinity, BROWSER_LIMITS.browserCommand + 1, "1", {}, []])(
+    "rejects missing or invalid duration %# on any attempt without projecting a partial ledger", (duration) => {
+      for (const retried of [false, true]) {
+        const fixture = report();
+        const test = fixture.suites[2]!.suites[0]!.specs[1]!.tests[0]!;
+        if (retried) {
+          test.results.push({ ...test.results[0]!, retry: 1 });
+          test.results[0]!.status = "failed";
+          test.status = "flaky";
+        }
+        Object.assign(test.results[0]!, { duration, durationMs: 1, message: "private-duration" });
+        expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
+      }
+    },
+  );
+  it("rejects nonfinite JSON numeric duration without raw diagnostics", () => {
+    const text = JSON.stringify(report()).replace('"duration":1', '"duration":1e400');
+    let caught: unknown;
+    try { validateSwimBrowserReport(text, paths, webRoot); } catch (error) { caught = error; }
+    expect(projectBrowserFailure(caught)).toEqual({ success: false, code: "browser-report-schema" });
+  });
+  it.each([0, 12.5, BROWSER_LIMITS.browserCommand])(
+    "projects only measured duration %s for a single passed or failed attempt", (duration) => {
+      const fixture = report();
+      const test = fixture.suites[2]!.suites[0]!.specs[1]!.tests[0]!;
+      Object.assign(test.results[0]!, {
+        duration, durationMs: "private-decoy", startTime: "private-time",
+        stdout: [{ text: "private-stdout" }],
+      });
+      const success = validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot);
+      expect(success.cases[5]).toEqual({ ...SWIM_BROWSER_CASES[5], status: "passed", attempts: 1, durationMs: duration });
+      test.results[0]!.status = "timedOut";
+      const failure = rejectedReport(fixture);
+      expect(failure.cases?.[5]).toEqual({
+        ...SWIM_BROWSER_CASES[5], status: "timedOut", testStatus: "expected",
+        expectedStatus: "passed", attempts: 1, durationMs: duration, attributedSources: [{ source: "unknown" }],
+      });
+      expect(JSON.stringify([success, failure])).not.toContain("private-");
+    },
+  );
   it.each([
     "version", "project", "root", "extra", "missing", "duplicate", "unknown", "wrong-path", "describe",
     "skipped", "flaky", "unexpected", "retry", "result", "test", "ok", "error", "stats", "malformed",
     "global-error", "failed-result", "timed-out", "interrupted", "expected-failure", "no-result", "no-test",
     "extra-project", "test-project", "test-timeout", "output", "test-match", "test-dir", "repeat",
     "project-retry", "project-timeout", "nested", "suite-path", "file-wrapper", "absolute-wrong-path",
-    "spec-missing", "spec-extra", "stats-flaky", "stats-skipped", "stats-unexpected",
+    "spec-missing", "spec-extra", "stats-flaky", "stats-skipped", "stats-unexpected", "duplicate-file",
   ])("rejects %s even with a successful command", (mode) => {
     const fixture = report();
     const spec = fixture.suites[0]!.suites[0]!.specs[0]!;
@@ -239,6 +342,7 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
       case "extra": fixture.suites.push(fixture.suites[0]!); break;
       case "missing": fixture.suites.pop(); break;
       case "duplicate": fixture.suites[0]!.suites[0]!.specs[1] = spec; break;
+      case "duplicate-file": fixture.suites[2] = fixture.suites[0]!; break;
       case "unknown": spec.title = "private-payload"; break;
       case "wrong-path": spec.file = `elsewhere/${spec.file}`; break;
       case "describe": fixture.suites[0]!.suites[0]!.title = "other"; break;
@@ -290,7 +394,7 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
       expect(projection).toMatchObject({
         success: false, code: outcomeFailure ? "browser-failed" : "browser-report-schema",
       });
-      if (outcomeFailure) expect(projection.cases).toHaveLength(4);
+      if (outcomeFailure) expect(projection.cases).toHaveLength(SWIM_BROWSER_CASES.length);
       else expect(projection).toEqual({ success: false, code: "browser-report-schema" });
       expect(JSON.stringify(projection)).not.toContain("private-payload");
     }
@@ -321,7 +425,7 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
       attachments: [{ name: "private-attachment", path: "private-path" }],
       annotations: [{ type: "private-annotation", description: "private-description" }],
     });
-    fixture.stats = { expected: 3, unexpected: 1, flaky: 0, skipped: 0 };
+    fixture.stats = { expected: SWIM_BROWSER_CASES.length - 1, unexpected: 1, flaky: 0, skipped: 0 };
     let caught: unknown;
     try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot); }
     catch (error) { caught = error; }
@@ -331,7 +435,7 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
       success: false, code: "browser-failed", counts: fixture.stats,
       cases: SWIM_BROWSER_CASES.map((item, index) => ({
         ...item, status: index === 0 ? "failed" : "passed",
-        testStatus: index === 0 ? "unexpected" : "expected", expectedStatus: "passed", attempts: 1,
+        testStatus: index === 0 ? "unexpected" : "expected", expectedStatus: "passed", attempts: 1, durationMs: 1,
         attributedSources: [{ source: "unknown" }],
       })),
     });
@@ -341,6 +445,7 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
   it.each([
     ["e2e/swimming-mobile.spec.ts", "swimming-mobile"],
     ["e2e/swimming-persistence-mobile.spec.ts", "swimming-persistence-mobile"],
+    ["e2e/swimming-lifecycle-load-mobile.spec.ts", "swimming-lifecycle-load-mobile"],
     ["e2e/global-setup.ts", "global-setup"],
     ["e2e/fixtures/seed.ts", "seed"],
     ["e2e/fixtures/auth.ts", "auth"],
@@ -371,7 +476,7 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
       errors: [{ location: { ...location, column: 2 } }],
     });
     test.results.push({
-      ...result, retry: 1, status: "passed",
+      ...result, retry: 1, status: "passed", duration: 17,
       errors: [
         { message: "private-message", location: { ...location, line: 13 } },
         { message: "private-message", location: { file: join(webRoot, "e2e/fixtures/auth.ts"), line: 14, column: 1 } },
@@ -380,7 +485,7 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
     test.status = "flaky";
     const projection = rejectedReport(fixture);
     expect(projection.cases?.[0]).toEqual({
-      ...SWIM_BROWSER_CASES[0], status: "passed", testStatus: "flaky", expectedStatus: "passed", attempts: 2,
+      ...SWIM_BROWSER_CASES[0], status: "passed", testStatus: "flaky", expectedStatus: "passed", attempts: 2, durationMs: 17,
       attributedSources: [{ source: "seed", line: 12 }, { source: "seed", line: 13 }],
     });
     expect(projection.counts).toEqual(fixture.stats);
@@ -443,7 +548,7 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
       expect(projection).toEqual({
         success: false, code: "browser-failed", counts: fixture.stats,
         cases: SWIM_BROWSER_CASES.map((item) => ({
-          ...item, status: "passed", testStatus: "expected", expectedStatus: "passed", attempts: 1,
+          ...item, status: "passed", testStatus: "expected", expectedStatus: "passed", attempts: 1, durationMs: 1,
           attributedSources: [{ source: "unknown" }],
         })),
       });
@@ -494,7 +599,7 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
       if (mode === "expected-status") Object.assign(test, { expectedStatus: "private-status" });
       if (mode === "attempts") test.results = Array.from({ length: 101 }, () => test.results[0]!);
       if (mode === "retry") test.results[0]!.retry = -1;
-      if (mode === "stats") fixture.stats.expected = 5;
+      if (mode === "stats") fixture.stats.expected = SWIM_BROWSER_CASES.length + 1;
       if (mode === "fraction") fixture.stats.expected = 1.5;
       if (mode === "ok") Object.assign(spec, { ok: "private-ok" });
       let caught: unknown;

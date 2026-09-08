@@ -91,7 +91,7 @@ async function main(cleanupOnly: boolean) {
     appendFileSync(process.env.GITHUB_ENV!, `SWIM_ACCEPTANCE_DIR=${directory}\n`);
     summary("Swim acceptance scope", {
       ...manifest, cleanup: "unconfirmed until a terminal cleanup record; forced cancellation may prevent observation",
-      scope: "Reference startup, unchanged migrations/catalog, complete swim RPC file and four mobile browser cases; not standalone release acceptance",
+      scope: "Reference startup, unchanged migrations/catalog, complete swim RPC file and declared mobile browser cohort; not standalone release acceptance",
     });
   }
   process.umask(0o077);

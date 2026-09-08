@@ -103,8 +103,8 @@ function setup() {
   });
   vi.mocked(readSwimBrowserReport).mockReset().mockImplementation(() => {
     events.push("report");
-    return { success: true, counts: { expected: 4, unexpected: 0, flaky: 0, skipped: 0 },
-      cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "passed" })) };
+    return { success: true, counts: { expected: SWIM_BROWSER_CASES.length, unexpected: 0, flaky: 0, skipped: 0 },
+      cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "passed", attempts: 1, durationMs: 1 })) };
   });
   const options = { command, root, runDirectory, deadline: Date.now() + BROWSER_LIMITS.required + 1_000,
     target: { url: "http://127.0.0.1:54321", projectRef: "local",
@@ -150,7 +150,7 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     expect(h.events).toEqual(["build", "start", "browser", "seal", "report", "stop-server"]);
     expect(sealSwimBrowserReport).toHaveBeenCalledWith(vi.mocked(prepareSwimBrowserReport).mock.results[0]!.value);
     expect(readSwimBrowserReport).toHaveBeenCalledWith(vi.mocked(prepareSwimBrowserReport).mock.results[0]!.value);
-    expect(h.manifest.browser).toEqual({ success: true, cases: 4 });
+    expect(h.manifest.browser).toEqual({ success: true, cases: SWIM_BROWSER_CASES.length });
   });
 
   it.each(["budget", "build", "env-before-start", "port", "readiness"] as const)(
@@ -265,12 +265,12 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
               tests: [{
                 timeout: 30_000, projectId: "mobile-chromium", projectName: "mobile-chromium",
                 expectedStatus: "passed", status: "unexpected",
-                results: [{ retry: 0, status: "failed", errors: [{ message: "synthetic-private-detail" }] }],
+                results: [{ retry: 0, status: "failed", duration: 1, errors: [{ message: "synthetic-private-detail" }] }],
               }],
             })),
           }],
         })),
-        errors: [], stats: { expected: 0, unexpected: 4, flaky: 0, skipped: 0 },
+        errors: [], stats: { expected: 0, unexpected: SWIM_BROWSER_CASES.length, flaky: 0, skipped: 0 },
       };
       writeFileSync(ticket.paths.reportPath, JSON.stringify(report), { mode: 0o644 });
       chmodSync(ticket.paths.reportPath, 0o644);
@@ -284,7 +284,7 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
       expect(h.manifest.browserLedger).toEqual(projectBrowserFailure(reportError));
       expect(h.manifest.browserLedger).toMatchObject({
         success: false, counts: report.stats,
-        cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "failed", attempts: 1 })),
+        cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "failed", attempts: 1, durationMs: 1 })),
       });
       expect(JSON.stringify(h.manifest)).not.toContain("synthetic-private-detail");
       if (result.code === 0) expect(primary).toBe(reportError);
@@ -485,7 +485,7 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     h.close();
     h.server.resolve({ result: stopped });
     await run;
-    expect(h.manifest.browser).toEqual({ success: true, cases: 4 });
+    expect(h.manifest.browser).toEqual({ success: true, cases: SWIM_BROWSER_CASES.length });
     expect(h.reporting.failures.primary).toBeNull();
     expect(h.reporting.failures.cleanup).toHaveLength(0);
   });
