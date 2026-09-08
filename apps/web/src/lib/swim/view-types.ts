@@ -54,6 +54,11 @@ export function nextConfirmedView<T extends { id: string; revision: number }>(cu
 
 export const nextSwimHubView = nextConfirmedView<SwimHubView>;
 
+export function nextEditMode(current: number | null, edit: boolean, revision: number) {
+  const intent = edit ? (current ?? revision) : null;
+  return { intent, open: intent === revision };
+}
+
 export type SwimResumePreview = {
     planId: string; revision: number; startDate: string;
     dates: { id: string; revision: number; date: string }[];

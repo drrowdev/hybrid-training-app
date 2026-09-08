@@ -31,6 +31,11 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
   const [sync, setSync] = useState<"idle" | "queued" | "saved" | "checking">("idle");
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(edit);
+  const [previousEdit, setPreviousEdit] = useState(edit);
+  if (edit !== previousEdit) {
+    setPreviousEdit(edit);
+    setEditing(edit);
+  }
 
   useEffect(() => {
     let alive = true;
@@ -177,6 +182,7 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
             return;
           }
           setWarning(result.warning ?? null);
+          if (result.view) onConfirmed(result.view);
           setEditing(false);
           setSync("saved");
           try {

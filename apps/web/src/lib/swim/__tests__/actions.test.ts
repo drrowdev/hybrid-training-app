@@ -59,6 +59,25 @@ function benchmarkForm() {
   return form;
 }
 
+function mockSavedEdit() {
+  let workout = { ...swimFixture().history[0]!.workout, revision: 1 };
+  let notes: string | null = "Existing note";
+  vi.mocked(storage.getSwimWorkout).mockImplementation(async () => workout);
+  vi.mocked(storage.editSwimResult).mockImplementation(async (_client, input) => {
+    workout = { ...workout, revision: workout.revision + 1 };
+    if (input.notes !== undefined) notes = input.notes;
+    mock.client.from.mockImplementation((table: string) => ({
+      select: () => ({
+        in: async () => ({ error: null, data: table === "sessions" ? [{
+          id: sessionId, completed_at: "2026-09-07T12:20:00Z", deleted_at: null, notes,
+        }] : [{ session_id: sessionId, swim_result: input.result }] }),
+      }),
+    }));
+    return { workout, session_id: sessionId, cardio_log_id: receiptId, transitioned: false };
+  });
+  return workout;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
@@ -207,12 +226,22 @@ describe("ADR0079 server actions", () => {
   it("routes a native result edit through its boundary and recomputes shared load", async () => {
     const existing = swimFixture().history[0]!.result!;
     vi.mocked(storage.getSwimResult).mockResolvedValue(existing);
-    vi.mocked(storage.editSwimResult).mockResolvedValue({
-      workout: swimFixture().workouts[0]!, session_id: sessionId, cardio_log_id: receiptId, transitioned: false,
+    const workout = mockSavedEdit();
+    expect(await editSwimResult(actualForm())).toEqual({
+      ok: true, view: {
+        ...workoutPresentation(workout.definition.issued),
+        id: workout.id, revision: 2, sessionId, status: "completed", planStatus: "active",
+        date: workout.scheduled_date, provisional: false, deleted: false, sourceGone: false, notes: "Easy",
+        result: {
+          lengths: 12, timeMs: 900123, rpe: 6, notes: "Easy", splits: "",
+          stroke: "freestyle", strokes: ["freestyle"], equipment: [],
+          course: "25 yd", distance: "300 yd", pool: existing.snapshot.course,
+        },
+      },
     });
-    expect(await editSwimResult(actualForm())).toEqual({ ok: true });
     expect(storage.editSwimResult).toHaveBeenCalledOnce();
     expect(recomputeAfterCompletedSessionMutation).toHaveBeenCalledOnce();
+    expect(storage.getSwimWorkout).toHaveBeenCalledOnce();
   });
   it("requires a reason for a changed pool and retains that confirmed pool on later edits", async () => {
     const form = actualForm(); form.set("pool", "25m"); form.set("confirmPool", "on");
@@ -223,25 +252,27 @@ describe("ADR0079 server actions", () => {
     const actual = vi.mocked(storage.completeSwimWorkout).mock.calls[0]![1].result;
     expect(actual.snapshot.course.unit).toBe("m");
     vi.mocked(storage.getSwimResult).mockResolvedValue(actual);
-    vi.mocked(storage.editSwimResult).mockResolvedValue({
-      workout: swimFixture().workouts[0]!, session_id: sessionId, cardio_log_id: receiptId, transitioned: false,
-    });
+    const workout = mockSavedEdit();
     form.set("pool", "planned"); form.delete("confirmPool");
-    expect(await editSwimResult(form)).toEqual({ ok: true });
+    expect(await editSwimResult(form)).toMatchObject({
+      ok: true, view: { id: workout.id, revision: 2, sessionId, status: "completed", result: { pool: actual.snapshot.course } },
+    });
     expect(storage.editSwimResult).toHaveBeenCalledWith(mock.client, expect.objectContaining({
       allowChangedCourse: true, result: expect.objectContaining({ snapshot: actual.snapshot }),
     }));
   });
   it("preserves omitted result-edit notes and distinguishes explicit clearing", async () => {
     vi.mocked(storage.getSwimResult).mockResolvedValue(swimFixture().history[0]!.result!);
-    vi.mocked(storage.editSwimResult).mockResolvedValue({
-      workout: swimFixture().workouts[0]!, session_id: sessionId, cardio_log_id: receiptId, transitioned: false,
-    });
+    mockSavedEdit();
     const form = actualForm(); form.delete("notes");
-    expect(await editSwimResult(form)).toEqual({ ok: true });
+    expect(await editSwimResult(form)).toMatchObject({ ok: true, view: { revision: 2, notes: "Existing note", result: { notes: "Existing note" } } });
     expect(vi.mocked(storage.editSwimResult).mock.calls[0]![1]).not.toHaveProperty("notes");
+    form.set("expectedRevision", "2");
     form.set("notes", "");
-    expect(await editSwimResult(form)).toEqual({ ok: true });
+    const cleared = await editSwimResult(form);
+    expect(cleared).toMatchObject({ ok: true, view: { revision: 3, status: "completed" } });
+    expect(cleared.view).not.toHaveProperty("notes");
+    expect(cleared.view?.result).not.toHaveProperty("notes");
     expect(vi.mocked(storage.editSwimResult).mock.calls[1]![1]).toHaveProperty("notes", null);
   });
   it("requires authentication before touching owned swimming storage", async () => {

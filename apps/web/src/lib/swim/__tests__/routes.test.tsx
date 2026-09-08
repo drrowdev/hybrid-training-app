@@ -8,7 +8,9 @@ import { WorkoutScreen } from "@/components/swim/WorkoutScreen";
 import { getSwimCapability } from "../capability";
 import { listSwimPlans } from "../storage";
 import { loadSwimHubView, loadSwimWorkoutView } from "../queries";
-import { swimFixture, userId } from "./fixtures";
+import { swimFixture, userId, sessionId } from "./fixtures";
+import { workoutPresentation } from "../presentation";
+import type { SwimWorkoutView } from "../view-types";
 
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => { throw new Error(`redirect:${url}`); },
@@ -84,6 +86,27 @@ describe("ADR0079 reachable standalone routes", () => {
     expect(screen.props).toEqual({ workout: { id: "workout", title: "Pool swim" }, userId, edit: true });
     expect(screen.key).toBe("workout");
     expect(elements(page).filter((element) => element.type === PageHeader)).toHaveLength(1);
+  });
+  it("passes query entry, clear and same-revision re-entry to the same owner key (route elements only)", async () => {
+    const row = swimFixture().history[0]!.workout;
+    const workout: SwimWorkoutView = {
+      ...workoutPresentation(row.definition.issued),
+      id: row.id, revision: 4, status: "completed", sessionId, planStatus: "active",
+      date: row.scheduled_date, provisional: false, deleted: false,
+      result: { lengths: 14, timeMs: 840456, rpe: 7, stroke: "backstroke", equipment: ["fins"], notes: "Edited swim" },
+    };
+    vi.mocked(loadSwimWorkoutView).mockResolvedValue(workout);
+    for (const edit of ["1", undefined, "1"]) {
+      const page = await SwimWorkoutPage({
+        params: Promise.resolve({ workoutId: workout.id }), searchParams: Promise.resolve({ edit }),
+      });
+      const screen = elements(page).find((element) => element.type === WorkoutScreen)!;
+      expect(screen.key).toBe(workout.id);
+      expect(screen.props.workout).toBe(workout);
+      expect(screen.props).toEqual({ workout, userId, edit: edit === "1" });
+    }
+    expect(loadSwimWorkoutView).toHaveBeenCalledTimes(3);
+    expect(loadSwimWorkoutView).toHaveBeenCalledWith({}, userId, workout.id);
   });
   it("does not fall back to a generic editor for missing structured work", async () => {
     vi.mocked(loadSwimWorkoutView).mockResolvedValue(null);
