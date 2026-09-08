@@ -185,7 +185,14 @@ async function arrangeNative(account: Account, unit: "yd" | "m") {
     workouts,
   });
   expect(created.plan.user_id).toBe(account.userId);
+  expect(isDeepStrictEqual(created.plan.definition, definition)).toBe(true);
   expect(created.workouts.length).toBe(4);
+  for (const saved of created.workouts) {
+    const expected = workouts.find((row) => row.scheduled_date === saved.scheduled_date && row.slot === saved.slot);
+    expect(saved.user_id).toBe(account.userId);
+    expect(saved.plan_id).toBe(created.plan.id);
+    expect(isDeepStrictEqual(saved.definition, expected?.definition)).toBe(true);
+  }
   const workout = created.workouts[0];
   const started = await startSwimWorkout(account.client, workout.id, workout.revision);
   const result: SwimActualResult = {
@@ -215,7 +222,9 @@ async function arrangeNative(account: Account, unit: "yd" | "m") {
     sessionId: completed.session_id, cardioId: completed.cardio_log_id,
   };
   const rows = await nativeRows(account.client, ids);
-  expect(rows.sessions[0].completed_at !== null).toBe(true);
+  expect(typeof rows.sessions[0].completed_at === "string").toBe(true);
+  expect(rows.sessions[0].deleted_at === null).toBe(true);
+  expect(rows.cardio_logs[0].modality === "swimming").toBe(true);
   expect(isDeepStrictEqual(rows.cardio_logs[0].swim_result, result)).toBe(true);
   expect(rows.cardio_logs[0].notes === notes).toBe(true);
   return { ...ids, rows, result, notes, trainingNotes, receiptId };
