@@ -442,7 +442,7 @@ All standalone DC-SW1–SW9 gates still precede combined implementation.
 at `4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. Opus 5 turn 19 accepted integration;
 turn 20 accepted both A source cases.
 
-PR805 checkpoint `c8072969` wires exactly six cases: the original four unchanged,
+PR805 checkpoint `3c060e3d` wires exactly six cases: the original four unchanged,
 plus A1 lifecycle ([DC-SW7](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05))
 and A2 regional load (DC-SW9). The closed catalog supplies exact file, per-file
 identity/count and total gates; no wildcard selection. All six must pass once,
