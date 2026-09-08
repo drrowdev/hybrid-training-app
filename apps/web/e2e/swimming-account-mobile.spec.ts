@@ -18,9 +18,6 @@ import {
   type SwimWorkoutInput,
 } from "../src/lib/swim/storage";
 
-// Source-only C coverage: no active cohort selection. Later integration must bind
-// the same generated LOCAL service key to SUPABASE_SERVICE_ROLE_KEY only in the
-// owned Next server command's options.env and carry the accepted common fixes.
 const mobile = { viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true };
 type Row = Record<string, unknown> & { id: string };
 type CustomIds = { movementId: string; sessionId: string; setId: string };
@@ -378,9 +375,10 @@ function assertNativeExport(body: ExportPayload, own: NativeFixture, other: Nati
   }
 }
 
+// Generic collection must not write account/export artifacts on a retry either.
+test.use({ ...mobile, trace: "off", screenshot: "off", video: "off" });
+
 test.describe("ADR0079 mobile swimming account acceptance", () => {
-  // Generic collection must not write account/export artifacts on a retry either.
-  test.use({ ...mobile, trace: "off", screenshot: "off", video: "off" });
   test.skip(!swimE2EEnabled(process.env), "Blocked: swimming E2E was not explicitly requested.");
 
   test("C1 DC-SW1/DC-SW8: Account exports native records and isolates synthetic users", async ({
