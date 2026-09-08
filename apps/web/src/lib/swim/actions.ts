@@ -29,11 +29,21 @@ import {
 import type { SwimResumePreview } from "./view-types";
 import { formatPoolCourse } from "@hta/domain";
 import { formatSwimTime } from "./time";
+import { SWIM_REFRESH_WARNING } from "./action-feedback";
 
 function refreshSwims(sessionId?: string) {
   for (const path of ["/app", "/app/plan", "/app/swim", "/app/stats", "/app/sessions"]) revalidatePath(path);
   revalidatePath("/app/swim/[workoutId]", "page");
   if (sessionId) revalidatePath(`/app/sessions/${sessionId}`);
+}
+
+function refreshSavedSwim(sessionId?: string): ActionResult & { warning?: string } {
+  try {
+    refreshSwims(sessionId);
+    return { ok: true };
+  } catch {
+    return { ok: true, warning: SWIM_REFRESH_WARNING };
+  }
 }
 
 async function checkWorkouts(client: Parameters<typeof assertSwimSafety>[0], userId: string, workouts: readonly SwimWorkout[]) {
@@ -131,15 +141,14 @@ export async function createSwimPlan(form: FormData): Promise<ActionResult & { p
   } catch (error) { return swimActionFailure(error); }
 }
 
-export async function startSwimWorkout(workoutId: string, revision: number): Promise<ActionResult> {
+export async function startSwimWorkout(workoutId: string, revision: number): Promise<ActionResult & { warning?: string }> {
   try {
     const { client, user } = await swimContext();
     const workout = await ownedSwimWorkout(client, user.id, workoutId);
     if (!workout.session_id) await checkWorkouts(client, user.id, [workout.definition.issued]);
     await storage.startSwimWorkout(client, workoutId, z.number().int().positive().parse(revision));
-    refreshSwims();
-    return { ok: true };
   } catch (error) { return swimActionFailure(error); }
+  return refreshSavedSwim();
 }
 
 export async function completeSwimWorkoutResult(form: FormData): Promise<ActionResult> {
@@ -163,7 +172,8 @@ export async function completeSwimWorkoutResult(form: FormData): Promise<ActionR
   } catch (error) { return swimActionFailure(error); }
 }
 
-export async function editSwimResult(form: FormData): Promise<ActionResult> {
+export async function editSwimResult(form: FormData): Promise<ActionResult & { warning?: string }> {
+  let sessionId: string;
   try {
     const fields = parseActualForm(form);
     const { client, user } = await swimContext();
@@ -178,9 +188,9 @@ export async function editSwimResult(form: FormData): Promise<ActionResult> {
       allowChangedCourse: !!fields.course || !poolCourseEquals(existing.snapshot.course, workout.definition.issued.snapshot.course),
     });
     await recomputeAfterCompletedSessionMutation({ supabase: client, userId: user.id, sessionId: edited.session_id });
-    refreshSwims(edited.session_id);
-    return { ok: true };
+    sessionId = edited.session_id;
   } catch (error) { return swimActionFailure(error); }
+  return refreshSavedSwim(sessionId);
 }
 
 export async function skipSwimWorkout(workoutId: string, revision: number, reason: string): Promise<ActionResult> {
@@ -196,14 +206,13 @@ export async function skipSwimWorkout(workoutId: string, revision: number, reaso
   } catch (error) { return swimActionFailure(error); }
 }
 
-export async function changeSwimPlanStatus(planId: string, revision: number, status: "paused" | "finished" | "archived"): Promise<ActionResult> {
+export async function changeSwimPlanStatus(planId: string, revision: number, status: "paused" | "finished" | "archived"): Promise<ActionResult & { warning?: string }> {
   try {
     const { client, user } = await swimContext();
     await ownedSwimPlan(client, user.id, planId, revision);
     await storage.setSwimPlanStatus(client, planId, revision, z.enum(["paused", "finished", "archived"]).parse(status));
-    refreshSwims();
-    return { ok: true };
   } catch (error) { return swimActionFailure(error); }
+  return refreshSavedSwim();
 }
 
 export async function proposeSwimWeek(planId: string, revision: number): Promise<ActionResult> {
