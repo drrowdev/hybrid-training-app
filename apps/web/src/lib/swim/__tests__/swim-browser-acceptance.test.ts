@@ -6,6 +6,9 @@ import {
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
+import { runInNewContext } from "node:vm";
+import { createClient } from "@supabase/supabase-js";
+import { ScriptTarget, transpileModule } from "typescript";
 import type { JSONReport, JSONReportSpec } from "@playwright/test/reporter";
 import {
   BROWSER_LIMITS, browserBudget, buildBrowserEnv, prepareSwimBrowserReport, projectBrowserFailure,
@@ -16,7 +19,7 @@ import {
 import { acceptanceAssert, processFailure, safeFailureCause } from "../../../../scripts/swim-acceptance-errors";
 import * as reporting from "../../../../scripts/swim-acceptance-reporting";
 import {
-  ALERT_ANNOTATION_TYPE, alertAnnotation, unavailableAlert,
+  ALERT_ANNOTATION_TYPE, alertAnnotation, authAbsenceBackend, projectAlertObservations, readAlertAnnotations, unavailableAlert,
 } from "../../../../scripts/swim-alert-membership";
 
 const webRoot = resolve(__dirname, "../../../..");
@@ -105,8 +108,242 @@ function rejectedReport(fixture: unknown) {
 function unavailableObservations(index: number) {
   return index === 3 ? [unavailableAlert("c4-owner-1-start"), unavailableAlert("c4-owner-2-start")] :
     index === 4 ? [unavailableAlert("a1-pause")] :
-      index === 5 ? [unavailableAlert("a2-post-start"), unavailableAlert("a2-edit")] : [];
+      index === 5 ? [unavailableAlert("a2-post-start"), unavailableAlert("a2-edit")] :
+        index === 9 ? [unavailableAlert("c2-auth-absence")] : [];
 }
+
+describe("DC-SW8 failure-only C2 Auth absence", () => {
+  it.each([
+    [null, { status: 404 }, "reached"],
+    [{ id: "private-primary" }, null, "not-reached"],
+    [{ id: "private-other" }, null, "unavailable"],
+    [{ id: "private-primary" }, { status: 404 }, "unavailable"],
+    [null, null, "unavailable"],
+    [null, { status: 500 }, "unavailable"],
+    [null, { status: "404" }, "unavailable"],
+    [null, {}, "unavailable"],
+    [null, undefined, "unavailable"],
+    [undefined, { status: 404 }, "unavailable"],
+    [{}, null, "unavailable"],
+    [{ id: null }, null, "unavailable"],
+    [{ id: 1 }, null, "unavailable"],
+    [{ id: "private-primary" }, undefined, "unavailable"],
+    [[], null, "unavailable"],
+    [null, [], "unavailable"],
+    ["private-primary", null, "unavailable"],
+    [null, new Error("private-read-error"), "unavailable"],
+  ])("classifies only exact absence or exact presence %#", (user, error, backend) => {
+    expect(authAbsenceBackend(user, error, "private-primary")).toBe(backend);
+  });
+  it("rejects missing identity and getter read failures without exposing them", () => {
+    for (const id of [undefined, null, "", {}, 1]) {
+      expect(authAbsenceBackend(null, { status: 404 }, id)).toBe("unavailable");
+      expect(authAbsenceBackend({ id }, null, id)).toBe("unavailable");
+    }
+    expect(authAbsenceBackend({
+      get id() { throw new Error("private-id"); },
+    }, null, "private-primary")).toBe("unavailable");
+    expect(authAbsenceBackend(null, {
+      get status() { throw new Error("private-status"); },
+    }, "private-primary")).toBe("unavailable");
+  });
+  it("never accesses any user or error property except id or status, including message and metadata", () => {
+    const forbidden = vi.fn(() => { throw new Error("private-getter"); });
+    const guarded = (allowed: string, value: unknown) => new Proxy({
+      message: "private-message", metadata: "private-metadata", user_metadata: "private-user-data",
+      app_metadata: "private-app-data", email: "private-email",
+    }, {
+      get: (_target, property) => property === allowed ? value : forbidden(),
+      ownKeys: forbidden,
+      getOwnPropertyDescriptor: forbidden,
+    });
+    for (const [user, error, backend] of [
+      [null, guarded("status", 404), "reached"],
+      [guarded("id", "private-primary"), null, "not-reached"],
+      [guarded("id", "private-other"), null, "unavailable"],
+      [guarded("id", "private-primary"), guarded("status", 404), "unavailable"],
+      [null, guarded("status", 503), "unavailable"],
+    ] as const) {
+      const classified = authAbsenceBackend(user, error, "private-primary");
+      expect(classified).toBe(backend);
+      const annotation = alertAnnotation({ ...unavailableAlert("c2-auth-absence"), backend: classified })!;
+      expect(JSON.stringify(annotation)).not.toMatch(/private-|message|metadata|email/);
+    }
+    expect(forbidden).not.toHaveBeenCalled();
+  });
+  it.each(["reached", "not-reached", "unavailable"] as const)(
+    "round-trips only backend=%s at C2 with the unchanged strict protocol", (backend) => {
+      const value = { ...unavailableAlert("c2-auth-absence"), backend };
+      const annotation = alertAnnotation(value)!;
+      expect(annotation.type).toBe("hta-swim-alert-membership-v2");
+      expect(annotation.description).toBe(
+        `point=c2-auth-absence;category=unavailable;backend=${backend};revision=unavailable;control=unavailable;result=unavailable`,
+      );
+      expect(annotation.description.length).toBeLessThanOrEqual(160);
+      const parsed = readAlertAnnotations(Array(16).fill(annotation));
+      expect(parsed).toEqual([value]);
+      expect(projectAlertObservations(9, parsed)).toEqual([value]);
+      expect(readAlertAnnotations(Array(17).fill(annotation))).toBeUndefined();
+      for (const index of SWIM_BROWSER_CASES.keys()) {
+        if (index !== 9) expect(projectAlertObservations(index, parsed)).toEqual(unavailableObservations(index));
+      }
+      for (const [field, forbidden] of [
+        ["category", "absent"], ["revision", "advanced"], ["control", "none"], ["result", "none"],
+      ]) {
+        expect(alertAnnotation({ ...value, [field!]: forbidden })).toBeUndefined();
+        expect(readAlertAnnotations([{
+          ...annotation, description: annotation.description.replace(`${field}=unavailable`, `${field}=${forbidden}`),
+        }])).toBeUndefined();
+      }
+      for (const invalid of [
+        { ...annotation, raw: "private-data" },
+        { ...annotation, description: `${annotation.description};raw=private-data` },
+        { ...annotation, description: `${annotation.description};point=c2-auth-absence` },
+        { ...annotation, description: annotation.description.replace("c2-auth-absence", "c2-other") },
+        { ...annotation, description: annotation.description.replace(`backend=${backend}`, "backend=private-data") },
+        { ...annotation, description: "x".repeat(161) },
+        { ...annotation, description: annotation.description.replace("control=unavailable;result=unavailable",
+          "result=unavailable;control=unavailable") },
+      ]) {
+        expect(readAlertAnnotations([invalid])).toBeUndefined();
+        expect(projectAlertObservations(9, readAlertAnnotations([invalid]))).toEqual([unavailableAlert("c2-auth-absence")]);
+      }
+      const conflict = alertAnnotation({ ...value, backend: backend === "reached" ? "not-reached" : "reached" })!;
+      expect(readAlertAnnotations([annotation, conflict])).toBeUndefined();
+      expect(readAlertAnnotations([{
+        type: "ignored", get description() { throw new Error("private-description"); },
+      }, annotation])).toEqual([value]);
+    },
+  );
+  it("owns one abort-aware read only after the unchanged URL assertion fails, preserving the same error", () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-account-mobile.spec.ts"), "utf8");
+    const c2 = source.slice(source.indexOf('test("C2 DC-SW8:'));
+    const observation = c2.slice(c2.indexOf("await accountPage(page, primary);"), c2.indexOf("expect((await context.cookies())"));
+    const ordered = [
+      'await page.getByRole("button", { name: "Delete account (GDPR Art. 17)", exact: true }).click();',
+      "try {", 'await expect(page).toHaveURL(new URL("/?deleted=1", baseURL!).href);',
+      "} catch (error) {", "try {", 'const diagnostic = unavailableAlert("c2-auth-absence");',
+      "const controller = new AbortController();", "const deadline = performance.now() + 1000;",
+      'testInfo.status === "timedOut"', 'testInfo.status === "interrupted" || page.isClosed()',
+      "const active = () => !controller.signal.aborted && !interrupted() && performance.now() < deadline;",
+      "const expiry = setTimeout(() => controller.abort(), 1000);", "try {", "if (active()) {",
+      "createClient(seedConfig.supabaseUrl, seedConfig.serviceRoleKey,",
+      "auth: { persistSession: false, autoRefreshToken: false }",
+      "return await fetch(input, { ...init, signal: controller.signal });",
+      "catch { return new Response(null, { status: 503 }); }",
+      "const sample = await observer.auth.admin.getUserById(primary.userId);",
+      "if (active()) diagnostic.backend = authAbsenceBackend(sample.data.user, sample.error, primary.userId);",
+      "} catch {", 'diagnostic.backend = "unavailable";', "} finally {",
+      "controller.abort();", "clearTimeout(expiry);",
+      'if (interrupted() || performance.now() >= deadline) diagnostic.backend = "unavailable";',
+      "const annotation = alertAnnotation(diagnostic);", "if (annotation) testInfo.annotations.push(annotation);",
+      "} catch {", "throw error;",
+    ];
+    let position = -1;
+    for (const part of ordered) {
+      const next = observation.indexOf(part, position + 1);
+      expect(next, part).toBeGreaterThan(position);
+      position = next;
+    }
+    expect(observation.match(/getUserById\(/g)).toHaveLength(1);
+    expect(observation.match(/\.click\(/g)).toHaveLength(1);
+    expect(observation.match(/toHaveURL\(/g)).toHaveLength(1);
+    expect(observation).not.toMatch(/Promise\.race|expect\.poll|signOut|deleteUser|cleanup|\.goto|\.reload|\.close\(|\.url\(|setInterval|timeout:|console\.|JSON\.|\.message|\.metadata/);
+    expect(c2).toContain("const deleted = await admin.auth.admin.getUserById(primary.userId);");
+    expect(c2).toContain("await assertNativeGone(admin, own);");
+    expect(c2).toContain("await assertCustomGone(admin, primary.userId, custom);");
+  });
+  it.each([
+    "success", "absent", "present", "wrong-user", "malformed", "read-error", "timeout", "late",
+    "interrupted", "timedOut", "closed", "already-interrupted", "already-timedOut", "already-closed",
+    "client-error", "annotation-error",
+  ])("executes the source observation with the official SDK and no network: %s", async (mode) => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-account-mobile.spec.ts"), "utf8");
+    const c2 = source.slice(source.indexOf('test("C2 DC-SW8:'));
+    const block = c2.slice(c2.indexOf("await accountPage(page, primary);"), c2.indexOf("expect((await context.cookies())"));
+    const original = new Error("original-url-assertion");
+    const privateRead = new Proxy({}, { get() { throw new Error("private-read-getter"); } });
+    const primary = { userId: "11111111-1111-4111-8111-111111111111" };
+    const testInfo = { status: mode === "already-interrupted" ? "interrupted" :
+      mode === "already-timedOut" ? "timedOut" : "passed", annotations: [] as unknown[] };
+    let closed = mode === "already-closed";
+    let now = 0;
+    let expire = () => {};
+    let signal: AbortSignal | undefined;
+    let settled = false;
+    const timer = vi.fn((callback: () => void) => { expire = callback; return 1; });
+    const clear = vi.fn();
+    const transport = vi.fn(async (_input: unknown, init: RequestInit) => {
+      signal = init.signal!;
+      try {
+        if (mode === "read-error") throw privateRead;
+        if (mode === "timeout") {
+          return await new Promise<Response>((_resolve, reject) => {
+            signal!.addEventListener("abort", () => reject(privateRead), { once: true });
+            now = 1000;
+            expire();
+          });
+        }
+        if (mode === "late") now = 1001;
+        if (mode === "interrupted" || mode === "timedOut") testInfo.status = mode;
+        if (mode === "closed") closed = true;
+        if (mode === "malformed") return new Response("private-invalid-json", { status: 200 });
+        if (mode === "present" || mode === "wrong-user") {
+          return Response.json({ id: mode === "present" ? primary.userId : "private-other" });
+        }
+        return Response.json({ msg: "private-response" }, { status: 404 });
+      } finally { settled = true; }
+    });
+    const client = vi.fn((...args: Parameters<typeof createClient>) => {
+      if (mode === "client-error") throw privateRead;
+      return createClient(...args);
+    });
+    const annotate = vi.fn((value: unknown) => {
+      if (mode === "annotation-error") throw privateRead;
+      return alertAnnotation(value);
+    });
+    const click = vi.fn(async () => {});
+    const url = vi.fn(async () => { if (mode !== "success") throw original; });
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const compiled = transpileModule(`(async () => { ${block} })`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText;
+    const execute = runInNewContext(compiled, {
+      page: { getByRole: () => ({ click }), isClosed: () => closed },
+      accountPage: async () => {}, primary, testInfo, baseURL: "http://127.0.0.1:3210",
+      seedConfig: { supabaseUrl: "http://127.0.0.1:54321", serviceRoleKey: "synthetic-service" },
+      expect: () => ({ toHaveURL: url }), createClient: client, fetch: transport,
+      alertAnnotation: annotate, authAbsenceBackend, unavailableAlert,
+      AbortController, Response, URL, performance: { now: () => now }, setTimeout: timer, clearTimeout: clear,
+    }) as () => Promise<void>;
+    try {
+      if (mode === "success") await expect(execute()).resolves.toBeUndefined();
+      else await expect(execute()).rejects.toBe(original);
+      expect(click).toHaveBeenCalledTimes(1);
+      expect(url).toHaveBeenCalledTimes(1);
+      expect(logged).not.toHaveBeenCalled();
+      const attempted = mode !== "success" && !mode.startsWith("already-") && mode !== "client-error";
+      expect(transport).toHaveBeenCalledTimes(attempted ? 1 : 0);
+      if (attempted) {
+        expect(settled).toBe(true);
+        expect(signal?.aborted).toBe(true);
+        expect(transport.mock.calls[0]![1].method).toBe("GET");
+      }
+      if (mode === "success") {
+        expect(client).not.toHaveBeenCalled();
+        expect(timer).not.toHaveBeenCalled();
+        expect(annotate).not.toHaveBeenCalled();
+      } else {
+        expect(timer).toHaveBeenCalledWith(expect.any(Function), 1000);
+        expect(clear).toHaveBeenCalledWith(1);
+      }
+      expect(testInfo.annotations).toEqual(mode === "success" || mode === "annotation-error" ? [] : [
+        alertAnnotation({ ...unavailableAlert("c2-auth-absence"),
+          backend: mode === "absent" ? "reached" : mode === "present" ? "not-reached" : "unavailable" }),
+      ]);
+    } finally { logged.mockRestore(); }
+  });
+});
 
 describe("browser environment and static config", () => {
   it("DC-SW1/DC-SW2/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9: preserves the original eight identities and appends only C1/C2/D", () => {
@@ -878,6 +1115,55 @@ describe("DC-SW1/DC-SW2/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9 strict eleven-
         function caseTest(fixture: ReturnType<typeof report>, index: number) {
           return fixture.suites.flatMap((suite) => suite.suites[0]!.specs)[index]!.tests[0]!;
         }
+        it.each(["reached", "not-reached", "unavailable"] as const)(
+          "retains the nonqualifying C2 failure with backend=%s and no cross-case evidence", (backend) => {
+            const fixture = report();
+            const value = { ...unavailableAlert("c2-auth-absence"), backend };
+            const annotation = alertAnnotation(value)!;
+            for (const index of SWIM_BROWSER_CASES.keys()) {
+              caseTest(fixture, index).results[0]!.annotations = [annotation, annotation];
+            }
+            caseTest(fixture, 9).results[0]!.status = "failed";
+            const projection = rejectedReport(fixture);
+            expect(projection.code).toBe("browser-failed");
+            expect(projection.cases).toHaveLength(11);
+            expect(projection.cases?.[9]?.status).toBe("failed");
+            expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual(
+              SWIM_BROWSER_CASES.map((_, index) => index === 9 ? [value] : unavailableObservations(index)),
+            );
+          },
+        );
+        it("does not treat an unsampled passing C2 as failed when a different case fails", () => {
+          const fixture = report();
+          expect(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot).cases[9])
+            .not.toHaveProperty("alertObservations");
+          caseTest(fixture, 0).results[0]!.status = "failed";
+          const projection = rejectedReport(fixture);
+          expect(projection.cases?.[9]).toMatchObject({
+            status: "passed", testStatus: "expected", alertObservations: [unavailableAlert("c2-auth-absence")],
+          });
+        });
+        it("rejects other-case or conflicting C2 observations without losing the failure ledger", () => {
+          const value = { ...unavailableAlert("c2-auth-absence"), backend: "reached" as const };
+          const valid = alertAnnotation(value)!;
+          for (const annotations of [
+            [alertAnnotation(observations[2])!],
+            [valid, alertAnnotation(observations[2])!],
+            [valid, alertAnnotation({ ...value, backend: "not-reached" })!],
+            [valid, { ...valid, description: `${valid.description};raw=private-data` }],
+          ]) {
+            const fixture = report();
+            const result = caseTest(fixture, 9).results[0]!;
+            result.status = "failed";
+            result.annotations = annotations;
+            const projection = rejectedReport(fixture);
+            expect(projection.code).toBe("browser-failed");
+            expect(projection.cases?.[9]).toMatchObject({
+              status: "failed", alertObservations: [unavailableAlert("c2-auth-absence")],
+            });
+            expect(JSON.stringify(projection)).not.toContain("private-");
+          }
+        });
         it("projects only validated attempt annotations at their known points, capped and deduplicated per case", () => {
           const fixture = report();
           for (const [index, selected] of [[3, observations.slice(0, 2)], [4, [observations[2]]], [5, observations.slice(3)]] as const) {
@@ -889,7 +1175,8 @@ describe("DC-SW1/DC-SW2/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9 strict eleven-
           expect(projection.code).toBe("browser-failed");
           expect(projection.cases).toHaveLength(11);
           expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual([
-            [], [], [], observations.slice(0, 2), [observations[2]], observations.slice(3), [], [], [], [], [],
+            [], [], [], observations.slice(0, 2), [observations[2]], observations.slice(3), [], [], [],
+            [unavailableAlert("c2-auth-absence")], [],
           ]);
           expect(projection.cases?.map(({ file, describe, title }) => ({ file, describe, title }))).toEqual(SWIM_BROWSER_CASES);
         });
