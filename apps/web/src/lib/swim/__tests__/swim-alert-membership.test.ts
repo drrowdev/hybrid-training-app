@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runInNewContext } from "node:vm";
 import {
   ALERT_ANNOTATION_TYPE, SWIM_ALERT_CODEBOOK, alertAnnotation, classifyAlertNodes,
@@ -6,21 +6,34 @@ import {
   unavailableAlert, validateAlertCategory,
 } from "../../../../scripts/swim-alert-membership";
 
-const node = (textContent: string | null) => ({ isConnected: true, textContent });
+const body = {};
+class SyntheticShadowRoot {
+  constructor(readonly host: { localName: string; parentNode: object }) {}
+}
+const node = (textContent: string | null, root: object = body, id = "") => ({
+  isConnected: true, textContent, id, getRootNode: () => root as Node,
+});
 const observation = { ...unavailableAlert("a1-pause"), category: "client-save" as const };
 const annotation = alertAnnotation(observation)!;
 
 describe("browser-only alert membership", () => {
+  beforeEach(() => {
+    vi.stubGlobal("ShadowRoot", SyntheticShadowRoot);
+    vi.stubGlobal("document", { body });
+  });
+  afterEach(() => vi.unstubAllGlobals());
   it("runs every codebook entry without a closure and returns only its closed category", () => {
-    const classify = runInNewContext(`(${classifyAlertNodes.toString()})`) as typeof classifyAlertNodes;
+    const classify = runInNewContext(`(${classifyAlertNodes.toString()})`, {
+      ShadowRoot: SyntheticShadowRoot, document: { body },
+    }) as typeof classifyAlertNodes;
     const literals = SWIM_ALERT_CODEBOOK.flatMap((entry) => [...entry.literals]);
     expect(new Set(literals).size).toBe(literals.length);
     for (const entry of SWIM_ALERT_CODEBOOK) {
       for (const text of entry.literals) {
         const result = classify([node(text)], SWIM_ALERT_CODEBOOK);
-        expect(result).toBe(entry.category);
-        expect(validateAlertCategory(result)).toBe(result);
-        expect(result).not.toContain(text);
+        expect(result).toEqual({ count: 1, category: entry.category });
+        expect(validateAlertCategory(result.category)).toBe(result.category);
+        expect(JSON.stringify(result)).not.toContain(text);
       }
     }
   });
@@ -33,22 +46,58 @@ describe("browser-only alert membership", () => {
           `${literal}:suffix`, `${literal}${secret}`, `${secret}${literal}`, literal.repeat(257),
         ]) {
           const result = classifyAlertNodes([node(text)], SWIM_ALERT_CODEBOOK);
-          expect(result).toBe("unclassified");
+          expect(result).toEqual({ count: 1, category: "unclassified" });
           expect(JSON.stringify(result)).not.toContain(secret);
         }
       }
     }
   });
   it("closes absent, multiple, detached and unreadable outcomes without leaking getter errors", () => {
-    expect(classifyAlertNodes([], SWIM_ALERT_CODEBOOK)).toBe("absent");
-    expect(classifyAlertNodes([node("private-one"), node("private-two")], SWIM_ALERT_CODEBOOK)).toBe("multiple");
-    expect(classifyAlertNodes([{ ...node("private"), isConnected: false }], SWIM_ALERT_CODEBOOK)).toBe("detached");
-    expect(classifyAlertNodes([node(null)], SWIM_ALERT_CODEBOOK)).toBe("unreadable");
+    expect(classifyAlertNodes([], SWIM_ALERT_CODEBOOK)).toEqual({ count: 0, category: "absent" });
+    expect(classifyAlertNodes([node("private-one"), node("private-two")], SWIM_ALERT_CODEBOOK)).toEqual({ count: 2, category: "multiple" });
+    expect(classifyAlertNodes([{ ...node("private"), isConnected: false }], SWIM_ALERT_CODEBOOK)).toEqual({ count: 1, category: "detached" });
+    expect(classifyAlertNodes([node(null)], SWIM_ALERT_CODEBOOK)).toEqual({ count: 1, category: "unreadable" });
     expect(classifyAlertNodes([{
-      isConnected: true, get textContent(): string { throw new Error("private-getter"); },
-    }], SWIM_ALERT_CODEBOOK)).toBe("unreadable");
-    const detached = { isConnected: true, get textContent() { this.isConnected = false; return "private-detached"; } };
-    expect(classifyAlertNodes([detached], SWIM_ALERT_CODEBOOK)).toBe("detached");
+      ...node(null), get textContent(): string { throw new Error("private-getter"); },
+    }], SWIM_ALERT_CODEBOOK)).toEqual({ count: 1, category: "unreadable" });
+    const detached = { ...node(null), get textContent() { this.isConnected = false; return "private-detached"; } };
+    expect(classifyAlertNodes([detached], SWIM_ALERT_CODEBOOK)).toEqual({ count: 1, category: "detached" });
+  });
+  it("serializes structural exclusion before both count and classification, retaining every lookalike", () => {
+    const classify = runInNewContext(`(${classifyAlertNodes.toString()})`, {
+      ShadowRoot: SyntheticShadowRoot, document: { body },
+    }) as typeof classifyAlertNodes;
+    const reserved = "__next-route-announcer__";
+    const next = new SyntheticShadowRoot({ localName: "next-route-announcer", parentNode: body });
+    for (const titleBearing of [false, true]) {
+      const announcer = node(titleBearing ? "private-title" : "", next, reserved);
+      const genuine = node(SWIM_ALERT_CODEBOOK[0].literals[0]);
+      expect(classify([announcer], SWIM_ALERT_CODEBOOK)).toEqual({ count: 0, category: "absent" });
+      for (const alert of [
+        genuine, node(genuine.textContent, { main: true }), node(genuine.textContent, body, reserved),
+        node(genuine.textContent, new SyntheticShadowRoot({ localName: "other-host", parentNode: body }), reserved),
+        node(genuine.textContent, next, "other-id"),
+        node(genuine.textContent, new SyntheticShadowRoot({ localName: "next-route-announcer", parentNode: {} }), reserved),
+        node(genuine.textContent, { host: next.host }, reserved),
+      ]) {
+        expect(classify([announcer, alert], SWIM_ALERT_CODEBOOK)).toEqual({ count: 1, category: "client-save" });
+      }
+      expect(classify([announcer, genuine, genuine], SWIM_ALERT_CODEBOOK)).toEqual({ count: 2, category: "multiple" });
+      // The native negative predicate retains this node; C2's reserved-ID positive locator rejects it.
+      const lookalike = node(genuine.textContent, body, reserved);
+      expect(classify([lookalike], SWIM_ALERT_CODEBOOK).count).toBe(1);
+      expect(lookalike.id !== reserved).toBe(false);
+      expect(classify([{
+        ...announcer, get textContent(): string { throw new Error("must not read announcer"); },
+      }, genuine], SWIM_ALERT_CODEBOOK)).toEqual({ count: 1, category: "client-save" });
+    }
+  });
+  it("never converts structural errors or missing browser globals into zero errors", () => {
+    const broken = { ...node("private"), getRootNode(): Node { throw new Error("private-root"); } };
+    expect(classifyAlertNodes([broken], SWIM_ALERT_CODEBOOK)).toEqual({ count: -1, category: "unreadable" });
+    const isolated = runInNewContext(`(${classifyAlertNodes.toString()})`) as typeof classifyAlertNodes;
+    expect(isolated([node("private")], SWIM_ALERT_CODEBOOK)).toEqual({ count: -1, category: "unreadable" });
+    expect(JSON.stringify(classifyAlertNodes([broken], SWIM_ALERT_CODEBOOK))).not.toContain("private");
   });
   it("validates the browser enum before any serialization", () => {
     for (const value of [null, undefined, {}, [], { category: "client-save", raw: "private" }, "client", "private", "x".repeat(1000)]) {

@@ -451,6 +451,10 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ${{ env.HTA_SWIM_BROWSER_CACHE }}
         run: pnpm --filter @hta/web exec playwright install chromium
 
+      - name: Prove synthetic announcer exclusion
+        timeout-minutes: 2
+        run: pnpm --filter @hta/web exec tsx scripts/swim-alert-announcer-probe.ts
+
       - name: Run guarded reference acceptance
         run: pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts
 

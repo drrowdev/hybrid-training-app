@@ -317,14 +317,16 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
         if (performance.now() >= deadline) return;
         const category = await Promise.race([
           page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)
-            .then(validateAlertCategory, () => "unavailable" as const),
+            .then(({ category }) => category).then(validateAlertCategory, () => "unavailable" as const),
           expired.then(() => "unavailable" as const),
         ]);
         diagnostic.category = performance.now() < deadline ? category : "unavailable";
       };
       const polling = (async () => {
         while (performance.now() < deadline) {
-          if (await page.getByRole("alert").count() > 0) return "alert" as const;
+          const { count } = await page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK);
+          if (count < 0) return "error" as const;
+          if (count > 0) return "alert" as const;
           if (performance.now() >= deadline) return "pending" as const;
           const saved = await savedPlan(admin, freshUser.userId, planId);
           if (performance.now() >= deadline) return "pending" as const;
@@ -368,11 +370,12 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       expect(deadline - performance.now()).toBeGreaterThan(0);
       // One late sample, not continuous alert coverage during rendering.
       const lateAlertCount = await Promise.race([
-        page.getByRole("alert").count().then((count) => count, () => "error" as const),
+        page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)
+          .then(({ count }) => count, () => "error" as const),
         expired,
       ]);
       if (typeof lateAlertCount === "number" && performance.now() < deadline) {
-        if (lateAlertCount > 0) await captureAlert();
+        if (lateAlertCount !== 0) await captureAlert();
         else diagnostic.category = "absent";
       }
       expect(lateAlertCount).toBe(0);
@@ -463,13 +466,9 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const diagnostic = { ...unavailableAlert("a2-post-start"), backend: "reached" as const };
     let observing = true;
     // One concurrent sample, not a new wait window or continuous late-alert coverage.
-    void page.getByRole("alert").count().then(async (count) => {
+    void page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK).then(({ category }) => {
       if (!observing) return;
-      if (count === 0) { diagnostic.category = "absent"; return; }
-      const category = validateAlertCategory(
-        await page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK),
-      );
-      if (observing) diagnostic.category = category;
+      diagnostic.category = validateAlertCategory(category);
     }).catch(() => { if (observing) diagnostic.category = "unavailable"; });
     try {
       await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();

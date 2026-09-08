@@ -97,25 +97,33 @@ export type AlertObservation = {
 
 // Passed directly to locator.evaluateAll: no module/global closure, no raw text return.
 export function classifyAlertNodes(
-  nodes: { readonly isConnected: boolean; readonly textContent: string | null }[],
+  nodes: (Pick<Element, "isConnected" | "getRootNode" | "id"> & { readonly textContent: string | null })[],
   codebook: typeof SWIM_ALERT_CODEBOOK,
-): AlertCategory {
+): { count: number; category: AlertCategory } {
+  // -1 is a failed structural read, never an absence of genuine alerts.
+  let count = -1;
   try {
-    if (nodes.length === 0) return "absent";
-    if (nodes.length !== 1) return "multiple";
-    const node = nodes[0]!;
-    if (!node.isConnected) return "detached";
+    const genuine = nodes.filter((node) => {
+      const root = node.getRootNode();
+      return !(root instanceof ShadowRoot && root.host.localName === "next-route-announcer" &&
+        root.host.parentNode === document.body && node.id === "__next-route-announcer__");
+    });
+    count = genuine.length;
+    if (count === 0) return { count, category: "absent" };
+    if (count !== 1) return { count, category: "multiple" };
+    const node = genuine[0]!;
+    if (!node.isConnected) return { count, category: "detached" };
     const text = node.textContent;
-    if (!node.isConnected) return "detached";
-    if (typeof text !== "string") return "unreadable";
-    if (text.length > 256) return "unclassified";
+    if (!node.isConnected) return { count, category: "detached" };
+    if (typeof text !== "string") return { count, category: "unreadable" };
+    if (text.length > 256) return { count, category: "unclassified" };
     for (const entry of codebook) {
       for (const literal of entry.literals) {
-        if (text === literal) return entry.category;
+        if (text === literal) return { count, category: entry.category };
       }
     }
-    return "unclassified";
-  } catch { return "unreadable"; }
+    return { count, category: "unclassified" };
+  } catch { return { count, category: "unreadable" }; }
 }
 
 export function validateAlertCategory(value: unknown): AlertCategory {
