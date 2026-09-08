@@ -90,6 +90,15 @@ function report(location = paths) {
   };
 }
 
+function rejectedReport(fixture: unknown) {
+  let caught: unknown;
+  try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot); }
+  catch (error) { caught = error; }
+  expect(caught).toBeInstanceOf(Error);
+  expect(safeFailureCause(caught).classification).toBe("guard");
+  return projectBrowserFailure(caught);
+}
+
 describe("browser environment and static config", () => {
   it("shares authored errors and the same WeakMap across the pure and reporting entry points", async () => {
     expect(reporting.acceptanceAssert).toBe(acceptanceAssert);
@@ -323,10 +332,157 @@ describe("DC-SW1/DC-SW8 strict four-case browser ledger", () => {
       cases: SWIM_BROWSER_CASES.map((item, index) => ({
         ...item, status: index === 0 ? "failed" : "passed",
         testStatus: index === 0 ? "unexpected" : "expected", expectedStatus: "passed", attempts: 1,
+        attributedSources: [{ source: "unknown" }],
       })),
     });
     expect(JSON.stringify(projection)).not.toContain("private-");
     expect(projectBrowserFailure(caught)).toEqual(projection);
+  });
+  it.each([
+    ["e2e/swimming-mobile.spec.ts", "swimming-mobile"],
+    ["e2e/swimming-persistence-mobile.spec.ts", "swimming-persistence-mobile"],
+    ["e2e/global-setup.ts", "global-setup"],
+    ["e2e/fixtures/seed.ts", "seed"],
+    ["e2e/fixtures/auth.ts", "auth"],
+    ["e2e/fixtures/seed-blocks.ts", "seed-blocks"],
+    ["e2e/fixtures/swim-environment.ts", "swim-environment"],
+  ])("attributes only the exact absolute source %s from either structured field", (file, source) => {
+    for (const field of ["errorLocation", "errors"]) {
+      const fixture = report();
+      const result = fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!;
+      const location = { file: join(webRoot, file), line: 1_000_000, column: 1_000_000, private: "private-location" };
+      result.status = "timedOut";
+      Object.assign(result, field === "errorLocation" ? { errorLocation: location } : { errors: [{ location }] });
+      const projection = rejectedReport(fixture);
+      expect(projection).toMatchObject({ success: false, code: "browser-failed", counts: fixture.stats });
+      expect(projection.cases?.[0]?.attributedSources).toEqual([{ source, line: 1_000_000 }]);
+      expect(JSON.stringify(projection)).not.toMatch(/private-|column/);
+      expect(JSON.stringify(projection)).not.toContain(webRoot);
+    }
+  });
+  it("deduplicates source/line across fields and retries and caps the case at two attributions", () => {
+    const fixture = report();
+    const test = fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!;
+    const result = test.results[0]!;
+    const location = { file: join(webRoot, "e2e/fixtures/seed.ts"), line: 12, column: 1 };
+    result.status = "failed";
+    Object.assign(result, {
+      errorLocation: location,
+      errors: [{ location: { ...location, column: 2 } }],
+    });
+    test.results.push({
+      ...result, retry: 1, status: "passed",
+      errors: [
+        { message: "private-message", location: { ...location, line: 13 } },
+        { message: "private-message", location: { file: join(webRoot, "e2e/fixtures/auth.ts"), line: 14, column: 1 } },
+      ],
+    });
+    test.status = "flaky";
+    const projection = rejectedReport(fixture);
+    expect(projection.cases?.[0]).toEqual({
+      ...SWIM_BROWSER_CASES[0], status: "passed", testStatus: "flaky", expectedStatus: "passed", attempts: 2,
+      attributedSources: [{ source: "seed", line: 12 }, { source: "seed", line: 13 }],
+    });
+    expect(projection.counts).toEqual(fixture.stats);
+  });
+  it.each([
+    undefined, "/unread/private-path", "seed.ts", "fixtures/seed.ts", "e2e/fixtures/seed.ts",
+    `${webRoot}/e2e/fixtures/../fixtures/seed.ts`, `${webRoot}/e2e/fixtures/./seed.ts`,
+    `${webRoot}/e2e//fixtures/seed.ts`, `${webRoot}/e2e/fixtures/SEED.ts`,
+    `${webRoot}/e2e/fixtures/seed.ts/private`, `${webRoot}/e2e/fixtures/seed.ts.bak`,
+    `/private${join(webRoot, "e2e/fixtures/seed.ts")}`,
+    `file://${join(webRoot, "e2e/fixtures/seed.ts")}`,
+    `${webRoot}/src/lib/swim/presentation.ts`,
+  ])("withholds paths and lines for missing or unmapped location %#", (file) => {
+    for (const field of ["errorLocation", "errors"]) {
+      const fixture = report();
+      const result = fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!;
+      result.status = "timedOut";
+      const location = file === undefined ? undefined : { file, line: 987_654, column: 123 };
+      Object.assign(result, field === "errorLocation" ? { errorLocation: location } : { errors: [{ location }] });
+      const projection = rejectedReport(fixture);
+      expect(projection.cases?.[0]?.attributedSources).toEqual([{ source: "unknown" }]);
+      expect(JSON.stringify(projection)).not.toMatch(/private|987654|column/);
+      expect(JSON.stringify(projection)).not.toContain(webRoot);
+    }
+  });
+  it("strips planted diagnostics without letting them supply attribution", () => {
+    for (const known of [false, true]) {
+      const fixture = report();
+      const result = fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!;
+      const decoy = { file: join(webRoot, "e2e/fixtures/auth.ts"), line: 987_654, column: 123 };
+      const privateText = `private-secret ${decoy.file}:${decoy.line}:${decoy.column}`;
+      const diagnostic = {
+        message: privateText, stack: privateText, snippet: privateText, value: privateText,
+        cause: { location: decoy, message: privateText },
+      };
+      Object.assign(result, {
+        error: { ...diagnostic, location: decoy },
+        errors: [diagnostic],
+        stdout: [{ text: privateText }], stderr: [{ text: privateText }],
+        attachments: [{ name: privateText, path: privateText, body: privateText }],
+        annotations: [{ type: privateText, description: privateText }],
+        steps: [{ title: privateText, error: { location: decoy }, location: decoy }],
+        ...(known ? { errorLocation: {
+          file: join(webRoot, "e2e/fixtures/seed.ts"), line: 42, column: 1, ...diagnostic,
+        } } : {}),
+      });
+      const projection = rejectedReport(fixture);
+      expect(projection.code).toBe("browser-failed");
+      expect(projection.cases?.[0]?.attributedSources).toEqual(known
+        ? [{ source: "seed", line: 42 }, { source: "unknown" }] : [{ source: "unknown" }]);
+      expect(JSON.stringify(projection)).not.toMatch(/private-|987654|column/);
+      expect(JSON.stringify(projection)).not.toContain(webRoot);
+    }
+  });
+  it.each([{}, { message: "private-error" }, null, "private-error", 0, false, []])(
+    "keeps nonempty errors without locations as failures with their ledger %#", (error) => {
+      const fixture = report();
+      Object.assign(fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!, { errors: [error, error] });
+      const projection = rejectedReport(fixture);
+      expect(projection).toEqual({
+        success: false, code: "browser-failed", counts: fixture.stats,
+        cases: SWIM_BROWSER_CASES.map((item) => ({
+          ...item, status: "passed", testStatus: "expected", expectedStatus: "passed", attempts: 1,
+          attributedSources: [{ source: "unknown" }],
+        })),
+      });
+    },
+  );
+  it.each([null, false, 0, "", { location: null }])("preserves result.error presence %#", (error) => {
+    const fixture = report();
+    Object.assign(fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!, { error });
+    expect(rejectedReport(fixture)).toMatchObject({ success: false, code: "browser-failed", counts: fixture.stats });
+  });
+  it.each([
+    null, false, 1, "private-location", [], {},
+    ...["file", "line", "column"].flatMap((key) =>
+      [undefined, null, false, {}, []].map((value) => ({ file: "private-file", line: 1, column: 1, [key]: value }))),
+    ...["", "x".repeat(4_097), 1].map((file) => ({ file, line: 1, column: 1 })),
+    ...["line", "column"].flatMap((key) =>
+      [0, -1, 1.5, 1_000_001, Number.MAX_SAFE_INTEGER, "1"].map((value) =>
+        ({ file: "private-file", line: 1, column: 1, [key]: value }))),
+  ])("fails closed on malformed structured locations %#", (location) => {
+    for (const field of ["errorLocation", "errors"]) {
+      const fixture = report();
+      const result = fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!;
+      Object.assign(result, field === "errorLocation" ? { errorLocation: location } : { errors: [{ location }] });
+      expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
+    }
+  });
+  it("validates locations beyond the output cap and leaves all-pass output unchanged", () => {
+    const fixture = report();
+    const result = fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!;
+    const location = { file: join(webRoot, "e2e/fixtures/seed.ts"), line: 1, column: 1 };
+    const passed = validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot);
+    Object.assign(result, { errorLocation: location });
+    expect(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot)).toEqual(passed);
+    result.errors = [
+      { message: "private-message", location },
+      { message: "private-message", location: { ...location, line: 2 } },
+      { message: "private-message", location: { ...location, column: 0 } },
+    ];
+    expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
   it.each(["status", "test-status", "expected-status", "attempts", "retry", "stats", "fraction", "ok"])(
     "rejects malformed outcome %s without a partial ledger", (mode) => {

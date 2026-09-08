@@ -39,6 +39,17 @@ export const BROWSER_LIMITS = Object.freeze({
 const BASE_URL = "http://127.0.0.1:3210";
 const PROJECT = "mobile-chromium";
 const MAX_REPORT_BYTES = 8 * 1024 * 1024;
+const ATTRIBUTED_SOURCES = [
+  ["e2e/swimming-mobile.spec.ts", "swimming-mobile"],
+  ["e2e/swimming-persistence-mobile.spec.ts", "swimming-persistence-mobile"],
+  ["e2e/global-setup.ts", "global-setup"],
+  ["e2e/fixtures/seed.ts", "seed"],
+  ["e2e/fixtures/auth.ts", "auth"],
+  ["e2e/fixtures/seed-blocks.ts", "seed-blocks"],
+  ["e2e/fixtures/swim-environment.ts", "swim-environment"],
+] as const;
+type AttributedSource = { source: (typeof ATTRIBUTED_SOURCES)[number][1]; line: number } |
+  { source: "unknown" };
 type Env = Readonly<Record<string, string | undefined>>;
 type FailureCode = "browser-environment" | "browser-paths" | "browser-env-files" |
   "browser-port" | "browser-budget" | "browser-readiness-timeout" | "browser-cancelled" |
@@ -48,6 +59,7 @@ const failureLedgers = new WeakMap<object, {
   cases: Array<(typeof SWIM_BROWSER_CASES)[number] & {
     status: z.infer<typeof resultStatusSchema>; testStatus: z.infer<typeof testStatusSchema>;
     expectedStatus: z.infer<typeof resultStatusSchema>; attempts: number;
+    attributedSources: AttributedSource[];
   }>;
   counts: { expected: number; unexpected: number; flaky: number; skipped: number };
 }>();
@@ -291,15 +303,45 @@ export function sealSwimBrowserReport(ticket: BrowserReportTicket) {
   }
 }
 
-// Playwright 1.60.0 JSONReport types and src/reporters/json.ts: rootDir-relative
-// locations, merged file-suite wrappers, then describe suites and individual specs.
+// Playwright 1.60.0 JSONReporter: suite/spec locations are rootDir-relative;
+// result.errorLocation and errors[].location are not converted to relative paths.
 const resultStatusSchema = z.enum(["passed", "failed", "timedOut", "skipped", "interrupted"]);
 const testStatusSchema = z.enum(["expected", "unexpected", "flaky", "skipped"]);
+const locationSchema = z.object({
+  file: z.string().min(1).max(4_096),
+  line: z.number().int().min(1).max(1_000_000),
+  column: z.number().int().min(1).max(1_000_000),
+});
+const errorAttributionSchema = z.preprocess(
+  (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {},
+  z.object({ location: locationSchema.optional() }),
+);
 const resultSchema = z.object({
   retry: z.number().int().min(0).max(99), status: resultStatusSchema,
   error: z.unknown().transform((value) => value !== undefined),
-  errors: z.array(z.unknown()).transform((value) => value.length),
-});
+  errorLocation: locationSchema.optional(),
+  errors: z.array(errorAttributionSchema),
+}).transform(({ errors, ...result }) => ({
+  ...result, errors: errors.length, errorLocations: errors.map((error) => error.location),
+}));
+
+function attributedSources(results: z.infer<typeof resultSchema>[], webRoot: string): AttributedSource[] {
+  const sources: AttributedSource[] = [];
+  for (const result of results) {
+    const locations = [
+      ...(result.errorLocation ? [result.errorLocation] : []), ...result.errorLocations,
+    ];
+    for (const location of locations) {
+      const source = location && ATTRIBUTED_SOURCES.find(([file]) => location.file === join(webRoot, file))?.[1];
+      const attribution: AttributedSource = source ? { source, line: location!.line } : { source: "unknown" };
+      if (sources.length < 2 && !sources.some((item) => item.source === attribution.source &&
+        ("line" in item ? item.line : undefined) === ("line" in attribution ? attribution.line : undefined))) {
+        sources.push(attribution);
+      }
+    }
+  }
+  return sources.length ? sources : [{ source: "unknown" }];
+}
 const specSchema = z.object({
   file: z.string(), title: z.string(), ok: z.boolean(),
   tests: z.array(z.object({
@@ -388,7 +430,8 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
         cases: SWIM_BROWSER_CASES.map((item, index) => {
           const test = specs.get(index)!.tests[0]!;
           return { ...item, status: test.results.at(-1)!.status, testStatus: test.status,
-            expectedStatus: test.expectedStatus, attempts: test.results.length };
+            expectedStatus: test.expectedStatus, attempts: test.results.length,
+            attributedSources: attributedSources(test.results, webRoot) };
         }),
       });
       throw error;
