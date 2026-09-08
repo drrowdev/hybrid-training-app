@@ -95,15 +95,16 @@ async function primaryBaseline(admin: SupabaseClient, userId: string) {
   const plannedIds = await seedPlannedSessionsForBlock(admin, userId, blockId, {
     totalSessions: 2, loggedCount: 1,
   });
-  const movementId = randomUUID();
-  const movement = await admin.from("movements").insert({
-    id: movementId, user_id: userId, slug: `e2e-squat-${movementId}`,
-    display_name: "Acceptance squat", pattern: "squat", primary_region: "knee",
-    functional_roles: ["quad_dominant_squat"], is_compound: true,
-  });
+  const movement = await admin.from("movements").select("id,display_name")
+    .is("user_id", null).eq("slug", "bench-press-flat").single();
   expect(movement.error).toBeNull();
+  if (typeof movement.data?.id !== "string" || !movement.data.id.trim() ||
+    typeof movement.data.display_name !== "string" || !movement.data.display_name.trim()) {
+    throw new Error("Missing valid global bench-press-flat catalog movement.");
+  }
+  const movementId = movement.data.id;
   const prescription: Prescription = {
-    items: [{ movementId, movementName: "Acceptance squat", kind: "main", sets: 3, reps: 5 }],
+    items: [{ movementId, movementName: movement.data.display_name, kind: "main", sets: 3, reps: 5 }],
   };
   const updated = await admin.from("planned_sessions").update({ prescription })
     .eq("user_id", userId).eq("block_id", blockId).in("id", plannedIds);
@@ -124,7 +125,7 @@ async function primaryBaseline(admin: SupabaseClient, userId: string) {
       admin.from("planned_sessions").select("*").eq("user_id", userId).eq("block_id", blockId).order("id"),
       admin.from("sessions").select("*").eq("user_id", userId).eq("id", sessionId),
       admin.from("set_logs").select("*").eq("session_id", sessionId).order("id"),
-      admin.from("movements").select("*").eq("user_id", userId).eq("id", movementId),
+      admin.from("movements").select("*").is("user_id", null).eq("slug", "bench-press-flat").eq("id", movementId),
     ]);
     for (const [index, result] of rows.entries()) {
       expect(result.error).toBeNull();
@@ -343,6 +344,10 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const workout = scheduled.workouts[0];
     await page.getByRole("link").and(page.locator(`[href="/app/swim/${workout.id}"]`)).click();
     await page.getByRole("button", { name: "Start swim", exact: true }).click();
+    await expect.poll(async () => {
+      const saved = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id);
+      return saved?.status === "started" && typeof saved.session_id === "string" && saved.session_id.length > 0;
+    }).toBe(true);
     await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
     const started = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)!;
     expect(started.status).toBe("started");

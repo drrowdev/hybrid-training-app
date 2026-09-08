@@ -197,7 +197,7 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
         <p className={styles.muted}>{workout.date} · Up to {workout.budgetMinutes} min{workout.provisional && !workout.sessionId ? " · Provisional" : ""}</p>
         {workout.calibrationLabel && <p className={styles.muted}>{workout.calibrationLabel}</p>}
         {!workout.sessionId && workout.status === "scheduled" && workout.planStatus === "active" && (
-          <button className={styles.button} disabled={pending} onClick={start}>{pending ? "Starting…" : "Start swim"}</button>
+          <button className={styles.button} disabled={pending || !ready} onClick={start}>{pending ? "Starting…" : "Start swim"}</button>
         )}
         {canLog && <a href="#swim-result" className={styles.secondary}>Log swim</a>}
         {!workout.sessionId && workout.status === "scheduled" && workout.planStatus !== "active" && (

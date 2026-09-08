@@ -33,4 +33,12 @@ describe("DC-SW3 poolside workout controls", () => {
     expect(html).not.toContain('href="#swim-result"');
     expect(html).not.toContain('id="swim-result"');
   });
+
+  it("disables Start swim before hydration and draft loading", () => {
+    const workout = { ...workoutView(), status: "scheduled" as const, sessionId: null };
+    const html = renderToStaticMarkup(<WorkoutClient workout={workout} userId={userId} />);
+    const buttons = html.match(/<button\b[^>]*>Start swim<\/button>/g);
+    expect(buttons).toHaveLength(1);
+    expect(buttons![0]).toMatch(/\sdisabled=""/);
+  });
 });
