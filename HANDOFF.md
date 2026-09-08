@@ -41,7 +41,7 @@ The original four cases plus normal 148 migrations, 15 service contexts and
 at `4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. Opus 5 turn 19 accepted the
 integration; turn 20 accepted both A source cases.
 
-Wiring checkpoint `c8072969` declares exactly those unchanged four plus A1
+Wiring checkpoint `3c060e3d` declares exactly those unchanged four plus A1
 ([DC-SW7](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05))
 and A2 (DC-SW9), across three files. Catalog-derived equality gates require all
 six to pass exactly once, without retries, skips or errors. A1 status assertions

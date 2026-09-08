@@ -1905,7 +1905,7 @@ at `4f2aa4af480f61df83bbc38b09f29afbbbf5729b`, including normal 148 migrations,
 15 service contexts and 36 HTTP cases. Opus 5 turn 19 accepted integration and
 turn 20 accepted both A source cases.
 
-Checkpoint `c8072969` wires exactly the unchanged original four plus A1
+Checkpoint `3c060e3d` wires exactly the unchanged original four plus A1
 ([DC-SW7](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05))
 and A2 (DC-SW9). Strict catalog-derived collection and execution gates require
 six cases across three files, with no missing, skipped, retried or flaky cases.
