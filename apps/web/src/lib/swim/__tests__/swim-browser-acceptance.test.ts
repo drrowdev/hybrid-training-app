@@ -109,7 +109,7 @@ function unavailableObservations(index: number) {
 }
 
 describe("browser environment and static config", () => {
-  it("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9: preserves the original six identities and appends only B1/B2", () => {
+  it("DC-SW1/DC-SW2/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9: preserves the original eight identities and appends only C1/C2/D", () => {
     expect(SWIM_BROWSER_CASES).toEqual([
       {
         file: "e2e/swimming-mobile.spec.ts", describe: "ADR0079 standalone swimming",
@@ -148,6 +148,21 @@ describe("browser environment and static config", () => {
         file: "e2e/swimming-decisions-offline-mobile.spec.ts",
         describe: "ADR0079 later-cohort B swimming decisions and offline durability",
         title: "B2 DC-SW8: native completion survives a committed lost response and replays before another session",
+      },
+      {
+        file: "e2e/swimming-account-mobile.spec.ts",
+        describe: "ADR0079 mobile swimming account acceptance",
+        title: "C1 DC-SW1/DC-SW8: Account exports native records and isolates synthetic users",
+      },
+      {
+        file: "e2e/swimming-account-mobile.spec.ts",
+        describe: "ADR0079 mobile swimming account acceptance",
+        title: "C2 DC-SW8: Account deletion cascades with a referenced user-owned custom movement and preserves a survivor",
+      },
+      {
+        file: "e2e/swimming-assessment-mobile.spec.ts",
+        describe: "ADR0079 mobile swimming assessment decisions and native history",
+        title: "DC-SW2/DC-SW5/DC-SW6/DC-SW8: rejected native trials persist before acceptance updates only future unstarted swims",
       },
     ]);
   });
@@ -496,13 +511,13 @@ describe("browser environment and static config", () => {
   });
 });
 
-describe("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9 strict eight-case browser ledger", () => {
+describe("DC-SW1/DC-SW2/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9 strict eleven-case browser ledger", () => {
   it("accepts real-shaped file wrappers and emits only fixed identities, counts and measured attempt durations", () => {
     const fixture = report();
     fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!.stdout = [{ text: "private-payload" }];
     const ledger = validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot);
     expect(ledger).toEqual({
-      success: true, counts: { expected: 8, unexpected: 0, flaky: 0, skipped: 0 },
+      success: true, counts: { expected: 11, unexpected: 0, flaky: 0, skipped: 0 },
       cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "passed", attempts: 1, durationMs: 1 })),
     });
     expect(JSON.stringify(ledger)).not.toContain("private-payload");
@@ -516,19 +531,33 @@ describe("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9 strict eight-case browser le
   });
   it("rejects the passing original-six report after B1/B2 integration", () => {
     const fixture = report();
-    fixture.suites.pop();
-    fixture.config.projects[0]!.testMatch.pop();
+    fixture.suites.splice(3);
+    fixture.config.projects[0]!.testMatch.splice(3);
     fixture.stats.expected = 6;
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
+  it("rejects the passing original-eight report after C/D integration", () => {
+    const fixture = report();
+    fixture.suites.splice(4);
+    fixture.config.projects[0]!.testMatch.splice(4);
+    fixture.stats.expected = 8;
+    expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
+  });
+  it("does not substitute another C case for missing D even with eleven results", () => {
+    const fixture = report();
+    fixture.suites.pop();
+    fixture.suites[4]!.suites[0]!.specs.push(fixture.suites[4]!.suites[0]!.specs[0]!);
+    expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
+  });
   it.each(SWIM_BROWSER_CASES)("requires $title exactly once with no retry, skip or error", (item) => {
-    for (const mode of ["missing", "unexecuted", "duplicate", "identity", "retry", "skipped", "flaky", "error"]) {
+    for (const mode of ["missing", "extra", "unexecuted", "duplicate", "identity", "retry", "skipped", "flaky", "error"]) {
       const fixture = report();
       const suite = fixture.suites.find((file) => file.file === basename(item.file))!.suites[0]!;
       const index = suite.specs.findIndex((spec) => spec.title === item.title);
       const test = suite.specs[index]!.tests[0]!;
       switch (mode) {
         case "missing": suite.specs.splice(index, 1); break;
+        case "extra": suite.specs.push({ ...suite.specs[index]!, title: "private-extra" }); break;
         case "unexecuted": test.results = []; break;
         case "duplicate": suite.specs[1 - index] = suite.specs[index]!; break;
         case "identity": suite.specs[index]!.title = "private-identity"; break;
@@ -538,7 +567,7 @@ describe("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9 strict eight-case browser le
         case "error": test.results[0]!.errors = [{ message: "private-error" }]; break;
       }
       const projection = rejectedReport(fixture);
-      expect(projection.code).toBe(["missing", "unexecuted", "duplicate", "identity"].includes(mode)
+      expect(projection.code).toBe(["missing", "extra", "unexecuted", "duplicate", "identity"].includes(mode)
         ? "browser-report-schema" : "browser-failed");
       expect(JSON.stringify(projection)).not.toContain("private-");
     }
@@ -708,6 +737,9 @@ describe("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9 strict eight-case browser le
     ["e2e/swimming-persistence-mobile.spec.ts", "swimming-persistence-mobile"],
     ["e2e/swimming-lifecycle-load-mobile.spec.ts", "swimming-lifecycle-load-mobile"],
     ["e2e/swimming-decisions-offline-mobile.spec.ts", "swimming-decisions-offline-mobile"],
+    ["e2e/swimming-account-mobile.spec.ts", "swimming-account-mobile"],
+    ["e2e/swimming-assessment-mobile.spec.ts", "swimming-assessment-mobile"],
+    ["src/lib/swim/storage.ts", "swim-storage"],
     ["src/lib/swim/queries.ts", "swim-queries"],
     ["src/lib/offline/outbox-core.ts", "outbox-core"],
     ["e2e/global-setup.ts", "global-setup"],
@@ -764,6 +796,15 @@ describe("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9 strict eight-case browser le
     `file://${join(webRoot, "e2e/fixtures/seed.ts")}`,
     `${webRoot}/src/lib/swim/presentation.ts`,
     `${webRoot}/e2e/swimming-decisions-offline-mobile.spec.ts.bak`,
+    ...[
+      "e2e/swimming-account-mobile.spec.ts",
+      "e2e/swimming-assessment-mobile.spec.ts",
+      "src/lib/swim/storage.ts",
+    ].flatMap((file) => [
+      file, `${webRoot}/${file}.bak`, `${webRoot}/${file}/private`,
+      `${webRoot}/./${file}`, `${webRoot}/${file.toUpperCase()}`,
+      `/private${webRoot}/${file}`, `file://${webRoot}/${file}`,
+    ]),
     `${webRoot}/src/lib/swim/queries.ts.bak`,
     `${webRoot}/src/lib/offline/outbox-core.ts.bak`,
     `${webRoot}/src/lib/offline/outbox.ts`,
@@ -846,9 +887,9 @@ describe("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9 strict eight-case browser le
           }
           const projection = rejectedReport(fixture);
           expect(projection.code).toBe("browser-failed");
-          expect(projection.cases).toHaveLength(8);
+          expect(projection.cases).toHaveLength(11);
           expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual([
-            [], [], [], observations.slice(0, 2), [observations[2]], observations.slice(3), [], [],
+            [], [], [], observations.slice(0, 2), [observations[2]], observations.slice(3), [], [], [], [], [],
           ]);
           expect(projection.cases?.map(({ file, describe, title }) => ({ file, describe, title }))).toEqual(SWIM_BROWSER_CASES);
         });
@@ -867,7 +908,7 @@ describe("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9 strict eight-case browser le
           },
         );
         it.each(["wrong-case", "conflict", "hostile", "revision", "overflow", "control", "result", "order", "v1", "view-conflict"])(
-          "rejects %s beside two A2 points without losing the failed eight-case ledger", (mode) => {
+          "rejects %s beside two A2 points without losing the failed eleven-case ledger", (mode) => {
             const fixture = report();
             const result = caseTest(fixture, 5).results[0]!;
             result.status = "failed";
@@ -888,7 +929,7 @@ describe("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9 strict eight-case browser le
             Object.assign(result, { annotations });
             const projection = rejectedReport(fixture);
             expect(projection).toMatchObject({ success: false, code: "browser-failed", counts: fixture.stats });
-            expect(projection.cases).toHaveLength(8);
+            expect(projection.cases).toHaveLength(11);
             expect(projection.cases?.[5]?.status).toBe("failed");
             expect(projection.cases?.[5]?.alertObservations).toEqual(unavailableObservations(5));
             expect(JSON.stringify(projection)).not.toContain("private-");
@@ -923,7 +964,7 @@ describe("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9 strict eight-case browser le
           Object.assign(result, { annotations });
           const projection = rejectedReport(fixture);
           expect(projection).toMatchObject({ success: false, code: "browser-failed", counts: fixture.stats });
-          expect(projection.cases).toHaveLength(8);
+          expect(projection.cases).toHaveLength(11);
           expect(projection.cases?.[4]?.status).toBe("failed");
           expect(projection.cases?.[4]?.alertObservations).toEqual([unavailableAlert("a1-pause")]);
           expect(JSON.stringify(projection)).not.toContain("private-");
@@ -954,7 +995,7 @@ describe("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9 strict eight-case browser le
             }
             const projection = rejectedReport(fixture);
             expect(projection.code).toBe("browser-failed");
-            expect(projection.cases).toHaveLength(8);
+            expect(projection.cases).toHaveLength(11);
             expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual(
               SWIM_BROWSER_CASES.map((_, index) => valid && index === 4 ? [observations[2]] : unavailableObservations(index)),
             );
@@ -978,7 +1019,7 @@ describe("DC-SW1/DC-SW4/DC-SW5/DC-SW7/DC-SW8/DC-SW9 strict eight-case browser le
             if (mode === "error") result.errors = [{ message: "private" }];
             const projection = rejectedReport(fixture);
             expect(projection.code).toBe("browser-failed");
-            expect(projection.cases).toHaveLength(8);
+            expect(projection.cases).toHaveLength(11);
             expect(projection.cases?.[4]?.alertObservations).toEqual(
               mode === "retry" ? [unavailableAlert("a1-pause")] : [observations[2]],
             );

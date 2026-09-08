@@ -115,8 +115,19 @@ function setup() {
 }
 
 describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions only)", () => {
-  it("builds production, runs the dedicated config, and drains its exact server", async () => {
+  it.each([false, true])("binds only the validated server key and drains its exact server (mutated target: %s)", async (mutateTarget) => {
     const h = setup();
+    const production = buildBrowserEnv(h.options.target, {
+      runDirectory: h.options.runDirectory, reportPath: join(h.options.runDirectory, "browser.json"),
+      outputDir: join(h.options.runDirectory, "browser-output"),
+    });
+    if (mutateTarget) h.command.mockImplementationOnce(async () => {
+      h.events.push("build");
+      h.options.target.url = "https://other.supabase.co";
+      h.options.target.projectRef = "other";
+      h.options.target.serviceRoleKey = "";
+      return { result: passed };
+    });
     const run = runSwimBrowserStage(h.options);
     await h.browserStarted.promise;
     expect(prepareSwimBrowserReport).toHaveBeenCalledOnce();
@@ -130,13 +141,19 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     expect(start![1]).toEqual([build![1][0], "start", "--hostname", "127.0.0.1", "--port", "3210"]);
     expect(start![2]).toMatchObject({ timeout: 410_000, allowFailure: true });
     expect(build![2]).toMatchObject({ timeout: 180_000, cwd: join(root, "apps/web") });
-    expect(start![2].env).toEqual(build![2].env);
-    const production = buildBrowserEnv(h.options.target, {
-      runDirectory: h.options.runDirectory, reportPath: join(h.options.runDirectory, "browser.json"),
-      outputDir: join(h.options.runDirectory, "browser-output"),
+    expect(start![2].env).not.toBe(build![2].env);
+    expect(start![2].env).toEqual({
+      ...production, SUPABASE_SERVICE_ROLE_KEY: production.E2E_SUPABASE_SERVICE_ROLE_KEY,
     });
     expect(build![2].env).toEqual(production);
     expect(browser![2].env).toEqual({ ...production, PLAYWRIGHT_BROWSERS_PATH: h.cache });
+    expect(production).not.toHaveProperty("SUPABASE_SERVICE_ROLE_KEY");
+    expect(build![2].env).not.toHaveProperty("SUPABASE_SERVICE_ROLE_KEY");
+    expect(browser![2].env).not.toHaveProperty("SUPABASE_SERVICE_ROLE_KEY");
+    expect(start![2].env.SUPABASE_SERVICE_ROLE_KEY).toBe(build![2].env.E2E_SUPABASE_SERVICE_ROLE_KEY);
+    for (const call of [build, start, browser]) {
+      expect(call![2].env.E2E_SUPABASE_SERVICE_ROLE_KEY).toBe(production.E2E_SUPABASE_SERVICE_ROLE_KEY);
+    }
     expect(build![2].env).not.toHaveProperty("HTA_SWIM_BROWSER_CACHE");
     expect(build![2].env).not.toHaveProperty("PLAYWRIGHT_BROWSERS_PATH");
     expect(browser![1]).toEqual(["exec", "playwright", "test",
@@ -151,6 +168,26 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     expect(sealSwimBrowserReport).toHaveBeenCalledWith(vi.mocked(prepareSwimBrowserReport).mock.results[0]!.value);
     expect(readSwimBrowserReport).toHaveBeenCalledWith(vi.mocked(prepareSwimBrowserReport).mock.results[0]!.value);
     expect(h.manifest.browser).toEqual({ success: true, cases: SWIM_BROWSER_CASES.length });
+  });
+
+  it.each([
+    { url: "https://other.supabase.co", projectRef: "other" },
+    { url: "http://192.0.2.1:54321" },
+    { url: "http://127.0.0.1:54322" },
+    { url: "http://localhost:54321" },
+    { projectRef: "other" },
+    { anonKey: "" },
+    { serviceRoleKey: "" },
+  ])("rejects invalid or unowned target before any command: %j", async (target) => {
+    const h = setup();
+    Object.assign(h.options.target, target);
+    await expect(runSwimBrowserStage(h.options)).rejects.toThrow("browser-environment");
+    expect(h.command).not.toHaveBeenCalled();
+    expect(requireFreePort).not.toHaveBeenCalled();
+    expect(waitForBrowserReady).not.toHaveBeenCalled();
+    expect(prepareSwimBrowserReport).not.toHaveBeenCalled();
+    expect(h.stopServer).not.toHaveBeenCalled();
+    expect(h.manifest.browser).toEqual({ success: false, code: "browser-environment" });
   });
 
   it.each(["budget", "build", "env-before-start", "port", "readiness"] as const)(
