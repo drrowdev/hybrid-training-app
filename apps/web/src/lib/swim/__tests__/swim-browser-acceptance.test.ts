@@ -15,6 +15,9 @@ import {
 } from "../../../../scripts/swim-browser-acceptance";
 import { acceptanceAssert, processFailure, safeFailureCause } from "../../../../scripts/swim-acceptance-errors";
 import * as reporting from "../../../../scripts/swim-acceptance-reporting";
+import {
+  ALERT_ANNOTATION_TYPE, alertAnnotation, unavailableAlert,
+} from "../../../../scripts/swim-alert-membership";
 
 const webRoot = resolve(__dirname, "../../../..");
 const paths: BrowserPaths = {
@@ -97,6 +100,11 @@ function rejectedReport(fixture: unknown) {
   expect(caught).toBeInstanceOf(Error);
   expect(safeFailureCause(caught).classification).toBe("guard");
   return projectBrowserFailure(caught);
+}
+
+function unavailableObservations(index: number) {
+  return index === 3 ? [unavailableAlert("c4-owner-1-start"), unavailableAlert("c4-owner-2-start")] :
+    index === 4 ? [unavailableAlert("a1-pause")] : index === 5 ? [unavailableAlert("a2-post-start")] : [];
 }
 
 describe("browser environment and static config", () => {
@@ -219,6 +227,28 @@ describe("browser environment and static config", () => {
       expect(spec).toContain(`test("${item.title}"`);
     }
   });
+  it("DC-SW7/DC-SW8/DC-SW9: retains hard poll gates and the original A2 UI wait without diagnostic settling", () => {
+    for (const file of ["swimming-lifecycle-load-mobile.spec.ts", "swimming-persistence-mobile.spec.ts"]) {
+      const source = readFileSync(join(webRoot, "e2e", file), "utf8");
+      for (const assertion of [
+        'expect(backendOutcome).not.toBe("error");',
+        'expect(backendOutcome).not.toBe("alert");',
+        'expect(backendOutcome).toBe("backend");',
+        "expect(lateAlertCount).toBe(0);",
+      ]) expect(source).toContain(assertion);
+      expect(source).not.toMatch(/expect\.soft|test\.fail|waitForTimeout/);
+      expect(source).toContain(".evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)");
+      expect(source).toContain(".then(validateAlertCategory");
+      expect(source).toContain("void expired.then(() => controller.abort())");
+    }
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const start = source.slice(source.indexOf('test("A2,')).split('const started =')[0]!;
+    expect(start).toContain('saved?.status === "started" && typeof saved.session_id === "string" && saved.session_id.length > 0');
+    expect(start).toContain("}).toBe(true);");
+    expect(start).toContain('await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();');
+    expect(start).not.toMatch(/timeout:|setTimeout|deadline|await.*capture|Promise\.all/);
+    expect(start).toContain("observing = false;");
+  });
   it("rejects insufficient budgets without clamping", () => {
     for (const value of [589_999, -1, NaN, Infinity, 590_000.5]) expect(() => browserBudget(value)).toThrow();
     expect(browserBudget(590_000)).toBe(BROWSER_LIMITS);
@@ -320,6 +350,7 @@ describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
       expect(failure.cases?.[5]).toEqual({
         ...SWIM_BROWSER_CASES[5], status: "timedOut", testStatus: "expected",
         expectedStatus: "passed", attempts: 1, durationMs: duration, attributedSources: [{ source: "unknown" }],
+        alertObservations: [unavailableAlert("a2-post-start")],
       });
       expect(JSON.stringify([success, failure])).not.toContain("private-");
     },
@@ -437,6 +468,7 @@ describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
         ...item, status: index === 0 ? "failed" : "passed",
         testStatus: index === 0 ? "unexpected" : "expected", expectedStatus: "passed", attempts: 1, durationMs: 1,
         attributedSources: [{ source: "unknown" }],
+        alertObservations: unavailableObservations(index),
       })),
     });
     expect(JSON.stringify(projection)).not.toContain("private-");
@@ -487,6 +519,7 @@ describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
     expect(projection.cases?.[0]).toEqual({
       ...SWIM_BROWSER_CASES[0], status: "passed", testStatus: "flaky", expectedStatus: "passed", attempts: 2, durationMs: 17,
       attributedSources: [{ source: "seed", line: 12 }, { source: "seed", line: 13 }],
+      alertObservations: [],
     });
     expect(projection.counts).toEqual(fixture.stats);
   });
@@ -547,10 +580,128 @@ describe("DC-SW1/DC-SW7/DC-SW8/DC-SW9 strict six-case browser ledger", () => {
       const projection = rejectedReport(fixture);
       expect(projection).toEqual({
         success: false, code: "browser-failed", counts: fixture.stats,
-        cases: SWIM_BROWSER_CASES.map((item) => ({
+        cases: SWIM_BROWSER_CASES.map((item, index) => ({
           ...item, status: "passed", testStatus: "expected", expectedStatus: "passed", attempts: 1, durationMs: 1,
           attributedSources: [{ source: "unknown" }],
+          alertObservations: unavailableObservations(index),
         })),
+      });
+
+      describe("reserved browser alert failed-case projection", () => {
+        const observations = [
+          { ...unavailableAlert("c4-owner-1-start"), category: "client-start", backend: "reached" },
+          { ...unavailableAlert("c4-owner-2-start"), category: "unclassified", backend: "not-reached" },
+          { ...unavailableAlert("a1-pause"), category: "client-save", backend: "reached", revision: "advanced" },
+          { ...unavailableAlert("a2-post-start"), category: "absent", backend: "reached" },
+        ] as const;
+        function caseTest(fixture: ReturnType<typeof report>, index: number) {
+          return fixture.suites.flatMap((suite) => suite.suites[0]!.specs)[index]!.tests[0]!;
+        }
+        it("projects only validated attempt annotations at their known points, capped and deduplicated per case", () => {
+          const fixture = report();
+          for (const [index, selected] of [[3, observations.slice(0, 2)], [4, [observations[2]]], [5, [observations[3]]]] as const) {
+            const result = caseTest(fixture, index).results[0]!;
+            result.status = "failed";
+            result.annotations = selected.flatMap((item) => [alertAnnotation(item)!, alertAnnotation(item)!]);
+          }
+          const projection = rejectedReport(fixture);
+          expect(projection.code).toBe("browser-failed");
+          expect(projection.cases).toHaveLength(6);
+          expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual([
+            [], [], [], observations.slice(0, 2), [observations[2]], [observations[3]],
+          ]);
+          expect(projection.cases?.map(({ file, describe, title }) => ({ file, describe, title }))).toEqual(SWIM_BROWSER_CASES);
+        });
+        it.each([
+          "missing", "invalid", "partial", "prefixed", "suffixed", "long", "extra-key", "duplicate-key",
+          "conflicting", "wrong-case", "unknown-type", "wrong-version", "test-only", "overflow",
+        ])("keeps the failed ledger with unavailable diagnostics for %s annotations", (mode) => {
+          const fixture = report();
+          const test = caseTest(fixture, 4);
+          const result = test.results[0]!;
+          const valid = alertAnnotation(observations[2])!;
+          result.status = "failed";
+          let annotations: unknown = [valid];
+          switch (mode) {
+            case "missing": annotations = undefined; break;
+            case "invalid": annotations = [{ ...valid, description: "private-secret" }]; break;
+            case "partial": annotations = [{ ...valid, description: valid.description.slice(0, -1) }]; break;
+            case "prefixed": annotations = [{ ...valid, description: `private-${valid.description}` }]; break;
+            case "suffixed": annotations = [{ ...valid, description: `${valid.description}private-secret` }]; break;
+            case "long": annotations = [{ ...valid, description: valid.description.repeat(100) }]; break;
+            case "extra-key": annotations = [{ ...valid, raw: "private-secret" }]; break;
+            case "duplicate-key": annotations = [{ ...valid, description: `${valid.description};point=a1-pause` }]; break;
+            case "conflicting": annotations = [valid, alertAnnotation({ ...observations[2], category: "unclassified" })]; break;
+            case "wrong-case": annotations = [alertAnnotation(observations[0])]; break;
+            case "unknown-type": annotations = [{ ...valid, type: "skip" }]; break;
+            case "wrong-version": annotations = [{ ...valid, type: `${ALERT_ANNOTATION_TYPE}-private` }]; break;
+            case "test-only": test.annotations = [valid]; annotations = []; break;
+            case "overflow": annotations = Array(17).fill(valid); break;
+          }
+          Object.assign(result, { annotations });
+          const projection = rejectedReport(fixture);
+          expect(projection).toMatchObject({ success: false, code: "browser-failed", counts: fixture.stats });
+          expect(projection.cases).toHaveLength(6);
+          expect(projection.cases?.[4]?.status).toBe("failed");
+          expect(projection.cases?.[4]?.alertObservations).toEqual([unavailableAlert("a1-pause")]);
+          expect(JSON.stringify(projection)).not.toContain("private-");
+        });
+        it("never projects raw payloads or diagnostics from other channels, even beside a valid annotation", () => {
+          for (const valid of [false, true]) {
+            const fixture = report();
+            for (const index of [0, 1, 2, 3, 4, 5]) {
+              const test = caseTest(fixture, index);
+              const result = test.results[0]!;
+              const annotation = alertAnnotation(observations[2])!;
+              const raw = "private-secret";
+              const decoy = { ...annotation, raw };
+              Object.assign(result, {
+                status: "failed",
+                error: { message: raw, stack: raw, value: raw, cause: decoy },
+                errors: [{ message: raw, stack: raw, value: raw, cause: decoy }],
+                steps: [{ title: annotation.description, ...decoy }],
+                attachments: [{ name: raw, path: "/unread/private-secret", body: annotation.description }],
+                stdout: [{ text: raw }, { text: annotation.description }], stderr: [{ text: raw }],
+                annotations: [
+                  { type: "skip", description: raw }, { type: raw, description: annotation.description },
+                  ...(valid && index === 4 ? [annotation] : []),
+                ],
+              });
+              test.annotations = [decoy];
+            }
+            const projection = rejectedReport(fixture);
+            expect(projection.code).toBe("browser-failed");
+            expect(projection.cases).toHaveLength(6);
+            expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual(
+              SWIM_BROWSER_CASES.map((_, index) => valid && index === 4 ? [observations[2]] : unavailableObservations(index)),
+            );
+            expect(JSON.stringify(projection)).not.toMatch(/private-|message|stack|value|cause|steps|attachments|stdout|stderr|annotations/);
+          }
+        });
+        it("cannot turn diagnostics into a pass, expected failure, skip or retry allowance", () => {
+          for (const mode of ["pass", "failed", "skipped", "retry", "error"]) {
+            const fixture = report();
+            const test = caseTest(fixture, 4);
+            const result = test.results[0]!;
+            result.annotations = [alertAnnotation(observations[2])!];
+            if (mode === "pass") {
+              const ledger = validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot);
+              expect(ledger.cases[4]).not.toHaveProperty("alertObservations");
+              continue;
+            }
+            if (mode === "failed") { result.status = "failed"; test.expectedStatus = "failed"; }
+            if (mode === "skipped") { result.status = "skipped"; test.annotations = [{ type: "skip", description: "private" }]; }
+            if (mode === "retry") test.results.push({ ...result, retry: 1, annotations: [] });
+            if (mode === "error") result.errors = [{ message: "private" }];
+            const projection = rejectedReport(fixture);
+            expect(projection.code).toBe("browser-failed");
+            expect(projection.cases).toHaveLength(6);
+            expect(projection.cases?.[4]?.alertObservations).toEqual(
+              mode === "retry" ? [unavailableAlert("a1-pause")] : [observations[2]],
+            );
+            expect(JSON.stringify(projection)).not.toContain("private");
+          }
+        });
       });
     },
   );

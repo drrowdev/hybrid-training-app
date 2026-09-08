@@ -9,6 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { isDedicatedSwimEnvironment } from "../e2e/fixtures/swim-environment";
 import { acceptanceAssert as assert } from "./swim-acceptance-errors";
+import { projectAlertObservations, readAlertAnnotations, type AlertObservation } from "./swim-alert-membership";
 
 export const SWIM_BROWSER_CASES = Object.freeze([
   Object.freeze({
@@ -72,6 +73,7 @@ const failureLedgers = new WeakMap<object, {
     status: z.infer<typeof resultStatusSchema>; testStatus: z.infer<typeof testStatusSchema>;
     expectedStatus: z.infer<typeof resultStatusSchema>; attempts: number; durationMs: number;
     attributedSources: AttributedSource[];
+    alertObservations: AlertObservation[];
   }>;
   counts: { expected: number; unexpected: number; flaky: number; skipped: number };
 }>();
@@ -335,6 +337,7 @@ const resultSchema = z.object({
   error: z.unknown().transform((value) => value !== undefined),
   errorLocation: locationSchema.optional(),
   errors: z.array(errorAttributionSchema),
+  annotations: z.unknown().transform(readAlertAnnotations),
 }).transform(({ errors, ...result }) => ({
   ...result, errors: errors.length, errorLocations: errors.map((error) => error.location),
 }));
@@ -449,7 +452,8 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
           // Like status, durationMs belongs to the final attempt, not the sum of retries.
           return { ...item, status: test.results.at(-1)!.status, testStatus: test.status,
             expectedStatus: test.expectedStatus, attempts: test.results.length, durationMs: test.results.at(-1)!.duration,
-            attributedSources: attributedSources(test.results, webRoot) };
+            attributedSources: attributedSources(test.results, webRoot),
+            alertObservations: projectAlertObservations(index, test.results.at(-1)!.annotations) };
         }),
       });
       throw error;

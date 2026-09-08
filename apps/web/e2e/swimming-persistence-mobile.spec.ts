@@ -7,6 +7,10 @@ import { markOnboarded } from "./fixtures/seed-blocks";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { workoutPresentation } from "../src/lib/swim/presentation";
 import type { SwimPlanRow, SwimWorkoutRow } from "../src/lib/swim/storage";
+import {
+  SWIM_ALERT_CODEBOOK, alertAnnotation, classifyAlertNodes, startBackend,
+  unavailableAlert, validateAlertCategory,
+} from "../scripts/swim-alert-membership";
 
 const mobile = { viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true };
 
@@ -158,7 +162,7 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
 
   test("DC-SW1/DC-SW8: two mobile users retain distinct usable plans and cannot start or change each other's workouts", async ({
     page, context, browser, freshUser, secondUser, seedConfig, admin, baseURL,
-  }) => {
+  }, testInfo) => {
     expect(secondUser.userId).not.toBe(freshUser.userId);
     await markOnboarded(admin, freshUser.userId);
     await markOnboarded(admin, secondUser.userId);
@@ -248,11 +252,21 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
         const backendBudget = deadline - performance.now();
         expect(backendBudget).toBeGreaterThan(0);
         let expiry: ReturnType<typeof setTimeout> | undefined;
+        const diagnostic = unavailableAlert(ownerPage === page ? "c4-owner-1-start" : "c4-owner-2-start");
         try {
           // Bound polling and the late sample without a sleep or a renewed deadline.
           const expired = new Promise<"pending">((resolve) => {
             expiry = setTimeout(() => resolve("pending"), backendBudget);
           });
+          const captureAlert = async () => {
+            if (performance.now() >= deadline) return;
+            const category = await Promise.race([
+              ownerPage.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)
+                .then(validateAlertCategory, () => "unavailable" as const),
+              expired.then(() => "unavailable" as const),
+            ]);
+            diagnostic.category = performance.now() < deadline ? category : "unavailable";
+          };
           const polling = (async () => {
             while (performance.now() < deadline) {
               if (await ownerPage.getByRole("alert").count() > 0) return "alert" as const;
@@ -261,7 +275,10 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
               if (performance.now() >= deadline) return "pending" as const;
               const workout = saved.workouts.find((row) => row.id === workoutId);
               if (workout?.status === "started" &&
-                typeof workout.session_id === "string" && workout.session_id.length > 0) return "backend" as const;
+                typeof workout.session_id === "string" && workout.session_id.length > 0) {
+                diagnostic.backend = startBackend(workout.status, workout.session_id);
+                return "backend" as const;
+              }
             }
             return "pending" as const;
           })().then(
@@ -269,6 +286,25 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
             () => "error" as const,
           );
           const backendOutcome = await Promise.race([polling, expired]);
+          if (backendOutcome === "alert" && performance.now() < deadline) {
+            const controller = new AbortController();
+            void expired.then(() => controller.abort());
+            try {
+              await Promise.race([
+                Promise.all([
+                  captureAlert(),
+                  (async () => {
+                    const sample = await admin.from("swim_workouts").select("status,session_id")
+                      .eq("user_id", ownerUserId).eq("id", workoutId).abortSignal(controller.signal).single();
+                    if (performance.now() < deadline && !sample.error && sample.data) {
+                      diagnostic.backend = startBackend(sample.data.status, sample.data.session_id);
+                    }
+                  })().catch(() => undefined),
+                ]),
+                expired,
+              ]);
+            } finally { controller.abort(); }
+          }
           expect(backendOutcome).not.toBe("error");
           expect(backendOutcome).not.toBe("alert");
           expect(backendOutcome).toBe("backend");
@@ -281,9 +317,15 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
             ownerPage.getByRole("alert").count().then((count) => count, () => "error" as const),
             expired,
           ]);
+          if (typeof lateAlertCount === "number" && performance.now() < deadline) {
+            if (lateAlertCount > 0) await captureAlert();
+            else diagnostic.category = "absent";
+          }
           expect(lateAlertCount).toBe(0);
         } finally {
           clearTimeout(expiry);
+          const annotation = alertAnnotation(diagnostic);
+          if (annotation) testInfo.annotations.push(annotation);
         }
       }
       const firstStarted = await savedState(admin, freshUser.userId);
