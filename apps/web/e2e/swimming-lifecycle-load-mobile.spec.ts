@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Page } from "@playwright/test";
+import { errors, type Page, type Request } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Prescription } from "@hta/db";
 import { ALL_REGIONS, finalEwma, type Region, type SwimActualResult } from "@hta/domain";
@@ -267,8 +267,77 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(started.plan.state).toEqual(created.plan.state);
     expect(await primary.snapshot()).toEqual(primary.initial);
     await page.goto(url);
+    const { origin, pathname } = new URL(page.url());
+    let actionRequest: Request | undefined;
+    const requestWaiter = page.waitForRequest((request) => {
+      if (actionRequest || request.method() !== "POST") return false;
+      const target = new URL(request.url());
+      if (target.origin !== origin || target.pathname !== pathname ||
+        !request.headers()["next-action"]) return false;
+      actionRequest = request;
+      return true;
+    }, { timeout: 5000 }).then(
+      () => "seen" as const,
+      (error: unknown) => error instanceof errors.TimeoutError ? "timeout" as const : "error" as const,
+    );
+    const responseWaiter = page.waitForResponse(
+      (response) => actionRequest !== undefined && response.request() === actionRequest,
+      { timeout: 5000 },
+    ).then(
+      (response) => ({ outcome: "seen", paired: response.request() === actionRequest, status: response.status() }),
+      (error: unknown) => ({
+        outcome: error instanceof errors.TimeoutError ? "timeout" : "error", paired: false, status: null,
+      }),
+    );
     await page.getByRole("button", { name: "Pause", exact: true }).click();
-    await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible();
+    const deadline = performance.now() + 5000;
+    expect(deadline - performance.now()).toBeGreaterThan(0);
+    const requestOutcome = await requestWaiter;
+    expect(requestOutcome).toBe("seen");
+    expect(deadline - performance.now()).toBeGreaterThan(0);
+    const responseOutcome = await responseWaiter;
+    expect(responseOutcome.outcome).toBe("seen");
+    expect(responseOutcome.paired).toBe(true);
+    expect(responseOutcome.status).toBe(200);
+
+    const backendBudget = deadline - performance.now();
+    expect(backendBudget).toBeGreaterThan(0);
+    let expiry: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Bound polling and the late sample without a sleep or a renewed deadline.
+      const expired = new Promise<"pending">((resolve) => {
+        expiry = setTimeout(() => resolve("pending"), backendBudget);
+      });
+      const polling = (async () => {
+        while (performance.now() < deadline) {
+          if (await page.getByRole("alert").count() > 0) return "alert" as const;
+          if (performance.now() >= deadline) return "pending" as const;
+          const saved = await savedPlan(admin, freshUser.userId, planId);
+          if (performance.now() >= deadline) return "pending" as const;
+          if (saved.plan.status === "paused") return "backend" as const;
+        }
+        return "pending" as const;
+      })().then(
+        (outcome) => outcome,
+        () => "error" as const,
+      );
+      const backendOutcome = await Promise.race([polling, expired]);
+      expect(backendOutcome).not.toBe("error");
+      expect(backendOutcome).not.toBe("alert");
+      expect(backendOutcome).toBe("backend");
+      const visibilityBudget = deadline - performance.now();
+      expect(visibilityBudget).toBeGreaterThan(0);
+      await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible({ timeout: visibilityBudget });
+      expect(deadline - performance.now()).toBeGreaterThan(0);
+      // One late sample, not continuous alert coverage during rendering.
+      const lateAlertCount = await Promise.race([
+        page.getByRole("alert").count().then((count) => count, () => "error" as const),
+        expired,
+      ]);
+      expect(lateAlertCount).toBe(0);
+    } finally {
+      clearTimeout(expiry);
+    }
     const paused = await savedPlan(admin, freshUser.userId, planId);
     lifecycleTransition(started.plan, paused.plan, "paused");
     expect(paused.workouts).toEqual(started.workouts);
