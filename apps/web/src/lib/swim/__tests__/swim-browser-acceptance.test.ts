@@ -243,13 +243,17 @@ describe("browser environment and static config", () => {
       expect(source).toContain("void expired.then(() => controller.abort())");
     }
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
-    const start = source.slice(source.indexOf('const diagnostic = unavailableAlert("a2-post-start")')).split('const started =')[0]!;
+    const start = source.slice(source.indexOf("const workout = scheduled.workouts[0];")).split('const started =')[0]!;
     expect(start).toContain('saved?.status === "started" && typeof saved.session_id === "string" && saved.session_id.length > 0');
     expect(start).toContain("}).toBe(true);");
     expect(start).toContain('await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();');
-    expect(start).not.toMatch(/setTimeout|deadline|response\.finished|void page|observing/);
+    expect(start).not.toMatch(/setTimeout|deadline|response\.finished|void page|observing|page\.url\(\)|reload\(|waitForTimeout/);
     const ordered = [
-      "const { origin, pathname } = new URL(page.url());",
+      'await page.getByRole("link").and(page.locator(`[href="/app/swim/${workout.id}"]`)).click();',
+      'const expected = new URL(`/app/swim/${workout.id}`, baseURL!).href;',
+      "await expect(page).toHaveURL(expected);",
+      'await expect(page.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();',
+      "const { origin, pathname } = new URL(expected);",
       "page.waitForRequest(", "page.waitForResponse(",
       "const transport = Promise.all([requestWaiter, responseWaiter])",
       'await page.getByRole("button", { name: "Start swim", exact: true }).click();',
@@ -280,8 +284,83 @@ describe("browser environment and static config", () => {
       '(error: unknown) => ({ ok: false, error } as const)',
     ]) expect(start).toContain(part);
     expect(start.match(/timeout: 5000/g)).toHaveLength(2);
+    expect(start.match(/name: "Start swim", exact: true \}\)\.click\(\)/g)).toHaveLength(1);
     expect(start.slice(start.indexOf("await expect.poll("), start.indexOf('await expect(page.getByRole("link"')))
       .not.toMatch(/await (transport|requestWaiter|responseWaiter)|timeout:/);
+  });
+  it("DC-SW7: distinguishes Finish and Archive with owned bounded status confirmation and unchanged preservation checks", () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const transitions = source.slice(source.indexOf("let previous = resumed;"), source.indexOf('test("A2,'));
+    const ordered = ["let previous = resumed;"];
+    for (const [control, status, label] of [
+      ["Finish plan", "finished", "Finished"], ["Archive", "archived", "Archived"],
+    ]) {
+      ordered.push(
+        `await page.getByRole("button", { name: "${control}", exact: true }).click();`,
+        "const deadline = performance.now() + 5000;",
+        `const outcome = await confirmPlanStatus(admin, freshUser.userId, planId, "${status}", deadline);`,
+        'expect(outcome).not.toBe("read-error");',
+        'expect(outcome).toBe("reached");',
+        "const remaining = deadline - performance.now();",
+        "expect(remaining).toBeGreaterThan(0);",
+        `await expect(page.locator("main > section").first().getByText("${label}", { exact: true })).toBeVisible({ timeout: remaining });`,
+        "const saved = await savedPlan(admin, freshUser.userId, planId);",
+        `lifecycleTransition(previous.plan, saved.plan, "${status}");`,
+        "expect(saved.workouts).toEqual(resumed.workouts);",
+        "expect(saved.plan.state.decisions).toEqual(resumed.plan.state.decisions);",
+        "expect(await primary.snapshot()).toEqual(primary.initial);",
+        "previous = saved;",
+      );
+    }
+    ordered.push(
+      "await page.reload();",
+      'await expect(page.locator("main > section").first().getByText("Archived", { exact: true })).toBeVisible();',
+      "expect(await savedPlan(admin, freshUser.userId, planId)).toEqual(previous);",
+      "expect(await primary.snapshot()).toEqual(primary.initial);",
+    );
+    let position = -1;
+    for (const part of ordered) {
+      const next = transitions.indexOf(part, position + 1);
+      expect(next, part).toBeGreaterThan(position);
+      position = next;
+    }
+    const assertionLines = transitions.split("\n").filter((line) => line.includes(".toBeVisible({ timeout: remaining });"));
+    expect(assertionLines).toHaveLength(2);
+    expect(assertionLines[0]).toContain('getByText("Finished",');
+    expect(assertionLines[1]).toContain('getByText("Archived",');
+    expect(transitions.match(/performance\.now\(\) \+ 5000/g)).toHaveLength(2);
+    expect(transitions.match(/\.click\(\)/g)).toHaveLength(2);
+    expect(transitions).not.toMatch(/for\s*\(|while\s*\(|catch\s*\(|timeout: 5000|waitForTimeout|annotations\.push/);
+
+    const poll = source.slice(source.indexOf("async function confirmPlanStatus("), source.indexOf("async function primaryBaseline("));
+    for (const part of [
+      'status: "finished" | "archived", deadline: number',
+      "const budget = deadline - performance.now();",
+      'if (budget <= 0) return "not-confirmed-expired" as const;',
+      "const controller = new AbortController();",
+      "const expiry = setTimeout(() => controller.abort(), budget);",
+      "const active = () => !controller.signal.aborted && performance.now() < deadline;",
+      "const intervals = [100, 250, 500, 1000];",
+      "while (active())",
+      'admin.from("swim_plans").select("id,user_id,status")',
+      '.eq("user_id", userId).eq("id", planId).abortSignal(controller.signal).single();',
+      "sample.error || !sample.data || sample.data.id !== planId || sample.data.user_id !== userId",
+      '!["active", "paused", "finished", "archived"].includes(sample.data.status)',
+      'return "read-error" as const;',
+      'if (!active()) return "not-confirmed-expired" as const;',
+      'if (sample.data.status === status) return "reached" as const;',
+      'if (remaining <= 0) return "not-confirmed-expired" as const;',
+      "Math.min(intervals[Math.min(attempt++, intervals.length - 1)], remaining)",
+      'controller.signal.addEventListener("abort", finish, { once: true });',
+      'controller.signal.removeEventListener("abort", finish);',
+      '})().catch(() => "read-error" as const);',
+      "return await polling;",
+      "} finally {", "controller.abort();", "clearTimeout(expiry);",
+      "await Promise.allSettled([polling]);",
+    ]) expect(poll).toContain(part);
+    expect(poll.indexOf('return "read-error"')).toBeLessThan(poll.indexOf("if (!active())"));
+    expect(poll.indexOf("if (!active())")).toBeLessThan(poll.indexOf('return "reached"'));
+    expect(poll).not.toMatch(/performance\.now\(\) \+|\.update\(|\.insert\(|\.rpc\(|page\.|expect\(|annotations|alertAnnotation/);
   });
   it("DC-SW9: bounds A2 edit transport, concurrent owned observations and the unchanged UI goal", () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
