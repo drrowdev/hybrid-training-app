@@ -353,12 +353,12 @@ describe("browser environment and static config", () => {
       "Math.min(intervals[Math.min(attempt++, intervals.length - 1)], remaining)",
       'controller.signal.addEventListener("abort", finish, { once: true });',
       'controller.signal.removeEventListener("abort", finish);',
-      '})().catch(() => "read-error" as const);',
+      '})().catch(() => active() ? "read-error" as const : "not-confirmed-expired" as const);',
       "return await polling;",
       "} finally {", "controller.abort();", "clearTimeout(expiry);",
       "await Promise.allSettled([polling]);",
     ]) expect(poll).toContain(part);
-    expect(poll.indexOf('return "read-error"')).toBeLessThan(poll.indexOf("if (!active())"));
+    expect(poll.indexOf("if (!active())")).toBeLessThan(poll.indexOf("if (sample.error"));
     expect(poll.indexOf("if (!active())")).toBeLessThan(poll.indexOf('return "reached"'));
     expect(poll).not.toMatch(/performance\.now\(\) \+|\.update\(|\.insert\(|\.rpc\(|page\.|expect\(|annotations|alertAnnotation/);
   });
