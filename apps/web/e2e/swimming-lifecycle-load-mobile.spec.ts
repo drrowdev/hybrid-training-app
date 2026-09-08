@@ -91,6 +91,50 @@ async function savedPlan(admin: SupabaseClient, userId: string, planId: string) 
   return { plan: plan.data, workouts: workouts.data };
 }
 
+async function confirmPlanStatus(
+  admin: SupabaseClient, userId: string, planId: string,
+  status: "finished" | "archived", deadline: number,
+) {
+  const budget = deadline - performance.now();
+  if (budget <= 0) return "not-confirmed-expired" as const;
+  const controller = new AbortController();
+  const expiry = setTimeout(() => controller.abort(), budget);
+  const active = () => !controller.signal.aborted && performance.now() < deadline;
+  const polling = (async () => {
+    const intervals = [100, 250, 500, 1000];
+    let attempt = 0;
+    while (active()) {
+      const sample = await admin.from("swim_plans").select("id,user_id,status")
+        .eq("user_id", userId).eq("id", planId).abortSignal(controller.signal).single();
+      if (sample.error || !sample.data || sample.data.id !== planId || sample.data.user_id !== userId ||
+        !["active", "paused", "finished", "archived"].includes(sample.data.status)) {
+        return "read-error" as const;
+      }
+      if (!active()) return "not-confirmed-expired" as const;
+      if (sample.data.status === status) return "reached" as const;
+      const remaining = deadline - performance.now();
+      if (remaining <= 0) return "not-confirmed-expired" as const;
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          clearTimeout(timer);
+          controller.signal.removeEventListener("abort", finish);
+          resolve();
+        };
+        const timer = setTimeout(finish, Math.min(intervals[Math.min(attempt++, intervals.length - 1)], remaining));
+        controller.signal.addEventListener("abort", finish, { once: true });
+      });
+    }
+    return "not-confirmed-expired" as const;
+  })().catch(() => "read-error" as const);
+  try {
+    return await polling;
+  } finally {
+    controller.abort();
+    clearTimeout(expiry);
+    await Promise.allSettled([polling]);
+  }
+}
+
 async function primaryBaseline(admin: SupabaseClient, userId: string) {
   const timezone = await userTimezone(admin, userId);
   const blockId = await seedRecentBlock(admin, userId, {
@@ -434,14 +478,33 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(resumed.plan.ends_on).toBe([...dates, paused.plan.ends_on].sort().at(-1));
     expect(await primary.snapshot()).toEqual(primary.initial);
     let previous = resumed;
-    for (const [control, status, label] of [
-      ["Finish plan", "finished", "Finished"],
-      ["Archive", "archived", "Archived"],
-    ] as const) {
-      await page.getByRole("button", { name: control, exact: true }).click();
-      await expect(page.locator("main > section").first().getByText(label, { exact: true })).toBeVisible();
+    {
+      await page.getByRole("button", { name: "Finish plan", exact: true }).click();
+      const deadline = performance.now() + 5000;
+      const outcome = await confirmPlanStatus(admin, freshUser.userId, planId, "finished", deadline);
+      expect(outcome).not.toBe("read-error");
+      expect(outcome).toBe("reached");
+      const remaining = deadline - performance.now();
+      expect(remaining).toBeGreaterThan(0);
+      await expect(page.locator("main > section").first().getByText("Finished", { exact: true })).toBeVisible({ timeout: remaining });
       const saved = await savedPlan(admin, freshUser.userId, planId);
-      lifecycleTransition(previous.plan, saved.plan, status);
+      lifecycleTransition(previous.plan, saved.plan, "finished");
+      expect(saved.workouts).toEqual(resumed.workouts);
+      expect(saved.plan.state.decisions).toEqual(resumed.plan.state.decisions);
+      expect(await primary.snapshot()).toEqual(primary.initial);
+      previous = saved;
+    }
+    {
+      await page.getByRole("button", { name: "Archive", exact: true }).click();
+      const deadline = performance.now() + 5000;
+      const outcome = await confirmPlanStatus(admin, freshUser.userId, planId, "archived", deadline);
+      expect(outcome).not.toBe("read-error");
+      expect(outcome).toBe("reached");
+      const remaining = deadline - performance.now();
+      expect(remaining).toBeGreaterThan(0);
+      await expect(page.locator("main > section").first().getByText("Archived", { exact: true })).toBeVisible({ timeout: remaining });
+      const saved = await savedPlan(admin, freshUser.userId, planId);
+      lifecycleTransition(previous.plan, saved.plan, "archived");
       expect(saved.workouts).toEqual(resumed.workouts);
       expect(saved.plan.state.decisions).toEqual(resumed.plan.state.decisions);
       expect(await primary.snapshot()).toEqual(primary.initial);
@@ -509,8 +572,11 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const scheduled = await savedPlan(admin, userId, planId);
     const workout = scheduled.workouts[0];
     await page.getByRole("link").and(page.locator(`[href="/app/swim/${workout.id}"]`)).click();
+    const expected = new URL(`/app/swim/${workout.id}`, baseURL!).href;
+    await expect(page).toHaveURL(expected);
+    await expect(page.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();
     const diagnostic = unavailableAlert("a2-post-start");
-    const { origin, pathname } = new URL(page.url());
+    const { origin, pathname } = new URL(expected);
     let actionRequest: Request | undefined;
     const requestWaiter = page.waitForRequest((request) => {
       if (actionRequest || request.method() !== "POST") return false;
