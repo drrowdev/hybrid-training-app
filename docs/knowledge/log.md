@@ -2016,3 +2016,33 @@ Resolve collection before coordinator complete-head review/core/fresh guards and
 one normal Native16/14836/eleven-browser reference. PR807/808 stay frozen, unmerged.
 No full standalone or production-readiness claim. See
 [current status and follow-up bounds](./pool-swimming.md#shared-completion-integration--current-148-status).
+
+## [2026-09-08] refine | PR805 account media scope restores eleven-case collection
+
+Source commit `e2e4862bed308e4ea1270b50d6aaac9bac565ba6`, tested tree
+`84f95c16324bdeb903ad5acbc49b539817233f24`, moves the unchanged account privacy
+comment and mobile/media `test.use` to file scope; only the obsolete three-line
+header is removed. Pinned Playwright 1.60.0 declares media options worker-scoped
+in `packages/playwright/src/index.ts`; `common/poolBuilder.ts` disallows worker
+fixtures in describe-level use and `common/fixtures.ts` rejects them. No private
+error text was read. Ordered trimmed non-empty comparison against `d5936320`
+passed (439 lines), exact expected bytes matched, and the actual diff was inspected.
+New C blob `911c4ca2c32bea51e6b709311f7752aac34a25af` is intentionally no longer
+`045205b5`; D remains `a2f19c74c1cac7534fed57c67bb7a83e068e5011`.
+
+Existing dedicated pinned `--list` regression passed eleven exact triples/six
+files, zero executed results/errors and checked private cleanup. Safe summary:
+`success=true`, exit 0, `loaderCode=unknown`, `sources=[]`. Web typecheck, scoped
+lint and source secret scan passed. The earlier exit-1/account-attribution failure
+and 771 passing targeted tests remain historical facts, not rerun results.
+No cases executed and no app/account-deletion/cascade failure was observed here.
+All fixture/body ordering, A1 checkpoint, original eight, registry, server-only
+local-key binding, configured workers/retries, budgets and cleanup remain intact.
+No browser/app/server/DB/Docker/CI execution or additional agent was started.
+
+Coordinator next: actual Astra START+TERMINAL/artifact even on failure, then one
+complete integration+remainder exact-head Opus review and core-only CI. Only an
+accepted full head/core and fresh execution guards permit the first normal
+Native16/14836/eleven-browser reference. C2 and all wider standalone gates remain
+open; no runtime or production-readiness claim. See
+[current status](./pool-swimming.md#shared-completion-integration--current-148-status).

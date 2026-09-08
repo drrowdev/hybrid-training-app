@@ -18,7 +18,7 @@ exist for compatibility and shared workload only.
 The current PR802 continuation authorizes disposable localhost services on the
 cloud runner only, not hosted credentials. The normal-148 database and eight-case
 browser reference passed at `95cbfb53`; the eleven-case integration is source-only,
-with collection blocked and live acceptance pending.
+with collection now passed and live acceptance pending.
 Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
@@ -33,7 +33,7 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-08 (PR805 exact C/D integration; eleven-case collection blocked)
+**Last updated:** 2026-09-08 (PR805 account media-scope correction; eleven-case collection passed)
 
 ### PR805 expanded browser cohort — current status
 
@@ -65,16 +65,29 @@ service key; shared/build/browser environments remain unchanged.
 [DC-SW2/SW5/SW6/SW8](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
 are covered by the imported positive cases; SW7/SW9 regressions remain intact.
 
-**Collection is BLOCKED, not passed:** the one targeted four-file run passed
+**Earlier collection was BLOCKED at `d5936320`:** the one targeted four-file run passed
 771 helper/fingerprint/synthetic-stage tests, but the real pinned Playwright
 1.60.0 `--list` through the same dedicated config exited 1. Existing safe summary:
 `success=false`, `loaderCode=unknown`, source
 `apps/web/e2e/swimming-account-mobile.spec.ts`. Eleven exact collected triples,
 zero report results/errors, and successful checked collection cleanup are not
-established by that failed regression. Both exact blobs are preserved; no loader
-or source repair was attempted. Typecheck, scoped lint and secret scan passed.
+established by that failed regression. Both exact blobs were preserved; no loader
+or source repair was attempted at that checkpoint. Typecheck, scoped lint and secret scan passed.
 CodeQL did not complete (Actions failed; JavaScript database too large).
 No live browser/app/server/DB/Docker/CI invocation or additional worker occurred.
+
+**Collection now PASSED:** source commit `e2e4862bed308e4ea1270b50d6aaac9bac565ba6`,
+tested tree `84f95c16324bdeb903ad5acbc49b539817233f24`, moves the same account
+privacy comment and `test.use` options to file scope and removes only the obsolete
+three-line header. Playwright 1.60.0 rejects these worker-scoped media options
+inside `describe`. Ordered trimmed non-empty comparison against `d5936320`
+(439 lines), exact expected bytes and inspected diff passed. New C blob:
+`911c4ca2c32bea51e6b709311f7752aac34a25af`; D remains the exact blob above.
+The existing dedicated pinned `--list` regression passed eleven exact triples/six
+files, zero executed results/errors and checked private cleanup:
+`success=true`, exit 0, `loaderCode=unknown`, `sources=[]`. Web typecheck and
+scoped lint passed. No case executed; no app/account-deletion/cascade failure was
+observed in either collection attempt.
 
 **C2 remains OPEN**: no deletion/cascade/survivor or foreign-key-cause claim.
 Custom movement and both references remain until the real Delete action;
@@ -84,10 +97,12 @@ All nine standalone gates remain incomplete; wider progression, concurrency,
 lifecycle, analytics and safety/load variants still require evidence.
 No production readiness or combined-swimming acceptance is claimed.
 
-All limits and privacy/resource safeguards remain unchanged. The next bounded
-follow-up must establish the account collection checkpoint without weakening
-the exact source or gate. Once collection is resolved, the coordinator owns
-complete-head Opus review/core/fresh guards/full execution-path review before
+All limits, configured workers/retries and privacy/resource safeguards remain
+unchanged; file-level media overrides also apply under generic collection, only
+to the account file. Identical worker hashes or zero recycling are not claimed.
+The coordinator next owns actual Astra START+TERMINAL/artifact even on failure,
+then one complete integration+remainder exact-head Opus review and core-only CI.
+Accepted full head/core and fresh guards/full execution-path review are required before
 one normal Native16/14836/eleven-browser reference through workflow `279507729`,
 the existing branch route, exact `expected_sha`, and both production flags false.
 PR807/808 remain frozen source artifacts, not merge candidates; only the

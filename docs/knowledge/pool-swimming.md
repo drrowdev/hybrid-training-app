@@ -465,16 +465,33 @@ single tracked-source fingerprint call. The owned Next start command alone gets
 a new environment object with the canonical service-key alias from its validated
 local snapshot, never from a later-mutated target or shared/build/browser env.
 
-This is **source-only, collection blocked**, not eleven-flow acceptance.
-One targeted helper/collection/fingerprint/stage run passed 771 tests but failed
+This remains **source-only**, not eleven-flow acceptance. At `d5936320`,
+one targeted helper/collection/fingerprint/stage run passed 771 tests but failed
 the actual pinned Playwright 1.60.0 `--list` regression through the same dedicated
 config: `success=false`, exit 1, loader code unknown, account-spec source attribution.
 Eleven exact triples/six files, no report results/errors and successful checked
 private cleanup are not proved by that failure. No causal loader/import claim
-is established. Exact imports and strict rejection remain; no alternate config,
-loader, source weakening or app/SQL repair. Web typecheck, scoped lint and secret
+was established by that failure. Exact imports and strict rejection were preserved;
+no alternate config, loader, source weakening or app/SQL repair was attempted.
+Web typecheck, scoped lint and secret
 scan passed. CodeQL was incomplete: Actions failed, JavaScript database too large.
 No live browser/app/server/DB/Docker/CI invocation or additional worker occurred.
+
+**Collection passed after the media-scope correction:** source commit
+`e2e4862bed308e4ea1270b50d6aaac9bac565ba6`, tested tree
+`84f95c16324bdeb903ad5acbc49b539817233f24`, relocates only the same account privacy
+comment/options to file scope and removes the obsolete three-line header.
+Playwright 1.60.0 disallows these worker-scoped media options inside `describe`.
+The ordered trimmed non-empty comparison against `d5936320` passed (439 lines);
+exact expected bytes matched and the actual diff was inspected. C is now
+`911c4ca2c32bea51e6b709311f7752aac34a25af`; D's exact blob remains unchanged.
+The existing dedicated pinned `--list` regression passed eleven exact triples/six
+files, zero executed results/errors and checked private cleanup; safe summary
+`success=true`, exit 0, `loaderCode=unknown`, `sources=[]`. Web typecheck/scoped lint
+passed. Neither collection attempt executed cases or observed an app/account-
+deletion/cascade failure. All fixtures, bodies, guards and configured workers/
+retries remain unchanged; file-level media overrides protect generic collection
+too, only for this file. No identical-worker-hash or zero-recycling guarantee.
 
 C covers authenticated in-memory export and real account deletion; C2 retains
 the user-owned custom movement plus set-log/session-movement references until
@@ -500,9 +517,10 @@ leave missing cases or empty results and strict `browser-report-schema` rejectio
 without a ledger; schema failure or wall clock alone proves neither timeout nor
 corruption. No numeric timeout-case threshold is asserted.
 
-First resolve the bounded account collection remainder without weakening source
-or gate. The coordinator then owns exact complete-head Opus review/core/fresh
-guards/full execution-path review before one normal Native16/14836/eleven-browser
+The coordinator next owns actual Astra START+TERMINAL/artifact even on failure,
+then one complete integration+remainder exact-head Opus review and core-only CI.
+Accepted full head/core and fresh guards/full execution-path review are required
+before one normal Native16/14836/eleven-browser
 reference via existing workflow `279507729` branch route, exact `expected_sha`,
 both production flags false. PR807/808 remain frozen source artifacts, not merge
 candidates; coordinator-only closure unmerged may follow eventual live acceptance.
