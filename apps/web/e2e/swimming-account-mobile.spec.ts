@@ -10,6 +10,7 @@ import { signInAs } from "./fixtures/auth";
 import { markOnboarded } from "./fixtures/seed-blocks";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { addDaysToYmd } from "../src/lib/dates";
+import { alertAnnotation, authAbsenceBackend, unavailableAlert } from "../scripts/swim-alert-membership";
 import {
   standaloneWeekRequests, type StandalonePlanDefinition, type StandaloneWorkoutDefinition,
 } from "../src/lib/swim/model";
@@ -409,7 +410,7 @@ test.describe("ADR0079 mobile swimming account acceptance", () => {
 
   test("C2 DC-SW8: Account deletion cascades with a referenced user-owned custom movement and preserves a survivor", async ({
     page, context, browser, accounts: [primary, survivor], seedConfig, admin, baseURL,
-  }) => {
+  }, testInfo) => {
     // Named positive regression for A1's auth-deletion cleanup failure:
     // 0001/0003 cascade from auth.users; set_logs and 0059 session_movements
     // RESTRICT movement deletion. The observed code/order is not proved.
@@ -428,7 +429,44 @@ test.describe("ADR0079 mobile swimming account acceptance", () => {
 
       await accountPage(page, primary);
       await page.getByRole("button", { name: "Delete account (GDPR Art. 17)", exact: true }).click();
-      await expect(page).toHaveURL(new URL("/?deleted=1", baseURL!).href);
+      try {
+        await expect(page).toHaveURL(new URL("/?deleted=1", baseURL!).href);
+      } catch (error) {
+        try {
+          const diagnostic = unavailableAlert("c2-auth-absence");
+          const controller = new AbortController();
+          const deadline = performance.now() + 1000;
+          const interrupted = () => testInfo.status === "timedOut" ||
+            testInfo.status === "interrupted" || page.isClosed();
+          const active = () => !controller.signal.aborted && !interrupted() && performance.now() < deadline;
+          const expiry = setTimeout(() => controller.abort(), 1000);
+          try {
+            if (active()) {
+              const observer = createClient(seedConfig.supabaseUrl, seedConfig.serviceRoleKey, {
+                auth: { persistSession: false, autoRefreshToken: false },
+                global: { fetch: async (input, init) => {
+                  try { return await fetch(input, { ...init, signal: controller.signal }); }
+                  // The SDK logs rejected fetch errors; expose only an unavailable response.
+                  catch { return new Response(null, { status: 503 }); }
+                } },
+              });
+              const sample = await observer.auth.admin.getUserById(primary.userId);
+              if (active()) diagnostic.backend = authAbsenceBackend(sample.data.user, sample.error, primary.userId);
+            }
+          } catch {
+            diagnostic.backend = "unavailable";
+          } finally {
+            controller.abort();
+            clearTimeout(expiry);
+          }
+          if (interrupted() || performance.now() >= deadline) diagnostic.backend = "unavailable";
+          const annotation = alertAnnotation(diagnostic);
+          if (annotation) testInfo.annotations.push(annotation);
+        } catch {
+          // Observation or annotation failure must never replace the original URL assertion.
+        }
+        throw error;
+      }
       expect((await context.cookies()).filter((cookie) =>
         /^sb-.+-auth-token(?:\.\d+)?$/.test(cookie.name) && cookie.value !== "").length).toBe(0);
 

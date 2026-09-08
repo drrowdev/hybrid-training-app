@@ -93,7 +93,7 @@ export type AlertRevision = "unchanged" | "advanced" | "other" | "unavailable";
 export type AlertControl = "start" | "log" | "plan-inactive" | "removed" |
   "unavailable-page" | "not-found" | "none" | "unavailable";
 export type AlertResult = "editing" | "summary" | "none" | "unavailable";
-export type AlertPoint = "a1-pause" | "a2-post-start" | "a2-edit" | "c4-owner-1-start" | "c4-owner-2-start";
+export type AlertPoint = "a1-pause" | "a2-post-start" | "a2-edit" | "c4-owner-1-start" | "c4-owner-2-start" | "c2-auth-absence";
 export type AlertObservation = {
   point: AlertPoint; category: AlertCategory; backend: AlertBackend; revision: AlertRevision;
   control: AlertControl; result: AlertResult;
@@ -173,7 +173,7 @@ export function validateAlertCategory(value: unknown): AlertCategory {
 }
 
 export const ALERT_ANNOTATION_TYPE = "hta-swim-alert-membership-v2";
-const POINTS: readonly AlertPoint[] = ["a1-pause", "a2-post-start", "a2-edit", "c4-owner-1-start", "c4-owner-2-start"];
+const POINTS: readonly AlertPoint[] = ["a1-pause", "a2-post-start", "a2-edit", "c4-owner-1-start", "c4-owner-2-start", "c2-auth-absence"];
 const BACKENDS: readonly AlertBackend[] = ["reached", "not-reached", "unavailable"];
 const REVISIONS: readonly AlertRevision[] = ["unchanged", "advanced", "other", "unavailable"];
 const CONTROLS: readonly AlertControl[] = [
@@ -198,7 +198,9 @@ function validObservation(value: unknown): value is AlertObservation {
     REVISIONS.some((revision) => revision === value.revision) &&
     CONTROLS.some((control) => control === value.control) &&
     RESULTS.some((result) => result === value.result) &&
-    (value.point === "a1-pause" || value.revision === "unavailable");
+    (value.point === "a1-pause" || value.revision === "unavailable") &&
+    (value.point !== "c2-auth-absence" || value.category === "unavailable" &&
+      value.control === "unavailable" && value.result === "unavailable");
 }
 
 export function alertAnnotation(value: unknown) {
@@ -234,10 +236,11 @@ export function readAlertAnnotations(value: unknown): AlertObservation[] | undef
   return observations;
 }
 
-// Existing six-case order: original isolation C4, then A1/A2; no new case identities.
+// Declared case order: original isolation C4, then A1/A2, with account C2 at index 9.
 export function projectAlertObservations(caseIndex: number, observations: AlertObservation[] | undefined) {
   const points: readonly AlertPoint[] = caseIndex === 3 ? ["c4-owner-1-start", "c4-owner-2-start"] :
-    caseIndex === 4 ? ["a1-pause"] : caseIndex === 5 ? ["a2-post-start", "a2-edit"] : [];
+    caseIndex === 4 ? ["a1-pause"] : caseIndex === 5 ? ["a2-post-start", "a2-edit"] :
+      caseIndex === 9 ? ["c2-auth-absence"] : [];
   const valid = observations?.every((item) => points.includes(item.point));
   return points.map((point) => (valid && observations?.find((item) => item.point === point)) || unavailableAlert(point));
 }
@@ -258,4 +261,14 @@ export function startBackend(status: unknown, sessionId: unknown): AlertBackend 
   if (typeof status !== "string" || !["scheduled", "started", "completed", "skipped"].includes(status) ||
     !(sessionId === null || typeof sessionId === "string")) return "unavailable";
   return status === "started" && typeof sessionId === "string" && sessionId.length > 0 ? "reached" : "not-reached";
+}
+
+// Auth absence at sample time only, never cascade or permanent deletion-outcome proof.
+export function authAbsenceBackend(user: unknown, error: unknown, expectedId: unknown): AlertBackend {
+  try {
+    if (typeof expectedId !== "string" || expectedId.length === 0) return "unavailable";
+    if (user === null && record(error) && error.status === 404) return "reached";
+    if (error === null && record(user) && user.id === expectedId) return "not-reached";
+  } catch { return "unavailable"; }
+  return "unavailable";
 }
