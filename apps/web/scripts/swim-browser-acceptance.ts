@@ -50,6 +50,21 @@ export const SWIM_BROWSER_CASES = Object.freeze([
     describe: "ADR0079 later-cohort B swimming decisions and offline durability",
     title: "B2 DC-SW8: native completion survives a committed lost response and replays before another session",
   }),
+  Object.freeze({
+    file: "e2e/swimming-account-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming account acceptance",
+    title: "C1 DC-SW1/DC-SW8: Account exports native records and isolates synthetic users",
+  }),
+  Object.freeze({
+    file: "e2e/swimming-account-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming account acceptance",
+    title: "C2 DC-SW8: Account deletion cascades with a referenced user-owned custom movement and preserves a survivor",
+  }),
+  Object.freeze({
+    file: "e2e/swimming-assessment-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming assessment decisions and native history",
+    title: "DC-SW2/DC-SW5/DC-SW6/DC-SW8: rejected native trials persist before acceptance updates only future unstarted swims",
+  }),
 ]);
 const EXPECTED_FILES = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
 
@@ -66,6 +81,9 @@ const ATTRIBUTED_SOURCES = [
   ["e2e/swimming-persistence-mobile.spec.ts", "swimming-persistence-mobile"],
   ["e2e/swimming-lifecycle-load-mobile.spec.ts", "swimming-lifecycle-load-mobile"],
   ["e2e/swimming-decisions-offline-mobile.spec.ts", "swimming-decisions-offline-mobile"],
+  ["e2e/swimming-account-mobile.spec.ts", "swimming-account-mobile"],
+  ["e2e/swimming-assessment-mobile.spec.ts", "swimming-assessment-mobile"],
+  ["src/lib/swim/storage.ts", "swim-storage"],
   ["src/lib/swim/queries.ts", "swim-queries"],
   ["src/lib/offline/outbox-core.ts", "outbox-core"],
   ["e2e/global-setup.ts", "global-setup"],

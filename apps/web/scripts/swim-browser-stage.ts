@@ -137,7 +137,8 @@ export async function runSwimBrowserStage(options: {
     await requireFreePort();
     checkLive();
     server = settle(command(process.execPath, [next, "start", "--hostname", "127.0.0.1", "--port", "3210"], {
-      cwd: web, env, timeout: BROWSER_LIMITS.serverLifetime, allowFailure: true,
+      cwd: web, env: { ...env, SUPABASE_SERVICE_ROLE_KEY: env.E2E_SUPABASE_SERVICE_ROLE_KEY },
+      timeout: BROWSER_LIMITS.serverLifetime, allowFailure: true,
       onSpawn: (stop) => { stopServer = stop; },
       onTerminal: () => { earlyClose = !stopRequested; exited(); },
     }));

@@ -204,6 +204,8 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
       "apps/web/e2e/swimming-persistence-mobile.spec.ts",
       "apps/web/e2e/swimming-lifecycle-load-mobile.spec.ts",
       "apps/web/e2e/swimming-decisions-offline-mobile.spec.ts",
+      "apps/web/e2e/swimming-account-mobile.spec.ts",
+      "apps/web/e2e/swimming-assessment-mobile.spec.ts",
     ]);
     const paths = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]!)
       .slice(3).filter((path) => path !== "\\0").concat(declaredPaths);
