@@ -4,6 +4,7 @@ import { completeSwimWorkoutResult, createSwimPlan, startSwimWorkout, editSwimRe
 import { SWIM_ASSESSMENT_VERSION } from "@hta/domain";
 import * as queries from "../queries";
 import * as storage from "../storage";
+import type { SwimHubView } from "../view-types";
 import { requireSwimSetup, requireSwimStorage } from "../capability";
 import { assertSwimSafety } from "../safety";
 import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-completion-recompute";
@@ -283,14 +284,40 @@ describe("ADR0079 server actions", () => {
     vi.setSystemTime(new Date("2026-09-12T12:00:00Z"));
     const { plan, workouts } = swimFixture();
     const paused = { ...plan, status: "paused" as const, state: { ...plan.state, pauseSnapshot: { pausedAt: "2026-09-12T12:00:00Z", workoutIds: workouts.slice(2).map((row) => row.id) } } };
-    vi.mocked(storage.listSwimPlans).mockResolvedValue([paused]);
+    vi.mocked(storage.listSwimPlans)
+      .mockResolvedValueOnce([paused])
+      .mockResolvedValueOnce([paused])
+      .mockResolvedValueOnce([paused]);
     const result = await previewSwimResume(plan.id, 1, "2026-10-01");
     expect(result.preview?.dates).toHaveLength(4);
     expect(result.preview?.dates.every((row) => row.date >= "2026-10-01")).toBe(true);
     expect(result.preview?.dates.map((row) => row.id)).not.toContain(workouts[0]!.id);
     expect(storage.resumeSwimPlan).not.toHaveBeenCalled();
-    expect(await resumeSwimPlan(result.preview!)).toEqual({ ok: true });
+    const resumed: storage.SwimPlanWithWorkouts = {
+      plan: {
+        ...plan, status: "active", revision: plan.revision + 1,
+        ends_on: result.preview!.dates.at(-1)!.date, updated_at: new Date().toISOString(),
+      },
+      workouts: workouts.map((row) => {
+        const date = result.preview!.dates.find((entry) => entry.id === row.id);
+        return date ? {
+          ...row, scheduled_date: date.date, revision: row.revision + 1, updated_at: new Date().toISOString(),
+        } : row;
+      }),
+    };
+    const view: SwimHubView = {
+      id: resumed.plan.id, revision: resumed.plan.revision, status: resumed.plan.status,
+      goal: "Technique & base", course: "25 yd",
+      dates: `${resumed.plan.started_on} – ${resumed.plan.ends_on}`, today: "2026-09-12",
+      workouts: [], proposals: [], analytics: { weeks: [], bests: [], benchmarks: [] },
+    };
+    vi.mocked(storage.resumeSwimPlan).mockResolvedValueOnce(resumed);
+    const loadView = vi.spyOn(queries, "loadSwimHubView").mockResolvedValueOnce(view);
+    expect(await resumeSwimPlan(result.preview!)).toEqual({ ok: true, view });
     expect(storage.resumeSwimPlan).toHaveBeenCalledOnce();
+    expect(loadView).toHaveBeenCalledOnce();
+    expect(loadView).toHaveBeenCalledWith(mock.client, userId, resumed.plan);
+    expect(loadView.mock.calls[0]![2]).toBe(resumed.plan);
   });
   it("rejects modified resume preview dates instead of silently rescheduling", async () => {
     vi.setSystemTime(new Date("2026-09-12T12:00:00Z"));
