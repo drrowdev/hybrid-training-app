@@ -2566,3 +2566,47 @@ Documentation validation: `pnpm docs:check-drift` passed offline in-repository
 checks (private mirror parity not run), along with `git diff --check` and
 documentation secret scanning. Exact seven-file allowlist and append-only log
 prefix verified; source remained unchanged from the tested code checkpoint.
+
+## [2026-09-09] refine | Whole-history commit-identity recurrence prevention
+
+PR805 continued from exact `966b906c83873667b27459ed42575da29ed3b377` on
+`copilot/new-acceptance-cases`, stacked base
+`e2758dadbb110e03794e49d53b47622a6295e988`. Owner-reported history repair
+(115 code-identical commits, 88 author corrections, 68 missing App credits)
+was already complete; retained tag `swim-identity-checkpoint-31364e5` is evidence,
+not authorization for another rewrite. No history was rewritten.
+
+Saved code/test checkpoint `ac209ecb1c8489a65d5626603f866a39e83254f3`,
+tree `bdb90c932525e7e6bda6e559ab07a6b3f3473410`. Shared Node checker replaces
+the newest-only/non-merge CI scan and precedes the unchanged pre-push quality
+chain. Both author and committer must match the exact three-email allowlist;
+Copilot198982749 remains rejected. Real PR source/base, full push ranges,
+initial/non-fast-forward boundaries, manual default/current commit, complete
+feature stacks, multiple proposed updates and deletions are explicit. Remote
+default-branch verification prevents stale parent/archive refs from masking
+unmerged bad history. Missing/malformed boundaries and Git errors fail closed.
+Historical allowed human commits do not acquire retroactive trailer requirements.
+
+22 existing-runner Vitest regressions passed using temporary owned Git fixtures,
+including actual pre-push rejection before pnpm/publication. Scoped ESLint,
+Node syntax check, web typecheck and offline document drift passed. Read-only
+candidate scan found all 121 starting commits allowed against verified
+`main@e6ad3b8a358320b651de65f7b9785b409d10eaf4`; actual repository hook checked
+122 commits at the checkpoint and passed all preserved quality commands,
+including offline149 migration drift. No SQL/hosted/browser/Docker execution.
+Secret scan was clean. CodeQL reported no alerts but Actions analysis failed
+and JavaScript analysis was skipped for database size; no analysis pass claimed.
+The sandbox signing service failed; the saved terminal commit is unsigned,
+with explicit Copilot223556219 author/committer and both requested AI credits
+verified locally and through GitHub after publishing. Hooks remained enabled.
+HANDOFF records commands/results; AGENTS now records durable identity/history rules.
+
+Only the seven authorized identity-code/test/document paths changed. No other
+workflow context, swimming source/fixture, product/engine/DC-*/OC-*, schema,
+migration, permissions, RLS or dependency change. No extra model/review chain,
+new branch/PR, merge/rebase/amend/force push, CI dispatch or disposable reference.
+Latest measured swimming remains run34351260981 at original fdf01,
+all15 passed12:34:10Z; the 18-case source is not live accepted by this task.
+Normal149/Auth36/single-FK/source bounds remain unchanged. Production/main's
+0145 single-leg RDL migration versus unmerged swim145–148 ordering still needs
+later reconciliation; backup/recovery/monitoring and release gates remain open.

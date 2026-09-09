@@ -63,12 +63,28 @@ Every ingest / refine / decision / lint pass MUST append a log entry. Every new 
 ## Commit hygiene
 
 - Conventional Commits style preferred: `feat(scope): ...`, `fix(scope): ...`, `chore: ...`, `docs: ...`.
+- Every source commit, including merges, must have both author and committer
+  email in the exact allowlist: `223556219+Copilot@users.noreply.github.com`,
+  `280348738+drrowdev@users.noreply.github.com`, `noreply@github.com`.
+  `198982749+Copilot@users.noreply.github.com` is not allowed. For AI commits,
+  set both terminal Git identities explicitly to Copilot223556219; inspect
+  effective identities before committing, local metadata afterward, and remote
+  metadata after publishing. Do not use a commit helper that substitutes identity.
 - **Always include the AI-coauthor trailer when an AI assistant wrote or substantively edited the commit:**
 
   ```
   Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+  Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
   ```
 
+- `scripts/check-commit-identities.mjs` is shared by CI and pre-push. Check the
+  entire introduced history, never only the newest commit or `--no-merges`.
+  PRs use declared source/base OIDs; pushes use before/after OIDs; manual feature
+  runs and pre-push include all unmerged stack layers against the destination's
+  verified default branch, not archive refs or the immediate stack parent.
+  Missing boundaries fail closed. Do not bypass hooks. Existing legitimate
+  human commits do not need retroactive App trailers. History repair requires
+  fresh, explicit owner approval; a guard failure is not permission to rewrite.
 - PR descriptions reference any DC-* / OC-* identifiers touched and link to the relevant section of `design-constraints.md`.
 
 ## Tests

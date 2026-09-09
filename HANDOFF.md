@@ -2,6 +2,84 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## Commit-identity recurrence prevention — 2026-09-09
+
+Continued PR805 on `copilot/new-acceptance-cases` from exact
+`966b906c83873667b27459ed42575da29ed3b377`, with declared stacked base
+`copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+The owner-reported repair is complete: 115 code-identical commits, 88 author
+corrections and 68 missing App credits. The old graph remains at
+`swim-identity-checkpoint-31364e5`; that approval is consumed. No further history
+rewrite, merge, rebase, amend, new branch or PR was performed.
+
+**Saved code/test checkpoint:** `ac209ecb1c8489a65d5626603f866a39e83254f3`,
+tree `bdb90c932525e7e6bda6e559ab07a6b3f3473410`. GitHub metadata confirms author
+and committer are `Copilot <223556219+Copilot@users.noreply.github.com>` and both
+Copilot and Copilot App credit lines are present. Terminal signing initially
+failed with the sandbox signing service's Bad Request; the checkpoint was
+committed unsigned with explicit identities and hooks enabled. Publication
+pushed the existing terminal commit, not a platform-generated replacement.
+
+The shared `scripts/check-commit-identities.mjs` checks both identity fields,
+including merges. CI checks exact PR source/base OIDs (not a synthetic merge),
+the complete push before/after range, and manual feature history against the
+remote-verified default branch. Initial pushes inspect all ancestry; valid
+non-fast-forward ranges are supported. Manual default-branch runs explicitly
+inspect their current commit. Pre-push includes existing unmerged branch history
+even if archive refs already contain it, checks every proposed branch update
+before the unchanged pnpm chain, and deliberately permits deletions/no updates.
+Tag updates, malformed/missing boundaries, shallow or unrelated feature history,
+and destinations without a verifiable default branch fail closed. Errors report
+SHA and identity field, not commit messages or disallowed identity values.
+Inherited legitimate human commits remain legal without retroactive App credits.
+
+**Validation inside the GitHub worker** (repository root
+`/home/runner/work/hybrid-training-app/hybrid-training-app`):
+
+- `pnpm --filter @hta/web exec vitest run src/lib/__tests__/commit-identity-guard.test.ts`
+  — 22 passed. Temporary owned Git fixtures cover older-bad/newest-good,
+  committer/merge failures, all allowed emails, PR/push/manual boundaries,
+  initial/new branches, multiple updates, non-fast-forward updates, malformed
+  and unavailable boundaries, shallow history, archive masking, and actual
+  local push rejection before either pnpm execution or publication.
+- `pnpm --filter @hta/web exec eslint src/lib/__tests__/commit-identity-guard.test.ts`
+  and `node --check scripts/check-commit-identities.mjs` — passed.
+- `apps/web/node_modules/.bin/eslint --config apps/web/eslint.config.mjs scripts/check-commit-identities.mjs`
+  from repository root — passed; existing React/pages configuration notices.
+  An earlier invocation from the web directory ignored the root script and was
+  replaced by this root-scoped invocation.
+- `pnpm --filter @hta/web typecheck`, `pnpm docs:check-drift`, `git diff --check`
+  — passed. Document drift was offline/in-repository only, not private-mirror parity.
+- Read-only full-candidate author/committer scan against remote-verified
+  `main@e6ad3b8a358320b651de65f7b9785b409d10eaf4` — all 121 starting commits
+  allowed, including lower stack layers. The initially shallow worker checkout
+  was completed with `git fetch --unshallow --no-tags origin refs/heads/main`;
+  no branch/history rewrite.
+- Actual repository `.husky/pre-push` invoked with the original-to-checkpoint
+  update on stdin — passed, inspecting 122 commits before recursive typechecks,
+  package tests, offline migration drift (149 journal entries) and document drift.
+  `DATABASE_URL` was unset; no hosted SQL was executed.
+- Secret scanning — clean. CodeQL reported zero alerts, but Actions analysis
+  failed and JavaScript analysis was skipped because its database was too large.
+  **No successful CodeQL analysis is claimed.**
+
+Only seven paths are in scope: `.github/workflows/ci.yml` (identity job only),
+`.husky/pre-push`, the shared checker, its web Vitest test, `AGENTS.md`, this
+handoff and append-only `docs/knowledge/log.md`. No engine DC-* / OC-* behavior
+changed. Workflow triggers, other jobs, acceptance routing/inputs, permissions,
+pins, swimming source/fixtures, schema, migrations and RLS are unchanged.
+
+**Evidence limits remain:** latest measured swimming milestone is all15 passed
+in run34351260981 at original `fdf01d865dc09f38e551925266fa604c56a3d40e`,
+completed12:34:10Z. Do not relabel it with a repaired or documentation SHA.
+The 18-case source is not newly live accepted; this task proves no new runtime
+feature. Normal149/Auth36/single-FK/source bounds are unchanged. Production/main
+now contain `0145_seed_single_leg_rdl_variants`; this unmerged branch's swim145–148
+ordering still needs later reconciliation. Backup/recovery/monitoring remain
+open; no production-readiness claim. No disposable reference, CI dispatch,
+Docker/browser execution, hosted access or other builder's branch was used.
+The sections below retain historical evidence, including pre-repair SHAs.
+
 ## Standalone pool swimming - 2026-09-05 working branch
 
 ADR 0079 authorizes additive swim storage and access-rule implementation, not a
