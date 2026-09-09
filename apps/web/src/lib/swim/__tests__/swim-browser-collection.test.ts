@@ -36,7 +36,7 @@ function syntheticJwt(role: "anon" | "service_role") {
   return `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ role, ref: "local", exp: 1 })}.${randomBytes(32).toString("base64url")}`;
 }
 
-it.skipIf(process.platform === "win32")("DC-SW1/DC-SW2/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9: the real pinned CLI collects the exact declared mobile cohort without executing it", async () => {
+it.skipIf(process.platform === "win32")("DC-SW1/DC-SW2/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4: the real pinned CLI collects the exact declared mobile cohort without executing it", async () => {
   let success = false;
   let exit = -1;
   let output = "";
@@ -98,7 +98,7 @@ it.skipIf(process.platform === "win32")("DC-SW1/DC-SW2/DC-SW4/DC-SW5/DC-SW6/DC-S
     assert.equal(report.config.projects.length, 1);
     assert.equal(report.config.projects[0]!.name, "mobile-chromium");
     assert.equal(expectedFiles.length, 6);
-    assert.deepEqual(expectedFiles.map((file) => expected.filter(([name]) => name === file).length), [2, 2, 2, 2, 3, 1]);
+    assert.deepEqual(expectedFiles.map((file) => expected.filter(([name]) => name === file).length), [2, 2, 2, 5, 3, 1]);
     assert.equal(report.suites.length, expectedFiles.length);
     const collected = report.suites.flatMap((file) => {
       const expectedCases = expected.filter(([name]) => name === file.file);
@@ -121,7 +121,7 @@ it.skipIf(process.platform === "win32")("DC-SW1/DC-SW2/DC-SW4/DC-SW5/DC-SW6/DC-S
       });
     });
     assert.equal(collected.length, SWIM_BROWSER_CASES.length);
-    assert.equal(collected.length, 12);
+    assert.equal(collected.length, 15);
     assert.deepEqual(collected.sort(), [...expected].sort());
     success = true;
   } catch {
