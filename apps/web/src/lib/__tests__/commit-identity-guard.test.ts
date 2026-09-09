@@ -17,8 +17,12 @@ let remote: string;
 let base: string;
 let env: NodeJS.ProcessEnv;
 
+function gitOutput(...args: string[]) {
+  return execFileSync("git", args, { cwd: repo, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+}
+
 function git(...args: string[]) {
-  return execFileSync("git", args, { cwd: repo, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return gitOutput(...args).trim();
 }
 
 function commit(author = bot, committer = bot) {
@@ -28,6 +32,17 @@ function commit(author = bot, committer = bot) {
     stdio: "pipe",
   });
   return git("rev-parse", "HEAD");
+}
+
+function rawCommit(author: string, committer: string, extraHeaders = "") {
+  const content = `tree ${git("rev-parse", "HEAD^{tree}")}\nparent ${git("rev-parse", "HEAD")}\nauthor Fixture <${author}> 1700000000 +0000\ncommitter Fixture <${committer}> 1700000000 +0000\n${extraHeaders}\nfixture\n`;
+  const sha = execFileSync("git", ["hash-object", "-t", "commit", "-w", "--stdin"], {
+    cwd: repo, env, encoding: "utf8", input: content, stdio: ["pipe", "pipe", "pipe"],
+  }).trim();
+  expect(gitOutput("cat-file", "commit", sha)).toBe(content);
+  expect(gitOutput("show", "--no-show-signature", "-s", "--format=%ae%n%ce", sha, "--")).toBe(`${author}\n${committer}\n`);
+  git("update-ref", "HEAD", sha);
+  return sha;
 }
 
 function publishObjects() {
@@ -93,6 +108,48 @@ describe("commit identity guard", () => {
     const head = commit(bot, bad);
     publishObjects();
     expect(pushEvent(base, head).stderr).toContain(`${head}: disallowed committer`);
+  });
+
+  it.each([" ", "\t", "\r", "\u00a0"])("rejects leading author whitespace %j without normalizing Git output", (whitespace) => {
+    const head = rawCommit(`${whitespace}${bot}`, bot);
+    publishObjects();
+    const result = pushEvent(base, head);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe(`Commit ${head}: disallowed author identity.\n`);
+  });
+
+  it.each([" ", "\t", "\r", "\u00a0"])("rejects trailing committer whitespace %j without normalizing Git output", (whitespace) => {
+    const head = rawCommit(bot, `${bot}${whitespace}`);
+    publishObjects();
+    const result = pushEvent(base, head);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe(`Commit ${head}: disallowed committer identity.\n`);
+  });
+
+  it.each([
+    ["author", "", bot],
+    ["committer", bot, ""],
+  ])("rejects an empty %s identity", (field, author, committer) => {
+    const head = rawCommit(author, committer);
+    publishObjects();
+    const result = pushEvent(base, head);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe(`Commit ${head}: disallowed ${field} identity.\n`);
+  });
+
+  it("ignores optional signature display configuration for identity projection", () => {
+    const head = rawCommit(bot, human, "gpgsig -----BEGIN SSH SIGNATURE-----\n Zml4dHVyZQ==\n -----END SSH SIGNATURE-----\n");
+    publishObjects();
+    git("config", "log.showSignature", "true");
+    git("config", "gpg.ssh.allowedSignersFile", "/dev/null");
+    git("config", "gpg.ssh.program", path.join(dir, "unavailable-verifier"));
+    const trace = path.join(dir, "git-trace.json");
+    env.GIT_TRACE2_EVENT = trace;
+    const result = pushEvent(base, head);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("(1 commits inspected)");
+    expect(result.stderr).toBe("");
+    expect(readFileSync(trace, "utf8")).not.toContain("unavailable-verifier");
   });
 
   it("includes merge commit identities", () => {

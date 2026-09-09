@@ -20,7 +20,7 @@ function git(...args) {
       stdio: ["ignore", "pipe", "pipe"],
       maxBuffer: 64 * 1024 * 1024,
       env: { ...process.env, GIT_NO_REPLACE_OBJECTS: "1" },
-    }).trim();
+    }).replace(/\n$/, "");
   } catch {
     fail("Git operation failed; identity coverage cannot be established.");
   }
@@ -174,7 +174,8 @@ try {
 
   let bad = false;
   for (const sha of commits) {
-    const identities = git("show", "-s", "--format=%ae%n%ce", sha, "--").split("\n");
+    const identities = git("show", "--no-show-signature", "-s", "--format=%ae%n%ce", sha, "--").split("\n");
+    if (identities.length !== 2) fail(`Commit ${sha}: malformed identity fields.`);
     for (const [index, field] of ["author", "committer"].entries()) {
       if (!allowed.has(identities[index])) {
         console.error(`Commit ${sha}: disallowed ${field} identity.`);
