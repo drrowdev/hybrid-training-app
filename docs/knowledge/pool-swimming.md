@@ -19,7 +19,58 @@ restoration passed. This coordinator-supplied safe record **closes the
 account-deletion blocker**, superseding historical pending statements below;
 it does not close all standalone requirements or authorize release.
 
-The new **fifteen-case cohort is source/collection only, not runtime acceptance**.
+**First fifteen-case runtime:** [run34345964317](https://github.com/drrowdev/hybrid-training-app/actions/runs/34345964317)
+at exact `da81baacb2a72c5471863ea40cd5b60302b07c0b` ended11:36:23Z:
+all15 ran once,12 passed/3 failed, no skips/flaky cases. B3 plateau Reject passed.
+B4 failed at shared `same()` helper69 (2,955ms); its precise calling comparison
+is unknown from the retained safe output. B5 reached its dose/issued/revision/
+provisional checks and failed the modifications count at856 (2,434ms).
+The original first setup case timed out selecting Pool length at19 (30,077ms)
+after the program-page Pool swimming link. Its cause remains **unknown**.
+The other11 original cases, including C2/C3, passed. Normal149/catalog/
+Auth5phase4DDL15contexts/all36HTTP/Native16/core/single-FK controls/UPDATE
+integrity/main/final cleanup passed. Safe15 records retained; raw logs consumed
+once and discarded, not reread. No unchanged-head retry.
+
+**Separate source fixes**, code `61ab8c36d9536257351330d4b7ff0cb0ba1a1621`,
+tested tree `7515548bf7c643a5cb5bb82f64b7b0558b53b2c0`:
+
+- `futureUpdates` uses existing pure `prescriptionsEquivalent`: nested JSONB key
+  order cannot fabricate prescription modifications. Equal eligible HOLDs may
+  still confirm provisional work/revision. Actual dose/pace/array changes append
+  exactly one previous issued version and its decision association. Progression
+  and benchmark scopes, started/past freezes, original and existing history remain.
+- B4 preserves exact chosen `SwimBudget.minutes`, not prior derived `accountedMs`.
+  The canonical `applySwimProposal` result still matches the complete issued
+  workout, including newly accounted time; that time must be lower than the
+  suggested and prior targets. Unchanged rows retain full prior equality.
+  Its private boolean comparisons now have individual executable call sites
+  without exposing private values. This is a source-proven oracle correction,
+  **not** identification of the helper69 runtime call or proof of complete B4 repair.
+
+Eight added typed action cases and strengthened benchmark assertions cover
+confirmation, untouched equal/non-provisional/out-of-scope targets, nested key
+reordering, existing history, real dose/pace/array-content/array-order changes.
+Five reordered-HOLD variants failed before the comparator replacement.
+Current GitHub source validation: **693 web tests +55 engine tests passed**,
+scoped lint/typecheck/diff/secret checks passed. Pinned collection still finds15
+exact identities/six files, zero executed results/errors. CodeQL did not complete:
+Actions analysis failed; JavaScript database too large, not an analysis pass.
+Explicit terminal author/committer and remote identities are Copilot223556219;
+both AI trailers retained. The checkpoint is unsigned after a signing-service error.
+Exact commands and limitations are in the
+[current handoff](../../HANDOFF.md#pr805-first-fifteen-case-run--two-source-fixes-corrected-head-runtime-pending).
+
+The **corrected-head fifteen-case cohort has not executed**. The complete
+`swimming-mobile.spec.ts` remains byte-identical and mandatory next time; its
+timeout is neither explained nor fixed here. B1/B2/B3/B5, shared helpers, fixtures,
+all identities/order/bounds and B5's strict modification assertion remain.
+No SQL/Docker/browser execution, dispatch, hosted access or credential work.
+The owner confirmed production projectgrhet; MCP authorization is unresolved
+and unrelated. Account12 remains complete, but there is **no fifteen-case
+acceptance, standalone completion or production claim**.
+
+**Initial B3/B4/B5 source/collection checkpoint (historical):**
 Code `b29c9cc399e4db21341eea2dbf96969485a3105e`, tested tree
 `c7e14f0b844f0faefd527f013479bbb5f880ef73`, appends three cases to the existing B
 spec and describe, reusing the existing local actor and canonical helpers:
@@ -40,14 +91,14 @@ spec and describe, reusing the existing local actor and canonical helpers:
   after reload/re-review.
 
 Literal outcomes accompany full canonical audit/projection comparisons. All
-three retain IDs/dates/budgets/counts and source actuals. B1/B2 and all existing
+three retain IDs/dates/chosen budget minutes/counts and source actuals. B1/B2 and all existing
 fixtures are unchanged. Original12 casebook identities/order remain exactly:
 C2index9,Dindex10,C3index11; B3/B4/B5 append at12/13/14. The same six files now
 contain2/2/2/5/3/1 cases. Grouped B/C results must be matched by exact identity,
 not contiguous ledger position. Old4/6/8/11/12 cohorts and same-total new-case
 substitutions fail the reader; no attempts/skip/flaky/privacy/annotation waiver.
 
-GitHub workspace validation:431 reader/collection tests and55 existing engine
+Initial GitHub workspace validation:431 reader/collection tests and55 existing engine
 tests passed; scoped lint, web typecheck, diff and secret checks passed.
 The actual pinned Playwright1.60.0 `--list` collected15 exact identities in six
 files, zero executed results/errors, with existing isolated private cleanup.
@@ -57,7 +108,7 @@ Exact commands and commit-identity verification are in
 
 No live browser/DB/Docker/SQL, workflow dispatch, hosted credentials or Auth
 changes in this source task. Production OAuth reauthentication is unrelated.
-Live15 acceptance is later; lifecycle/analytics/scaling/concurrency variants
+Corrected-head live15 acceptance is later; lifecycle/analytics/scaling/concurrency variants
 remain. No standalone gate closes from source/collection. Limits stay30s/case,
 300s browser global,330s command,590s phase,410s server,35m total including3m
 cleanup and45m job. Nominal case maxima exceeding global300s are not a case-count
@@ -116,11 +167,16 @@ valid session returns a conflict.
 Each slot retains its own time budget when future work is reissued, including
 slots that could not fit a workout. A plan-wide default must not replace that
 slot's accepted limit.
+The limit is `SwimBudget.minutes`; `accountedMs` is derived known
+rest/turnaround/verified swimming time and changes when prescribed work changes.
 
 Future weeks are provisional. Recommendations use settled issued targets and
 actual work, with explicit effort missingness and compatible course data.
 Accept/reject/override decisions retain consulted inputs and rule versions.
 Started targets are frozen; accepting a new benchmark cannot rewrite them.
+Prescription equality ignores object-key order, not array order. Confirmation
+alone must not append an unchanged prescription as a modification; existing
+issued histories are never normalized or rewritten.
 Missed work never increases a later session.
 
 ## Poolside controls
