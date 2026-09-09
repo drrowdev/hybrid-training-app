@@ -635,15 +635,30 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
   },
   {
     slug: "single-leg-rdl",
-    summary: "Single-leg hinge for the hamstrings, glutes and balance.",
-    setup: "Hold a weight in one or both hands, stand on one leg with a soft knee.",
+    summary: "Single-leg dumbbell hinge for the hamstrings, glutes and balance.",
+    setup: "Hold one or two dumbbells at arm's length and stand on one leg with a soft knee.",
     steps: [
       "Hinge at the hip, letting the free leg float back as a counterweight.",
-      "Lower until the torso and back leg are near parallel.",
+      "Keep the dumbbells close as you lower until the torso and back leg are near parallel.",
       "Squeeze the glute to return upright.",
     ],
     cues: ["Hips stay square to the floor.", "Move slowly — control the balance."],
     commonMistakes: ["Letting the hip of the free leg rotate open."],
+  },
+  {
+    slug: "single-leg-rdl-bb",
+    summary: "Single-leg barbell hinge for the hamstrings, glutes and balance.",
+    setup: "Hold a barbell at arm's length and stand on one leg with a soft knee.",
+    steps: [
+      "Hinge at the hip, letting the free leg float back as a counterweight.",
+      "Keep the bar close as you lower until the torso and back leg are near parallel.",
+      "Squeeze the glute to return upright.",
+    ],
+    cues: ["Hips stay square to the floor.", "Keep the bar close and control the balance."],
+    commonMistakes: [
+      "Letting the hip of the free leg rotate open.",
+      "Letting the bar drift away from the standing leg.",
+    ],
   },
   {
     slug: "stiff-leg-deadlift",

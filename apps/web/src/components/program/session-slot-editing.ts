@@ -22,6 +22,8 @@ export interface TemplateSlot {
   split?: "A" | "B";
   /** What the template prescribes this slot across the block, for display. */
   dose?: { sets: string; reps: string; load: string | null };
+  /** Dose for a replacement when the original movement has a special dose. */
+  replacementDose?: { sets: string; reps: string; load: string | null };
 }
 
 /** Sets, reps and load as one line: `3–5 × 8–10 · 65–75% TM`. */
@@ -48,8 +50,8 @@ export function addedDose(
  *
  * `sourceMovement` is the template slot the row fills; `movement` is whatever
  * exercise currently fills it. They differ once the user swaps the exercise, and
- * the slot is what the engine matches its prescription rules against — so a
- * swapped supplemental keeps its supplemental sets, reps and percentage.
+ * the slot still drives role-based rules, while movement-specific volume follows
+ * the selected exercise.
  * `role: "accessory"` marks a movement the user added themselves.
  */
 export interface SeriesSlotDraft {
@@ -304,7 +306,7 @@ export function restoreSlot(
 
 /**
  * Put a different exercise in a slot. The slot itself is untouched, so links
- * keyed by it survive and the engine keeps prescribing it the same way.
+ * and role-based rules survive; exercise-specific volume follows the replacement.
  */
 export function replaceSlot(
   drafts: readonly SeriesSlotDraft[],

@@ -107,7 +107,12 @@ const ZULU_TB3: PickerTbTemplate = {
       key: "slot-2",
       label: "Day 2 \u00B7 B",
       slots: [
-        { sourceMovement: "deadlift", role: "main" },
+        {
+          sourceMovement: "deadlift",
+          role: "main",
+          dose: { sets: "1–3", reps: "3–8", load: "70–85% TM" },
+          replacementDose: MAIN_DOSE,
+        },
         { sourceMovement: "weighted-pullup", role: "main", kind: "weighted-bw" },
         { sourceMovement: "barbell-row", role: "supplemental" },
         {
@@ -957,6 +962,55 @@ describe("ProgramPicker rendering", () => {
     // The circuit states its own shape rather than a sets × reps line.
     const triad = html.indexOf('data-testid="tb-dose-slot-1-ab-triad"');
     expect(html.slice(triad, triad + 80)).toContain("3 rounds × 5");
+  });
+
+  it("shows the selected exercise's dose instead of the replaced deadlift dose", () => {
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        initialProgramId="tactical-barbell"
+        editContext={{
+          blockId: "11111111-1111-4111-8111-111111111111",
+          programId: "tactical-barbell",
+          setupValues: { templateId: "zulu" },
+          strengthWeekdays: [0, 1, 3, 4],
+          cardioWeekdays: [],
+          startedOn: "2026-01-05",
+          accessoriesEnabled: false,
+          customization: {
+            version: 1,
+            dayTypes: [
+              "strength",
+              "strength",
+              "rest",
+              "strength",
+              "strength",
+              "rest",
+              "rest",
+            ],
+            sessionMovements: {
+              "slot-2": [
+                { movement: "squat", sourceMovement: "deadlift" },
+                {
+                  movement: "weighted-pullup",
+                  sourceMovement: "weighted-pullup",
+                  kind: "weighted-bw",
+                },
+              ],
+            },
+          },
+        } as never}
+      />,
+    );
+
+    const start = html.indexOf('data-testid="tb-dose-slot-2-deadlift"');
+    expect(start).toBeGreaterThan(-1);
+    expect(html.slice(start, start + 120)).toContain(
+      "3–5 × 3–8 · 70–85% TM",
+    );
+    expect(html.slice(start, start + 120)).not.toContain("1–3");
   });
 
   it("keeps a custom row's saved dose when re-entering the wizard (regression)", () => {

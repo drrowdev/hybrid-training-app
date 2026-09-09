@@ -113,6 +113,8 @@ export interface TbWeeklySession {
 export interface TbPrescriptionRule {
   activeWeeks?: number[];
   movements?: TbMovement[];
+  /** Whether `movements` names template slots or the exercises currently filling them. */
+  matchBy?: "slot" | "movement";
   percent?: number | null;
   setsMin?: number;
   setsMax?: number;
@@ -925,6 +927,7 @@ const deadliftTaperRules = (): TbPrescriptionRule[] =>
   [3, 2, 1].map((sets, index) => ({
     activeWeeks: [6 + index],
     movements: ["deadlift"],
+    matchBy: "movement",
     setsMin: sets,
     setsMax: sets,
     note: "Deadlift volume tapers across the block.",
@@ -939,6 +942,7 @@ const operatorRules: TbPrescriptionRule[] = [
   {
     activeWeeks: ACTIVATION_OPERATOR_WEEKS,
     movements: ["deadlift"],
+    matchBy: "movement",
     setsMin: 1,
     setsMax: 3,
     note: "Deadlift: 1–3 work sets.",
