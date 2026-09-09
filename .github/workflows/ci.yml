@@ -19,10 +19,20 @@ on:
         required: false
         default: false
         type: boolean
+      swim_acceptance:
+        description: Run disposable local swim RPC acceptance
+        required: false
+        default: false
+        type: boolean
+      expected_sha:
+        description: Reviewed full commit SHA required for swim acceptance
+        required: false
+        default: ""
+        type: string
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.swim_acceptance && format('ci-swim-{0}', github.ref) || format('ci-{0}', github.ref) }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.swim_acceptance) }}
 
 jobs:
   identity-guard:
@@ -374,12 +384,62 @@ jobs:
           fi
           pnpm --filter @hta/web test:rpc-smoke
 
+  swim-acceptance:
+    name: disposable swim RPC acceptance
+    if: github.event_name == 'workflow_dispatch' && inputs.swim_acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      SWIM_ACCEPTANCE: ${{ inputs.swim_acceptance }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
+      ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
+    steps:
+      - name: Validate reviewed manual context
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_SHA" == "$GITHUB_SHA" ]]
+          [[ "$GITHUB_REF_TYPE" == "branch" ]]
+          [[ "$GITHUB_REF" == refs/heads/* && "$GITHUB_REF" != "refs/heads/main" ]]
+          [[ "$MIGRATE_PRODUCTION" == "false" && "$ALLOW_UNDEPLOYED" == "false" ]]
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Run guarded reference acceptance
+        run: pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts
+
+      - name: Verify task cleanup
+        if: always()
+        run: |
+          if [ -n "${SWIM_ACCEPTANCE_DIR:-}" ]; then
+            pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts --cleanup
+          fi
+
   prod-migrate:
     name: apply prod migrations
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
-      inputs.migrate_production
+      inputs.migrate_production &&
+      !inputs.swim_acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: ci

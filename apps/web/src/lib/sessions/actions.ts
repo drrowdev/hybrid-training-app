@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
+import { isAuthSessionMissingError } from "@supabase/supabase-js";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { type WeightUnit, toKg } from "@/lib/stats/units";
@@ -1593,6 +1594,14 @@ export async function completeSessionResult(
     completionEntryId != null && z.string().uuid().safeParse(completionEntryId).success
       ? completionEntryId
       : null;
+
+  const {
+    data: { user },
+    error: authError,
+  } = await getAuthUser();
+  if (!user && (!authError || isAuthSessionMissingError(authError))) {
+    return { error: "not-signed-in", errorCode: "auth" };
+  }
 
   const supabase = await createClient();
   // The transition RPC owns the completion receipt and lifecycle transition in

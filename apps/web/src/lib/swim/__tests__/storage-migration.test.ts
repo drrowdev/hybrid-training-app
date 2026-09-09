@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
@@ -21,6 +22,105 @@ function functionBody(name: string) {
   const end = sql.indexOf("CREATE FUNCTION public.", start + 1);
   return sql.slice(start, end === -1 ? undefined : end);
 }
+
+const identityMigration = readFileSync(new URL(
+  "../../../../../../packages/db/drizzle/0146_swim_request_identity.sql", import.meta.url,
+), "utf8");
+const identityRollback = readFileSync(new URL(
+  "../../../../../../packages/db/rollbacks/0146_swim_request_identity.down.sql", import.meta.url,
+), "utf8");
+const identityCallers = [
+  "swim_local_today", "swim_assert_start_safety", "swim_create_plan", "swim_start_workout",
+  "swim_set_plan_status", "swim_skip_workout", "swim_update_plan", "swim_resume_plan",
+  "swim_complete_workout", "swim_edit_result",
+];
+
+function definitions(source: string) {
+  return [...source.matchAll(
+    /CREATE (?:OR REPLACE )?FUNCTION public\.(swim_\w+)\([\s\S]*?\$\$;/g,
+  )];
+}
+
+describe("ADR0079 private swimming identity migration (DC-SW8/DC-SW9)", () => {
+  it("pins the original definition oracle and exactly the ten approved replacements", () => {
+    expect(createHash("sha256").update(sql).digest("hex"))
+      .toBe("7bc7da1817736138dc6827d90f51e7132a473626f900056ae7b5ceab58676ed8");
+    expect(definitions(identityMigration).map((match) => match[1]))
+      .toEqual(["swim_request_user_id", ...identityCallers]);
+    expect(definitions(identityRollback).map((match) => match[1])).toEqual(identityCallers);
+  });
+
+  it.each(identityCallers)("%s preserves its entire definition on repair and rollback", (name) => {
+    const original = definitions(sql).find((match) => match[1] === name)![0];
+    const replacement = original.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION");
+    expect(original).toContain("auth.uid()");
+    expect(definitions(identityMigration).find((match) => match[1] === name)![0])
+      .toBe(replacement.replaceAll("auth.uid()", "public.swim_request_user_id()"));
+    expect(definitions(identityRollback).find((match) => match[1] === name)![0])
+      .toBe(replacement);
+  });
+
+  it("pins the zero-argument helper's entire native-identity-only body and attributes", () => {
+    expect(definitions(identityMigration)[0]![0]).toBe(
+      "CREATE FUNCTION public.swim_request_user_id()\n"
+      + "RETURNS uuid LANGUAGE sql STABLE SECURITY DEFINER\n"
+      + "SET search_path = pg_catalog\n"
+      + "AS $$ SELECT auth.uid() $$;",
+    );
+  });
+
+  it("fails closed on all four catalog baselines before any function mutation", () => {
+    const baselines = [
+      ["has_schema_privilege", "to_regnamespace", "auth", "USAGE", "auth"],
+      ["has_function_privilege", "to_regprocedure", "auth.uid()", "EXECUTE", "auth.uid"],
+      ["has_function_privilege", "to_regprocedure", "public.swim_local_today()", "EXECUTE", "swim_local_today"],
+      ["has_function_privilege", "to_regprocedure", "public.swim_assert_start_safety(jsonb)", "EXECUTE", "swim_assert_start_safety"],
+    ];
+    const expected = "DO $$\nBEGIN\n" + baselines.map(([check, lookup, target, privilege, label]) =>
+      `  IF pg_catalog.${check}(\n`
+      + "    (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = 'service_role'),\n"
+      + `    pg_catalog.${lookup}('${target}'), '${privilege}'\n`
+      + "  ) IS DISTINCT FROM true THEN\n"
+      + `    RAISE EXCEPTION 'Swimming identity baseline requires service_role ${label} ${privilege}.';\n`
+      + "  END IF;\n",
+    ).join("") + "END $$;";
+    const beforeHelper = identityMigration.slice(0, identityMigration.indexOf("CREATE FUNCTION"));
+    expect(beforeHelper.replace(/^--.*$/gm, "").trim()).toBe(expected);
+  });
+
+  it("changes only the helper owner/ACL outside the fixed definitions and baseline", () => {
+    let remainder = identityMigration.slice(identityMigration.indexOf("CREATE FUNCTION"));
+    for (const [definition] of definitions(identityMigration)) remainder = remainder.replace(definition, "");
+    expect(remainder.trim()).toBe(
+      "ALTER FUNCTION public.swim_request_user_id() OWNER TO postgres;\n"
+      + "REVOKE ALL ON FUNCTION public.swim_request_user_id() FROM PUBLIC, anon, authenticated, service_role;\n"
+      + "GRANT EXECUTE ON FUNCTION public.swim_request_user_id() TO swim_writer, service_role;",
+    );
+    expect(identityMigration).not.toContain("--> statement-breakpoint");
+    expect(identityMigration.match(/auth\.uid\(\)/g)).toHaveLength(2);
+  });
+
+  it("restores all definitions atomically before dropping only the helper with RESTRICT", () => {
+    let remainder = identityRollback.replace(/^--.*$/gm, "");
+    for (const [definition] of definitions(identityRollback)) remainder = remainder.replace(definition, "");
+    expect(remainder.replace(/\s+/g, " ").trim())
+      .toBe("BEGIN; DROP FUNCTION public.swim_request_user_id() RESTRICT; COMMIT;");
+    expect(identityRollback.indexOf("DROP FUNCTION"))
+      .toBeGreaterThan(identityRollback.lastIndexOf("CREATE OR REPLACE FUNCTION"));
+    expect(identityRollback).not.toMatch(/CASCADE|DELETE FROM|TRUNCATE|pg_get_functiondef/);
+  });
+
+  it("registers the additive migration without statement breakpoints", () => {
+    const directory = new URL("../../../../../../packages/db/drizzle/", import.meta.url);
+    const journal = JSON.parse(readFileSync(new URL("meta/_journal.json", directory), "utf8"));
+    expect(journal.entries).toHaveLength(148);
+    expect(journal.entries[146]).toEqual({
+      idx: 146, version: "7", when: 1788825600000,
+      tag: "0146_swim_request_identity", breakpoints: false,
+    });
+    expect(readdirSync(directory).filter((name) => name.endsWith(".sql"))).toHaveLength(148);
+  });
+});
 
 describe("ADR0079 swimming SQL boundary", () => {
   it("adds independently owned plans without manufacturing a primary program", () => {

@@ -83,3 +83,61 @@ describe("dedicated swim RPC target safety", () => {
     expect(() => getSwimRpcTestEnv({ ...configured(), SWIM_TEST_PROJECT_REF: "fixture.supabase.co" })).toThrow();
   });
 });
+
+describe("localhost-only swim RPC target mode", () => {
+  const local = () => ({
+    SWIM_RPC_TEST_NONPRODUCTION: "true",
+    SWIM_RPC_TEST_LOCAL: "true",
+    SWIM_TEST_PROJECT_REF: "local",
+    SMOKE_SUPABASE_URL: "http://127.0.0.1:54321",
+    SMOKE_SUPABASE_ANON_KEY: "anonymous-credential-fixture",
+    SMOKE_SUPABASE_SERVICE_ROLE_KEY: "administrator-credential-fixture",
+  });
+
+  it("accepts a bare loopback origin acknowledged with SWIM_TEST_PROJECT_REF=local", () => {
+    expect(getSwimRpcTestEnv(local())).toEqual({
+      url: "http://127.0.0.1:54321",
+      anonKey: local().SMOKE_SUPABASE_ANON_KEY,
+      serviceRoleKey: local().SMOKE_SUPABASE_SERVICE_ROLE_KEY,
+      projectRef: "local",
+    });
+  });
+
+  it.each(["localhost", "[::1]"])("accepts other loopback hostnames: %s", (hostname) => {
+    expect(getSwimRpcTestEnv({ ...local(), SMOKE_SUPABASE_URL: `http://${hostname}:54321` })?.url)
+      .toBe(`http://${hostname}:54321`);
+  });
+
+  it("does not activate local mode without the exact SWIM_RPC_TEST_LOCAL flag", () => {
+    expect(() => getSwimRpcTestEnv({ ...local(), SWIM_RPC_TEST_LOCAL: undefined })).toThrow();
+    expect(() => getSwimRpcTestEnv({ ...local(), SWIM_RPC_TEST_LOCAL: "1" })).toThrow();
+  });
+
+  it("still requires the exact SWIM_RPC_TEST_NONPRODUCTION acknowledgement", () => {
+    expect(getSwimRpcTestEnv({ ...local(), SWIM_RPC_TEST_NONPRODUCTION: "false" })).toBeNull();
+  });
+
+  it("rejects any non-'local' project reference in local mode, even a real-looking one", () => {
+    expect(() => getSwimRpcTestEnv({ ...local(), SWIM_TEST_PROJECT_REF: "pooltestfixture" })).toThrow();
+  });
+
+  it.each([
+    "https://127.0.0.1:54321", // not http
+    "http://example.com:54321", // not loopback
+    "http://127.0.0.1:54321/rest/v1", // path
+    "http://127.0.0.1:54321?token=1", // query
+    "http://127.0.0.1:54321#frag", // fragment
+    "http://user:pass@127.0.0.1:54321", // credentials
+    "not a URL",
+  ])("rejects a widened localhost target: %s", (url) => {
+    expect(() => getSwimRpcTestEnv({ ...local(), SMOKE_SUPABASE_URL: url })).toThrow();
+  });
+
+  it("never lets a hosted supabase.co URL through local mode", () => {
+    expect(() => getSwimRpcTestEnv({ ...local(), SMOKE_SUPABASE_URL: "https://pooltestfixture.supabase.co" })).toThrow();
+  });
+
+  it("keeps the hosted mode's own guard behavior unaffected by SWIM_RPC_TEST_LOCAL being absent", () => {
+    expect(getSwimRpcTestEnv(configured())).not.toBeNull();
+  });
+});
