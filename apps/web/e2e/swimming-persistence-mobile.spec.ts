@@ -1,12 +1,23 @@
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { errors, type Page, type Request } from "@playwright/test";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { formatSwimDistance, swimBenchmarkTrend, type SwimObservation } from "@hta/domain";
+import { generateSwimPlan, SWIM_GENERATOR_VERSION } from "@hta/engine";
 import { test as seededTest, expect } from "./fixtures/seed";
+import type { SeedConfig } from "./fixtures/seed";
 import { signInAs } from "./fixtures/auth";
 import { markOnboarded } from "./fixtures/seed-blocks";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { workoutPresentation } from "../src/lib/swim/presentation";
 import type { SwimPlanRow, SwimWorkoutRow } from "../src/lib/swim/storage";
+import {
+  createSwimPlan, startSwimWorkout, completeSwimWorkout, listSwimPlans, listSwimWorkouts,
+} from "../src/lib/swim/storage";
+import { standaloneWeekRequests, type StandalonePlanDefinition, type StandaloneWorkoutDefinition } from "../src/lib/swim/model";
+import { loadSwimHistory, loadSwimHubView } from "../src/lib/swim/queries";
+import { addDaysToYmd, mondayOfYmd } from "../src/lib/dates";
+import { formatSwimTime } from "../src/lib/swim/time";
 import {
   SWIM_ALERT_CODEBOOK, alertAnnotation, classifyAlertNodes, startBackend,
   unavailableAlert, validateAlertCategory,
@@ -119,6 +130,79 @@ async function openSavedWorkout(page: Page, planURL: string, saved: Awaited<Retu
     await expect(steps.nth(index)).toContainText(step.rest);
   }
   return page.url();
+}
+
+async function analyticsActor(admin: SupabaseClient, user: { userId: string; email: string; password: string }, config: SeedConfig) {
+  await markOnboarded(admin, user.userId);
+  const profile = await admin.from("profiles").update({ timezone: "UTC" })
+    .eq("id", user.userId).select("timezone").single();
+  expect(profile.error === null && profile.data?.timezone === "UTC").toBe(true);
+  const client = createClient(config.supabaseUrl, config.anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const signedIn = await client.auth.signInWithPassword(user);
+  expect(signedIn.error === null && signedIn.data.user?.id === user.userId).toBe(true);
+  return client;
+}
+
+async function arrangeAnalytics(client: SupabaseClient, today: string, observations: SwimObservation[] = []) {
+  const startDate = addDaysToYmd(mondayOfYmd(today), -7);
+  const setup = {
+    goal: "technique_base" as const, experience: "recreational" as const,
+    course: { numerator: 25, denominator: 1, unit: "m" as const },
+    knownStrokes: ["freestyle" as const], equipment: [],
+    recentComfortableLengths: 12, sessionBudgetMinutes: 60,
+  };
+  const generated = generateSwimPlan({
+    setup, calibration: null, weeks: standaloneWeekRequests(startDate, 2, [1, 4]),
+  });
+  if (!generated.ok) throw new Error("Synthetic analytics generation failed.");
+  const definition: StandalonePlanDefinition = {
+    version: 1, setup, generatorVersion: SWIM_GENERATOR_VERSION,
+    schedule: { startDate, weeks: 2, weekdays: [1, 4] }, initialDose: generated.value.dose,
+  };
+  return createSwimPlan(client, {
+    startedOn: startDate, endsOn: addDaysToYmd(startDate, 13), definition,
+    state: { version: 1, observations, acceptedCalibration: null, decisions: [] },
+    workouts: generated.value.weeks.flatMap((week) => week.slots.map((slot) => {
+      if (slot.kind !== "workout") throw new Error("Missing synthetic analytics workout.");
+      const definition: StandaloneWorkoutDefinition = {
+        version: 1, original: slot.original, issued: slot.issued, modifications: [],
+        weekIndex: week.weekIndex, slotId: slot.slotId, intent: slot.intent, provisional: week.provisional,
+      };
+      return { scheduled_date: slot.dateISO, slot: "single" as const, definition };
+    })),
+  });
+}
+
+async function analyticsState(client: SupabaseClient, userId: string) {
+  const plans = await listSwimPlans(client);
+  const workouts = await listSwimWorkouts(client);
+  expect(plans.length === 1 && plans.every((row) => row.user_id === userId)).toBe(true);
+  expect(workouts.length === 4 && workouts.every((row) =>
+    row.user_id === userId && row.plan_id === plans[0].id)).toBe(true);
+  const sessions = await client.from("sessions").select("*").order("id");
+  const logs = await client.from("cardio_logs").select("*").order("id");
+  expect(sessions.error === null && logs.error === null).toBe(true);
+  expect(sessions.data !== null && sessions.data.every((row) => row.user_id === userId)).toBe(true);
+  expect(logs.data !== null && logs.data.every((row) =>
+    sessions.data!.some((session) => session.id === row.session_id))).toBe(true);
+  expect(sessions.data!.every((session) => session.completed_at !== null &&
+    logs.data!.filter((row) => row.session_id === session.id && row.swim_result !== null).length === 1)).toBe(true);
+  return {
+    plans, workouts, sessions: sessions.data!, logs: logs.data!,
+    history: await loadSwimHistory(client, workouts),
+  };
+}
+
+async function expectWeeklyAnalytics(page: Page, view: Awaited<ReturnType<typeof loadSwimHubView>>) {
+  const rows = page.getByRole("table", { name: "Weekly distance by pool", exact: true }).locator("tbody tr");
+  await expect(rows).toHaveCount(view.analytics.weeks.length);
+  for (const [index, week] of view.analytics.weeks.entries()) {
+    await expect(rows.nth(index).locator("th, td")).toHaveText([
+      week.week, week.course, week.planned, week.actual, String(week.frequency), week.adherence,
+    ]);
+  }
 }
 
 test.describe("ADR0079 mobile swimming persistence and isolation", () => {
@@ -340,6 +424,147 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
       expect(firstStarted.workouts[0].session_id).not.toBe(secondStarted.workouts[0].session_id);
     } finally {
       await secondContext.close();
+    }
+  });
+
+  test("E1 DC-SW1/DC-SW6: weekly swimming analytics keep native pool courses separate", async ({
+    page, context, freshUser, seedConfig, admin, baseURL,
+  }) => {
+    {
+      const actor = await analyticsActor(admin, freshUser, seedConfig);
+      const today = new Date().toISOString().slice(0, 10);
+      const observations: SwimObservation[] = (["m", "yd"] as const).map((unit) => ({
+        protocol: "css_200_400", version: "swim-css-1", observedOn: today, verified: false,
+        course: { numerator: 25, denominator: 1, unit }, stroke: "freestyle", equipment: [],
+        trials: [
+          { distance: 200, lengths: 8, timeMs: unit === "m" ? 180000 : 160000 },
+          { distance: 400, lengths: 16, timeMs: unit === "m" ? 420000 : 360000 },
+        ],
+      }));
+      // Storage arrangement is not evidence of logging or assessment UI actions.
+      const created = await arrangeAnalytics(actor, today, observations);
+      for (const [index, unit] of (["m", "yd", "m"] as const).entries()) {
+        const workout = created.workouts[index];
+        const started = await startSwimWorkout(actor, workout.id, workout.revision);
+        await completeSwimWorkout(actor, {
+          workoutId: started.id, expectedRevision: started.revision,
+          clientLogId: randomUUID(), completionEntryId: randomUUID(), allowChangedCourse: unit === "yd",
+          result: {
+            version: 1, snapshot: { ...started.definition.issued.snapshot,
+              course: { numerator: 25, denominator: 1, unit } },
+            lengths: unit === "yd" ? 16 : 8, timeMs: 420000, rpe: 5, completion: "completed",
+            provenance: { source: "manual", recordedAt: `${today}T12:00:00Z` },
+          },
+        });
+      }
+      const before = await analyticsState(actor, freshUser.userId);
+      expect(before.sessions.length === 3 && before.logs.length === 3).toBe(true);
+      expect(isDeepStrictEqual(before.plans[0].state, created.plan.state)).toBe(true);
+      expect(isDeepStrictEqual(before.workouts.map((row) => row.definition),
+        created.workouts.map((row) => row.definition))).toBe(true);
+      const view = await loadSwimHubView(actor, freshUser.userId, before.plans[0]);
+      const actual = view.analytics.weeks.filter((row) => row.week === mondayOfYmd(today));
+      expect(isDeepStrictEqual(actual.map(({ course, actual, frequency }) => ({ course, actual, frequency })), [
+        { course: "25 m", actual: "400 m", frequency: 2 },
+        { course: "25 yd", actual: "400 yd", frequency: 1 },
+      ])).toBe(true);
+      expect(view.assessment).toBeUndefined();
+      expect(view.analytics.bests).toHaveLength(4);
+      expect(isDeepStrictEqual(view.analytics.bests.map(({ label, time }) => [label, time]), [
+        ["200 m · 25 m · Freestyle", "3:00"], ["400 m · 25 m · Freestyle", "7:00"],
+        ["200 yd · 25 yd · Freestyle", "2:40"], ["400 yd · 25 yd · Freestyle", "6:00"],
+      ])).toBe(true);
+      for (const observation of observations) {
+        const trend = swimBenchmarkTrend(observations, observation);
+        expect(trend.excluded).toHaveLength(0);
+        expect(isDeepStrictEqual(trend.personalBests.map(({ distance, timeMs }) => ({ distance, timeMs })),
+          observation.trials.map(({ distance, timeMs }) => ({ distance, timeMs })))).toBe(true);
+      }
+      await signInAs(context, freshUser, seedConfig, baseURL!);
+      await page.goto(`/app/swim?plan=${created.plan.id}`);
+      await page.locator(`a[href="/app/swim/${created.workouts[1].id}"]`).click();
+      const nativeResult = page.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
+      await expect(nativeResult).toContainText("400 yd");
+      await expect(nativeResult).toContainText("25 yd");
+      await page.reload();
+      await expect(nativeResult).toContainText("400 yd");
+      await page.goto(`/app/swim?plan=${created.plan.id}`);
+      for (const reload of [false, true]) {
+        if (reload) await page.reload();
+        await expectWeeklyAnalytics(page, view);
+        const bests = page.getByRole("heading", { name: "Best swims", exact: true })
+          .locator("xpath=following-sibling::ul[1]").getByRole("listitem");
+        await expect(bests).toHaveCount(4);
+        for (const [index, best] of view.analytics.bests.entries()) {
+          await expect(bests.nth(index)).toContainText(best.label);
+          await expect(bests.nth(index)).toContainText(best.time);
+        }
+        expect(isDeepStrictEqual(await analyticsState(actor, freshUser.userId), before)).toBe(true);
+        expect(isDeepStrictEqual(await loadSwimHubView(actor, freshUser.userId, before.plans[0]), view)).toBe(true);
+      }
+    }
+  });
+
+  test("E2 DC-SW2/DC-SW6: ordinary swim results do not create a pace calibration", async ({
+    page, context, freshUser, seedConfig, admin, baseURL,
+  }) => {
+    {
+      const actor = await analyticsActor(admin, freshUser, seedConfig);
+      const today = new Date().toISOString().slice(0, 10);
+      const created = await arrangeAnalytics(actor, today);
+      // These ordinary manual results resemble a pair, but carry no assessment protocol.
+      for (const [index, lengths] of [8, 16].entries()) {
+        const workout = created.workouts[index];
+        const started = await startSwimWorkout(actor, workout.id, workout.revision);
+        await completeSwimWorkout(actor, {
+          workoutId: started.id, expectedRevision: started.revision,
+          clientLogId: randomUUID(), completionEntryId: randomUUID(),
+          result: {
+            version: 1, snapshot: started.definition.issued.snapshot,
+            lengths, timeMs: index === 0 ? 180000 : 420000, rpe: 5, completion: "completed",
+            provenance: { source: "manual", recordedAt: `${today}T12:00:00Z` },
+          },
+        });
+      }
+      const before = await analyticsState(actor, freshUser.userId);
+      expect(before.sessions.length === 2 && before.logs.length === 2).toBe(true);
+      expect(isDeepStrictEqual(before.plans[0].state, {
+        version: 1, observations: [], acceptedCalibration: null, decisions: [],
+      })).toBe(true);
+      expect(isDeepStrictEqual(before.workouts.map((row) => row.definition),
+        created.workouts.map((row) => row.definition))).toBe(true);
+      const view = await loadSwimHubView(actor, freshUser.userId, before.plans[0]);
+      expect(view.assessment).toBeUndefined();
+      expect(isDeepStrictEqual(view.analytics.bests, []) && isDeepStrictEqual(view.analytics.benchmarks, [])).toBe(true);
+      expect(view.analytics.weeks.find((row) => row.week === mondayOfYmd(today))?.actual).toBe("600 m");
+      const completed = before.history.filter((row) => row.result !== null);
+      expect(completed).toHaveLength(2);
+      expect(completed.every((row) => row.result!.snapshot.protocol === null &&
+        row.result!.snapshot.calibration === null && row.result!.provenance.source === "manual")).toBe(true);
+      expect(isDeepStrictEqual(completed.map((row) =>
+        formatSwimDistance(row.result!.lengths, row.result!.snapshot.course)), ["200 m", "400 m"])).toBe(true);
+      await signInAs(context, freshUser, seedConfig, baseURL!);
+      await page.goto("/app/sessions");
+      await expect(page.locator('a[href^="/app/sessions/"]:not([href="/app/sessions/new"])')).toHaveCount(2);
+      for (const row of completed) {
+        await page.locator(`a[href="/app/sessions/${row.workout.session_id}"]`).click();
+        await expect(page).toHaveURL(new URL(`/app/swim/${row.workout.id}`, baseURL!).href);
+        const result = page.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
+        await expect(result).toContainText(formatSwimDistance(row.result!.lengths, row.result!.snapshot.course));
+        await expect(result).toContainText(formatSwimTime(row.result!.timeMs));
+        await expect(result).toContainText("RPE 5");
+        await page.reload();
+        await expect(result).toContainText(formatSwimDistance(row.result!.lengths, row.result!.snapshot.course));
+        await page.goto("/app/sessions");
+      }
+      await page.goto(`/app/swim?plan=${created.plan.id}`);
+      for (const reload of [false, true]) {
+        if (reload) await page.reload();
+        await expectWeeklyAnalytics(page, view);
+        await expect(page.getByRole("heading", { name: /^(Best swims|Assessment history)$/ })).toHaveCount(0);
+        expect(isDeepStrictEqual(await analyticsState(actor, freshUser.userId), before)).toBe(true);
+        expect(isDeepStrictEqual(await loadSwimHubView(actor, freshUser.userId, before.plans[0]), view)).toBe(true);
+      }
     }
   });
 });

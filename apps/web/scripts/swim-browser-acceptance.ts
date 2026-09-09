@@ -100,6 +100,16 @@ export const SWIM_BROWSER_CASES = Object.freeze([
     describe: "ADR0079 later-cohort B swimming decisions and offline durability",
     title: "B8 DC-SW2/DC-SW3: beginner setup offers learning guidance instead of a workout",
   }),
+  Object.freeze({
+    file: "e2e/swimming-persistence-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming persistence and isolation",
+    title: "E1 DC-SW1/DC-SW6: weekly swimming analytics keep native pool courses separate",
+  }),
+  Object.freeze({
+    file: "e2e/swimming-persistence-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming persistence and isolation",
+    title: "E2 DC-SW2/DC-SW6: ordinary swim results do not create a pace calibration",
+  }),
 ]);
 const EXPECTED_FILES = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
 
