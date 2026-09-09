@@ -12,6 +12,7 @@ export * from "./prescription-set-work";
 export * from "./prescribed-snapshot";
 export * from "./system-load";
 export * from "./movement-load-identity";
+export * from "./movement-work-identity";
 export * from "./target-load";
 export * from "./legacy-system-load-warmup";
 export * from "./prescription-fidelity";

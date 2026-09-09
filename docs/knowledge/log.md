@@ -1437,3 +1437,13 @@ histories. Migration 0145 updates the existing dumbbell row in place, preserving
 its UUID and every linked training max and logged set, then adds the barbell row.
 The rollback restores the legacy dumbbell-or-kettlebell definition and refuses
 to remove the barbell row after it has user references.
+
+## [2026-09-09] fix | Save larger sessions and time Dead Hangs
+
+Tactical Barbell session edits now accept up to 20 movements, matching the
+editor's supported session size instead of rejecting the ninth row with a raw
+array-validation error. The editor stops offering another exercise at that
+bound. Dead Hang now carries an explicit hold-time dose from customization
+through the program engine and adapter, so previews and workout logs use seconds
+instead of reps. Existing Dead Hang rows without a timed override use 3 sets of
+20–40 seconds. No migration.
