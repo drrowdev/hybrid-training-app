@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 const allowed = new Set([
+  "198982749+Copilot@users.noreply.github.com",
   "223556219+Copilot@users.noreply.github.com",
   "280348738+drrowdev@users.noreply.github.com",
   "noreply@github.com",

@@ -8,8 +8,9 @@ const root = path.resolve(import.meta.dirname, "../../../../..");
 const checker = path.join(root, "scripts/check-commit-identities.mjs");
 const hook = readFileSync(path.join(root, ".husky/pre-push"), "utf8");
 const bot = "223556219+Copilot@users.noreply.github.com";
+const cloudBot = "198982749+Copilot@users.noreply.github.com";
 const human = "280348738+drrowdev@users.noreply.github.com";
-const bad = "198982749+Copilot@users.noreply.github.com";
+const bad = "unapproved-contributor@example.invalid";
 const zero = "0".repeat(40);
 let dir: string;
 let repo: string;
@@ -165,13 +166,38 @@ describe("commit identity guard", () => {
     expect(pushEvent(base, head).stderr).toContain(`${head}: disallowed author`);
   });
 
-  it("accepts all three exact emails and historical humans without App trailers", () => {
+  it("accepts all four exact emails and historical humans without App trailers", () => {
     commit(human, "noreply@github.com");
-    const head = commit();
+    const head = commit(cloudBot, bot);
     publishObjects();
     const result = pushEvent(base, head);
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("(2 commits inspected)");
+  });
+
+  it.each([
+    [bot, bot],
+    [bot, cloudBot],
+    [cloudBot, bot],
+    [cloudBot, cloudBot],
+  ])("accepts official bot author %s and committer %s without trailers", (author, committer) => {
+    const head = commit(author, committer);
+    publishObjects();
+    const result = pushEvent(base, head);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("(1 commits inspected)");
+    expect(result.stderr).toBe("");
+  });
+
+  it.each([
+    ["author", "999999999+UnapprovedFixture@users.noreply.github.com", cloudBot],
+    ["committer", cloudBot, "999999999+UnapprovedFixture@users.noreply.github.com"],
+  ])("rejects an unapproved GitHub %s email", (field, author, committer) => {
+    const head = commit(author, committer);
+    publishObjects();
+    const result = pushEvent(base, head);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toBe(`Commit ${head}: disallowed ${field} identity.\n`);
   });
 
   it("uses PR source/base OIDs rather than a synthetic checkout or current base tip", () => {
