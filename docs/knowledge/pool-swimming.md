@@ -262,7 +262,62 @@ SQL/schema/RLS/grant changes require a separately approved additive migration
 and rollback proposal. Mobile and actual shared-load-ledger acceptance remain
 blocked until the real RPC suite is fully green.
 
+### Reversible movement-reference candidate — source checkpoint, blocked
+
+[ADR 0080](../adr/0080-deferred-custom-movement-references.md) records the
+owner-approved two-FK maximum candidate: change only set_logs and
+session_movements movement references from RESTRICT/not-deferrable to NO ACTION
+DEFERRABLE INITIALLY DEFERRED, with a guarded inverse. GoTrue does not issue SET
+CONSTRAINTS. Both table locks precede exact catalog checks; bounded waits and
+normal validation scans fail closed, without cleanup, cascade, SET NULL or retry.
+Table/column/index/owner/ACL/RLS state and all other relationships remain.
+
+Run34321670984 at `1bb56` (07:03:52Z) measured baseline and immediate23503/set-logs;
+both deferred references allowed exactly one Auth deletion plus forced ALL
+constraints. Every transaction rolled back and restoration/fixture absence
+passed. Native16/normal148/catalog/Auth5phase4DDL15contexts/all36HTTP/core/cleanup
+passed; intentional nonqualifying stop, original12 unrun. No independent measured
+proof for the second FK, GoTrue equivalence or application success follows.
+
+Normal migration count is now **149**, not identity definition level148. The
+five identity phases, four DDL files, fifteen service contexts and all36HTTP remain.
+The temporary rollback-only helper/mode are removed. The ordinary browser call
+follows a durable exact-source down/up proof and two one-FK necessity assertions,
+each fully rolled back with both references present. Four UUIDs per fixture;
+existing supabase_admin setup and tested Auth SESSION AUTHORIZATION; fresh
+candidate/other-relationship/absence verification after each attempt. Target
+OIDs are not reused after committed DROP+ADD; semantic comparison normalizes
+only target OIDs and changed modes. Safe evidence excludes raw schema and IDs.
+No Drizzle journal manipulation or compensating user-data deletion.
+
+Deferral changes INSERT/UPDATE/DELETE timing globally to transaction completion
+or forced checking; committed orphans remain forbidden. Reconfirmed coupled
+0061/0144 SQL routines propagate failures and wrappers consume request results.
+Original148 has no FK catch-and-continue dependency (sole exception handler:
+unrelated0115 duplicate_object); app23503 rehab handling, 23505 idempotency and
+0138 repoint-before-delete are unrelated/unchanged. External SQL clients were not
+audited. A discovered timing dependency blocks, rather than widens, this work.
+
+**Source blocker:** session_movements has no UPDATE/ALL RLS policy
+(0059;0063 explicitly documents blocked real updates despite its UPDATE grant).
+C3's required existing-client UPDATE-to-absent cannot reach the FK. The strict
+23503 assertion remains; no RLS/grant change, bypass or zero-row success allowance
+was made. Owner/coordinator guidance is required before qualification.
+
+C3 also adds referenced movement DELETE and orphan INSERT/UPDATE checks through
+the existing linked authenticated client, with fresh four-record preservation and
+exact orphan-key absence reads after rejection. All native-control/Auth404/linked
+preservation/actual-deletion/absence assertions remain, as do C2 and the other ten
+cases. Both C2/C3 must actually pass on the normal candidate head; structural
+proof cannot replace them. Source tests/typecheck/lint and twelve-case collection
+are recorded in [HANDOFF](../../HANDOFF.md). Candidate runtime SQL, necessity,
+all36HTTP and positive C2/C3 remain **unrun**, not accepted. Production remains
+separately gated.
+
 ### Rollback-only FK diagnostics — temporary source route
+
+**Historical, superseded by ADR 0080 above.** The following describes prior
+source/authority states and preserves their148 evidence, not a route to rerun.
 
 The owner-approved PR805 diagnostic is source-pinned ON, separately from the
 exhausted Drizzle evidence mode (still OFF). It runs after the unchanged
