@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { inspect } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import {
-  CLI_ASSET, CLI_SHA256, DEFAULT_SERVICES, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
+  ACTIVE_MIGRATION_TOTAL, CLI_ASSET, CLI_SHA256, DEFAULT_SERVICES, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
   containerSchema, outcome, processIdentity, readyServiceNames, requireAcceptance, requireArchive, requireCleanupState,
   requireContainer, requireFreshReport, requireLocalStatus, requireManualContext,
   requireNetwork, requireNoInheritedTargets, requirePinnedDefaultConfig, requirePrivateLocation, requireProcess, requireReadyStack,
@@ -29,31 +29,33 @@ const sha = "a".repeat(40);
 const configHash = "b".repeat(64);
 const networkId = "c".repeat(64);
 const project = "pr802-123-1";
-describe("DC-SW8 temporary rollback-only runner route", () => {
+describe("DC-SW8 ordinary candidate runner route", () => {
   const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
-  it("pins diagnostic mode ON, leaves exhausted Drizzle mode OFF and hashes the injected helper", () => {
-    expect(source).toContain("const ROLLBACK_PROBE_ONLY = true;");
+  it("removes the obsolete bypass and leaves normal Drizzle enabled", () => {
+    expect(source).not.toMatch(/ROLLBACK_PROBE_ONLY|swim-fk-rollback-probes|finishRollbackOnly|requireBrowserRoute/);
     expect(source).toContain("const MIGRATION_DIAGNOSTIC_ONLY = false;");
-    expect(source).toContain('from "./swim-fk-rollback-probes"');
+    expect(source).toContain('from "./swim-movement-reference-roundtrip"');
     expect(source).toContain('"apps/web/e2e-rpc/setup.ts", "apps/web/scripts"');
-    expect(source).toContain('qualifying: false, diagnosticMode: "rollback-only", browserSuite: "not-run"');
+    expect(source).toContain('["--filter", "@hta/db", "db:migrate"]');
+    expect(existsSync(new URL("../../../../scripts/swim-fk-rollback-probes.ts", import.meta.url))).toBe(false);
   });
-  it("runs only after unchanged prerequisites/36 HTTP, returns before all twelve cases and guards their call site", () => {
-    const start = source.indexOf('await stage("rollback-only FK probes"');
+  it("requires relationship proof after identity/36 HTTP and then runs the original browser stage", () => {
+    const start = source.indexOf('await stage("movement reference down-up and necessity proof"');
     const browser = source.indexOf('await stage("mobile browser acceptance"');
     expect(start).toBeGreaterThan(source.indexOf("requireIdentityHelperRpcCases(ledger)"));
     expect(start).toBeLessThan(browser);
     const route = source.slice(start, browser);
-    expect(route).toContain("runRollbackProbes(command, target.dbId");
-    expect(route).toContain("manifest.rollbackProbes = record");
-    expect(route).toContain('summary("Swim rollback-only probes (nonqualifying)", record)');
-    expect(route).toMatch(/return;\s+}\s+requireBrowserRoute\(ROLLBACK_PROBE_ONLY\);/);
+    expect(route).toContain("runMovementReferenceRoundTrip({");
+    expect(route).toContain("manifest.movementReferences = record");
+    expect(route).not.toMatch(/return;|if \(/);
+    expect(source.slice(browser)).toContain("runSwimBrowserStage({");
   });
-  it("adds the terminal marker after cleanup and prevents even a cleanup-only summary implying acceptance", () => {
-    expect(source.indexOf("finishRollbackOnly(reporting)")).toBeGreaterThan(source.indexOf("try { await cleanup(); }"));
-    expect(source).toContain("if (ROLLBACK_PROBE_ONLY && !cleanupOnly) finishRollbackOnly(reporting)");
-    expect(source).toContain('ROLLBACK_PROBE_ONLY ? { success: false, qualifying: false, diagnosticMode: "rollback-only" }');
-    expect(source).toContain("twelve-case UI/API suite not run; nonqualifying");
+  it("checks tracked hashes and exact UTF8 before each relationship SQL read is returned", () => {
+    const route = source.slice(source.indexOf('await stage("movement reference down-up'));
+    expect(route).toContain('requireUnchanged();\n        const bytes = readFileSync(join(root, file));');
+    expect(route).toContain('assert(hash(bytes) === sourceHashes[file], "Tracked movement reference SQL changed")');
+    expect(route).toContain('assert(Buffer.from(sql, "utf8").equals(bytes), "Movement reference SQL is not exact UTF-8")');
+    expect(route.indexOf("return sql;")).toBeGreaterThan(route.indexOf("Buffer.from(sql"));
   });
 });
 const context = () => ({
@@ -256,7 +258,7 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
     expect(files).toEqual([...new Set(files)].sort());
     for (const path of declaredPaths) expect(files).toContain(path);
     expect(files).toContain("packages/db/drizzle/meta/_journal.json");
-    expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(148);
+    expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(149);
     expect(files).toContain("apps/web/next.config.ts");
     expect(files).toContain("apps/web/postcss.config.mjs");
     expect(files.filter((file) => file.startsWith("apps/web/e2e/")).every((file) =>
@@ -747,15 +749,18 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     }
   });
 
-  it("requires all 148 journal entries and SQL files and records 148 without filtering out 0147", () => {
-    expect(source).toContain("journal.entries.length === 148");
-    expect(source).toContain('sourceFiles.filter((f) => /^packages\\/db\\/drizzle\\/[^/]+\\.sql$/.test(f)).length === 148');
-    expect(source).toContain("manifest.migrationCount = 148;");
+  it("requires normal total 149 while preserving identity definition level 148", () => {
+    expect(ACTIVE_MIGRATION_TOTAL).toBe(149);
+    expect(source).toContain("journal.entries.length === ACTIVE_MIGRATION_TOTAL");
+    expect(source).toContain('sourceFiles.filter((f) => /^packages\\/db\\/drizzle\\/[^/]+\\.sql$/.test(f)).length === ACTIVE_MIGRATION_TOTAL');
+    expect(source).toContain("manifest.migrationCount = ACTIVE_MIGRATION_TOTAL;");
     const journal = JSON.parse(readFileSync(new URL(
       "../../../../../../packages/db/drizzle/meta/_journal.json", import.meta.url,
     ), "utf8")) as { entries: { tag: string }[] };
-    expect(journal.entries).toHaveLength(148);
-    expect(journal.entries.at(-1)?.tag).toBe("0147_shared_completion_identity");
+    expect(journal.entries).toHaveLength(149);
+    expect(journal.entries[147]?.tag).toBe("0147_shared_completion_identity");
+    expect(journal.entries.at(-1)?.tag).toBe("0148_defer_custom_movement_references");
+    expect(source).toContain("checkAuthBoundary(authPrivileges, 148)");
   });
 
   it("pins all ten exact original/up bodies and distinct invoker/definer attributes to reviewed source", () => {

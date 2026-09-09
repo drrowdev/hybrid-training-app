@@ -1,48 +1,35 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { PrivateCommand } from "./swim-auth-privileges";
-import { acceptanceAssert as assert, type AcceptanceReporting } from "./swim-acceptance-reporting";
+import { acceptanceAssert as assert } from "./swim-acceptance-reporting";
 
 const bootstrapRole = "supabase_admin";
-const modes = z.enum(["baseline", "immediate", "deferred"]);
+export const MOVEMENT_REFERENCE_FILES = {
+  down: "packages/db/rollbacks/0148_defer_custom_movement_references.down.sql",
+  up: "packages/db/drizzle/0148_defer_custom_movement_references.sql",
+} as const;
+const modes = z.enum(["set-logs-only", "session-movements-only"]);
 const outcomes = z.enum(["succeeded", "rejected", "setup-failed", "unavailable"]);
 const states = z.enum(["none", "23503", "other"]);
 const constraints = z.enum(["none", "set-logs", "session-movements", "other"]);
-const flagIds = [
-  "owner-session", "owner-current", "owner-super", "auth-role-present", "auth-login",
-  "auth-not-super", "auth-not-inherit", "auth-create-role", "auth-not-create-db",
-  "auth-not-replication", "auth-not-bypass-rls", "fk-count", "fk-identity", "fk-confrelid",
-  "fk-conkey", "fk-confkey", "fk-confdeltype", "fk-confupdtype", "fk-confmatchtype",
-  "fk-convalidated", "fk-condeferrable", "fk-condeferred", "fk-conislocal",
-  "fk-coninhcount", "fk-conparentid", "fixtures-absent",
-] as const;
-const prerequisitesSchema = z.discriminatedUnion("observed", [
-  z.object({ observed: z.literal(false) }).strict(),
-  z.object({
-    observed: z.literal(true), matched: z.boolean(),
-    mismatched: z.array(z.enum(flagIds)).max(flagIds.length).refine((ids) =>
-      ids.every((id, index) => index === 0 || flagIds.indexOf(ids[index - 1]!) < flagIds.indexOf(id))),
-  }).strict(),
-]).refine((r) => !r.observed || !r.matched || r.mismatched.length === 0);
 export const probeRecordSchema = z.object({
   mode: modes, outcome: outcomes, SQLSTATE: states, constraint: constraints,
   roleMatched: z.boolean(), forcedChecks: z.boolean(), rowCountMatched: z.boolean(),
   schemaRestored: z.boolean(), fixturesAbsent: z.boolean(),
 }).strict().refine((r) => r.outcome !== "succeeded" ||
   (r.SQLSTATE === "none" && r.constraint === "none" && r.roleMatched && r.forcedChecks && r.rowCountMatched));
-export const rollbackRecordSchema = z.object({
-  diagnosticMode: z.literal("rollback-only"), qualifying: z.literal(false),
-  status: z.enum(["inconclusive", "measured", "failed"]),
-  probes: z.array(probeRecordSchema).max(3),
-  prerequisites: prerequisitesSchema,
+export const movementReferenceRecordSchema = z.object({
+  status: z.enum(["running", "matched", "failed"]),
+  initial: z.boolean(), down: z.boolean(), up: z.boolean(),
+  probes: z.array(probeRecordSchema).max(2),
 }).strict();
 type Mode = z.infer<typeof modes>;
 type Probe = z.infer<typeof probeRecordSchema>;
-type Record = z.infer<typeof rollbackRecordSchema>;
+type Record = z.infer<typeof movementReferenceRecordSchema>;
 const attemptSchema = z.tuple([outcomes, states, constraints, z.boolean(), z.boolean(), z.boolean()]);
 const snapshotSchema = z.tuple([
-  z.boolean(), z.boolean(), z.boolean(), z.string().min(1).max(65_536),
-  z.string().regex(/^[a-f0-9]{32}$/), z.boolean(), z.array(z.boolean()).length(flagIds.length),
+  z.boolean(), z.boolean(), z.boolean(), z.string().regex(/^[a-f0-9]{32}$/),
+  z.string().regex(/^[a-f0-9]{32}$/), z.boolean(),
 ]);
 type Snapshot = z.infer<typeof snapshotSchema>;
 const uuid = z.string().regex(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
@@ -56,11 +43,6 @@ const targets = [
   ["set_logs", "set_logs_movement_id_fkey"],
   ["session_movements", "session_movements_movement_id_fkey"],
 ] as const;
-const fkProperties = [
-  "p_identity", "p_confrelid", "p_conkey", "p_confkey", "p_confdeltype", "p_confupdtype",
-  "p_confmatchtype", "p_convalidated", "p_condeferrable", "p_condeferred", "p_conislocal",
-  "p_coninhcount", "p_conparentid",
-];
 const authProperties = [
   "p_auth_login", "p_auth_not_super", "p_auth_not_inherit", "p_auth_create_role",
   "p_auth_not_create_db", "p_auth_not_replication", "p_auth_not_bypass_rls",
@@ -71,45 +53,71 @@ SET LOCAL lock_timeout = '1s';
 SET LOCAL idle_in_transaction_session_timeout = '5s';
 SET LOCAL search_path = pg_catalog;`;
 
-// Keep full pg_constraint tuples privately, including OIDs and every mode bit.
-// Unknown additional FKs from either target table to movements fail the shape gate.
-const catalog = `
-WITH movement_fks AS (
+// Only target OIDs and the three deliberately changed mode bits are normalized.
+// All other relationships retain their full tuples, including their OIDs.
+function catalog(candidate: boolean) {
+  return `
+WITH relationships AS (
   SELECT c.*, pg_catalog.to_jsonb(c) AS tuple FROM pg_catalog.pg_constraint c
-  WHERE c.contype = 'f' AND (c.confrelid = 'public.movements'::pg_catalog.regclass
-    OR (c.conrelid IN ('public.set_logs'::pg_catalog.regclass, 'public.session_movements'::pg_catalog.regclass)
-      AND (SELECT attnum FROM pg_catalog.pg_attribute WHERE attrelid = c.conrelid
-        AND attname = 'movement_id' AND NOT attisdropped) = ANY(c.conkey))
-    OR c.conname IN ('set_logs_movement_id_fkey', 'session_movements_movement_id_fkey'))
 ), targeted AS (
-  SELECT * FROM movement_fks WHERE
-    conrelid IN ('public.set_logs'::pg_catalog.regclass, 'public.session_movements'::pg_catalog.regclass)
-    OR conname IN ('set_logs_movement_id_fkey', 'session_movements_movement_id_fkey')
+  SELECT * FROM relationships c WHERE
+    (c.contype = 'f' AND c.conrelid IN ('public.set_logs'::pg_catalog.regclass, 'public.session_movements'::pg_catalog.regclass)
+      AND (c.confrelid = 'public.movements'::pg_catalog.regclass OR
+        (SELECT attnum FROM pg_catalog.pg_attribute WHERE attrelid = c.conrelid
+          AND attname = 'movement_id' AND NOT attisdropped) = ANY(c.conkey)))
+    OR c.conname IN ('set_logs_movement_id_fkey', 'session_movements_movement_id_fkey')
 ), props AS (
-  SELECT
-    (${targets.map(([table, name]) => `(conrelid = 'public.${table}'::pg_catalog.regclass AND conname = '${name}')`).join(" OR ")}) AS p_identity,
-    confrelid = 'public.movements'::pg_catalog.regclass AS p_confrelid,
-    conkey = ARRAY[(SELECT attnum FROM pg_catalog.pg_attribute
-      WHERE attrelid = conrelid AND attname = 'movement_id' AND NOT attisdropped)]::smallint[] AS p_conkey,
-    confkey = ARRAY[(SELECT attnum FROM pg_catalog.pg_attribute
-      WHERE attrelid = confrelid AND attname = 'id' AND NOT attisdropped)]::smallint[] AS p_confkey,
-    confdeltype = 'r' AS p_confdeltype, confupdtype = 'a' AS p_confupdtype,
-    confmatchtype = 's' AS p_confmatchtype, convalidated AS p_convalidated,
-    NOT condeferrable AS p_condeferrable, NOT condeferred AS p_condeferred,
-    conislocal AS p_conislocal, coninhcount = 0 AS p_coninhcount, conparentid = 0 AS p_conparentid
-  FROM targeted
-), totals AS (
-  SELECT count(*) = 2 AS p_count FROM props
+  SELECT (
+    (${targets.map(([table, name]) => `(c.conrelid = 'public.${table}'::pg_catalog.regclass AND c.conname = '${name}')`).join(" OR ")})
+    AND c.contype = 'f' AND c.connamespace = 'public'::regnamespace AND c.contypid = 0
+    AND c.confrelid = 'public.movements'::pg_catalog.regclass
+    AND c.conkey = ARRAY[a.attnum] AND c.confkey = ARRAY[b.attnum]
+    AND a.atttypid = 'uuid'::regtype AND b.atttypid = 'uuid'::regtype
+    AND a.atttypmod = -1 AND b.atttypmod = -1 AND a.attnotnull AND b.attnotnull
+    AND c.confdeltype = '${candidate ? "a" : "r"}' AND c.confupdtype = 'a' AND c.confmatchtype = 's'
+    AND c.convalidated AND ${candidate ? "" : "NOT "}c.condeferrable AND ${candidate ? "" : "NOT "}c.condeferred
+    AND c.conislocal AND c.coninhcount = 0 AND c.conparentid = 0 AND c.connoinherit
+    AND c.conpfeqop = ARRAY['=(uuid,uuid)'::regoperator::oid]
+    AND c.conppeqop = c.conpfeqop AND c.conffeqop = c.conpfeqop
+    AND c.confdelsetcols IS NULL AND c.conexclop IS NULL AND c.conbin IS NULL
+    AND EXISTS (SELECT 1 FROM pg_catalog.pg_index i WHERE i.indexrelid = c.conindid
+      AND i.indrelid = c.confrelid AND i.indisprimary AND i.indisvalid AND i.indisunique
+      AND i.indkey::smallint[] @> c.confkey AND i.indnkeyatts = 1)
+    AND t.relowner = 'postgres'::regrole AND m.relowner = 'postgres'::regrole
+    AND t.relkind = 'r' AND m.relkind = 'r' AND NOT t.relispartition AND NOT m.relispartition
+    AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits
+      WHERE inhrelid IN (t.oid, m.oid) OR inhparent IN (t.oid, m.oid))
+    AND pg_catalog.pg_get_constraintdef(c.oid, false) =
+      'FOREIGN KEY (movement_id) REFERENCES public.movements(id) ${candidate ? "DEFERRABLE INITIALLY DEFERRED" : "ON DELETE RESTRICT"}'
+  ) IS TRUE AS matched
+  FROM targeted c
+  LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid AND a.attname = 'movement_id' AND NOT a.attisdropped
+  LEFT JOIN pg_catalog.pg_attribute b ON b.attrelid = c.confrelid AND b.attname = 'id' AND NOT b.attisdropped
+  LEFT JOIN pg_catalog.pg_class t ON t.oid = c.conrelid
+  LEFT JOIN pg_catalog.pg_class m ON m.oid = c.confrelid
+), metadata AS (
+  SELECT jsonb_build_array(
+    (SELECT jsonb_agg(jsonb_build_array(oid, relname, relnamespace, relowner, relacl,
+        relkind, relam, relpersistence, relrowsecurity, relforcerowsecurity, reloptions) ORDER BY oid)
+      FROM pg_catalog.pg_class WHERE oid IN
+        ('public.set_logs'::regclass, 'public.session_movements'::regclass, 'public.movements'::regclass)),
+    (SELECT jsonb_agg(to_jsonb(a) ORDER BY attrelid, attnum) FROM pg_catalog.pg_attribute a
+      WHERE attrelid IN ('public.set_logs'::regclass, 'public.session_movements'::regclass, 'public.movements'::regclass)),
+    (SELECT jsonb_agg(to_jsonb(i) ORDER BY indexrelid) FROM pg_catalog.pg_index i
+      WHERE indrelid IN ('public.set_logs'::regclass, 'public.session_movements'::regclass, 'public.movements'::regclass)),
+    (SELECT jsonb_agg(to_jsonb(p) ORDER BY oid) FROM pg_catalog.pg_policy p),
+    (SELECT jsonb_agg(to_jsonb(t) ORDER BY oid) FROM pg_catalog.pg_trigger t WHERE NOT tgisinternal)
+  ) AS value
 ), evidence AS (
-  SELECT
-    (SELECT p_count AND COALESCE(pg_catalog.bool_and(
-      ${fkProperties.join(" AND ")}), false) FROM props) AS shapes,
-    (SELECT COALESCE(pg_catalog.jsonb_agg(tuple ORDER BY conrelid, conname), '[]'::jsonb)::text FROM targeted) AS tuples,
-    (SELECT pg_catalog.md5(COALESCE(pg_catalog.jsonb_agg(tuple ORDER BY conrelid, conname), '[]'::jsonb)::text)
-      FROM movement_fks WHERE oid NOT IN (SELECT oid FROM targeted)) AS others,
-    p_count
-  FROM totals
+  SELECT (SELECT count(*) = 2 AND COALESCE(bool_and(matched), false) FROM props) AS shapes,
+    (SELECT md5(COALESCE(jsonb_agg(tuple - ARRAY['oid','confdeltype','condeferrable','condeferred']
+      ORDER BY conrelid, conname), '[]'::jsonb)::text) FROM targeted) AS semantics,
+    md5(jsonb_build_array(
+      (SELECT COALESCE(jsonb_agg(tuple ORDER BY oid), '[]'::jsonb)
+        FROM relationships WHERE oid NOT IN (SELECT oid FROM targeted)), value)::text) AS others
+  FROM metadata
 )`;
+}
 
 function absent(ids: Fixture) {
   const values = Object.values(fixtureSchema.parse(ids)).map((id) => `'${id}'::uuid`).join(",");
@@ -124,11 +132,10 @@ function absent(ids: Fixture) {
     (columns as string[]).map((column) => `${column} = ANY(ARRAY[${values}])`).join(" OR ")})`).join(" AND ");
 }
 
-export function snapshotSql(ids: Fixture) {
-  // Role names are unique and rol* pins NOT NULL; keep EXISTS for absent rows.
-  // FK properties can be NULL: diagnostics must not replace the row-wise conjunction.
+export function snapshotSql(ids: Fixture, candidate = true) {
   return `BEGIN READ ONLY; ${bounds}
-${catalog}, owner_props AS (
+LOCK TABLE public.set_logs, public.session_movements IN ACCESS SHARE MODE;
+${catalog(candidate)}, owner_props AS (
   SELECT rolsuper AS p_owner_super FROM pg_catalog.pg_roles WHERE rolname = session_user
 ), auth_props AS (
   SELECT rolcanlogin AS p_auth_login, NOT rolsuper AS p_auth_not_super,
@@ -145,13 +152,7 @@ ${catalog}, owner_props AS (
 SELECT pg_catalog.json_build_array(
   p_owner_session AND p_owner_current AND p_owner_super,
   p_auth_role_present AND EXISTS (SELECT 1 FROM auth_props WHERE ${authProperties.join(" AND ")}),
-  shapes, tuples, others, p_fixtures_absent,
-  ARRAY[p_owner_session IS FALSE, p_owner_current IS FALSE, p_owner_super IS FALSE,
-    p_auth_role_present IS FALSE,
-    ${authProperties.map((p) => `(SELECT ${p} FROM auth_props) IS FALSE`).join(",\n    ")},
-    p_count IS FALSE,
-    ${fkProperties.map((p) => `(SELECT COALESCE(pg_catalog.bool_or(${p} IS FALSE), false) FROM props)`).join(",\n    ")},
-    p_fixtures_absent IS FALSE]) FROM evidence CROSS JOIN prerequisites;
+  shapes, semantics, others, p_fixtures_absent) FROM evidence CROSS JOIN prerequisites;
 ROLLBACK;`;
 }
 
@@ -164,29 +165,41 @@ constraint_label := CASE constraint_name
   WHEN 'session_movements_movement_id_fkey' THEN 'session-movements'
   ELSE 'other' END;`;
 
-export function probeSql(mode: Mode, ids: Fixture, original: Snapshot) {
+export function necessitySql(mode: Mode, ids: Fixture, original: Snapshot, downSql: string) {
   modes.parse(mode);
   fixtureSchema.parse(ids);
   snapshotSchema.parse(original);
-  assert(original[0] && original[1] && original[2] && original[5], "Rollback probe prerequisites mismatched");
-  const tupleHash = createHash("md5").update(original[3]).digest("hex");
-  const ddl = mode === "baseline" ? "" : targets.map(([table, name]) => `
+  assert(original[0] && original[1] && original[2] && original[5], "Movement reference prerequisites mismatched");
+  const [table, name] = targets[mode === "set-logs-only" ? 0 : 1];
+  const ddl = `
 ALTER TABLE public.${table} DROP CONSTRAINT ${name};
 ALTER TABLE public.${table} ADD CONSTRAINT ${name}
   FOREIGN KEY (movement_id) REFERENCES public.movements(id) MATCH SIMPLE
-  ON UPDATE NO ACTION ON DELETE NO ACTION ${mode === "immediate"
-    ? "NOT DEFERRABLE" : "DEFERRABLE INITIALLY DEFERRED"};`).join("\n");
+  ON UPDATE NO ACTION ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED;`;
   return `BEGIN; ${bounds}
+LOCK TABLE public.set_logs, public.session_movements IN ACCESS EXCLUSIVE MODE;
+DO $guard$
+DECLARE matched boolean;
+BEGIN
+  ${catalog(true)}
+  SELECT shapes AND semantics = '${original[3]}' AND others = '${original[4]}'
+    AND ${absent(ids)} INTO matched FROM evidence;
+  IF matched IS DISTINCT FROM true OR session_user <> '${bootstrapRole}' OR current_user <> '${bootstrapRole}' THEN
+    RAISE EXCEPTION USING ERRCODE = '55000';
+  END IF;
+END $guard$;
+${downSql}
+${bounds}
 DO $setup$
 DECLARE matched boolean; state_code text; constraint_name text;
   state_label text := 'none'; constraint_label text := 'none'; outcome text := 'setup-failed';
 BEGIN
   PERFORM pg_catalog.set_config('swim_rollback.ready', 'false', true);
   BEGIN
-    ${catalog}
-    SELECT shapes AND pg_catalog.md5(tuples) = '${tupleHash}' AND others = '${original[4]}'
+    ${catalog(false)}
+    SELECT shapes AND semantics = '${original[3]}' AND others = '${original[4]}'
       INTO matched FROM evidence;
-    IF NOT matched OR session_user <> '${bootstrapRole}' OR current_user <> '${bootstrapRole}' THEN
+    IF matched IS DISTINCT FROM true OR session_user <> '${bootstrapRole}' OR current_user <> '${bootstrapRole}' THEN
       RAISE EXCEPTION USING ERRCODE = '55000';
     END IF;
     ${ddl}
@@ -243,44 +256,49 @@ SELECT pg_catalog.current_setting('swim_rollback.result')::json;
 ROLLBACK;`;
 }
 
-export async function runRollbackProbes(
-  command: PrivateCommand, dbId: string, publish: (record: Record) => void,
-): Promise<Record> {
-  assert(/^[a-f0-9]{64}$/.test(dbId), "Rollback probe container invalid");
-  const record: Record = { diagnosticMode: "rollback-only", qualifying: false, status: "inconclusive", probes: [],
-    prerequisites: { observed: false } };
-  const sql = async (query: string) => {
+export async function runMovementReferenceRoundTrip(options: {
+  command: PrivateCommand; dbId: string; publish: (record: Record) => void;
+  verifiedSql: (file: typeof MOVEMENT_REFERENCE_FILES[keyof typeof MOVEMENT_REFERENCE_FILES]) => string;
+}): Promise<Record> {
+  const { command, dbId, publish, verifiedSql } = options;
+  assert(/^[a-f0-9]{64}$/.test(dbId), "Movement reference container invalid");
+  const record: Record = { status: "running", initial: false, down: false, up: false, probes: [] };
+  const sql = async (query: string, ddl = false) => {
     const { text, result } = await command("docker", [
-      "exec", dbId, "psql", "-XqAt", "--no-password", "-U", bootstrapRole, "-d", "postgres",
+      "exec", "-e", "PGOPTIONS=-c statement_timeout=30s -c lock_timeout=5s", dbId,
+      "psql", "-XqAt", "--no-password", "-U", bootstrapRole, "-d", "postgres",
       "-v", "ON_ERROR_STOP=1", "-c", query,
-    ], { capture: true, allowFailure: true, timeout: 15_000 });
-    assert(!result.timedOut && result.code === 0 && result.signal === null, "Rollback probe command unavailable");
-    assert(text.length <= 131_072, "Rollback probe output invalid");
+    ], { capture: true, allowFailure: true, timeout: 35_000 });
+    assert(!result.timedOut && result.code === 0 && result.signal === null, "Movement reference command unavailable");
+    assert(text.length <= 131_072, "Movement reference output invalid");
+    if (ddl) {
+      assert(text.trim() === "", "Movement reference DDL output invalid");
+      return;
+    }
     try { return JSON.parse(text) as unknown; } catch {
-      assert(false, "Rollback probe output invalid");
+      assert(false, "Movement reference output invalid");
     }
   };
   try {
     const first = freshFixture();
-    // Once only: never replace this with a post-probe observation.
-    const parsed = snapshotSchema.safeParse(await sql(snapshotSql(first)));
-    assert(parsed.success, "Rollback probe snapshot invalid");
-    const original = parsed.data;
-    const matched = original[0] && original[1] && original[2] && original[5];
-    const prerequisites = prerequisitesSchema.safeParse({
-      observed: true, matched, mismatched: flagIds.filter((_, index) => original[6][index]),
-    });
-    assert(prerequisites.success, "Rollback probe snapshot invalid");
-    record.prerequisites = prerequisites.data;
-    assert(matched, "Rollback probe prerequisites mismatched");
+    const original = snapshotSchema.parse(await sql(snapshotSql(first)));
+    record.initial = original[0] && original[1] && original[2] && original[5];
+    assert(record.initial, "Movement reference prerequisites mismatched");
+    const matches = (after: Snapshot) => after[0] && after[1] && after[2] && after[5] &&
+      after[3] === original[3] && after[4] === original[4];
+    for (const direction of ["down", "up"] as const) {
+      await sql(verifiedSql(MOVEMENT_REFERENCE_FILES[direction]), true);
+      record[direction] = matches(snapshotSchema.parse(await sql(snapshotSql(first, direction === "up"))));
+      assert(record[direction], "Movement reference round trip mismatched");
+    }
     for (const mode of modes.options) {
-      const ids = mode === "baseline" ? first : freshFixture();
+      const ids = freshFixture();
       const probe: Probe = { mode, outcome: "unavailable", SQLSTATE: "none", constraint: "none",
         roleMatched: false, forcedChecks: false, rowCountMatched: false, schemaRestored: false, fixturesAbsent: false };
       record.probes.push(probe);
       try {
         const [outcome, SQLSTATE, constraint, roleMatched, forcedChecks, rowCountMatched] =
-          attemptSchema.parse(await sql(probeSql(mode, ids, original)));
+          attemptSchema.parse(await sql(necessitySql(mode, ids, original, verifiedSql(MOVEMENT_REFERENCE_FILES.down))));
         Object.assign(probe, { outcome, SQLSTATE, constraint, roleMatched, forcedChecks, rowCountMatched });
         probeRecordSchema.parse(probe);
       } catch {
@@ -290,34 +308,21 @@ export async function runRollbackProbes(
         // A fresh owned connection is mandatory even after timeout, disconnect or invalid output.
         try {
           const after = snapshotSchema.parse(await sql(snapshotSql(ids)));
-          probe.schemaRestored = after[0] && after[1] && after[2] &&
-            after[3] === original[3] && after[4] === original[4];
+          probe.schemaRestored = matches(after);
           probe.fixturesAbsent = after[5];
         } catch { /* Unverified restoration fails closed; no repair mutations. */ }
       }
-      assert(probe.schemaRestored && probe.fixturesAbsent, "Rollback probe restoration unverified");
-      assert(probe.outcome !== "unavailable" && probe.outcome !== "setup-failed", "Rollback probe unavailable or setup failed");
-      assert(probe.roleMatched, "Rollback probe role mismatched");
-      if (mode === "baseline" && !(probe.outcome === "rejected" && probe.SQLSTATE === "23503" &&
-        (probe.constraint === "set-logs" || probe.constraint === "session-movements"))) break;
-      if (mode === "deferred") record.status = "measured";
+      assert(probe.schemaRestored && probe.fixturesAbsent, "Movement reference restoration unverified");
+      assert(probe.outcome === "rejected" && probe.SQLSTATE === "23503" && probe.roleMatched &&
+        probe.constraint === (mode === "set-logs-only" ? "session-movements" : "set-logs"),
+      "Two-FK necessity not proved");
     }
+    record.status = "matched";
   } catch (error) {
     record.status = "failed";
     throw error;
   } finally {
-    publish(rollbackRecordSchema.parse(record));
+    publish(movementReferenceRecordSchema.parse(record));
   }
   return record;
-}
-
-export function requireBrowserRoute(rollbackOnly: boolean) {
-  assert(!rollbackOnly, "NON-QUALIFYING: rollback-only; twelve-case suite not run");
-}
-
-export function finishRollbackOnly(reporting: AcceptanceReporting) {
-  reporting.failures.primary ??= reporting.failures.cleanup[0] ?? null;
-  try { requireBrowserRoute(true); } catch (error) {
-    reporting.recordFailure("rollback-only nonqualifying stop", error);
-  }
 }

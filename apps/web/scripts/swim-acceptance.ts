@@ -13,7 +13,7 @@ import {
   MIGRATION_EVIDENCE_ENV, MIGRATION_EVIDENCE_FILE, readMigrationEvidence,
 } from "../../../packages/db/scripts/migrate-evidence";
 import {
-  CLI_ASSET, CLI_SHA256, CLI_VERSION, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
+  ACTIVE_MIGRATION_TOTAL, CLI_ASSET, CLI_SHA256, CLI_VERSION, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
   containerSchema, networkSchema, outcome, processIdentity, readyServiceNames, requireAcceptance, requireArchive,
   requireCleanupState, requireFreshReport, requireLocalStatus,
   requireManualContext, requireNetwork, requireNoInheritedTargets, requirePinnedDefaultConfig, requirePrivateLocation,
@@ -32,14 +32,12 @@ import {
 } from "./swim-identity-roundtrip";
 import { runSwimBrowserStage } from "./swim-browser-stage";
 import { SWIM_BROWSER_CASES } from "./swim-browser-acceptance";
-import { finishRollbackOnly, requireBrowserRoute, runRollbackProbes } from "./swim-fk-rollback-probes";
+import { runMovementReferenceRoundTrip } from "./swim-movement-reference-roundtrip";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
 // Temporary source-only switch. The unchanged normal CLI must be restored before acceptance.
 const MIGRATION_DIAGNOSTIC_ONLY = false;
-// Remove this temporary route before repair-head or release acceptance.
-const ROLLBACK_PROBE_ONLY = true;
 const migrationEvidenceCommand: MigrationEvidenceCommand = "db:migrate:evidence";
 const hash = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args],
@@ -61,8 +59,7 @@ async function main(cleanupOnly: boolean) {
   const reporting = new AcceptanceReporting();
   const active = new Map<number, () => void>();
   const secrets = new Set<string>();
-  const manifest: Record<string, unknown> = { testedSha: process.env.EXPECTED_SHA, project,
-    ...(ROLLBACK_PROBE_ONLY ? { qualifying: false, diagnosticMode: "rollback-only", browserSuite: "not-run" } : {}) };
+  const manifest: Record<string, unknown> = { testedSha: process.env.EXPECTED_SHA, project };
   let state: Resources = { project, sha: process.env.EXPECTED_SHA!, createdAt: started,
     containers: [], volumes: [], processes: [], cleanup: "unconfirmed" };
   const save = () => {
@@ -96,9 +93,7 @@ async function main(cleanupOnly: boolean) {
     appendFileSync(process.env.GITHUB_ENV!, `SWIM_ACCEPTANCE_DIR=${directory}\n`);
     summary("Swim acceptance scope", {
       ...manifest, cleanup: "unconfirmed until a terminal cleanup record; forced cancellation may prevent observation",
-      scope: ROLLBACK_PROBE_ONLY
-        ? "Rollback-only diagnostics after unchanged prerequisites; twelve-case UI/API suite not run; nonqualifying"
-        : "Reference startup, unchanged migrations/catalog, complete swim RPC file and declared mobile browser cohort; not standalone release acceptance",
+      scope: "Reference startup, normal migrations/catalog, complete swim RPC file and declared mobile browser cohort; not standalone release acceptance",
     });
   }
   process.umask(0o077);
@@ -315,11 +310,11 @@ async function main(cleanupOnly: boolean) {
         ".github/workflows/ci.yml").split("\0").filter(Boolean);
       sourceHashes = sources();
       const journal = JSON.parse(readFileSync(join(root, "packages/db/drizzle/meta/_journal.json"), "utf8"));
-      assert(journal.entries.length === 148 && sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === 148);
+      assert(journal.entries.length === ACTIVE_MIGRATION_TOTAL && sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === ACTIVE_MIGRATION_TOTAL);
       manifest.sourceSha256 = hash(JSON.stringify(sourceHashes));
       manifest.configSha256 = hash(readFileSync(RPC_CONFIG));
       manifest.rpcSourceSha256 = hash(readFileSync(RPC_SUITE));
-      manifest.migrationCount = 148;
+      manifest.migrationCount = ACTIVE_MIGRATION_TOTAL;
       writeFileSync(join(directory, "source-hashes.json"), JSON.stringify(sourceHashes), { mode: 0o600 });
       assert(process.version.startsWith("v22.") && process.platform === "linux" && process.arch === "x64");
       assert((await command("pnpm", ["--version"], { capture: true })).text === "10.33.2");
@@ -549,17 +544,18 @@ async function main(cleanupOnly: boolean) {
       requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);
       requireIdentityHelperRpcCases(ledger);
     }), reporting);
-    if (ROLLBACK_PROBE_ONLY) {
-      await stage("rollback-only FK probes", async () => {
+    await stage("movement reference down-up and necessity proof", () => runMovementReferenceRoundTrip({
+      command, dbId: target.dbId,
+      verifiedSql: (file) => {
         requireUnchanged();
-        await runRollbackProbes(command, target.dbId, (record) => {
-          manifest.rollbackProbes = record;
-          summary("Swim rollback-only probes (nonqualifying)", record);
-        });
-      });
-      return;
-    }
-    requireBrowserRoute(ROLLBACK_PROBE_ONLY);
+        const bytes = readFileSync(join(root, file));
+        assert(hash(bytes) === sourceHashes[file], "Tracked movement reference SQL changed");
+        const sql = bytes.toString("utf8");
+        assert(Buffer.from(sql, "utf8").equals(bytes), "Movement reference SQL is not exact UTF-8");
+        return sql;
+      },
+      publish: (record) => { manifest.movementReferences = record; },
+    }));
     await stage("mobile browser acceptance", () => runSwimBrowserStage({
       command, root, runDirectory: directory, deadline, cacheEnv: process.env,
       target: {
@@ -582,7 +578,6 @@ async function main(cleanupOnly: boolean) {
       state.cleanup = "unconfirmed";
       reporting.recordFailure("cleanup", error, true);
     }
-    if (ROLLBACK_PROBE_ONLY && !cleanupOnly) finishRollbackOnly(reporting);
     process.off("SIGINT", cancel);
     process.off("SIGTERM", cancel);
     const primary = reporting.failures.primary?.stage;
@@ -590,7 +585,6 @@ async function main(cleanupOnly: boolean) {
     try {
       summary(cleanupOnly ? "Swim cleanup verification" : "Swim acceptance result", {
         ...outcome(primary, state.cleanup === "verified"),
-        ...(ROLLBACK_PROBE_ONLY ? { success: false, qualifying: false, diagnosticMode: "rollback-only" } : {}),
         stages: reporting.stages,
         failures: reporting.failures, manifest,
       });
