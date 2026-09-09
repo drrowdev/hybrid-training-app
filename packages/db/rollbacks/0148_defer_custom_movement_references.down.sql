@@ -26,8 +26,11 @@ BEGIN
     AND c.conkey = ARRAY[a.attnum] AND c.confkey = ARRAY[b.attnum]
     AND a.atttypid = 'uuid'::regtype AND b.atttypid = 'uuid'::regtype
     AND a.atttypmod = -1 AND b.atttypmod = -1 AND a.attnotnull AND b.attnotnull
-    AND c.confdeltype = 'a' AND c.confupdtype = 'a' AND c.confmatchtype = 's'
-    AND c.convalidated AND c.condeferrable AND c.condeferred
+    AND ((c.conrelid = 'public.set_logs'::regclass
+        AND c.confdeltype = 'a' AND c.condeferrable AND c.condeferred)
+      OR (c.conrelid = 'public.session_movements'::regclass
+        AND c.confdeltype = 'r' AND NOT c.condeferrable AND NOT c.condeferred))
+    AND c.confupdtype = 'a' AND c.confmatchtype = 's' AND c.convalidated
     AND c.conislocal AND c.coninhcount = 0 AND c.conparentid = 0 AND c.connoinherit
     AND c.conpfeqop = ARRAY['=(uuid,uuid)'::regoperator::oid]
     AND c.conppeqop = c.conpfeqop AND c.conffeqop = c.conpfeqop
@@ -40,7 +43,9 @@ BEGIN
     AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits
       WHERE inhrelid IN (t.oid, m.oid) OR inhparent IN (t.oid, m.oid))
     AND pg_catalog.pg_get_constraintdef(c.oid, false) =
-      'FOREIGN KEY (movement_id) REFERENCES public.movements(id) DEFERRABLE INITIALLY DEFERRED'
+      CASE WHEN c.conrelid = 'public.set_logs'::regclass
+        THEN 'FOREIGN KEY (movement_id) REFERENCES public.movements(id) DEFERRABLE INITIALLY DEFERRED'
+        ELSE 'FOREIGN KEY (movement_id) REFERENCES public.movements(id) ON DELETE RESTRICT' END
   ) IS TRUE), false) INTO matched
   FROM targets c
   LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid AND a.attname = 'movement_id' AND NOT a.attisdropped
@@ -53,10 +58,6 @@ BEGIN
 
   ALTER TABLE public.set_logs DROP CONSTRAINT set_logs_movement_id_fkey;
   ALTER TABLE public.set_logs ADD CONSTRAINT set_logs_movement_id_fkey
-    FOREIGN KEY (movement_id) REFERENCES public.movements(id) MATCH SIMPLE
-    ON UPDATE NO ACTION ON DELETE RESTRICT NOT DEFERRABLE;
-  ALTER TABLE public.session_movements DROP CONSTRAINT session_movements_movement_id_fkey;
-  ALTER TABLE public.session_movements ADD CONSTRAINT session_movements_movement_id_fkey
     FOREIGN KEY (movement_id) REFERENCES public.movements(id) MATCH SIMPLE
     ON UPDATE NO ACTION ON DELETE RESTRICT NOT DEFERRABLE;
 END;

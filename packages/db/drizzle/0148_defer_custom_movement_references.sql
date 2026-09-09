@@ -55,9 +55,5 @@ BEGIN
   ALTER TABLE public.set_logs ADD CONSTRAINT set_logs_movement_id_fkey
     FOREIGN KEY (movement_id) REFERENCES public.movements(id) MATCH SIMPLE
     ON UPDATE NO ACTION ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED;
-  ALTER TABLE public.session_movements DROP CONSTRAINT session_movements_movement_id_fkey;
-  ALTER TABLE public.session_movements ADD CONSTRAINT session_movements_movement_id_fkey
-    FOREIGN KEY (movement_id) REFERENCES public.movements(id) MATCH SIMPLE
-    ON UPDATE NO ACTION ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED;
 END;
 $migration$;

@@ -8,7 +8,7 @@ export const MOVEMENT_REFERENCE_FILES = {
   down: "packages/db/rollbacks/0148_defer_custom_movement_references.down.sql",
   up: "packages/db/drizzle/0148_defer_custom_movement_references.sql",
 } as const;
-const modes = z.enum(["set-logs-only", "session-movements-only"]);
+const modes = z.enum(["baseline", "candidate"]);
 const outcomes = z.enum(["succeeded", "rejected", "setup-failed", "unavailable"]);
 const states = z.enum(["none", "23503", "other"]);
 const constraints = z.enum(["none", "set-logs", "session-movements", "other"]);
@@ -27,8 +27,13 @@ export const updateIntegrityRecordSchema = z.object({
     !r.rowCountMatched && !r.schemaRestored && !r.fixturesAbsent));
 type UpdateIntegrity = z.infer<typeof updateIntegrityRecordSchema>;
 const updateMatched = (r: UpdateIntegrity) => r.outcome === "rejected" && r.SQLSTATE === "23503" &&
-  r.constraint === "session-movements" && r.roleMatched && r.forcedChecks && r.rowCountMatched &&
+  r.constraint === "set-logs" && r.roleMatched && r.forcedChecks && r.rowCountMatched &&
   r.schemaRestored && r.fixturesAbsent;
+const probeMatched = (p: Probe) => p.roleMatched && p.schemaRestored && p.fixturesAbsent &&
+  (p.mode === "baseline"
+    ? p.outcome === "rejected" && p.SQLSTATE === "23503" && p.constraint === "set-logs"
+    : p.outcome === "succeeded" && p.SQLSTATE === "none" && p.constraint === "none" &&
+      p.forcedChecks && p.rowCountMatched);
 export const movementReferenceRecordSchema = z.object({
   status: z.enum(["running", "matched", "failed"]),
   initial: z.boolean(), down: z.boolean(), up: z.boolean(),
@@ -36,9 +41,7 @@ export const movementReferenceRecordSchema = z.object({
   updateIntegrity: updateIntegrityRecordSchema,
 }).strict().refine((r) => r.status !== "matched" || (r.initial && r.down && r.up &&
   r.probes.length === 2 && r.probes.every((p, index) => p.mode === modes.options[index] &&
-    p.outcome === "rejected" && p.SQLSTATE === "23503" && p.roleMatched &&
-    p.constraint === (index === 0 ? "session-movements" : "set-logs") &&
-    p.schemaRestored && p.fixturesAbsent) && updateMatched(r.updateIntegrity)));
+    probeMatched(p)) && updateMatched(r.updateIntegrity)));
 type Mode = z.infer<typeof modes>;
 type Probe = z.infer<typeof probeRecordSchema>;
 type Record = z.infer<typeof movementReferenceRecordSchema>;
@@ -69,7 +72,7 @@ SET LOCAL lock_timeout = '1s';
 SET LOCAL idle_in_transaction_session_timeout = '5s';
 SET LOCAL search_path = pg_catalog;`;
 
-// Only target OIDs and the three deliberately changed mode bits are normalized.
+// Only the set_logs FK OID and its three deliberately changed mode bits are normalized.
 // All other relationships retain their full tuples, including their OIDs.
 function catalog(candidate: boolean) {
   return `
@@ -84,14 +87,20 @@ WITH relationships AS (
     OR c.conname IN ('set_logs_movement_id_fkey', 'session_movements_movement_id_fkey')
 ), props AS (
   SELECT (
-    (${targets.map(([table, name]) => `(c.conrelid = 'public.${table}'::pg_catalog.regclass AND c.conname = '${name}')`).join(" OR ")})
+    (${targets.map(([table, name]) => {
+      const deferred = candidate && table === "set_logs";
+      return `(c.conrelid = 'public.${table}'::pg_catalog.regclass AND c.conname = '${name}'
+      AND c.confdeltype = '${deferred ? "a" : "r"}'
+      AND ${deferred ? "" : "NOT "}c.condeferrable AND ${deferred ? "" : "NOT "}c.condeferred
+      AND pg_catalog.pg_get_constraintdef(c.oid, false) =
+        'FOREIGN KEY (movement_id) REFERENCES public.movements(id) ${deferred ? "DEFERRABLE INITIALLY DEFERRED" : "ON DELETE RESTRICT"}')`;
+    }).join(" OR ")})
     AND c.contype = 'f' AND c.connamespace = 'public'::regnamespace AND c.contypid = 0
     AND c.confrelid = 'public.movements'::pg_catalog.regclass
     AND c.conkey = ARRAY[a.attnum] AND c.confkey = ARRAY[b.attnum]
     AND a.atttypid = 'uuid'::regtype AND b.atttypid = 'uuid'::regtype
     AND a.atttypmod = -1 AND b.atttypmod = -1 AND a.attnotnull AND b.attnotnull
-    AND c.confdeltype = '${candidate ? "a" : "r"}' AND c.confupdtype = 'a' AND c.confmatchtype = 's'
-    AND c.convalidated AND ${candidate ? "" : "NOT "}c.condeferrable AND ${candidate ? "" : "NOT "}c.condeferred
+    AND c.confupdtype = 'a' AND c.confmatchtype = 's' AND c.convalidated
     AND c.conislocal AND c.coninhcount = 0 AND c.conparentid = 0 AND c.connoinherit
     AND c.conpfeqop = ARRAY['=(uuid,uuid)'::regoperator::oid]
     AND c.conppeqop = c.conpfeqop AND c.conffeqop = c.conpfeqop
@@ -103,8 +112,6 @@ WITH relationships AS (
     AND t.relkind = 'r' AND m.relkind = 'r' AND NOT t.relispartition AND NOT m.relispartition
     AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits
       WHERE inhrelid IN (t.oid, m.oid) OR inhparent IN (t.oid, m.oid))
-    AND pg_catalog.pg_get_constraintdef(c.oid, false) =
-      'FOREIGN KEY (movement_id) REFERENCES public.movements(id) ${candidate ? "DEFERRABLE INITIALLY DEFERRED" : "ON DELETE RESTRICT"}'
   ) IS TRUE AS matched
   FROM targeted c
   LEFT JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid AND a.attname = 'movement_id' AND NOT a.attisdropped
@@ -124,13 +131,16 @@ WITH relationships AS (
     (SELECT jsonb_agg(to_jsonb(p) ORDER BY oid) FROM pg_catalog.pg_policy p),
     (SELECT jsonb_agg(to_jsonb(t) ORDER BY oid) FROM pg_catalog.pg_trigger t WHERE NOT tgisinternal)
   ) AS value
+), changed AS (
+  SELECT * FROM targeted WHERE conrelid = 'public.set_logs'::pg_catalog.regclass
+    AND conname = 'set_logs_movement_id_fkey'
 ), evidence AS (
   SELECT (SELECT count(*) = 2 AND COALESCE(bool_and(props.matched), false) FROM props) AS shapes,
     (SELECT md5(COALESCE(jsonb_agg(tuple - ARRAY['oid','confdeltype','condeferrable','condeferred']
-      ORDER BY conrelid, conname), '[]'::jsonb)::text) FROM targeted) AS semantics,
+      ORDER BY conrelid, conname), '[]'::jsonb)::text) FROM changed) AS semantics,
     md5(jsonb_build_array(
       (SELECT COALESCE(jsonb_agg(tuple ORDER BY oid), '[]'::jsonb)
-        FROM relationships WHERE oid NOT IN (SELECT oid FROM targeted)), value)::text) AS others
+        FROM relationships WHERE oid NOT IN (SELECT oid FROM changed)), value)::text) AS others
   FROM metadata
 )`;
 }
@@ -208,12 +218,6 @@ export function necessitySql(mode: Mode, ids: Fixture, original: Snapshot, downS
   fixtureSchema.parse(ids);
   snapshotSchema.parse(original);
   assert(original[0] && original[1] && original[2] && original[5], "Movement reference prerequisites mismatched");
-  const [table, name] = targets[mode === "set-logs-only" ? 0 : 1];
-  const ddl = `
-ALTER TABLE public.${table} DROP CONSTRAINT ${name};
-ALTER TABLE public.${table} ADD CONSTRAINT ${name}
-  FOREIGN KEY (movement_id) REFERENCES public.movements(id) MATCH SIMPLE
-  ON UPDATE NO ACTION ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED;`;
   return `BEGIN; ${bounds}
 LOCK TABLE public.set_logs, public.session_movements IN ACCESS EXCLUSIVE MODE;
 DO $guard$
@@ -226,7 +230,7 @@ BEGIN
     RAISE EXCEPTION USING ERRCODE = '55000';
   END IF;
 END $guard$;
-${downSql}
+${mode === "baseline" ? downSql : ""}
 ${bounds}
 DO $setup$
 DECLARE matched boolean; state_code text; constraint_name text;
@@ -234,13 +238,12 @@ DECLARE matched boolean; state_code text; constraint_name text;
 BEGIN
   PERFORM pg_catalog.set_config('swim_rollback.ready', 'false', true);
   BEGIN
-    ${catalog(false)}
+    ${catalog(mode === "candidate")}
     SELECT shapes AND semantics = '${original[3]}' AND others = '${original[4]}'
       INTO matched FROM evidence;
     IF matched IS DISTINCT FROM true OR session_user <> '${bootstrapRole}' OR current_user <> '${bootstrapRole}' THEN
       RAISE EXCEPTION USING ERRCODE = '55000';
     END IF;
-    ${ddl}
     ${fixtureSql(ids)}
     PERFORM pg_catalog.set_config('swim_rollback.ready', 'true', true);
   EXCEPTION WHEN SQLSTATE '57014' OR OTHERS THEN
@@ -299,16 +302,16 @@ BEGIN
     END IF;
     ${fixtureSql(ids)}
     IF EXISTS (SELECT 1 FROM public.movements WHERE id = '${ids.set}'::uuid)
-      OR NOT EXISTS (SELECT 1 FROM public.session_movements
-        WHERE user_id = '${ids.user}'::uuid AND session_id = '${ids.session}'::uuid
+      OR NOT EXISTS (SELECT 1 FROM public.set_logs
+        WHERE id = '${ids.set}'::uuid AND session_id = '${ids.session}'::uuid
           AND movement_id = '${ids.movement}'::uuid) THEN
       RAISE EXCEPTION USING ERRCODE = '55000';
     END IF;
     SET CONSTRAINTS ALL IMMEDIATE;
     SET CONSTRAINTS ALL DEFERRED;
     BEGIN
-      UPDATE public.session_movements SET movement_id = '${ids.set}'::uuid
-        WHERE user_id = '${ids.user}'::uuid AND session_id = '${ids.session}'::uuid
+      UPDATE public.set_logs SET movement_id = '${ids.set}'::uuid
+        WHERE id = '${ids.set}'::uuid AND session_id = '${ids.session}'::uuid
           AND movement_id = '${ids.movement}'::uuid;
       GET DIAGNOSTICS affected = ROW_COUNT;
       row_matched := affected = 1;
@@ -374,7 +377,8 @@ export async function runMovementReferenceRoundTrip(options: {
       record.probes.push(probe);
       try {
         const [outcome, SQLSTATE, constraint, roleMatched, forcedChecks, rowCountMatched] =
-          attemptSchema.parse(await sql(necessitySql(mode, ids, original, verifiedSql(MOVEMENT_REFERENCE_FILES.down))));
+          attemptSchema.parse(await sql(necessitySql(mode, ids, original,
+            mode === "baseline" ? verifiedSql(MOVEMENT_REFERENCE_FILES.down) : "")));
         Object.assign(probe, { outcome, SQLSTATE, constraint, roleMatched, forcedChecks, rowCountMatched });
         probeRecordSchema.parse(probe);
       } catch {
@@ -389,9 +393,7 @@ export async function runMovementReferenceRoundTrip(options: {
         } catch { /* Unverified restoration fails closed; no repair mutations. */ }
       }
       assert(probe.schemaRestored && probe.fixturesAbsent, "Movement reference restoration unverified");
-      assert(probe.outcome === "rejected" && probe.SQLSTATE === "23503" && probe.roleMatched &&
-        probe.constraint === (mode === "set-logs-only" ? "session-movements" : "set-logs"),
-      "Two-FK necessity not proved");
+      assert(probeMatched(probe), `Movement reference ${mode} control not proved`);
     }
     const ids = freshFixture();
     const update = record.updateIntegrity;

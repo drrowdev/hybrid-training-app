@@ -1,7 +1,7 @@
 # ADR 0080 — Deferred custom movement references
 
 **Date:** 2026-09-09  
-**Status:** Owner-approved reversible candidate; verification-layer correction complete in source, live acceptance unrun.
+**Status:** Owner-approved reversible candidate, narrowed to set_logs only by measurement; live acceptance of the narrowed source is pending.
 Production remains separately gated. ADR 0080 was free at assigned head
 `1bb56a5b96a2209624125d811965e609c837b9e8`.
 
@@ -28,22 +28,37 @@ All three transactions rolled back; original schema and fixture absence were
 verified. Native16/normal148/catalog/Auth five phases, four DDL files, fifteen
 service contexts/all36HTTP/core/main and final cleanup passed. The intentional
 nonqualifying stop failed the run; all original twelve cases were unrun.
-Both FKs changed together: there is **no independent measured necessity proof
-for the second FK**, and structural SQL success is not GoTrue or app success.
+Both FKs changed together in that historical probe; it did not establish
+necessity of the second FK. Structural SQL success is not GoTrue or app success.
 Earlier run `34287396820` at `7d0fb2c` passed ten of twelve cases and failed C2/C3;
 the native-only C3 control deleted and linked data was preserved before failure.
+
+[Run34336292485](https://github.com/drrowdev/hybrid-training-app/actions/runs/34336292485)
+at exact `0b3b7401ec2a485ee1ea1f0304d2d3e0f09544a8`, ended09:47:27Z,
+passed normal149/catalog/Native16/Auth five phases/four DDL/fifteen contexts/
+all36HTTP/core and durable initial/down/up. Its first set-logs-only partial
+candidate succeeded: Auth session/current role matched, exactly one Auth row
+deleted, forced ALL checks completed, schema restored and every fixture ID
+absent after rollback. The two-FK necessity guard correctly stopped before the
+second probe, UPDATE integrity and browser12. Main/final cleanup verified.
+These are coordinator-supplied safe14 records; consumed raw logs were not reread.
+The SQL qualification repair returned a valid outcome, not unavailable.
 
 ## Decision
 
 Migration `0148_defer_custom_movement_references.sql` and its matching down file
-change only:
+change only `public.set_logs.set_logs_movement_id_fkey`. They are narrowed in
+place while unmerged; prior applied candidate stacks were disposable and
+destroyed. No new migration or journal tag is added.
 
-- `public.set_logs.set_logs_movement_id_fkey`
-- `public.session_movements.session_movements_movement_id_fkey`
+`public.session_movements.session_movements_movement_id_fkey` is never dropped,
+added or altered. Its original RESTRICT/NOT DEFERRABLE definition and OID remain.
+This is the measured minimum within the existing “up to two” approval, not a
+relaxation of the guard to accept the two-FK candidate.
 
 Forward: `ON DELETE RESTRICT NOT DEFERRABLE` → `ON DELETE NO ACTION
 DEFERRABLE INITIALLY DEFERRED`. Down requires the exact candidate first and
-restores the original forms. GoTrue does not issue `SET CONSTRAINTS`, hence
+restores only the original set_logs form. GoTrue does not issue `SET CONSTRAINTS`, hence
 initially deferred rather than a caller-dependent initially-immediate mode.
 Neither reference cascades nor sets null.
 
@@ -54,7 +69,9 @@ inspection; lock wait is 5s and statement wait 30s. DROP+ADD is necessary to
 change the delete action. Normal validation scans remain; no NOT VALID,
 disabled triggers, retries, ignored lock failures, or data cleanup.
 
-Both definitions must match before either mutation. Guards pin exact names,
+Both definitions must match before any mutation; session_movements must always
+be original. An unexpected two-deferred-FK schema fails, without normalization.
+Guards pin exact names,
 endpoints, UUID/non-null columns, NO ACTION update, MATCH SIMPLE, validated/local/
 no-parent/no-inheritance properties, equality operators, referenced primary index,
 canonical constraint text under catalog search_path, and expected postgres table
@@ -65,7 +82,7 @@ on the migration itself.
 
 ## Timing audit
 
-Deferral changes INSERT/UPDATE/DELETE error timing globally for these references,
+Deferral changes INSERT/UPDATE/DELETE error timing globally for the set_logs reference,
 not only account deletion. Errors may emerge at transaction completion or a
 forced check rather than at the individual statement. Committed orphans remain
 forbidden.
@@ -96,32 +113,37 @@ twelve-identity/six-file UI/API cohort, the relationship stage:
 2. Reads the exact source-fingerprinted, round-trip-UTF8-verified down/up files,
    applies them durably in order, and checks original then candidate definitions.
    It never edits the Drizzle journal.
-3. Tests set-logs-only and session-movements-only deferral from original schema,
-   each inside its own fully rolled-back transaction with both references present.
-   Setup uses existing `supabase_admin`; tested DELETE uses SET LOCAL SESSION
-   AUTHORIZATION `supabase_auth_admin`, not SET ROLE. Success forces ALL constraints.
-   Each partial candidate must reject 23503 on the remaining RESTRICT reference;
-   either success fails the two-FK candidate for coordinator narrowing.
+3. Requires exactly two controls, each inside its own fully rolled-back transaction
+   with the same intact synthetic graph and fresh IDs. `baseline` uses the exact
+   down file to restore only set_logs RESTRICT and must reject 23503/set-logs.
+   `candidate` uses the current single-deferred schema without DDL and must delete
+   exactly one Auth row and successfully force ALL constraints.
+   Setup uses existing `supabase_admin`; both tested DELETEs use SET LOCAL SESSION
+   AUTHORIZATION `supabase_auth_admin`, not SET ROLE. Failed reproduction,
+   rejection of the candidate, unavailable or incomplete results fail closed.
 4. Uses four generated IDs per fixture and a fresh connection after every attempt,
    including command failure, to verify candidate restoration and fixture absence.
-   Target fingerprints normalize only fresh target OIDs and the three explicitly
-   changed mode bits; all other constraint tuples remain complete. Table/column/
+   Target fingerprints normalize only the set_logs FK OID and its three explicitly
+   changed mode bits; session_movements and all other constraint tuples remain
+   complete, including OIDs and every bit. Recreating or deferring the second FK
+   fails proof even if a later API case could pass. Table/column/
    index/ACL/RLS/user-trigger metadata is compared privately. Public evidence is
    closed statuses and booleans, not catalog data, UUIDs or raw errors.
-5. After both necessity probes, separately tests UPDATE integrity against the
+5. After both controls, separately tests UPDATE integrity against the
    current candidate using the existing `supabase_admin` bootstrap socket.
    This is SQL FK enforcement, not authenticated-user UPDATE permission. The
    shared synthetic fixture is created in one transaction ending ROLLBACK.
    Candidate definitions/metadata and fixture absence are checked before setup;
    the exact reference row and absence of a movement at the generated set UUID
    are checked before mutation. Setup constraints are forced before the narrow
-   attempt. One exact session_movements UPDATE must affect one row, then forced
-   ALL checking must reject 23503 on its movement-reference FK. Setup errors,
+   attempt. One exact set_logs UPDATE, filtered by generated set ID, session ID
+   and original movement ID, must affect one row, then forced ALL checking must
+   reject 23503/set-logs. Setup errors,
    zero rows, other errors or missing forced checking cannot qualify.
    A fresh connection verifies candidate semantics, unchanged other metadata and
    absence of every fixture ID even after error/disconnect. The strict
    `updateIntegrity` record starts not-attempted; overall matched requires this
-   restored rejection, down/up and both unchanged necessity proofs.
+   restored rejection, down/up and both baseline/candidate controls.
 
 Unverified restoration fails closed, without compensating row deletion or silent
 repair. Existing exact owned-stack cleanup remains the last safety net.
@@ -145,14 +167,15 @@ composite-key filters and a returned representation, requiring no error and
 exactly `[]`. Fresh unchanged four-record and missing-parent-reference checks
 follow. It does not invent an authenticated FK rejection from zero affected rows.
 
-No policy, grant, role or migration semantics changed. Both protections are
+That verification correction changed no policy, grant, role or migration semantics. Both protections are
 tested at their actual layers: authenticated RLS denial in C3, actual FK UPDATE
 rejection in the owned SQL assertion above. This resolves the source-proven
 validation blocker without another approval loop or an extra browser case.
 Neither assertion has yet been measured live on this candidate.
 
 Source unit/lint/type checks and collection are not SQL execution. Live up/down,
-necessity, UPDATE integrity, normal149, all36HTTP and C2/C3 at this candidate remain unrun. Both real
+baseline/candidate controls, UPDATE integrity, normal149, all36HTTP and C2/C3
+at the narrowed candidate remain unrun. Both real
 positive flows and all integrity requirements must pass before acceptance; no
 source or structural measurement supplies release/production approval.
 

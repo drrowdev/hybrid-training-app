@@ -18,9 +18,10 @@ exist for compatibility and shared workload only.
 The current PR802 continuation authorizes disposable localhost services on the
 cloud runner only, not hosted credentials. The twelve-case reference at `7d0fb2c`
 passed ten and failed C2/C3. The reversible movement-reference candidate below
-passed normal149/catalog/Auth36 and durable down/up at `65050755`; the first
-necessity catch-default failure blocked browser12. The shared SQL naming
-collision is fixed in source; next live validation and C2/C3 proof remain pending.
+is now narrowed to set_logs only: run34336292485 at `0b3b7401` proved that the
+set-logs-only partial candidate structurally succeeds. The guard correctly
+rejected the two-FK scope. Live validation of the narrowed source and C2/C3
+proof remain pending.
 Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
@@ -35,9 +36,60 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-09 (65050755 runtime evidence; SQL qualification source repair)
+**Last updated:** 2026-09-09 (0b3b7401 measured result; single-FK source narrowing)
 
-### PR805 reversible movement-reference candidate — SQL qualification fixed, live result pending
+### PR805 reversible movement-reference candidate — set_logs only, live acceptance pending
+
+Continues exact `0b3b7401ec2a485ee1ea1f0304d2d3e0f09544a8` on
+`copilot/new-acceptance-cases`, without branch/base/history changes.
+Latest coordinator-supplied safe evidence:
+[run34336292485](https://github.com/drrowdev/hybrid-training-app/actions/runs/34336292485),
+ended09:47:27Z, passed normal149/catalog/Native16/Auth5phase4DDL15contexts/all36HTTP/
+core and durable initial/down/up. The first set-logs-only partial candidate
+**succeeded**: Auth session/current role matched, exactly one Auth row deleted,
+forced ALL checks completed, full schema restored and every generated fixture ID
+absent after rollback. The two-FK necessity guard correctly stopped before the
+second probe, UPDATE integrity and browser12. Main/final cleanup verified.
+Safe14 records only; consumed raw logs were not reread and no unchanged-head
+retry was dispatched. The qualification correction now yields valid evidence,
+not unavailable. Structural success is not GoTrue equivalence or app acceptance.
+
+Within the existing “up to two” disposable approval, the unmerged0148 up/down
+files are narrowed in place to **only set_logs_movement_id_fkey**. Prior candidate
+stacks were disposable and destroyed. Up changes RESTRICT/NOT DEFERRABLE to
+NO ACTION/DEFERRABLE INITIALLY DEFERRED; down restores it. Both references are
+guarded before mutation; session_movements must always retain its original
+definition and OID. An unexpected two-deferred-FK schema fails, not normalizes.
+All original148 SQL files, journal tags and total149 remain unchanged.
+
+The existing helper and main call site remain. Initial candidate → exact down
+file → original snapshot → exact up file → candidate snapshot remain durable.
+Only the set_logs FK OID/mode bits are normalized; session_movements belongs in
+full unchanged metadata. `bool_and(props.matched)` remains qualified.
+Exactly two rollback controls replace the obsolete necessity modes:
+`baseline` uses exact down SQL and requires23503/set-logs; `candidate` uses the
+single-deferred schema and requires Auth-role success, one row and completed
+forced ALL checks. Each uses the same intact synthetic graph with fresh IDs,
+followed by fresh schema/fixture-absence verification even after disconnect.
+No fallback, repair or compensation; one original snapshot remains authoritative.
+
+The dedicated UPDATE-integrity assertion now mutates the generated set_logs row,
+filtered by set/session/original-movement IDs, to the generated absent movement
+ID. It requires one affected row and forced23503/set-logs plus verified rollback.
+Setup failures, zero rows and incomplete results do not qualify.
+C3's separate authenticated session_movements UPDATE remains the existing RLS
+zero-row check. C2/C3, all twelve normal browser cases and the Auth cohort remain
+unchanged. No role/grant/RLS/Auth callback, user-data or production change.
+
+Source validation and final scan results are recorded in the latest
+[knowledge log](docs/knowledge/log.md). No live SQL, Docker, browser execution or
+workflow dispatch by this worker. The coordinator owns the next exact-head
+normal149/down/up/baseline/candidate/UPDATE/Auth36/browser12 run.
+**Full acceptance and production approval remain pending.**
+
+### PR805 two-FK candidate and SQL repair — historical, superseded
+
+The following records the preceding source checkpoints, not the current scope.
 
 Owner approved the reversible disposable candidate, at most two existing FKs.
 [ADR 0080](docs/adr/0080-deferred-custom-movement-references.md) records scope,

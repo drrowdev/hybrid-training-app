@@ -19,10 +19,11 @@ const ids = {
 };
 const snapshot = (): [boolean, boolean, boolean, string, string, boolean] =>
   [true, true, true, "b".repeat(32), "c".repeat(32), true];
-const rejection = (constraint = "session-movements") => ["rejected", "23503", constraint, true, false, false];
+const rejection = () => ["rejected", "23503", "set-logs", true, false, false];
+const success = () => ["succeeded", "none", "none", true, true, true];
 const ok = { code: 0, signal: null, timedOut: false };
-const updateRejection = () => ["rejected", "23503", "session-movements", true, true, true];
-const sequence = () => [snapshot(), "", snapshot(), "", snapshot(), rejection(), snapshot(), rejection("set-logs"), snapshot(),
+const updateRejection = () => ["rejected", "23503", "set-logs", true, true, true];
+const sequence = () => [snapshot(), "", snapshot(), "", snapshot(), rejection(), snapshot(), success(), snapshot(),
   updateRejection(), snapshot()];
 function harness(values = sequence()) {
   const command = vi.fn<PrivateCommand>(async () => {
@@ -49,26 +50,36 @@ describe("ADR0080 DC-SW8 reversible movement-reference SQL", () => {
     expect(sql).toContain(") IS TRUE), false) INTO matched");
     expect(sql).toContain("SET LOCAL statement_timeout = '30s'");
     expect(sql).toContain("SET LOCAL search_path = pg_catalog");
-    expect(sql.match(/DROP CONSTRAINT /g)).toHaveLength(2);
-    expect(sql.match(/ADD CONSTRAINT /g)).toHaveLength(2);
+    expect(sql.match(/DROP CONSTRAINT /g)).toHaveLength(1);
+    expect(sql.match(/ADD CONSTRAINT /g)).toHaveLength(1);
     expect(sql).not.toMatch(/COMMIT|statement-breakpoint|NOT VALID|DISABLE TRIGGER|CASCADE|SET NULL|GRANT|SET ROLE|SESSION AUTHORIZATION|DELETE FROM|UPDATE public\./);
     expect(sql).not.toMatch(/EXCEPTION WHEN|session_user|current_user/);
-    for (const table of ["set_logs", "session_movements"]) {
-      expect(sql).toContain(`ALTER TABLE public.${table} DROP CONSTRAINT ${table}_movement_id_fkey;`);
-      expect(sql).toContain(`ALTER TABLE public.${table} ADD CONSTRAINT ${table}_movement_id_fkey`);
-    }
+    expect(sql).toContain("ALTER TABLE public.set_logs DROP CONSTRAINT set_logs_movement_id_fkey;");
+    expect(sql).toContain("ALTER TABLE public.set_logs ADD CONSTRAINT set_logs_movement_id_fkey");
+    expect(sql).not.toContain("ALTER TABLE public.session_movements");
   });
   it("has exact inverse guards and actions without an initially-immediate candidate", () => {
     expect(up).toContain("c.confdeltype = 'r'");
     expect(up).toContain("NOT c.condeferrable AND NOT c.condeferred");
     expect(down).toContain("c.confdeltype = 'a'");
     expect(down).toContain("c.condeferrable AND c.condeferred");
-    expect(up.match(/ON UPDATE NO ACTION ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED;/g)).toHaveLength(2);
-    expect(down.match(/ON UPDATE NO ACTION ON DELETE RESTRICT NOT DEFERRABLE;/g)).toHaveLength(2);
+    expect(down).toContain(`OR (c.conrelid = 'public.session_movements'::regclass
+        AND c.confdeltype = 'r' AND NOT c.condeferrable AND NOT c.condeferred)`);
+    expect(down).toContain("ELSE 'FOREIGN KEY (movement_id) REFERENCES public.movements(id) ON DELETE RESTRICT' END");
+    expect(up.match(/ON UPDATE NO ACTION ON DELETE NO ACTION DEFERRABLE INITIALLY DEFERRED;/g)).toHaveLength(1);
+    expect(down.match(/ON UPDATE NO ACTION ON DELETE RESTRICT NOT DEFERRABLE;/g)).toHaveLength(1);
     const normalize = (sql: string) => sql.slice(sql.indexOf("WITH targets"), sql.indexOf("IF matched"))
-      .replace("c.confdeltype = 'r'", "c.confdeltype = 'a'")
-      .replace("NOT c.condeferrable AND NOT c.condeferred", "c.condeferrable AND c.condeferred")
-      .replace("ON DELETE RESTRICT'", "DEFERRABLE INITIALLY DEFERRED'");
+      .replace(`    AND c.confdeltype = 'r' AND c.confupdtype = 'a' AND c.confmatchtype = 's'
+    AND c.convalidated AND NOT c.condeferrable AND NOT c.condeferred`,
+      `    AND ((c.conrelid = 'public.set_logs'::regclass
+        AND c.confdeltype = 'a' AND c.condeferrable AND c.condeferred)
+      OR (c.conrelid = 'public.session_movements'::regclass
+        AND c.confdeltype = 'r' AND NOT c.condeferrable AND NOT c.condeferred))
+    AND c.confupdtype = 'a' AND c.confmatchtype = 's' AND c.convalidated`)
+      .replace(/=\n      'FOREIGN KEY \(movement_id\) REFERENCES public.movements\(id\) ON DELETE RESTRICT'/,
+        `=\n      CASE WHEN c.conrelid = 'public.set_logs'::regclass
+        THEN 'FOREIGN KEY (movement_id) REFERENCES public.movements(id) DEFERRABLE INITIALLY DEFERRED'
+        ELSE 'FOREIGN KEY (movement_id) REFERENCES public.movements(id) ON DELETE RESTRICT' END`);
     expect(normalize(up)).toBe(normalize(down));
   });
   it.each(["connamespace", "contypid", "confrelid", "conkey", "confkey", "confdeltype", "confupdtype",
@@ -78,10 +89,17 @@ describe("ADR0080 DC-SW8 reversible movement-reference SQL", () => {
     "relkind", "relispartition", "pg_inherits", "pg_get_constraintdef"])("pins semantic property %s in both migration guards and permanent catalog proof", (property) => {
     for (const sql of [up, down, snapshotSql(ids), snapshotSql(ids, false)]) expect(sql).toContain(property);
   });
-  it("normalizes only target OIDs/modes while fingerprinting all other relationships and stable metadata", () => {
+  it("normalizes only the set_logs OID/modes, retaining the complete session_movements tuple", () => {
     const sql = snapshotSql(ids);
     expect(sql).toContain("tuple - ARRAY['oid','confdeltype','condeferrable','condeferred']");
-    expect(sql).toContain("FROM relationships WHERE oid NOT IN (SELECT oid FROM targeted)");
+    expect(sql).toContain(`changed AS (
+  SELECT * FROM targeted WHERE conrelid = 'public.set_logs'::pg_catalog.regclass
+    AND conname = 'set_logs_movement_id_fkey'
+)`);
+    expect(sql).toContain("FROM changed) AS semantics");
+    expect(sql).toContain("jsonb_agg(tuple ORDER BY oid)");
+    expect(sql).toContain("FROM relationships WHERE oid NOT IN (SELECT oid FROM changed)");
+    expect(sql).not.toContain("FROM relationships WHERE oid NOT IN (SELECT oid FROM targeted)");
     for (const field of ["pg_attribute", "pg_index", "relacl", "relowner", "relrowsecurity",
       "relforcerowsecurity", "pg_policy", "pg_trigger"]) expect(sql).toContain(field);
     expect(sql).toContain(") IS TRUE AS matched");
@@ -89,17 +107,29 @@ describe("ADR0080 DC-SW8 reversible movement-reference SQL", () => {
     expect(sql).toContain("c.condeferrable AND c.condeferred");
     expect(sql).not.toContain("pg_stat");
   });
+  it.each([true, false])("always requires the unchanged FK's original shape (candidate=%s)", (candidate) => {
+    const sql = snapshotSql(ids, candidate);
+    const props = sql.slice(sql.indexOf("), props AS"), sql.indexOf(") IS TRUE AS matched"));
+    expect(props).toContain(`c.conrelid = 'public.session_movements'::pg_catalog.regclass AND c.conname = 'session_movements_movement_id_fkey'
+      AND c.confdeltype = 'r'
+      AND NOT c.condeferrable AND NOT c.condeferred
+      AND pg_catalog.pg_get_constraintdef(c.oid, false) =
+        'FOREIGN KEY (movement_id) REFERENCES public.movements(id) ON DELETE RESTRICT'`);
+    expect(props).toContain(`c.conrelid = 'public.set_logs'::pg_catalog.regclass AND c.conname = 'set_logs_movement_id_fkey'
+      AND c.confdeltype = '${candidate ? "a" : "r"}'
+      AND ${candidate ? "" : "NOT "}c.condeferrable AND ${candidate ? "" : "NOT "}c.condeferred`);
+  });
   it("qualifies the catalog column in snapshots and composed DO blocks retaining the matched variable", () => {
-    const necessities = (["set-logs-only", "session-movements-only"] as const)
+    const controls = (["baseline", "candidate"] as const)
       .map((mode) => necessitySql(mode, ids, snapshot(), down));
     const update = updateIntegritySql(ids, snapshot());
     const aggregate = "count(*) = 2 AND COALESCE(bool_and(props.matched), false) FROM props";
-    for (const sql of [snapshotSql(ids), snapshotSql(ids, false), ...necessities, update]) {
+    for (const sql of [snapshotSql(ids), snapshotSql(ids, false), ...controls, update]) {
       expect(sql).toContain(aggregate);
       expect(sql).not.toMatch(/bool_and\s*\(\s*matched\s*\)/i);
     }
     const contexts = [
-      ...necessities.flatMap((sql) => ["guard", "setup"].map((tag) => ({ sql, tag }))),
+      ...controls.flatMap((sql) => ["guard", "setup"].map((tag) => ({ sql, tag }))),
       { sql: update, tag: "update_integrity" },
     ];
     for (const { sql, tag } of contexts) {
@@ -110,15 +140,18 @@ describe("ADR0080 DC-SW8 reversible movement-reference SQL", () => {
       expect(block).toContain("IF matched IS DISTINCT FROM true");
     }
   });
-  it.each(["set-logs-only", "session-movements-only"] as const)("composes exact down SQL and a single partial candidate for %s inside rollback", (mode) => {
+  it.each(["baseline", "candidate"] as const)("runs the %s control inside rollback, using exact down SQL only for baseline", (mode) => {
     const sql = necessitySql(mode, ids, snapshot(), down);
     expect(sql.match(/^BEGIN;/gm)).toHaveLength(1);
     expect(sql.match(/^ROLLBACK;/gm)).toHaveLength(1);
     expect(sql.endsWith("ROLLBACK;")).toBe(true);
-    expect(sql).toContain(down);
+    if (mode === "baseline") expect(sql).toContain(down);
+    else expect(sql).not.toMatch(/ALTER TABLE|DROP CONSTRAINT|ADD CONSTRAINT/);
     const setup = sql.slice(sql.indexOf("DO $setup$"));
-    expect(setup.match(/DROP CONSTRAINT/g)).toHaveLength(1);
-    expect(setup).toContain(`ALTER TABLE public.${mode === "set-logs-only" ? "set_logs" : "session_movements"} ADD CONSTRAINT`);
+    expect(setup).not.toMatch(/ALTER TABLE|DROP CONSTRAINT|ADD CONSTRAINT/);
+    expect(setup).toContain(`c.conrelid = 'public.set_logs'::pg_catalog.regclass AND c.conname = 'set_logs_movement_id_fkey'
+      AND c.confdeltype = '${mode === "baseline" ? "r" : "a"}'`);
+    expect(sql).not.toContain("ALTER TABLE public.session_movements");
     for (const table of ["auth.users", "public.movements", "public.sessions", "public.set_logs", "public.session_movements"]) {
       expect(sql).toContain(`INSERT INTO ${table}`);
     }
@@ -137,7 +170,7 @@ describe("ADR0080 DC-SW8 reversible movement-reference SQL", () => {
     expect(() => snapshotSql({ ...ids, user: "'; DELETE" })).toThrow();
     expect(() => necessitySql("unknown" as never, ids, snapshot(), down)).toThrow();
     const invalid = snapshot(); invalid[3] = "'; DELETE";
-    expect(() => necessitySql("set-logs-only", ids, invalid, down)).toThrow();
+    expect(() => necessitySql("baseline", ids, invalid, down)).toThrow();
     expect(() => updateIntegritySql(ids, invalid)).toThrow();
     expect(() => updateIntegritySql({ ...ids, set: ids.user }, snapshot())).toThrow();
   });
@@ -149,13 +182,14 @@ describe("ADR0080 DC-SW8 reversible movement-reference SQL", () => {
     expect(sql).not.toMatch(/ALTER TABLE|DELETE FROM|COMMIT|SESSION AUTHORIZATION|SET ROLE|GRANT|POLICY|DISABLE|NOT VALID/);
     expect(sql.indexOf("SELECT shapes AND semantics")).toBeLessThan(sql.indexOf("INSERT INTO auth.users"));
     expect(sql).toContain(`EXISTS (SELECT 1 FROM public.movements WHERE id = '${ids.set}'::uuid)`);
-    expect(sql).toContain(`OR NOT EXISTS (SELECT 1 FROM public.session_movements
-        WHERE user_id = '${ids.user}'::uuid AND session_id = '${ids.session}'::uuid
+    expect(sql).toContain(`OR NOT EXISTS (SELECT 1 FROM public.set_logs
+        WHERE id = '${ids.set}'::uuid AND session_id = '${ids.session}'::uuid
           AND movement_id = '${ids.movement}'::uuid)`);
     const attempt = sql.slice(sql.indexOf("    BEGIN\n      UPDATE"), sql.indexOf("  PERFORM pg_catalog.set_config"));
-    expect(sql.match(/UPDATE public.session_movements/g)).toHaveLength(1);
-    expect(attempt).toContain(`UPDATE public.session_movements SET movement_id = '${ids.set}'::uuid
-        WHERE user_id = '${ids.user}'::uuid AND session_id = '${ids.session}'::uuid
+    expect(sql.match(/UPDATE public.set_logs/g)).toHaveLength(1);
+    expect(sql).not.toContain("UPDATE public.session_movements");
+    expect(attempt).toContain(`UPDATE public.set_logs SET movement_id = '${ids.set}'::uuid
+        WHERE id = '${ids.set}'::uuid AND session_id = '${ids.session}'::uuid
           AND movement_id = '${ids.movement}'::uuid;`);
     expect(attempt).toContain("GET DIAGNOSTICS affected = ROW_COUNT;\n      row_matched := affected = 1;\n      forced := true;\n      SET CONSTRAINTS ALL IMMEDIATE;");
     expect(attempt.indexOf("SET CONSTRAINTS ALL IMMEDIATE")).toBeLessThan(attempt.indexOf("EXCEPTION WHEN"));
@@ -166,7 +200,7 @@ describe("ADR0080 DC-SW8 reversible movement-reference SQL", () => {
     expect(new Set(sql.match(/[0-9a-f]{8}-[0-9a-f-]{27}/g))).toEqual(new Set(Object.values(ids)));
     const fixture = (query: string) => query.slice(query.indexOf("INSERT INTO auth.users"),
       query.indexOf("0, 'main', 8, 12.00, 6.0);") + "0, 'main', 8, 12.00, 6.0);".length);
-    for (const mode of ["set-logs-only", "session-movements-only"] as const) {
+    for (const mode of ["baseline", "candidate"] as const) {
       expect(fixture(necessitySql(mode, ids, snapshot(), down))).toBe(fixture(sql));
     }
   });
@@ -176,19 +210,28 @@ describe("DC-SW8 composed relationship round trip lifecycle (no database executi
   it("executes verified whole down/up files, checks each catalog, then freshly verifies both rolled-back attempts", async () => {
     const h = harness();
     await expect(h.run()).resolves.toMatchObject({ status: "matched", initial: true, down: true, up: true,
-      probes: [{ mode: "set-logs-only", schemaRestored: true }, { mode: "session-movements-only", schemaRestored: true }],
-      updateIntegrity: { outcome: "rejected", SQLSTATE: "23503", constraint: "session-movements",
+      probes: [{ mode: "baseline", outcome: "rejected", constraint: "set-logs", schemaRestored: true },
+        { mode: "candidate", outcome: "succeeded", rowCountMatched: true, forcedChecks: true, schemaRestored: true }],
+      updateIntegrity: { outcome: "rejected", SQLSTATE: "23503", constraint: "set-logs",
         rowCountMatched: true, forcedChecks: true, schemaRestored: true, fixturesAbsent: true } });
     expect(h.verifiedSql.mock.calls).toEqual([
       [MOVEMENT_REFERENCE_FILES.down], [MOVEMENT_REFERENCE_FILES.up],
-      [MOVEMENT_REFERENCE_FILES.down], [MOVEMENT_REFERENCE_FILES.down],
+      [MOVEMENT_REFERENCE_FILES.down],
     ]);
     const sql = queries(h);
     expect(sql[1]).toBe(down);
     expect(sql[3]).toBe(up);
     expect(sql).toHaveLength(11);
-    expect(sql[9]).toContain("UPDATE public.session_movements");
+    expect(sql[9]).toContain("UPDATE public.set_logs");
     expect(sql[10]).toContain("BEGIN READ ONLY");
+    const fixtureIds = [5, 7, 9].map((index) => new Set(sql[index].match(/[0-9a-f]{8}-[0-9a-f-]{27}/g)));
+    expect(fixtureIds.every((set) => set.size === 4)).toBe(true);
+    expect(new Set(fixtureIds.flatMap((set) => [...set])).size).toBe(12);
+    for (const index of [5, 7]) {
+      for (const id of new Set(sql[index].match(/[0-9a-f]{8}-[0-9a-f-]{27}/g))) {
+        expect(sql[index + 1]).toContain(id);
+      }
+    }
     for (const id of new Set(sql[9].match(/[0-9a-f]{8}-[0-9a-f-]{27}/g))) {
       expect(sql[10]).toContain(id);
     }
@@ -225,44 +268,73 @@ describe("DC-SW8 composed relationship round trip lifecycle (no database executi
   });
   it.each([
     ["succeeded", "none", "none", true, true, true],
-    ["rejected", "23503", "set-logs", true, false, false],
+    ["rejected", "23503", "session-movements", true, false, false],
     ["rejected", "other", "other", true, false, false],
-    ["rejected", "23503", "session-movements", false, false, false],
-    ["setup-failed", "23503", "session-movements", false, false, false],
+    ["rejected", "23503", "set-logs", false, false, false],
+    ["setup-failed", "23503", "set-logs", false, false, false],
     ["unavailable", "other", "other", true, false, false],
-  ])("fails the two-FK candidate for an unproved necessity result %j", async (...result) => {
+  ])("fails closed when the baseline control does not reproduce the set_logs rejection %j", async (...result) => {
     const steps = sequence(); steps[5] = result;
     const h = harness(steps);
-    await expect(h.run()).rejects.toThrow("necessity not proved");
+    await expect(h.run()).rejects.toThrow("baseline control not proved");
     expect(h.command).toHaveBeenCalledTimes(7);
     expect(h.publish.mock.calls[0][0].probes[0].schemaRestored).toBe(true);
   });
-  it.each(["disconnect", "invalid", "oversized", "timeout", "nonzero", "signal"])("freshly verifies restoration even after %s", async (kind) => {
-    const h = harness(sequence().slice(0, 5));
+  it.each([
+    ["rejected", "23503", "set-logs", true, true, true],
+    ["rejected", "23503", "session-movements", true, false, false],
+    ["succeeded", "none", "none", false, true, true],
+    ["succeeded", "none", "none", true, false, true],
+    ["succeeded", "none", "none", true, true, false],
+    ["succeeded", "other", "none", true, true, true],
+    ["succeeded", "none", "set-logs", true, true, true],
+    ["setup-failed", "none", "none", true, true, true],
+    ["unavailable", "none", "none", false, false, false],
+    ["succeeded", "none", "none", true, true],
+  ])("fails closed on rejected or incomplete candidate control %j", async (...result) => {
+    const steps = sequence(); steps[7] = result;
+    const h = harness(steps);
+    await expect(h.run()).rejects.toThrow("candidate control not proved");
+    expect(h.command).toHaveBeenCalledTimes(9);
+    expect(h.publish.mock.calls[0][0]).toMatchObject({ status: "failed",
+      probes: [{ mode: "baseline" }, { mode: "candidate", schemaRestored: true, fixturesAbsent: true }],
+      updateIntegrity: { outcome: "not-attempted" } });
+  });
+  it.each(([5, 7] as const).flatMap((index) =>
+    ["disconnect", "invalid", "oversized", "timeout", "nonzero", "signal"].map((kind) => ({ index, kind }))))
+  ("freshly verifies restoration after control at $index has $kind", async ({ index, kind }) => {
+    const h = harness(sequence().slice(0, index));
     const run = h.run();
-    // One-shot implementations preserve the first five catalog/DDL calls.
+    // Preserve all successful calls before this control.
     const normal = h.command.getMockImplementation()!;
     h.command.mockImplementation(async (...args) => {
       const call = h.command.mock.calls.length;
-      if (call <= 5) return normal(...args);
-      if (call === 6) {
+      if (call <= index) return normal(...args);
+      if (call === index + 1) {
         if (kind === "disconnect") throw new Error("private URL");
         return { text: kind === "oversized" ? "x".repeat(131_073) : "invalid",
           result: { code: kind === "nonzero" ? 1 : 0, signal: kind === "signal" ? "SIGTERM" : null, timedOut: kind === "timeout" } };
       }
       return { text: JSON.stringify(snapshot()), result: ok };
     });
-    await expect(run).rejects.toThrow("necessity not proved");
-    expect(h.command).toHaveBeenCalledTimes(7);
-    expect(queries(h)[6]).toContain("BEGIN READ ONLY");
+    await expect(run).rejects.toThrow(`${index === 5 ? "baseline" : "candidate"} control not proved`);
+    expect(h.command).toHaveBeenCalledTimes(index + 2);
+    expect(queries(h)[index + 1]).toContain("BEGIN READ ONLY");
+    expect(formatAcceptanceSummary(h.publish.mock.calls[0][0])).not.toMatch(/private|[a-f0-9]{32}/);
   });
-  it.each([0, 1, 2, 3, 4, 5])("fails closed on restoration field %i without repair DML", async (slot) => {
-    const changed = snapshot(); changed[slot] = (slot === 3 || slot === 4 ? "d".repeat(32) : false) as never;
-    const steps = sequence(); steps[6] = changed;
-    const h = harness(steps);
+  it.each(([6, 8] as const).flatMap((index) =>
+    ([0, 1, 2, 3, 4, 5, "disconnect"] as const).map((slot) => ({ index, slot }))))
+  ("fails closed on control restoration $index field $slot without repair DML", async ({ index, slot }) => {
+    const steps: unknown[] = sequence();
+    if (slot === "disconnect") steps[index] = new Error("private restoration");
+    else {
+      const changed = snapshot(); changed[slot] = (slot === 3 || slot === 4 ? "d".repeat(32) : false) as never;
+      steps[index] = changed;
+    }
+    const h = harness(steps as ReturnType<typeof sequence>);
     await expect(h.run()).rejects.toThrow("restoration unverified");
-    expect(h.command).toHaveBeenCalledTimes(7);
-    expect(queries(h).filter((sql) => sql.includes("DELETE FROM"))).toHaveLength(1);
+    expect(h.command).toHaveBeenCalledTimes(index + 1);
+    expect(queries(h).filter((sql) => sql.includes("DELETE FROM"))).toHaveLength(index === 6 ? 1 : 2);
   });
   it("does not consume cached SQL when source verification fails, and publishes only bounded closed evidence", async () => {
     const h = harness();
@@ -278,12 +350,12 @@ describe("DC-SW8 composed relationship round trip lifecycle (no database executi
   });
   it.each([
     ["succeeded", "none", "none", true, true, true],
-    ["rejected", "23503", "session-movements", true, true, false],
-    ["rejected", "23503", "session-movements", true, false, true],
-    ["rejected", "23503", "session-movements", false, true, true],
-    ["rejected", "23503", "set-logs", true, true, true],
-    ["rejected", "other", "session-movements", true, true, true],
-    ["setup-failed", "23503", "session-movements", true, true, true],
+    ["rejected", "23503", "set-logs", true, true, false],
+    ["rejected", "23503", "set-logs", true, false, true],
+    ["rejected", "23503", "set-logs", false, true, true],
+    ["rejected", "23503", "session-movements", true, true, true],
+    ["rejected", "other", "set-logs", true, true, true],
+    ["setup-failed", "23503", "set-logs", true, true, true],
     ["not-attempted", "none", "none", false, false, false],
   ])("rejects an unproved UPDATE result %j after verifying rollback", async (...result) => {
     const steps = sequence(); steps[9] = result;
@@ -332,8 +404,24 @@ describe("DC-SW8 composed relationship round trip lifecycle (no database executi
       expect(movementReferenceRecordSchema.safeParse({ ...record,
         updateIntegrity: { ...record.updateIntegrity, [field]: false } }).success).toBe(false);
     }
+    for (const [index, fields] of [
+      [0, ["roleMatched", "schemaRestored", "fixturesAbsent"]],
+      [1, ["roleMatched", "forcedChecks", "rowCountMatched", "schemaRestored", "fixturesAbsent"]],
+    ] as const) {
+      for (const field of fields) {
+        const probes = record.probes.map((probe, i) => i === index ? { ...probe, [field]: false } : probe);
+        expect(movementReferenceRecordSchema.safeParse({ ...record, probes }).success).toBe(false);
+      }
+    }
     for (const partial of [{ down: false }, { up: false }, { initial: false }, { probes: [] },
+      { probes: [record.probes[0]] }, { probes: [...record.probes, record.probes[1]] },
+      { probes: [record.probes[1], record.probes[0]] },
       { probes: [record.probes[0], record.probes[0]] },
+      { probes: record.probes.map((p) => ({ ...p, mode: "set-logs-only" })) },
+      { probes: record.probes.map((p) => ({ ...p, mode: "session-movements-only" })) },
+      { probes: record.probes.map((p) => ({ ...p, detail: "private" })) },
+      { probes: [{ ...record.probes[0], outcome: "succeeded" }, record.probes[1]] },
+      { probes: [record.probes[0], { ...record.probes[1], outcome: "rejected" }] },
       { updateIntegrity: { ...record.updateIntegrity, outcome: "not-attempted" } }]) {
       expect(movementReferenceRecordSchema.safeParse({ ...record, ...partial }).success).toBe(false);
     }
