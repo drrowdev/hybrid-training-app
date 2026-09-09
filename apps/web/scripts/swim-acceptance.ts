@@ -32,11 +32,14 @@ import {
 } from "./swim-identity-roundtrip";
 import { runSwimBrowserStage } from "./swim-browser-stage";
 import { SWIM_BROWSER_CASES } from "./swim-browser-acceptance";
+import { finishRollbackOnly, requireBrowserRoute, runRollbackProbes } from "./swim-fk-rollback-probes";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
 // Temporary source-only switch. The unchanged normal CLI must be restored before acceptance.
 const MIGRATION_DIAGNOSTIC_ONLY = false;
+// Remove this temporary route before repair-head or release acceptance.
+const ROLLBACK_PROBE_ONLY = true;
 const migrationEvidenceCommand: MigrationEvidenceCommand = "db:migrate:evidence";
 const hash = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args],
@@ -58,7 +61,8 @@ async function main(cleanupOnly: boolean) {
   const reporting = new AcceptanceReporting();
   const active = new Map<number, () => void>();
   const secrets = new Set<string>();
-  const manifest: Record<string, unknown> = { testedSha: process.env.EXPECTED_SHA, project };
+  const manifest: Record<string, unknown> = { testedSha: process.env.EXPECTED_SHA, project,
+    ...(ROLLBACK_PROBE_ONLY ? { qualifying: false, diagnosticMode: "rollback-only", browserSuite: "not-run" } : {}) };
   let state: Resources = { project, sha: process.env.EXPECTED_SHA!, createdAt: started,
     containers: [], volumes: [], processes: [], cleanup: "unconfirmed" };
   const save = () => {
@@ -92,7 +96,9 @@ async function main(cleanupOnly: boolean) {
     appendFileSync(process.env.GITHUB_ENV!, `SWIM_ACCEPTANCE_DIR=${directory}\n`);
     summary("Swim acceptance scope", {
       ...manifest, cleanup: "unconfirmed until a terminal cleanup record; forced cancellation may prevent observation",
-      scope: "Reference startup, unchanged migrations/catalog, complete swim RPC file and declared mobile browser cohort; not standalone release acceptance",
+      scope: ROLLBACK_PROBE_ONLY
+        ? "Rollback-only diagnostics after unchanged prerequisites; twelve-case UI/API suite not run; nonqualifying"
+        : "Reference startup, unchanged migrations/catalog, complete swim RPC file and declared mobile browser cohort; not standalone release acceptance",
     });
   }
   process.umask(0o077);
@@ -543,6 +549,17 @@ async function main(cleanupOnly: boolean) {
       requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);
       requireIdentityHelperRpcCases(ledger);
     }), reporting);
+    if (ROLLBACK_PROBE_ONLY) {
+      await stage("rollback-only FK probes", async () => {
+        requireUnchanged();
+        await runRollbackProbes(command, target.dbId, (record) => {
+          manifest.rollbackProbes = record;
+          summary("Swim rollback-only probes (nonqualifying)", record);
+        });
+      });
+      return;
+    }
+    requireBrowserRoute(ROLLBACK_PROBE_ONLY);
     await stage("mobile browser acceptance", () => runSwimBrowserStage({
       command, root, runDirectory: directory, deadline, cacheEnv: process.env,
       target: {
@@ -565,13 +582,16 @@ async function main(cleanupOnly: boolean) {
       state.cleanup = "unconfirmed";
       reporting.recordFailure("cleanup", error, true);
     }
+    if (ROLLBACK_PROBE_ONLY && !cleanupOnly) finishRollbackOnly(reporting);
     process.off("SIGINT", cancel);
     process.off("SIGTERM", cancel);
     const primary = reporting.failures.primary?.stage;
     if (primary || state.cleanup !== "verified") process.exitCode = 1;
     try {
       summary(cleanupOnly ? "Swim cleanup verification" : "Swim acceptance result", {
-        ...outcome(primary, state.cleanup === "verified"), stages: reporting.stages,
+        ...outcome(primary, state.cleanup === "verified"),
+        ...(ROLLBACK_PROBE_ONLY ? { success: false, qualifying: false, diagnosticMode: "rollback-only" } : {}),
+        stages: reporting.stages,
         failures: reporting.failures, manifest,
       });
     } catch (error) {
