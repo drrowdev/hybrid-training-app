@@ -89,6 +89,27 @@ describe("ADR0080 DC-SW8 reversible movement-reference SQL", () => {
     expect(sql).toContain("c.condeferrable AND c.condeferred");
     expect(sql).not.toContain("pg_stat");
   });
+  it("qualifies the catalog column in snapshots and composed DO blocks retaining the matched variable", () => {
+    const necessities = (["set-logs-only", "session-movements-only"] as const)
+      .map((mode) => necessitySql(mode, ids, snapshot(), down));
+    const update = updateIntegritySql(ids, snapshot());
+    const aggregate = "count(*) = 2 AND COALESCE(bool_and(props.matched), false) FROM props";
+    for (const sql of [snapshotSql(ids), snapshotSql(ids, false), ...necessities, update]) {
+      expect(sql).toContain(aggregate);
+      expect(sql).not.toMatch(/bool_and\s*\(\s*matched\s*\)/i);
+    }
+    const contexts = [
+      ...necessities.flatMap((sql) => ["guard", "setup"].map((tag) => ({ sql, tag }))),
+      { sql: update, tag: "update_integrity" },
+    ];
+    for (const { sql, tag } of contexts) {
+      const block = sql.slice(sql.indexOf(`DO $${tag}$`), sql.indexOf(`END $${tag}$;`));
+      expect(block).toContain(`DO $${tag}$\nDECLARE matched boolean;`);
+      expect(block).toContain(aggregate);
+      expect(block).toContain("INTO matched FROM evidence;");
+      expect(block).toContain("IF matched IS DISTINCT FROM true");
+    }
+  });
   it.each(["set-logs-only", "session-movements-only"] as const)("composes exact down SQL and a single partial candidate for %s inside rollback", (mode) => {
     const sql = necessitySql(mode, ids, snapshot(), down);
     expect(sql.match(/^BEGIN;/gm)).toHaveLength(1);
