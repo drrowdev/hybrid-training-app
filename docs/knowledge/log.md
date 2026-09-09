@@ -2361,3 +2361,11 @@ No new callback, grant/RLS/role, user-data rewrite, production change, SQL/Docke
 browser execution or workflow dispatch. Coordinator-owned exact-head live
 down/up/baseline/candidate/UPDATE/Auth36/browser12/C2/C3 acceptance remains
 pending; structural SQL success is not GoTrue equivalence or release approval.
+
+Committed implementation `11c94dedc0ea71e6cea44827db289c96e9904164`, whose sole
+parent is exact0b3b7401; nine expected files only, AI-coauthor trailer verified.
+Secret scan passed. Post-commit CodeQL did not complete: Actions analysis failed,
+JavaScript analysis skipped because its database was too large; this is not a
+security-analysis pass. Final helper/main Vitest rerun **524 passed** (118/406).
+Working tree was clean after the implementation commit; this documentation-only
+follow-up records the checkpoint and analysis limitation.

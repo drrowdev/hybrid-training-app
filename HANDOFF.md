@@ -82,7 +82,12 @@ zero-row check. C2/C3, all twelve normal browser cases and the Auth cohort remai
 unchanged. No role/grant/RLS/Auth callback, user-data or production change.
 
 Source validation and final scan results are recorded in the latest
-[knowledge log](docs/knowledge/log.md). No live SQL, Docker, browser execution or
+[knowledge log](docs/knowledge/log.md). Implementation checkpoint:
+`11c94dedc0ea71e6cea44827db289c96e9904164` (parent is exact0b3b7401).
+1175 targeted tests passed; final helper/main rerun524 passed. Lint, typecheck,
+offline149, docs drift, diff and secret checks passed. CodeQL did not complete:
+Actions analysis failed; JavaScript database too large. Not a security-analysis pass.
+No live SQL, Docker, browser execution or
 workflow dispatch by this worker. The coordinator owns the next exact-head
 normal149/down/up/baseline/candidate/UPDATE/Auth36/browser12 run.
 **Full acceptance and production approval remain pending.**
