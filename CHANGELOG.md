@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Tactical Barbell program editing
+- Sessions with more than eight exercises can now be saved.
+- Dead Hang is prescribed and logged as a timed hold. Its editor uses seconds
+  and defaults to 3 sets of 20–40 seconds instead of a repetition range.
+
 ### Rehab protocol form
 - Protocol name, movement search, and instructions now have visible input boxes.
 - Saving without a name highlights the name field and explains what to enter.

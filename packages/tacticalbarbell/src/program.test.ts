@@ -1820,6 +1820,7 @@ describe("tbTemplateSeries — what each row says it will be", () => {
 
 describe("TB engine — the lifter's own sets and reps", () => {
   const CURL = "catalog:00000000-0000-4000-8000-0000000000c1";
+  const DEAD_HANG = "catalog:00000000-0000-4000-8000-0000000000d1";
   const loadedCtx: PlatformContext = {
     ...ctx,
     oneRepMaxes: { ...ctx.oneRepMaxes, [CURL]: 90 },
@@ -1902,6 +1903,69 @@ describe("TB engine — the lifter's own sets and reps", () => {
     ]);
     const item = working(inst, "b0-w1-p1b", "Barbell Curl")[0];
     expect([item?.kind, item?.sets, item?.reps]).toEqual(["assistance", 5, 20]);
+  });
+
+  it("prescribes Dead Hang as timed work by default", () => {
+    const inst = zuluBWith([
+      {
+        movement: DEAD_HANG,
+        slug: "dead-hang",
+        displayName: "Dead Hang",
+        role: "accessory",
+        kind: "unanchored",
+      },
+    ]);
+    const item = working(inst, "b0-w1-p1b", "Dead Hang")[0];
+    expect(item).toMatchObject({
+      kind: "assistance",
+      sets: 3,
+      holdSeconds: 20,
+      holdSecondsMax: 40,
+    });
+    expect(item?.reps).toBeUndefined();
+    expect(item?.repsMax).toBeUndefined();
+  });
+
+  it("uses the Dead Hang hold range the lifter typed", () => {
+    const inst = zuluBWith([
+      {
+        movement: DEAD_HANG,
+        slug: "dead-hang",
+        displayName: "Dead Hang",
+        role: "accessory",
+        kind: "unanchored",
+        doseOverride: {
+          sets: 4,
+          holdSeconds: 30,
+          holdSecondsMax: 45,
+        },
+      },
+    ]);
+    expect(working(inst, "b0-w1-p1b", "Dead Hang")[0]).toMatchObject({
+      sets: 4,
+      holdSeconds: 30,
+      holdSecondsMax: 45,
+    });
+  });
+
+  it("converts an older rep-based Dead Hang override to timed work", () => {
+    const inst = zuluBWith([
+      {
+        movement: DEAD_HANG,
+        slug: "dead-hang",
+        displayName: "Dead Hang",
+        role: "accessory",
+        kind: "unanchored",
+        doseOverride: { sets: 4, reps: 12 },
+      },
+    ]);
+    const item = working(inst, "b0-w1-p1b", "Dead Hang")[0];
+    expect(item).toMatchObject({
+      sets: 4,
+      holdSeconds: 20,
+      holdSecondsMax: 40,
+    });
+    expect(item?.reps).toBeUndefined();
   });
 
   it("drops the rule's note, which described numbers no longer being run", () => {

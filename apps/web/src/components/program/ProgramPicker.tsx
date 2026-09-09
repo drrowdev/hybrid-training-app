@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 import { BackLink } from "@/components/ui/BackLink";
 import {
   AB_TRIAD_MOVEMENTS,
+  TB_TIMED_HOLD_DOSE,
   activationPhaseForWeek,
   type ActivationPhaseKey,
 } from "@hta/tacticalbarbell";
@@ -34,6 +35,7 @@ import {
   LEGACY_REHAB_PROTOCOL_ID,
   TB_ACTIVATION_CUSTOMIZATION_VERSION,
   TB_CUSTOMIZATION_VERSION,
+  TB_SESSION_MOVEMENT_MAX,
   activationSessionConfigs,
   activationRehabAssignments,
   isTbActivationCustomization,
@@ -41,6 +43,7 @@ import {
   type TbActivationCustomizationV3,
   type TbCustomization,
 } from "@/lib/platform/tb-customization";
+import { movementUsesTimedHold } from "@hta/domain";
 import styles from "./ProgramPicker.module.css";
 import { SessionLinkEditor, type LinkableMovement } from "./SessionLinkEditor";
 import { LinkBadge, rowLinkClass } from "./LinkBadge";
@@ -56,6 +59,7 @@ import {
   addMovement,
   addedDose,
   doseLabel,
+  doseQuantityLabel,
   overriddenDose,
   setDoseOverride,
   canRemoveRows,
@@ -1455,10 +1459,11 @@ export function ProgramPicker({
     seriesKey: string;
     movementKey: string;
     name: string;
+    slug: string;
     pattern: string;
   } | null>(null);
   const [addKind, setAddKind] = useState<AddedRole>("supplemental");
-  /** The row whose sets and reps are being edited, and its in-progress values. */
+  /** The row whose volume is being edited, and its in-progress values. */
   const [doseEdit, setDoseEdit] = useState<{
     key: string;
     seriesKey: string;
@@ -3410,14 +3415,19 @@ export function ProgramPicker({
             const accessoryFits =
               pendingAdd?.seriesKey === entry.key &&
               pendingAdd.pattern === ACCESSORY_PATTERN;
+            const pendingTimedHold =
+              pendingAdd?.seriesKey === entry.key &&
+              movementUsesTimedHold(pendingAdd.slug);
             // What Add will actually do. The highlighted option and the button
             // must agree — showing one as selected while adding the other is the
             // same invisible-difference problem this whole change is fixing.
-            const effectiveKind: AddedRole = !accessoryFits
-              ? "supplemental"
-              : !hasSupplementalWork
-                ? "accessory"
-                : addKind;
+            const effectiveKind: AddedRole = pendingTimedHold
+              ? "accessory"
+              : !accessoryFits
+                ? "supplemental"
+                : !hasSupplementalWork
+                  ? "accessory"
+                  : addKind;
             const removed = removedSupplementalSlots(entry, triadRestorable);
             const rehabOnSeries = libraryById.get(rehabBySeries[entry.key] ?? "");
             const populated = SLOT_SECTIONS.filter((section) =>
@@ -3430,6 +3440,22 @@ export function ProgramPicker({
             const renderRow = (draft: SeriesSlotDraft) => {
               const identity = slotIdentity(draft);
               const slot = slotOf(entry, draft);
+              const timedHold = movementUsesTimedHold(
+                catalogMovementMeta[draft.movement]?.slug,
+              );
+              const rowOverride =
+                draft.role && draft.doseOverride && timedHold
+                  ? "holdSeconds" in draft.doseOverride
+                    ? draft.doseOverride
+                    : {
+                        sets: draft.doseOverride.sets,
+                        ...(draft.doseOverride.setsMax != null
+                          ? { setsMax: draft.doseOverride.setsMax }
+                          : {}),
+                        holdSeconds: TB_TIMED_HOLD_DOSE.holdSeconds,
+                        holdSecondsMax: TB_TIMED_HOLD_DOSE.holdSecondsMax,
+                      }
+                  : draft.doseOverride;
               const isTriad = wholeTriad && triad.includes(identity);
               if (isTriad && triadShown) return null;
               if (isTriad) triadShown = true;
@@ -3441,17 +3467,25 @@ export function ProgramPicker({
               const rowDose = isTriad
                 ? AB_TRIAD_DOSE
                 : doseLabel(
-                    draft.role && draft.doseOverride
+                    draft.role && rowOverride
                       ? overriddenDose(
-                          draft.doseOverride,
-                          addedDose(draft.role, supplementalDose).load,
+                          rowOverride,
+                          addedDose(
+                            draft.role,
+                            supplementalDose,
+                            timedHold,
+                          ).load,
                         )
                       : slot
                         ? draft.movement !== slot.sourceMovement
                           ? slot.replacementDose ?? slot.dose
                           : slot.dose
                         : draft.role
-                          ? addedDose(draft.role, supplementalDose)
+                          ? addedDose(
+                              draft.role,
+                              supplementalDose,
+                              timedHold,
+                            )
                           : undefined,
                   );
               // Editable only on work the lifter added, and never on a circuit:
@@ -3501,10 +3535,35 @@ export function ProgramPicker({
                                   key: `${entry.key}:${identity}`,
                                   seriesKey: entry.key,
                                   identity,
-                                  sets: String(draft.doseOverride?.sets ?? ""),
+                                  sets: String(
+                                    draft.doseOverride?.sets ??
+                                      (timedHold
+                                        ? TB_TIMED_HOLD_DOSE.sets
+                                        : ""),
+                                  ),
                                   setsMax: String(draft.doseOverride?.setsMax ?? ""),
-                                  reps: String(draft.doseOverride?.reps ?? ""),
-                                  repsMax: String(draft.doseOverride?.repsMax ?? ""),
+                                  reps: String(
+                                    draft.doseOverride
+                                      ? "holdSeconds" in draft.doseOverride
+                                        ? draft.doseOverride.holdSeconds
+                                        : timedHold
+                                          ? TB_TIMED_HOLD_DOSE.holdSeconds
+                                          : draft.doseOverride.reps
+                                      : timedHold
+                                        ? TB_TIMED_HOLD_DOSE.holdSeconds
+                                        : "",
+                                  ),
+                                  repsMax: String(
+                                    draft.doseOverride
+                                      ? "holdSeconds" in draft.doseOverride
+                                        ? draft.doseOverride.holdSecondsMax ?? ""
+                                        : timedHold
+                                          ? TB_TIMED_HOLD_DOSE.holdSecondsMax
+                                          : draft.doseOverride.repsMax ?? ""
+                                      : timedHold
+                                        ? TB_TIMED_HOLD_DOSE.holdSecondsMax
+                                        : "",
+                                  ),
                                 },
                           )
                         }
@@ -3555,7 +3614,13 @@ export function ProgramPicker({
             const renderDoseEditor = (draft: SeriesSlotDraft) => {
               const identity = slotIdentity(draft);
               if (doseEdit?.key !== `${entry.key}:${identity}`) return null;
-              const { dose, reason } = readDoseInput(doseEdit);
+              const timedHold = movementUsesTimedHold(
+                catalogMovementMeta[draft.movement]?.slug,
+              );
+              const { dose, reason } = readDoseInput(
+                doseEdit,
+                timedHold ? "hold" : "reps",
+              );
               const bad = dose == null;
               const field = (
                 label: string,
@@ -3595,7 +3660,7 @@ export function ProgramPicker({
                 >
                   <div className={styles.doseFields}>
                     {field("Sets", "sets", "setsMax")}
-                    {field("Reps", "reps", "repsMax")}
+                    {field(doseQuantityLabel(timedHold), "reps", "repsMax")}
                   </div>
                   {reason ? (
                     <p
@@ -3742,29 +3807,59 @@ export function ProgramPicker({
                     </div>
                   </div>
                 ) : null}
-                <details className={styles.addExercise}>
-                  <summary data-testid={`tb-add-exercise-${entry.key}`}>
-                    + Add exercise
-                  </summary>
-                  <ExerciseLibraryPicker
-                    movements={rehabMovements}
-                    excludeKeys={drafts.map((row) => row.movement)}
-                    circuits={TB_CIRCUITS}
-                    excludeIdentities={drafts.map(slotIdentity)}
-                    onPickCircuit={(circuit) =>
-                      addSeriesGroup(entry.key, circuit.movements, "supplemental")
-                    }
-                    onPick={(movement) => {
-                      const key = catalogMovementKey(movement.id);
-                      setCatalogMovementMeta((current) => ({
-                        ...current,
-                        [key]: movement,
-                      }));
-                      setAddKind("supplemental");
-                      setPendingAdd({ seriesKey: entry.key, movementKey: key, name: movement.name, pattern: movement.pattern });
-                    }}
-                  />
-                </details>
+                {drafts.length < TB_SESSION_MOVEMENT_MAX ? (
+                  <details className={styles.addExercise}>
+                    <summary data-testid={`tb-add-exercise-${entry.key}`}>
+                      + Add exercise
+                    </summary>
+                    <ExerciseLibraryPicker
+                      movements={rehabMovements}
+                      excludeKeys={drafts.map((row) => row.movement)}
+                      circuits={TB_CIRCUITS.filter(
+                        (circuit) =>
+                          drafts.length +
+                            circuit.movements.filter(
+                              (movement) =>
+                                !drafts.some(
+                                  (draft) => draft.movement === movement,
+                                ),
+                            ).length <=
+                          TB_SESSION_MOVEMENT_MAX,
+                      )}
+                      excludeIdentities={drafts.map(slotIdentity)}
+                      onPickCircuit={(circuit) =>
+                        addSeriesGroup(
+                          entry.key,
+                          circuit.movements,
+                          "supplemental",
+                        )
+                      }
+                      onPick={(movement) => {
+                        const key = catalogMovementKey(movement.id);
+                        setCatalogMovementMeta((current) => ({
+                          ...current,
+                          [key]: movement,
+                        }));
+                        setAddKind(
+                          movementUsesTimedHold(movement.slug)
+                            ? "accessory"
+                            : "supplemental",
+                        );
+                        setPendingAdd({
+                          seriesKey: entry.key,
+                          movementKey: key,
+                          name: movement.name,
+                          slug: movement.slug,
+                          pattern: movement.pattern,
+                        });
+                      }}
+                    />
+                  </details>
+                ) : (
+                  <span className={styles.note}>
+                    Session exercise limit reached.
+                  </span>
+                )}
                 {pendingAdd?.seriesKey === entry.key ? (
                   <div
                     className={styles.addKind}
@@ -3776,14 +3871,18 @@ export function ProgramPicker({
                     <div className={styles.addKindOptions}>
                       <button
                         type="button"
-                        disabled={!hasSupplementalWork}
+                        disabled={!hasSupplementalWork || pendingTimedHold}
                         aria-pressed={effectiveKind === "supplemental"}
                         data-testid={`tb-add-kind-supplemental-${entry.key}`}
                         className={effectiveKind === "supplemental" ? styles.addKindOn : undefined}
                         onClick={() => setAddKind("supplemental")}
                       >
                         <b>Supplemental</b>
-                        {hasSupplementalWork ? (
+                        {pendingTimedHold ? (
+                          <small className={styles.addKindBlocked}>
+                            {`${pendingAdd.name} is measured by hold time.`}
+                          </small>
+                        ) : hasSupplementalWork ? (
                           <>
                             <small className={styles.rowDose}>{doseLabel(supplementalDose)}</small>
                             <small>Loaded off your max, following the program.</small>
@@ -3806,7 +3905,13 @@ export function ProgramPicker({
                         {accessoryFits ? (
                           <>
                             <small className={styles.rowDose}>
-                              {doseLabel(addedDose("accessory", undefined))}
+                              {doseLabel(
+                                addedDose(
+                                  "accessory",
+                                  undefined,
+                                  pendingTimedHold,
+                                ),
+                              )}
                             </small>
                             <small>No prescribed weight; you choose the load.</small>
                           </>

@@ -20,6 +20,7 @@
  */
 
 import { addedLoadFromSystemLoad } from "@hta/domain";
+export { movementUsesTimedHold } from "@hta/domain";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Prescription — the common currency every program emits
@@ -85,6 +86,10 @@ export interface PrescribedItem {
   reps?: number;
   /** Upper bound for a rep range (e.g. 8–10). */
   repsMax?: number;
+  /** Minimum elapsed hold time for one isometric set. */
+  holdSeconds?: number;
+  /** Upper bound for an autoregulated hold-time range. */
+  holdSecondsMax?: number;
   /** Loaded working weight (kg), when applicable. */
   weightKg?: number;
   /**

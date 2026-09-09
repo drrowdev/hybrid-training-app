@@ -25,4 +25,10 @@ describe("catalogMovementLoadKind", () => {
       catalogMovementLoadKind({ hasOneRm: false, slug: "weighted-pull-up" }),
     ).toBe("unanchored");
   });
+
+  it("keeps a timed hold unanchored even if old max data exists", () => {
+    expect(
+      catalogMovementLoadKind({ hasOneRm: true, slug: "dead-hang" }),
+    ).toBe("unanchored");
+  });
 });

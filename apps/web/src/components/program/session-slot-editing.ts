@@ -10,7 +10,11 @@
  */
 import { MAX_LINK_MEMBERS } from "@/lib/platform/session-links";
 import { catalogMovementLoadKind } from "@/lib/platform/custom-movement-kind";
-import { TB_DOSE_BOUNDS } from "@hta/tacticalbarbell";
+import {
+  TB_DOSE_BOUNDS,
+  TB_TIMED_HOLD_DOSE,
+  type TbDoseOverride,
+} from "@hta/tacticalbarbell";
 
 export type SlotKind = "barbell" | "weighted-bw" | "bodyweight" | "unanchored";
 
@@ -39,7 +43,15 @@ export function doseLabel(
 export function addedDose(
   role: AddedRole,
   supplementalDose: { sets: string; reps: string; load: string | null } | undefined,
+  timedHold = false,
 ): { sets: string; reps: string; load: string | null } {
+  if (timedHold) {
+    return {
+      sets: String(TB_TIMED_HOLD_DOSE.sets),
+      reps: `${TB_TIMED_HOLD_DOSE.holdSeconds}–${TB_TIMED_HOLD_DOSE.holdSecondsMax}s hold`,
+      load: null,
+    };
+  }
   return role === "supplemental" && supplementalDose
     ? supplementalDose
     : { sets: "3", reps: "8–15", load: null };
@@ -59,17 +71,12 @@ export interface SeriesSlotDraft {
   movement: string;
   kind?: SlotKind;
   role?: AddedRole;
-  /** The lifter's own sets and reps. Only ever set on work they added. */
+  /** The lifter's own volume. Only ever set on work they added. */
   doseOverride?: DoseOverride;
 }
 
-/** Sets and reps a lifter typed for a movement they added. */
-export interface DoseOverride {
-  sets: number;
-  setsMax?: number;
-  reps: number;
-  repsMax?: number;
-}
+/** Volume a lifter typed for a movement they added. */
+export type DoseOverride = TbDoseOverride;
 
 /** What the lifter has typed into the four dose boxes, before it is a dose. */
 export interface DoseInput {
@@ -77,6 +84,10 @@ export interface DoseInput {
   setsMax: string;
   reps: string;
   repsMax: string;
+}
+
+export function doseQuantityLabel(timedHold: boolean): string {
+  return timedHold ? "Hold (sec)" : "Reps";
 }
 
 /**
@@ -88,6 +99,7 @@ export interface DoseInput {
  */
 export function readDoseInput(
   input: DoseInput,
+  workType: "reps" | "hold" = "reps",
 ): { dose: DoseOverride; reason: null } | { dose: null; reason: string } {
   const whole = (raw: string) => {
     const n = Number(raw.trim());
@@ -97,31 +109,68 @@ export function readDoseInput(
     raw.trim() ? whole(raw) : (undefined as number | undefined);
 
   const sets = whole(input.sets);
-  const reps = whole(input.reps);
+  const quantity = whole(input.reps);
   const setsMax = optional(input.setsMax);
-  const repsMax = optional(input.repsMax);
-  if (sets == null || reps == null || setsMax === null || repsMax === null) {
-    return { dose: null, reason: "Sets and reps need to be whole numbers." };
+  const quantityMax = optional(input.repsMax);
+  if (
+    sets == null ||
+    quantity == null ||
+    setsMax === null ||
+    quantityMax === null
+  ) {
+    return {
+      dose: null,
+      reason:
+        workType === "hold"
+          ? "Sets and hold time need to be whole numbers."
+          : "Sets and reps need to be whole numbers.",
+    };
   }
 
-  const { sets: setBound, reps: repBound } = TB_DOSE_BOUNDS;
+  const setBound = TB_DOSE_BOUNDS.sets;
+  const quantityBound =
+    workType === "hold"
+      ? TB_DOSE_BOUNDS.holdSeconds
+      : TB_DOSE_BOUNDS.reps;
   const over = (v: number | undefined, b: { max: number }) => v != null && v > b.max;
   if (sets > setBound.max || over(setsMax, setBound)) {
     return { dose: null, reason: `Sets can go up to ${setBound.max}.` };
   }
-  if (reps > repBound.max || over(repsMax, repBound)) {
-    return { dose: null, reason: `Reps can go up to ${repBound.max}.` };
+  if (quantity > quantityBound.max || over(quantityMax, quantityBound)) {
+    return {
+      dose: null,
+      reason:
+        workType === "hold"
+          ? `Hold time can go up to ${quantityBound.max} seconds.`
+          : `Reps can go up to ${quantityBound.max}.`,
+    };
   }
-  if ((setsMax != null && setsMax < sets) || (repsMax != null && repsMax < reps)) {
+  if (
+    (setsMax != null && setsMax < sets) ||
+    (quantityMax != null && quantityMax < quantity)
+  ) {
     return { dose: null, reason: "The top of a range cannot be below the bottom." };
   }
 
+  const quantityDose =
+    workType === "hold"
+      ? {
+          holdSeconds: quantity,
+          ...(quantityMax != null && quantityMax !== quantity
+            ? { holdSecondsMax: quantityMax }
+            : {}),
+        }
+      : {
+          reps: quantity,
+          ...(quantityMax != null && quantityMax !== quantity
+            ? { repsMax: quantityMax }
+            : {}),
+        };
   return {
     dose: {
       sets,
-      reps,
       ...(setsMax != null && setsMax !== sets ? { setsMax } : {}),
-      ...(repsMax != null && repsMax !== reps ? { repsMax } : {}),
+      ...quantityDose,
     },
     reason: null,
   };
@@ -416,8 +465,12 @@ export function overriddenDose(dose: DoseOverride, load: string | null): {
     max == null || max === min ? `${min}` : `${min}\u2013${max}`;
   return {
     sets: range(dose.sets, dose.setsMax),
-    reps: range(dose.reps, dose.repsMax),
-    load,
+    ...("holdSeconds" in dose
+      ? {
+          reps: `${range(dose.holdSeconds, dose.holdSecondsMax)}s hold`,
+          load: null,
+        }
+      : { reps: range(dose.reps, dose.repsMax), load }),
   };
 }
 

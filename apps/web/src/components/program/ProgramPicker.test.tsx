@@ -644,6 +644,13 @@ describe("ProgramPicker rendering", () => {
       pattern: "carry",
       hasOneRm: false,
     },
+    {
+      id: "aaaaaaaa-0000-4000-8000-000000000003",
+      name: "Dead Hang",
+      slug: "dead-hang",
+      pattern: "isolation",
+      hasOneRm: false,
+    },
   ];
 
   it("shows each Zulu session's main and supplemental lifts on the loadout step", () => {
@@ -1081,6 +1088,59 @@ describe("ProgramPicker rendering", () => {
     const start = html.indexOf('data-testid="tb-dose-slot-1-barbell-curl"');
     expect(start).toBeGreaterThan(-1);
     expect(html.slice(start, start + 120)).toContain("4 \u00D7 12");
+  });
+
+  it("shows an existing Dead Hang row as a timed hold", () => {
+    const deadHang = ACCESSORY_LIBRARY[2]!;
+    const movementKey = `catalog:${deadHang.id}`;
+    const html = renderToStaticMarkup(
+      <ProgramPicker
+        programs={zuluPrograms()}
+        anchoredKeys={["squat", "bench", "deadlift", "press"]}
+        tbTemplates={[ZULU_TB3]}
+        rehabMovements={ACCESSORY_LIBRARY}
+        initialProgramId="tactical-barbell"
+        editContext={{
+          blockId: "11111111-1111-4111-8111-111111111111",
+          programId: "tactical-barbell",
+          setupValues: { templateId: "zulu" },
+          strengthWeekdays: [0, 1, 3, 4],
+          cardioWeekdays: [],
+          startedOn: "2026-01-05",
+          accessoriesEnabled: false,
+          customization: {
+            version: 1,
+            dayTypes: [
+              "strength",
+              "strength",
+              "rest",
+              "strength",
+              "strength",
+              "rest",
+              "rest",
+            ],
+            sessionMovements: {
+              "slot-1": [
+                { movement: "bench", sourceMovement: "bench" },
+                {
+                  movement: movementKey,
+                  movementId: deadHang.id,
+                  slug: deadHang.slug,
+                  displayName: deadHang.name,
+                  role: "accessory",
+                  kind: "unanchored",
+                },
+              ],
+            },
+          },
+        } as never}
+      />,
+    );
+
+    const start = html.indexOf(`data-testid="tb-dose-slot-1-${movementKey}"`);
+    expect(start).toBeGreaterThan(-1);
+    expect(html.slice(start, start + 140)).toContain("3 × 20–40s hold");
+    expect(html.slice(start, start + 140)).not.toContain("8–15");
   });
 
   it("no longer offers the Tactical Barbell accessory toggle", () => {
