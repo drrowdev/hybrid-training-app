@@ -68,10 +68,10 @@ export interface TbClusterLift {
    *
    * Set whenever a user swaps the exercise filling a prescribed slot — an
    * Activation override, the Armor supplemental choice, or a customized weekly
-   * slot. Everything that reasons about a lift's ROLE rather than its identity
-   * (`prescriptionRules` matching, peak detection, AB Triad grouping, session
-   * links) reads `sourceMovement ?? movement`, so a swap keeps the slot's
-   * prescription instead of silently reverting the lift to main work.
+   * slot. Everything that reasons about a lift's ROLE (`prescriptionRules`
+   * matching, peak detection, AB Triad grouping, session links) reads
+   * `sourceMovement ?? movement`, while movement-specific volume follows the
+   * exercise that actually fills the slot.
    */
   sourceMovement?: string;
   /**
@@ -405,6 +405,8 @@ export interface TbSeriesSlot {
   split?: "A" | "B";
   /** What this slot is prescribed across the block, for the wizard to state. */
   dose: TbSlotDose;
+  /** Dose shown when another exercise fills a slot with movement-specific volume. */
+  replacementDose?: TbSlotDose;
 }
 
 export interface TbTemplateSeries {
@@ -435,17 +437,31 @@ export function tbTemplateSeries(template: TbTemplate): TbTemplateSeries[] {
     .map((session) => ({
       key: sessionSeriesKey(template, session),
       label: session.label,
-      slots: (session.fixedMovements ?? template.defaultCluster).map(
-        (entry): TbSeriesSlot => ({
+      slots: (session.fixedMovements ?? template.defaultCluster).map((entry): TbSeriesSlot => {
+        const dose = tbSlotDose(template, session, entry.movement, entry.kind);
+        const replacementDose = tbSlotDose(
+          template,
+          session,
+          entry.movement,
+          entry.kind,
+          true,
+          "__replacement__",
+        );
+        const replacementDiffers =
+          replacementDose.sets !== dose.sets ||
+          replacementDose.reps !== dose.reps ||
+          replacementDose.load !== dose.load;
+        return {
           sourceMovement: entry.movement,
           role: isSupplementalSlot(session, entry.movement)
             ? "supplemental"
             : "main",
           ...(entry.kind ? { kind: entry.kind } : {}),
           ...(entry.split ? { split: entry.split } : {}),
-          dose: tbSlotDose(template, session, entry.movement, entry.kind),
-        }),
-      ),
+          dose,
+          ...(replacementDiffers ? { replacementDose } : {}),
+        };
+      }),
     }));
 }
 
@@ -510,11 +526,14 @@ function applyPrescriptionRules(
   base: ResolvedDose,
   rules: readonly TbPrescriptionRule[],
   week: number,
-  matchMovement: string,
+  slotMovement: string,
+  selectedMovement = slotMovement,
 ): ResolvedDose {
   const out: ResolvedDose = { ...base };
   for (const rule of rules) {
     if (rule.activeWeeks && !rule.activeWeeks.includes(week)) continue;
+    const matchMovement =
+      rule.matchBy === "movement" ? selectedMovement : slotMovement;
     if (rule.movements && !rule.movements.includes(matchMovement)) continue;
     if (rule.percent !== undefined) out.percent = rule.percent;
     if (rule.setsMin != null) out.setsMin = rule.setsMin;
@@ -558,6 +577,7 @@ export function tbSlotDose(
   sourceMovement: string,
   kind?: TbLiftKind,
   useTemplateDefaults = true,
+  selectedMovement = sourceMovement,
 ): TbSlotDose {
   const weeks = Array.from({ length: template.blockWeeks }, (_, i) => i + 1).filter(
     (week) => !session.activeWeeks || session.activeWeeks.includes(week),
@@ -573,7 +593,7 @@ export function tbSlotDose(
       ? template.setsReps
       : template.delegatedSetsReps;
   const wave = waves.find((w) => w.id === session.waveId) ?? waves[0];
-  const movementRange = session.movementSetRanges?.[sourceMovement];
+  const movementRange = session.movementSetRanges?.[selectedMovement];
 
   const doses = weeks.map((week) => {
     const scheme = schemes[week - 1]!;
@@ -591,6 +611,7 @@ export function tbSlotDose(
       session.prescriptionRules ?? [],
       week,
       sourceMovement,
+      selectedMovement,
     );
   });
   if (doses.length === 0) return { sets: "", reps: "", load: null };
@@ -1271,7 +1292,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       };
       const sourceMovement = lift.sourceMovement ?? lift.movement;
       const anchor = ctx.oneRepMaxes[lift.movement];
-      const movementRange = session.movementSetRanges?.[sourceMovement];
+      const movementRange = session.movementSetRanges?.[lift.movement];
       const setsMin = movementRange?.min ?? scheme.setsMin;
       const setsMax = movementRange?.max ?? scheme.setsMax;
       const isPeak = customPeaks
@@ -1348,6 +1369,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         rules,
         parsed.week,
         isAddedTriadMember ? sourceMovement : ruleMatchMovement,
+        lift.movement,
       );
       prescribedPercent = resolved.percent;
       prescribedSetsMin = resolved.setsMin;

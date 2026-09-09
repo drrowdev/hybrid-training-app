@@ -191,9 +191,9 @@ export interface PickerTbTemplate {
     label: string;
     /**
      * What the template prescribes in this repeating strength slot, in order.
-     * `sourceMovement` is the slot's permanent identity: it is what a
-     * replacement inherits its prescription from, and what a superset link is
-     * keyed by, so both survive swapping the exercise that fills the slot.
+     * `sourceMovement` is the slot's permanent identity: role-based rules and
+     * superset links use it, while exercise-specific volume follows the
+     * replacement.
      */
     slots: Array<{
       sourceMovement: string;
@@ -202,6 +202,8 @@ export interface PickerTbTemplate {
       split?: "A" | "B";
       /** What this slot is prescribed across the block, for the row to state. */
       dose?: { sets: string; reps: string; load: string | null };
+      /** Dose for a replacement when the original movement has a special dose. */
+      replacementDose?: { sets: string; reps: string; load: string | null };
     }>;
   }>;
   activationPhases?: PickerActivationPhase[];
@@ -3444,7 +3446,13 @@ export function ProgramPicker({
                           draft.doseOverride,
                           addedDose(draft.role, supplementalDose).load,
                         )
-                      : slot?.dose ?? (draft.role ? addedDose(draft.role, supplementalDose) : undefined),
+                      : slot
+                        ? draft.movement !== slot.sourceMovement
+                          ? slot.replacementDose ?? slot.dose
+                          : slot.dose
+                        : draft.role
+                          ? addedDose(draft.role, supplementalDose)
+                          : undefined,
                   );
               // Editable only on work the lifter added, and never on a circuit:
               // the AB Triad runs one dose across three movements.

@@ -240,6 +240,16 @@ describe("tbTemplateSeries — what the wizard shows and edits", () => {
     ]);
   });
 
+  it("states the normal main-lift dose when Zulu's deadlift slot is replaced", () => {
+    const day2 = tbTemplateSeries(getTbTemplate("zulu")!)[1]!;
+    const deadlift = day2.slots.find(
+      (slot) => slot.sourceMovement === "deadlift",
+    );
+
+    expect(deadlift?.dose.sets).toBe("1–3");
+    expect(deadlift?.replacementDose?.sets).toBe("3–5");
+  });
+
   it("reports every Operator slot as main work", () => {
     const series = tbTemplateSeries(getTbTemplate("operator")!);
     expect(series).toHaveLength(3);

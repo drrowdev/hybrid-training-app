@@ -1419,3 +1419,12 @@ Added the setup-only `.github/workflows/copilot-setup-steps.yml` for future GitH
 
 ## [2026-09-06] fix | Allow the observed Copilot cloud commit email
 Added only `198982749+Copilot@users.noreply.github.com`, observed as the author email on all three PR #801 commits, to the CI identity guard's existing allowlist. Preserved exact author AND committer email matching and the original three entries; clarified local/cloud labels and replaced owner-impersonation/rebase guidance with account-appropriate email guidance. This email-string check is not actor authentication. No engine constraints, setup workflow, dependencies, or other workflow settings changed.
+
+## [2026-09-05] fix | Swapped main lifts use the selected exercise's volume
+
+Tactical Barbell replacements keep their template slot for role, ordering,
+links, and supplemental behavior, but movement-specific volume now follows the
+exercise actually selected. A Front Squat replacing Zulu's deadlift slot uses
+the normal 3–5-set main-lift range instead of inheriting Deadlift's 1–3-set
+exception; Activation's deadlift-only range and taper follow the same rule.
+The program editor shows the replacement dose before deployment. No migration.

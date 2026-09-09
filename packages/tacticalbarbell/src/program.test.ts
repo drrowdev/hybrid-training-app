@@ -381,6 +381,62 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     ).toBe(0.75);
   });
 
+  it("[slot identity] a non-deadlift in Zulu's deadlift slot uses the normal main-lift range", () => {
+    const frontSquat = "catalog:front-squat";
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-2": [
+          {
+            movement: frontSquat,
+            displayName: "Front Squat",
+            sourceMovement: "deadlift",
+            kind: "barbell",
+            split: "B",
+          },
+          {
+            movement: "weighted-pullup",
+            sourceMovement: "weighted-pullup",
+            kind: "weighted-bw",
+            split: "B",
+          },
+        ],
+        "slot-4": [
+          {
+            movement: frontSquat,
+            displayName: "Front Squat",
+            sourceMovement: "deadlift",
+            kind: "barbell",
+            split: "B",
+          },
+          {
+            movement: "weighted-pullup",
+            sourceMovement: "weighted-pullup",
+            kind: "weighted-bw",
+            split: "B",
+          },
+        ],
+      },
+    });
+    const customCtx = {
+      ...ctx,
+      oneRepMaxes: { ...ctx.oneRepMaxes, [frontSquat]: 160 },
+    };
+
+    for (const ref of ["b0-w2-p1b", "b0-w2-p2b"]) {
+      const frontSquatItem = itemsOfKind(
+        tb.prescribe(inst, ref, customCtx),
+        "main",
+      ).find((item) => item.name === "Front Squat");
+      expect(frontSquatItem, ref).toMatchObject({
+        percentOfTm: 0.8,
+        sets: 3,
+        setsMax: 5,
+        reps: 5,
+      });
+    }
+  });
+
   it("[slot identity] a swapped unanchored supplemental stays supplemental and unloaded", () => {
     const inst = setup({
       templateId: "zulu",
@@ -1177,6 +1233,37 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
       sets: 1,
       setsMax: 3,
     });
+  });
+
+  it("Activation deadlift-only volume does not follow a non-deadlift replacement", () => {
+    const inst = setup({
+      templateId: "activation",
+      activationSessionOverrides: {
+        "activation.operator.operator-d3": {
+          movementOverrides: {
+            deadlift: { movement: "squat" },
+          },
+        },
+        "activation.armor.armor-a2": {
+          movementOverrides: {
+            deadlift: { movement: "squat" },
+          },
+        },
+      },
+    });
+
+    expect(
+      itemsOfKind(
+        tb.prescribe(inst, "b0-w16-operator-d3", ctx),
+        "main",
+      ).find((item) => item.name === "Squat"),
+    ).toMatchObject({ sets: 3, setsMax: 5, reps: 5 });
+    expect(
+      itemsOfKind(
+        tb.prescribe(inst, "b0-w7-armor-a2", ctx),
+        "main",
+      ).find((item) => item.name === "Squat"),
+    ).toMatchObject({ sets: 3, reps: 5 });
   });
 
   it("Activation peaks and Vertex apply movement-specific work", () => {
