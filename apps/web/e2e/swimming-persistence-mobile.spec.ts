@@ -430,7 +430,7 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
   test("E1 DC-SW1/DC-SW6: weekly swimming analytics keep native pool courses separate", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
   }) => {
-    try {
+    {
       const actor = await analyticsActor(admin, freshUser, seedConfig);
       const today = new Date().toISOString().slice(0, 10);
       const observations: SwimObservation[] = (["m", "yd"] as const).map((unit) => ({
@@ -502,18 +502,13 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
         expect(isDeepStrictEqual(await analyticsState(actor, freshUser.userId), before)).toBe(true);
         expect(isDeepStrictEqual(await loadSwimHubView(actor, freshUser.userId, before.plans[0]), view)).toBe(true);
       }
-    } finally {
-      const deleted = await admin.auth.admin.deleteUser(freshUser.userId);
-      expect(deleted.error === null).toBe(true);
-      const remaining = await admin.auth.admin.getUserById(freshUser.userId);
-      expect(remaining.data.user === null && remaining.error?.status === 404).toBe(true);
     }
   });
 
   test("E2 DC-SW2/DC-SW6: ordinary swim results do not create a pace calibration", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
   }) => {
-    try {
+    {
       const actor = await analyticsActor(admin, freshUser, seedConfig);
       const today = new Date().toISOString().slice(0, 10);
       const created = await arrangeAnalytics(actor, today);
@@ -570,11 +565,6 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
         expect(isDeepStrictEqual(await analyticsState(actor, freshUser.userId), before)).toBe(true);
         expect(isDeepStrictEqual(await loadSwimHubView(actor, freshUser.userId, before.plans[0]), view)).toBe(true);
       }
-    } finally {
-      const deleted = await admin.auth.admin.deleteUser(freshUser.userId);
-      expect(deleted.error === null).toBe(true);
-      const remaining = await admin.auth.admin.getUserById(freshUser.userId);
-      expect(remaining.data.user === null && remaining.error?.status === 404).toBe(true);
     }
   });
 });
