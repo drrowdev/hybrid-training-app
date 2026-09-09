@@ -156,7 +156,11 @@ export function deriveSwimWeekCandidate(plan: SwimPlanRow, history: SwimHistoryR
 
 export async function loadSwimWorkoutView(client: SupabaseClient, userId: string, workoutId: string): Promise<SwimWorkoutView | null> {
   const workout = await getSwimWorkout(client, workoutId);
-  if (!workout || workout.user_id !== userId) return null;
+  return workout ? swimWorkoutViewFromRow(client, userId, workout) : null;
+}
+
+export async function swimWorkoutViewFromRow(client: SupabaseClient, userId: string, workout: SwimWorkoutRow): Promise<SwimWorkoutView | null> {
+  if (workout.user_id !== userId) return null;
   const plan = (await listSwimPlans(client)).find((row) => row.id === workout.plan_id && row.user_id === userId);
   if (!plan) return null;
   const row = (await loadSwimHistory(client, [workout]))[0]!;

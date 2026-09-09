@@ -1037,6 +1037,13 @@
       "when": 1788912000000,
       "tag": "0147_shared_completion_identity",
       "breakpoints": false
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1788998400000,
+      "tag": "0148_defer_custom_movement_references",
+      "breakpoints": false
     }
   ]
 }

@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { JSONReport } from "@playwright/test/reporter";
 import { expect, it } from "vitest";
+import { SWIM_BROWSER_CASES } from "../../../../scripts/swim-browser-acceptance";
 
 const root = resolve(__dirname, "../../../../../..");
 const web = join(root, "apps/web");
@@ -17,21 +18,17 @@ const knownSources = [
   "packages/db/scripts/migrate-evidence.ts",
   "apps/web/e2e/swimming-mobile.spec.ts",
   "apps/web/e2e/swimming-persistence-mobile.spec.ts",
+  "apps/web/e2e/swimming-lifecycle-load-mobile.spec.ts",
+  "apps/web/e2e/swimming-decisions-offline-mobile.spec.ts",
+  "apps/web/e2e/swimming-account-mobile.spec.ts",
+  "apps/web/e2e/swimming-assessment-mobile.spec.ts",
 ] as const;
 const loaderCodes = [
   "ERR_REQUIRE_ESM", "ERR_MODULE_NOT_FOUND", "ERR_UNKNOWN_FILE_EXTENSION",
   "ERR_UNSUPPORTED_DIR_IMPORT", "MODULE_NOT_FOUND",
 ] as const;
-const expected = [
-  ["swimming-mobile.spec.ts", "ADR0079 standalone swimming",
-    "blockless setup, local progress, offline finish and native history"],
-  ["swimming-mobile.spec.ts", "ADR0079 standalone swimming",
-    "custom pool entry survives validation and compact repeats retain progress"],
-  ["swimming-persistence-mobile.spec.ts", "ADR0079 mobile swimming persistence and isolation",
-    "DC-SW1/DC-SW8: native course and planned workouts survive reload and a second same-user mobile context"],
-  ["swimming-persistence-mobile.spec.ts", "ADR0079 mobile swimming persistence and isolation",
-    "DC-SW1/DC-SW8: two mobile users retain distinct usable plans and cannot start or change each other's workouts"],
-];
+const expected = SWIM_BROWSER_CASES.map(({ file, describe, title }) => [file.slice("e2e/".length), describe, title]);
+const expectedFiles = [...new Set(expected.map(([file]) => file))];
 
 function syntheticJwt(role: "anon" | "service_role") {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -39,7 +36,7 @@ function syntheticJwt(role: "anon" | "service_role") {
   return `${encode({ alg: "HS256", typ: "JWT" })}.${encode({ role, ref: "local", exp: 1 })}.${randomBytes(32).toString("base64url")}`;
 }
 
-it.skipIf(process.platform === "win32")("DC-SW1/DC-SW8: the real pinned CLI collects exactly four mobile cases without executing them", async () => {
+it.skipIf(process.platform === "win32")("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4: the real pinned CLI collects the exact declared mobile cohort without executing it", async () => {
   let success = false;
   let exit = -1;
   let output = "";
@@ -98,13 +95,22 @@ it.skipIf(process.platform === "win32")("DC-SW1/DC-SW8: the real pinned CLI coll
     assert.equal(report.config.version, "1.60.0");
     assert.equal(report.config.rootDir, join(web, "e2e"));
     assert.deepEqual(report.errors, []);
-    assert.equal(report.suites.length, 2);
+    assert.equal(report.config.projects.length, 1);
+    assert.equal(report.config.projects[0]!.name, "mobile-chromium");
+    assert.equal(expectedFiles.length, 6);
+    assert.deepEqual(expectedFiles.map((file) => expected.filter(([name]) => name === file).length), [2, 4, 2, 8, 3, 1]);
+    assert.equal(report.suites.length, expectedFiles.length);
     const collected = report.suites.flatMap((file) => {
+      const expectedCases = expected.filter(([name]) => name === file.file);
+      assert(expectedCases.length > 0);
+      assert.equal(file.title, file.file);
       assert.equal(file.specs.length, 0);
       assert.equal(file.suites?.length, 1);
       const suite = file.suites![0]!;
+      assert.equal(suite.file, file.file);
+      assert(expectedCases.every(([, describe]) => describe === suite.title));
       assert.equal(suite.suites?.length ?? 0, 0);
-      assert.equal(suite.specs.length, 2);
+      assert.equal(suite.specs.length, expectedCases.length);
       return suite.specs.map((spec) => {
         assert.equal(spec.file, file.file);
         assert.equal(spec.tests.length, 1);
@@ -114,7 +120,9 @@ it.skipIf(process.platform === "win32")("DC-SW1/DC-SW8: the real pinned CLI coll
         return [file.file, suite.title, spec.title];
       });
     });
-    assert.deepEqual(collected, expected);
+    assert.equal(collected.length, SWIM_BROWSER_CASES.length);
+    assert.equal(collected.length, 20);
+    assert.deepEqual(collected.sort(), [...expected].sort());
     success = true;
   } catch {
     // Never expose child errors, assertion diffs, report bodies or synthetic config.

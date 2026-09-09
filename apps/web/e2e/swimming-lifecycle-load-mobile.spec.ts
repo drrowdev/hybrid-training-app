@@ -1,0 +1,901 @@
+import { randomUUID } from "node:crypto";
+import { errors, type Page, type Request } from "@playwright/test";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Prescription } from "@hta/db";
+import { ALL_REGIONS, finalEwma, type Region, type SwimActualResult } from "@hta/domain";
+import { test as seededTest, expect } from "./fixtures/seed";
+import { signInAs } from "./fixtures/auth";
+import { markOnboarded, seedRecentBlock, seedPlannedSessionsForBlock } from "./fixtures/seed-blocks";
+import { swimE2EEnabled } from "./fixtures/swim-environment";
+import { addDaysToYmd, todayYmd, ymdInTimezone } from "../src/lib/dates";
+import { structuredSwimRegions } from "../src/lib/swim/load";
+import { cardioIntensityScalar, normaliseHrZones } from "../src/lib/engine/cardio-intensity";
+import { CARDIO_LOAD_SCALAR, PRIMARY_REGION_WEIGHT, SECONDARY_REGION_WEIGHT } from "../src/lib/engine/set-load";
+import type { SwimPlanRow, SwimWorkoutRow } from "../src/lib/swim/storage";
+import {
+  SWIM_ALERT_CODEBOOK, alertAnnotation, classifyAlertNodes, classifyWorkoutViewNodes, pauseBackend,
+  unavailableAlert, validateAlertCategory, type AlertObservation,
+} from "../scripts/swim-alert-membership";
+
+const test = seededTest.extend({
+  // Match the persistence spec: reject unsafe targets before any fixture writes.
+  seedConfig: async ({ baseURL }, use) => {
+    if (!swimE2EEnabled(process.env) || process.env.E2E_SWIM_LOCAL !== "1") {
+      throw new Error("Swimming lifecycle tests require the disposable loopback environment.");
+    }
+    if (!baseURL || !URL.canParse(baseURL) || process.env.PLAYWRIGHT_BASE_URL !== baseURL) {
+      throw new Error("Swimming lifecycle tests require an explicit loopback HTTP baseURL.");
+    }
+    const target = new URL(baseURL);
+    if (target.protocol !== "http:" ||
+      !["localhost", "127.0.0.1", "[::1]"].includes(target.hostname) ||
+      target.username || target.password || target.pathname !== "/" || target.search || target.hash) {
+      throw new Error("Swimming lifecycle tests require an explicit loopback HTTP baseURL.");
+    }
+    const {
+      E2E_SUPABASE_URL: supabaseUrl,
+      E2E_SUPABASE_ANON_KEY: anonKey,
+      E2E_SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
+    } = process.env;
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+      throw new Error("Swimming lifecycle tests require explicit dedicated seed configuration.");
+    }
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- Playwright fixture callback.
+    await use({ supabaseUrl, anonKey, serviceRoleKey });
+  },
+  freshUser: async ({ admin }, use) => {
+    const email = `e2e+${randomUUID()}@hta-e2e.com`;
+    const password = randomUUID();
+    const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
+    expect(created.error).toBeNull();
+    if (!created.data.user) throw new Error("Missing synthetic user.");
+    const userId = created.data.user.id;
+    try {
+      // eslint-disable-next-line react-hooks/rules-of-hooks -- Playwright fixture callback.
+      await use({ email, password, userId });
+    } finally {
+      // Checked cleanup matches swimming-persistence-mobile.spec.ts.
+      const deleted = await admin.auth.admin.deleteUser(userId);
+      expect(deleted.error).toBeNull();
+      const remaining = await admin.auth.admin.getUserById(userId);
+      expect(remaining.data.user).toBeNull();
+      expect(remaining.error?.status).toBe(404);
+    }
+  },
+});
+
+async function createPlan(page: Page) {
+  await page.goto("/app/swim/setup");
+  await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
+  await page.getByLabel("Recent comfortable continuous lengths", { exact: true }).fill("4");
+  await page.getByLabel("Weeks", { exact: true }).fill("2");
+  await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
+  await expect(page).toHaveURL(/\/app\/swim\?plan=[^&]+$/);
+  await expect(page.getByRole("heading", { name: "Swims", exact: true })).toBeVisible();
+  const planId = new URL(page.url()).searchParams.get("plan");
+  if (!planId) throw new Error("Missing created plan ID.");
+  return { url: page.url(), planId };
+}
+
+async function savedPlan(admin: SupabaseClient, userId: string, planId: string) {
+  const [plan, workouts] = await Promise.all([
+    admin.from("swim_plans").select("*").eq("user_id", userId).eq("id", planId)
+      .single<SwimPlanRow>(),
+    admin.from("swim_workouts").select("*").eq("user_id", userId).eq("plan_id", planId)
+      .order("scheduled_date").order("id").returns<SwimWorkoutRow[]>(),
+  ]);
+  expect(plan.error).toBeNull();
+  expect(workouts.error).toBeNull();
+  if (!plan.data || !workouts.data) throw new Error("Missing saved swimming rows.");
+  expect(workouts.data).toHaveLength(4);
+  return { plan: plan.data, workouts: workouts.data };
+}
+
+async function confirmPlanStatus(
+  admin: SupabaseClient, userId: string, planId: string,
+  status: "finished" | "archived", deadline: number,
+) {
+  const budget = deadline - performance.now();
+  if (budget <= 0) return "not-confirmed-expired" as const;
+  const controller = new AbortController();
+  const expiry = setTimeout(() => controller.abort(), budget);
+  const active = () => !controller.signal.aborted && performance.now() < deadline;
+  const polling = (async () => {
+    const intervals = [100, 250, 500, 1000];
+    let attempt = 0;
+    while (active()) {
+      const sample = await admin.from("swim_plans").select("id,user_id,status")
+        .eq("user_id", userId).eq("id", planId).abortSignal(controller.signal).single();
+      if (!active()) return "not-confirmed-expired" as const;
+      if (sample.error || !sample.data || sample.data.id !== planId || sample.data.user_id !== userId ||
+        !["active", "paused", "finished", "archived"].includes(sample.data.status)) {
+        return "read-error" as const;
+      }
+      if (sample.data.status === status) return "reached" as const;
+      const remaining = deadline - performance.now();
+      if (remaining <= 0) return "not-confirmed-expired" as const;
+      await new Promise<void>((resolve) => {
+        const finish = () => {
+          clearTimeout(timer);
+          controller.signal.removeEventListener("abort", finish);
+          resolve();
+        };
+        const timer = setTimeout(finish, Math.min(intervals[Math.min(attempt++, intervals.length - 1)], remaining));
+        controller.signal.addEventListener("abort", finish, { once: true });
+      });
+    }
+    return "not-confirmed-expired" as const;
+  })().catch(() => active() ? "read-error" as const : "not-confirmed-expired" as const);
+  try {
+    return await polling;
+  } finally {
+    controller.abort();
+    clearTimeout(expiry);
+    await Promise.allSettled([polling]);
+  }
+}
+
+async function primaryBaseline(admin: SupabaseClient, userId: string) {
+  const timezone = await userTimezone(admin, userId);
+  const blockId = await seedRecentBlock(admin, userId, {
+    status: "active", weeks: 2, startedOn: addDaysToYmd(todayYmd(timezone), -7),
+  });
+  const plannedIds = await seedPlannedSessionsForBlock(admin, userId, blockId, {
+    totalSessions: 2, loggedCount: 1,
+  });
+  const movement = await admin.from("movements").select("id,display_name")
+    .is("user_id", null).eq("slug", "bench-press-flat").single();
+  expect(movement.error).toBeNull();
+  if (typeof movement.data?.id !== "string" || !movement.data.id.trim() ||
+    typeof movement.data.display_name !== "string" || !movement.data.display_name.trim()) {
+    throw new Error("Missing valid global bench-press-flat catalog movement.");
+  }
+  const movementId = movement.data.id;
+  const prescription: Prescription = {
+    items: [{ movementId, movementName: movement.data.display_name, kind: "main", sets: 3, reps: 5 }],
+  };
+  const updated = await admin.from("planned_sessions").update({ prescription })
+    .eq("user_id", userId).eq("block_id", blockId).in("id", plannedIds);
+  expect(updated.error).toBeNull();
+  const linked = await admin.from("planned_sessions").select("completed_session_id")
+    .eq("user_id", userId).eq("id", plannedIds[0]).single();
+  expect(linked.error).toBeNull();
+  const sessionId = linked.data?.completed_session_id as string | null;
+  if (!sessionId) throw new Error("Missing primary session.");
+  const set = await admin.from("set_logs").insert({
+    session_id: sessionId, movement_id: movementId, set_index: 1,
+    weight_kg: 40, reps: 5, rpe: 7, set_kind: "main", skipped: false,
+  });
+  expect(set.error).toBeNull();
+  async function snapshot() {
+    const rows = await Promise.all([
+      admin.from("training_blocks").select("*").eq("user_id", userId).eq("id", blockId),
+      admin.from("planned_sessions").select("*").eq("user_id", userId).eq("block_id", blockId).order("id"),
+      admin.from("sessions").select("*").eq("user_id", userId).eq("id", sessionId),
+      admin.from("set_logs").select("*").eq("session_id", sessionId).order("id"),
+      admin.from("movements").select("*").is("user_id", null).eq("slug", "bench-press-flat").eq("id", movementId),
+    ]);
+    for (const [index, result] of rows.entries()) {
+      expect(result.error).toBeNull();
+      expect(result.data).toHaveLength(index === 1 ? 2 : 1);
+    }
+    return rows.map((result) => result.data);
+  }
+  return { snapshot, initial: await snapshot() };
+}
+
+function lifecycleTransition(before: SwimPlanRow, after: SwimPlanRow, status: SwimPlanRow["status"]) {
+  expect(after.status).toBe(status);
+  expect(after.revision).toBe(before.revision + 1);
+  expect(after.definition).toEqual(before.definition);
+  expect(after.state.lifecycle).toEqual([
+    ...(before.state.lifecycle ?? []),
+    { from: before.status, to: status, recordedAt: expect.any(String) },
+  ]);
+  expect(Number.isFinite(Date.parse(after.state.lifecycle!.at(-1)!.recordedAt))).toBe(true);
+}
+
+async function userTimezone(admin: SupabaseClient, userId: string) {
+  const profile = await admin.from("profiles").select("timezone").eq("id", userId).single();
+  expect(profile.error).toBeNull();
+  if (typeof profile.data?.timezone !== "string") throw new Error("Missing synthetic user's timezone.");
+  return profile.data.timezone;
+}
+
+type NativeSession = {
+  id: string; user_id: string; performed_at: string; completed_at: string | null;
+  deleted_at: string | null; completion_outbox_entry_id: string | null;
+  duration_min: number | null; session_rpe: number | string | null;
+};
+type NativeLog = {
+  id: string; session_id: string; client_log_id: string | null; modality: string;
+  duration_sec: number; distance_km: number | string; rpe: number | string | null;
+  hr_zones: unknown; swim_result: SwimActualResult;
+};
+type RegionRow = {
+  user_id: string; region: Region; atl: number | string; ctl: number | string;
+  baseline_tolerance: number | string; last_load_date: string | null; updated_at: string;
+};
+
+async function nativeRows(admin: SupabaseClient, userId: string, sessionId: string, signal?: AbortSignal) {
+  const sessionQuery = admin.from("sessions")
+    .select("id,user_id,performed_at,completed_at,deleted_at,completion_outbox_entry_id,duration_min,session_rpe")
+    .eq("user_id", userId).eq("id", sessionId);
+  const logsQuery = admin.from("cardio_logs")
+    .select("id,session_id,client_log_id,modality,duration_sec,distance_km,rpe,hr_zones,swim_result")
+    .eq("session_id", sessionId).returns<NativeLog[]>();
+  const reads = [
+    (signal ? sessionQuery.abortSignal(signal) : sessionQuery).single<NativeSession>(),
+    signal ? logsQuery.abortSignal(signal) : logsQuery,
+  ] as const;
+  const [session, logs] = signal ? await Promise.allSettled(reads).then(([session, logs]) => {
+    if (session.status === "rejected") throw session.reason;
+    if (logs.status === "rejected") throw logs.reason;
+    return [session.value, logs.value] as const;
+  }) : await Promise.all(reads);
+  expect(session.error).toBeNull();
+  expect(logs.error).toBeNull();
+  if (!session.data || !logs.data) throw new Error("Missing native session rows.");
+  expect(session.data.id).toBe(sessionId);
+  expect(session.data.user_id).toBe(userId);
+  return { session: session.data, logs: logs.data };
+}
+
+async function regionRows(admin: SupabaseClient, userId: string) {
+  const result = await admin.from("region_state")
+    .select("user_id,region,atl,ctl,baseline_tolerance,last_load_date,updated_at")
+    .eq("user_id", userId).order("region").returns<RegionRow[]>();
+  expect(result.error).toBeNull();
+  if (!result.data) throw new Error("Missing region query result.");
+  return result.data;
+}
+
+function assertLedger(
+  rows: RegionRow[], userId: string, timezone: string, session: NativeSession,
+  log: NativeLog, previous: RegionRow[] = [],
+) {
+  expect(rows.map((row) => row.region).sort()).toEqual([...ALL_REGIONS].sort());
+  const exposure = structuredSwimRegions(log.swim_result);
+  if (!exposure) throw new Error("Expected native swimming exposure.");
+  const day = ymdInTimezone(new Date(session.performed_at), timezone);
+  const load = log.duration_sec / 60 * cardioIntensityScalar({
+    hrZones: normaliseHrZones(log.hr_zones), durationSec: log.duration_sec,
+    rpe: log.rpe === null ? null : Number(log.rpe),
+  }) * CARDIO_LOAD_SCALAR;
+  expect(load).toBeGreaterThan(0);
+  for (const row of rows) {
+    expect(row.user_id).toBe(userId);
+    const updated = Date.parse(row.updated_at);
+    expect(Number.isFinite(updated)).toBe(true);
+    expect(updated).toBeGreaterThanOrEqual(Date.parse(session.performed_at));
+    const old = previous.find((value) => value.region === row.region);
+    if (old) expect(updated).toBeGreaterThan(Date.parse(old.updated_at));
+    // Attribute the actual session instant, not its planned swim date. Compare
+    // the once-only lower-level EWMA to the persisted numeric(10,4) values.
+    const asOf = ymdInTimezone(new Date(row.updated_at), timezone);
+    expect(asOf >= day).toBe(true);
+    const weight = (exposure.primaryRegions.includes(row.region) ? PRIMARY_REGION_WEIGHT : 0) +
+      (exposure.secondaryRegions.includes(row.region) ? SECONDARY_REGION_WEIGHT : 0);
+    const series = new Map<string, number>(weight > 0 ? [[day, load * weight]] : []);
+    const atl = Number(finalEwma(series, day, asOf, 7).toFixed(4));
+    const ctl = Number(finalEwma(series, day, asOf, 28).toFixed(4));
+    expect(Number(row.atl)).toBe(atl);
+    expect(Number(row.ctl)).toBe(ctl);
+    expect(Number(row.baseline_tolerance)).toBe(ctl);
+    expect(row.last_load_date).toBe(weight > 0 ? day : null);
+  }
+}
+
+test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
+  test.use({ viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true });
+  test.skip(!swimE2EEnabled(process.env), "Blocked: swimming E2E was not explicitly requested.");
+
+  test("A1, DC-SW7: pause, preview, resume, finish and archive preserve primary training and issued swims", async ({
+    page, context, freshUser, seedConfig, admin, baseURL,
+  }, testInfo) => {
+    await markOnboarded(admin, freshUser.userId);
+    const primary = await primaryBaseline(admin, freshUser.userId);
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    const { url, planId } = await createPlan(page);
+    const created = await savedPlan(admin, freshUser.userId, planId);
+    expect(created.plan.status).toBe("active");
+    expect(created.plan.revision).toBeGreaterThan(0);
+    expect(created.plan.state.lifecycle ?? []).toEqual([]);
+    for (const row of created.workouts) {
+      expect(row.status).toBe("scheduled");
+      expect(row.session_id).toBeNull();
+      expect(row.definition.issued.totalLengths).toBeGreaterThan(0);
+    }
+    expect(await primary.snapshot()).toEqual(primary.initial);
+    const first = created.workouts[0];
+    await page.getByRole("link").and(page.locator(`[href="/app/swim/${first.id}"]`)).click();
+    await page.getByRole("button", { name: "Start swim", exact: true }).click();
+    await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+    const started = await savedPlan(admin, freshUser.userId, planId);
+    const protectedSwim = started.workouts.find((row) => row.id === first.id)!;
+    expect(protectedSwim.status).toBe("started");
+    expect(protectedSwim.session_id).toEqual(expect.any(String));
+    expect(protectedSwim.revision).toBe(first.revision + 1);
+    expect(protectedSwim.definition).toEqual(first.definition);
+    expect(protectedSwim.scheduled_date).toBe(first.scheduled_date);
+    expect(started.plan.revision).toBe(created.plan.revision + 1);
+    expect(started.plan.state).toEqual(created.plan.state);
+    expect(await primary.snapshot()).toEqual(primary.initial);
+    await page.goto(url);
+    const { origin, pathname } = new URL(page.url());
+    let actionRequest: Request | undefined;
+    const requestWaiter = page.waitForRequest((request) => {
+      if (actionRequest || request.method() !== "POST") return false;
+      const target = new URL(request.url());
+      if (target.origin !== origin || target.pathname !== pathname ||
+        !request.headers()["next-action"]) return false;
+      actionRequest = request;
+      return true;
+    }, { timeout: 5000 }).then(
+      () => "seen" as const,
+      (error: unknown) => error instanceof errors.TimeoutError ? "timeout" as const : "error" as const,
+    );
+    const responseWaiter = page.waitForResponse(
+      (response) => actionRequest !== undefined && response.request() === actionRequest,
+      { timeout: 5000 },
+    ).then(
+      (response) => ({ outcome: "seen", paired: response.request() === actionRequest, status: response.status() }),
+      (error: unknown) => ({
+        outcome: error instanceof errors.TimeoutError ? "timeout" : "error", paired: false, status: null,
+      }),
+    );
+    await page.getByRole("button", { name: "Pause", exact: true }).click();
+    const deadline = performance.now() + 5000;
+    expect(deadline - performance.now()).toBeGreaterThan(0);
+    const requestOutcome = await requestWaiter;
+    expect(requestOutcome).toBe("seen");
+    expect(deadline - performance.now()).toBeGreaterThan(0);
+    const responseOutcome = await responseWaiter;
+    expect(responseOutcome.outcome).toBe("seen");
+    expect(responseOutcome.paired).toBe(true);
+    expect(responseOutcome.status).toBe(200);
+
+    const backendBudget = deadline - performance.now();
+    expect(backendBudget).toBeGreaterThan(0);
+    let expiry: ReturnType<typeof setTimeout> | undefined;
+    const diagnostic = unavailableAlert("a1-pause");
+    try {
+      // Bound polling and the late sample without a sleep or a renewed deadline.
+      const expired = new Promise<"pending">((resolve) => {
+        expiry = setTimeout(() => resolve("pending"), backendBudget);
+      });
+      const captureAlert = async () => {
+        if (performance.now() >= deadline) return;
+        const category = await Promise.race([
+          page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)
+            .then(({ category }) => category).then(validateAlertCategory, () => "unavailable" as const),
+          expired.then(() => "unavailable" as const),
+        ]);
+        diagnostic.category = performance.now() < deadline ? category : "unavailable";
+      };
+      const polling = (async () => {
+        while (performance.now() < deadline) {
+          const { count } = await page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK);
+          if (count < 0) return "error" as const;
+          if (count > 0) return "alert" as const;
+          if (performance.now() >= deadline) return "pending" as const;
+          const saved = await savedPlan(admin, freshUser.userId, planId);
+          if (performance.now() >= deadline) return "pending" as const;
+          if (saved.plan.status === "paused") {
+            Object.assign(diagnostic, pauseBackend(saved.plan.status, saved.plan.revision, started.plan.revision));
+            return "backend" as const;
+          }
+        }
+        return "pending" as const;
+      })().then(
+        (outcome) => outcome,
+        () => "error" as const,
+      );
+      const backendOutcome = await Promise.race([polling, expired]);
+      if (backendOutcome === "alert" && performance.now() < deadline) {
+        const controller = new AbortController();
+        void expired.then(() => controller.abort());
+        try {
+          // Diagnostic read only: keep the owned goal even when alert won the poll.
+          await Promise.race([
+            Promise.all([
+              captureAlert(),
+              (async () => {
+                const sample = await admin.from("swim_plans").select("status,revision")
+                  .eq("user_id", freshUser.userId).eq("id", planId).abortSignal(controller.signal).single();
+                if (performance.now() < deadline && !sample.error && sample.data) {
+                  Object.assign(diagnostic, pauseBackend(sample.data.status, sample.data.revision, started.plan.revision));
+                }
+              })().catch(() => undefined),
+            ]),
+            expired,
+          ]);
+        } finally { controller.abort(); }
+      }
+      expect(backendOutcome).not.toBe("error");
+      expect(backendOutcome).not.toBe("alert");
+      expect(backendOutcome).toBe("backend");
+      const visibilityBudget = deadline - performance.now();
+      expect(visibilityBudget).toBeGreaterThan(0);
+      await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible({ timeout: visibilityBudget });
+      expect(deadline - performance.now()).toBeGreaterThan(0);
+      // One late sample, not continuous alert coverage during rendering.
+      const lateAlertCount = await Promise.race([
+        page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)
+          .then(({ count }) => count, () => "error" as const),
+        expired,
+      ]);
+      if (typeof lateAlertCount === "number" && performance.now() < deadline) {
+        if (lateAlertCount !== 0) await captureAlert();
+        else diagnostic.category = "absent";
+      }
+      expect(lateAlertCount).toBe(0);
+    } finally {
+      clearTimeout(expiry);
+      const annotation = alertAnnotation(diagnostic);
+      if (annotation) testInfo.annotations.push(annotation);
+    }
+    const paused = await savedPlan(admin, freshUser.userId, planId);
+    lifecycleTransition(started.plan, paused.plan, "paused");
+    expect(paused.workouts).toEqual(started.workouts);
+    const future = paused.workouts.filter((row) => row.id !== first.id);
+    expect(future).toHaveLength(3);
+    const today = await page.getByLabel("Resume from", { exact: true }).getAttribute("min");
+    if (!today) throw new Error("Missing server-local resume minimum.");
+    for (const row of future) {
+      expect(row.status).toBe("scheduled");
+      expect(row.session_id).toBeNull();
+      expect(row.scheduled_date >= today).toBe(true);
+    }
+    expect(paused.plan.state.pauseSnapshot?.workoutIds).toEqual(future.map((row) => row.id));
+    expect(await primary.snapshot()).toEqual(primary.initial);
+    const resumeFrom = addDaysToYmd(paused.plan.ends_on > today ? paused.plan.ends_on : today, 1);
+    await page.getByLabel("Resume from", { exact: true }).fill(resumeFrom);
+    const previewDates = page.getByRole("button", { name: "Preview dates", exact: true });
+    const previewDeadline = performance.now() + 5_000;
+    const previewCountBudget = previewDeadline - performance.now();
+    expect(previewCountBudget).toBeGreaterThan(0);
+    await expect(previewDates).toHaveCount(1, { timeout: previewCountBudget });
+    const previewVisibleBudget = previewDeadline - performance.now();
+    expect(previewVisibleBudget).toBeGreaterThan(0);
+    await expect(previewDates).toBeVisible({ timeout: previewVisibleBudget });
+    const previewEnabledBudget = previewDeadline - performance.now();
+    expect(previewEnabledBudget).toBeGreaterThan(0);
+    await expect(previewDates).toBeEnabled({ timeout: previewEnabledBudget });
+    const previewClickBudget = previewDeadline - performance.now();
+    expect(previewClickBudget).toBeGreaterThan(0);
+    await previewDates.click({ timeout: previewClickBudget });
+    const preview = page.getByRole("heading", { name: "New swim dates", exact: true }).locator("..");
+    await expect(preview.getByRole("listitem")).toHaveCount(future.length);
+    const dates = await preview.getByRole("listitem").allTextContents();
+    for (const date of dates) {
+      expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(date >= resumeFrom).toBe(true);
+    }
+    expect(await savedPlan(admin, freshUser.userId, planId)).toEqual(paused);
+    expect(await primary.snapshot()).toEqual(primary.initial);
+    await page.getByRole("button", { name: "Accept dates and resume", exact: true }).click();
+    await expect(page.locator("main > section").first().getByText("Active", { exact: true })).toBeVisible();
+    const resumed = await savedPlan(admin, freshUser.userId, planId);
+    lifecycleTransition(paused.plan, resumed.plan, "active");
+    expect(resumed.workouts.find((row) => row.id === first.id)).toEqual(protectedSwim);
+    for (const [index, row] of future.entries()) {
+      expect(resumed.workouts.find((saved) => saved.id === row.id)).toEqual({
+        ...row, scheduled_date: dates[index], revision: row.revision + 1, updated_at: expect.any(String),
+      });
+    }
+    expect(resumed.plan.state.decisions).toHaveLength(paused.plan.state.decisions.length + 1);
+    expect(resumed.plan.state.decisions.slice(0, -1)).toEqual(paused.plan.state.decisions);
+    expect(resumed.plan.state.decisions.at(-1)).toMatchObject({ kind: "schedule", decision: "accepted" });
+    expect(resumed.plan.state.pauseSnapshot).toEqual(paused.plan.state.pauseSnapshot);
+    expect(resumed.plan.ends_on).toBe([...dates, paused.plan.ends_on].sort().at(-1));
+    expect(await primary.snapshot()).toEqual(primary.initial);
+    let previous = resumed;
+    {
+      await page.getByRole("button", { name: "Finish plan", exact: true }).click();
+      const deadline = performance.now() + 5000;
+      const outcome = await confirmPlanStatus(admin, freshUser.userId, planId, "finished", deadline);
+      expect(outcome).not.toBe("read-error");
+      expect(outcome).toBe("reached");
+      const remaining = deadline - performance.now();
+      expect(remaining).toBeGreaterThan(0);
+      await expect(page.locator("main > section").first().getByText("Finished", { exact: true })).toBeVisible({ timeout: remaining });
+      const saved = await savedPlan(admin, freshUser.userId, planId);
+      lifecycleTransition(previous.plan, saved.plan, "finished");
+      expect(saved.workouts).toEqual(resumed.workouts);
+      expect(saved.plan.state.decisions).toEqual(resumed.plan.state.decisions);
+      expect(await primary.snapshot()).toEqual(primary.initial);
+      previous = saved;
+    }
+    {
+      await page.getByRole("button", { name: "Archive", exact: true }).click();
+      const deadline = performance.now() + 5000;
+      const outcome = await confirmPlanStatus(admin, freshUser.userId, planId, "archived", deadline);
+      expect(outcome).not.toBe("read-error");
+      expect(outcome).toBe("reached");
+      const remaining = deadline - performance.now();
+      expect(remaining).toBeGreaterThan(0);
+      await expect(page.locator("main > section").first().getByText("Archived", { exact: true })).toBeVisible({ timeout: remaining });
+      const saved = await savedPlan(admin, freshUser.userId, planId);
+      lifecycleTransition(previous.plan, saved.plan, "archived");
+      expect(saved.workouts).toEqual(resumed.workouts);
+      expect(saved.plan.state.decisions).toEqual(resumed.plan.state.decisions);
+      expect(await primary.snapshot()).toEqual(primary.initial);
+      previous = saved;
+    }
+    await page.reload();
+    await expect(page.locator("main > section").first().getByText("Archived", { exact: true })).toBeVisible();
+    expect(await savedPlan(admin, freshUser.userId, planId)).toEqual(previous);
+    expect(await primary.snapshot()).toEqual(primary.initial);
+  });
+
+  test("A2, DC-SW9: native UI completion, edit, trash and recovery replace regional load exactly once", async ({
+    page, context, freshUser, seedConfig, admin, baseURL,
+  }, testInfo) => {
+    async function captureFailureView(diagnostic: AlertObservation) {
+      diagnostic.category = "unavailable";
+      diagnostic.control = "unavailable";
+      diagnostic.result = "unavailable";
+      const interrupted = () => testInfo.status === "timedOut" || testInfo.status === "interrupted" || page.isClosed();
+      const budget = 1000;
+      if (interrupted()) return;
+      const deadline = performance.now() + budget;
+      let expiry: ReturnType<typeof setTimeout> | undefined;
+      let settled = false;
+      const reads: Promise<unknown>[] = [];
+      try {
+        // One immediate visible-branch read; none describes only these tracked matches.
+        const view = page.getByRole("button", { name: /^(Start swim|Starting…)$/ })
+          .or(page.getByRole("link", { name: /^(Log swim|Restore from Trash)$/ }))
+          .or(page.getByRole("status").filter({ hasText: /^(Plan paused|Plan finished|Plan archived|Result removed|Swimming is currently unavailable\.)$/ }))
+          .or(page.getByRole("heading", { name: /^(Edit your swim|Your swim)$/, level: 2 }))
+          .or(page.getByRole("heading", { name: "404", exact: true, level: 1 }))
+          .filter({ visible: true }).evaluateAll(classifyWorkoutViewNodes).then(
+            (value) => value, () => ({ control: "unavailable", result: "unavailable" } as const),
+          );
+        reads.push(view);
+        const alert = page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK).then(
+          ({ count, category }) => count < 0 || category === "unreadable" ? "unavailable" as const : validateAlertCategory(category),
+          () => "unavailable" as const,
+        );
+        reads.push(alert);
+        const sample = Promise.all([view, alert]).then((value) => { settled = true; return value; });
+        reads.push(sample);
+        const value = await Promise.race([
+          sample,
+          new Promise<undefined>((resolve) => { expiry = setTimeout(() => resolve(undefined), budget); }),
+        ]);
+        if (value && !interrupted() && performance.now() < deadline) {
+          Object.assign(diagnostic, value[0], { category: value[1] });
+        }
+      } finally {
+        clearTimeout(expiry);
+        // A race is not cancellation. Only this already-failed test's page may be closed.
+        // Collection is capped; closing/draining remains best-effort, not a forced-close guarantee.
+        if (!settled && reads.length > 0) await page.close().catch(() => undefined);
+        await Promise.allSettled(reads);
+      }
+    }
+    const userId = freshUser.userId;
+    await markOnboarded(admin, userId);
+    const timezone = await userTimezone(admin, userId);
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    expect(await regionRows(admin, userId)).toEqual([]);
+    const { planId } = await createPlan(page);
+    const scheduled = await savedPlan(admin, userId, planId);
+    const workout = scheduled.workouts[0];
+    await page.getByRole("link").and(page.locator(`[href="/app/swim/${workout.id}"]`)).click();
+    const expected = new URL(`/app/swim/${workout.id}`, baseURL!).href;
+    await expect(page).toHaveURL(expected);
+    await expect(page.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();
+    const diagnostic = unavailableAlert("a2-post-start");
+    const { origin, pathname } = new URL(expected);
+    let actionRequest: Request | undefined;
+    const requestWaiter = page.waitForRequest((request) => {
+      if (actionRequest || request.method() !== "POST") return false;
+      const target = new URL(request.url());
+      if (target.origin !== origin || target.pathname !== pathname ||
+        !request.headers()["next-action"]) return false;
+      actionRequest = request;
+      return true;
+    }, { timeout: 5000 }).then(
+      () => "seen" as const,
+      (error: unknown) => error instanceof errors.TimeoutError ? "timeout" as const : "error" as const,
+    );
+    const responseWaiter = page.waitForResponse(
+      (response) => actionRequest !== undefined && response.request() === actionRequest,
+      { timeout: 5000 },
+    ).then(
+      (response) => ({ outcome: "seen", paired: response.request() === actionRequest, status: response.status() }),
+      (error: unknown) => ({
+        outcome: error instanceof errors.TimeoutError ? "timeout" : "error", paired: false, status: null,
+      }),
+    );
+    const transport = Promise.all([requestWaiter, responseWaiter]).then(([requestOutcome, responseOutcome]) => {
+      expect(requestOutcome).toBe("seen");
+      expect(responseOutcome.outcome).toBe("seen");
+      expect(responseOutcome.paired).toBe(true);
+      expect(responseOutcome.status).toBe(200);
+    }).then(() => ({ ok: true } as const), (error: unknown) => ({ ok: false, error } as const));
+    try {
+      await page.getByRole("button", { name: "Start swim", exact: true }).click();
+      await expect.poll(async () => {
+        const saved = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id);
+        return saved?.status === "started" && typeof saved.session_id === "string" && saved.session_id.length > 0;
+      }).toBe(true);
+      diagnostic.backend = "reached";
+      // Start the original separate UI window immediately; HTTP 200 is transport-only.
+      const [uiOutcome, transportOutcome] = await Promise.allSettled([(async () => {
+        try {
+          await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+        } catch (error) {
+          await captureFailureView(diagnostic).catch(() => undefined);
+          throw error;
+        }
+      })(), transport]);
+      // Retain the original UI error even when transport also failed.
+      if (uiOutcome.status === "rejected") throw uiOutcome.reason;
+      if (transportOutcome.status === "rejected") throw transportOutcome.reason;
+      if (!transportOutcome.value.ok) throw transportOutcome.value.error;
+    } finally {
+      await Promise.allSettled([requestWaiter, responseWaiter, transport]);
+      const annotation = alertAnnotation(diagnostic);
+      if (annotation) testInfo.annotations.push(annotation);
+    }
+    const started = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)!;
+    expect(started.status).toBe("started");
+    const sessionId = started.session_id;
+    if (!sessionId) throw new Error("Missing started native session ID.");
+    const before = await nativeRows(admin, userId, sessionId);
+    expect(before.session.completed_at).toBeNull();
+    expect(before.session.deleted_at).toBeNull();
+    expect(before.logs).toHaveLength(0);
+    expect(await regionRows(admin, userId)).toEqual([]);
+
+    await page.getByRole("link", { name: "Log swim", exact: true }).click();
+    await page.getByLabel("Whole lengths", { exact: true }).fill("16");
+    await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
+    await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
+    await page.getByText("Notes, changes and splits", { exact: true }).click();
+    await page.getByRole("combobox", { name: "Stroke", exact: true }).selectOption("breaststroke");
+    await page.getByRole("button", { name: "Finish swim", exact: true }).click();
+    const result = page.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
+    await expect(result).toContainText("16 lengths · 15:00 · RPE 6");
+    const completed = await nativeRows(admin, userId, sessionId);
+    expect(completed.logs).toHaveLength(1);
+    const originalLog = completed.logs[0];
+    expect(originalLog.id).toEqual(expect.any(String));
+    expect(originalLog.session_id).toBe(sessionId);
+    expect(originalLog.modality).toBe("swimming");
+    expect(originalLog.client_log_id).toEqual(expect.any(String));
+    expect(completed.session.completion_outbox_entry_id).toBe(originalLog.client_log_id);
+    expect(completed.session.completed_at).toEqual(expect.any(String));
+    expect(completed.session.performed_at).toBe(before.session.performed_at);
+    expect(completed.session.deleted_at).toBeNull();
+    expect(completed.session.duration_min).toBe(15);
+    expect(Number(completed.session.session_rpe)).toBe(6);
+    expect(originalLog.duration_sec).toBe(900);
+    expect(Number(originalLog.rpe)).toBe(6);
+    // The generic projection is numeric(7,3); native lengths/course stay exact.
+    expect(Number(originalLog.distance_km)).toBe(0.366);
+    expect(originalLog.swim_result).toMatchObject({
+      version: 1, lengths: 16, timeMs: 900000, rpe: 6,
+      snapshot: { course: workout.definition.issued.snapshot.course, strokes: ["breaststroke"], equipment: [] },
+    });
+    const completedWorkout = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)!;
+    expect(completedWorkout).toMatchObject({
+      status: "completed", session_id: sessionId, revision: started.revision + 1,
+      scheduled_date: workout.scheduled_date, definition: started.definition,
+    });
+    const completedRegions = await regionRows(admin, userId);
+    assertLedger(completedRegions, userId, timezone, completed.session, originalLog);
+    expect(Number(completedRegions.find((row) => row.region === "adductor_groin")!.atl)).toBeGreaterThan(0);
+
+    await result.getByRole("button", { name: "Edit result", exact: true }).click();
+    await page.getByLabel("Whole lengths", { exact: true }).fill("12");
+    await page.getByLabel("Time · min:sec", { exact: true }).fill("10:00");
+    await page.getByRole("radio", { name: "8 tough", exact: true }).click();
+    await page.getByText("Notes, changes and splits", { exact: true }).click();
+    await page.getByRole("combobox", { name: "Stroke", exact: true }).selectOption("freestyle");
+    await page.getByRole("checkbox", { name: "Pull buoy", exact: true }).check();
+    const editDiagnostic = unavailableAlert("a2-edit");
+    const controller = new AbortController();
+    const owned: Promise<unknown>[] = [];
+    let editExpiry: ReturnType<typeof setTimeout> | undefined;
+    try {
+      expect(await page.locator("#swim-result").evaluate(
+        (form) => form instanceof HTMLFormElement && form.checkValidity(),
+      )).toBe(true);
+      const { origin, pathname } = new URL(page.url());
+      let actionRequest: Request | undefined;
+      const requestWaiter = page.waitForRequest((request) => {
+        if (actionRequest || request.method() !== "POST") return false;
+        const target = new URL(request.url());
+        if (target.origin !== origin || target.pathname !== pathname ||
+          !request.headers()["next-action"]) return false;
+        actionRequest = request;
+        return true;
+      }, { timeout: 5000 }).then(
+        () => "seen" as const,
+        (error: unknown) => error instanceof errors.TimeoutError ? "timeout" as const : "error" as const,
+      );
+      const responseWaiter = page.waitForResponse(
+        (response) => actionRequest !== undefined && response.request() === actionRequest,
+        { timeout: 5000 },
+      ).then(
+        (response) => ({ outcome: "seen", paired: response.request() === actionRequest, status: response.status() }),
+        (error: unknown) => ({
+          outcome: error instanceof errors.TimeoutError ? "timeout" : "error", paired: false, status: null,
+        }),
+      );
+      owned.push(requestWaiter, responseWaiter);
+      await page.getByRole("button", { name: "Save changes", exact: true }).click();
+      const deadline = performance.now() + 5000;
+      const observationBudget = deadline - performance.now();
+      expect(observationBudget).toBeGreaterThan(0);
+      const expired = new Promise<"expired">((resolve) => {
+        editExpiry = setTimeout(() => {
+          controller.abort();
+          resolve("expired");
+        }, observationBudget);
+      });
+      const active = () => !controller.signal.aborted && performance.now() < deadline;
+      // Start both reads before transport assertions; an alert cannot suppress the owned goal sample.
+      const polling = (async () => {
+        const intervals = [100, 250, 500, 1000];
+        let attempt = 0;
+        while (active()) {
+          const backend = nativeRows(admin, userId, sessionId, controller.signal).then((sample) => {
+            if (!active()) return "expired" as const;
+            expect(Array.isArray(sample.logs)).toBe(true);
+            for (const log of sample.logs) {
+              expect(typeof log.id === "string" && typeof log.client_log_id === "string" &&
+                log.session_id === sessionId && typeof log.swim_result?.lengths === "number" &&
+                typeof log.swim_result?.timeMs === "number" && typeof log.swim_result?.rpe === "number" &&
+                Array.isArray(log.swim_result?.snapshot?.strokes) &&
+                Array.isArray(log.swim_result?.snapshot?.equipment)).toBe(true);
+            }
+            const log = sample.logs[0];
+            const reached = sample.logs.length === 1 && log.id === originalLog.id &&
+              log.client_log_id === originalLog.client_log_id &&
+              log.swim_result.lengths === 12 && log.swim_result.timeMs === 600000 &&
+              log.swim_result.rpe === 8 && log.swim_result.snapshot.strokes.length === 1 &&
+              log.swim_result.snapshot.strokes[0] === "freestyle" &&
+              log.swim_result.snapshot.equipment.length === 1 &&
+              log.swim_result.snapshot.equipment[0] === "pull_buoy";
+            editDiagnostic.backend = reached ? "reached" : "not-reached";
+            return reached ? "reached" as const : "not-reached" as const;
+          }).catch(() => {
+            if (!active()) return "expired" as const;
+            editDiagnostic.backend = "unavailable";
+            return "read-error" as const;
+          });
+          owned.push(backend);
+          const alert = page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)
+            .then(({ count, category }) => {
+              if (!active()) return "expired" as const;
+              editDiagnostic.category = validateAlertCategory(category);
+              return count < 0 ? "structural-error" as const : count > 0 ? "alert" as const : "absent" as const;
+            }, () => {
+              if (!active()) return "expired" as const;
+              editDiagnostic.category = "unavailable";
+              return "read-error" as const;
+            });
+          owned.push(alert);
+          const [backendOutcome, alertOutcome] = await Promise.all([backend, alert]);
+          if (!active()) return "expired" as const;
+          if (backendOutcome === "read-error") return "backend-read-error" as const;
+          if (alertOutcome === "read-error") return "alert-read-error" as const;
+          if (alertOutcome === "structural-error") return "alert-structural-error" as const;
+          if (alertOutcome === "alert") return "alert" as const;
+          if (backendOutcome === "reached") return "backend" as const;
+          const remaining = deadline - performance.now();
+          if (remaining <= 0) return "expired" as const;
+          await new Promise<void>((resolve) => {
+            const finish = () => {
+              clearTimeout(timer);
+              controller.signal.removeEventListener("abort", finish);
+              resolve();
+            };
+            const timer = setTimeout(finish, Math.min(intervals[Math.min(attempt++, intervals.length - 1)], remaining));
+            controller.signal.addEventListener("abort", finish, { once: true });
+          });
+        }
+        return "expired" as const;
+      })().then((outcome) => outcome, () => "observation-error" as const);
+      owned.push(polling);
+      expect(deadline - performance.now()).toBeGreaterThan(0);
+      const requestOutcome = await requestWaiter;
+      expect(requestOutcome).toBe("seen");
+      expect(deadline - performance.now()).toBeGreaterThan(0);
+      const responseOutcome = await responseWaiter;
+      expect(responseOutcome.outcome).toBe("seen");
+      expect(responseOutcome.paired).toBe(true);
+      expect(responseOutcome.status).toBe(200);
+      expect(deadline - performance.now()).toBeGreaterThan(0);
+      const observationOutcome = await Promise.race([polling, expired]);
+      expect(observationOutcome).not.toBe("backend-read-error");
+      expect(observationOutcome).not.toBe("alert-read-error");
+      expect(observationOutcome).not.toBe("alert-structural-error");
+      expect(observationOutcome).not.toBe("observation-error");
+      expect(observationOutcome).not.toBe("alert");
+      expect(observationOutcome).toBe("backend");
+      const remaining = deadline - performance.now();
+      expect(remaining).toBeGreaterThan(0);
+      try {
+        await expect(result).toContainText("12 lengths · 10:00 · RPE 8", { timeout: remaining });
+      } catch (error) {
+        // Stop old observation writes before the later failure-only sample.
+        controller.abort();
+        await captureFailureView(editDiagnostic).catch(() => undefined);
+        throw error;
+      }
+    } finally {
+      controller.abort();
+      clearTimeout(editExpiry);
+      await Promise.allSettled(owned);
+      const annotation = alertAnnotation(editDiagnostic);
+      if (annotation) testInfo.annotations.push(annotation);
+    }
+    const edited = await nativeRows(admin, userId, sessionId);
+    expect(edited.logs).toHaveLength(1);
+    const editedLog = edited.logs[0];
+    expect(editedLog).toMatchObject({
+      id: originalLog.id, session_id: sessionId, client_log_id: originalLog.client_log_id,
+      modality: "swimming", duration_sec: 600,
+    });
+    expect(Number(editedLog.rpe)).toBe(8);
+    expect(Number(editedLog.distance_km)).toBe(0.274);
+    expect(editedLog.swim_result).toMatchObject({
+      version: 1, lengths: 12, timeMs: 600000, rpe: 8,
+      snapshot: { course: originalLog.swim_result.snapshot.course, strokes: ["freestyle"], equipment: ["pull_buoy"] },
+      provenance: originalLog.swim_result.provenance,
+    });
+    expect(edited.session).toEqual({
+      ...completed.session, duration_min: 10, session_rpe: edited.session.session_rpe,
+    });
+    expect(Number(edited.session.session_rpe)).toBe(8);
+    const editedWorkout = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)!;
+    expect(editedWorkout).toMatchObject({
+      status: "completed", session_id: sessionId, revision: completedWorkout.revision + 1,
+      scheduled_date: workout.scheduled_date,
+    });
+    expect(editedWorkout.definition.issued).toEqual(workout.definition.issued);
+    expect(editedWorkout.definition.resultHistory).toHaveLength(1);
+    expect(editedWorkout.definition.resultHistory![0]).toMatchObject({
+      result: originalLog.swim_result, revision: completedWorkout.revision,
+    });
+    const editedRegions = await regionRows(admin, userId);
+    assertLedger(editedRegions, userId, timezone, edited.session, editedLog, completedRegions);
+    expect(Number(editedRegions.find((row) => row.region === "adductor_groin")!.atl)).toBe(0);
+
+    await page.getByRole("button", { name: "Delete swim", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/swim$/);
+    const trashed = await nativeRows(admin, userId, sessionId);
+    expect(trashed.session).toEqual({ ...edited.session, deleted_at: expect.any(String) });
+    expect(Number.isFinite(Date.parse(trashed.session.deleted_at!))).toBe(true);
+    expect(trashed.logs).toEqual(edited.logs);
+    expect((await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)).toEqual(editedWorkout);
+    // No other completed sessions exist for this fresh user: deletion removes
+    // the seven rows altogether, rather than storing seven zero-valued rows.
+    expect(await regionRows(admin, userId)).toEqual([]);
+
+    await page.goto(`/app/swim/${workout.id}`);
+    await page.getByRole("link", { name: "Restore from Trash", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/settings\/trash$/);
+    const trashItem = page.getByTestId("trash-item").and(page.locator(`[data-id="${sessionId}"]`));
+    await expect(trashItem).toHaveAttribute("data-kind", "session");
+    await trashItem.getByRole("button", { name: "Recover", exact: true }).click();
+    await expect(trashItem).toHaveCount(0);
+    const restored = await nativeRows(admin, userId, sessionId);
+    expect(restored).toEqual(edited);
+    expect((await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)).toEqual(editedWorkout);
+    const restoredRegions = await regionRows(admin, userId);
+    assertLedger(restoredRegions, userId, timezone, restored.session, restored.logs[0], editedRegions);
+    await page.goto(`/app/sessions/${sessionId}`);
+    await expect(page).toHaveURL(new RegExp(`/app/swim/${workout.id}$`));
+    await expect(result).toContainText("12 lengths · 10:00 · RPE 8");
+    expect(await nativeRows(admin, userId, sessionId)).toEqual(edited);
+    expect(await regionRows(admin, userId)).toEqual(restoredRegions);
+  });
+});

@@ -63,12 +63,35 @@ Every ingest / refine / decision / lint pass MUST append a log entry. Every new 
 ## Commit hygiene
 
 - Conventional Commits style preferred: `feat(scope): ...`, `fix(scope): ...`, `chore: ...`, `docs: ...`.
-- **Always include the AI-coauthor trailer when an AI assistant wrote or substantively edited the commit:**
+- Every source commit, including merges, must have both author and committer
+  email in the exact allowlist: `198982749+Copilot@users.noreply.github.com`,
+  `223556219+Copilot@users.noreply.github.com`,
+  `280348738+drrowdev@users.noreply.github.com`, `noreply@github.com`.
+  The first two are the official Copilot cloud and CLI bots, respectively.
+  Preserve native authorship; do not impersonate the other bot. Inspect effective
+  identities before committing, local metadata afterward, and public metadata
+  after publishing. If publication uses an unapproved identity, stop; do not
+  conceal it with another commit.
+- Native authorship by either approved Copilot bot is sufficient AI credit;
+  no extra co-author line is required in bot-authored commits. Human-authored
+  commits containing AI-written or substantively AI-edited work still require
+  AI co-author credit using either approved bot email, for example:
 
   ```
   Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+  Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
   ```
 
+- `scripts/check-commit-identities.mjs` is shared by CI and pre-push. Check the
+  entire introduced history, never only the newest commit or `--no-merges`.
+  PRs use declared source/base OIDs; pushes use before/after OIDs; manual feature
+  runs and pre-push include all unmerged stack layers against the destination's
+  verified default branch, not archive refs or the immediate stack parent.
+  Missing boundaries fail closed. Do not bypass hooks. Existing legitimate
+  human commits do not need retroactive App trailers. History repair requires
+  fresh, explicit owner approval; a guard failure is not permission to rewrite.
+  Preserve existing credit lines and signatures; no retroactive history rewrite
+  or signature stripping. All prior rewrite approvals are consumed.
 - PR descriptions reference any DC-* / OC-* identifiers touched and link to the relevant section of `design-constraints.md`.
 
 ## Tests

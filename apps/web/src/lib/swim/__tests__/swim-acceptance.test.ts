@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { inspect } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import {
-  CLI_ASSET, CLI_SHA256, DEFAULT_SERVICES, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
+  ACTIVE_MIGRATION_TOTAL, CLI_ASSET, CLI_SHA256, DEFAULT_SERVICES, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
   containerSchema, outcome, processIdentity, readyServiceNames, requireAcceptance, requireArchive, requireCleanupState,
   requireContainer, requireFreshReport, requireLocalStatus, requireManualContext,
   requireNetwork, requireNoInheritedTargets, requirePinnedDefaultConfig, requirePrivateLocation, requireProcess, requireReadyStack,
@@ -19,6 +19,7 @@ import {
   openPrivateCommandLog, publishAcceptanceSummary, readMigrationDiagnostic, safeFailureCause,
 } from "../../../../scripts/swim-acceptance-reporting";
 import { MIN_RPC_CASES, RPC_SUITE, validateSwimRpcReport } from "./storage-rpc-report";
+import { SWIM_BROWSER_CASES } from "../../../../scripts/swim-browser-acceptance";
 import {
   AUTH_PRIVILEGES_SQL, SWIM_FUNCTION_CONTRACTS, checkAuthBoundary,
   enforceAuthBoundaryAfterRpc, observeAuthPrivileges, projectAuthPrivilegeOutput,
@@ -28,6 +29,35 @@ const sha = "a".repeat(40);
 const configHash = "b".repeat(64);
 const networkId = "c".repeat(64);
 const project = "pr802-123-1";
+describe("DC-SW8 ordinary candidate runner route", () => {
+  const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
+  it("removes the obsolete bypass and leaves normal Drizzle enabled", () => {
+    expect(source).not.toMatch(/ROLLBACK_PROBE_ONLY|swim-fk-rollback-probes|finishRollbackOnly|requireBrowserRoute/);
+    expect(source).toContain("const MIGRATION_DIAGNOSTIC_ONLY = false;");
+    expect(source).toContain('from "./swim-movement-reference-roundtrip"');
+    expect(source).toContain('"apps/web/e2e-rpc/setup.ts", "apps/web/scripts"');
+    expect(source).toContain('["--filter", "@hta/db", "db:migrate"]');
+    expect(existsSync(new URL("../../../../scripts/swim-fk-rollback-probes.ts", import.meta.url))).toBe(false);
+  });
+  it("requires relationship proof after identity/36 HTTP and then runs the original browser stage", () => {
+    const start = source.indexOf('await stage("movement reference down-up and necessity proof"');
+    const browser = source.indexOf('await stage("mobile browser acceptance"');
+    expect(start).toBeGreaterThan(source.indexOf("requireIdentityHelperRpcCases(ledger)"));
+    expect(start).toBeLessThan(browser);
+    const route = source.slice(start, browser);
+    expect(route).toContain("runMovementReferenceRoundTrip({");
+    expect(route).toContain("manifest.movementReferences = record");
+    expect(route).not.toMatch(/return;|if \(/);
+    expect(source.slice(browser)).toContain("runSwimBrowserStage({");
+  });
+  it("checks tracked hashes and exact UTF8 before each relationship SQL read is returned", () => {
+    const route = source.slice(source.indexOf('await stage("movement reference down-up'));
+    expect(route).toContain('requireUnchanged();\n        const bytes = readFileSync(join(root, file));');
+    expect(route).toContain('assert(hash(bytes) === sourceHashes[file], "Tracked movement reference SQL changed")');
+    expect(route).toContain('assert(Buffer.from(sql, "utf8").equals(bytes), "Movement reference SQL is not exact UTF-8")');
+    expect(route.indexOf("return sql;")).toBeGreaterThan(route.indexOf("Buffer.from(sql"));
+  });
+});
 const context = () => ({
   GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_JOB: "swim-acceptance",
   SWIM_ACCEPTANCE: "true", GITHUB_REPOSITORY: "drrowdev/hybrid-training-app",
@@ -74,12 +104,140 @@ const report = () => ({
 const ledger = () => validateSwimRpcReport(JSON.stringify(report()), sha, configHash);
 
 describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
+  it("gates the unchanged normal reference on one required synthetic probe after the owned install", () => {
+    const root = resolve(__dirname, "../../../../../..");
+    const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+    const job = workflow.split("\n  swim-acceptance:\n")[1]!.split("\n  prod-migrate:")[0]!;
+    expect(job).toContain("if: github.event_name == 'workflow_dispatch' && inputs.swim_acceptance");
+    expect(job).toContain("timeout-minutes: 45");
+    const steps = job.split("      - name: ");
+    const install = steps.findIndex((step) => step.startsWith("Install owned Chromium\n"));
+    expect(install).toBeGreaterThan(0);
+    expect(steps[install]).toBe("Install owned Chromium\n" +
+      "        timeout-minutes: 5\n        env:\n" +
+      "          PLAYWRIGHT_BROWSERS_PATH: ${{ env.HTA_SWIM_BROWSER_CACHE }}\n" +
+      "        run: pnpm --filter @hta/web exec playwright install chromium\n\n");
+    expect(steps[install + 1]).toBe("Prove synthetic announcer exclusion\n" +
+      "        timeout-minutes: 2\n" +
+      "        run: pnpm --filter @hta/web exec tsx scripts/swim-alert-announcer-probe.ts\n\n");
+    expect(steps[install + 2]).toBe("Run guarded reference acceptance\n" +
+      "        run: pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts\n\n");
+    expect(steps[install + 3]).toBe("Verify task cleanup\n" +
+      "        if: always()\n        run: |\n" +
+      '          if [ -n "${SWIM_ACCEPTANCE_DIR:-}" ]; then\n' +
+      "            pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts --cleanup\n" +
+      "          fi\n");
+    expect(job.match(/scripts\/swim-alert-announcer-probe\.ts/g)).toHaveLength(1);
+    expect(job).not.toContain("continue-on-error");
+  });
+  it("statically pins probe setup order, process-local isolation and guarded owned cleanup", () => {
+    const root = resolve(__dirname, "../../../../../..");
+    const probe = readFileSync(join(root, "apps/web/scripts/swim-alert-announcer-probe.ts"), "utf8");
+    const ordered = [
+      '["-C", root, "rev-parse", "HEAD"]',
+      "requireManualContext(process.env, head)",
+      "probeDirectory = mkdtempSync(",
+      "requirePrivateLocation(probeDirectory, temp, root)",
+      'mkdirSync(home, { mode: 0o700 })', 'mkdirSync(tmp, { mode: 0o700 })',
+      "requireSwimBrowserCache(process.env, root, probeDirectory)",
+      "PLAYWRIGHT_BROWSERS_PATH: cache",
+      "for (const key of Object.keys(process.env)) delete process.env[key]",
+      "Object.assign(process.env, env)",
+      "requireSwimBrowserInstallation(cache, web)",
+      'const installed = createRequire(join(web, "package.json"))',
+      'const test = createRequire(installed.resolve("@playwright/test/package.json"))',
+      'const playwright = createRequire(test.resolve("playwright/package.json"))',
+      'playwright("playwright-core")',
+      "const executable = chromium.executablePath()",
+      "executable.startsWith(`${cache}${sep}`) && realpathSync(executable) === executable",
+      "browser = await chromium.launch({ env, timeout: Math.min(10_000, remaining()) })",
+      "await close()",
+      "assert(cleanup)",
+      "const current = lstatSync(probeDirectory)",
+      "realpathSync(probeDirectory), probeDirectory",
+      "current.uid, process.getuid?.()", "current.mode & 0o7777, 0o700",
+      "current.dev, original.dev", "current.ino, original.ino",
+      "rmSync(probeDirectory, { recursive: true })",
+      'if (!cleanup) failure ??= "cleanup"',
+      "publishAcceptanceSummary(summary,",
+    ];
+    let previous = -1;
+    for (const token of ordered) {
+      const at = probe.indexOf(token);
+      expect(at, token).toBeGreaterThan(previous);
+      previous = at;
+    }
+    expect(probe).toContain('HOME: home, TMPDIR: tmp, TMP: tmp, TEMP: tmp');
+    expect(probe.match(/mkdtempSync\(/g)).toHaveLength(1);
+    expect(probe.match(/rmSync\(/g)).toHaveLength(1);
+    expect(probe).not.toMatch(/GITHUB_ENV|console\.|error\.|stdout|stderr|page\.goto|baseURL|channel:|executablePath:|install",|download/i);
+    expect(probe).toContain("Date.now() + 55_000");
+    expect(probe).toContain("}, 60_000)");
+    expect(probe).toContain("failure ??= timedOut ? \"timeout\" : stage");
+    expect(probe).toContain("if (!success) process.exitCode = 1");
+    expect(probe).toContain('protocol: "swim-announcer-synthetic-v1"');
+    expect(probe).toContain("assert.equal(rows.length, 16)");
+    expect(probe).toContain("executedRows: rows.length, rows");
+    expect(probe).toContain("passed: countsMatch && categoryMatches && visibilityMatches");
+    expect(probe.indexOf("rows.push(")).toBeLessThan(probe.indexOf("assert(rows.at(-1)!.passed)"));
+  });
+  it("keeps the probe static import graph free of early Playwright runtime initialization", () => {
+    const root = resolve(__dirname, "../../../../../..");
+    const seen = new Set<string>();
+    const visit = (file: string) => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      const source = readFileSync(file, "utf8");
+      for (const match of source.matchAll(/(?:import|export)\s+(type\s+)?[^;]*?\sfrom\s+["']([^"']+)["']/g)) {
+        if (match[1]) continue;
+        const target = match[2]!;
+        expect(target).not.toMatch(/playwright/);
+        if (target.startsWith(".")) visit(resolve(file, "..", `${target}.ts`));
+        else expect(target.startsWith("node:") || target === "zod").toBe(true);
+      }
+    };
+    visit(join(root, "apps/web/scripts/swim-alert-announcer-probe.ts"));
+    expect(seen.size).toBeGreaterThan(4);
+  });
+  it("uses the actual candidate callback at every alert site while retaining C2 positive visibility", () => {
+    const root = resolve(__dirname, "../../../../../..");
+    for (const file of [
+      "scripts/swim-alert-announcer-probe.ts", "e2e/swimming-lifecycle-load-mobile.spec.ts",
+      "e2e/swimming-persistence-mobile.spec.ts",
+    ]) {
+      const source = readFileSync(join(root, "apps/web", file), "utf8");
+      expect(source).toContain(".evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)");
+      expect(source).not.toContain("getRootNode()");
+      if (file.startsWith("e2e/")) {
+        expect(source).not.toMatch(/getByRole\("alert"\)\.(?:count|filter|and|first)\(/);
+        expect(source).toContain('if (count < 0) return "error" as const');
+        expect(source).toContain("expect(lateAlertCount).toBe(0)");
+      }
+    }
+    const c2 = readFileSync(join(root, "apps/web/e2e/swimming-mobile.spec.ts"), "utf8");
+    expect(c2).toContain('await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toBeVisible();');
+    const afterAlert = c2.slice(c2.indexOf('await expect(page.getByRole("alert")'));
+    expect(afterAlert).toMatch(/toHaveValue\("33\.33"\)/);
+  });
   it("extends the existing tracked-input list to consumed app roots without unrelated e2e or generated files", () => {
     const root = resolve(__dirname, "../../../../../..");
     const source = readFileSync(join(root, "apps/web/scripts/swim-acceptance.ts"), "utf8");
     const list = source.slice(source.indexOf('sourceFiles = git("ls-files"'), source.indexOf('sourceHashes = sources();'));
+    expect(source).toContain('import { SWIM_BROWSER_CASES } from "./swim-browser-acceptance";');
+    expect(source.match(/git\("ls-files"/g)).toHaveLength(1);
+    expect(list).toContain('...SWIM_BROWSER_CASES.map(({ file }) => `apps/web/${file}`),');
+    expect(list.trim()).toMatch(/^sourceFiles = git\("ls-files", "-z", "--",[\s\S]*"\.github\/workflows\/ci\.yml"\)\.split\("\\0"\)\.filter\(Boolean\);$/);
+    const declaredPaths = SWIM_BROWSER_CASES.map(({ file }) => `apps/web/${file}`);
+    expect([...new Set(declaredPaths)]).toEqual([
+      "apps/web/e2e/swimming-mobile.spec.ts",
+      "apps/web/e2e/swimming-persistence-mobile.spec.ts",
+      "apps/web/e2e/swimming-lifecycle-load-mobile.spec.ts",
+      "apps/web/e2e/swimming-decisions-offline-mobile.spec.ts",
+      "apps/web/e2e/swimming-account-mobile.spec.ts",
+      "apps/web/e2e/swimming-assessment-mobile.spec.ts",
+    ]);
     const paths = [...list.matchAll(/"([^"]+)"/g)].map((match) => match[1]!)
-      .slice(3).filter((path) => path !== "\\0");
+      .slice(3).filter((path) => path !== "\\0").concat(declaredPaths);
     for (const path of [
       "apps/web/src", "apps/web/public", "apps/web/scripts", "apps/web/package.json",
       "apps/web/next.config.*", "apps/web/tsconfig.json", "apps/web/postcss.config.*",
@@ -97,8 +255,10 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
     expect(paths).not.toContain("apps/web/e2e");
     const files = execFileSync("git", ["-C", root, "ls-files", "-z", "--", ...paths],
       { encoding: "utf8" }).split("\0").filter(Boolean);
+    expect(files).toEqual([...new Set(files)].sort());
+    for (const path of declaredPaths) expect(files).toContain(path);
     expect(files).toContain("packages/db/drizzle/meta/_journal.json");
-    expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(148);
+    expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(149);
     expect(files).toContain("apps/web/next.config.ts");
     expect(files).toContain("apps/web/postcss.config.mjs");
     expect(files.filter((file) => file.startsWith("apps/web/e2e/")).every((file) =>
@@ -589,15 +749,18 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     }
   });
 
-  it("requires all 148 journal entries and SQL files and records 148 without filtering out 0147", () => {
-    expect(source).toContain("journal.entries.length === 148");
-    expect(source).toContain('sourceFiles.filter((f) => /^packages\\/db\\/drizzle\\/[^/]+\\.sql$/.test(f)).length === 148');
-    expect(source).toContain("manifest.migrationCount = 148;");
+  it("requires normal total 149 while preserving identity definition level 148", () => {
+    expect(ACTIVE_MIGRATION_TOTAL).toBe(149);
+    expect(source).toContain("journal.entries.length === ACTIVE_MIGRATION_TOTAL");
+    expect(source).toContain('sourceFiles.filter((f) => /^packages\\/db\\/drizzle\\/[^/]+\\.sql$/.test(f)).length === ACTIVE_MIGRATION_TOTAL');
+    expect(source).toContain("manifest.migrationCount = ACTIVE_MIGRATION_TOTAL;");
     const journal = JSON.parse(readFileSync(new URL(
       "../../../../../../packages/db/drizzle/meta/_journal.json", import.meta.url,
     ), "utf8")) as { entries: { tag: string }[] };
-    expect(journal.entries).toHaveLength(148);
-    expect(journal.entries.at(-1)?.tag).toBe("0147_shared_completion_identity");
+    expect(journal.entries).toHaveLength(149);
+    expect(journal.entries[147]?.tag).toBe("0147_shared_completion_identity");
+    expect(journal.entries.at(-1)?.tag).toBe("0148_defer_custom_movement_references");
+    expect(source).toContain("checkAuthBoundary(authPrivileges, 148)");
   });
 
   it("pins all ten exact original/up bodies and distinct invoker/definer attributes to reviewed source", () => {

@@ -103,8 +103,8 @@ function setup() {
   });
   vi.mocked(readSwimBrowserReport).mockReset().mockImplementation(() => {
     events.push("report");
-    return { success: true, counts: { expected: 4, unexpected: 0, flaky: 0, skipped: 0 },
-      cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "passed" })) };
+    return { success: true, counts: { expected: SWIM_BROWSER_CASES.length, unexpected: 0, flaky: 0, skipped: 0 },
+      cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "passed", attempts: 1, durationMs: 1 })) };
   });
   const options = { command, root, runDirectory, deadline: Date.now() + BROWSER_LIMITS.required + 1_000,
     target: { url: "http://127.0.0.1:54321", projectRef: "local",
@@ -115,8 +115,19 @@ function setup() {
 }
 
 describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions only)", () => {
-  it("builds production, runs the dedicated config, and drains its exact server", async () => {
+  it.each([false, true])("binds only the validated server key and drains its exact server (mutated target: %s)", async (mutateTarget) => {
     const h = setup();
+    const production = buildBrowserEnv(h.options.target, {
+      runDirectory: h.options.runDirectory, reportPath: join(h.options.runDirectory, "browser.json"),
+      outputDir: join(h.options.runDirectory, "browser-output"),
+    });
+    if (mutateTarget) h.command.mockImplementationOnce(async () => {
+      h.events.push("build");
+      h.options.target.url = "https://other.supabase.co";
+      h.options.target.projectRef = "other";
+      h.options.target.serviceRoleKey = "";
+      return { result: passed };
+    });
     const run = runSwimBrowserStage(h.options);
     await h.browserStarted.promise;
     expect(prepareSwimBrowserReport).toHaveBeenCalledOnce();
@@ -130,13 +141,19 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     expect(start![1]).toEqual([build![1][0], "start", "--hostname", "127.0.0.1", "--port", "3210"]);
     expect(start![2]).toMatchObject({ timeout: 410_000, allowFailure: true });
     expect(build![2]).toMatchObject({ timeout: 180_000, cwd: join(root, "apps/web") });
-    expect(start![2].env).toEqual(build![2].env);
-    const production = buildBrowserEnv(h.options.target, {
-      runDirectory: h.options.runDirectory, reportPath: join(h.options.runDirectory, "browser.json"),
-      outputDir: join(h.options.runDirectory, "browser-output"),
+    expect(start![2].env).not.toBe(build![2].env);
+    expect(start![2].env).toEqual({
+      ...production, SUPABASE_SERVICE_ROLE_KEY: production.E2E_SUPABASE_SERVICE_ROLE_KEY,
     });
     expect(build![2].env).toEqual(production);
     expect(browser![2].env).toEqual({ ...production, PLAYWRIGHT_BROWSERS_PATH: h.cache });
+    expect(production).not.toHaveProperty("SUPABASE_SERVICE_ROLE_KEY");
+    expect(build![2].env).not.toHaveProperty("SUPABASE_SERVICE_ROLE_KEY");
+    expect(browser![2].env).not.toHaveProperty("SUPABASE_SERVICE_ROLE_KEY");
+    expect(start![2].env.SUPABASE_SERVICE_ROLE_KEY).toBe(build![2].env.E2E_SUPABASE_SERVICE_ROLE_KEY);
+    for (const call of [build, start, browser]) {
+      expect(call![2].env.E2E_SUPABASE_SERVICE_ROLE_KEY).toBe(production.E2E_SUPABASE_SERVICE_ROLE_KEY);
+    }
     expect(build![2].env).not.toHaveProperty("HTA_SWIM_BROWSER_CACHE");
     expect(build![2].env).not.toHaveProperty("PLAYWRIGHT_BROWSERS_PATH");
     expect(browser![1]).toEqual(["exec", "playwright", "test",
@@ -150,7 +167,27 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     expect(h.events).toEqual(["build", "start", "browser", "seal", "report", "stop-server"]);
     expect(sealSwimBrowserReport).toHaveBeenCalledWith(vi.mocked(prepareSwimBrowserReport).mock.results[0]!.value);
     expect(readSwimBrowserReport).toHaveBeenCalledWith(vi.mocked(prepareSwimBrowserReport).mock.results[0]!.value);
-    expect(h.manifest.browser).toEqual({ success: true, cases: 4 });
+    expect(h.manifest.browser).toEqual({ success: true, cases: SWIM_BROWSER_CASES.length });
+  });
+
+  it.each([
+    { url: "https://other.supabase.co", projectRef: "other" },
+    { url: "http://192.0.2.1:54321" },
+    { url: "http://127.0.0.1:54322" },
+    { url: "http://localhost:54321" },
+    { projectRef: "other" },
+    { anonKey: "" },
+    { serviceRoleKey: "" },
+  ])("rejects invalid or unowned target before any command: %j", async (target) => {
+    const h = setup();
+    Object.assign(h.options.target, target);
+    await expect(runSwimBrowserStage(h.options)).rejects.toThrow("browser-environment");
+    expect(h.command).not.toHaveBeenCalled();
+    expect(requireFreePort).not.toHaveBeenCalled();
+    expect(waitForBrowserReady).not.toHaveBeenCalled();
+    expect(prepareSwimBrowserReport).not.toHaveBeenCalled();
+    expect(h.stopServer).not.toHaveBeenCalled();
+    expect(h.manifest.browser).toEqual({ success: false, code: "browser-environment" });
   });
 
   it.each(["budget", "build", "env-before-start", "port", "readiness"] as const)(
@@ -265,12 +302,12 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
               tests: [{
                 timeout: 30_000, projectId: "mobile-chromium", projectName: "mobile-chromium",
                 expectedStatus: "passed", status: "unexpected",
-                results: [{ retry: 0, status: "failed", errors: [{ message: "synthetic-private-detail" }] }],
+                results: [{ retry: 0, status: "failed", duration: 1, errors: [{ message: "synthetic-private-detail" }] }],
               }],
             })),
           }],
         })),
-        errors: [], stats: { expected: 0, unexpected: 4, flaky: 0, skipped: 0 },
+        errors: [], stats: { expected: 0, unexpected: SWIM_BROWSER_CASES.length, flaky: 0, skipped: 0 },
       };
       writeFileSync(ticket.paths.reportPath, JSON.stringify(report), { mode: 0o644 });
       chmodSync(ticket.paths.reportPath, 0o644);
@@ -284,7 +321,7 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
       expect(h.manifest.browserLedger).toEqual(projectBrowserFailure(reportError));
       expect(h.manifest.browserLedger).toMatchObject({
         success: false, counts: report.stats,
-        cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "failed", attempts: 1 })),
+        cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "failed", attempts: 1, durationMs: 1 })),
       });
       expect(JSON.stringify(h.manifest)).not.toContain("synthetic-private-detail");
       if (result.code === 0) expect(primary).toBe(reportError);
@@ -485,7 +522,7 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     h.close();
     h.server.resolve({ result: stopped });
     await run;
-    expect(h.manifest.browser).toEqual({ success: true, cases: 4 });
+    expect(h.manifest.browser).toEqual({ success: true, cases: SWIM_BROWSER_CASES.length });
     expect(h.reporting.failures.primary).toBeNull();
     expect(h.reporting.failures.cleanup).toHaveLength(0);
   });

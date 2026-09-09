@@ -7,6 +7,7 @@ import Link from "next/link";
 import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
 import { RpeInput } from "@/components/forms/RpeInput";
 import { startSwimWorkout, skipSwimWorkout, editSwimResult } from "@/lib/swim/actions";
+import { SWIM_REFRESH_WARNING } from "@/lib/swim/action-feedback";
 import { enqueue, listForSession, listDeadLettered } from "@/lib/offline/outbox";
 import { createOutboxEntryId } from "@/lib/offline/outbox-core";
 import { flushOutbox, startAutoFlush } from "@/lib/offline/flusher";
@@ -17,7 +18,11 @@ import { SWIM_EQUIPMENT_LABEL, SWIM_STROKE_LABEL } from "@/lib/swim/presentation
 import styles from "./Swim.module.css";
 import { SplitFields } from "./SplitFields";
 
-export function WorkoutClient({ workout, userId, edit = false }: { workout: SwimWorkoutView; userId: string; edit?: boolean }) {
+export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warning, setWarning }: {
+  workout: SwimWorkoutView; userId: string; edit?: boolean;
+  onConfirmed: (view: SwimWorkoutView) => void;
+  warning: string | null; setWarning: (warning: string | null) => void;
+}) {
   const router = useRouter();
   const key = swimDraftKey(userId, workout.id);
   const [draft, setDraft] = useState<SwimDraft>(() => initialSwimDraft(workout));
@@ -26,6 +31,11 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
   const [sync, setSync] = useState<"idle" | "queued" | "saved" | "checking">("idle");
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(edit);
+  const [previousEdit, setPreviousEdit] = useState(edit);
+  if (edit !== previousEdit) {
+    setPreviousEdit(edit);
+    setEditing(edit);
+  }
 
   useEffect(() => {
     let alive = true;
@@ -127,17 +137,25 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
 
   function start() {
     setError(null);
+    setWarning(null);
     startTransition(async () => {
       try {
         const result = await startSwimWorkout(workout.id, workout.revision);
-        if (result.error) setError(result.error);
-        else router.refresh();
-      } catch { setError("Connect to start this swim, then try again."); }
+        if (!result || result.ok !== true || result.error || result.errorCode) {
+          setError(result?.error || "Connect to start this swim, then try again.");
+          return;
+        }
+        setWarning(result.warning ?? null);
+        if (result.view) onConfirmed(result.view);
+      } catch { setError("Connect to start this swim, then try again."); return; }
+      try { router.refresh(); }
+      catch { setWarning(SWIM_REFRESH_WARNING); }
     });
   }
 
   function submit(form: FormData) {
     setError(null);
+    setWarning(null);
     startTransition(async () => {
       try {
         const timeMs = parseSwimTime(draft.time);
@@ -159,11 +177,18 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
           const data = new FormData();
           for (const [name, value] of Object.entries(payload)) data.set(name, value);
           const result = await editSwimResult(data);
-          if (result.error) { setError(result.error); return; }
+          if (!result || result.ok !== true || result.error || result.errorCode) {
+            setError(result?.error || "Could not save this swim. Try again.");
+            return;
+          }
+          setWarning(result.warning ?? null);
+          if (result.view) onConfirmed(result.view);
           setEditing(false);
           setSync("saved");
-          router.replace(`/app/swim/${workout.id}`);
-          router.refresh();
+          try {
+            router.replace(`/app/swim/${workout.id}`);
+            router.refresh();
+          } catch { setWarning(SWIM_REFRESH_WARNING); }
           return;
         }
         const existing = (await listForSession(workout.sessionId)).find((entry) => entry.op === "swim_complete");
@@ -197,7 +222,7 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
         <p className={styles.muted}>{workout.date} · Up to {workout.budgetMinutes} min{workout.provisional && !workout.sessionId ? " · Provisional" : ""}</p>
         {workout.calibrationLabel && <p className={styles.muted}>{workout.calibrationLabel}</p>}
         {!workout.sessionId && workout.status === "scheduled" && workout.planStatus === "active" && (
-          <button className={styles.button} disabled={pending} onClick={start}>{pending ? "Starting…" : "Start swim"}</button>
+          <button className={styles.button} disabled={pending || !ready} onClick={start}>{pending ? "Starting…" : "Start swim"}</button>
         )}
         {canLog && <a href="#swim-result" className={styles.secondary}>Log swim</a>}
         {!workout.sessionId && workout.status === "scheduled" && workout.planStatus !== "active" && (
@@ -321,6 +346,7 @@ export function WorkoutClient({ workout, userId, edit = false }: { workout: Swim
         </details>
       </form>}
       {error && <p role="alert" className={styles.error}>{error}</p>}
+      {warning && <p role="status" className={styles.warning}>{warning}</p>}
       {workout.sessionId && !workout.deleted && !workout.sourceGone && sync !== "queued" && sync !== "checking" && (
         <DeleteSessionButton sessionId={workout.sessionId} label="Swim" redirectTo="/app/swim" variant="menu" />
       )}

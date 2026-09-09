@@ -3,7 +3,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getSwimCapability } from "@/lib/swim/capability";
 import { loadSwimWorkoutView } from "@/lib/swim/queries";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { WorkoutClient } from "@/components/swim/WorkoutClient";
+import { WorkoutScreen } from "@/components/swim/WorkoutScreen";
 import styles from "@/components/swim/Swim.module.css";
 
 export default async function SwimWorkoutPage({ params, searchParams }: {
@@ -22,7 +22,7 @@ export default async function SwimWorkoutPage({ params, searchParams }: {
   return (
     <main className={styles.page}>
       <PageHeader title={view.title} back={{ href: "/app/swim", label: "Swimming" }} />
-      <WorkoutClient key={`${view.id}:${view.revision}`} workout={view} userId={user.id} edit={(await searchParams).edit === "1"} />
+      <WorkoutScreen key={view.id} workout={view} userId={user.id} edit={(await searchParams).edit === "1"} />
     </main>
   );
 }

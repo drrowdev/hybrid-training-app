@@ -2,6 +2,263 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## PR805 pinned E1/E2 integration — 2026-09-09 — live20 UNRUN
+
+Continued `copilot/new-acceptance-cases` from exact
+`667349dd2bdffad9fda3a4e243681c5d90920840`, declared base
+`copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+**Code/test checkpoint:** `a5a631caed5a91a03b1421b05a2f17a55c584f60`,
+**tested tree:** `556b03bc3c93378e433fd6627ab7c72568e900a8`, published before docs.
+
+Imported only `apps/web/e2e/swimming-persistence-mobile.spec.ts` from immutable
+source `fee3751810f2b835b221a430a1eabde627daca3d` on
+`copilot/copilotswim-course-analytics-proof`; resulting blob is exactly
+`2e8f7aca4f21b8a4e0849d29acf0dfbcec207cfd`. Source author:
+`copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>`;
+source committer: `GitHub <noreply@github.com>`. This is file-source integration,
+not a PR811 merge or adoption of its history, policy, workflow or future tip.
+The source's correction leaves freshUser deletion to the existing fixture,
+without redundant per-case cleanup replacing a primary failure. The public
+worker validation report was unavailable; all results below were measured here.
+
+Under [DC-SW1/SW2/SW6](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05),
+E1 covers weekly native25m/25yd separation, native result history and compatible
+bests; E2 covers ordinary manual200/400-like results in generic/native history
+without an inferred pace calibration. Storage arrangement is not evidence of
+logging/assessment UI actions. Neither case has been executed in a browser here.
+Original18 casebook identities/order and original persistence bodies are intact.
+E1/E2 append at18/19: persistence indices2/3/18/19; B indices6/7/12–17;
+C2 remains9. Same six files, counts **2/4/2/8/3/1**. Grouped results map by exact
+identity, not flattened position. Old4/6/8/11/12/15/18 reports remove E1/E2 first,
+then their historical B/C filters, with actual totals and retained identities
+asserted. Same-total E substitutions by original persistence cases or each other
+are rejected alongside existing B/C/duplicate/skip/retry/failure/privacy checks.
+Failure ledgers contain20 cases; E cases acquire no annotation memberships.
+The existing main/stage source closure already fingerprints this spec.
+
+### Actual source validation
+
+Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts src/lib/swim/__tests__/analytics.test.ts src/lib/__tests__/commit-identity-guard.test.ts`
+  — **4 files, 522 passed** (480 acceptance, 1 collection, 2 analytics, 39 identity).
+  The collection test invoked the installed **Playwright1.60.0** CLI with
+  `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json`
+  through existing private isolation. It verified20 exact identities/six files,
+  counts2/4/2/8/3/1, zero executed results/errors, private-directory identity/mode
+  and cleanup. Safe output: `[swim-collection]{"success":true,"exit":0,"loaderCode":"unknown","sources":[]}`.
+- `pnpm --filter @hta/domain exec vitest run src/swimming.test.ts src/swim-pool-input.test.ts src/swim-workout-progress.test.ts`
+  — **3 files, 103 passed**.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts src/swimming-budget.test.ts`
+  — **2 files, 58 passed**. Existing canonical swimming/budget tests and original
+  B6/B7/B8 fixture regressions passed; no duplicate engine math introduced.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-persistence-mobile.spec.ts scripts/swim-browser-acceptance.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+  — passed.
+- `pnpm --filter @hta/web typecheck` — passed.
+- `pnpm docs:check-drift` — passed, **offline in-repository checks only**.
+- `git diff --check`, exact source-blob comparison and checkpoint scope review
+  — passed. Source checkpoint changes only the four authorized code/test files;
+  documentation adds only HANDOFF, pool-swimming and this wiki's append-only log.
+- `printf 'HEAD %s refs/heads/copilot/new-acceptance-cases %s\n' "$(git rev-parse HEAD)" 667349dd2bdffad9fda3a4e243681c5d90920840 | node scripts/check-commit-identities.mjs pre-push origin`
+  — passed, **128 commits inspected** at the code checkpoint, including all
+  unmerged stack layers against the destination's verified default branch.
+- Secret scan: clean. CodeQL: **skipped as trivial test/casebook changes**,
+  not a successful security analysis.
+
+Observed failures/corrections: the initial progress push failed the full-history
+guard on the shallow clone; `git fetch --unshallow origin` restored required
+history without rewriting or bypassing hooks. Initial import comparison caught
+a transcribed E2 heading assertion; it was restored to the exact B source before
+tests. The first web invocation mistakenly supplied
+`src/lib/swim/__tests__/commit-identity-guard.test.ts`, so only3 files/483 tests
+ran despite exit0. Correcting that path produced the four-file/522 result above.
+No material B-only defect was demonstrated, and the imported blob is unchanged.
+The Vite CJS deprecation notice is a warning, not a test failure.
+
+Local and public metadata for the published code checkpoint match the approved
+native cloud author and GitHub committer above. The four-email policy also
+allows `223556219+Copilot@users.noreply.github.com` and
+`280348738+drrowdev@users.noreply.github.com`. No history repair, identity
+substitution, hook bypass, merge/rebase/amend/force or extra agent/review chain.
+
+### Runtime and release boundary
+
+**Live20 is UNRUN; live18 was never runtime-accepted.** Last full reference is
+15/15 at `fdf01d865dc09f38e551925266fa604c56a3d40e`,
+[run34351260981](https://github.com/drrowdev/hybrid-training-app/actions/runs/34351260981).
+Old core [run34392005044](https://github.com/drrowdev/hybrid-training-app/actions/runs/34392005044)
+at `030160f8afb883cb650ceb6647c290c93c5b6e56` succeeded (GitHub logs query found
+zero failed jobs), but does not cover this integration head. The coordinator
+must inspect the exact artifact/current core before dispatching one bounded
+full reference. No CI dispatch, browser/SQL/Docker execution, hosted-data reads,
+production mutation, backup or paid resource occurred in this source task.
+
+Unchanged: normal149 versus identity146/147/148; Auth5phases/4DDL/15contexts/
+36HTTP; single set_logs FK down/up/baseline23503/candidate delete1/forced checks/
+UPDATE/restoration; session_movements. CLI2.116/default12/private0700/0600;
+30s/case,300s global,330s command,590s phase,410s server,35m total,3m cleanup,
+45m job; exact-resource-ID cleanup. No new retry, sleep, force-click or limit.
+MAIN/production's `0145_seed_single_leg_rdl_variants` requires reconciliation
+with unshipped145–148 before merge/deploy, **not in this task**. All nine
+standalone gates precede combined implementation; Garmin remains later.
+The earlier checkpoints below are historical, not claims about live20.
+
+## Official Copilot attribution policy — 2026-09-09
+
+Owner decision: **accept both official bots and native author credit**. This
+supersedes earlier CLI-only policy, not the historical repair records below.
+Both exact Copilot emails (cloud `198982749`, CLI `223556219`) are allowed
+alongside the unchanged owner and GitHub addresses. Native bot authorship is
+sufficient AI credit; human-authored AI edits still need AI co-author credit.
+Existing credits and signatures stay intact. Prior metadata repairs remain as
+recorded; **all prior rewrite approvals are consumed**.
+
+Continued PR805 from `030160f8afb883cb650ceb6647c290c93c5b6e56`, base
+`copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+**Tested code checkpoint:** `94193697bbc4d4df692786daaee3c55b9400155c`,
+tree `2a9c3d74238d9f9b34ab2e8e30d05fa282eb3091`, published before these docs.
+Local/public metadata match: author
+`copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>`,
+committer `GitHub <noreply@github.com>`; signature retained. No identity
+substitution, history rewrite or hook bypass. Initial shallow-history push
+was blocked; `git fetch --unshallow origin` restored required history.
+
+Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+- `pnpm --filter @hta/web exec vitest run src/lib/__tests__/commit-identity-guard.test.ts`
+  — **39 passed**; original negative/history/whitespace/signature/boundary tests
+  retained, both bot author/committer pairings accepted, unknown GitHub emails rejected.
+- `pnpm --filter @hta/web exec eslint src/lib/__tests__/commit-identity-guard.test.ts`
+  and `apps/web/node_modules/.bin/eslint --config apps/web/eslint.config.mjs scripts/check-commit-identities.mjs`
+  — passed; existing root React/pages configuration warnings.
+- `node --check scripts/check-commit-identities.mjs`,
+  `pnpm --filter @hta/web typecheck`, `pnpm docs:check-drift`, `git diff --check`
+  — passed; doc drift is offline/in-repository only.
+
+Secret scan clean. CodeQL returned zero alerts, but Actions analysis failed
+and JavaScript was size-skipped: **no successful security analysis claimed**.
+This policy resolves attribution of legitimate cloud output, **not code quality
+or production readiness**. Run `34392005044` validates immutable old `030160`,
+not the changed head. No CI dispatch or full reference run; a full reference
+must wait for writers to finish, current source inspection and its own appropriate
+green CI. All 18 existing source cases remain unchanged; no new runtime claims.
+Builder B independently owns only the persistence swimming spec on PR811.
+Only the five owner-authorized paths change; no DC-*/OC-*, production or DB work.
+
+## Exact-identity output refinement — 2026-09-09
+
+Continued PR805 from `5946bd020f637f36388109898f162a284eb9ede8`.
+**Tested code checkpoint:** `8fac5c3dfac66cb1b5246e5b142e4ed6c1094f60`,
+tree `355efedf4575d3ec72fd6f44b2d608b69f27ad45`.
+Raw synthetic commits created with `git hash-object -t commit -w --stdin`
+proved that Git stores and projects leading author / trailing committer
+space, tab, CR and NBSP unchanged. All eight were wrongly accepted before
+the fix. Tests compare complete `cat-file` content and untrimmed `git show`
+output. Git rejected an exploratory newline-in-email object as malformed;
+no validation bypass or retained invalid-object test was used.
+
+The checker removes only one terminal LF, requires exactly two identity
+fields, and uses `--no-show-signature`. Added empty-field attribution checks
+and Git-trace proof that signature-display config does not invoke a verifier.
+The original 22 regressions and all history/boundary/tag policy remain intact.
+
+Commands run from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+- `pnpm --filter @hta/web exec vitest run src/lib/__tests__/commit-identity-guard.test.ts`
+  — 33 passed after demonstrated red regressions.
+- `pnpm --filter @hta/web exec eslint src/lib/__tests__/commit-identity-guard.test.ts`
+  and `apps/web/node_modules/.bin/eslint --config apps/web/eslint.config.mjs scripts/check-commit-identities.mjs`
+  — passed (existing root React/pages configuration notices).
+- `node --check scripts/check-commit-identities.mjs`,
+  `pnpm --filter @hta/web typecheck`, `pnpm docs:check-drift`, `git diff --check`
+  — passed; doc drift is offline/in-repository only.
+
+Secret scan clean. CodeQL returned zero alerts, but Actions analysis failed
+and JavaScript was skipped for database size: **no analysis pass claimed**.
+The initial shallow-history publication was blocked without changing HEAD;
+`git fetch --unshallow --no-tags origin` restored history. The signing service
+again returned Bad Request; the terminal checkpoint is unsigned, with hooks
+enabled, explicit Copilot223556219 author/committer and both AI credits
+verified locally and on GitHub. Publication pushed the existing commit.
+Only the checker, its tests, this handoff and append-only knowledge log change.
+No DC-* / OC-* or swimming source changes; the 18-case source remains unrun.
+
+## Commit-identity recurrence prevention — 2026-09-09
+
+Continued PR805 on `copilot/new-acceptance-cases` from exact
+`966b906c83873667b27459ed42575da29ed3b377`, with declared stacked base
+`copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+The owner-reported repair is complete: 115 code-identical commits, 88 author
+corrections and 68 missing App credits. The old graph remains at
+`swim-identity-checkpoint-31364e5`; that approval is consumed. No further history
+rewrite, merge, rebase, amend, new branch or PR was performed.
+
+**Saved code/test checkpoint:** `ac209ecb1c8489a65d5626603f866a39e83254f3`,
+tree `bdb90c932525e7e6bda6e559ab07a6b3f3473410`. GitHub metadata confirms author
+and committer are `Copilot <223556219+Copilot@users.noreply.github.com>` and both
+Copilot and Copilot App credit lines are present. Terminal signing initially
+failed with the sandbox signing service's Bad Request; the checkpoint was
+committed unsigned with explicit identities and hooks enabled. Publication
+pushed the existing terminal commit, not a platform-generated replacement.
+
+The shared `scripts/check-commit-identities.mjs` checks both identity fields,
+including merges. CI checks exact PR source/base OIDs (not a synthetic merge),
+the complete push before/after range, and manual feature history against the
+remote-verified default branch. Initial pushes inspect all ancestry; valid
+non-fast-forward ranges are supported. Manual default-branch runs explicitly
+inspect their current commit. Pre-push includes existing unmerged branch history
+even if archive refs already contain it, checks every proposed branch update
+before the unchanged pnpm chain, and deliberately permits deletions/no updates.
+Tag updates, malformed/missing boundaries, shallow or unrelated feature history,
+and destinations without a verifiable default branch fail closed. Errors report
+SHA and identity field, not commit messages or disallowed identity values.
+Inherited legitimate human commits remain legal without retroactive App credits.
+
+**Validation inside the GitHub worker** (repository root
+`/home/runner/work/hybrid-training-app/hybrid-training-app`):
+
+- `pnpm --filter @hta/web exec vitest run src/lib/__tests__/commit-identity-guard.test.ts`
+  — 22 passed. Temporary owned Git fixtures cover older-bad/newest-good,
+  committer/merge failures, all allowed emails, PR/push/manual boundaries,
+  initial/new branches, multiple updates, non-fast-forward updates, malformed
+  and unavailable boundaries, shallow history, archive masking, and actual
+  local push rejection before either pnpm execution or publication.
+- `pnpm --filter @hta/web exec eslint src/lib/__tests__/commit-identity-guard.test.ts`
+  and `node --check scripts/check-commit-identities.mjs` — passed.
+- `apps/web/node_modules/.bin/eslint --config apps/web/eslint.config.mjs scripts/check-commit-identities.mjs`
+  from repository root — passed; existing React/pages configuration notices.
+  An earlier invocation from the web directory ignored the root script and was
+  replaced by this root-scoped invocation.
+- `pnpm --filter @hta/web typecheck`, `pnpm docs:check-drift`, `git diff --check`
+  — passed. Document drift was offline/in-repository only, not private-mirror parity.
+- Read-only full-candidate author/committer scan against remote-verified
+  `main@e6ad3b8a358320b651de65f7b9785b409d10eaf4` — all 121 starting commits
+  allowed, including lower stack layers. The initially shallow worker checkout
+  was completed with `git fetch --unshallow --no-tags origin refs/heads/main`;
+  no branch/history rewrite.
+- Actual repository `.husky/pre-push` invoked with the original-to-checkpoint
+  update on stdin — passed, inspecting 122 commits before recursive typechecks,
+  package tests, offline migration drift (149 journal entries) and document drift.
+  `DATABASE_URL` was unset; no hosted SQL was executed.
+- Secret scanning — clean. CodeQL reported zero alerts, but Actions analysis
+  failed and JavaScript analysis was skipped because its database was too large.
+  **No successful CodeQL analysis is claimed.**
+
+Only seven paths are in scope: `.github/workflows/ci.yml` (identity job only),
+`.husky/pre-push`, the shared checker, its web Vitest test, `AGENTS.md`, this
+handoff and append-only `docs/knowledge/log.md`. No engine DC-* / OC-* behavior
+changed. Workflow triggers, other jobs, acceptance routing/inputs, permissions,
+pins, swimming source/fixtures, schema, migrations and RLS are unchanged.
+
+**Evidence limits remain:** latest measured swimming milestone is all15 passed
+in run34351260981 at original `fdf01d865dc09f38e551925266fa604c56a3d40e`,
+completed12:34:10Z. Do not relabel it with a repaired or documentation SHA.
+The 18-case source is not newly live accepted; this task proves no new runtime
+feature. Normal149/Auth36/single-FK/source bounds are unchanged. Production/main
+now contain `0145_seed_single_leg_rdl_variants`; this unmerged branch's swim145–148
+ordering still needs later reconciliation. Backup/recovery/monitoring remain
+open; no production-readiness claim. No disposable reference, CI dispatch,
+Docker/browser execution, hosted access or other builder's branch was used.
+The sections below retain historical evidence, including pre-repair SHAs.
+
 ## Standalone pool swimming - 2026-09-05 working branch
 
 ADR 0079 authorizes additive swim storage and access-rule implementation, not a
@@ -15,9 +272,20 @@ accept explicit slot intents, including zero-slot weeks. Course-specific native
 distance and millisecond results are authoritative; generic cardio summaries
 exist for compatibility and shared workload only.
 
-The current PR802 continuation authorizes disposable localhost services on the
-cloud runner only, not hosted credentials. The database milestone passed;
-the first four-case browser reference remains pending. Do not treat mocked tests, static browser
+The original twelve-case reference at exact `bb9aa524f3132ac392b963fc9166f2cc90acfcf3`
+passed in run34339663834, completing 2026-09-09 at10:25:00Z. C2 app deletion and
+C3 linked Auth deletion, owner integrity and survivor checks passed. This closes
+the account-deletion blocker, not all standalone requirements or release.
+PR805's latest measured fifteen-case run34351260981 at exact
+`fdf01d865dc09f38e551925266fa604c56a3d40e` completed12:34:10Z SUCCESS:
+all15 passed once, zero unexpected/skipped/flaky, empty failure ledger.
+B3/B4/B5 and C2/C3 passed. The original first setup case passed in21,892ms;
+its earlier Pool-length timeout remains unexplained, not attributed to the
+semantic-HOLD fix. This closes progression-branch work, not all release gates.
+The next eighteen-case source cohort adds B6/B7/B8 below; live18 is **unrun**.
+The owner reports production access now works through the getsxc connector.
+This source-only continuation did not use it, read hosted data or change production.
+Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
 generic app-credential fallbacks for seeded tests. Production was not migrated.
@@ -31,9 +299,665 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-07 (PR803 browser finishing slice)
+**Last updated:** 2026-09-09 (measured fifteen-case success; eighteen-case budget/guidance source proof)
 
-### PR803 browser integration — current status
+### PR805 B6/B7/B8 — eighteen-case source proof, live acceptance unrun
+
+Continues the exact requested `fdf01d865dc09f38e551925266fa604c56a3d40e`
+on `copilot/new-acceptance-cases`, base `copilot/prepare-mobile-persistence-tests`
+at `4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. No new branch/PR, merge, rebase,
+amend or force push.
+
+**Measured milestone:** [run34351260981](https://github.com/drrowdev/hybrid-training-app/actions/runs/34351260981)
+at fdf01 completed2026-09-09T12:34:10Z SUCCESS. The coordinator's retained
+summary reports all15 passing once, zero unexpected/skipped/flaky, B3/B4/B5
+and C2/C3 passing, and an empty failure ledger. Normal149/catalog/
+Auth5phases4DDL15contexts/all36HTTP/Native16/single-FK down/up controls and
+UPDATE integrity/core/main/final cleanup passed. GitHub metadata corroborates
+the head, end time and success. The first setup case's21,892ms pass does not
+explain its earlier Pool-length timeout or establish a causal connection to
+the semantic-HOLD change. No unchanged rerun was requested or performed here.
+
+Code/test checkpoint **`8fecc50c5f4cdd2349d2d1e425d47d90003707e9`**, tested tree
+**`24ae63d66b5b23a1cb794482abf2af952be32af6`**, adds only:
+
+- **B6 / [DC-SW1/SW3](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05):**
+  real setup submission with native50m, freestyle/no equipment and a supported
+  verified200/400 calibration. Ten-minute endurance work materially scales down
+  against the same persisted setup/schedule at a larger budget, retaining whole
+  lengths, easy edges and purpose-specific main work. Full canonical storage
+  comparisons accompany literal course/budget checks. Accounted time is
+  regenerated, fully priced and within the chosen budget, not copied from the
+  larger prescription. Actual workout UI and owned rows survive reload.
+- **B7 / DC-SW2/SW3:** a separate valid supported calibration produces canonical
+  `budget_impossible` at the UI's ten-minute minimum. The real form must show a
+  nonempty alert and correction options, retain entries and persist no plan or
+  workout. Changing only the budget to a canonically verified bounded value
+  creates exactly one plan with whole-length workouts and stable UI/rows.
+  An initially considered slower pair failed validation and was discarded;
+  invalid calibration is not used as evidence of budget failure.
+- **B8 / DC-SW2/SW3:** zero comfortable lengths, no known strokes and no
+  assessment/verification yield real nonempty learning guidance in the form's
+  status region, with entries retained. The fresh authenticated actor has no
+  plan, workout or session before/after: no logged completion, load, invented
+  calibration or progression decision. No UI implementation or copy changes.
+
+All three use the existing actor's UTC/onboarding/auth, real setup controls,
+today's valid start date, a deterministic two-week Monday schedule, canonical
+`parseSetupForm`/`standaloneWeekRequests`/generation and authenticated storage
+reads. Reads verify the UI action; they do not replace it. New private equality
+assertions inline `expect(isDeepStrictEqual(...)).toBe(true)`.
+
+Original15 identities/order and bodies/fixtures remain unchanged. B6/B7/B8
+append at15/16/17; B indexes are6/7/12/13/14/15/16/17 and C2 remains9.
+Same six files, counts2/2/2/8/3/1. Independent identity/count pins, old4/6/8/11/12
+and new old15 rejection, same-total substitutions, eight-entry B duplicates,
+exact-identity mapping, original annotations and privacy checks remain enforced.
+Old12 removes all B3–B8 but keeps B1/B2; old15 removes only B6/B7/B8.
+
+Validation inside the GitHub workspace at
+`/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts` — **472 passed** (471 reader/pure-fixture tests +1 real collection regression). The pure fixture test exercises all seven possible start weekdays. The installed Playwright1.60.0 CLI actually ran `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json` in the existing private isolation: **18 identities/six files/zero executed results/errors**, private cleanup verified. An initial reader run exposed one old fifteen-entry annotation expectation; appending three empty entries fixed it without changing original membership.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts src/swimming-budget.test.ts` — **58 passed**.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-decisions-offline-mobile.spec.ts scripts/swim-browser-acceptance.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts` — passed.
+- `pnpm --filter @hta/web typecheck` and `git diff --check` — passed.
+- `pnpm docs:check-drift` — passed offline in-repository checks; private workspace
+  mirror parity was not run. Documentation secret scan, exact seven-file scope
+  and append-only log prefix checks passed; source stayed unchanged from the
+  tested code checkpoint.
+- Byte comparison against fdf01 verified the original B1–B5 bodies, describe,
+  actor and all existing helpers unchanged; only the four allowed source paths
+  changed. Secret scanning passed. CodeQL skipped these test-only changes as
+  trivial; **no security-analysis pass is claimed**.
+
+The code checkpoint was saved before documentation. Terminal git explicitly
+set author and committer to `Copilot <223556219+Copilot@users.noreply.github.com>`;
+both required Copilot and Copilot App trailers are present. Local and remote
+identities were verified before continuing; publishing only pushed the already
+created commit. No MCP-created commit or extra model/review chain.
+
+Only the seven allowed paths change: B spec, casebook, reader/collection tests,
+this handoff, pool-swimming wiki and append-only log. No product, old-case,
+fixture, main/stage/protocol/source-closure, workflow/config/dependency,
+domain/engine/DB/schema/permission/migration, hosting/network/cost change.
+No SQL, Docker, browser execution, CI dispatch, hosted reads or production writes.
+
+**Remaining:** actual live18 acceptance; further standalone lifecycle,
+analytics, concurrency and regional-load variants; free-plan backup/recovery,
+production migration ordering and monitoring gates. Production connector access
+does not close them. Bounds remain30s/case,300s global,330s command,590s phase,
+410s server,35m total/3m cleanup,45m job. Eighteen nominal maxima are not a fit
+guarantee; a measured overrun must fail, not increase limits.
+
+### PR805 first fifteen-case run — two source fixes, corrected-head runtime pending
+
+Historical checkpoint: the measured fdf01 success above supersedes the pending
+runtime and connector-authorization statements in this section.
+
+Continues exact `da81baacb2a72c5471863ea40cd5b60302b07c0b` on the existing
+`copilot/new-acceptance-cases`, base `copilot/prepare-mobile-persistence-tests` at
+`4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. No branch/base/history change.
+
+**Latest measured evidence:** [run34345964317](https://github.com/drrowdev/hybrid-training-app/actions/runs/34345964317)
+ended2026-09-09T11:36:23Z at exactda81. All15 executed once:12 passed/3 failed,
+zero skips/flaky cases. B3 plateau Reject passed. B4 failed at shared `same()`
+helper line69 (2,955ms); the retained safe output does **not** identify its
+precise calling comparison. B5 failed at line856 (2,434ms), the strict
+modifications-count assertion after Accept HOLD, after its dose/issued/revision/
+provisional checks passed. The original first setup case timed out selecting
+Pool length at line19 (30,077ms), after clicking the program-page Pool swimming
+link. Its cause is **unknown**, not explained or fixed by these source changes.
+The other11 original cases, including latest C2/C3 deletion checks, passed.
+Normal149/catalog/Auth5phase4DDL15contexts/all36HTTP/Native16/core/single-FK
+controls/UPDATE integrity/main/final cleanup passed. This is the coordinator's
+retained safe15-record summary; raw logs were consumed once and discarded,
+not reread here. GitHub run metadata corroborates head/end/failure. No
+unchanged-head retry. The bb9aa account12 milestone above remains valid.
+
+Code/test checkpoint `61ab8c36d9536257351330d4b7ff0cb0ba1a1621`, tested tree
+`7515548bf7c643a5cb5bb82f64b7b0558b53b2c0`:
+
+- **Product / [DC-SW4/SW5](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05):**
+  `futureUpdates` reuses the existing pure `prescriptionsEquivalent` instead of
+  comparing JSON serialization order. Progression and benchmark callers retain
+  their scopes. An equal HOLD can confirm a provisional eligible workout and
+  advance its revision without appending a false modification. Actual dose,
+  pace, array-content and array-order changes still append exactly one prior
+  issued snapshot associated with the decision; existing histories stay intact.
+  Eight new typed action cases cover reordered nested objects, confirmation,
+  unchanged non-provisional/out-of-scope rows, started/past/today freezes and real
+  changes. The benchmark regression now checks the prior snapshot/association.
+  All five reordered-HOLD variants failed before the one-line production fix.
+- **B4 oracle / DC-SW4/SW5/K4:** only chosen `budget.minutes` must equal the prior
+  stopping limit. Domain `SwimBudget` and engine `buildWorkout`/`sectionsTiming`
+  define `accountedMs` as derived known time. B4 retains full equality with the
+  canonical override and full prior-row equality for unchanged rows; canonical
+  accounted time must be lower than both the suggested and previous targets.
+  The27-versus33 lengths, warning/audit/frozen-target/no-catch-up checks remain.
+  B4's private comparisons are inlined as boolean `isDeepStrictEqual` assertions
+  at their call sites, preserving exact operands apart from the budget correction.
+  No raw objects/IDs/messages are exposed. This source-proven oracle defect is
+  **not** attribution of the retained helper69 failure or proof all B4 bugs are fixed.
+
+Validation in `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/swim-actions-refresh.test.ts src/lib/swim/__tests__/proposals.test.ts src/lib/swim/__tests__/safety.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts src/lib/platform/__tests__/forward-rewrite.test.ts src/lib/platform/__tests__/progression.test.ts` — **693 passed**:37 action,191 refresh,7 proposal,6 safety,430 reader,1 collection,16 forward-rewrite,5 platform progression.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts` — **55 passed**.
+- `pnpm --filter @hta/web exec eslint src/lib/swim/actions.ts src/lib/swim/__tests__/actions.test.ts e2e/swimming-decisions-offline-mobile.spec.ts` — passed.
+- `pnpm --filter @hta/web typecheck` and `git diff --check` — passed after correcting
+  the test fixture's standalone definition type.
+- Existing isolated collection uses pinned Playwright1.60.0 `--list`:15 exact
+  identities in six files, zero executed results/errors, checked private cleanup.
+- TypeScript AST comparison verified all B4 private comparison operands except
+  the corrected budget unchanged; B1/B2/B3/B5/shared helpers and the complete
+  `swimming-mobile.spec.ts` are byte-identical to da81.
+
+Secret scan passed. CodeQL did **not** complete: Actions analysis failed;
+JavaScript database too large. No security-analysis pass is claimed. Terminal
+git explicitly set author and committer to Copilot223556219 with both AI
+trailers; local and remote identities verified. Signing service returned Bad
+Request before creating any commit; the saved checkpoint is unsigned.
+
+Only the six allowed paths change: actions/action tests/B4 spec and this
+handoff/pool-swimming/log. No comparator, other original/new case, fixture,
+registry, collection, main/stage/config/workflow, engine/domain, dependency,
+DB/schema/permission or persisted-history rewrite. No SQL/Docker/browser
+execution, workflow dispatch, hosted access or extra reviewer/model chain.
+The unchanged first setup case stays **mandatory** in the next changed-head
+fifteen-case cohort. If it repeats, the coordinator investigates that separate
+failure; no sleep/retry/force-click/timeout/navigation workaround. All identities,
+ordering and runtime bounds below remain. **No fifteen-case acceptance,
+standalone completion or production approval is claimed.**
+
+### PR805 B3/B4/B5 — source/collection checkpoint, live fifteen-case acceptance pending
+
+Historical source checkpoint before the da81 run; the latest outcomes and
+separate source fixes above supersede its unrun statements.
+
+Continues exact `bb9aa524f3132ac392b963fc9166f2cc90acfcf3` on the existing
+`copilot/new-acceptance-cases`, base `copilot/prepare-mobile-persistence-tests` at
+`4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. No branch/base/history change.
+
+**Preserved measured milestone:** [run34339663834](https://github.com/drrowdev/hybrid-training-app/actions/runs/34339663834)
+at exactbb9aa completed10:25:00Z SUCCESS. All original12 passed once, with zero
+unexpected/skipped/flaky cases, measured total **63,937ms**. C2 real app deletion,
+C3 linked Auth deletion, owner integrity and survivor checks passed.
+Native16/normal149/catalog/Auth five phases/four DDL/fifteen contexts/all36HTTP/
+core/main/final cleanup passed. Single-FK down/up, baseline23503/set-logs,
+candidate Authdelete1 plus forced success, UPDATE23503/set-logs with row1 plus
+forced checks, and every schema/fixture restoration passed. GitHub run metadata
+confirms success; detailed evidence here is the coordinator's safe record, not
+reread private logs. This supersedes the historical C2/C3 blockers below.
+
+Code checkpoint `b29c9cc399e4db21341eea2dbf96969485a3105e`, tested tree
+`c7e14f0b844f0faefd527f013479bbb5f880ef73`, adds actual decision-UI cases for
+[DC-SW4/DC-SW5](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+and DC-K4, without changing B1/B2 or existing fixture/helper implementations:
+
+- **B3:** both source swims completed at RPE7; literal HOLD12×2/rest25.
+  Reject retains all issued/original work and actual history; exact audit and
+  reload/re-review prove one rejection with no next-week application.
+- **B4:** a genuinely unstarted past swim plus native partial18/35 lengths at
+  RPE9; literal REDUCE11×2/rest25 (33 total lengths). The form accepts integer
+  main repeats, so none lies between11 and12. Choose8×2/rest25 (27 total lengths):
+  the nearest downward choice exceeding the seven-length advisory cap, producing
+  the existing recorded/displayed warning without added catch-up. Canonical
+  validation precedes the UI action; one started target remains frozen.
+- **B5:** completed native source results retain null effort; literal
+  HOLD12×2/rest25 (35 total lengths). UI Accept confirms only the eligible target,
+  allowing canonical issue/revision/provisional metadata while freezing started
+  work, original history and calibration. Reload/re-review cannot advance again.
+
+Original12 identities/order are unchanged: C2index9, Dindex10, C3index11;
+B3/B4/B5 append at12/13/14. Six files have counts2/2/2/5/3/1. The reader
+regressions map grouped B/C results by exact file/describe/title, not flattened
+position. Old4/6/8/11 and old12-only rejection, same-total missing-new-case
+substitutions, attempts/skip/flaky/privacy and per-point annotation gates remain.
+No main/workflow/stage/config/DB/identity/dependency/product change.
+
+Validation in `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts` — **431 passed** (430 reader,1 collection).
+- The collection test invokes installed Playwright**1.60.0** CLI `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json` in its existing isolated environment: **15 exact identities/six files/zero executed results/errors**, checked private cleanup.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts` — **55 passed**.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-decisions-offline-mobile.spec.ts scripts/swim-browser-acceptance.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts` — passed.
+- `pnpm --filter @hta/web typecheck` and `git diff --check` — passed.
+- `pnpm docs:check-drift` — in-repo checks passed; private workspace parity not run.
+
+Secret scan passed. CodeQL classified the test/casebook-only change as trivial
+and skipped analysis; not a full security-analysis pass. Explicit terminal
+author/committer overrides and both AI trailers were verified locally; GitHub
+remote metadata confirms both identities as Copilot223556219.
+
+No SQL/Docker/browser execution, workflow dispatch, hosted access or additional
+model/reviewer chain occurred. **Live fifteen-case reference remains pending**;
+source/collection closes no standalone gate. Other lifecycle/analytics/scaling/
+concurrency variants and release approval remain. Time limits are unchanged:
+30s/case,300s browser global,330s command,590s phase,410s server,35m total with3m
+cleanup,45m job. Fifteen nominal maxima exceed300s, as twelve did;63,937ms is
+historical measurement, not a fit guarantee. A future over-budget run must fail,
+not waive limits.
+
+### PR805 reversible movement-reference candidate — historical source checkpoint before bb9aa acceptance
+
+The pending statements in this section describe the earlier source checkpoint;
+the twelve-case/down-up/account evidence above supersedes them.
+
+Continues exact `0b3b7401ec2a485ee1ea1f0304d2d3e0f09544a8` on
+`copilot/new-acceptance-cases`, without branch/base/history changes.
+Latest coordinator-supplied safe evidence:
+[run34336292485](https://github.com/drrowdev/hybrid-training-app/actions/runs/34336292485),
+ended09:47:27Z, passed normal149/catalog/Native16/Auth5phase4DDL15contexts/all36HTTP/
+core and durable initial/down/up. The first set-logs-only partial candidate
+**succeeded**: Auth session/current role matched, exactly one Auth row deleted,
+forced ALL checks completed, full schema restored and every generated fixture ID
+absent after rollback. The two-FK necessity guard correctly stopped before the
+second probe, UPDATE integrity and browser12. Main/final cleanup verified.
+Safe14 records only; consumed raw logs were not reread and no unchanged-head
+retry was dispatched. The qualification correction now yields valid evidence,
+not unavailable. Structural success is not GoTrue equivalence or app acceptance.
+
+Within the existing “up to two” disposable approval, the unmerged0148 up/down
+files are narrowed in place to **only set_logs_movement_id_fkey**. Prior candidate
+stacks were disposable and destroyed. Up changes RESTRICT/NOT DEFERRABLE to
+NO ACTION/DEFERRABLE INITIALLY DEFERRED; down restores it. Both references are
+guarded before mutation; session_movements must always retain its original
+definition and OID. An unexpected two-deferred-FK schema fails, not normalizes.
+All original148 SQL files, journal tags and total149 remain unchanged.
+
+The existing helper and main call site remain. Initial candidate → exact down
+file → original snapshot → exact up file → candidate snapshot remain durable.
+Only the set_logs FK OID/mode bits are normalized; session_movements belongs in
+full unchanged metadata. `bool_and(props.matched)` remains qualified.
+Exactly two rollback controls replace the obsolete necessity modes:
+`baseline` uses exact down SQL and requires23503/set-logs; `candidate` uses the
+single-deferred schema and requires Auth-role success, one row and completed
+forced ALL checks. Each uses the same intact synthetic graph with fresh IDs,
+followed by fresh schema/fixture-absence verification even after disconnect.
+No fallback, repair or compensation; one original snapshot remains authoritative.
+
+The dedicated UPDATE-integrity assertion now mutates the generated set_logs row,
+filtered by set/session/original-movement IDs, to the generated absent movement
+ID. It requires one affected row and forced23503/set-logs plus verified rollback.
+Setup failures, zero rows and incomplete results do not qualify.
+C3's separate authenticated session_movements UPDATE remains the existing RLS
+zero-row check. C2/C3, all twelve normal browser cases and the Auth cohort remain
+unchanged. No role/grant/RLS/Auth callback, user-data or production change.
+
+Source validation and final scan results are recorded in the latest
+[knowledge log](docs/knowledge/log.md). Implementation checkpoint:
+`11c94dedc0ea71e6cea44827db289c96e9904164` (parent is exact0b3b7401).
+1175 targeted tests passed; final helper/main rerun524 passed. Lint, typecheck,
+offline149, docs drift, diff and secret checks passed. CodeQL did not complete:
+Actions analysis failed; JavaScript database too large. Not a security-analysis pass.
+No live SQL, Docker, browser execution or
+workflow dispatch by this worker. The coordinator owns the next exact-head
+normal149/down/up/baseline/candidate/UPDATE/Auth36/browser12 run.
+**Full acceptance and production approval remain pending.**
+
+### PR805 two-FK candidate and SQL repair — historical, superseded
+
+The following records the preceding source checkpoints, not the current scope.
+
+Owner approved the reversible disposable candidate, at most two existing FKs.
+[ADR 0080](docs/adr/0080-deferred-custom-movement-references.md) records scope,
+timing audit, lock/validation/down guards and the required proof. Code/test
+checkpoint: `24e10035d4a1f060369ef8384a5d0befc12b65e7`.
+
+**Latest runtime evidence (coordinator-supplied safe record):**
+[Run34333221283](https://github.com/drrowdev/hybrid-training-app/actions/runs/34333221283)
+at exact `65050755d7160fc2a355736489a2ea249f99dc70`, ended09:14:26Z:
+normal149 migrations/catalog, original Auth5phase4DDL15contexts/all36HTTP,
+Native16 and core passed. Initial candidate snapshot, whole down file, original
+snapshot, whole up file and restored candidate snapshot passed
+(`initial/down/up=true`). First set-logs-only necessity returned the Node outer
+catch's `unavailable/none/none/false/false/false` default, not a mapped SQL
+exception; fresh schema restoration and fixture absence passed. No second
+necessity, UPDATE integrity or browser case executed. Main/final cleanup verified.
+Safe14 records retained; raw logs consumed once and discarded, not reread here.
+
+**Source-proven collision and repair:** shared `catalog()` projected `matched`
+and aggregated `bool_and(matched)` inside necessity `$guard$`/`$setup$` and
+`$update_integrity$`, each declaring a PL/pgSQL `matched` variable.
+[PG17 variable substitution](https://www.postgresql.org/docs/17/plpgsql-implementation.html#PLPGSQL-VAR-SUBST)
+requires qualification or distinct naming at the default conflict setting.
+The aggregate is now `bool_and(props.matched)` only. Ordinary snapshots have no
+PL/pgSQL variable scope; durable up/down use a direct expression, explaining why
+their passes did not validate these composed blocks. The first guard precedes
+tuple capture, consistent with the catch default. Runtime SQLSTATE was not
+observed; no claim that safe evidence reported42702. Variables, alias, predicates,
+NULL/count semantics, fingerprints, tuples, query layout and callers are unchanged.
+
+Repair code/test commit `28db9073897243d68ac3873e443bcec6e25c694a`, tested tree
+`918154ca482ede5dc1a6cdc17c2b620b69861919`. Commands run from
+`/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts` — **498 passed** (92 durable-helper,406 main).
+- `pnpm --filter @hta/web exec eslint scripts/swim-movement-reference-roundtrip.ts src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts` — passed.
+- `pnpm --filter @hta/web typecheck` — passed.
+
+The focused regression covers both snapshots, both necessity strings and UPDATE
+integrity, including retained `DECLARE matched` in all affected DO blocks.
+All prior assertions remain. Secret/diff checks passed. CodeQL did not complete:
+Actions analysis failed; JavaScript database too large, not a security-analysis pass.
+Code/test saved before docs; author and committer explicitly Copilot223556219,
+with required AI trailers. Only the helper/test and HANDOFF/pool-swimming/index/
+append-only log change. No SQL, Docker, browser execution/collection or workflow
+dispatch here; no unchanged-head rerun. The coordinator owns the next exact-head
+live run. Necessity, UPDATE integrity, authenticated RLS denial and positive C2/C3
+remain unproved. Disposable-only approval remains; no production change.
+
+**Resolved verification mismatch:** migration0059 has no session_movements UPDATE policy.
+Migration0063 grants UPDATE but documents that RLS blocks real updates; no later
+migration supplies that policy. The requested authenticated C3 reference UPDATE
+therefore cannot yield23503 at request end. The coordinator directed proof at
+the actual layers without changing permissions: C3 retains four reachable23503
+requests, then separately requires the owner UPDATE's no-error/empty returned
+array with exact owned filters, fresh unchanged rows and no missing-parent
+reference. The owned SQL helper separately requires an actual one-row UPDATE
+and forced ALL rejection23503/session-movements on the current candidate.
+No policy/grant/role, migration, real fixture or browser registry was changed.
+This method was resolved by `65050755` without permission changes.
+**Live UPDATE integrity, authenticated RLS denial and C2/C3 remain unrun.**
+
+[Run34321670984](https://github.com/drrowdev/hybrid-training-app/actions/runs/34321670984)
+at `1bb56`, ended07:03:52Z: prerequisites matched; baseline RESTRICT and immediate
+NO ACTION both rejected23503/set-logs; both deferred references allowed exactly
+one Auth deletion and forced ALL constraints. All three transactions rolled back,
+schema and fixture absence verified. Native16/normal148/catalog/Auth5phase4DDL/
+15contexts/all36HTTP/core/main/final cleanup passed. Intentional nonqualifying
+stop only; original12 unrun. Both FKs changed together, so necessity of the
+second FK remains unmeasured. This does not prove GoTrue/app success.
+
+The source now appends migration0148 (normal total149), with exact guarded down
+file; all original148 SQL files/entries remain. Identity levels146/147/148,
+five phases/four files/fifteen contexts and checkAuthBoundary148 are unchanged.
+The rollback-only switch/helper/test are removed, normal db:migrate and the
+ordinary browser call restored. A new private-command stage durably down/ups
+verified exact files, compares semantic target definitions despite fresh OIDs,
+and demands both transactional one-FK necessity rejections plus fresh restoration/
+absence checks. The separate `updateIntegrity` result reuses the four-ID fixture
+builder in one ROLLBACK transaction, checks candidate metadata and the existing
+reference, and verifies the generated set UUID is absent from movements.
+Setup errors are not UPDATE evidence; row-count-one and forced-check flags are
+mandatory. Fresh separate-connection schema/metadata/fixture-absence verification
+is mandatory even on error/disconnect, without compensating deletes. A valid
+not-attempted result is initialized before work; overall matched requires all
+proofs. The two necessity modes remain exactly two and unchanged.
+C3 adds authenticated request-boundary integrity assertions;
+C2 and the twelve identities/six files remain.
+
+Earlier GitHub source validation for the UPDATE/RLS correction commit
+`123fd1765c8eee33f1e28bad4d622cc631836226`, tested tree
+`f0ccfad5161a68c900fcb54c568c0c1bd1abed02` (commands from repository root):
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/storage-migration.test.ts src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-identity-roundtrip.test.ts src/lib/swim/__tests__/swim-rpc-diagnostics.test.ts` — **1148 passed**, including91 durable-helper tests.
+- `pnpm --filter @hta/web typecheck` — passed.
+- `pnpm --filter @hta/web exec eslint scripts/swim-movement-reference-roundtrip.ts src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts e2e/swimming-account-mobile.spec.ts` — passed without warnings.
+- `pnpm exec playwright test --config=playwright.swim-reference.config.ts --list`
+  from `apps/web`, using `buildBrowserEnv`, nonfunctional synthetic JWTs and owned
+  0700/0600 paths under `/tmp` — **12 identities / six files / zero executed results**.
+  Exact collected identities compared to `SWIM_BROWSER_CASES`; no collection
+  errors. Private report:
+  `/tmp/swim-update-collection-Iwkwnj/swim-acceptance-pr802-34331599918-1/browser.json`.
+
+Secret scan and diff checks passed for the code checkpoint. Author and committer
+explicitly set and verified as `Copilot <223556219+Copilot@users.noreply.github.com>`
+with both AI trailers; checkpoint saved unsigned. The three code/test paths are
+`apps/web/e2e/swimming-account-mobile.spec.ts`,
+`apps/web/scripts/swim-movement-reference-roundtrip.ts` and
+`apps/web/src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts`.
+Only ADR0080, this HANDOFF, pool-swimming and the append-only log follow as docs.
+No SQL, Docker/stack, browser execution or CI dispatch by this
+source worker. At that checkpoint the live candidate was unrun; run34333221283
+above now proves normal149/catalog/Auth36 and durable down/up, but not necessity,
+UPDATE integrity, authenticated RLS denial or C2/C3. Production is separately
+gated. No automatic extra model review chain.
+
+### PR805 temporary rollback-only route — historical, superseded
+
+The remainder of this section records earlier authorization and source states,
+not current instructions. The candidate above supersedes the old mode and its
+“no migration149” boundary; historical148 evidence remains unchanged.
+
+Owner approved rollback-only checks, not a repair or migration149. Source
+checkpoint `c74b5a3f4029f66d0c8c17558a129d476fe9f3db` (tested tree
+`bbd5127fe57a6042fc2a30321c3b92c5910d00cf`) adds the injected helper and
+source-pins `ROLLBACK_PROBE_ONLY = true`. The exhausted Drizzle diagnostic mode
+stays false. That delivery changed only its seven approved source/test/doc files.
+
+[Run 34312943325](https://github.com/drrowdev/hybrid-training-app/actions/runs/34312943325)
+at `6fd1d43cccc00d7790ea9de55ea245fc1bb5ec15` ended 05:00:59Z: the initial
+read-only snapshot parsed, then the grouped prerequisite assertion failed.
+The safe record was `status=failed`, `probes=[]`; no baseline, synthetic fixture
+or candidate DDL was attempted. Native16/normal148/catalog/Auth5phase4DDL/
+15contexts/all36HTTP/core and both cleanup paths passed. This is not setup-failed,
+a deletion error, an observed role attribute or a named FK cause.
+
+Attribution-only checkpoint `2749a1c227ebd44833296c1c8b20260b93fe1112`, saved tree
+`005d8bdf9ce54169141a516768a7c75759938765` (**not a tested tree**), appends
+26 fixed-order mismatch flags to the private snapshot and a strict
+`prerequisites` union to the existing safe record. All original composite guards,
+first six snapshot positions and restoration comparisons remain. Only an
+explicit atomic FALSE produces an ID; unknown-only failures can have
+`matched:false, mismatched:[]`. Malformed evidence remains `observed:false`.
+No runner/main-test, browser case, fixture, role, permission or FK pin changes.
+This correction's write scope is the helper, its tests and these three docs.
+
+The earlier attribution checkpoint did not run targeted validation; that was
+not a restriction on this GitHub workspace. [Run 34316110081](https://github.com/drrowdev/hybrid-training-app/actions/runs/34316110081)
+at `b9806ec695640c7c8c837d11bd0086e22e4a561e` ended 05:48:27Z with
+`observed:true, matched:false, mismatched:["owner-super"]`, `probes:[]`.
+The initial session/current identity was `postgres`, without the required
+superuser attribute. No baseline/fixture/candidate DDL ran. Safe15 records were
+retained; official raw logs had already been consumed once and discarded.
+Native16/normal148/catalog/Auth5phase4DDL15contexts36HTTP/core/main/final cleanup
+passed. This identifies no application deletion cause.
+
+Accepted source-grounded correction `1b691eeb082be47af789d2ed3d5204bd9ae69b45`,
+tested tree `fafaf4479d0857584a37b067b6ed2fa9ae08955a`, binds the helper's
+local psql argv, snapshot identity pins and pre-fixture/setup guard to one
+source-owned `supabase_admin` constant. `--no-password` fails noninteractively;
+the owned DB ID, injected supervisor and implicit Unix socket remain unchanged.
+The image already supplies this bootstrap superuser; no credentials, fallback,
+role/ACL/owner/policy/config change or main-runner user change is introduced.
+`owner-super` and all Auth/FK pins remain mandatory. The DELETE still uses
+`SET LOCAL SESSION AUTHORIZATION supabase_auth_admin` with both identities checked.
+See [pinned source evidence](docs/knowledge/pool-swimming.md#bootstrap-identity-correction--2026-09-09).
+
+In this GitHub workspace, from the repository root:
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-fk-rollback-probes.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts` — 493 passed (87 probe, 406 main).
+- `pnpm --filter @hta/web exec eslint scripts/swim-fk-rollback-probes.ts src/lib/swim/__tests__/swim-fk-rollback-probes.test.ts` — passed.
+- `pnpm --filter @hta/web typecheck` — passed.
+
+Diff/secret checks passed. CodeQL remains incomplete (Actions failed; JavaScript
+database too large), not a security-analysis pass. Code/test author and committer
+were explicitly set and verified as Copilot with the 223556219 address and both
+AI trailers. No runtime SQL, Docker/stack/browser or workflow dispatch occurred.
+The accepted synchronous Opus consultation replaces the unavailable old handle;
+no duplicate review or additional model consultation is required. Coordinator
+inspection of exact completed source, real core and fresh whole-path guards
+still precedes the one corrected isolated run. No same-head rerun or further
+identification-only experiment; any future failed pin still stops closed.
+
+The unchanged Native16 prerequisite and normal148/catalog/Auth five-phase,
+four-DDL, fifteen-context/36HTTP path still precede the new stage. The stage uses
+the same supervised owned `docker exec`/psql connection, then terminates
+**NONQUALIFYING before the twelve-case UI/API suite**. Those twelve sources are
+unchanged and are **not run, never passed** by this diagnostic route. Scope,
+safe probe artifact and terminal summaries state `diagnosticMode="rollback-only"`
+and `qualifying=false`; even successful measurements or an inconclusive baseline
+cannot make application acceptance green. Genuine errors retain primacy through
+exact cleanup.
+
+[Reference run 34287396820](https://github.com/drrowdev/hybrid-training-app/actions/runs/34287396820)
+at `7d0fb2c` failed C2/C3. C3's native-only control deletion passed; the linked
+account remained intact before direct Auth admin deletion returned 5xx at line614.
+That API error supplied neither SQLSTATE nor a named constraint. The other ten
+flows and normal148/36HTTP/Native16/core/cleanup passed; this is not evidence that
+either candidate FK mode is correct.
+
+The helper measures baseline RESTRICT, then (only after expected23503 plus
+verified restoration/absence) NO ACTION NOT DEFERRABLE and NO ACTION DEFERRABLE
+INITIALLY DEFERRED, in separate bounded rollback transactions. Fixture creation,
+including the synthetic Auth row/profile trigger, is inside each transaction.
+It reproduces the four-reference custom graph, not the full native C3 fixture or
+GoTrue transaction. See [probe contract and interpretation](docs/knowledge/pool-swimming.md#rollback-only-fk-diagnostics--temporary-source-route).
+
+Source-only validation at that checkpoint: two targeted Vitest suites passed
+450 tests; scoped ESLint and `tsc --noEmit --incremental false` passed; secret
+scan passed. Both author/committer identities were explicitly set and verified
+as Copilot with the 223556219 address and both requested AI trailers.
+No SQL, Docker/stack, browser suite, production access or workflow dispatch ran
+in this source task. Exact-final-head Opus/core review and fresh full-path guards
+remain required before **one** rollback-only run through existing workflow
+279507729 on this branch/expected SHA, `swim_acceptance=true`, both production
+flags false. No new route or protection bypass.
+
+**Remove the temporary source mode, not merely flip it, before any repair-head
+or release acceptance.** No measurement selects a permanent mode; in particular
+an immediate-mode success is not a trigger-order guarantee. A separately
+owner-approved repair must still pass positive C2/C3 Auth API/UI acceptance.
+
+### PR805 expanded browser cohort — historical eleven/twelve-case checkpoints
+
+The immutable eight-flow milestone is `95cbfb537884e65e2ec3ba6b67cf3c7ff303628a`:
+[full run 34258502119](https://github.com/drrowdev/hybrid-training-app/actions/runs/34258502119)
+passed at 17:44:42Z, after
+[core 34258052509](https://github.com/drrowdev/hybrid-training-app/actions/runs/34258052509).
+All eight passed once, without unexpected/skipped/retried/flaky-labelled cases,
+in 5039/2831/4215/7711/4466/5175/3274/4474ms (37185ms total).
+Native16/all148/catalog/5phase4DDL/15contexts/36HTTP, core, main and final cleanup
+passed. The prior A1 Preview click timeout remains **unexplained**, not fixed by
+the shared 5s readiness checkpoint. Keep that checkpoint and all eight flows
+unchanged in later cohorts. PR806 was closed unmerged as superseded; its
+`32947ae5eb9e99070006e3a74b5c4df0a33dce60` source branch is retained.
+
+Code checkpoint `2e831c2313689f44424811aa3ff439be35ebac22`, tested tree
+`3ab5bd91777c36b62916f556be7ad635c38751a3`, imports exactly:
+
+- C: PR807 `327444f02c1849e26b89051c9c755411a0fb760a`,
+  account blob `045205b5852cbd36f613286cad7465531f7ba03b`.
+- D: PR808 `bddddd16e355ce5df5a9dcbf50e81c272503b583`,
+  assessment blob `a2f19c74c1cac7534fed57c67bb7a83e068e5011`.
+
+That checkpoint appended C1/C2/D after the original eight: eleven identities/six
+files, counts 2/2/2/2/2/1. Only three closed source IDs were added. The existing
+single fingerprint invocation includes all declared specs. Only owned Next
+start receives a new environment object binding the already validated local
+service key; shared/build/browser environments remain unchanged.
+[DC-SW2/SW5/SW6/SW8](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+are covered by the imported positive cases; SW7/SW9 regressions remain intact.
+
+**Earlier collection was BLOCKED at `d5936320`:** the one targeted four-file run passed
+771 helper/fingerprint/synthetic-stage tests, but the real pinned Playwright
+1.60.0 `--list` through the same dedicated config exited 1. Existing safe summary:
+`success=false`, `loaderCode=unknown`, source
+`apps/web/e2e/swimming-account-mobile.spec.ts`. Eleven exact collected triples,
+zero report results/errors, and successful checked collection cleanup are not
+established by that failed regression. Both exact blobs were preserved; no loader
+or source repair was attempted at that checkpoint. Typecheck, scoped lint and secret scan passed.
+CodeQL did not complete (Actions failed; JavaScript database too large).
+No live browser/app/server/DB/Docker/CI invocation or additional worker occurred.
+
+**Earlier eleven-case collection PASSED:** source commit `e2e4862bed308e4ea1270b50d6aaac9bac565ba6`,
+tested tree `84f95c16324bdeb903ad5acbc49b539817233f24`, moves the same account
+privacy comment and `test.use` options to file scope and removes only the obsolete
+three-line header. Playwright 1.60.0 rejects these worker-scoped media options
+inside `describe`. Ordered trimmed non-empty comparison against `d5936320`
+(439 lines), exact expected bytes and inspected diff passed. New C blob:
+`911c4ca2c32bea51e6b709311f7752aac34a25af`; D remains the exact blob above.
+The existing dedicated pinned `--list` regression passed eleven exact triples/six
+files, zero executed results/errors and checked private cleanup:
+`success=true`, exit 0, `loaderCode=unknown`, `sources=[]`. Web typecheck and
+scoped lint passed. No case executed; no app/account-deletion/cascade failure was
+observed in either collection attempt.
+
+**Current evidence and C3:** [run 34283532254](https://github.com/drrowdev/hybrid-training-app/actions/runs/34283532254)
+at `9fe3e4da` passed 10/11 UI flows, including A1/B1/D, A2, offline recovery and
+export. Only C2 failed (7402ms, account source line 479): Account POST HTTP5xx
+headers, still on Account, exact synthetic Auth user present at the bounded later
+sample. This does not locate an Auth error, SQL cause or exact throw site.
+Native16/normal148/catalog/5phase4DDL/15contexts/36HTTP/core/main/final cleanup passed.
+
+Code `bc4ce939ea610563ac515540ac46371eb4572d77`, tested tree
+`a247d1df538a01c76cb1ac329837d989fa95e860`, appends only C3 after the original
+eleven registry identities (C2 index9, D index10, C3 index11): twelve cases/six
+files, 2/2/2/2/3/1. These are **eleven UI flows plus one direct Auth-API acceptance
+case**, not twelve UI flows. C3 uses fresh control/custom-linked accounts and the
+unchanged arrangements, deletes each once via the existing harness admin, and
+requires Auth404 and exact row disappearance, with linked-user preservation
+between deletions. Separate inline API assertions retain safe source attribution.
+No C1/C2/fixture/product/schema/configuration change or new diagnostic protocol.
+All 414 targeted helper/collection tests passed, including actual Playwright 1.60.0
+`--list`: twelve exact identities/six files, zero executed results/errors and
+checked private cleanup. Web typecheck/scoped lint/secret scan passed.
+No live deletion was run; teardown is never acceptance. See the
+[C3 outcome boundaries](docs/knowledge/pool-swimming.md#shared-completion-integration--current-148-status).
+
+**C2 remains OPEN**: no deletion/cascade/survivor or foreign-key-cause claim.
+Custom movement and both references remain until the real Delete action;
+failure-preserving teardown is not product proof. D's rejection, native history,
+future-only acceptance, original/started targets and both reloads are unchanged.
+All nine standalone gates remain incomplete; wider progression, concurrency,
+lifecycle, analytics and safety/load variants still require evidence.
+No production readiness or combined-swimming acceptance is claimed.
+
+All limits, configured workers/retries and privacy/resource safeguards remain
+unchanged; file-level media overrides also apply under generic collection, only
+to the account file. Identical worker hashes or zero recycling are not claimed.
+The coordinator next owns actual Astra START+TERMINAL/artifact even on failure,
+then one complete integration+remainder exact-head Opus review and core-only CI.
+Accepted full head/core and fresh guards/full execution-path review are required before
+one normal Native16/14836/twelve-case reference through workflow `279507729`,
+the existing branch route, exact `expected_sha`, and both production flags false.
+PR807/808 remain frozen source artifacts, not merge candidates; only the
+coordinator may close them unmerged after eventual live acceptance.
+
+#### Earlier PR805 wiring and recovery
+
+The earlier six-flow milestone `e46c443e8e06cb31616cb6082c3d0fbbbca7c050` passed
+[full 34244354544](https://github.com/drrowdev/hybrid-training-app/actions/runs/34244354544)
+at 15:29:26Z after core 34243771485, with all six passing once (41391ms total)
+and native/database/main/final cleanup passing.
+
+The original four cases plus normal 148 migrations, 15 service contexts and
+36 HTTP cases passed in [run 34176424048](https://github.com/drrowdev/hybrid-training-app/actions/runs/34176424048)
+at `4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. Opus 5 turn 19 accepted the
+integration; turn 20 accepted both A source cases.
+
+Wiring checkpoint `3c060e3d` declares exactly those unchanged four plus A1
+([DC-SW7](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05))
+and A2 (DC-SW9), across three files. Catalog-derived equality gates require all
+six to pass exactly once, without retries, skips or errors. Safe ledgers include measured
+`durationMs` for the final attempt alongside `attempts`, not summed retries or
+a runtime guarantee. All execution limits remain unchanged.
+
+[Run 34182254665](https://github.com/drrowdev/hybrid-training-app/actions/runs/34182254665)
+at `a67123db2f237b82b378c1eb0b9070adb45155c1` passed normal 148 migrations,
+15 service contexts, 36 HTTP cases and the original four browser cases; cleanup
+was verified. A1 failed at the checked `deleteUser` error assertion (8.596s);
+A2 failed at Log swim visibility after Start (7.809s). These were not test
+timeouts. Actual error values and causes remain unknown.
+
+Recovery code `4e778395809c88504cd2379b0c189712af642547` reads exactly one
+global `bench-press-flat` row for A1, retaining all five nonempty snapshots and
+checked cleanup. Start swim now waits for readiness, with a specific SSR-disabled
+button regression; A2 polls the owned saved workout for `started` and a nonempty
+session link before its unchanged Log swim assertion. This is not proof of the
+exclusive A2 cause. **Custom-movement account-deletion regression remains OPEN
+in C as a privacy/release concern**; no deletion fix or passing regression is claimed.
+
+265 targeted component/pure tests, web typecheck, scoped lint and secret scanning
+passed on the GitHub runner; the new SSR test failed before the guard and passed
+afterward. CodeQL analysis was skipped because its database was too large.
+No live browser/server/DB/Docker run, credential access or CI dispatch occurred
+in this recovery. Its pending six-case reference was subsequently satisfied by
+the e46 milestone above. All nine standalone gates and production acceptance
+remain unproven.
+
+### PR803 browser integration — earlier checkpoint
 
 The coordinator confirms the database milestone passed. The first four-case
 mobile browser execution is wired: sealed reports after command reaping,
@@ -58,7 +982,8 @@ four mobile cases from two files, with zero executed results. The Next 16.2.6
 own-stop exit-143 fix is committed separately. Missing reports are classified
 only after ticket/root validation, not described as “never written.”
 256 scoped synthetic/collection tests, web typecheck and scoped lint pass.
-No browser, server, database or workflow dispatch ran; live reference remains pending.
+No browser, server, database or workflow dispatch ran in that slice; the later
+first-four milestone is recorded above.
 
 ### PR802 anonymous completion correction — earlier checkpoint
 
@@ -844,7 +1769,8 @@ every required variable.
 
 ## Conventions reminder
 
-- Every code commit AI assistants make includes the trailer:
+- Human-authored AI edits need AI co-author credit; native authorship by either
+  approved Copilot bot is sufficient without an extra trailer. Example credit:
   `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
 - Every change to wiki pages appends to `docs/knowledge/log.md`.
 - Every new wiki page is added to `docs/knowledge/index.md`.

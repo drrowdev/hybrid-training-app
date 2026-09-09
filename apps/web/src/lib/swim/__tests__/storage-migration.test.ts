@@ -113,12 +113,12 @@ describe("ADR0079 private swimming identity migration (DC-SW8/DC-SW9)", () => {
   it("registers the additive migration without statement breakpoints", () => {
     const directory = new URL("../../../../../../packages/db/drizzle/", import.meta.url);
     const journal = JSON.parse(readFileSync(new URL("meta/_journal.json", directory), "utf8"));
-    expect(journal.entries).toHaveLength(148);
+    expect(journal.entries).toHaveLength(149);
     expect(journal.entries[146]).toEqual({
       idx: 146, version: "7", when: 1788825600000,
       tag: "0146_swim_request_identity", breakpoints: false,
     });
-    expect(readdirSync(directory).filter((name) => name.endsWith(".sql"))).toHaveLength(148);
+    expect(readdirSync(directory).filter((name) => name.endsWith(".sql"))).toHaveLength(149);
   });
 });
 

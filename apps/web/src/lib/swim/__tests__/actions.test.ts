@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { swimFixture, userId, planId, sessionId, receiptId } from "./fixtures";
 import { completeSwimWorkoutResult, createSwimPlan, startSwimWorkout, editSwimResult, decideSwimProposal, previewSwimResume, resumeSwimPlan, proposeSwimBenchmark, decideSwimBenchmark, skipSwimWorkout } from "../actions";
-import { SWIM_ASSESSMENT_VERSION } from "@hta/domain";
+import { SWIM_ASSESSMENT_VERSION, type SwimWorkout } from "@hta/domain";
 import * as queries from "../queries";
 import * as storage from "../storage";
+import type { SwimHubView } from "../view-types";
+import { workoutPresentation } from "../presentation";
 import { requireSwimSetup, requireSwimStorage } from "../capability";
 import { assertSwimSafety } from "../safety";
 import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-completion-recompute";
+import { swimWorkoutDefinition, type StandaloneWorkoutDefinition } from "../model";
 
 const mock = vi.hoisted(() => ({
   user: { id: "00000000-0000-4000-8000-000000000001" } as { id: string } | null,
@@ -55,6 +58,40 @@ function benchmarkForm() {
     benchmarkStroke: "freestyle", benchmarkDate: "2026-09-05",
   })) form.set(key, value);
   return form;
+}
+
+function mockSavedPlan() {
+  const returnedPlan = { ...swimFixture().plan, revision: 7 };
+  const view: SwimHubView = {
+    id: returnedPlan.id, revision: returnedPlan.revision, status: returnedPlan.status,
+    goal: "Technique & base", course: "25 yd", dates: "2026-09-07 – 2026-09-27", today: "2026-09-12",
+    workouts: [], proposals: [], analytics: { weeks: [], bests: [], benchmarks: [] },
+  };
+  vi.mocked(storage.updateSwimPlan).mockResolvedValueOnce({ plan: returnedPlan, workouts: [] });
+  vi.spyOn(queries, "loadSwimHubView").mockImplementationOnce(async (_client, _userId, row) => {
+    expect(row).toBe(returnedPlan);
+    return view;
+  });
+  return view;
+}
+
+function mockSavedEdit() {
+  let workout = { ...swimFixture().history[0]!.workout, revision: 1 };
+  let notes: string | null = "Existing note";
+  vi.mocked(storage.getSwimWorkout).mockImplementation(async () => workout);
+  vi.mocked(storage.editSwimResult).mockImplementation(async (_client, input) => {
+    workout = { ...workout, revision: workout.revision + 1 };
+    if (input.notes !== undefined) notes = input.notes;
+    mock.client.from.mockImplementation((table: string) => ({
+      select: () => ({
+        in: async () => ({ error: null, data: table === "sessions" ? [{
+          id: sessionId, completed_at: "2026-09-07T12:20:00Z", deleted_at: null, notes,
+        }] : [{ session_id: sessionId, swim_result: input.result }] }),
+      }),
+    }));
+    return { workout, session_id: sessionId, cardio_log_id: receiptId, transitioned: false };
+  });
+  return workout;
 }
 
 beforeEach(() => {
@@ -185,18 +222,42 @@ describe("ADR0079 server actions", () => {
     vi.mocked(assertSwimSafety).mockRejectedValue(new Error("Review an active limitation."));
     expect(await startSwimWorkout(swimFixture().workouts[0]!.id, 1)).toHaveProperty("error");
     expect(storage.startSwimWorkout).not.toHaveBeenCalled();
-    vi.mocked(storage.getSwimWorkout).mockResolvedValue({ ...swimFixture().workouts[0]!, session_id: sessionId });
-    expect(await startSwimWorkout(swimFixture().workouts[0]!.id, 1)).toEqual({ ok: true });
+    const returnedWorkout: storage.SwimWorkoutRow = {
+      ...swimFixture().workouts[0]!, session_id: sessionId, status: "started", revision: 2,
+    };
+    const view = {
+      ...workoutPresentation(returnedWorkout.definition.issued),
+      id: returnedWorkout.id, revision: 2, sessionId, status: returnedWorkout.status,
+      planStatus: "active" as const, date: returnedWorkout.scheduled_date,
+      provisional: false, deleted: false, sourceGone: false, result: null,
+    };
+    vi.mocked(storage.getSwimWorkout).mockResolvedValue(returnedWorkout);
+    vi.mocked(storage.startSwimWorkout).mockResolvedValueOnce(returnedWorkout);
+    vi.spyOn(queries, "swimWorkoutViewFromRow").mockResolvedValueOnce(view);
+    expect(await startSwimWorkout(returnedWorkout.id, 2)).toEqual({ ok: true, view });
+    expect(storage.startSwimWorkout).toHaveBeenCalledOnce();
+    expect(storage.startSwimWorkout).toHaveBeenCalledWith(mock.client, returnedWorkout.id, 2);
+    expect(vi.mocked(queries.swimWorkoutViewFromRow).mock.calls[0]![2]).toBe(returnedWorkout);
   });
   it("routes a native result edit through its boundary and recomputes shared load", async () => {
     const existing = swimFixture().history[0]!.result!;
     vi.mocked(storage.getSwimResult).mockResolvedValue(existing);
-    vi.mocked(storage.editSwimResult).mockResolvedValue({
-      workout: swimFixture().workouts[0]!, session_id: sessionId, cardio_log_id: receiptId, transitioned: false,
+    const workout = mockSavedEdit();
+    expect(await editSwimResult(actualForm())).toEqual({
+      ok: true, view: {
+        ...workoutPresentation(workout.definition.issued),
+        id: workout.id, revision: 2, sessionId, status: "completed", planStatus: "active",
+        date: workout.scheduled_date, provisional: false, deleted: false, sourceGone: false, notes: "Easy",
+        result: {
+          lengths: 12, timeMs: 900123, rpe: 6, notes: "Easy", splits: "",
+          stroke: "freestyle", strokes: ["freestyle"], equipment: [],
+          course: "25 yd", distance: "300 yd", pool: existing.snapshot.course,
+        },
+      },
     });
-    expect(await editSwimResult(actualForm())).toEqual({ ok: true });
     expect(storage.editSwimResult).toHaveBeenCalledOnce();
     expect(recomputeAfterCompletedSessionMutation).toHaveBeenCalledOnce();
+    expect(storage.getSwimWorkout).toHaveBeenCalledOnce();
   });
   it("requires a reason for a changed pool and retains that confirmed pool on later edits", async () => {
     const form = actualForm(); form.set("pool", "25m"); form.set("confirmPool", "on");
@@ -207,25 +268,27 @@ describe("ADR0079 server actions", () => {
     const actual = vi.mocked(storage.completeSwimWorkout).mock.calls[0]![1].result;
     expect(actual.snapshot.course.unit).toBe("m");
     vi.mocked(storage.getSwimResult).mockResolvedValue(actual);
-    vi.mocked(storage.editSwimResult).mockResolvedValue({
-      workout: swimFixture().workouts[0]!, session_id: sessionId, cardio_log_id: receiptId, transitioned: false,
-    });
+    const workout = mockSavedEdit();
     form.set("pool", "planned"); form.delete("confirmPool");
-    expect(await editSwimResult(form)).toEqual({ ok: true });
+    expect(await editSwimResult(form)).toMatchObject({
+      ok: true, view: { id: workout.id, revision: 2, sessionId, status: "completed", result: { pool: actual.snapshot.course } },
+    });
     expect(storage.editSwimResult).toHaveBeenCalledWith(mock.client, expect.objectContaining({
       allowChangedCourse: true, result: expect.objectContaining({ snapshot: actual.snapshot }),
     }));
   });
   it("preserves omitted result-edit notes and distinguishes explicit clearing", async () => {
     vi.mocked(storage.getSwimResult).mockResolvedValue(swimFixture().history[0]!.result!);
-    vi.mocked(storage.editSwimResult).mockResolvedValue({
-      workout: swimFixture().workouts[0]!, session_id: sessionId, cardio_log_id: receiptId, transitioned: false,
-    });
+    mockSavedEdit();
     const form = actualForm(); form.delete("notes");
-    expect(await editSwimResult(form)).toEqual({ ok: true });
+    expect(await editSwimResult(form)).toMatchObject({ ok: true, view: { revision: 2, notes: "Existing note", result: { notes: "Existing note" } } });
     expect(vi.mocked(storage.editSwimResult).mock.calls[0]![1]).not.toHaveProperty("notes");
+    form.set("expectedRevision", "2");
     form.set("notes", "");
-    expect(await editSwimResult(form)).toEqual({ ok: true });
+    const cleared = await editSwimResult(form);
+    expect(cleared).toMatchObject({ ok: true, view: { revision: 3, status: "completed" } });
+    expect(cleared.view).not.toHaveProperty("notes");
+    expect(cleared.view?.result).not.toHaveProperty("notes");
     expect(vi.mocked(storage.editSwimResult).mock.calls[1]![1]).toHaveProperty("notes", null);
   });
   it("requires authentication before touching owned swimming storage", async () => {
@@ -239,7 +302,8 @@ describe("ADR0079 server actions", () => {
     const plateau = history.map((row) => ({ ...row, result: row.result ? { ...row.result, rpe: 7 } : null }));
     vi.spyOn(queries, "loadSwimHistory").mockResolvedValue(plateau);
     const candidate = queries.deriveSwimWeekCandidate(plan, plateau, "2026-09-12")!;
-    expect(await decideSwimProposal(plan.id, plan.revision, candidate.id, "accepted")).toEqual({ ok: true });
+    const view = mockSavedPlan();
+    expect(await decideSwimProposal(plan.id, plan.revision, candidate.id, "accepted")).toEqual({ ok: true, view });
     const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
     expect(saved.state.decisions[0]).toMatchObject({
       id: candidate.id, decision: "accepted", inputSnapshot: { sourceFingerprint: candidate.exactInputs.sourceFingerprint },
@@ -252,12 +316,138 @@ describe("ADR0079 server actions", () => {
       expect(workout.definition).toHaveProperty("provisional", false);
     }
   });
+  it.each(["provisional", "confirmed", "started", "past", "today"] as const)(
+    "DC-SW4/DC-SW5 accepts a key-reordered HOLD with a %s target without fabricating history",
+    async (targetState) => {
+      vi.setSystemTime(new Date("2026-09-12T12:00:00Z"));
+      const { plan, workouts, history } = swimFixture();
+      const persisted = workouts.map((row, index): storage.SwimWorkoutRow => {
+        const { sections, snapshot, budget, ...issued } = row.definition.issued;
+        const reordered: SwimWorkout = {
+          ...issued,
+          budget: { accountedMs: budget.accountedMs, minutes: budget.minutes },
+          snapshot: {
+            ...snapshot,
+            course: { unit: snapshot.course.unit, denominator: snapshot.course.denominator, numerator: snapshot.course.numerator },
+            versions: { assessment: snapshot.versions.assessment, generator: snapshot.versions.generator, model: snapshot.versions.model },
+          },
+          sections: sections.map(({ items, ...section }) => ({
+            items: items.map(({ equipment, ...item }) => ({ equipment, ...item })), ...section,
+          })),
+        };
+        expect(reordered).toEqual(row.definition.issued);
+        expect(JSON.stringify(reordered)).not.toBe(JSON.stringify(row.definition.issued));
+        expect(Object.keys(reordered.snapshot.course)).not.toEqual(Object.keys(snapshot.course));
+        expect(Object.keys(reordered.sections[0]!.items[0]!)).not.toEqual(Object.keys(sections[0]!.items[0]!));
+        const definition: StandaloneWorkoutDefinition = {
+          ...swimWorkoutDefinition(row), issued: reordered,
+          provisional: index === 2 && targetState === "confirmed" ? false : swimWorkoutDefinition(row).provisional,
+          modifications: index === 3 ? [{
+            id: receiptId, recordedAt: plan.created_at, decisionId: planId, reason: "Earlier decision",
+            previous: row.definition.original,
+          }] : [],
+        };
+        return {
+          ...row,
+          ...(index === 2 && targetState === "started" ? { session_id: sessionId, status: "started" } : {}),
+          ...(index === 2 && targetState === "past" ? { scheduled_date: "2026-09-11" } : {}),
+          ...(index === 2 && targetState === "today" ? { scheduled_date: "2026-09-12" } : {}),
+          definition,
+        };
+      });
+      const plateau = history.map((row, index) => ({
+        ...row, workout: index < 2 ? { ...persisted[index]!, status: row.workout.status, session_id: row.workout.session_id } : persisted[index]!,
+        result: row.result ? { ...row.result, rpe: null } : null,
+      }));
+      const before = structuredClone({ persisted, plateau, plan });
+      vi.mocked(storage.listSwimWorkouts).mockResolvedValue(persisted);
+      vi.spyOn(queries, "loadSwimHistory").mockResolvedValue(plateau);
+      const candidate = queries.deriveSwimWeekCandidate(plan, plateau, "2026-09-12")!;
+      expect(candidate.proposal.decision).toBe("hold");
+      const view = mockSavedPlan();
+      expect(await decideSwimProposal(plan.id, plan.revision, candidate.id, "accepted")).toEqual({ ok: true, view });
+      expect(storage.updateSwimPlan).toHaveBeenCalledOnce();
+      const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
+      expect(saved.workouts.map((row) => row.id)).toEqual(
+        (targetState === "provisional" ? persisted.slice(2, 4) : persisted.slice(3, 4)).map((row) => row.id),
+      );
+      for (const update of saved.workouts) {
+        const prior = persisted.find((row) => row.id === update.id)!;
+        expect(update).toEqual({
+          id: prior.id, expected_revision: prior.revision, scheduled_date: prior.scheduled_date, slot: prior.slot,
+          definition: { ...prior.definition, provisional: false },
+        });
+        expect(update.definition.modifications).toEqual(prior.definition.modifications);
+      }
+      expect(saved.state.decisions).toHaveLength(1);
+      expect(saved.state.decisions[0]).toMatchObject({ id: candidate.id, decision: "accepted" });
+      expect({ persisted, plateau, plan }).toEqual(before);
+    },
+  );
+  it.each(["dose", "array content", "array order"] as const)(
+    "DC-SW5 records exactly one prior issued snapshot for a real %s change",
+    async (change) => {
+      vi.setSystemTime(new Date("2026-09-12T12:00:00Z"));
+      const { plan, workouts, history } = swimFixture();
+      const target = workouts[3]!;
+      if (change === "array content") {
+        target.definition = {
+          ...target.definition,
+          issued: {
+            ...target.definition.issued,
+            snapshot: { ...target.definition.issued.snapshot, equipment: ["fins"] },
+            sections: target.definition.issued.sections.map((section) => ({
+              ...section, items: section.items.map((item) => ({ ...item, equipment: ["fins"] })),
+            })),
+          },
+        };
+      } else if (change === "array order") {
+        target.definition = { ...target.definition, issued: {
+          ...target.definition.issued, sections: [...target.definition.issued.sections].reverse(),
+        } };
+      }
+      target.definition.modifications = [{
+        id: receiptId, recordedAt: plan.created_at, decisionId: planId, reason: "Earlier decision",
+        previous: target.definition.original,
+      }];
+      const settled = history.map((row) => ({
+        ...row, result: row.result ? { ...row.result, rpe: change === "dose" ? 5 : 7 } : null,
+      }));
+      const before = structuredClone({ workouts, settled, plan });
+      vi.mocked(storage.listSwimWorkouts).mockResolvedValue(workouts);
+      vi.spyOn(queries, "loadSwimHistory").mockResolvedValue(settled);
+      const candidate = queries.deriveSwimWeekCandidate(plan, settled, "2026-09-12")!;
+      const expected = candidate.generated.weeks[1]!.slots.find((slot) => slot.slotId === swimWorkoutDefinition(target).slotId)!;
+      if (expected.kind !== "workout") throw new Error("Expected workout");
+      expect(expected.issued).not.toEqual(target.definition.issued);
+      if (change === "dose") expect(expected.issued.totalLengths).toBeGreaterThan(target.definition.issued.totalLengths);
+      else expect(expected.issued.totalLengths).toBe(target.definition.issued.totalLengths);
+      const view = mockSavedPlan();
+      expect(await decideSwimProposal(plan.id, plan.revision, candidate.id, "accepted")).toEqual({ ok: true, view });
+      expect(storage.updateSwimPlan).toHaveBeenCalledOnce();
+      const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
+      expect(saved.workouts.map((row) => row.id)).toEqual(workouts.slice(2, 4).map((row) => row.id));
+      const update = saved.workouts.find((row) => row.id === target.id)!;
+      expect(update.definition.issued).toEqual(expected.issued);
+      expect(update.definition.original).toEqual(target.definition.original);
+      expect(update.expected_revision).toBe(target.revision);
+      expect(update.definition).toHaveProperty("provisional", false);
+      expect(update.definition.modifications).toEqual([
+        ...target.definition.modifications,
+        { id: expect.any(String), recordedAt: new Date().toISOString(), decisionId: candidate.id,
+          reason: `Week 2: ${candidate.proposal.decision}`, previous: target.definition.issued },
+      ]);
+      expect(saved.state.decisions[0]).toMatchObject({ id: candidate.id, decision: "accepted" });
+      expect({ workouts, settled, plan }).toEqual(before);
+    },
+  );
   it("rejects a week without touching any future prescriptions", async () => {
     vi.setSystemTime(new Date("2026-09-12T12:00:00Z"));
     const { plan, history } = swimFixture();
     vi.spyOn(queries, "loadSwimHistory").mockResolvedValue(history);
     const candidate = queries.deriveSwimWeekCandidate(plan, history, "2026-09-12")!;
-    expect(await decideSwimProposal(plan.id, plan.revision, candidate.id, "rejected")).toEqual({ ok: true });
+    const view = mockSavedPlan();
+    expect(await decideSwimProposal(plan.id, plan.revision, candidate.id, "rejected")).toEqual({ ok: true, view });
     expect(vi.mocked(storage.updateSwimPlan).mock.calls[0]![1]).toMatchObject({
       workouts: [], state: { decisions: [expect.objectContaining({ decision: "rejected" })] },
     });
@@ -268,9 +458,12 @@ describe("ADR0079 server actions", () => {
     vi.spyOn(queries, "loadSwimHistory").mockResolvedValue(history);
     const candidate = queries.deriveSwimWeekCandidate(plan, history, "2026-09-12")!;
     const repeats = candidate.proposal.from.mainRepeats + 5;
+    const view = mockSavedPlan();
     const result = await decideSwimProposal(plan.id, plan.revision, candidate.id, "overridden", String(repeats), "More repeats");
     expect(result.ok).toBe(true);
     expect(result.warning).toBeTruthy();
+    expect(result.view).toBe(view);
+    expect(result).not.toHaveProperty("refreshWarning");
     const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
     expect(saved.state.decisions[0]).toMatchObject({
       decision: "overridden", inputSnapshot: {
@@ -283,14 +476,40 @@ describe("ADR0079 server actions", () => {
     vi.setSystemTime(new Date("2026-09-12T12:00:00Z"));
     const { plan, workouts } = swimFixture();
     const paused = { ...plan, status: "paused" as const, state: { ...plan.state, pauseSnapshot: { pausedAt: "2026-09-12T12:00:00Z", workoutIds: workouts.slice(2).map((row) => row.id) } } };
-    vi.mocked(storage.listSwimPlans).mockResolvedValue([paused]);
+    vi.mocked(storage.listSwimPlans)
+      .mockResolvedValueOnce([paused])
+      .mockResolvedValueOnce([paused])
+      .mockResolvedValueOnce([paused]);
     const result = await previewSwimResume(plan.id, 1, "2026-10-01");
     expect(result.preview?.dates).toHaveLength(4);
     expect(result.preview?.dates.every((row) => row.date >= "2026-10-01")).toBe(true);
     expect(result.preview?.dates.map((row) => row.id)).not.toContain(workouts[0]!.id);
     expect(storage.resumeSwimPlan).not.toHaveBeenCalled();
-    expect(await resumeSwimPlan(result.preview!)).toEqual({ ok: true });
+    const resumed: storage.SwimPlanWithWorkouts = {
+      plan: {
+        ...plan, status: "active", revision: plan.revision + 1,
+        ends_on: result.preview!.dates.at(-1)!.date, updated_at: new Date().toISOString(),
+      },
+      workouts: workouts.map((row) => {
+        const date = result.preview!.dates.find((entry) => entry.id === row.id);
+        return date ? {
+          ...row, scheduled_date: date.date, revision: row.revision + 1, updated_at: new Date().toISOString(),
+        } : row;
+      }),
+    };
+    const view: SwimHubView = {
+      id: resumed.plan.id, revision: resumed.plan.revision, status: resumed.plan.status,
+      goal: "Technique & base", course: "25 yd",
+      dates: `${resumed.plan.started_on} – ${resumed.plan.ends_on}`, today: "2026-09-12",
+      workouts: [], proposals: [], analytics: { weeks: [], bests: [], benchmarks: [] },
+    };
+    vi.mocked(storage.resumeSwimPlan).mockResolvedValueOnce(resumed);
+    const loadView = vi.spyOn(queries, "loadSwimHubView").mockResolvedValueOnce(view);
+    expect(await resumeSwimPlan(result.preview!)).toEqual({ ok: true, view });
     expect(storage.resumeSwimPlan).toHaveBeenCalledOnce();
+    expect(loadView).toHaveBeenCalledOnce();
+    expect(loadView).toHaveBeenCalledWith(mock.client, userId, resumed.plan);
+    expect(loadView.mock.calls[0]![2]).toBe(resumed.plan);
   });
   it("rejects modified resume preview dates instead of silently rescheduling", async () => {
     vi.setSystemTime(new Date("2026-09-12T12:00:00Z"));
@@ -328,7 +547,8 @@ describe("ADR0079 server actions", () => {
     expect(proposed.preview).toBeDefined();
     expect(proposed.preview?.observation.verified).toBe(true);
     expect(storage.updateSwimPlan).not.toHaveBeenCalled();
-    expect(await decideSwimBenchmark(plan.id, proposed.preview!, "accepted")).toEqual({ ok: true });
+    const view = mockSavedPlan();
+    expect(await decideSwimBenchmark(plan.id, proposed.preview!, "accepted")).toEqual({ ok: true, view });
     const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
     expect(saved.state.observations).toEqual([proposed.preview!.observation]);
     expect(saved.state.acceptedCalibration).toHaveProperty("unit", "yd");
@@ -336,11 +556,24 @@ describe("ADR0079 server actions", () => {
     expect(saved.workouts).toHaveLength(3);
     expect(saved.workouts.every((row) => row.id !== workouts[2]!.id && row.scheduled_date > "2026-09-12")).toBe(true);
     expect(saved.workouts.every((row) => row.definition.modifications.length === 1)).toBe(true);
+    for (const update of saved.workouts) {
+      const prior = workouts.find((row) => row.id === update.id)!;
+      expect(update.definition.issued.sections).not.toEqual(prior.definition.issued.sections);
+      expect(update.definition.issued.sections.some((section) =>
+        section.items.some((item) => item.targetMsPerRepeat !== undefined))).toBe(true);
+      expect(update.definition.original).toEqual(prior.definition.original);
+      expect(update.expected_revision).toBe(prior.revision);
+      expect(update.definition.modifications[0]).toEqual({
+        id: expect.any(String), recordedAt: new Date().toISOString(), decisionId: saved.state.decisions[0]!.id,
+        reason: "Accepted assessment", previous: prior.definition.issued,
+      });
+    }
     expect(assertSwimSafety).toHaveBeenCalledOnce();
   });
   it("retains a rejected assessment without changing pace targets or requiring new safety clearance", async () => {
     const proposed = await proposeSwimBenchmark(planId, 1, benchmarkForm());
-    expect(await decideSwimBenchmark(planId, proposed.preview!, "rejected")).toEqual({ ok: true });
+    const view = mockSavedPlan();
+    expect(await decideSwimBenchmark(planId, proposed.preview!, "rejected")).toEqual({ ok: true, view });
     expect(vi.mocked(storage.updateSwimPlan).mock.calls[0]![1]).toMatchObject({
       workouts: [], state: { acceptedCalibration: null, observations: [proposed.preview!.observation],
         decisions: [expect.objectContaining({ decision: "rejected" })] },

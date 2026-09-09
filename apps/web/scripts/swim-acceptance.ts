@@ -13,7 +13,7 @@ import {
   MIGRATION_EVIDENCE_ENV, MIGRATION_EVIDENCE_FILE, readMigrationEvidence,
 } from "../../../packages/db/scripts/migrate-evidence";
 import {
-  CLI_ASSET, CLI_SHA256, CLI_VERSION, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
+  ACTIVE_MIGRATION_TOTAL, CLI_ASSET, CLI_SHA256, CLI_VERSION, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
   containerSchema, networkSchema, outcome, processIdentity, readyServiceNames, requireAcceptance, requireArchive,
   requireCleanupState, requireFreshReport, requireLocalStatus,
   requireManualContext, requireNetwork, requireNoInheritedTargets, requirePinnedDefaultConfig, requirePrivateLocation,
@@ -31,6 +31,8 @@ import {
   createIdentityRoundTripProof, enforceIdentityProofAfterRpc, requireIdentityHelperRpcCases, runIdentityRoundTrip,
 } from "./swim-identity-roundtrip";
 import { runSwimBrowserStage } from "./swim-browser-stage";
+import { SWIM_BROWSER_CASES } from "./swim-browser-acceptance";
+import { runMovementReferenceRoundTrip } from "./swim-movement-reference-roundtrip";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const web = join(root, "apps/web");
@@ -91,7 +93,7 @@ async function main(cleanupOnly: boolean) {
     appendFileSync(process.env.GITHUB_ENV!, `SWIM_ACCEPTANCE_DIR=${directory}\n`);
     summary("Swim acceptance scope", {
       ...manifest, cleanup: "unconfirmed until a terminal cleanup record; forced cancellation may prevent observation",
-      scope: "Reference startup, unchanged migrations/catalog, complete swim RPC file and four mobile browser cases; not standalone release acceptance",
+      scope: "Reference startup, normal migrations/catalog, complete swim RPC file and declared mobile browser cohort; not standalone release acceptance",
     });
   }
   process.umask(0o077);
@@ -299,8 +301,8 @@ async function main(cleanupOnly: boolean) {
         "packages/green", "packages/hyrox", "packages/program-core", "packages/tacticalbarbell",
         "packages/tb-conditioning", "packages/ui", "packages/wendler",
         "apps/web/src", "apps/web/public", "apps/web/e2e-rpc/setup.ts", "apps/web/scripts",
-        "apps/web/vitest.config.ts", "apps/web/e2e/swimming-mobile.spec.ts",
-        "apps/web/e2e/swimming-persistence-mobile.spec.ts", "apps/web/e2e/fixtures",
+        "apps/web/vitest.config.ts", ...SWIM_BROWSER_CASES.map(({ file }) => `apps/web/${file}`),
+        "apps/web/e2e/fixtures",
         "apps/web/e2e/global-setup.ts", "apps/web/playwright.config.ts",
         "apps/web/playwright.swim-reference.config.ts", "apps/web/next.config.*",
         "apps/web/tsconfig.json", "apps/web/postcss.config.*", "apps/web/package.json",
@@ -308,11 +310,11 @@ async function main(cleanupOnly: boolean) {
         ".github/workflows/ci.yml").split("\0").filter(Boolean);
       sourceHashes = sources();
       const journal = JSON.parse(readFileSync(join(root, "packages/db/drizzle/meta/_journal.json"), "utf8"));
-      assert(journal.entries.length === 148 && sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === 148);
+      assert(journal.entries.length === ACTIVE_MIGRATION_TOTAL && sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === ACTIVE_MIGRATION_TOTAL);
       manifest.sourceSha256 = hash(JSON.stringify(sourceHashes));
       manifest.configSha256 = hash(readFileSync(RPC_CONFIG));
       manifest.rpcSourceSha256 = hash(readFileSync(RPC_SUITE));
-      manifest.migrationCount = 148;
+      manifest.migrationCount = ACTIVE_MIGRATION_TOTAL;
       writeFileSync(join(directory, "source-hashes.json"), JSON.stringify(sourceHashes), { mode: 0o600 });
       assert(process.version.startsWith("v22.") && process.platform === "linux" && process.arch === "x64");
       assert((await command("pnpm", ["--version"], { capture: true })).text === "10.33.2");
@@ -542,6 +544,18 @@ async function main(cleanupOnly: boolean) {
       requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);
       requireIdentityHelperRpcCases(ledger);
     }), reporting);
+    await stage("movement reference down-up and necessity proof", () => runMovementReferenceRoundTrip({
+      command, dbId: target.dbId,
+      verifiedSql: (file) => {
+        requireUnchanged();
+        const bytes = readFileSync(join(root, file));
+        assert(hash(bytes) === sourceHashes[file], "Tracked movement reference SQL changed");
+        const sql = bytes.toString("utf8");
+        assert(Buffer.from(sql, "utf8").equals(bytes), "Movement reference SQL is not exact UTF-8");
+        return sql;
+      },
+      publish: (record) => { manifest.movementReferences = record; },
+    }));
     await stage("mobile browser acceptance", () => runSwimBrowserStage({
       command, root, runDirectory: directory, deadline, cacheEnv: process.env,
       target: {
@@ -570,7 +584,8 @@ async function main(cleanupOnly: boolean) {
     if (primary || state.cleanup !== "verified") process.exitCode = 1;
     try {
       summary(cleanupOnly ? "Swim cleanup verification" : "Swim acceptance result", {
-        ...outcome(primary, state.cleanup === "verified"), stages: reporting.stages,
+        ...outcome(primary, state.cleanup === "verified"),
+        stages: reporting.stages,
         failures: reporting.failures, manifest,
       });
     } catch (error) {
