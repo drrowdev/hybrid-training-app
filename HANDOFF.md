@@ -2,6 +2,43 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## Exact-identity output refinement — 2026-09-09
+
+Continued PR805 from `5946bd020f637f36388109898f162a284eb9ede8`.
+**Tested code checkpoint:** `8fac5c3dfac66cb1b5246e5b142e4ed6c1094f60`,
+tree `355efedf4575d3ec72fd6f44b2d608b69f27ad45`.
+Raw synthetic commits created with `git hash-object -t commit -w --stdin`
+proved that Git stores and projects leading author / trailing committer
+space, tab, CR and NBSP unchanged. All eight were wrongly accepted before
+the fix. Tests compare complete `cat-file` content and untrimmed `git show`
+output. Git rejected an exploratory newline-in-email object as malformed;
+no validation bypass or retained invalid-object test was used.
+
+The checker removes only one terminal LF, requires exactly two identity
+fields, and uses `--no-show-signature`. Added empty-field attribution checks
+and Git-trace proof that signature-display config does not invoke a verifier.
+The original 22 regressions and all history/boundary/tag policy remain intact.
+
+Commands run from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+- `pnpm --filter @hta/web exec vitest run src/lib/__tests__/commit-identity-guard.test.ts`
+  — 33 passed after demonstrated red regressions.
+- `pnpm --filter @hta/web exec eslint src/lib/__tests__/commit-identity-guard.test.ts`
+  and `apps/web/node_modules/.bin/eslint --config apps/web/eslint.config.mjs scripts/check-commit-identities.mjs`
+  — passed (existing root React/pages configuration notices).
+- `node --check scripts/check-commit-identities.mjs`,
+  `pnpm --filter @hta/web typecheck`, `pnpm docs:check-drift`, `git diff --check`
+  — passed; doc drift is offline/in-repository only.
+
+Secret scan clean. CodeQL returned zero alerts, but Actions analysis failed
+and JavaScript was skipped for database size: **no analysis pass claimed**.
+The initial shallow-history publication was blocked without changing HEAD;
+`git fetch --unshallow --no-tags origin` restored history. The signing service
+again returned Bad Request; the terminal checkpoint is unsigned, with hooks
+enabled, explicit Copilot223556219 author/committer and both AI credits
+verified locally and on GitHub. Publication pushed the existing commit.
+Only the checker, its tests, this handoff and append-only knowledge log change.
+No DC-* / OC-* or swimming source changes; the 18-case source remains unrun.
+
 ## Commit-identity recurrence prevention — 2026-09-09
 
 Continued PR805 on `copilot/new-acceptance-cases` from exact

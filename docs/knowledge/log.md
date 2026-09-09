@@ -2610,3 +2610,25 @@ all15 passed12:34:10Z; the 18-case source is not live accepted by this task.
 Normal149/Auth36/single-FK/source bounds remain unchanged. Production/main's
 0145 single-leg RDL migration versus unmerged swim145–148 ordering still needs
 later reconciliation; backup/recovery/monitoring and release gates remain open.
+
+## [2026-09-09] refine | Preserve exact Git identity output
+
+PR805 continued from `5946bd020f637f36388109898f162a284eb9ede8`; tested code
+checkpoint `8fac5c3dfac66cb1b5246e5b142e4ed6c1094f60`, tree
+`355efedf4575d3ec72fd6f44b2d608b69f27ad45`. Eight red regressions proved
+Git stores/projects leading author and trailing committer whitespace unchanged
+while the old guard normalized it into allowed identities. Synthetic objects
+use normal `hash-object` validation, with complete object/projection assertions.
+Git rejected the exploratory newline-in-email object; no bypass was used.
+
+Only terminal LF is removed; exactly two fields are required and signature
+display is disabled. Empty-field attribution and trace-based verifier exclusion
+are covered. All 33 targeted tests, scoped ESLint, Node syntax, web typecheck
+and offline doc drift passed; commands are in HANDOFF. Secret scan clean.
+CodeQL returned zero alerts but Actions failed and JavaScript was size-skipped,
+not a successful analysis. Terminal checkpoint author/committer and both AI
+credits verified locally/remotely; unsigned after sandbox signing failure,
+hooks enabled. Full history fetched after the initial shallow push rejection.
+Only the four authorized paths change; all prior identity wiring, boundary/tag
+policy and 18-case source remain intact. No history rewrite, engine/DC-*/OC-*,
+product/DB/RLS/dependency changes or live swimming acceptance.
