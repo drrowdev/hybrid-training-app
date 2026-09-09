@@ -7,6 +7,22 @@ const modes = z.enum(["baseline", "immediate", "deferred"]);
 const outcomes = z.enum(["succeeded", "rejected", "setup-failed", "unavailable"]);
 const states = z.enum(["none", "23503", "other"]);
 const constraints = z.enum(["none", "set-logs", "session-movements", "other"]);
+const flagIds = [
+  "owner-session", "owner-current", "owner-super", "auth-role-present", "auth-login",
+  "auth-not-super", "auth-not-inherit", "auth-create-role", "auth-not-create-db",
+  "auth-not-replication", "auth-not-bypass-rls", "fk-count", "fk-identity", "fk-confrelid",
+  "fk-conkey", "fk-confkey", "fk-confdeltype", "fk-confupdtype", "fk-confmatchtype",
+  "fk-convalidated", "fk-condeferrable", "fk-condeferred", "fk-conislocal",
+  "fk-coninhcount", "fk-conparentid", "fixtures-absent",
+] as const;
+const prerequisitesSchema = z.discriminatedUnion("observed", [
+  z.object({ observed: z.literal(false) }).strict(),
+  z.object({
+    observed: z.literal(true), matched: z.boolean(),
+    mismatched: z.array(z.enum(flagIds)).max(flagIds.length).refine((ids) =>
+      ids.every((id, index) => index === 0 || flagIds.indexOf(ids[index - 1]!) < flagIds.indexOf(id))),
+  }).strict(),
+]).refine((r) => !r.observed || !r.matched || r.mismatched.length === 0);
 export const probeRecordSchema = z.object({
   mode: modes, outcome: outcomes, SQLSTATE: states, constraint: constraints,
   roleMatched: z.boolean(), forcedChecks: z.boolean(), rowCountMatched: z.boolean(),
@@ -17,6 +33,7 @@ export const rollbackRecordSchema = z.object({
   diagnosticMode: z.literal("rollback-only"), qualifying: z.literal(false),
   status: z.enum(["inconclusive", "measured", "failed"]),
   probes: z.array(probeRecordSchema).max(3),
+  prerequisites: prerequisitesSchema,
 }).strict();
 type Mode = z.infer<typeof modes>;
 type Probe = z.infer<typeof probeRecordSchema>;
@@ -24,7 +41,7 @@ type Record = z.infer<typeof rollbackRecordSchema>;
 const attemptSchema = z.tuple([outcomes, states, constraints, z.boolean(), z.boolean(), z.boolean()]);
 const snapshotSchema = z.tuple([
   z.boolean(), z.boolean(), z.boolean(), z.string().min(1).max(65_536),
-  z.string().regex(/^[a-f0-9]{32}$/), z.boolean(),
+  z.string().regex(/^[a-f0-9]{32}$/), z.boolean(), z.array(z.boolean()).length(flagIds.length),
 ]);
 type Snapshot = z.infer<typeof snapshotSchema>;
 const uuid = z.string().regex(/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
@@ -38,6 +55,15 @@ const targets = [
   ["set_logs", "set_logs_movement_id_fkey"],
   ["session_movements", "session_movements_movement_id_fkey"],
 ] as const;
+const fkProperties = [
+  "p_identity", "p_confrelid", "p_conkey", "p_confkey", "p_confdeltype", "p_confupdtype",
+  "p_confmatchtype", "p_convalidated", "p_condeferrable", "p_condeferred", "p_conislocal",
+  "p_coninhcount", "p_conparentid",
+];
+const authProperties = [
+  "p_auth_login", "p_auth_not_super", "p_auth_not_inherit", "p_auth_create_role",
+  "p_auth_not_create_db", "p_auth_not_replication", "p_auth_not_bypass_rls",
+];
 const bounds = `
 SET LOCAL statement_timeout = '5s';
 SET LOCAL lock_timeout = '1s';
@@ -58,21 +84,30 @@ WITH movement_fks AS (
   SELECT * FROM movement_fks WHERE
     conrelid IN ('public.set_logs'::pg_catalog.regclass, 'public.session_movements'::pg_catalog.regclass)
     OR conname IN ('set_logs_movement_id_fkey', 'session_movements_movement_id_fkey')
+), props AS (
+  SELECT
+    (${targets.map(([table, name]) => `(conrelid = 'public.${table}'::pg_catalog.regclass AND conname = '${name}')`).join(" OR ")}) AS p_identity,
+    confrelid = 'public.movements'::pg_catalog.regclass AS p_confrelid,
+    conkey = ARRAY[(SELECT attnum FROM pg_catalog.pg_attribute
+      WHERE attrelid = conrelid AND attname = 'movement_id' AND NOT attisdropped)]::smallint[] AS p_conkey,
+    confkey = ARRAY[(SELECT attnum FROM pg_catalog.pg_attribute
+      WHERE attrelid = confrelid AND attname = 'id' AND NOT attisdropped)]::smallint[] AS p_confkey,
+    confdeltype = 'r' AS p_confdeltype, confupdtype = 'a' AS p_confupdtype,
+    confmatchtype = 's' AS p_confmatchtype, convalidated AS p_convalidated,
+    NOT condeferrable AS p_condeferrable, NOT condeferred AS p_condeferred,
+    conislocal AS p_conislocal, coninhcount = 0 AS p_coninhcount, conparentid = 0 AS p_conparentid
+  FROM targeted
+), totals AS (
+  SELECT count(*) = 2 AS p_count FROM props
 ), evidence AS (
   SELECT
-    (SELECT count(*) = 2 AND COALESCE(pg_catalog.bool_and(
-      (${targets.map(([table, name]) => `(conrelid = 'public.${table}'::pg_catalog.regclass AND conname = '${name}')`).join(" OR ")})
-      AND confrelid = 'public.movements'::pg_catalog.regclass
-      AND conkey = ARRAY[(SELECT attnum FROM pg_catalog.pg_attribute
-        WHERE attrelid = conrelid AND attname = 'movement_id' AND NOT attisdropped)]::smallint[]
-      AND confkey = ARRAY[(SELECT attnum FROM pg_catalog.pg_attribute
-        WHERE attrelid = confrelid AND attname = 'id' AND NOT attisdropped)]::smallint[]
-      AND confdeltype = 'r' AND confupdtype = 'a' AND confmatchtype = 's'
-      AND convalidated AND NOT condeferrable AND NOT condeferred
-      AND conislocal AND coninhcount = 0 AND conparentid = 0), false) FROM targeted) AS shapes,
+    (SELECT p_count AND COALESCE(pg_catalog.bool_and(
+      ${fkProperties.join(" AND ")}), false) FROM props) AS shapes,
     (SELECT COALESCE(pg_catalog.jsonb_agg(tuple ORDER BY conrelid, conname), '[]'::jsonb)::text FROM targeted) AS tuples,
     (SELECT pg_catalog.md5(COALESCE(pg_catalog.jsonb_agg(tuple ORDER BY conrelid, conname), '[]'::jsonb)::text)
-      FROM movement_fks WHERE oid NOT IN (SELECT oid FROM targeted)) AS others
+      FROM movement_fks WHERE oid NOT IN (SELECT oid FROM targeted)) AS others,
+    p_count
+  FROM totals
 )`;
 
 function absent(ids: Fixture) {
@@ -89,15 +124,33 @@ function absent(ids: Fixture) {
 }
 
 export function snapshotSql(ids: Fixture) {
+  // Role names are unique and rol* pins NOT NULL; keep EXISTS for absent rows.
+  // FK properties can be NULL: diagnostics must not replace the row-wise conjunction.
   return `BEGIN READ ONLY; ${bounds}
-${catalog}
+${catalog}, owner_props AS (
+  SELECT rolsuper AS p_owner_super FROM pg_catalog.pg_roles WHERE rolname = session_user
+), auth_props AS (
+  SELECT rolcanlogin AS p_auth_login, NOT rolsuper AS p_auth_not_super,
+    NOT rolinherit AS p_auth_not_inherit, rolcreaterole AS p_auth_create_role,
+    NOT rolcreatedb AS p_auth_not_create_db, NOT rolreplication AS p_auth_not_replication,
+    NOT rolbypassrls AS p_auth_not_bypass_rls
+  FROM pg_catalog.pg_roles WHERE rolname = 'supabase_auth_admin'
+), prerequisites AS (
+  SELECT session_user = 'postgres' AS p_owner_session, current_user = 'postgres' AS p_owner_current,
+    EXISTS (SELECT 1 FROM owner_props WHERE p_owner_super) AS p_owner_super,
+    EXISTS (SELECT 1 FROM auth_props) AS p_auth_role_present,
+    ${absent(ids)} AS p_fixtures_absent
+)
 SELECT pg_catalog.json_build_array(
-  session_user = 'postgres' AND current_user = 'postgres'
-    AND EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = session_user AND rolsuper),
-  EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'supabase_auth_admin'
-    AND rolcanlogin AND NOT rolsuper AND NOT rolinherit AND rolcreaterole
-    AND NOT rolcreatedb AND NOT rolreplication AND NOT rolbypassrls),
-  shapes, tuples, others, ${absent(ids)}) FROM evidence;
+  p_owner_session AND p_owner_current AND p_owner_super,
+  p_auth_role_present AND EXISTS (SELECT 1 FROM auth_props WHERE ${authProperties.join(" AND ")}),
+  shapes, tuples, others, p_fixtures_absent,
+  ARRAY[p_owner_session IS FALSE, p_owner_current IS FALSE, p_owner_super IS FALSE,
+    p_auth_role_present IS FALSE,
+    ${authProperties.map((p) => `(SELECT ${p} FROM auth_props) IS FALSE`).join(",\n    ")},
+    p_count IS FALSE,
+    ${fkProperties.map((p) => `(SELECT COALESCE(pg_catalog.bool_or(${p} IS FALSE), false) FROM props)`).join(",\n    ")},
+    p_fixtures_absent IS FALSE]) FROM evidence CROSS JOIN prerequisites;
 ROLLBACK;`;
 }
 
@@ -193,7 +246,8 @@ export async function runRollbackProbes(
   command: PrivateCommand, dbId: string, publish: (record: Record) => void,
 ): Promise<Record> {
   assert(/^[a-f0-9]{64}$/.test(dbId), "Rollback probe container invalid");
-  const record: Record = { diagnosticMode: "rollback-only", qualifying: false, status: "inconclusive", probes: [] };
+  const record: Record = { diagnosticMode: "rollback-only", qualifying: false, status: "inconclusive", probes: [],
+    prerequisites: { observed: false } };
   const sql = async (query: string) => {
     const { text, result } = await command("docker", [
       "exec", dbId, "psql", "-XqAt", "-U", "postgres", "-d", "postgres",
@@ -201,13 +255,23 @@ export async function runRollbackProbes(
     ], { capture: true, allowFailure: true, timeout: 15_000 });
     assert(!result.timedOut && result.code === 0 && result.signal === null, "Rollback probe command unavailable");
     assert(text.length <= 131_072, "Rollback probe output invalid");
-    return JSON.parse(text) as unknown;
+    try { return JSON.parse(text) as unknown; } catch {
+      assert(false, "Rollback probe output invalid");
+    }
   };
   try {
     const first = freshFixture();
     // Once only: never replace this with a post-probe observation.
-    const original = snapshotSchema.parse(await sql(snapshotSql(first)));
-    assert(original[0] && original[1] && original[2] && original[5], "Rollback probe prerequisites mismatched");
+    const parsed = snapshotSchema.safeParse(await sql(snapshotSql(first)));
+    assert(parsed.success, "Rollback probe snapshot invalid");
+    const original = parsed.data;
+    const matched = original[0] && original[1] && original[2] && original[5];
+    const prerequisites = prerequisitesSchema.safeParse({
+      observed: true, matched, mismatched: flagIds.filter((_, index) => original[6][index]),
+    });
+    assert(prerequisites.success, "Rollback probe snapshot invalid");
+    record.prerequisites = prerequisites.data;
+    assert(matched, "Rollback probe prerequisites mismatched");
     for (const mode of modes.options) {
       const ids = mode === "baseline" ? first : freshFixture();
       const probe: Probe = { mode, outcome: "unavailable", SQLSTATE: "none", constraint: "none",

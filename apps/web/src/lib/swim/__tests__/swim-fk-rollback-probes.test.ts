@@ -13,7 +13,17 @@ const ids = {
   user: "12345678-1234-4234-8234-123456789abc", movement: "22345678-1234-4234-8234-123456789abc",
   session: "32345678-1234-4234-8234-123456789abc", set: "42345678-1234-4234-8234-123456789abc",
 };
-const snapshot = () => [true, true, true, '[{"private":"original-tuples"}]', "b".repeat(32), true] as const;
+const flags = [
+  "owner-session", "owner-current", "owner-super", "auth-role-present", "auth-login",
+  "auth-not-super", "auth-not-inherit", "auth-create-role", "auth-not-create-db",
+  "auth-not-replication", "auth-not-bypass-rls", "fk-count", "fk-identity", "fk-confrelid",
+  "fk-conkey", "fk-confkey", "fk-confdeltype", "fk-confupdtype", "fk-confmatchtype",
+  "fk-convalidated", "fk-condeferrable", "fk-condeferred", "fk-conislocal",
+  "fk-coninhcount", "fk-conparentid", "fixtures-absent",
+] as const;
+const snapshot = () => [
+  true, true, true, '[{"private":"original-tuples"}]', "b".repeat(32), true, flags.map(() => false),
+] as const;
 const baseline = ["rejected", "23503", "set-logs", true, false, false];
 const success = ["succeeded", "none", "none", true, true, true];
 const ok = { code: 0, signal: null, timedOut: false };
@@ -66,7 +76,8 @@ describe("DC-SW8 rollback-only source and SQL contract", () => {
   it("uses the existing role from pg_roles and aligns both identities with local session authorization", () => {
     const catalog = snapshotSql(ids);
     expect(catalog).toContain("FROM pg_catalog.pg_roles WHERE rolname = 'supabase_auth_admin'");
-    expect(catalog).toContain("AND rolcanlogin AND NOT rolsuper");
+    expect(catalog).toContain("rolcanlogin AS p_auth_login, NOT rolsuper AS p_auth_not_super");
+    expect(catalog).toContain("WHERE p_auth_login AND p_auth_not_super");
     const sql = probeSql("deferred", ids, [...snapshot()]);
     const dropped = sql.slice(sql.indexOf("SET LOCAL SESSION AUTHORIZATION"));
     expect(dropped).toContain("SET LOCAL SESSION AUTHORIZATION supabase_auth_admin;");
@@ -89,6 +100,60 @@ describe("DC-SW8 rollback-only source and SQL contract", () => {
     expect(candidate.indexOf("SELECT shapes AND")).toBeLessThan(candidate.indexOf("ALTER TABLE"));
     expect(source.match(/const original =/g)).toHaveLength(1);
     expect(source).toContain("after[3] === original[3] && after[4] === original[4]");
+  });
+
+  it("defines each atomic pin once and reuses properties in the original guards and ordered diagnostics", () => {
+    const sql = snapshotSql(ids);
+    const compact = sql.replace(/\s+/g, " ");
+    const fk = [
+      ["identity", "(conrelid = 'public.set_logs'::pg_catalog.regclass AND conname = 'set_logs_movement_id_fkey') OR (conrelid = 'public.session_movements'::pg_catalog.regclass AND conname = 'session_movements_movement_id_fkey')"],
+      ["confrelid", "confrelid = 'public.movements'::pg_catalog.regclass"],
+      ["conkey", "conkey = ARRAY[(SELECT attnum FROM pg_catalog.pg_attribute WHERE attrelid = conrelid AND attname = 'movement_id' AND NOT attisdropped)]::smallint[]"],
+      ["confkey", "confkey = ARRAY[(SELECT attnum FROM pg_catalog.pg_attribute WHERE attrelid = confrelid AND attname = 'id' AND NOT attisdropped)]::smallint[]"],
+      ["confdeltype", "confdeltype = 'r'"], ["confupdtype", "confupdtype = 'a'"],
+      ["confmatchtype", "confmatchtype = 's'"], ["convalidated", "convalidated"],
+      ["condeferrable", "NOT condeferrable"], ["condeferred", "NOT condeferred"],
+      ["conislocal", "conislocal"], ["coninhcount", "coninhcount = 0"], ["conparentid", "conparentid = 0"],
+    ];
+    const role = [
+      ["auth_login", "rolcanlogin"], ["auth_not_super", "NOT rolsuper"], ["auth_not_inherit", "NOT rolinherit"],
+      ["auth_create_role", "rolcreaterole"], ["auth_not_create_db", "NOT rolcreatedb"],
+      ["auth_not_replication", "NOT rolreplication"], ["auth_not_bypass_rls", "NOT rolbypassrls"],
+    ];
+    for (const [name, predicate] of fk) {
+      expect(compact.split(`${predicate}${name === "identity" ? ")" : ""} AS p_${name}`)).toHaveLength(2);
+      expect(sql.match(new RegExp(`\\bAS p_${name}\\b`, "g"))).toHaveLength(1);
+    }
+    for (const [name, predicate] of role) {
+      expect(compact.split(`${predicate} AS p_${name}`)).toHaveLength(2);
+      expect(sql.match(new RegExp(`\\bAS p_${name}\\b`, "g"))).toHaveLength(1);
+    }
+    expect(compact).toContain(`p_count AND COALESCE(pg_catalog.bool_and( ${fk.map(([p]) => `p_${p}`).join(" AND ")}), false) FROM props`);
+    expect(sql.match(/pg_catalog.bool_and\(/g)).toHaveLength(1);
+    expect(sql.match(/count\(\*\) = 2/g)).toHaveLength(1);
+    expect(compact).toContain("SELECT count(*) = 2 AS p_count FROM props");
+    expect(compact).toContain("FROM targeted ), totals AS");
+    expect(compact).toContain(`p_auth_role_present AND EXISTS (SELECT 1 FROM auth_props WHERE ${role.map(([p]) => `p_${p}`).join(" AND ")})`);
+    expect(compact).toContain("p_owner_session AND p_owner_current AND p_owner_super");
+    for (const predicate of [
+      "session_user = 'postgres' AS p_owner_session", "current_user = 'postgres' AS p_owner_current",
+      "rolsuper AS p_owner_super", "EXISTS (SELECT 1 FROM owner_props WHERE p_owner_super) AS p_owner_super",
+      "EXISTS (SELECT 1 FROM auth_props) AS p_auth_role_present",
+    ]) expect(compact.split(predicate)).toHaveLength(2);
+    const diagnostics = [
+      ...["owner_session", "owner_current", "owner_super", "auth_role_present"].map((p) => `p_${p} IS FALSE`),
+      ...role.map(([p]) => `(SELECT p_${p} FROM auth_props) IS FALSE`),
+      "p_count IS FALSE",
+      ...fk.map(([p]) => `(SELECT COALESCE(pg_catalog.bool_or(p_${p} IS FALSE), false) FROM props)`),
+      "p_fixtures_absent IS FALSE",
+    ];
+    expect(diagnostics).toHaveLength(26);
+    expect(compact).toContain(`shapes, tuples, others, p_fixtures_absent, ARRAY[${diagnostics.join(", ")}]`);
+    expect(sql.match(/AS p_fixtures_absent/g)).toHaveLength(1);
+    expect(sql.match(/NOT EXISTS \(SELECT 1 FROM public\.swim_workouts/g)).toHaveLength(1);
+    expect(compact).toContain("FROM evidence CROSS JOIN prerequisites");
+    expect(source).toContain("const matched = original[0] && original[1] && original[2] && original[5]");
+    expect(source).toContain('assert(matched, "Rollback probe prerequisites mismatched")');
   });
 
   it("forces ALL constraints inside the captured delete attempt in every mode, with exactly one affected row", () => {
@@ -147,6 +212,7 @@ describe("DC-SW8 rollback-only execution and safe projection", () => {
     const publish = vi.fn();
     const record = await runRollbackProbes(command, dbId, publish);
     expect(record.status).toBe("measured");
+    expect(record.prerequisites).toEqual({ observed: true, matched: true, mismatched: [] });
     expect(record.probes.map((p) => p.mode)).toEqual(["baseline", "immediate", "deferred"]);
     expect(record.probes.every((p) => p.schemaRestored && p.fixturesAbsent)).toBe(true);
     const queries = sqls(command);
@@ -178,9 +244,118 @@ describe("DC-SW8 rollback-only execution and safe projection", () => {
     const initial: unknown[] = [...snapshot()]; initial[index] = false;
     const command = commands([initial]);
     const publish = vi.fn();
-    await expect(runRollbackProbes(command, dbId, publish)).rejects.toThrow();
+    await expect(runRollbackProbes(command, dbId, publish)).rejects.toThrow("Rollback probe prerequisites mismatched");
     expect(command).toHaveBeenCalledTimes(1);
-    expect(publish.mock.calls[0]![0]).toMatchObject({ status: "failed", probes: [] });
+    expect(publish.mock.calls[0]![0]).toMatchObject({ status: "failed", probes: [],
+      prerequisites: { observed: true, matched: false, mismatched: [] } });
+  });
+
+  it.each(flags.map((id, index) => ({ id, index, gate: index < 3 ? 0 : index < 11 ? 1 : index < 25 ? 2 : 5 })))(
+    "publishes only the explicit false $id while preserving its aggregate gate",
+    async ({ id, index, gate }) => {
+      const initial: unknown[] = [...snapshot()];
+      initial[gate] = false;
+      (initial[6] as boolean[])[index] = true;
+      const command = commands([initial]);
+      const publish = vi.fn();
+      await expect(runRollbackProbes(command, dbId, publish)).rejects.toThrow("Rollback probe prerequisites mismatched");
+      expect(command).toHaveBeenCalledTimes(1);
+      expect(publish).toHaveBeenCalledTimes(1);
+      expect(publish).toHaveBeenCalledWith({
+        diagnosticMode: "rollback-only", qualifying: false, status: "failed", probes: [],
+        prerequisites: { observed: true, matched: false, mismatched: [id] },
+      });
+      expect(sqls(command)[0]).toMatch(/^BEGIN READ ONLY;/);
+      expect(sqls(command)[0]).not.toMatch(/INSERT|ALTER TABLE/);
+      expect(rollbackRecordSchema.safeParse(publish.mock.calls[0]![0]).success).toBe(true);
+    },
+  );
+
+  it("publishes all observed mismatches once in the fixed vocabulary order without private material", async () => {
+    const initial: unknown[] = [...snapshot()];
+    for (const gate of [0, 1, 2, 5]) initial[gate] = false;
+    initial[3] = JSON.stringify({ catalog: "pg_constraint", oid: 12345, uuid: ids.user, sql: "SELECT private" });
+    initial[6] = flags.map(() => true);
+    const publish = vi.fn();
+    await expect(runRollbackProbes(commands([initial]), dbId, publish)).rejects.toThrow("prerequisites mismatched");
+    const record = publish.mock.calls[0]![0];
+    expect(record.prerequisites).toEqual({ observed: true, matched: false, mismatched: flags });
+    const safe = formatAcceptanceSummary(record);
+    for (const raw of [initial[3], snapshot()[4], dbId, ids.user, "pg_constraint", "SELECT private",
+      "supabase_auth_admin", "movement_id_fkey"]) expect(safe).not.toContain(raw);
+  });
+
+  it.each([
+    ["short tuple", snapshot().slice(0, 6)],
+    ["long tuple", [...snapshot(), true]],
+    ["short flags", [...snapshot().slice(0, 6), flags.slice(1).map(() => false)]],
+    ["long flags", [...snapshot().slice(0, 6), [...flags.map(() => false), false]]],
+    ["null flag", [...snapshot().slice(0, 6), [null, ...flags.slice(1).map(() => false)]]],
+    ["raw tuple", [true, true, true, { private: ids.user }, snapshot()[4], true, flags.map(() => false)]],
+    ["forged matched evidence", [...snapshot().slice(0, 6), [true, ...flags.slice(1).map(() => false)]]],
+  ])("keeps observed:false and the authored assertion on %s", async (_, initial) => {
+    const command = commands([initial]);
+    const publish = vi.fn();
+    await expect(runRollbackProbes(command, dbId, publish)).rejects.toThrow("Rollback probe snapshot invalid");
+    expect(command).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledWith({
+      diagnosticMode: "rollback-only", qualifying: false, status: "failed", probes: [],
+      prerequisites: { observed: false },
+    });
+    expect(rollbackRecordSchema.safeParse(publish.mock.calls[0]![0]).success).toBe(true);
+  });
+
+  it.each([
+    { text: JSON.stringify(snapshot()), result: { ...ok, code: 1 }, message: "Rollback probe command unavailable" },
+    { text: JSON.stringify(snapshot()), result: { ...ok, timedOut: true }, message: "Rollback probe command unavailable" },
+    { text: JSON.stringify(snapshot()), result: { ...ok, signal: "SIGTERM" }, message: "Rollback probe command unavailable" },
+    { text: "x".repeat(131_073), result: ok, message: "Rollback probe output invalid" },
+    { text: `invalid private SQL ${ids.user}`, result: ok, message: "Rollback probe output invalid" },
+  ])("publishes observed:false after initial transport failure %#", async ({ text, result, message }) => {
+    const command = vi.fn(async () => ({ text, result }));
+    const publish = vi.fn();
+    await expect(runRollbackProbes(command, dbId, publish)).rejects.toThrow(message);
+    expect(command).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledWith({
+      diagnosticMode: "rollback-only", qualifying: false, status: "failed", probes: [],
+      prerequisites: { observed: false },
+    });
+    expect(rollbackRecordSchema.safeParse(publish.mock.calls[0]![0]).success).toBe(true);
+    expect(formatAcceptanceSummary(publish.mock.calls)).not.toContain(ids.user);
+  });
+
+  it("preserves an initial command exception without publishing its private text", async () => {
+    const error = new Error("private connection SQL sentinel");
+    const publish = vi.fn();
+    await expect(runRollbackProbes(commands([error]), dbId, publish)).rejects.toBe(error);
+    expect(publish).toHaveBeenCalledTimes(1);
+    expect(publish).toHaveBeenCalledWith({
+      diagnosticMode: "rollback-only", qualifying: false, status: "failed", probes: [],
+      prerequisites: { observed: false },
+    });
+    expect(rollbackRecordSchema.safeParse(publish.mock.calls[0]![0]).success).toBe(true);
+    expect(formatAcceptanceSummary(publish.mock.calls)).not.toContain(error.message);
+  });
+
+  it("strictly validates both evidence variants, ordered unique IDs, and only the forward matched implication", () => {
+    const record = { diagnosticMode: "rollback-only", qualifying: false, status: "failed", probes: [] };
+    for (const prerequisites of [
+      { observed: false }, { observed: true, matched: true, mismatched: [] },
+      { observed: true, matched: false, mismatched: [] },
+      { observed: true, matched: false, mismatched: flags },
+    ]) expect(rollbackRecordSchema.safeParse({ ...record, prerequisites }).success).toBe(true);
+    for (const prerequisites of [
+      undefined, { observed: false, matched: false }, { observed: false, raw: "private" },
+      { observed: true, matched: false, mismatched: [], raw: "private" },
+      { observed: true, matched: true, mismatched: ["owner-super"] },
+      { observed: true, matched: false, mismatched: ["unknown"] },
+      { observed: true, matched: false, mismatched: ["owner-super", "owner-super"] },
+      { observed: true, matched: false, mismatched: ["owner-super", "owner-session"] },
+      { observed: true, matched: false, mismatched: [...flags, "owner-session"] },
+      { observed: true, mismatched: [] }, { observed: true, matched: false }, { observed: "true" },
+    ]) expect(rollbackRecordSchema.safeParse({ ...record, prerequisites }).success).toBe(false);
   });
 
   it.each([
@@ -248,6 +423,7 @@ describe("DC-SW8 rollback-only execution and safe projection", () => {
     for (const extra of [{ qualifying: true }, { diagnosticMode: "normal" }, { raw: "private" }]) {
       expect(rollbackRecordSchema.safeParse({
         diagnosticMode: "rollback-only", qualifying: false, status: "inconclusive", probes: [good], ...extra,
+        prerequisites: { observed: false },
       }).success).toBe(false);
     }
   });
