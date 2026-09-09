@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { PrivateCommand } from "./swim-auth-privileges";
 import { acceptanceAssert as assert, type AcceptanceReporting } from "./swim-acceptance-reporting";
 
+const bootstrapRole = "supabase_admin";
 const modes = z.enum(["baseline", "immediate", "deferred"]);
 const outcomes = z.enum(["succeeded", "rejected", "setup-failed", "unavailable"]);
 const states = z.enum(["none", "23503", "other"]);
@@ -136,7 +137,7 @@ ${catalog}, owner_props AS (
     NOT rolbypassrls AS p_auth_not_bypass_rls
   FROM pg_catalog.pg_roles WHERE rolname = 'supabase_auth_admin'
 ), prerequisites AS (
-  SELECT session_user = 'postgres' AS p_owner_session, current_user = 'postgres' AS p_owner_current,
+  SELECT session_user = '${bootstrapRole}' AS p_owner_session, current_user = '${bootstrapRole}' AS p_owner_current,
     EXISTS (SELECT 1 FROM owner_props WHERE p_owner_super) AS p_owner_super,
     EXISTS (SELECT 1 FROM auth_props) AS p_auth_role_present,
     ${absent(ids)} AS p_fixtures_absent
@@ -185,7 +186,7 @@ BEGIN
     ${catalog}
     SELECT shapes AND pg_catalog.md5(tuples) = '${tupleHash}' AND others = '${original[4]}'
       INTO matched FROM evidence;
-    IF NOT matched OR session_user <> 'postgres' OR current_user <> 'postgres' THEN
+    IF NOT matched OR session_user <> '${bootstrapRole}' OR current_user <> '${bootstrapRole}' THEN
       RAISE EXCEPTION USING ERRCODE = '55000';
     END IF;
     ${ddl}
@@ -250,7 +251,7 @@ export async function runRollbackProbes(
     prerequisites: { observed: false } };
   const sql = async (query: string) => {
     const { text, result } = await command("docker", [
-      "exec", dbId, "psql", "-XqAt", "-U", "postgres", "-d", "postgres",
+      "exec", dbId, "psql", "-XqAt", "--no-password", "-U", bootstrapRole, "-d", "postgres",
       "-v", "ON_ERROR_STOP=1", "-c", query,
     ], { capture: true, allowFailure: true, timeout: 15_000 });
     assert(!result.timedOut && result.code === 0 && result.signal === null, "Rollback probe command unavailable");
