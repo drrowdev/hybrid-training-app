@@ -609,8 +609,6 @@ test.describe("ADR0079 mobile swimming account acceptance", () => {
       }),
       () => linked.client.from("set_logs").update({ movement_id: absentMovement })
         .eq("id", custom.setId).eq("session_id", custom.sessionId).eq("movement_id", custom.movementId),
-      () => linked.client.from("session_movements").update({ movement_id: absentMovement })
-        .eq("user_id", linked.userId).eq("session_id", custom.sessionId).eq("movement_id", custom.movementId),
     ];
     for (const request of rejected) {
       expect((await request()).error?.code).toBe("23503");
@@ -625,6 +623,17 @@ test.describe("ADR0079 mobile swimming account acceptance", () => {
         expect(orphan.data?.length).toBe(0);
       }
     }
+
+    const ownerUpdate = await linked.client.from("session_movements").update({ movement_id: absentMovement })
+      .eq("user_id", linked.userId).eq("session_id", custom.sessionId).eq("movement_id", custom.movementId)
+      .select("session_id");
+    expect(ownerUpdate.error === null).toBe(true);
+    expect(ownerUpdate.data).toEqual([]);
+    expect(isDeepStrictEqual(await readCustom(), customBefore)).toBe(true);
+    const ownerUpdateOrphans = await linked.client.from("session_movements").select("session_id")
+      .eq("user_id", linked.userId).eq("session_id", custom.sessionId).eq("movement_id", absentMovement);
+    expect(ownerUpdateOrphans.error === null).toBe(true);
+    expect(ownerUpdateOrphans.data).toEqual([]);
 
     const controlDeletion = await admin.auth.admin.deleteUser(control.userId);
     expect(controlDeletion.error?.status !== undefined && controlDeletion.error.status >= 500 && controlDeletion.error.status < 600).toBe(false);

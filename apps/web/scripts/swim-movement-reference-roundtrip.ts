@@ -18,11 +18,27 @@ export const probeRecordSchema = z.object({
   schemaRestored: z.boolean(), fixturesAbsent: z.boolean(),
 }).strict().refine((r) => r.outcome !== "succeeded" ||
   (r.SQLSTATE === "none" && r.constraint === "none" && r.roleMatched && r.forcedChecks && r.rowCountMatched));
+export const updateIntegrityRecordSchema = z.object({
+  outcome: z.enum(["not-attempted", ...outcomes.options]), SQLSTATE: states, constraint: constraints,
+  roleMatched: z.boolean(), forcedChecks: z.boolean(), rowCountMatched: z.boolean(),
+  schemaRestored: z.boolean(), fixturesAbsent: z.boolean(),
+}).strict().refine((r) => r.outcome !== "not-attempted" ||
+  (r.SQLSTATE === "none" && r.constraint === "none" && !r.roleMatched && !r.forcedChecks &&
+    !r.rowCountMatched && !r.schemaRestored && !r.fixturesAbsent));
+type UpdateIntegrity = z.infer<typeof updateIntegrityRecordSchema>;
+const updateMatched = (r: UpdateIntegrity) => r.outcome === "rejected" && r.SQLSTATE === "23503" &&
+  r.constraint === "session-movements" && r.roleMatched && r.forcedChecks && r.rowCountMatched &&
+  r.schemaRestored && r.fixturesAbsent;
 export const movementReferenceRecordSchema = z.object({
   status: z.enum(["running", "matched", "failed"]),
   initial: z.boolean(), down: z.boolean(), up: z.boolean(),
   probes: z.array(probeRecordSchema).max(2),
-}).strict();
+  updateIntegrity: updateIntegrityRecordSchema,
+}).strict().refine((r) => r.status !== "matched" || (r.initial && r.down && r.up &&
+  r.probes.length === 2 && r.probes.every((p, index) => p.mode === modes.options[index] &&
+    p.outcome === "rejected" && p.SQLSTATE === "23503" && p.roleMatched &&
+    p.constraint === (index === 0 ? "session-movements" : "set-logs") &&
+    p.schemaRestored && p.fixturesAbsent) && updateMatched(r.updateIntegrity)));
 type Mode = z.infer<typeof modes>;
 type Probe = z.infer<typeof probeRecordSchema>;
 type Record = z.infer<typeof movementReferenceRecordSchema>;
@@ -165,6 +181,28 @@ constraint_label := CASE constraint_name
   WHEN 'session_movements_movement_id_fkey' THEN 'session-movements'
   ELSE 'other' END;`;
 
+function fixtureSql(ids: Fixture) {
+  fixtureSchema.parse(ids);
+  return `
+    INSERT INTO auth.users (id, raw_app_meta_data, raw_user_meta_data)
+      VALUES ('${ids.user}'::uuid, '{}'::jsonb, '{}'::jsonb);
+    IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = '${ids.user}'::uuid) THEN
+      RAISE EXCEPTION USING ERRCODE = '55000';
+    END IF;
+    INSERT INTO public.movements
+      (id, user_id, slug, display_name, pattern, primary_region, primary_muscles,
+       equipment, is_compound, is_supported, stability)
+      VALUES ('${ids.movement}'::uuid, '${ids.user}'::uuid, 'rollback-${ids.movement}',
+        'Synthetic row', 'pull', 'shoulder_scapular', ARRAY['lats','mid_back']::public.muscle[],
+        'dumbbells-incline-bench', true, true, 'supported');
+    INSERT INTO public.sessions (id, user_id, title, slot)
+      VALUES ('${ids.session}'::uuid, '${ids.user}'::uuid, 'Synthetic strength', 'single');
+    INSERT INTO public.session_movements (session_id, movement_id, user_id, sort_order)
+      VALUES ('${ids.session}'::uuid, '${ids.movement}'::uuid, '${ids.user}'::uuid, 0);
+    INSERT INTO public.set_logs (id, session_id, movement_id, set_index, set_kind, reps, weight_kg, rpe)
+      VALUES ('${ids.set}'::uuid, '${ids.session}'::uuid, '${ids.movement}'::uuid, 0, 'main', 8, 12.00, 6.0);`;
+}
+
 export function necessitySql(mode: Mode, ids: Fixture, original: Snapshot, downSql: string) {
   modes.parse(mode);
   fixtureSchema.parse(ids);
@@ -203,23 +241,7 @@ BEGIN
       RAISE EXCEPTION USING ERRCODE = '55000';
     END IF;
     ${ddl}
-    INSERT INTO auth.users (id, raw_app_meta_data, raw_user_meta_data)
-      VALUES ('${ids.user}'::uuid, '{}'::jsonb, '{}'::jsonb);
-    IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = '${ids.user}'::uuid) THEN
-      RAISE EXCEPTION USING ERRCODE = '55000';
-    END IF;
-    INSERT INTO public.movements
-      (id, user_id, slug, display_name, pattern, primary_region, primary_muscles,
-       equipment, is_compound, is_supported, stability)
-      VALUES ('${ids.movement}'::uuid, '${ids.user}'::uuid, 'rollback-${ids.movement}',
-        'Synthetic row', 'pull', 'shoulder_scapular', ARRAY['lats','mid_back']::public.muscle[],
-        'dumbbells-incline-bench', true, true, 'supported');
-    INSERT INTO public.sessions (id, user_id, title, slot)
-      VALUES ('${ids.session}'::uuid, '${ids.user}'::uuid, 'Synthetic strength', 'single');
-    INSERT INTO public.session_movements (session_id, movement_id, user_id, sort_order)
-      VALUES ('${ids.session}'::uuid, '${ids.movement}'::uuid, '${ids.user}'::uuid, 0);
-    INSERT INTO public.set_logs (id, session_id, movement_id, set_index, set_kind, reps, weight_kg, rpe)
-      VALUES ('${ids.set}'::uuid, '${ids.session}'::uuid, '${ids.movement}'::uuid, 0, 'main', 8, 12.00, 6.0);
+    ${fixtureSql(ids)}
     PERFORM pg_catalog.set_config('swim_rollback.ready', 'true', true);
   EXCEPTION WHEN SQLSTATE '57014' OR OTHERS THEN
     ${mapError}
@@ -256,13 +278,67 @@ SELECT pg_catalog.current_setting('swim_rollback.result')::json;
 ROLLBACK;`;
 }
 
+export function updateIntegritySql(ids: Fixture, original: Snapshot) {
+  fixtureSchema.parse(ids);
+  snapshotSchema.parse(original);
+  assert(original[0] && original[1] && original[2] && original[5], "Movement reference prerequisites mismatched");
+  return `BEGIN; ${bounds}
+LOCK TABLE public.set_logs, public.session_movements IN ACCESS EXCLUSIVE MODE;
+DO $update_integrity$
+DECLARE matched boolean; state_code text; constraint_name text; affected bigint := 0;
+  state_label text := 'none'; constraint_label text := 'none'; outcome text := 'setup-failed';
+  role_matched boolean := session_user = '${bootstrapRole}' AND current_user = '${bootstrapRole}';
+  forced boolean := false; row_matched boolean := false;
+BEGIN
+  BEGIN
+    ${catalog(true)}
+    SELECT shapes AND semantics = '${original[3]}' AND others = '${original[4]}'
+      AND ${absent(ids)} INTO matched FROM evidence;
+    IF matched IS DISTINCT FROM true OR NOT role_matched THEN
+      RAISE EXCEPTION USING ERRCODE = '55000';
+    END IF;
+    ${fixtureSql(ids)}
+    IF EXISTS (SELECT 1 FROM public.movements WHERE id = '${ids.set}'::uuid)
+      OR NOT EXISTS (SELECT 1 FROM public.session_movements
+        WHERE user_id = '${ids.user}'::uuid AND session_id = '${ids.session}'::uuid
+          AND movement_id = '${ids.movement}'::uuid) THEN
+      RAISE EXCEPTION USING ERRCODE = '55000';
+    END IF;
+    SET CONSTRAINTS ALL IMMEDIATE;
+    SET CONSTRAINTS ALL DEFERRED;
+    BEGIN
+      UPDATE public.session_movements SET movement_id = '${ids.set}'::uuid
+        WHERE user_id = '${ids.user}'::uuid AND session_id = '${ids.session}'::uuid
+          AND movement_id = '${ids.movement}'::uuid;
+      GET DIAGNOSTICS affected = ROW_COUNT;
+      row_matched := affected = 1;
+      forced := true;
+      SET CONSTRAINTS ALL IMMEDIATE;
+      outcome := 'succeeded';
+    EXCEPTION WHEN SQLSTATE '57014' OR OTHERS THEN
+      ${mapError}
+      outcome := CASE WHEN state_code IN ('55P03', '57014') THEN 'unavailable' ELSE 'rejected' END;
+    END;
+  EXCEPTION WHEN SQLSTATE '57014' OR OTHERS THEN
+    ${mapError}
+    outcome := CASE WHEN state_code IN ('55P03', '57014') THEN 'unavailable' ELSE 'setup-failed' END;
+  END;
+  PERFORM pg_catalog.set_config('swim_update.result', pg_catalog.json_build_array(
+    outcome, state_label, constraint_label, role_matched, forced, row_matched)::text, true);
+END $update_integrity$;
+SELECT pg_catalog.current_setting('swim_update.result')::json;
+ROLLBACK;`;
+}
+
 export async function runMovementReferenceRoundTrip(options: {
   command: PrivateCommand; dbId: string; publish: (record: Record) => void;
   verifiedSql: (file: typeof MOVEMENT_REFERENCE_FILES[keyof typeof MOVEMENT_REFERENCE_FILES]) => string;
 }): Promise<Record> {
   const { command, dbId, publish, verifiedSql } = options;
   assert(/^[a-f0-9]{64}$/.test(dbId), "Movement reference container invalid");
-  const record: Record = { status: "running", initial: false, down: false, up: false, probes: [] };
+  const record: Record = { status: "running", initial: false, down: false, up: false, probes: [],
+    updateIntegrity: { outcome: "not-attempted", SQLSTATE: "none", constraint: "none",
+      roleMatched: false, forcedChecks: false, rowCountMatched: false, schemaRestored: false, fixturesAbsent: false } };
   const sql = async (query: string, ddl = false) => {
     const { text, result } = await command("docker", [
       "exec", "-e", "PGOPTIONS=-c statement_timeout=30s -c lock_timeout=5s", dbId,
@@ -317,6 +393,25 @@ export async function runMovementReferenceRoundTrip(options: {
         probe.constraint === (mode === "set-logs-only" ? "session-movements" : "set-logs"),
       "Two-FK necessity not proved");
     }
+    const ids = freshFixture();
+    const update = record.updateIntegrity;
+    update.outcome = "unavailable";
+    try {
+      const [outcome, SQLSTATE, constraint, roleMatched, forcedChecks, rowCountMatched] =
+        attemptSchema.parse(await sql(updateIntegritySql(ids, original)));
+      Object.assign(update, { outcome, SQLSTATE, constraint, roleMatched, forcedChecks, rowCountMatched });
+    } catch {
+      Object.assign(update, { outcome: "unavailable", SQLSTATE: "none", constraint: "none",
+        roleMatched: false, forcedChecks: false, rowCountMatched: false });
+    } finally {
+      try {
+        const after = snapshotSchema.parse(await sql(snapshotSql(ids)));
+        update.schemaRestored = matches(after);
+        update.fixturesAbsent = after[5];
+      } catch { /* Unverified restoration fails closed; no repair mutations. */ }
+    }
+    assert(update.schemaRestored && update.fixturesAbsent, "Movement reference UPDATE restoration unverified");
+    assert(updateMatched(update), "Movement reference UPDATE integrity not proved");
     record.status = "matched";
   } catch (error) {
     record.status = "failed";
