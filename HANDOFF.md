@@ -19,10 +19,13 @@ The original twelve-case reference at exact `bb9aa524f3132ac392b963fc9166f2cc90a
 passed in run34339663834, completing 2026-09-09 at10:25:00Z. C2 app deletion and
 C3 linked Auth deletion, owner integrity and survivor checks passed. This closes
 the account-deletion blocker, not all standalone requirements or release.
-PR805 now appends B3/B4/B5: fifteen-case source and collection are validated, but
-the new cohort has **not executed**. This continuation is source-only; no hosted
-resources/credentials or Auth changes. Production's OAuth reauthentication need
-is unrelated to this work.
+PR805's first fifteen-case run34345964317 at exactda81 completed11:36:23Z:
+all15 ran once,12 passed/3 failed, no skips/flaky cases. B3 passed; B4/B5 and
+the original first setup case failed. Two independent source fixes are now
+validated below; corrected-head runtime acceptance remains pending. This
+continuation is source-only; no hosted resources/credentials or Auth changes.
+The owner confirmed production projectgrhet, but MCP authorization remains
+unresolved and unrelated to this work.
 Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
@@ -37,9 +40,89 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-09 (bb9aa twelve-case milestone; fifteen-case source unrun)
+**Last updated:** 2026-09-09 (first fifteen-case outcomes; semantic equality/B4 oracle fixes)
+
+### PR805 first fifteen-case run — two source fixes, corrected-head runtime pending
+
+Continues exact `da81baacb2a72c5471863ea40cd5b60302b07c0b` on the existing
+`copilot/new-acceptance-cases`, base `copilot/prepare-mobile-persistence-tests` at
+`4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. No branch/base/history change.
+
+**Latest measured evidence:** [run34345964317](https://github.com/drrowdev/hybrid-training-app/actions/runs/34345964317)
+ended2026-09-09T11:36:23Z at exactda81. All15 executed once:12 passed/3 failed,
+zero skips/flaky cases. B3 plateau Reject passed. B4 failed at shared `same()`
+helper line69 (2,955ms); the retained safe output does **not** identify its
+precise calling comparison. B5 failed at line856 (2,434ms), the strict
+modifications-count assertion after Accept HOLD, after its dose/issued/revision/
+provisional checks passed. The original first setup case timed out selecting
+Pool length at line19 (30,077ms), after clicking the program-page Pool swimming
+link. Its cause is **unknown**, not explained or fixed by these source changes.
+The other11 original cases, including latest C2/C3 deletion checks, passed.
+Normal149/catalog/Auth5phase4DDL15contexts/all36HTTP/Native16/core/single-FK
+controls/UPDATE integrity/main/final cleanup passed. This is the coordinator's
+retained safe15-record summary; raw logs were consumed once and discarded,
+not reread here. GitHub run metadata corroborates head/end/failure. No
+unchanged-head retry. The bb9aa account12 milestone above remains valid.
+
+Code/test checkpoint `61ab8c36d9536257351330d4b7ff0cb0ba1a1621`, tested tree
+`7515548bf7c643a5cb5bb82f64b7b0558b53b2c0`:
+
+- **Product / [DC-SW4/SW5](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05):**
+  `futureUpdates` reuses the existing pure `prescriptionsEquivalent` instead of
+  comparing JSON serialization order. Progression and benchmark callers retain
+  their scopes. An equal HOLD can confirm a provisional eligible workout and
+  advance its revision without appending a false modification. Actual dose,
+  pace, array-content and array-order changes still append exactly one prior
+  issued snapshot associated with the decision; existing histories stay intact.
+  Eight new typed action cases cover reordered nested objects, confirmation,
+  unchanged non-provisional/out-of-scope rows, started/past/today freezes and real
+  changes. The benchmark regression now checks the prior snapshot/association.
+  All five reordered-HOLD variants failed before the one-line production fix.
+- **B4 oracle / DC-SW4/SW5/K4:** only chosen `budget.minutes` must equal the prior
+  stopping limit. Domain `SwimBudget` and engine `buildWorkout`/`sectionsTiming`
+  define `accountedMs` as derived known time. B4 retains full equality with the
+  canonical override and full prior-row equality for unchanged rows; canonical
+  accounted time must be lower than both the suggested and previous targets.
+  The27-versus33 lengths, warning/audit/frozen-target/no-catch-up checks remain.
+  B4's private comparisons are inlined as boolean `isDeepStrictEqual` assertions
+  at their call sites, preserving exact operands apart from the budget correction.
+  No raw objects/IDs/messages are exposed. This source-proven oracle defect is
+  **not** attribution of the retained helper69 failure or proof all B4 bugs are fixed.
+
+Validation in `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/swim-actions-refresh.test.ts src/lib/swim/__tests__/proposals.test.ts src/lib/swim/__tests__/safety.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts src/lib/platform/__tests__/forward-rewrite.test.ts src/lib/platform/__tests__/progression.test.ts` — **693 passed**:37 action,191 refresh,7 proposal,6 safety,430 reader,1 collection,16 forward-rewrite,5 platform progression.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts` — **55 passed**.
+- `pnpm --filter @hta/web exec eslint src/lib/swim/actions.ts src/lib/swim/__tests__/actions.test.ts e2e/swimming-decisions-offline-mobile.spec.ts` — passed.
+- `pnpm --filter @hta/web typecheck` and `git diff --check` — passed after correcting
+  the test fixture's standalone definition type.
+- Existing isolated collection uses pinned Playwright1.60.0 `--list`:15 exact
+  identities in six files, zero executed results/errors, checked private cleanup.
+- TypeScript AST comparison verified all B4 private comparison operands except
+  the corrected budget unchanged; B1/B2/B3/B5/shared helpers and the complete
+  `swimming-mobile.spec.ts` are byte-identical to da81.
+
+Secret scan passed. CodeQL did **not** complete: Actions analysis failed;
+JavaScript database too large. No security-analysis pass is claimed. Terminal
+git explicitly set author and committer to Copilot223556219 with both AI
+trailers; local and remote identities verified. Signing service returned Bad
+Request before creating any commit; the saved checkpoint is unsigned.
+
+Only the six allowed paths change: actions/action tests/B4 spec and this
+handoff/pool-swimming/log. No comparator, other original/new case, fixture,
+registry, collection, main/stage/config/workflow, engine/domain, dependency,
+DB/schema/permission or persisted-history rewrite. No SQL/Docker/browser
+execution, workflow dispatch, hosted access or extra reviewer/model chain.
+The unchanged first setup case stays **mandatory** in the next changed-head
+fifteen-case cohort. If it repeats, the coordinator investigates that separate
+failure; no sleep/retry/force-click/timeout/navigation workaround. All identities,
+ordering and runtime bounds below remain. **No fifteen-case acceptance,
+standalone completion or production approval is claimed.**
 
 ### PR805 B3/B4/B5 — source/collection checkpoint, live fifteen-case acceptance pending
+
+Historical source checkpoint before the da81 run; the latest outcomes and
+separate source fixes above supersede its unrun statements.
 
 Continues exact `bb9aa524f3132ac392b963fc9166f2cc90acfcf3` on the existing
 `copilot/new-acceptance-cases`, base `copilot/prepare-mobile-persistence-tests` at

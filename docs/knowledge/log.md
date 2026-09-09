@@ -2429,3 +2429,79 @@ cleanup,45m job;63,937ms is a historical measurement, not a future fit promise.
 Documentation validation: `pnpm docs:check-drift` passed its in-repo checks
 (private workspace parity not run); diff/secret checks passed, exactly seven
 allowed paths changed, and the pre-existing knowledge log is an exact prefix.
+
+## [2026-09-09] refine | First fifteen-case outcomes; semantic HOLD equality and B4 budget oracle
+
+Continues exact `da81baacb2a72c5471863ea40cd5b60302b07c0b` on existing
+`copilot/new-acceptance-cases`, unchanged base
+`copilot/prepare-mobile-persistence-tests` at `4f2aa4af480f61df83bbc38b09f29afbbbf5729b`.
+The previous source checkpoint's unrun statements are superseded by the
+coordinator's safe15 record for [run34345964317](https://github.com/drrowdev/hybrid-training-app/actions/runs/34345964317),
+ended11:36:23Z: all15 ran once,12 passed/3 failed, no skips/flaky cases.
+B3 passed. B4 failed at shared helper69 (2,955ms), precise calling comparison
+unknown. B5 failed at strict modifications count856 (2,434ms) after correct
+dose/issued/revision/provisional checks. Original first setup timed out selecting
+Pool length at19 (30,077ms) after the program-page Pool swimming link; cause
+unknown. The other11 original cases, including C2/C3, passed. Normal149/catalog/
+Auth5phase4DDL15contexts/all36HTTP/Native16/core/single-FK controls/UPDATE
+integrity/main/final cleanup passed. GitHub metadata confirms head/end/failure;
+raw logs already consumed once and discarded were not reread. No unchanged-head
+retry. Account12 milestone atbb9aa/run34339663834 remains valid, not release.
+
+Code/tests committed before docs as `61ab8c36d9536257351330d4b7ff0cb0ba1a1621`,
+tested tree `7515548bf7c643a5cb5bb82f64b7b0558b53b2c0`:
+
+- DC-SW4/SW5 product fix: only `futureUpdates`' changed calculation now imports/
+  uses existing pure `prescriptionsEquivalent`. Nested key order is semantic
+  equality; array order/content remain significant. Both progression and
+  benchmark callers preserve scope/history. Equal accepted HOLD may confirm
+  eligible provisional work/revision without a false modification. Real changes
+  append exactly one previous issued snapshot with the correct decision.
+- Eight typed fixture cases cover nested key reorder, provisional/non-provisional,
+  started/past/today/out-of-scope freezes, prior history and real dose/array-content/
+  array-order changes. Benchmark regression verifies changed pace, original and
+  previous snapshot/association. Five reordered-HOLD variants failed on old code
+  (32 other action tests passed); all37 action tests pass after the source fix.
+- B4-only DC-SW4/SW5/K4 oracle: preserve exact `budget.minutes`. Domain
+  `SwimBudget` and engine `buildWorkout`/`sectionsTiming` define accounted time as
+  derived work, not the chosen limit. Full canonical issued equality retains the
+  correct new `accountedMs`; helper-derived target time must be below suggested/
+  prior time.27-versus33, warning/audit/frozen/no-catch-up assertions remain.
+  Private comparisons are inlined boolean deep equality at unique executable
+  call sites with exact original operands except the budget correction. AST
+  verification passed. This does not identify the old helper69 calling site,
+  establish all B4 bugs fixed, or explain/fix the separate first-case timeout.
+
+Commands in `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/swim-actions-refresh.test.ts src/lib/swim/__tests__/proposals.test.ts src/lib/swim/__tests__/safety.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts src/lib/platform/__tests__/forward-rewrite.test.ts src/lib/platform/__tests__/progression.test.ts` — **693 passed**.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts` — **55 passed**.
+- `pnpm --filter @hta/web exec eslint src/lib/swim/actions.ts src/lib/swim/__tests__/actions.test.ts e2e/swimming-decisions-offline-mobile.spec.ts` — passed.
+- `pnpm --filter @hta/web typecheck` — passed after correcting the test fixture's
+  standalone definition typing; `git diff --check` passed.
+- Existing isolated pinned Playwright1.60.0 `--list` collection verified15 exact
+  identities/six files/zero executed results/errors and checked private cleanup.
+
+Secret scan passed. CodeQL did not complete: Actions analysis failed;
+JavaScript database too large. Not a security-analysis pass. Explicit terminal
+author/committer Copilot223556219 and both required AI trailers verified locally
+and remotely. Signing service failed before commit creation; checkpoint saved
+unsigned. Publishing pushed the existing commit, without an MCP-created commit.
+
+Only allowed six paths: actions/action tests/B4 spec, HANDOFF, pool-swimming,
+append-only log. Original first-case spec entirely unchanged and mandatory in
+next changed-head cohort. B1/B2/B3/B5/shared helpers are byte-identical; B5's strict
+assertion unchanged. No comparator implementation/other cases/fixtures/registry/
+collection/main/stage/config/workflow/engine/domain/migration/permissions/
+dependency change, persisted-history rewrite, SQL/Docker/browser execution,
+workflow dispatch, hosted access or extra reviewer/model chain. Owner-confirmed
+production projectgrhet still has unresolved MCP authorization, unrelated here.
+Corrected-head live15 pending; no fifteen-case acceptance or production claim.
+All identities/order/bounds remain:30s/case,300s global,330s command,590s phase,
+410s server,35m total including3m cleanup,45m job. If the first-case timeout
+repeats, coordinator investigates it separately, without retry/navigation guesses.
+
+Documentation validation: `pnpm docs:check-drift` passed in-repo checks (private
+workspace parity not run); `git diff --check` and documentation secret scanning
+passed. Exact six-file allowlist and append-only log prefix verified; code/tests
+remain unchanged from the validated code checkpoint.
