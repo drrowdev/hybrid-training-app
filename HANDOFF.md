@@ -16,9 +16,9 @@ distance and millisecond results are authoritative; generic cardio summaries
 exist for compatibility and shared workload only.
 
 The current PR802 continuation authorizes disposable localhost services on the
-cloud runner only, not hosted credentials. The latest eleven-UI-flow reference
-at `9fe3e4da` passed 10/11; C2 remains red. The appended direct Auth-API C3 case
-is source-only, with twelve-case collection passed and live acceptance pending.
+cloud runner only, not hosted credentials. The twelve-case reference at `7d0fb2c`
+passed ten and failed C2/C3. The reversible movement-reference candidate below is
+a source checkpoint with a newly identified authenticated UPDATE/RLS blocker.
 Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
@@ -33,9 +33,65 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-09 (PR805 bootstrap binding corrected; no new runtime measurement)
+**Last updated:** 2026-09-09 (reversible candidate source checkpoint; no new runtime measurement)
 
-### PR805 temporary rollback-only route — current status
+### PR805 reversible movement-reference candidate — blocked source checkpoint
+
+Owner approved the reversible disposable candidate, at most two existing FKs.
+[ADR 0080](docs/adr/0080-deferred-custom-movement-references.md) records scope,
+timing audit, lock/validation/down guards and the required proof. Code/test
+checkpoint: `24e10035d4a1f060369ef8384a5d0befc12b65e7`.
+
+**Blocking finding:** migration0059 has no session_movements UPDATE policy.
+Migration0063 grants UPDATE but documents that RLS blocks real updates; no later
+migration supplies that policy. The requested authenticated C3 reference UPDATE
+therefore cannot yield the required23503 at request end. Its strict assertion is
+present, not skipped or weakened. RLS/grant changes and bypasses are prohibited;
+owner/coordinator direction is required. **Do not dispatch this as
+acceptance-ready or claim C2/C3 pass.**
+
+[Run34321670984](https://github.com/drrowdev/hybrid-training-app/actions/runs/34321670984)
+at `1bb56`, ended07:03:52Z: prerequisites matched; baseline RESTRICT and immediate
+NO ACTION both rejected23503/set-logs; both deferred references allowed exactly
+one Auth deletion and forced ALL constraints. All three transactions rolled back,
+schema and fixture absence verified. Native16/normal148/catalog/Auth5phase4DDL/
+15contexts/all36HTTP/core/main/final cleanup passed. Intentional nonqualifying
+stop only; original12 unrun. Both FKs changed together, so necessity of the
+second FK remains unmeasured. This does not prove GoTrue/app success.
+
+The source now appends migration0148 (normal total149), with exact guarded down
+file; all original148 SQL files/entries remain. Identity levels146/147/148,
+five phases/four files/fifteen contexts and checkAuthBoundary148 are unchanged.
+The rollback-only switch/helper/test are removed, normal db:migrate and the
+ordinary browser call restored. A new private-command stage durably down/ups
+verified exact files, compares semantic target definitions despite fresh OIDs,
+and demands both transactional one-FK necessity rejections plus fresh restoration/
+absence checks. C3 adds authenticated request-boundary integrity assertions;
+C2 and the twelve identities/six files remain.
+
+GitHub source validation (commands from repository root):
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/storage-migration.test.ts src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-identity-roundtrip.test.ts src/lib/swim/__tests__/swim-rpc-diagnostics.test.ts` — **1125 passed**.
+- `pnpm --filter @hta/web typecheck` — passed after correcting a mock's result type.
+- `pnpm --filter @hta/web exec eslint scripts/swim-acceptance-guards.ts scripts/swim-acceptance.ts scripts/swim-movement-reference-roundtrip.ts src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/storage-migration.test.ts e2e/swimming-account-mobile.spec.ts` — passed without warnings.
+- `pnpm exec playwright test --config=playwright.swim-reference.config.ts --list`
+  from `apps/web`, using `buildBrowserEnv`, nonfunctional synthetic JWTs and owned
+  0700/0600 paths under `/tmp` — **12 identities / six files / zero executed results**.
+  Initial placeholder-shaped credentials failed the existing environment guard;
+  the corrected collection passed without browser/DB execution.
+
+Secret scan and diff checks passed for the code checkpoint. Author and committer
+explicitly set and verified as `Copilot <223556219+Copilot@users.noreply.github.com>`
+with both AI trailers. Signing service rejected the initial attempt; the saved
+commit is unsigned. No SQL, Docker/stack, browser execution or CI dispatch by this
+source worker. Live candidate apply/down/up/necessity, all36HTTP and C2/C3 are
+unrun. Production is separately gated. No automatic extra model review chain.
+
+### PR805 temporary rollback-only route — historical, superseded
+
+The remainder of this section records earlier authorization and source states,
+not current instructions. The candidate above supersedes the old mode and its
+“no migration149” boundary; historical148 evidence remains unchanged.
 
 Owner approved rollback-only checks, not a repair or migration149. Source
 checkpoint `c74b5a3f4029f66d0c8c17558a129d476fe9f3db` (tested tree

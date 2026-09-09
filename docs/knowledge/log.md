@@ -2182,3 +2182,39 @@ no further model chain. Coordinator inspects exact completed source, real core
 and fresh whole-path guards before one corrected isolated run. No same-head
 rerun/identification-only experiment. Rollback-only ON/nonqualifying, original12
 unrun; no permanent149 authorization. See [source evidence and limits](./pool-swimming.md#bootstrap-identity-correction--2026-09-09).
+
+## [2026-09-09] decision | Reversible movement-reference candidate; source checkpoint blocked on UPDATE RLS
+
+Owner approved reversible changes to at most two existing movement-reference
+FKs in the owned disposable environment. Assigned parent `1bb56`; source/code
+checkpoint `24e10035d4a1f060369ef8384a5d0befc12b65e7`. Added guarded migration0148
+and inverse, normal149 count, durable verified-file relationship round trip and
+two transactional one-FK necessity assertions; removed obsolete rollback-only
+mode/helper/test. Identity146/147/148, five phases/four files/fifteen contexts and
+all36HTTP remain. C3 adds strict authenticated transaction-boundary integrity
+requests without changing the original twelve identities/six files or C2.
+
+Measured basis: run34321670984 at1bb56 ended07:03:52Z; baseline/immediate
+23503/set-logs; both-deferred exactly-one Auth DELETE plus forced ALL checks.
+All rolled back, original schema/fixture absence verified; original12 unrun,
+intentional nonqualifying stop only. No independently measured second-FK
+necessity or full GoTrue/app proof. Historical148 evidence is retained.
+
+Audit confirmed no FK catch-and-continue in original148 SQL; coupled0061/0144
+propagate request failures, unrelated0115 duplicate_object and rehab23503 only.
+External SQL clients not audited. **Blocker:** 0059 supplies no session_movements
+UPDATE policy;0063 grants UPDATE but documents RLS-blocked real updates, with no
+later policy. Required authenticated UPDATE cannot reach23503. Strict assertion
+retained; no RLS/grant/bypass or acceptance weakening. Owner/coordinator guidance
+needed; this is not acceptance-ready.
+
+GitHub source checks: six targeted Vitest suites1125 passed, web typecheck and
+scoped lint passed; actual pinned Playwright collection12 identities/six files/
+zero executed results. Initial mock typing/lint and collection-credential guard
+issues were corrected before successful validation. Code secret/diff scans
+passed. Explicit Copilot223556219 author/committer and AI trailers verified;
+signing service failed, checkpoint saved unsigned. Exact commands in HANDOFF.
+No runtime SQL, Docker/stack, browser execution or workflow dispatch. Candidate
+normal149/down/up/necessity/all36HTTP/C2/C3 remain unrun; production separately
+gated. [ADR0080](../adr/0080-deferred-custom-movement-references.md) added to index;
+pool-swimming/HANDOFF now distinguish current candidate from historical probes.
