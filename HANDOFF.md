@@ -33,7 +33,7 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-09 (PR805 rollback-only diagnostic source; no runtime acceptance)
+**Last updated:** 2026-09-09 (PR805 prerequisite attribution; no deletion measurement)
 
 ### PR805 temporary rollback-only route — current status
 
@@ -41,7 +41,42 @@ Owner approved rollback-only checks, not a repair or migration149. Source
 checkpoint `c74b5a3f4029f66d0c8c17558a129d476fe9f3db` (tested tree
 `bbd5127fe57a6042fc2a30321c3b92c5910d00cf`) adds the injected helper and
 source-pins `ROLLBACK_PROBE_ONLY = true`. The exhausted Drizzle diagnostic mode
-stays false. Only the seven approved source/test/doc files change.
+stays false. That delivery changed only its seven approved source/test/doc files.
+
+[Run 34312943325](https://github.com/drrowdev/hybrid-training-app/actions/runs/34312943325)
+at `6fd1d43cccc00d7790ea9de55ea245fc1bb5ec15` ended 05:00:59Z: the initial
+read-only snapshot parsed, then the grouped prerequisite assertion failed.
+The safe record was `status=failed`, `probes=[]`; no baseline, synthetic fixture
+or candidate DDL was attempted. Native16/normal148/catalog/Auth5phase4DDL/
+15contexts/all36HTTP/core and both cleanup paths passed. This is not setup-failed,
+a deletion error, an observed role attribute or a named FK cause.
+
+Attribution-only checkpoint `2749a1c227ebd44833296c1c8b20260b93fe1112`, saved tree
+`005d8bdf9ce54169141a516768a7c75759938765` (**not a tested tree**), appends
+26 fixed-order mismatch flags to the private snapshot and a strict
+`prerequisites` union to the existing safe record. All original composite guards,
+first six snapshot positions and restoration comparisons remain. Only an
+explicit atomic FALSE produces an ID; unknown-only failures can have
+`matched:false, mismatched:[]`. Malformed evidence remains `observed:false`.
+No runner/main-test, browser case, fixture, role, permission or FK pin changes.
+This correction's write scope is the helper, its tests and these three docs.
+
+Diff check and secret scan passed; read-only review's Vitest matcher finding was
+fixed before the checkpoint. Targeted probe/main Vitest, scoped lint and web
+typecheck were not run under the source-writer execution restriction. CodeQL did
+not complete (Actions analysis failed; JavaScript database too large). Both
+commit identities were explicitly set/verified; the signing service failed
+before commit creation, so the ordinary fast-forward checkpoint is unsigned.
+The coordinator must verify actual Astra START+TERMINAL and preserved artifacts,
+then obtain one exact-final-head Opus review/core and fresh full-path guards
+before any new-head investigation.
+
+The migration0003/0059 declarations agree with the two expected inline RESTRICT
+FKs; image-owned owner/Auth-role attributes are not repository-pinned. Neither
+fact identifies the failed predicate. Attribution does not guarantee deletion
+measurement: a failed pin must stop the next reviewed run again. In particular,
+an observed `owner-super` mismatch needs a separately source-grounded
+role-fidelity design, not a lower guard or switched authorization mechanism.
 
 The unchanged Native16 prerequisite and normal148/catalog/Auth five-phase,
 four-DDL, fifteen-context/36HTTP path still precede the new stage. The stage uses

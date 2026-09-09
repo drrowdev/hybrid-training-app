@@ -2109,3 +2109,42 @@ prove GoTrue equivalence, or substitute for positive C2/C3 acceptance following 
 separately approved repair. No migration149. Contract:
 [rollback-only diagnostics](./pool-swimming.md#rollback-only-fk-diagnostics--temporary-source-route),
 covering [DC-SW8](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).
+
+## [2026-09-09] refine | PR805 prerequisite attribution without weaker guards
+
+Code/test checkpoint `2749a1c227ebd44833296c1c8b20260b93fe1112`, saved tree
+`005d8bdf9ce54169141a516768a7c75759938765` (not tested), appends 26 fixed-order
+atomic mismatch flags as snapshot position seven and one strict safe-record
+prerequisites union. Original six positions/composites/restoration comparisons,
+row-wise FK conjunction with exact count/COALESCE/NULL semantics, missing-role
+EXISTS behavior and all pins remain. Only explicit FALSE yields an ID;
+matched:false with no IDs remains valid. Safe parsing before assignment retains
+observed:false on malformed evidence, with fixed authored assertions and valid
+outer-finally publication. Existing runner/main tests and all twelve cases are
+unchanged. Write scope is exactly helper/test/HANDOFF/pool-swimming/this log.
+
+Owner-reported [run 34312943325](https://github.com/drrowdev/hybrid-training-app/actions/runs/34312943325)
+at `6fd1d43` ended 05:00:59Z: snapshot parsed, grouped prerequisites mismatched,
+safe status failed/probes empty. No baseline/fixture/candidate DDL attempted.
+Native16/normal148/catalog/Auth5phase4DDL15contexts36HTTP/core/main/final cleanup
+passed. No individual role attribute, deletion error or FK cause was observed.
+Exact0003/0059 agree with the expected inline RESTRICT FKs; image-owned role
+attributes are not repository-pinned, which does not identify a failed property.
+
+Diff check and secret scan passed. Read-only review found an unsupported Vitest
+matcher, corrected before the checkpoint. Targeted probe/main Vitest, scoped
+lint and typecheck remain unrun under the source-writer execution restriction;
+CodeQL was incomplete (Actions failed; JavaScript database too large). No
+runtime SQL, stack/browser, production access, raw log content access or CI
+dispatch occurred. Author and committer explicitly set/verified as Copilot with
+223556219 address and both AI trailers. Signing service failed before creation;
+ordinary fast-forward checkpoint is unsigned.
+
+The coordinator still verifies actual Astra START+TERMINAL and preserved
+artifacts, then one exact-final-head Opus review/core and fresh full-path guards.
+Attribution does not promise deletion measurement. A failing pin must stop the
+next reviewed run; owner-super failure requires separately source-grounded
+role-fidelity design, not weaker guards or switched authorization. Rollback-only
+remains ON/nonqualifying, exhausted Drizzle mode OFF; remove the temporary mode,
+not merely flip it, before repair/release acceptance. No migration149 or permanent
+FK semantics selected. See [contract](./pool-swimming.md#rollback-only-fk-diagnostics--temporary-source-route).

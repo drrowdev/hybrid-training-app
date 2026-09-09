@@ -322,6 +322,38 @@ unavailable and gates remaining probes. Only SQLSTATE/constraint name are read
 from captured exceptions, immediately mapped to fixed safe labels. Public
 records allow only `diagnosticMode="rollback-only"`, `qualifying=false`, closed
 aggregate/mode/outcome/SQLSTATE/constraint enums and six boolean checks.
+The prerequisite-attribution remainder appends one strict `prerequisites` union:
+`{ observed: false }` before commands/parsing, or
+`{ observed: true, matched: boolean, mismatched: FlagId[] }` after complete safe
+validation. The existing manifest assignment and publisher carry the entire
+record unchanged. Unknown fields/IDs, duplicate/unordered IDs and more than
+26 IDs are rejected. `matched:true` requires no mismatches; the converse is not
+required. The same original four-boolean conjunction supplies `matched` and the
+prerequisite assertion, including fixture absence.
+
+The private snapshot keeps its first six positions and appends a seventh,
+26-boolean array. Its source-closed order is:
+`owner-session`, `owner-current`, `owner-super`, `auth-role-present`, `auth-login`,
+`auth-not-super`, `auth-not-inherit`, `auth-create-role`, `auth-not-create-db`,
+`auth-not-replication`, `auth-not-bypass-rls`, `fk-count`, `fk-identity`,
+`fk-confrelid`, `fk-conkey`, `fk-confkey`, `fk-confdeltype`, `fk-confupdtype`,
+`fk-confmatchtype`, `fk-convalidated`, `fk-condeferrable`, `fk-condeferred`,
+`fk-conislocal`, `fk-coninhcount`, `fk-conparentid`, `fixtures-absent`.
+
+Each existing atomic predicate is defined once as a property and referenced
+by its original composite and diagnostics. The FK guard retains exact count
+two and COALESCE-false around row-wise `bool_and` of the conjunction, never
+separately aggregated property flags. Diagnostics mark only observed FALSE,
+not NULL; an unchanged fail-closed composite can therefore report
+`matched:false, mismatched:[]`. Unique role names and non-null pinned role
+attributes permit factoring, while EXISTS still rejects missing roles without
+removing the snapshot row. Target selection, full tuples, other-FK fingerprint,
+key order and all validation/mode/inheritance pins remain unchanged.
+
+Command-unavailable/output-invalid failures retain authored errors. Snapshot
+schema or inconsistent evidence fails with a fixed authored snapshot assertion.
+Safe parsing precedes assignment, so malformed tuples/flags cannot leave a
+partially assigned field that masks the primary failure during final publication.
 Unexecuted variants have no fabricated result. UUIDs, account identifiers,
 credentials, raw SQL/errors, constraint names/OIDs and catalog material remain
 out of the safe artifact. The existing marked summary publisher carries it.
@@ -334,6 +366,28 @@ full-path guards on the existing protected branch route. Measurements do not
 choose a permanent mode or prove C2/C3/release acceptance. The temporary source
 mode must be **removed**, restoring ordinary execution, before separately
 approved repair-head acceptance. No migration149 is authorized.
+
+**Observed prerequisite stop:** [run 34312943325](https://github.com/drrowdev/hybrid-training-app/actions/runs/34312943325)
+at `6fd1d43cccc00d7790ea9de55ea245fc1bb5ec15` ended 05:00:59Z after parsing
+the initial read-only snapshot and failing the grouped prerequisite assertion.
+The safe record was failed with no probes. Native16/normal148/catalog/Auth
+five-phase/four-DDL/fifteen-context/all36HTTP/core and main/final cleanup passed.
+No baseline, synthetic fixture or candidate DDL ran. This is neither setup-failed
+nor a measured deletion/role/FK cause. Migration0003/0059 agree with the expected
+two inline RESTRICT declarations; repository source does not pin image-owned
+owner/Auth-role attributes. Neither observation identifies which pin failed.
+
+The attribution-only code/test checkpoint is `2749a1c227ebd44833296c1c8b20260b93fe1112`,
+saved tree `005d8bdf9ce54169141a516768a7c75759938765`, not a tested tree.
+Focused mocked coverage was added; no local tests/build/lint/typecheck, runtime
+SQL, Docker/stack/browser, hosted access, raw log content access or CI dispatch
+occurred in this correction. Diff/secret checks passed; CodeQL was incomplete
+(Actions failed; JavaScript database too large). Main runner and tests remain
+unchanged. Coordinator verification of actual Astra START+TERMINAL/artifacts,
+one exact-final-head Opus review/core and fresh full-path guards remains required.
+Attribution buys no guaranteed deletion measurement: if a pin fails, stop again
+with its property. An `owner-super` failure requires separately source-grounded
+role-fidelity design; this task cannot lower the guard or switch authorization.
 
 ### Manual Actions reference acceptance
 
