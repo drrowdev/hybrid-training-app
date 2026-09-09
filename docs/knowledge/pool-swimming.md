@@ -262,7 +262,7 @@ SQL/schema/RLS/grant changes require a separately approved additive migration
 and rollback proposal. Mobile and actual shared-load-ledger acceptance remain
 blocked until the real RPC suite is fully green.
 
-### Reversible movement-reference candidate — verification corrected, live unrun
+### Reversible movement-reference candidate — SQL qualification fixed, live result pending
 
 [ADR 0080](../adr/0080-deferred-custom-movement-references.md) records the
 owner-approved two-FK maximum candidate: change only set_logs and
@@ -271,6 +271,30 @@ DEFERRABLE INITIALLY DEFERRED, with a guarded inverse. GoTrue does not issue SET
 CONSTRAINTS. Both table locks precede exact catalog checks; bounded waits and
 normal validation scans fail closed, without cleanup, cascade, SET NULL or retry.
 Table/column/index/owner/ACL/RLS state and all other relationships remain.
+
+Latest coordinator-supplied safe evidence:
+[run34333221283](https://github.com/drrowdev/hybrid-training-app/actions/runs/34333221283)
+at `65050755d7160fc2a355736489a2ea249f99dc70`, ended09:14:26Z, passed normal149
+migrations/catalog, original Auth5phase4DDL15contexts/all36HTTP, Native16 and core.
+Initial candidate snapshot, whole down file, original snapshot, whole up file
+and restored candidate snapshot all passed (`initial/down/up=true`).
+The first set-logs-only necessity result was the Node outer catch default
+`unavailable/none/none/false/false/false`, not a mapped SQL exception.
+Fresh schema restoration and fixture absence passed; no second necessity,
+UPDATE integrity or browser12 case executed. Main/final cleanup verified.
+Safe14 records retained; raw logs consumed once and discarded, not reread here.
+
+The shared catalog CTE's `matched` column collided with PL/pgSQL `matched`
+variables in necessity `$guard$`/`$setup$` and `$update_integrity$`.
+[PG17's default conflict rule](https://www.postgresql.org/docs/17/plpgsql-implementation.html#PLPGSQL-VAR-SUBST)
+requires qualification or distinct naming. Source repair
+`28db9073897243d68ac3873e443bcec6e25c694a` changes only the shared aggregate to
+`bool_and(props.matched)`. Snapshots lack the variable scope; durable up/down
+use a direct expression. Their successful execution did not exercise the
+ambiguous composed blocks. The first guard is outside tuple capture, consistent
+with the catch default; runtime SQLSTATE was not observed (no safe-log42702 claim).
+Variables, predicates, NULL/count semantics, tuples, fingerprints and callers
+remain unchanged. No conflict directive, catch redesign or guard relaxation.
 
 Run34321670984 at `1bb56` (07:03:52Z) measured baseline and immediate23503/set-logs;
 both deferred references allowed exactly one Auth deletion plus forced ALL
@@ -298,7 +322,7 @@ unrelated0115 duplicate_object); app23503 rehab handling, 23505 idempotency and
 0138 repoint-before-delete are unrelated/unchanged. External SQL clients were not
 audited. A discovered timing dependency blocks, rather than widens, this work.
 
-**Resolved verification mismatch:** session_movements has no UPDATE/ALL RLS policy
+**Verification method resolved by65050755 without permission changes:** session_movements has no UPDATE/ALL RLS policy
 (0059;0063 explicitly documents blocked real updates despite its UPDATE grant).
 C3's existing-client UPDATE-to-absent cannot reach the FK. The coordinator
 directed separate proofs at the actual layers, with no RLS/grant/role or migration
@@ -325,12 +349,20 @@ the existing linked authenticated client, with fresh four-record preservation an
 exact orphan-key absence reads after rejection. All native-control/Auth404/linked
 preservation/actual-deletion/absence assertions remain, as do C2 and the other ten
 cases. Both C2/C3 must actually pass on the normal candidate head; structural
-proof cannot replace them. Source tests/typecheck/lint and twelve-case collection
+proof cannot replace them. Earlier source validation and twelve-case collection
 are recorded in [HANDOFF](../../HANDOFF.md):1148 targeted tests passed, typecheck/
 scoped lint passed, pinned collection12 identities/six files/zero executed results.
-Candidate runtime SQL, necessity, UPDATE integrity, authenticated RLS denial,
-normal149/all36HTTP and positive C2/C3 remain **unrun**, not accepted. Production remains
-separately gated.
+SQL qualification repair tested tree `918154ca482ede5dc1a6cdc17c2b620b69861919`:
+existing durable-helper/main suites **498 passed** (92/406), scoped lint and web
+typecheck passed. The added generated-SQL regression covers both snapshots,
+both necessity strings and UPDATE integrity, retaining each affected DO block's
+`DECLARE matched` and all prior assertions. Secret/diff checks passed; CodeQL
+incomplete (Actions failed, JavaScript database too large), not an analysis pass.
+No SQL, Docker, browser execution/collection or workflow dispatch by this worker.
+Next exact-head live result is coordinator-owned and pending: necessity,
+UPDATE integrity, authenticated RLS denial and C2/C3 remain **unproved**.
+Normal149/catalog/Auth36 and durable down/up passed at65050755, not full candidate
+acceptance. Production remains separately gated.
 
 ### Rollback-only FK diagnostics — temporary source route
 
