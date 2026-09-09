@@ -52,9 +52,28 @@ describe("DC-SW8 rollback-only source and SQL contract", () => {
     }
     expect(sql).toContain("ARRAY['lats','mid_back']::public.muscle[]");
     expect(sql).toContain("SELECT 1 FROM public.profiles");
-    expect(sql).not.toMatch(/\bCOMMIT\b|DISABLE TRIGGER|NOT VALID|ON DELETE (?:CASCADE|SET NULL)|\bGRANT\b|\bCREATE ROLE\b/i);
+    expect(sql).not.toMatch(/\bCOMMIT\b|DISABLE TRIGGER|NOT VALID|ON DELETE (?:CASCADE|SET NULL)|\bGRANT\b|\b(?:CREATE|ALTER) (?:ROLE|USER)\b|SET (?:LOCAL )?ROLE/i);
     expect(sql).toContain(`DELETE FROM auth.users WHERE id = '${ids.user}'::uuid`);
     expect(sql.match(/DELETE FROM/g)).toHaveLength(1);
+  });
+
+  it("binds one source-owned bootstrap identity to the snapshot and every pre-fixture setup guard", () => {
+    expect(source.match(/const bootstrapRole = "supabase_admin";/g)).toHaveLength(1);
+    expect(source.match(/"supabase_admin"/g)).toHaveLength(1);
+    expect(source).not.toMatch(/process\.env|PGPASSWORD|PGPASSFILE|PGHOST|PGSERVICE|postgres(?:ql)?:\/\//);
+    const catalog = snapshotSql(ids);
+    expect(catalog).toContain("session_user = 'supabase_admin' AS p_owner_session");
+    expect(catalog).toContain("current_user = 'supabase_admin' AS p_owner_current");
+    expect(catalog).toContain("FROM pg_catalog.pg_roles WHERE rolname = session_user");
+    expect(catalog).toContain("p_owner_session AND p_owner_current AND p_owner_super");
+    for (const mode of ["baseline", "immediate", "deferred"] as const) {
+      const sql = probeSql(mode, ids, [...snapshot()]);
+      const guard = "IF NOT matched OR session_user <> 'supabase_admin' OR current_user <> 'supabase_admin' THEN";
+      expect(sql).toContain(guard);
+      expect(sql.indexOf(guard)).toBeLessThan(sql.indexOf("INSERT INTO"));
+      if (mode !== "baseline") expect(sql.indexOf(guard)).toBeLessThan(sql.indexOf("ALTER TABLE"));
+      expect(sql).not.toMatch(/(?:session_user|current_user) [=<>]+ 'postgres'/);
+    }
   });
 
   it("changes only the actual two exact FKs, never a combined alteration waterfall", () => {
@@ -136,7 +155,7 @@ describe("DC-SW8 rollback-only source and SQL contract", () => {
     expect(compact).toContain(`p_auth_role_present AND EXISTS (SELECT 1 FROM auth_props WHERE ${role.map(([p]) => `p_${p}`).join(" AND ")})`);
     expect(compact).toContain("p_owner_session AND p_owner_current AND p_owner_super");
     for (const predicate of [
-      "session_user = 'postgres' AS p_owner_session", "current_user = 'postgres' AS p_owner_current",
+      "session_user = 'supabase_admin' AS p_owner_session", "current_user = 'supabase_admin' AS p_owner_current",
       "rolsuper AS p_owner_super", "EXISTS (SELECT 1 FROM owner_props WHERE p_owner_super) AS p_owner_super",
       "EXISTS (SELECT 1 FROM auth_props) AS p_auth_role_present",
     ]) expect(compact.split(predicate)).toHaveLength(2);
@@ -224,7 +243,8 @@ describe("DC-SW8 rollback-only execution and safe projection", () => {
     expect(publish).toHaveBeenCalledWith(record);
     for (const call of command.mock.calls as unknown as [string, string[], object][]) {
       expect(call[0]).toBe("docker");
-      expect(call[1].slice(0, 10)).toEqual(["exec", dbId, "psql", "-XqAt", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1"]);
+      expect(call[1]).toEqual(["exec", dbId, "psql", "-XqAt", "--no-password", "-U", "supabase_admin",
+        "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", expect.any(String)]);
       expect(call[2]).toEqual({ capture: true, allowFailure: true, timeout: 15_000 });
     }
     expect(formatAcceptanceSummary(record)).not.toMatch(/original-tuples|private|12345678|movement_id_fkey|postgres|auth_admin/);
