@@ -1,35 +1,20 @@
 /**
  * Validation for a library protocol.
  *
- * Deliberately identical to the wizard's `rehabItemSchema` in
- * `platform/tb-customization.ts` — same bounds, same "reps or a hold time"
- * refine. A protocol authored in Settings has to satisfy exactly what the
- * wizard used to enforce, or it could not be deployed into a program.
+ * Item validation is shared with the wizard and rehab schedule so a protocol
+ * authored in Settings can be deployed without changing its prescription.
  *
  * The database carries its own CHECK constraints on item count and name length
  * (migration 0134). RLS lets a user write these tables directly through
  * PostgREST, so this schema is the first line of defence, not the only one.
  */
 import { z } from "zod";
+import { rehabProtocolItemSchema } from "./item-schema";
+
+export { rehabProtocolItemSchema } from "./item-schema";
 
 export const REHAB_PROTOCOL_MAX_ITEMS = 20;
 export const REHAB_PROTOCOL_MAX_NAME = 120;
-
-export const rehabProtocolItemSchema = z
-  .object({
-    movementId: z.string().uuid(),
-    movementName: z.string().trim().min(1).max(120),
-    side: z.enum(["both", "left", "right"]).optional(),
-    sets: z.number().int().min(1).max(20),
-    reps: z.number().int().min(1).max(500).optional(),
-    holdSeconds: z.number().int().min(1).max(3600).optional(),
-    targetWeightKg: z.number().min(0).max(1000).optional(),
-    instructions: z.string().trim().max(500).optional(),
-  })
-  .strict()
-  .refine((item) => item.reps != null || item.holdSeconds != null, {
-    message: "Each movement needs reps or a hold time.",
-  });
 
 const rehabProtocolLinkSchema = z
   .object({
@@ -93,7 +78,14 @@ export const rehabProtocolDefinitionSchema = z
   });
 
 export const rehabProtocolInputSchema = z.object({
-  name: z.string().trim().min(1).max(REHAB_PROTOCOL_MAX_NAME),
+  name: z
+    .string({ required_error: "Enter a protocol name." })
+    .trim()
+    .min(1, "Enter a protocol name.")
+    .max(
+      REHAB_PROTOCOL_MAX_NAME,
+      `Use ${REHAB_PROTOCOL_MAX_NAME} characters or fewer for the protocol name.`,
+    ),
   definition: rehabProtocolDefinitionSchema,
 });
 
@@ -109,8 +101,14 @@ export function parseRehabProtocolInput(
 ): { ok: true; value: RehabProtocolInput } | { ok: false; error: string } {
   const parsed = rehabProtocolInputSchema.safeParse(raw);
   if (parsed.success) return { ok: true, value: parsed.data };
+  const issue = parsed.error.issues[0];
+  const itemIndex =
+    issue?.path[0] === "definition" && issue.path[1] === "items"
+      ? issue.path[2]
+      : undefined;
+  const message = issue?.message ?? "That protocol isn't valid.";
   return {
     ok: false,
-    error: parsed.error.issues[0]?.message ?? "That protocol isn't valid.",
+    error: typeof itemIndex === "number" ? `Movement ${itemIndex + 1}: ${message}` : message,
   };
 }

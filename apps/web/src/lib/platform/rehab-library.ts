@@ -20,6 +20,7 @@
  */
 import type { SessionLink } from "./session-links";
 import type { RehabSchedule } from "./rehab-schedule";
+import type { RehabProtocolItem } from "@/lib/rehab-protocols/item-schema";
 import {
   LEGACY_REHAB_PROTOCOL_ID,
   isTbActivationCustomizationV3,
@@ -45,16 +46,7 @@ export type LibraryProtocol = {
   links: SessionLink[];
 };
 
-type RehabItemLike = {
-  movementId: string;
-  movementName: string;
-  side?: "both" | "left" | "right";
-  sets: number;
-  reps?: number;
-  holdSeconds?: number;
-  targetWeightKg?: number;
-  instructions?: string;
-};
+type RehabItemLike = RehabProtocolItem;
 
 /** `local protocol id` → `library protocol id`, for ONE program instance. */
 export type RehabBindingMap = Readonly<Record<string, string>>;
@@ -149,7 +141,7 @@ export function resolveRehabLibrary(
       return {
         ...protocol,
         name: bound.name,
-        items: bound.items as RehabSchedule["protocols"][number]["items"],
+        items: bound.items,
       };
     });
     return {

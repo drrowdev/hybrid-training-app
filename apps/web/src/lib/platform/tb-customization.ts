@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { TB_DOSE_BOUNDS } from "@hta/tacticalbarbell";
+import { rehabProtocolItemSchema as rehabItemSchema } from "@/lib/rehab-protocols/item-schema";
 
 export const TB_CUSTOMIZATION_VERSION = 1 as const;
 export const TB_ACTIVATION_CUSTOMIZATION_V2_VERSION = 2 as const;
@@ -13,22 +14,6 @@ const weekdayTypeSchema = z.enum([
   "rehab",
   "rest",
 ]);
-
-const rehabItemSchema = z
-  .object({
-    movementId: z.string().uuid(),
-    movementName: z.string().trim().min(1).max(120),
-    side: z.enum(["both", "left", "right"]).optional(),
-    sets: z.number().int().min(1).max(20),
-    reps: z.number().int().min(1).max(500).optional(),
-    holdSeconds: z.number().int().min(1).max(3600).optional(),
-    targetWeightKg: z.number().min(0).max(1000).optional(),
-    instructions: z.string().trim().max(500).optional(),
-  })
-  .strict()
-  .refine((item) => item.reps != null || item.holdSeconds != null, {
-    message: "Each rehab movement needs reps or a hold time.",
-  });
 
 const movementReplacementFields = z.object({
   movement: z.string().trim().min(1).max(80),

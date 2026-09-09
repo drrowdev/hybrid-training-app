@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Rehab protocol form
+- Protocol name, movement search, and instructions now have visible input boxes.
+- Saving without a name highlights the name field and explains what to enter.
+- Reps accepts ranges such as 8-10 and keeps the range in saved protocols and
+  workouts. Invalid entries identify the movement instead of treating a range
+  as an empty field.
+
 ### Plan refreshes preserve moved workouts
 - Workouts moved to another day now keep that placement when Edit plan or a
   rehab update refreshes the active plan. Older same-week moves are also
