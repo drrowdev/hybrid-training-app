@@ -638,32 +638,32 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     const before = await saved(actor, created.plan.id);
     expect(before.workouts[2].status).toBe("started");
     expect(!!before.workouts[2].session_id).toBe(true);
-    same(before.workouts.map((row) => row.definition), initial.workouts.map((row) => row.definition));
-    same(before.workouts[0], initial.workouts[0]);
+    expect(isDeepStrictEqual(before.workouts.map((row) => row.definition), initial.workouts.map((row) => row.definition))).toBe(true);
+    expect(isDeepStrictEqual(before.workouts[0], initial.workouts[0])).toBe(true);
     expect(before.history[0].workout.status).toBe("scheduled");
     expect(before.history[0].workout.session_id).toBeNull();
     expect(before.history[0].result).toBeNull();
     expect(before.history[0].completedAt).toBeNull();
     expect(before.history[1].workout.status).toBe("completed");
     expect(!!before.history[1].completedAt && !before.history[1].deleted && !before.history[1].sourceGone).toBe(true);
-    same(before.history[1].result?.snapshot, source.definition.issued.snapshot);
+    expect(isDeepStrictEqual(before.history[1].result?.snapshot, source.definition.issued.snapshot)).toBe(true);
     const candidate = deriveSwimWeekCandidate(before.plan, before.history, today);
     if (!candidate) throw new Error("Expected missed high-effort candidate.");
     expect(candidate.proposal.decision).toBe("reduce");
     expect(candidate.proposal.lever).toBe("main_repeats");
-    same(candidate.proposal.from, { mainRepeats: 12, mainRepLengths: 2, mainRestSeconds: 25 });
-    same(candidate.proposal.to, { mainRepeats: 11, mainRepLengths: 2, mainRestSeconds: 25 });
-    same(candidate.proposal.reasons, ["missed_sessions", "effort_high"]);
+    expect(isDeepStrictEqual(candidate.proposal.from, { mainRepeats: 12, mainRepLengths: 2, mainRestSeconds: 25 })).toBe(true);
+    expect(isDeepStrictEqual(candidate.proposal.to, { mainRepeats: 11, mainRepLengths: 2, mainRestSeconds: 25 })).toBe(true);
+    expect(isDeepStrictEqual(candidate.proposal.reasons, ["missed_sessions", "effort_high"])).toBe(true);
     expect(candidate.proposal.snapshot.plannedLengths).toBe(70);
     expect(candidate.proposal.snapshot.actualLengths).toBe(18);
     expect(candidate.proposal.snapshot.missedSessions).toBe(1);
     expect(candidate.proposal.snapshot.meanRpe).toBe(9);
-    same(candidate.input.history.map(({ completion, actualLengths, rpe }) => ({ completion, actualLengths, rpe })), [
+    expect(isDeepStrictEqual(candidate.input.history.map(({ completion, actualLengths, rpe }) => ({ completion, actualLengths, rpe })), [
       { completion: "missed", actualLengths: null, rpe: null },
       { completion: "partial", actualLengths: 18, rpe: 9 },
-    ]);
-    same([candidate.sourceWeek, candidate.targetWeek], [0, 1]);
-    same(candidate.targetWorkoutIds, before.workouts.slice(2, 4).map((row) => row.id));
+    ])).toBe(true);
+    expect(isDeepStrictEqual([candidate.sourceWeek, candidate.targetWeek], [0, 1])).toBe(true);
+    expect(isDeepStrictEqual(candidate.targetWorkoutIds, before.workouts.slice(2, 4).map((row) => row.id))).toBe(true);
     // No integer lies between 11 and 12 repeats. Eight is the nearest reduction
     // exceeding the seven-length advisory cap, so it records a warning, not catch-up.
     const chosenDose = { mainRepeats: 8, mainRepLengths: 2, mainRestSeconds: 25 };
@@ -681,7 +681,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
         !candidate.targetWorkoutIds.includes(row.id)).map((row) => swimWorkoutDefinition(row).slotId),
     });
     if (!chosen.ok) throw new Error("Expected legal canonical override.");
-    same(chosen.value.dose, { mainRepeats: 8, mainRepLengths: 2, mainRestSeconds: 25 });
+    expect(isDeepStrictEqual(chosen.value.dose, { mainRepeats: 8, mainRepLengths: 2, mainRestSeconds: 25 })).toBe(true);
     const expected = chosen.value.weeks[1].slots.find((slot) => slot.slotId === swimWorkoutDefinition(before.workouts[3]).slotId);
     const suggested = candidate.generated.weeks[1].slots.find((slot) => slot.slotId === swimWorkoutDefinition(before.workouts[3]).slotId);
     if (!expected || expected.kind !== "workout" || !suggested || suggested.kind !== "workout") {
@@ -689,6 +689,8 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     }
     expect(suggested.issued.totalLengths).toBe(33);
     expect(expected.issued.totalLengths).toBe(27);
+    expect(expected.issued.budget.accountedMs).toBeLessThan(suggested.issued.budget.accountedMs);
+    expect(expected.issued.budget.accountedMs).toBeLessThan(before.workouts[3].definition.issued.budget.accountedMs);
 
     await page.goto(`/app/swim?plan=${created.plan.id}`);
     await page.getByRole("button", { name: "Review next week", exact: true }).click();
@@ -705,11 +707,11 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     expect(after.plan.revision).toBe(before.plan.revision + 1);
     expect(after.plan.state.decisions).toHaveLength(1);
     const audit = after.plan.state.decisions[0];
-    same({ id: audit.id, kind: audit.kind, decision: audit.decision, reason: audit.reason,
+    expect(isDeepStrictEqual({ id: audit.id, kind: audit.kind, decision: audit.decision, reason: audit.reason,
       ruleVersion: audit.ruleVersion, generatorVersion: audit.generatorVersion }, {
       id: candidate.id, kind: "progression", decision: "overridden", reason,
       ruleVersion: SWIM_GENERATOR_VERSION, generatorVersion: SWIM_GENERATOR_VERSION,
-    });
+    })).toBe(true);
     const engineDecision = audit.inputSnapshot.engineDecision;
     if (!engineDecision || typeof engineDecision !== "object" ||
       !("atISO" in engineDecision) || typeof engineDecision.atISO !== "string") {
@@ -720,32 +722,32 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
       proposal: candidate.proposal, action: "override", atISO: engineDecision.atISO,
       override: chosenDose, note: reason,
     });
-    same(audit.inputSnapshot, JSON.parse(JSON.stringify({
+    expect(isDeepStrictEqual(audit.inputSnapshot, JSON.parse(JSON.stringify({
       ...candidate.exactInputs, proposal: candidate.proposal,
       engineDecision: ledger.entries[0], appliedDose: chosenDose,
-    })));
+    })))).toBe(true);
     expect(Number.isFinite(Date.parse(audit.recordedAt))).toBe(true);
     for (const [index, row] of after.workouts.entries()) {
       const prior = before.workouts[index];
-      same([row.id, row.scheduled_date, row.slot, row.definition.original],
-        [prior.id, prior.scheduled_date, prior.slot, initial.workouts[index].definition.original]);
-      same(row.definition.issued.budget, prior.definition.issued.budget);
-      if (index !== 3) { same(row, prior); continue; }
-      same(row.definition.issued, expected.issued);
+      expect(isDeepStrictEqual([row.id, row.scheduled_date, row.slot, row.definition.original],
+        [prior.id, prior.scheduled_date, prior.slot, initial.workouts[index].definition.original])).toBe(true);
+      expect(row.definition.issued.budget.minutes).toBe(prior.definition.issued.budget.minutes);
+      if (index !== 3) { expect(isDeepStrictEqual(row, prior)).toBe(true); continue; }
+      expect(isDeepStrictEqual(row.definition.issued, expected.issued)).toBe(true);
       expect(row.revision).toBe(prior.revision + 1);
       expect(swimWorkoutDefinition(row).provisional).toBe(false);
       expect(row.definition.issued.totalLengths).toBe(27);
       expect(row.definition.modifications).toHaveLength(1);
       const modification = row.definition.modifications[0];
-      same([modification.previous, modification.decisionId, modification.reason],
-        [prior.definition.issued, audit.id, reason]);
-      same(row, { ...prior, revision: prior.revision + 1, updated_at: row.updated_at,
-        definition: { ...prior.definition, issued: expected.issued, provisional: false, modifications: [modification] } });
+      expect(isDeepStrictEqual([modification.previous, modification.decisionId, modification.reason],
+        [prior.definition.issued, audit.id, reason])).toBe(true);
+      expect(isDeepStrictEqual(row, { ...prior, revision: prior.revision + 1, updated_at: row.updated_at,
+        definition: { ...prior.definition, issued: expected.issued, provisional: false, modifications: [modification] } })).toBe(true);
     }
-    same(after.history.map(({ workout, ...actual }) => ({ id: workout.id, ...actual })),
-      before.history.map(({ workout, ...actual }) => ({ id: workout.id, ...actual })));
-    same(after.plan, { ...before.plan, revision: before.plan.revision + 1, updated_at: after.plan.updated_at,
-      state: { ...before.plan.state, decisions: [audit] } });
+    expect(isDeepStrictEqual(after.history.map(({ workout, ...actual }) => ({ id: workout.id, ...actual })),
+      before.history.map(({ workout, ...actual }) => ({ id: workout.id, ...actual })))).toBe(true);
+    expect(isDeepStrictEqual(after.plan, { ...before.plan, revision: before.plan.revision + 1, updated_at: after.plan.updated_at,
+      state: { ...before.plan.state, decisions: [audit] } })).toBe(true);
     expect(deriveSwimWeekCandidate(after.plan, after.history, today)).toBeNull();
     await page.getByText("Past decisions", { exact: true }).click();
     const decisionRow = page.getByText("Overridden", { exact: true }).locator("..");
@@ -759,7 +761,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await expect(page.getByRole("button", { name: "Review next week", exact: true })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Apply my choice", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
-    same(await saved(actor, created.plan.id), after);
+    expect(isDeepStrictEqual(await saved(actor, created.plan.id), after)).toBe(true);
   });
 
   test("B5 DC-SW4/DC-SW5: missing effort holds the next week without advancing targets", async ({

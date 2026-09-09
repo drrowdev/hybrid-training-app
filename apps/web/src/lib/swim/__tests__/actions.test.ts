@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { swimFixture, userId, planId, sessionId, receiptId } from "./fixtures";
 import { completeSwimWorkoutResult, createSwimPlan, startSwimWorkout, editSwimResult, decideSwimProposal, previewSwimResume, resumeSwimPlan, proposeSwimBenchmark, decideSwimBenchmark, skipSwimWorkout } from "../actions";
-import { SWIM_ASSESSMENT_VERSION } from "@hta/domain";
+import { SWIM_ASSESSMENT_VERSION, type SwimWorkout } from "@hta/domain";
 import * as queries from "../queries";
 import * as storage from "../storage";
 import type { SwimHubView } from "../view-types";
@@ -9,6 +9,7 @@ import { workoutPresentation } from "../presentation";
 import { requireSwimSetup, requireSwimStorage } from "../capability";
 import { assertSwimSafety } from "../safety";
 import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-completion-recompute";
+import { swimWorkoutDefinition, type StandaloneWorkoutDefinition } from "../model";
 
 const mock = vi.hoisted(() => ({
   user: { id: "00000000-0000-4000-8000-000000000001" } as { id: string } | null,
@@ -315,6 +316,131 @@ describe("ADR0079 server actions", () => {
       expect(workout.definition).toHaveProperty("provisional", false);
     }
   });
+  it.each(["provisional", "confirmed", "started", "past", "today"] as const)(
+    "DC-SW4/DC-SW5 accepts a key-reordered HOLD with a %s target without fabricating history",
+    async (targetState) => {
+      vi.setSystemTime(new Date("2026-09-12T12:00:00Z"));
+      const { plan, workouts, history } = swimFixture();
+      const persisted = workouts.map((row, index): storage.SwimWorkoutRow => {
+        const { sections, snapshot, budget, ...issued } = row.definition.issued;
+        const reordered: SwimWorkout = {
+          ...issued,
+          budget: { accountedMs: budget.accountedMs, minutes: budget.minutes },
+          snapshot: {
+            ...snapshot,
+            course: { unit: snapshot.course.unit, denominator: snapshot.course.denominator, numerator: snapshot.course.numerator },
+            versions: { assessment: snapshot.versions.assessment, generator: snapshot.versions.generator, model: snapshot.versions.model },
+          },
+          sections: sections.map(({ items, ...section }) => ({
+            items: items.map(({ equipment, ...item }) => ({ equipment, ...item })), ...section,
+          })),
+        };
+        expect(reordered).toEqual(row.definition.issued);
+        expect(JSON.stringify(reordered)).not.toBe(JSON.stringify(row.definition.issued));
+        expect(Object.keys(reordered.snapshot.course)).not.toEqual(Object.keys(snapshot.course));
+        expect(Object.keys(reordered.sections[0]!.items[0]!)).not.toEqual(Object.keys(sections[0]!.items[0]!));
+        const definition: StandaloneWorkoutDefinition = {
+          ...swimWorkoutDefinition(row), issued: reordered,
+          provisional: index === 2 && targetState === "confirmed" ? false : swimWorkoutDefinition(row).provisional,
+          modifications: index === 3 ? [{
+            id: receiptId, recordedAt: plan.created_at, decisionId: planId, reason: "Earlier decision",
+            previous: row.definition.original,
+          }] : [],
+        };
+        return {
+          ...row,
+          ...(index === 2 && targetState === "started" ? { session_id: sessionId, status: "started" } : {}),
+          ...(index === 2 && targetState === "past" ? { scheduled_date: "2026-09-11" } : {}),
+          ...(index === 2 && targetState === "today" ? { scheduled_date: "2026-09-12" } : {}),
+          definition,
+        };
+      });
+      const plateau = history.map((row, index) => ({
+        ...row, workout: index < 2 ? { ...persisted[index]!, status: row.workout.status, session_id: row.workout.session_id } : persisted[index]!,
+        result: row.result ? { ...row.result, rpe: null } : null,
+      }));
+      const before = structuredClone({ persisted, plateau, plan });
+      vi.mocked(storage.listSwimWorkouts).mockResolvedValue(persisted);
+      vi.spyOn(queries, "loadSwimHistory").mockResolvedValue(plateau);
+      const candidate = queries.deriveSwimWeekCandidate(plan, plateau, "2026-09-12")!;
+      expect(candidate.proposal.decision).toBe("hold");
+      const view = mockSavedPlan();
+      expect(await decideSwimProposal(plan.id, plan.revision, candidate.id, "accepted")).toEqual({ ok: true, view });
+      expect(storage.updateSwimPlan).toHaveBeenCalledOnce();
+      const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
+      expect(saved.workouts.map((row) => row.id)).toEqual(
+        (targetState === "provisional" ? persisted.slice(2, 4) : persisted.slice(3, 4)).map((row) => row.id),
+      );
+      for (const update of saved.workouts) {
+        const prior = persisted.find((row) => row.id === update.id)!;
+        expect(update).toEqual({
+          id: prior.id, expected_revision: prior.revision, scheduled_date: prior.scheduled_date, slot: prior.slot,
+          definition: { ...prior.definition, provisional: false },
+        });
+        expect(update.definition.modifications).toEqual(prior.definition.modifications);
+      }
+      expect(saved.state.decisions).toHaveLength(1);
+      expect(saved.state.decisions[0]).toMatchObject({ id: candidate.id, decision: "accepted" });
+      expect({ persisted, plateau, plan }).toEqual(before);
+    },
+  );
+  it.each(["dose", "array content", "array order"] as const)(
+    "DC-SW5 records exactly one prior issued snapshot for a real %s change",
+    async (change) => {
+      vi.setSystemTime(new Date("2026-09-12T12:00:00Z"));
+      const { plan, workouts, history } = swimFixture();
+      const target = workouts[3]!;
+      if (change === "array content") {
+        target.definition = {
+          ...target.definition,
+          issued: {
+            ...target.definition.issued,
+            snapshot: { ...target.definition.issued.snapshot, equipment: ["fins"] },
+            sections: target.definition.issued.sections.map((section) => ({
+              ...section, items: section.items.map((item) => ({ ...item, equipment: ["fins"] })),
+            })),
+          },
+        };
+      } else if (change === "array order") {
+        target.definition = { ...target.definition, issued: {
+          ...target.definition.issued, sections: [...target.definition.issued.sections].reverse(),
+        } };
+      }
+      target.definition.modifications = [{
+        id: receiptId, recordedAt: plan.created_at, decisionId: planId, reason: "Earlier decision",
+        previous: target.definition.original,
+      }];
+      const settled = history.map((row) => ({
+        ...row, result: row.result ? { ...row.result, rpe: change === "dose" ? 5 : 7 } : null,
+      }));
+      const before = structuredClone({ workouts, settled, plan });
+      vi.mocked(storage.listSwimWorkouts).mockResolvedValue(workouts);
+      vi.spyOn(queries, "loadSwimHistory").mockResolvedValue(settled);
+      const candidate = queries.deriveSwimWeekCandidate(plan, settled, "2026-09-12")!;
+      const expected = candidate.generated.weeks[1]!.slots.find((slot) => slot.slotId === swimWorkoutDefinition(target).slotId)!;
+      if (expected.kind !== "workout") throw new Error("Expected workout");
+      expect(expected.issued).not.toEqual(target.definition.issued);
+      if (change === "dose") expect(expected.issued.totalLengths).toBeGreaterThan(target.definition.issued.totalLengths);
+      else expect(expected.issued.totalLengths).toBe(target.definition.issued.totalLengths);
+      const view = mockSavedPlan();
+      expect(await decideSwimProposal(plan.id, plan.revision, candidate.id, "accepted")).toEqual({ ok: true, view });
+      expect(storage.updateSwimPlan).toHaveBeenCalledOnce();
+      const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
+      expect(saved.workouts.map((row) => row.id)).toEqual(workouts.slice(2, 4).map((row) => row.id));
+      const update = saved.workouts.find((row) => row.id === target.id)!;
+      expect(update.definition.issued).toEqual(expected.issued);
+      expect(update.definition.original).toEqual(target.definition.original);
+      expect(update.expected_revision).toBe(target.revision);
+      expect(update.definition).toHaveProperty("provisional", false);
+      expect(update.definition.modifications).toEqual([
+        ...target.definition.modifications,
+        { id: expect.any(String), recordedAt: new Date().toISOString(), decisionId: candidate.id,
+          reason: `Week 2: ${candidate.proposal.decision}`, previous: target.definition.issued },
+      ]);
+      expect(saved.state.decisions[0]).toMatchObject({ id: candidate.id, decision: "accepted" });
+      expect({ workouts, settled, plan }).toEqual(before);
+    },
+  );
   it("rejects a week without touching any future prescriptions", async () => {
     vi.setSystemTime(new Date("2026-09-12T12:00:00Z"));
     const { plan, history } = swimFixture();
@@ -430,6 +556,18 @@ describe("ADR0079 server actions", () => {
     expect(saved.workouts).toHaveLength(3);
     expect(saved.workouts.every((row) => row.id !== workouts[2]!.id && row.scheduled_date > "2026-09-12")).toBe(true);
     expect(saved.workouts.every((row) => row.definition.modifications.length === 1)).toBe(true);
+    for (const update of saved.workouts) {
+      const prior = workouts.find((row) => row.id === update.id)!;
+      expect(update.definition.issued.sections).not.toEqual(prior.definition.issued.sections);
+      expect(update.definition.issued.sections.some((section) =>
+        section.items.some((item) => item.targetMsPerRepeat !== undefined))).toBe(true);
+      expect(update.definition.original).toEqual(prior.definition.original);
+      expect(update.expected_revision).toBe(prior.revision);
+      expect(update.definition.modifications[0]).toEqual({
+        id: expect.any(String), recordedAt: new Date().toISOString(), decisionId: saved.state.decisions[0]!.id,
+        reason: "Accepted assessment", previous: prior.definition.issued,
+      });
+    }
     expect(assertSwimSafety).toHaveBeenCalledOnce();
   });
   it("retains a rejected assessment without changing pace targets or requiring new safety clearance", async () => {
