@@ -18,7 +18,8 @@ exist for compatibility and shared workload only.
 The current PR802 continuation authorizes disposable localhost services on the
 cloud runner only, not hosted credentials. The twelve-case reference at `7d0fb2c`
 passed ten and failed C2/C3. The reversible movement-reference candidate below is
-a source checkpoint with a newly identified authenticated UPDATE/RLS blocker.
+a source checkpoint with the authenticated UPDATE/FK verification mismatch
+resolved at separate layers; live candidate acceptance remains unrun.
 Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
@@ -35,20 +36,24 @@ replace the pending browser and full standalone acceptance.
 
 **Last updated:** 2026-09-09 (reversible candidate source checkpoint; no new runtime measurement)
 
-### PR805 reversible movement-reference candidate — blocked source checkpoint
+### PR805 reversible movement-reference candidate — verification correction complete in source
 
 Owner approved the reversible disposable candidate, at most two existing FKs.
 [ADR 0080](docs/adr/0080-deferred-custom-movement-references.md) records scope,
 timing audit, lock/validation/down guards and the required proof. Code/test
 checkpoint: `24e10035d4a1f060369ef8384a5d0befc12b65e7`.
 
-**Blocking finding:** migration0059 has no session_movements UPDATE policy.
+**Resolved verification mismatch:** migration0059 has no session_movements UPDATE policy.
 Migration0063 grants UPDATE but documents that RLS blocks real updates; no later
 migration supplies that policy. The requested authenticated C3 reference UPDATE
-therefore cannot yield the required23503 at request end. Its strict assertion is
-present, not skipped or weakened. RLS/grant changes and bypasses are prohibited;
-owner/coordinator direction is required. **Do not dispatch this as
-acceptance-ready or claim C2/C3 pass.**
+therefore cannot yield23503 at request end. The coordinator directed proof at
+the actual layers without changing permissions: C3 retains four reachable23503
+requests, then separately requires the owner UPDATE's no-error/empty returned
+array with exact owned filters, fresh unchanged rows and no missing-parent
+reference. The owned SQL helper separately requires an actual one-row UPDATE
+and forced ALL rejection23503/session-movements on the current candidate.
+No policy/grant/role, migration, real fixture or browser registry was changed.
+**Live SQL integrity, authenticated RLS denial and C2/C3 remain unrun.**
 
 [Run34321670984](https://github.com/drrowdev/hybrid-training-app/actions/runs/34321670984)
 at `1bb56`, ended07:03:52Z: prerequisites matched; baseline RESTRICT and immediate
@@ -66,25 +71,41 @@ The rollback-only switch/helper/test are removed, normal db:migrate and the
 ordinary browser call restored. A new private-command stage durably down/ups
 verified exact files, compares semantic target definitions despite fresh OIDs,
 and demands both transactional one-FK necessity rejections plus fresh restoration/
-absence checks. C3 adds authenticated request-boundary integrity assertions;
+absence checks. The separate `updateIntegrity` result reuses the four-ID fixture
+builder in one ROLLBACK transaction, checks candidate metadata and the existing
+reference, and verifies the generated set UUID is absent from movements.
+Setup errors are not UPDATE evidence; row-count-one and forced-check flags are
+mandatory. Fresh separate-connection schema/metadata/fixture-absence verification
+is mandatory even on error/disconnect, without compensating deletes. A valid
+not-attempted result is initialized before work; overall matched requires all
+proofs. The two necessity modes remain exactly two and unchanged.
+C3 adds authenticated request-boundary integrity assertions;
 C2 and the twelve identities/six files remain.
 
-GitHub source validation (commands from repository root):
+GitHub source validation for correction commit
+`123fd1765c8eee33f1e28bad4d622cc631836226`, tested tree
+`f0ccfad5161a68c900fcb54c568c0c1bd1abed02` (commands from repository root):
 
-- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/storage-migration.test.ts src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-identity-roundtrip.test.ts src/lib/swim/__tests__/swim-rpc-diagnostics.test.ts` — **1125 passed**.
-- `pnpm --filter @hta/web typecheck` — passed after correcting a mock's result type.
-- `pnpm --filter @hta/web exec eslint scripts/swim-acceptance-guards.ts scripts/swim-acceptance.ts scripts/swim-movement-reference-roundtrip.ts src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/storage-migration.test.ts e2e/swimming-account-mobile.spec.ts` — passed without warnings.
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/storage-migration.test.ts src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-identity-roundtrip.test.ts src/lib/swim/__tests__/swim-rpc-diagnostics.test.ts` — **1148 passed**, including91 durable-helper tests.
+- `pnpm --filter @hta/web typecheck` — passed.
+- `pnpm --filter @hta/web exec eslint scripts/swim-movement-reference-roundtrip.ts src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts e2e/swimming-account-mobile.spec.ts` — passed without warnings.
 - `pnpm exec playwright test --config=playwright.swim-reference.config.ts --list`
   from `apps/web`, using `buildBrowserEnv`, nonfunctional synthetic JWTs and owned
   0700/0600 paths under `/tmp` — **12 identities / six files / zero executed results**.
-  Initial placeholder-shaped credentials failed the existing environment guard;
-  the corrected collection passed without browser/DB execution.
+  Exact collected identities compared to `SWIM_BROWSER_CASES`; no collection
+  errors. Private report:
+  `/tmp/swim-update-collection-Iwkwnj/swim-acceptance-pr802-34331599918-1/browser.json`.
 
 Secret scan and diff checks passed for the code checkpoint. Author and committer
 explicitly set and verified as `Copilot <223556219+Copilot@users.noreply.github.com>`
-with both AI trailers. Signing service rejected the initial attempt; the saved
-commit is unsigned. No SQL, Docker/stack, browser execution or CI dispatch by this
-source worker. Live candidate apply/down/up/necessity, all36HTTP and C2/C3 are
+with both AI trailers; checkpoint saved unsigned. The three code/test paths are
+`apps/web/e2e/swimming-account-mobile.spec.ts`,
+`apps/web/scripts/swim-movement-reference-roundtrip.ts` and
+`apps/web/src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts`.
+Only ADR0080, this HANDOFF, pool-swimming and the append-only log follow as docs.
+No SQL, Docker/stack, browser execution or CI dispatch by this
+source worker. Live candidate apply/down/up/necessity/UPDATE integrity, normal149,
+all36HTTP, authenticated RLS denial and C2/C3 are
 unrun. Production is separately gated. No automatic extra model review chain.
 
 ### PR805 temporary rollback-only route — historical, superseded
