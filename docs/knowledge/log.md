@@ -2505,3 +2505,64 @@ Documentation validation: `pnpm docs:check-drift` passed in-repo checks (private
 workspace parity not run); `git diff --check` and documentation secret scanning
 passed. Exact six-file allowlist and append-only log prefix verified; code/tests
 remain unchanged from the validated code checkpoint.
+
+## [2026-09-09] refine | Standalone budget and learning source cohort after fifteen-case success
+
+Continues PR805 `copilot/new-acceptance-cases` from exact
+`fdf01d865dc09f38e551925266fa604c56a3d40e`, unchanged base
+`copilot/prepare-mobile-persistence-tests` at
+`4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. No branch/PR/history manipulation.
+
+Latest measured milestone: run34351260981 at fdf01 completed12:34:10Z SUCCESS;
+all15 passed once, zero unexpected/skipped/flaky, B3/B4/B5 and C2/C3 passed,
+empty failure ledger. Normal149/catalog/Auth5phases4DDL15contexts/all36HTTP/
+Native16/single-FK down/up controls/UPDATE integrity/core/main/final cleanup
+passed. GitHub metadata corroborates the coordinator's retained summary.
+The original first setup case passed21,892ms; its earlier Pool-length timeout
+is still unexplained. No causal claim about the semantic-HOLD fix. This closes
+progression-branch work, not all standalone/release gates.
+
+Saved code/tests first at `8fecc50c5f4cdd2349d2d1e425d47d90003707e9`, tested tree
+`24ae63d66b5b23a1cb794482abf2af952be32af6`. B6/B7/B8 append at15/16/17 in the
+existing B spec/describe under DC-SW1/SW2/SW3: useful calibrated10-minute native50m
+scaling versus a larger canonical budget; a valid impossible10-minute budget
+with form-scoped options/no persistence and budget-only successful correction;
+and zero-length/no-stroke/no-assessment learning guidance without any native
+plan, workout or session. Real UI actions, retained inputs, canonical storage/
+generation comparisons and reload checks; no new product/copy. One initially
+considered slow pair was invalid and discarded, never treated as budget proof.
+
+Original15 bodies/identities/order/fixtures and all B1–B5/shared helpers remain
+unchanged. Same six files, counts2/2/2/8/3/1; exact noncontiguous B mapping,
+C2index9 and existing annotation/privacy rules preserved. Old4/6/8/11/12/15
+reports and same-total substitutions/duplicates fail. Old12 removes all B3–B8
+but keeps B1/B2; old15 removes only B6/B7/B8, never the B file.
+
+Inside GitHub:472 reader/collection tests (including seven canonical pure
+fixture tests spanning all start weekdays),58 existing engine swimming/budget
+tests, scoped lint, web typecheck and diff/secret checks passed. Actual installed
+Playwright1.60.0 `--list` used the existing private isolation and collected18
+identities/six files/zero executed results/errors with verified cleanup.
+An old fifteen-entry annotation expectation failed the first reader pass;
+only three empty entries were appended, and the full targeted rerun passed.
+CodeQL skipped test-only changes as trivial; no analysis pass is claimed.
+Exact commands are recorded in HANDOFF. Terminal author/committer and verified
+remote identity are Copilot223556219, both AI trailers retained. Publishing
+pushed the existing commit, not an MCP-created commit.
+
+Only the seven allowed paths changed: B spec, casebook, reader and collection
+tests, HANDOFF, pool-swimming wiki and this append-only log. No other
+source/protocol/main/stage/fixture/config/workflow/domain/engine/DB/permissions/
+migration/dependency/hosting/network/cost changes. No SQL/Docker/browser execution,
+CI dispatch, unchanged rerun, hosted reads, production writes or extra model/
+review chain. Owner-reported getsxc production connector access now works, but
+was not used. Live18 is unrun; lifecycle/analytics/concurrency/regional-load
+variants and free-plan backup/recovery, production migration ordering and
+monitoring gates remain. Bounds unchanged:30s/case,300s global,330s command,
+590s phase,410s server,35m total/3m cleanup,45m job. Eighteen nominal maxima
+are not a fit guarantee; a real overrun must fail honestly.
+
+Documentation validation: `pnpm docs:check-drift` passed offline in-repository
+checks (private mirror parity not run), along with `git diff --check` and
+documentation secret scanning. Exact seven-file allowlist and append-only log
+prefix verified; source remained unchanged from the tested code checkpoint.

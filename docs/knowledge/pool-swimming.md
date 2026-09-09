@@ -7,6 +7,76 @@ program's cardio slots is the next slice, not part of this implementation.
 
 ## Latest acceptance checkpoint — 2026-09-09
 
+[Run34351260981](https://github.com/drrowdev/hybrid-training-app/actions/runs/34351260981)
+at exact `fdf01d865dc09f38e551925266fa604c56a3d40e` completed12:34:10Z SUCCESS.
+All15 passed once, zero unexpected/skipped/flaky, including B3/B4/B5 and C2/C3;
+the failure ledger is empty. Normal149/catalog/Auth5phases4DDL15contexts/
+all36HTTP/Native16/single-FK down/up controls and UPDATE integrity/core/main/
+final cleanup passed. GitHub metadata corroborates the coordinator's milestone.
+The original first setup case passed in21,892ms, but its earlier Pool-length
+timeout remains **unexplained**; the semantic-HOLD fix is not a demonstrated cause
+of recovery. This closes progression-branch work, not all standalone/release gates.
+
+**Next source cohort — live18 unrun:** code/test checkpoint
+`8fecc50c5f4cdd2349d2d1e425d47d90003707e9`, tested tree
+`24ae63d66b5b23a1cb794482abf2af952be32af6`, appends B6/B7/B8 under
+[DC-SW1/SW2/SW3](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05):
+
+- B6 creates a calibrated native50m freestyle/no-equipment plan through the real
+  setup form at10minutes, comparing exact persisted setup/calibration/schedule
+  and whole-length prescriptions with canonical generation and a larger-budget
+  reference. It checks literal units/budget, smaller volume, fully accounted
+  time within the limit, easy start/main purpose/easy finish and UI/row reload
+  stability. Derived accounted time is recomputed after scaling.
+- B7 proves a different supported verified200/400 calibration has a minimum
+  whole-session budget above10minutes. The form-scoped alert offers nonempty
+  correction options, preserves entries and writes no plan/workout. Only the
+  budget changes before successful creation, with no duplicates and canonical
+  whole-length/reload checks. Invalid calibration candidates were discarded.
+- B8 submits zero comfortable lengths with no strokes, timing or verification.
+  Nonempty canonical learning guidance appears in the form's status region;
+  entries remain, and authenticated actor-owned plan/workout/session counts
+  stay zero. Guidance is not a completion, load or progression event.
+
+Existing actor/onboarding/auth/UTC, today's valid date and UI helpers are reused.
+The two-week Monday schedule comes from `standaloneWeekRequests`; no six-workout
+fixture is imposed. No create RPC substitutes for the UI action, no injected
+state, mocked action, HTML bypass, invented calibration or UI-copy change.
+Private equality comparisons are inline boolean assertions, not object dumps.
+
+Original15 identities/order, bodies/fixtures and B1–B5/helpers remain unchanged.
+B6/B7/B8 append at15/16/17, same six files/counts2/2/2/8/3/1. Noncontiguous B
+identities and C2index9 retain exact mapping. Reader regressions reject old4/6/8/
+11/12/15 cohorts and same-total substitutions/duplicates. Old12 removes all
+B3–B8, old15 only B6/B7/B8, keeping the B file. Original annotation/privacy
+rules are preserved; the three new cases have no new annotation protocol.
+
+GitHub source checks: **472 reader/collection tests and58 engine swimming/budget
+tests passed**, plus scoped lint, web typecheck, diff and secret checks. Seven
+pure-fixture regressions validate all possible start weekdays with existing
+parsing/calibration/generation. The actual installed Playwright1.60.0 `--list`
+in existing private isolation collected18 exact identities/six files, **zero
+executed results/errors** and verified cleanup. This is not live18 acceptance.
+CodeQL skipped test-only changes as trivial, not an analysis pass. Terminal
+commit author/committer and remote identity are Copilot223556219, with both AI
+trailers. Exact commands, tested tree and scope are in the
+[current handoff](../../HANDOFF.md#pr805-b6b7b8--eighteen-case-source-proof-live-acceptance-unrun).
+
+The owner reports production access now works through the getsxc connector;
+this worker did not use it. No hosted data, SQL/Docker/browser execution, CI
+dispatch, production writes, product/DB/permissions/workflow changes or extra
+model/review chain. Only the seven allowed source/test/documentation paths
+change. Further standalone lifecycle/analytics/concurrency/regional-load
+variants and live18 remain; free-plan backup/recovery, production migration
+ordering and monitoring remain separately gated. All bounds remain30s/case,
+300s global,330s command,590s phase,410s server,35m total/3m cleanup,45m job.
+Eighteen nominal maxima do not guarantee fit; measured overruns must fail.
+
+### Historical checkpoints before the measured fifteen-case success
+
+The following pending-runtime and connector-authorization statements describe
+their earlier checkpoints, not the current state above.
+
 [Run34339663834](https://github.com/drrowdev/hybrid-training-app/actions/runs/34339663834)
 at exact `bb9aa524f3132ac392b963fc9166f2cc90acfcf3` completed10:25:00Z SUCCESS.
 All original12 cases passed once, zero unexpected/skipped/flaky; measured total

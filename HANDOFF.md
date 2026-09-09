@@ -19,13 +19,15 @@ The original twelve-case reference at exact `bb9aa524f3132ac392b963fc9166f2cc90a
 passed in run34339663834, completing 2026-09-09 at10:25:00Z. C2 app deletion and
 C3 linked Auth deletion, owner integrity and survivor checks passed. This closes
 the account-deletion blocker, not all standalone requirements or release.
-PR805's first fifteen-case run34345964317 at exactda81 completed11:36:23Z:
-all15 ran once,12 passed/3 failed, no skips/flaky cases. B3 passed; B4/B5 and
-the original first setup case failed. Two independent source fixes are now
-validated below; corrected-head runtime acceptance remains pending. This
-continuation is source-only; no hosted resources/credentials or Auth changes.
-The owner confirmed production projectgrhet, but MCP authorization remains
-unresolved and unrelated to this work.
+PR805's latest measured fifteen-case run34351260981 at exact
+`fdf01d865dc09f38e551925266fa604c56a3d40e` completed12:34:10Z SUCCESS:
+all15 passed once, zero unexpected/skipped/flaky, empty failure ledger.
+B3/B4/B5 and C2/C3 passed. The original first setup case passed in21,892ms;
+its earlier Pool-length timeout remains unexplained, not attributed to the
+semantic-HOLD fix. This closes progression-branch work, not all release gates.
+The next eighteen-case source cohort adds B6/B7/B8 below; live18 is **unrun**.
+The owner reports production access now works through the getsxc connector.
+This source-only continuation did not use it, read hosted data or change production.
 Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
@@ -40,9 +42,101 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-09 (first fifteen-case outcomes; semantic equality/B4 oracle fixes)
+**Last updated:** 2026-09-09 (measured fifteen-case success; eighteen-case budget/guidance source proof)
+
+### PR805 B6/B7/B8 — eighteen-case source proof, live acceptance unrun
+
+Continues the exact requested `fdf01d865dc09f38e551925266fa604c56a3d40e`
+on `copilot/new-acceptance-cases`, base `copilot/prepare-mobile-persistence-tests`
+at `4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. No new branch/PR, merge, rebase,
+amend or force push.
+
+**Measured milestone:** [run34351260981](https://github.com/drrowdev/hybrid-training-app/actions/runs/34351260981)
+at fdf01 completed2026-09-09T12:34:10Z SUCCESS. The coordinator's retained
+summary reports all15 passing once, zero unexpected/skipped/flaky, B3/B4/B5
+and C2/C3 passing, and an empty failure ledger. Normal149/catalog/
+Auth5phases4DDL15contexts/all36HTTP/Native16/single-FK down/up controls and
+UPDATE integrity/core/main/final cleanup passed. GitHub metadata corroborates
+the head, end time and success. The first setup case's21,892ms pass does not
+explain its earlier Pool-length timeout or establish a causal connection to
+the semantic-HOLD change. No unchanged rerun was requested or performed here.
+
+Code/test checkpoint **`8fecc50c5f4cdd2349d2d1e425d47d90003707e9`**, tested tree
+**`24ae63d66b5b23a1cb794482abf2af952be32af6`**, adds only:
+
+- **B6 / [DC-SW1/SW3](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05):**
+  real setup submission with native50m, freestyle/no equipment and a supported
+  verified200/400 calibration. Ten-minute endurance work materially scales down
+  against the same persisted setup/schedule at a larger budget, retaining whole
+  lengths, easy edges and purpose-specific main work. Full canonical storage
+  comparisons accompany literal course/budget checks. Accounted time is
+  regenerated, fully priced and within the chosen budget, not copied from the
+  larger prescription. Actual workout UI and owned rows survive reload.
+- **B7 / DC-SW2/SW3:** a separate valid supported calibration produces canonical
+  `budget_impossible` at the UI's ten-minute minimum. The real form must show a
+  nonempty alert and correction options, retain entries and persist no plan or
+  workout. Changing only the budget to a canonically verified bounded value
+  creates exactly one plan with whole-length workouts and stable UI/rows.
+  An initially considered slower pair failed validation and was discarded;
+  invalid calibration is not used as evidence of budget failure.
+- **B8 / DC-SW2/SW3:** zero comfortable lengths, no known strokes and no
+  assessment/verification yield real nonempty learning guidance in the form's
+  status region, with entries retained. The fresh authenticated actor has no
+  plan, workout or session before/after: no logged completion, load, invented
+  calibration or progression decision. No UI implementation or copy changes.
+
+All three use the existing actor's UTC/onboarding/auth, real setup controls,
+today's valid start date, a deterministic two-week Monday schedule, canonical
+`parseSetupForm`/`standaloneWeekRequests`/generation and authenticated storage
+reads. Reads verify the UI action; they do not replace it. New private equality
+assertions inline `expect(isDeepStrictEqual(...)).toBe(true)`.
+
+Original15 identities/order and bodies/fixtures remain unchanged. B6/B7/B8
+append at15/16/17; B indexes are6/7/12/13/14/15/16/17 and C2 remains9.
+Same six files, counts2/2/2/8/3/1. Independent identity/count pins, old4/6/8/11/12
+and new old15 rejection, same-total substitutions, eight-entry B duplicates,
+exact-identity mapping, original annotations and privacy checks remain enforced.
+Old12 removes all B3–B8 but keeps B1/B2; old15 removes only B6/B7/B8.
+
+Validation inside the GitHub workspace at
+`/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts` — **472 passed** (471 reader/pure-fixture tests +1 real collection regression). The pure fixture test exercises all seven possible start weekdays. The installed Playwright1.60.0 CLI actually ran `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json` in the existing private isolation: **18 identities/six files/zero executed results/errors**, private cleanup verified. An initial reader run exposed one old fifteen-entry annotation expectation; appending three empty entries fixed it without changing original membership.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts src/swimming-budget.test.ts` — **58 passed**.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-decisions-offline-mobile.spec.ts scripts/swim-browser-acceptance.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts` — passed.
+- `pnpm --filter @hta/web typecheck` and `git diff --check` — passed.
+- `pnpm docs:check-drift` — passed offline in-repository checks; private workspace
+  mirror parity was not run. Documentation secret scan, exact seven-file scope
+  and append-only log prefix checks passed; source stayed unchanged from the
+  tested code checkpoint.
+- Byte comparison against fdf01 verified the original B1–B5 bodies, describe,
+  actor and all existing helpers unchanged; only the four allowed source paths
+  changed. Secret scanning passed. CodeQL skipped these test-only changes as
+  trivial; **no security-analysis pass is claimed**.
+
+The code checkpoint was saved before documentation. Terminal git explicitly
+set author and committer to `Copilot <223556219+Copilot@users.noreply.github.com>`;
+both required Copilot and Copilot App trailers are present. Local and remote
+identities were verified before continuing; publishing only pushed the already
+created commit. No MCP-created commit or extra model/review chain.
+
+Only the seven allowed paths change: B spec, casebook, reader/collection tests,
+this handoff, pool-swimming wiki and append-only log. No product, old-case,
+fixture, main/stage/protocol/source-closure, workflow/config/dependency,
+domain/engine/DB/schema/permission/migration, hosting/network/cost change.
+No SQL, Docker, browser execution, CI dispatch, hosted reads or production writes.
+
+**Remaining:** actual live18 acceptance; further standalone lifecycle,
+analytics, concurrency and regional-load variants; free-plan backup/recovery,
+production migration ordering and monitoring gates. Production connector access
+does not close them. Bounds remain30s/case,300s global,330s command,590s phase,
+410s server,35m total/3m cleanup,45m job. Eighteen nominal maxima are not a fit
+guarantee; a measured overrun must fail, not increase limits.
 
 ### PR805 first fifteen-case run — two source fixes, corrected-head runtime pending
+
+Historical checkpoint: the measured fdf01 success above supersedes the pending
+runtime and connector-authorization statements in this section.
 
 Continues exact `da81baacb2a72c5471863ea40cd5b60302b07c0b` on the existing
 `copilot/new-acceptance-cases`, base `copilot/prepare-mobile-persistence-tests` at
