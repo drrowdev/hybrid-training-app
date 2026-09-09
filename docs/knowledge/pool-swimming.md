@@ -298,7 +298,7 @@ four-reference reproduction, **not full native C3 or an identical GoTrue
 transaction**. A successful bare DELETE neither blames GoTrue nor exonerates
 every schema interaction.
 
-The existing privileged connection performs setup; catalog-only `pg_roles`
+The image's existing `supabase_admin` bootstrap connection performs setup; catalog-only `pg_roles`
 checks the issuing owner and existing Auth role against the pinned reference.
 The tested DELETE uses transaction-local SESSION AUTHORIZATION
 `supabase_auth_admin`, checking both `session_user` and `current_user`. No fake
@@ -361,8 +361,8 @@ out of the safe artifact. The existing marked summary publisher carries it.
 Every terminal summary is nonqualifying, including success/inconclusive
 measurements; genuine prerequisite/probe/source/cleanup errors precede the
 intentional stop. No SQL or reference run occurred in the source task. One
-future rollback-only run requires exact-final-head Opus/core review and fresh
-full-path guards on the existing protected branch route. Measurements do not
+future rollback-only run requires coordinator inspection of exact completed
+source, real core and fresh full-path guards on the existing protected branch route. Measurements do not
 choose a permanent mode or prove C2/C3/release acceptance. The temporary source
 mode must be **removed**, restoring ordinary execution, before separately
 approved repair-head acceptance. No migration149 is authorized.
@@ -383,11 +383,54 @@ Focused mocked coverage was added; no local tests/build/lint/typecheck, runtime
 SQL, Docker/stack/browser, hosted access, raw log content access or CI dispatch
 occurred in this correction. Diff/secret checks passed; CodeQL was incomplete
 (Actions failed; JavaScript database too large). Main runner and tests remain
-unchanged. Coordinator verification of actual Astra START+TERMINAL/artifacts,
-one exact-final-head Opus review/core and fresh full-path guards remains required.
+unchanged. The bootstrap correction below supersedes that checkpoint's pending
+consultation requirement, not its core/fresh whole-path gates.
 Attribution buys no guaranteed deletion measurement: if a pin fails, stop again
-with its property. An `owner-super` failure requires separately source-grounded
-role-fidelity design; this task cannot lower the guard or switch authorization.
+with its property; never lower the guard or switch authorization.
+
+#### Bootstrap identity correction — 2026-09-09
+
+[Run 34316110081](https://github.com/drrowdev/hybrid-training-app/actions/runs/34316110081)
+at `b9806ec695640c7c8c837d11bd0086e22e4a561e` ended 05:48:27Z:
+`observed:true, matched:false, mismatched:["owner-super"]`, `probes:[]`.
+The initial session/current user was `postgres`, not a superuser. No baseline,
+fixture or candidate DDL ran; this is not an application deletion cause.
+Native16/normal148/catalog/Auth5phase4DDL15contexts36HTTP/core/main/final cleanup
+passed. Safe15 records remain; official raw logs were consumed once and discarded.
+
+The accepted correction uses only the existing bootstrap login from the observed
+`public.ecr.aws/supabase/postgres:17.6.1.165`, digest
+`sha256:28f0e16a019e648089fc1a6d333549a55548f6019c15ae4bd7cd58b989027518`.
+Read-only evidence at official tag commit `73119f8bfae2bfb07ddfa18240ab8e5f56f737a8`:
+- [Dockerfile-17](https://github.com/supabase/postgres/blob/73119f8bfae2bfb07ddfa18240ab8e5f56f737a8/Dockerfile-17) sets `POSTGRES_USER=supabase_admin` and installs the Docker configs and standard initialization scripts.
+- [Initial schema](https://github.com/supabase/postgres/blob/73119f8bfae2bfb07ddfa18240ab8e5f56f737a8/migrations/db/init-scripts/00000000000000-initial-schema.sql) configures the existing bootstrap as SUPERUSER. Do not execute copied bootstrap SQL.
+- [Docker HBA](https://github.com/supabase/postgres/blob/73119f8bfae2bfb07ddfa18240ab8e5f56f737a8/ansible/files/postgresql_config/pg_hba.conf.j2) permits `local all supabase_admin trust`, bounded by OS/container access; [pg_ident](https://github.com/supabase/postgres/blob/73119f8bfae2bfb07ddfa18240ab8e5f56f737a8/ansible/files/postgresql_config/pg_ident.conf.j2) maps root/postgres/ubuntu to postgres without making it superuser.
+- [CLI v2.116.0 NewContainerConfig](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli-go/internal/db/start/start.go) retains the image bootstrap/HBA and local socket; its [schema template](https://github.com/supabase/cli/blob/997a1e69a4a83466964ed874d3a604c88a7b3866/apps/cli-go/internal/db/start/templates/schema.sql) does not override bootstrap/superuser/HBA. Separate native-stack examples are not this Docker venue.
+
+[PostgreSQL17 SESSION AUTHORIZATION](https://www.postgresql.org/docs/17/sql-set-session-authorization.html)
+requires the originally authenticated user to be superuser to select another
+user. One source-owned constant now binds local psql `-U`, both snapshot identity
+pins and both setup identity guards. `--no-password` adds no password/env/network
+fallback; the validated owned DB ID, PrivateCommand supervisor and implicit
+Unix socket are retained. Missing/non-super bootstrap fails closed without
+trying another login. The tested DELETE remains under the existing
+`supabase_auth_admin`, with session/current proof, not SET ROLE. No role attribute,
+ACL, owner, policy, config or account-deletion implementation changes.
+
+There are four generated UUIDs per fixture and 26 diagnostic flags, not 26 UUIDs.
+All original absence checks, Auth/FK pins, NULL semantics, baseline23503 gate,
+three rollbacks, forced ALL checks, tuple/fingerprint restoration and error
+primacy remain. Bootstrap RLS bypass/catalog visibility is not application-path
+evidence; minimal-graph/GoTrue/nonqualification limits above remain binding.
+Code/test checkpoint `1b691eeb082be47af789d2ed3d5204bd9ae69b45`, tested tree
+`fafaf4479d0857584a37b067b6ed2fa9ae08955a`: targeted probe/main Vitest 493 passed,
+scoped lint and web typecheck passed in the GitHub workspace (commands in
+[`HANDOFF.md`](../../HANDOFF.md)). CodeQL was incomplete, not passed.
+The accepted synchronous Opus consultation needs no further model review.
+Coordinator exact-source/core/fresh whole-path checks precede one corrected run;
+no runtime dispatch, same-head rerun or identification-only experiment here.
+Rollback-only stays ON/nonqualifying, original12 unrun, no permanent149 or
+production authorization.
 
 ### Manual Actions reference acceptance
 
