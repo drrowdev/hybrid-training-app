@@ -33,7 +33,7 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-09 (PR805 prerequisite attribution; no deletion measurement)
+**Last updated:** 2026-09-09 (PR805 bootstrap binding corrected; no new runtime measurement)
 
 ### PR805 temporary rollback-only route — current status
 
@@ -61,22 +61,41 @@ explicit atomic FALSE produces an ID; unknown-only failures can have
 No runner/main-test, browser case, fixture, role, permission or FK pin changes.
 This correction's write scope is the helper, its tests and these three docs.
 
-Diff check and secret scan passed; read-only review's Vitest matcher finding was
-fixed before the checkpoint. Targeted probe/main Vitest, scoped lint and web
-typecheck were not run under the source-writer execution restriction. CodeQL did
-not complete (Actions analysis failed; JavaScript database too large). Both
-commit identities were explicitly set/verified; the signing service failed
-before commit creation, so the ordinary fast-forward checkpoint is unsigned.
-The coordinator must verify actual Astra START+TERMINAL and preserved artifacts,
-then obtain one exact-final-head Opus review/core and fresh full-path guards
-before any new-head investigation.
+The earlier attribution checkpoint did not run targeted validation; that was
+not a restriction on this GitHub workspace. [Run 34316110081](https://github.com/drrowdev/hybrid-training-app/actions/runs/34316110081)
+at `b9806ec695640c7c8c837d11bd0086e22e4a561e` ended 05:48:27Z with
+`observed:true, matched:false, mismatched:["owner-super"]`, `probes:[]`.
+The initial session/current identity was `postgres`, without the required
+superuser attribute. No baseline/fixture/candidate DDL ran. Safe15 records were
+retained; official raw logs had already been consumed once and discarded.
+Native16/normal148/catalog/Auth5phase4DDL15contexts36HTTP/core/main/final cleanup
+passed. This identifies no application deletion cause.
 
-The migration0003/0059 declarations agree with the two expected inline RESTRICT
-FKs; image-owned owner/Auth-role attributes are not repository-pinned. Neither
-fact identifies the failed predicate. Attribution does not guarantee deletion
-measurement: a failed pin must stop the next reviewed run again. In particular,
-an observed `owner-super` mismatch needs a separately source-grounded
-role-fidelity design, not a lower guard or switched authorization mechanism.
+Accepted source-grounded correction `1b691eeb082be47af789d2ed3d5204bd9ae69b45`,
+tested tree `fafaf4479d0857584a37b067b6ed2fa9ae08955a`, binds the helper's
+local psql argv, snapshot identity pins and pre-fixture/setup guard to one
+source-owned `supabase_admin` constant. `--no-password` fails noninteractively;
+the owned DB ID, injected supervisor and implicit Unix socket remain unchanged.
+The image already supplies this bootstrap superuser; no credentials, fallback,
+role/ACL/owner/policy/config change or main-runner user change is introduced.
+`owner-super` and all Auth/FK pins remain mandatory. The DELETE still uses
+`SET LOCAL SESSION AUTHORIZATION supabase_auth_admin` with both identities checked.
+See [pinned source evidence](docs/knowledge/pool-swimming.md#bootstrap-identity-correction--2026-09-09).
+
+In this GitHub workspace, from the repository root:
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-fk-rollback-probes.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts` — 493 passed (87 probe, 406 main).
+- `pnpm --filter @hta/web exec eslint scripts/swim-fk-rollback-probes.ts src/lib/swim/__tests__/swim-fk-rollback-probes.test.ts` — passed.
+- `pnpm --filter @hta/web typecheck` — passed.
+
+Diff/secret checks passed. CodeQL remains incomplete (Actions failed; JavaScript
+database too large), not a security-analysis pass. Code/test author and committer
+were explicitly set and verified as Copilot with the 223556219 address and both
+AI trailers. No runtime SQL, Docker/stack/browser or workflow dispatch occurred.
+The accepted synchronous Opus consultation replaces the unavailable old handle;
+no duplicate review or additional model consultation is required. Coordinator
+inspection of exact completed source, real core and fresh whole-path guards
+still precedes the one corrected isolated run. No same-head rerun or further
+identification-only experiment; any future failed pin still stops closed.
 
 The unchanged Native16 prerequisite and normal148/catalog/Auth five-phase,
 four-DDL, fifteen-context/36HTTP path still precede the new stage. The stage uses

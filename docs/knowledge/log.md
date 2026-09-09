@@ -2148,3 +2148,37 @@ role-fidelity design, not weaker guards or switched authorization. Rollback-only
 remains ON/nonqualifying, exhausted Drizzle mode OFF; remove the temporary mode,
 not merely flip it, before repair/release acceptance. No migration149 or permanent
 FK semantics selected. See [contract](./pool-swimming.md#rollback-only-fk-diagnostics--temporary-source-route).
+
+## [2026-09-09] refine | PR805 existing bootstrap identity correction
+
+Continued exactly from `b9806ec695640c7c8c837d11bd0086e22e4a561e` on the existing
+PR805 branch. Owner-supplied run34316110081 ended 05:48:27Z with
+`observed:true, matched:false, mismatched:["owner-super"]`, `probes:[]`;
+initial session/current user postgres lacked superuser. No fixture/DDL or
+deletion measurement occurred; prerequisites/core/cleanup otherwise passed.
+Safe15 records retained, raw logs already consumed once and discarded.
+
+Accepted pinned Docker/CLI evidence supports the image's existing
+`supabase_admin` bootstrap login, not new privileges. One source constant binds
+the helper's local psql user, snapshot identities and setup guard; added
+`--no-password`, retaining the owned ID/supervisor/implicit socket. Mandatory
+owner-super/Auth/FK pins, Auth SESSION AUTHORIZATION DELETE, four UUIDs per
+fixture/26 flags, baseline23503, three rollbacks, forced checks, fresh restoration
+and error primacy remain. No main/main-test, migration, policy, role, config,
+dependency or account-deletion change.
+
+Code/test checkpoint `1b691eeb082be47af789d2ed3d5204bd9ae69b45`, tested tree
+`fafaf4479d0857584a37b067b6ed2fa9ae08955a`: GitHub-workspace targeted probe/main
+Vitest 493 passed (87+406), scoped ESLint passed, web typecheck passed; exact
+commands in [`HANDOFF.md`](../../HANDOFF.md). An initial command named a nonexistent
+main-test file and ran only 87 probe tests; the corrected two-suite command above
+passed before saving. Diff/secret checks passed. CodeQL incomplete: Actions
+analysis failed, JavaScript database too large; not a security-analysis pass.
+Explicit author/committer Copilot 223556219 and both AI trailers verified.
+
+No runtime SQL, stack/browser, production operation or workflow dispatch.
+The accepted synchronous consultation supersedes the unavailable reviewer;
+no further model chain. Coordinator inspects exact completed source, real core
+and fresh whole-path guards before one corrected isolated run. No same-head
+rerun/identification-only experiment. Rollback-only ON/nonqualifying, original12
+unrun; no permanent149 authorization. See [source evidence and limits](./pool-swimming.md#bootstrap-identity-correction--2026-09-09).
