@@ -1010,6 +1010,9 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(before.logs.length).toBe(1);
     expect(before.sessions.length).toBe(3);
     const completed = before.workouts.find((row) => row.status === "completed")!;
+    const inProgress = before.workouts.find((row) => row.status === "started")!;
+    expect(inProgress.session_id !== completed.session_id && before.sessions.some((row) =>
+      row.id === inProgress.session_id && row.completed_at === null && row.completion_outbox_entry_id === null)).toBe(true);
     const receipt = before.logs[0].client_log_id;
     expect(isUuid(receipt) && before.sessions.some((row) =>
       row.id === completed.session_id && row.completion_outbox_entry_id === receipt && !!row.completed_at)).toBe(true);
@@ -1054,6 +1057,9 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(isDeepStrictEqual(replaced.workouts.filter((row) => row.plan_id === original.planId), before.workouts)).toBe(true);
     expect(isDeepStrictEqual(replaced.history.filter((row) => row.workout.plan_id === original.planId), before.history)).toBe(true);
     expect(replaced.history.filter((row) => row.result !== null).length).toBe(1);
+    const retained = settledSwimResult(replaced.history.find((row) => row.workout.id === completed.id)!, archived.plans[0]);
+    expect(retained.lifecycle.archivedLate).toBe(false);
+    expect(countsTowardHistory(retained)).toBe(true);
     expect(isDeepStrictEqual(
       [replaced.sessions, replaced.logs, replaced.sets, replaced.regions, replaced.blocks, replaced.planned],
       [before.sessions, before.logs, before.sets, before.regions, before.blocks, before.planned],
@@ -1123,6 +1129,10 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       [entry.sessionId, entry.payload.sessionId, entry.payload.workoutId],
       [started.session_id, started.session_id, started.id],
     )).toBe(true);
+    expect(isDeepStrictEqual(
+      [entry.payload.lengths, entry.payload.timeMs, entry.payload.rpe, entry.payload.stroke, entry.payload.expectedRevision],
+      ["16", "900000", "6", "breaststroke", String(started.revision)],
+    )).toBe(true);
     expect(isDeepStrictEqual(await lifecycleState(admin, userId), before)).toBe(true);
 
     const online = await browser.newContext({ baseURL, viewport: { width: 375, height: 812 }, hasTouch: true });
@@ -1177,6 +1187,11 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       )).toBe(true);
       expect(!!session.completed_at && Date.parse(session.completed_at) >= Date.parse(transition!.recordedAt)).toBe(true);
       expect(session.deleted_at === null && session.performed_at === native.performed_at).toBe(true);
+      expect(isDeepStrictEqual(
+        [log.modality, log.duration_sec, Number(log.rpe), session.duration_min, Number(session.session_rpe)],
+        ["swimming", 900, 6, 15, 6],
+      )).toBe(true);
+      expect(log.swim_result.completion === "completed").toBe(true);
       expect(isDeepStrictEqual(
         [log.swim_result.lengths, log.swim_result.timeMs, log.swim_result.rpe, log.swim_result.snapshot.strokes],
         [16, 900000, 6, ["breaststroke"]],
