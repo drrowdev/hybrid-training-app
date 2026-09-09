@@ -204,7 +204,11 @@ const HINGE: NewMovement[] = [
   hinge("rdl-bb", "Romanian Deadlift (BB)", { equipment: "barbell", primaryMuscles: ["hamstrings", "glutes"], secondaryMuscles: ["lower_back", "lats"], metadata: { eccentric_cost: "high" } }),
   hinge("rdl-db", "Romanian Deadlift (DB)", { equipment: "dumbbells", primaryMuscles: ["hamstrings", "glutes"], secondaryMuscles: ["lats", "forearms", "traps", "lower_back"], axialLoad: "moderate" }),
   hinge("deficit-rdl", "Deficit RDL", { equipment: "barbell", metadata: { rom_profile: "deep" }, experienceMin: 2 }),
-  hinge("single-leg-rdl", "Single-Leg RDL", { equipment: "dumbbell-or-kb", bilateral: false, axialLoad: "moderate", primaryMuscles: ["hamstrings", "glutes"], secondaryMuscles: ["abductors", "lower_back"], experienceMin: 2 }),
+  // Keep the legacy DB slug so existing maxes and logged sets retain their
+  // movement id. The BB variant is separate because its load history and
+  // equipment availability must not be shared with the dumbbell movement.
+  hinge("single-leg-rdl", "Single-Leg Romanian Deadlift (DB)", { equipment: "dumbbells", bilateral: false, axialLoad: "moderate", primaryMuscles: ["hamstrings", "glutes"], secondaryMuscles: ["abductors", "lower_back", "lats", "forearms", "traps"], experienceMin: 2 }),
+  hinge("single-leg-rdl-bb", "Single-Leg Romanian Deadlift (BB)", { equipment: "barbell", bilateral: false, primaryMuscles: ["hamstrings", "glutes"], secondaryMuscles: ["abductors", "lower_back", "lats", "forearms", "traps"], experienceMin: 2 }),
   hinge("stiff-leg-deadlift", "Stiff-Leg Deadlift", { equipment: "barbell" }),
   hinge("good-morning", "Good Morning", { equipment: "barbell", primaryMuscles: ["hamstrings", "lower_back", "glutes"] }),
   hinge("seated-good-morning", "Seated Good Morning", { equipment: "barbell", primaryMuscles: ["lower_back", "hamstrings"], secondaryMuscles: ["lats", "forearms", "traps", "glutes"], experienceMin: 2 }),

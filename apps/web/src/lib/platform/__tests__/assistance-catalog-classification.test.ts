@@ -61,7 +61,12 @@ describe("5/3/1 assistance classification — real seed catalog", () => {
   });
 
   it("puts unilateral lower movements in single_leg", () => {
-    for (const n of ["Bulgarian Split Squat (DB)", "Pistol Squat", "Single-Leg RDL"]) {
+    for (const n of [
+      "Bulgarian Split Squat (DB)",
+      "Pistol Squat",
+      "Single-Leg Romanian Deadlift (DB)",
+      "Single-Leg Romanian Deadlift (BB)",
+    ]) {
       expect(slotOf(n), n).toBe("single_leg");
     }
   });

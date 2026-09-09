@@ -200,6 +200,52 @@ describe("movement catalog seed", () => {
     }
   });
 
+  it("seeds separate dumbbell and barbell single-leg Romanian deadlifts", () => {
+    const expected = [
+      {
+        slug: "single-leg-rdl",
+        name: "Single-Leg Romanian Deadlift (DB)",
+        equipment: "dumbbells",
+        axialLoad: "moderate",
+      },
+      {
+        slug: "single-leg-rdl-bb",
+        name: "Single-Leg Romanian Deadlift (BB)",
+        equipment: "barbell",
+        axialLoad: "high",
+      },
+    ];
+
+    for (const entry of expected) {
+      const movement = SEED.find((candidate) => candidate.slug === entry.slug);
+      expect(movement, `${entry.slug} missing from seed`).toBeTruthy();
+      expect(movement).toMatchObject({
+        displayName: entry.name,
+        pattern: "hinge",
+        primaryRegion: "hamstring_posterior",
+        equipment: entry.equipment,
+        axialLoad: entry.axialLoad,
+        bilateral: false,
+        isCompound: true,
+        experienceMin: 2,
+      });
+      expect(movement?.functionalRoles).toEqual([
+        "compound_assistance",
+        "single_leg",
+      ]);
+
+      const instructions = MOVEMENT_INSTRUCTIONS.find(
+        (candidate) => candidate.slug === entry.slug,
+      );
+      expect(instructions, `${entry.slug} missing instructions`).toBeTruthy();
+      expect(instructions?.setup?.toLowerCase()).toContain(
+        entry.equipment === "barbell" ? "barbell" : "dumbbell",
+      );
+      expect(instructions!.steps.length).toBeGreaterThanOrEqual(3);
+      expect(instructions!.cues.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
   it("step-ups name the box they need — the equipment inventory can't model one", () => {
     // `equipment` is tagged plainly (bodyweight / dumbbells / barbell) because
     // the inventory has no box field and a `bodyweight-box` tag would read as
@@ -541,7 +587,7 @@ describe("movement catalog seed", () => {
     const spinalLoaders = [
       "bb-row-overhand", "bb-row-underhand", "pendlay-row", "meadows-row", "t-bar-row",
       "ohp-standing", "push-press", "db-shoulder-press-standing", "landmine-press-standing", "z-press",
-      "hsr-rdl", "rdl-db", "single-leg-rdl", "kb-swing-american", "hsr-front-squat", "split-jerk",
+      "hsr-rdl", "rdl-db", "single-leg-rdl", "single-leg-rdl-bb", "kb-swing-american", "hsr-front-squat", "split-jerk",
     ];
     for (const slug of spinalLoaders) {
       expect(musclesOf(slug), `${slug} must tag lower_back`).toContain("lower_back");

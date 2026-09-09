@@ -426,11 +426,11 @@ describe("resolveRequiredEquipment — DB tag precedence over slug", () => {
       kind: "dumbbells",
     });
     expect(
-      resolveRequiredEquipment({ slug: "single-leg-rdl", equipment: "dumbbell-or-kb" }),
-    ).toEqual({
-      kind: "any_of",
-      requirements: [{ kind: "dumbbells" }, { kind: "kettlebells" }],
-    });
+      resolveRequiredEquipment({ slug: "single-leg-rdl", equipment: "dumbbells" }),
+    ).toEqual({ kind: "dumbbells" });
+    expect(
+      resolveRequiredEquipment({ slug: "single-leg-rdl-bb", equipment: "barbell" }),
+    ).toEqual({ kind: "barbell" });
   });
 });
 

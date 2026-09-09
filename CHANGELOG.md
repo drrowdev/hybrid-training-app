@@ -16,6 +16,10 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   The selected exercise now receives the session's normal main-lift dose, while
   supplemental replacements still keep their slot's supplemental prescription.
 
+### Single-leg Romanian deadlift variants
+- The movement catalog now has separate dumbbell and barbell Single-Leg
+  Romanian Deadlifts, with matching equipment filters and instructions.
+
 ### Plan refreshes preserve moved workouts
 - Workouts moved to another day now keep that placement when Edit plan or a
   rehab update refreshes the active plan. Older same-week moves are also

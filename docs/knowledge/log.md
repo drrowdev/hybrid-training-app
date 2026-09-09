@@ -1428,3 +1428,12 @@ exercise actually selected. A Front Squat replacing Zulu's deadlift slot uses
 the normal 3–5-set main-lift range instead of inheriting Deadlift's 1–3-set
 exception; Activation's deadlift-only range and taper follow the same rule.
 The program editor shows the replacement dose before deployment. No migration.
+
+## [2026-09-09] refine | Split single-leg Romanian deadlifts by implement
+
+The movement catalog now carries separate dumbbell and barbell Single-Leg
+Romanian Deadlifts with distinct equipment filters, instructions, and load
+histories. Migration 0145 updates the existing dumbbell row in place, preserving
+its UUID and every linked training max and logged set, then adds the barbell row.
+The rollback restores the legacy dumbbell-or-kettlebell definition and refuses
+to remove the barbell row after it has user references.
