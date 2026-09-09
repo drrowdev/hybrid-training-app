@@ -1868,3 +1868,31 @@ web typecheck and scoped lint passed; runtime acceptance remains pending
 exact-final-head review and the coordinator's ordinary 148 run. No database/
 container execution, workflow dispatch/rerun or merge occurred here.
 [Current status](./pool-swimming.md#shared-completion-integration--current-148-status).
+
+## [2026-09-07] refine | PR803 browser finishing integration
+
+The coordinator confirms the database milestone passed. Code checkpoint
+`230f09b0` wires the first four-case browser execution: R1 sealing after command
+reaping, process-primary failure projection, workflow control-path/child-env
+separation, pinned installation checks, consumed-source coverage, and awaited
+shutdown with slow success distinguished from genuine failure. R1 is unchanged.
+All 575 focused stage/acceptance/helper tests, web typecheck and scoped lint
+passed on the GitHub runner; no browser/database execution or workflow dispatch
+occurred here.
+
+Real browser reference remains pending the coordinator's combined R1+R2
+exact-head review and core CI in parallel, then **one normal-148 +
+four-browser-case reference** after all gates and fresh checks. These static
+results establish neither full standalone DC-SW1–SW9 nor production acceptance.
+[Current status](./pool-swimming.md#shared-completion-integration--current-148-status).
+
+## [2026-09-07] refine | PR803 collection-only loader regression and shutdown fix
+
+The pinned real Playwright `--list` regression reproduced exit 1 along the
+config/browser-helper/reporting/migration-evidence import boundary (loader code
+unknown). A pure extraction retains the same authored-error WeakMap and reporting
+exports; collection now exits 0 with exactly four known mobile cases and no
+executed results. Next 16.2.6 own-stop exit 143 is separately pinned and tested.
+Report absence is distinguished only after ticket/root validation; symlinks and
+other file errors remain rejected. 256 scoped tests, web typecheck and scoped
+lint pass. No live reference, server, browser, database or workflow dispatch ran.
