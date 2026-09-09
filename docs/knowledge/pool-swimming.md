@@ -262,7 +262,7 @@ SQL/schema/RLS/grant changes require a separately approved additive migration
 and rollback proposal. Mobile and actual shared-load-ledger acceptance remain
 blocked until the real RPC suite is fully green.
 
-### Reversible movement-reference candidate — source checkpoint, blocked
+### Reversible movement-reference candidate — verification corrected, live unrun
 
 [ADR 0080](../adr/0080-deferred-custom-movement-references.md) records the
 owner-approved two-FK maximum candidate: change only set_logs and
@@ -298,11 +298,27 @@ unrelated0115 duplicate_object); app23503 rehab handling, 23505 idempotency and
 0138 repoint-before-delete are unrelated/unchanged. External SQL clients were not
 audited. A discovered timing dependency blocks, rather than widens, this work.
 
-**Source blocker:** session_movements has no UPDATE/ALL RLS policy
+**Resolved verification mismatch:** session_movements has no UPDATE/ALL RLS policy
 (0059;0063 explicitly documents blocked real updates despite its UPDATE grant).
-C3's required existing-client UPDATE-to-absent cannot reach the FK. The strict
-23503 assertion remains; no RLS/grant change, bypass or zero-row success allowance
-was made. Owner/coordinator guidance is required before qualification.
+C3's existing-client UPDATE-to-absent cannot reach the FK. The coordinator
+directed separate proofs at the actual layers, with no RLS/grant/role or migration
+change. C3 keeps the four reachable23503 requests; its separate owned composite-key
+UPDATE requests a representation and requires no error and exactly zero returned
+rows, then fresh unchanged records and missing-parent-reference absence.
+This is RLS denial, not an authenticated23503 claim.
+
+After the two unchanged necessity probes, the owned bootstrap SQL connection
+separately tests current-candidate FK UPDATE integrity. The shared four-ID fixture
+is created in one ROLLBACK transaction. Candidate metadata, reference existence
+and absence of a movement at the generated set UUID are checked before UPDATE;
+setup constraints are forced outside the narrowly captured mutation attempt.
+The exact UPDATE must affect one row, then forced ALL checking must reject
+23503/session-movements. Fresh separate-connection schema/other-metadata/absence
+checks remain mandatory after success/error/disconnect. The strict
+`updateIntegrity` result starts not-attempted and cannot qualify without rejection,
+one row, forced checking and verified restoration. It is neither another
+necessity mode nor a thirteenth browser case; no owner impersonation or
+compensating deletion is used.
 
 C3 also adds referenced movement DELETE and orphan INSERT/UPDATE checks through
 the existing linked authenticated client, with fresh four-record preservation and
@@ -310,8 +326,10 @@ exact orphan-key absence reads after rejection. All native-control/Auth404/linke
 preservation/actual-deletion/absence assertions remain, as do C2 and the other ten
 cases. Both C2/C3 must actually pass on the normal candidate head; structural
 proof cannot replace them. Source tests/typecheck/lint and twelve-case collection
-are recorded in [HANDOFF](../../HANDOFF.md). Candidate runtime SQL, necessity,
-all36HTTP and positive C2/C3 remain **unrun**, not accepted. Production remains
+are recorded in [HANDOFF](../../HANDOFF.md):1148 targeted tests passed, typecheck/
+scoped lint passed, pinned collection12 identities/six files/zero executed results.
+Candidate runtime SQL, necessity, UPDATE integrity, authenticated RLS denial,
+normal149/all36HTTP and positive C2/C3 remain **unrun**, not accepted. Production remains
 separately gated.
 
 ### Rollback-only FK diagnostics — temporary source route

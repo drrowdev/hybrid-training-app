@@ -2218,3 +2218,42 @@ No runtime SQL, Docker/stack, browser execution or workflow dispatch. Candidate
 normal149/down/up/necessity/all36HTTP/C2/C3 remain unrun; production separately
 gated. [ADR0080](../adr/0080-deferred-custom-movement-references.md) added to index;
 pool-swimming/HANDOFF now distinguish current candidate from historical probes.
+
+## [2026-09-09] refine | Resolve UPDATE verification at RLS and FK layers
+
+Preserved candidate `e69153fde6f945ccc72dee0299b0abc587be7282`; correction
+checkpoint `123fd1765c8eee33f1e28bad4d622cc631836226`, tested tree
+`f0ccfad5161a68c900fcb54c568c0c1bd1abed02`. Coordinator correction resolves the
+source-proven validation mismatch, not an application permission bug.
+C3 retains four reachable request-end23503 checks, then separately pins the
+owned session_movements UPDATE to no error/empty returned array with fresh
+unchanged records and missing-parent-reference absence. Native control, linked
+identity preservation, actual Auth deletion and full absence checks remain.
+
+The existing durable helper adds one separately named `updateIntegrity` result
+after down/up and exactly two unchanged necessity probes. Shared synthetic
+Auth/profile/movement/session/set/reference setup and UPDATE live in one
+ROLLBACK transaction on the existing owned supabase_admin connection.
+Candidate metadata/reference existence/absent generated movement ID are checked;
+actual affected-row-one and forced ALL rejection23503/session-movements are
+mandatory. Setup errors, zero rows, missing forced check, wrong errors and
+unverified restoration fail closed. Fresh connection verifies semantic schema,
+other metadata and absence of every generated fixture ID after error/disconnect
+too. No compensating DELETE, owner impersonation, RLS/grant/role or migration
+change; no new mode, endpoint, fixture, registry change or browser case.
+
+GitHub source checks rerun: six existing Vitest suites **1148 passed**,
+web typecheck and three-file scoped ESLint passed. Actual pinned collection
+matched **12 identities / six files / zero executed results**, using expired
+synthetic credentials and private `/tmp` paths. Code secret/diff checks passed.
+Exact commands and collection report location are in HANDOFF. Author/committer
+Copilot223556219 and required AI trailers verified. ADR0080/HANDOFF/pool-swimming
+now distinguish source proof, owned SQL FK integrity and authenticated RLS denial.
+Historical index wording is not updated because this continuation permits only
+the exact seven specified paths.
+
+No live SQL, Docker/stack, browser execution or workflow dispatch occurred.
+Candidate normal149/down/up/both necessity proofs/UPDATE integrity/all36HTTP,
+authenticated RLS denial and positive C2/C3 remain unrun. Original migrations,
+identity146/147/148, five phases/four DDL/fifteen contexts, exact cleanup and all
+twelve positive cases remain required. No production authorization follows.

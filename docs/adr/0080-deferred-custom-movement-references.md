@@ -1,7 +1,7 @@
 # ADR 0080 — Deferred custom movement references
 
 **Date:** 2026-09-09  
-**Status:** Owner-approved reversible candidate; source checkpoint, **not acceptance-ready**.
+**Status:** Owner-approved reversible candidate; verification-layer correction complete in source, live acceptance unrun.
 Production remains separately gated. ADR 0080 was free at assigned head
 `1bb56a5b96a2209624125d811965e609c837b9e8`.
 
@@ -108,6 +108,20 @@ twelve-identity/six-file UI/API cohort, the relationship stage:
    changed mode bits; all other constraint tuples remain complete. Table/column/
    index/ACL/RLS/user-trigger metadata is compared privately. Public evidence is
    closed statuses and booleans, not catalog data, UUIDs or raw errors.
+5. After both necessity probes, separately tests UPDATE integrity against the
+   current candidate using the existing `supabase_admin` bootstrap socket.
+   This is SQL FK enforcement, not authenticated-user UPDATE permission. The
+   shared synthetic fixture is created in one transaction ending ROLLBACK.
+   Candidate definitions/metadata and fixture absence are checked before setup;
+   the exact reference row and absence of a movement at the generated set UUID
+   are checked before mutation. Setup constraints are forced before the narrow
+   attempt. One exact session_movements UPDATE must affect one row, then forced
+   ALL checking must reject 23503 on its movement-reference FK. Setup errors,
+   zero rows, other errors or missing forced checking cannot qualify.
+   A fresh connection verifies candidate semantics, unchanged other metadata and
+   absence of every fixture ID even after error/disconnect. The strict
+   `updateIntegrity` record starts not-attempted; overall matched requires this
+   restored rejection, down/up and both unchanged necessity proofs.
 
 Unverified restoration fails closed, without compensating row deletion or silent
 repair. Existing exact owned-stack cleanup remains the last safety net.
@@ -115,27 +129,30 @@ repair. Existing exact owned-stack cleanup remains the last safety net.
 C3 retains the native control, Auth404, linked preservation, actual linked Auth
 deletion, and native/custom absence assertions. Added requests use the existing
 linked authenticated client: reject referenced movement deletion, orphan INSERT
-into both tables, and both reference UPDATEs with 23503 at request end. Fresh
+into both tables, and set_logs reference UPDATE with 23503 at request end. Fresh
 reads compare the original four custom records and check exact orphan keys after
 each rejection. C2 and the other ten cases are not weakened.
 
-### Blocking source finding: authenticated session-movement UPDATE
+### Resolved verification mismatch: authenticated session-movement UPDATE
 
 `0059_session_movements.sql` defines only SELECT, INSERT and DELETE policies.
 `0063_session_movements_grant_update.sql` grants UPDATE but explicitly documents
 that RLS blocks real updates; no later migration adds an UPDATE/ALL policy.
 Consequently the required existing-client UPDATE cannot reach this FK: a direct
-filtered UPDATE normally affects zero visible rows, not 23503. The strict C3
-assertion is retained and will fail rather than accept that outcome.
+filtered UPDATE affects zero rows, not 23503. Under the coordinator's approved
+verification correction, C3 separately issues that owner request with all owned
+composite-key filters and a returned representation, requiring no error and
+exactly `[]`. Fresh unchanged four-record and missing-parent-reference checks
+follow. It does not invent an authenticated FK rejection from zero affected rows.
 
-Resolving this conflicts with the explicit prohibition on RLS changes. No policy,
-grant, bypass or alternative success criterion was introduced. **Owner/coordinator
-guidance is required before qualification or live acceptance.** This checkpoint
-does not claim both C2/C3 can pass, nor should it be treated as ready for a live
-acceptance dispatch.
+No policy, grant, role or migration semantics changed. Both protections are
+tested at their actual layers: authenticated RLS denial in C3, actual FK UPDATE
+rejection in the owned SQL assertion above. This resolves the source-proven
+validation blocker without another approval loop or an extra browser case.
+Neither assertion has yet been measured live on this candidate.
 
 Source unit/lint/type checks and collection are not SQL execution. Live up/down,
-necessity, normal149, all36HTTP and C2/C3 at this candidate remain unrun. Both real
+necessity, UPDATE integrity, normal149, all36HTTP and C2/C3 at this candidate remain unrun. Both real
 positive flows and all integrity requirements must pass before acceptance; no
 source or structural measurement supplies release/production approval.
 
