@@ -2079,3 +2079,33 @@ private runtime-log access or repeat UI probe occurred. All caps remain enforced
 coordinator exact-final-head review/core and fresh guards precede one new-head
 twelve-case reference on the existing route. See
 [current scope and outcome boundaries](./pool-swimming.md#shared-completion-integration--current-148-status).
+
+## [2026-09-09] refine | PR805 owner-approved rollback-only diagnostic source
+
+Checkpoint `c74b5a3f4029f66d0c8c17558a129d476fe9f3db`, tested tree
+`bbd5127fe57a6042fc2a30321c3b92c5910d00cf`, adds only the runner integration,
+injected helper and focused source tests before this documentation follow-up.
+450 tests passed across the two targeted Vitest suites; scoped ESLint, web
+typecheck and secret scanning passed. Both commit identities were explicitly
+set/verified as Copilot with the 223556219 address and AI trailers.
+
+The owner selected rollback-only checks, not a permanent migration. The source
+literal is ON: unchanged Native16/normal148/catalog/Auth5phase4DDL15contexts/36HTTP
+prerequisites precede three separately bounded rollback transactions, with the
+expected baseline23503 gate before either NO ACTION candidate. All fixture
+creation is transactional, tested DELETE uses existing Auth session authorization,
+and fresh owned connections verify original tuples/other-FK fingerprint and
+fixture absence after every attempt. No compensating mutations or retries.
+Safe records and terminal summaries are nonqualifying; all twelve existing UI/API
+case sources remain unchanged and this route does not run them.
+
+Run34287396820 at7d0fb2c failed C2/C3; C3 native-only control passed and the linked
+graph remained intact before direct Auth admin5xx, without SQLSTATE/constraint.
+No repeated UI probe, SQL/stack/browser execution or workflow dispatch occurred
+in this source task. Exact-final-head review/core/fresh full-path guards remain
+required before one rollback-only run. Remove—not flip—the temporary mode before
+repair-head/release acceptance. Candidate outcomes do not select a permanent mode,
+prove GoTrue equivalence, or substitute for positive C2/C3 acceptance following a
+separately approved repair. No migration149. Contract:
+[rollback-only diagnostics](./pool-swimming.md#rollback-only-fk-diagnostics--temporary-source-route),
+covering [DC-SW8](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).
