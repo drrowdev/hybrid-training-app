@@ -125,7 +125,7 @@ WITH relationships AS (
     (SELECT jsonb_agg(to_jsonb(t) ORDER BY oid) FROM pg_catalog.pg_trigger t WHERE NOT tgisinternal)
   ) AS value
 ), evidence AS (
-  SELECT (SELECT count(*) = 2 AND COALESCE(bool_and(matched), false) FROM props) AS shapes,
+  SELECT (SELECT count(*) = 2 AND COALESCE(bool_and(props.matched), false) FROM props) AS shapes,
     (SELECT md5(COALESCE(jsonb_agg(tuple - ARRAY['oid','confdeltype','condeferrable','condeferred']
       ORDER BY conrelid, conname), '[]'::jsonb)::text) FROM targeted) AS semantics,
     md5(jsonb_build_array(
