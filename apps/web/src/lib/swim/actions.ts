@@ -15,6 +15,7 @@ import type { SwimActualResult, SwimDecisionRecord } from "@hta/db";
 import { addDaysToYmd } from "@/lib/dates";
 import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-completion-recompute";
 import type { ActionResult } from "@/lib/offline/outbox-core";
+import { prescriptionsEquivalent } from "@/lib/platform/forward-rewrite";
 import * as storage from "./storage";
 import { assertSwimSafety, swimWorkoutSafetyExposure } from "./safety";
 import { parseActualForm, parseSetupForm, parseBenchmarkForm, parseSwimDate, parseSwimObservation } from "./forms";
@@ -267,7 +268,7 @@ function futureUpdates(plan: SwimPlan, workouts: storage.SwimWorkoutRow[], today
     const current = swimWorkoutDefinition(row);
     const next = issued.get(current.slotId);
     if (!next) return [];
-    const changed = JSON.stringify(next) !== JSON.stringify(row.definition.issued);
+    const changed = !prescriptionsEquivalent(next, row.definition.issued);
     const confirmed = confirmWorkoutIds?.includes(row.id) ?? false;
     if (!changed && !(confirmed && current.provisional)) return [];
     const definition: StandaloneWorkoutDefinition = {
