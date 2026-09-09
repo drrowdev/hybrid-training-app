@@ -2632,3 +2632,33 @@ hooks enabled. Full history fetched after the initial shallow push rejection.
 Only the four authorized paths change; all prior identity wiring, boundary/tag
 policy and 18-case source remain intact. No history rewrite, engine/DC-*/OC-*,
 product/DB/RLS/dependency changes or live swimming acceptance.
+
+## [2026-09-09] decision | Accept both official Copilot bots and native author credit
+
+Owner decision supersedes the earlier CLI-only attribution policy. Added only
+`198982749+Copilot@users.noreply.github.com` (official cloud bot) to the exact
+allowlist, retaining the official CLI bot, owner and GitHub addresses. Both
+author and committer still undergo complete introduced-history checking,
+including merges, exact whitespace and unchanged event/range/pre-push rules.
+Native authorship by either approved bot is sufficient AI credit; human-authored
+AI edits still need AI co-author credit. Existing credits/signatures remain
+untouched. Prior metadata repairs stay as recorded; all prior rewrite approvals
+are consumed. No history rewrite or signature stripping occurred.
+
+PR805 continued from `030160f8afb883cb650ceb6647c290c93c5b6e56`, declared base
+`e2758dadbb110e03794e49d53b47622a6295e988`. Code checkpoint
+`94193697bbc4d4df692786daaee3c55b9400155c`, tree
+`2a9c3d74238d9f9b34ab2e8e30d05fa282eb3091`, was tested and published before docs.
+Local/public metadata confirms native cloud author and GitHub committer within
+the new policy; the signed commit retains its credits. All 39 targeted tests,
+scoped ESLint, Node syntax, web typecheck and offline doc drift passed; commands
+are in HANDOFF. Secret scan clean. CodeQL returned zero alerts but Actions failed
+and JavaScript was size-skipped, not a successful analysis.
+
+The policy resolves attribution of legitimate cloud output, not code quality
+or production readiness. Run34392005044 covers immutable old030160, not this
+changed head. All 18 source cases remain unchanged; no new runtime claims.
+No full reference or CI dispatch, SQL/Docker/browser execution, production work,
+or changes outside the five authorized paths. Builder B owns only the persistence
+swimming spec on PR811. Full reference remains gated on completed writers,
+inspection of current source and that source's own appropriate green CI.

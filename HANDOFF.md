@@ -2,6 +2,47 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## Official Copilot attribution policy — 2026-09-09
+
+Owner decision: **accept both official bots and native author credit**. This
+supersedes earlier CLI-only policy, not the historical repair records below.
+Both exact Copilot emails (cloud `198982749`, CLI `223556219`) are allowed
+alongside the unchanged owner and GitHub addresses. Native bot authorship is
+sufficient AI credit; human-authored AI edits still need AI co-author credit.
+Existing credits and signatures stay intact. Prior metadata repairs remain as
+recorded; **all prior rewrite approvals are consumed**.
+
+Continued PR805 from `030160f8afb883cb650ceb6647c290c93c5b6e56`, base
+`copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+**Tested code checkpoint:** `94193697bbc4d4df692786daaee3c55b9400155c`,
+tree `2a9c3d74238d9f9b34ab2e8e30d05fa282eb3091`, published before these docs.
+Local/public metadata match: author
+`copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>`,
+committer `GitHub <noreply@github.com>`; signature retained. No identity
+substitution, history rewrite or hook bypass. Initial shallow-history push
+was blocked; `git fetch --unshallow origin` restored required history.
+
+Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+- `pnpm --filter @hta/web exec vitest run src/lib/__tests__/commit-identity-guard.test.ts`
+  — **39 passed**; original negative/history/whitespace/signature/boundary tests
+  retained, both bot author/committer pairings accepted, unknown GitHub emails rejected.
+- `pnpm --filter @hta/web exec eslint src/lib/__tests__/commit-identity-guard.test.ts`
+  and `apps/web/node_modules/.bin/eslint --config apps/web/eslint.config.mjs scripts/check-commit-identities.mjs`
+  — passed; existing root React/pages configuration warnings.
+- `node --check scripts/check-commit-identities.mjs`,
+  `pnpm --filter @hta/web typecheck`, `pnpm docs:check-drift`, `git diff --check`
+  — passed; doc drift is offline/in-repository only.
+
+Secret scan clean. CodeQL returned zero alerts, but Actions analysis failed
+and JavaScript was size-skipped: **no successful security analysis claimed**.
+This policy resolves attribution of legitimate cloud output, **not code quality
+or production readiness**. Run `34392005044` validates immutable old `030160`,
+not the changed head. No CI dispatch or full reference run; a full reference
+must wait for writers to finish, current source inspection and its own appropriate
+green CI. All 18 existing source cases remain unchanged; no new runtime claims.
+Builder B independently owns only the persistence swimming spec on PR811.
+Only the five owner-authorized paths change; no DC-*/OC-*, production or DB work.
+
 ## Exact-identity output refinement — 2026-09-09
 
 Continued PR805 from `5946bd020f637f36388109898f162a284eb9ede8`.
@@ -1627,7 +1668,8 @@ every required variable.
 
 ## Conventions reminder
 
-- Every code commit AI assistants make includes the trailer:
+- Human-authored AI edits need AI co-author credit; native authorship by either
+  approved Copilot bot is sufficient without an extra trailer. Example credit:
   `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
 - Every change to wiki pages appends to `docs/knowledge/log.md`.
 - Every new wiki page is added to `docs/knowledge/index.md`.
