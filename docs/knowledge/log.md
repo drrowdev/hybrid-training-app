@@ -2369,3 +2369,63 @@ JavaScript analysis skipped because its database was too large; this is not a
 security-analysis pass. Final helper/main Vitest rerun **524 passed** (118/406).
 Working tree was clean after the implementation commit; this documentation-only
 follow-up records the checkpoint and analysis limitation.
+
+## [2026-09-09] refine | Preserve twelve-case account milestone; append B3/B4/B5 source coverage
+
+Continued exact `bb9aa524f3132ac392b963fc9166f2cc90acfcf3` in existing PR805,
+without branch/base/history changes. Coordinator's safe milestone:
+[run34339663834](https://github.com/drrowdev/hybrid-training-app/actions/runs/34339663834)
+completed10:25:00Z SUCCESS at that exact head. Original12 passed once, zero
+unexpected/skipped/flaky, measured total63,937ms. C2 real app deletion, C3 linked
+Auth deletion, owner integrity and survivor checks passed.
+Native16/normal149/catalog/Auth5phases4DDL15contexts/all36HTTP/core/main/final
+cleanup passed. Single-FK down/up, baseline23503/set-logs, candidate Authdelete1
+plus forced success, UPDATE23503/set-logs with row1 plus forced checks, and all
+schema/fixture restoration passed. GitHub metadata corroborates success; no
+private runtime logs reread. Account-deletion blocker closed, not standalone
+completion or release.
+
+Code checkpoint `b29c9cc399e4db21341eea2dbf96969485a3105e`, tested tree
+`c7e14f0b844f0faefd527f013479bbb5f880ef73`, was saved before documentation.
+DC-SW4/SW5/K4 coverage appends real UI plateau Reject, high-effort/missed
+warning Override and missing-effort Accept-hold cases to the same B spec.
+Canonical histories pin12×2/rest25 hold,11×2/rest25 reduce and unchanged12×2/rest25
+respectively. The integer-repeat form has no choice between11 and12; override8
+is the nearest downward choice producing the existing seven-length-cap warning,
+with canonical27-length future target and no catch-up. Audit inputs/versions,
+native results, started/original work, IDs/dates/budgets/counts and reload/re-review
+stability are asserted. B1/B2 and all existing fixture/helper implementations
+are unchanged by exact source comparison.
+
+Original12 identities/order remain; C2index9,Dindex10,C3index11 and new
+B3/B4/B5 at12/13/14. Six file counts2/2/2/5/3/1. Reader negatives retain old4/6/8/11
+and add old12-only removal plus all same-total new-case substitutions by B1/B2
+or another new case. A shuffled grouped-file regression verifies exact-identity
+mapping; test fixture C2 selection no longer assumes flattened file order.
+Strict attempts/results/skip/flaky/privacy/per-point annotation gates remain.
+
+Commands in `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts` — **431 passed** (430 reader,1 collection).
+- Existing isolated collection invokes installed Playwright1.60.0 CLI `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json`: **15 exact identities/six files/zero executed results/errors**; checked private cleanup.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts` — **55 passed**.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-decisions-offline-mobile.spec.ts scripts/swim-browser-acceptance.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts` — passed.
+- `pnpm --filter @hta/web typecheck` and `git diff --check` — passed.
+
+Secret scan passed. CodeQL skipped test/casebook-only changes as trivial;
+not a full security-analysis pass. Terminal commits explicitly override author
+and committer to Copilot223556219, with both required AI trailers; local and
+remote metadata for the code checkpoint verified. Only the four allowed code/
+test paths plus HANDOFF/pool-swimming/this append-only log change.
+
+**New fifteen-case runtime is unrun.** No source/collection standalone gate
+closure, SQL/Docker/browser execution, workflow dispatch, hosted access,
+Auth/product/schema/permissions/dependency/main/stage/config/workflow changes
+or separate model/reviewer chain. Production OAuth reauthentication is outside
+this task. Other lifecycle/analytics/scaling/concurrency variants remain.
+Unchanged30s/case,300s global,330s command,590s phase,410s server,35m total with3m
+cleanup,45m job;63,937ms is a historical measurement, not a future fit promise.
+
+Documentation validation: `pnpm docs:check-drift` passed its in-repo checks
+(private workspace parity not run); diff/secret checks passed, exactly seven
+allowed paths changed, and the pre-existing knowledge log is an exact prefix.

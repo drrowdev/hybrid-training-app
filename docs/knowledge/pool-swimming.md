@@ -5,6 +5,64 @@ Authority: [ADR 0079](../adr/0079-pool-swim-track-and-calendar.md) and
 The standalone track is separate from primary programs. Filling an existing
 program's cardio slots is the next slice, not part of this implementation.
 
+## Latest acceptance checkpoint — 2026-09-09
+
+[Run34339663834](https://github.com/drrowdev/hybrid-training-app/actions/runs/34339663834)
+at exact `bb9aa524f3132ac392b963fc9166f2cc90acfcf3` completed10:25:00Z SUCCESS.
+All original12 cases passed once, zero unexpected/skipped/flaky; measured total
+**63,937ms**. C2 real app deletion and C3 linked Auth deletion, owner integrity and
+survivor checks passed. Native16/normal149/catalog/Auth five phases/four DDL/
+fifteen contexts/all36HTTP/core/main/final cleanup passed. Single-FK down/up,
+baseline23503/set-logs, candidate Authdelete1 plus forced success,
+UPDATE23503/set-logs with row1 plus forced checking, and full schema/fixture
+restoration passed. This coordinator-supplied safe record **closes the
+account-deletion blocker**, superseding historical pending statements below;
+it does not close all standalone requirements or authorize release.
+
+The new **fifteen-case cohort is source/collection only, not runtime acceptance**.
+Code `b29c9cc399e4db21341eea2dbf96969485a3105e`, tested tree
+`c7e14f0b844f0faefd527f013479bbb5f880ef73`, appends three cases to the existing B
+spec and describe, reusing the existing local actor and canonical helpers:
+
+- **B3 / DC-SW4/SW5:** both settled source swims complete at moderate RPE7;
+  literal hold12×2/rest25. Real Review/Reject preserves issued/original work,
+  exact consulted-input/version audit, history and reload/re-review idempotency.
+- **B4 / DC-SW4/SW5/K4:** one past swim never started, the other natively
+  completes partial18/35 lengths at RPE9; literal reduce11×2/rest25,33 total.
+  Only integer repeats are editable, so a reduction between11 and12 is
+  impossible. Choosing8×2/rest25,27 total, is the nearest downward alternative
+  that exceeds the seven-length advisory cap and produces the existing warning.
+  The canonical generator validates it before UI submission. Audit and warning
+  association persist; only the eligible target changes, never catch-up.
+- **B5 / DC-SW4/SW5:** completed work with null effort holds12×2/rest25,35 total.
+  Real Accept retains missingness and no calibration, permits canonical issue/
+  revision/provisional changes, freezes the started target, and remains stable
+  after reload/re-review.
+
+Literal outcomes accompany full canonical audit/projection comparisons. All
+three retain IDs/dates/budgets/counts and source actuals. B1/B2 and all existing
+fixtures are unchanged. Original12 casebook identities/order remain exactly:
+C2index9,Dindex10,C3index11; B3/B4/B5 append at12/13/14. The same six files now
+contain2/2/2/5/3/1 cases. Grouped B/C results must be matched by exact identity,
+not contiguous ledger position. Old4/6/8/11/12 cohorts and same-total new-case
+substitutions fail the reader; no attempts/skip/flaky/privacy/annotation waiver.
+
+GitHub workspace validation:431 reader/collection tests and55 existing engine
+tests passed; scoped lint, web typecheck, diff and secret checks passed.
+The actual pinned Playwright1.60.0 `--list` collected15 exact identities in six
+files, zero executed results/errors, with existing isolated private cleanup.
+CodeQL skipped the test/metadata-only change as trivial, not a full analysis pass.
+Exact commands and commit-identity verification are in
+[HANDOFF](../../HANDOFF.md#pr805-b3b4b5--sourcecollection-checkpoint-live-fifteen-case-acceptance-pending).
+
+No live browser/DB/Docker/SQL, workflow dispatch, hosted credentials or Auth
+changes in this source task. Production OAuth reauthentication is unrelated.
+Live15 acceptance is later; lifecycle/analytics/scaling/concurrency variants
+remain. No standalone gate closes from source/collection. Limits stay30s/case,
+300s browser global,330s command,590s phase,410s server,35m total including3m
+cleanup and45m job. Nominal case maxima exceeding global300s are not a case-count
+cap or fit guarantee; future measured over-budget execution must fail.
+
 ## Evidence and its limits
 
 The workouts are original compositions. The following sources support the
@@ -262,7 +320,10 @@ SQL/schema/RLS/grant changes require a separately approved additive migration
 and rollback proposal. Mobile and actual shared-load-ledger acceptance remain
 blocked until the real RPC suite is fully green.
 
-### Reversible movement-reference candidate — set_logs only, live acceptance pending
+### Reversible movement-reference candidate — historical source checkpoint before bb9aa acceptance
+
+The pending statements here record the earlier source checkpoint. The latest
+twelve-case/down-up/account milestone above supersedes those evidence gaps.
 
 [ADR 0080](../adr/0080-deferred-custom-movement-references.md) records the
 owner-approved two-FK maximum, now narrowed to the measured minimum: change only

@@ -15,13 +15,14 @@ accept explicit slot intents, including zero-slot weeks. Course-specific native
 distance and millisecond results are authoritative; generic cardio summaries
 exist for compatibility and shared workload only.
 
-The current PR802 continuation authorizes disposable localhost services on the
-cloud runner only, not hosted credentials. The twelve-case reference at `7d0fb2c`
-passed ten and failed C2/C3. The reversible movement-reference candidate below
-is now narrowed to set_logs only: run34336292485 at `0b3b7401` proved that the
-set-logs-only partial candidate structurally succeeds. The guard correctly
-rejected the two-FK scope. Live validation of the narrowed source and C2/C3
-proof remain pending.
+The original twelve-case reference at exact `bb9aa524f3132ac392b963fc9166f2cc90acfcf3`
+passed in run34339663834, completing 2026-09-09 at10:25:00Z. C2 app deletion and
+C3 linked Auth deletion, owner integrity and survivor checks passed. This closes
+the account-deletion blocker, not all standalone requirements or release.
+PR805 now appends B3/B4/B5: fifteen-case source and collection are validated, but
+the new cohort has **not executed**. This continuation is source-only; no hosted
+resources/credentials or Auth changes. Production's OAuth reauthentication need
+is unrelated to this work.
 Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
@@ -36,9 +37,78 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-09 (0b3b7401 measured result; single-FK source narrowing)
+**Last updated:** 2026-09-09 (bb9aa twelve-case milestone; fifteen-case source unrun)
 
-### PR805 reversible movement-reference candidate — set_logs only, live acceptance pending
+### PR805 B3/B4/B5 — source/collection checkpoint, live fifteen-case acceptance pending
+
+Continues exact `bb9aa524f3132ac392b963fc9166f2cc90acfcf3` on the existing
+`copilot/new-acceptance-cases`, base `copilot/prepare-mobile-persistence-tests` at
+`4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. No branch/base/history change.
+
+**Preserved measured milestone:** [run34339663834](https://github.com/drrowdev/hybrid-training-app/actions/runs/34339663834)
+at exactbb9aa completed10:25:00Z SUCCESS. All original12 passed once, with zero
+unexpected/skipped/flaky cases, measured total **63,937ms**. C2 real app deletion,
+C3 linked Auth deletion, owner integrity and survivor checks passed.
+Native16/normal149/catalog/Auth five phases/four DDL/fifteen contexts/all36HTTP/
+core/main/final cleanup passed. Single-FK down/up, baseline23503/set-logs,
+candidate Authdelete1 plus forced success, UPDATE23503/set-logs with row1 plus
+forced checks, and every schema/fixture restoration passed. GitHub run metadata
+confirms success; detailed evidence here is the coordinator's safe record, not
+reread private logs. This supersedes the historical C2/C3 blockers below.
+
+Code checkpoint `b29c9cc399e4db21341eea2dbf96969485a3105e`, tested tree
+`c7e14f0b844f0faefd527f013479bbb5f880ef73`, adds actual decision-UI cases for
+[DC-SW4/DC-SW5](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+and DC-K4, without changing B1/B2 or existing fixture/helper implementations:
+
+- **B3:** both source swims completed at RPE7; literal HOLD12×2/rest25.
+  Reject retains all issued/original work and actual history; exact audit and
+  reload/re-review prove one rejection with no next-week application.
+- **B4:** a genuinely unstarted past swim plus native partial18/35 lengths at
+  RPE9; literal REDUCE11×2/rest25 (33 total lengths). The form accepts integer
+  main repeats, so none lies between11 and12. Choose8×2/rest25 (27 total lengths):
+  the nearest downward choice exceeding the seven-length advisory cap, producing
+  the existing recorded/displayed warning without added catch-up. Canonical
+  validation precedes the UI action; one started target remains frozen.
+- **B5:** completed native source results retain null effort; literal
+  HOLD12×2/rest25 (35 total lengths). UI Accept confirms only the eligible target,
+  allowing canonical issue/revision/provisional metadata while freezing started
+  work, original history and calibration. Reload/re-review cannot advance again.
+
+Original12 identities/order are unchanged: C2index9, Dindex10, C3index11;
+B3/B4/B5 append at12/13/14. Six files have counts2/2/2/5/3/1. The reader
+regressions map grouped B/C results by exact file/describe/title, not flattened
+position. Old4/6/8/11 and old12-only rejection, same-total missing-new-case
+substitutions, attempts/skip/flaky/privacy and per-point annotation gates remain.
+No main/workflow/stage/config/DB/identity/dependency/product change.
+
+Validation in `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts` — **431 passed** (430 reader,1 collection).
+- The collection test invokes installed Playwright**1.60.0** CLI `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json` in its existing isolated environment: **15 exact identities/six files/zero executed results/errors**, checked private cleanup.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts` — **55 passed**.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-decisions-offline-mobile.spec.ts scripts/swim-browser-acceptance.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts` — passed.
+- `pnpm --filter @hta/web typecheck` and `git diff --check` — passed.
+- `pnpm docs:check-drift` — in-repo checks passed; private workspace parity not run.
+
+Secret scan passed. CodeQL classified the test/casebook-only change as trivial
+and skipped analysis; not a full security-analysis pass. Explicit terminal
+author/committer overrides and both AI trailers were verified locally; GitHub
+remote metadata confirms both identities as Copilot223556219.
+
+No SQL/Docker/browser execution, workflow dispatch, hosted access or additional
+model/reviewer chain occurred. **Live fifteen-case reference remains pending**;
+source/collection closes no standalone gate. Other lifecycle/analytics/scaling/
+concurrency variants and release approval remain. Time limits are unchanged:
+30s/case,300s browser global,330s command,590s phase,410s server,35m total with3m
+cleanup,45m job. Fifteen nominal maxima exceed300s, as twelve did;63,937ms is
+historical measurement, not a fit guarantee. A future over-budget run must fail,
+not waive limits.
+
+### PR805 reversible movement-reference candidate — historical source checkpoint before bb9aa acceptance
+
+The pending statements in this section describe the earlier source checkpoint;
+the twelve-case/down-up/account evidence above supersedes them.
 
 Continues exact `0b3b7401ec2a485ee1ea1f0304d2d3e0f09544a8` on
 `copilot/new-acceptance-cases`, without branch/base/history changes.
@@ -316,7 +386,7 @@ or release acceptance.** No measurement selects a permanent mode; in particular
 an immediate-mode success is not a trigger-order guarantee. A separately
 owner-approved repair must still pass positive C2/C3 Auth API/UI acceptance.
 
-### PR805 expanded browser cohort — current status
+### PR805 expanded browser cohort — historical eleven/twelve-case checkpoints
 
 The immutable eight-flow milestone is `95cbfb537884e65e2ec3ba6b67cf3c7ff303628a`:
 [full run 34258502119](https://github.com/drrowdev/hybrid-training-app/actions/runs/34258502119)
