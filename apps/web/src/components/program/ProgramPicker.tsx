@@ -101,6 +101,7 @@ import {
   pruneAssignments,
   pruneRehabLinks,
 } from "@/lib/rehab-protocols/attachment";
+import type { RehabProtocolItem } from "@/lib/rehab-protocols/item-schema";
 
 /** Stencil "code" + Oswald kicker shown on each program card (step 1). */
 const CARD_META: Record<string, { kick: string; code: string }> = {
@@ -700,16 +701,7 @@ const WD = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 type DayType = "strength" | "cardio" | "rehab" | "rest";
 
 /** A rehab item exactly as the customization stores it. */
-export type SerializedRehabItem = {
-  movementId: string;
-  movementName: string;
-  side?: "both" | "left" | "right";
-  sets: number;
-  reps?: number;
-  holdSeconds?: number;
-  targetWeightKg?: number;
-  instructions?: string;
-};
+export type SerializedRehabItem = RehabProtocolItem;
 
 type ActivationSessionDraft = {
   day: number;

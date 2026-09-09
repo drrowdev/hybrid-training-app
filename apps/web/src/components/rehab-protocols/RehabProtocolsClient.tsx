@@ -3,12 +3,20 @@
 /**
  * The rehab-protocol library UI: a list of saved protocols and an editor.
  *
- * Copy here follows the UI rule in AGENTS.md — labels and states only. The one
- * place a rule is spelled out is the delete error, because that is the one
- * place the rule stops the user.
+ * Copy follows AGENTS.md: labels and states, with rules explained at validation
+ * errors rather than pre-emptively.
  */
-import { useMemo, useState, useTransition } from "react";
+import { useId, useMemo, useRef, useState, useTransition } from "react";
+import { formatRehabReps } from "@hta/domain";
 import type { RehabProtocolItem, RehabProtocolRow } from "@/lib/rehab-protocols/queries";
+import {
+  parseRehabProtocolDraft,
+  type RehabProtocolDraftItem,
+} from "@/lib/rehab-protocols/editor";
+import {
+  rehabProtocolInputSchema,
+  REHAB_PROTOCOL_MAX_NAME,
+} from "@/lib/rehab-protocols/schema";
 import { formatProtocolSummary } from "@/lib/rehab-protocols/summary";
 import type { SessionLink } from "@/lib/platform/session-links";
 import { rehabLinkableMovements } from "@/lib/platform/rehab-links";
@@ -34,7 +42,7 @@ type Props = {
 type Draft = {
   id: string | null;
   name: string;
-  items: RehabProtocolItem[];
+  items: RehabProtocolDraftItem[];
   links: SessionLink[];
 };
 
@@ -69,7 +77,10 @@ export function RehabProtocolsClient({
     setDraft({
       id: protocol.id,
       name: protocol.name,
-      items: protocol.items.map((item) => ({ ...item })),
+      items: protocol.items.map(({ reps, repRange, ...item }) => ({
+        ...item,
+        reps: formatRehabReps({ reps, repRange }),
+      })),
       links: protocol.links.map((link) => ({ ...link })),
     });
   };
@@ -77,10 +88,12 @@ export function RehabProtocolsClient({
   const save = () => {
     if (!draft) return;
     setError(null);
-    const payload = {
-      name: draft.name.trim(),
-      definition: { items: draft.items, links: draft.links },
-    };
+    const parsed = parseRehabProtocolDraft(draft);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+    const payload = parsed.value;
     startTransition(async () => {
       const result = draft.id
         ? ((await updateAction(draft.id, payload)) as unknown as SaveResult)
@@ -277,7 +290,7 @@ export function RehabProtocolsClient({
   );
 }
 
-function ProtocolEditor({
+export function ProtocolEditor({
   draft,
   movements,
   pending,
@@ -295,6 +308,10 @@ function ProtocolEditor({
   onSave: () => void;
 }) {
   const [search, setSearch] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
+  const nameId = useId();
+  const nameErrorId = `${nameId}-error`;
 
   const results = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -304,7 +321,7 @@ function ProtocolEditor({
       .slice(0, 12);
   }, [movements, search]);
 
-  const setItem = (index: number, patch: Partial<RehabProtocolItem>) => {
+  const setItem = (index: number, patch: Partial<RehabProtocolDraftItem>) => {
     const items = draft.items.map((item, i) => (i === index ? { ...item, ...patch } : item));
     onChange({ ...draft, items });
   };
@@ -319,7 +336,7 @@ function ProtocolEditor({
           movementName: movement.name,
           side: "both",
           sets: 3,
-          reps: 10,
+          reps: "10",
         },
       ],
     });
@@ -345,7 +362,22 @@ function ProtocolEditor({
   };
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 14 }}>
+    <form
+      noValidate
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (pending) return;
+        const parsedName = rehabProtocolInputSchema.shape.name.safeParse(draft.name);
+        if (!parsedName.success) {
+          setNameError(parsedName.error.issues[0]?.message ?? "Enter a protocol name.");
+          nameInput.current?.focus();
+          return;
+        }
+        setNameError(null);
+        if (event.currentTarget.reportValidity()) onSave();
+      }}
+      style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 14 }}
+    >
       {error && (
         <div
           role="alert"
@@ -363,8 +395,9 @@ function ProtocolEditor({
         </div>
       )}
 
-      <label style={{ display: "grid", gap: 5 }}>
-        <span
+      <div style={{ display: "grid", gap: 5 }}>
+        <label
+          htmlFor={nameId}
           style={{
             fontSize: 10.5,
             textTransform: "uppercase",
@@ -373,21 +406,43 @@ function ProtocolEditor({
           }}
         >
           Protocol name
-        </span>
+        </label>
         <input
+          ref={nameInput}
+          id={nameId}
+          type="text"
+          required
           value={draft.name}
-          maxLength={120}
-          onChange={(event) => onChange({ ...draft, name: event.target.value })}
+          maxLength={REHAB_PROTOCOL_MAX_NAME}
+          onChange={(event) => {
+            setNameError(null);
+            onChange({ ...draft, name: event.target.value });
+          }}
+          aria-invalid={nameError ? true : undefined}
+          aria-describedby={nameError ? nameErrorId : undefined}
           data-testid="rehab-protocol-name"
-          style={{ width: "100%", minWidth: 0 }}
+          style={{
+            width: "100%",
+            minWidth: 0,
+            ...(nameError ? { borderColor: "var(--cp-danger)" } : {}),
+          }}
         />
-      </label>
+        {nameError && (
+          <span
+            id={nameErrorId}
+            role="alert"
+            style={{ fontSize: 13, color: "var(--cp-danger)" }}
+          >
+            {nameError}
+          </span>
+        )}
+      </div>
 
       {draft.items.map((item, index) => {
         const station = draft.links.find((link) => link.members.includes(item.movementId));
         const previous = draft.items[index - 1];
         const next = draft.items[index + 1];
-        const sameStation = (other: RehabProtocolItem | undefined) =>
+        const sameStation = (other: RehabProtocolDraftItem | undefined) =>
           !!station && !!other && station.members.includes(other.movementId);
         const isFirstOfStation = !!station && !sameStation(previous);
         const isLastOfStation = !!station && !sameStation(next);
@@ -528,18 +583,21 @@ function ProtocolEditor({
                 max={20}
                 onChange={(value) => setItem(index, { sets: value ?? 1 })}
               />
-              <NumberField
-                label="Reps"
-                value={item.reps}
-                min={1}
-                max={500}
-                onChange={(value) =>
-                  setItem(index, {
-                    reps: value ?? undefined,
-                    ...(value != null ? { holdSeconds: undefined } : {}),
-                  })
-                }
-              />
+              <label style={{ display: "grid", gap: 4 }}>
+                <FieldLabel>Reps</FieldLabel>
+                <input
+                  type="text"
+                  value={item.reps}
+                  aria-label="Reps"
+                  onChange={(event) =>
+                    setItem(index, {
+                      reps: event.target.value,
+                      ...(event.target.value.trim() ? { holdSeconds: undefined } : {}),
+                    })
+                  }
+                  style={{ width: "100%", minWidth: 0 }}
+                />
+              </label>
               <NumberField
                 label="Hold s"
                 value={item.holdSeconds}
@@ -548,7 +606,7 @@ function ProtocolEditor({
                 onChange={(value) =>
                   setItem(index, {
                     holdSeconds: value ?? undefined,
-                    ...(value != null ? { reps: undefined } : {}),
+                    ...(value != null ? { reps: "" } : {}),
                   })
                 }
               />
@@ -590,6 +648,7 @@ function ProtocolEditor({
             <label style={{ display: "grid", gap: 4 }}>
               <FieldLabel>Instructions</FieldLabel>
               <input
+                type="text"
                 value={item.instructions ?? ""}
                 maxLength={500}
                 onChange={(event) =>
@@ -629,8 +688,12 @@ function ProtocolEditor({
         <label style={{ display: "grid", gap: 5 }}>
           <FieldLabel>Add a movement</FieldLabel>
           <input
+            type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.preventDefault();
+            }}
             placeholder="Search"
             data-testid="rehab-protocol-search"
             style={{ width: "100%", minWidth: 0 }}
@@ -677,11 +740,10 @@ function ProtocolEditor({
 
       <div style={{ display: "flex", gap: 8 }}>
         <button
-          type="button"
+          type="submit"
           className="cp-btn primary"
           style={{ flex: 1 }}
           disabled={pending}
-          onClick={onSave}
           data-testid="rehab-protocol-save"
         >
           {pending ? "Saving…" : "Save protocol"}
@@ -690,7 +752,7 @@ function ProtocolEditor({
           Cancel
         </button>
       </div>
-    </div>
+    </form>
   );
 }
 

@@ -118,6 +118,24 @@ describe("Tactical Barbell customization contract", () => {
     expect(tbCustomizationSchema.parse(base)).toEqual(base);
   });
 
+  it("preserves rehab rep ranges in every customization version", () => {
+    const items = [{ ...activation.rehab.items[0], reps: 8, repRange: { min: 8, max: 10 } }];
+    for (const raw of [
+      { ...base, rehab: { items } },
+      { ...activation, rehab: { items } },
+      {
+        ...activationV3,
+        rehabProtocols: activationV3.rehabProtocols.map((protocol) => ({ ...protocol, items })),
+      },
+    ]) {
+      const parsed = tbCustomizationSchema.parse(raw);
+      const parsedItems = isTbActivationCustomization(parsed)
+        ? activationRehabProtocols(parsed)[0]?.items
+        : parsed.rehab?.items;
+      expect(parsedItems?.[0]?.repRange).toEqual({ min: 8, max: 10 });
+    }
+  });
+
   it("carries the template slot a replacement stands in for", () => {
     const swapped = {
       ...base,

@@ -12,17 +12,9 @@ import { cache } from "react";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import type { SessionLink } from "@/lib/platform/session-links";
 import type { LibraryProtocol } from "@/lib/platform/rehab-library";
+import type { RehabProtocolItem } from "./item-schema";
 
-export type RehabProtocolItem = {
-  movementId: string;
-  movementName: string;
-  side?: "both" | "left" | "right";
-  sets: number;
-  reps?: number;
-  holdSeconds?: number;
-  targetWeightKg?: number;
-  instructions?: string;
-};
+export type { RehabProtocolItem } from "./item-schema";
 
 export type RehabProtocolRow = {
   id: string;

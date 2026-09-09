@@ -72,6 +72,11 @@ describe("toPrescriptionItems", () => {
     expect(mapped.reps).toBeUndefined();
   });
 
+  it("keeps both ends of a rep range in the prescription", () => {
+    expect(toPrescriptionItems([item({ reps: 8, repRange: { min: 8, max: 10 } })])[0])
+      .toMatchObject({ reps: 8, repRange: { min: 8, max: 10 } });
+  });
+
   it("omits load when the protocol sets none", () => {
     expect(toPrescriptionItems([item()])[0]!.targetWeightKg).toBeUndefined();
   });

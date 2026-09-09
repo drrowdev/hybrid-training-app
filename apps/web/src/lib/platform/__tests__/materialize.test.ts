@@ -23,6 +23,9 @@ import { buildAssistancePlanner } from "../assistance-resolver";
 import { buildTbAccessoryInjector } from "../tb-accessories";
 import type { CatalogMovement } from "@/lib/planner/accessory-picker";
 import type { MovementResolver } from "../adapter";
+import { parseRehabProtocolDraft } from "@/lib/rehab-protocols/editor";
+import { rehabScheduleSchema } from "../rehab-schedule";
+import { resolveRehabLibrary } from "../rehab-library";
 
 const ctx: PlatformContext = {
   oneRepMaxes: { squat: 165, bench: 118, deadlift: 212, press: 71 },
@@ -311,6 +314,49 @@ describe("materializeProgram — weekly TB rehab placement", () => {
     return tacticalBarbellEngine.setup({ values: { templateId: "zulu" } }, ctx);
   }
   const zuluWeekdays = [0, 1, 3, 4];
+
+  it("DC-K4: keeps hold-only and rep-range rows through library resolution and set expansion", () => {
+    const saved = parseRehabProtocolDraft({
+      name: "Adductor rehab",
+      items: [
+        { ...rehabItem, holdSeconds: 20, reps: "" },
+        { ...rehabItem, holdSeconds: undefined, reps: "8-10" },
+      ],
+      links: [],
+    });
+    if (!saved.ok) throw new Error(saved.error);
+    const resolved = resolveRehabLibrary(
+      {
+        rehabSchedule: rehabScheduleSchema.parse(
+          envelope({ series: [{ key: "slot-1", protocolId: "protocol-1" }] }),
+        ),
+      },
+      undefined,
+      { "protocol-1": "library-rehab" },
+      [{
+        id: "library-rehab",
+        name: saved.value.name,
+        ...saved.value.definition,
+      }],
+    );
+    const r = materializeProgram(tacticalBarbellEngine, zulu(), ctx, resolve, {
+      weekdays: zuluWeekdays,
+      rehabSchedule: rehabScheduleSchema.parse(resolved.rehabSchedule),
+    });
+    const host = r.sessions.find((session) => session.weekIndex === 0 && session.dayIndex === 0)!;
+    const items = host.prescription.items.filter((item) => item.meta?.rehab === true);
+    expect(items).toHaveLength(6);
+    for (const item of items.slice(0, 3)) {
+      expect(item.holdSec).toEqual({ min: 20, max: 20 });
+      expect(item.reps).toBeUndefined();
+      expect(item.repRange).toBeUndefined();
+    }
+    for (const item of items.slice(3)) {
+      expect(item.reps).toBe(8);
+      expect(item.repRange).toEqual({ min: 8, max: 10 });
+      expect(item.holdSec).toBeUndefined();
+    }
+  });
 
   it("embeds the protocol into the strength session it was attached to (DC-J1)", () => {
     const r = materializeProgram(tacticalBarbellEngine, zulu(), ctx, resolve, {
