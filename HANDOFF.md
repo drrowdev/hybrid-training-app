@@ -33,7 +33,54 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-08 (PR805 positive Auth-API C3; twelve-case collection passed)
+**Last updated:** 2026-09-09 (PR805 rollback-only diagnostic source; no runtime acceptance)
+
+### PR805 temporary rollback-only route — current status
+
+Owner approved rollback-only checks, not a repair or migration149. Source
+checkpoint `c74b5a3f4029f66d0c8c17558a129d476fe9f3db` (tested tree
+`bbd5127fe57a6042fc2a30321c3b92c5910d00cf`) adds the injected helper and
+source-pins `ROLLBACK_PROBE_ONLY = true`. The exhausted Drizzle diagnostic mode
+stays false. Only the seven approved source/test/doc files change.
+
+The unchanged Native16 prerequisite and normal148/catalog/Auth five-phase,
+four-DDL, fifteen-context/36HTTP path still precede the new stage. The stage uses
+the same supervised owned `docker exec`/psql connection, then terminates
+**NONQUALIFYING before the twelve-case UI/API suite**. Those twelve sources are
+unchanged and are **not run, never passed** by this diagnostic route. Scope,
+safe probe artifact and terminal summaries state `diagnosticMode="rollback-only"`
+and `qualifying=false`; even successful measurements or an inconclusive baseline
+cannot make application acceptance green. Genuine errors retain primacy through
+exact cleanup.
+
+[Reference run 34287396820](https://github.com/drrowdev/hybrid-training-app/actions/runs/34287396820)
+at `7d0fb2c` failed C2/C3. C3's native-only control deletion passed; the linked
+account remained intact before direct Auth admin deletion returned 5xx at line614.
+That API error supplied neither SQLSTATE nor a named constraint. The other ten
+flows and normal148/36HTTP/Native16/core/cleanup passed; this is not evidence that
+either candidate FK mode is correct.
+
+The helper measures baseline RESTRICT, then (only after expected23503 plus
+verified restoration/absence) NO ACTION NOT DEFERRABLE and NO ACTION DEFERRABLE
+INITIALLY DEFERRED, in separate bounded rollback transactions. Fixture creation,
+including the synthetic Auth row/profile trigger, is inside each transaction.
+It reproduces the four-reference custom graph, not the full native C3 fixture or
+GoTrue transaction. See [probe contract and interpretation](docs/knowledge/pool-swimming.md#rollback-only-fk-diagnostics--temporary-source-route).
+
+Source-only validation at that checkpoint: two targeted Vitest suites passed
+450 tests; scoped ESLint and `tsc --noEmit --incremental false` passed; secret
+scan passed. Both author/committer identities were explicitly set and verified
+as Copilot with the 223556219 address and both requested AI trailers.
+No SQL, Docker/stack, browser suite, production access or workflow dispatch ran
+in this source task. Exact-final-head Opus/core review and fresh full-path guards
+remain required before **one** rollback-only run through existing workflow
+279507729 on this branch/expected SHA, `swim_acceptance=true`, both production
+flags false. No new route or protection bypass.
+
+**Remove the temporary source mode, not merely flip it, before any repair-head
+or release acceptance.** No measurement selects a permanent mode; in particular
+an immediate-mode success is not a trigger-order guarantee. A separately
+owner-approved repair must still pass positive C2/C3 Auth API/UI acceptance.
 
 ### PR805 expanded browser cohort — current status
 

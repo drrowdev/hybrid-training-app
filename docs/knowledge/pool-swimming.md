@@ -262,6 +262,79 @@ SQL/schema/RLS/grant changes require a separately approved additive migration
 and rollback proposal. Mobile and actual shared-load-ledger acceptance remain
 blocked until the real RPC suite is fully green.
 
+### Rollback-only FK diagnostics — temporary source route
+
+The owner-approved PR805 diagnostic is source-pinned ON, separately from the
+exhausted Drizzle evidence mode (still OFF). It runs after the unchanged
+normal148/catalog/Auth five-phase, four-DDL, fifteen-context/36HTTP prerequisites,
+then stops before all twelve existing UI/API cases. Native16 still precedes main.
+No browser source, workflow, grant, trigger, RLS policy, application/Auth action,
+migration, snapshot or journal changes. The ordinary limits remain CLI2.116,
+default12, private0700/0600, 30s case/300s global/330s command/590s phase/410s
+server/35m total/3m cleanup/45m job.
+
+[`swim-fk-rollback-probes.ts`](../../apps/web/scripts/swim-fk-rollback-probes.ts)
+receives the existing supervised command callback and validated owned DB
+container; it never imports the executable runner or opens another venue.
+Each probe has transaction-local 5s statement, 1s lock and 5s idle-in-transaction
+timeouts under a 15s supervised command deadline and the unchanged total cap.
+There is no retry, abandoned command, compensating delete or DDL repair.
+
+One fresh owned connection records the original full target `pg_constraint`
+tuples and other-movement-FK fingerprint. Exact names, endpoints, keys, validation,
+update/match/delete modes and unexpected relevant FKs are guarded before candidate
+DDL. Every later comparison uses that original snapshot. After each probe,
+including command failure/disconnect, another owned connection verifies unchanged
+schema and absence of every generated UUID in Auth/profile/movement/session/set,
+cardio and reference tables. Unverified restoration aborts; only the ordinary
+exact-resource cleanup may destroy the disposable stack.
+
+All synthetic data is created inside each rollback: Auth user (no email/password
+or identity), its normal profile trigger, user-owned movement, non-swim session,
+set log and session-movement link. Current custom values come from C3's
+`arrangeReferencedCustomMovement`; profile behavior is migration0001 and the
+two RESTRICT movement FKs are migration0003/0059. This is a structural
+four-reference reproduction, **not full native C3 or an identical GoTrue
+transaction**. A successful bare DELETE neither blames GoTrue nor exonerates
+every schema interaction.
+
+The existing privileged connection performs setup; catalog-only `pg_roles`
+checks the issuing owner and existing Auth role against the pinned reference.
+The tested DELETE uses transaction-local SESSION AUTHORIZATION
+`supabase_auth_admin`, checking both `session_user` and `current_user`. No fake
+JWT, new role/grant or restoration of elevated authorization is used. Role
+fidelity is not full GoTrue equivalence: RI trigger ownership is independent
+of the issuer, and role session defaults are not asserted to be applied by SET.
+
+1. **Baseline:** current RESTRICT schema. Unless the exact-user DELETE rejects
+   with23503 on one of the two expected FKs and rollback/absence are verified,
+   neither candidate runs. Other baseline delete outcomes are inconclusive.
+2. **Immediate:** change only those FKs to NO ACTION NOT DEFERRABLE, preserving
+   names/endpoints/update/match/validation, insert a fresh same-shape fixture,
+   attempt DELETE and roll back.
+3. **Deferred:** same, but NO ACTION DEFERRABLE INITIALLY DEFERRED. Every mode
+   uses `SET CONSTRAINTS ALL IMMEDIATE` inside the captured attempt before
+   rollback; success requires exactly one affected Auth row. Deferred failures
+   cannot disappear silently at rollback.
+
+Setup failures are distinct from tested DELETE rejection; lock timeout means
+unavailable and gates remaining probes. Only SQLSTATE/constraint name are read
+from captured exceptions, immediately mapped to fixed safe labels. Public
+records allow only `diagnosticMode="rollback-only"`, `qualifying=false`, closed
+aggregate/mode/outcome/SQLSTATE/constraint enums and six boolean checks.
+Unexecuted variants have no fabricated result. UUIDs, account identifiers,
+credentials, raw SQL/errors, constraint names/OIDs and catalog material remain
+out of the safe artifact. The existing marked summary publisher carries it.
+
+Every terminal summary is nonqualifying, including success/inconclusive
+measurements; genuine prerequisite/probe/source/cleanup errors precede the
+intentional stop. No SQL or reference run occurred in the source task. One
+future rollback-only run requires exact-final-head Opus/core review and fresh
+full-path guards on the existing protected branch route. Measurements do not
+choose a permanent mode or prove C2/C3/release acceptance. The temporary source
+mode must be **removed**, restoring ordinary execution, before separately
+approved repair-head acceptance. No migration149 is authorized.
+
 ### Manual Actions reference acceptance
 
 Implementation authority:
