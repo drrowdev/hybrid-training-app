@@ -2301,3 +2301,63 @@ unchanged-head rerun. Coordinator owns next exact-head live validation.
 Necessity, UPDATE integrity, authenticated RLS denial and positive C2/C3 remain
 unproved. Reversible disposable-only approval remains; no production change or
 candidate acceptance claim.
+
+## [2026-09-09] refine | Narrow unreleased movement candidate to measured set_logs minimum
+
+Continued PR805 from exact `0b3b7401ec2a485ee1ea1f0304d2d3e0f09544a8`;
+GitHub metadata confirms base `copilot/prepare-mobile-persistence-tests` at
+`4f2aa4af480f61df83bbc38b09f29afbbbf5729b`. No branch/PR/base/history change.
+Coordinator-supplied safe14 evidence from run34336292485 at0b3b7401,
+ended09:47:27Z: normal149/catalog/Native16/Auth5phase4DDL15contexts/all36HTTP/core
+and durable initial/down/up passed. First set-logs-only partial candidate
+succeeded with matched Auth session/current role, exactly one deleted Auth row,
+completed forced ALL checks, restored schema and all fixture IDs absent after
+rollback. The two-FK guard correctly stopped before second probe, UPDATE and
+browser12. Main/final cleanup verified. Consumed raw logs were not reread;
+no unchanged-head retry. The SQL qualification now returns valid evidence.
+
+Narrowed unmerged0148 up/down in place within the existing up-to-two disposable
+approval; prior applied candidate stacks were destroyed. Only set_logs changes.
+Both exact references remain guarded, but session_movements must always retain
+its original RESTRICT/not-deferrable shape and OID; two-deferred-FK databases
+fail rather than normalize. Original148 files, journal tags/count149, main call
+site, identity levels/phases/DDL/contexts, Auth36 and browser12 remain unchanged.
+
+Catalog normalization now applies only to set_logs OID/mode bits.
+session_movements joins full unchanged relationship metadata, including its OID
+and every bit; other table/column/index/owner/ACL/RLS/user-trigger fingerprints
+remain. Qualified `bool_and(props.matched)` is retained. Durable exact-source
+down/up, verified hashes and exact UTF-8 checks remain. Exactly two fresh,
+rollback-only controls replace the partial-candidate modes: baseline applies
+exact down SQL and requires23503/set-logs; candidate requires Auth-role success,
+one row and successful forced ALL checking on the current single-deferred schema.
+Each uses the same intact synthetic graph, with fresh schema/fixture-absence
+checks after error/disconnect too. No fallback, compensation or new snapshot.
+
+Dedicated UPDATE integrity now targets the generated set_logs row with exact
+set/session/original-movement filters, requiring one affected row followed by
+forced23503/set-logs and verified rollback. Existing C3 authenticated
+session_movements zero-row RLS verification stays unchanged. Source regressions
+cover both controls, wrong/incomplete results, stale modes, strict safe schemas,
+fresh distinct fixtures, normalization scope and post-disconnect cleanup.
+
+Validation from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/storage-migration.test.ts src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-identity-roundtrip.test.ts src/lib/swim/__tests__/swim-rpc-diagnostics.test.ts` — **1175 passed**, including118 helper tests.
+- `pnpm --filter @hta/web exec eslint scripts/swim-movement-reference-roundtrip.ts src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts` — passed.
+- `pnpm --filter @hta/web typecheck` — passed.
+- `env -u DATABASE_URL pnpm --filter @hta/db db:check:ci` — offline149 files/entries hashed cleanly; no database execution.
+- `pnpm docs:check-drift` — in-repo check passed; private workspace parity not run.
+- `git diff --check` — passed; protected migration/journal/main/browser paths unchanged.
+
+New source SHA-256 values (not runtime acceptance):
+
+- `packages/db/drizzle/0148_defer_custom_movement_references.sql`: `40212c4209449a5c148c11ee271f298d9ea2eeac0b114da5a144d5bc98a262b2`.
+- `packages/db/rollbacks/0148_defer_custom_movement_references.down.sql`: `7b3a7802217ca9f96ee7d0f18472e9202e9150bf21ef80d4f825f0b09a81fa32`.
+- `apps/web/scripts/swim-movement-reference-roundtrip.ts`: `439521bc844d649b690b0b135bff2bcc0e5a1f5a7f829cdd43cf045529622608`.
+
+Updated existing ADR0080/HANDOFF/pool-swimming/index and appended this log.
+No new callback, grant/RLS/role, user-data rewrite, production change, SQL/Docker/
+browser execution or workflow dispatch. Coordinator-owned exact-head live
+down/up/baseline/candidate/UPDATE/Auth36/browser12/C2/C3 acceptance remains
+pending; structural SQL success is not GoTrue equivalence or release approval.

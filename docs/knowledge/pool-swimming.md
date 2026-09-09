@@ -262,30 +262,36 @@ SQL/schema/RLS/grant changes require a separately approved additive migration
 and rollback proposal. Mobile and actual shared-load-ledger acceptance remain
 blocked until the real RPC suite is fully green.
 
-### Reversible movement-reference candidate — SQL qualification fixed, live result pending
+### Reversible movement-reference candidate — set_logs only, live acceptance pending
 
 [ADR 0080](../adr/0080-deferred-custom-movement-references.md) records the
-owner-approved two-FK maximum candidate: change only set_logs and
-session_movements movement references from RESTRICT/not-deferrable to NO ACTION
+owner-approved two-FK maximum, now narrowed to the measured minimum: change only
+the set_logs movement reference from RESTRICT/not-deferrable to NO ACTION
 DEFERRABLE INITIALLY DEFERRED, with a guarded inverse. GoTrue does not issue SET
 CONSTRAINTS. Both table locks precede exact catalog checks; bounded waits and
 normal validation scans fail closed, without cleanup, cascade, SET NULL or retry.
 Table/column/index/owner/ACL/RLS state and all other relationships remain.
+The unmerged0148 up/down files are edited in place; prior candidate stacks were
+disposable and destroyed. session_movements is never dropped/added/altered and
+must always have its original RESTRICT/not-deferrable definition and OID.
+Both guards reject an unexpected two-deferred-FK database without normalization.
 
 Latest coordinator-supplied safe evidence:
-[run34333221283](https://github.com/drrowdev/hybrid-training-app/actions/runs/34333221283)
-at `65050755d7160fc2a355736489a2ea249f99dc70`, ended09:14:26Z, passed normal149
+[run34336292485](https://github.com/drrowdev/hybrid-training-app/actions/runs/34336292485)
+at `0b3b7401ec2a485ee1ea1f0304d2d3e0f09544a8`, ended09:47:27Z, passed normal149
 migrations/catalog, original Auth5phase4DDL15contexts/all36HTTP, Native16 and core.
 Initial candidate snapshot, whole down file, original snapshot, whole up file
 and restored candidate snapshot all passed (`initial/down/up=true`).
-The first set-logs-only necessity result was the Node outer catch default
-`unavailable/none/none/false/false/false`, not a mapped SQL exception.
-Fresh schema restoration and fixture absence passed; no second necessity,
+The first set-logs-only partial candidate succeeded: Auth session/current role
+matched, exactly one Auth row deleted and forced ALL checks completed.
+Fresh schema restoration and fixture absence passed. The two-FK guard correctly
+stopped for minimum-scope narrowing; no second necessity,
 UPDATE integrity or browser12 case executed. Main/final cleanup verified.
 Safe14 records retained; raw logs consumed once and discarded, not reread here.
 
+The earlier run34333221283 at65050755 returned an unavailable catch default.
 The shared catalog CTE's `matched` column collided with PL/pgSQL `matched`
-variables in necessity `$guard$`/`$setup$` and `$update_integrity$`.
+variables in `$guard$`/`$setup$` and `$update_integrity$`.
 [PG17's default conflict rule](https://www.postgresql.org/docs/17/plpgsql-implementation.html#PLPGSQL-VAR-SUBST)
 requires qualification or distinct naming. Source repair
 `28db9073897243d68ac3873e443bcec6e25c694a` changes only the shared aggregate to
@@ -293,8 +299,9 @@ requires qualification or distinct naming. Source repair
 use a direct expression. Their successful execution did not exercise the
 ambiguous composed blocks. The first guard is outside tuple capture, consistent
 with the catch default; runtime SQLSTATE was not observed (no safe-log42702 claim).
-Variables, predicates, NULL/count semantics, tuples, fingerprints and callers
-remain unchanged. No conflict directive, catch redesign or guard relaxation.
+The qualification is retained. The newer measurement is a valid outcome, not
+unavailable; it requires narrowing the migration itself, not relaxing the
+two-FK guard to accept excess scope.
 
 Run34321670984 at `1bb56` (07:03:52Z) measured baseline and immediate23503/set-logs;
 both deferred references allowed exactly one Auth deletion plus forced ALL
@@ -306,15 +313,19 @@ proof for the second FK, GoTrue equivalence or application success follows.
 Normal migration count is now **149**, not identity definition level148. The
 five identity phases, four DDL files, fifteen service contexts and all36HTTP remain.
 The temporary rollback-only helper/mode are removed. The ordinary browser call
-follows a durable exact-source down/up proof and two one-FK necessity assertions,
-each fully rolled back with both references present. Four UUIDs per fixture;
+follows a durable exact-source down/up proof and exactly two controls:
+`baseline` restores only set_logs via exact down SQL and requires23503/set-logs;
+`candidate` uses the single-deferred schema without DDL and requires success,
+one Auth row and completed forced ALL checking. Each is fully rolled back with
+both references present in the same intact graph. Four fresh UUIDs per fixture;
 existing supabase_admin setup and tested Auth SESSION AUTHORIZATION; fresh
-candidate/other-relationship/absence verification after each attempt. Target
-OIDs are not reused after committed DROP+ADD; semantic comparison normalizes
-only target OIDs and changed modes. Safe evidence excludes raw schema and IDs.
+candidate/other-relationship/absence verification after each attempt. Semantic
+comparison normalizes only the set_logs FK OID and changed mode bits.
+session_movements retains its full tuple including OID and all bits in unchanged
+metadata. Recreating or deferring it fails proof. Safe evidence excludes raw schema and IDs.
 No Drizzle journal manipulation or compensating user-data deletion.
 
-Deferral changes INSERT/UPDATE/DELETE timing globally to transaction completion
+Deferral changes set_logs INSERT/UPDATE/DELETE timing globally to transaction completion
 or forced checking; committed orphans remain forbidden. Reconfirmed coupled
 0061/0144 SQL routines propagate failures and wrappers consume request results.
 Original148 has no FK catch-and-continue dependency (sole exception handler:
@@ -331,17 +342,18 @@ UPDATE requests a representation and requires no error and exactly zero returned
 rows, then fresh unchanged records and missing-parent-reference absence.
 This is RLS denial, not an authenticated23503 claim.
 
-After the two unchanged necessity probes, the owned bootstrap SQL connection
+After the two baseline/candidate controls, the owned bootstrap SQL connection
 separately tests current-candidate FK UPDATE integrity. The shared four-ID fixture
 is created in one ROLLBACK transaction. Candidate metadata, reference existence
 and absence of a movement at the generated set UUID are checked before UPDATE;
 setup constraints are forced outside the narrowly captured mutation attempt.
-The exact UPDATE must affect one row, then forced ALL checking must reject
-23503/session-movements. Fresh separate-connection schema/other-metadata/absence
+The exact set_logs UPDATE, filtered by generated set/session/original-movement
+IDs, must affect one row, then forced ALL checking must reject
+23503/set-logs. Fresh separate-connection schema/other-metadata/absence
 checks remain mandatory after success/error/disconnect. The strict
 `updateIntegrity` result starts not-attempted and cannot qualify without rejection,
 one row, forced checking and verified restoration. It is neither another
-necessity mode nor a thirteenth browser case; no owner impersonation or
+control mode nor a thirteenth browser case; no owner impersonation or
 compensating deletion is used.
 
 C3 also adds referenced movement DELETE and orphan INSERT/UPDATE checks through
@@ -359,10 +371,11 @@ both necessity strings and UPDATE integrity, retaining each affected DO block's
 `DECLARE matched` and all prior assertions. Secret/diff checks passed; CodeQL
 incomplete (Actions failed, JavaScript database too large), not an analysis pass.
 No SQL, Docker, browser execution/collection or workflow dispatch by this worker.
-Next exact-head live result is coordinator-owned and pending: necessity,
+Latest source validation is in [the log](./log.md). Next exact-head live result
+is coordinator-owned and pending: narrowed baseline/candidate controls,
 UPDATE integrity, authenticated RLS denial and C2/C3 remain **unproved**.
-Normal149/catalog/Auth36 and durable down/up passed at65050755, not full candidate
-acceptance. Production remains separately gated.
+Normal149/catalog/Auth36 and durable down/up passed at0b3b7401 before the
+single-FK narrowing, not full candidate acceptance. Production remains separately gated.
 
 ### Rollback-only FK diagnostics — temporary source route
 
