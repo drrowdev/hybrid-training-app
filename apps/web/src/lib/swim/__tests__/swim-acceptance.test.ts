@@ -29,6 +29,33 @@ const sha = "a".repeat(40);
 const configHash = "b".repeat(64);
 const networkId = "c".repeat(64);
 const project = "pr802-123-1";
+describe("DC-SW8 temporary rollback-only runner route", () => {
+  const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
+  it("pins diagnostic mode ON, leaves exhausted Drizzle mode OFF and hashes the injected helper", () => {
+    expect(source).toContain("const ROLLBACK_PROBE_ONLY = true;");
+    expect(source).toContain("const MIGRATION_DIAGNOSTIC_ONLY = false;");
+    expect(source).toContain('from "./swim-fk-rollback-probes"');
+    expect(source).toContain('"apps/web/e2e-rpc/setup.ts", "apps/web/scripts"');
+    expect(source).toContain('qualifying: false, diagnosticMode: "rollback-only", browserSuite: "not-run"');
+  });
+  it("runs only after unchanged prerequisites/36 HTTP, returns before all twelve cases and guards their call site", () => {
+    const start = source.indexOf('await stage("rollback-only FK probes"');
+    const browser = source.indexOf('await stage("mobile browser acceptance"');
+    expect(start).toBeGreaterThan(source.indexOf("requireIdentityHelperRpcCases(ledger)"));
+    expect(start).toBeLessThan(browser);
+    const route = source.slice(start, browser);
+    expect(route).toContain("runRollbackProbes(command, target.dbId");
+    expect(route).toContain("manifest.rollbackProbes = record");
+    expect(route).toContain('summary("Swim rollback-only probes (nonqualifying)", record)');
+    expect(route).toMatch(/return;\s+}\s+requireBrowserRoute\(ROLLBACK_PROBE_ONLY\);/);
+  });
+  it("adds the terminal marker after cleanup and prevents even a cleanup-only summary implying acceptance", () => {
+    expect(source.indexOf("finishRollbackOnly(reporting)")).toBeGreaterThan(source.indexOf("try { await cleanup(); }"));
+    expect(source).toContain("if (ROLLBACK_PROBE_ONLY && !cleanupOnly) finishRollbackOnly(reporting)");
+    expect(source).toContain('ROLLBACK_PROBE_ONLY ? { success: false, qualifying: false, diagnosticMode: "rollback-only" }');
+    expect(source).toContain("twelve-case UI/API suite not run; nonqualifying");
+  });
+});
 const context = () => ({
   GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_JOB: "swim-acceptance",
   SWIM_ACCEPTANCE: "true", GITHUB_REPOSITORY: "drrowdev/hybrid-training-app",
