@@ -592,6 +592,40 @@ test.describe("ADR0079 mobile swimming account acceptance", () => {
     };
     const customBefore = await readCustom();
 
+    const absentMovement = randomUUID();
+    const orphanSet = randomUUID();
+    const absent = await admin.from("movements").select("id").eq("id", absentMovement);
+    expect(absent.error === null).toBe(true);
+    expect(absent.data?.length).toBe(0);
+    // Await each PostgREST request: deferred violations surface at transaction end.
+    const rejected = [
+      () => linked.client.from("movements").delete().eq("user_id", linked.userId).eq("id", custom.movementId),
+      () => linked.client.from("set_logs").insert({
+        id: orphanSet, session_id: custom.sessionId, movement_id: absentMovement,
+        set_index: 1, set_kind: "main", reps: 8, weight_kg: 12, rpe: 6,
+      }),
+      () => linked.client.from("session_movements").insert({
+        session_id: custom.sessionId, movement_id: absentMovement, user_id: linked.userId, sort_order: 1,
+      }),
+      () => linked.client.from("set_logs").update({ movement_id: absentMovement })
+        .eq("id", custom.setId).eq("session_id", custom.sessionId).eq("movement_id", custom.movementId),
+      () => linked.client.from("session_movements").update({ movement_id: absentMovement })
+        .eq("user_id", linked.userId).eq("session_id", custom.sessionId).eq("movement_id", custom.movementId),
+    ];
+    for (const request of rejected) {
+      expect((await request()).error?.code).toBe("23503");
+      expect(isDeepStrictEqual(await readCustom(), customBefore)).toBe(true);
+      const orphans = await Promise.all([
+        linked.client.from("set_logs").select("id").eq("id", orphanSet),
+        linked.client.from("session_movements").select("session_id")
+          .eq("session_id", custom.sessionId).eq("movement_id", absentMovement),
+      ]);
+      for (const orphan of orphans) {
+        expect(orphan.error === null).toBe(true);
+        expect(orphan.data?.length).toBe(0);
+      }
+    }
+
     const controlDeletion = await admin.auth.admin.deleteUser(control.userId);
     expect(controlDeletion.error?.status !== undefined && controlDeletion.error.status >= 500 && controlDeletion.error.status < 600).toBe(false);
     expect(controlDeletion.error === null).toBe(true);

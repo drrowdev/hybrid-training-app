@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getSwimRpcTestEnv } from "../src/lib/swim/__tests__/storage-rpc-config";
 import { RPC_CONFIG, RPC_SUITE, type readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
 
+export const ACTIVE_MIGRATION_TOTAL = 149;
 export const CLI_VERSION = "2.116.0";
 export const CLI_ASSET = `supabase_${CLI_VERSION}_linux_amd64.tar.gz`;
 export const CLI_SHA256 = "5b3031cb297d51b25be4c284e4c852254460ec722ec221d3b81b07d55acfd158";
