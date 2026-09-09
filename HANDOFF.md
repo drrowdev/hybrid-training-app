@@ -17,9 +17,10 @@ exist for compatibility and shared workload only.
 
 The current PR802 continuation authorizes disposable localhost services on the
 cloud runner only, not hosted credentials. The twelve-case reference at `7d0fb2c`
-passed ten and failed C2/C3. The reversible movement-reference candidate below is
-a source checkpoint with the authenticated UPDATE/FK verification mismatch
-resolved at separate layers; live candidate acceptance remains unrun.
+passed ten and failed C2/C3. The reversible movement-reference candidate below
+passed normal149/catalog/Auth36 and durable down/up at `65050755`; the first
+necessity catch-default failure blocked browser12. The shared SQL naming
+collision is fixed in source; next live validation and C2/C3 proof remain pending.
 Do not treat mocked tests, static browser
 previews or the earlier hand-built stack as reference-platform, concurrency or
 mobile/offline release proof. Never use production/rehearsal databases or
@@ -34,14 +35,57 @@ Local work includes domain/engine and web regressions, four package typechecks,
 the web production build, and static mobile/desktop previews. These do not
 replace the pending browser and full standalone acceptance.
 
-**Last updated:** 2026-09-09 (reversible candidate source checkpoint; no new runtime measurement)
+**Last updated:** 2026-09-09 (65050755 runtime evidence; SQL qualification source repair)
 
-### PR805 reversible movement-reference candidate — verification correction complete in source
+### PR805 reversible movement-reference candidate — SQL qualification fixed, live result pending
 
 Owner approved the reversible disposable candidate, at most two existing FKs.
 [ADR 0080](docs/adr/0080-deferred-custom-movement-references.md) records scope,
 timing audit, lock/validation/down guards and the required proof. Code/test
 checkpoint: `24e10035d4a1f060369ef8384a5d0befc12b65e7`.
+
+**Latest runtime evidence (coordinator-supplied safe record):**
+[Run34333221283](https://github.com/drrowdev/hybrid-training-app/actions/runs/34333221283)
+at exact `65050755d7160fc2a355736489a2ea249f99dc70`, ended09:14:26Z:
+normal149 migrations/catalog, original Auth5phase4DDL15contexts/all36HTTP,
+Native16 and core passed. Initial candidate snapshot, whole down file, original
+snapshot, whole up file and restored candidate snapshot passed
+(`initial/down/up=true`). First set-logs-only necessity returned the Node outer
+catch's `unavailable/none/none/false/false/false` default, not a mapped SQL
+exception; fresh schema restoration and fixture absence passed. No second
+necessity, UPDATE integrity or browser case executed. Main/final cleanup verified.
+Safe14 records retained; raw logs consumed once and discarded, not reread here.
+
+**Source-proven collision and repair:** shared `catalog()` projected `matched`
+and aggregated `bool_and(matched)` inside necessity `$guard$`/`$setup$` and
+`$update_integrity$`, each declaring a PL/pgSQL `matched` variable.
+[PG17 variable substitution](https://www.postgresql.org/docs/17/plpgsql-implementation.html#PLPGSQL-VAR-SUBST)
+requires qualification or distinct naming at the default conflict setting.
+The aggregate is now `bool_and(props.matched)` only. Ordinary snapshots have no
+PL/pgSQL variable scope; durable up/down use a direct expression, explaining why
+their passes did not validate these composed blocks. The first guard precedes
+tuple capture, consistent with the catch default. Runtime SQLSTATE was not
+observed; no claim that safe evidence reported42702. Variables, alias, predicates,
+NULL/count semantics, fingerprints, tuples, query layout and callers are unchanged.
+
+Repair code/test commit `28db9073897243d68ac3873e443bcec6e25c694a`, tested tree
+`918154ca482ede5dc1a6cdc17c2b620b69861919`. Commands run from
+`/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts` — **498 passed** (92 durable-helper,406 main).
+- `pnpm --filter @hta/web exec eslint scripts/swim-movement-reference-roundtrip.ts src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts` — passed.
+- `pnpm --filter @hta/web typecheck` — passed.
+
+The focused regression covers both snapshots, both necessity strings and UPDATE
+integrity, including retained `DECLARE matched` in all affected DO blocks.
+All prior assertions remain. Secret/diff checks passed. CodeQL did not complete:
+Actions analysis failed; JavaScript database too large, not a security-analysis pass.
+Code/test saved before docs; author and committer explicitly Copilot223556219,
+with required AI trailers. Only the helper/test and HANDOFF/pool-swimming/index/
+append-only log change. No SQL, Docker, browser execution/collection or workflow
+dispatch here; no unchanged-head rerun. The coordinator owns the next exact-head
+live run. Necessity, UPDATE integrity, authenticated RLS denial and positive C2/C3
+remain unproved. Disposable-only approval remains; no production change.
 
 **Resolved verification mismatch:** migration0059 has no session_movements UPDATE policy.
 Migration0063 grants UPDATE but documents that RLS blocks real updates; no later
@@ -53,7 +97,8 @@ array with exact owned filters, fresh unchanged rows and no missing-parent
 reference. The owned SQL helper separately requires an actual one-row UPDATE
 and forced ALL rejection23503/session-movements on the current candidate.
 No policy/grant/role, migration, real fixture or browser registry was changed.
-**Live SQL integrity, authenticated RLS denial and C2/C3 remain unrun.**
+This method was resolved by `65050755` without permission changes.
+**Live UPDATE integrity, authenticated RLS denial and C2/C3 remain unrun.**
 
 [Run34321670984](https://github.com/drrowdev/hybrid-training-app/actions/runs/34321670984)
 at `1bb56`, ended07:03:52Z: prerequisites matched; baseline RESTRICT and immediate
@@ -82,7 +127,7 @@ proofs. The two necessity modes remain exactly two and unchanged.
 C3 adds authenticated request-boundary integrity assertions;
 C2 and the twelve identities/six files remain.
 
-GitHub source validation for correction commit
+Earlier GitHub source validation for the UPDATE/RLS correction commit
 `123fd1765c8eee33f1e28bad4d622cc631836226`, tested tree
 `f0ccfad5161a68c900fcb54c568c0c1bd1abed02` (commands from repository root):
 
@@ -104,9 +149,10 @@ with both AI trailers; checkpoint saved unsigned. The three code/test paths are
 `apps/web/src/lib/swim/__tests__/swim-movement-reference-roundtrip.test.ts`.
 Only ADR0080, this HANDOFF, pool-swimming and the append-only log follow as docs.
 No SQL, Docker/stack, browser execution or CI dispatch by this
-source worker. Live candidate apply/down/up/necessity/UPDATE integrity, normal149,
-all36HTTP, authenticated RLS denial and C2/C3 are
-unrun. Production is separately gated. No automatic extra model review chain.
+source worker. At that checkpoint the live candidate was unrun; run34333221283
+above now proves normal149/catalog/Auth36 and durable down/up, but not necessity,
+UPDATE integrity, authenticated RLS denial or C2/C3. Production is separately
+gated. No automatic extra model review chain.
 
 ### PR805 temporary rollback-only route — historical, superseded
 

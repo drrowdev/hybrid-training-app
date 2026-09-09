@@ -2,7 +2,7 @@
 
 **Purpose:** Catalog of all hand-off files for the hybrid training app project. Organized by role in the Karpathy personal-knowledge-base pattern (plan §6.10): raw sources are immutable; wiki pages are LLM-maintained; the schema governs ingest, citation, and lint workflows. This file is the seed of `docs/knowledge/index.md` in the eventual repo.
 
-**Last updated:** 2026-06-01
+**Last updated:** 2026-09-09
 
 ---
 
@@ -27,7 +27,10 @@ The maintained-by-AI layer. These pages are rewritten as new sources arrive; the
   exact course measurements, optional assessment, versioned adaptation, shared
   logging and evidence limits. ADR 0079 / DC-SW1 through DC-SW9; combined
   cardio-slot use remains a later slice. ADR 0080 adds a reversible two-FK
-  source candidate, currently blocked on authenticated UPDATE/RLS qualification.
+  source candidate: UPDATE/RLS verification method resolved by65050755 without
+  permission changes; normal149/catalog/Auth36 and durable down/up passed.
+  First necessity catch-default failure blocked browser12; shared SQL column
+  qualification fixed, next live result and C2/C3 proof pending.
 
 | File | One-line summary |
 |---|---|
@@ -90,7 +93,7 @@ edit.
 | ADR | One-line summary |
 |---|---|
 | [`0079-pool-swim-track-and-calendar.md`](../adr/0079-pool-swim-track-and-calendar.md) | **Pool swimming architecture approved for implementation (2026-09-05).** Progressive swim workouts fill an existing program's cardio days or use separate dates; one calendar and logging path. Pausing restores regular cardio on unstarted bound days. Additive storage/access work approved, no production migration or swim release yet. |
-| [`0080-deferred-custom-movement-references.md`](../adr/0080-deferred-custom-movement-references.md) | **Reversible disposable candidate (2026-09-09), not acceptance-ready.** At most two movement-reference FKs; guarded down/up, transaction-boundary integrity and one-FK necessity requirements. Normal149 versus identity148; authenticated session_movements UPDATE lacks an RLS policy, requiring owner direction. No live candidate or production claim. |
+| [`0080-deferred-custom-movement-references.md`](../adr/0080-deferred-custom-movement-references.md) | **Reversible disposable candidate (2026-09-09), not accepted.** At most two movement-reference FKs; normal149 versus identity148. UPDATE/RLS proof method resolved by65050755 without permission changes. Normal149/catalog/Auth36 and durable down/up passed; first necessity catch-default failure blocked browser12. Shared SQL column qualification fixed; next live necessity/UPDATE/C2/C3 proof pending. No production authorization. |
 | [`0075-offline-completion-receipt.md`](../adr/0075-offline-completion-receipt.md) | **Offline completion stores its durable receipt (2026-09-01).** `sessions.completion_outbox_entry_id` records the outbox UUID that completed a session in the same transaction, so a replay does not become a second completion event. Migration 0144. |
 | [`0074-bodyweight-external-set-load.md`](../adr/0074-bodyweight-external-set-load.md) | **Bodyweight external load is recorded per set (2026-09-01).** `set_logs.external_load_kg` stores the actual belt, vest, or assistance value separately from ordinary set weight so progress history can be reconstructed after edits or deletes. Nullable legacy values remain unknown rather than inferred. Migration 0144. |
 | [`0073-rehab-protocol-library.md`](../adr/0073-rehab-protocol-library.md) | **Rehab protocols become a user-owned library (2026-08-19).** Authoring moves from the program wizard to Settings. A protocol is a first-class `rehab_protocols` row attached via `program_rehab_bindings`, so it outlives its program and a Settings edit reaches the live plan. A binding table rather than a `libraryId` field in the strict customization blob, because this repo deploys app-first and the previous build would silently drop a stamped blob; the FK also makes "cannot delete a protocol in use" a database guarantee. Library owns content, program owns placement. Migration 0134. TB only. |

@@ -2257,3 +2257,47 @@ Candidate normal149/down/up/both necessity proofs/UPDATE integrity/all36HTTP,
 authenticated RLS denial and positive C2/C3 remain unrun. Original migrations,
 identity146/147/148, five phases/four DDL/fifteen contexts, exact cleanup and all
 twelve positive cases remain required. No production authorization follows.
+
+## [2026-09-09] refine | Qualify shared catalog column in composed SQL guards
+
+Preserved complete candidate `65050755d7160fc2a355736489a2ea249f99dc70` on PR805.
+Coordinator-supplied safe evidence from run34333221283 at that exact head,
+ended09:14:26Z: normal149/catalog, original Auth5phase4DDL15contexts/all36HTTP,
+Native16/core and main/final cleanup passed. Initial candidate snapshot, whole
+down file, original snapshot, whole up file and restored candidate snapshot
+passed (`initial/down/up=true`). First set-logs-only necessity returned the Node
+outer catch's `unavailable/none/none/false/false/false` default, not a mapped SQL
+exception. Fresh schema restoration and fixture absence passed. Second necessity,
+UPDATE integrity and all browser12 cases were not executed. Safe14 records
+retained; raw logs consumed once and discarded, not reread by this worker.
+
+Source identified an unqualified `bool_and(matched)` over the catalog `props`
+column inside DO blocks declaring PL/pgSQL `matched`. PG17's default conflict
+rule requires qualification or distinct naming. Shared aggregate now uses
+`bool_and(props.matched)`; variables, alias, predicates, NULL/count semantics,
+tuples, fingerprints, layout and callers remain unchanged. Ordinary snapshots
+have no variable scope; durable up/down use a direct expression. Their passes
+did not validate the composed DO blocks. First guard precedes tuple capture,
+consistent with the default; no runtime SQLSTATE observed or safe-log42702 claim.
+
+Code/test saved first at `28db9073897243d68ac3873e443bcec6e25c694a`, tested tree
+`918154ca482ede5dc1a6cdc17c2b620b69861919`. Existing durable-helper/main Vitest
+suites **498 passed** (92/406); scoped ESLint and web typecheck passed in the
+GitHub workspace. Exact commands in HANDOFF. Added source-only regression covers
+candidate/original snapshots, both necessity strings and UPDATE integrity,
+including retained `DECLARE matched` in each affected DO block and absence of
+the unqualified aggregate. All prior assertions retained. Secret/diff checks
+passed; CodeQL incomplete (Actions failed, JavaScript database too large), not
+a security-analysis pass. Author and committer explicitly Copilot223556219;
+required AI trailers included.
+
+Updated current HANDOFF/pool-swimming/index and appended this entry only.
+Index's stale owner-direction wording is resolved: by65050755, authenticated RLS
+denial and owned SQL FK UPDATE verification were separated without permission
+changes. No migration0148/down/journal149, main/guard/identity/C3/fixture/browser
+registry/config/workflow/dependency/ADR or product permission changes.
+No SQL, Docker, browser execution/collection or workflow dispatch here; no
+unchanged-head rerun. Coordinator owns next exact-head live validation.
+Necessity, UPDATE integrity, authenticated RLS denial and positive C2/C3 remain
+unproved. Reversible disposable-only approval remains; no production change or
+candidate acceptance claim.
