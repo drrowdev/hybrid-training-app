@@ -2662,3 +2662,35 @@ No full reference or CI dispatch, SQL/Docker/browser execution, production work,
 or changes outside the five authorized paths. Builder B owns only the persistence
 swimming spec on PR811. Full reference remains gated on completed writers,
 inspection of current source and that source's own appropriate green CI.
+
+## [2026-09-09] refine | PR805 immutable E1/E2 integration, twenty-case source only
+
+Continued exact667349dd2bdffad9fda3a4e243681c5d90920840 on PR805, basee2758dad.
+Imported only the persistence spec from fee3751810f2b835b221a430a1eabde627daca3d,
+blob2e8f7aca4f21b8a4e0849d29acf0dfbcec207cfd; no PR811 merge or future-tip
+adoption. Source attribution is native cloud198982749/GitHub noreply.
+Published code/test checkpointa5a631caed5a91a03b1421b05a2f17a55c584f60,
+tree556b03bc3c93378e433fd6627ab7c72568e900a8, has matching approved local/public
+author/committer metadata. Existing credits/history remain intact.
+
+DC-SW1/SW2/SW6 E1/E2 append at18/19, preserving original18 identities/order and
+persistence bodies. Same six files/counts2/4/2/8/3/1; persistence2/3/18/19,
+B6/7/12–17, C2index9. Historical4/6/8/11/12/15/18 reports assert actual cohorts;
+same-total E substitutions fail. Twenty-case failure ledgers retain existing
+privacy and annotation memberships. Exact imported fixture-owned cleanup stays.
+
+Actual validation: four web files522 passed including39 identity tests;
+domain103 and engine58 passed; scoped lint, web typecheck, offline docs drift
+and diff checks passed. Existing private Playwright1.60.0 CLI collection proved
+20 exact identities/six files/zero executed results/errors and cleanup. No
+worker validation report was assumed. HANDOFF records full commands and the
+shallow-history push failure, corrected import transcription, and corrected
+identity-test path (initial invocation collected only3 files). Secret scan clean;
+CodeQL skipped trivial test/casebook changes, not a successful analysis.
+
+Live20 UNRUN; live18 never accepted. Last full reference remains15/15 atfdf01
+run34351260981. Old core34392005044 at030160 does not cover this head. No CI
+dispatch, browser/SQL/Docker/hosted-data/production work or extra agent chain.
+Only seven authorized paths change; all runtime bounds and Auth/FK controls
+remain. Reconcile MAIN/production0145 seed versus unshipped145–148 before release,
+not here. Nine standalone gates precede combined implementation; Garmin later.

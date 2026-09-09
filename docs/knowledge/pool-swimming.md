@@ -17,7 +17,47 @@ The original first setup case passed in21,892ms, but its earlier Pool-length
 timeout remains **unexplained**; the semantic-HOLD fix is not a demonstrated cause
 of recovery. This closes progression-branch work, not all standalone/release gates.
 
-**Next source cohort — live18 unrun:** code/test checkpoint
+**Current source cohort — live20 UNRUN:** PR805 code/test checkpoint
+`a5a631caed5a91a03b1421b05a2f17a55c584f60`, tested tree
+`556b03bc3c93378e433fd6627ab7c72568e900a8`, imports only the persistence spec
+from immutable `fee3751810f2b835b221a430a1eabde627daca3d`, exact blob
+`2e8f7aca4f21b8a4e0849d29acf0dfbcec207cfd`. E1 proves native25m/25yd weekly
+analytics and compatible bests/history; E2 proves ordinary manual200/400-like
+results remain generic/native history without inferred calibration
+([DC-SW1/SW2/SW6](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)).
+These are authored assertions, not measured browser acceptance. Fixture-owned
+freshUser cleanup is retained, with no redundant per-case deletion.
+
+Original18 identities/order and original persistence bodies remain intact.
+E1/E2 append at18/19; persistence2/3/18/19, B6/7/12–17 and C2index9 keep
+identity-based mapping. Same six files/counts2/4/2/8/3/1. Old4/6/8/11/12/15/18
+rejection fixtures now remove E1/E2 before historical filters and assert actual
+totals/retained identities. Same-total E replacements are rejected; failed
+ledgers expand to20 without new annotation memberships or privacy exceptions.
+The existing source closure already fingerprints the persistence spec.
+
+Actual GitHub-runner validation: four web files **522 passed**, domain swimming
+**103 passed**, engine swimming/budget **58 passed**, scoped lint/typecheck and
+offline doc drift passed. Installed Playwright1.60.0 `--list` through the existing
+private collector verified20 exact identities/six files/zero executed results
+and errors, then cleanup. Secret scan clean; CodeQL skipped trivial changes,
+not an analysis pass. Source and published checkpoint have approved native
+cloud author/GitHub committer. Exact commands, import provenance and corrections
+are in [HANDOFF](../../HANDOFF.md#pr805-pinned-e1e2-integration--2026-09-09--live20-unrun).
+No source-worker test report was assumed.
+
+Last full reference remains the15/15 run above; live18 was never accepted.
+Old core34392005044 at030160 does not cover the integration head. No CI dispatch
+or browser/DB/hosted-data/production work occurred. Coordinator inspection of
+the exact artifact/current core precedes a bounded full reference. Existing
+deadlines, normal149/identity146–148, Auth and single-FK controls are unchanged.
+MAIN/production's0145 seed migration and unshipped145–148 must be reconciled
+before merge/deploy, outside this source task. All nine standalone gates precede
+combined implementation; Garmin remains later.
+
+### Historical eighteen-case source checkpoint — never runtime-accepted
+
+Code/test checkpoint
 `8fecc50c5f4cdd2349d2d1e425d47d90003707e9`, tested tree
 `24ae63d66b5b23a1cb794482abf2af952be32af6`, appends B6/B7/B8 under
 [DC-SW1/SW2/SW3](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05):
@@ -60,7 +100,7 @@ executed results/errors** and verified cleanup. This is not live18 acceptance.
 CodeQL skipped test-only changes as trivial, not an analysis pass. Terminal
 commit author/committer and remote identity are Copilot223556219, with both AI
 trailers. Exact commands, tested tree and scope are in the
-[current handoff](../../HANDOFF.md#pr805-b6b7b8--eighteen-case-source-proof-live-acceptance-unrun).
+[historical handoff](../../HANDOFF.md#pr805-b6b7b8--eighteen-case-source-proof-live-acceptance-unrun).
 
 The owner reports production access now works through the getsxc connector;
 this worker did not use it. No hosted data, SQL/Docker/browser execution, CI

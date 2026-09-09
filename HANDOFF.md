@@ -2,6 +2,107 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## PR805 pinned E1/E2 integration — 2026-09-09 — live20 UNRUN
+
+Continued `copilot/new-acceptance-cases` from exact
+`667349dd2bdffad9fda3a4e243681c5d90920840`, declared base
+`copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+**Code/test checkpoint:** `a5a631caed5a91a03b1421b05a2f17a55c584f60`,
+**tested tree:** `556b03bc3c93378e433fd6627ab7c72568e900a8`, published before docs.
+
+Imported only `apps/web/e2e/swimming-persistence-mobile.spec.ts` from immutable
+source `fee3751810f2b835b221a430a1eabde627daca3d` on
+`copilot/copilotswim-course-analytics-proof`; resulting blob is exactly
+`2e8f7aca4f21b8a4e0849d29acf0dfbcec207cfd`. Source author:
+`copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>`;
+source committer: `GitHub <noreply@github.com>`. This is file-source integration,
+not a PR811 merge or adoption of its history, policy, workflow or future tip.
+The source's correction leaves freshUser deletion to the existing fixture,
+without redundant per-case cleanup replacing a primary failure. The public
+worker validation report was unavailable; all results below were measured here.
+
+Under [DC-SW1/SW2/SW6](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05),
+E1 covers weekly native25m/25yd separation, native result history and compatible
+bests; E2 covers ordinary manual200/400-like results in generic/native history
+without an inferred pace calibration. Storage arrangement is not evidence of
+logging/assessment UI actions. Neither case has been executed in a browser here.
+Original18 casebook identities/order and original persistence bodies are intact.
+E1/E2 append at18/19: persistence indices2/3/18/19; B indices6/7/12–17;
+C2 remains9. Same six files, counts **2/4/2/8/3/1**. Grouped results map by exact
+identity, not flattened position. Old4/6/8/11/12/15/18 reports remove E1/E2 first,
+then their historical B/C filters, with actual totals and retained identities
+asserted. Same-total E substitutions by original persistence cases or each other
+are rejected alongside existing B/C/duplicate/skip/retry/failure/privacy checks.
+Failure ledgers contain20 cases; E cases acquire no annotation memberships.
+The existing main/stage source closure already fingerprints this spec.
+
+### Actual source validation
+
+Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts src/lib/swim/__tests__/analytics.test.ts src/lib/__tests__/commit-identity-guard.test.ts`
+  — **4 files, 522 passed** (480 acceptance, 1 collection, 2 analytics, 39 identity).
+  The collection test invoked the installed **Playwright1.60.0** CLI with
+  `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json`
+  through existing private isolation. It verified20 exact identities/six files,
+  counts2/4/2/8/3/1, zero executed results/errors, private-directory identity/mode
+  and cleanup. Safe output: `[swim-collection]{"success":true,"exit":0,"loaderCode":"unknown","sources":[]}`.
+- `pnpm --filter @hta/domain exec vitest run src/swimming.test.ts src/swim-pool-input.test.ts src/swim-workout-progress.test.ts`
+  — **3 files, 103 passed**.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts src/swimming-budget.test.ts`
+  — **2 files, 58 passed**. Existing canonical swimming/budget tests and original
+  B6/B7/B8 fixture regressions passed; no duplicate engine math introduced.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-persistence-mobile.spec.ts scripts/swim-browser-acceptance.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+  — passed.
+- `pnpm --filter @hta/web typecheck` — passed.
+- `pnpm docs:check-drift` — passed, **offline in-repository checks only**.
+- `git diff --check`, exact source-blob comparison and checkpoint scope review
+  — passed. Source checkpoint changes only the four authorized code/test files;
+  documentation adds only HANDOFF, pool-swimming and this wiki's append-only log.
+- `printf 'HEAD %s refs/heads/copilot/new-acceptance-cases %s\n' "$(git rev-parse HEAD)" 667349dd2bdffad9fda3a4e243681c5d90920840 | node scripts/check-commit-identities.mjs pre-push origin`
+  — passed, **128 commits inspected** at the code checkpoint, including all
+  unmerged stack layers against the destination's verified default branch.
+- Secret scan: clean. CodeQL: **skipped as trivial test/casebook changes**,
+  not a successful security analysis.
+
+Observed failures/corrections: the initial progress push failed the full-history
+guard on the shallow clone; `git fetch --unshallow origin` restored required
+history without rewriting or bypassing hooks. Initial import comparison caught
+a transcribed E2 heading assertion; it was restored to the exact B source before
+tests. The first web invocation mistakenly supplied
+`src/lib/swim/__tests__/commit-identity-guard.test.ts`, so only3 files/483 tests
+ran despite exit0. Correcting that path produced the four-file/522 result above.
+No material B-only defect was demonstrated, and the imported blob is unchanged.
+The Vite CJS deprecation notice is a warning, not a test failure.
+
+Local and public metadata for the published code checkpoint match the approved
+native cloud author and GitHub committer above. The four-email policy also
+allows `223556219+Copilot@users.noreply.github.com` and
+`280348738+drrowdev@users.noreply.github.com`. No history repair, identity
+substitution, hook bypass, merge/rebase/amend/force or extra agent/review chain.
+
+### Runtime and release boundary
+
+**Live20 is UNRUN; live18 was never runtime-accepted.** Last full reference is
+15/15 at `fdf01d865dc09f38e551925266fa604c56a3d40e`,
+[run34351260981](https://github.com/drrowdev/hybrid-training-app/actions/runs/34351260981).
+Old core [run34392005044](https://github.com/drrowdev/hybrid-training-app/actions/runs/34392005044)
+at `030160f8afb883cb650ceb6647c290c93c5b6e56` succeeded (GitHub logs query found
+zero failed jobs), but does not cover this integration head. The coordinator
+must inspect the exact artifact/current core before dispatching one bounded
+full reference. No CI dispatch, browser/SQL/Docker execution, hosted-data reads,
+production mutation, backup or paid resource occurred in this source task.
+
+Unchanged: normal149 versus identity146/147/148; Auth5phases/4DDL/15contexts/
+36HTTP; single set_logs FK down/up/baseline23503/candidate delete1/forced checks/
+UPDATE/restoration; session_movements. CLI2.116/default12/private0700/0600;
+30s/case,300s global,330s command,590s phase,410s server,35m total,3m cleanup,
+45m job; exact-resource-ID cleanup. No new retry, sleep, force-click or limit.
+MAIN/production's `0145_seed_single_leg_rdl_variants` requires reconciliation
+with unshipped145–148 before merge/deploy, **not in this task**. All nine
+standalone gates precede combined implementation; Garmin remains later.
+The earlier checkpoints below are historical, not claims about live20.
+
 ## Official Copilot attribution policy — 2026-09-09
 
 Owner decision: **accept both official bots and native author credit**. This
