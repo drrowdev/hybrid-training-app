@@ -1,16 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { applySwimProposal, generateSwimPlan, recordSwimDecision, SWIM_GENERATOR_VERSION } from "@hta/engine";
-import type { SwimSetup } from "@hta/domain";
+import { estimateCriticalSwimSpeed, swimWorkoutLengths, validateSwimWorkout, type SwimSetup } from "@hta/domain";
 import { test as seededTest, expect } from "./fixtures/seed";
 import { signInAs } from "./fixtures/auth";
 import { markOnboarded } from "./fixtures/seed-blocks";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { addDaysToYmd, isoWeekdayYmd } from "../src/lib/dates";
 import {
-  standaloneWeekRequests, swimWorkoutDefinition,
+  standaloneWeekRequests, swimPlanDefinition, swimWorkoutDefinition,
   type StandalonePlanDefinition, type StandaloneWorkoutDefinition,
 } from "../src/lib/swim/model";
 import { deriveSwimWeekCandidate, loadSwimHistory, persistedSwimPlan } from "../src/lib/swim/queries";
@@ -18,6 +18,7 @@ import {
   createSwimPlan, startSwimWorkout, completeSwimWorkout, listSwimPlans, listSwimWorkouts,
   type SwimWorkoutInput,
 } from "../src/lib/swim/storage";
+import { parseSetupForm } from "../src/lib/swim/forms";
 import { MAX_REPLAY_ATTEMPTS, sortBySeq, type OutboxEntry } from "../src/lib/offline/outbox-core";
 
 const test = seededTest.extend<{ actor: SupabaseClient }>({
@@ -175,6 +176,140 @@ function committed(rows: Awaited<ReturnType<typeof completionRows>>, entry: Outb
   expect(log.duration_sec).toBe(Number(entry.payload.timeMs) / 1000);
   expect(rows.session.duration_min).toBe(Number(entry.payload.timeMs) / 60000);
   expect(Number(rows.session.session_rpe)).toBe(Number(entry.payload.rpe));
+}
+
+async function budgetSetup(page: Page, times?: readonly [string, string]) {
+  await page.goto("/app/swim/setup");
+  const form = page.locator("form").filter({ has: page.getByLabel("Pool length", { exact: true }) });
+  await form.getByLabel("Pool length", { exact: true }).selectOption("50m");
+  await form.getByLabel("Goal", { exact: true }).selectOption("endurance");
+  await form.getByLabel("Swimming experience", { exact: true }).selectOption(times ? "regular" : "beginner");
+  await form.getByLabel("Recent comfortable continuous lengths", { exact: true }).fill(times ? "12" : "0");
+  for (const group of ["Known strokes", "Equipment", "Swim days"]) {
+    for (const control of await form.getByRole("group", { name: group, exact: true }).getByRole("checkbox").all()) {
+      await control.uncheck();
+    }
+  }
+  if (times) await form.getByRole("checkbox", { name: "Freestyle", exact: true }).check();
+  await form.getByRole("checkbox", { name: "Mon", exact: true }).check();
+  await form.getByLabel("Minutes per swim", { exact: true }).fill("10");
+  await form.getByLabel("Weeks", { exact: true }).fill("2");
+  const today = await form.getByLabel("Start date", { exact: true }).inputValue();
+  expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  if (times) {
+    await form.getByText("200 / 400 assessment (optional)", { exact: true }).click();
+    await form.getByLabel("200 time · min:sec", { exact: true }).fill(times[0]);
+    await form.getByLabel("400 time · min:sec", { exact: true }).fill(times[1]);
+    await form.getByLabel("Swum on", { exact: true }).fill(today);
+    await form.getByLabel("Assessment stroke", { exact: true }).selectOption("freestyle");
+    await form.getByRole("checkbox", { name: "Verified times, same pool and stroke, without equipment", exact: true }).check();
+  }
+  return form;
+}
+
+async function setupPreview(form: Locator) {
+  const entries = await form.evaluate((node) =>
+    [...new FormData(node as HTMLFormElement)].map(([key, value]) => [key, String(value)] as const));
+  const data = new FormData();
+  for (const [key, value] of entries) data.append(key, value);
+  const input = parseSetupForm(data);
+  const assessed = input.observation ? estimateCriticalSwimSpeed(input.observation) : null;
+  if (assessed && !assessed.ok) throw new Error("Synthetic assessment must be supported.");
+  const calibration = assessed?.ok ? assessed.value : null;
+  const generated = generateSwimPlan({
+    setup: input.setup, calibration,
+    weeks: standaloneWeekRequests(input.startDate, input.weeks, input.weekdays),
+  });
+  if (!generated.ok) throw new Error("Synthetic setup must be supported.");
+  return { entries, input, calibration, generated: generated.value };
+}
+
+async function setupRows(client: SupabaseClient, userId: string) {
+  const [plans, workouts, sessions] = await Promise.all([
+    listSwimPlans(client), listSwimWorkouts(client),
+    client.from("sessions").select("id").eq("user_id", userId),
+  ]);
+  expect(plans.every((row) => row.user_id === userId)).toBe(true);
+  expect(workouts.every((row) => row.user_id === userId)).toBe(true);
+  expect(sessions.error === null).toBe(true);
+  expect(sessions.data).toHaveLength(0);
+  return { plans, workouts };
+}
+
+function assertSetupWorkouts(
+  rows: Awaited<ReturnType<typeof setupRows>>, preview: Awaited<ReturnType<typeof setupPreview>>, minutes: number,
+) {
+  expect(rows.plans).toHaveLength(1);
+  const plan = rows.plans[0];
+  const definition = swimPlanDefinition(plan);
+  expect(isDeepStrictEqual(definition.setup, preview.input.setup)).toBe(true);
+  expect(isDeepStrictEqual(definition.schedule, {
+    startDate: preview.input.startDate, weeks: preview.input.weeks, weekdays: preview.input.weekdays,
+  })).toBe(true);
+  expect(isDeepStrictEqual(plan.state.observations, [preview.input.observation])).toBe(true);
+  expect(isDeepStrictEqual(plan.state.acceptedCalibration, preview.calibration)).toBe(true);
+  expect(plan.state.decisions).toHaveLength(1);
+  const audit = plan.state.decisions[0];
+  expect(audit.kind).toBe("setup");
+  expect(audit.decision).toBe("accepted");
+  expect(isDeepStrictEqual(audit.inputSnapshot, { ...preview.input, versions: preview.generated.versions })).toBe(true);
+  const generated = generateSwimPlan({
+    setup: definition.setup, calibration: plan.state.acceptedCalibration,
+    weeks: standaloneWeekRequests(definition.schedule.startDate, definition.schedule.weeks, definition.schedule.weekdays),
+  });
+  if (!generated.ok) throw new Error("Stored setup must generate.");
+  expect(isDeepStrictEqual(generated.value, preview.generated)).toBe(true);
+  expect(isDeepStrictEqual(definition, {
+    version: 1, setup: preview.input.setup, generatorVersion: SWIM_GENERATOR_VERSION,
+    schedule: { startDate: preview.input.startDate, weeks: preview.input.weeks, weekdays: preview.input.weekdays },
+    initialDose: generated.value.dose,
+  })).toBe(true);
+  const expected = generated.value.weeks.flatMap((week) => week.slots.map((slot) => {
+    if (slot.kind !== "workout") throw new Error("Expected a whole-length workout.");
+    return {
+      scheduled_date: slot.dateISO, slot: "single",
+      definition: {
+        version: 1, original: slot.original, issued: slot.issued, modifications: [],
+        weekIndex: week.weekIndex, slotId: slot.slotId, intent: slot.intent, provisional: week.provisional,
+      },
+    };
+  }));
+  expect(expected).toHaveLength(2);
+  expect(isDeepStrictEqual(rows.workouts.map(({ scheduled_date, slot, definition }) =>
+    ({ scheduled_date, slot, definition })), expected)).toBe(true);
+  for (const row of rows.workouts) {
+    expect(isDeepStrictEqual(row.plan_id, plan.id)).toBe(true);
+    expect(row.status).toBe("scheduled");
+    expect(row.session_id).toBeNull();
+    const workout = row.definition.issued;
+    expect(isDeepStrictEqual(workout.snapshot.course, { numerator: 50, denominator: 1, unit: "m" })).toBe(true);
+    expect(isDeepStrictEqual(workout.snapshot.strokes, ["freestyle"])).toBe(true);
+    expect(workout.snapshot.equipment).toHaveLength(0);
+    expect(validateSwimWorkout(workout).length).toBe(0);
+    expect(workout.totalLengths).toBe(swimWorkoutLengths(workout));
+    expect(workout.focus).toBe("endurance");
+    expect(workout.budget.minutes).toBe(minutes);
+    expect(Number.isInteger(workout.budget.accountedMs)).toBe(true);
+    expect(workout.budget.accountedMs).toBeGreaterThan(0);
+    expect(workout.budget.accountedMs).toBeLessThanOrEqual(minutes * 60_000);
+    expect(workout.estimatedMs).toBe(workout.budget.accountedMs);
+    expect(workout.sections[0].kind).toBe("warmup");
+    expect(workout.sections.at(-1)?.kind).toBe("cooldown");
+    for (const kind of ["warmup", "main", "cooldown"]) {
+      const section = workout.sections.find((item) => item.kind === kind);
+      expect(!!section && section.items.length > 0).toBe(true);
+      expect(section?.items.every((item) => item.effort === (kind === "main" ? "steady" : "easy"))).toBe(true);
+    }
+    for (const section of workout.sections) {
+      expect(Number.isInteger(section.rounds) && section.rounds > 0).toBe(true);
+      for (const item of section.items) {
+        expect(Number.isInteger(item.lengths) && item.lengths > 0).toBe(true);
+        expect(Number.isInteger(item.repeats) && item.repeats > 0).toBe(true);
+        expect(item.equipment).toHaveLength(0);
+        expect(item.stroke).toBe("freestyle");
+      }
+    }
+  }
 }
 
 test.describe("ADR0079 later-cohort B swimming decisions and offline durability", () => {
@@ -876,5 +1011,121 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await expect(page.getByRole("button", { name: "Review next week", exact: true })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
     same(await saved(actor, created.plan.id), after);
+  });
+
+  test("B6 DC-SW1/DC-SW3: a short calibrated budget preserves whole-length workout purpose", async ({
+    page, context, freshUser, seedConfig, baseURL, actor,
+  }) => {
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    const form = await budgetSetup(page, ["4:00", "8:30"]);
+    const preview = await setupPreview(form);
+    expect(preview.calibration !== null).toBe(true);
+    expect(isDeepStrictEqual(await setupRows(actor, freshUser.userId), { plans: [], workouts: [] })).toBe(true);
+    await form.getByRole("button", { name: "Create swim plan", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/swim\?plan=/);
+    const stored = await setupRows(actor, freshUser.userId);
+    assertSetupWorkouts(stored, preview, 10);
+    const definition = swimPlanDefinition(stored.plans[0]);
+    const larger = generateSwimPlan({
+      setup: { ...definition.setup, sessionBudgetMinutes: 60 },
+      calibration: stored.plans[0].state.acceptedCalibration,
+      weeks: standaloneWeekRequests(definition.schedule.startDate, definition.schedule.weeks, definition.schedule.weekdays),
+    });
+    if (!larger.ok) throw new Error("Larger synthetic budget must generate.");
+    const largerSlots = larger.value.weeks.flatMap((week) => week.slots);
+    expect(largerSlots.length).toBe(stored.workouts.length);
+    for (const row of stored.workouts) {
+      const reference = largerSlots.find((slot) => slot.slotId === swimWorkoutDefinition(row).slotId);
+      if (!reference || reference.kind !== "workout") throw new Error("Missing larger-budget reference.");
+      expect(row.definition.issued.budget.minutes).toBe(10);
+      expect(row.definition.issued.budget.accountedMs).toBeLessThanOrEqual(10 * 60_000);
+      expect(row.definition.issued.totalLengths).toBeLessThan(reference.issued.totalLengths);
+      expect(row.definition.issued.budget.accountedMs).toBeLessThan(reference.issued.budget.accountedMs);
+    }
+    await page.getByRole("heading", { name: "Swims", exact: true }).locator("..").getByRole("link").nth(0).click();
+    await expect(page.getByText("50 m", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Up to 10 min/)).toBeVisible();
+    const issuedView = await page.locator("main").innerText();
+    await page.reload();
+    await expect(page.getByText(/Up to 10 min/)).toBeVisible();
+    expect(isDeepStrictEqual(await page.locator("main").innerText(), issuedView)).toBe(true);
+    expect(isDeepStrictEqual(await setupRows(actor, freshUser.userId), stored)).toBe(true);
+  });
+
+  test("B7 DC-SW2/DC-SW3: an impossible calibrated budget creates no plan and can be corrected", async ({
+    page, context, freshUser, seedConfig, baseURL, actor,
+  }) => {
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    const form = await budgetSetup(page, ["16:00", "34:00"]);
+    const preview = await setupPreview(form);
+    expect(preview.calibration !== null).toBe(true);
+    const slots = preview.generated.weeks.flatMap((week) => week.slots);
+    expect(slots).toHaveLength(2);
+    for (const slot of slots) {
+      if (slot.kind !== "conflict") throw new Error("Expected an impossible calibrated budget.");
+      expect(slot.conflict.code).toBe("budget_impossible");
+      expect(slot.conflict.details?.accounts).toBe("whole_session");
+      expect(Number(slot.conflict.details?.minimumMinutes)).toBeGreaterThan(10);
+    }
+    await form.getByRole("button", { name: "Create swim plan", exact: true }).click();
+    const alert = form.getByRole("alert");
+    await expect(alert).toBeVisible();
+    await expect(alert.locator("p")).toContainText(/\S/);
+    await expect(alert.getByRole("listitem")).toHaveCount(3);
+    for (const option of await alert.getByRole("listitem").all()) await expect(option).toContainText(/\S/);
+    await expect(page).toHaveURL(/\/app\/swim\/setup$/);
+    expect(isDeepStrictEqual((await setupPreview(form)).entries, preview.entries)).toBe(true);
+    expect(isDeepStrictEqual(await setupRows(actor, freshUser.userId), { plans: [], workouts: [] })).toBe(true);
+
+    const budget = form.getByLabel("Minutes per swim", { exact: true });
+    expect(Number(await budget.getAttribute("max"))).toBeGreaterThanOrEqual(20);
+    await budget.fill("20");
+    const corrected = await setupPreview(form);
+    expect(isDeepStrictEqual(corrected.entries, preview.entries.map(([key, value]) =>
+      [key, key === "timeBudgetMinutes" ? "20" : value]))).toBe(true);
+    expect(corrected.generated.weeks.every((week) => week.slots.every((slot) => slot.kind === "workout"))).toBe(true);
+    await form.getByRole("button", { name: "Create swim plan", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/swim\?plan=/);
+    const stored = await setupRows(actor, freshUser.userId);
+    assertSetupWorkouts(stored, corrected, 20);
+    await page.getByRole("heading", { name: "Swims", exact: true }).locator("..").getByRole("link").nth(0).click();
+    await expect(page.getByText("50 m", { exact: true })).toBeVisible();
+    await expect(page.getByText(/Up to 20 min/)).toBeVisible();
+    const issuedView = await page.locator("main").innerText();
+    await page.reload();
+    await expect(page.getByText(/Up to 20 min/)).toBeVisible();
+    expect(isDeepStrictEqual(await page.locator("main").innerText(), issuedView)).toBe(true);
+    expect(isDeepStrictEqual(await setupRows(actor, freshUser.userId), stored)).toBe(true);
+  });
+
+  test("B8 DC-SW2/DC-SW3: beginner setup offers learning guidance instead of a workout", async ({
+    page, context, freshUser, seedConfig, baseURL, actor,
+  }) => {
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    const form = await budgetSetup(page);
+    await expect(form.getByLabel("Recent comfortable continuous lengths", { exact: true })).toHaveAttribute("min", "0");
+    const preview = await setupPreview(form);
+    expect(preview.input.setup.recentComfortableLengths).toBe(0);
+    expect(preview.input.setup.knownStrokes).toHaveLength(0);
+    expect(preview.input.setup.benchmarks).toBeUndefined();
+    expect(preview.input.observation).toBeNull();
+    expect(preview.calibration).toBeNull();
+    expect(preview.generated.calibration).toBeNull();
+    expect(preview.entries.every(([key, value]) =>
+      key !== "verified" && (!["time200", "time400", "benchmarkDate"].includes(key) || value === ""))).toBe(true);
+    const slots = preview.generated.weeks.flatMap((week) => week.slots);
+    expect(slots).toHaveLength(2);
+    expect(slots.every((slot) => slot.kind === "guidance" && slot.guidance.steps.length > 0)).toBe(true);
+    expect(isDeepStrictEqual(await setupRows(actor, freshUser.userId), { plans: [], workouts: [] })).toBe(true);
+    await form.getByRole("button", { name: "Create swim plan", exact: true }).click();
+    await expect(form.getByRole("status")).toBeVisible();
+    await expect(form.getByRole("status")).toContainText(/\S/);
+    const guidance = slots[0];
+    if (guidance.kind !== "guidance") throw new Error("Expected learning guidance.");
+    expect(isDeepStrictEqual(await form.getByRole("status").innerText(), guidance.guidance.steps.join(" "))).toBe(true);
+    await expect(form.getByRole("alert")).toHaveCount(0);
+    await expect(page).toHaveURL(/\/app\/swim\/setup$/);
+    expect(isDeepStrictEqual((await setupPreview(form)).entries, preview.entries)).toBe(true);
+    expect(isDeepStrictEqual(await setupRows(actor, freshUser.userId), { plans: [], workouts: [] })).toBe(true);
   });
 });

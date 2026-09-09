@@ -85,6 +85,21 @@ export const SWIM_BROWSER_CASES = Object.freeze([
     describe: "ADR0079 later-cohort B swimming decisions and offline durability",
     title: "B5 DC-SW4/DC-SW5: missing effort holds the next week without advancing targets",
   }),
+  Object.freeze({
+    file: "e2e/swimming-decisions-offline-mobile.spec.ts",
+    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    title: "B6 DC-SW1/DC-SW3: a short calibrated budget preserves whole-length workout purpose",
+  }),
+  Object.freeze({
+    file: "e2e/swimming-decisions-offline-mobile.spec.ts",
+    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    title: "B7 DC-SW2/DC-SW3: an impossible calibrated budget creates no plan and can be corrected",
+  }),
+  Object.freeze({
+    file: "e2e/swimming-decisions-offline-mobile.spec.ts",
+    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    title: "B8 DC-SW2/DC-SW3: beginner setup offers learning guidance instead of a workout",
+  }),
 ]);
 const EXPECTED_FILES = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
 
