@@ -70,6 +70,21 @@ export const SWIM_BROWSER_CASES = Object.freeze([
     describe: "ADR0079 mobile swimming account acceptance",
     title: "C3 DC-SW8: Auth admin deletes native and custom-linked synthetic accounts without the app action",
   }),
+  Object.freeze({
+    file: "e2e/swimming-decisions-offline-mobile.spec.ts",
+    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    title: "B3 DC-SW4/DC-SW5: plateau rejection preserves issued work and decision history",
+  }),
+  Object.freeze({
+    file: "e2e/swimming-decisions-offline-mobile.spec.ts",
+    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    title: "B4 DC-SW4/DC-SW5/DC-K4: missed high-effort work supports a recorded warning override without catch-up",
+  }),
+  Object.freeze({
+    file: "e2e/swimming-decisions-offline-mobile.spec.ts",
+    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    title: "B5 DC-SW4/DC-SW5: missing effort holds the next week without advancing targets",
+  }),
 ]);
 const EXPECTED_FILES = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
 

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import type { Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { generateSwimPlan, recordSwimDecision, SWIM_GENERATOR_VERSION } from "@hta/engine";
+import { applySwimProposal, generateSwimPlan, recordSwimDecision, SWIM_GENERATOR_VERSION } from "@hta/engine";
 import type { SwimSetup } from "@hta/domain";
 import { test as seededTest, expect } from "./fixtures/seed";
 import { signInAs } from "./fixtures/auth";
@@ -13,7 +13,7 @@ import {
   standaloneWeekRequests, swimWorkoutDefinition,
   type StandalonePlanDefinition, type StandaloneWorkoutDefinition,
 } from "../src/lib/swim/model";
-import { deriveSwimWeekCandidate, loadSwimHistory } from "../src/lib/swim/queries";
+import { deriveSwimWeekCandidate, loadSwimHistory, persistedSwimPlan } from "../src/lib/swim/queries";
 import {
   createSwimPlan, startSwimWorkout, completeSwimWorkout, listSwimPlans, listSwimWorkouts,
   type SwimWorkoutInput,
@@ -517,5 +517,362 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     }
     if (bodyFailed) throw primaryFailure;
     if (handlerFailure) throw handlerFailure;
+  });
+
+  test("B3 DC-SW4/DC-SW5: plateau rejection preserves issued work and decision history", async ({
+    page, context, freshUser, seedConfig, baseURL, actor,
+  }) => {
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    await page.goto("/app/swim/setup");
+    const today = await page.getByLabel("Start date", { exact: true }).inputValue();
+    expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const created = await arrangePlan(actor, today);
+    const initial = await saved(actor, created.plan.id);
+    for (const workout of initial.workouts.slice(0, 2)) {
+      expect(workout.scheduled_date < today).toBe(true);
+      const started = await startSwimWorkout(actor, workout.id, workout.revision);
+      await completeSwimWorkout(actor, {
+        workoutId: started.id, expectedRevision: started.revision,
+        clientLogId: randomUUID(), completionEntryId: randomUUID(),
+        result: {
+          version: 1, snapshot: started.definition.issued.snapshot,
+          lengths: started.definition.issued.totalLengths, timeMs: 1200000, rpe: 7,
+          completion: "completed", provenance: { source: "manual", recordedAt: new Date().toISOString() },
+        },
+      });
+    }
+    const before = await saved(actor, created.plan.id);
+    expect(before.history.slice(0, 2).every((row) =>
+      row.workout.status === "completed" && !!row.completedAt && row.result?.rpe === 7 &&
+      row.result.lengths === row.workout.definition.issued.totalLengths && !row.deleted && !row.sourceGone,
+    )).toBe(true);
+    const candidate = deriveSwimWeekCandidate(before.plan, before.history, today);
+    if (!candidate) throw new Error("Expected plateau candidate.");
+    expect(candidate.proposal.decision).toBe("hold");
+    expect(candidate.proposal.lever).toBe("none");
+    same(candidate.proposal.from, { mainRepeats: 12, mainRepLengths: 2, mainRestSeconds: 25 });
+    same(candidate.proposal.to, { mainRepeats: 12, mainRepLengths: 2, mainRestSeconds: 25 });
+    same(candidate.proposal.reasons, ["completed_as_prescribed"]);
+    expect(candidate.proposal.snapshot.completionRatio).toBe(1);
+    expect(candidate.proposal.snapshot.meanRpe).toBe(7);
+    expect(candidate.proposal.snapshot.rpeMissing).toBe(0);
+    same([candidate.sourceWeek, candidate.targetWeek], [0, 1]);
+    same(candidate.targetWorkoutIds, before.workouts.slice(2, 4).map((row) => row.id));
+    for (const row of before.workouts) {
+      const expected = candidate.generated.weeks.flatMap((week) => week.slots)
+        .find((slot) => slot.slotId === swimWorkoutDefinition(row).slotId);
+      if (!expected || expected.kind !== "workout") throw new Error("Missing canonical hold target.");
+      same(expected.issued, row.definition.issued);
+    }
+
+    await page.goto(`/app/swim?plan=${created.plan.id}`);
+    await page.getByRole("button", { name: "Review next week", exact: true }).click();
+    const proposal = page.getByRole("heading", { name: "Hold · Week 2", exact: true }).locator("..");
+    await expect(proposal).toBeVisible();
+    await proposal.getByRole("button", { name: "Reject", exact: true }).click();
+    await expect(proposal).toHaveCount(0);
+    await expect(page.locator('p[role="alert"]')).toHaveCount(0);
+    const after = await saved(actor, created.plan.id);
+    expect(after.plan.revision).toBe(before.plan.revision + 1);
+    expect(after.plan.state.decisions).toHaveLength(1);
+    const audit = after.plan.state.decisions[0];
+    same({ id: audit.id, kind: audit.kind, decision: audit.decision,
+      ruleVersion: audit.ruleVersion, generatorVersion: audit.generatorVersion }, {
+      id: candidate.id, kind: "progression", decision: "rejected",
+      ruleVersion: SWIM_GENERATOR_VERSION, generatorVersion: SWIM_GENERATOR_VERSION,
+    });
+    const engineDecision = audit.inputSnapshot.engineDecision;
+    if (!engineDecision || typeof engineDecision !== "object" ||
+      !("atISO" in engineDecision) || typeof engineDecision.atISO !== "string") {
+      throw new Error("Missing persisted engine decision timestamp.");
+    }
+    expect(Number.isFinite(Date.parse(engineDecision.atISO))).toBe(true);
+    const ledger = recordSwimDecision(null, {
+      proposal: candidate.proposal, action: "reject", atISO: engineDecision.atISO,
+    });
+    same(audit.inputSnapshot, JSON.parse(JSON.stringify({
+      ...candidate.exactInputs, proposal: candidate.proposal,
+      engineDecision: ledger.entries[0], appliedDose: { mainRepeats: 12, mainRepLengths: 2, mainRestSeconds: 25 },
+    })));
+    expect(Number.isFinite(Date.parse(audit.recordedAt))).toBe(true);
+    same(after.plan, { ...before.plan, revision: before.plan.revision + 1, updated_at: after.plan.updated_at,
+      state: { ...before.plan.state, decisions: [audit] } });
+    same(after.workouts, before.workouts);
+    same(after.history, before.history);
+    same(after.workouts.map((row) => row.definition), initial.workouts.map((row) => row.definition));
+    expect(deriveSwimWeekCandidate(after.plan, after.history, today)).toBeNull();
+    await page.reload();
+    await page.getByText("Past decisions", { exact: true }).click();
+    await expect(page.getByText("Rejected", { exact: true })).toHaveCount(1);
+    await page.getByRole("button", { name: "Review next week", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Review next week", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Reject", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
+    same(await saved(actor, created.plan.id), after);
+  });
+
+  test("B4 DC-SW4/DC-SW5/DC-K4: missed high-effort work supports a recorded warning override without catch-up", async ({
+    page, context, freshUser, seedConfig, baseURL, actor,
+  }) => {
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    await page.goto("/app/swim/setup");
+    const today = await page.getByLabel("Start date", { exact: true }).inputValue();
+    expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const created = await arrangePlan(actor, today);
+    const initial = await saved(actor, created.plan.id);
+    expect(initial.workouts.slice(0, 2).every((row) => row.scheduled_date < today)).toBe(true);
+    const source = initial.workouts[1];
+    const started = await startSwimWorkout(actor, source.id, source.revision);
+    expect(started.definition.issued.totalLengths).toBe(35);
+    await completeSwimWorkout(actor, {
+      workoutId: started.id, expectedRevision: started.revision,
+      clientLogId: randomUUID(), completionEntryId: randomUUID(),
+      result: {
+        version: 1, snapshot: started.definition.issued.snapshot,
+        lengths: 18, timeMs: 1200000, rpe: 9,
+        completion: "partial", provenance: { source: "manual", recordedAt: new Date().toISOString() },
+      },
+    });
+    const startedTarget = initial.workouts[2];
+    await startSwimWorkout(actor, startedTarget.id, startedTarget.revision);
+    const before = await saved(actor, created.plan.id);
+    expect(before.workouts[2].status).toBe("started");
+    expect(!!before.workouts[2].session_id).toBe(true);
+    same(before.workouts.map((row) => row.definition), initial.workouts.map((row) => row.definition));
+    same(before.workouts[0], initial.workouts[0]);
+    expect(before.history[0].workout.status).toBe("scheduled");
+    expect(before.history[0].workout.session_id).toBeNull();
+    expect(before.history[0].result).toBeNull();
+    expect(before.history[0].completedAt).toBeNull();
+    expect(before.history[1].workout.status).toBe("completed");
+    expect(!!before.history[1].completedAt && !before.history[1].deleted && !before.history[1].sourceGone).toBe(true);
+    same(before.history[1].result?.snapshot, source.definition.issued.snapshot);
+    const candidate = deriveSwimWeekCandidate(before.plan, before.history, today);
+    if (!candidate) throw new Error("Expected missed high-effort candidate.");
+    expect(candidate.proposal.decision).toBe("reduce");
+    expect(candidate.proposal.lever).toBe("main_repeats");
+    same(candidate.proposal.from, { mainRepeats: 12, mainRepLengths: 2, mainRestSeconds: 25 });
+    same(candidate.proposal.to, { mainRepeats: 11, mainRepLengths: 2, mainRestSeconds: 25 });
+    same(candidate.proposal.reasons, ["missed_sessions", "effort_high"]);
+    expect(candidate.proposal.snapshot.plannedLengths).toBe(70);
+    expect(candidate.proposal.snapshot.actualLengths).toBe(18);
+    expect(candidate.proposal.snapshot.missedSessions).toBe(1);
+    expect(candidate.proposal.snapshot.meanRpe).toBe(9);
+    same(candidate.input.history.map(({ completion, actualLengths, rpe }) => ({ completion, actualLengths, rpe })), [
+      { completion: "missed", actualLengths: null, rpe: null },
+      { completion: "partial", actualLengths: 18, rpe: 9 },
+    ]);
+    same([candidate.sourceWeek, candidate.targetWeek], [0, 1]);
+    same(candidate.targetWorkoutIds, before.workouts.slice(2, 4).map((row) => row.id));
+    // No integer lies between 11 and 12 repeats. Eight is the nearest reduction
+    // exceeding the seven-length advisory cap, so it records a warning, not catch-up.
+    const chosenDose = { mainRepeats: 8, mainRepLengths: 2, mainRestSeconds: 25 };
+    const reason = "Choose fewer repeats this week.";
+    expect(candidate.proposal.snapshot.capLengths).toBe(7);
+    const previewLedger = recordSwimDecision(null, {
+      proposal: candidate.proposal, action: "override", atISO: `${today}T00:00:00.000Z`,
+      override: chosenDose, note: reason,
+    });
+    const warning = previewLedger.entries[0].warning;
+    if (typeof warning !== "string" || !warning.length) throw new Error("Expected principle warning.");
+    const chosen = applySwimProposal(persistedSwimPlan(before.plan, before.workouts), chosenDose, {
+      asOfISO: today,
+      startedSlotIds: before.workouts.filter((row) => row.session_id || row.status !== "scheduled" ||
+        !candidate.targetWorkoutIds.includes(row.id)).map((row) => swimWorkoutDefinition(row).slotId),
+    });
+    if (!chosen.ok) throw new Error("Expected legal canonical override.");
+    same(chosen.value.dose, { mainRepeats: 8, mainRepLengths: 2, mainRestSeconds: 25 });
+    const expected = chosen.value.weeks[1].slots.find((slot) => slot.slotId === swimWorkoutDefinition(before.workouts[3]).slotId);
+    const suggested = candidate.generated.weeks[1].slots.find((slot) => slot.slotId === swimWorkoutDefinition(before.workouts[3]).slotId);
+    if (!expected || expected.kind !== "workout" || !suggested || suggested.kind !== "workout") {
+      throw new Error("Missing canonical reduced targets.");
+    }
+    expect(suggested.issued.totalLengths).toBe(33);
+    expect(expected.issued.totalLengths).toBe(27);
+
+    await page.goto(`/app/swim?plan=${created.plan.id}`);
+    await page.getByRole("button", { name: "Review next week", exact: true }).click();
+    const proposal = page.getByRole("heading", { name: "Reduce · Week 2", exact: true }).locator("..");
+    await expect(proposal).toBeVisible();
+    await proposal.getByText("Choose a different week", { exact: true }).click();
+    await proposal.getByLabel("Main repeats", { exact: true }).fill("8");
+    await proposal.getByLabel("Reason", { exact: true }).fill(reason);
+    await proposal.getByRole("button", { name: "Apply my choice", exact: true }).click();
+    await expect(proposal).toHaveCount(0);
+    await expect(page.locator('p[role="alert"]')).toHaveCount(0);
+    await expect(page.locator('p[role="status"]').filter({ hasText: warning })).toBeVisible();
+    const after = await saved(actor, created.plan.id);
+    expect(after.plan.revision).toBe(before.plan.revision + 1);
+    expect(after.plan.state.decisions).toHaveLength(1);
+    const audit = after.plan.state.decisions[0];
+    same({ id: audit.id, kind: audit.kind, decision: audit.decision, reason: audit.reason,
+      ruleVersion: audit.ruleVersion, generatorVersion: audit.generatorVersion }, {
+      id: candidate.id, kind: "progression", decision: "overridden", reason,
+      ruleVersion: SWIM_GENERATOR_VERSION, generatorVersion: SWIM_GENERATOR_VERSION,
+    });
+    const engineDecision = audit.inputSnapshot.engineDecision;
+    if (!engineDecision || typeof engineDecision !== "object" ||
+      !("atISO" in engineDecision) || typeof engineDecision.atISO !== "string") {
+      throw new Error("Missing persisted engine decision timestamp.");
+    }
+    expect(Number.isFinite(Date.parse(engineDecision.atISO))).toBe(true);
+    const ledger = recordSwimDecision(null, {
+      proposal: candidate.proposal, action: "override", atISO: engineDecision.atISO,
+      override: chosenDose, note: reason,
+    });
+    same(audit.inputSnapshot, JSON.parse(JSON.stringify({
+      ...candidate.exactInputs, proposal: candidate.proposal,
+      engineDecision: ledger.entries[0], appliedDose: chosenDose,
+    })));
+    expect(Number.isFinite(Date.parse(audit.recordedAt))).toBe(true);
+    for (const [index, row] of after.workouts.entries()) {
+      const prior = before.workouts[index];
+      same([row.id, row.scheduled_date, row.slot, row.definition.original],
+        [prior.id, prior.scheduled_date, prior.slot, initial.workouts[index].definition.original]);
+      same(row.definition.issued.budget, prior.definition.issued.budget);
+      if (index !== 3) { same(row, prior); continue; }
+      same(row.definition.issued, expected.issued);
+      expect(row.revision).toBe(prior.revision + 1);
+      expect(swimWorkoutDefinition(row).provisional).toBe(false);
+      expect(row.definition.issued.totalLengths).toBe(27);
+      expect(row.definition.modifications).toHaveLength(1);
+      const modification = row.definition.modifications[0];
+      same([modification.previous, modification.decisionId, modification.reason],
+        [prior.definition.issued, audit.id, reason]);
+      same(row, { ...prior, revision: prior.revision + 1, updated_at: row.updated_at,
+        definition: { ...prior.definition, issued: expected.issued, provisional: false, modifications: [modification] } });
+    }
+    same(after.history.map(({ workout, ...actual }) => ({ id: workout.id, ...actual })),
+      before.history.map(({ workout, ...actual }) => ({ id: workout.id, ...actual })));
+    same(after.plan, { ...before.plan, revision: before.plan.revision + 1, updated_at: after.plan.updated_at,
+      state: { ...before.plan.state, decisions: [audit] } });
+    expect(deriveSwimWeekCandidate(after.plan, after.history, today)).toBeNull();
+    await page.getByText("Past decisions", { exact: true }).click();
+    const decisionRow = page.getByText("Overridden", { exact: true }).locator("..");
+    await expect(decisionRow).toHaveCount(1);
+    await expect(decisionRow.getByText(warning, { exact: true })).toBeVisible();
+    await page.reload();
+    await page.getByText("Past decisions", { exact: true }).click();
+    await expect(decisionRow).toHaveCount(1);
+    await expect(decisionRow.getByText(warning, { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Review next week", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Review next week", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Apply my choice", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
+    same(await saved(actor, created.plan.id), after);
+  });
+
+  test("B5 DC-SW4/DC-SW5: missing effort holds the next week without advancing targets", async ({
+    page, context, freshUser, seedConfig, baseURL, actor,
+  }) => {
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    await page.goto("/app/swim/setup");
+    const today = await page.getByLabel("Start date", { exact: true }).inputValue();
+    expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const created = await arrangePlan(actor, today);
+    const initial = await saved(actor, created.plan.id);
+    for (const workout of initial.workouts.slice(0, 2)) {
+      expect(workout.scheduled_date < today).toBe(true);
+      const started = await startSwimWorkout(actor, workout.id, workout.revision);
+      await completeSwimWorkout(actor, {
+        workoutId: started.id, expectedRevision: started.revision,
+        clientLogId: randomUUID(), completionEntryId: randomUUID(),
+        result: {
+          version: 1, snapshot: started.definition.issued.snapshot,
+          lengths: started.definition.issued.totalLengths, timeMs: 1200000, rpe: null,
+          completion: "completed", provenance: { source: "manual", recordedAt: new Date().toISOString() },
+        },
+      });
+    }
+    const startedTarget = initial.workouts[2];
+    await startSwimWorkout(actor, startedTarget.id, startedTarget.revision);
+    const before = await saved(actor, created.plan.id);
+    expect(before.workouts[2].status).toBe("started");
+    expect(!!before.workouts[2].session_id).toBe(true);
+    same(before.workouts.map((row) => row.definition), initial.workouts.map((row) => row.definition));
+    expect(before.history.slice(0, 2).every((row) =>
+      row.workout.status === "completed" && !!row.completedAt && row.result?.rpe === null &&
+      row.result.lengths === row.workout.definition.issued.totalLengths && !row.deleted && !row.sourceGone,
+    )).toBe(true);
+    const candidate = deriveSwimWeekCandidate(before.plan, before.history, today);
+    if (!candidate) throw new Error("Expected missing-effort candidate.");
+    expect(candidate.proposal.decision).toBe("hold");
+    expect(candidate.proposal.lever).toBe("none");
+    same(candidate.proposal.from, { mainRepeats: 12, mainRepLengths: 2, mainRestSeconds: 25 });
+    same(candidate.proposal.to, { mainRepeats: 12, mainRepLengths: 2, mainRestSeconds: 25 });
+    same(candidate.proposal.reasons, ["completed_as_prescribed", "effort_not_reported"]);
+    expect(candidate.proposal.snapshot.completionRatio).toBe(1);
+    expect(candidate.proposal.snapshot.meanRpe).toBeNull();
+    expect(candidate.proposal.snapshot.rpeReported).toBe(0);
+    expect(candidate.proposal.snapshot.rpeMissing).toBe(2);
+    same(candidate.input.history.map((row) => row.rpe), [null, null]);
+    same([candidate.sourceWeek, candidate.targetWeek], [0, 1]);
+    same(candidate.targetWorkoutIds, before.workouts.slice(2, 4).map((row) => row.id));
+    const expected = candidate.generated.weeks[1].slots.find((slot) => slot.slotId === swimWorkoutDefinition(before.workouts[3]).slotId);
+    if (!expected || expected.kind !== "workout") throw new Error("Missing canonical hold target.");
+    expect(expected.issued.totalLengths).toBe(35);
+
+    await page.goto(`/app/swim?plan=${created.plan.id}`);
+    await page.getByRole("button", { name: "Review next week", exact: true }).click();
+    const proposal = page.getByRole("heading", { name: "Hold · Week 2", exact: true }).locator("..");
+    await expect(proposal).toBeVisible();
+    await proposal.getByRole("button", { name: "Accept", exact: true }).click();
+    await expect(proposal).toHaveCount(0);
+    await expect(page.locator('p[role="alert"]')).toHaveCount(0);
+    const after = await saved(actor, created.plan.id);
+    expect(after.plan.revision).toBe(before.plan.revision + 1);
+    expect(after.plan.state.decisions).toHaveLength(1);
+    const audit = after.plan.state.decisions[0];
+    same({ id: audit.id, kind: audit.kind, decision: audit.decision,
+      ruleVersion: audit.ruleVersion, generatorVersion: audit.generatorVersion }, {
+      id: candidate.id, kind: "progression", decision: "accepted",
+      ruleVersion: SWIM_GENERATOR_VERSION, generatorVersion: SWIM_GENERATOR_VERSION,
+    });
+    const engineDecision = audit.inputSnapshot.engineDecision;
+    if (!engineDecision || typeof engineDecision !== "object" ||
+      !("atISO" in engineDecision) || typeof engineDecision.atISO !== "string") {
+      throw new Error("Missing persisted engine decision timestamp.");
+    }
+    expect(Number.isFinite(Date.parse(engineDecision.atISO))).toBe(true);
+    const ledger = recordSwimDecision(null, {
+      proposal: candidate.proposal, action: "accept", atISO: engineDecision.atISO,
+    });
+    same(audit.inputSnapshot, JSON.parse(JSON.stringify({
+      ...candidate.exactInputs, proposal: candidate.proposal,
+      engineDecision: ledger.entries[0], appliedDose: { mainRepeats: 12, mainRepLengths: 2, mainRestSeconds: 25 },
+    })));
+    expect(Number.isFinite(Date.parse(audit.recordedAt))).toBe(true);
+    for (const [index, row] of after.workouts.entries()) {
+      const prior = before.workouts[index];
+      same([row.id, row.scheduled_date, row.slot, row.definition.original],
+        [prior.id, prior.scheduled_date, prior.slot, initial.workouts[index].definition.original]);
+      same(row.definition.issued.budget, prior.definition.issued.budget);
+      if (index !== 3) { same(row, prior); continue; }
+      same(row.definition.issued, expected.issued);
+      expect(row.definition.issued.totalLengths).toBe(35);
+      expect(row.revision).toBe(prior.revision + 1);
+      expect(swimWorkoutDefinition(row).provisional).toBe(false);
+      const changed = !isDeepStrictEqual(expected.issued, prior.definition.issued);
+      expect(row.definition.modifications).toHaveLength(changed ? 1 : 0);
+      if (changed) {
+        same(row.definition.modifications[0].previous, prior.definition.issued);
+        same(row.definition.modifications[0].decisionId, audit.id);
+      }
+      same(row, { ...prior, revision: prior.revision + 1, updated_at: row.updated_at,
+        definition: { ...prior.definition, issued: expected.issued, provisional: false, modifications: row.definition.modifications } });
+    }
+    same(after.history.map(({ workout, ...actual }) => ({ id: workout.id, ...actual })),
+      before.history.map(({ workout, ...actual }) => ({ id: workout.id, ...actual })));
+    expect(after.plan.state.acceptedCalibration).toBeNull();
+    same(after.plan, { ...before.plan, revision: before.plan.revision + 1, updated_at: after.plan.updated_at,
+      state: { ...before.plan.state, decisions: [audit] } });
+    expect(deriveSwimWeekCandidate(after.plan, after.history, today)).toBeNull();
+    await page.reload();
+    await page.getByText("Past decisions", { exact: true }).click();
+    await expect(page.getByText("Accepted", { exact: true })).toHaveCount(1);
+    await page.getByRole("button", { name: "Review next week", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Review next week", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
+    same(await saved(actor, created.plan.id), after);
   });
 });
