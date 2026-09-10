@@ -2903,3 +2903,52 @@ unchanged. Coordinator inspection, current-head core and ONE new-head full22
 are still pending. No extra browser cases, production authority or backup work;
 main145/unshipped145–148 integration remains a later owner-approved gate.
 Swimming stays inside getsxc.app.
+
+## PR805 isolated review bootstrap tooling — 2026-09-10
+
+Final executable/test source: `1e7c0239ce651f41a3033a051d8ea2fa272f925f`
+(initial coherent checkpoint `3cccfe5dc6d80a32b37d79a18f7e934d36ab6b2e`).
+Changed paths only: `.github/workflows/ci.yml`,
+`packages/db/scripts/prepare-swim-review.ts`,
+`packages/db/scripts/__tests__/prepare-swim-review.test.ts`, and this entry.
+Starting live head `82337d2b36436bbe15532b4204e3ee96ba55b3f7` and live main
+`672e4202792da122281639e3db810029432573f5` were verified before changes.
+Application/migration/rollback/acceptance sources remain exactly at accepted
+`82337d2`; successful CI34499762054 and its 26 cases belong to that commit,
+not this tooling. No DC/OC behavior changes; combined work remains deferred.
+
+After coordinator inspection of the complete saved source, the manual
+`ci.yml` input is `prepare_swim_review=true` (default false), job
+`prepare-swim-review`, on `copilot/new-acceptance-cases` only. `expected_sha`
+must be the full reviewed **current live head**, including this documentation
+checkpoint; `migrate_production`, `allow_undeployed`, and `swim_acceptance`
+must all be false. Successful `ci` and `identity-guard` are required.
+Only environment `swim-review`'s `SWIM_REVIEW_DATABASE_URL` reaches the setup
+step. The sole allowed route is project `whwilnhqfiaquwxgkxwt` via its
+Stockholm session pooler. Source/head/credential/pristine-state guards precede
+canonical 150-migration execution and the unchanged catalog seed CLI.
+Postflight requires exact ledger order/hashes, 330 seed entries, 334 global
+movements, readiness true, and no user/account/storage data. Unknown state,
+partial setup, deadline, or shutdown failure requires inspection, not rerun
+or destructive recovery. Raw seed streams are discarded, not retained as
+logs/artifacts; only bounded safe phase/status/error-code evidence is emitted.
+
+Offline checks from the repository root:
+- `pnpm --filter @hta/db exec vitest run scripts/__tests__/prepare-swim-review.test.ts`
+  — **86 passed**, including fake subprocess failures/cancellation and unchanged
+  existing workflow-job digest. No database/process-under-test was started.
+- `pnpm --filter @hta/db typecheck` — passed.
+- `pnpm --filter @hta/db exec tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --strict --noUncheckedIndexedAccess --noImplicitReturns --skipLibCheck --esModuleInterop scripts/prepare-swim-review.ts scripts/__tests__/prepare-swim-review.test.ts`
+  — passed. Adding `--exactOptionalPropertyTypes` exposed the existing
+  unchanged `seeds/movements.ts:41` optional-property error; not modified.
+- `pnpm --filter @hta/db lint` — existing no-config informational command;
+  `git diff --check` and changed-file secret scans passed.
+- Automated validation was attempted twice: reviewer binary unavailable;
+  CodeQL Actions analysis failed and JavaScript analysis was skipped for
+  database size. These are unresolved validation limitations, not clean scans.
+  Local and published source commit identities are allowlisted native bot/GitHub.
+
+No database connection, migration, secret retrieval, hosted execution, workflow
+dispatch, full acceptance/build matrix, app/browser/server/Docker startup,
+Vercel change, user review, or production activity was performed in this worker.
+Coordinator source inspection and guarded runtime execution remain unperformed.
