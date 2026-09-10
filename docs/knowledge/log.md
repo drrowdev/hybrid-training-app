@@ -3009,3 +3009,14 @@ Scoped lint/types passed. Plan/audit/history and primary/result/region
 comparisons use private boolean equality; winning resume preview remains the
 oracle and rejected UI retains its inputs. Secret/CodeQL/final publication
 verification pending. Runtime B9/core/frozen26 remains coordinator-owned.
+
+## [2026-09-10] refine | PR805 B9 final source handoff
+
+Complete code/tests af5d4fe9 published with verified allowlisted local/public
+identities; seven-file scope only. Changed-file secret scan and diff checks
+passed. Existing identity guard checked157 introduced commits before publication.
+CodeQL requested after code commit, skipped for test/documentation-only changes;
+not an analyzed security pass. No product defect was demonstrated by source/
+unit/collection work. B9 runtime is unexecuted; coordinator terminal model/refs
+inspection, exact-head core FIRST, then ONE frozen26 remain required. All
+accepted25 evidence and unresolved combined/production boundaries are preserved.

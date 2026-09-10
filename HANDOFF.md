@@ -28,7 +28,8 @@ input/preview stays visible until reload. Whole state, primary prescriptions/
 sets, results and regional rows are retained. No new scheduling UI or product,
 schema/RLS, storage fixture/service, dependency, workflow or deadline changes.
 
-Early source checkpoint `ea17f431ae4ac96a7f4fb17eeb376c6edf23ed3c` published
+Early source checkpoint `ea17f431ae4ac96a7f4fb17eeb376c6edf23ed3c` and complete
+code/test checkpoint `af5d4fe99dfcd4827a739c6b93adc5b24adf8ce9` published
 with verified local/public allowlisted cloud author and GitHub committer.
 Final validation in the official worker:
 
@@ -40,9 +41,13 @@ Final validation in the official worker:
   The other five accepted spec files were byte-compared to starting60e5.
 - `pnpm --filter @hta/web exec eslint e2e/swimming-decisions-offline-mobile.spec.ts scripts/swim-browser-acceptance.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
   and `pnpm --filter @hta/web typecheck` — passed.
-- `pnpm docs:check-drift` (offline in-repo), `git diff --check`, initial secret
+- `pnpm docs:check-drift` (offline in-repo), `git diff --check`, changed-file secret
   scan — passed. First unit batch exposed remaining B-file count8; corrected
-  to9 before the green batch. Security/final publication verification pending.
+  to9 before the green batch. Existing pre-push identity guard passed across157
+  introduced commits before final code publication, without bypass or rewrite.
+  CodeQL requested after all code was committed; skipped as test/documentation-
+  only, not an analyzed security pass. Final committed diff contains only the
+  seven required spec/registry/proof/HANDOFF/wiki/log files, no artifacts.
 
 Collection is NOT runtime. Eight of nine standalone gates are accepted;
 B9 runtime is the sole remaining gap before combined. Coordinator complete
