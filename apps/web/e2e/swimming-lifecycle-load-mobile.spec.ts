@@ -1959,7 +1959,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
     await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
     await page.getByText("Notes, changes and splits", { exact: true }).click();
-    await page.getByLabel("Notes", { exact: true }).fill("Synthetic retained swim draft");
+    await page.getByRole("textbox", { name: "Notes", exact: true }).fill("Synthetic retained swim draft");
     const draftKey = swimDraftKey(userId, target.id);
     const draft = readSwimDraft(await page.evaluate((key) => localStorage.getItem(key), draftKey));
     expect(draft?.lengths === String(lengths) && draft.time === "15:00" &&
@@ -2002,7 +2002,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await expect(page.getByLabel("Time · min:sec", { exact: true })).toHaveValue("15:00");
     await expect(page.getByRole("radio", { name: "6 moderate", exact: true })).toBeChecked();
     await page.getByText("Notes, changes and splits", { exact: true }).click();
-    await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Synthetic retained swim draft");
+    await expect(page.getByRole("textbox", { name: "Notes", exact: true })).toHaveValue("Synthetic retained swim draft");
     expect(isDeepStrictEqual(readSwimDraft(
       await page.evaluate((key) => localStorage.getItem(key), draftKey),
     ), draft) && (await prescription.innerText()) === startedTargetText).toBe(true);

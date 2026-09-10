@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { runInNewContext } from "node:vm";
 import { renderToStaticMarkup } from "react-dom/server";
 import { estimateCriticalSwimSpeed, validateSwimWorkout } from "@hta/domain";
 import { generateSwimPlan } from "@hta/engine";
@@ -9,7 +12,7 @@ import { parseSetupForm } from "../forms";
 import { standaloneWeekRequests } from "../model";
 import { workoutPresentation } from "../presentation";
 import { nextConfirmedView, nextEditMode, type SwimWorkoutView } from "../view-types";
-import { initialSwimDraft } from "../draft";
+import { initialSwimDraft, readSwimDraft } from "../draft";
 import { SWIM_REFRESH_WARNING } from "../action-feedback";
 import { swimFixture, userId, sessionId } from "./fixtures";
 
@@ -50,6 +53,84 @@ function editedView(): SwimWorkoutView {
 }
 
 describe("DC-SW3 poolside workout controls", () => {
+  it("A7 DC-SW7/DC-SW9: retained Notes match the pinned textbox engine, not the exact label engine (SSR only)", () => {
+    const installed = createRequire(import.meta.url);
+    const playwrightTest = createRequire(installed.resolve("@playwright/test/package.json"));
+    const playwright = createRequire(playwrightTest.resolve("playwright/package.json"));
+    const core = playwright.resolve("playwright-core/package.json");
+    expect(playwright(core).version).toBe("1.60.0");
+    expect(installed("react-dom/package.json").version).toBe("19.2.4");
+    const bundle = readFileSync(join(dirname(core), "lib/coreBundle.js"), "utf8");
+    const injectedLiteral = bundle.match(/^    source3 = ('.*');$/m)?.[1];
+    expect(injectedLiteral).toBeDefined();
+    const injected = runInNewContext(injectedLiteral!);
+
+    // Use the already-installed Capacitor → plist DOM parser, without adding a dependency.
+    const mobile = createRequire(new URL("../../../../../mobile/package.json", import.meta.url));
+    const capacitor = createRequire(mobile.resolve("@capacitor/cli/package.json"));
+    const plist = createRequire(capacitor.resolve("plist/package.json"));
+    const { DOMParser } = plist("@xmldom/xmldom") as {
+      DOMParser: new () => { parseFromString: (html: string, mime: string) => Document };
+    };
+    const retained = readSwimDraft(JSON.stringify({
+      ...initialSwimDraft(workoutView()), lengths: "12", time: "15:00", rpe: "6",
+      notes: "Synthetic retained swim draft",
+    }))!;
+    expect(retained.notes).toBe("Synthetic retained swim draft");
+    const render = (notes: string) => renderToStaticMarkup(
+      <WorkoutClient workout={{ ...workoutView(), notes }} userId={userId}
+        onConfirmed={() => {}} warning={null} setWarning={() => {}} />,
+    );
+    for (const notes of ["", retained.notes]) {
+      const markup = render(notes).match(/<label\b[^>]*>Notes<textarea\b[^>]*>[\s\S]*?<\/textarea><\/label>/)?.[0];
+      expect(markup).toBeDefined();
+      const document = new DOMParser().parseFromString(markup!, "text/html");
+      const label = document.documentElement;
+      const textarea = document.getElementsByTagName("textarea")[0]!;
+      // XML DOM supplies the rendered tree; adapt only the HTML surface used here.
+      // The isolated label models an open disclosure, not browser layout or hydration.
+      for (const element of [label, textarea]) {
+        Object.defineProperties(element, {
+          nodeName: { value: element.tagName.toUpperCase() },
+          parentElement: { get: () => element.parentNode?.nodeType === 1 ? element.parentNode : null },
+          closest: { value: (selector: string) => {
+            expect(selector).toBe("details,summary");
+            return null;
+          } },
+        });
+      }
+      Object.defineProperties(textarea, {
+        labels: { value: [label] },
+        value: { get: () => textarea.textContent },
+      });
+      Object.defineProperties(document, {
+        defaultView: { value: { getComputedStyle: () => ({ display: "inline", visibility: "visible", content: "normal" }) } },
+        querySelectorAll: { value: (selector: string) => {
+          expect(selector).toBe("*");
+          return document.getElementsByTagName("*");
+        } },
+      });
+      const selectors = runInNewContext(`${injected}
+        const evaluator = { _cacheText: new Map(), _queryCSS: ({ scope }, css) => scope.querySelectorAll(css) };
+        ({
+          label: InjectedScript.prototype._createInternalLabelEngine.call({ _evaluator: evaluator }),
+          role: createRoleEngine(true)
+        });
+      `, {
+        module: { exports: {} }, Node: { TEXT_NODE: 3, COMMENT_NODE: 8, ELEMENT_NODE: 1 },
+        Element: label.constructor, HTMLInputElement: class {},
+      }) as Record<"label" | "role", { queryAll: (root: Document, selector: string) => HTMLTextAreaElement[] }>;
+      expect(selectors.label.queryAll(document, '"Notes"s')).toEqual(notes ? [] : [textarea]);
+      const stable = selectors.role.queryAll(document, 'textbox[name="Notes"s]');
+      expect(stable).toEqual([textarea]);
+      expect(stable[0]!.value).toBe(notes);
+      expect(selectors.role.queryAll(document, 'textbox[name="Other"s]')).toEqual([]);
+    }
+    const source = readFileSync(new URL("../../../../e2e/swimming-lifecycle-load-mobile.spec.ts", import.meta.url), "utf8");
+    const a7 = source.slice(source.indexOf('  test("A7,'));
+    expect(a7.match(/page\.getByRole\("textbox", \{ name: "Notes", exact: true \}\)/g) ?? []).toHaveLength(2);
+  });
+
   it.each([
     ["B6", "10", "4:00", "8:30"],
     ["B7", "20", "16:00", "34:00"],
