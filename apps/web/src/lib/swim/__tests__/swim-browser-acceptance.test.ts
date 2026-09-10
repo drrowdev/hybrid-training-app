@@ -126,7 +126,8 @@ function unavailableObservations(index: number) {
       index === 5 ? [unavailableAlert("a2-post-start"), unavailableAlert("a2-edit")] :
         index === 9 ? [unavailableAlert("c2-auth-absence")] :
           index === 20 ? [unavailableAlert("a3-finish"), unavailableAlert("a3-finish-transport")] :
-            index === 21 ? [unavailableAlert("a4-replay"), unavailableAlert("a4-replay-transport")] : [];
+            index === 21 ? [unavailableAlert("a4-replay"), unavailableAlert("a4-replay-transport")] :
+              index === 24 ? [unavailableAlert("a7-finish"), unavailableAlert("a7-finish-transport")] : [];
 }
 
 describe("DC-SW8 failure-only C2 Auth absence", () => {
@@ -1191,6 +1192,167 @@ describe("browser environment and static config", () => {
     expect(page.reload).toHaveBeenCalledTimes(1);
     expect(calls).toEqual(["click", "destination", "state", "reload", "state"]);
   });
+  it.each(["fast", "unseen", "pending", "failed", "unpaired", "wrong-origin", "wrong-path", "wrong-query",
+    "wrong-method", "missing-action", "wrong-workout", "wrong-session", "invalid-owner", "wrong-receipt",
+    "wrong-row-session", "wrong-row-owner", "null-time", "invalid-time", "held-read", "late-read", "read-error",
+    "duplicate", "duplicate-response", "late-duplicate", "ambiguous", "duplicate-field", "duplicate-root",
+    "held-view", "view-error", "cleanup-error", "click-error", "fast-success", "held-read-success", "held-view-success"])(
+    "A7 DC-SW7/DC-SW8/DC-SW9: original Finish %s keeps the original assertion and bounded cleanup", async (mode) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+      try {
+        const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+        const a7 = source.slice(source.indexOf('  test("A7,'));
+        const block = a7.slice(a7.indexOf('    {\n      const diagnostic'),
+          a7.indexOf('    await expect(result.getByRole("button", { name: "Edit result"'));
+        const helper = source.slice(source.indexOf("  async function submittedCompletionReceipt("), source.indexOf('  test("A3,'));
+        const { isUuid } = await import("../../offline/outbox-core");
+        const userId = mode === "invalid-owner" ? "invalid" : "11111111-1111-4111-8111-111111111111";
+        const workoutId = swimFixture().workouts[0]!.id;
+        const baseURL = "http://127.0.0.1:3210";
+        const url = `${baseURL}/app/swim/${workoutId}?synthetic=1`;
+        const installed = createRequire(join(webRoot, "package.json"));
+        vi.stubGlobal("__webpack_require__", { u: vi.fn(() => { throw new Error("Unexpected chunk load."); }) });
+        let encodeReply: (args: unknown[]) => Promise<FormData>;
+        try { ({ encodeReply } = installed("next/dist/compiled/react-server-dom-webpack/client.browser")); }
+        finally { vi.unstubAllGlobals(); }
+        const form = new FormData();
+        form.set("workoutId", mode === "wrong-workout" ? sessionId : workoutId);
+        form.set("sessionId", mode === "wrong-session" ? workoutId : sessionId);
+        form.set("clientLogId", receiptId);
+        if (mode === "duplicate-field") form.append("clientLogId", receiptId);
+        const wire = await encodeReply(mode === "ambiguous" ? [form, form] : [form]);
+        if (mode === "duplicate-root") wire.append("0", '["$K1"]');
+        const encoded = new Response(wire);
+        const body = await encoded.text();
+        const request = {
+          url: () => mode === "wrong-origin" ? url.replace("3210", "3211") :
+            mode === "wrong-path" ? url.replace(workoutId, sessionId) : mode === "wrong-query" ? url.replace("=1", "=2") : url,
+          method: () => mode === "wrong-method" ? "GET" : "POST",
+          headers: () => ({ "next-action": mode === "missing-action" ? "" : "synthetic-action",
+            "content-type": encoded.headers.get("content-type") }),
+          postData: () => body,
+        };
+        const events = new EventEmitter();
+        const unrelated = () => {};
+        for (const event of ["request", "response", "requestfailed"]) events.on(event, unrelated);
+        let rejectPrimary!: (error: Error) => void;
+        let resolvePrimary!: () => void;
+        const primary = new Promise<void>((resolve, reject) => { resolvePrimary = resolve; rejectPrimary = reject; });
+        const originalError = new Error("original-ui-error");
+        const order: string[] = [];
+        const toContainText = vi.fn(() => { order.push("assertion"); return primary; });
+        const signals: AbortSignal[] = [];
+        let releaseRead!: () => void;
+        const lateRead = new Promise<void>((resolve) => { releaseRead = resolve; });
+        const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          expect(toContainText).toHaveBeenCalledTimes(1);
+          order.push("receipt");
+          const query = new URL(String(input));
+          expect(query.pathname).toBe("/rest/v1/sessions");
+          expect(query.searchParams.get("user_id")).toBe(`eq.${userId}`);
+          expect(query.searchParams.get("id")).toBe(`eq.${sessionId}`);
+          expect(query.searchParams.get("select")).toBe("id,user_id,completion_outbox_entry_id,completed_at");
+          const signal = init!.signal as AbortSignal;
+          signals.push(signal);
+          if (mode.startsWith("held-read")) await new Promise<void>((_, reject) => {
+            signal.addEventListener("abort", () => reject(new Error("synthetic-private-abort")), { once: true });
+          });
+          if (mode === "late-read") await lateRead;
+          if (mode === "read-error") throw new Error("synthetic-private-read");
+          return Response.json({ id: mode === "wrong-row-session" ? workoutId : sessionId,
+            user_id: mode === "wrong-row-owner" ? workoutId : userId,
+            completion_outbox_entry_id: mode === "wrong-receipt" ? workoutId : receiptId,
+            completed_at: mode === "null-time" ? null : mode === "invalid-time" ? "invalid" : "2026-09-10T00:00:00Z" });
+        });
+        const admin = createClient("http://127.0.0.1:54321", "synthetic-service", {
+          global: { fetch }, auth: { autoRefreshToken: false, persistSession: false },
+        });
+        let releaseView!: () => void;
+        const heldView = new Promise<void>((resolve) => { releaseView = resolve; });
+        const evaluateAll = vi.fn(async (classifier: unknown) => {
+          expect(toContainText).toHaveBeenCalledTimes(1);
+          order.push("view");
+          if (mode.startsWith("held-view") || mode === "cleanup-error") await heldView;
+          if (mode === "view-error") throw new Error("synthetic-private-view");
+          return classifier === classifyWorkoutViewNodes ? { control: "log", result: "editing" } :
+            { count: 0, category: "absent" };
+        });
+        const response = { request: () => mode === "unpaired" ? {} : request, status: () => 200 };
+        const click = vi.fn(async () => {
+          for (const event of ["request", "response", "requestfailed"]) expect(events.listenerCount(event)).toBe(2);
+          order.push("click");
+          if (mode === "click-error") throw originalError;
+          if (mode === "unseen") return;
+          events.emit("request", request);
+          if (mode === "duplicate") events.emit("request", { ...request });
+          if (mode === "failed") events.emit("requestfailed", request);
+          else if (mode !== "pending") events.emit("response", response);
+          if (mode === "duplicate-response") events.emit("response", response);
+          expect(toContainText).not.toHaveBeenCalled();
+          expect(fetch).not.toHaveBeenCalled();
+          expect(evaluateAll).not.toHaveBeenCalled();
+        });
+        const locator = { or: () => locator, filter: () => locator, evaluateAll, click };
+        const close = vi.fn(async () => {
+          releaseView();
+          if (mode === "cleanup-error") throw new Error("synthetic-private-close");
+        });
+        const testInfo = { annotations: [] as unknown[] };
+        const execute = runInNewContext(transpileModule(`${helper}\n(async () => { ${block} })`, {
+          compilerOptions: { target: ScriptTarget.ES2022 },
+        }).outputText, {
+          page: { url: () => url, on: events.on.bind(events), off: events.off.bind(events), getByRole: () => locator, close },
+          admin, userId, baseURL, testInfo, expect: () => ({ toContainText }), result: {}, lengths: 20,
+          target: { id: workoutId }, startedWorkout: { session_id: sessionId },
+          isUuid, a4ReplayBackend, c2HttpClass, c2Transport, unavailableAlert, alertAnnotation,
+          classifyAlertNodes, classifyWorkoutViewNodes, SWIM_ALERT_CODEBOOK, validateAlertCategory,
+          AbortController, URL, Response, performance, setTimeout, clearTimeout,
+        }) as () => Promise<void>;
+        const outcome = execute().catch((error: unknown) => error);
+        await vi.advanceTimersByTimeAsync(0);
+        if (mode !== "click-error") {
+          expect(toContainText).toHaveBeenCalledTimes(1);
+          expect(toContainText).toHaveBeenCalledWith("20 lengths · 15:00 · RPE 6");
+          expect(order.slice(0, 2)).toEqual(["click", "assertion"]);
+          expect(evaluateAll).toHaveBeenCalledTimes(2);
+          if (mode === "late-duplicate") events.emit("request", { ...request });
+          if (mode.endsWith("-success")) resolvePrimary();
+          else {
+            await vi.advanceTimersByTimeAsync(5000);
+            rejectPrimary(originalError);
+          }
+        }
+        expect(await outcome).toBe(mode.endsWith("-success") ? undefined : originalError);
+        expect(click).toHaveBeenCalledTimes(1);
+        expect(click).toHaveBeenCalledWith();
+        expect(vi.getTimerCount()).toBe(0);
+        expect(signals.every((signal) => signal.aborted)).toBe(true);
+        expect(close).toHaveBeenCalledTimes(["held-view", "cleanup-error"].includes(mode) ? 1 : 0);
+        for (const event of ["request", "response", "requestfailed"]) expect(events.listeners(event)).toEqual([unrelated]);
+        const observations = readAlertAnnotations(testInfo.annotations)!;
+        expect(observations).toHaveLength(2);
+        expect(observations.map((value) => value.point)).toEqual(["a7-finish", "a7-finish-transport"]);
+        const reached = ["fast", "fast-success", "held-view", "held-view-success", "view-error", "cleanup-error"].includes(mode);
+        expect(observations[0]!.backend).toBe(reached ? "reached" : mode === "null-time" ? "not-reached" : "unavailable");
+        const unseen = ["unseen", "wrong-origin", "wrong-path", "wrong-query", "wrong-method", "missing-action", "click-error"].includes(mode);
+        const invalid = ["wrong-workout", "wrong-session", "invalid-owner", "duplicate", "duplicate-response",
+          "late-duplicate", "ambiguous", "duplicate-field", "duplicate-root"].includes(mode);
+        expect(observations[1]!.result).toBe(mode === "click-error" ? "unavailable" : unseen ? "request-unseen" : invalid ? "unavailable" :
+          mode === "failed" ? "request-failed" : ["pending", "unpaired"].includes(mode) ? "request-pending" : "http-2xx");
+        expect(fetch).toHaveBeenCalledTimes(unseen || invalid && mode !== "late-duplicate" ||
+          ["pending", "failed", "unpaired"].includes(mode) ? 0 : 1);
+        const saved = JSON.stringify(testInfo.annotations);
+        for (const value of [userId, workoutId, sessionId, receiptId, "synthetic-", "127.0.0.1"]) expect(saved).not.toContain(value);
+        releaseRead();
+        releaseView();
+        events.emit("response", response);
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(JSON.stringify(testInfo.annotations)).toBe(saved);
+        expect(evaluateAll).toHaveBeenCalledTimes(mode === "click-error" ? 0 : 2);
+        expect(vi.getTimerCount()).toBe(0);
+      } finally { vi.useRealTimers(); }
+    },
+  );
   it.each(["fast", "unseen", "pending", "failed", "unpaired", "wrong-origin", "wrong-path",
     "invalid-pair", "wrong-receipt", "null-time", "invalid-time", "held-read", "read-error", "duplicate"])(
     "A3 DC-SW7/DC-SW8: original Finish %s observation never gates or replaces the five-second UI goal", async (mode) => {
@@ -2512,7 +2674,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
           expect(projection.cases).toHaveLength(25);
           expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual([
             [], [], [], observations.slice(0, 2), [observations[2]], observations.slice(3), [], [], [],
-            [unavailableAlert("c2-auth-absence")], [], [], [], [], [], [], [], [], [], [], unavailableObservations(20), unavailableObservations(21), [], [], [],
+            [unavailableAlert("c2-auth-absence")], [], [], [], [], [], [], [], [], [], [],             unavailableObservations(20), unavailableObservations(21), [], [], unavailableObservations(24),
           ]);
           expect(projection.cases?.map(({ file, describe, title }) => ({ file, describe, title }))).toEqual(SWIM_BROWSER_CASES);
         });

@@ -1923,7 +1923,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
 
   test("A7, DC-SW7/DC-SW9: a limitation added after start preserves the result and blocks future swimming", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
-  }) => {
+  }, testInfo) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
     const primary = await primaryBaseline(admin, userId);
@@ -2006,9 +2006,152 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(isDeepStrictEqual(readSwimDraft(
       await page.evaluate((key) => localStorage.getItem(key), draftKey),
     ), draft) && (await prescription.innerText()) === startedTargetText).toBe(true);
-    await page.getByRole("button", { name: "Finish swim", exact: true }).click();
     const result = page.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
-    await expect(result).toContainText(`${lengths} lengths · 15:00 · RPE 6`);
+    {
+      const diagnostic = unavailableAlert("a7-finish");
+      const transport = unavailableAlert("a7-finish-transport");
+      const controller = new AbortController();
+      const owned: Promise<unknown>[] = [];
+      let completionRequest: Request | undefined;
+      let receipt: ReturnType<typeof submittedCompletionReceipt> | undefined;
+      let statusClass: C2HttpClass | "unavailable" | null = null;
+      let requestFailed = false;
+      let transportInvalid = false;
+      let sampledReceipt = false;
+      let deadline: number | undefined;
+      let expiry: ReturnType<typeof setTimeout> | undefined;
+      let pendingViews = 0;
+      let primaryFailed = false;
+      const current = new URL(page.url());
+      const active = () => !controller.signal.aborted && (deadline === undefined || performance.now() < deadline);
+      const sampleTransport = () => {
+        transport.result = c2Transport(completionRequest ? 1 : 0, statusClass, requestFailed, transportInvalid);
+      };
+      const invalidate = () => {
+        transportInvalid = true;
+        diagnostic.backend = "unavailable";
+        sampleTransport();
+      };
+      // Settle owned waits on abort, retaining rejection handlers for late browser/SDK reads.
+      const bounded = <T,>(promise: PromiseLike<T>): Promise<T | undefined> => new Promise((resolve) => {
+        const finish = (value?: T) => {
+          controller.signal.removeEventListener("abort", abort);
+          resolve(value);
+        };
+        const abort = () => finish();
+        controller.signal.addEventListener("abort", abort, { once: true });
+        Promise.resolve(promise).then(finish, abort);
+        if (controller.signal.aborted) abort();
+      });
+      const sampleView = async () => {
+        const read = <T,>(operation: () => Promise<T>) => {
+          pendingViews++;
+          return Promise.resolve().then(operation).finally(() => { pendingViews--; });
+        };
+        const values = await Promise.all([
+          bounded(read(() => page.getByRole("button", { name: /^(Start swim|Starting…)$/ })
+            .or(page.getByRole("link", { name: /^(Log swim|Restore from Trash)$/ }))
+            .or(page.getByRole("status").filter({ hasText: /^(Plan paused|Plan finished|Plan archived|Result removed|Swimming is currently unavailable\.)$/ }))
+            .or(page.getByRole("heading", { name: /^(Edit your swim|Your swim)$/, level: 2 }))
+            .or(page.getByRole("heading", { name: "404", exact: true, level: 1 }))
+            .filter({ visible: true }).evaluateAll(classifyWorkoutViewNodes))),
+          bounded(read(() => page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK))),
+        ]);
+        if (!active()) return;
+        if (values[0]) Object.assign(diagnostic, values[0]);
+        if (values[1]) diagnostic.category = values[1].count < 0 || values[1].category === "unreadable"
+          ? "unavailable" : validateAlertCategory(values[1].category);
+      };
+      const capture = (request: Request) => {
+        if (!active()) return;
+        try {
+          const base = new URL(baseURL!);
+          const destination = new URL(request.url());
+          if (base.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(base.hostname) ||
+            base.username || base.password || destination.username || destination.password ||
+            current.origin !== base.origin || destination.origin !== base.origin ||
+            !isUuid(target.id) || current.pathname !== `/app/swim/${target.id}` ||
+            destination.pathname !== current.pathname || destination.search !== current.search ||
+            request.method() !== "POST" || !request.headers()["next-action"]) return;
+          if (completionRequest) { invalidate(); return; }
+          completionRequest = request;
+          receipt = bounded(submittedCompletionReceipt(request, target.id)).then((value) => {
+            if (!active()) return;
+            if (!value || value.sessionId !== startedWorkout.session_id || !isUuid(userId)) {
+              invalidate();
+              return;
+            }
+            return value;
+          });
+          owned.push(receipt);
+        } catch { invalidate(); }
+        sampleTransport();
+      };
+      const sampleReceipt = () => {
+        if (!active() || deadline === undefined || statusClass === null || sampledReceipt || transportInvalid) return;
+        sampledReceipt = true;
+        const sample = (async () => {
+          const paired = await receipt;
+          if (!active() || transportInvalid || !paired) return;
+          const row = await bounded(admin.from("sessions").select("id,user_id,completion_outbox_entry_id,completed_at")
+            .eq("user_id", userId).eq("id", paired.sessionId).abortSignal(controller.signal).retry(false).single());
+          if (!active() || transportInvalid || !row) return;
+          // A different receipt is stale evidence, not this original Finish's outcome.
+          if (row.data?.completion_outbox_entry_id !== paired.receiptId) return;
+          diagnostic.backend = a4ReplayBackend(row.data, row.error, userId, paired.sessionId, paired.receiptId);
+        })().catch(() => undefined);
+        owned.push(sample);
+      };
+      const response = (value: Response) => {
+        if (!active() || !completionRequest || value.request() !== completionRequest) return;
+        if (statusClass !== null || requestFailed) { invalidate(); return; }
+        try { statusClass = c2HttpClass(value.status()); } catch { invalidate(); }
+        sampleTransport();
+        sampleReceipt();
+      };
+      const failed = (request: Request) => {
+        if (!active() || request !== completionRequest) return;
+        if (requestFailed || statusClass !== null) { invalidate(); return; }
+        requestFailed = true;
+        sampleTransport();
+      };
+      try {
+        try {
+          page.on("request", capture);
+          page.on("response", response);
+          page.on("requestfailed", failed);
+        } catch { invalidate(); }
+        await page.getByRole("button", { name: "Finish swim", exact: true }).click();
+        const startedAt = performance.now();
+        const primary = expect(result).toContainText(`${lengths} lengths · 15:00 · RPE 6`);
+        // The original assertion owns its clock; observation reads start only after it.
+        deadline = startedAt + 5000;
+        expiry = setTimeout(() => controller.abort(), Math.max(0, deadline - performance.now()));
+        sampleTransport();
+        owned.push(sampleView().catch(() => undefined));
+        sampleReceipt();
+        await primary;
+      } catch (error) {
+        primaryFailed = true;
+        throw error;
+      } finally {
+        controller.abort();
+        clearTimeout(expiry);
+        try { page.off("request", capture); } catch { transport.result = "unavailable"; }
+        try { page.off("response", response); } catch { transport.result = "unavailable"; }
+        try { page.off("requestfailed", failed); } catch { transport.result = "unavailable"; }
+        if (primaryFailed && pendingViews > 0) {
+          try { await page.close(); } catch { /* Preserve the original assertion error. */ }
+        }
+        await Promise.allSettled(owned);
+        for (const value of [diagnostic, transport]) {
+          try {
+            const annotation = alertAnnotation(value);
+            if (annotation) testInfo.annotations.push(annotation);
+          } catch { /* Diagnostics cannot replace the primary assertion error. */ }
+        }
+      }
+    }
     await expect(result.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
     const completed = await lifecycleState(admin, userId);
     const actual = lifecycleActual(completed, target.id);

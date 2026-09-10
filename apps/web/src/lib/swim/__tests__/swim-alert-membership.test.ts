@@ -111,6 +111,7 @@ describe("reserved alert annotation protocol", () => {
   it.each([
     [20, "a3-finish", "a3-finish-transport"],
     [21, "a4-replay", "a4-replay-transport"],
+    [24, "a7-finish", "a7-finish-transport"],
   ] as const)("round-trips both points only at index%i, with transport values confined to the transport point", (caseIndex, point, transportPoint) => {
     const replay = { ...unavailableAlert(point), category: "client-queue" as const,
       backend: "reached" as const, control: "log" as const, result: "editing" as const };
@@ -121,11 +122,11 @@ describe("reserved alert annotation protocol", () => {
       expect(readAlertAnnotations(encoded)).toEqual([replay, transport]);
       expect(projectAlertObservations(caseIndex, readAlertAnnotations([...encoded].reverse()))).toEqual([replay, transport]);
       expect(projectAlertObservations(caseIndex, [transport])).toEqual([unavailableAlert(point), transport]);
-      for (let index = 0; index < 24; index++) {
+      for (let index = 0; index < 25; index++) {
         if (index === caseIndex) continue;
         expect(projectAlertObservations(index, [replay, transport])).toEqual(projectAlertObservations(index, undefined));
       }
-      for (const point of ["a1-pause", "a2-post-start", "a2-edit", "c4-owner-1-start", "c4-owner-2-start", "a3-finish", "a4-replay"] as const) {
+      for (const point of ["a1-pause", "a2-post-start", "a2-edit", "c4-owner-1-start", "c4-owner-2-start", "a3-finish", "a4-replay", "a7-finish"] as const) {
         expect(!!alertAnnotation({ ...unavailableAlert(point), result })).toBe(result === "unavailable");
       }
       for (const [field, value] of [
@@ -137,7 +138,7 @@ describe("reserved alert annotation protocol", () => {
           description: encoded[1]!.description.replace(`${field}=${transport[field as keyof typeof transport]}`, `${field}=${value}`),
         }])).toBeUndefined();
       }
-      expect(readAlertAnnotations(Array(16).fill(encoded[1]))).toEqual([transport]);
+      expect(readAlertAnnotations(Array(16).fill(encoded[1]))).toEqual(caseIndex === 24 ? undefined : [transport]);
       expect(readAlertAnnotations(Array(17).fill(encoded[1]))).toBeUndefined();
     }
     for (const control of ["start", "log", "plan-inactive", "removed", "unavailable-page", "not-found", "none", "unavailable"]) {
@@ -147,10 +148,11 @@ describe("reserved alert annotation protocol", () => {
       }
     }
   });
-  it.each(["a3-finish", "a3-finish-transport", "a4-replay", "a4-replay-transport"] as const)("fails closed on hostile %s observations", (point) => {
-    const caseIndex = point.startsWith("a3-") ? 20 : 21;
+  it.each(["a3-finish", "a3-finish-transport", "a4-replay", "a4-replay-transport", "a7-finish", "a7-finish-transport"] as const)("fails closed on hostile %s observations", (point) => {
+    const caseIndex = point.startsWith("a3-") ? 20 : point.startsWith("a4-") ? 21 : 24;
     const fallback = caseIndex === 20 ? [unavailableAlert("a3-finish"), unavailableAlert("a3-finish-transport")] :
-      [unavailableAlert("a4-replay"), unavailableAlert("a4-replay-transport")];
+      caseIndex === 21 ? [unavailableAlert("a4-replay"), unavailableAlert("a4-replay-transport")] :
+        [unavailableAlert("a7-finish"), unavailableAlert("a7-finish-transport")];
     const value = unavailableAlert(point);
     const encoded = alertAnnotation(value)!;
     const secret = `synthetic-secret-${"x".repeat(32)}`;
@@ -176,6 +178,19 @@ describe("reserved alert annotation protocol", () => {
     for (const observations of [[observation], [value, observation]]) {
       expect(projectAlertObservations(caseIndex, observations)).toEqual(fallback);
     }
+  });
+  it("rejects every duplicate or extra A7 point, retaining the existing sixteen-annotation cap", () => {
+    const values = [unavailableAlert("a7-finish"), unavailableAlert("a7-finish-transport")];
+    const encoded = values.map((value) => alertAnnotation(value)!);
+    expect(readAlertAnnotations([...encoded, ...Array(14).fill({ type: "unrelated" })])).toEqual(values);
+    expect(readAlertAnnotations([...encoded, ...Array(15).fill({ type: "unrelated" })])).toBeUndefined();
+    for (const value of values) {
+      expect(readAlertAnnotations([alertAnnotation(value), alertAnnotation(value)])).toBeUndefined();
+      expect(projectAlertObservations(24, [value, value])).toEqual(values);
+      expect(projectAlertObservations(24, [...values, value])).toEqual(values);
+    }
+    expect(projectAlertObservations(24, [...values, observation])).toEqual(values);
+    expect(alertAnnotation({ ...values[0], point: "a7-other" })).toBeUndefined();
   });
   it("DC-SW8: reaches A4 only for the exact synthetic session receipt and a valid completion timestamp", () => {
     const row = { id: "session", user_id: "owner", completion_outbox_entry_id: "receipt", completed_at: "2026-09-10T00:00:00Z" };
