@@ -180,16 +180,17 @@ describe("reserved alert annotation protocol", () => {
     }
   });
   it("rejects every duplicate or extra A7 point, retaining the existing sixteen-annotation cap", () => {
-    const values = [unavailableAlert("a7-finish"), unavailableAlert("a7-finish-transport")];
+    const fallback = [unavailableAlert("a7-finish"), unavailableAlert("a7-finish-transport")];
+    const values = [{ ...fallback[0]!, backend: "reached" as const }, { ...fallback[1]!, result: "http-2xx" as const }];
     const encoded = values.map((value) => alertAnnotation(value)!);
     expect(readAlertAnnotations([...encoded, ...Array(14).fill({ type: "unrelated" })])).toEqual(values);
     expect(readAlertAnnotations([...encoded, ...Array(15).fill({ type: "unrelated" })])).toBeUndefined();
     for (const value of values) {
       expect(readAlertAnnotations([alertAnnotation(value), alertAnnotation(value)])).toBeUndefined();
-      expect(projectAlertObservations(24, [value, value])).toEqual(values);
-      expect(projectAlertObservations(24, [...values, value])).toEqual(values);
+      expect(projectAlertObservations(24, [value, value])).toEqual(fallback);
+      expect(projectAlertObservations(24, [...values, value])).toEqual(fallback);
     }
-    expect(projectAlertObservations(24, [...values, observation])).toEqual(values);
+    expect(projectAlertObservations(24, [...values, observation])).toEqual(fallback);
     expect(alertAnnotation({ ...values[0], point: "a7-other" })).toBeUndefined();
   });
   it("DC-SW8: reaches A4 only for the exact synthetic session receipt and a valid completion timestamp", () => {

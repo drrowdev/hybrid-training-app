@@ -2018,6 +2018,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       let requestFailed = false;
       let transportInvalid = false;
       let sampledReceipt = false;
+      let receiptValidated = false;
       let deadline: number | undefined;
       let expiry: ReturnType<typeof setTimeout> | undefined;
       let pendingViews = 0;
@@ -2025,7 +2026,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       const current = new URL(page.url());
       const active = () => !controller.signal.aborted && (deadline === undefined || performance.now() < deadline);
       const sampleTransport = () => {
-        transport.result = c2Transport(completionRequest ? 1 : 0, statusClass, requestFailed, transportInvalid);
+        transport.result = completionRequest && !receiptValidated ? "unavailable" :
+          c2Transport(completionRequest ? 1 : 0, statusClass, requestFailed, transportInvalid);
       };
       const invalidate = () => {
         transportInvalid = true;
@@ -2044,6 +2046,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
         if (controller.signal.aborted) abort();
       });
       const sampleView = async () => {
+        if (!active() || deadline === undefined) return;
         const read = <T,>(operation: () => Promise<T>) => {
           pendingViews++;
           return Promise.resolve().then(operation).finally(() => { pendingViews--; });
@@ -2081,6 +2084,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
               invalidate();
               return;
             }
+            receiptValidated = true;
+            sampleTransport();
             return value;
           });
           owned.push(receipt);
@@ -2103,9 +2108,13 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
         owned.push(sample);
       };
       const response = (value: Response) => {
-        if (!active() || !completionRequest || value.request() !== completionRequest) return;
-        if (statusClass !== null || requestFailed) { invalidate(); return; }
-        try { statusClass = c2HttpClass(value.status()); } catch { invalidate(); }
+        if (!active()) return;
+        try {
+          if (!completionRequest || value.request() !== completionRequest) return;
+          if (statusClass !== null || requestFailed) { invalidate(); return; }
+          statusClass = c2HttpClass(value.status());
+          if (statusClass === "unavailable") invalidate();
+        } catch { invalidate(); }
         sampleTransport();
         sampleReceipt();
       };

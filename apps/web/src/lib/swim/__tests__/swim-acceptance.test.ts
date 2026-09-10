@@ -218,7 +218,14 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
         if (file.includes("lifecycle")) {
           const appended = source.slice(diagnosticSource.length);
           expect(appended).toContain('await expect(other.getByRole("alert").filter({ hasText: /changed.*reload/i })).toBeVisible();');
-          expect(appended).not.toMatch(/annotations|alertAnnotation|unavailableAlert|classifyAlertNodes/);
+          const a7 = appended.indexOf('  test("A7,');
+          const firstFinish = appended.indexOf('    {\n      const diagnostic = unavailableAlert("a7-finish");', a7);
+          const remainder = appended.indexOf('    await expect(result.getByRole("button", { name: "Edit result"', firstFinish);
+          expect(a7).toBeGreaterThan(0);
+          expect(firstFinish).toBeGreaterThan(a7);
+          expect(remainder).toBeGreaterThan(firstFinish);
+          expect(appended.slice(0, firstFinish) + appended.slice(remainder))
+            .not.toMatch(/annotations|alertAnnotation|unavailableAlert|classifyAlertNodes/);
         }
       }
     }

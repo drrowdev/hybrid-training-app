@@ -1196,7 +1196,8 @@ describe("browser environment and static config", () => {
     "wrong-method", "missing-action", "wrong-workout", "wrong-session", "invalid-owner", "wrong-receipt",
     "wrong-row-session", "wrong-row-owner", "null-time", "invalid-time", "held-read", "late-read", "read-error",
     "duplicate", "duplicate-response", "late-duplicate", "ambiguous", "duplicate-field", "duplicate-root",
-    "held-view", "view-error", "cleanup-error", "click-error", "fast-success", "held-read-success", "held-view-success"])(
+    "held-view", "view-error", "cleanup-error", "click-error", "invalid-status", "response-error",
+    "held-decoder", "held-decoder-success", "fast-success", "held-read-success", "held-view-success"])(
     "A7 DC-SW7/DC-SW8/DC-SW9: original Finish %s keeps the original assertion and bounded cleanup", async (mode) => {
       vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
       try {
@@ -1277,7 +1278,13 @@ describe("browser environment and static config", () => {
           return classifier === classifyWorkoutViewNodes ? { control: "log", result: "editing" } :
             { count: 0, category: "absent" };
         });
-        const response = { request: () => mode === "unpaired" ? {} : request, status: () => 200 };
+        const response = {
+          request: () => {
+            if (mode === "response-error") throw new Error("synthetic-private-response");
+            return mode === "unpaired" ? {} : request;
+          },
+          status: () => mode === "invalid-status" ? 0 : 200,
+        };
         const click = vi.fn(async () => {
           for (const event of ["request", "response", "requestfailed"]) expect(events.listenerCount(event)).toBe(2);
           order.push("click");
@@ -1298,6 +1305,14 @@ describe("browser environment and static config", () => {
           if (mode === "cleanup-error") throw new Error("synthetic-private-close");
         });
         const testInfo = { annotations: [] as unknown[] };
+        let releaseDecoder!: () => void;
+        const heldDecoder = new Promise<void>((resolve) => { releaseDecoder = resolve; });
+        class DecoderResponse extends Response {
+          override async formData() {
+            if (mode.startsWith("held-decoder")) await heldDecoder;
+            return super.formData();
+          }
+        }
         const execute = runInNewContext(transpileModule(`${helper}\n(async () => { ${block} })`, {
           compilerOptions: { target: ScriptTarget.ES2022 },
         }).outputText, {
@@ -1306,7 +1321,7 @@ describe("browser environment and static config", () => {
           target: { id: workoutId }, startedWorkout: { session_id: sessionId },
           isUuid, a4ReplayBackend, c2HttpClass, c2Transport, unavailableAlert, alertAnnotation,
           classifyAlertNodes, classifyWorkoutViewNodes, SWIM_ALERT_CODEBOOK, validateAlertCategory,
-          AbortController, URL, Response, performance, setTimeout, clearTimeout,
+          AbortController, URL, Response: DecoderResponse, performance, setTimeout, clearTimeout,
         }) as () => Promise<void>;
         const outcome = execute().catch((error: unknown) => error);
         await vi.advanceTimersByTimeAsync(0);
@@ -1335,7 +1350,7 @@ describe("browser environment and static config", () => {
         const reached = ["fast", "fast-success", "held-view", "held-view-success", "view-error", "cleanup-error"].includes(mode);
         expect(observations[0]!.backend).toBe(reached ? "reached" : mode === "null-time" ? "not-reached" : "unavailable");
         const unseen = ["unseen", "wrong-origin", "wrong-path", "wrong-query", "wrong-method", "missing-action", "click-error"].includes(mode);
-        const invalid = ["wrong-workout", "wrong-session", "invalid-owner", "duplicate", "duplicate-response",
+        const invalid = ["held-decoder", "held-decoder-success", "wrong-workout", "wrong-session", "invalid-owner", "duplicate", "duplicate-response", "invalid-status", "response-error",
           "late-duplicate", "ambiguous", "duplicate-field", "duplicate-root"].includes(mode);
         expect(observations[1]!.result).toBe(mode === "click-error" ? "unavailable" : unseen ? "request-unseen" : invalid ? "unavailable" :
           mode === "failed" ? "request-failed" : ["pending", "unpaired"].includes(mode) ? "request-pending" : "http-2xx");
@@ -1345,6 +1360,7 @@ describe("browser environment and static config", () => {
         for (const value of [userId, workoutId, sessionId, receiptId, "synthetic-", "127.0.0.1"]) expect(saved).not.toContain(value);
         releaseRead();
         releaseView();
+        releaseDecoder();
         events.emit("response", response);
         await vi.advanceTimersByTimeAsync(5000);
         expect(JSON.stringify(testInfo.annotations)).toBe(saved);
@@ -2538,6 +2554,41 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
           const suite = file.suites.find((suite) => suite.title === item.describe)!;
           return suite.specs.find((spec) => spec.title === item.title)!.tests[0]!;
         }
+        it.each(["valid", "reversed", "missing", "duplicate", "conflicting", "extra", "unknown-point",
+          "cross-field", "extra-key", "oversized", "over-cap"])(
+          "projects A7 %s only at index24 without changing its failed result or the frozen ledger", (mode) => {
+            const values = [
+              { ...unavailableAlert("a7-finish"), backend: "reached" as const, category: "client-queue" as const,
+                control: "log" as const, result: "editing" as const },
+              { ...unavailableAlert("a7-finish-transport"), result: "http-2xx" as const },
+            ];
+            const annotations = values.map((value) => alertAnnotation(value)!);
+            const supplied = mode === "reversed" ? [...annotations].reverse() : mode === "missing" ? annotations.slice(1) :
+              mode === "duplicate" ? [...annotations, annotations[0]!] :
+              mode === "conflicting" ? [...annotations, alertAnnotation(unavailableAlert("a7-finish"))!] :
+              mode === "extra" ? [...annotations, alertAnnotation(unavailableAlert("a3-finish"))!] :
+              mode === "unknown-point" ? [{ ...annotations[0]!, description: annotations[0]!.description.replace("a7-finish", "a7-other") }] :
+              mode === "cross-field" ? [{ ...annotations[1]!, description: annotations[1]!.description.replace("backend=unavailable", "backend=reached") }] :
+              mode === "extra-key" ? [{ ...annotations[0]!, raw: "synthetic-private" }] :
+              mode === "oversized" ? [{ ...annotations[0]!, description: annotations[0]!.description.repeat(2) }] :
+              mode === "over-cap" ? [...annotations, ...Array(15).fill({ type: "unrelated" })] : annotations;
+            const fixture = report();
+            for (const index of SWIM_BROWSER_CASES.keys()) {
+              caseTest(fixture, index).results[0]!.annotations = supplied;
+            }
+            caseTest(fixture, 24).results[0]!.status = "failed";
+            const projection = rejectedReport(fixture);
+            expect(projection.code).toBe("browser-failed");
+            expect(projection.cases?.[24]?.status).toBe("failed");
+            expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual(
+              SWIM_BROWSER_CASES.map((_, index) => index !== 24 ? unavailableObservations(index) :
+                ["valid", "reversed"].includes(mode) ? values :
+                  mode === "missing" ? [unavailableAlert("a7-finish"), values[1]] : unavailableObservations(index)),
+            );
+            expect(projection.cases?.map(({ file, describe, title }) => ({ file, describe, title }))).toEqual(SWIM_BROWSER_CASES);
+            expect(JSON.stringify(projection)).not.toContain("synthetic-private");
+          },
+        );
         it("projects only closed A3 observations at index20 without converting its UI failure to a pass", () => {
           const values = [
             { ...unavailableAlert("a3-finish"), backend: "reached" as const },
