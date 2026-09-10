@@ -1049,10 +1049,13 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await expect(page).toHaveURL(new URL(workoutPath, baseURL!).href);
     await expect(page.locator("main > section").first().getByText("50 m", { exact: true })).toBeVisible();
     await expect(page.getByText(/Up to 10 min/)).toBeVisible();
-    const issuedView = await page.locator("main").innerText();
+    const workoutView = page.locator("main.cp-main > main");
+    await expect(workoutView).toHaveCount(1);
+    const issuedView = await workoutView.innerText();
     await page.reload();
     await expect(page.getByText(/Up to 10 min/)).toBeVisible();
-    expect(isDeepStrictEqual(await page.locator("main").innerText(), issuedView)).toBe(true);
+    await expect(workoutView).toHaveCount(1);
+    expect(isDeepStrictEqual(await workoutView.innerText(), issuedView)).toBe(true);
     expect(isDeepStrictEqual(await setupRows(actor, freshUser.userId), stored)).toBe(true);
   });
 
@@ -1098,10 +1101,13 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await expect(page).toHaveURL(new URL(workoutPath, baseURL!).href);
     await expect(page.locator("main > section").first().getByText("50 m", { exact: true })).toBeVisible();
     await expect(page.getByText(/Up to 20 min/)).toBeVisible();
-    const issuedView = await page.locator("main").innerText();
+    const workoutView = page.locator("main.cp-main > main");
+    await expect(workoutView).toHaveCount(1);
+    const issuedView = await workoutView.innerText();
     await page.reload();
     await expect(page.getByText(/Up to 20 min/)).toBeVisible();
-    expect(isDeepStrictEqual(await page.locator("main").innerText(), issuedView)).toBe(true);
+    await expect(workoutView).toHaveCount(1);
+    expect(isDeepStrictEqual(await workoutView.innerText(), issuedView)).toBe(true);
     expect(isDeepStrictEqual(await setupRows(actor, freshUser.userId), stored)).toBe(true);
   });
 
