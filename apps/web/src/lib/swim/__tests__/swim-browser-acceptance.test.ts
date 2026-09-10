@@ -1060,7 +1060,7 @@ describe("browser environment and static config", () => {
       }
     }
   });
-  it("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4: preserves the original twenty identities and appends only A3/A4", () => {
+  it("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4: preserves the original twenty-two identities and appends only A5/A6", () => {
     expect(SWIM_BROWSER_CASES).toEqual([
       {
         file: "e2e/swimming-mobile.spec.ts", describe: "ADR0079 standalone swimming",
@@ -1170,11 +1170,21 @@ describe("browser environment and static config", () => {
         describe: "ADR0079 mobile swimming lifecycle and regional load",
         title: "A4, DC-SW7/DC-SW8/DC-SW9: an offline swim finishes after archival without duplicate history or load",
       },
+      {
+        file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
+        describe: "ADR0079 mobile swimming lifecycle and regional load",
+        title: "A5, DC-SW7/DC-SW9: permanent deletion removes a swim result while retaining its planned target",
+      },
+      {
+        file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
+        describe: "ADR0079 mobile swimming lifecycle and regional load",
+        title: "A6, DC-SW5/DC-SW8/DC-SW9: concurrent starts share one swim and a stale result edit cannot overwrite its saved result",
+      },
     ]);
-    expect(SWIM_BROWSER_CASES).toHaveLength(22);
+    expect(SWIM_BROWSER_CASES).toHaveLength(24);
     const files = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
     expect(files).toHaveLength(6);
-    expect(files.map((file) => SWIM_BROWSER_CASES.filter((item) => item.file === file).length)).toEqual([2, 4, 4, 8, 3, 1]);
+    expect(files.map((file) => SWIM_BROWSER_CASES.filter((item) => item.file === file).length)).toEqual([2, 4, 6, 8, 3, 1]);
   });
   it("shares authored errors and the same WeakMap across the pure and reporting entry points", async () => {
     expect(reporting.acceptanceAssert).toBe(acceptanceAssert);
@@ -1521,11 +1531,15 @@ describe("browser environment and static config", () => {
   });
 });
 
-describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 strict twenty-two-case acceptance ledger", () => {
+describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 strict twenty-four-case acceptance ledger", () => {
   function originalReport(count = 18) {
     const fixture = report();
-    const lifecycle = fixture.suites[2]!.suites[0]!.specs.splice(2);
-    expect(lifecycle.map((spec) => spec.title)).toEqual(SWIM_BROWSER_CASES.slice(20, 22).map((item) => item.title));
+    const appended = fixture.suites[2]!.suites[0]!.specs.splice(4);
+    expect(appended.map((spec) => spec.title)).toEqual(SWIM_BROWSER_CASES.slice(22, 24).map((item) => item.title));
+    if (count <= 20) {
+      const lifecycle = fixture.suites[2]!.suites[0]!.specs.splice(2);
+      expect(lifecycle.map((spec) => spec.title)).toEqual(SWIM_BROWSER_CASES.slice(20, 22).map((item) => item.title));
+    }
     if (count <= 18) {
       const removed = fixture.suites[1]!.suites[0]!.specs.splice(2);
       expect(removed.map((spec) => spec.title)).toEqual(SWIM_BROWSER_CASES.slice(18, 20).map((item) => item.title));
@@ -1544,7 +1558,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
     fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!.stdout = [{ text: "private-payload" }];
     const ledger = validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot);
     expect(ledger).toEqual({
-      success: true, counts: { expected: 22, unexpected: 0, flaky: 0, skipped: 0 },
+      success: true, counts: { expected: 24, unexpected: 0, flaky: 0, skipped: 0 },
       cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "passed", attempts: 1, durationMs: 1 })),
     });
     expect(JSON.stringify(ledger)).not.toContain("private-payload");
@@ -1617,7 +1631,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
     expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(12);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
-  it("rejects the passing original-fifteen report by removing A3/A4, E1/E2 and B6/B7/B8", () => {
+  it("rejects the passing original-fifteen report by removing A3–A6, E1/E2 and B6/B7/B8", () => {
     const fixture = originalReport();
     const suite = fixture.suites[3]!.suites[0]!;
     const removed = suite.specs.splice(5);
@@ -1630,68 +1644,75 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
     expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(15);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
-  it("rejects the passing original-eighteen report by removing A3/A4 and E1/E2", () => {
+  it("rejects the passing original-eighteen report by removing A3–A6 and E1/E2", () => {
     const fixture = originalReport();
     fixture.stats.expected = 18;
     expect(fixture.suites).toHaveLength(6);
     expectOriginalCohort(fixture, 18);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
-  it("rejects the passing original-twenty report by removing only A3/A4", () => {
+  it("rejects the passing original-twenty report by removing only A3–A6", () => {
     const fixture = originalReport(20);
     fixture.stats.expected = 20;
     expect(fixture.suites).toHaveLength(6);
     expectOriginalCohort(fixture, 20);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
-  it.each([20, 21].flatMap((missing) =>
-    [4, 5, 20, 21].filter((replacement) => replacement !== missing).map((replacement) => [missing, replacement]),
-  ))("rejects missing A casebook index %d replaced by %d with twenty-two results", (missing, replacement) => {
+  it("rejects the accepted original-twenty-two report by removing only A5/A6", () => {
+    const fixture = originalReport(22);
+    fixture.stats.expected = 22;
+    expect(fixture.suites).toHaveLength(6);
+    expectOriginalCohort(fixture, 22);
+    expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
+  });
+  it.each([20, 21, 22, 23].flatMap((missing) =>
+    [4, 5, 20, 21, 22, 23].filter((replacement) => replacement !== missing).map((replacement) => [missing, replacement]),
+  ))("rejects missing A casebook index %d replaced by %d with twenty-four results", (missing, replacement) => {
     const fixture = report();
     const suite = fixture.suites[2]!.suites[0]!;
     const spec = suite.specs.find((item) => item.title === SWIM_BROWSER_CASES[missing]!.title)!;
     spec.title = SWIM_BROWSER_CASES[replacement]!.title;
-    expect(suite.specs).toHaveLength(4);
+    expect(suite.specs).toHaveLength(6);
     expect(fixture.suites).toHaveLength(6);
-    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(22);
+    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(24);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
   it.each([18, 19].flatMap((missing) =>
     [2, 3, 18, 19].filter((replacement) => replacement !== missing).map((replacement) => [missing, replacement]),
-  ))("rejects missing E casebook index %d replaced by %d with twenty-two results", (missing, replacement) => {
+  ))("rejects missing E casebook index %d replaced by %d with twenty-four results", (missing, replacement) => {
     const fixture = report();
     const suite = fixture.suites[1]!.suites[0]!;
     const spec = suite.specs.find((item) => item.title === SWIM_BROWSER_CASES[missing]!.title)!;
     spec.title = SWIM_BROWSER_CASES[replacement]!.title;
     expect(suite.specs).toHaveLength(4);
     expect(fixture.suites).toHaveLength(6);
-    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(22);
+    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(24);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
-  it.each([0, 1])("does not substitute account case %d for missing C3 even with twenty-two results", (index) => {
+  it.each([0, 1])("does not substitute account case %d for missing C3 even with twenty-four results", (index) => {
     const fixture = report();
     const suite = fixture.suites[4]!.suites[0]!;
     suite.specs[2] = suite.specs[index]!;
-    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(22);
+    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(24);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
-  it("does not substitute another C case for missing D even with twenty-two results", () => {
+  it("does not substitute another C case for missing D even with twenty-four results", () => {
     const fixture = report();
     fixture.suites.pop();
     fixture.suites[4]!.suites[0]!.specs.push(fixture.suites[4]!.suites[0]!.specs[0]!);
-    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(22);
+    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(24);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
   it.each([12, 13, 14, 15, 16, 17].flatMap((missing) =>
     [6, 7, 12, 13, 14, 15, 16, 17].filter((replacement) => replacement !== missing).map((replacement) => [missing, replacement]),
-  ))("rejects missing casebook index %d replaced by %d with twenty-two results", (missing, replacement) => {
+  ))("rejects missing casebook index %d replaced by %d with twenty-four results", (missing, replacement) => {
     const fixture = report();
     const suite = fixture.suites[3]!.suites[0]!;
     const spec = suite.specs.find((item) => item.title === SWIM_BROWSER_CASES[missing]!.title)!;
     spec.title = SWIM_BROWSER_CASES[replacement]!.title;
     expect(suite.specs).toHaveLength(8);
     expect(fixture.suites).toHaveLength(6);
-    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(22);
+    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(24);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
   it.each(SWIM_BROWSER_CASES)("requires $title exactly once with no retry, skip or error", (item) => {
@@ -2074,7 +2095,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
               Object.assign(result, { status: "failed", annotations });
               const projection = rejectedReport(fixture);
               expect(projection.code).toBe("browser-failed");
-              expect(projection.cases).toHaveLength(22);
+              expect(projection.cases).toHaveLength(24);
               expect(projection.cases?.[21]).toMatchObject({
                 status: "failed", alertObservations: unavailableObservations(21).map((item) =>
                   index === 0 && item.point === point ? value : item),
@@ -2094,7 +2115,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
             caseTest(fixture, 9).results[0]!.status = "failed";
             const projection = rejectedReport(fixture);
             expect(projection.code).toBe("browser-failed");
-            expect(projection.cases).toHaveLength(22);
+            expect(projection.cases).toHaveLength(24);
             expect(projection.cases?.[9]?.status).toBe("failed");
             expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual(
               SWIM_BROWSER_CASES.map((_, index) => index === 9 ? [value] : unavailableObservations(index)),
@@ -2141,10 +2162,10 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
           }
           const projection = rejectedReport(fixture);
           expect(projection.code).toBe("browser-failed");
-          expect(projection.cases).toHaveLength(22);
+          expect(projection.cases).toHaveLength(24);
           expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual([
             [], [], [], observations.slice(0, 2), [observations[2]], observations.slice(3), [], [], [],
-            [unavailableAlert("c2-auth-absence")], [], [], [], [], [], [], [], [], [], [], [], unavailableObservations(21),
+            [unavailableAlert("c2-auth-absence")], [], [], [], [], [], [], [], [], [], [], [], unavailableObservations(21), [], [],
           ]);
           expect(projection.cases?.map(({ file, describe, title }) => ({ file, describe, title }))).toEqual(SWIM_BROWSER_CASES);
         });
@@ -2184,7 +2205,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
             Object.assign(result, { annotations });
             const projection = rejectedReport(fixture);
             expect(projection).toMatchObject({ success: false, code: "browser-failed", counts: fixture.stats });
-            expect(projection.cases).toHaveLength(22);
+            expect(projection.cases).toHaveLength(24);
             expect(projection.cases?.[5]?.status).toBe("failed");
             expect(projection.cases?.[5]?.alertObservations).toEqual(unavailableObservations(5));
             expect(JSON.stringify(projection)).not.toContain("private-");
@@ -2219,7 +2240,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
           Object.assign(result, { annotations });
           const projection = rejectedReport(fixture);
           expect(projection).toMatchObject({ success: false, code: "browser-failed", counts: fixture.stats });
-          expect(projection.cases).toHaveLength(22);
+          expect(projection.cases).toHaveLength(24);
           expect(projection.cases?.[4]?.status).toBe("failed");
           expect(projection.cases?.[4]?.alertObservations).toEqual([unavailableAlert("a1-pause")]);
           expect(JSON.stringify(projection)).not.toContain("private-");
@@ -2250,7 +2271,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
             }
             const projection = rejectedReport(fixture);
             expect(projection.code).toBe("browser-failed");
-            expect(projection.cases).toHaveLength(22);
+            expect(projection.cases).toHaveLength(24);
             expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual(
               SWIM_BROWSER_CASES.map((_, index) => valid && index === 4 ? [observations[2]] : unavailableObservations(index)),
             );
@@ -2274,7 +2295,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
             if (mode === "error") result.errors = [{ message: "private" }];
             const projection = rejectedReport(fixture);
             expect(projection.code).toBe("browser-failed");
-            expect(projection.cases).toHaveLength(22);
+            expect(projection.cases).toHaveLength(24);
             expect(projection.cases?.[4]?.alertObservations).toEqual(
               mode === "retry" ? [unavailableAlert("a1-pause")] : [observations[2]],
             );

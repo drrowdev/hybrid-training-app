@@ -199,7 +199,7 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
     visit(join(root, "apps/web/scripts/swim-alert-announcer-probe.ts"));
     expect(seen.size).toBeGreaterThan(4);
   });
-  it("uses the actual candidate callback at every alert site while retaining C2 positive visibility", () => {
+  it("uses the actual candidate callback at every diagnostic alert site while retaining positive failure assertions", () => {
     const root = resolve(__dirname, "../../../../../..");
     for (const file of [
       "scripts/swim-alert-announcer-probe.ts", "e2e/swimming-lifecycle-load-mobile.spec.ts",
@@ -209,9 +209,17 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
       expect(source).toContain(".evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)");
       expect(source).not.toContain("getRootNode()");
       if (file.startsWith("e2e/")) {
-        expect(source).not.toMatch(/getByRole\("alert"\)\.(?:count|filter|and|first)\(/);
+        const diagnosticSource = file.includes("lifecycle")
+          ? source.slice(0, source.indexOf("  async function primaryRecoveryBaseline(")) : source;
+        expect(diagnosticSource.length).toBeGreaterThan(0);
+        expect(diagnosticSource).not.toMatch(/getByRole\("alert"\)\.(?:count|filter|and|first)\(/);
         expect(source).toContain('if (count < 0) return "error" as const');
         expect(source).toContain("expect(lateAlertCount).toBe(0)");
+        if (file.includes("lifecycle")) {
+          const appended = source.slice(diagnosticSource.length);
+          expect(appended).toContain('await expect(other.getByRole("alert").filter({ hasText: /changed.*reload/i })).toBeVisible();');
+          expect(appended).not.toMatch(/annotations|alertAnnotation|unavailableAlert|classifyAlertNodes/);
+        }
       }
     }
     const c2 = readFileSync(join(root, "apps/web/e2e/swimming-mobile.spec.ts"), "utf8");

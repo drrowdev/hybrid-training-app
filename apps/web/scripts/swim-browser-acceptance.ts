@@ -120,6 +120,16 @@ export const SWIM_BROWSER_CASES = Object.freeze([
     describe: "ADR0079 mobile swimming lifecycle and regional load",
     title: "A4, DC-SW7/DC-SW8/DC-SW9: an offline swim finishes after archival without duplicate history or load",
   }),
+  Object.freeze({
+    file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming lifecycle and regional load",
+    title: "A5, DC-SW7/DC-SW9: permanent deletion removes a swim result while retaining its planned target",
+  }),
+  Object.freeze({
+    file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming lifecycle and regional load",
+    title: "A6, DC-SW5/DC-SW8/DC-SW9: concurrent starts share one swim and a stale result edit cannot overwrite its saved result",
+  }),
 ]);
 const EXPECTED_FILES = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
 

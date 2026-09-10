@@ -22,6 +22,9 @@ import {
   classifyAlertNodes, classifyWorkoutViewNodes, pauseBackend,
   unavailableAlert, validateAlertCategory, type AlertObservation, type C2HttpClass,
 } from "../scripts/swim-alert-membership";
+import { summarizeSwimWeek } from "@hta/domain";
+import { loadSwimHubView } from "../src/lib/swim/queries";
+import { mondayOfYmd } from "../src/lib/dates";
 
 const test = seededTest.extend({
   // Match the persistence spec: reject unsafe targets before any fixture writes.
@@ -1382,6 +1385,328 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     } finally {
       const closed = await online.close().then(() => true, () => false);
       if (!bodyFailed) expect(closed).toBe(true);
+    }
+  });
+
+  async function primaryRecoveryBaseline(admin: SupabaseClient, userId: string) {
+    const primary = await primaryBaseline(admin, userId);
+    const planned = primary.initial[1]!;
+    const recovery = planned.find((row) => row.completed_session_id === null)!;
+    const prescription: Prescription = {
+      items: (recovery.prescription as Prescription).items.map((item) => ({ ...item, sets: 1 })),
+    };
+    expect(prescription.items.length === 1 && planned.some((row) => row.completed_session_id !== null)).toBe(true);
+    const saved = await admin.from("planned_sessions").update({
+      week_index: 1, role: "deload", prescription,
+    }).eq("user_id", userId).eq("block_id", recovery.block_id).eq("id", recovery.id)
+      .select("id,role,prescription").single();
+    expect(saved.error === null && saved.data?.id === recovery.id && saved.data.role === "deload" &&
+      isDeepStrictEqual(saved.data.prescription, prescription)).toBe(true);
+    return { snapshot: primary.snapshot, initial: await primary.snapshot() };
+  }
+
+  function lifecycleActual(state: Awaited<ReturnType<typeof lifecycleState>>, workoutId: string) {
+    expect(state.plans.length === 1 && state.workouts.length === 4 &&
+      state.sessions.length === 2 && state.logs.length === 1 && state.sets.length === 1).toBe(true);
+    const workout = state.workouts.find((row) => row.id === workoutId)!;
+    const session = state.sessions.find((row) => row.id === workout.session_id)!;
+    const log = state.logs[0];
+    expect(workout.status === "completed" && isUuid(session?.id) && session.user_id === workout.user_id &&
+      state.workouts.filter((row) => row.session_id !== null).length === 1).toBe(true);
+    expect(isUuid(log.id) && isUuid(log.client_log_id) && log.session_id === session.id &&
+      session.completion_outbox_entry_id === log.client_log_id && session.deleted_at === null &&
+      Number.isFinite(Date.parse(session.completed_at))).toBe(true);
+    expect(state.history.filter((row) => row.result !== null).length).toBe(1);
+    return { workout, session, log };
+  }
+
+  test("A5, DC-SW7/DC-SW9: permanent deletion removes a swim result while retaining its planned target", async ({
+    page, context, freshUser, seedConfig, admin, baseURL,
+  }) => {
+    const userId = freshUser.userId;
+    await markOnboarded(admin, userId);
+    const primary = await primaryRecoveryBaseline(admin, userId);
+    const timezone = await userTimezone(admin, userId);
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    const original = await createPlan(page);
+    const issued = await lifecycleState(admin, userId);
+    const target = issued.workouts[0];
+    const lengths = target.definition.issued.totalLengths;
+    expect(lengths > 0 && target.status === "scheduled" && target.session_id === null).toBe(true);
+    await page.locator(`a[href="/app/swim/${target.id}"]`).click();
+    const prescription = page.getByRole("heading", { name: "Workout", exact: true }).locator("..");
+    const targetText = await prescription.innerText();
+    await page.getByRole("button", { name: "Start swim", exact: true }).click();
+    await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+    const started = (await savedPlan(admin, userId, original.planId)).workouts.find((row) => row.id === target.id)!;
+    expect(started.status === "started" && typeof started.session_id === "string" &&
+      isUuid(started.session_id) && started.revision === target.revision + 1).toBe(true);
+    await page.getByLabel("Whole lengths", { exact: true }).fill(String(lengths));
+    await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
+    await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
+    await page.getByText("Notes, changes and splits", { exact: true }).click();
+    await page.getByRole("combobox", { name: "Stroke", exact: true }).selectOption("breaststroke");
+    await page.getByRole("button", { name: "Finish swim", exact: true }).click();
+    const result = page.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
+    await expect(result).toContainText(`${lengths} lengths · 15:00 · RPE 6`);
+    const completed = await lifecycleState(admin, userId);
+    const first = lifecycleActual(completed, target.id);
+    expect(first.workout.revision === started.revision + 1 &&
+      isDeepStrictEqual(first.workout.definition, target.definition)).toBe(true);
+    expect(isDeepStrictEqual(
+      [first.log.swim_result.lengths, first.log.swim_result.timeMs, first.log.swim_result.rpe,
+        first.log.swim_result.snapshot.course, first.log.swim_result.snapshot.strokes],
+      [lengths, 900000, 6, target.definition.issued.snapshot.course, ["breaststroke"]],
+    )).toBe(true);
+    lifecycleLedger(completed, timezone);
+
+    // Create a real prior result revision so purge-history removal is non-vacuous.
+    await result.getByRole("button", { name: "Edit result", exact: true }).click();
+    await page.getByLabel("Time · min:sec", { exact: true }).fill("12:00");
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    await expect(result).toContainText(`${lengths} lengths · 12:00 · RPE 6`);
+    await expect(result.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
+    const saved = await lifecycleState(admin, userId);
+    const actual = lifecycleActual(saved, target.id);
+    const native = await nativeRows(admin, userId, actual.session.id);
+    expect(native.logs.length === 1 && isDeepStrictEqual(native.logs[0].swim_result, actual.log.swim_result)).toBe(true);
+    expect(actual.workout.revision === first.workout.revision + 1 &&
+      actual.workout.definition.resultHistory?.length === 1 &&
+      isDeepStrictEqual(actual.workout.definition.resultHistory[0].result, first.log.swim_result)).toBe(true);
+    expect(actual.log.id === first.log.id && actual.log.client_log_id === first.log.client_log_id &&
+      actual.session.completion_outbox_entry_id === first.session.completion_outbox_entry_id &&
+      actual.session.completed_at === first.session.completed_at && actual.log.swim_result.timeMs === 720000).toBe(true);
+    lifecycleLedger(saved, timezone);
+    expect(Number(saved.regions.find((row) => row.region === "adductor_groin")?.atl) > 0).toBe(true);
+    expect(isDeepStrictEqual(await primary.snapshot(), primary.initial)).toBe(true);
+
+    await page.getByRole("button", { name: "Delete swim", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/swim$/);
+    const trashed = await lifecycleState(admin, userId);
+    const deletedSession = trashed.sessions.find((row) => row.id === actual.session.id)!;
+    expect(Number.isFinite(Date.parse(deletedSession.deleted_at)) &&
+      isDeepStrictEqual(deletedSession, {
+        ...actual.session, deleted_at: deletedSession.deleted_at, updated_at: deletedSession.updated_at,
+      })).toBe(true);
+    expect(isDeepStrictEqual([trashed.logs, trashed.workouts], [saved.logs, saved.workouts])).toBe(true);
+    lifecycleLedger(trashed, timezone);
+    expect(Number(trashed.regions.find((row) => row.region === "adductor_groin")?.atl)).toBe(0);
+    expect(trashed.regions.some((row) => Number(row.atl) > 0)).toBe(true);
+    await page.goto(`/app/swim/${target.id}`);
+    await page.getByRole("link", { name: "Restore from Trash", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/settings\/trash$/);
+    const item = page.getByTestId("trash-item").and(page.locator(`[data-id="${actual.session.id}"]`));
+    await expect(page.getByTestId("trash-item")).toHaveCount(1);
+    await expect(item).toHaveAttribute("data-kind", "session");
+    await item.getByTestId("permanent-delete-trigger").click();
+    const modal = item.getByTestId("confirm-delete-modal");
+    await expect(page.getByTestId("confirm-delete-modal")).toHaveCount(1);
+    await expect(modal).toBeVisible();
+    const confirm = modal.getByTestId("confirm-delete-confirm");
+    const input = modal.getByTestId("confirm-delete-input");
+    await expect(input).toHaveValue("");
+    await expect(confirm).toBeDisabled();
+    const token = (await modal.locator("code").innerText()).trim();
+    expect(/^\d{4}-\d{2}-\d{2}$/.test(token) && token === actual.session.performed_at.slice(0, 10)).toBe(true);
+    await input.fill("not-the-session-date");
+    await expect(confirm).toBeDisabled();
+    await input.fill(token);
+    await expect(confirm).toBeEnabled();
+    await confirm.click();
+    await expect(item).toHaveCount(0);
+    await expect(page.getByTestId("confirm-delete-modal")).toHaveCount(0);
+    const purged = await lifecycleState(admin, userId);
+    const absent = await Promise.all([
+      admin.from("sessions").select("id").eq("user_id", userId).eq("id", actual.session.id),
+      admin.from("cardio_logs").select("id").eq("session_id", actual.session.id),
+    ]);
+    expect(absent.every((row) => row.error === null && row.data?.length === 0)).toBe(true);
+    const retained = purged.workouts.find((row) => row.id === target.id)!;
+    const { resultHistory: removedHistory, ...definition } = actual.workout.definition;
+    expect(removedHistory?.length).toBe(1);
+    expect(isDeepStrictEqual(retained, {
+      ...actual.workout, session_id: null, revision: actual.workout.revision + 1,
+      updated_at: retained.updated_at, definition,
+    })).toBe(true);
+    expect(retained.user_id === userId && retained.status === "completed" &&
+      retained.definition.resultHistory === undefined &&
+      isDeepStrictEqual([retained.definition.original, retained.definition.issued],
+        [target.definition.original, target.definition.issued])).toBe(true);
+    expect(isDeepStrictEqual(purged.sessions, issued.sessions) && purged.logs.length === 0).toBe(true);
+    expect(isDeepStrictEqual(purged.regions, trashed.regions)).toBe(true);
+    lifecycleLedger(purged, timezone);
+    const history = purged.history.find((row) => row.workout.id === target.id)!;
+    expect(history.sourceGone && !history.deleted && history.result === null &&
+      history.completedAt === null && history.performedAt === null && history.notes === null).toBe(true);
+    const settled = settledSwimResult(history, purged.plans[0]);
+    expect(!countsTowardHistory(settled) && !countsTowardAdherence(settled) && !countsTowardProgression(settled)).toBe(true);
+    const week = summarizeSwimWeek({ weekStartISO: mondayOfYmd(target.scheduled_date), results: [settled] });
+    expect(week.sessionsPlanned === 0 && week.adherence === null).toBe(true);
+    const hub = await loadSwimHubView(admin, userId, purged.plans[0]);
+    expect(hub.analytics.bests.length === 0 && hub.analytics.weeks.every((row) => row.frequency === 0 && row.actual === "—")).toBe(true);
+    expect(isDeepStrictEqual(
+      purged.workouts.filter((row) => row.id !== target.id), issued.workouts.filter((row) => row.id !== target.id),
+    )).toBe(true);
+    expect(isDeepStrictEqual([purged.blocks, purged.planned, purged.sets], [issued.blocks, issued.planned, issued.sets])).toBe(true);
+    expect(isDeepStrictEqual(await primary.snapshot(), primary.initial)).toBe(true);
+    await page.goto(original.url);
+    const card = page.locator(`a[href="/app/swim/${target.id}"]`);
+    await expect(card).toContainText("Result removed");
+    await expect(page.getByRole("heading", { name: "Best swims", exact: true })).toHaveCount(0);
+    await card.click();
+    await page.reload();
+    await expect(page.getByRole("status").filter({ hasText: "Result removed" })).toBeVisible();
+    expect((await prescription.innerText()) === targetText).toBe(true);
+    await expect(page.getByRole("heading", { name: "Your swim", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^(Start swim|Finish swim|Edit result|Save changes)$/ })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /^(Log swim|Restore from Trash)$/ })).toHaveCount(0);
+    expect(isDeepStrictEqual(await lifecycleState(admin, userId), purged)).toBe(true);
+  });
+
+  test("A6, DC-SW5/DC-SW8/DC-SW9: concurrent starts share one swim and a stale result edit cannot overwrite its saved result", async ({
+    page, context, browser, freshUser, seedConfig, admin, baseURL,
+  }) => {
+    const userId = freshUser.userId;
+    await markOnboarded(admin, userId);
+    const primary = await primaryRecoveryBaseline(admin, userId);
+    const timezone = await userTimezone(admin, userId);
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    const original = await createPlan(page);
+    const issued = await lifecycleState(admin, userId);
+    const target = issued.workouts[0];
+    const lengths = target.definition.issued.totalLengths;
+    expect(target.plan_id === original.planId && target.user_id === userId && lengths > 0).toBe(true);
+    const second = await browser.newContext({
+      baseURL, viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true,
+    });
+    let bodyFailed = false;
+    try {
+      await signInAs(second, freshUser, seedConfig, baseURL!);
+      const other = await second.newPage();
+      const pages = [page, other];
+      await Promise.all(pages.map(async (view) => {
+        await view.goto(`/app/swim/${target.id}`);
+        await expect(view.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();
+        await expect(view.getByRole("link", { name: "Log swim", exact: true })).toHaveCount(0);
+      }));
+      expect(target.status === "scheduled" && target.session_id === null && target.revision > 0).toBe(true);
+      expect(isDeepStrictEqual(await lifecycleState(admin, userId), issued)).toBe(true);
+      await Promise.all(pages.map((view) =>
+        view.getByRole("button", { name: "Start swim", exact: true }).click({ timeout: 5000 })));
+      await Promise.all(pages.map(async (view) => {
+        const log = view.getByRole("link", { name: "Log swim", exact: true });
+        const stale = view.getByRole("alert").filter({ hasText: /changed.*reload/i });
+        await expect(log.or(stale)).toBeVisible();
+        if (await stale.isVisible()) {
+          await expect(stale).toBeVisible();
+          await view.reload();
+        }
+        await expect(log).toBeVisible();
+      }));
+      const started = await lifecycleState(admin, userId);
+      const swim = started.workouts.find((row) => row.id === target.id)!;
+      expect(started.sessions.length === 2 && started.logs.length === 0 &&
+        started.workouts.filter((row) => row.session_id !== null).length === 1).toBe(true);
+      expect(swim.status === "started" && swim.revision === target.revision + 1 &&
+        typeof swim.session_id === "string" && isUuid(swim.session_id)).toBe(true);
+      const native = await nativeRows(admin, userId, swim.session_id!);
+      expect(native.session.completed_at === null && native.session.completion_outbox_entry_id === null &&
+        native.session.deleted_at === null && native.logs.length === 0).toBe(true);
+      expect(isDeepStrictEqual(swim.definition, target.definition)).toBe(true);
+      expect(started.plans[0].revision === issued.plans[0].revision + 1).toBe(true);
+      await page.getByRole("link", { name: "Log swim", exact: true }).click();
+      await page.getByLabel("Whole lengths", { exact: true }).fill(String(lengths));
+      await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
+      await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
+      await page.getByRole("button", { name: "Finish swim", exact: true }).click();
+      await expect(page.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
+      const completed = await lifecycleState(admin, userId);
+      const first = lifecycleActual(completed, target.id);
+      expect(first.workout.revision === swim.revision + 1 &&
+        completed.plans[0].revision === started.plans[0].revision + 1 &&
+        first.session.performed_at === native.session.performed_at &&
+        isDeepStrictEqual(first.workout.definition, target.definition)).toBe(true);
+      expect(isDeepStrictEqual(
+        [first.log.swim_result.lengths, first.log.swim_result.timeMs, first.log.swim_result.rpe,
+          first.log.swim_result.snapshot.course, first.log.swim_result.snapshot.strokes],
+        [lengths, 900000, 6, target.definition.issued.snapshot.course, ["freestyle"]],
+      )).toBe(true);
+      lifecycleLedger(completed, timezone);
+      await Promise.all(pages.map(async (view) => {
+        await view.reload();
+        await expect(view.getByRole("heading", { name: "Your swim", exact: true }).locator(".."))
+          .toContainText(`${lengths} lengths · 15:00 · RPE 6`);
+        await view.getByRole("button", { name: "Edit result", exact: true }).click();
+        await expect(view.getByLabel("Whole lengths", { exact: true })).toHaveValue(String(lengths));
+        await expect(view.getByLabel("Time · min:sec", { exact: true })).toHaveValue("15:00");
+        await expect(view.getByRole("button", { name: "Save changes", exact: true })).toBeEnabled();
+      }));
+      expect(isDeepStrictEqual(await lifecycleState(admin, userId), completed)).toBe(true);
+      await page.getByLabel("Time · min:sec", { exact: true }).fill("10:00");
+      await page.getByRole("radio", { name: "8 tough", exact: true }).click();
+      await page.getByText("Notes, changes and splits", { exact: true }).click();
+      await page.getByRole("combobox", { name: "Stroke", exact: true }).selectOption("breaststroke");
+      await page.getByRole("button", { name: "Save changes", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Your swim", exact: true }).locator(".."))
+        .toContainText(`${lengths} lengths · 10:00 · RPE 8`);
+      await expect(page.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
+      const accepted = await lifecycleState(admin, userId);
+      const edited = lifecycleActual(accepted, target.id);
+      expect(edited.workout.revision === first.workout.revision + 1 &&
+        accepted.plans[0].revision === completed.plans[0].revision + 1).toBe(true);
+      expect(isDeepStrictEqual(edited.workout, {
+        ...first.workout, revision: first.workout.revision + 1, updated_at: edited.workout.updated_at,
+        definition: { ...first.workout.definition, resultHistory: edited.workout.definition.resultHistory },
+      })).toBe(true);
+      const history = edited.workout.definition.resultHistory;
+      expect(history?.length === 1 && history[0].revision === first.workout.revision &&
+        isDeepStrictEqual(history[0].result, first.log.swim_result)).toBe(true);
+      expect(isDeepStrictEqual(edited.log, {
+        ...first.log, duration_sec: 600, rpe: edited.log.rpe,
+        swim_result: {
+          ...first.log.swim_result, timeMs: 600000, rpe: 8,
+          snapshot: { ...first.log.swim_result.snapshot, strokes: ["breaststroke"] },
+        },
+      }) && Number(edited.log.rpe) === 8).toBe(true);
+      expect(isDeepStrictEqual(edited.session, {
+        ...first.session, duration_min: 10, session_rpe: edited.session.session_rpe, updated_at: edited.session.updated_at,
+      }) && Number(edited.session.session_rpe) === 8).toBe(true);
+      lifecycleLedger(accepted, timezone);
+      expect(Number(accepted.regions.find((row) => row.region === "adductor_groin")?.atl) > 0 &&
+        Number(completed.regions.find((row) => row.region === "adductor_groin")?.atl) === 0).toBe(true);
+
+      // The second editor stays open on the old completion; never reload it before submission.
+      await expect(other.getByLabel("Time · min:sec", { exact: true })).toHaveValue("15:00");
+      await other.getByLabel("Time · min:sec", { exact: true }).fill("20:00");
+      await other.getByRole("radio", { name: "6 moderate", exact: true }).click();
+      await other.getByRole("button", { name: "Save changes", exact: true }).click();
+      await expect(other.getByRole("alert").filter({ hasText: /changed.*reload/i })).toBeVisible();
+      await expect(other.getByLabel("Time · min:sec", { exact: true })).toHaveValue("20:00");
+      await expect(other.getByRole("button", { name: "Save changes", exact: true })).toBeEnabled();
+      const rejected = await lifecycleState(admin, userId);
+      lifecycleActual(rejected, target.id);
+      expect(isDeepStrictEqual(rejected, accepted)).toBe(true);
+      lifecycleLedger(rejected, timezone);
+      expect(isDeepStrictEqual(
+        rejected.workouts.filter((row) => row.id !== target.id), issued.workouts.filter((row) => row.id !== target.id),
+      )).toBe(true);
+      expect(isDeepStrictEqual([rejected.blocks, rejected.planned, rejected.sets], [issued.blocks, issued.planned, issued.sets])).toBe(true);
+      expect(isDeepStrictEqual(await primary.snapshot(), primary.initial)).toBe(true);
+      await Promise.all(pages.map(async (view) => {
+        await view.reload();
+        await expect(view.getByRole("heading", { name: "Your swim", exact: true }).locator(".."))
+          .toContainText(`${lengths} lengths · 10:00 · RPE 8`);
+        await expect(view.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
+        await expect(view.getByRole("button", { name: "Start swim", exact: true })).toHaveCount(0);
+        expect((await lifecycleQueue(view)).length).toBe(0);
+      }));
+      expect(isDeepStrictEqual(await lifecycleState(admin, userId), accepted)).toBe(true);
+    } catch (error) {
+      bodyFailed = true;
+      throw error;
+    } finally {
+      const closed = await Promise.allSettled([second.close(), context.close()]);
+      if (!bodyFailed) expect(closed.every((result) => result.status === "fulfilled")).toBe(true);
     }
   });
 });
