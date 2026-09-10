@@ -2952,3 +2952,15 @@ No database connection, migration, secret retrieval, hosted execution, workflow
 dispatch, full acceptance/build matrix, app/browser/server/Docker startup,
 Vercel change, user review, or production activity was performed in this worker.
 Coordinator source inspection and guarded runtime execution remain unperformed.
+
+### 2026-09-10 — PR805 workflow ordering repair
+
+Run34520418689 failed the web source contract before hosted bootstrap, which was
+skipped. Moved `prepare-swim-review` byte-for-byte to EOF, restoring
+`swim-acceptance` / `prod-migrate` adjacency. All accepted old-job bytes and the
+original final newline are unchanged. In the GitHub-hosted repair worker, focused
+`swim-acceptance.test.ts` passed **406/406** and `prepare-swim-review.test.ts`
+passed **86/86**, including the unchanged old-job digest; `git diff --check`
+passed. No tests, bootstrap source, application, migrations, or runtime cases
+changed. New-head guarded hosted execution remains pending with the coordinator;
+no database access or production activity was performed.

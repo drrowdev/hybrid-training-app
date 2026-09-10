@@ -423,63 +423,6 @@ jobs:
             pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts --cleanup
           fi
 
-  prepare-swim-review:
-    name: bootstrap isolated swim review database
-    needs: [ci, identity-guard]
-    if: >-
-      github.event_name == 'workflow_dispatch' &&
-      github.repository == 'drrowdev/hybrid-training-app' &&
-      github.ref_type == 'branch' &&
-      github.ref == 'refs/heads/copilot/new-acceptance-cases' &&
-      inputs.prepare_swim_review &&
-      inputs.expected_sha != '' && inputs.expected_sha == github.sha &&
-      !inputs.migrate_production && !inputs.allow_undeployed &&
-      !inputs.swim_acceptance
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    environment: swim-review
-    permissions:
-      contents: read
-    concurrency:
-      group: swim-review-bootstrap
-      cancel-in-progress: false
-    env:
-      EXPECTED_SHA: ${{ inputs.expected_sha }}
-      PREPARE_SWIM_REVIEW: ${{ inputs.prepare_swim_review }}
-      MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
-      ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
-      SWIM_ACCEPTANCE: ${{ inputs.swim_acceptance }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          ref: ${{ inputs.expected_sha }}
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
-
-      - name: Set up Node
-        uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install without database credentials
-        run: pnpm install --frozen-lockfile
-
-      - name: Focused offline bootstrap checks
-        run: pnpm --filter @hta/db exec vitest run scripts/__tests__/prepare-swim-review.test.ts
-
-      - name: Verify reviewed tooling and fresh live head
-        run: pnpm --filter @hta/db exec tsx scripts/prepare-swim-review.ts --check-source
-
-      - name: Prepare isolated database once
-        timeout-minutes: 7
-        env:
-          SWIM_REVIEW_DATABASE_URL: ${{ secrets.SWIM_REVIEW_DATABASE_URL }}
-        run: pnpm --filter @hta/db exec tsx scripts/prepare-swim-review.ts
-
   prod-migrate:
     name: apply prod migrations
     if: >-
@@ -701,3 +644,60 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
+
+  prepare-swim-review:
+    name: bootstrap isolated swim review database
+    needs: [ci, identity-guard]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'drrowdev/hybrid-training-app' &&
+      github.ref_type == 'branch' &&
+      github.ref == 'refs/heads/copilot/new-acceptance-cases' &&
+      inputs.prepare_swim_review &&
+      inputs.expected_sha != '' && inputs.expected_sha == github.sha &&
+      !inputs.migrate_production && !inputs.allow_undeployed &&
+      !inputs.swim_acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: swim-review
+    permissions:
+      contents: read
+    concurrency:
+      group: swim-review-bootstrap
+      cancel-in-progress: false
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      PREPARE_SWIM_REVIEW: ${{ inputs.prepare_swim_review }}
+      MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
+      ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
+      SWIM_ACCEPTANCE: ${{ inputs.swim_acceptance }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install without database credentials
+        run: pnpm install --frozen-lockfile
+
+      - name: Focused offline bootstrap checks
+        run: pnpm --filter @hta/db exec vitest run scripts/__tests__/prepare-swim-review.test.ts
+
+      - name: Verify reviewed tooling and fresh live head
+        run: pnpm --filter @hta/db exec tsx scripts/prepare-swim-review.ts --check-source
+
+      - name: Prepare isolated database once
+        timeout-minutes: 7
+        env:
+          SWIM_REVIEW_DATABASE_URL: ${{ secrets.SWIM_REVIEW_DATABASE_URL }}
+        run: pnpm --filter @hta/db exec tsx scripts/prepare-swim-review.ts
