@@ -1005,7 +1005,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       const sessionId = fields.get(`${prefix}sessionId`);
       const receiptId = fields.get(`${prefix}clientLogId`);
       if (!isUuid(workoutId) || fields.get(`${prefix}workoutId`) !== workoutId ||
-        !isUuid(sessionId) || !isUuid(receiptId)) return;
+        typeof sessionId !== "string" || !isUuid(sessionId) ||
+        typeof receiptId !== "string" || !isUuid(receiptId)) return;
       return { sessionId, receiptId };
     } catch { return; }
   }

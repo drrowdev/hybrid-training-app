@@ -1139,6 +1139,45 @@ describe("browser environment and static config", () => {
     } finally { arrive(); render(); await pending; }
     expect(calls).toEqual(["click", "destination", "state", "reload", "state"]);
   });
+  it("A3 DC-SW7/DC-SW8: original completion pairing decodes pinned FormData and rejects ambiguous or invalid IDs", async () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const helper = source.slice(source.indexOf("  async function submittedCompletionReceipt("), source.indexOf('  test("A3,'));
+    const { isUuid } = await import("../../offline/outbox-core");
+    const verify = runInNewContext(transpileModule(`${helper}\nsubmittedCompletionReceipt`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, { Response, isUuid }) as (request: unknown, workout: string) => Promise<unknown>;
+    const installed = createRequire(join(webRoot, "package.json"));
+    expect(installed("next/package.json").version).toBe("16.2.6");
+    expect(installed("react/package.json").version).toBe("19.2.4");
+    vi.stubGlobal("__webpack_require__", { u: vi.fn(() => { throw new Error("Unexpected chunk load."); }) });
+    let encodeReply: (args: unknown[]) => Promise<FormData>;
+    try {
+      ({ encodeReply } = installed("next/dist/compiled/react-server-dom-webpack/client.browser"));
+    } finally { vi.unstubAllGlobals(); }
+    const workoutId = swimFixture().workouts[0]!.id;
+    for (const mode of ["valid", "wrong-workout", "invalid-session", "invalid-receipt", "duplicate",
+      "missing-receipt", "ambiguous", "missing-root", "duplicate-root", "malformed-root", "wrong-reference", "suffix", "file"]) {
+      const form = new FormData();
+      form.set("workoutId", mode === "wrong-workout" ? sessionId : workoutId);
+      form.set("sessionId", mode === "invalid-session" ? "invalid" : sessionId);
+      form.set("clientLogId", mode === "invalid-receipt" ? "invalid" : receiptId);
+      if (mode === "duplicate") form.append("clientLogId", receiptId);
+      if (mode === "missing-receipt") form.delete("clientLogId");
+      if (mode === "file") form.set("clientLogId", new Blob([receiptId]));
+      const transport = await encodeReply(mode === "ambiguous" ? [form, form] : [form]);
+      if (mode === "missing-root") transport.delete("0");
+      if (mode === "duplicate-root") transport.append("0", '["$K1"]');
+      if (mode === "malformed-root") transport.set("0", "not-json");
+      if (mode === "wrong-reference") transport.set("0", '["$K2"]');
+      if (mode === "suffix") transport.append("_2_clientLogId", receiptId);
+      const encoded = new Response(transport);
+      const body = await encoded.text();
+      const result = await verify({
+        postData: () => body, headers: () => ({ "content-type": encoded.headers.get("content-type") }),
+      }, workoutId);
+      expect(result).toEqual(mode === "valid" ? { sessionId, receiptId } : undefined);
+    }
+  });
   it("A6 DC-SW8: submitted edit proof decodes the pinned browser action encoder and fails closed", async () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
     const helper = source.slice(source.indexOf("  async function submittedEditRevision("), source.indexOf('  test("A5,'));
