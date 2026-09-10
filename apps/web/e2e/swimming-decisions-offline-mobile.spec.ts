@@ -1203,17 +1203,17 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
         actor.from("region_state").select("*").eq("user_id", userId).order("region"),
       ]);
       expect(rows.every((row) => !row.error && Array.isArray(row.data))).toBe(true);
-      expect(rows[0].data).toHaveLength(1);
-      expect(rows[1].data).toHaveLength(2);
-      expect(rows[2].data).toHaveLength(4);
+      expect(rows[0].data?.length).toBe(1);
+      expect(rows[1].data?.length).toBe(2);
+      expect(rows[2].data?.length).toBe(4);
       const sessionIds = rows[2].data!.map((row) => row.id);
       const logs = await Promise.all([
         actor.from("cardio_logs").select("*").in("session_id", sessionIds).order("id"),
         actor.from("set_logs").select("*").in("session_id", sessionIds).order("id"),
       ]);
       expect(logs.every((row) => !row.error && Array.isArray(row.data))).toBe(true);
-      expect(logs[0].data).toHaveLength(2);
-      expect(logs[1].data).toHaveLength(1);
+      expect(logs[0].data?.length).toBe(2);
+      expect(logs[1].data?.length).toBe(1);
       return [...rows, ...logs].map((row) => row.data);
     }
     const protectedRows = await retained();
@@ -1277,7 +1277,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
       await expect(pages[accepted.winner].getByText("Accepted", { exact: true })).toBeVisible();
       await expect(pages[1 - accepted.winner].getByRole("button", { name: "Accept", exact: true })).toBeEnabled();
       const after = await saved(actor, created.plan.id);
-      expect(after.plan.state.decisions).toHaveLength(before.plan.state.decisions.length + 1);
+      expect(after.plan.state.decisions.length).toBe(before.plan.state.decisions.length + 1);
       const audit = after.plan.state.decisions.at(-1)!;
       same([audit.id, audit.kind, audit.decision, audit.ruleVersion, audit.generatorVersion],
         [candidate.id, "progression", "accepted", SWIM_GENERATOR_VERSION, SWIM_GENERATOR_VERSION]);
@@ -1303,7 +1303,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
         if (index !== 3) { same(row, prior); continue; }
         const expected = candidate.generated.weeks[1].slots.find((slot) => slot.slotId === swimWorkoutDefinition(row).slotId);
         if (!expected || expected.kind !== "workout") throw new Error("Missing expected target.");
-        expect(row.definition.modifications).toHaveLength(1);
+        expect(row.definition.modifications.length).toBe(1);
         const modification = row.definition.modifications[0];
         same([modification.previous, modification.decisionId], [prior.definition.issued, audit.id]);
         expect(typeof modification.id === "string" && Number.isFinite(Date.parse(modification.recordedAt))).toBe(true);
@@ -1314,6 +1314,9 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
         expect(isDeepStrictEqual(row.definition.issued, prior.definition.issued)).toBe(false);
       }
       same(after.history.slice(0, 3), before.history.slice(0, 3));
+      same(after.history, before.history.map((entry) => ({
+        ...entry, workout: after.workouts.find((row) => row.id === entry.workout.id),
+      })));
       same(await retained(), protectedRows);
       expect(deriveSwimWeekCandidate(after.plan, after.history, today)).toBeNull();
       await Promise.all(pages.map(async (view) => {
@@ -1329,7 +1332,19 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
       expect(paused.plan.status).toBe("paused");
       expect(paused.plan.revision).toBe(after.plan.revision + 1);
       same(paused.workouts, after.workouts);
-      same(paused.plan.state.decisions, after.plan.state.decisions);
+      const pause = paused.plan.state.pauseSnapshot;
+      const pausedTransition = paused.plan.state.lifecycle?.at(-1);
+      if (!pause || !pausedTransition) throw new Error("Missing paused schedule.");
+      same(pause.workoutIds, after.workouts.filter((row) => row.status === "scheduled" && !row.session_id).map((row) => row.id));
+      same([pausedTransition.from, pausedTransition.to, pause.pausedAt],
+        ["active", "paused", pausedTransition.recordedAt]);
+      expect(Number.isFinite(Date.parse(pause.pausedAt))).toBe(true);
+      same(paused.plan, {
+        ...after.plan, status: "paused", revision: after.plan.revision + 1, updated_at: paused.plan.updated_at,
+        state: { ...after.plan.state, pauseSnapshot: pause, lifecycle: [...(after.plan.state.lifecycle ?? []), pausedTransition] },
+      });
+      same(paused.history, after.history);
+      same(await retained(), protectedRows);
       await other.reload();
       await expect(other.getByLabel("Resume from", { exact: true })).toBeVisible();
       const min = await page.getByLabel("Resume from", { exact: true }).getAttribute("min");
@@ -1346,13 +1361,13 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
         await expect(view.getByRole("button", { name: "Accept dates and resume", exact: true })).toBeEnabled();
         reviewed[index] = await view.getByRole("heading", { name: "New swim dates", exact: true })
           .locator("..").getByRole("listitem").allTextContents();
-        expect(reviewed[index]).toHaveLength(3);
+        expect(reviewed[index].length).toBe(3);
       }
       same(reviewed[1], reviewed[0].map((date) => addDaysToYmd(date, 7)));
       same(await saved(actor, created.plan.id), paused);
       const resumed = await race("Accept dates and resume", (view) => view.getByRole("button", { name: "Pause", exact: true }));
       const previews = resumed.args.map((args, index) => {
-        expect(args).toHaveLength(1);
+        expect(args.length).toBe(1);
         const preview = args[0] as SwimResumePreview;
         const remaining = paused.workouts.filter((row) => row.status === "scheduled" && !row.session_id);
         same(preview, {
@@ -1370,7 +1385,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
       const final = await saved(actor, created.plan.id);
       expect(final.plan.status).toBe("active");
       expect(final.plan.revision).toBe(paused.plan.revision + 1);
-      expect(final.plan.state.decisions).toHaveLength(paused.plan.state.decisions.length + 1);
+      expect(final.plan.state.decisions.length).toBe(paused.plan.state.decisions.length + 1);
       const schedule = final.plan.state.decisions.at(-1)!;
       same([schedule.kind, schedule.decision, schedule.inputSnapshot], ["schedule", "accepted", { preview: winning }]);
       same([schedule.ruleVersion, schedule.generatorVersion], [SWIM_GENERATOR_VERSION, SWIM_GENERATOR_VERSION]);
@@ -1396,6 +1411,9 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
         } : prior);
       }
       same(final.history.filter((row) => !!row.workout.session_id), before.history.filter((row) => !!row.workout.session_id));
+      same(final.history, paused.history.map((entry) => ({
+        ...entry, workout: final.workouts.find((row) => row.id === entry.workout.id),
+      })));
       same(await retained(), protectedRows);
       const canonicalDisplay = await pages[resumed.winner].locator("main").innerText();
       await Promise.all(pages.map(async (view) => {

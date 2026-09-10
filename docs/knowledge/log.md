@@ -2997,3 +2997,15 @@ rejection, preserving accepted25 and observation grammar. Strict26/sixfiles
 Initial source batch exposed remaining B-file count8, corrected to9; final
 proofs pending. No reference/agent logs fetched, runtime startup or dispatch.
 No production change; coordinator inspection/core/one frozen26 remains pending.
+
+## [2026-09-10] refine | PR805 B9 source validation checkpoint
+
+Early ea17f431 published with allowlisted local/public identities. Final
+five-selector worker batch passed932 (644/1/66/21/200), including actual
+PRIVATE Playwright1.60.0 collection26/sixfiles2/4/7/9/3/1 with zero execution
+and exact cleanup. Pinned Next/React encoder exercises original B9 arguments;
+accepted B1–B8 source hash and other five spec files remain unchanged.
+Scoped lint/types passed. Plan/audit/history and primary/result/region
+comparisons use private boolean equality; winning resume preview remains the
+oracle and rejected UI retains its inputs. Secret/CodeQL/final publication
+verification pending. Runtime B9/core/frozen26 remains coordinator-owned.

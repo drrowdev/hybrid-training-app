@@ -28,10 +28,22 @@ input/preview stays visible until reload. Whole state, primary prescriptions/
 sets, results and regional rows are retained. No new scheduling UI or product,
 schema/RLS, storage fixture/service, dependency, workflow or deadline changes.
 
-Early validation: scoped ESLint and web types passed; actual PRIVATE
-Playwright1.60.0 collection passed26, zero execution/errors, exact private
-cleanup. First affected unit batch caught the remaining B-file count8
-assertion; corrected to9. Final affected selectors/source proofs pending.
+Early source checkpoint `ea17f431ae4ac96a7f4fb17eeb376c6edf23ed3c` published
+with verified local/public allowlisted cloud author and GitHub committer.
+Final validation in the official worker:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts src/lib/swim/__tests__/swim-browser-stage.test.ts src/lib/swim/__tests__/swim-hub-view.test.tsx src/lib/swim/__tests__/swim-actions-refresh.test.ts`
+  — **932 passed (644/1/66/21/200)**. Includes actual PRIVATE
+  Playwright1.60.0 collection26/sixfiles2/4/7/9/3/1, zero execution/errors,
+  exact private cleanup. Source proof pins unchanged B1–B8 helpers/bodies and
+  exercises B9 decoding with the real pinned Next/React argument encoder.
+  The other five accepted spec files were byte-compared to starting60e5.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-decisions-offline-mobile.spec.ts scripts/swim-browser-acceptance.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+  and `pnpm --filter @hta/web typecheck` — passed.
+- `pnpm docs:check-drift` (offline in-repo), `git diff --check`, initial secret
+  scan — passed. First unit batch exposed remaining B-file count8; corrected
+  to9 before the green batch. Security/final publication verification pending.
+
 Collection is NOT runtime. Eight of nine standalone gates are accepted;
 B9 runtime is the sole remaining gap before combined. Coordinator complete
 source/terminal model/ref inspection, exact-head core FIRST, then ONE frozen26

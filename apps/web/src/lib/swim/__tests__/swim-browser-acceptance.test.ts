@@ -10,6 +10,7 @@ import { runInNewContext } from "node:vm";
 import { EventEmitter } from "node:events";
 import { createRequire } from "node:module";
 import { isDeepStrictEqual } from "node:util";
+import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import {
   countsTowardAdherence, countsTowardHistory, countsTowardProgression,
@@ -819,6 +820,45 @@ describe("DC-SW7/DC-SW8/DC-SW9 A4 bounded reconnect observations", () => {
 });
 
 describe("browser environment and static config", () => {
+  it("B9 DC-SW5/DC-SW7/DC-SW8: preserves the accepted B source and decodes actual pinned decision arguments without diagnostics", async () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-decisions-offline-mobile.spec.ts"), "utf8");
+    const boundary = source.indexOf('\n  test("B9 ');
+    expect(boundary).toBeGreaterThan(0);
+    expect(createHash("sha256").update(source.slice(source.indexOf("const test ="), boundary).trimEnd()).digest("hex"))
+      .toBe("2c9b00c52dd8037ee6183cd56c0eece8105b395f183d1c22e5e2c1320f9454e7");
+    const b9 = source.slice(boundary);
+    expect(b9.match(/\btest\("/g)).toHaveLength(1);
+    expect(b9).not.toMatch(/annotations|testInfo|alertAnnotation|waitForTimeout|force:\s*true|\.rpc\(/);
+    expect(b9).not.toMatch(/\b(?:decideSwimProposal|previewSwimResume|resumeSwimPlan)\(/);
+    const helper = b9.slice(b9.indexOf("      function submittedArguments("), b9.indexOf("      async function race("));
+    const decode = runInNewContext(transpileModule(`${helper}\nsubmittedArguments`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, { JSON }) as (request: { postData(): string }) => unknown[];
+    const installed = createRequire(join(webRoot, "package.json"));
+    expect(installed("next/package.json").version).toBe("16.2.6");
+    expect(installed("react/package.json").version).toBe("19.2.4");
+    vi.stubGlobal("__webpack_require__", { u: vi.fn(() => { throw new Error("Unexpected chunk load."); }) });
+    let encodeReply: (args: unknown[]) => Promise<string | FormData>;
+    try {
+      ({ encodeReply } = installed("next/dist/compiled/react-server-dom-webpack/client.browser"));
+    } finally { vi.unstubAllGlobals(); }
+    const { plan, workouts } = swimFixture();
+    const preview = {
+      planId: plan.id, revision: plan.revision, startDate: "2026-09-17",
+      dates: workouts.map((row) => ({ id: row.id, revision: row.revision, date: row.scheduled_date })),
+    };
+    for (const args of [[plan.id, plan.revision, receiptId, "accepted"],
+      [plan.id, plan.revision, preview.startDate], [preview]]) {
+      const encoded = await encodeReply(args);
+      expect(typeof encoded).toBe("string");
+      expect(isDeepStrictEqual(decode({ postData: () => encoded as string }), args)).toBe(true);
+    }
+    expect(() => decode({ postData: () => '{"private":"not-an-argument-array"}' }))
+      .toThrow("Could not read the synthetic decision submission.");
+    expect(() => decode({ postData: () => "private-malformed-body" }))
+      .toThrow("Could not read the synthetic decision submission.");
+  });
+
   it("A3 DC-SW7: waits for each selected destination before reloading and verifies it afterward", async () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
     const start = source.indexOf('for (const status of ["Archived", "Active"] as const)');
@@ -1548,7 +1588,7 @@ describe("browser environment and static config", () => {
     }
     expect(loadChunk).not.toHaveBeenCalled();
   });
-  it("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4: preserves the original twenty-four identities and appends only A7", () => {
+  it("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4: preserves the accepted twenty-five identities and appends only B9", () => {
     expect(SWIM_BROWSER_CASES).toEqual([
       {
         file: "e2e/swimming-mobile.spec.ts", describe: "ADR0079 standalone swimming",
