@@ -1,5 +1,28 @@
 # Native pool swimming
 
+### PR805 standalone A7 source — 2026-09-10
+
+Coordinator accepted full34460014574 attempt1 at exact0a0e64fec61074d05651246bb9b6eb1e964d1820:
+all24 once, zero unexpected/flaky/skipped,159461ms; all11 main stages,
+empty failure ledger and both cleanup verified. Native16/normal149/catalog/
+identity5phases4DDL15contexts/Auth36HTTP/single-FK controls/core passed.
+Reference102815361640/projectpr802-34460014574-1 followed exactcore34459459983.
+Accepted22 remains valid; failed first24 remains failed. The8c9 A5/A6 corrections
+and0a0e A3 observations stay intact; no proven A3 causal fix is claimed.
+
+One A7 is appended for [DC-SW7/DC-SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05):
+real post-Start limitation UI, retained local draft and canonical historical result/
+receipt/shared load, blocked different Start, and rejected reviewed resume-date
+application with exact unchanged state. The limitation uses a real muscle and
+region derived from issued exposure. Primary training is protected against the
+post-limitation baseline, not against a falsely immutable pre-limitation baseline.
+No product change, new safety rule, annotation point or scenario matrix.
+Closed25 retains the exact24 prefix, same six files2/4/7/8/3/1 and A7 index24.
+HANDOFF records local checks; private collection is not browser acceptance.
+Coordinator exact-head core then ONE guarded full25 must prove A7 at runtime.
+Concurrency/stale scheduling/proposal acceptance is outside this task. Combined,
+production reconciliation/migration authority and deferred backups remain gated.
+
 ### PR805 A3 observation remainder — 2026-09-10
 
 Coordinator's accepted22 source is full34450901183 at

@@ -2,6 +2,92 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## LATEST — PR805 standalone A7 source — 2026-09-10
+
+Verified live source `copilot/new-acceptance-cases@0a0e64fec61074d05651246bb9b6eb1e964d1820`
+and base `copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+Only A7 is appended after A6 for
+[DC-SW7/DC-SW9](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).
+The accepted24 bodies/identities/assertions remain intact; closed25 uses the same
+six files, counts **2/4/7/8/3/1**, A7 index24. A3/A4 points stay at20/21;
+A7 has no annotations or diagnostic fields.
+
+Coordinator-supplied accepted evidence, not re-fetched: full **34460014574
+attempt1** at exact `0a0e64fec61074d05651246bb9b6eb1e964d1820`,
+reference102815361640/projectpr802-34460014574-1: **all24 passed once,
+0unexpected/flaky/skipped,159461ms**. A3/A4/A5/A6=12897/6738/8484/7488ms.
+All11 main stages passed, empty failure ledger, main and final cleanup verified.
+Native16, normal149/catalog, identity5phases4DDL15contexts, Auth36HTTP,
+single-FK down/up/necessity/forcedchecking/invalidupdate and core/identity passed;
+15 marked safe records consumed once. Exact core34459459983 preceded reference.
+Accepted22/full34450901183@89f63 remains accepted. First24/full34454551886@306
+remains failed21/24. Saved8c9 corrected A5 navigation and A6 multipart decoding;
+0a0e bounded A3 observations are not a proven causal fix.
+
+A7 uses the real injuries Add modal after a real Start, deriving an actual muscle
+and region from current constants and both issued exposures. Mild severity is
+intentional: the nonempty active region blocks independently of severity.
+The genuine local lengths/time/RPE/notes draft is retained, then completed through
+UI with canonical receipt/history and once-only shared regional-load oracles.
+The primary baseline is nonempty, with completed primary evidence; the protected
+baseline is re-captured **after** adding the limitation, allowing that action's
+legitimate primary response. No alternate catalog/profile state is seeded.
+The unstarted workout has no result fields: its existing skip-reason input is
+filled but never submitted, then retained across rejected Start. Target and exact
+canonical state are unchanged. Pause and real reviewed future dates exercise
+rejected resume application (not rejected read-only preview); exact state equality
+covers dates, targets, decisions, status, receipt/history and load, including reload.
+All runtime rows/IDs/input values remain in memory; new assertions use booleans
+and static safe errors, with permitted positive limitation feedback.
+
+Local validation is being checkpointed before lengthy mandatory hooks.
+First affected four-selector run:1020pass/1fail (one stale24-slot observation
+expectation); scoped lint passed, web types found one nullable ID. Both corrected.
+Its installed private Playwright1.60.0 `--list` already collected25 once with
+zero execution/errors; **collection is not browser acceptance**. Final commands
+and counts are recorded below after verification.
+Initial progress push hit the unchanged shallow-history guard; only
+`git fetch --unshallow origin` was used to load history. No rewrite or hook bypass.
+Node22.23.2/pnpm10.33.2 and dependency/runtime/guard settings remain unchanged.
+
+**Still required:** coordinator source/ref/no-writer/CI guards, exact new-head
+core, then **ONE full25**, feature ref, `expected_sha` exact,
+`swim_acceptance=true`, `migrate_production=false`, `allow_undeployed=false`.
+A7's completion, new-start rejection, resume rejection, load and unchanged primary
+state still need that runtime proof within existing30s; no pass is claimed here.
+No browser/server/SQL/DB/Docker/Supabase startup, hosted services/credentials,
+dispatch, deployment or export in this worker. No product/schema/RLS/Auth,
+dependency/workflow/guard/fixture/UI-copy/runtime-limit changes.
+Seven of nine standalone areas were covered before this source addition; runtime
+A7 and concurrent/stale scheduling/proposal acceptance remain unclosed.
+Combined waits for all nine. Production current-main/nativeStack804 reconciliation
+and UNSHIPPED-ONLY migration ordering/down-plan still require owner confirmation;
+no ledger reset or production authority assumed. Backups remain deferred.
+
+### A7 checkpoint validation
+
+Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-alert-membership.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+  — **1021/1021 passed**, four files,25/589/406/1 tests,3.91s.
+  Includes rejection of old24 (A7 removed first), older cohorts, same-total A7
+  substitutions, duplicate/skip/retry/flaky/wrong-file identities and existing
+  privacy/source-attribution/annotation-point contracts.
+- That existing collection test invokes the installed private
+  `@playwright/test/cli test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json`
+  with isolated0700 paths and bounded in-memory JSON. **Playwright1.60.0:
+  exact25 once/sixfiles2/4/7/8/3/1, zeroexecution/errors**; safe result
+  `[swim-collection]{"success":true,"exit":0,"loaderCode":"unknown","sources":[]}`.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-lifecycle-load-mobile.spec.ts scripts/swim-browser-acceptance.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+  — passed.
+- `pnpm --filter @hta/web typecheck` — passed.
+- `git diff --check` — passed. In-memory source comparison against exact0a0e
+  proved A1–A6 plus intervening helpers byte-identical; other accepted case files
+  are untouched. Changed-file secret scan passed.
+
+No separate full core/build run; the existing mandatory pre-push hook may run
+workspace typechecks/package tests/db schema checks/docs drift normally.
+
 ## LATEST — PR805 A3 first-Finish observations — 2026-09-10
 
 Live source/base verified before editing: `copilot/new-acceptance-cases@8c9e2f9ebfec6814af600c315db6fa1d43933f99`

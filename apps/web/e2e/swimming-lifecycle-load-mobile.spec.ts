@@ -25,6 +25,11 @@ import {
 import { summarizeSwimWeek } from "@hta/domain";
 import { loadSwimHubView } from "../src/lib/swim/queries";
 import { mondayOfYmd } from "../src/lib/dates";
+import { swimWorkoutExposure } from "@hta/domain";
+import { ALL_MUSCLE_GROUPS } from "../src/lib/muscle/muscle-groups";
+import { MUSCLE_TO_REGION, REGIONS } from "../src/lib/limitations/region";
+import { REGION_LABELS } from "../src/lib/settings/limitations-constants";
+import { readSwimDraft, swimDraftKey } from "../src/lib/swim/draft";
 
 const test = seededTest.extend({
   // Match the persistence spec: reject unsafe targets before any fixture writes.
@@ -1914,5 +1919,177 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       const closed = await Promise.allSettled([second.close(), context.close()]);
       if (!bodyFailed) expect(closed.every((result) => result.status === "fulfilled")).toBe(true);
     }
+  });
+
+  test("A7, DC-SW7/DC-SW9: a limitation added after start preserves the result and blocks future swimming", async ({
+    page, context, freshUser, seedConfig, admin, baseURL,
+  }) => {
+    const userId = freshUser.userId;
+    await markOnboarded(admin, userId);
+    const primary = await primaryBaseline(admin, userId);
+    const timezone = await userTimezone(admin, userId);
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    const original = await createPlan(page);
+    const issued = await lifecycleState(admin, userId);
+    const [target, future] = issued.workouts;
+    const exposure = swimWorkoutExposure(target.definition.issued);
+    const futureExposure = swimWorkoutExposure(future.definition.issued);
+    const muscle = ALL_MUSCLE_GROUPS.find((value) =>
+      exposure.primaryRegions.includes(MUSCLE_TO_REGION[value]) &&
+      futureExposure.regions.includes(MUSCLE_TO_REGION[value]));
+    if (!muscle) throw new Error("Missing applicable issued swimming exposure.");
+    const region = MUSCLE_TO_REGION[muscle];
+    expect(REGIONS.includes(region) && target.id !== future.id &&
+      [target, future].every((row) => row.status === "scheduled" && row.session_id === null)).toBe(true);
+    const lengths = target.definition.issued.totalLengths;
+    expect(lengths > 0).toBe(true);
+    await page.locator(`a[href="/app/swim/${target.id}"]`).click();
+    const prescription = page.getByRole("heading", { name: "Workout", exact: true }).locator("..");
+    const targetText = await prescription.innerText();
+    await page.getByRole("button", { name: "Start swim", exact: true }).click();
+    await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+    const started = await lifecycleState(admin, userId);
+    const startedWorkout = started.workouts.find((row) => row.id === target.id)!;
+    expect(startedWorkout.status === "started" && typeof startedWorkout.session_id === "string" &&
+      isUuid(startedWorkout.session_id) &&
+      startedWorkout.revision === target.revision + 1 &&
+      isDeepStrictEqual(startedWorkout.definition, target.definition)).toBe(true);
+    const startedTargetText = await prescription.innerText();
+    await page.getByLabel("Whole lengths", { exact: true }).fill(String(lengths));
+    await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
+    await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
+    await page.getByText("Notes, changes and splits", { exact: true }).click();
+    await page.getByLabel("Notes", { exact: true }).fill("Synthetic retained swim draft");
+    const draftKey = swimDraftKey(userId, target.id);
+    const draft = readSwimDraft(await page.evaluate((key) => localStorage.getItem(key), draftKey));
+    expect(draft?.lengths === String(lengths) && draft.time === "15:00" &&
+      draft.rpe === "6" && draft.notes === "Synthetic retained swim draft").toBe(true);
+    expect(isDeepStrictEqual(await primary.snapshot(), primary.initial)).toBe(true);
+
+    async function limitations() {
+      const rows = await admin.from("limitations").select("*").eq("user_id", userId).order("id");
+      if (rows.error || !rows.data) throw new Error("Could not read synthetic limitations.");
+      return rows.data;
+    }
+    expect((await limitations()).length === 0).toBe(true);
+    await page.goto("/app/recovery/injuries");
+    await page.getByTestId("add-limitation-button").first().click();
+    await expect(page.getByTestId("add-limitation-modal")).toBeVisible();
+    await page.getByTestId("lim-kind").fill("Synthetic swim restriction");
+    await page.getByTestId("lim-severity-mild").click();
+    await page.getByTestId(`muscle-pick-chip-${muscle}`).click();
+    await page.getByTestId("lim-region").selectOption(region);
+    await page.getByTestId("lim-save").click();
+    await expect(page.getByTestId("add-limitation-modal")).toBeHidden();
+    const active = page.getByTestId("active-limitation-card");
+    await expect(active).toHaveCount(1);
+    await expect(active).toContainText("Synthetic swim restriction");
+    const restriction = await limitations();
+    expect(restriction.length === 1 && isUuid(restriction[0].id) &&
+      restriction[0].user_id === userId && restriction[0].resolved_at === null &&
+      restriction[0].kind === "Synthetic swim restriction" && restriction[0].severity === "mild" &&
+      restriction[0].region === region && isDeepStrictEqual(restriction[0].affected_muscles, [muscle])).toBe(true);
+    // Adding a limitation may legitimately change primary training; protect its new baseline.
+    const postLimitationPrimary = await primary.snapshot();
+    const restricted = await lifecycleState(admin, userId);
+    expect(isDeepStrictEqual(
+      [restricted.plans, restricted.workouts, restricted.sessions, restricted.logs],
+      [started.plans, started.workouts, started.sessions, started.logs],
+    )).toBe(true);
+
+    await page.goto(`/app/swim/${target.id}`);
+    await expect(page.getByLabel("Whole lengths", { exact: true })).toHaveValue(String(lengths));
+    await expect(page.getByLabel("Time · min:sec", { exact: true })).toHaveValue("15:00");
+    await expect(page.getByRole("radio", { name: "6 moderate", exact: true })).toBeChecked();
+    await page.getByText("Notes, changes and splits", { exact: true }).click();
+    await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Synthetic retained swim draft");
+    expect(isDeepStrictEqual(readSwimDraft(
+      await page.evaluate((key) => localStorage.getItem(key), draftKey),
+    ), draft) && (await prescription.innerText()) === startedTargetText).toBe(true);
+    await page.getByRole("button", { name: "Finish swim", exact: true }).click();
+    const result = page.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
+    await expect(result).toContainText(`${lengths} lengths · 15:00 · RPE 6`);
+    await expect(result.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
+    const completed = await lifecycleState(admin, userId);
+    const actual = lifecycleActual(completed, target.id);
+    expect(actual.session.id === startedWorkout.session_id &&
+      actual.workout.revision === startedWorkout.revision + 1 &&
+      isDeepStrictEqual(actual.workout.definition, target.definition) &&
+      isDeepStrictEqual(
+        [actual.log.swim_result.lengths, actual.log.swim_result.timeMs, actual.log.swim_result.rpe,
+          actual.log.swim_result.snapshot, actual.session.notes],
+        [lengths, 900000, 6, target.definition.issued.snapshot, draft!.notes],
+      )).toBe(true);
+    const history = completed.history.find((row) => row.workout.id === target.id)!;
+    expect(isDeepStrictEqual(history.result, actual.log.swim_result) &&
+      history.completedAt === actual.session.completed_at && !history.deleted && !history.sourceGone &&
+      countsTowardHistory(settledSwimResult(history, completed.plans[0]))).toBe(true);
+    lifecycleLedger(completed, timezone);
+    expect(Number(completed.regions.find((row) => row.region === region)?.atl) > 0 &&
+      isDeepStrictEqual(await primary.snapshot(), postLimitationPrimary) &&
+      isDeepStrictEqual(await limitations(), restriction)).toBe(true);
+    expect(isDeepStrictEqual(
+      completed.workouts.filter((row) => row.id !== target.id),
+      issued.workouts.filter((row) => row.id !== target.id),
+    )).toBe(true);
+
+    await page.goto(`/app/swim/${future.id}`);
+    const futureText = await prescription.innerText();
+    // The unstarted UI exposes a skip reason, not result inputs. Do not submit a skip.
+    await page.locator("summary").filter({ hasText: /^Skip swim$/ }).click();
+    await page.getByLabel("Reason", { exact: true }).fill("Synthetic retained future input");
+    const beforeStart = await lifecycleState(admin, userId);
+    await page.getByRole("button", { name: "Start swim", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("Review your active limitations before swimming");
+    await expect(page.getByRole("alert")).toContainText(REGION_LABELS[region]);
+    await expect(page.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();
+    await expect(page.getByLabel("Reason", { exact: true })).toHaveValue("Synthetic retained future input");
+    expect((await prescription.innerText()) === futureText &&
+      isDeepStrictEqual(await lifecycleState(admin, userId), beforeStart) &&
+      isDeepStrictEqual(beforeStart, completed) &&
+      isDeepStrictEqual(await limitations(), restriction) &&
+      isDeepStrictEqual(await primary.snapshot(), postLimitationPrimary)).toBe(true);
+
+    await page.goto(original.url);
+    await page.getByRole("button", { name: "Pause", exact: true }).click();
+    await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible();
+    const paused = await lifecycleState(admin, userId);
+    expect(paused.plans[0].status === "paused" && paused.plans[0].revision === completed.plans[0].revision + 1 &&
+      isDeepStrictEqual(paused.workouts, completed.workouts)).toBe(true);
+    const remaining = paused.workouts.filter((row) => row.status === "scheduled" && row.session_id === null);
+    expect(remaining.length === 3 && isDeepStrictEqual(
+      paused.plans[0].state.pauseSnapshot?.workoutIds, remaining.map((row) => row.id),
+    )).toBe(true);
+    const today = await page.getByLabel("Resume from", { exact: true }).getAttribute("min");
+    if (!today) throw new Error("Missing server-local resume minimum.");
+    const resumeFrom = addDaysToYmd(paused.plans[0].ends_on > today ? paused.plans[0].ends_on : today, 1);
+    await page.getByLabel("Resume from", { exact: true }).fill(resumeFrom);
+    await page.getByRole("button", { name: "Preview dates", exact: true }).click();
+    const preview = page.getByRole("heading", { name: "New swim dates", exact: true }).locator("..");
+    await expect(preview.getByRole("listitem")).toHaveCount(remaining.length);
+    const dates = await preview.getByRole("listitem").allTextContents();
+    expect(dates.every((date) => /^\d{4}-\d{2}-\d{2}$/.test(date) && date >= resumeFrom) &&
+      isDeepStrictEqual(await lifecycleState(admin, userId), paused)).toBe(true);
+    const beforeResume = await lifecycleState(admin, userId);
+    await page.getByRole("button", { name: "Accept dates and resume", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("Review your active limitations before swimming");
+    await expect(page.getByRole("alert")).toContainText(REGION_LABELS[region]);
+    await expect(page.getByLabel("Resume from", { exact: true })).toHaveValue(resumeFrom);
+    await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible();
+    expect(isDeepStrictEqual(await lifecycleState(admin, userId), beforeResume) &&
+      isDeepStrictEqual(beforeResume, paused) &&
+      isDeepStrictEqual(await limitations(), restriction) &&
+      isDeepStrictEqual(await primary.snapshot(), postLimitationPrimary)).toBe(true);
+    await page.reload();
+    await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible();
+    await page.locator(`a[href="/app/swim/${target.id}"]`).click();
+    await page.reload();
+    await expect(result).toContainText(`${lengths} lengths · 15:00 · RPE 6`);
+    expect((await prescription.innerText()) === targetText &&
+      isDeepStrictEqual(await lifecycleState(admin, userId), paused) &&
+      isDeepStrictEqual(await limitations(), restriction) &&
+      isDeepStrictEqual(await primary.snapshot(), postLimitationPrimary)).toBe(true);
+    lifecycleActual(paused, target.id);
+    lifecycleLedger(paused, timezone);
   });
 });

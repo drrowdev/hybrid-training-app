@@ -2850,3 +2850,19 @@ and matching receipt/UI/alert; unchanged five-second positive goal, no causal fi
 No product or other23 case-body change. HANDOFF records actual local results;
 exact-head core then ONE guarded full24 still required. No private worker evidence
 or browser acceptance inferred from collection.
+
+## [2026-09-10] refine | PR805 standalone A7 post-start limitation safety
+
+Verified exact live0a0e64fec61074d05651246bb9b6eb1e964d1820/basee2758dad.
+Preserved coordinator accepted full34460014574 attempt1:24once/zero unexpected,
+flaky or skipped/159461ms/all11 stages/empty failure ledger/both cleanup,
+reference102815361640 following exactcore34459459983. Accepted22 and failed
+first24 remain honestly recorded;8c9 A5/A6 fixes and0a0e A3 observations untouched.
+Appended only A7: real restriction after Start, retained draft and actual receipt/
+history/load, rejected future Start and reviewed resume with exact state equality.
+Primary protection uses the post-limitation baseline and retains completed evidence.
+Closed25 preserves the exact24 prefix; sixfiles2/4/7/8/3/1, A7index24,
+no new diagnostic points. HANDOFF records checks and limits. No runtime/browser
+acceptance claimed; coordinator exact-head core then ONE full25 still required.
+Concurrent scheduling/proposal acceptance, combined and production authority
+remain outside this task; backups deferred.

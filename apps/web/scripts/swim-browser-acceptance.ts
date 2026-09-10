@@ -130,6 +130,11 @@ export const SWIM_BROWSER_CASES = Object.freeze([
     describe: "ADR0079 mobile swimming lifecycle and regional load",
     title: "A6, DC-SW5/DC-SW8/DC-SW9: concurrent starts share one swim and a stale result edit cannot overwrite its saved result",
   }),
+  Object.freeze({
+    file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming lifecycle and regional load",
+    title: "A7, DC-SW7/DC-SW9: a limitation added after start preserves the result and blocks future swimming",
+  }),
 ]);
 const EXPECTED_FILES = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
 
