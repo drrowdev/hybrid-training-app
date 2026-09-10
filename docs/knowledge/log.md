@@ -2965,3 +2965,22 @@ PRIVATE Playwright1.60 collection25; scoped lint/types passed. Failure/replay
 coverage and final security verification pending at this early checkpoint.
 No reference/agent logs retrieved, runtime gate dispatched or backend started.
 Coordinator exact-head core then one full25 remains required.
+
+## [2026-09-10] refine | PR805 completion confirmation regression coverage
+
+Early tested checkpoint96245055 published with verified allowlisted local/public
+identities. Final same six-selector cloud command in HANDOFF:983pass
+(79/37/200/26/640/1), including actual PRIVATE Playwright1.60 collection25.
+Types and scoped lint passed without warnings. Real action/projection fixtures
+cover original receipt, committed native result and shared recompute ordering;
+actual component/WorkoutScreen VM+SSR cover canonical display with held stale
+props, newer incoming revision, invalid/mismatched/missing confirmation, local
+accepted-receipt recovery and explicit existing reload warning. Flusher fixtures
+retain fresh-snapshot/FIFO/lease/STOP/dead-letter tests and verify the same server
+view reaches overlapping manual/auto and offline replay callers. No second write
+on post-commit view/cache failure; recompute replay semantics unchanged.
+A7 diff is only its four alert assertions at two safety sites; all observations,
+positive Finish/timeouts and original24 unchanged. Existing pinned announcer
+proof is supplied historical evidence, not a newly executed probe. Security
+verification pending; coordinator core/full25 remains pending and latest runtime
+result remains failed22/25, not acceptance of this repair.

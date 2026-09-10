@@ -12,6 +12,9 @@ import {
 } from "../outbox";
 import { flushOutbox, startAutoFlush } from "../flusher";
 import type { ActionResult, OutboxEntry } from "../outbox-core";
+import type { SwimCompletion } from "@/lib/swim/view-types";
+import { swimFixture, userId } from "@/lib/swim/__tests__/fixtures";
+import { workoutPresentation } from "@/lib/swim/presentation";
 
 vi.mock("@/lib/sessions/actions", () => ({
   addCardioBlock: vi.fn(),
@@ -41,6 +44,20 @@ const entry: OutboxEntry = {
   payload: { sessionId: "00000000-0000-4000-8000-000000000002" },
   createdAt: 1,
   attempts: 0,
+};
+
+const swimWorkout = swimFixture().workouts[0]!;
+const swimEntry: OutboxEntry = {
+  ...entry, op: "swim_complete", payload: { ...entry.payload, workoutId: swimWorkout.id },
+};
+const completion: SwimCompletion = {
+  receiptId: entry.id, sessionId: entry.sessionId, workoutId: swimWorkout.id, userId,
+  view: {
+    ...workoutPresentation(swimWorkout.definition.issued),
+    id: swimWorkout.id, sessionId: entry.sessionId, revision: 3, status: "completed",
+    planStatus: "active", date: swimWorkout.scheduled_date, provisional: false, deleted: false,
+    result: { lengths: 12, timeMs: 900123, stroke: "freestyle", notes: "Canonical result" },
+  },
 };
 
 function deferred<T>() {
@@ -85,10 +102,10 @@ describe("flushOutbox", () => {
         snapshotRead.resolve();
         return snapshot.promise;
       });
-      vi.mocked(completeSwimWorkoutResult).mockResolvedValue({ ok: true });
+      vi.mocked(completeSwimWorkoutResult).mockResolvedValue({ ok: true, completion });
       const running = flushOutbox();
       await snapshotRead.promise;
-      queue.push({ ...entry, op: "swim_complete" });
+      queue.push(swimEntry);
       const submitted = flushOutbox();
       snapshot.resolve([]);
 
@@ -101,15 +118,18 @@ describe("flushOutbox", () => {
       expect(results[0]).toEqual({
         flushed: 1, remaining: 0, dropped: 0, completed: 1,
         completedSessionIds: [entry.sessionId],
+        swimCompletions: [completion],
       });
       expect(results[1]).toEqual(results[0]);
+      expect(results[0]!.swimCompletions![0]!.view).toBe(completion.view);
+      expect(vi.mocked(completeSwimWorkoutResult).mock.calls[0]![0].get("clientLogId")).toBe(entry.id);
     },
   );
 
   it("DC-SW8 delivers the in-flight completion to a replacement auto-flush subscription", async () => {
-    queue = [{ ...entry, op: "swim_complete" }];
+    queue = [swimEntry];
     const sending = deferred<void>();
-    const response = deferred<ActionResult>();
+    const response = deferred<Awaited<ReturnType<typeof completeSwimWorkoutResult>>>();
     vi.mocked(completeSwimWorkoutResult).mockImplementation(() => {
       sending.resolve();
       return response.promise;
@@ -134,14 +154,16 @@ describe("flushOutbox", () => {
       stopNew = startAutoFlush(newChange);
       joined = flushOutbox();
       expect(newChange).not.toHaveBeenCalled();
-      response.resolve({ ok: true });
+      response.resolve({ ok: true, completion });
       const [result] = await Promise.all([running, joined]);
       expect(oldChange).not.toHaveBeenCalled();
       expect(newChange.mock.calls).toEqual([[{
         flushed: 1, remaining: 0, dropped: 0, completed: 1,
         completedSessionIds: [entry.sessionId],
+        swimCompletions: [completion],
       }]]);
       expect(result.completedSessionIds).toEqual([entry.sessionId]);
+      expect(result.swimCompletions?.[0]?.view).toBe(completion.view);
       expect(completeSwimWorkoutResult).toHaveBeenCalledOnce();
     } finally {
       response.resolve({ ok: true });
@@ -281,7 +303,7 @@ describe("flushOutbox", () => {
   });
 
   it.each(["offline", "unavailable"] as const)("leaves work queued when %s and permits a later online trigger", async (condition) => {
-    queue = [{ ...entry, op: "swim_complete" }];
+    queue = [swimEntry];
     vi.stubGlobal("navigator", { onLine: condition !== "offline" });
     vi.mocked(outboxAvailable).mockReturnValue(condition !== "unavailable");
     try {
@@ -294,11 +316,44 @@ describe("flushOutbox", () => {
       expect(completeSwimWorkoutResult).not.toHaveBeenCalled();
       vi.stubGlobal("navigator", { onLine: true });
       vi.mocked(outboxAvailable).mockReturnValue(true);
-      vi.mocked(completeSwimWorkoutResult).mockResolvedValue({ ok: true });
-      expect(await flushOutbox()).toMatchObject({ flushed: 1, remaining: 0, completed: 1 });
+      vi.mocked(completeSwimWorkoutResult).mockResolvedValue({ ok: true, completion });
+      expect(await flushOutbox()).toMatchObject({ flushed: 1, remaining: 0, completed: 1, swimCompletions: [completion] });
+      expect(vi.mocked(completeSwimWorkoutResult).mock.calls[0]![0].get("clientLogId")).toBe(entry.id);
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it.each(["absent", "receipt", "session", "workout"] as const)(
+    "DC-SW8 does not invent a confirmation for a committed count-only or mismatched response: %s",
+    async (failure) => {
+      queue = [swimEntry];
+      const confirmation = { ...completion };
+      if (failure === "receipt") confirmation.receiptId = "other";
+      if (failure === "session") confirmation.sessionId = "other";
+      if (failure === "workout") confirmation.workoutId = "other";
+      vi.mocked(completeSwimWorkoutResult).mockResolvedValue({
+        ok: true, ...(failure === "absent" ? {} : { completion: confirmation }),
+      });
+      const result = await flushOutbox();
+      expect(result.completedSessionIds).toEqual([entry.sessionId]);
+      expect(result).not.toHaveProperty("swimCompletions");
+      expect(queue).toEqual([]);
+      await flushOutbox();
+      expect(completeSwimWorkoutResult).toHaveBeenCalledOnce();
+      expect(recordAttempt).not.toHaveBeenCalled();
+      expect(deadLetter).not.toHaveBeenCalled();
+    },
+  );
+
+  it("DC-SW8 propagates a post-commit reload warning without replaying the write", async () => {
+    queue = [swimEntry];
+    const confirmed = { ...completion, view: undefined, warning: "Reload the page to continue." };
+    vi.mocked(completeSwimWorkoutResult).mockResolvedValue({ ok: true, completion: confirmed });
+    expect(await flushOutbox()).toMatchObject({ completed: 1, swimCompletions: [confirmed] });
+    expect(await flushOutbox()).toMatchObject({ completed: 0 });
+    expect(completeSwimWorkoutResult).toHaveBeenCalledOnce();
+    expect(recordAttempt).not.toHaveBeenCalled();
   });
 
   it("shares a storage failure with overlapping callers and releases the drain for a later trigger", async () => {

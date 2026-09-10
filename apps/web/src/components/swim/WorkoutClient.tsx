@@ -9,7 +9,7 @@ import { RpeInput } from "@/components/forms/RpeInput";
 import { startSwimWorkout, skipSwimWorkout, editSwimResult } from "@/lib/swim/actions";
 import { SWIM_REFRESH_WARNING } from "@/lib/swim/action-feedback";
 import { enqueue, listForSession, listDeadLettered } from "@/lib/offline/outbox";
-import { createOutboxEntryId } from "@/lib/offline/outbox-core";
+import { createOutboxEntryId, isUuid } from "@/lib/offline/outbox-core";
 import { flushOutbox, startAutoFlush, type FlushResult } from "@/lib/offline/flusher";
 import { formatSwimTime, parseSwimTime } from "@/lib/swim/time";
 import { initialSwimDraft, persistSwimDraft, readSwimDraft, swimDraftKey, type SwimDraft } from "@/lib/swim/draft";
@@ -33,9 +33,12 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
   const confirmCompletion = useCallback((result: FlushResult, receipt?: string) => {
     const matches = (Array.isArray(result.swimCompletions) ? result.swimCompletions : []).filter((value) => value &&
       value.workoutId === workout.id && value.sessionId === workout.sessionId &&
-      value.userId === userId && typeof value.receiptId === "string" && value.receiptId &&
+      value.userId === userId && typeof value.receiptId === "string" && isUuid(value.receiptId) &&
+      (value.warning === undefined || typeof value.warning === "string") &&
       (!receipt || value.receiptId === receipt));
     const confirmation = matches.length === 1 ? matches[0] : undefined;
+    if (workout.result && confirmation?.view?.revision != null &&
+      confirmation.view.revision <= workout.revision) return;
     const view = confirmation ? confirmedSwimCompletionView(confirmation, workout) : null;
     if (confirmation) setDraft((current) => ({
       ...current, acceptedId: confirmation.receiptId, queuedId: undefined,
@@ -112,7 +115,9 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
             setDraft((current) => ({ ...current, queuedId: undefined }));
           } else {
             setSync("checking");
-            router.refresh();
+            setWarning(SWIM_REFRESH_WARNING);
+            try { router.refresh(); }
+            catch { setWarning(SWIM_REFRESH_WARNING); }
           }
         }
       } catch { if (alive) setError("Could not read pending saves on this device."); }

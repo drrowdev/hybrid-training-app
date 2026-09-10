@@ -1999,6 +1999,20 @@ describe("browser environment and static config", () => {
     expect(capture).not.toMatch(/admin\.|nativeRows|savedPlan|\.backend\s*=|\.revision\s*=|annotations\.push|\.first\(|\.click\(|\.reload\(|waitForTimeout|\.textContent|\.allTextContents|\.url\(|screenshot/);
     expect(a2).not.toMatch(/setTimeout.*5000|response\.finished|test\.setTimeout|test\.skip|\.first\(/);
   });
+  it("DC-SW9 A7 uses the already-proven genuine-positive alert at both safety rejections", () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const a7 = source.slice(source.indexOf('test("A7,'));
+    const positive = 'page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))';
+    const assertions = a7.split("\n").filter((line) =>
+      line.includes('toContainText("Review your active limitations before swimming")') ||
+      line.includes("toContainText(REGION_LABELS[region])"));
+    expect(assertions).toHaveLength(4);
+    for (const line of assertions) expect(line).toContain(`expect(${positive}).toContainText(`);
+    const probe = readFileSync(join(webRoot, "scripts/swim-alert-announcer-probe.ts"), "utf8");
+    expect(probe).toContain('const old = page.getByRole("alert");');
+    expect(probe).toContain('const positive = old.and(page.locator(":not(#__next-route-announcer__)"));');
+  });
+
   it("rejects insufficient budgets without clamping", () => {
     for (const value of [589_999, -1, NaN, Infinity, 590_000.5]) expect(() => browserBudget(value)).toThrow();
     expect(browserBudget(590_000)).toBe(BROWSER_LIMITS);

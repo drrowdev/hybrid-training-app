@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export type SwimWorkoutView = {
   id: string;
   revision: number;
@@ -36,13 +38,34 @@ export type SwimCompletion = {
   warning?: string;
 };
 
-export function confirmedSwimCompletionView(completion: SwimCompletion, workout: SwimWorkoutView): SwimWorkoutView | null {
+const completionPool = z.object({ numerator: z.number().int().positive(), denominator: z.number().int().positive(), unit: z.enum(["m", "yd"]) });
+const completionView = z.object({
+  id: z.string().uuid(), sessionId: z.string().uuid(), revision: z.number().int().positive(),
+  status: z.literal("completed"), planStatus: z.enum(["active", "paused", "finished", "archived"]),
+  date: z.string(), title: z.string(), course: z.string(), total: z.string(),
+  provisional: z.boolean(), budgetMinutes: z.number().positive(), calibrationLabel: z.string().optional(),
+  stroke: z.string(), strokes: z.array(z.string()), equipment: z.array(z.string()), pool: completionPool,
+  steps: z.array(z.object({
+    id: z.string(), repeatIds: z.array(z.string()), section: z.string(), title: z.string(), detail: z.string(),
+    rest: z.string(), effort: z.string(), pace: z.string().optional(),
+  })),
+  result: z.object({
+    lengths: z.number().int().positive().safe(), timeMs: z.number().int().positive().safe(),
+    rpe: z.number().finite().optional(), notes: z.string().optional(), reason: z.string().optional(),
+    splits: z.string().optional(), stroke: z.string(), equipment: z.array(z.string()).optional(),
+    course: z.string().optional(), strokes: z.array(z.string()).optional(),
+    distance: z.string().optional(), pool: completionPool.optional(),
+  }),
+  deleted: z.literal(false), sourceGone: z.literal(false).optional(), notes: z.string().optional(),
+});
+
+export function confirmedSwimCompletionView(
+  completion: SwimCompletion, workout: Pick<SwimWorkoutView, "id" | "sessionId" | "revision">,
+): SwimWorkoutView | null {
   const view = completion.view;
   if (!view || view.id !== workout.id || view.sessionId !== workout.sessionId ||
     !Number.isSafeInteger(view.revision) || view.revision <= workout.revision ||
-    view.status !== "completed" || view.deleted || view.sourceGone ||
-    !view.result || !Number.isSafeInteger(view.result.lengths) || view.result.lengths < 1 ||
-    !Number.isSafeInteger(view.result.timeMs) || view.result.timeMs <= 0) return null;
+    !completionView.safeParse(view).success) return null;
   return view;
 }
 

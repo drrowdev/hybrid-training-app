@@ -37,8 +37,25 @@ Checkpoint validation in the cloud, Node22.23.2/pnpm10.33.2:
 - `pnpm --filter @hta/web exec eslint src/components/swim/WorkoutClient.tsx src/lib/swim/actions.ts src/lib/swim/view-types.ts src/lib/offline/flusher.ts src/lib/swim/__tests__/workout-controls.test.tsx src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/swim-actions-refresh.test.ts e2e/swimming-lifecycle-load-mobile.spec.ts`
   — passed.
 
-Further confirmation failure/replay coverage and final security verification
-are pending at this early checkpoint. No workflow dispatch, server/DB startup,
+Early tested checkpoint: `96245055e11855e00d004cd912d52321562543ec`, published
+with allowlisted local/public native cloud author and GitHub committer.
+Final same six-selector command: **983 passed** (79/37/200/26/640/1).
+The VM harness also respects the actual child revision key. Added tests cover
+canonical persisted result/notes projection after the original commit and shared
+recompute, manual/auto shared-drain delivery and fresh snapshots, offline replay,
+held stale then newer incoming views, absent/malformed/mismatched confirmations,
+durable accepted-receipt recovery, and post-commit refresh/projection failures.
+Pre-existing transient recompute/FIFO/lease/dead-letter behavior is retained.
+Only a structurally valid, matching, newer completed server view is adopted;
+count-only success never fabricates a result or authorizes a second write.
+The one new A7 source test asserts both exact-message/display-region pairs use
+the existing probe's positive locator; no probe matrix was run or expanded.
+Scoped typecheck and lint passed again, including
+`src/lib/offline/__tests__/flusher.test.ts` and
+`src/lib/swim/__tests__/swim-browser-acceptance.test.ts` in the lint command
+above. Initial added source test used an inline expression rather than the
+probe's equivalent `old` alias; corrected, then the complete batch passed.
+Final security verification is pending. No workflow dispatch, server/DB startup,
 new dependencies, migrations, RLS/safety changes or history rewrite. Coordinator
 must inspect saved source and terminal model/refs, then exact-head core before
 one full25. Seven of nine standalone gates remain historically covered; new

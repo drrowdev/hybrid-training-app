@@ -27,7 +27,7 @@ import {
 import {
   swimToday, loadSwimHistory, deriveSwimWeekCandidate, persistedSwimPlan, swimInputId, loadSwimHubView, swimWorkoutViewFromRow,
 } from "./queries";
-import type { SwimHubView, SwimResumePreview, SwimWorkoutView } from "./view-types";
+import { confirmedSwimCompletionView, type SwimCompletion, type SwimHubView, type SwimResumePreview, type SwimWorkoutView } from "./view-types";
 import { formatPoolCourse } from "@hta/domain";
 import { formatSwimTime } from "./time";
 import { SWIM_REFRESH_WARNING } from "./action-feedback";
@@ -172,7 +172,7 @@ export async function startSwimWorkout(workoutId: string, revision: number): Pro
   }
 }
 
-export async function completeSwimWorkoutResult(form: FormData): Promise<ActionResult & { completion?: import("./view-types").SwimCompletion }> {
+export async function completeSwimWorkoutResult(form: FormData): Promise<ActionResult & { completion?: SwimCompletion }> {
   let context: Awaited<ReturnType<typeof swimContext>>;
   let completed: Awaited<ReturnType<typeof storage.completeSwimWorkout>>;
   let fields: ReturnType<typeof parseActualForm>;
@@ -193,14 +193,18 @@ export async function completeSwimWorkoutResult(form: FormData): Promise<ActionR
     // acknowledged database commit but a lost response. It never appends load.
     await recomputeAfterCompletedSessionMutation({ supabase: client, userId: user.id, sessionId: completed.session_id });
   } catch (error) { return swimActionFailure(error); }
-  const completion = {
+  const refreshed = refreshSavedSwim(completed.session_id);
+  const completion: SwimCompletion = {
     receiptId: fields.clientLogId!, workoutId: fields.workoutId,
     sessionId: fields.sessionId, userId: context.user.id,
-    ...refreshSavedSwim(completed.session_id),
+    ...(refreshed.warning ? { warning: refreshed.warning } : {}),
   };
   try {
     const view = await swimWorkoutViewFromRow(context.client, context.user.id, completed.workout);
-    return { ok: true, completion: view ? { ...completion, view } : { ...completion, warning: SWIM_REFRESH_WARNING } };
+    const confirmed = view && confirmedSwimCompletionView({ ...completion, view }, {
+      id: fields.workoutId, sessionId: fields.sessionId, revision: fields.expectedRevision,
+    });
+    return { ok: true, completion: confirmed ? { ...completion, view: confirmed } : { ...completion, warning: SWIM_REFRESH_WARNING } };
   } catch {
     return { ok: true, completion: { ...completion, warning: SWIM_REFRESH_WARNING } };
   }

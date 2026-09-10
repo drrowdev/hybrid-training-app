@@ -176,6 +176,88 @@ describe.each(actions)("$name post-save refresh boundary", ({ name, call, mutati
   });
 });
 
+describe("DC-SW8/DC-SW9 confirmed completion view", () => {
+  it("does not project or confirm before the original mutation and shared recompute settle", async () => {
+    let release!: (value: Awaited<ReturnType<typeof storage.completeSwimWorkout>>) => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => { entered = resolve; });
+    vi.mocked(storage.completeSwimWorkout).mockImplementationOnce(() => {
+      entered();
+      return new Promise((resolve) => { release = resolve; });
+    });
+    const pending = completeSwimWorkoutResult(actualForm());
+    await waiting;
+    expect(queries.swimWorkoutViewFromRow).not.toHaveBeenCalled();
+    expect(recomputeAfterCompletedSessionMutation).not.toHaveBeenCalled();
+    release({ workout: returnedEditedWorkout, session_id: sessionId, cardio_log_id: receiptId, transitioned: true });
+    const result = await pending;
+    expect(result.completion?.view).toBe(confirmedEditedView);
+    expect(storage.completeSwimWorkout).toHaveBeenCalledOnce();
+    expect(vi.mocked(recomputeAfterCompletedSessionMutation).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(queries.swimWorkoutViewFromRow).mock.invocationCallOrder[0]!);
+  });
+
+  it("retains existing replay-safe recompute failure semantics rather than confirming unfinished reconciliation", async () => {
+    vi.mocked(recomputeAfterCompletedSessionMutation).mockRejectedValueOnce(new Error("Recompute unavailable"));
+    expect(await completeSwimWorkoutResult(actualForm())).toEqual({ error: "Recompute unavailable", errorCode: "transient" });
+    expect(storage.completeSwimWorkout).toHaveBeenCalledOnce();
+    expect(queries.swimWorkoutViewFromRow).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("projects committed original result/receipt after recompute; refresh failure=%s", async (refreshFails) => {
+    const returned = { ...returnedWorkout, revision: 3, status: "completed" as const };
+    vi.mocked(queries.swimWorkoutViewFromRow).mockImplementation(swimWorkoutViewFromRow);
+    vi.mocked(storage.completeSwimWorkout).mockImplementationOnce(async (_client, input) => {
+      expect(input.clientLogId).toBe(receiptId);
+      expect(input.completionEntryId).toBe(receiptId);
+      mock.client.from.mockImplementation((table: string) => ({
+        select: () => ({
+          in: async () => ({ error: null, data: table === "sessions" ? [{
+            id: sessionId, completed_at: "2026-09-07T12:20:00Z", deleted_at: null, notes: input.notes,
+          }] : [{ id: receiptId, session_id: sessionId, swim_result: input.result }] }),
+        }),
+      }));
+      return { workout: returned, session_id: sessionId, cardio_log_id: receiptId, transitioned: true };
+    });
+    if (refreshFails) vi.mocked(revalidatePath).mockImplementation(() => { throw new Error("Cache unavailable"); });
+    const result = await completeSwimWorkoutResult(actualForm());
+    expect(result).toEqual({ ok: true, completion: {
+      receiptId, workoutId: returned.id, sessionId, userId,
+      ...(refreshFails ? { warning: SWIM_REFRESH_WARNING } : {}),
+      view: {
+        ...confirmedWorkoutView, revision: 3, status: "completed", notes: "Easy",
+        result: {
+          lengths: 12, timeMs: 900123, rpe: 6, notes: "Easy", splits: "", stroke: "freestyle",
+          strokes: ["freestyle"], equipment: [], course: "25 yd", distance: "300 yd",
+          pool: returned.definition.issued.snapshot.course,
+        },
+      },
+    } });
+    expect(storage.completeSwimWorkout).toHaveBeenCalledOnce();
+    expect(storage.getSwimWorkout).toHaveBeenCalledOnce();
+    expect(recomputeAfterCompletedSessionMutation).toHaveBeenCalledOnce();
+    expect(recomputeAfterCompletedSessionMutation).toHaveBeenCalledWith({ supabase: mock.client, userId, sessionId });
+    expect(queries.swimWorkoutViewFromRow).toHaveBeenCalledWith(mock.client, userId, returned);
+    const order = [storage.completeSwimWorkout, recomputeAfterCompletedSessionMutation, revalidatePath, queries.swimWorkoutViewFromRow]
+      .map((fn) => vi.mocked(fn).mock.invocationCallOrder[0]!);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it.each(["null", "throw", "started", "foreign", "malformed"] as const)("does not retry a committed write when projection is %s", async (failure) => {
+    if (failure === "null") vi.mocked(queries.swimWorkoutViewFromRow).mockResolvedValueOnce(null);
+    if (failure === "throw") vi.mocked(queries.swimWorkoutViewFromRow).mockRejectedValueOnce(new Error("History unavailable"));
+    if (failure === "foreign") vi.mocked(queries.swimWorkoutViewFromRow).mockResolvedValueOnce({ ...confirmedEditedView, sessionId: receiptId });
+    if (failure === "malformed") vi.mocked(queries.swimWorkoutViewFromRow).mockResolvedValueOnce({ ...confirmedEditedView, result: null });
+    expect(await completeSwimWorkoutResult(actualForm())).toEqual({
+      ok: true, completion: { receiptId, workoutId: returnedWorkout.id, sessionId, userId, warning: SWIM_REFRESH_WARNING },
+    });
+    expect(storage.completeSwimWorkout).toHaveBeenCalledOnce();
+    expect(recomputeAfterCompletedSessionMutation).toHaveBeenCalledOnce();
+    expect(queries.swimWorkoutViewFromRow).toHaveBeenCalledOnce();
+  });
+});
+
 describe("DC-SW8/SW9 confirmed Edit view", () => {
   beforeEach(() => {
     vi.mocked(storage.getSwimWorkout).mockResolvedValue({ ...returnedEditedWorkout, revision: 3 });

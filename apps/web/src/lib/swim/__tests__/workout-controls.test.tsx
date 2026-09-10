@@ -10,6 +10,7 @@ import * as draftModule from "../draft";
 import * as timeModule from "../time";
 import * as presentation from "../presentation";
 import * as viewTypes from "../view-types";
+import { isUuid } from "@/lib/offline/outbox-core";
 import { renderToStaticMarkup } from "react-dom/server";
 import { estimateCriticalSwimSpeed, validateSwimWorkout } from "@hta/domain";
 import { generateSwimPlan } from "@hta/engine";
@@ -65,6 +66,7 @@ function completionHarness(reply: object, refreshFails = false) {
   let task: Promise<void> | undefined;
   let auto: ((value: object) => void) | undefined;
   const effects: (() => unknown)[] = [];
+  const local = new Map<string, string>();
   const refresh = vi.fn(() => { if (refreshFails) throw new Error("Refresh unavailable"); });
   const enqueue = vi.fn(async () => ({ status: "stored" }));
   const hooks = {
@@ -88,6 +90,11 @@ function completionHarness(reply: object, refreshFails = false) {
       compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX },
     }).outputText, {
       exports, FormData, queueMicrotask,
+      localStorage: {
+        getItem: (key: string) => local.get(key) ?? null,
+        setItem: (key: string, value: string) => local.set(key, value),
+        removeItem: (key: string) => local.delete(key),
+      },
       require: (id: string) => ({
         react: hooks, "react/jsx-runtime": installed("react/jsx-runtime"),
         "next/navigation": { useRouter: () => ({ refresh, replace() {} }) },
@@ -96,7 +103,7 @@ function completionHarness(reply: object, refreshFails = false) {
         "@/components/forms/RpeInput": { RpeInput: () => null },
         "@/lib/swim/actions": {}, "@/lib/swim/action-feedback": { SWIM_REFRESH_WARNING },
         "@/lib/offline/outbox": { enqueue, listForSession: async () => [], listDeadLettered: async () => [] },
-        "@/lib/offline/outbox-core": { createOutboxEntryId: () => receiptId },
+        "@/lib/offline/outbox-core": { createOutboxEntryId: () => receiptId, isUuid },
         "@/lib/offline/flusher": {
           flushOutbox: async () => reply,
           startAutoFlush: (callback: typeof auto) => { auto = callback; return () => {}; },
@@ -113,9 +120,11 @@ function completionHarness(reply: object, refreshFails = false) {
   const screen = load("WorkoutScreen", { "./WorkoutClient": client });
   let incoming = workoutView();
   let tree: React.ReactElement;
+  let childKey: string | null = null;
   function render() {
     scope = "screen"; cursor = 0;
     const child = screen.WorkoutScreen!({ workout: incoming, userId });
+    if (child.key !== childKey) { states.client = []; childKey = child.key; }
     scope = "client"; cursor = 0; effects.length = 0;
     tree = client.WorkoutClient!(child.props as Record<string, unknown>);
     return renderToStaticMarkup(tree);
@@ -142,9 +151,22 @@ function completionHarness(reply: object, refreshFails = false) {
       return render();
     },
     async replay() {
+      states.client![0] = { ...states.client![0] as object, queuedId: receiptId };
+      render();
       effects[2]!();
       await Promise.resolve(); await Promise.resolve();
       auto!(reply);
+      return render();
+    },
+    async recoverAccepted() {
+      local.set(draftModule.swimDraftKey(userId, incoming.id), JSON.stringify({
+        ...initialSwimDraft(incoming), acceptedId: receiptId,
+      }));
+      effects[0]!();
+      await Promise.resolve();
+      render();
+      effects[2]!();
+      await Promise.resolve(); await Promise.resolve();
       return render();
     },
     incoming(view: SwimWorkoutView) { incoming = view; return render(); },
@@ -152,6 +174,15 @@ function completionHarness(reply: object, refreshFails = false) {
 }
 
 describe("DC-SW8/DC-SW9 actual completion handler with held stale props (VM/SSR, not browser timing)", () => {
+  it("restores an accepted receipt without a server result as explicit reload recovery, never silent success", async () => {
+    const harness = completionHarness({});
+    const html = await harness.recoverAccepted();
+    expect(html).toContain(SWIM_REFRESH_WARNING);
+    expect(html).not.toContain("Swim saved");
+    expect(html).not.toContain("Edit result");
+    expect(harness.enqueue).not.toHaveBeenCalled();
+    expect(harness.incoming(completedView())).toContain("Edit result");
+  });
   it.each(["finish", "replay"] as const)("shows the server result after %s before refreshed props arrive", async (path) => {
     const view = completedView();
     const harness = completionHarness({
@@ -166,6 +197,54 @@ describe("DC-SW8/DC-SW9 actual completion handler with held stale props (VM/SSR,
     expect(harness.incoming(workoutView())).toContain("Original swim");
     expect(harness.incoming(editedView())).toContain("Edited swim");
     expect(harness.enqueue).toHaveBeenCalledTimes(path === "finish" ? 1 : 0);
+  });
+
+  it.each(["finish", "replay"] as const)("retains the result and existing warning if router refresh throws after %s", async (path) => {
+    const view = completedView();
+    const harness = completionHarness({
+      completedSessionIds: [sessionId],
+      swimCompletions: [{ receiptId, workoutId: view.id, sessionId, userId, view }],
+    }, true);
+    const html = await harness[path]();
+    expect(html).toContain("Edit result");
+    expect(html).toContain(SWIM_REFRESH_WARNING);
+    expect(html).not.toContain('role="alert"');
+    expect(harness.enqueue).toHaveBeenCalledTimes(path === "finish" ? 1 : 0);
+  });
+
+  describe.each(["finish", "replay"] as const)("%s confirmation rejection", (path) => {
+    it.each([
+      "absent", "collection", "receipt", "owner", "session", "workout", "duplicate",
+      "view", "result", "malformed", "revision", "view-session", "view-workout", "deleted", "warning",
+    ])("requires reload without fabricated success or another write: %s", async (failure) => {
+      const view = completedView();
+      const confirmation = { receiptId, workoutId: view.id, sessionId, userId, view };
+      let values: unknown = [confirmation];
+      if (failure === "absent") values = undefined;
+      if (failure === "collection") values = {};
+      if (failure === "receipt") confirmation.receiptId = userId;
+      if (failure === "owner") confirmation.userId = receiptId;
+      if (failure === "session") confirmation.sessionId = receiptId;
+      if (failure === "workout") confirmation.workoutId = receiptId;
+      if (failure === "duplicate") values = [confirmation, confirmation];
+      if (failure === "warning") Reflect.set(confirmation, "warning", {});
+      if (failure === "view") Reflect.deleteProperty(confirmation, "view");
+      if (failure === "result") view.result = null;
+      if (failure === "malformed") Reflect.set(view, "steps", null);
+      if (failure === "revision") view.revision = workoutView().revision;
+      if (failure === "view-session") view.sessionId = receiptId;
+      if (failure === "view-workout") view.id = receiptId;
+      if (failure === "deleted") view.deleted = true;
+      const harness = completionHarness({ completedSessionIds: [sessionId], swimCompletions: values });
+      const html = await harness[path]();
+      expect(html).toContain(SWIM_REFRESH_WARNING);
+      expect(html).toContain('disabled=""');
+      expect(html).not.toContain("Swim saved");
+      expect(html).not.toContain("Edit result");
+      expect(harness.incoming(workoutView())).toContain(SWIM_REFRESH_WARNING);
+      expect(harness.enqueue).toHaveBeenCalledTimes(path === "finish" ? 1 : 0);
+      expect(harness.incoming(completedView())).toContain("Edit result");
+    });
   });
 });
 
