@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MAX_POOL_LENGTHS, formatPoolLengthInput, swimRepeatProgress } from "@hta/domain";
 import Link from "next/link";
@@ -10,10 +10,10 @@ import { startSwimWorkout, skipSwimWorkout, editSwimResult } from "@/lib/swim/ac
 import { SWIM_REFRESH_WARNING } from "@/lib/swim/action-feedback";
 import { enqueue, listForSession, listDeadLettered } from "@/lib/offline/outbox";
 import { createOutboxEntryId } from "@/lib/offline/outbox-core";
-import { flushOutbox, startAutoFlush } from "@/lib/offline/flusher";
+import { flushOutbox, startAutoFlush, type FlushResult } from "@/lib/offline/flusher";
 import { formatSwimTime, parseSwimTime } from "@/lib/swim/time";
 import { initialSwimDraft, persistSwimDraft, readSwimDraft, swimDraftKey, type SwimDraft } from "@/lib/swim/draft";
-import type { SwimWorkoutView } from "@/lib/swim/view-types";
+import { confirmedSwimCompletionView, type SwimWorkoutView } from "@/lib/swim/view-types";
 import { SWIM_EQUIPMENT_LABEL, SWIM_STROKE_LABEL } from "@/lib/swim/presentation";
 import styles from "./Swim.module.css";
 import { SplitFields } from "./SplitFields";
@@ -30,6 +30,22 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
   const [error, setError] = useState<string | null>(null);
   const [sync, setSync] = useState<"idle" | "queued" | "saved" | "checking">("idle");
   const [pending, startTransition] = useTransition();
+  const confirmCompletion = useCallback((result: FlushResult, receipt?: string) => {
+    const matches = (Array.isArray(result.swimCompletions) ? result.swimCompletions : []).filter((value) => value &&
+      value.workoutId === workout.id && value.sessionId === workout.sessionId &&
+      value.userId === userId && typeof value.receiptId === "string" && value.receiptId &&
+      (!receipt || value.receiptId === receipt));
+    const confirmation = matches.length === 1 ? matches[0] : undefined;
+    const view = confirmation ? confirmedSwimCompletionView(confirmation, workout) : null;
+    if (confirmation) setDraft((current) => ({
+      ...current, acceptedId: confirmation.receiptId, queuedId: undefined,
+    }));
+    setSync(view ? "saved" : "checking");
+    setWarning(view ? confirmation?.warning ?? null : SWIM_REFRESH_WARNING);
+    if (view) onConfirmed(view);
+    try { router.refresh(); }
+    catch { setWarning(SWIM_REFRESH_WARNING); }
+  }, [workout, userId, onConfirmed, router, setWarning]);
   const [editing, setEditing] = useState(edit);
   const [previousEdit, setPreviousEdit] = useState(edit);
   if (edit !== previousEdit) {
@@ -46,7 +62,10 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
         if (stored) {
           setDraft(stored);
           if (stored.queuedId) setSync("queued");
-          else if (stored.acceptedId) setSync("saved");
+          else if (stored.acceptedId) {
+            setSync("checking");
+            setWarning(SWIM_REFRESH_WARNING);
+          }
         }
       } catch {
         setError("Local progress is unavailable in this browser.");
@@ -54,7 +73,7 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
       setReady(true);
     });
     return () => { alive = false; };
-  }, [key, workout.result]);
+  }, [key, workout.result, setWarning]);
 
   useEffect(() => {
     if (!ready) return;
@@ -73,9 +92,12 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
         if (!alive) return;
         const queued = entries.find((entry) => entry.op === "swim_complete");
         const rejected = failed.find((entry) => entry.op === "swim_complete" && entry.sessionId === workout.sessionId);
-        if (workout.result || draft.acceptedId) {
+        if (workout.result) {
           setSync("saved");
           setDraft((current) => ({ ...current, queuedId: undefined }));
+        } else if (draft.acceptedId) {
+          setSync("checking");
+          setWarning(SWIM_REFRESH_WARNING);
         } else if (queued) {
           setSync("queued");
           setDraft((current) => ({ ...current, queuedId: queued.id }));
@@ -98,9 +120,7 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
     void checkQueue();
     const stop = startAutoFlush((result) => {
       if (result.completedSessionIds.includes(workout.sessionId!)) {
-        setSync("saved");
-        setDraft((current) => ({ ...current, acceptedId: current.queuedId ?? current.acceptedId ?? "confirmed", queuedId: undefined }));
-        router.refresh();
+        confirmCompletion(result, draft.queuedId ?? draft.acceptedId);
       } else if (result.dropped > 0) {
         void checkQueue(true);
       } else {
@@ -108,7 +128,7 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
       }
     });
     return () => { alive = false; stop(); };
-  }, [workout.sessionId, workout.result, router, draft.queuedId, draft.acceptedId]);
+  }, [workout.sessionId, workout.result, router, draft.queuedId, draft.acceptedId, confirmCompletion, setWarning]);
 
   function change(field: Exclude<keyof SwimDraft, "checked" | "equipment">, value: string) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -200,9 +220,7 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
         setSync("queued");
         const result = await flushOutbox();
         if (result.completedSessionIds.includes(workout.sessionId)) {
-          setSync("saved");
-          setDraft((current) => ({ ...current, queuedId: undefined, acceptedId: receipt }));
-          router.refresh();
+          confirmCompletion(result, receipt);
         } else if (result.dropped) {
           setError("Your swim was not accepted. Review the entries and retry.");
           setSync("idle");
@@ -231,7 +249,7 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
         {workout.deleted && <Link href="/app/settings/trash" className={styles.secondary}>Restore from Trash</Link>}
         {workout.sourceGone && <p role="status" className={styles.muted}>Result removed</p>}
         {sync === "queued" && !workout.sourceGone && <p role="status" className={styles.status}>Saved on this device · Waiting to sync</p>}
-        {completed && !editing && <p role="status" className={styles.status}>Swim saved</p>}
+        {completed && workout.result && !editing && <p role="status" className={styles.status}>Swim saved</p>}
         {sync === "checking" && !workout.sourceGone && <p role="status" className={styles.status}>Checking saved swim…</p>}
       </section>
       <section className={styles.section}>

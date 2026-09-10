@@ -2948,3 +2948,20 @@ product-fix evidence. Coordinator complete-source/model/ref inspection,
 exact-head core/ONE changed-head full25 pending, all flags/limits unchanged.
 Seven of nine gates covered; A7/concurrency and combined/production approvals
 remain open, existing accounts/deferred backups unchanged.
+
+## [2026-09-10] refine | PR805 canonical completion checkpoint
+
+Refreshed fc360/base e275; prior8788 not restarted. Latest coordinator evidence
+is full34478188698attempt1@fc360:22pass/3fail/0flaky/skipped,134775ms; Main
+failed, other ten stages and both cleanups passed after green core34477706905.
+A3 committed but lacked result UI; A6 DB outcome unknown; A7 passed completion
+through2186 then failed the bare alert at2195. Samples are not inferred causes.
+Actual component/handler VM+SSR with held stale props reproduced saved-without-
+result for direct/auto paths on unchanged production (two intended failures).
+Canonical server view now flows through the existing drain and WorkoutScreen;
+two A7 safety locations exclude only the exact Next announcer. No diagnostic
+expansion. Initial six-selector batch in HANDOFF:935pass, including actual
+PRIVATE Playwright1.60 collection25; scoped lint/types passed. Failure/replay
+coverage and final security verification pending at this early checkpoint.
+No reference/agent logs retrieved, runtime gate dispatched or backend started.
+Coordinator exact-head core then one full25 remains required.

@@ -2,6 +2,48 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## LATEST — PR805 confirmed completion repair — 2026-09-10
+
+Sole writer started at refreshed `fc360d4e89a19853fca390657a4c54195e9a4993`,
+base `e2758dadbb110e03794e49d53b47622a6295e988`. Prior8788 was not restarted.
+Coordinator-supplied full **34478188698 attempt1@fc360 failed: 22/25 passed,
+3 failed, 0 flaky/skipped, 134775ms**; preceding core34477706905 passed.
+Main failed; other ten stages and both independent cleanups passed. Consumed
+reference/agent logs, transcripts, download URLs and raw records were not fetched.
+A3's original receipt committed with valid completion time and HTTP2xx but no
+result controls. A6 failed the same first-Finish assertion; its DB outcome is
+unknown. A7 passed primary completion and all proofs through2186, then failed
+the unscoped safety alert at2195. Its unavailable samples are not failed-save
+evidence; later start/resume invariance was not reached. Earlier failed runs
+remain failed and accepted24 is historical, not this head's acceptance.
+
+Controlled VM/SSR regression executes the actual WorkoutClient completion
+handler and WorkoutScreen with synthetic acknowledged completion and held old
+started/null-result props. On unchanged production fc360, both Finish/auto-flush
+rendered “Swim saved” with no form or result controls (2 intended failures).
+This demonstrates the render gap, not causes of historical refresh latency.
+The repair carries the existing server-projected view and original pairing
+through the shared drain into existing confirmed-view ownership. Missing views
+use the existing reload warning, not a second completion write. Only A7's two
+safety locations exclude the exact Next route announcer; all other oracles and
+bounded observations remain unchanged. Supplied pinned synthetic announcer
+proof: all16 passed in the same failed reference; not rerun here.
+
+Checkpoint validation in the cloud, Node22.23.2/pnpm10.33.2:
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/workout-controls.test.tsx src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/swim-actions-refresh.test.ts src/lib/offline/__tests__/flusher.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+  — **935 passed**, including PRIVATE actual Playwright1.60.0 collection25;
+  six-file2/4/7/8/3/1 registry unchanged, no browser/backend execution.
+- `pnpm --filter @hta/web typecheck` — passed.
+- `pnpm --filter @hta/web exec eslint src/components/swim/WorkoutClient.tsx src/lib/swim/actions.ts src/lib/swim/view-types.ts src/lib/offline/flusher.ts src/lib/swim/__tests__/workout-controls.test.tsx src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/swim-actions-refresh.test.ts e2e/swimming-lifecycle-load-mobile.spec.ts`
+  — passed.
+
+Further confirmation failure/replay coverage and final security verification
+are pending at this early checkpoint. No workflow dispatch, server/DB startup,
+new dependencies, migrations, RLS/safety changes or history rewrite. Coordinator
+must inspect saved source and terminal model/refs, then exact-head core before
+one full25. Seven of nine standalone gates remain historically covered; new
+limitation and reviewed scheduling/proposal concurrency remain open.
+
 ## LATEST — PR805 bounded A7 first-Finish observations — 2026-09-10
 
 Started at live-verified `63235ae37fb2fd324a99b8d9840daa46f57012dd`, base

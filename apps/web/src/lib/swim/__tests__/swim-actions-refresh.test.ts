@@ -657,9 +657,11 @@ describe("guarded edit phases and unchanged refresh callers", () => {
     expect(queries.swimWorkoutViewFromRow).not.toHaveBeenCalled();
   });
 
-  it("DC-SW9 completion retains its existing refresh-error behavior", async () => {
+  it("DC-SW9 completion warns after a committed save if refresh fails, without retrying", async () => {
     vi.mocked(revalidatePath).mockImplementation(() => { throw new Error("Cache unavailable"); });
-    expect(await completeSwimWorkoutResult(actualForm())).toEqual({ error: "Cache unavailable", errorCode: "transient" });
+    expect(await completeSwimWorkoutResult(actualForm())).toMatchObject({
+      ok: true, completion: { receiptId, sessionId, userId, warning: SWIM_REFRESH_WARNING },
+    });
     expect(storage.completeSwimWorkout).toHaveBeenCalledOnce();
     expect(recomputeAfterCompletedSessionMutation).toHaveBeenCalledOnce();
   });

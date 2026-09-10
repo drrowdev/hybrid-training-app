@@ -144,7 +144,8 @@ describe("ADR0079 server actions", () => {
     vi.mocked(requireSwimSetup).mockRejectedValue(new Error("Setup disabled"));
     vi.mocked(assertSwimSafety).mockRejectedValue(new Error("New limitation"));
     vi.mocked(storage.listSwimPlans).mockResolvedValue([{ ...swimFixture().plan, status: "archived" }]);
-    expect(await completeSwimWorkoutResult(actualForm())).toEqual({ ok: true });
+    expect(await completeSwimWorkoutResult(actualForm())).toMatchObject({ ok: true,
+      completion: { receiptId, workoutId: swimFixture().workouts[0]!.id, sessionId, userId } });
     expect(requireSwimSetup).not.toHaveBeenCalled();
     expect(assertSwimSafety).not.toHaveBeenCalled();
     expect(storage.completeSwimWorkout).toHaveBeenCalledWith(mock.client, expect.objectContaining({
@@ -157,7 +158,8 @@ describe("ADR0079 server actions", () => {
     const completed = vi.mocked(storage.completeSwimWorkout).getMockImplementation()!;
     await completeSwimWorkoutResult(actualForm());
     vi.mocked(storage.completeSwimWorkout).mockResolvedValue({ ...(await completed(mock.client as never, {} as never)), transitioned: false });
-    expect(await completeSwimWorkoutResult(actualForm())).toEqual({ ok: true });
+    expect(await completeSwimWorkoutResult(actualForm())).toMatchObject({ ok: true,
+      completion: { receiptId, workoutId: swimFixture().workouts[0]!.id, sessionId, userId } });
     expect(storage.completeSwimWorkout).toHaveBeenCalledTimes(2);
     expect(storage.createSwimPlan).not.toHaveBeenCalled();
     expect(recomputeAfterCompletedSessionMutation).toHaveBeenCalledTimes(2);
@@ -264,7 +266,8 @@ describe("ADR0079 server actions", () => {
     expect(await completeSwimWorkoutResult(form)).toMatchObject({ errorCode: "validation" });
     expect(storage.completeSwimWorkout).not.toHaveBeenCalled();
     form.set("reason", "Different pool");
-    expect(await completeSwimWorkoutResult(form)).toEqual({ ok: true });
+    expect(await completeSwimWorkoutResult(form)).toMatchObject({ ok: true,
+      completion: { receiptId, workoutId: swimFixture().workouts[0]!.id, sessionId, userId } });
     const actual = vi.mocked(storage.completeSwimWorkout).mock.calls[0]![1].result;
     expect(actual.snapshot.course.unit).toBe("m");
     vi.mocked(storage.getSwimResult).mockResolvedValue(actual);

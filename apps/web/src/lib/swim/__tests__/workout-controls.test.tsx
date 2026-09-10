@@ -3,6 +3,13 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { runInNewContext } from "node:vm";
+import { JsxEmit, ModuleKind, transpileModule } from "typescript";
+import * as React from "react";
+import * as domain from "@hta/domain";
+import * as draftModule from "../draft";
+import * as timeModule from "../time";
+import * as presentation from "../presentation";
+import * as viewTypes from "../view-types";
 import { renderToStaticMarkup } from "react-dom/server";
 import { estimateCriticalSwimSpeed, validateSwimWorkout } from "@hta/domain";
 import { generateSwimPlan } from "@hta/engine";
@@ -14,7 +21,7 @@ import { workoutPresentation } from "../presentation";
 import { nextConfirmedView, nextEditMode, type SwimWorkoutView } from "../view-types";
 import { initialSwimDraft, readSwimDraft } from "../draft";
 import { SWIM_REFRESH_WARNING } from "../action-feedback";
-import { swimFixture, userId, sessionId } from "./fixtures";
+import { swimFixture, userId, sessionId, receiptId } from "./fixtures";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh() {}, push() {}, replace() {} }) }));
 vi.mock("../actions", () => ({}));
@@ -51,6 +58,116 @@ function editedView(): SwimWorkoutView {
     },
   };
 }
+
+function completionHarness(reply: object, refreshFails = false) {
+  const states: Record<string, unknown[]> = { screen: [], client: [] };
+  let scope = "screen", cursor = 0;
+  let task: Promise<void> | undefined;
+  let auto: ((value: object) => void) | undefined;
+  const effects: (() => unknown)[] = [];
+  const refresh = vi.fn(() => { if (refreshFails) throw new Error("Refresh unavailable"); });
+  const enqueue = vi.fn(async () => ({ status: "stored" }));
+  const hooks = {
+    useCallback: (callback: unknown) => callback,
+    useState(initial: unknown) {
+      const index = cursor++;
+      const slots = states[scope]!;
+      if (!(index in slots)) slots[index] = typeof initial === "function" ? initial() : initial;
+      return [slots[index], (next: unknown) => {
+        slots[index] = typeof next === "function" ? next(slots[index]) : next;
+      }];
+    },
+    useEffect(effect: () => unknown) { effects.push(effect); },
+    useTransition: () => [false, (action: () => Promise<void>) => { task = action(); }],
+  };
+  const installed = createRequire(import.meta.url);
+  function load(name: string, extra: Record<string, unknown> = {}) {
+    const exports = {};
+    const source = readFileSync(new URL(`../../../components/swim/${name}.tsx`, import.meta.url), "utf8");
+    runInNewContext(transpileModule(source, {
+      compilerOptions: { module: ModuleKind.CommonJS, jsx: JsxEmit.ReactJSX },
+    }).outputText, {
+      exports, FormData, queueMicrotask,
+      require: (id: string) => ({
+        react: hooks, "react/jsx-runtime": installed("react/jsx-runtime"),
+        "next/navigation": { useRouter: () => ({ refresh, replace() {} }) },
+        "next/link": { default: "a" }, "@hta/domain": domain,
+        "@/components/trash/DeleteSessionButton": { DeleteSessionButton: () => null },
+        "@/components/forms/RpeInput": { RpeInput: () => null },
+        "@/lib/swim/actions": {}, "@/lib/swim/action-feedback": { SWIM_REFRESH_WARNING },
+        "@/lib/offline/outbox": { enqueue, listForSession: async () => [], listDeadLettered: async () => [] },
+        "@/lib/offline/outbox-core": { createOutboxEntryId: () => receiptId },
+        "@/lib/offline/flusher": {
+          flushOutbox: async () => reply,
+          startAutoFlush: (callback: typeof auto) => { auto = callback; return () => {}; },
+        },
+        "@/lib/swim/time": timeModule, "@/lib/swim/draft": draftModule,
+        "@/lib/swim/presentation": presentation, "@/lib/swim/view-types": viewTypes,
+        "./Swim.module.css": { default: {} }, "./SplitFields": { SplitFields: () => null },
+        ...extra,
+      })[id],
+    });
+    return exports as Record<string, (props: Record<string, unknown>) => React.ReactElement>;
+  }
+  const client = load("WorkoutClient");
+  const screen = load("WorkoutScreen", { "./WorkoutClient": client });
+  let incoming = workoutView();
+  let tree: React.ReactElement;
+  function render() {
+    scope = "screen"; cursor = 0;
+    const child = screen.WorkoutScreen!({ workout: incoming, userId });
+    scope = "client"; cursor = 0; effects.length = 0;
+    tree = client.WorkoutClient!(child.props as Record<string, unknown>);
+    return renderToStaticMarkup(tree);
+  }
+  render();
+  states.client![0] = { ...initialSwimDraft(incoming), lengths: "12", time: "15:00", notes: "Draft, not server" };
+  states.client![1] = true;
+  render();
+  function findForm(node: React.ReactNode): React.ReactElement<{ onSubmit: (event: object) => void }> | undefined {
+    if (!React.isValidElement<{ children?: React.ReactNode }>(node)) return;
+    if (node.type === "form") return node as ReturnType<typeof findForm>;
+    for (const child of React.Children.toArray(node.props.children)) {
+      const found = findForm(child);
+      if (found) return found;
+    }
+  }
+  return {
+    render, enqueue, refresh,
+    async finish() {
+      const form = findForm(tree)!;
+      // Node FormData has no HTMLFormElement overload; the actual handler only reads confirmPool.
+      form.props.onSubmit({ preventDefault() {}, currentTarget: undefined });
+      await task;
+      return render();
+    },
+    async replay() {
+      effects[2]!();
+      await Promise.resolve(); await Promise.resolve();
+      auto!(reply);
+      return render();
+    },
+    incoming(view: SwimWorkoutView) { incoming = view; return render(); },
+  };
+}
+
+describe("DC-SW8/DC-SW9 actual completion handler with held stale props (VM/SSR, not browser timing)", () => {
+  it.each(["finish", "replay"] as const)("shows the server result after %s before refreshed props arrive", async (path) => {
+    const view = completedView();
+    const harness = completionHarness({
+      completedSessionIds: [sessionId], dropped: 0,
+      swimCompletions: [{ receiptId, workoutId: view.id, sessionId, userId, view }],
+    });
+    const html = await harness[path]();
+    expect(html).toContain("Your swim");
+    expect(html).toContain("Edit result");
+    expect(html).toContain("Original swim");
+    expect(html).not.toContain("Draft, not server");
+    expect(harness.incoming(workoutView())).toContain("Original swim");
+    expect(harness.incoming(editedView())).toContain("Edited swim");
+    expect(harness.enqueue).toHaveBeenCalledTimes(path === "finish" ? 1 : 0);
+  });
+});
 
 describe("DC-SW3 poolside workout controls", () => {
   it("A7 DC-SW7/DC-SW9: retained Notes match the pinned textbox engine, not the exact label engine (SSR only)", () => {

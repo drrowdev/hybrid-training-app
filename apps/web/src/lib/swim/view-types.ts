@@ -27,6 +27,25 @@ export type SwimWorkoutView = {
   notes?: string;
 };
 
+export type SwimCompletion = {
+  receiptId: string;
+  workoutId: string;
+  sessionId: string;
+  userId: string;
+  view?: SwimWorkoutView;
+  warning?: string;
+};
+
+export function confirmedSwimCompletionView(completion: SwimCompletion, workout: SwimWorkoutView): SwimWorkoutView | null {
+  const view = completion.view;
+  if (!view || view.id !== workout.id || view.sessionId !== workout.sessionId ||
+    !Number.isSafeInteger(view.revision) || view.revision <= workout.revision ||
+    view.status !== "completed" || view.deleted || view.sourceGone ||
+    !view.result || !Number.isSafeInteger(view.result.lengths) || view.result.lengths < 1 ||
+    !Number.isSafeInteger(view.result.timeMs) || view.result.timeMs <= 0) return null;
+  return view;
+}
+
 export type SwimHubView = {
     id: string; revision: number; status: SwimWorkoutView["planStatus"]; goal: string;
     course: string; dates: string; today: string;

@@ -2192,8 +2192,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await page.getByLabel("Reason", { exact: true }).fill("Synthetic retained future input");
     const beforeStart = await lifecycleState(admin, userId);
     await page.getByRole("button", { name: "Start swim", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText("Review your active limitations before swimming");
-    await expect(page.getByRole("alert")).toContainText(REGION_LABELS[region]);
+    await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toContainText("Review your active limitations before swimming");
+    await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toContainText(REGION_LABELS[region]);
     await expect(page.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();
     await expect(page.getByLabel("Reason", { exact: true })).toHaveValue("Synthetic retained future input");
     expect((await prescription.innerText()) === futureText &&
@@ -2224,8 +2224,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       isDeepStrictEqual(await lifecycleState(admin, userId), paused)).toBe(true);
     const beforeResume = await lifecycleState(admin, userId);
     await page.getByRole("button", { name: "Accept dates and resume", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText("Review your active limitations before swimming");
-    await expect(page.getByRole("alert")).toContainText(REGION_LABELS[region]);
+    await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toContainText("Review your active limitations before swimming");
+    await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toContainText(REGION_LABELS[region]);
     await expect(page.getByLabel("Resume from", { exact: true })).toHaveValue(resumeFrom);
     await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible();
     expect(isDeepStrictEqual(await lifecycleState(admin, userId), beforeResume) &&

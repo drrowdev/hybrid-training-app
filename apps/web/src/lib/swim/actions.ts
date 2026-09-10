@@ -172,14 +172,18 @@ export async function startSwimWorkout(workoutId: string, revision: number): Pro
   }
 }
 
-export async function completeSwimWorkoutResult(form: FormData): Promise<ActionResult> {
+export async function completeSwimWorkoutResult(form: FormData): Promise<ActionResult & { completion?: import("./view-types").SwimCompletion }> {
+  let context: Awaited<ReturnType<typeof swimContext>>;
+  let completed: Awaited<ReturnType<typeof storage.completeSwimWorkout>>;
+  let fields: ReturnType<typeof parseActualForm>;
   try {
-    const fields = parseActualForm(form);
+    fields = parseActualForm(form);
     if (!fields.clientLogId) throw new SwimActionError("A saved completion receipt is required.", "validation");
-    const { client, user } = await swimContext();
+    context = await swimContext();
+    const { client, user } = context;
     const workout = await ownedSwimWorkout(client, user.id, fields.workoutId);
     if (workout.session_id !== fields.sessionId) throw new SwimActionError("This session does not belong to the swim.", "forbidden");
-    const completed = await storage.completeSwimWorkout(client, {
+    completed = await storage.completeSwimWorkout(client, {
       workoutId: workout.id, expectedRevision: fields.expectedRevision,
       result: resultFromForm(fields, workout), notes: fields.notes || null,
       clientLogId: fields.clientLogId, completionEntryId: fields.clientLogId,
@@ -188,9 +192,18 @@ export async function completeSwimWorkoutResult(form: FormData): Promise<ActionR
     // Rebuilding the existing ledger is replay-safe, including a retry after an
     // acknowledged database commit but a lost response. It never appends load.
     await recomputeAfterCompletedSessionMutation({ supabase: client, userId: user.id, sessionId: completed.session_id });
-    refreshSwims(completed.session_id);
-    return { ok: true };
   } catch (error) { return swimActionFailure(error); }
+  const completion = {
+    receiptId: fields.clientLogId!, workoutId: fields.workoutId,
+    sessionId: fields.sessionId, userId: context.user.id,
+    ...refreshSavedSwim(completed.session_id),
+  };
+  try {
+    const view = await swimWorkoutViewFromRow(context.client, context.user.id, completed.workout);
+    return { ok: true, completion: view ? { ...completion, view } : { ...completion, warning: SWIM_REFRESH_WARNING } };
+  } catch {
+    return { ok: true, completion: { ...completion, warning: SWIM_REFRESH_WARNING } };
+  }
 }
 
 export async function editSwimResult(form: FormData): Promise<ActionResult & { warning?: string; view?: SwimWorkoutView }> {

@@ -21,6 +21,7 @@ import {
   logCardioSession,
 } from "@/lib/sessions/actions";
 import { completeSwimWorkoutResult } from "@/lib/swim/actions";
+import type { SwimCompletion } from "@/lib/swim/view-types";
 import {
   claimEntry,
   deadLetter,
@@ -44,6 +45,7 @@ export type FlushResult = {
   dropped: number;
   completed: number;
   completedSessionIds: string[];
+  swimCompletions?: SwimCompletion[];
 };
 
 let activeFlush: Promise<FlushResult> | null = null;
@@ -52,7 +54,7 @@ let flushRequested = false;
 async function runEntry(
   entry: OutboxEntry,
 ): Promise<{
-  result?: ActionResult;
+  result?: ActionResult & { completion?: SwimCompletion };
   threw: boolean;
 }> {
   try {
@@ -126,6 +128,7 @@ async function drainOutbox(): Promise<FlushResult> {
   let remaining = 0;
   let stopped = false;
   const completedSessionIds: string[] = [];
+  const swimCompletions: SwimCompletion[] = [];
   try {
     do {
       // Reset before reading: an enqueue can finish after this snapshot.
@@ -145,6 +148,12 @@ async function drainOutbox(): Promise<FlushResult> {
             if (entry.op === "complete" || entry.op === "swim_complete") {
               completed += 1;
               completedSessionIds.push(entry.sessionId);
+              if (entry.op === "swim_complete" && result?.completion &&
+                result.completion.receiptId === entry.id &&
+                result.completion.sessionId === entry.sessionId &&
+                result.completion.workoutId === entry.payload.workoutId) {
+                swimCompletions.push(result.completion);
+              }
             }
           } else if (outcome === "drop") {
             // Native swim drafts need the rejection after a different tab flushes.
@@ -173,7 +182,8 @@ async function drainOutbox(): Promise<FlushResult> {
       remaining = (await listPending()).length;
     } while (flushRequested && !stopped && outboxAvailable() &&
       (typeof navigator === "undefined" || navigator.onLine !== false));
-    return { flushed, remaining, dropped, completed, completedSessionIds };
+    return { flushed, remaining, dropped, completed, completedSessionIds,
+      ...(swimCompletions.length ? { swimCompletions } : {}) };
   } finally {
     activeFlush = null;
   }
