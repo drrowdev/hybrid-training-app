@@ -1,5 +1,23 @@
 # Native pool swimming
 
+### Current source — dormant primary-cardio foundation — 2026-09-10
+
+The owner supplied accepted standalone26 at `8c58917f14aaee22e224f257e91dd9c2ff76897f`,
+full34490583441 attempt1 after exactcore34489951509: all26 once, no unexpected/
+flaky/skipped; all nine standalone gates covered. Earlier entries below describe
+historical sources/runs, not current runtime acceptance of this new migration.
+
+[ADR0079's dormant foundation](../adr/0079-pool-swim-track-and-calendar.md#dormant-primary-cardio-foundation--2026-09-10)
+adds only the owned unique nullable primary-cardio slot identity, with a CHECK
+forbidding every non-null binding. Parent deletion clears only that identity,
+not the owner or swim history. The guarded down requires no bindings and restored,
+validated dormancy; later activation owns its non-destructive rollback dependency.
+Retained source provenance, atomic shared start/completion, selected unstarted
+cardio-only replacement and pause/resume coordination remain activation work.
+Normal migration total is now150; identity definitions146/147/148, Auth36 and
+frozen26 remain unchanged. HANDOFF lists source-only checks; no new DB/browser
+execution or production authorization is claimed. DC-SW5/SW7/SW8/SW9 apply.
+
 ### PR805 standalone A7 source — 2026-09-10
 
 Coordinator accepted full34460014574 attempt1 at exact0a0e64fec61074d05651246bb9b6eb1e964d1820:

@@ -127,6 +127,42 @@ No swim-plan foreign key points to a primary training block. Every new column is
 subject to the schema-discipline questions before its migration is finalized.
 No table is added for Garmin or for a second derived workload ledger.
 
+### Dormant primary-cardio foundation — 2026-09-10
+
+Owner authorization is isolated development and disposable tests only, with
+rollback; production is not authorized. Migration `0149_dormant_swim_primary_cardio_link`
+adds nullable unique `swim_workouts.planned_session_id` and the composite owner FK
+to `planned_sessions(user_id, id)`, supported by a new named unique constraint.
+Its externally observable purpose is the identity of the selected parent cardio
+slot for one calendar entry/session/completion/load, not an internal engine value.
+The link clears on parent deletion, never by date-based remapping; column-specific
+`SET NULL (planned_session_id)` preserves the workout owner and history.
+Removing the column requires no live bindings and the guarded down migration.
+
+`swim_workouts_primary_cardio_link_dormant_check` requires the column to remain
+NULL for every writer, including privileged writes. There is no bind RPC or
+application activation. Existing independent date/slot fields remain unchanged.
+The migration does not change grants, roles, RLS, identity or lifecycle routines.
+
+Before a separately reviewed activation migration removes dormancy, retain stable
+parent/program source references and issued history independently of the nullable
+FK so parent deletion/replanning cannot erase provenance. Implement the selected
+unstarted cardio-only content replacement, preserving the parent's date,
+prescription, source and completion identity, never replacing strength/mixed work.
+Pause restores current parent cardio for future unstarted work; resume reviews
+eligible slots. This requires shared atomic start/completion and planned-slot
+mutation serialization, not a check-then-redirect around separate writes.
+
+Activation rollback must preserve that history, resolve its bindings through its
+own reviewed rollback and restore the validated dormant CHECK **before** 0149 can
+be removed. The 0149 down locks both tables, refuses live bindings or absent/
+unvalidated dormancy, and removes only its own objects with RESTRICT. It never
+detaches data, deletes work/results, or drops a pre-existing owner index.
+Static migration/schema contracts are source evidence only. Disposable database
+up/down, ownership/uniqueness/dormancy rejection and parent-deletion preservation
+proof remain required, followed by real authenticated start/completion/mutation
+races before activation (DC-SW5/SW7/SW8/SW9).
+
 New user-owned rows use both `USING` and `WITH CHECK` ownership policies, grants
 and query indexes. Composite ownership foreign keys prevent linking another
 user's plan or session, including direct authenticated database writes. A

@@ -3036,3 +3036,21 @@ core34486576111 passed. Generic same() line71 cannot identify its caller/phase.
 Both cleanups passed; main failed. No consumed reference/private logs fetched.
 Prior1acdd/be5ad work remains saved; current26 is not accepted. Coordinator
 terminal/ref inspection, exact-new-head core FIRST, then ONE full26 remain.
+
+## [2026-09-10] refine | dormant owned primary-cardio link foundation
+
+Owner-approved isolated development only: ADR0079 now records migration0149's
+nullable unique owner-checked parent-slot identity and unconditional NULL CHECK.
+Column-specific SET NULL retains owner/history. Guarded down rejects bindings or
+missing/unvalidated dormancy; later activation must preserve source provenance
+and restore the invariant through its own reviewed rollback first.
+Normal total150; identity146/147/148, five phases/four original DDLs/15contexts,
+Auth36, existing FK proof and frozen26 are unchanged. Existing source registration
+covers up/down without broadening the reference path. Focused Vitest455, scoped
+lint, DB/web types and offline150/Drizzle checks passed; no live database proof.
+HANDOFF separates remaining up/down/ownership/deletion/dormancy proof and atomic
+authenticated start/completion/mutation races from this dormant source slice.
+Coordinator-supplied full34490583441 attempt1@8c589 accepted all26 once after
+exactcore34489951509; all nine standalone gates covered. Historical failures stay
+distinct. No consumed logs, runtime dispatch or production migration; production
+ordering reconciliation and activation remain separately gated. DC-SW5/SW7/SW8/SW9.

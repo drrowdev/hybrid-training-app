@@ -41,6 +41,92 @@ function definitions(source: string) {
   )];
 }
 
+describe("ADR0079 dormant primary cardio link source contracts (DC-SW5/SW7/SW8/SW9)", () => {
+  const directory = new URL("../../../../../../packages/db/", import.meta.url);
+  const migration = readFileSync(new URL("drizzle/0149_dormant_swim_primary_cardio_link.sql", directory), "utf8");
+  const down = readFileSync(new URL("rollbacks/0149_dormant_swim_primary_cardio_link.down.sql", directory), "utf8");
+  const statements = (source: string) => source.replace(/^--.*$/gm, "").replace(/\s+/g, " ").trim();
+
+  it("registers exactly one next migration with journal/file parity and whole-file execution", () => {
+    const journal = JSON.parse(readFileSync(new URL("drizzle/meta/_journal.json", directory), "utf8"));
+    expect(journal.entries.at(-1)).toEqual({
+      idx: 149, version: "7", when: 1789052649404,
+      tag: "0149_dormant_swim_primary_cardio_link", breakpoints: false,
+    });
+    expect(journal.entries[149].when).toBeGreaterThan(journal.entries[148].when);
+    expect(journal.entries.map((entry: { idx: number }) => entry.idx))
+      .toEqual(Array.from({ length: 150 }, (_, i) => i));
+    expect(readdirSync(new URL("drizzle/", directory)).filter((file) => file.endsWith(".sql")).sort())
+      .toEqual(journal.entries.map((entry: { tag: string }) => `${entry.tag}.sql`).sort());
+    expect(migration).not.toContain("--> statement-breakpoint");
+  });
+
+  it("adds only the nullable unique owner link and unconditional dormant check", () => {
+    expect(statements(migration)).toBe(
+      "SET LOCAL statement_timeout = '30s'; SET LOCAL lock_timeout = '5s'; "
+      + "ALTER TABLE public.planned_sessions ADD CONSTRAINT planned_sessions_user_id_id_key UNIQUE (user_id, id); "
+      + "ALTER TABLE public.swim_workouts ADD COLUMN planned_session_id uuid, "
+      + "ADD CONSTRAINT swim_workouts_planned_session_id_unique UNIQUE (planned_session_id), "
+      + "ADD CONSTRAINT swim_workouts_owned_planned_session_fk FOREIGN KEY (user_id, planned_session_id) "
+      + "REFERENCES public.planned_sessions (user_id, id) ON DELETE SET NULL (planned_session_id), "
+      + "ADD CONSTRAINT swim_workouts_primary_cardio_link_dormant_check CHECK (planned_session_id IS NULL);",
+    );
+    expect(migration).not.toMatch(/NOT VALID|IF NOT EXISTS|CASCADE|\b(?:INSERT INTO|UPDATE|DELETE FROM|GRANT|REVOKE|POLICY|FUNCTION|TRIGGER)\b/);
+  });
+
+  it("uses the existing column-specific SET NULL precedent, never clearing the owner", () => {
+    expect(sql).toContain("ON DELETE SET NULL (session_id)");
+    expect(migration.match(/ON DELETE SET NULL \([^)]+\)/g))
+      .toEqual(["ON DELETE SET NULL (planned_session_id)"]);
+    const source = readFileSync(new URL("src/schema/swimming.ts", directory), "utf8");
+    expect(source).toContain("Migration 0149 owns ON DELETE SET NULL (planned_session_id)");
+  });
+
+  it("requires NULL at the database level regardless of writer privileges", () => {
+    expect(migration).toContain("CHECK (planned_session_id IS NULL)");
+    expect(migration).not.toMatch(/current_user|current_setting|auth\.uid|swim_writer/);
+  });
+
+  it("locks before refusing live bindings or missing/unvalidated dormancy, before any removal", () => {
+    const ordered = [
+      "BEGIN;", "LOCK TABLE public.planned_sessions, public.swim_workouts IN ACCESS EXCLUSIVE MODE;",
+      "IF EXISTS (SELECT 1 FROM public.swim_workouts WHERE planned_session_id IS NOT NULL)",
+      "RAISE EXCEPTION 'Refusing to roll back 0149: primary cardio bindings exist.';",
+      "IF NOT EXISTS (", "conrelid = 'public.swim_workouts'::regclass",
+      "conname = 'swim_workouts_primary_cardio_link_dormant_check'",
+      "contype = 'c' AND convalidated",
+      "pg_catalog.pg_get_expr(conbin, conrelid) = '(planned_session_id IS NULL)'",
+      "RAISE EXCEPTION 'Refusing to roll back 0149: restore the dormant constraint first.';",
+      "ALTER TABLE public.swim_workouts",
+      "DROP COLUMN planned_session_id RESTRICT;",
+      "ALTER TABLE public.planned_sessions", "COMMIT;",
+    ];
+    let previous = -1;
+    for (const fragment of ordered) {
+      const at = down.indexOf(fragment);
+      expect(at, fragment).toBeGreaterThan(previous);
+      previous = at;
+    }
+    expect(down).not.toMatch(/CASCADE|\b(?:DELETE FROM|UPDATE|INSERT INTO|TRUNCATE|DROP TABLE|DROP INDEX)\b/);
+  });
+
+  it("removes only introduced objects with RESTRICT and documents the activation rollback dependency", () => {
+    expect(statements(down.slice(down.indexOf("ALTER TABLE")))).toBe(
+      "ALTER TABLE public.swim_workouts "
+      + "DROP CONSTRAINT swim_workouts_primary_cardio_link_dormant_check RESTRICT, "
+      + "DROP CONSTRAINT swim_workouts_owned_planned_session_fk RESTRICT, "
+      + "DROP CONSTRAINT swim_workouts_planned_session_id_unique RESTRICT, "
+      + "DROP COLUMN planned_session_id RESTRICT; "
+      + "ALTER TABLE public.planned_sessions DROP CONSTRAINT planned_sessions_user_id_id_key RESTRICT; COMMIT;",
+    );
+    expect(down).toContain("Roll back later activation first: preserve source history");
+    const prior = readdirSync(new URL("drizzle/", directory))
+      .filter((file) => /^\d{4}_.*\.sql$/.test(file) && !file.startsWith("0149_"))
+      .map((file) => readFileSync(new URL(`drizzle/${file}`, directory), "utf8")).join("\n");
+    expect(prior).not.toContain("planned_sessions_user_id_id_key");
+  });
+});
+
 describe("ADR0079 private swimming identity migration (DC-SW8/DC-SW9)", () => {
   it("pins the original definition oracle and exactly the ten approved replacements", () => {
     expect(createHash("sha256").update(sql).digest("hex"))
@@ -113,12 +199,12 @@ describe("ADR0079 private swimming identity migration (DC-SW8/DC-SW9)", () => {
   it("registers the additive migration without statement breakpoints", () => {
     const directory = new URL("../../../../../../packages/db/drizzle/", import.meta.url);
     const journal = JSON.parse(readFileSync(new URL("meta/_journal.json", directory), "utf8"));
-    expect(journal.entries).toHaveLength(149);
+    expect(journal.entries).toHaveLength(150);
     expect(journal.entries[146]).toEqual({
       idx: 146, version: "7", when: 1788825600000,
       tag: "0146_swim_request_identity", breakpoints: false,
     });
-    expect(readdirSync(directory).filter((name) => name.endsWith(".sql"))).toHaveLength(149);
+    expect(readdirSync(directory).filter((name) => name.endsWith(".sql"))).toHaveLength(150);
   });
 });
 

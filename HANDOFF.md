@@ -2,6 +2,60 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## LATEST — PR805 dormant primary-cardio link foundation — 2026-09-10
+
+Started from public-reviewed `8c58917f14aaee22e224f257e91dd9c2ff76897f`,
+base `e2758dadbb110e03794e49d53b47622a6295e988`, on the assigned805 head.
+The owner's accepted standalone evidence is full34490583441 attempt1 at8c589:
+all26 once,0unexpected/flaky/skipped,123930ms; exactcore34489951509 first.
+All nine standalone gates are covered. Earlier entries below remain historical;
+their “not accepted” statements do not supersede this supplied acceptance.
+No consumed reference logs or private agent transcripts were retrieved.
+
+Only the dormant foundation in [ADR0079](docs/adr/0079-pool-swim-track-and-calendar.md#dormant-primary-cardio-foundation--2026-09-10)
+is added: nullable unique `swim_workouts.planned_session_id`, composite owner FK,
+new `planned_sessions(user_id,id)` unique constraint, and column-specific
+`ON DELETE SET NULL (planned_session_id)`. The database CHECK requires NULL even
+for privileged writes. No binding path, UI, parser, start/completion/lifecycle,
+RLS/grant/role/identity/lock-order or browser fixture/case changes.
+Old date/slot fields remain. The column's observable purpose is parent cardio-slot
+identity; removal requires no live bindings and guarded down. Down preserves all
+work/history, requires restored validated dormancy, and drops only introduced
+objects with RESTRICT. Later activation must retain source/program provenance
+independently of the nullable link and own its reviewed non-destructive rollback.
+
+Normal registered migrations now150 (new0149); source registration already covers
+all `packages/db` files, including up/down. Exact hashes/parity/catalog/cleanup
+and failure guards remain. Identity DEFINITION levels146/147/148, five phases/
+four original whole-file DDLs/15contexts, Auth36 and movement-FK proof unchanged.
+Frozen26 identities/bodies/oracles and sixfilecounts2/4/7/9/3/1 are untouched.
+
+Executed on this official worker (no installations):
+- `pnpm -r --filter @hta/db --filter @hta/web exec vitest run storage-migration.test.ts swim-acceptance.test.ts dormant-swim-primary-cardio-link.test.ts`: **455 passed** (2 DB schema metadata,47 migration contracts,406 reference contracts).
+- `pnpm --filter @hta/web exec eslint scripts/swim-acceptance-guards.ts src/lib/swim/__tests__/storage-migration.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts`: passed.
+- `pnpm --filter @hta/db typecheck` and `pnpm --filter @hta/web typecheck`: passed.
+- `env -u DATABASE_URL pnpm --filter @hta/db db:check`: offline150 journal/file/hash parity passed.
+- `pnpm --filter @hta/db exec drizzle-kit check --dialect postgresql --out ./drizzle`: passed.
+
+These are **source-only** checks, not executed SQL/FK/database acceptance.
+No service, DB, Docker, Supabase, app/browser server, browser collection or
+workflow dispatch was started. Coordinator owns full saved-source/path review,
+fresh refs/writer guards and exact-new-head core before guarded runtime dispatch.
+Remaining disposable proof: up/down; cross-owner/duplicate rejection; privileged
+dormancy rejection; parent deletion preserving owner/history (with dormancy
+removed only in a separately reviewed activation/proof context). Then trace all
+start paths and prove shared atomic start/parent completion and planned-slot
+mutation serialization under real authenticated races. `startSessionDirect` still
+uses separate insert/conditional-link writes; check-then-redirect is not integration.
+Selected unstarted cardio-only replacement, current-parent pause restoration,
+reviewed resume, independent source-history retention and no date remapping
+remain required. Separate dates/priority/recovery coordination are later work.
+
+Isolated development/disposable rollback authorization is not production approval.
+Main's applied0145seed watermark1788912000000 still conflicts with unshipped swim
+ordering; no reconciliation/ledger reset/native-stack manipulation here.
+Backups/external integrations remain deferred. [DC-SW5/SW7/SW8/SW9](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).
+
 ## LATEST — PR805 B9 schedule-version oracle correction — 2026-09-10
 
 Sole805 writer refreshed head `ff133f056d1857e2096da438e7ea71bc460e19bc`

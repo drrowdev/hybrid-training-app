@@ -273,7 +273,9 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
     expect(files).toEqual([...new Set(files)].sort());
     for (const path of declaredPaths) expect(files).toContain(path);
     expect(files).toContain("packages/db/drizzle/meta/_journal.json");
-    expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(149);
+    expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(150);
+    expect(files).toContain("packages/db/drizzle/0149_dormant_swim_primary_cardio_link.sql");
+    expect(files).toContain("packages/db/rollbacks/0149_dormant_swim_primary_cardio_link.down.sql");
     expect(files).toContain("apps/web/next.config.ts");
     expect(files).toContain("apps/web/postcss.config.mjs");
     expect(files.filter((file) => file.startsWith("apps/web/e2e/")).every((file) =>
@@ -764,17 +766,18 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     }
   });
 
-  it("requires normal total 149 while preserving identity definition level 148", () => {
-    expect(ACTIVE_MIGRATION_TOTAL).toBe(149);
+  it("requires normal total 150 while preserving identity definition level 148", () => {
+    expect(ACTIVE_MIGRATION_TOTAL).toBe(150);
     expect(source).toContain("journal.entries.length === ACTIVE_MIGRATION_TOTAL");
     expect(source).toContain('sourceFiles.filter((f) => /^packages\\/db\\/drizzle\\/[^/]+\\.sql$/.test(f)).length === ACTIVE_MIGRATION_TOTAL');
     expect(source).toContain("manifest.migrationCount = ACTIVE_MIGRATION_TOTAL;");
     const journal = JSON.parse(readFileSync(new URL(
       "../../../../../../packages/db/drizzle/meta/_journal.json", import.meta.url,
     ), "utf8")) as { entries: { tag: string }[] };
-    expect(journal.entries).toHaveLength(149);
+    expect(journal.entries).toHaveLength(150);
     expect(journal.entries[147]?.tag).toBe("0147_shared_completion_identity");
-    expect(journal.entries.at(-1)?.tag).toBe("0148_defer_custom_movement_references");
+    expect(journal.entries[148]?.tag).toBe("0148_defer_custom_movement_references");
+    expect(journal.entries.at(-1)?.tag).toBe("0149_dormant_swim_primary_cardio_link");
     expect(source).toContain("checkAuthBoundary(authPrivileges, 148)");
   });
 
