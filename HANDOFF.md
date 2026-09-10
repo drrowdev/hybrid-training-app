@@ -2015,3 +2015,66 @@ every required variable.
 - Migrations are append-only and numbered; never edit a committed one
   except for purely-additive idempotency tweaks
   (`ADD COLUMN IF NOT EXISTS`).
+
+## PR805 B6/B7 summary display correction — 2026-09-10
+
+Latest checkpoint; prior records above remain historical evidence. Continued
+exact `32e0f40f44e8aeec815a3a8f2f39cb40179eac13` on
+`copilot/new-acceptance-cases`, declared base
+`copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+**Exact tested code/test tree before these append-only documentation additions:
+`79e3603da420fa7668229eced493545a51f024bd`.**
+
+Coordinator-supplied runtime: full34442610426@32e0f40f,
+reference job102760620622 failed after5m36s. All22 ran once:
+**20 passed, 2 failed, 0 skipped, 0 flaky**, total case116518ms.
+All prior17 plus B8/E1/A3 passed. B6 (3198ms, spec1047) and B7
+(3919ms, spec1093) reached the page-global exact `50 m` display assertion
+after successful setup/create and strict persisted canonical prescription checks.
+Only source line/status was supplied, not the historical Playwright error.
+GitHub metadata was checked and a log URL requested; no raw old logs or private
+transcripts were read. Core/native16/normal149/catalog/identity matched,
+Auth36HTTP/FK matched, main and separate final cleanup verified per coordinator.
+**The main browser failure remains failure; this correction is not runtime acceptance.**
+
+Under [DC-SW1/SW2/SW3](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05),
+only B6/B7 now select the link for `stored.workouts[0].id`, await its exact URL,
+and scope exact course text to `page.locator("main > section").first()`, matching
+the passing persistence helper. WorkoutClient's first section displays the
+course; later sections display step distances. Two regressions in the existing
+`workout-controls.test.tsx` generate the real calibrated10-minute B6 and
+corrected20-minute B7 prescriptions and SSR-render WorkoutScreen: each has
+multiple exact `50 m` elements globally, but exactly one in the first section.
+This proves the source/SSR distinction, not the unavailable historical error.
+Up-to10/20-minute assertions, main-text reload equality, storage equality,
+all20 passing cases and all22 identities/order remain unchanged.
+
+Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts src/lib/swim/__tests__/workout-controls.test.tsx src/lib/swim/__tests__/presentation.test.ts src/lib/swim/__tests__/swim-hub-view.test.tsx`
+  — **5 files,567 passed** (498/1/43/4/21).
+- Existing private collection invoked installed **Playwright1.60.0**
+  `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json`:
+  exact22 identities/six files2/4/4/8/3/1, zero execution/errors,
+  private directory identity/mode and exact cleanup verified.
+  Safe result: `[swim-collection]{"success":true,"exit":0,"loaderCode":"unknown","sources":[]}`.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-decisions-offline-mobile.spec.ts src/lib/swim/__tests__/workout-controls.test.tsx`
+  and `pnpm --filter @hta/web typecheck` — passed. Initial SSR regex flag failed
+  the existing TypeScript target; replaced with compatible character matching
+  before the final green run above.
+- `pnpm docs:check-drift` — passed, offline in-repository checks only;
+  `git diff --check` — passed.
+- `printf 'HEAD %s refs/heads/copilot/new-acceptance-cases %s\n' "$(git rev-parse HEAD)" 32e0f40f44e8aeec815a3a8f2f39cb40179eac13 | node scripts/check-commit-identities.mjs pre-push origin`
+  — passed,132 introduced commits inspected before this commit. Initial
+  progress push failed closed on shallow history; full history fetched without
+  rewrite. Effective native cloud author198982749 and GitHub committer
+  `noreply@github.com` are allowlisted; publishing retains the existing hook.
+
+No product, domain, engine, schema, SQL, RLS, auth, fixture, workflow, checker,
+hook, dependency, network or timeout changes; no browser/SQL/Docker/hosted-data
+execution, dispatch, delegation, merge or history rewrite. Existing isolation,
+deadlines, normal149/identity146–148, Auth/FK proofs and cleanup safeguards remain
+unchanged. Coordinator inspection, current-head core and ONE new-head full22
+are still pending. No extra browser cases, production authority or backup work;
+main145/unshipped145–148 integration remains a later owner-approved gate.
+Swimming stays inside getsxc.app.

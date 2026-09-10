@@ -1416,3 +1416,15 @@ Any access correction requires a specific owner decision and independently
 reviewed additive migration/rollback, not a repeated grant or privilege bypass.
 Full standalone [DC-SW1–SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
 acceptance still precedes combined implementation.
+
+### PR805 B6/B7 display checkpoint — 2026-09-10
+
+Coordinator's full34442610426@32e0f40f ran frozen22 once:20passed/2failed,
+no skips/flaky. B8/E1/A3 now pass; B6/B7 reach the exact course display assertion.
+Their course checks now use the existing first-summary-section convention and
+await the stored workout's exact URL. Existing SSR machinery proves duplicate
+course/step text globally versus one course in the summary for both generated
+budget workouts. All22 identities and reload/storage assertions are preserved.
+Local567 tests and private Playwright1.60.0 collection passed; new-head browser
+acceptance remains pending. Exact source tree, commands and limitations are in
+the appended B6/B7 checkpoint in `HANDOFF.md`; prior checkpoints remain historical.

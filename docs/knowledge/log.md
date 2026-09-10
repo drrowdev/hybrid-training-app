@@ -2758,3 +2758,14 @@ scoped lint/typecheck passed. Existing private Playwright1.60.0 actual collectio
 confirmed22/six files2/4/4/8/3/1/zero execution/errors and exact cleanup.
 HANDOFF identifies tested tree and commands. Current-head core and one guarded
 coordinator full22 remain; no expansion, production or backup authority.
+
+## [2026-09-10] refine | PR805 B6/B7 summary-scoped course display
+
+Continued exact32e0f40f; coordinator full34442610426 reported20passed/2failed
+at later B6/B7 course assertions, with no raw historical error supplied.
+Only B6/B7 select/await the stored workout and scope exact course text to the
+summary; two existing-harness SSR regressions prove the distinction from step
+distances. Five files567 tests, scoped lint, web typecheck and offline doc drift
+passed; actual private Playwright1.60.0 collection preserved22/six files2/4/4/8/3/1,
+zero execution/errors and exact cleanup. HANDOFF records the tested source tree.
+All20 passing cases and runtime safeguards unchanged; new-head full22 pending.

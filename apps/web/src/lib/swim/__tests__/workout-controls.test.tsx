@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
-import { validateSwimWorkout } from "@hta/domain";
+import { estimateCriticalSwimSpeed, validateSwimWorkout } from "@hta/domain";
 import { generateSwimPlan } from "@hta/engine";
 import { WorkoutClient } from "@/components/swim/WorkoutClient";
 import { WorkoutScreen } from "@/components/swim/WorkoutScreen";
@@ -50,6 +50,39 @@ function editedView(): SwimWorkoutView {
 }
 
 describe("DC-SW3 poolside workout controls", () => {
+  it.each([
+    ["B6", "10", "4:00", "8:30"],
+    ["B7", "20", "16:00", "34:00"],
+  ])("DC-SW1/DC-SW3: %s summary distinguishes the course from identical step distances", (_, minutes, time200, time400) => {
+    const form = new FormData();
+    for (const [name, value] of Object.entries({
+      pool: "50m", goal: "endurance", experience: "regular", comfortableLengths: "12",
+      timeBudgetMinutes: minutes, weeks: "2", startDate: "2026-09-10", weekdays: "1",
+      strokes: "freestyle", time200, time400, benchmarkDate: "2026-09-10",
+      benchmarkStroke: "freestyle", verified: "on",
+    })) form.set(name, value);
+    const input = parseSetupForm(form);
+    const assessed = input.observation && estimateCriticalSwimSpeed(input.observation);
+    if (!assessed?.ok) throw new Error("Expected calibrated budget fixture.");
+    const generated = generateSwimPlan({
+      setup: input.setup, calibration: assessed.value,
+      weeks: standaloneWeekRequests(input.startDate, input.weeks, input.weekdays),
+    });
+    if (!generated.ok) throw new Error(generated.error.message);
+    const slot = generated.value.weeks[0]!.slots[0]!;
+    if (slot.kind !== "workout") throw new Error("Expected budget workout.");
+    const view: SwimWorkoutView = {
+      ...workoutView(), ...workoutPresentation(slot.issued),
+      date: slot.dateISO, sessionId: null, status: "scheduled",
+    };
+    const html = renderToStaticMarkup(<main><WorkoutScreen workout={view} userId={userId} /></main>);
+    const summary = html.match(/^<main><section\b[^>]*>([\s\S]*?)<\/section>/)?.[1];
+    expect(summary).toBeDefined();
+    expect(view.course).toBe("50 m");
+    expect(html.split(`>${view.course}<`).length - 1).toBeGreaterThan(1);
+    expect(summary!.split(`>${view.course}<`).length - 1).toBe(1);
+  });
+
   it.each([
     "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10",
     "2026-09-11", "2026-09-12", "2026-09-13",

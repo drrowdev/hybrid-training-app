@@ -1043,8 +1043,11 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
       expect(row.definition.issued.totalLengths).toBeLessThan(reference.issued.totalLengths);
       expect(row.definition.issued.budget.accountedMs).toBeLessThan(reference.issued.budget.accountedMs);
     }
-    await page.getByRole("heading", { name: "Swims", exact: true }).locator("..").getByRole("link").nth(0).click();
-    await expect(page.getByText("50 m", { exact: true })).toBeVisible();
+    const workoutPath = `/app/swim/${stored.workouts[0].id}`;
+    await page.getByRole("heading", { name: "Swims", exact: true }).locator("..").getByRole("link")
+      .and(page.locator(`[href="${workoutPath}"]`)).click();
+    await expect(page).toHaveURL(new URL(workoutPath, baseURL!).href);
+    await expect(page.locator("main > section").first().getByText("50 m", { exact: true })).toBeVisible();
     await expect(page.getByText(/Up to 10 min/)).toBeVisible();
     const issuedView = await page.locator("main").innerText();
     await page.reload();
@@ -1089,8 +1092,11 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await expect(page).toHaveURL(/\/app\/swim\?plan=/);
     const stored = await setupRows(actor, freshUser.userId);
     assertSetupWorkouts(stored, corrected, 20);
-    await page.getByRole("heading", { name: "Swims", exact: true }).locator("..").getByRole("link").nth(0).click();
-    await expect(page.getByText("50 m", { exact: true })).toBeVisible();
+    const workoutPath = `/app/swim/${stored.workouts[0].id}`;
+    await page.getByRole("heading", { name: "Swims", exact: true }).locator("..").getByRole("link")
+      .and(page.locator(`[href="${workoutPath}"]`)).click();
+    await expect(page).toHaveURL(new URL(workoutPath, baseURL!).href);
+    await expect(page.locator("main > section").first().getByText("50 m", { exact: true })).toBeVisible();
     await expect(page.getByText(/Up to 20 min/)).toBeVisible();
     const issuedView = await page.locator("main").innerText();
     await page.reload();
