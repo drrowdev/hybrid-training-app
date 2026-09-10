@@ -2083,6 +2083,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await page.reload();
     await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible();
     await page.locator(`a[href="/app/swim/${target.id}"]`).click();
+    await expect(page).toHaveURL(new RegExp(`/app/swim/${target.id}$`));
+    await expect(result).toContainText(`${lengths} lengths · 15:00 · RPE 6`);
     await page.reload();
     await expect(result).toContainText(`${lengths} lengths · 15:00 · RPE 6`);
     expect((await prescription.innerText()) === targetText &&

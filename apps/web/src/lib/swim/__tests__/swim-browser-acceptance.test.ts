@@ -1139,6 +1139,58 @@ describe("browser environment and static config", () => {
     } finally { arrive(); render(); await pending; }
     expect(calls).toEqual(["click", "destination", "state", "reload", "state"]);
   });
+  it("A7 DC-SW7/DC-SW9: the authored final return waits for destination and saved result before reload", async () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const a7 = source.slice(source.indexOf('test("A7,'));
+    const block = a7.slice(a7.lastIndexOf('await page.locator(`a[href="/app/swim/${target.id}"]`).click();'),
+      a7.indexOf("expect((await prescription.innerText())", a7.lastIndexOf("await page.reload();")));
+    const calls: string[] = [];
+    let arrive!: () => void;
+    let render!: () => void;
+    const destination = new Promise<void>((resolve) => { arrive = resolve; });
+    const state = new Promise<void>((resolve) => { render = resolve; });
+    const result = {};
+    const page = {
+      locator: (selector: string) => {
+        expect(selector).toBe('a[href="/app/swim/synthetic-workout"]');
+        return { click: async () => { calls.push("click"); } };
+      },
+      reload: vi.fn(async () => { calls.push("reload"); }),
+    };
+    const execute = runInNewContext(transpileModule(`(async () => { ${block} })`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      page, target: { id: "synthetic-workout" }, result, lengths: 12,
+      expect: (value: unknown) => ({
+        toHaveURL: async (url: RegExp) => {
+          expect(value).toBe(page);
+          expect(url.test("http://127.0.0.1/app/swim/synthetic-workout")).toBe(true);
+          expect(url.test("http://127.0.0.1/app/swim/synthetic-workout/other")).toBe(false);
+          expect(url.test("http://127.0.0.1/app/swim/other-workout")).toBe(false);
+          calls.push("destination");
+          await destination;
+        },
+        toContainText: async (text: string) => {
+          expect(value).toBe(result);
+          expect(text).toBe("12 lengths · 15:00 · RPE 6");
+          calls.push("state");
+          await state;
+        },
+      }),
+    }) as () => Promise<void>;
+    const pending = execute();
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(page.reload).not.toHaveBeenCalled();
+      expect(calls).toEqual(["click", "destination"]);
+      arrive();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(page.reload).not.toHaveBeenCalled();
+      expect(calls).toEqual(["click", "destination", "state"]);
+    } finally { arrive(); render(); await pending; }
+    expect(page.reload).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(["click", "destination", "state", "reload", "state"]);
+  });
   it.each(["fast", "unseen", "pending", "failed", "unpaired", "wrong-origin", "wrong-path",
     "invalid-pair", "wrong-receipt", "null-time", "invalid-time", "held-read", "read-error", "duplicate"])(
     "A3 DC-SW7/DC-SW8: original Finish %s observation never gates or replaces the five-second UI goal", async (mode) => {
