@@ -2988,3 +2988,6 @@ source tests **406/406**, existing targeted script/test TypeScript command and
 not live database proof. No secrets/database access, hosted execution, CI
 dispatch, services, or production activity occurred. The observed preflight
 failure remains undiagnosed until authorized reads; no hosted setup is claimed.
+Required automated validation attempted once: reviewer binary unavailable,
+CodeQL Actions analysis failed, JavaScript skipped for database size; no clean
+scan claimed and no unavailable-tool retry performed.
