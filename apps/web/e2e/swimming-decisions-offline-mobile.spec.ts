@@ -180,10 +180,11 @@ function committed(rows: Awaited<ReturnType<typeof completionRows>>, entry: Outb
 
 async function budgetSetup(page: Page, times?: readonly [string, string]) {
   await page.goto("/app/swim/setup");
-  const form = page.locator("form").filter({ has: page.getByLabel("Pool length", { exact: true }) });
-  await form.getByLabel("Pool length", { exact: true }).selectOption("50m");
-  await form.getByLabel("Goal", { exact: true }).selectOption("endurance");
-  await form.getByLabel("Swimming experience", { exact: true }).selectOption(times ? "regular" : "beginner");
+  const form = page.locator("form").filter({ has: page.getByRole("combobox", { name: "Pool length", exact: true }) });
+  await expect(form).toHaveCount(1);
+  await form.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("50m");
+  await form.getByRole("combobox", { name: "Goal", exact: true }).selectOption("endurance");
+  await form.getByRole("combobox", { name: "Swimming experience", exact: true }).selectOption(times ? "regular" : "beginner");
   await form.getByLabel("Recent comfortable continuous lengths", { exact: true }).fill(times ? "12" : "0");
   for (const group of ["Known strokes", "Equipment", "Swim days"]) {
     for (const control of await form.getByRole("group", { name: group, exact: true }).getByRole("checkbox").all()) {
@@ -201,7 +202,7 @@ async function budgetSetup(page: Page, times?: readonly [string, string]) {
     await form.getByLabel("200 time · min:sec", { exact: true }).fill(times[0]);
     await form.getByLabel("400 time · min:sec", { exact: true }).fill(times[1]);
     await form.getByLabel("Swum on", { exact: true }).fill(today);
-    await form.getByLabel("Assessment stroke", { exact: true }).selectOption("freestyle");
+    await form.getByRole("combobox", { name: "Assessment stroke", exact: true }).selectOption("freestyle");
     await form.getByRole("checkbox", { name: "Verified times, same pool and stroke, without equipment", exact: true }).check();
   }
   return form;

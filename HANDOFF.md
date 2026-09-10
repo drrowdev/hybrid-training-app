@@ -2,7 +2,109 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
-## PR805 frozen A3/A4 integration — 2026-09-10 — live22 UNRUN
+## PR805 frozen22 five-failure source correction — 2026-09-10
+
+Continued the existing branch at exact
+`6d17df020fee0d772aa00fb7e2852638b4a4a530`, declared base
+`copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+Validated code/test tree (before this documentation-only update):
+`0d6e7675e72140d4aed0dbbd970dd0729a297dbb`. Only three authorized E2E files,
+the existing browser-acceptance unit file, and the three authorized documents
+changed. No new cases, product changes, SQL execution, database/hosting work,
+browser execution, workflow dispatch, model/agent delegation or history rewrite.
+
+### Immutable runtime provenance and remaining gate
+
+Coordinator-provided evidence: core34440481521@6d17df0 succeeded;
+full22 run34440810700@6d17df0, job102755279732 failed after7m0s.
+All22 executed once: **17 passed, 5 failed, 0 skipped, 0 flaky**;
+sum of case durations183057ms. Original15, E2 and A4 passed.
+B6/B7/B8 timed out at30114/30123/30116ms at decisions spec184;
+E1 failed in428ms at storage.ts49; A3 failed in12871ms at lifecycle1075.
+No underlying E1 raw error/SQL was supplied or inferred.
+GitHub Actions metadata confirmed run status and failed-job identity; only the
+log URL was requested, not its raw content.
+Native16 and normal149 migration/catalog/identity down-up, Auth36HTTP,
+single-set_logs-FK down-up/necessity/invalid-update proof passed; core/identity
+and both cleanup phases passed. **The main browser failure remains failure.**
+
+All five have source corrections below, not new-head runtime acceptance.
+Coordinator inspects this checkpoint, runs current-head core, then ONE guarded
+new-head full22. No case expansion before that milestone. All original22
+identities/order and six-file counts2/4/4/8/3/1 remain frozen.
+
+### Demonstrated defects and exact corrections
+
+- **B6/B7/B8:** `budgetSetup` filtered the form and selected controls with exact
+  label-text matching. `SetupForm.tsx` wraps select/options inside labels;
+  option text participates in label text. Use the passing helpers' actual
+  `combobox` accessible-name semantics for Pool length, Goal, Swimming
+  experience and Assessment stroke. Require exactly one matching form.
+  No budget inputs, preview/decision assertions or timeouts changed.
+  Selector correction is source-grounded; private collection is not evidence
+  of live DOM interaction.
+- **E1:** both native unverified observations meet
+  `0145_standalone_pool_swimming.sql:274–307` (8×25=200,16×25=400, positive
+  integer times, supported labels); null calibration is permitted.
+  Create goes through `0146_swim_request_identity.sql:120–165`; E2 used the
+  same empty-observation arrangement successfully. The yard completion
+  supplied `allowChangedCourse=true` but no `provenance.deviationReason`.
+  `swim_validate_result_course`, 0145:536–568, requires BOTH consent and a
+  nonblank reason. The 0146 completion calls that validator.
+  Existing `storage-rpc.smoke.test.ts:577–585` supplies both for this same
+  yard-pool change; canonical `actions.ts:82–102` rejects a missing reason.
+  Added only the yard result's reason. Retained both observations, three
+  start/completion calls, 8m/16yd/8m lengths, times, snapshots, consent,
+  calibration/bests/native-course/history/isolation assertions.
+  The new unit executes the actual arrangement and completion source with
+  generated E1 workouts, validates native results and compares missing versus
+  supplied reason through the real form constructor. This proves a rejected
+  fixture input, **not the unavailable historical RPC error or a live SQL pass**.
+- **A3:** clicking a plan then immediately reloading could interrupt the
+  destination navigation. Assert the chosen link's exact href, await its exact
+  URL and selected `aria-current=page` before reload, then assert URL and
+  selection again after reload. A source-executing unit models delayed
+  navigation and rejects reload while a destination is pending. All positive
+  history/issued-work/load assertions and A4 remain unchanged.
+
+### Measured source validation
+
+Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts src/lib/swim/__tests__/storage.test.ts src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/analytics.test.ts src/lib/swim/__tests__/navigation.test.ts src/lib/swim/__tests__/forms.test.ts`
+  — **7 files,574 passed** (498/1/16/37/2/4/16).
+  New regression-harness mistakes were corrected before this final green run:
+  an unrelated yard fixture replaced the real generated start result, and
+  spreading Vitest's matcher object omitted its `toBe` method.
+- Existing private collection ran installed **Playwright1.60.0**
+  `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json`:
+  **22 exact identities,6files2/4/4/8/3/1,zero executed results/errors**,
+  private directory/file identity/modes and exact cleanup checked.
+  Safe result `[swim-collection]{"success":true,"exit":0,"loaderCode":"unknown","sources":[]}`.
+- `pnpm --filter @hta/domain exec vitest run src/swimming.test.ts src/swim-pool-input.test.ts src/swim-workout-progress.test.ts`
+  — **3 files,103 passed**.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts src/swimming-budget.test.ts`
+  — **2 files,58 passed**.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-decisions-offline-mobile.spec.ts e2e/swimming-persistence-mobile.spec.ts e2e/swimming-lifecycle-load-mobile.spec.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts`
+  and `pnpm --filter @hta/web typecheck` — passed.
+- `pnpm docs:check-drift` — passed (offline in-repository checks);
+  `git diff --check` — passed; log diff verified append-only.
+  Seven-file secret scan — no secrets detected.
+- `printf 'HEAD %s refs/heads/copilot/new-acceptance-cases %s\n' "$(git rev-parse HEAD)" 6d17df020fee0d772aa00fb7e2852638b4a4a530 | node scripts/check-commit-identities.mjs pre-push origin`
+  — passed, **131 introduced commits inspected** before this checkpoint.
+  Initial progress push failed closed on shallow history; fetched full history
+  without rewriting it. Effective native cloud author198982749 and
+  committer`noreply@github.com` are allowlisted; publication retains the hook.
+
+Preserve CLI2.116/default12/private0700/0600/loopback isolation and all existing
+30s/300s/330s/590s/410s/35m+3m/45m deadlines. Normal149 versus identity146/147/148;
+Auth5phases4DDL15contexts36HTTP; only set_logs FK deferred, session_movements
+unchanged; down/up/23503/delete1/forcedcheck/invalid-update/restoration/exactIDcleanup.
+No production authority; backups deferred. Main/prod145 seed collision with
+unshipped swim145–148 remains a later owner-approved integration gate; never
+reset the ledger. Swimming remains inside getsxc.app.
+
+## Historical PR805 frozen A3/A4 integration — 2026-09-10 — then live22 UNRUN
 
 Continued `copilot/new-acceptance-cases` at exact
 `1b3653d33442776be18a1923cca0c1813fefcf1e`, base

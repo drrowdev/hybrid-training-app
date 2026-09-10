@@ -12,9 +12,9 @@ import { isDeepStrictEqual } from "node:util";
 import { createClient } from "@supabase/supabase-js";
 import {
   countsTowardAdherence, countsTowardHistory, countsTowardProgression,
-  estimateCriticalSwimSpeed, poolCourseEquals, validateSwimWorkout, type SwimActualResult,
+  estimateCriticalSwimSpeed, poolCourseEquals, validateSwimActualResult, validateSwimWorkout, type SwimActualResult,
 } from "@hta/domain";
-import { generateSwimPlan } from "@hta/engine";
+import { generateSwimPlan, SWIM_GENERATOR_VERSION } from "@hta/engine";
 import { ScriptTarget, transpileModule } from "typescript";
 import type { JSONReport, JSONReportSpec } from "@playwright/test/reporter";
 import {
@@ -33,6 +33,7 @@ import { standaloneWeekRequests } from "../model";
 import { deriveSwimWeekCandidate, settledSwimResult } from "../queries";
 import { swimFixture, sessionId, receiptId } from "./fixtures";
 import type { SwimWorkoutRow } from "../storage";
+import { addDaysToYmd, mondayOfYmd } from "../../dates";
 
 const webRoot = resolve(__dirname, "../../../..");
 const paths: BrowserPaths = {
@@ -584,6 +585,115 @@ describe("DC-SW8 passive C2 location and response metadata", () => {
 });
 
 describe("browser environment and static config", () => {
+  it("A3 DC-SW7: waits for each selected destination before reloading and verifies it afterward", async () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const start = source.indexOf('for (const status of ["Archived", "Active"] as const)');
+    const block = source.slice(start, source.indexOf('if (status === "Archived")', start));
+    let current = "http://127.0.0.1:3000/app/swim?plan=new";
+    let pending: string | undefined;
+    let selectedChecked = false;
+    const reloads: string[] = [];
+    const page = {
+      url: () => current,
+      reload: async () => {
+        expect(pending).toBeUndefined();
+        expect(selectedChecked).toBe(true);
+        reloads.push(current);
+        selectedChecked = false;
+      },
+      getByRole: (_role: string, options: { name: string }) => options.name === "Swim plans" ? {
+        getByRole: (_role: string, options?: { name: RegExp }) => {
+          const id = options?.name.test("Archived") ? "old" : "new";
+          return { id, click: async () => { pending = `http://127.0.0.1:3000/app/swim?plan=${id}`; } };
+        },
+      } : {},
+    };
+    const execute = runInNewContext(transpileModule(`(async () => { ${block} } })`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      page, original: { planId: "old" }, replacementId: "new", URL,
+      expect: (value: unknown) => ({
+        toBe: (expected: unknown) => expect(value).toBe(expected),
+        toHaveCount: async () => {},
+        toHaveURL: async (destination: string) => {
+          if (pending) { current = pending; pending = undefined; }
+          expect(current).toBe(destination);
+        },
+        toHaveAttribute: async (name: string, expected: string) => {
+          const id = (value as { id: string }).id;
+          if (name === "href") expect(expected).toBe(`/app/swim?plan=${id}`);
+          else {
+            expect(new URL(current).searchParams.get("plan")).toBe(id);
+            expect(expected).toBe("page");
+            selectedChecked = true;
+          }
+        },
+      }),
+    }) as () => Promise<void>;
+    await execute();
+    expect(reloads).toEqual(["http://127.0.0.1:3000/app/swim?plan=old", "http://127.0.0.1:3000/app/swim?plan=new"]);
+  });
+
+  it("E1 DC-SW1/DC-SW6: actual analytics fixture retains native observations and records changed-pool consent and reason", async () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-persistence-mobile.spec.ts"), "utf8");
+    const helper = source.slice(source.indexOf("async function arrangeAnalytics("), source.indexOf("async function analyticsState("));
+    const scenario = source.slice(source.indexOf('test("E1 '), source.indexOf('test("E2 '));
+    const block = scenario.slice(scenario.indexOf("const observations:"), scenario.indexOf("const before ="));
+    const actions = readFileSync(join(webRoot, "src/lib/swim/actions.ts"), "utf8");
+    const constructor = actions.slice(actions.indexOf("function resultFromForm("), actions.indexOf("function setupConflict("));
+    const resultFromForm = runInNewContext(transpileModule(`${constructor}\nresultFromForm`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, { poolCourseEquals, SwimActionError: Error }) as (
+      fields: ReturnType<typeof parseActualForm>, workout: SwimWorkoutRow,
+    ) => SwimActualResult;
+    const { workouts } = swimFixture();
+    let arranged: SwimWorkoutRow[] = [];
+    const completions: SwimActualResult[] = [];
+    const execute = runInNewContext(transpileModule(`${helper}\n(async () => { ${block} })`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      actor: {}, today: "2026-09-10", addDaysToYmd, mondayOfYmd, generateSwimPlan,
+      SWIM_GENERATOR_VERSION, standaloneWeekRequests, randomUUID: () => receiptId,
+      createSwimPlan: async (_client: unknown, input: Parameters<typeof import("../storage").createSwimPlan>[1]) => {
+        expect(input.state.observations).toHaveLength(2);
+        expect(input.state.acceptedCalibration).toBeNull();
+        for (const observation of input.state.observations) {
+          expect(observation.verified).toBe(false);
+          expect(observation.trials.map((trial) => trial.lengths * observation.course.numerator))
+            .toEqual(observation.trials.map((trial) => trial.distance * observation.course.denominator));
+        }
+        arranged = input.workouts.map((workout, index) => ({ ...workouts[index]!, ...workout }));
+        return { workouts: arranged };
+      },
+      startSwimWorkout: async (_client: unknown, id: string) => arranged.find((workout) => workout.id === id),
+      completeSwimWorkout: async (_client: unknown, input: Parameters<typeof import("../storage").completeSwimWorkout>[1]) => {
+        const result = input.result;
+        expect(validateSwimActualResult(result)).toEqual([]);
+        const workout = arranged.find((row) => row.id === input.workoutId)!;
+        const changed = !poolCourseEquals(result.snapshot.course, workout.definition.issued.snapshot.course);
+        if (changed) {
+          expect(input.allowChangedCourse).toBe(true);
+          const form = new FormData();
+          for (const [key, value] of Object.entries({
+            workoutId: workout.id, sessionId, expectedRevision: "1", stroke: "planned",
+            lengths: String(result.lengths), timeMs: String(result.timeMs), rpe: String(result.rpe),
+            pool: "25yd", confirmPool: "on",
+          })) form.set(key, value);
+          const fields = parseActualForm(form);
+          expect(() => resultFromForm(fields, workout)).toThrow();
+          fields.reason = result.provenance.deviationReason ?? "";
+          const canonical = resultFromForm(fields, workout);
+          expect(canonical.provenance.deviationReason).toBe(result.provenance.deviationReason);
+          expect(canonical.snapshot.calibration).toBeNull();
+        }
+        completions.push(result);
+      },
+    }) as () => Promise<void>;
+    await execute();
+    expect(completions.map((result) => [result.snapshot.course.unit, result.lengths, result.timeMs]))
+      .toEqual([["m", 8, 420000], ["yd", 16, 420000], ["m", 8, 420000]]);
+  });
+
   it.each([7, 8, 9, 10, 11, 12, 13])("DC-SW3/DC-SW7/DC-SW8/DC-SW9: A3/A4 complete issued lengths, not the partial literal16, for start-day %d", (day) => {
     const today = `2026-09-${String(day).padStart(2, "0")}`;
     const actions = readFileSync(join(webRoot, "src/lib/swim/actions.ts"), "utf8");

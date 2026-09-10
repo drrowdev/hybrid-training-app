@@ -1067,9 +1067,15 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     )).toBe(true);
 
     for (const status of ["Archived", "Active"] as const) {
-      await page.getByRole("navigation", { name: "Swim plans", exact: true })
-        .getByRole("link", { name: new RegExp(`${status}$`) }).click();
+      const destination = new URL(`/app/swim?plan=${status === "Archived" ? original.planId : replacementId}`, page.url()).href;
+      const choice = page.getByRole("navigation", { name: "Swim plans", exact: true })
+        .getByRole("link", { name: new RegExp(`${status}$`) });
+      await expect(choice).toHaveAttribute("href", new URL(destination).pathname + new URL(destination).search);
+      await choice.click();
+      await expect(page).toHaveURL(destination);
+      await expect(choice).toHaveAttribute("aria-current", "page");
       await page.reload();
+      await expect(page).toHaveURL(destination);
       const choices = page.getByRole("navigation", { name: "Swim plans", exact: true });
       await expect(choices.getByRole("link")).toHaveCount(2);
       await expect(choices.getByRole("link", { name: new RegExp(`${status}$`) })).toHaveAttribute("aria-current", "page");

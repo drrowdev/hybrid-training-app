@@ -2741,3 +2741,20 @@ Seven authorized paths only; normal149/identity146–148, Auth5phases4DDL15conte
 and exact-ID cleanup remain. Reconcile main/prod145 seed versus unshipped swim
 145–148 outside this task before integration. Nine standalone gates precede
 combined; Garmin later; swimming inside getsxc.app only.
+
+## [2026-09-10] refine | Frozen22 five-failure source corrections on PR805
+
+Continued exact6d17df0 on the existing branch/base. Coordinator's immutable
+full22 run34440810700/job102755279732 executed22 once:17passed/5failed,
+original15 plus E2/A4 passed; core34440481521 and native/identity/cleanup proofs
+passed. Main browser failure remains failure; no raw old logs consumed.
+B6/B7/B8 use real scoped combobox semantics; A3 verifies destination/selection
+before and after reload. E1's explicit changed-course consent lacked the reason
+required by SQL and the canonical constructor; add only yard provenance reason.
+Native observations, all positive assertions and all22 identities/order remain.
+No product/SQL/fixture-environment/workflow/dependency changes or live execution.
+Measured7web files574tests,3domain files103tests,2engine files58tests passed;
+scoped lint/typecheck passed. Existing private Playwright1.60.0 actual collection
+confirmed22/six files2/4/4/8/3/1/zero execution/errors and exact cleanup.
+HANDOFF identifies tested tree and commands. Current-head core and one guarded
+coordinator full22 remain; no expansion, production or backup authority.

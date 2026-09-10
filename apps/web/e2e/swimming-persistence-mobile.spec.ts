@@ -453,7 +453,10 @@ test.describe("ADR0079 mobile swimming persistence and isolation", () => {
             version: 1, snapshot: { ...started.definition.issued.snapshot,
               course: { numerator: 25, denominator: 1, unit } },
             lengths: unit === "yd" ? 16 : 8, timeMs: 420000, rpe: 5, completion: "completed",
-            provenance: { source: "manual", recordedAt: `${today}T12:00:00Z` },
+            provenance: {
+              source: "manual", recordedAt: `${today}T12:00:00Z`,
+              ...(unit === "yd" ? { deviationReason: "Used the yard pool" } : {}),
+            },
           },
         });
       }

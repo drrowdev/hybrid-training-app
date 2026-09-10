@@ -17,7 +17,28 @@ The original first setup case passed in21,892ms, but its earlier Pool-length
 timeout remains **unexplained**; the semantic-HOLD fix is not a demonstrated cause
 of recovery. This closes progression-branch work, not all standalone/release gates.
 
-### Current frozen source cohort — 2026-09-10 — live22 UNRUN
+### Current frozen22 correction — 2026-09-10 — new-head runtime pending
+
+Full22 run34440810700@6d17df0, job102755279732, executed all22 once:
+17 passed,5 failed,0 skipped/flaky; original15 plus E2/A4 passed. Core34440481521
+passed. Native16, normal149/Auth36HTTP/identity/FK proofs and both cleanup
+phases passed; the main browser failure remains failure.
+
+Source-only corrections under [DC-SW1–SW9/DC-K4](./hybrid-training-design-constraints.md):
+B6/B7/B8 now use scoped combobox accessible names rather than exact wrapped
+label text; A3 awaits exact destination and selected state before reload and
+checks both afterward. E1's consented yard result lacked the nonblank
+`provenance.deviationReason` required by the existing SQL validator and canonical
+form constructor; add only that reason, preserving observations and assertions.
+This proves a fixture defect, not the unavailable underlying historical error.
+No SQL/product changes or live execution. Existing source-executing regression
+machinery passes; private Playwright1.60.0 collection confirms unchanged22
+identities/six files2/4/4/8/3/1 and exact cleanup, not browser acceptance.
+See HANDOFF for tested tree, exact commands/counts and immutable provenance.
+Coordinator inspection/current-head core then one guarded new-head full22
+remain required. No case expansion, production authority or backup work.
+
+### Historical frozen source cohort — 2026-09-10 — then live22 UNRUN
 
 PR805 continues exact `1b3653d33442776be18a1923cca0c1813fefcf1e`, basee2758dad,
 with code/test checkpoint `e42ec6900e0cfe33aadded2aa033229eac1cd5cc`,
