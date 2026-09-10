@@ -10,8 +10,8 @@ import {
   remove,
   releaseEntry,
 } from "../outbox";
-import { flushOutbox } from "../flusher";
-import type { OutboxEntry } from "../outbox-core";
+import { flushOutbox, startAutoFlush } from "../flusher";
+import type { ActionResult, OutboxEntry } from "../outbox-core";
 
 vi.mock("@/lib/sessions/actions", () => ({
   addCardioBlock: vi.fn(),
@@ -43,6 +43,12 @@ const entry: OutboxEntry = {
   attempts: 0,
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((yes) => { resolve = yes; });
+  return { promise, resolve };
+}
+
 describe("flushOutbox", () => {
   let queue: OutboxEntry[];
 
@@ -65,6 +71,125 @@ describe("flushOutbox", () => {
     });
     vi.mocked(releaseEntry).mockResolvedValue(undefined);
   });
+
+  it.each(["initial", "remaining"] as const)(
+    "DC-SW8 drains a new native completion requested after the %s empty snapshot",
+    async (boundary) => {
+      queue = [];
+      const snapshot = deferred<OutboxEntry[]>();
+      const snapshotRead = deferred<void>();
+      if (boundary === "remaining") vi.mocked(listPending).mockResolvedValueOnce([]);
+      vi.mocked(listPending).mockImplementationOnce(() => {
+        snapshotRead.resolve();
+        return snapshot.promise;
+      });
+      vi.mocked(completeSwimWorkoutResult).mockResolvedValue({ ok: true });
+      const running = flushOutbox();
+      await snapshotRead.promise;
+      queue.push({ ...entry, op: "swim_complete" });
+      const submitted = flushOutbox();
+      snapshot.resolve([]);
+
+      const results = await Promise.all([running, submitted]);
+
+      expect(queue).toEqual([]);
+      expect(completeSwimWorkoutResult).toHaveBeenCalledOnce();
+      expect(vi.mocked(claimEntry).mock.calls).toEqual([[entry.id]]);
+      expect(vi.mocked(releaseEntry).mock.calls).toEqual([[entry.id, "lease"]]);
+      expect(results[0]).toEqual({
+        flushed: 1, remaining: 0, dropped: 0, completed: 1,
+        completedSessionIds: [entry.sessionId],
+      });
+      expect(results[1]).toEqual(results[0]);
+    },
+  );
+
+  it("DC-SW8 delivers the in-flight completion to a replacement auto-flush subscription", async () => {
+    queue = [{ ...entry, op: "swim_complete" }];
+    const sending = deferred<void>();
+    const response = deferred<ActionResult>();
+    vi.mocked(completeSwimWorkoutResult).mockImplementation(() => {
+      sending.resolve();
+      return response.promise;
+    });
+    vi.useFakeTimers();
+    const windowTarget = new EventTarget();
+    const documentTarget = new EventTarget();
+    const removeWindow = vi.spyOn(windowTarget, "removeEventListener");
+    const removeDocument = vi.spyOn(documentTarget, "removeEventListener");
+    vi.stubGlobal("window", Object.assign(windowTarget, { setInterval, clearInterval }));
+    vi.stubGlobal("document", documentTarget);
+    const oldChange = vi.fn();
+    const newChange = vi.fn();
+    const running = flushOutbox();
+    let stopOld = () => {};
+    let stopNew = () => {};
+    let joined: ReturnType<typeof flushOutbox> | undefined;
+    try {
+      await sending.promise;
+      stopOld = startAutoFlush(oldChange);
+      stopOld();
+      stopNew = startAutoFlush(newChange);
+      joined = flushOutbox();
+      expect(newChange).not.toHaveBeenCalled();
+      response.resolve({ ok: true });
+      const [result] = await Promise.all([running, joined]);
+      expect(oldChange).not.toHaveBeenCalled();
+      expect(newChange.mock.calls).toEqual([[{
+        flushed: 1, remaining: 0, dropped: 0, completed: 1,
+        completedSessionIds: [entry.sessionId],
+      }]]);
+      expect(result.completedSessionIds).toEqual([entry.sessionId]);
+      expect(completeSwimWorkoutResult).toHaveBeenCalledOnce();
+    } finally {
+      response.resolve({ ok: true });
+      await Promise.all([running, joined]);
+      stopNew();
+      expect(removeWindow).toHaveBeenCalledTimes(2);
+      expect(removeDocument).toHaveBeenCalledTimes(2);
+      expect(vi.getTimerCount()).toBe(0);
+      vi.unstubAllGlobals();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["returned", "thrown"] as const)(
+    "DC-SW8 overlapping requests do not retry a %s transient swim failure or overtake it",
+    async (failure) => {
+      const swim = { ...entry, op: "swim_complete" as const };
+      queue = [swim];
+      const sending = deferred<void>();
+      const response = deferred<void>();
+      vi.mocked(completeSwimWorkoutResult).mockImplementationOnce(async () => {
+        sending.resolve();
+        await response.promise;
+        if (failure === "thrown") throw new Error("network");
+        return { error: "network", errorCode: "transient" };
+      });
+      const running = flushOutbox();
+      await sending.promise;
+      queue.push({ ...entry, id: "next", seq: 2 });
+      const submitted = flushOutbox();
+      response.resolve();
+      const results = await Promise.all([running, submitted]);
+      expect(queue).toEqual([swim, { ...entry, id: "next", seq: 2 }]);
+      expect(completeSwimWorkoutResult).toHaveBeenCalledOnce();
+      expect(vi.mocked(recordAttempt).mock.calls).toEqual([[entry.id, "network"]]);
+      expect(addStrengthSet).not.toHaveBeenCalled();
+      expect(results[0]).toEqual({
+        flushed: 0, remaining: 2, dropped: 0, completed: 0, completedSessionIds: [],
+      });
+      expect(results[1]).toEqual(results[0]);
+
+      vi.mocked(completeSwimWorkoutResult).mockResolvedValue({ ok: true });
+      vi.mocked(addStrengthSet).mockResolvedValue({ ok: true });
+      const retry = await flushOutbox();
+      expect(retry).toMatchObject({ flushed: 2, remaining: 0, completed: 1 });
+      expect(completeSwimWorkoutResult).toHaveBeenCalledTimes(2);
+      expect(vi.mocked(completeSwimWorkoutResult).mock.calls.map(([form]) => form.get("clientLogId")))
+        .toEqual([entry.id, entry.id]);
+    },
+  );
 
   it("keeps a transient returned error queued and stops the FIFO drain", async () => {
     vi.mocked(addStrengthSet).mockResolvedValue({
