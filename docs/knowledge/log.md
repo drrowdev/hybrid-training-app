@@ -3054,3 +3054,65 @@ Coordinator-supplied full34490583441 attempt1@8c589 accepted all26 once after
 exactcore34489951509; all nine standalone gates covered. Historical failures stay
 distinct. No consumed logs, runtime dispatch or production migration; production
 ordering reconciliation and activation remain separately gated. DC-SW5/SW7/SW8/SW9.
+---
+
+## [2026-09-06] bootstrap | Copilot cloud setup workflow
+Added the setup-only `.github/workflows/copilot-setup-steps.yml` for future GitHub Copilot cloud-agent sessions. The workflow uses standard `ubuntu-latest`, read-only contents permission, bounded setup steps, frozen pnpm install from the root `packageManager`, Playwright Chromium/Linux dependency installation, and a headless launch check; it intentionally avoids database services, migrations, seeds, secrets, production credentials, build/test duplication, runner changes, firewall changes, and billing changes. It becomes available to cloud sessions only after merge to the default branch and can be verified as an ordinary Actions workflow on this PR branch.
+
+## [2026-09-06] fix | Allow the observed Copilot cloud commit email
+Added only `198982749+Copilot@users.noreply.github.com`, observed as the author email on all three PR #801 commits, to the CI identity guard's existing allowlist. Preserved exact author AND committer email matching and the original three entries; clarified local/cloud labels and replaced owner-impersonation/rebase guidance with account-appropriate email guidance. This email-string check is not actor authentication. No engine constraints, setup workflow, dependencies, or other workflow settings changed.
+
+## [2026-09-05] fix | Swapped main lifts use the selected exercise's volume
+
+Tactical Barbell replacements keep their template slot for role, ordering,
+links, and supplemental behavior, but movement-specific volume now follows the
+exercise actually selected. A Front Squat replacing Zulu's deadlift slot uses
+the normal 3–5-set main-lift range instead of inheriting Deadlift's 1–3-set
+exception; Activation's deadlift-only range and taper follow the same rule.
+The program editor shows the replacement dose before deployment. No migration.
+
+## [2026-09-09] refine | Split single-leg Romanian deadlifts by implement
+
+The movement catalog now carries separate dumbbell and barbell Single-Leg
+Romanian Deadlifts with distinct equipment filters, instructions, and load
+histories. Migration 0145 updates the existing dumbbell row in place, preserving
+its UUID and every linked training max and logged set, then adds the barbell row.
+The rollback restores the legacy dumbbell-or-kettlebell definition and refuses
+to remove the barbell row after it has user references.
+
+## [2026-09-09] fix | Save larger sessions and time Dead Hangs
+
+Tactical Barbell session edits now accept up to 20 movements, matching the
+editor's supported session size instead of rejecting the ninth row with a raw
+array-validation error. The editor stops offering another exercise at that
+bound. Dead Hang now carries an explicit hold-time dose from customization
+through the program engine and adapter, so previews and workout logs use seconds
+instead of reps. Existing Dead Hang rows without a timed override use 3 sets of
+20–40 seconds. No migration.
+
+## [2026-09-10] decision | PR805 standalone integration and deferred combined handoff
+
+Owner-approved standalone-first integration merges main672e420 into the existing
+PR805 native history while retaining the combined foundation at immutable
+[064aea85](https://github.com/drrowdev/hybrid-training-app/commit/064aea85c10efd057e9d2485a5957734dee78c36).
+Only its dormant migration/schema and specific contracts leave the active chain.
+Main's shipped0145 seed is unchanged; four unshipped swimming up/down files
+move byte-for-byte to146/147/148/149 with journal timestamps1788912000001–4.
+Normal total150, identity function states146/147/148, five phases/four DDLs/
+15 contexts/Auth36, old-FK proof and frozen26 are preserved.
+
+One exact-commit feature CI now gates isolated acceptance on core and native
+identity success. Safe failure attribution adds bounded allowlisted caller
+locations and only unambiguous boolean matcher values, never raw diagnostics.
+AGENTS reading paths and meaningful-entry policy are corrected; quarterly wiki
+health checks, immutable sources, safety and native authorship remain.
+The first focused five-selector batch passed1247/1248; its sole report-shape
+expectation was corrected; repaired batch passed1248/1248. Byte comparisons
+verified eight renamed SQL files, all146 shipped main SQL/journal entries,
+timestamp ordering and unchanged frozen e2e files. HANDOFF and the delivery
+report carry final checks.
+Accepted34495520676attempt1@064aea is not integrated acceptance and was not rerun
+or reread. No services, hosted data, production change or CI dispatch here.
+Coordinator gated exact-SHA CI, owner review and release remain pending.
+App rollback first, then149→148→147→146; base down refuses retained swim history,
+so leave schema/data intact when safe rollback cannot proceed. DC-SW5/SW7/SW8/SW9.

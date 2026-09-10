@@ -118,6 +118,24 @@ describe("Tactical Barbell customization contract", () => {
     expect(tbCustomizationSchema.parse(base)).toEqual(base);
   });
 
+  it("preserves rehab rep ranges in every customization version", () => {
+    const items = [{ ...activation.rehab.items[0], reps: 8, repRange: { min: 8, max: 10 } }];
+    for (const raw of [
+      { ...base, rehab: { items } },
+      { ...activation, rehab: { items } },
+      {
+        ...activationV3,
+        rehabProtocols: activationV3.rehabProtocols.map((protocol) => ({ ...protocol, items })),
+      },
+    ]) {
+      const parsed = tbCustomizationSchema.parse(raw);
+      const parsedItems = isTbActivationCustomization(parsed)
+        ? activationRehabProtocols(parsed)[0]?.items
+        : parsed.rehab?.items;
+      expect(parsedItems?.[0]?.repRange).toEqual({ min: 8, max: 10 });
+    }
+  });
+
   it("carries the template slot a replacement stands in for", () => {
     const swapped = {
       ...base,
@@ -438,6 +456,21 @@ describe("the lifter's own sets and reps", () => {
     expect(withEntry(added({ doseOverride: { sets: 4, reps: 10, repsMax: 12 } }))).toBe(true);
   });
 
+  it("accepts a timed hold dose on work the lifter added", () => {
+    expect(
+      withEntry(
+        added({
+          slug: "dead-hang",
+          doseOverride: {
+            sets: 3,
+            holdSeconds: 20,
+            holdSecondsMax: 40,
+          },
+        }),
+      ),
+    ).toBe(true);
+  });
+
   it("refuses a dose on a lift the template prescribes", () => {
     expect(
       withEntry({ movement: "barbell-row", doseOverride: { sets: 4, reps: 10 } }),
@@ -456,9 +489,48 @@ describe("the lifter's own sets and reps", () => {
       { sets: 4.5, reps: 10 },
       { sets: 999, reps: 10 },
       { sets: 4, reps: 10, extra: 1 },
+      { sets: 3, holdSeconds: 0 },
+      { sets: 3, holdSeconds: 20, holdSecondsMax: 10 },
+      { sets: 3, reps: 10, holdSeconds: 20 },
     ]) {
       expect(withEntry(added({ doseOverride: dose })), JSON.stringify(dose)).toBe(false);
     }
+  });
+
+  it("accepts a session with more than eight exercises", () => {
+    const movements = Array.from({ length: 9 }, (_, index) =>
+      added({
+        movement: `catalog:00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        movementId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        slug: `accessory-${index}`,
+        displayName: `Accessory ${index}`,
+      }),
+    );
+    expect(
+      tbCustomizationSchema.safeParse({
+        ...base,
+        sessionMovements: { "slot-1": movements },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("names the supported session size when the bound is exceeded", () => {
+    const movements = Array.from({ length: 21 }, (_, index) =>
+      added({
+        movement: `catalog:00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        movementId: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        slug: `accessory-${index}`,
+        displayName: `Accessory ${index}`,
+      }),
+    );
+    const parsed = tbCustomizationSchema.safeParse({
+      ...base,
+      sessionMovements: { "slot-1": movements },
+    });
+    expect(parsed.success).toBe(false);
+    expect(
+      parsed.success ? "" : parsed.error.issues[0]?.message,
+    ).toBe("A session can include up to 20 exercises.");
   });
 
   it("refuses a dose in an Activation override, which nothing there honours", () => {

@@ -2,7 +2,50 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
-## LATEST — PR805 dormant primary-cardio link foundation — 2026-09-10
+## LATEST — PR805 standalone integration — 2026-09-10
+
+This forward integration retains immutable combined checkpoint
+[`064aea85c10efd057e9d2485a5957734dee78c36`](https://github.com/drrowdev/hybrid-training-app/commit/064aea85c10efd057e9d2485a5957734dee78c36)
+as a parent and merges main `672e4202792da122281639e3db810029432573f5`.
+PR805/head/base and native stack are unchanged; no rewrite, PR811 edit or release.
+Only dormant combined activation/schema and its specific contracts are deferred.
+Earlier handoffs below remain historical records, not current release authority.
+
+Main's shipped 0145 seed is unchanged. The four unshipped swimming up/down
+files move byte-for-byte: standalone145→146, request identity146→147,
+shared completion147→148, deferred movement references148→149.
+Journal145 is unchanged at1788912000000; new146–149 use +1/+2/+3/+4 milliseconds.
+Normal total150 and function-state labels146/147/148 are intentionally distinct.
+Pinned bodies/privileges, five phases/four whole DDLs/15 contexts/Auth36,
+old-FK necessity proof and frozen26 identities/assertions remain unchanged.
+
+One exact-commit feature workflow now requires core and native identity success
+before disposable acceptance. Existing guards, isolation, timeout budgets and
+always-cleanup remain unchanged. Failure projection retains structured locations,
+adds at most two allowlisted stack locations, and withholds raw diagnostics.
+Only the fixed known private-comparison boolean header can yield boolean values;
+missing/ambiguous values explicitly remain unavailable.
+
+Validation: one focused five-selector web Vitest batch (storage-migration,
+shared-completion-migration, swim-acceptance, swim-browser-acceptance,
+swim-rpc-diagnostics) initially passed1247/1248; the one exact report-shape
+expectation was updated for explicit unavailable fields. The repaired batch
+passed1248/1248. Byte comparisons verified all eight renamed up/down files
+against064aea, all146 shipped main SQL files and journal entries, timestamp
+ordering, and unchanged frozen e2e files. Native pre-push checks are required
+before publication; final source SHA and check results are reported in the
+delivery handoff.
+No accepted baseline logs were fetched, no acceptance dispatch or services run.
+Integrated acceptance is unexecuted. Coordinator exact-SHA gated CI, owner
+usability review, native stack landing and release remain separate gates.
+
+Rollback: app first, then down149→148→147→146. Base swimming down refuses
+issued plans/results/history; retain schema/data if a data-safe rollback cannot
+proceed. No applied-ledger reset, hosted/user DB change or production approval.
+DC-SW5/SW7/SW8/SW9: see
+[constraints](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).
+
+## Deferred checkpoint — PR805 dormant primary-cardio link foundation — 2026-09-10
 
 Started from public-reviewed `8c58917f14aaee22e224f257e91dd9c2ff76897f`,
 base `e2758dadbb110e03794e49d53b47622a6295e988`, on the assigned805 head.
@@ -2770,6 +2813,22 @@ every required variable.
 - Every change to wiki pages appends to `docs/knowledge/log.md`.
 - Every new wiki page is added to `docs/knowledge/index.md`.
 - Architectural decisions land as ADRs in `docs/adr/00NN-*.md`.
+- Copilot cloud development setup lives in
+  `.github/workflows/copilot-setup-steps.yml`. It installs the existing
+  pnpm workspace with the root `packageManager` version (`pnpm@10.33.2`),
+  installs Playwright Chromium plus Linux browser dependencies, and verifies a
+  headless Chromium launch. It does not run full builds/tests, start services,
+  configure databases, seed data, configure secrets, change runners, disable
+  the integrated firewall, or alter billing. The workflow only becomes active
+  for future cloud-agent sessions after the file is merged to the default
+  branch; until then it can be exercised as an ordinary Actions workflow on the
+  PR branch. If secrets are needed later, configure them in GitHub at Settings
+  > Secrets and variables > Agents; local `.env*` files are not uploaded
+  automatically. Build-only placeholders remain
+  `https://placeholder.supabase.co` and
+  `sb_publishable_test_for_ci_build_only`; they do not enable authenticated
+  E2E. Real DB/RLS/browser tests require owner-approved dedicated TEST
+  configuration and strict target checks.
 - **Engine constants + the live engine spec are mirrored in two places:**
   the in-repo `docs/knowledge/hybrid-training-design-constraints.md`
   (CP-2 table) + `hybrid-training-engine-live.md`, AND a private

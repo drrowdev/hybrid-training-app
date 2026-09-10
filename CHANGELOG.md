@@ -30,6 +30,26 @@ The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/
   The suspected stale `swim_update_plan` hang remains undiagnosed; mobile
   and actual shared-load acceptance are blocked. No production or hosted
   database was touched.
+### Tactical Barbell program editing
+- Sessions with more than eight exercises can now be saved.
+- Dead Hang is prescribed and logged as a timed hold. Its editor uses seconds
+  and defaults to 3 sets of 20–40 seconds instead of a repetition range.
+
+### Rehab protocol form
+- Protocol name, movement search, and instructions now have visible input boxes.
+- Saving without a name highlights the name field and explains what to enter.
+- Reps accepts ranges such as 8-10 and keeps the range in saved protocols and
+  workouts. Invalid entries identify the movement instead of treating a range
+  as an empty field.
+
+### Swapped main-lift prescriptions
+- A replacement exercise no longer inherits a deadlift-only 1–3-set range.
+  The selected exercise now receives the session's normal main-lift dose, while
+  supplemental replacements still keep their slot's supplemental prescription.
+
+### Single-leg Romanian deadlift variants
+- The movement catalog now has separate dumbbell and barbell Single-Leg
+  Romanian Deadlifts, with matching equipment filters and instructions.
 
 ### Plan refreshes preserve moved workouts
 - Workouts moved to another day now keep that placement when Edit plan or a

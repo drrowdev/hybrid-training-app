@@ -21,6 +21,7 @@ export function toPrescriptionItems(
       kind: "tendon",
       sets: item.sets,
       ...(item.reps != null ? { reps: item.reps } : {}),
+      ...(item.repRange ? { repRange: item.repRange } : {}),
       ...(item.holdSeconds != null
         ? { holdSec: { min: item.holdSeconds, max: item.holdSeconds } }
         : {}),

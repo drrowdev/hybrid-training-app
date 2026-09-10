@@ -42,6 +42,15 @@ const legacy = (over: Record<string, unknown> = {}): TbCustomization =>
   }) as unknown as TbCustomization;
 
 describe("rehabScheduleSchema", () => {
+  it("preserves rep ranges when a protocol is placed in a weekly schedule", () => {
+    const items = [{ ...item(), reps: 8, repRange: { min: 8, max: 10 } }];
+    const parsed = rehabScheduleSchema.parse(
+      envelope({ protocols: [{ id: "protocol-1", name: "Rehab", items }] }),
+    );
+    expect(parsed.protocols[0]!.items).toEqual(items);
+    expect(weeklyRehabPlan(undefined, parsed).protocols[0]!.items).toEqual(items);
+  });
+
   it("rejects a protocol that runs nowhere", () => {
     const parsed = rehabScheduleSchema.safeParse(
       envelope({ series: [], days: [] }),

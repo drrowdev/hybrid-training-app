@@ -381,6 +381,62 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     ).toBe(0.75);
   });
 
+  it("[slot identity] a non-deadlift in Zulu's deadlift slot uses the normal main-lift range", () => {
+    const frontSquat = "catalog:front-squat";
+    const inst = setup({
+      templateId: "zulu",
+      customSessionMovements: {
+        "slot-2": [
+          {
+            movement: frontSquat,
+            displayName: "Front Squat",
+            sourceMovement: "deadlift",
+            kind: "barbell",
+            split: "B",
+          },
+          {
+            movement: "weighted-pullup",
+            sourceMovement: "weighted-pullup",
+            kind: "weighted-bw",
+            split: "B",
+          },
+        ],
+        "slot-4": [
+          {
+            movement: frontSquat,
+            displayName: "Front Squat",
+            sourceMovement: "deadlift",
+            kind: "barbell",
+            split: "B",
+          },
+          {
+            movement: "weighted-pullup",
+            sourceMovement: "weighted-pullup",
+            kind: "weighted-bw",
+            split: "B",
+          },
+        ],
+      },
+    });
+    const customCtx = {
+      ...ctx,
+      oneRepMaxes: { ...ctx.oneRepMaxes, [frontSquat]: 160 },
+    };
+
+    for (const ref of ["b0-w2-p1b", "b0-w2-p2b"]) {
+      const frontSquatItem = itemsOfKind(
+        tb.prescribe(inst, ref, customCtx),
+        "main",
+      ).find((item) => item.name === "Front Squat");
+      expect(frontSquatItem, ref).toMatchObject({
+        percentOfTm: 0.8,
+        sets: 3,
+        setsMax: 5,
+        reps: 5,
+      });
+    }
+  });
+
   it("[slot identity] a swapped unanchored supplemental stays supplemental and unloaded", () => {
     const inst = setup({
       templateId: "zulu",
@@ -1179,6 +1235,37 @@ describe("TB engine — prescribe (% of the shared 1RM)", () => {
     });
   });
 
+  it("Activation deadlift-only volume does not follow a non-deadlift replacement", () => {
+    const inst = setup({
+      templateId: "activation",
+      activationSessionOverrides: {
+        "activation.operator.operator-d3": {
+          movementOverrides: {
+            deadlift: { movement: "squat" },
+          },
+        },
+        "activation.armor.armor-a2": {
+          movementOverrides: {
+            deadlift: { movement: "squat" },
+          },
+        },
+      },
+    });
+
+    expect(
+      itemsOfKind(
+        tb.prescribe(inst, "b0-w16-operator-d3", ctx),
+        "main",
+      ).find((item) => item.name === "Squat"),
+    ).toMatchObject({ sets: 3, setsMax: 5, reps: 5 });
+    expect(
+      itemsOfKind(
+        tb.prescribe(inst, "b0-w7-armor-a2", ctx),
+        "main",
+      ).find((item) => item.name === "Squat"),
+    ).toMatchObject({ sets: 3, reps: 5 });
+  });
+
   it("Activation peaks and Vertex apply movement-specific work", () => {
     const inst = setup({ templateId: "activation" });
     const peak = tb.prescribe(inst, "b0-w14-peak-squat", ctx);
@@ -1733,6 +1820,7 @@ describe("tbTemplateSeries — what each row says it will be", () => {
 
 describe("TB engine — the lifter's own sets and reps", () => {
   const CURL = "catalog:00000000-0000-4000-8000-0000000000c1";
+  const DEAD_HANG = "catalog:00000000-0000-4000-8000-0000000000d1";
   const loadedCtx: PlatformContext = {
     ...ctx,
     oneRepMaxes: { ...ctx.oneRepMaxes, [CURL]: 90 },
@@ -1815,6 +1903,69 @@ describe("TB engine — the lifter's own sets and reps", () => {
     ]);
     const item = working(inst, "b0-w1-p1b", "Barbell Curl")[0];
     expect([item?.kind, item?.sets, item?.reps]).toEqual(["assistance", 5, 20]);
+  });
+
+  it("prescribes Dead Hang as timed work by default", () => {
+    const inst = zuluBWith([
+      {
+        movement: DEAD_HANG,
+        slug: "dead-hang",
+        displayName: "Dead Hang",
+        role: "accessory",
+        kind: "unanchored",
+      },
+    ]);
+    const item = working(inst, "b0-w1-p1b", "Dead Hang")[0];
+    expect(item).toMatchObject({
+      kind: "assistance",
+      sets: 3,
+      holdSeconds: 20,
+      holdSecondsMax: 40,
+    });
+    expect(item?.reps).toBeUndefined();
+    expect(item?.repsMax).toBeUndefined();
+  });
+
+  it("uses the Dead Hang hold range the lifter typed", () => {
+    const inst = zuluBWith([
+      {
+        movement: DEAD_HANG,
+        slug: "dead-hang",
+        displayName: "Dead Hang",
+        role: "accessory",
+        kind: "unanchored",
+        doseOverride: {
+          sets: 4,
+          holdSeconds: 30,
+          holdSecondsMax: 45,
+        },
+      },
+    ]);
+    expect(working(inst, "b0-w1-p1b", "Dead Hang")[0]).toMatchObject({
+      sets: 4,
+      holdSeconds: 30,
+      holdSecondsMax: 45,
+    });
+  });
+
+  it("converts an older rep-based Dead Hang override to timed work", () => {
+    const inst = zuluBWith([
+      {
+        movement: DEAD_HANG,
+        slug: "dead-hang",
+        displayName: "Dead Hang",
+        role: "accessory",
+        kind: "unanchored",
+        doseOverride: { sets: 4, reps: 12 },
+      },
+    ]);
+    const item = working(inst, "b0-w1-p1b", "Dead Hang")[0];
+    expect(item).toMatchObject({
+      sets: 4,
+      holdSeconds: 20,
+      holdSecondsMax: 40,
+    });
+    expect(item?.reps).toBeUndefined();
   });
 
   it("drops the rule's note, which described numbers no longer being run", () => {

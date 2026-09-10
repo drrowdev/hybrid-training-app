@@ -108,6 +108,9 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
     const root = resolve(__dirname, "../../../../../..");
     const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
     const job = workflow.split("\n  swim-acceptance:\n")[1]!.split("\n  prod-migrate:")[0]!;
+    expect(job).toContain("needs: [ci, identity-guard]");
+    const jobHeader = job.split("    steps:")[0]!;
+    expect(jobHeader).not.toMatch(/always\(|failure\(|cancelled\(|continue-on-error/);
     expect(job).toContain("if: github.event_name == 'workflow_dispatch' && inputs.swim_acceptance");
     expect(job).toContain("timeout-minutes: 45");
     const steps = job.split("      - name: ");
@@ -274,8 +277,9 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
     for (const path of declaredPaths) expect(files).toContain(path);
     expect(files).toContain("packages/db/drizzle/meta/_journal.json");
     expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(150);
-    expect(files).toContain("packages/db/drizzle/0149_dormant_swim_primary_cardio_link.sql");
-    expect(files).toContain("packages/db/rollbacks/0149_dormant_swim_primary_cardio_link.down.sql");
+    expect(files).toContain("packages/db/drizzle/0145_seed_single_leg_rdl_variants.sql");
+    expect(files).not.toContain("packages/db/drizzle/0149_dormant_swim_primary_cardio_link.sql");
+    expect(files).not.toContain("packages/db/rollbacks/0149_dormant_swim_primary_cardio_link.down.sql");
     expect(files).toContain("apps/web/next.config.ts");
     expect(files).toContain("apps/web/postcss.config.mjs");
     expect(files.filter((file) => file.startsWith("apps/web/e2e/")).every((file) =>
@@ -291,7 +295,7 @@ describe("migration diagnostics (DC-SW8; synthetic logs only)", () => {
   const rendering = `PostgresError: ${token}`;
   const evidence = { version: 1, guard: "acl", phase: "pre", object: "shared", bits: "ftftfttu" };
   const migration = readFileSync(new URL(
-    "../../../../../../packages/db/drizzle/0147_shared_completion_identity.sql", import.meta.url,
+    "../../../../../../packages/db/drizzle/0148_shared_completion_identity.sql", import.meta.url,
   ), "utf8");
 
   it.each([
@@ -530,7 +534,7 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
 
   it("uses only the fixed, exact-signature, null-safe catalog query in a bounded read-only transaction", () => {
     const migration = readFileSync(new URL(
-      "../../../../../../packages/db/drizzle/0145_standalone_pool_swimming.sql", import.meta.url,
+      "../../../../../../packages/db/drizzle/0146_standalone_pool_swimming.sql", import.meta.url,
     ), "utf8");
     expect(migration).toContain("CREATE ROLE swim_writer NOLOGIN NOINHERIT NOBYPASSRLS;");
     expect(migration).toMatch(/CREATE FUNCTION public\.swim_create_plan\(\s+p_started_on date, p_ends_on date, p_definition jsonb, p_state jsonb, p_workouts jsonb\s+\)/);
@@ -775,15 +779,14 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       "../../../../../../packages/db/drizzle/meta/_journal.json", import.meta.url,
     ), "utf8")) as { entries: { tag: string }[] };
     expect(journal.entries).toHaveLength(150);
-    expect(journal.entries[147]?.tag).toBe("0147_shared_completion_identity");
-    expect(journal.entries[148]?.tag).toBe("0148_defer_custom_movement_references");
-    expect(journal.entries.at(-1)?.tag).toBe("0149_dormant_swim_primary_cardio_link");
+    expect(journal.entries[148]?.tag).toBe("0148_shared_completion_identity");
+    expect(journal.entries.at(-1)?.tag).toBe("0149_defer_custom_movement_references");
     expect(source).toContain("checkAuthBoundary(authPrivileges, 148)");
   });
 
   it("pins all ten exact original/up bodies and distinct invoker/definer attributes to reviewed source", () => {
     for (const [file, bodyIndex] of [
-      ["0145_standalone_pool_swimming.sql", 5], ["0146_swim_request_identity.sql", 6],
+      ["0146_standalone_pool_swimming.sql", 5], ["0147_swim_request_identity.sql", 6],
     ] as const) {
       const sql = readFileSync(new URL(`../../../../../../packages/db/drizzle/${file}`, import.meta.url), "utf8");
       for (const contract of SWIM_FUNCTION_CONTRACTS) {

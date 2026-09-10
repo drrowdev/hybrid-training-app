@@ -82,7 +82,7 @@ export type AuthPrivilegeEvidence =
   | { status: "available"; observation: z.infer<typeof privileges> }
   | { status: "unavailable"; reason: UnavailableReason };
 
-// Fixed signatures and swim role: packages/db/drizzle/0145_standalone_pool_swimming.sql.
+// Fixed signatures and swim role: packages/db/drizzle/0146_standalone_pool_swimming.sql.
 // Pairs preserve duplicate-field evidence that JSON object parsing would discard.
 export const AUTH_PRIVILEGES_SQL = `
 BEGIN READ ONLY;

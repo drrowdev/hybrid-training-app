@@ -259,6 +259,41 @@ describe("adaptSessionPrescription — strength", () => {
     expect(prescription.items.filter((item) => item.optional)).toHaveLength(2);
   });
 
+  it("maps timed holds without inventing repetitions", () => {
+    const { prescription } = adaptSessionPrescription(
+      {
+        items: [
+          {
+            kind: "assistance",
+            name: "Dead Hang",
+            movementId: "dead-hang",
+            sets: 3,
+            holdSeconds: 20,
+            holdSecondsMax: 40,
+          },
+        ],
+      },
+      (key) =>
+        key === "dead-hang"
+          ? {
+              movementId: "m-dead-hang",
+              slug: "dead-hang",
+              displayName: "Dead Hang",
+            }
+          : resolve(key),
+    );
+
+    expect(prescription.items).toHaveLength(3);
+    expect(
+      prescription.items.every(
+        (item) =>
+          item.holdSec?.min === 20 &&
+          item.holdSec.max === 40 &&
+          item.reps == null,
+      ),
+    ).toBe(true);
+  });
+
   it("[DC-E1] preserves linked-circuit identity on every granular supplemental log slot", () => {
     const circuit = {
       id: "tb-ab-triad",

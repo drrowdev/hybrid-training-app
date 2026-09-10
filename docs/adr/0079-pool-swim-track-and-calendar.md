@@ -129,6 +129,10 @@ No table is added for Garmin or for a second derived workload ledger.
 
 ### Dormant primary-cardio foundation — 2026-09-10
 
+Deferred from the active standalone chain by the later owner decision below.
+This section describes the saved immutable `064aea85` foundation, not the
+current schema or current migration 0149 (deferred movement references).
+
 Owner authorization is isolated development and disposable tests only, with
 rollback; production is not authorized. Migration `0149_dormant_swim_primary_cardio_link`
 adds nullable unique `swim_workouts.planned_session_id` and the composite owner FK
@@ -298,6 +302,13 @@ page. Do not claim scientific calibration.
 
 ## Delivery and acceptance gates
 
+Owner decision (2026-09-10): standalone ships first. The dormant combined
+foundation is deferred, including its schema, migration and specific source
+contracts, and remains saved at immutable
+[`064aea85c10efd057e9d2485a5957734dee78c36`](https://github.com/drrowdev/hybrid-training-app/commit/064aea85c10efd057e9d2485a5957734dee78c36).
+The historical combined requirements below remain a separate future gate,
+not a prerequisite for the standalone release.
+
 1. Standalone: setup, assessment/effort path, multi-week workouts, readable
    mobile poolside view, optional set progress/splits, fast offline-safe finish,
    and a visible accepted hold/progress/reduce decision.
@@ -305,7 +316,7 @@ page. Do not claim scientific calibration.
    explicitly added separate dates, in the same Today/Plan calendar; explicit
    priority, conflict and recovery proposals, independent lifecycle, and honest
    native swim analytics.
-   Both gates are required before calling the first release complete.
+   This is a separate release gate after standalone.
 3. Garmin: only after the core works. Keep the internal prescription/result
    format versioned and isolate later mapping behind a small adapter. Official
    access is not assumed; no speculative integration tables or other wearables.

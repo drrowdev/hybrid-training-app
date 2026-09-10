@@ -337,6 +337,7 @@ jobs:
           pnpm --filter @hta/web test:rpc-smoke
 
   swim-acceptance:
+    needs: [ci, identity-guard]
     name: disposable swim RPC and browser acceptance
     if: github.event_name == 'workflow_dispatch' && inputs.swim_acceptance
     runs-on: ubuntu-latest

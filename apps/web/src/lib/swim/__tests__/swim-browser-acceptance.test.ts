@@ -20,7 +20,7 @@ import { generateSwimPlan, SWIM_GENERATOR_VERSION } from "@hta/engine";
 import { ScriptTarget, transpileModule } from "typescript";
 import type { JSONReport, JSONReportSpec } from "@playwright/test/reporter";
 import {
-  BROWSER_LIMITS, browserBudget, buildBrowserEnv, prepareSwimBrowserReport, projectBrowserFailure,
+  BROWSER_LIMITS, browserBudget, buildBrowserEnv, prepareSwimBrowserReport, projectBrowserFailure, projectStackAttribution,
   readSwimBrowserReport, requireBrowserEnvironment, requireBrowserPaths, requireFreePort,
   requireNoEnvFiles, requirePrivateBrowserPaths, sealSwimBrowserReport, SWIM_BROWSER_CASES, validateSwimBrowserReport, waitForBrowserReady,
   type BrowserPaths,
@@ -2356,6 +2356,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
       expect(failure.cases?.[5]).toEqual({
         ...SWIM_BROWSER_CASES[5], status: "timedOut", testStatus: "expected",
         expectedStatus: "passed", attempts: 1, durationMs: duration, attributedSources: [{ source: "unknown" }],
+        failureDetails: { callers: "unavailable", assertion: "unavailable", expected: "unavailable", actual: "unavailable" },
         alertObservations: [unavailableAlert("a2-post-start"), unavailableAlert("a2-edit")],
       });
       expect(JSON.stringify([success, failure])).not.toContain("private-");
@@ -2439,6 +2440,52 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
   it("does not project unknown errors or assertion payloads", () => {
     expect(projectBrowserFailure(new Error("private-payload"))).toEqual({ success: false, code: "browser-failed" });
   });
+  it("projects bounded allowlisted callers and only the known private boolean comparison", () => {
+    const file = "e2e/swimming-decisions-offline-mobile.spec.ts";
+    expect(readFileSync(join(webRoot, file), "utf8").split("\n")[70])
+      .toContain('expect(isDeepStrictEqual(actual, expected), "Private fixture comparison").toBe(true)');
+    const stack = "Error: Private fixture comparison\n\nexpect(received).toBe(expected) // Object.is equality\n\n" +
+      `Expected: true\nReceived: false\n\n    at same (${join(webRoot, file)}:71:3)\n` +
+      `    at ${join(webRoot, file)}:240:7\n    at ${join(webRoot, file)}:241:8\n` +
+      `    at ${join(webRoot, file)}:242:9\n`;
+    expect(projectStackAttribution([stack], webRoot)).toEqual({
+      callers: [
+        { source: "swimming-decisions-offline-mobile", line: 240, column: 7 },
+        { source: "swimming-decisions-offline-mobile", line: 241, column: 8 },
+      ], assertion: "private-fixture-comparison", expected: true, actual: false,
+    });
+    const fixture = report();
+    const result = fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!;
+    result.status = "failed";
+    Object.assign(result, { errors: [{ stack, location: { file: join(webRoot, file), line: 71, column: 3 } }] });
+    const projection = rejectedReport(fixture);
+    expect(projection.cases?.[0]?.attributedSources).toEqual([{ source: "swimming-decisions-offline-mobile", line: 71 }]);
+    expect(projection.cases?.[0]?.failureDetails).toEqual(projectStackAttribution([stack], webRoot));
+    Object.assign(result, { error: { stack }, errors: [] });
+    expect(rejectedReport(fixture).cases?.[0]?.failureDetails).toEqual(projectStackAttribution([stack], webRoot));
+    expect(JSON.stringify(projection)).not.toContain(webRoot);
+    for (const received of ['"secret-token"', '{"id":"secret-token"}', "false\nReceived: true"]) {
+      const details = projectStackAttribution([stack.replace("Received: false", `Received: ${received}`)], webRoot);
+      expect(details.actual).toBe("unavailable");
+      expect(details.expected).toBe("unavailable");
+      expect(JSON.stringify(details)).not.toContain("secret-token");
+    }
+    expect(projectStackAttribution([stack, stack], webRoot).actual).toBe("unavailable");
+  });
+  it("drops unallowlisted, malformed, oversized and secret-like stack payloads", () => {
+    for (const stack of [
+      "secret-token", { stack: "secret-token" }, "x".repeat(16_385),
+      "    at /tmp/secret-token.ts:1:2",
+      `    at ${join(webRoot, "e2e/../e2e")}/secret-token.ts:1:2`,
+      `secret-token    at ${join(webRoot, "e2e/fixtures/seed.ts")}:1:2`,
+      `    at ${join(webRoot, "e2e/fixtures/seed.ts")}:1:2?secret-token`,
+      `    at ${join(webRoot, "e2e/fixtures/seed.ts")}:1000001:2`,
+    ]) {
+      expect(projectStackAttribution([stack], webRoot)).toEqual({
+        callers: "unavailable", assertion: "unavailable", expected: "unavailable", actual: "unavailable",
+      });
+    }
+  });
   it("does not inspect or project diagnostics and attachment payloads", () => {
     const fixture = report();
     const result = fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!;
@@ -2474,6 +2521,9 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
         ...item, status: index === 0 ? "failed" : "passed",
         testStatus: index === 0 ? "unexpected" : "expected", expectedStatus: "passed", attempts: 1, durationMs: 1,
         attributedSources: [{ source: "unknown" }],
+        ...(index === 0 ? { failureDetails: {
+          callers: "unavailable", assertion: "unavailable", expected: "unavailable", actual: "unavailable",
+        } } : {}),
         alertObservations: unavailableObservations(index),
       })),
     });

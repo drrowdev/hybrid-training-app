@@ -11,8 +11,10 @@ import {
   addAccessory,
   addGroup,
   addMovement,
+  addedDose,
   canRemoveRows,
   collapseGroup,
+  doseQuantityLabel,
   hasWholeGroup,
   hydrateSessionMovements,
   isGroupReplaced,
@@ -903,6 +905,19 @@ describe("overriddenDose — how the row reads once edited", () => {
   it("keeps the program's loading — volume is theirs, load is not", () => {
     expect(overriddenDose({ sets: 4, reps: 10 }, "65–75% TM").load).toBe("65–75% TM");
   });
+
+  it("shows timed holds in seconds without a load", () => {
+    expect(
+      overriddenDose(
+        { sets: 3, holdSeconds: 20, holdSecondsMax: 40 },
+        "65–75% TM",
+      ),
+    ).toEqual({
+      sets: "3",
+      reps: "20–40s hold",
+      load: null,
+    });
+  });
 });
 
 describe("reading the dose the lifter typed", () => {
@@ -928,6 +943,41 @@ describe("reading the dose the lifter typed", () => {
       reps: 10,
       repsMax: 12,
     });
+  });
+
+  it("reads a timed hold range", () => {
+    expect(
+      readDoseInput(
+        boxes({ sets: "3", reps: "20", repsMax: "40" }),
+        "hold",
+      ),
+    ).toEqual({
+      dose: {
+        sets: 3,
+        holdSeconds: 20,
+        holdSecondsMax: 40,
+      },
+      reason: null,
+    });
+  });
+
+  it("names invalid timed hold input as hold time", () => {
+    expect(readDoseInput(boxes({ reps: "" }), "hold").reason).toBe(
+      "Sets and hold time need to be whole numbers.",
+    );
+  });
+
+  it("uses a timed default for Dead Hang rows", () => {
+    expect(addedDose("accessory", undefined, true)).toEqual({
+      sets: "3",
+      reps: "20–40s hold",
+      load: null,
+    });
+  });
+
+  it("labels Dead Hang volume as hold time", () => {
+    expect(doseQuantityLabel(true)).toBe("Hold (sec)");
+    expect(doseQuantityLabel(false)).toBe("Reps");
   });
 
   it("drops a top of range equal to the bottom, so 4 to 4 is just 4", () => {

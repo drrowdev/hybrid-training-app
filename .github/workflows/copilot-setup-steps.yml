@@ -1,0 +1,42 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright system dependencies
+        timeout-minutes: 5
+        run: pnpm --filter @hta/web exec playwright install-deps chromium
+
+      - name: Install Playwright Chromium
+        timeout-minutes: 5
+        run: pnpm --filter @hta/web exec playwright install chromium
+
+      - name: Verify headless Chromium launch
+        timeout-minutes: 2
+        run: pnpm --filter @hta/web exec playwright screenshot --browser=chromium about:blank /tmp/copilot-chromium.png

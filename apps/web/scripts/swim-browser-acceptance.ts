@@ -179,6 +179,7 @@ const failureLedgers = new WeakMap<object, {
     status: z.infer<typeof resultStatusSchema>; testStatus: z.infer<typeof testStatusSchema>;
     expectedStatus: z.infer<typeof resultStatusSchema>; attempts: number; durationMs: number;
     attributedSources: AttributedSource[];
+    failureDetails?: ReturnType<typeof projectStackAttribution>;
     alertObservations: AlertObservation[];
   }>;
   counts: { expected: number; unexpected: number; flaky: number; skipped: number };
@@ -432,21 +433,68 @@ const locationSchema = z.object({
   line: z.number().int().min(1).max(1_000_000),
   column: z.number().int().min(1).max(1_000_000),
 }).strip();
+function boundedStack(value: unknown): string | undefined {
+  return typeof value === "string" && value.length <= 16_384 ? value : undefined;
+}
 const errorAttributionSchema = z.preprocess(
   (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {},
-  z.object({ location: locationSchema.optional() }).strip(),
+  z.object({
+    location: locationSchema.optional(),
+    stack: z.unknown().transform(boundedStack),
+  }).strip(),
 );
 const resultSchema = z.object({
   retry: z.number().int().min(0).max(99), status: resultStatusSchema,
   // Measured attempt runtime, bounded by the command budget, not a timeout guarantee.
   duration: z.number().finite().min(0).max(BROWSER_LIMITS.browserCommand),
-  error: z.unknown().transform((value) => value !== undefined),
+  error: z.unknown().transform((value) => ({
+    present: value !== undefined,
+    stack: value && typeof value === "object" && "stack" in value ? boundedStack(value.stack) : undefined,
+  })),
   errorLocation: locationSchema.optional(),
   errors: z.array(errorAttributionSchema),
   annotations: z.unknown().transform(readAlertAnnotations),
-}).transform(({ errors, ...result }) => ({
-  ...result, errors: errors.length, errorLocations: errors.map((error) => error.location),
+}).transform(({ errors, error, ...result }) => ({
+  ...result, error: error.present, errors: errors.length, errorLocations: errors.map((error) => error.location),
+  stacks: [...new Set([error.stack, ...errors.slice(0, 8).map((item) => item.stack)]
+    .filter((stack): stack is string => stack !== undefined))],
 }));
+
+export function projectStackAttribution(stacks: readonly unknown[], webRoot: string) {
+  const callers: Array<{ source: (typeof ATTRIBUTED_SOURCES)[number][1]; line: number; column: number }> = [];
+  let assertion: "private-fixture-comparison" | "unavailable" = "unavailable";
+  let expected: boolean | "unavailable" = "unavailable";
+  let actual: boolean | "unavailable" = "unavailable";
+  for (const stack of stacks.slice(0, 8)) {
+    if (typeof stack !== "string" || stack.length > 16_384) continue;
+    let comparison = false;
+    for (const frame of stack.split("\n").slice(0, 128)) {
+      const match = /^\s+at (?:([A-Za-z0-9_.$<>]+) \()?([^()\r\n]+):([1-9]\d{0,5}|1000000):([1-9]\d{0,5}|1000000)\)?$/.exec(frame);
+      if (!match) continue;
+      const source = ATTRIBUTED_SOURCES.find(([file]) => match[2] === join(webRoot, file))?.[1];
+      if (!source) continue;
+      const line = Number(match[3]), column = Number(match[4]);
+      if (source === "swimming-decisions-offline-mobile" && match[1] === "same" && line === 71) {
+        comparison = true;
+        continue;
+      }
+      if (callers.length < 2 && !callers.some((item) =>
+        item.source === source && item.line === line && item.column === column)) {
+        callers.push({ source, line, column });
+      }
+    }
+    if (comparison && stack.startsWith("Error: Private fixture comparison\n")) {
+      assertion = "private-fixture-comparison";
+      // Only the complete known boolean matcher header, never arbitrary payload fields.
+      const values = /^Error: Private fixture comparison\n\nexpect\(received\)\.toBe\(expected\) \/\/ Object\.is equality\n\nExpected: (true|false)\nReceived: (true|false)\n(?:\n|$)/.exec(stack);
+      if (stacks.length === 1 && values) {
+        expected = values[1] === "true";
+        actual = values[2] === "true";
+      }
+    }
+  }
+  return { callers: callers.length ? callers : "unavailable" as const, assertion, expected, actual };
+}
 
 function attributedSources(results: z.infer<typeof resultSchema>[], webRoot: string): AttributedSource[] {
   const sources: AttributedSource[] = [];
@@ -559,6 +607,9 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
           return { ...item, status: test.results.at(-1)!.status, testStatus: test.status,
             expectedStatus: test.expectedStatus, attempts: test.results.length, durationMs: test.results.at(-1)!.duration,
             attributedSources: attributedSources(test.results, webRoot),
+            ...(test.results.at(-1)!.status !== "passed" ? {
+              failureDetails: projectStackAttribution(test.results.at(-1)!.stacks, webRoot),
+            } : {}),
             alertObservations: projectAlertObservations(index, test.results.at(-1)!.annotations) };
         }),
       });

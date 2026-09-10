@@ -5,8 +5,8 @@ import { acceptanceAssert as assert } from "./swim-acceptance-reporting";
 
 const bootstrapRole = "supabase_admin";
 export const MOVEMENT_REFERENCE_FILES = {
-  down: "packages/db/rollbacks/0148_defer_custom_movement_references.down.sql",
-  up: "packages/db/drizzle/0148_defer_custom_movement_references.sql",
+  down: "packages/db/rollbacks/0149_defer_custom_movement_references.down.sql",
+  up: "packages/db/drizzle/0149_defer_custom_movement_references.sql",
 } as const;
 const modes = z.enum(["baseline", "candidate"]);
 const outcomes = z.enum(["succeeded", "rejected", "setup-failed", "unavailable"]);

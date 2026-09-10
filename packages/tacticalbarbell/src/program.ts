@@ -34,6 +34,7 @@ import {
   addedLoadFromSystemLoad,
   buildGlobalWarmupItems,
   buildSystemLoadWarmupItems,
+  movementUsesTimedHold,
 } from "@hta/program-core";
 import {
   TB_TEMPLATES,
@@ -59,6 +60,8 @@ export interface TbClusterLift {
   movement: string;
   /** Catalog label for a custom movement key. */
   displayName?: string;
+  /** Catalog slug for movement-owned work semantics such as timed holds. */
+  slug?: string;
   /** Zulu only: which split (A/B) this lift belongs to. */
   split?: "A" | "B";
   /** How the lift is loaded (default "barbell"). Bodyweight loads off max reps. */
@@ -68,10 +71,10 @@ export interface TbClusterLift {
    *
    * Set whenever a user swaps the exercise filling a prescribed slot — an
    * Activation override, the Armor supplemental choice, or a customized weekly
-   * slot. Everything that reasons about a lift's ROLE rather than its identity
-   * (`prescriptionRules` matching, peak detection, AB Triad grouping, session
-   * links) reads `sourceMovement ?? movement`, so a swap keeps the slot's
-   * prescription instead of silently reverting the lift to main work.
+   * slot. Everything that reasons about a lift's ROLE (`prescriptionRules`
+   * matching, peak detection, AB Triad grouping, session links) reads
+   * `sourceMovement ?? movement`, while movement-specific volume follows the
+   * exercise that actually fills the slot.
    */
   sourceMovement?: string;
   /**
@@ -93,19 +96,28 @@ export interface TbClusterLift {
    */
   role?: "accessory" | "supplemental";
   /**
-   * The lifter's own sets and reps for a movement they added.
+   * The lifter's own volume for a movement they added.
    *
    * Volume only — loading stays with the program, so an overridden supplemental
    * still follows the week's percentage. Applied AFTER the rules resolve, so it
    * is the last word on how much work the lift is, and nothing else.
    */
-  doseOverride?: {
-    sets: number;
-    setsMax?: number;
-    reps: number;
-    repsMax?: number;
-  };
+  doseOverride?: TbDoseOverride;
 }
+
+export type TbDoseOverride = {
+  sets: number;
+  setsMax?: number;
+} & (
+  | {
+      reps: number;
+      repsMax?: number;
+    }
+  | {
+      holdSeconds: number;
+      holdSecondsMax?: number;
+    }
+);
 
 /**
  * The limits of a lifter-typed dose. Volume is theirs, so these are wide enough
@@ -117,6 +129,13 @@ export interface TbClusterLift {
 export const TB_DOSE_BOUNDS = {
   sets: { min: 1, max: 20 },
   reps: { min: 1, max: 100 },
+  holdSeconds: { min: 1, max: 3600 },
+} as const;
+
+export const TB_TIMED_HOLD_DOSE = {
+  sets: 3,
+  holdSeconds: 20,
+  holdSecondsMax: 40,
 } as const;
 
 export interface TbActivationSessionOverride {
@@ -405,6 +424,8 @@ export interface TbSeriesSlot {
   split?: "A" | "B";
   /** What this slot is prescribed across the block, for the wizard to state. */
   dose: TbSlotDose;
+  /** Dose shown when another exercise fills a slot with movement-specific volume. */
+  replacementDose?: TbSlotDose;
 }
 
 export interface TbTemplateSeries {
@@ -435,17 +456,31 @@ export function tbTemplateSeries(template: TbTemplate): TbTemplateSeries[] {
     .map((session) => ({
       key: sessionSeriesKey(template, session),
       label: session.label,
-      slots: (session.fixedMovements ?? template.defaultCluster).map(
-        (entry): TbSeriesSlot => ({
+      slots: (session.fixedMovements ?? template.defaultCluster).map((entry): TbSeriesSlot => {
+        const dose = tbSlotDose(template, session, entry.movement, entry.kind);
+        const replacementDose = tbSlotDose(
+          template,
+          session,
+          entry.movement,
+          entry.kind,
+          true,
+          "__replacement__",
+        );
+        const replacementDiffers =
+          replacementDose.sets !== dose.sets ||
+          replacementDose.reps !== dose.reps ||
+          replacementDose.load !== dose.load;
+        return {
           sourceMovement: entry.movement,
           role: isSupplementalSlot(session, entry.movement)
             ? "supplemental"
             : "main",
           ...(entry.kind ? { kind: entry.kind } : {}),
           ...(entry.split ? { split: entry.split } : {}),
-          dose: tbSlotDose(template, session, entry.movement, entry.kind),
-        }),
-      ),
+          dose,
+          ...(replacementDiffers ? { replacementDose } : {}),
+        };
+      }),
     }));
 }
 
@@ -510,11 +545,14 @@ function applyPrescriptionRules(
   base: ResolvedDose,
   rules: readonly TbPrescriptionRule[],
   week: number,
-  matchMovement: string,
+  slotMovement: string,
+  selectedMovement = slotMovement,
 ): ResolvedDose {
   const out: ResolvedDose = { ...base };
   for (const rule of rules) {
     if (rule.activeWeeks && !rule.activeWeeks.includes(week)) continue;
+    const matchMovement =
+      rule.matchBy === "movement" ? selectedMovement : slotMovement;
     if (rule.movements && !rule.movements.includes(matchMovement)) continue;
     if (rule.percent !== undefined) out.percent = rule.percent;
     if (rule.setsMin != null) out.setsMin = rule.setsMin;
@@ -558,6 +596,7 @@ export function tbSlotDose(
   sourceMovement: string,
   kind?: TbLiftKind,
   useTemplateDefaults = true,
+  selectedMovement = sourceMovement,
 ): TbSlotDose {
   const weeks = Array.from({ length: template.blockWeeks }, (_, i) => i + 1).filter(
     (week) => !session.activeWeeks || session.activeWeeks.includes(week),
@@ -573,7 +612,7 @@ export function tbSlotDose(
       ? template.setsReps
       : template.delegatedSetsReps;
   const wave = waves.find((w) => w.id === session.waveId) ?? waves[0];
-  const movementRange = session.movementSetRanges?.[sourceMovement];
+  const movementRange = session.movementSetRanges?.[selectedMovement];
 
   const doses = weeks.map((week) => {
     const scheme = schemes[week - 1]!;
@@ -591,6 +630,7 @@ export function tbSlotDose(
       session.prescriptionRules ?? [],
       week,
       sourceMovement,
+      selectedMovement,
     );
   });
   if (doses.length === 0) return { sets: "", reps: "", load: null };
@@ -728,6 +768,8 @@ function cloneEntry(
   if (source) lift.sourceMovement = source;
   const role = (c as TbClusterLift).role;
   if (role) lift.role = role;
+  const slug = (c as TbClusterLift).slug;
+  if (slug) lift.slug = slug;
   const dose = (c as TbClusterLift).doseOverride;
   if (dose) lift.doseOverride = { ...dose };
   return lift;
@@ -785,6 +827,9 @@ function entriesFromValue(v: unknown): TbClusterLift[] {
         if (typeof o.displayName === "string" && o.displayName.length > 0) {
           lift.displayName = o.displayName;
         }
+        if (typeof o.slug === "string" && o.slug.length > 0) {
+          lift.slug = o.slug;
+        }
         if (
           o.kind === "barbell" ||
           o.kind === "weighted-bw" ||
@@ -819,22 +864,48 @@ function entriesFromValue(v: unknown): TbClusterLift[] {
           const d = o.doseOverride as Record<string, unknown>;
           const inRange = (v: unknown, b: { min: number; max: number }) =>
             typeof v === "number" && Number.isInteger(v) && v >= b.min && v <= b.max;
-          const { sets: setBound, reps: repBound } = TB_DOSE_BOUNDS;
-          if (inRange(d.sets, setBound) && inRange(d.reps, repBound)) {
+          const {
+            sets: setBound,
+            reps: repBound,
+            holdSeconds: holdBound,
+          } = TB_DOSE_BOUNDS;
+          const hasRepDose = inRange(d.reps, repBound);
+          const hasHoldDose = inRange(d.holdSeconds, holdBound);
+          if (
+            inRange(d.sets, setBound) &&
+            hasRepDose !== hasHoldDose
+          ) {
             const sets = d.sets as number;
-            const reps = d.reps as number;
             const setsMax = d.setsMax;
-            const repsMax = d.repsMax;
-            lift.doseOverride = {
+            const base = {
               sets,
-              reps,
               ...(inRange(setsMax, setBound) && (setsMax as number) >= sets
                 ? { setsMax: setsMax as number }
                 : {}),
-              ...(inRange(repsMax, repBound) && (repsMax as number) >= reps
-                ? { repsMax: repsMax as number }
-                : {}),
             };
+            if (inRange(d.holdSeconds, holdBound)) {
+              const holdSeconds = d.holdSeconds as number;
+              const holdSecondsMax = d.holdSecondsMax;
+              lift.doseOverride = {
+                ...base,
+                holdSeconds,
+                ...(inRange(holdSecondsMax, holdBound) &&
+                (holdSecondsMax as number) >= holdSeconds
+                  ? { holdSecondsMax: holdSecondsMax as number }
+                  : {}),
+              };
+            } else {
+              const reps = d.reps as number;
+              const repsMax = d.repsMax;
+              lift.doseOverride = {
+                ...base,
+                reps,
+                ...(inRange(repsMax, repBound) &&
+                (repsMax as number) >= reps
+                  ? { repsMax: repsMax as number }
+                  : {}),
+              };
+            }
           }
         }
         out.push(lift);
@@ -1271,7 +1342,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       };
       const sourceMovement = lift.sourceMovement ?? lift.movement;
       const anchor = ctx.oneRepMaxes[lift.movement];
-      const movementRange = session.movementSetRanges?.[sourceMovement];
+      const movementRange = session.movementSetRanges?.[lift.movement];
       const setsMin = movementRange?.min ?? scheme.setsMin;
       const setsMax = movementRange?.max ?? scheme.setsMax;
       const isPeak = customPeaks
@@ -1284,6 +1355,8 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       let prescribedReps = support?.reps ?? scheme.reps;
       let prescribedRepsMax = support ? undefined : scheme.repsMax;
       let prescribedRepsLabel = support ? String(support.reps) : scheme.repsLabel;
+      let prescribedHoldSeconds: number | undefined;
+      let prescribedHoldSecondsMax: number | undefined;
       let prescribedItemKind: PrescribedItem["kind"] = "main";
       let includeWarmup = true;
       let ruleNote: string | undefined;
@@ -1348,6 +1421,7 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
         rules,
         parsed.week,
         isAddedTriadMember ? sourceMovement : ruleMatchMovement,
+        lift.movement,
       );
       prescribedPercent = resolved.percent;
       prescribedSetsMin = resolved.setsMin;
@@ -1366,15 +1440,33 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
       if (override) {
         prescribedSetsMin = override.sets;
         prescribedSetsMax = override.setsMax ?? override.sets;
-        prescribedReps = override.reps;
-        prescribedRepsMax = override.repsMax;
-        prescribedRepsLabel =
-          override.repsMax != null && override.repsMax !== override.reps
-            ? `${override.reps}\u2013${override.repsMax}`
-            : String(override.reps);
+        if ("holdSeconds" in override) {
+          prescribedHoldSeconds = override.holdSeconds;
+          prescribedHoldSecondsMax =
+            override.holdSecondsMax ?? override.holdSeconds;
+        } else {
+          prescribedReps = override.reps;
+          prescribedRepsMax = override.repsMax;
+          prescribedRepsLabel =
+            override.repsMax != null && override.repsMax !== override.reps
+              ? `${override.reps}\u2013${override.repsMax}`
+              : String(override.reps);
+        }
         // The rule's note describes the rule's numbers, which are no longer the
         // ones being run.
         ruleNote = undefined;
+      }
+
+      if (movementUsesTimedHold(lift.slug)) {
+        if (prescribedHoldSeconds == null) {
+          if (!override) {
+            prescribedSetsMin = TB_TIMED_HOLD_DOSE.sets;
+            prescribedSetsMax = TB_TIMED_HOLD_DOSE.sets;
+          }
+          prescribedHoldSeconds = TB_TIMED_HOLD_DOSE.holdSeconds;
+          prescribedHoldSecondsMax = TB_TIMED_HOLD_DOSE.holdSecondsMax;
+        }
+        ruleNote = "Hold for time.";
       }
 
       // The AB Triad's note names its three movements, so it only describes the
@@ -1405,9 +1497,21 @@ export const tacticalBarbellEngine: ProgramEngine<TbInstance> = {
           movementId: lift.movement,
           sets: prescribedSetsMin,
           ...(prescribedSetsMax !== prescribedSetsMin ? { setsMax: prescribedSetsMax } : {}),
-          reps: prescribedReps,
-          ...(prescribedRepsMax != null ? { repsMax: prescribedRepsMax } : {}),
-          repsLabel: prescribedRepsLabel,
+          ...(prescribedHoldSeconds != null
+            ? {
+                holdSeconds: prescribedHoldSeconds,
+                ...(prescribedHoldSecondsMax != null &&
+                prescribedHoldSecondsMax !== prescribedHoldSeconds
+                  ? { holdSecondsMax: prescribedHoldSecondsMax }
+                  : {}),
+              }
+            : {
+                reps: prescribedReps,
+                ...(prescribedRepsMax != null
+                  ? { repsMax: prescribedRepsMax }
+                  : {}),
+                repsLabel: prescribedRepsLabel,
+              }),
           note: rangeNote,
           ...(hasCompleteAbTriad && abTriadPosition >= 0
             ? {

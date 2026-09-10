@@ -1,11 +1,15 @@
 import { z } from "zod";
 import { TB_DOSE_BOUNDS } from "@hta/tacticalbarbell";
+import { movementUsesTimedHold } from "@hta/domain";
+import { rehabProtocolItemSchema as rehabItemSchema } from "@/lib/rehab-protocols/item-schema";
 
 export const TB_CUSTOMIZATION_VERSION = 1 as const;
 export const TB_ACTIVATION_CUSTOMIZATION_V2_VERSION = 2 as const;
 export const TB_ACTIVATION_CUSTOMIZATION_VERSION = 3 as const;
 export const LEGACY_REHAB_PROTOCOL_ID = "protocol-1";
 export const DEFAULT_CUSTOM_TB_NAME = "Tactical Barbell - Customized";
+/** Shared editor/schema bound so the UI cannot create an unsavable session. */
+export const TB_SESSION_MOVEMENT_MAX = 20;
 
 const weekdayTypeSchema = z.enum([
   "strength",
@@ -13,22 +17,6 @@ const weekdayTypeSchema = z.enum([
   "rehab",
   "rest",
 ]);
-
-const rehabItemSchema = z
-  .object({
-    movementId: z.string().uuid(),
-    movementName: z.string().trim().min(1).max(120),
-    side: z.enum(["both", "left", "right"]).optional(),
-    sets: z.number().int().min(1).max(20),
-    reps: z.number().int().min(1).max(500).optional(),
-    holdSeconds: z.number().int().min(1).max(3600).optional(),
-    targetWeightKg: z.number().min(0).max(1000).optional(),
-    instructions: z.string().trim().max(500).optional(),
-  })
-  .strict()
-  .refine((item) => item.reps != null || item.holdSeconds != null, {
-    message: "Each rehab movement needs reps or a hold time.",
-  });
 
 const movementReplacementFields = z.object({
   movement: z.string().trim().min(1).max(80),
@@ -97,22 +85,26 @@ const movementReplacementSchema = movementReplacementFields
   .superRefine(refineMovementReplacement);
 
 /**
- * A lifter's own sets and reps for a movement THEY added.
+ * A lifter's own volume for a movement THEY added.
  *
  * Volume only. Loading stays with the program: a percentage is of the training
  * max, so a typed one needs a max the lifter may not have set, and means nothing
  * on a bodyweight movement. Applied after the week's rule resolves, so an
  * overridden supplemental still follows the wave.
  */
-const doseOverrideSchema = z
+const doseBase = {
+  sets: z.number().int().min(TB_DOSE_BOUNDS.sets.min).max(TB_DOSE_BOUNDS.sets.max),
+  setsMax: z
+    .number()
+    .int()
+    .min(TB_DOSE_BOUNDS.sets.min)
+    .max(TB_DOSE_BOUNDS.sets.max)
+    .optional(),
+};
+
+const repDoseOverrideSchema = z
   .object({
-    sets: z.number().int().min(TB_DOSE_BOUNDS.sets.min).max(TB_DOSE_BOUNDS.sets.max),
-    setsMax: z
-      .number()
-      .int()
-      .min(TB_DOSE_BOUNDS.sets.min)
-      .max(TB_DOSE_BOUNDS.sets.max)
-      .optional(),
+    ...doseBase,
     reps: z.number().int().min(TB_DOSE_BOUNDS.reps.min).max(TB_DOSE_BOUNDS.reps.max),
     repsMax: z
       .number()
@@ -139,6 +131,47 @@ const doseOverrideSchema = z
     }
   });
 
+const holdDoseOverrideSchema = z
+  .object({
+    ...doseBase,
+    holdSeconds: z
+      .number()
+      .int()
+      .min(TB_DOSE_BOUNDS.holdSeconds.min)
+      .max(TB_DOSE_BOUNDS.holdSeconds.max),
+    holdSecondsMax: z
+      .number()
+      .int()
+      .min(TB_DOSE_BOUNDS.holdSeconds.min)
+      .max(TB_DOSE_BOUNDS.holdSeconds.max)
+      .optional(),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.setsMax != null && value.setsMax < value.sets) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["setsMax"],
+        message: "The top of the set range cannot be below the bottom.",
+      });
+    }
+    if (
+      value.holdSecondsMax != null &&
+      value.holdSecondsMax < value.holdSeconds
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["holdSecondsMax"],
+        message: "The top of the hold range cannot be below the bottom.",
+      });
+    }
+  });
+
+const doseOverrideSchema = z.union([
+  repDoseOverrideSchema,
+  holdDoseOverrideSchema,
+]);
+
 /**
  * The weekly-session entry: the shared shape plus `doseOverride`.
  *
@@ -155,7 +188,18 @@ const sessionMovementSchema = movementReplacementFields
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["doseOverride"],
-        message: "Only a movement you added can carry your own sets and reps.",
+        message: "Only a movement you added can carry your own volume.",
+      });
+    }
+    if (
+      value.doseOverride &&
+      "holdSeconds" in value.doseOverride &&
+      !movementUsesTimedHold(value.slug)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["doseOverride"],
+        message: "This movement is measured in reps.",
       });
     }
   });
@@ -174,7 +218,10 @@ export const tbCustomizationV1Schema = z
       z
         .array(sessionMovementSchema)
         .min(1)
-        .max(8)
+        .max(
+          TB_SESSION_MOVEMENT_MAX,
+          `A session can include up to ${TB_SESSION_MOVEMENT_MAX} exercises.`,
+        )
         .superRefine((movements, ctx) => {
           // One entry per slot. Without this, two entries could both claim the
           // barbell-row slot and each inherit its supplemental loading.

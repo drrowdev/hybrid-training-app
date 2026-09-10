@@ -42,7 +42,7 @@ const codeCategories: Record<string, typeof categories[number]> = {
   "23514": "constraint", "42P01": "undefined-object", "42703": "undefined-object",
   "42883": "undefined-object", PGRST202: "schema-cache", PGRST204: "schema-cache", P0001: "domain",
 };
-// Compile-time object vocabulary, anchored in packages/db/drizzle/0145_standalone_pool_swimming.sql.
+// Compile-time object vocabulary, anchored in packages/db/drizzle/0146_standalone_pool_swimming.sql.
 const identifiers = [
   // Schemas: 0145:6,89; extensions: 0090_byoai_pgcrypto_search_path.sql:27.
   "public", "auth", "pg_catalog", "extensions",

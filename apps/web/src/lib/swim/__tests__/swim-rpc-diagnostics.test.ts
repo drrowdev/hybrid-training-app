@@ -245,7 +245,7 @@ describe("safe RPC diagnostics (synthetic reporting evidence, not swim acceptanc
     }
   });
   it("checks the diagnostic allowlists against tracked migration identifiers and literal exceptions", () => {
-    const sql = readFileSync(new URL("../../../../../../packages/db/drizzle/0145_standalone_pool_swimming.sql", import.meta.url), "utf8");
+    const sql = readFileSync(new URL("../../../../../../packages/db/drizzle/0146_standalone_pool_swimming.sql", import.meta.url), "utf8");
     const source = readFileSync(new URL("../../../../scripts/swim-rpc-diagnostics.ts", import.meta.url), "utf8");
     const literals = source.slice(source.indexOf("const domainMessages"), source.indexOf("const reasons"));
     for (const [, message] of literals.matchAll(/: "([^"]+)"/g)) {

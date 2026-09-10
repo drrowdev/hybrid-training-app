@@ -1,4 +1,8 @@
-import { isRepMaxMovementSlug, isSystemLoadMovementSlug } from "@hta/domain";
+import {
+  isRepMaxMovementSlug,
+  isSystemLoadMovementSlug,
+  movementUsesTimedHold,
+} from "@hta/domain";
 
 export type CatalogMovementLoadKind =
   | "barbell"
@@ -23,6 +27,7 @@ export function catalogMovementLoadKind(movement: {
   hasOneRm: boolean;
   slug?: string | null;
 }): CatalogMovementLoadKind {
+  if (movementUsesTimedHold(movement.slug)) return "unanchored";
   if (!movement.hasOneRm) return "unanchored";
   if (isSystemLoadMovementSlug(movement.slug)) return "weighted-bw";
   if (isRepMaxMovementSlug(movement.slug)) return "bodyweight";

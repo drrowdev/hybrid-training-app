@@ -120,10 +120,21 @@ export function adaptSessionPrescription(
         movementName: resolved.displayName,
         kind: "accessory",
         sets: 1,
-        ...(it.reps !== undefined ? { reps: it.reps } : {}),
-        ...(it.repsMax != null && it.reps != null && it.repsMax !== it.reps
-          ? { repRange: { min: it.reps, max: it.repsMax } }
-          : {}),
+        ...(it.holdSeconds != null
+          ? {
+              holdSec: {
+                min: it.holdSeconds,
+                max: it.holdSecondsMax ?? it.holdSeconds,
+              },
+            }
+          : {
+              ...(it.reps !== undefined ? { reps: it.reps } : {}),
+              ...(it.repsMax != null &&
+              it.reps != null &&
+              it.repsMax !== it.reps
+                ? { repRange: { min: it.reps, max: it.repsMax } }
+                : {}),
+            }),
         // Distance-prescribed carries → app `distanceM` so the row renders
         // "3 × 40–60 m" instead of the `reps ?? 10` rep fallback.
         ...(it.distanceRangeM ? { distanceM: it.distanceRangeM } : {}),
@@ -196,12 +207,23 @@ export function adaptSessionPrescription(
       movementName: resolved.displayName,
       kind: appKind,
       sets: setCount,
-      ...(it.reps !== undefined ? { reps: it.reps } : {}),
+      ...(it.holdSeconds != null
+        ? {
+            holdSec: {
+              min: it.holdSeconds,
+              max: it.holdSecondsMax ?? it.holdSeconds,
+            },
+          }
+        : {
+            ...(it.reps !== undefined ? { reps: it.reps } : {}),
+            ...(it.repsMax != null &&
+            it.reps != null &&
+            it.repsMax !== it.reps
+              ? { repRange: { min: it.reps, max: it.repsMax } }
+              : {}),
+          }),
       ...(requiredSetCount !== setCount
         ? { setRange: { min: requiredSetCount, max: setCount } }
-        : {}),
-      ...(it.repsMax != null && it.reps != null && it.repsMax !== it.reps
-        ? { repRange: { min: it.reps, max: it.repsMax } }
         : {}),
       ...(it.percentOfTm !== undefined ? { percentTm: Math.round(it.percentOfTm * 100) } : {}),
       // Label the working-max basis on the main / supplemental rows so the plan

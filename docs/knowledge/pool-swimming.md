@@ -1,6 +1,27 @@
 # Native pool swimming
 
-### Current source — dormant primary-cardio foundation — 2026-09-10
+### Current source — standalone integration — 2026-09-10
+
+Standalone ships first. The combined foundation described below is deferred,
+removed only from the active schema/migration chain and its specific contracts,
+and retained at immutable
+[`064aea85c10efd057e9d2485a5957734dee78c36`](https://github.com/drrowdev/hybrid-training-app/commit/064aea85c10efd057e9d2485a5957734dee78c36).
+Main `672e4202792da122281639e3db810029432573f5` is integrated without rewriting
+history. Its shipped 0145 seed stays unchanged; standalone, request identity,
+shared completion and deferred movement references move byte-for-byte to
+0146/0147/0148/0149. Normal total remains150. Identity146/147/148 are function
+state labels, not journal ordinals; five phases/four DDLs/15 contexts/Auth36
+and frozen26 remain unchanged. The current identity round trip uses 0148 down,
+0147 down, 0147 up, 0148 up. Historical ordinals below refer to their saved sources.
+
+One exact-commit feature dispatch now gates isolated acceptance on successful
+core and identity jobs. Prior accepted full34495520676attempt1@064aea is evidence
+for that source only; integrated acceptance, owner usability review and release
+approval remain pending. App rollback comes first, then downs149→148→147→146.
+The base down refuses issued plans/results/history; if safe rollback cannot
+proceed, retain schema/data. Production approval remains separate.
+
+### Deferred source — dormant primary-cardio foundation — 2026-09-10
 
 The owner supplied accepted standalone26 at `8c58917f14aaee22e224f257e91dd9c2ff76897f`,
 full34490583441 attempt1 after exactcore34489951509: all26 once, no unexpected/

@@ -14,7 +14,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { sessions, sessionSlot } from "./sessions";
-import { plannedSessions } from "./planner";
 import type {
   SwimSetup, SwimWorkout, SwimObservation, SwimCalibration, SwimActualResult,
 } from "@hta/domain";
@@ -86,7 +85,6 @@ export const swimWorkouts = pgTable("swim_workouts", {
   revision: integer("revision").notNull().default(1),
   status: text("status").$type<SwimWorkoutStatus>().notNull().default("scheduled"),
   sessionId: uuid("session_id").unique(),
-  plannedSessionId: uuid("planned_session_id").unique(),
   definition: jsonb("definition").$type<SwimWorkoutDefinition>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -103,14 +101,6 @@ export const swimWorkouts = pgTable("swim_workouts", {
     columns: [t.userId, t.sessionId],
     foreignColumns: [sessions.userId, sessions.id],
   }),
-  // Migration 0149 owns ON DELETE SET NULL (planned_session_id), which
-  // Drizzle cannot express without also nulling the non-null owner.
-  ownedPlannedSession: foreignKey({
-    name: "swim_workouts_owned_planned_session_fk",
-    columns: [t.userId, t.plannedSessionId],
-    foreignColumns: [plannedSessions.userId, plannedSessions.id],
-  }),
-  primaryCardioLinkDormant: check("swim_workouts_primary_cardio_link_dormant_check", sql`${t.plannedSessionId} IS NULL`),
   ownerDateIdx: index("swim_workouts_owner_date_idx").on(t.userId, t.scheduledDate, t.id),
   planIdx: index("swim_workouts_plan_idx").on(t.planId, t.scheduledDate),
   statusCheck: check("swim_workouts_status_check", sql`${t.status} IN ('scheduled', 'started', 'completed', 'skipped')`),

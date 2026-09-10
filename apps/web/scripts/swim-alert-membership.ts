@@ -26,7 +26,7 @@ export const SWIM_ALERT_CODEBOOK = [
     "Could not load your swims. Check your connection and try again.",
   ] },
   { category: "server-auth", literals: [
-    // swim/server-context; storage.rpc + 0146_swim_request_identity.sql
+    // swim/server-context; storage.rpc + 0147_swim_request_identity.sql
     "Sign in to save your swim.", "Swimming: Not signed in.",
   ] },
   { category: "server-stale", literals: [

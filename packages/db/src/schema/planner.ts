@@ -18,7 +18,6 @@ import {
   smallint,
   text,
   timestamp,
-  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -555,7 +554,6 @@ export const plannedSessions = pgTable(
       .notNull(),
   },
   (t) => ({
-    ownerIdKey: unique("planned_sessions_user_id_id_key").on(t.userId, t.id),
     blockWeekDaySlotUnique: uniqueIndex("planned_sessions_block_week_day_slot_unique_idx").on(
       t.blockId,
       t.weekIndex,

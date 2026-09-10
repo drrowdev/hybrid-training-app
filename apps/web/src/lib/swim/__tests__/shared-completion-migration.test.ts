@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 
 const directory = new URL("../../../../../../packages/db/", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, directory), "utf8");
-const up = read("drizzle/0147_shared_completion_identity.sql");
-const down = read("rollbacks/0147_shared_completion_identity.down.sql");
+const up = read("drizzle/0148_shared_completion_identity.sql");
+const down = read("rollbacks/0148_shared_completion_identity.down.sql");
 const baseline = read("drizzle/0144_atomic_user_workflows.sql");
-const identity = read("drizzle/0146_swim_request_identity.sql");
+const identity = read("drizzle/0147_swim_request_identity.sql");
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const shared = "public.complete_training_session_with_transition(uuid, text, uuid)";
 const helper = "public.swim_request_user_id()";
@@ -242,14 +242,14 @@ describe("shared completion identity migration (DC-SW8)", () => {
     }
   });
 
-  it("appends only the normal 0147 journal entry after the future-dated baseline", () => {
+  it("preserves shipped main journal entries and orders the renamed shared migration", () => {
     const journal = JSON.parse(read("drizzle/meta/_journal.json"));
-    expect(hash(JSON.stringify(journal.entries.slice(0, 147))))
-      .toBe("a1b64f3f3e615c153f38aaf4229062bd246a894c2542ce5e50ec7dc7e10bb172");
-    expect(journal.entries[147]).toEqual({
-      idx: 147, version: "7", when: 1788912000000,
-      tag: "0147_shared_completion_identity", breakpoints: false,
+    expect(hash(JSON.stringify(journal.entries.slice(0, 146))))
+      .toBe("c9993a65aebb360842c4fef56cb9a44c692a65650f9419b4cf78f08d445773c2");
+    expect(journal.entries[148]).toEqual({
+      idx: 148, version: "7", when: 1788912000003,
+      tag: "0148_shared_completion_identity", breakpoints: false,
     });
-    expect(journal.entries[147].when).toBeGreaterThan(journal.entries[146].when);
+    expect(journal.entries[148].when).toBeGreaterThan(journal.entries[147].when);
   });
 });

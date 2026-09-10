@@ -7,10 +7,10 @@ import {
 } from "./swim-auth-privileges";
 
 export const IDENTITY_FILES = {
-  sharedDown: "packages/db/rollbacks/0147_shared_completion_identity.down.sql",
-  down: "packages/db/rollbacks/0146_swim_request_identity.down.sql",
-  up: "packages/db/drizzle/0146_swim_request_identity.sql",
-  sharedUp: "packages/db/drizzle/0147_shared_completion_identity.sql",
+  sharedDown: "packages/db/rollbacks/0148_shared_completion_identity.down.sql",
+  down: "packages/db/rollbacks/0147_swim_request_identity.down.sql",
+  up: "packages/db/drizzle/0147_swim_request_identity.sql",
+  sharedUp: "packages/db/drizzle/0148_shared_completion_identity.sql",
 } as const;
 export const IDENTITY_PHASES = ["initial-148", "first-147", "rolled-back-146", "restored-147", "restored-148"] as const;
 const PHASE_LEVELS: Record<Phase, IdentityLevel> = {

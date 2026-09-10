@@ -46,7 +46,7 @@ The SQL qualification repair returned a valid outcome, not unavailable.
 
 ## Decision
 
-Migration `0148_defer_custom_movement_references.sql` and its matching down file
+Migration `0149_defer_custom_movement_references.sql` and its matching down file
 change only `public.set_logs.set_logs_movement_id_fkey`. They are narrowed in
 place while unmerged; prior applied candidate stacks were disposable and
 destroyed. No new migration or journal tag is added.
