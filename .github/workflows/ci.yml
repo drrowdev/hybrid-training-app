@@ -34,10 +34,15 @@ on:
         required: false
         default: false
         type: boolean
+      inspect_swim_review:
+        description: Inspect isolated swim-review pristine predicates read-only
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && inputs.prepare_swim_review && 'ci-swim-review-bootstrap' || (github.event_name == 'workflow_dispatch' && inputs.swim_acceptance && format('ci-swim-{0}', github.ref) || format('ci-{0}', github.ref)) }}
-  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.swim_acceptance)) }}
+  group: ${{ github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review) && 'ci-swim-review-bootstrap' || (github.event_name == 'workflow_dispatch' && inputs.swim_acceptance && format('ci-swim-{0}', github.ref) || format('ci-{0}', github.ref)) }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review || inputs.swim_acceptance)) }}
 
 jobs:
   identity-guard:
@@ -653,7 +658,8 @@ jobs:
       github.repository == 'drrowdev/hybrid-training-app' &&
       github.ref_type == 'branch' &&
       github.ref == 'refs/heads/copilot/new-acceptance-cases' &&
-      inputs.prepare_swim_review &&
+      ((inputs.prepare_swim_review && !inputs.inspect_swim_review) ||
+       (inputs.inspect_swim_review && !inputs.prepare_swim_review)) &&
       inputs.expected_sha != '' && inputs.expected_sha == github.sha &&
       !inputs.migrate_production && !inputs.allow_undeployed &&
       !inputs.swim_acceptance
@@ -668,6 +674,7 @@ jobs:
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       PREPARE_SWIM_REVIEW: ${{ inputs.prepare_swim_review }}
+      INSPECT_SWIM_REVIEW: ${{ inputs.inspect_swim_review }}
       MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
       ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
       SWIM_ACCEPTANCE: ${{ inputs.swim_acceptance }}
@@ -696,8 +703,8 @@ jobs:
       - name: Verify reviewed tooling and fresh live head
         run: pnpm --filter @hta/db exec tsx scripts/prepare-swim-review.ts --check-source
 
-      - name: Prepare isolated database once
+      - name: Run isolated review mode once
         timeout-minutes: 7
         env:
           SWIM_REVIEW_DATABASE_URL: ${{ secrets.SWIM_REVIEW_DATABASE_URL }}
-        run: pnpm --filter @hta/db exec tsx scripts/prepare-swim-review.ts
+        run: pnpm --filter @hta/db exec tsx scripts/prepare-swim-review.ts ${{ inputs.inspect_swim_review && '--inspect-only' || '' }}

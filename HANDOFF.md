@@ -2964,3 +2964,27 @@ passed **86/86**, including the unchanged old-job digest; `git diff --check`
 passed. No tests, bootstrap source, application, migrations, or runtime cases
 changed. New-head guarded hosted execution remains pending with the coordinator;
 no database access or production activity was performed.
+
+### 2026-09-10 — PR805 read-only pristine inspection
+
+Changed only `.github/workflows/ci.yml`, `packages/db/scripts/prepare-swim-review.ts`,
+`packages/db/scripts/__tests__/prepare-swim-review.test.ts`, and `HANDOFF.md`.
+Verified starting head `222828aab1b27ed781dec6d8cee13b2f82d72e72` and main
+`672e4202792da122281639e3db810029432573f5`. Inspection reports seven boolean/
+unreadable predicates and two schema counts capped at 1000 (1000 means at least
+1000), on safe stdout and the escaped step summary. Failed/unreadable preflight
+fails the job; inspection never migrates, seeds, or verifies setup readiness.
+
+After coordinator source inspection, dispatch `ci.yml` on
+`copilot/new-acceptance-cases` with `inspect_swim_review=true`,
+`prepare_swim_review=false`, `expected_sha=<full reviewed current live head>`,
+`migrate_production=false`, `allow_undeployed=false`, `swim_acceptance=false`.
+This selects `--inspect-only` on the existing guarded `prepare-swim-review` job.
+Both review inputs default false; selecting both is refused.
+
+Focused worker checks: bootstrap **116/116**, unchanged web swim-acceptance
+source tests **406/406**, existing targeted script/test TypeScript command and
+`git diff --check` passed. Old-job digest is unchanged. Tests use fake runtimes,
+not live database proof. No secrets/database access, hosted execution, CI
+dispatch, services, or production activity occurred. The observed preflight
+failure remains undiagnosed until authorized reads; no hosted setup is claimed.

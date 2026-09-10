@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import postgres from "postgres";
@@ -31,11 +31,13 @@ export function validateContext(env: NodeJS.ProcessEnv) {
     env.GITHUB_REPOSITORY === "drrowdev/hybrid-training-app" &&
     env.GITHUB_REF_TYPE === "branch" && env.GITHUB_REF === branch &&
     env.GITHUB_JOB === "prepare-swim-review" &&
-    env.PREPARE_SWIM_REVIEW === "true" &&
+    ((env.PREPARE_SWIM_REVIEW === "true" && env.INSPECT_SWIM_REVIEW === "false") ||
+      (env.PREPARE_SWIM_REVIEW === "false" && env.INSPECT_SWIM_REVIEW === "true")) &&
     env.MIGRATE_PRODUCTION === "false" && env.ALLOW_UNDEPLOYED === "false" &&
     env.SWIM_ACCEPTANCE === "false" &&
     /^[0-9a-f]{40}$/.test(env.EXPECTED_SHA ?? "") &&
     env.EXPECTED_SHA === env.GITHUB_SHA && env.EXPECTED_SHA !== APPLICATION_SHA);
+  return env.INSPECT_SWIM_REVIEW === "true";
 }
 
 export function validateSourceDiff(paths: string[]) {
@@ -84,7 +86,32 @@ export type Pristine = {
   publicEmpty: boolean; ledgerAbsent: boolean; schemasExpected: boolean;
   publicCodeEmpty: boolean; usersEmpty: boolean; storageEmpty: boolean; visible: boolean;
 };
-export function assertPristine(state: Pristine) {
+type Predicate = boolean | "unreadable";
+type Inspection = {
+  predicates: { [K in keyof Pristine]: Predicate };
+  schemaCounts: {
+    unexpectedNamespaces: number | "unreadable";
+    postgresOwnedRelations: number | "unreadable";
+  };
+};
+function unreadableInspection(): Inspection {
+  return {
+    predicates: {
+      visible: "unreadable", publicEmpty: "unreadable", ledgerAbsent: "unreadable",
+      schemasExpected: "unreadable", publicCodeEmpty: "unreadable",
+      usersEmpty: "unreadable", storageEmpty: "unreadable",
+    },
+    schemaCounts: { unexpectedNamespaces: "unreadable", postgresOwnedRelations: "unreadable" },
+  };
+}
+function predicate(value: unknown): Predicate {
+  return typeof value === "boolean" ? value : "unreadable";
+}
+function count(value: unknown): number | "unreadable" {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 1000 ?
+    value : "unreadable";
+}
+export function assertPristine(state: Inspection["predicates"]) {
   for (const key of ["publicEmpty", "ledgerAbsent", "schemasExpected",
     "publicCodeEmpty", "usersEmpty", "storageEmpty", "visible"] as const) requireTrue(state[key]);
 }
@@ -98,7 +125,17 @@ type Phase = "source" | "credentials" | "canonical" | "client" | "preflight" |
 type Evidence = {
   phase: Phase; status: "passed" | "failed";
   code?: ReturnType<typeof projectMigrationError>["error"];
+  mode?: "read-only";
+  inspection?: Inspection;
 };
+export function emitEvidence(record: Evidence) {
+  const data = JSON.stringify({ scope: "swim-review-bootstrap", ...record });
+  console.log(data);
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    const escaped = data.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, `<pre>${escaped}</pre>\n`);
+  }
+}
 export type Runtime = {
   source(): void;
   canonical(): { hash: string; folderMillis: number }[];
@@ -116,7 +153,7 @@ const emptyAccounts = `
     NOT EXISTS (SELECT 1 FROM storage.objects)
     AND NOT EXISTS (SELECT 1 FROM storage.buckets) AS "storageEmpty"`;
 
-export async function preflight(client: Client) {
+export async function preflight(client: Client, inspection = unreadableInspection()) {
   const rows = await client.query(`
     SELECT current_user = 'postgres' AND session_user = 'postgres' AND
       EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = current_user
@@ -127,19 +164,20 @@ export async function preflight(client: Client) {
     NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = 'drizzle')
       AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class WHERE relname = '__drizzle_migrations')
       AS "ledgerAbsent",
-    NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace
+    (SELECT count(*)::int FROM (SELECT 1 FROM pg_catalog.pg_namespace
       WHERE nspname NOT IN ('public', 'auth', 'storage', 'extensions', 'graphql', 'graphql_public',
         'realtime', 'supabase_functions', 'vault', 'net',
         'pg_catalog', 'information_schema', 'pg_toast')
-      AND nspname NOT LIKE 'pg_temp_%' AND nspname NOT LIKE 'pg_toast_temp_%')
-    AND NOT EXISTS (
+      AND nspname NOT LIKE 'pg_temp_%' AND nspname NOT LIKE 'pg_toast_temp_%'
+      LIMIT 1000) unexpected) AS "unexpectedNamespaces",
+    (SELECT count(*)::int FROM (
       SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname NOT IN ('public', 'pg_catalog', 'information_schema', 'pg_toast')
         AND n.nspname NOT LIKE 'pg_temp_%' AND n.nspname NOT LIKE 'pg_toast_temp_%'
         AND c.relkind IN ('r', 'p', 'v', 'm', 'f') AND c.relowner = 'postgres'::regrole
         AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
           WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e')
-    ) AS "schemasExpected",
+      LIMIT 1000) owned) AS "postgresOwnedRelations",
     NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public' AND NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid = 'pg_proc'::regclass
@@ -148,9 +186,22 @@ export async function preflight(client: Client) {
       WHERE n.nspname = 'public' AND t.typelem = 0 AND NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid = 'pg_type'::regclass
           AND d.objid = t.oid AND d.deptype = 'e')) AS "publicCodeEmpty"`);
+  const row = rows.length === 1 ? rows[0] : undefined;
+  for (const key of ["visible", "publicEmpty", "ledgerAbsent", "publicCodeEmpty"] as const) {
+    inspection.predicates[key] = predicate(row?.[key]);
+  }
+  inspection.schemaCounts.unexpectedNamespaces = count(row?.unexpectedNamespaces);
+  inspection.schemaCounts.postgresOwnedRelations = count(row?.postgresOwnedRelations);
+  const { unexpectedNamespaces, postgresOwnedRelations } = inspection.schemaCounts;
+  inspection.predicates.schemasExpected =
+    unexpectedNamespaces === "unreadable" || postgresOwnedRelations === "unreadable" ?
+      "unreadable" : unexpectedNamespaces === 0 && postgresOwnedRelations === 0;
   const accounts = await client.query(emptyAccounts);
-  requireTrue(rows.length === 1 && accounts.length === 1);
-  assertPristine({ ...rows[0], ...accounts[0] } as Pristine);
+  const account = accounts.length === 1 ? accounts[0] : undefined;
+  for (const key of ["usersEmpty", "storageEmpty"] as const) {
+    inspection.predicates[key] = predicate(account?.[key]);
+  }
+  assertPristine(inspection.predicates);
 }
 
 export async function verifyResult(client: Client, canonical: { hash: string; folderMillis: number }[]) {
@@ -210,7 +261,7 @@ export function runSeed(url: string, signal: AbortSignal): Promise<void> {
   });
 }
 
-export function defaultRuntime(): Runtime {
+export function defaultRuntime(inspectOnly = false): Runtime {
   let sql: ReturnType<typeof postgres>;
   return {
     source: () => verifySource(process.env),
@@ -233,6 +284,7 @@ export function defaultRuntime(): Runtime {
         onnotice: () => {}, connection: {
           statement_timeout: 60_000, lock_timeout: 5_000,
           idle_in_transaction_session_timeout: 60_000, client_min_messages: "error", row_security: "off",
+          ...(inspectOnly ? { default_transaction_read_only: true } : {}),
         },
       });
       // Preserve the canonical CLI driver's migration literal serialization.
@@ -250,11 +302,11 @@ export function defaultRuntime(): Runtime {
     },
     migrate: async () => { await migrate(drizzle(sql), { migrationsFolder: resolve(packageRoot, "drizzle") }); },
     seed: runSeed,
-    emit: (record) => console.log(JSON.stringify({ scope: "swim-review-bootstrap", ...record })),
+    emit: emitEvidence,
   };
 }
 
-export async function prepareReview(raw: string | undefined, runtime: Runtime): Promise<boolean> {
+export async function prepareReview(raw: string | undefined, runtime: Runtime, inspectOnly = false): Promise<boolean> {
   const controller = new AbortController();
   const deadline = setTimeout(() => controller.abort(), 300_000);
   async function bounded<T>(operation: () => Promise<T>): Promise<T> {
@@ -270,7 +322,12 @@ export async function prepareReview(raw: string | undefined, runtime: Runtime): 
   let client: Client | undefined;
   let phase: Phase = "source";
   let passed = false;
-  const complete = () => runtime.emit({ phase, status: "passed" });
+  const inspection = unreadableInspection();
+  const emit = (record: Evidence) => runtime.emit({
+    ...record, ...(inspectOnly ? { mode: "read-only" as const } : {}),
+    ...(inspectOnly && phase === "preflight" ? { inspection: structuredClone(inspection) } : {}),
+  });
+  const complete = () => emit({ phase, status: "passed" });
   try {
     runtime.source(); complete();
     phase = "credentials";
@@ -280,16 +337,21 @@ export async function prepareReview(raw: string | undefined, runtime: Runtime): 
     phase = "client";
     client = runtime.connect(url); complete();
     phase = "preflight";
-    await bounded(() => preflight(client!)); complete();
-    phase = "migrate";
-    await bounded(() => runtime.migrate(client!)); complete();
-    phase = "seed";
-    await bounded(() => runtime.seed(url, controller.signal)); complete();
-    phase = "verify";
-    await bounded(() => verifyResult(client!, canonical)); complete();
+    await preflight({
+      query: (text, parameters) => bounded(() => client!.query(text, parameters)),
+      close: () => client!.close(),
+    }, inspection); complete();
+    if (!inspectOnly) {
+      phase = "migrate";
+      await bounded(() => runtime.migrate(client!)); complete();
+      phase = "seed";
+      await bounded(() => runtime.seed(url, controller.signal)); complete();
+      phase = "verify";
+      await bounded(() => verifyResult(client!, canonical)); complete();
+    }
     passed = true;
   } catch (error) {
-    runtime.emit({ phase, status: "failed", code: projectMigrationError(error).error });
+    emit({ phase, status: "failed", code: projectMigrationError(error).error });
   } finally {
     clearTimeout(deadline);
     controller.abort();
@@ -298,7 +360,7 @@ export async function prepareReview(raw: string | undefined, runtime: Runtime): 
       try { await client.close(); complete(); }
       catch (error) {
         passed = false;
-        runtime.emit({ phase, status: "failed", code: projectMigrationError(error).error });
+        emit({ phase, status: "failed", code: projectMigrationError(error).error });
       }
     }
   }
@@ -308,19 +370,24 @@ export async function prepareReview(raw: string | undefined, runtime: Runtime): 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   // No inherited raw CLI streams or evidence collector files, and no retry/cleanup of database state.
   const main = async () => {
+    const inspectOnly = validateContext(process.env);
     if (process.argv[2] === "--check-source") {
+      requireTrue(process.argv.length === 3);
       verifySource(process.env);
-      console.log('{"scope":"swim-review-bootstrap","phase":"source","status":"passed"}');
+      emitEvidence({ phase: "source", status: "passed", ...(inspectOnly ? { mode: "read-only" } : {}) });
       return true;
     }
-    requireTrue(process.argv.length === 2);
-    return prepareReview(process.env.SWIM_REVIEW_DATABASE_URL, defaultRuntime());
+    requireTrue(inspectOnly ? process.argv.length === 3 && process.argv[2] === "--inspect-only" :
+      process.argv.length === 2);
+    return prepareReview(process.env.SWIM_REVIEW_DATABASE_URL, defaultRuntime(inspectOnly), inspectOnly);
   };
   main().then((passed) => {
     process.exit(passed ? 0 : 1);
   }, (error) => {
-    console.log(JSON.stringify({ scope: "swim-review-bootstrap", status: "failed",
-      code: projectMigrationError(error).error }));
-    process.exit(1);
+    try {
+      emitEvidence({ phase: "source", status: "failed",
+        ...(process.env.INSPECT_SWIM_REVIEW === "true" ? { mode: "read-only" } : {}),
+        code: projectMigrationError(error).error });
+    } finally { process.exit(1); }
   });
 }

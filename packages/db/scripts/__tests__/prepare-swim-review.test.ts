@@ -1,16 +1,19 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
-  APPLICATION_SHA, SETUP_PATHS, assertPristine, defaultRuntime, prepareReview,
+  APPLICATION_SHA, SETUP_PATHS, assertPristine, defaultRuntime, emitEvidence, prepareReview,
   runSeed, validateContext, validateDatabaseUrl, validateSourceDiff, type Runtime,
 } from "../prepare-swim-review";
 
 vi.mock("node:child_process", async (original) => ({
   ...await original<typeof import("node:child_process")>(), spawn: vi.fn(),
+}));
+vi.mock("node:fs", async (original) => ({
+  ...await original<typeof import("node:fs")>(), appendFileSync: vi.fn(),
 }));
 
 const root = resolve(import.meta.dirname, "../../../..");
@@ -25,13 +28,15 @@ const context = {
   GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "workflow_dispatch",
   GITHUB_REPOSITORY: "drrowdev/hybrid-training-app", GITHUB_REF_TYPE: "branch",
   GITHUB_REF: "refs/heads/copilot/new-acceptance-cases", GITHUB_JOB: "prepare-swim-review",
-  PREPARE_SWIM_REVIEW: "true", MIGRATE_PRODUCTION: "false",
+  PREPARE_SWIM_REVIEW: "true", INSPECT_SWIM_REVIEW: "false", MIGRATE_PRODUCTION: "false",
   ALLOW_UNDEPLOYED: "false", SWIM_ACCEPTANCE: "false", EXPECTED_SHA: sha, GITHUB_SHA: sha,
 };
 const canonical = Array.from({ length: 150 }, (_, i) => ({ hash: `${i}`, folderMillis: i + 1 }));
 function fake() {
   const query = vi.fn(async (text: string): Promise<Record<string, unknown>[]> => {
-    if (text.includes('AS "publicEmpty"')) return [pristine];
+    if (text.includes('AS "publicEmpty"')) return [
+      { ...pristine, unexpectedNamespaces: 0, postgresOwnedRelations: 0 },
+    ];
     if (text.includes("auth.users")) return [{ usersEmpty: true, storageEmpty: true }];
     if (text.includes("ORDER BY id")) return canonical.map((m, i) =>
       ({ id: i + 1, hash: m.hash, created_at: m.folderMillis }));
@@ -67,9 +72,17 @@ describe("isolated review guards (offline, not hosted proof)", () => {
     expect(() => validateDatabaseUrl(value)).toThrow();
   });
   it.each(Object.keys(context))("fails closed on missing or changed %s", (key) => {
-    expect(() => validateContext(context)).not.toThrow();
-    expect(() => validateContext({ ...context, [key]: "" })).toThrow();
-    expect(() => validateContext({ ...context, [key]: "wrong" })).toThrow();
+    for (const inspect of [false, true]) {
+      const mode = { ...context, PREPARE_SWIM_REVIEW: String(!inspect), INSPECT_SWIM_REVIEW: String(inspect) };
+      expect(validateContext(mode)).toBe(inspect);
+      expect(() => validateContext({ ...mode, [key]: "" })).toThrow();
+      expect(() => validateContext({ ...mode, [key]: "wrong" })).toThrow();
+    }
+  });
+  it.each(["true", "false"])("rejects both review modes set to %s", (value) => {
+    expect(() => validateContext({
+      ...context, PREPARE_SWIM_REVIEW: value, INSPECT_SWIM_REVIEW: value,
+    })).toThrow();
   });
   it.each([
     { GITHUB_REF: "refs/heads/main" }, { GITHUB_REF_TYPE: "tag" },
@@ -121,7 +134,8 @@ describe("bounded phase evidence and connection cleanup", () => {
   });
   it.each(Object.keys(pristine))("blocks writes on existing/ambiguous %s", async (key) => {
     const { runtime, query, close } = fake();
-    query.mockResolvedValue([{ ...pristine, [key]: false }]);
+    query.mockResolvedValue([{ ...pristine, unexpectedNamespaces: key === "schemasExpected" ? 1 : 0,
+      postgresOwnedRelations: 0, [key]: false }]);
     expect(await prepareReview(url, runtime)).toBe(false);
     expect(runtime.migrate).not.toHaveBeenCalled();
     expect(runtime.seed).not.toHaveBeenCalled();
@@ -179,6 +193,144 @@ describe("bounded phase evidence and connection cleanup", () => {
       expect(close).toHaveBeenCalledOnce();
       expect(runtime.seed).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("read-only pristine inspection (fake runtime, not hosted proof)", () => {
+  function evidence(runtime: Runtime) {
+    return vi.mocked(runtime.emit).mock.calls.map(([record]) => record)
+      .find((record) => record.phase === "preflight")!;
+  }
+  function noWrites(runtime: Runtime) {
+    expect(runtime.migrate).not.toHaveBeenCalled();
+    expect(runtime.seed).not.toHaveBeenCalled();
+    expect(vi.mocked(runtime.emit).mock.calls.every(([r]) => r.mode === "read-only")).toBe(true);
+  }
+  it("observes only the two existing reads on success and never verifies setup", async () => {
+    const { runtime, query, close } = fake();
+    expect(await prepareReview(url, runtime, true)).toBe(true);
+    noWrites(runtime);
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query.mock.calls.every(([sql]) => /^\s*SELECT/.test(sql))).toBe(true);
+    expect(evidence(runtime)).toEqual({
+      phase: "preflight", status: "passed", mode: "read-only",
+      inspection: { predicates: pristine, schemaCounts: { unexpectedNamespaces: 0, postgresOwnedRelations: 0 } },
+    });
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it.each(Object.keys(pristine))("reports failed %s as failure without writes", async (key) => {
+    const { runtime, query, close } = fake();
+    query.mockResolvedValue([{ ...pristine, unexpectedNamespaces: key === "schemasExpected" ? 1 : 0,
+      postgresOwnedRelations: 0, [key]: false }]);
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    expect(evidence(runtime).inspection!.predicates[key as keyof typeof pristine]).toBe(false);
+    noWrites(runtime);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it.each(["unexpectedNamespaces", "postgresOwnedRelations"] as const)(
+    "distinguishes bounded %s evidence without retrieving names", async (key) => {
+      const { runtime, query, close } = fake();
+      query.mockResolvedValueOnce([{ ...pristine, unexpectedNamespaces: 0, postgresOwnedRelations: 0, [key]: 1000 }]);
+      expect(await prepareReview(url, runtime, true)).toBe(false);
+      expect(evidence(runtime).inspection!.schemaCounts[key]).toBe(1000);
+      expect(evidence(runtime).inspection!.predicates.schemasExpected).toBe(false);
+      expect(query.mock.calls[0]![0].match(/LIMIT 1000/g)).toHaveLength(2);
+      noWrites(runtime);
+      expect(close).toHaveBeenCalledOnce();
+    });
+  it.each([0, 1])("keeps unreadable predicates and safe codes when probe %s fails", async (probe) => {
+    const { runtime, query, close } = fake();
+    if (probe === 1) query.mockResolvedValueOnce([{ ...pristine, unexpectedNamespaces: 0, postgresOwnedRelations: 0 }]);
+    query.mockRejectedValueOnce(Object.assign(new Error(`private ${url}`), {
+      name: "PostgresError", severity: "ERROR", code: "42501",
+    }));
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    const record = evidence(runtime);
+    expect(record.code?.sqlstate).toBe("42501");
+    expect(record.inspection!.predicates).toEqual(probe === 0 ?
+      Object.fromEntries(Object.keys(pristine).map((key) => [key, "unreadable"])) :
+      { ...pristine, usersEmpty: "unreadable", storageEmpty: "unreadable" });
+    expect(JSON.stringify(record)).not.toMatch(/private|postgresql|offline/);
+    noWrites(runtime);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it.each([null, undefined, "true", "<private>", 1])("projects non-booleans as unreadable: %s", async (value) => {
+    const { runtime, query, close } = fake();
+    query.mockResolvedValue([{ ...Object.fromEntries(Object.keys(pristine).map((key) => [key, value])),
+      unexpectedNamespaces: "<private>", postgresOwnedRelations: -1, arbitrary: url }]);
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    const inspection = evidence(runtime).inspection!;
+    expect(inspection.predicates).toEqual(Object.fromEntries(Object.keys(pristine).map((key) => [key, "unreadable"])));
+    expect(inspection.schemaCounts).toEqual({ unexpectedNamespaces: "unreadable", postgresOwnedRelations: "unreadable" });
+    expect(JSON.stringify(inspection)).not.toMatch(/private|arbitrary|postgresql/);
+    noWrites(runtime);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it.each([{ rows: [] }, { rows: [{}, {}] }])("does not fabricate evidence for ambiguous row counts", async ({ rows }) => {
+    const { runtime, query, close } = fake();
+    query.mockResolvedValue(rows);
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    expect(Object.values(evidence(runtime).inspection!.predicates)).toEqual(Array(7).fill("unreadable"));
+    noWrites(runtime);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it.each(["source", "canonical", "connect"] as const)("blocks inspection on failed %s guard", async (key) => {
+    const { runtime, query } = fake();
+    vi.mocked(runtime[key]).mockImplementation(() => { throw new Error(url); });
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    noWrites(runtime);
+    expect(query).not.toHaveBeenCalled();
+  });
+  it("does not connect inspection to a forbidden target", async () => {
+    const { runtime } = fake();
+    expect(await prepareReview(url.replace("whwilnhqfiaquwxgkxwt", "grhetczkxawkcfgkwerj"), runtime, true)).toBe(false);
+    expect(runtime.connect).not.toHaveBeenCalled();
+    noWrites(runtime);
+  });
+  it.each([0, 1])("closes after timeout at probe %s without late reads or writes", async (probe) => {
+    vi.useFakeTimers();
+    try {
+      const { runtime, query, close } = fake();
+      if (probe === 1) query.mockResolvedValueOnce([{ ...pristine, unexpectedNamespaces: 0, postgresOwnedRelations: 0 }]);
+      let finish!: (rows: Record<string, unknown>[]) => void;
+      query.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+      const result = prepareReview(url, runtime, true);
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(await result).toBe(false);
+      const before = JSON.stringify(vi.mocked(runtime.emit).mock.calls);
+      expect(evidence(runtime).inspection!.predicates.usersEmpty).toBe("unreadable");
+      finish([pristine]);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(JSON.stringify(vi.mocked(runtime.emit).mock.calls)).toBe(before);
+      expect(query).toHaveBeenCalledTimes(probe + 1);
+      expect(close).toHaveBeenCalledOnce();
+      noWrites(runtime);
+    } finally { vi.useRealTimers(); }
+  });
+  it("fails inspection on closure failure", async () => {
+    const { runtime, close } = fake();
+    close.mockRejectedValue(new Error(url));
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    expect(close).toHaveBeenCalledOnce();
+    noWrites(runtime);
+  });
+  it("uses the same safe records on stdout and the escaped step summary", async () => {
+    vi.stubEnv("GITHUB_STEP_SUMMARY", "/tmp/swim-review-summary-test");
+    const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(appendFileSync).mockClear();
+    try {
+      const { runtime, query } = fake();
+      runtime.emit = emitEvidence;
+      query.mockRejectedValue(Object.assign(new Error(`<private>${url}</private>`), {
+        name: "PostgresError", severity: "ERROR", code: "42501",
+      }));
+      expect(await prepareReview(url, runtime, true)).toBe(false);
+      const lines = stdout.mock.calls.map(([line]) => line as string);
+      expect(lines.join("")).not.toMatch(/private|postgresql|offline/);
+      expect(vi.mocked(appendFileSync).mock.calls.map(([, data]) => data)).toEqual(
+        lines.map((line) => `<pre>${line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>\n`));
+      expect(lines.every((line) => JSON.parse(line).mode === "read-only")).toBe(true);
+    } finally { stdout.mockRestore(); vi.unstubAllEnvs(); }
   });
 });
 
@@ -258,7 +410,15 @@ describe("saved workflow and raw-stream boundaries", () => {
       "ref: ${{ inputs.expected_sha }}", "environment: swim-review",
       "cancel-in-progress: false", "timeout-minutes: 7"]) expect(job).toContain(gate);
     expect(workflow).toMatch(/prepare_swim_review:\n[\s\S]*?default: false\n\s+type: boolean/);
-    expect(workflow).toContain("inputs.prepare_swim_review && 'ci-swim-review-bootstrap'");
+    expect(workflow).toMatch(/inspect_swim_review:\n[\s\S]*?default: false\n\s+type: boolean/);
+    expect(workflow).toContain("(inputs.prepare_swim_review || inputs.inspect_swim_review) && 'ci-swim-review-bootstrap'");
+    expect(workflow).toContain("(inputs.prepare_swim_review || inputs.inspect_swim_review || inputs.swim_acceptance)");
+    expect(job).toContain("((inputs.prepare_swim_review && !inputs.inspect_swim_review) ||");
+    expect(job).toContain("(inputs.inspect_swim_review && !inputs.prepare_swim_review))");
+    expect(job).toContain("INSPECT_SWIM_REVIEW: ${{ inputs.inspect_swim_review }}");
+    expect(job).toContain("scripts/prepare-swim-review.ts ${{ inputs.inspect_swim_review && '--inspect-only' || '' }}");
+    expect(source).toContain('process.argv[2] === "--inspect-only"');
+    expect(source).toContain("...(inspectOnly ? { default_transaction_read_only: true } : {})");
     expect(source).toContain('git("ls-remote", "--exit-code"');
     expect(source).toContain('git("rev-parse", "HEAD") === env.EXPECTED_SHA');
   });
