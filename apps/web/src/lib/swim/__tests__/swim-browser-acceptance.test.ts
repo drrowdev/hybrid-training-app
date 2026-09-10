@@ -125,7 +125,8 @@ function unavailableObservations(index: number) {
     index === 4 ? [unavailableAlert("a1-pause")] :
       index === 5 ? [unavailableAlert("a2-post-start"), unavailableAlert("a2-edit")] :
         index === 9 ? [unavailableAlert("c2-auth-absence")] :
-          index === 21 ? [unavailableAlert("a4-replay"), unavailableAlert("a4-replay-transport")] : [];
+          index === 20 ? [unavailableAlert("a3-finish"), unavailableAlert("a3-finish-transport")] :
+            index === 21 ? [unavailableAlert("a4-replay"), unavailableAlert("a4-replay-transport")] : [];
 }
 
 describe("DC-SW8 failure-only C2 Auth absence", () => {
@@ -2171,6 +2172,27 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
           const suite = file.suites.find((suite) => suite.title === item.describe)!;
           return suite.specs.find((spec) => spec.title === item.title)!.tests[0]!;
         }
+        it("projects only closed A3 observations at index20 without converting its UI failure to a pass", () => {
+          const values = [
+            { ...unavailableAlert("a3-finish"), backend: "reached" as const },
+            { ...unavailableAlert("a3-finish-transport"), result: "http-2xx" as const },
+          ];
+          const annotations = values.map((value) => alertAnnotation(value)!);
+          for (const valid of [true, false]) {
+            const fixture = report();
+            for (const index of SWIM_BROWSER_CASES.keys()) {
+              caseTest(fixture, index).results[0]!.annotations = valid ? annotations :
+                [...annotations, { ...annotations[0]!, description: annotations[0]!.description.replace("backend=reached", "backend=unknown") }];
+            }
+            caseTest(fixture, 20).results[0]!.status = "failed";
+            const projection = rejectedReport(fixture);
+            expect(projection.code).toBe("browser-failed");
+            expect(projection.cases?.[20]?.status).toBe("failed");
+            expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual(
+              SWIM_BROWSER_CASES.map((_, index) => valid && index === 20 ? values : unavailableObservations(index)),
+            );
+          }
+        });
         it.each(["request-unseen", "request-pending", "request-failed", "http-2xx", "http-3xx", "http-4xx", "http-5xx", "unavailable"] as const)(
           "projects A4 %s only at index21, retaining the failed UI ledger even with a completed receipt", (result) => {
             const fixture = report();
@@ -2286,7 +2308,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
           expect(projection.cases).toHaveLength(24);
           expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual([
             [], [], [], observations.slice(0, 2), [observations[2]], observations.slice(3), [], [], [],
-            [unavailableAlert("c2-auth-absence")], [], [], [], [], [], [], [], [], [], [], [], unavailableObservations(21), [], [],
+            [unavailableAlert("c2-auth-absence")], [], [], [], [], [], [], [], [], [], [], unavailableObservations(20), unavailableObservations(21), [], [],
           ]);
           expect(projection.cases?.map(({ file, describe, title }) => ({ file, describe, title }))).toEqual(SWIM_BROWSER_CASES);
         });

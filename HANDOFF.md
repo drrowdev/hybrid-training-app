@@ -2,6 +2,42 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## LATEST — PR805 A3 first-Finish observations — 2026-09-10
+
+Live source/base verified before editing: `copilot/new-acceptance-cases@8c9e2f9ebfec6814af600c315db6fa1d43933f99`
+and `copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+Coordinator evidence: accepted full22 `34450901183@89f63bdd0d6661841eeb24d6f8cc8172299b831d`,
+all22 once, zero skips/flaky, 86.599s; all11 main stages and both cleanup passed.
+First full24 `34454551886` attempt1 at `306f1ae3a865ce76bb2309617715ae967528cc69`,
+reference102797792203: 21pass/3fail, all24 once, zero skips/flaky.
+A3 first Finish failed before archive/replacement (line1007, 7843ms);
+A5 post-purge reload failed (line1573, 12280ms); A6 identity helper failed
+after first edit (line1434, 5975ms), before stale second edit. MAIN FAILED despite cleanup.
+
+Inspected/preserved the saved `8c9e2f9` A5 destination/removed-before-reload
+correction and A6 pinned root0/$K/_part_ decoding; neither is reimplemented.
+Only A3's first Finish gains two index20 finite observations: original-request
+transport and matching canonical receipt/UI/alert sample. Original five-second
+Edit-result goal is unchanged and ungated. No causal fix is claimed. Reads are
+single response-triggered samples, not continuous coverage; absent, ambiguous
+or unreadable receipt pairing stays unavailable. No raw transport/IDs/rows/errors
+are persisted. A4 and the other23 bodies remain unchanged.
+
+Early checkpoint: from repository root,
+`pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-alert-membership.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+passed **994/994** (25/562/406/1), 5.32s. First run was 993pass/1fail due
+to a stale index20 projection expectation, corrected before checkpoint.
+Private installed Playwright1.60.0 actual `--list` passed exact24/sixfiles
+2/4/6/8/3/1, zero execution/errors; safe collection result success=true/exit0.
+`git diff --check` and changed-file secret scan passed. Scoped lint/types and
+final source-executing pairing checks remain pending.
+Initial progress publication hit the existing
+full-history identity guard; `git fetch --unshallow origin` loaded history without
+rewriting it. No private worker command/result or historical logs/transcripts
+were obtained. Only ordinary CI identity-job metadata/log tail was inspected.
+Coordinator still owns exact-head core then ONE guarded full24; collection is
+not browser acceptance. No product, services, database, dispatch or guard changes.
+
 ## LATEST — PR805 bounded A4 observations — 2026-09-10 — DIAGNOSTICS ONLY
 
 Continued sole writer `copilot/new-acceptance-cases` from exact

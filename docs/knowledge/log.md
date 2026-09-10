@@ -2836,3 +2836,17 @@ commands, counts, source evidence and limits. DIAGNOSTICS ONLY, not a bug fix
 or runtime pass. No historical logs/transcripts, live browser/SQL/Docker, hosted
 data, delegation, dispatch, rewrite or safeguards changes. Coordinator source/
 privacy/timebound inspection, exactheadcore then ONE newheadfull22 remain next.
+
+## [2026-09-10] refine | PR805 A3 first-Finish observation remainder
+
+Live source8c9e2f9/basee2758dad verified. Coordinator's accepted22 is
+full34450901183@89f63bdd0d6661841eeb24d6f8cc8172299b831d:
+22once/zero skip/flaky/86.599s/all11 main stages+both cleanup passed.
+First24 full34454551886 attempt1@306f1ae failed A3 initial Finish,
+A5 post-purge reload, A6 identity helper:21pass/3fail; MAIN FAILED retained.
+Inspected/preserved8c9 A5 destination/removed-before-reload and A6 root0/$K/_part_
+corrections. A3 only gains two closed index20 observations of original transport
+and matching receipt/UI/alert; unchanged five-second positive goal, no causal fix.
+No product or other23 case-body change. HANDOFF records actual local results;
+exact-head core then ONE guarded full24 still required. No private worker evidence
+or browser acceptance inferred from collection.

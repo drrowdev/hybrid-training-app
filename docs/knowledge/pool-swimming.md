@@ -1,5 +1,18 @@
 # Native pool swimming
 
+### PR805 A3 observation remainder — 2026-09-10
+
+Coordinator's accepted22 source is full34450901183 at
+`89f63bdd0d6661841eeb24d6f8cc8172299b831d` (22 once, 86.599s, zero skips/flaky,
+all11 main stages and both cleanup passed). First24 full34454551886 attempt1
+at `306f1ae3a865ce76bb2309617715ae967528cc69` failed A3 first Finish,
+A5 post-purge reload and A6 identity helper (21pass/3fail); cleanup is not acceptance.
+Saved `8c9e2f9ebfec6814af600c315db6fa1d43933f99` A5 navigation and A6 pinned
+encoder corrections are inspected and preserved. A3 now adds only two finite
+index20 first-Finish observations, without gating/extending its UI assertion.
+This is not a causal fix. Exact-head core and ONE guarded full24 remain required;
+see HANDOFF for actual local command results. No private worker evidence inferred.
+
 Authority: [ADR 0079](../adr/0079-pool-swim-track-and-calendar.md) and
 [DC-SW1 through DC-SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).
 The standalone track is separate from primary programs. Filling an existing

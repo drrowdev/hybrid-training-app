@@ -985,9 +985,34 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(await regionRows(admin, userId)).toEqual(restoredRegions);
   });
 
+  async function submittedCompletionReceipt(request: Request, workoutId: string) {
+    try {
+      const fields = await new globalThis.Response(request.postData(), {
+        headers: { "content-type": request.headers()["content-type"] },
+      }).formData();
+      const roots = fields.getAll("0");
+      if (roots.length !== 1 || typeof roots[0] !== "string") return;
+      const args: unknown = JSON.parse(roots[0]);
+      if (!Array.isArray(args) || args.length !== 1 || typeof args[0] !== "string") return;
+      const reference = /^\$K([1-9a-f][0-9a-f]*)$/.exec(args[0]);
+      if (!reference) return;
+      const part = Number.parseInt(reference[1], 16);
+      if (!Number.isSafeInteger(part)) return;
+      const prefix = `_${part}_`;
+      if (![...fields].every(([key, value]) => key === "0" ||
+        (key.startsWith(prefix) && key.length > prefix.length && typeof value === "string" &&
+          fields.getAll(key).length === 1))) return;
+      const sessionId = fields.get(`${prefix}sessionId`);
+      const receiptId = fields.get(`${prefix}clientLogId`);
+      if (!isUuid(workoutId) || fields.get(`${prefix}workoutId`) !== workoutId ||
+        !isUuid(sessionId) || !isUuid(receiptId)) return;
+      return { sessionId, receiptId };
+    } catch { return; }
+  }
+
   test("A3, DC-SW7: replacing an archived swim plan preserves completed history and primary training", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
-  }) => {
+  }, testInfo) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
     const primary = await primaryBaseline(admin, userId);
@@ -1003,8 +1028,132 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await page.getByLabel("Whole lengths", { exact: true }).fill(String(completedLengths));
     await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
     await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
-    await page.getByRole("button", { name: "Finish swim", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
+    {
+      const diagnostic = unavailableAlert("a3-finish");
+      const transport = unavailableAlert("a3-finish-transport");
+      const controller = new AbortController();
+      const owned: Promise<unknown>[] = [];
+      let completionRequest: Request | undefined;
+      let receipt: ReturnType<typeof submittedCompletionReceipt> | undefined;
+      let statusClass: C2HttpClass | "unavailable" | null = null;
+      let requestFailed = false;
+      let transportInvalid = false;
+      let deadline: number | undefined;
+      let expiry: ReturnType<typeof setTimeout> | undefined;
+      let pendingViews = 0;
+      let primaryFailed = false;
+      const current = new URL(page.url());
+      const active = () => !controller.signal.aborted && (deadline === undefined || performance.now() < deadline);
+      const sampleTransport = () => {
+        transport.result = c2Transport(completionRequest ? 1 : 0, statusClass, requestFailed, transportInvalid);
+      };
+      const sampleView = async () => {
+        if (!active() || deadline === undefined || pendingViews > 0) return;
+        pendingViews++;
+        const view = page.getByRole("button", { name: /^(Start swim|Starting…)$/ })
+          .or(page.getByRole("link", { name: /^(Log swim|Restore from Trash)$/ }))
+          .or(page.getByRole("status").filter({ hasText: /^(Plan paused|Plan finished|Plan archived|Result removed|Swimming is currently unavailable\.)$/ }))
+          .or(page.getByRole("heading", { name: /^(Edit your swim|Your swim)$/, level: 2 }))
+          .or(page.getByRole("heading", { name: "404", exact: true, level: 1 }))
+          .filter({ visible: true }).evaluateAll(classifyWorkoutViewNodes);
+        const alert = page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK);
+        try {
+          const values = await Promise.allSettled([view, alert]);
+          if (!active()) return;
+          if (values[0].status === "fulfilled") Object.assign(diagnostic, values[0].value);
+          if (values[1].status === "fulfilled") {
+            const value = values[1].value;
+            diagnostic.category = value.count < 0 || value.category === "unreadable"
+              ? "unavailable" : validateAlertCategory(value.category);
+          }
+        } finally { pendingViews--; }
+      };
+      const capture = (request: Request) => {
+        if (!active()) return;
+        try {
+          const base = new URL(baseURL!);
+          const target = new URL(request.url());
+          const workoutId = current.pathname.slice("/app/swim/".length);
+          if (base.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(base.hostname) ||
+            base.username || base.password || target.username || target.password ||
+            current.origin !== base.origin || target.origin !== base.origin ||
+            !current.pathname.startsWith("/app/swim/") || !isUuid(workoutId) ||
+            target.pathname !== current.pathname || target.search !== current.search ||
+            request.method() !== "POST" || !request.headers()["next-action"]) return;
+          if (completionRequest) {
+            transportInvalid = true;
+            diagnostic.backend = "unavailable";
+          } else {
+            completionRequest = request;
+            receipt = submittedCompletionReceipt(request, workoutId).then((value) => {
+              if (active() && !value) { transportInvalid = true; sampleTransport(); }
+              return value;
+            });
+            owned.push(receipt);
+          }
+        } catch { transportInvalid = true; }
+        sampleTransport();
+      };
+      const sampleReceipt = () => {
+        if (!active() || deadline === undefined) return;
+        const sample = (async () => {
+          const paired = await receipt;
+          if (!active() || transportInvalid || !paired || !isUuid(userId)) return;
+          const backend = (async () => {
+            const row = await admin.from("sessions").select("id,user_id,completion_outbox_entry_id,completed_at")
+              .eq("user_id", userId).eq("id", paired.sessionId).abortSignal(controller.signal).retry(false).single();
+            if (active() && !transportInvalid) diagnostic.backend =
+              a4ReplayBackend(row.data, row.error, userId, paired.sessionId, paired.receiptId);
+          })().catch(() => undefined);
+          await Promise.allSettled([backend, sampleView()]);
+        })().catch(() => undefined);
+        owned.push(sample);
+      };
+      const response = (value: Response) => {
+        if (!active() || !completionRequest || value.request() !== completionRequest) return;
+        try { statusClass = c2HttpClass(value.status()); } catch { transportInvalid = true; }
+        sampleTransport();
+        sampleReceipt();
+      };
+      const failed = (request: Request) => {
+        if (!active() || request !== completionRequest) return;
+        requestFailed = true;
+        sampleTransport();
+        owned.push(sampleView().catch(() => undefined));
+      };
+      try {
+        try {
+          page.on("request", capture);
+          page.on("response", response);
+          page.on("requestfailed", failed);
+        } catch { transportInvalid = true; }
+        await page.getByRole("button", { name: "Finish swim", exact: true }).click();
+        deadline = performance.now() + 5000;
+        expiry = setTimeout(() => controller.abort(), deadline - performance.now());
+        sampleTransport();
+        const primary = expect(page.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
+        owned.push(sampleView().catch(() => undefined));
+        if (statusClass !== null) sampleReceipt();
+        await primary;
+      } catch (error) {
+        primaryFailed = true;
+        throw error;
+      } finally {
+        controller.abort();
+        clearTimeout(expiry);
+        try { page.off("request", capture); } catch { transport.result = "unavailable"; }
+        try { page.off("response", response); } catch { transport.result = "unavailable"; }
+        try { page.off("requestfailed", failed); } catch { transport.result = "unavailable"; }
+        if (primaryFailed && pendingViews > 0) await page.close().catch(() => undefined);
+        await Promise.allSettled(owned);
+        for (const value of [diagnostic, transport]) {
+          try {
+            const annotation = alertAnnotation(value);
+            if (annotation) testInfo.annotations.push(annotation);
+          } catch { /* Diagnostics cannot replace the primary assertion error. */ }
+        }
+      }
+    }
     await page.goto(original.url);
     await page.getByRole("link").filter({ hasText: "Scheduled" }).first().click();
     await page.getByRole("button", { name: "Start swim", exact: true }).click();
