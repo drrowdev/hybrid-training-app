@@ -17,7 +17,59 @@ The original first setup case passed in21,892ms, but its earlier Pool-length
 timeout remains **unexplained**; the semantic-HOLD fix is not a demonstrated cause
 of recovery. This closes progression-branch work, not all standalone/release gates.
 
-**Current source cohort — live20 UNRUN:** PR805 code/test checkpoint
+### Current frozen source cohort — 2026-09-10 — live22 UNRUN
+
+PR805 continues exact `1b3653d33442776be18a1923cca0c1813fefcf1e`, basee2758dad,
+with code/test checkpoint `e42ec6900e0cfe33aadded2aa033229eac1cd5cc`,
+tested tree `dc8d621d20c7f75080ec3019d20a29ade8ab70b8`. Only the lifecycle spec
+was imported from immutable `4122e86b527b2ad6f4fe863ee64d3366457b1d23`,
+original blob `954b8718785068a8e18df4292a38d5011bf6d438`; no PR811 history,
+other files or future tip. Original A1/A2/helpers/shared fixture remain intact.
+
+[DC-SW7/SW8/SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+A3 covers real old-plan completion/start, archive and replacement50m setup while
+preserving history/issued work/primary training. A4 covers offline Finish,
+second-context archive before queue replay, stable receipt and identical POST
+replay, one history/result/session/load contribution and no late progression.
+The lower canonical daily-load/EWMA helpers remain the ledger oracle.
+
+Validation demonstrated two imported-case defects: literal16 lengths was partial,
+so A3/A4 now complete the issued target without relaxing completion/normalization;
+late started work counts for canonical adherence but not progression, so A4
+expects adherence=true while retaining the strict history/load/progression
+checks. Final lifecycle blob: `c98b79eb99b1a6c94c40140c7c3bf6bc882f159f`.
+Seven start-day unit checks reproduce both semantics using canonical source.
+
+Original20 identities/order, including E1/E2, remain. A3/A4 append at20/21:
+lifecycle4/5/20/21, persistence2/3/18/19, B6/7/12–17, C2index9. Same six files,
+counts **2/4/4/8/3/1**, mapped by exact identity. Old4/6/8/11/12/15/18/20 fixtures
+remove A3/A4 first, E1/E2 only for <=18, then historical B/C filters, asserting
+actual totals/retained identities. Same-total A substitutions fail alongside
+existing B/E/C/duplicate/retry/skip/privacy/source-attribution checks. Closed
+failure ledgers require22; no new annotations or closure changes.
+
+Measured validation: **11 web files/607 tests**, domain **103**, engine **58**,
+scoped lint/web typecheck/offline doc drift/diff passed. Existing private installed
+Playwright1.60.0 CLI `--list` independently verified22 exact identities/six files,
+counts2/4/4/8/3/1, zero executed results/errors and exact cleanup. No worker report
+was assumed. Secret scan clean; CodeQL skipped trivial changes, not an analysis
+pass. Published native cloud author/GitHub committer and full130-commit stack
+check match the unchanged identity policy. Exact commands, tested tree and
+observed red corrections are in
+[HANDOFF](../../HANDOFF.md#pr805-frozen-a3a4-integration--2026-09-10--live22-unrun).
+
+**Freeze22: no browser acceptance from list mode. Live20/live22 remain UNRUN.**
+Last full reference is still15/15 above. Coordinator inspection/current core and
+ONE new-head22 full reference are next; no dispatch/browser/SQL/Docker/hosted
+query or production/cost/backup work occurred here. All deadlines, Auth/FK
+controls, normal149 versus identity146–148 and exact cleanup remain unchanged.
+Production145 seed versus unshipped swim145–148 ordering reconciliation is still
+required outside this task before main/production integration. Nine standalone
+gates before combined; Garmin later; swimming stays inside getsxc.app.
+
+### Historical twenty-case source checkpoint — live20 UNRUN
+
+PR805 code/test checkpoint
 `a5a631caed5a91a03b1421b05a2f17a55c584f60`, tested tree
 `556b03bc3c93378e433fd6627ab7c72568e900a8`, imports only the persistence spec
 from immutable `fee3751810f2b835b221a430a1eabde627daca3d`, exact blob

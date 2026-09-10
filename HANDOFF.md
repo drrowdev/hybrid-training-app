@@ -2,6 +2,133 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## PR805 frozen A3/A4 integration — 2026-09-10 — live22 UNRUN
+
+Continued `copilot/new-acceptance-cases` at exact
+`1b3653d33442776be18a1923cca0c1813fefcf1e`, base
+`copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+**Code/test checkpoint:** `e42ec6900e0cfe33aadded2aa033229eac1cd5cc`;
+**tested tree:** `dc8d621d20c7f75080ec3019d20a29ade8ab70b8`.
+Code/tests were published at04:49:53Z, before these documentation updates.
+
+Imported ONLY `apps/web/e2e/swimming-lifecycle-load-mobile.spec.ts` from immutable
+`4122e86b527b2ad6f4fe863ee64d3366457b1d23`, verified original blob
+`954b8718785068a8e18df4292a38d5011bf6d438`. No PR811 merge/history, other source
+files or future tip were adopted. Source author:
+`copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>`;
+committer: `GitHub <noreply@github.com>`. No source-worker validation was assumed.
+The final lifecycle blob is `c98b79eb99b1a6c94c40140c7c3bf6bc882f159f`, differing
+from that import ONLY in the demonstrated A3/A4 corrections below. Original
+A1/A2 bodies/helpers and the shared fixture remain unchanged.
+
+### Frozen cohort and demonstrated source corrections
+
+Under [DC-SW7/SW8/SW9](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05),
+A3 appends at20: real old-plan completion/start, Archive, Set up swimming and
+new50m plan, preserved old history/issued work/primary training, no duplicate
+load. A4 appends at21: offline Finish, stable receipt, second online context
+Archive confirmed before reconnect, actual queue POST and identical captured
+request replay, one history/result/session/load contribution, and exclusion
+of late archived work from progression. These are authored assertions, **not
+browser acceptance**. The lifecycle ledger uses `deriveDailyRegionLoad` and
+`finalEwma`, including the primary strength set and native stroke exposure.
+Extra-context cleanup retains a primary failure; shared user cleanup is intact.
+
+Original20 identities/order and E1/E2 are preserved. Lifecycle indices4/5/20/21;
+persistence2/3/18/19; B6/7/12–17; C2index9. Same six files,
+**counts2/4/4/8/3/1**, mapped by exact file/describe/title, never grouped offsets.
+Old4/6/8/11/12/15/18/20 fixtures remove A3/A4 first, E1/E2 only for old<=18,
+then historical B/C filters; actual totals and original retained identities are
+asserted. Old20-only and same-total A3/A4 substitutions by original A1/A2 or each
+other fail. B/E/C substitutions, duplicates/retries/skips, privacy, source
+attribution and existing annotation memberships remain. Closed ledgers require22;
+A3/A4 have no new annotations. Existing main/stage closure already fingerprints
+the lifecycle file; no closure/workflow/checker change was needed.
+
+Observed red-to-green corrections, without product changes:
+
+1. Initial web run: **598 passed, 2 failed (11 files/600 tests)**. A2's existing
+   source slice reached into appended A3/A4; it now stops at A3. The explicit
+   annotation array needed two empty slots, not new memberships.
+2. Added seven start-day fixture checks through existing Vitest machinery,
+   `parseSetupForm`, `generateSwimPlan`, `parseActualForm`, and the transpiled
+   real `resultFromForm` source: **600 passed, 7 failed (607 total)**. Literal16
+   normalizes to `partial` for the issued first25yd workout. A3/A4 now submit
+   the issued whole-length target; queue/native-result lengths match that exact
+   target. The strict `completed` assertion is retained, not relaxed.
+3. The next run again had **600 passed, 7 failed**: canonical
+   `countsTowardAdherence` includes started late-archived completions, whereas
+   `countsTowardProgression` excludes them. A4 now expects adherence=true and
+   still requires history=true, archivedLate=true, progression=false and no
+   week candidate. This matches `swimming.ts:1605–1614` and DC-SW7, not a product
+   semantic change. All607 then passed.
+
+The seven fixture checks cover all start weekdays, four valid workouts for
+both25yd and replacement50m, no calibration, unchanged30-minute budget, literal16
+partial versus issued-target completed, and before/at-archive history/progression
+and actual-time inputs. Source inspection also checked start/archive/completion
+revision changes in `0146_swim_request_identity.sql`, completion receipt/replay
+in actions, and completed/nondeleted-session daily load/EWMA inputs in
+`region-ledger.ts`. No SQL was executed and no counts, started-target,
+normalization or history-preservation checks were removed.
+
+### Measured validation at the code/test tree
+
+Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts src/lib/swim/__tests__/lifecycle.test.ts src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/analytics.test.ts src/lib/offline/__tests__/outbox-core.test.ts src/lib/offline/__tests__/outbox-upgrade.test.ts src/lib/swim/__tests__/load.test.ts src/lib/engine/__tests__/region-daily-load.test.ts src/lib/engine/__tests__/recompute-actual-session-load.test.ts src/lib/engine/__tests__/actual-session-load.test.ts`
+  — **11 files, 607 passed**: reader496, collection1, lifecycle9, actions37,
+  analytics2, outbox19+1, swim load10, daily load4, recompute10, actual load18.
+  Every named path exists; all eleven ran in the same invocation.
+- The collection test ran installed **Playwright1.60.0**
+  `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json`
+  through existing private isolation, independently confirming **22 exact
+  identities/six files/counts2/4/4/8/3/1/zero executed results/errors**, directory
+  identity/mode and exact cleanup. Safe result:
+  `[swim-collection]{"success":true,"exit":0,"loaderCode":"unknown","sources":[]}`.
+- `pnpm --filter @hta/domain exec vitest run src/swimming.test.ts src/swim-pool-input.test.ts src/swim-workout-progress.test.ts`
+  — **3 files, 103 passed**.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts src/swimming-budget.test.ts`
+  — **2 files, 58 passed**.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-lifecycle-load-mobile.spec.ts scripts/swim-browser-acceptance.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+  — passed; `pnpm --filter @hta/web typecheck` — passed.
+- `pnpm docs:check-drift` — passed, offline in-repository checks only.
+  `git diff --check` and four-file checkpoint scope review — passed.
+- `printf 'HEAD %s refs/heads/copilot/new-acceptance-cases %s\n' "$(git rev-parse HEAD)" 1b3653d33442776be18a1923cca0c1813fefcf1e | node scripts/check-commit-identities.mjs pre-push origin`
+  — **130 commits inspected**, full introduced stack against the destination's
+  verified default branch at the code checkpoint. Initial progress publication
+  hit the shallow-history guard; fetching full history fixed that prerequisite
+  without a rewrite or hook bypass.
+- Secret scan clean. CodeQL requested after commit: **skipped as trivial
+  test/casebook changes**, not a successful security analysis. Vite CJS
+  deprecation is a warning, not a failed test.
+
+Local/public metadata for `e42ec690` match the approved source author/committer
+above. Both official bots remain approved under the unchanged four-email policy.
+Only the four authorized source/test files and these three documentation paths
+change; existing credits/history are preserved. No new branch/PR, merge, rebase,
+amend, force, identity rewrite, dependency or extra model chain.
+
+### Coordinator/runtime boundary
+
+**Freeze at22. Live22 and live20 remain UNRUN.** Last full reference remains
+15/15 at `fdf01d865dc09f38e551925266fa604c56a3d40e`,
+[run34351260981](https://github.com/drrowdev/hybrid-training-app/actions/runs/34351260981).
+GitHub's recent-run/log query confirms old core34392005044 has zero failed jobs;
+that old030160 run does not cover this head. Coordinator inspection/current-core
+validation and ONE new-head22 full reference are next. No CI dispatch, live
+browser, SQL, Docker, hosted-data query, production/cost/backup change occurred.
+
+Unchanged: normal149 versus identity146/147/148; Auth5phases/4DDL/15contexts/
+36HTTP; single set_logs FK proof/down-up/23503/delete1/forced check/UPDATE/
+full restoration/cleanup; session_movements. CLI2.116/default12/private0700/0600;
+30s case/300s global/330s command/590s phase/410s server/35m total/3m cleanup/
+45m job; exact-ID cleanup. No new sleep/retry/force-click or limit growth.
+MAIN/production145 seed versus unshipped swim145–148 ordering reconciliation
+remains outside this task and required before final main/production integration.
+All nine standalone gates precede combined training; Garmin remains later.
+Swimming remains inside getsxc.app only. Earlier sections below are historical.
+
 ## PR805 pinned E1/E2 integration — 2026-09-09 — live20 UNRUN
 
 Continued `copilot/new-acceptance-cases` from exact

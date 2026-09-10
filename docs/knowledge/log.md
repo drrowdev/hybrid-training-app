@@ -2694,3 +2694,50 @@ dispatch, browser/SQL/Docker/hosted-data/production work or extra agent chain.
 Only seven authorized paths change; all runtime bounds and Auth/FK controls
 remain. Reconcile MAIN/production0145 seed versus unshipped145–148 before release,
 not here. Nine standalone gates precede combined implementation; Garmin later.
+
+## [2026-09-10] refine | PR805 frozen A3/A4 integration, twenty-two-case source only
+
+Continued exact1b3653d33442776be18a1923cca0c1813fefcf1e, basee2758dad.
+Imported only the lifecycle spec from4122e86b527b2ad6f4fe863ee64d3366457b1d23,
+verified blob954b8718785068a8e18df4292a38d5011bf6d438. No PR811 history, other
+source files or future tip. Native cloud198982749 author/GitHub noreply committer
+verified locally and publicly for published code/test checkpointe42ec6900e0cfe33aadded2aa033229eac1cd5cc,
+tested treedc8d621d20c7f75080ec3019d20a29ade8ab70b8. Full130-commit stack
+identity check passed; initial shallow-history guard fixed by fetching, not
+rewriting or bypassing hooks. Code/tests published before documentation.
+
+DC-SW7/SW8/SW9 A3 replacement/history/primary preservation and A4 offline Finish,
+online-context archive, identical queue replay and single history/load append
+at20/21. Original20 and A1/A2/helpers/shared fixture remain; lifecycle4/5/20/21,
+persistence2/3/18/19, B6/7/12–17, C2index9. Six files/counts2/4/4/8/3/1;
+exact-identity mapping, historical4/6/8/11/12/15/18/20 cohorts and same-total
+A substitutions pinned. Existing annotations/privacy/source attribution stay;
+closed ledgers require22 with no new annotation memberships.
+
+Measured red corrections: initial598/600 passed exposed A2's source-slice
+boundary and two missing empty annotation slots. Seven canonical start-day
+checks then exposed literal16 as partial (600/607 passed), followed by the
+incorrect late-adherence expectation (600/607 passed). Only new A3/A4 changed:
+submit issued lengths, retain strict completed/receipt/native-result checks;
+assert canonical adherence=true, history=true, late=true, progression=false.
+Final lifecycle blobc98b79eb99b1a6c94c40140c7c3bf6bc882f159f. No product,
+normalization, count, started-target or history-preservation relaxation.
+
+Final targeted invocation: eleven existing web files607 passed, including
+reader496 and installed Playwright1.60.0 real private CLI collection1; exact22
+identities/six files/zero executed results/errors and exact cleanup. Domain103,
+engine58, scoped lint/web types/offline doc drift/diff passed. Secret scan clean;
+CodeQL skipped trivial test/casebook changes, not an analysis pass. Source
+assumptions checked against canonical setup/completion/lifecycle/load helpers
+and revision source without SQL execution. HANDOFF retains exact commands,
+provenance, tested tree and all substantive red corrections.
+
+Freeze22; live20/live22 UNRUN. Last full reference15/15@fdf01 run34351260981.
+Old core34392005044 has no failed jobs but does not cover this head. Coordinator
+inspects/current-core then ONE new-head22 full reference; no dispatch, live
+browser/SQL/Docker/hosted queries, production/cost/backup changes or model chain.
+Seven authorized paths only; normal149/identity146–148, Auth5phases4DDL15contexts/
+36HTTP, single-set_logs-FK down/up/23503/delete1/UPDATE/restoration, all deadlines
+and exact-ID cleanup remain. Reconcile main/prod145 seed versus unshipped swim
+145–148 outside this task before integration. Nine standalone gates precede
+combined; Garmin later; swimming inside getsxc.app only.
