@@ -1325,7 +1325,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
         await expect(view.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
       }));
       same(await saved(actor, created.plan.id), after);
-      same(await page.locator("main").innerText(), await other.locator("main").innerText());
+      same(await page.locator("main.cp-main").innerText(), await other.locator("main.cp-main").innerText());
       await page.getByRole("button", { name: "Pause", exact: true }).click();
       await expect(page.getByLabel("Resume from", { exact: true })).toBeVisible();
       const paused = await saved(actor, created.plan.id);
@@ -1415,13 +1415,13 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
         ...entry, workout: final.workouts.find((row) => row.id === entry.workout.id),
       })));
       same(await retained(), protectedRows);
-      const canonicalDisplay = await pages[resumed.winner].locator("main").innerText();
+      const canonicalDisplay = await pages[resumed.winner].locator("main.cp-main").innerText();
       await Promise.all(pages.map(async (view) => {
         await view.reload();
         await expect(view.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
         await expect(stale(view)).toHaveCount(0);
         await expect(view.getByRole("button", { name: "Accept dates and resume", exact: true })).toHaveCount(0);
-        same(await view.locator("main").innerText(), canonicalDisplay);
+        same(await view.locator("main.cp-main").innerText(), canonicalDisplay);
       }));
       same(await saved(actor, created.plan.id), final);
       same(await retained(), protectedRows);
