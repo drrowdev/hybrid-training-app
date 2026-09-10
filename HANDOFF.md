@@ -2,7 +2,102 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
-## LATEST — PR805 initial-Finish coordination regression/fix — 2026-09-10
+## LATEST — PR805 bounded A4 observations — 2026-09-10 — DIAGNOSTICS ONLY
+
+Continued sole writer `copilot/new-acceptance-cases` from exact
+`8d16d231472746d5b9549070646667d205c811dc`, unchanged declared base
+`copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+Published source/test checkpoint **`b2d1046bab5aa3d250ff92cee0f5fd7d048e6975`**,
+exact tested tree **`a003709fa29026cbd846a141c5b3a290f14b7e5d`**;
+`apps/web` subtree **`042608d730c5786c9a0c419bce64c1f052c64e17`**.
+This subsequent handoff/wiki update changes no source/tests.
+
+Coordinator-provided full34448179711@8d16, reference102777539397 ran ALL22
+once: **21 passed, 1 failed, 0 skipped, 0 flaky; total89988ms**.
+A2/A3 passed5556/9493ms; B6/B7 passed2035/3330ms. Only A4 failed8343ms at
+the original lifecycle1180 Edit-result visibility assertion after reconnect.
+All prior A4 offline receipt/second-context archive/stored-state equality steps
+passed. Native16/normal149/catalog/identity/Auth36HTTP/FK/core and both cleanup
+phases passed per coordinator. **FAILED MAIN RETAINED.** Historical source-line
+evidence has no raw error/body/row; no historical logs, log URLs or private
+transcripts were fetched. The independently proven shared-flusher correction is
+unchanged. Neither its relation to earlier failures nor a cause/fix for A4 is claimed.
+
+### Observation semantics and ownership
+
+Only A4 and imports in `apps/web/e2e/swimming-lifecycle-load-mobile.spec.ts`,
+`apps/web/scripts/swim-alert-membership.ts`, and the existing membership/
+browser-acceptance unit tests changed in the source checkpoint.
+
+- `a4-replay`: existing source-derived alert/UI classifications; backend
+  `reached` only for the exact synthetic owner/session, expected completion
+  receipt and valid non-null completion timestamp. Valid incomplete/different
+  receipt is `not-reached`; missing/malformed/read failure is `unavailable`.
+  Revision remains unavailable. This is not history/load or action-outcome proof.
+- `a4-replay-transport`: only the existing C2Transport enum in result; all other
+  fields unavailable. Request matching requires loopback origin, exact workout
+  path, POST, next-action and all three original queued IDs in memory. Responses/
+  failures pair by exact original Request object; later requests cannot replace
+  it. That same object remains the later intentional idempotency replay input.
+- Both points project only at caseINDEX21. Exactly six keys, strict160-character
+  grammar, max16 annotations, old point combinations, case identities/count/order
+  and reader privacy remain. No reader modification or emitted identifiers,
+  URLs, headers, bodies, rows, query errors, counts or arbitrary text.
+- The existing five-second UI assertion runs concurrently with bounded sampling;
+  category text and backend/HTTP outcomes never gate positive assertions.
+  One deadline/AbortController stops writes, aborts the SDK read (automatic retries
+  explicitly disabled), and clears owned timers/listeners. Cleanup drains owned
+  promises; only an already-failed page with pending browser evaluations is closed.
+  There is no post-failure sampling window, added assertion retry/sleep or raised
+  deadline. Annotation/read failures cannot replace the primary UI error.
+- All21 other cases and A4's before/after-window source were byte-compared against
+  8d16. Empty original queue, exact receipt/completion/history/load, archived-late
+  progression exclusion, original-request replay and subsequent equality remain.
+
+### Exact validation (repository root)
+
+Root: `/home/runner/work/hybrid-training-app/hybrid-training-app`.
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-alert-membership.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts src/lib/offline/__tests__/flusher.test.ts src/lib/swim/__tests__/workout-controls.test.tsx src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/lifecycle.test.ts src/lib/swim/__tests__/draft.test.ts`
+  — **8 files / 687 passed**: membership22, reader/source541, privatecollection1,
+  flusher21, controls43, actions37, lifecycle9, draft13.
+- Source-executing VM/EventEmitter/deferred harness uses the official SDK with
+  mocked fetch, not SQL or a browser simulator. Covers exact request pairing,
+  finite transport classes, receipt vs HTTP independence, category-independent
+  sampling, early abort, deadline, pending-read drain, listener/timer cleanup and
+  primary-error preservation; parser/reader tests cover strict A4-only projection.
+- Existing private collection invoked installed **Playwright1.60.0**
+  `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json`:
+  exact22/six files**2/4/4/8/3/1**, zero executed results/errors, private0700
+  directory identity/exact cleanup verified. JSON stays in bounded memory;
+  reader tests separately verify the unchanged0600 report contract.
+  Safe summary `[swim-collection]{"success":true,"exit":0,"loaderCode":"unknown","sources":[]}`.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-lifecycle-load-mobile.spec.ts scripts/swim-alert-membership.ts src/lib/swim/__tests__/swim-alert-membership.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts`,
+  `pnpm --filter @hta/web typecheck`, `pnpm docs:check-drift` (offline),
+  `git diff --check` — passed.
+- `printf 'HEAD %s refs/heads/copilot/new-acceptance-cases %s\n' "$(git rev-parse HEAD)" 8d16d231472746d5b9549070646667d205c811dc | node scripts/check-commit-identities.mjs pre-push origin`
+  —137 existing commits inspected before source publication. Initial progress
+  push failed closed on shallow history; fetched full history, no bypass/rewrite.
+  Published source metadata verifies cloud198982749 author/GitHub noreply committer.
+- Source secret scan clean. Post-commit nontrivial CodeQL request: **zero alerts,
+  no usable analysis** (Actions failed; JavaScript database too large).
+  This is not a security-analysis pass.
+
+Scope: [DC-SW7/SW8/SW9](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).
+**DIAGNOSTICS ONLY: not a bug fix, runtime pass, causal diagnosis or release
+approval.** Coordinator source/privacy/timebound inspection, exact-head core,
+then ONE new-head full22 with safe summary consumed once remain next.
+No live browser/SQL/Docker/hosted/production data, dispatch, delegation, branch,
+merge, history rewrite, product/action/DB/schema/RLS/auth/grant/fixture/workflow/
+dependency/guard/hook changes. CLI2.116/default12/loopback/private0700/0600,
+30s case/300s browser/330s command/590s phase/410s server/35m main+3m cleanup/45m
+job unchanged. Normal149 vs identity146/147/148; Auth5phases4DDL15contexts36HTTP;
+only set_logs FK deferrable; original session_movements RESTRICT/OID and
+23503/delete1/forced-check/invalid-update/down-up/restoration/cleanup proofs remain.
+Unshipped migration ordering/down-plan still needs separate owner approval;
+never reset the ledger. Swimming stays in getsxc.app existing accounts.
+
+## Historical — PR805 initial-Finish coordination regression/fix — 2026-09-10
 
 Continued `copilot/new-acceptance-cases` from exact
 `9419d815e671fe7418fa994bfeca95e562f290ff`, declared base

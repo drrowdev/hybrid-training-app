@@ -2802,3 +2802,37 @@ tree, baseline evidence and limits. No proof either race caused recorded A2/A3;
 no live browser/SQL/Docker/hosted/production work, delegation, rewrite or dispatch.
 Freeze22, preserve9419/B2/A4 and all safeguards; coordinator inspection,
 exact-head core then ONE new-head full22 pending.
+
+## [2026-09-10] refine | PR805 bounded A4 observations, diagnostics only
+
+Continued sole PR805 writer from8d16d231/basee2758dad without branch/history
+changes. Coordinator full34448179711@8d16/reference102777539397 ranALL22 once:
+21pass/1fail/0skip/0flaky,89988ms. A2/A3 pass5556/9493ms; B6/B7 pass2035/3330ms.
+A4 alone fails8343ms at original lifecycle1180 Edit-result visibility after
+reconnect; prior offline receipt/second-context archive/stored equality pass.
+Native16/normal149/catalog/identity/Auth36HTTP/FK/core and both cleanup pass.
+Main failure retained; no historical raw error/body/row or causal inference.
+Proven shared-flusher correction unchanged, not claimed to explain recorded failures.
+
+Published sourceb2d1046bab5aa3d250ff92cee0f5fd7d048e6975,
+testeda003709fa29026cbd846a141c5b3a290f14b7e5d. A4-only a4-replay and
+a4-replay-transport use existing strict six-key160char/max16 grammar and
+caseINDEX21 projection. Backend completion requires exact synthetic session/
+expected receipt/valid completion timestamp, independently of finite HTTP class.
+Loopback/path/body matching retains the exact original Request for later replay.
+Original5s UI assertion runs independently of category/backend; owned deadline,
+abort-aware SDK read without automatic retries, timer/listener/promise cleanup
+and no post-failure sampling preserve the primary error. Other21 cases and A4
+before/after-window source byte-identical; no product/action/DB/fixture changes.
+
+Existing8files687tests pass: membership22, reader/source541, privatecollection1,
+flusher21, controls43, actions37, lifecycle9, draft13. Installed Playwright1.60.0
+actual --list verifies exact22/sixfiles2/4/4/8/3/1/zeroexecution/errors/private0700/
+exactcleanup; reader tests retain0600. Scoped lint/types/offline docs/diff pass;
+source secret scan clean, published cloud198982749/GitHub noreply identities
+verified. CodeQL zero alerts but no usable analysis (Actions failed; JavaScript
+database too large), not a security pass. HANDOFF latest records exact tree,
+commands, counts, source evidence and limits. DIAGNOSTICS ONLY, not a bug fix
+or runtime pass. No historical logs/transcripts, live browser/SQL/Docker, hosted
+data, delegation, dispatch, rewrite or safeguards changes. Coordinator source/
+privacy/timebound inspection, exactheadcore then ONE newheadfull22 remain next.

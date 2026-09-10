@@ -17,7 +17,44 @@ The original first setup case passed in21,892ms, but its earlier Pool-length
 timeout remains **unexplained**; the semantic-HOLD fix is not a demonstrated cause
 of recovery. This closes progression-branch work, not all standalone/release gates.
 
-### Current frozen22 correction — 2026-09-10 — new-head runtime pending
+### Latest frozen22 checkpoint — 2026-09-10 — A4 DIAGNOSTICS ONLY
+
+Coordinator full34448179711@8d16, reference102777539397: ALL22 once,
+**21passed/1failed/0skipped/0flaky,89988ms**. A2/A3 pass5556/9493ms;
+B6/B7 pass2035/3330ms. Only A4 fails8343ms at original lifecycle1180
+reconnect-to-Edit-result visibility; its prior offline receipt/archive/equality
+steps pass. Native16/normal149/catalog/identity/Auth36HTTP/FK/core and both
+cleanup phases pass. **Failed main retained.** No raw historical cause is known.
+The independently proven flusher correction stays; no causal link to either
+the earlier failures or A4 is asserted.
+
+Source checkpoint `b2d1046bab5aa3d250ff92cee0f5fd7d048e6975`,
+tested tree `a003709fa29026cbd846a141c5b3a290f14b7e5d`, adds only
+`a4-replay` and `a4-replay-transport` observations under
+[DC-SW7/SW8/SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).
+Existing six-key/160-character/max16 grammar and caseINDEX21 projection distinguish
+sample-time canonical receipt completion, recognized UI/alerts, and exact original
+request transport. HTTP2xx does not prove completion; request absence is not SQL
+failure. Original request bytes remain only in test memory for unchanged replay.
+The original5s UI assertion owns the window; bounded read-only sampling,
+AbortController/no SDK retries, owned cleanup and primary-error preservation
+add no post-failure sample or product behavior change. All other21 cases and
+A4's before/after-window proofs remain byte-identical.
+
+Existing8suites/**687tests** pass, including deferred source/SDK mocks and strict
+reader tests; installed private Playwright1.60.0 actual --list confirms exact22/
+sixfiles2/4/4/8/3/1, zeroexecution/errors,0700 directory/exactcleanup and unchanged
+reader0600 contract. Lint/types/offline docs/diff and source secret scans pass;
+published native cloud/GitHub identities verified. CodeQL returned zero alerts
+but no usable analysis (Actions failed; JavaScript database too large).
+See [HANDOFF](../../HANDOFF.md) for exact commands and scope.
+**Diagnostics only, not a fix or runtime pass.** No historical logs/private
+transcripts, live browser/SQL/Docker, hosted data, dispatch or delegation.
+Coordinator inspection/exact-head core then ONE new-head full22 remain pending.
+All runtime/Auth/FK/identity/cleanup safeguards and separate migration approval
+requirements below remain unchanged.
+
+### Historical frozen22 correction — 2026-09-10 — then new-head runtime pending
 
 Full22 run34440810700@6d17df0, job102755279732, executed all22 once:
 17 passed,5 failed,0 skipped/flaky; original15 plus E2/A4 passed. Core34440481521
