@@ -1,11 +1,17 @@
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   APPLICATION_SHA, SETUP_PATHS, assertPristine, defaultRuntime, prepareReview,
-  validateContext, validateDatabaseUrl, validateSourceDiff, type Runtime,
+  runSeed, validateContext, validateDatabaseUrl, validateSourceDiff, type Runtime,
 } from "../prepare-swim-review";
+
+vi.mock("node:child_process", async (original) => ({
+  ...await original<typeof import("node:child_process")>(), spawn: vi.fn(),
+}));
 
 const root = resolve(import.meta.dirname, "../../../..");
 const password = encodeURIComponent(["offline", "unit", "only", "42"].join("-"));
@@ -95,7 +101,7 @@ describe("bounded phase evidence and connection cleanup", () => {
     expect(await prepareReview(url, runtime)).toBe(true);
     expect(close).toHaveBeenCalledOnce();
     expect(vi.mocked(runtime.emit).mock.calls.map(([r]) => [r.phase, r.status])).toEqual(
-      ["source", "credentials", "canonical", "connect", "preflight", "migrate", "seed", "verify", "close"]
+      ["source", "credentials", "canonical", "client", "preflight", "migrate", "seed", "verify", "close"]
         .map((phase) => [phase, "passed"]));
   });
   it.each(["source", "canonical", "connect", "migrate", "seed"] as const)(
@@ -173,6 +179,62 @@ describe("bounded phase evidence and connection cleanup", () => {
       expect(close).toHaveBeenCalledOnce();
       expect(runtime.seed).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
+  });
+});
+
+describe("canonical seed subprocess boundary (fake process only)", () => {
+  function child() {
+    const process = Object.assign(new EventEmitter(), {
+      kill: vi.fn(() => true),
+    });
+    vi.mocked(spawn).mockReturnValue(process as unknown as ReturnType<typeof spawn>);
+    return process;
+  }
+  it("discards all raw streams and supplies only bounded isolated connection settings", async () => {
+    const process = child();
+    const result = runSeed(url, new AbortController().signal);
+    const [, args, options] = vi.mocked(spawn).mock.calls.at(-1)!;
+    expect(args).toEqual(["--import", "tsx", "seeds/run.ts"]);
+    expect(options!.stdio).toBe("ignore");
+    expect(Object.keys(options!.env!).sort()).toEqual(["DATABASE_URL", "PATH", "PGSSLMODE"]);
+    const target = new URL(options!.env!.DATABASE_URL!);
+    expect(target.searchParams.get("statement_timeout")).toBe("60000");
+    expect(target.searchParams.get("connect_timeout")).toBe("10");
+    expect(target.searchParams.get("client_min_messages")).toBe("error");
+    process.emit("close", 0);
+    await expect(result).resolves.toBeUndefined();
+  });
+  it.each([1, 99, null])("never treats exit %s as success", async (code) => {
+    const process = child();
+    const result = runSeed(url, new AbortController().signal);
+    process.emit("close", code);
+    await expect(result).rejects.toThrow("Seed process failed");
+  });
+  it("suppresses raw process errors", async () => {
+    const process = child();
+    const result = runSeed(url, new AbortController().signal);
+    process.emit("error", new Error(`private ${url}`));
+    await expect(result).rejects.toThrow(/^Seed process failed$/);
+  });
+  it("kills a timed-out process and fails even if it subsequently reports zero", async () => {
+    vi.useFakeTimers();
+    try {
+      const process = child();
+      const result = runSeed(url, new AbortController().signal);
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(process.kill).toHaveBeenCalledWith("SIGKILL");
+      process.emit("close", 0);
+      await expect(result).rejects.toThrow("Seed deadline exceeded");
+    } finally { vi.useRealTimers(); }
+  });
+  it("kills the child on bootstrap cancellation", async () => {
+    const process = child();
+    const controller = new AbortController();
+    const result = runSeed(url, controller.signal);
+    controller.abort();
+    expect(process.kill).toHaveBeenCalledWith("SIGKILL");
+    process.emit("close", null);
+    await expect(result).rejects.toThrow("Seed deadline exceeded");
   });
 });
 

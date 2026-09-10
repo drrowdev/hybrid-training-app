@@ -93,7 +93,7 @@ type Client = {
   query(text: string, parameters?: string[]): Promise<Record<string, unknown>[]>;
   close(): Promise<void>;
 };
-type Phase = "source" | "credentials" | "canonical" | "connect" | "preflight" |
+type Phase = "source" | "credentials" | "canonical" | "client" | "preflight" |
   "migrate" | "seed" | "verify" | "close";
 type Evidence = {
   phase: Phase; status: "passed" | "failed";
@@ -129,9 +129,17 @@ export async function preflight(client: Client) {
       AS "ledgerAbsent",
     NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace
       WHERE nspname NOT IN ('public', 'auth', 'storage', 'extensions', 'graphql', 'graphql_public',
-        'realtime', 'supabase_functions', 'supabase_migrations', 'vault', 'net',
+        'realtime', 'supabase_functions', 'vault', 'net',
         'pg_catalog', 'information_schema', 'pg_toast')
-      AND nspname NOT LIKE 'pg_temp_%' AND nspname NOT LIKE 'pg_toast_temp_%') AS "schemasExpected",
+      AND nspname NOT LIKE 'pg_temp_%' AND nspname NOT LIKE 'pg_toast_temp_%')
+    AND NOT EXISTS (
+      SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname NOT IN ('public', 'pg_catalog', 'information_schema', 'pg_toast')
+        AND n.nspname NOT LIKE 'pg_temp_%' AND n.nspname NOT LIKE 'pg_toast_temp_%'
+        AND c.relkind IN ('r', 'p', 'v', 'm', 'f') AND c.relowner = 'postgres'::regrole
+        AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+          WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e')
+    ) AS "schemasExpected",
     NOT EXISTS (SELECT 1 FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public' AND NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid = 'pg_proc'::regclass
@@ -269,7 +277,7 @@ export async function prepareReview(raw: string | undefined, runtime: Runtime): 
     const url = validateDatabaseUrl(raw); complete();
     phase = "canonical";
     const canonical = runtime.canonical(); complete();
-    phase = "connect";
+    phase = "client";
     client = runtime.connect(url); complete();
     phase = "preflight";
     await bounded(() => preflight(client!)); complete();
