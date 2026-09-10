@@ -2,6 +2,47 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## LATEST — PR805 A7 final-return ordering correction — 2026-09-10
+
+Started at live-verified `1d8e13ae7a6019316ba0009790f3ea8a9b9eb0b2`, same feature
+branch and exact base `e2758dadbb110e03794e49d53b47622a6295e988`.
+Source/test fix saved early as **`3223208393f815ded5d473717ce4aa493a83b036`**.
+For [DC-SW7/DC-SW9](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05),
+A7's final link click now awaits the exact workout URL and saved-result content
+before reload, following A5 without editing it. The spec delta is exactly two
+waits; every post-reload result/prescription/row/limitation/primary/load check,
+other24 bodies, helpers, cohort and guards remain unchanged.
+
+Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `git diff --exit-code 1d8e13ae7a6019316ba0009790f3ea8a9b9eb0b2 -- apps/web/e2e/swimming-lifecycle-load-mobile.spec.ts`
+  passed before the fix. Then
+  `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts -t 'A7 DC-SW7/DC-SW9: the authored final return'`
+  **failed against unchanged1d8 source**: reload already called once while
+  destination was pending. Same command after correction: **1 passed** (589
+  unselected). The regression transpiles/VM-executes the actual final block,
+  separately holds destination and result rendering, then proves one reload
+  followed by the original saved-result assertion. No browser/network/DB.
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-alert-membership.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+  — **1022 passed**, four files25/590/406/1. Installed private Playwright1.60.0
+  `--list`: exact25/sixfiles2/4/7/8/3/1, zeroexecution/errors; safe collection
+  result success/exit0/unknown/empty sources. A7index24 and A3/A4points20/21 intact.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-lifecycle-load-mobile.spec.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts`
+  and `pnpm --filter @hta/web typecheck` — passed; `git diff --check` passed.
+  Source secret scan clean; mandatory CodeQL skipped test-only changes.
+
+Initial progress push failed closed on shallow history; fetched full history,
+without rewrite or hook bypass. Source publication passed unchanged mandatory
+pre-push hooks; local/public cloud198982749 author and GitHub noreply committer
+verified. No dependency, product, fixture, workflow, timeout or runtime changes.
+**Collection is not runtime acceptance.** Accepted24@0a0e/full34460014574 remains
+accepted; previous worker34461618056 completed successfully, not restarted.
+Coordinator source/ref/no-writer/CI inspection, exact-head core then ONE full25
+remain pending with the existing exact-SHA/nonproduction flags. Seven of nine
+standalone gates remain covered; A7 and concurrency runtime remainder, separate
+combined/production approvals, owner migration ordering/down-plan and deferred
+backups remain unchanged. No browser/server/database startup or workflow dispatch.
+
 ## LATEST — PR805 standalone A7 source — 2026-09-10
 
 Verified live source `copilot/new-acceptance-cases@0a0e64fec61074d05651246bb9b6eb1e964d1820`

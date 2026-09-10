@@ -2866,3 +2866,26 @@ no new diagnostic points. HANDOFF records checks and limits. No runtime/browser
 acceptance claimed; coordinator exact-head core then ONE full25 still required.
 Concurrent scheduling/proposal acceptance, combined and production authority
 remain outside this task; backups deferred.
+
+## [2026-09-10] refine | PR805 A7 final-return navigation boundary
+
+Live head1d8e13ae/basee2758dad verified; source/test saved early as32232083.
+A7 repeated A5's corrected click/reload race. Added only exact destination and
+saved-result waits before its final reload; all original post-reload oracles,
+other24 bodies/helpers and closed25/privacy guards unchanged (DC-SW7/DC-SW9).
+From `/home/runner/work/hybrid-training-app/hybrid-training-app`,
+`pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts -t 'A7 DC-SW7/DC-SW9: the authored final return'`
+failed on unchanged1d8 source (reload called once while destination pending),
+then passed1 after correction. Actual authored block executes through existing
+transpile/VM tools with independently deferred destination/result and original
+post-reload assertion; no browser/network/DB.
+`pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-alert-membership.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+passed1022 (25/590/406/1). Installed private Playwright1.60.0 --list:
+25/sixfiles2/4/7/8/3/1/zeroexecution/errors; A7index24/A3-A4points20-21 intact.
+`pnpm --filter @hta/web exec eslint e2e/swimming-lifecycle-load-mobile.spec.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts`,
+`pnpm --filter @hta/web typecheck` and `git diff --check` passed.
+Secret scan clean, mandatory CodeQL skipped test-only changes; unchanged
+pre-push hooks passed, native cloud/GitHub identities verified locally/publicly.
+HANDOFF records evidence and scope. Accepted24 remains accepted; collection is
+not runtime. Coordinator exact-head core and ONE guarded full25 still pending;
+A7/concurrency remainder and separate combined/production approvals unchanged.
