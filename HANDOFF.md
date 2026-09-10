@@ -30,13 +30,51 @@ to a stale index20 projection expectation, corrected before checkpoint.
 Private installed Playwright1.60.0 actual `--list` passed exact24/sixfiles
 2/4/6/8/3/1, zero execution/errors; safe collection result success=true/exit0.
 `git diff --check` and changed-file secret scan passed. Scoped lint/types and
-final source-executing pairing checks remain pending.
+final source-executing pairing checks subsequently passed (below).
 Initial progress publication hit the existing
 full-history identity guard; `git fetch --unshallow origin` loaded history without
 rewriting it. No private worker command/result or historical logs/transcripts
 were obtained. Only ordinary CI identity-job metadata/log tail was inspected.
 Coordinator still owns exact-head core then ONE guarded full24; collection is
 not browser acceptance. No product, services, database, dispatch or guard changes.
+
+### Saved checkpoints and final local validation
+
+`f035f72bd40b0a0e2779ee7b9e6e637b9bbf84c1` saved the observation/docs checkpoint
+locally before publication was stopped by FormData ID type narrowing errors.
+`cd7c825b7534968e212037e2e745f1dd51b053dd` fixed those errors and added pinned
+encoder coverage; both checkpoints are published. Both public/local author emails
+are cloud Copilot `198982749+Copilot@users.noreply.github.com`, committer
+`noreply@github.com`. The unchanged pre-push identity guard passed (143 commits
+at first checkpoint); publication subsequently passed the mandatory hook.
+That hook runs workspace typechecks/package tests/db:check/docs drift; no
+separate full-suite/build command was requested or run.
+
+Final four-selector command above: **1009/1009 passed** (25 membership,
+577 browser-reader/acceptance including source-executing A3 cases, 406 acceptance,
+1 actual private collection), **5.64s**. The earlier post-decoder run passed995/995.
+Collection remains24/sixfiles2/4/6/8/3/1, zero execution/errors; this is NOT browser
+acceptance. Pinned13-mode decoder coverage rejects malformed/ambiguous fields and
+invalid IDs. Fourteen source-executing observation modes cover fast original
+response, unseen/pending/failed/unpaired transport, wrong origin/path, invalid
+pairing, wrong receipt/null or invalid timestamp, aborted SDK read, read failure,
+and ambiguous second request. They preserve the original UI error, one unchanged
+visibility assertion, abort reads with retries disabled, detach owned listeners,
+clear the owned timer and prohibit post-failure samples.
+
+Also passed, from repository root:
+- `pnpm --filter @hta/web exec eslint e2e/swimming-lifecycle-load-mobile.spec.ts scripts/swim-alert-membership.ts src/lib/swim/__tests__/swim-alert-membership.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts`
+- `pnpm --filter @hta/web typecheck`
+
+Required CodeQL on the published observation source returned zero alerts but
+**no usable analysis** (Actions failed; JavaScript database too large), not a
+security pass. Final added regression/docs checkpoint does not change that source.
+No exact-head core or full24 browser acceptance has run here. Coordinator source/
+privacy/ref/no-writer/CI guards, exact-head core, then ONE full24 with exact
+expected_sha remain required. Current main/nativeStack804 and production
+unshipped-only migration ordering/down-plan still require owner approval;
+no migration ledger/production authority assumed. Existing gaps/gates, swimming
+in getsxc.app existing accounts, and deferred backups remain unchanged.
 
 ## LATEST — PR805 bounded A4 observations — 2026-09-10 — DIAGNOSTICS ONLY
 

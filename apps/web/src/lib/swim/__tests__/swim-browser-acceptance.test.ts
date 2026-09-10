@@ -1139,6 +1139,103 @@ describe("browser environment and static config", () => {
     } finally { arrive(); render(); await pending; }
     expect(calls).toEqual(["click", "destination", "state", "reload", "state"]);
   });
+  it.each(["fast", "unseen", "pending", "failed", "unpaired", "wrong-origin", "wrong-path",
+    "invalid-pair", "wrong-receipt", "null-time", "invalid-time", "held-read", "read-error", "duplicate"])(
+    "A3 DC-SW7/DC-SW8: original Finish %s observation never gates or replaces the five-second UI goal", async (mode) => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+      try {
+        const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+        const a3 = source.slice(source.indexOf('  test("A3,'));
+        const block = a3.slice(a3.indexOf('    {\n      const diagnostic'), a3.indexOf("    await page.goto(original.url);"));
+        const { isUuid } = await import("../../offline/outbox-core");
+        const userId = "11111111-1111-4111-8111-111111111111";
+        const workoutId = swimFixture().workouts[0]!.id;
+        const baseURL = "http://127.0.0.1:3210";
+        const url = `${baseURL}/app/swim/${workoutId}`;
+        const request = {
+          url: () => mode === "wrong-origin" ? url.replace("3210", "3211") :
+            mode === "wrong-path" ? `${baseURL}/app/swim/${sessionId}` : url,
+          method: () => "POST", headers: () => ({ "next-action": "synthetic-action" }),
+        };
+        const events = new EventEmitter();
+        const unrelated = () => {};
+        for (const event of ["request", "response", "requestfailed"]) events.on(event, unrelated);
+        let rejectPrimary!: (error: Error) => void;
+        const primary = new Promise<void>((_, reject) => { rejectPrimary = reject; });
+        const originalError = new Error("original-ui-error");
+        const toBeVisible = vi.fn(() => primary);
+        const signals: AbortSignal[] = [];
+        const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+          const query = new URL(String(input));
+          expect(query.pathname).toBe("/rest/v1/sessions");
+          expect(query.searchParams.get("user_id")).toBe(`eq.${userId}`);
+          expect(query.searchParams.get("id")).toBe(`eq.${sessionId}`);
+          expect(query.searchParams.get("select")).toBe("id,user_id,completion_outbox_entry_id,completed_at");
+          const signal = init!.signal as AbortSignal;
+          signals.push(signal);
+          if (mode === "held-read") await new Promise<void>((_, reject) => {
+            signal.addEventListener("abort", () => reject(new Error("synthetic-private-abort")), { once: true });
+          });
+          if (mode === "read-error") throw new Error("synthetic-private-read");
+          return Response.json({ id: sessionId, user_id: userId,
+            completion_outbox_entry_id: mode === "wrong-receipt" ? workoutId : receiptId,
+            completed_at: mode === "null-time" ? null : mode === "invalid-time" ? "invalid" : "2026-09-10T00:00:00Z" });
+        });
+        const admin = createClient("http://127.0.0.1:54321", "synthetic-service", {
+          global: { fetch }, auth: { autoRefreshToken: false, persistSession: false },
+        });
+        const evaluateAll = vi.fn(async (classifier: unknown) => classifier === classifyWorkoutViewNodes ?
+          { control: "log", result: "editing" } : { count: 0, category: "absent" });
+        const click = vi.fn(async () => {
+          expect(events.listenerCount("response")).toBe(2);
+          expect(events.listenerCount("requestfailed")).toBe(2);
+          if (mode === "unseen") return;
+          events.emit("request", request);
+          if (mode === "duplicate") events.emit("request", { ...request });
+          if (mode === "failed") events.emit("requestfailed", request);
+          else if (mode !== "pending") events.emit("response", {
+            request: () => mode === "unpaired" ? {} : request, status: () => 200,
+          });
+        });
+        const locator = { or: () => locator, filter: () => locator, evaluateAll, click };
+        const testInfo = { annotations: [] as unknown[] };
+        const execute = runInNewContext(transpileModule(`(async () => { ${block} })`, {
+          compilerOptions: { target: ScriptTarget.ES2022 },
+        }).outputText, {
+          page: { url: () => url, on: events.on.bind(events), off: events.off.bind(events), getByRole: () => locator },
+          admin, userId, baseURL, testInfo, expect: () => ({ toBeVisible }),
+          submittedCompletionReceipt: async () => mode === "invalid-pair" ? undefined : { sessionId, receiptId },
+          isUuid, a4ReplayBackend, c2HttpClass, c2Transport, unavailableAlert, alertAnnotation,
+          classifyAlertNodes, classifyWorkoutViewNodes, SWIM_ALERT_CODEBOOK, validateAlertCategory,
+          AbortController, URL, performance, setTimeout, clearTimeout,
+        }) as () => Promise<void>;
+        const outcome = execute().catch((error: unknown) => error);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(toBeVisible).toHaveBeenCalledTimes(1);
+        expect(toBeVisible).toHaveBeenCalledWith();
+        await vi.advanceTimersByTimeAsync(5000);
+        rejectPrimary(originalError);
+        expect(await outcome).toBe(originalError);
+        expect(click).toHaveBeenCalledTimes(1);
+        expect(click).toHaveBeenCalledWith();
+        expect(vi.getTimerCount()).toBe(0);
+        expect(signals.every((signal) => signal.aborted)).toBe(true);
+        for (const event of ["request", "response", "requestfailed"]) expect(events.listeners(event)).toEqual([unrelated]);
+        const observations = readAlertAnnotations(testInfo.annotations)!;
+        expect(observations).toHaveLength(2);
+        expect(observations[0]!.backend).toBe(mode === "fast" ? "reached" :
+          ["wrong-receipt", "null-time"].includes(mode) ? "not-reached" : "unavailable");
+        expect(fetch).toHaveBeenCalledTimes(["fast", "wrong-receipt", "null-time", "invalid-time", "held-read", "read-error"].includes(mode) ? 1 : 0);
+        const saved = JSON.stringify(testInfo.annotations);
+        for (const value of [userId, workoutId, sessionId, receiptId, "synthetic-", "127.0.0.1"]) expect(saved).not.toContain(value);
+        const reads = evaluateAll.mock.calls.length;
+        events.emit("response", { request: () => request, status: () => 200 });
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(evaluateAll).toHaveBeenCalledTimes(reads);
+        expect(JSON.stringify(testInfo.annotations)).toBe(saved);
+      } finally { vi.useRealTimers(); }
+    },
+  );
   it("A3 DC-SW7/DC-SW8: original completion pairing decodes pinned FormData and rejects ambiguous or invalid IDs", async () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
     const helper = source.slice(source.indexOf("  async function submittedCompletionReceipt("), source.indexOf('  test("A3,'));
