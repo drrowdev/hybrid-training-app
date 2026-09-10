@@ -2,6 +2,62 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## LATEST — PR805 A7 filled Notes selector correction — 2026-09-10
+
+Started at exact live `524c59355f04cfd7849c1f161300f761cd874cdc`, base
+`e2758dadbb110e03794e49d53b47622a6295e988`; sole worker on the existing branch.
+Source/test saved early as **`5c8b18cbb3e4def42f1979bfc3b8e8bbadf3cc2e`**.
+Only A7's two Notes lookups now use the existing exact textbox accessible name
+([DC-SW7/DC-SW9](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)).
+Exact retained value, whole-draft equality, canonical notes/receipt/history/load,
+restriction/primary/row invariants, future rejections and final-navigation waits
+remain unchanged. Other24 cases and the uncontrolled Reason field are untouched.
+
+Coordinator-supplied runtime evidence: exact-head core **34464155869 passed**;
+full25 **34464675255 attempt1: 24 passed / 1 failed**, zero flaky/skipped,
+155281ms. Original24 passed again. Only A7 failed,9435ms, at original line2005
+exact Notes lookup. Start, four stored draft fields, real limitation save/owner
+row, unchanged swim rows, return and restored lengths/time/RPE/disclosure passed.
+Finish/future Start/resume checks were not reached. All10 non-browser main stages
+and both cleanups passed, including Native16, normal149/catalog, identity
+5phases4DDL15contexts, Auth36HTTP, FK proof and core/identity. **Main remains failed,
+not25/25.** Run metadata confirmed status; only a log URL was requested to satisfy
+the required CI investigation, without downloading raw logs or transcripts.
+Previously consumed reference records and prior worker were not rerun.
+
+Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/workout-controls.test.tsx -t 'A7 DC-SW7/DC-SW9: retained Notes'`
+  before the spec fix: **1 failed** at the authored-source lookup check. Earlier
+  assertions passed: installed Playwright1.60.0 exact label engine finds empty
+  Notes but not filled Notes; its role engine finds both and reads the exact
+  retained value. Actual WorkoutClient SSR label/textarea, React19.2.4 and the
+  existing Capacitor→plist DOM parser are used; selector algorithms are executed
+  unchanged from the installed bundle. A limited HTML DOM adapter models the
+  isolated, disclosed label. This does **not** execute hydration, the restore
+  effect, browser layout or navigation, and does not demonstrate lost notes.
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/workout-controls.test.tsx src/lib/swim/__tests__/draft.test.ts src/lib/swim/__tests__/swim-alert-membership.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+  — **1079 passed**, six files44/13/25/590/406/1. Private installed Playwright1.60.0
+  `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json`
+  collected frozen25/sixfiles2/4/7/8/3/1, zero execution/errors; A7index24,
+  original24 prefix and A3/A4 diagnostic points20/21 intact. Safe collection
+  result success/exit0/unknown/empty sources; private cleanup passed.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-lifecycle-load-mobile.spec.ts src/lib/swim/__tests__/workout-controls.test.tsx`,
+  `pnpm --filter @hta/web typecheck`, `pnpm docs:check-drift` (offline) and
+  `git diff --check` passed. Secret scan clean; mandatory CodeQL skipped test-only
+  changes. Native pre-push hooks passed after fetching missing full history;
+  source author/committer identities verified locally and publicly.
+
+No product/storage/dependency/fixture/workflow/runtime changes, service startup,
+browser execution, delegation, dispatch, hook bypass or history rewrite.
+**Collection is not runtime acceptance.** Coordinator must inspect saved source
+and exact-head core before ONE new-head full25 with exact expected SHA,
+`swim_acceptance=true`, `migrate_production=false`, `allow_undeployed=false`.
+Seven of nine standalone gates remain covered; A7/concurrency remainder stays
+open. No combined work before all9. Production still needs current-main/native
+stack reconciliation and owner-approved unshipped-only ordering/down plan, never
+a ledger reset. Existing getsxc.app accounts and deferred backups are unchanged.
+
 ## LATEST — PR805 A7 final-return ordering correction — 2026-09-10
 
 Started at live-verified `1d8e13ae7a6019316ba0009790f3ea8a9b9eb0b2`, same feature

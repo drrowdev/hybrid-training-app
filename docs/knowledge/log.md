@@ -2889,3 +2889,31 @@ pre-push hooks passed, native cloud/GitHub identities verified locally/publicly.
 HANDOFF records evidence and scope. Accepted24 remains accepted; collection is
 not runtime. Coordinator exact-head core and ONE guarded full25 still pending;
 A7/concurrency remainder and separate combined/production approvals unchanged.
+
+## [2026-09-10] refine | PR805 A7 filled Notes selector
+
+Exact live524c5935/basee2758dad verified; source/test saved early as5c8b18cb.
+Only A7's two Notes lookups use the exact textbox role/name (DC-SW7/DC-SW9).
+All value/draft/canonical/safety oracles, final-navigation waits, other24 and
+Reason remain unchanged. Coordinator evidence: core34464155869 passed;
+full34464675255attempt1 failed24pass/1fail,0flaky/skipped,155281ms. A7 alone
+failed9435ms at original Notes lookup line2005; Finish/future Start/resume not
+reached. All10 non-browser stages and both cleanups passed; main is not25/25.
+No raw log/transcript downloaded or prior worker restarted.
+
+From `/home/runner/work/hybrid-training-app/hybrid-training-app`,
+`pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/workout-controls.test.tsx -t 'A7 DC-SW7/DC-SW9: retained Notes'`
+failed before the spec fix at the source-contract check, after proving actual
+WorkoutClient SSR filled Notes fails installed Playwright1.60.0 exact-label
+matching but succeeds with its textbox engine and exact retained value.
+Existing DOM parser plus limited HTML adapter, no copied selector algorithm,
+hydration/restore-effect/browser proof or demonstrated notes loss.
+`pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/workout-controls.test.tsx src/lib/swim/__tests__/draft.test.ts src/lib/swim/__tests__/swim-alert-membership.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+passed1079 (44/13/25/590/406/1), including actual private pinned --list:
+25/sixfiles2/4/7/8/3/1/zeroexecution/errors; A7index24/points20-21 intact.
+Scoped ESLint, web typecheck, offline docs drift and diff checks passed;
+commands and limitations in HANDOFF. Secret scan clean; CodeQL skipped test-only
+changes. Unchanged native hooks passed; source identities verified locally/publicly.
+Collection is not runtime: coordinator inspection/exact-head core/ONE full25
+pending. Seven of nine gates remain covered; A7/concurrency, combined/production
+approvals and deferred backups unchanged. No services, dispatch or product changes.
