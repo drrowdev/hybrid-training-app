@@ -1428,3 +1428,36 @@ budget workouts. All22 identities and reload/storage assertions are preserved.
 Local567 tests and private Playwright1.60.0 collection passed; new-head browser
 acceptance remains pending. Exact source tree, commands and limitations are in
 the appended B6/B7 checkpoint in `HANDOFF.md`; prior checkpoints remain historical.
+
+### PR805 initial-Finish coordination checkpoint — 2026-09-10
+
+Previously omitted source9419d815 scopes B6/B7 reload equality to the unique
+whole workout page `main.cp-main > main`, preserving exact budget/course and
+DB equality. Coordinator full34445940362@9419d815 ran frozen22 once:
+20passed/2failed/0skips/0flaky,124710ms; **B6/B7 now pass3131/3350ms**.
+A2 fails its initial-Finish result assertion at745 (7711ms), before editing;
+post-start observation reached, a2-edit unreached. A3 fails initial-Finish
+Edit result visibility at1003 (8213ms). Other20 including A4 pass; core/native16/
+normal149/catalog/identity/Auth36HTTP/FK and both cleanup phases pass. No raw
+historical evidence establishes a cause. Main browser failure stays failure.
+
+Under DC-SW8, the real shared flusher now joins concurrent callers and honors
+overlapping triggers with fresh FIFO snapshots before settlement. Deferred-promise
+regressions on unchanged source demonstrate two stranded native completions
+(initial/final empty-snapshot boundaries) and loss of completion notification
+at a replaced auto-flush subscription: corrected baseline12pass/3fail, fixed15pass.
+Expanded21 flusher tests protect all modalities, single send per lease, transient
+STOP (including new batches), occupied leases, offline recovery, exact receipts,
+shared failure recovery and subscription cleanup. No UI, canonical view,
+completion action, ownership, bounded retry or dead-letter policy changes.
+
+Source3385edb3, tested tree81ea3eba3308f356b37d4f59e76f40931783c689:
+12 existing suites653passed; private installed Playwright1.60.0 actual collection
+preserves exact22/six files2/4/4/8/3/1/zero execution/errors/private modes/cleanup.
+Scoped lint/web types/offline docs drift/diff and secret scans pass. CodeQL
+returned no alerts but no usable analysis (Actions failed; JavaScript too large).
+HANDOFF's latest top checkpoint records exact commands and evidence limits.
+These controlled source failures are **not proof of historical A2/A3 causation**
+or new-head browser acceptance. B6/B7 fixes, B2/A4 and all22 acceptance sources
+are unchanged. Coordinator inspection/exact-head core/ONE new-head full22 remain;
+no live browser/data work, delegation, dispatch, timeout increase or broader scope.

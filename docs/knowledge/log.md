@@ -2769,3 +2769,36 @@ distances. Five files567 tests, scoped lint, web typecheck and offline doc drift
 passed; actual private Playwright1.60.0 collection preserved22/six files2/4/4/8/3/1,
 zero execution/errors and exact cleanup. HANDOFF records the tested source tree.
 All20 passing cases and runtime safeguards unchanged; new-head full22 pending.
+
+## [2026-09-10] refine | PR805 proven completion-drain overlaps, not historical A2/A3 diagnosis
+
+Continued exact9419d815 on the sole existing PR805 branch/base. Recovered its
+omitted B6/B7 source checkpoint: unique whole-workout-page reload equality,
+exact budget/course and DB equality retained. Coordinator full34445940362 ran22
+once:20pass/2fail/0skip/0flaky,124710ms; B6/B7 pass3131/3350ms. A2 initial-Finish
+summary fails745/7711ms before editing (post-start reached, a2-edit unreached);
+A3 initial-Finish Edit result fails1003/8213ms. All other20 including A4, native16/
+normal149/catalog/identity/Auth36HTTP/FK/core and both cleanup proofs pass.
+Main browser failure retained; no raw historical cause invented or logs fetched.
+
+Actual shared flusher plus controlled storage/action promises reproduce initial
+and final empty-snapshot/new-entry stranding, and replacement-subscription
+notification loss. Corrected baseline12pass/3fail; smallest shared coordination
+fix joins results and honors fresh-snapshot requests without retrying a failed
+head or overtaking a lease. Published3fe00fae promptly; expanded regression
+checkpoint3385edb3/tree81ea3eba3308f356b37d4f59e76f40931783c689. All21 flusher
+tests pass, preserving modalities/FIFO/single lease send/transient STOP/
+bounded retries/dead letters/offline queues/receipt replay/cleanup.
+No UI, action, canonical view, training, DB, ownership or acceptance changes.
+
+Measured12existing suites653pass, including reader498 and private installed
+Playwright1.60.0 actual --list: exact22/six files2/4/4/8/3/1/zero execution/errors,
+private modes and exact cleanup. Scoped lint/types/offline docs drift/diff and
+secret scans pass; full-history identity136commits at source checkpoint passes,
+local/public approved native cloud author/GitHub committer verified. CodeQL
+returned no alerts but did not analyze successfully (Actions failed; JavaScript
+database too large). HANDOFF latest top checkpoint contains commands, exact
+tree, baseline evidence and limits. No proof either race caused recorded A2/A3;
+no live browser/SQL/Docker/hosted/production work, delegation, rewrite or dispatch.
+Freeze22, preserve9419/B2/A4 and all safeguards; coordinator inspection,
+exact-head core then ONE new-head full22 pending.

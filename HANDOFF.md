@@ -2,6 +2,134 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## LATEST — PR805 initial-Finish coordination regression/fix — 2026-09-10
+
+Continued `copilot/new-acceptance-cases` from exact
+`9419d815e671fe7418fa994bfeca95e562f290ff`, declared base
+`copilot/prepare-mobile-persistence-tests@e2758dadbb110e03794e49d53b47622a6295e988`.
+Implementation checkpoint `3fe00fae27f95006db8dc26f8cce58dd89ba5b61`;
+expanded regression checkpoint **`3385edb3ada1aace59a34b7e9433860db07c87c6`**,
+exact tested code/test tree **`81ea3eba3308f356b37d4f59e76f40931783c689`**.
+This later documentation-only checkpoint does not change that code/test tree.
+Only `apps/web/src/lib/offline/flusher.ts`, its existing
+`__tests__/flusher.test.ts`, and the three authorized documents changed.
+
+### Runtime provenance, including the previously omitted 9419 source checkpoint
+
+`9419d815` changed only B6/B7's before/after reload snapshots from ambiguous
+global `main` to the unique whole workout page `main.cp-main > main`, asserting
+one match before and after reload. It preserved exact course/budget assertions
+and complete workout-page text plus DB equality. This source correction and the
+earlier summary-scoped course correction are **unchanged here**.
+
+Coordinator-provided full34445940362@9419d815 executed ALL22 ONCE:
+**20 passed, 2 failed, 0 skipped, 0 flaky**, total case124710ms.
+**B6/B7 passed3131/3350ms**, including exact budget/course, entire workout page
+before/after reload and DB equality. New failures in unchanged lifecycle source:
+A2 at745 in7711ms, initial-Finish `16 lengths · 15:00 · RPE 6` assertion,
+BEFORE editing; post-start observation reached, later a2-edit unavailable because
+unreached. A3 at1003 in8213ms, initial-Finish Edit result visibility. Both passed
+previous runs; all other20 including A4 passed. Native16, normal149,
+catalog/identity matched, Auth36HTTP/FK matched, core/identity, main and separate
+final cleanup passed per coordinator. **The main browser failure remains failure.**
+No raw historical errors, rows or network bodies are available, and none were
+inferred. Actions metadata matched the supplied run; no old logs/log URLs or
+private transcripts were fetched.
+
+### Demonstrated source invariants, not a retrospective runtime diagnosis
+
+Read the whole `WorkoutClient` submit/queue effect, both shared-flusher consumers
+(WorkoutClient and SessionWorkArea), outbox claims/classification/durable action,
+`completeSwimWorkoutResult`, `WorkoutScreen` and `nextConfirmedView` before fixing.
+Completion still requires a server acknowledgement and refreshed canonical props.
+The existing view helper accepts newer completion props and rejects stale ones;
+neither the UI nor completion action/view policy needed modification.
+
+Existing Vitest mocks and explicitly resolved promises exercise the **real**
+`flushOutbox`/`startAutoFlush`, not a copied algorithm or scheduler sleeps.
+The unchanged production implementation, with the first five regression cases:
+
+- **12 passed, 3 failed (15 total).** A pending read held at either the initial
+  empty snapshot or the final remaining-count snapshot, followed by a new native
+  completion and overlapping flush request, leaves that completion queued without
+  sending it. The replacement auto-flush subscriber receives empty completion
+  counts instead of the eventual confirmed completion; the stopped callback
+  remains suppressed. Both returned/thrown transient-error controls pass.
+- An earlier harness run had an unsupported Vitest matcher; it was corrected
+  before the substantive baseline above. It is not counted as product evidence.
+- The fix shares the active drain's aggregate result and coalesces overlapping
+  triggers into a fresh FIFO snapshot before settlement, including triggers
+  arriving during the final pending-count read. Merely joining the old snapshot
+  would not fix the stranded-entry regressions.
+- A transient failure below the retry limit or denied head lease stops the
+  entire joined drain: no overlap-driven immediate retry or overtaking. Existing
+  terminal/dead-letter behavior and bounded attempts remain. The lock clears on
+  settlement/failure; offline/unavailable queues wait for a later trigger.
+- Expanded **21 flusher tests pass**: mixed set/cardio/cardio-session/session
+  completion/native-swim order, one send per claimed lease, shared canonical
+  completion counts, transient failure in the newly discovered batch, occupied
+  cross-tab lease, unchanged receipt on later retry, offline recovery, shared
+  storage failure/recovery and subscription timer/listener cleanup. Existing
+  poison-head/exhausted-budget tests still pass.
+
+These tests prove missed drain/notification behavior at controlled mocked
+storage/action boundaries. They do **not** prove either window occurred in
+full34445940362, nor that the UI fallback queue check failed. They do not exercise
+real IndexedDB, React effects, network delivery, SQL or new-head browser timing.
+No flakiness diagnosis, invented saved UI, new diagnostic fields or timeout change.
+B2 lost-response and A4 archived-offline source/assertions remain untouched;
+source tests are not a new live pass for them.
+
+### Exact source validation
+
+Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- Baseline: `pnpm --filter @hta/web exec vitest run src/lib/offline/__tests__/flusher.test.ts`
+  — corrected baseline12pass/3fail; after fix15pass.
+- First fixed checkpoint:
+  `pnpm --filter @hta/web exec vitest run src/lib/offline/__tests__/flusher.test.ts src/lib/swim/__tests__/workout-controls.test.tsx src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/lifecycle.test.ts`
+  — **4 files104 passed** (15/43/37/9).
+- Final tested code/test tree:
+  `pnpm --filter @hta/web exec vitest run src/lib/offline/__tests__ src/lib/swim/__tests__/workout-controls.test.tsx src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/lifecycle.test.ts src/lib/swim/__tests__/draft.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+  — **12 files653 passed**: flusher21, outbox-core19, durable-action6,
+  session-completion4, outbox-upgrade1, client-id1, workout-controls43,
+  actions37, lifecycle9, draft13, acceptance-reader498, private-collection1.
+- Collection ran installed **Playwright1.60.0** actual
+  `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json`:
+  exact22 identities/six files2/4/4/8/3/1, zero execution/errors; private0700
+  directory identity and exact cleanup verified. Reader tests retain the private
+  0600 report contract; collection output stays in bounded memory.
+  Safe result `[swim-collection]{"success":true,"exit":0,"loaderCode":"unknown","sources":[]}`.
+- `pnpm --filter @hta/web exec eslint src/lib/offline/flusher.ts src/lib/offline/__tests__/flusher.test.ts`,
+  `pnpm --filter @hta/web typecheck`, `pnpm docs:check-drift` (offline in-repo),
+  and `git diff --check` — passed.
+- `git diff 9419d815e671fe7418fa994bfeca95e562f290ff --quiet -- /home/runner/work/hybrid-training-app/hybrid-training-app/apps/web/e2e /home/runner/work/hybrid-training-app/hybrid-training-app/apps/web/scripts`
+  — exit0: acceptance cases/reader/reporting/runner sources unchanged.
+- `printf 'HEAD %s refs/heads/copilot/new-acceptance-cases %s\n' "$(git rev-parse HEAD)" 9419d815e671fe7418fa994bfeca95e562f290ff | node scripts/check-commit-identities.mjs pre-push origin`
+  — passed, **136 introduced commits inspected** at3385edb3. Initial progress
+  publication failed closed on shallow history; full history fetched, no rewrite
+  or hook bypass. Both source checkpoints' local/public metadata verify native
+  cloud198982749 author and GitHub `noreply@github.com` committer.
+- Source secret scans clean. Post-commit nontrivial CodeQL request returned
+  **zero alerts but no usable analysis**: Actions analysis failed; JavaScript
+  skipped because database size was too large. This is not a security-analysis
+  pass. No dependencies or action/ownership/receipt classification rules changed.
+
+Scope respects [DC-SW7/SW8/SW9](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).
+Freeze22 identities/order/six files/all native/history/load assertions. No
+domain/engine/training math/DB/schema/RLS/auth/grants/fixture/workflow/identity
+guard/hook/AGENTS changes; no browser execution, SQL, Docker, hosted-data,
+production, dispatch, delegation, new branch, merge or history rewrite.
+CLI2.116/default12services/private0700/0600/loopback and deadlines
+30s case/300s browser/330s command/590s phase/410s server/35m main+3m cleanup/45m
+job remain. Normal149 vs identity146/147/148; Auth5phases4DDL15contexts36HTTP;
+only set_logs FK deferrable, original session_movements RESTRICT/OID,
+23503/delete1/forced checking/invalid-update/down-up/restoration/exact cleanup
+remain. Main145/unshipped swim145–148 ordering/downplan needs later owner
+approval; never reset the ledger. Backups deferred; swimming stays in getsxc.app.
+**Next: coordinator inspects this head, exact-head core, then ONE new-head full22.
+New-head runtime acceptance and historical A2/A3 causation are not proved.**
+
 ## PR805 frozen22 five-failure source correction — 2026-09-10
 
 Continued the existing branch at exact
