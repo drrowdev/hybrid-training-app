@@ -40,12 +40,12 @@ covers dates, targets, decisions, status, receipt/history and load, including re
 All runtime rows/IDs/input values remain in memory; new assertions use booleans
 and static safe errors, with permitted positive limitation feedback.
 
-Local validation is being checkpointed before lengthy mandatory hooks.
+Local validation was checkpointed before lengthy mandatory hooks.
 First affected four-selector run:1020pass/1fail (one stale24-slot observation
 expectation); scoped lint passed, web types found one nullable ID. Both corrected.
 Its installed private Playwright1.60.0 `--list` already collected25 once with
-zero execution/errors; **collection is not browser acceptance**. Final commands
-and counts are recorded below after verification.
+zero execution/errors; **collection is not browser acceptance**. Final verified
+commands and counts are recorded below.
 Initial progress push hit the unchanged shallow-history guard; only
 `git fetch --unshallow origin` was used to load history. No rewrite or hook bypass.
 Node22.23.2/pnpm10.33.2 and dependency/runtime/guard settings remain unchanged.
@@ -85,8 +85,15 @@ Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
   proved A1–A6 plus intervening helpers byte-identical; other accepted case files
   are untouched. Changed-file secret scan passed.
 
-No separate full core/build run; the existing mandatory pre-push hook may run
-workspace typechecks/package tests/db schema checks/docs drift normally.
+Source checkpoint **e509c70d889db19133a978bb3e65f77e4ae9da0b** is published.
+The unchanged mandatory pre-push hook passed (identity history, workspace types,
+package tests, db schema check, docs drift); no separate full core/build run.
+Local and public metadata both show native cloud Copilot author
+`198982749+Copilot@users.noreply.github.com` and committer `noreply@github.com`.
+Live base remains exacte2758dad. Mandatory CodeQL returned skipped for test-only/
+documentation changes, not a runtime safety pass. Final source scope is only
+the lifecycle spec, closed reader and its two existing test files, HANDOFF,
+pool-swimming wiki and append-only knowledge log.
 
 ## LATEST — PR805 A3 first-Finish observations — 2026-09-10
 
