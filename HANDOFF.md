@@ -2,6 +2,42 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## LATEST — PR805 B9 schedule-version oracle correction — 2026-09-10
+
+Sole805 writer refreshed head `ff133f056d1857e2096da438e7ea71bc460e19bc`
+and base `e2758dadbb110e03794e49d53b47622a6295e988`. Prior1acdd/be5ad
+remain terminal; their B9 work and unique `main.cp-main` lookups are preserved.
+Coordinator-supplied FIRST full26 **34487229136 attempt1@ff133f** executed
+all26 once: original25 passed, only B9 failed (7592ms), total147834ms,
+0 flaky/skipped, sixfiles2/4/7/9/3/1. Main failed despite both verified cleanups;
+the other ten stages passed. Exact-head core34486576111 passed beforehand.
+The shared `same()` line71 does not identify the failing caller or phase.
+No consumed reference/private agent logs or reports were fetched.
+
+Source-confirmed oracle defect only: real `actions.ts` resume appends a
+schedule decision with `ruleVersion=SWIM_SCHEDULE_VERSION`
+(`swim-standalone-schedule-1`) and `generatorVersion=SWIM_GENERATOR_VERSION`
+(`swim-gen-1`). B9 now imports the existing schedule constant and corrects
+only that operand, retaining exact equality and every other assertion.
+One existing-runner regression reuses the real resume action with mocked I/O,
+captures its appended storage decision, executes B9's source comparison against
+it, and proves the old expectation throws while the corrected one passes.
+
+Official-worker validation: one Vitest batch across `swim-actions-refresh`,
+`swim-browser-acceptance`, and `swim-browser-collection` with selector
+`DC-SW7 confirmed|B9|collects the exact declared mobile cohort`:
+**63 passed, 783 unselected**. Private collection26 passed without execution;
+scoped ESLint and web typecheck passed. No product/schema/RPC/version semantics,
+workflow/config/dependency, diagnostics, timeout/retry or acceptance-case changes.
+No workflow dispatch or app/browser/backend/server/DB/Docker/Supabase startup.
+
+Current26 remains **not accepted**, eight of nine standalone gates only.
+Historical accepted25@60e5/full34481788221 (143518ms) stays separate.
+Coordinator owns saved-source/actual terminal model/ref inspection, then
+successful EXACT-HEAD core FIRST and ONE full26 after fresh writer/ref/CI guards.
+No unchanged-head rerun. All existing privacy/isolation/runtime/cleanup guards
+and owner-confirmed production/migration boundaries below remain unchanged.
+
 ## LATEST — PR805 bounded B9 / frozen26 source — 2026-09-10
 
 Sole805 writer starts at refreshed `60e5dede85cc2bdaef05383ef5a80bc256d5ee11`,

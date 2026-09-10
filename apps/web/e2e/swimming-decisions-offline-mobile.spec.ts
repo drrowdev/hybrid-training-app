@@ -11,7 +11,7 @@ import type { SwimResumePreview } from "../src/lib/swim/view-types";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { addDaysToYmd, isoWeekdayYmd } from "../src/lib/dates";
 import {
-  standaloneWeekRequests, swimPlanDefinition, swimWorkoutDefinition,
+  standaloneWeekRequests, swimPlanDefinition, swimWorkoutDefinition, SWIM_SCHEDULE_VERSION,
   type StandalonePlanDefinition, type StandaloneWorkoutDefinition,
 } from "../src/lib/swim/model";
 import { deriveSwimWeekCandidate, loadSwimHistory, persistedSwimPlan } from "../src/lib/swim/queries";
@@ -1388,7 +1388,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
       expect(final.plan.state.decisions.length).toBe(paused.plan.state.decisions.length + 1);
       const schedule = final.plan.state.decisions.at(-1)!;
       same([schedule.kind, schedule.decision, schedule.inputSnapshot], ["schedule", "accepted", { preview: winning }]);
-      same([schedule.ruleVersion, schedule.generatorVersion], [SWIM_GENERATOR_VERSION, SWIM_GENERATOR_VERSION]);
+      same([schedule.ruleVersion, schedule.generatorVersion], [SWIM_SCHEDULE_VERSION, SWIM_GENERATOR_VERSION]);
       expect(typeof schedule.id === "string" && schedule.id !== audit.id &&
         Number.isFinite(Date.parse(schedule.recordedAt))).toBe(true);
       const transition = final.plan.state.lifecycle?.at(-1);

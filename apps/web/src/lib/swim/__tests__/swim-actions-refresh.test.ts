@@ -1,4 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
+import { runInNewContext } from "node:vm";
+import { SWIM_GENERATOR_VERSION } from "@hta/engine";
 import { revalidatePath } from "next/cache";
 import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-completion-recompute";
 import { startSwimWorkout, changeSwimPlanStatus, editSwimResult, completeSwimWorkoutResult, skipSwimWorkout, previewSwimResume, resumeSwimPlan, proposeSwimWeek, decideSwimProposal, proposeSwimBenchmark, decideSwimBenchmark } from "../actions";
@@ -7,6 +12,7 @@ import * as queries from "../queries";
 import { assertSwimSafety } from "../safety";
 import { requireSwimStorage } from "../capability";
 import { SWIM_REFRESH_WARNING } from "../action-feedback";
+import { SWIM_SCHEDULE_VERSION } from "../model";
 import type { SwimHubView, SwimWorkoutView } from "../view-types";
 import { workoutPresentation } from "../presentation";
 import { swimFixture, userId, planId, sessionId, receiptId } from "./fixtures";
@@ -566,6 +572,32 @@ describe.each(["paused", "finished", "archived", "resume"] as const)("DC-SW7 con
     expect(mutation).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
     expect(queries.loadSwimHubView).not.toHaveBeenCalled();
+  });
+
+  if (operation === "resume") it("B9 DC-SW5/DC-SW7/DC-SW8: matches the real resume schedule and generator versions", async () => {
+    const { call } = await prepare();
+    expect(await call()).toEqual({ ok: true, view: confirmedView });
+    expect(storage.resumeSwimPlan).toHaveBeenCalledOnce();
+    const input = vi.mocked(storage.resumeSwimPlan).mock.calls[0]![1];
+    expect(input.state.decisions).toHaveLength(swimFixture().plan.state.decisions.length + 1);
+    const schedule = input.state.decisions.at(-1)!;
+    expect([schedule.kind, schedule.decision]).toEqual(["schedule", "accepted"]);
+    expect([schedule.ruleVersion, schedule.generatorVersion]).toEqual([SWIM_SCHEDULE_VERSION, SWIM_GENERATOR_VERSION]);
+    expect(SWIM_SCHEDULE_VERSION).not.toBe(SWIM_GENERATOR_VERSION);
+
+    const source = readFileSync(resolve(__dirname, "../../../../e2e/swimming-decisions-offline-mobile.spec.ts"), "utf8");
+    const boundary = source.indexOf('\n  test("B9 ');
+    expect(boundary).toBeGreaterThan(0);
+    const comparisons = source.slice(boundary).match(/same\(\[schedule\.ruleVersion, schedule\.generatorVersion\], \[[^\n]+\]\);/g);
+    expect(comparisons).toHaveLength(1);
+    const oracle = comparisons![0]!;
+    const context = {
+      schedule, SWIM_SCHEDULE_VERSION, SWIM_GENERATOR_VERSION,
+      same: (actual: unknown, expected: unknown) => expect(isDeepStrictEqual(actual, expected)).toBe(true),
+    };
+    const oldOracle = oracle.replace("[SWIM_SCHEDULE_VERSION, SWIM_GENERATOR_VERSION]", "[SWIM_GENERATOR_VERSION, SWIM_GENERATOR_VERSION]");
+    expect(() => runInNewContext(oldOracle, context)).toThrow();
+    runInNewContext(oracle, context);
   });
 
   if (operation === "resume") it("retains resume safety rejection before the mutation", async () => {

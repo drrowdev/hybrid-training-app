@@ -3020,3 +3020,19 @@ not an analyzed security pass. No product defect was demonstrated by source/
 unit/collection work. B9 runtime is unexecuted; coordinator terminal model/refs
 inspection, exact-head core FIRST, then ONE frozen26 remain required. All
 accepted25 evidence and unresolved combined/production boundaries are preserved.
+
+## [2026-09-10] refine | PR805 B9 schedule-version oracle correction
+
+At refreshed ff133f/base e2758, corrected only B9's ruleVersion operand to
+the existing SWIM_SCHEDULE_VERSION; generatorVersion remains SWIM_GENERATOR_VERSION.
+The existing resume unit harness captures the real action's appended schedule
+decision and executes B9's source equality: old expectation throws, corrected
+expectation passes. One affected-selector batch passed63 (783 unselected),
+including private collection26 without execution; scoped lint/web types passed.
+DC-SW5/SW7/SW8; no product, schema, semantics, diagnostics or frozen26 case change.
+Coordinator-supplied full34487229136 attempt1@ff133f failed only B9 after
+original25 passed once (147834ms total, B9 7592ms, no flaky/skipped); earlier
+core34486576111 passed. Generic same() line71 cannot identify its caller/phase.
+Both cleanups passed; main failed. No consumed reference/private logs fetched.
+Prior1acdd/be5ad work remains saved; current26 is not accepted. Coordinator
+terminal/ref inspection, exact-new-head core FIRST, then ONE full26 remain.
