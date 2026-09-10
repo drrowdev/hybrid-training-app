@@ -1060,6 +1060,52 @@ describe("browser environment and static config", () => {
       }
     }
   });
+  it("A6 DC-SW8: the authored Start clicks overlap before either settles", async () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const a6 = source.slice(source.indexOf('test("A6,'));
+    const start = a6.indexOf("await Promise.all(pages.map((view) =>");
+    const block = a6.slice(start, a6.indexOf("await Promise.all(pages.map(async (view) =>", start));
+    const calls: number[] = [];
+    const releases: Array<() => void> = [];
+    const pages = [0, 1].map((index) => ({
+      getByRole: (role: string, options: { name: string; exact: boolean }) => {
+        expect([role, options.name, options.exact]).toEqual(["button", "Start swim", true]);
+        return { click: ({ timeout }: { timeout: number }) => {
+          expect(timeout).toBe(5000);
+          calls.push(index);
+          return new Promise<void>((resolve) => releases.push(resolve));
+        } };
+      },
+    }));
+    const execute = runInNewContext(transpileModule(`(async () => { ${block} })`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, { pages }) as () => Promise<void>;
+    const pending = execute();
+    try { expect(calls).toEqual([0, 1]); }
+    finally { for (const release of releases) release(); }
+    await pending;
+  });
+  it("A6 DC-SW8: submitted edit proof reads the real multipart revision and rejects a refreshed or ambiguous form", async () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const helper = source.slice(source.indexOf("  async function submittedEditRevision("), source.indexOf('  test("A5,'));
+    const verify = runInNewContext(transpileModule(`${helper}\nsubmittedEditRevision`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, { Response, expect }) as (request: unknown, workout: string, session: string, revision: number) => Promise<void>;
+    for (const mode of ["stale", "refreshed", "duplicate"]) {
+      const form = new FormData();
+      form.set("1_workoutId", "synthetic-workout");
+      form.set("1_sessionId", "synthetic-session");
+      form.set("1_expectedRevision", mode === "refreshed" ? "4" : "3");
+      if (mode === "duplicate") form.set("2_expectedRevision", "3");
+      const encoded = new Response(form);
+      const body = await encoded.text();
+      const result = verify({
+        postData: () => body, headers: () => ({ "content-type": encoded.headers.get("content-type") }),
+      }, "synthetic-workout", "synthetic-session", 3);
+      if (mode === "stale") await expect(result).resolves.toBeUndefined();
+      else await expect(result).rejects.toThrow();
+    }
+  });
   it("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4: preserves the original twenty-two identities and appends only A5/A6", () => {
     expect(SWIM_BROWSER_CASES).toEqual([
       {

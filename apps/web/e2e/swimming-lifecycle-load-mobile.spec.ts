@@ -1420,6 +1420,21 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     return { workout, session, log };
   }
 
+  async function submittedEditRevision(request: Request, workoutId: string, sessionId: string, revision: number) {
+    let fields: FormData;
+    try {
+      fields = await new globalThis.Response(request.postData(), {
+        headers: { "content-type": request.headers()["content-type"] },
+      }).formData();
+    } catch { throw new Error("Could not read the synthetic edit submission."); }
+    for (const [name, expected] of [
+      ["workoutId", workoutId], ["sessionId", sessionId], ["expectedRevision", String(revision)],
+    ]) {
+      const values = [...fields].filter(([key]) => new RegExp(`^(?:\\d+_)?${name}$`).test(key)).map(([, value]) => value);
+      expect(values.length === 1 && values[0] === expected).toBe(true);
+    }
+  }
+
   test("A5, DC-SW7/DC-SW9: permanent deletion removes a swim result while retaining its planned target", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
   }) => {
@@ -1579,11 +1594,24 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const second = await browser.newContext({
       baseURL, viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true,
     });
+    const listeners = new Map<Page, (request: Request) => void>();
     let bodyFailed = false;
     try {
       await signInAs(second, freshUser, seedConfig, baseURL!);
       const other = await second.newPage();
       const pages = [page, other];
+      const requests = pages.map(() => [] as Request[]);
+      for (const [index, view] of pages.entries()) {
+        const capture = (request: Request) => {
+          if (request.method() !== "POST" || !request.headers()["next-action"]) return;
+          const url = new URL(request.url());
+          if (url.origin === new URL(baseURL!).origin && url.pathname === `/app/swim/${target.id}`) {
+            requests[index].push(request);
+          }
+        };
+        listeners.set(view, capture);
+        view.on("request", capture);
+      }
       await Promise.all(pages.map(async (view) => {
         await view.goto(`/app/swim/${target.id}`);
         await expect(view.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();
@@ -1603,6 +1631,11 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
         }
         await expect(log).toBeVisible();
       }));
+      expect(requests.every((entries) => {
+        if (entries.length !== 1) return false;
+        try { return isDeepStrictEqual(JSON.parse(entries[0].postData()!), [target.id, target.revision]); }
+        catch { return false; }
+      })).toBe(true);
       const started = await lifecycleState(admin, userId);
       const swim = started.workouts.find((row) => row.id === target.id)!;
       expect(started.sessions.length === 2 && started.logs.length === 0 &&
@@ -1642,6 +1675,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
         await expect(view.getByRole("button", { name: "Save changes", exact: true })).toBeEnabled();
       }));
       expect(isDeepStrictEqual(await lifecycleState(admin, userId), completed)).toBe(true);
+      const editOffsets = requests.map((entries) => entries.length);
       await page.getByLabel("Time · min:sec", { exact: true }).fill("10:00");
       await page.getByRole("radio", { name: "8 tough", exact: true }).click();
       await page.getByText("Notes, changes and splits", { exact: true }).click();
@@ -1652,6 +1686,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       await expect(page.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
       const accepted = await lifecycleState(admin, userId);
       const edited = lifecycleActual(accepted, target.id);
+      expect(requests[0].length === editOffsets[0] + 1 && requests[1].length === editOffsets[1]).toBe(true);
+      await submittedEditRevision(requests[0][editOffsets[0]], target.id, first.session.id, first.workout.revision);
       expect(edited.workout.revision === first.workout.revision + 1 &&
         accepted.plans[0].revision === completed.plans[0].revision + 1).toBe(true);
       expect(isDeepStrictEqual(edited.workout, {
@@ -1683,6 +1719,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       await expect(other.getByRole("alert").filter({ hasText: /changed.*reload/i })).toBeVisible();
       await expect(other.getByLabel("Time · min:sec", { exact: true })).toHaveValue("20:00");
       await expect(other.getByRole("button", { name: "Save changes", exact: true })).toBeEnabled();
+      expect(requests[1].length === editOffsets[1] + 1 && requests[0].length === editOffsets[0] + 1).toBe(true);
+      await submittedEditRevision(requests[1][editOffsets[1]], target.id, first.session.id, first.workout.revision);
       const rejected = await lifecycleState(admin, userId);
       lifecycleActual(rejected, target.id);
       expect(isDeepStrictEqual(rejected, accepted)).toBe(true);
@@ -1705,6 +1743,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       bodyFailed = true;
       throw error;
     } finally {
+      for (const [view, capture] of listeners) view.off("request", capture);
       const closed = await Promise.allSettled([second.close(), context.close()]);
       if (!bodyFailed) expect(closed.every((result) => result.status === "fulfilled")).toBe(true);
     }
