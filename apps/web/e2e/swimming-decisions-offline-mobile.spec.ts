@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import type { Locator, Page } from "@playwright/test";
+import type { Locator, Page, Request } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { applySwimProposal, generateSwimPlan, recordSwimDecision, SWIM_GENERATOR_VERSION } from "@hta/engine";
 import { estimateCriticalSwimSpeed, swimWorkoutLengths, validateSwimWorkout, type SwimSetup } from "@hta/domain";
 import { test as seededTest, expect } from "./fixtures/seed";
 import { signInAs } from "./fixtures/auth";
-import { markOnboarded } from "./fixtures/seed-blocks";
+import { markOnboarded, seedRecentBlock, seedPlannedSessionsForBlock } from "./fixtures/seed-blocks";
+import type { SwimResumePreview } from "../src/lib/swim/view-types";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { addDaysToYmd, isoWeekdayYmd } from "../src/lib/dates";
 import {
@@ -1140,5 +1141,272 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await expect(page).toHaveURL(/\/app\/swim\/setup$/);
     expect(isDeepStrictEqual((await setupPreview(form)).entries, preview.entries)).toBe(true);
     expect(isDeepStrictEqual(await setupRows(actor, freshUser.userId), { plans: [], workouts: [] })).toBe(true);
+  });
+
+  test("B9 DC-SW5/DC-SW7/DC-SW8: concurrent reviewed recommendations and dates keep one accepted decision", async ({
+    page, context, browser, freshUser, seedConfig, baseURL, actor, admin,
+  }) => {
+    await signInAs(context, freshUser, seedConfig, baseURL!);
+    await page.goto("/app/swim/setup");
+    const today = await page.getByLabel("Start date", { exact: true }).inputValue();
+    expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const userId = freshUser.userId;
+    const blockId = await seedRecentBlock(admin, userId, {
+      status: "active", weeks: 2, startedOn: addDaysToYmd(today, -7),
+    });
+    const plannedIds = await seedPlannedSessionsForBlock(admin, userId, blockId, {
+      totalSessions: 2, loggedCount: 1,
+    });
+    const movement = await admin.from("movements").select("id,display_name")
+      .is("user_id", null).eq("slug", "bench-press-flat").single();
+    expect(!movement.error && typeof movement.data?.id === "string" &&
+      typeof movement.data?.display_name === "string").toBe(true);
+    const prescription = { items: [{
+      movementId: movement.data!.id, movementName: movement.data!.display_name, kind: "main", sets: 3, reps: 5,
+    }] };
+    const updated = await admin.from("planned_sessions").update({ prescription })
+      .eq("user_id", userId).eq("block_id", blockId).in("id", plannedIds);
+    expect(updated.error === null).toBe(true);
+    const linked = await admin.from("planned_sessions").select("completed_session_id")
+      .eq("user_id", userId).eq("id", plannedIds[0]).single();
+    expect(!linked.error && typeof linked.data?.completed_session_id === "string").toBe(true);
+    const set = await admin.from("set_logs").insert({
+      session_id: linked.data!.completed_session_id, movement_id: movement.data!.id, set_index: 1,
+      weight_kg: 40, reps: 5, rpe: 7, set_kind: "main", skipped: false,
+    });
+    expect(set.error === null).toBe(true);
+    const created = await arrangePlan(actor, today);
+    const initial = await saved(actor, created.plan.id);
+    for (const workout of initial.workouts.slice(0, 2)) {
+      const started = await startSwimWorkout(actor, workout.id, workout.revision);
+      await completeSwimWorkout(actor, {
+        workoutId: started.id, expectedRevision: started.revision,
+        clientLogId: randomUUID(), completionEntryId: randomUUID(),
+        result: {
+          version: 1, snapshot: started.definition.issued.snapshot,
+          lengths: started.definition.issued.totalLengths, timeMs: 1200000, rpe: 5,
+          completion: "completed", provenance: { source: "manual", recordedAt: new Date().toISOString() },
+        },
+      });
+    }
+    await startSwimWorkout(actor, initial.workouts[2].id, initial.workouts[2].revision);
+    const before = await saved(actor, created.plan.id);
+    expect(before.history.slice(0, 2).every((row) =>
+      row.workout.status === "completed" && !!row.completedAt && row.result?.rpe === 5 &&
+      row.result.lengths === row.workout.definition.issued.totalLengths && !row.deleted && !row.sourceGone,
+    )).toBe(true);
+    async function retained() {
+      const rows = await Promise.all([
+        actor.from("training_blocks").select("*").eq("user_id", userId).order("id"),
+        actor.from("planned_sessions").select("*").eq("user_id", userId).order("id"),
+        actor.from("sessions").select("*").eq("user_id", userId).order("id"),
+        actor.from("region_state").select("*").eq("user_id", userId).order("region"),
+      ]);
+      expect(rows.every((row) => !row.error && Array.isArray(row.data))).toBe(true);
+      expect(rows[0].data).toHaveLength(1);
+      expect(rows[1].data).toHaveLength(2);
+      expect(rows[2].data).toHaveLength(4);
+      const sessionIds = rows[2].data!.map((row) => row.id);
+      const logs = await Promise.all([
+        actor.from("cardio_logs").select("*").in("session_id", sessionIds).order("id"),
+        actor.from("set_logs").select("*").in("session_id", sessionIds).order("id"),
+      ]);
+      expect(logs.every((row) => !row.error && Array.isArray(row.data))).toBe(true);
+      expect(logs[0].data).toHaveLength(2);
+      expect(logs[1].data).toHaveLength(1);
+      return [...rows, ...logs].map((row) => row.data);
+    }
+    const protectedRows = await retained();
+    const candidate = deriveSwimWeekCandidate(before.plan, before.history, today);
+    if (!candidate || candidate.proposal.decision !== "progress") throw new Error("Expected improving candidate.");
+    same(candidate.targetWorkoutIds, before.workouts.slice(2, 4).map((row) => row.id));
+    const second = await browser.newContext({
+      baseURL, viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true,
+    });
+    try {
+      await signInAs(second, freshUser, seedConfig, baseURL!);
+      const other = await second.newPage();
+      const pages = [page, other];
+      const stale = (view: Page) => view.getByRole("alert")
+        .and(view.locator(":not(#__next-route-announcer__)")).filter({ hasText: /changed.*reload/i });
+      function submittedArguments(request: Request): unknown[] {
+        try {
+          const args: unknown = JSON.parse(request.postData()!);
+          if (Array.isArray(args)) return args;
+        } catch { /* Never include private request bodies in failures. */ }
+        throw new Error("Could not read the synthetic decision submission.");
+      }
+      async function race(button: string, success: (view: Page) => Locator) {
+        const requests: Request[][] = pages.map(() => []);
+        let overflow = false;
+        const listeners = pages.map((view, index) => {
+          const capture = (request: Request) => {
+            const url = new URL(request.url());
+            if (request.method() !== "POST" || !request.headers()["next-action"] ||
+              url.origin !== new URL(baseURL!).origin || url.pathname !== "/app/swim") return;
+            if (requests[index].length < 2) requests[index].push(request);
+            else overflow = true;
+          };
+          view.on("request", capture);
+          return capture;
+        });
+        try {
+          await Promise.all(pages.map((view) => view.getByRole("button", { name: button, exact: true }).click()));
+          await Promise.all(pages.map((view) => expect(success(view).or(stale(view))).toBeVisible()));
+          expect(!overflow && requests.every((entries) => entries.length === 1)).toBe(true);
+          const rejected = await Promise.all(pages.map((view) => stale(view).isVisible()));
+          expect(rejected.filter(Boolean)).toHaveLength(1);
+          const winner = rejected.indexOf(false);
+          await expect(stale(pages[1 - winner])).toBeVisible();
+          await expect(success(pages[winner])).toBeVisible();
+          return { winner, args: requests.map((entries) => submittedArguments(entries[0])) };
+        } finally {
+          pages.forEach((view, index) => view.off("request", listeners[index]));
+        }
+      }
+      await Promise.all(pages.map(async (view) => {
+        await view.goto(`/app/swim?plan=${created.plan.id}`);
+        await view.getByRole("button", { name: "Review next week", exact: true }).click();
+        await expect(view.getByRole("heading", { name: "Progress · Week 2", exact: true })).toBeVisible();
+        await expect(view.getByRole("button", { name: "Accept", exact: true })).toBeEnabled();
+      }));
+      same(await saved(actor, created.plan.id), before);
+      const accepted = await race("Accept", (view) => view.getByText("Past decisions", { exact: true }));
+      for (const args of accepted.args) same(args, [before.plan.id, before.plan.revision, candidate.id, "accepted"]);
+      await pages[accepted.winner].getByText("Past decisions", { exact: true }).click();
+      await expect(pages[accepted.winner].getByText("Accepted", { exact: true })).toBeVisible();
+      await expect(pages[1 - accepted.winner].getByRole("button", { name: "Accept", exact: true })).toBeEnabled();
+      const after = await saved(actor, created.plan.id);
+      expect(after.plan.state.decisions).toHaveLength(before.plan.state.decisions.length + 1);
+      const audit = after.plan.state.decisions.at(-1)!;
+      same([audit.id, audit.kind, audit.decision, audit.ruleVersion, audit.generatorVersion],
+        [candidate.id, "progression", "accepted", SWIM_GENERATOR_VERSION, SWIM_GENERATOR_VERSION]);
+      const engineDecision = audit.inputSnapshot.engineDecision;
+      if (!engineDecision || typeof engineDecision !== "object" ||
+        !("atISO" in engineDecision) || typeof engineDecision.atISO !== "string") {
+        throw new Error("Missing persisted engine decision timestamp.");
+      }
+      expect(Number.isFinite(Date.parse(engineDecision.atISO)) && Number.isFinite(Date.parse(audit.recordedAt))).toBe(true);
+      const ledger = recordSwimDecision(null, {
+        proposal: candidate.proposal, action: "accept", atISO: engineDecision.atISO,
+      });
+      same(audit.inputSnapshot, JSON.parse(JSON.stringify({
+        ...candidate.exactInputs, proposal: candidate.proposal,
+        engineDecision: ledger.entries[0], appliedDose: candidate.proposal.to,
+      })));
+      same(after.plan, {
+        ...before.plan, revision: before.plan.revision + 1, updated_at: after.plan.updated_at,
+        state: { ...before.plan.state, decisions: [...before.plan.state.decisions, audit] },
+      });
+      for (const [index, row] of after.workouts.entries()) {
+        const prior = before.workouts[index];
+        if (index !== 3) { same(row, prior); continue; }
+        const expected = candidate.generated.weeks[1].slots.find((slot) => slot.slotId === swimWorkoutDefinition(row).slotId);
+        if (!expected || expected.kind !== "workout") throw new Error("Missing expected target.");
+        expect(row.definition.modifications).toHaveLength(1);
+        const modification = row.definition.modifications[0];
+        same([modification.previous, modification.decisionId], [prior.definition.issued, audit.id]);
+        expect(typeof modification.id === "string" && Number.isFinite(Date.parse(modification.recordedAt))).toBe(true);
+        same(row, {
+          ...prior, revision: prior.revision + 1, updated_at: row.updated_at,
+          definition: { ...prior.definition, issued: expected.issued, provisional: false, modifications: [modification] },
+        });
+        expect(isDeepStrictEqual(row.definition.issued, prior.definition.issued)).toBe(false);
+      }
+      same(after.history.slice(0, 3), before.history.slice(0, 3));
+      same(await retained(), protectedRows);
+      expect(deriveSwimWeekCandidate(after.plan, after.history, today)).toBeNull();
+      await Promise.all(pages.map(async (view) => {
+        await view.reload();
+        await expect(view.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+        await expect(view.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
+      }));
+      same(await saved(actor, created.plan.id), after);
+      same(await page.locator("main").innerText(), await other.locator("main").innerText());
+      await page.getByRole("button", { name: "Pause", exact: true }).click();
+      await expect(page.getByLabel("Resume from", { exact: true })).toBeVisible();
+      const paused = await saved(actor, created.plan.id);
+      expect(paused.plan.status).toBe("paused");
+      expect(paused.plan.revision).toBe(after.plan.revision + 1);
+      same(paused.workouts, after.workouts);
+      same(paused.plan.state.decisions, after.plan.state.decisions);
+      await other.reload();
+      await expect(other.getByLabel("Resume from", { exact: true })).toBeVisible();
+      const min = await page.getByLabel("Resume from", { exact: true }).getAttribute("min");
+      expect(min).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      same(await other.getByLabel("Resume from", { exact: true }).getAttribute("min"), min);
+      const starts = [addDaysToYmd(min!, 7), addDaysToYmd(min!, 14)];
+      const reviewed: string[][] = [];
+      for (const [index, view] of pages.entries()) {
+        await view.getByLabel("Resume from", { exact: true }).fill(starts[index]);
+        const request = view.waitForRequest((request) => request.method() === "POST" &&
+          !!request.headers()["next-action"] && new URL(request.url()).pathname === "/app/swim");
+        await view.getByRole("button", { name: "Preview dates", exact: true }).click();
+        same(submittedArguments(await request), [paused.plan.id, paused.plan.revision, starts[index]]);
+        await expect(view.getByRole("button", { name: "Accept dates and resume", exact: true })).toBeEnabled();
+        reviewed[index] = await view.getByRole("heading", { name: "New swim dates", exact: true })
+          .locator("..").getByRole("listitem").allTextContents();
+        expect(reviewed[index]).toHaveLength(3);
+      }
+      same(reviewed[1], reviewed[0].map((date) => addDaysToYmd(date, 7)));
+      same(await saved(actor, created.plan.id), paused);
+      const resumed = await race("Accept dates and resume", (view) => view.getByRole("button", { name: "Pause", exact: true }));
+      const previews = resumed.args.map((args, index) => {
+        expect(args).toHaveLength(1);
+        const preview = args[0] as SwimResumePreview;
+        const remaining = paused.workouts.filter((row) => row.status === "scheduled" && !row.session_id);
+        same(preview, {
+          planId: paused.plan.id, revision: paused.plan.revision, startDate: starts[index],
+          dates: remaining.map((row, position) => ({ id: row.id, revision: row.revision, date: reviewed[index][position] })),
+        });
+        return preview;
+      });
+      const winning = previews[resumed.winner];
+      const rejectedPage = pages[1 - resumed.winner];
+      same(await rejectedPage.getByLabel("Resume from", { exact: true }).inputValue(), starts[1 - resumed.winner]);
+      same(await rejectedPage.getByRole("heading", { name: "New swim dates", exact: true })
+        .locator("..").getByRole("listitem").allTextContents(), reviewed[1 - resumed.winner]);
+      await expect(rejectedPage.getByRole("button", { name: "Accept dates and resume", exact: true })).toBeEnabled();
+      const final = await saved(actor, created.plan.id);
+      expect(final.plan.status).toBe("active");
+      expect(final.plan.revision).toBe(paused.plan.revision + 1);
+      expect(final.plan.state.decisions).toHaveLength(paused.plan.state.decisions.length + 1);
+      const schedule = final.plan.state.decisions.at(-1)!;
+      same([schedule.kind, schedule.decision, schedule.inputSnapshot], ["schedule", "accepted", { preview: winning }]);
+      same([schedule.ruleVersion, schedule.generatorVersion], [SWIM_GENERATOR_VERSION, SWIM_GENERATOR_VERSION]);
+      expect(typeof schedule.id === "string" && schedule.id !== audit.id &&
+        Number.isFinite(Date.parse(schedule.recordedAt))).toBe(true);
+      const transition = final.plan.state.lifecycle?.at(-1);
+      if (!transition) throw new Error("Missing resume lifecycle record.");
+      same([transition.from, transition.to], ["paused", "active"]);
+      expect(Number.isFinite(Date.parse(transition.recordedAt))).toBe(true);
+      same(final.plan, {
+        ...paused.plan, status: "active", revision: paused.plan.revision + 1, updated_at: final.plan.updated_at,
+        ends_on: [paused.plan.ends_on, ...winning.dates.map((entry) => entry.date)].sort().at(-1),
+        state: {
+          ...paused.plan.state, decisions: [...paused.plan.state.decisions, schedule],
+          lifecycle: [...(paused.plan.state.lifecycle ?? []), transition],
+        },
+      });
+      for (const row of final.workouts) {
+        const prior = paused.workouts.find((workout) => workout.id === row.id)!;
+        const entry = winning.dates.find((date) => date.id === row.id);
+        same(row, entry ? {
+          ...prior, scheduled_date: entry.date, revision: prior.revision + 1, updated_at: row.updated_at,
+        } : prior);
+      }
+      same(final.history.filter((row) => !!row.workout.session_id), before.history.filter((row) => !!row.workout.session_id));
+      same(await retained(), protectedRows);
+      const canonicalDisplay = await pages[resumed.winner].locator("main").innerText();
+      await Promise.all(pages.map(async (view) => {
+        await view.reload();
+        await expect(view.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
+        await expect(stale(view)).toHaveCount(0);
+        await expect(view.getByRole("button", { name: "Accept dates and resume", exact: true })).toHaveCount(0);
+        same(await view.locator("main").innerText(), canonicalDisplay);
+      }));
+      same(await saved(actor, created.plan.id), final);
+      same(await retained(), protectedRows);
+    } finally { await second.close(); }
   });
 });

@@ -135,6 +135,11 @@ export const SWIM_BROWSER_CASES = Object.freeze([
     describe: "ADR0079 mobile swimming lifecycle and regional load",
     title: "A7, DC-SW7/DC-SW9: a limitation added after start preserves the result and blocks future swimming",
   }),
+  Object.freeze({
+    file: "e2e/swimming-decisions-offline-mobile.spec.ts",
+    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    title: "B9 DC-SW5/DC-SW7/DC-SW8: concurrent reviewed recommendations and dates keep one accepted decision",
+  }),
 ]);
 const EXPECTED_FILES = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
 

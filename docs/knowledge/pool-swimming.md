@@ -1558,3 +1558,18 @@ Exact commands/limits are in HANDOFF. Coordinator source/model/ref inspection,
 exact-head core then ONE full25 remain pending; diagnostics-only future success
 is not a causal product-fix claim. Seven of nine gates covered; A7/concurrency
 and separate combined/production approvals remain open. No raw logs fetched.
+
+### PR805 B9 source after accepted25 — 2026-09-10
+
+Coordinator accepted full34481788221attempt1@60e5:25 passed once,0 unexpected/
+flaky/skipped,143518ms, all11 stages and both cleanups, after core34481195293.
+Eight of nine standalone gates now have runtime evidence. Historical failed25,
+accepted24 and accepted22 remain separate. Under DC-SW5/SW7/SW8, B9 alone adds
+two same-user UI stale-decision phases: recommendation Accept and existing
+Pause → Preview dates → Accept dates and resume. Original requests, one winner,
+explicit stale rejection, winning reviewed schedule and retained issued/
+primary/history state are checked before both pages reload. Strict26 preserves
+the accepted25 prefix; sixfiles2/4/7/9/3/1. Private collection passed, not runtime.
+Coordinator exact-head core then one frozen26 remains required. No product,
+storage/RLS/workflow/deadline changes or new UI; combined and production remain
+owner-gated. HANDOFF carries the exact evidence boundaries.

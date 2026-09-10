@@ -98,7 +98,7 @@ it.skipIf(process.platform === "win32")("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-S
     assert.equal(report.config.projects.length, 1);
     assert.equal(report.config.projects[0]!.name, "mobile-chromium");
     assert.equal(expectedFiles.length, 6);
-    assert.deepEqual(expectedFiles.map((file) => expected.filter(([name]) => name === file).length), [2, 4, 7, 8, 3, 1]);
+    assert.deepEqual(expectedFiles.map((file) => expected.filter(([name]) => name === file).length), [2, 4, 7, 9, 3, 1]);
     assert.equal(report.suites.length, expectedFiles.length);
     const collected = report.suites.flatMap((file) => {
       const expectedCases = expected.filter(([name]) => name === file.file);
@@ -121,7 +121,7 @@ it.skipIf(process.platform === "win32")("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-S
       });
     });
     assert.equal(collected.length, SWIM_BROWSER_CASES.length);
-    assert.equal(collected.length, 25);
+    assert.equal(collected.length, 26);
     assert.deepEqual(collected.sort(), [...expected].sort());
     success = true;
   } catch {

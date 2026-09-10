@@ -2,6 +2,46 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## LATEST — PR805 bounded B9 / frozen26 source — 2026-09-10
+
+Sole805 writer starts at refreshed `60e5dede85cc2bdaef05383ef5a80bc256d5ee11`,
+base `e2758dadbb110e03794e49d53b47622a6295e988`; prior d512 is not restarted.
+Coordinator-accepted full25 **34481788221 attempt1@60e5: all25 passed once,
+0 unexpected/flaky/skipped,143518ms**, after FIRST core34481195293.
+All11 stages, empty failure ledger, Native16/normal149/catalog/Auth36HTTP,
+identity5phases4wholeDDL15contexts, single-FK necessity/down-up/invalid-update/
+coreidentity and both cleanups are accepted as supplied. No consumed private
+reference/agent logs, transcripts, download URLs, raw rows or media fetched.
+Historical accepted24@0a0e/full34460014574 and22@89f63 remain separate;
+failed25@fc360/632/524 remain failed. The unchanged-source confirmation VM/SSR
+reproduction does not establish a shared cause for all earlier Finish failures.
+
+Exactly one B9 is appended at registry index25 under
+[DC-SW5/SW7/SW8](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).
+Frozen26 is sixfiles2/4/7/9/3/1; the accepted25 prefix and A3/A4/A7 diagnostics
+are unchanged. B9 has no diagnostic annotations. It reuses B1's settled
+history/candidate and A6's independent same-user context pattern, with finite
+real-button request capture, one genuine stale rejection per phase before
+reload, canonical decision/target checks, and distinct reviewed resume dates.
+The schedule oracle follows the actual winning original preview; rejected
+input/preview stays visible until reload. Whole state, primary prescriptions/
+sets, results and regional rows are retained. No new scheduling UI or product,
+schema/RLS, storage fixture/service, dependency, workflow or deadline changes.
+
+Early validation: scoped ESLint and web types passed; actual PRIVATE
+Playwright1.60.0 collection passed26, zero execution/errors, exact private
+cleanup. First affected unit batch caught the remaining B-file count8
+assertion; corrected to9. Final affected selectors/source proofs pending.
+Collection is NOT runtime. Eight of nine standalone gates are accepted;
+B9 runtime is the sole remaining gap before combined. Coordinator complete
+source/terminal model/ref inspection, exact-head core FIRST, then ONE frozen26
+reference remain pending. No worker browser/backend/server/DB/Docker/Supabase
+startup or workflow dispatch. All existing deadlines, isolation, normal149/
+identity146–148/Auth/FK/down-up/cleanup guards remain. Getsxc.app existing
+accounts and deferred backups unchanged. Current-main/nativeStack804 and
+UNSHIPPED-ONLY migration ordering/down plan still require owner confirmation;
+disposable evidence confers no production authority.
+
 ## LATEST — PR805 confirmed completion repair — 2026-09-10
 
 Sole writer started at refreshed `fc360d4e89a19853fca390657a4c54195e9a4993`,

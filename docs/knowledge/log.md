@@ -2984,3 +2984,16 @@ positive Finish/timeouts and original24 unchanged. Existing pinned announcer
 proof is supplied historical evidence, not a newly executed probe. Security
 verification pending; coordinator core/full25 remains pending and latest runtime
 result remains failed22/25, not acceptance of this repair.
+
+## [2026-09-10] refine | PR805 accepted25 and bounded B9 source
+
+Refreshed exact60e5/basee275. Coordinator accepted full34481788221attempt1:
+25 passed once,0 unexpected/flaky/skipped,143518ms, all11 stages and both
+cleanups after FIRST core34481195293. Eight of nine standalone gates covered;
+older failed25 and accepted24/22 remain distinct. Appended only B9/index25
+for real same-user concurrent recommendation/date acceptance and genuine stale
+rejection, preserving accepted25 and observation grammar. Strict26/sixfiles
+2/4/7/9/3/1 private Playwright1.60 collection, scoped lint/types passed.
+Initial source batch exposed remaining B-file count8, corrected to9; final
+proofs pending. No reference/agent logs fetched, runtime startup or dispatch.
+No production change; coordinator inspection/core/one frozen26 remains pending.
