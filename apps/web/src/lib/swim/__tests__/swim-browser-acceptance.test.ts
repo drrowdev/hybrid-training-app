@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve, sep } from "node:path";
 import { runInNewContext } from "node:vm";
 import { EventEmitter } from "node:events";
+import { createRequire } from "node:module";
 import { isDeepStrictEqual } from "node:util";
 import { createClient } from "@supabase/supabase-js";
 import {
@@ -1085,19 +1086,92 @@ describe("browser environment and static config", () => {
     finally { for (const release of releases) release(); }
     await pending;
   });
-  it("A6 DC-SW8: submitted edit proof reads the real multipart revision and rejects a refreshed or ambiguous form", async () => {
+  it("A5 DC-SW7: the authored purge navigation waits for destination and removed state before reload", async () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const a5 = source.slice(source.indexOf('test("A5,'), source.indexOf('test("A6,'));
+    const block = a5.slice(a5.indexOf("await card.click();"), a5.indexOf("expect((await prescription.innerText())"));
+    const calls: string[] = [];
+    let arrive!: () => void;
+    let render!: () => void;
+    const destination = new Promise<void>((resolve) => { arrive = resolve; });
+    const state = new Promise<void>((resolve) => { render = resolve; });
+    const removed = {};
+    const page = {
+      getByRole: (role: string) => {
+        expect(role).toBe("status");
+        return { filter: (options: unknown) => {
+          expect(options).toEqual({ hasText: "Result removed" });
+          return removed;
+        } };
+      },
+      reload: vi.fn(async () => { calls.push("reload"); }),
+    };
+    const execute = runInNewContext(transpileModule(`(async () => { ${block} })`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      page, target: { id: "synthetic-workout" },
+      card: { click: async () => { calls.push("click"); } },
+      expect: (value: unknown) => ({
+        toHaveURL: async (url: RegExp) => {
+          expect(value).toBe(page);
+          expect(url.test("http://127.0.0.1/app/swim/synthetic-workout")).toBe(true);
+          expect(url.test("http://127.0.0.1/app/swim/synthetic-workout/other")).toBe(false);
+          calls.push("destination");
+          await destination;
+        },
+        toBeVisible: async () => {
+          expect(value).toBe(removed);
+          calls.push("state");
+          await state;
+        },
+      }),
+    }) as () => Promise<void>;
+    const pending = execute();
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(calls).toEqual(["click", "destination"]);
+      expect(page.reload).not.toHaveBeenCalled();
+      arrive();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(calls).toEqual(["click", "destination", "state"]);
+      expect(page.reload).not.toHaveBeenCalled();
+    } finally { arrive(); render(); await pending; }
+    expect(calls).toEqual(["click", "destination", "state", "reload", "state"]);
+  });
+  it("A6 DC-SW8: submitted edit proof decodes the pinned browser action encoder and fails closed", async () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
     const helper = source.slice(source.indexOf("  async function submittedEditRevision("), source.indexOf('  test("A5,'));
     const verify = runInNewContext(transpileModule(`${helper}\nsubmittedEditRevision`, {
       compilerOptions: { target: ScriptTarget.ES2022 },
     }).outputText, { Response, expect }) as (request: unknown, workout: string, session: string, revision: number) => Promise<void>;
-    for (const mode of ["stale", "refreshed", "duplicate"]) {
+    const installed = createRequire(join(webRoot, "package.json"));
+    expect(installed("next/package.json").version).toBe("16.2.6");
+    expect(installed("react/package.json").version).toBe("19.2.4");
+    const loadChunk = vi.fn(() => { throw new Error("Unexpected chunk load."); });
+    vi.stubGlobal("__webpack_require__", { u: loadChunk });
+    let encodeReply: (args: unknown[]) => Promise<FormData>;
+    try {
+      ({ encodeReply } = installed("next/dist/compiled/react-server-dom-webpack/client.browser"));
+    } finally { vi.unstubAllGlobals(); }
+    for (const mode of [
+      "stale", "refreshed", "wrong-workout", "wrong-session", "duplicate", "ambiguous",
+      "missing-root", "duplicate-root", "malformed-root", "wrong-reference", "suffix", "file",
+    ]) {
       const form = new FormData();
-      form.set("1_workoutId", "synthetic-workout");
-      form.set("1_sessionId", "synthetic-session");
-      form.set("1_expectedRevision", mode === "refreshed" ? "4" : "3");
-      if (mode === "duplicate") form.set("2_expectedRevision", "3");
-      const encoded = new Response(form);
+      form.set("workoutId", mode === "wrong-workout" ? "other-workout" : "synthetic-workout");
+      form.set("sessionId", mode === "wrong-session" ? "other-session" : "synthetic-session");
+      form.set("expectedRevision", mode === "refreshed" ? "4" : "3");
+      if (mode === "duplicate") form.append("expectedRevision", "3");
+      if (mode === "file") form.set("expectedRevision", new Blob(["3"]));
+      const transport = await encodeReply(mode === "ambiguous" ? [form, form] : [form]);
+      expect(transport.get("0")).toBe(mode === "ambiguous" ? '["$K1","$0:0"]' : '["$K1"]');
+      expect(transport.has("_1_workoutId")).toBe(true);
+      if (mode === "missing-root") transport.delete("0");
+      if (mode === "duplicate-root") transport.append("0", '["$K1"]');
+      if (mode === "malformed-root") transport.set("0", "not-json");
+      if (mode === "wrong-reference") transport.set("0", '["$K2"]');
+      if (mode === "suffix") transport.append("_2_expectedRevision", "3");
+      const encoded = new Response(transport);
       const body = await encoded.text();
       const result = verify({
         postData: () => body, headers: () => ({ "content-type": encoded.headers.get("content-type") }),
@@ -1105,6 +1179,7 @@ describe("browser environment and static config", () => {
       if (mode === "stale") await expect(result).resolves.toBeUndefined();
       else await expect(result).rejects.toThrow();
     }
+    expect(loadChunk).not.toHaveBeenCalled();
   });
   it("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4: preserves the original twenty-two identities and appends only A5/A6", () => {
     expect(SWIM_BROWSER_CASES).toEqual([

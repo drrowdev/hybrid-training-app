@@ -1422,17 +1422,32 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
 
   async function submittedEditRevision(request: Request, workoutId: string, sessionId: string, revision: number) {
     let fields: FormData;
+    let argument: unknown;
     try {
       fields = await new globalThis.Response(request.postData(), {
         headers: { "content-type": request.headers()["content-type"] },
       }).formData();
+      const roots = fields.getAll("0");
+      if (roots.length !== 1 || typeof roots[0] !== "string") throw new Error();
+      const args: unknown = JSON.parse(roots[0]);
+      if (!Array.isArray(args) || args.length !== 1) throw new Error();
+      argument = args[0];
     } catch { throw new Error("Could not read the synthetic edit submission."); }
-    for (const [name, expected] of [
-      ["workoutId", workoutId], ["sessionId", sessionId], ["expectedRevision", String(revision)],
-    ]) {
-      const values = [...fields].filter(([key]) => new RegExp(`^(?:\\d+_)?${name}$`).test(key)).map(([, value]) => value);
-      expect(values.length === 1 && values[0] === expected).toBe(true);
-    }
+    // Next's pinned React encoder references the FormData argument from root 0.
+    const reference = typeof argument === "string" ? /^\$K([1-9a-f][0-9a-f]*)$/.exec(argument) : null;
+    expect(!!reference, "Synthetic edit FormData argument").toBe(true);
+    const part = Number.parseInt(reference![1], 16);
+    expect(Number.isSafeInteger(part), "Synthetic edit FormData reference").toBe(true);
+    const prefix = `_${part}_`;
+    expect([...fields].every(([key, value]) => key === "0" ||
+      (key.startsWith(prefix) && key.length > prefix.length && typeof value === "string" &&
+        fields.getAll(key).length === 1)), "Synthetic edit unambiguous fields").toBe(true);
+    expect(fields.getAll(`${prefix}workoutId`).length === 1 &&
+      fields.get(`${prefix}workoutId`) === workoutId, "Synthetic edit workout identity").toBe(true);
+    expect(fields.getAll(`${prefix}sessionId`).length === 1 &&
+      fields.get(`${prefix}sessionId`) === sessionId, "Synthetic edit session identity").toBe(true);
+    expect(fields.getAll(`${prefix}expectedRevision`).length === 1 &&
+      fields.get(`${prefix}expectedRevision`) === String(revision), "Synthetic edit original revision").toBe(true);
   }
 
   test("A5, DC-SW7/DC-SW9: permanent deletion removes a swim result while retaining its planned target", async ({
@@ -1569,6 +1584,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await expect(card).toContainText("Result removed");
     await expect(page.getByRole("heading", { name: "Best swims", exact: true })).toHaveCount(0);
     await card.click();
+    await expect(page).toHaveURL(new RegExp(`/app/swim/${target.id}$`));
+    await expect(page.getByRole("status").filter({ hasText: "Result removed" })).toBeVisible();
     await page.reload();
     await expect(page.getByRole("status").filter({ hasText: "Result removed" })).toBeVisible();
     expect((await prescription.innerText()) === targetText).toBe(true);
