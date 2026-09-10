@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runInNewContext } from "node:vm";
 import {
-  ALERT_ANNOTATION_TYPE, SWIM_ALERT_CODEBOOK, alertAnnotation, classifyAlertNodes, classifyWorkoutViewNodes,
+  ALERT_ANNOTATION_TYPE, SWIM_ALERT_CODEBOOK, a4ReplayBackend, alertAnnotation, classifyAlertNodes, classifyWorkoutViewNodes,
   pauseBackend, projectAlertObservations, readAlertAnnotations, startBackend,
   unavailableAlert, validateAlertCategory,
 } from "../../../../scripts/swim-alert-membership";
@@ -108,6 +108,89 @@ describe("browser-only alert membership", () => {
 });
 
 describe("reserved alert annotation protocol", () => {
+  it("round-trips both A4 points only at index21, with transport values confined to the transport point", () => {
+    const replay = { ...unavailableAlert("a4-replay"), category: "client-queue" as const,
+      backend: "reached" as const, control: "log" as const, result: "editing" as const };
+    for (const result of ["request-unseen", "request-pending", "request-failed", "http-2xx", "http-3xx", "http-4xx", "http-5xx", "unavailable"] as const) {
+      const transport = { ...unavailableAlert("a4-replay-transport"), result };
+      const encoded = [alertAnnotation(replay)!, alertAnnotation(transport)!];
+      for (const value of encoded) expect(value.description.length).toBeLessThanOrEqual(160);
+      expect(readAlertAnnotations(encoded)).toEqual([replay, transport]);
+      expect(projectAlertObservations(21, readAlertAnnotations([...encoded].reverse()))).toEqual([replay, transport]);
+      expect(projectAlertObservations(21, [transport])).toEqual([unavailableAlert("a4-replay"), transport]);
+      for (let index = 0; index < 21; index++) {
+        expect(projectAlertObservations(index, [replay, transport])).toEqual(projectAlertObservations(index, undefined));
+      }
+      for (const point of ["a1-pause", "a2-post-start", "a2-edit", "c4-owner-1-start", "c4-owner-2-start", "a4-replay"] as const) {
+        expect(!!alertAnnotation({ ...unavailableAlert(point), result })).toBe(result === "unavailable");
+      }
+      for (const [field, value] of [
+        ["category", "absent"], ["backend", "reached"], ["backend", "not-reached"],
+        ["revision", "unchanged"], ["control", "none"], ["control", "account-page"], ["result", "summary"],
+      ]) {
+        expect(alertAnnotation({ ...transport, [field!]: value })).toBeUndefined();
+        expect(readAlertAnnotations([{ ...encoded[1],
+          description: encoded[1]!.description.replace(`${field}=${transport[field as keyof typeof transport]}`, `${field}=${value}`),
+        }])).toBeUndefined();
+      }
+      expect(readAlertAnnotations(Array(16).fill(encoded[1]))).toEqual([transport]);
+      expect(readAlertAnnotations(Array(17).fill(encoded[1]))).toBeUndefined();
+    }
+    for (const control of ["start", "log", "plan-inactive", "removed", "unavailable-page", "not-found", "none", "unavailable"]) {
+      for (const result of ["editing", "summary", "none", "unavailable"]) {
+        const value = { ...replay, control, result };
+        expect(readAlertAnnotations([alertAnnotation(value)])).toEqual([value]);
+      }
+    }
+  });
+  it.each(["a4-replay", "a4-replay-transport"] as const)("fails closed on hostile %s observations", (point) => {
+    const value = unavailableAlert(point);
+    const encoded = alertAnnotation(value)!;
+    const secret = `synthetic-secret-${"x".repeat(32)}`;
+    for (const field of ["point", "category", "backend", "revision", "control", "result"]) {
+      for (const invalid of [secret, "", undefined, null, {}, 42, `${value[field as keyof typeof value]};raw=${secret}`]) {
+        expect(alertAnnotation({ ...value, [field]: invalid })).toBeUndefined();
+        expect(readAlertAnnotations([{ ...encoded, description: encoded.description.replace(
+          `${field}=${value[field as keyof typeof value]}`, `${field}=${String(invalid)}`,
+        ) }])).toBeUndefined();
+      }
+    }
+    for (const bad of [
+      { ...encoded, raw: secret },
+      { ...encoded, description: `${encoded.description};raw=${secret}` },
+      { ...encoded, description: encoded.description.replace(point, "a4-other") },
+      { ...encoded, description: encoded.description.replace("revision=unavailable", "revision=advanced") },
+      { ...encoded, description: encoded.description.repeat(16) },
+    ]) {
+      expect(readAlertAnnotations([encoded, bad])).toBeUndefined();
+      expect(projectAlertObservations(21, readAlertAnnotations([encoded, bad]))).toEqual([
+        unavailableAlert("a4-replay"), unavailableAlert("a4-replay-transport"),
+      ]);
+    }
+    expect(alertAnnotation({ ...value, raw: secret })).toBeUndefined();
+    for (const observations of [[observation], [value, observation]]) {
+      expect(projectAlertObservations(21, observations)).toEqual([
+        unavailableAlert("a4-replay"), unavailableAlert("a4-replay-transport"),
+      ]);
+    }
+  });
+  it("DC-SW8: reaches A4 only for the exact synthetic session receipt and a valid completion timestamp", () => {
+    const row = { id: "session", user_id: "owner", completion_outbox_entry_id: "receipt", completed_at: "2026-09-10T00:00:00Z" };
+    expect(a4ReplayBackend(row, null, "owner", "session", "receipt")).toBe("reached");
+    for (const value of [
+      { ...row, completion_outbox_entry_id: null, completed_at: null },
+      { ...row, completion_outbox_entry_id: "other" }, { ...row, completed_at: null },
+    ]) expect(a4ReplayBackend(value, null, "owner", "session", "receipt")).toBe("not-reached");
+    for (const value of [
+      null, undefined, {}, [], { ...row, id: "other" }, { ...row, user_id: "other" },
+      { ...row, completion_outbox_entry_id: 1 }, { ...row, completed_at: "private-error" },
+      { ...row, completed_at: 1 }, { ...row, get completed_at() { throw new Error("private-row"); } },
+    ]) expect(a4ReplayBackend(value, null, "owner", "session", "receipt")).toBe("unavailable");
+    for (const error of [{ message: "private-error" }, undefined, { get message() { throw new Error("private-error"); } }]) {
+      expect(a4ReplayBackend(row, error, "owner", "session", "receipt")).toBe("unavailable");
+    }
+    expect(a4ReplayBackend(row, null, "owner", "session", "")).toBe("unavailable");
+  });
   it("round-trips only the ordered, bounded closed grammar and deduplicates identical observations", () => {
     expect(annotation).toEqual({
       type: ALERT_ANNOTATION_TYPE,

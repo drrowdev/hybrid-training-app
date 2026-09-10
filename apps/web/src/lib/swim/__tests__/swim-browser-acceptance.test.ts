@@ -26,7 +26,8 @@ import {
 import { acceptanceAssert, processFailure, safeFailureCause } from "../../../../scripts/swim-acceptance-errors";
 import * as reporting from "../../../../scripts/swim-acceptance-reporting";
 import {
-  ALERT_ANNOTATION_TYPE, alertAnnotation, authAbsenceBackend, c2HttpClass, c2Location, c2Transport, projectAlertObservations, readAlertAnnotations, unavailableAlert,
+  ALERT_ANNOTATION_TYPE, a4ReplayBackend, alertAnnotation, authAbsenceBackend, c2HttpClass, c2Location, c2Transport,
+  classifyAlertNodes, classifyWorkoutViewNodes, projectAlertObservations, readAlertAnnotations, SWIM_ALERT_CODEBOOK, unavailableAlert, validateAlertCategory,
 } from "../../../../scripts/swim-alert-membership";
 import { parseActualForm, parseSetupForm } from "../forms";
 import { standaloneWeekRequests } from "../model";
@@ -122,7 +123,8 @@ function unavailableObservations(index: number) {
   return index === 3 ? [unavailableAlert("c4-owner-1-start"), unavailableAlert("c4-owner-2-start")] :
     index === 4 ? [unavailableAlert("a1-pause")] :
       index === 5 ? [unavailableAlert("a2-post-start"), unavailableAlert("a2-edit")] :
-        index === 9 ? [unavailableAlert("c2-auth-absence")] : [];
+        index === 9 ? [unavailableAlert("c2-auth-absence")] :
+          index === 21 ? [unavailableAlert("a4-replay"), unavailableAlert("a4-replay-transport")] : [];
 }
 
 describe("DC-SW8 failure-only C2 Auth absence", () => {
@@ -582,6 +584,235 @@ describe("DC-SW8 passive C2 location and response metadata", () => {
       expect(location).toHaveBeenCalledTimes(mode.startsWith("auth-") ? 0 : 1);
     }
   });
+});
+
+describe("DC-SW7/DC-SW8/DC-SW9 A4 bounded reconnect observations", () => {
+  afterEach(() => vi.useRealTimers());
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+    return { promise, resolve, reject };
+  }
+  async function observe(options: {
+    holdBackend?: boolean; holdViews?: boolean; readError?: boolean; viewError?: boolean;
+    annotationError?: boolean; registrationError?: boolean; detachError?: boolean; category?: string;
+  } = {}) {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const a4 = source.slice(source.indexOf('test("A4,'));
+    const block = a4.slice(a4.indexOf("let completionRequest:"), a4.indexOf("expect(completionRequest !== undefined)"));
+    const original = new Error("original-ui-error");
+    const privateError = new Error("synthetic-private-query-error");
+    const primary = deferred<void>();
+    const views = deferred<unknown>();
+    const events = new EventEmitter();
+    const unrelated = () => {};
+    for (const event of ["request", "response", "requestfailed"]) events.on(event, unrelated);
+    const entry = { id: receiptId, sessionId };
+    const started = { id: swimFixture().workouts[0]!.id };
+    const userId = "11111111-1111-4111-8111-111111111111";
+    const baseURL = "http://127.0.0.1:3210";
+    const request = (overrides: Partial<{ url: string; method: string; body: string; header: string }> = {}) => ({
+      url: () => overrides.url ?? `${baseURL}/app/swim/${started.id}`,
+      method: () => overrides.method ?? "POST",
+      headers: () => ({ "next-action": overrides.header ?? "synthetic-action" }),
+      postData: () => overrides.body ?? [entry.id, entry.sessionId, started.id].join(","),
+    });
+    const unused = vi.fn(() => { throw privateError; });
+    const response = (paired: unknown, status: unknown = 200) => ({
+      request: () => paired, status: () => status,
+      headers: unused, body: unused, text: unused, json: unused, finished: unused,
+    });
+    let row: unknown = { id: sessionId, user_id: userId, completion_outbox_entry_id: null, completed_at: null };
+    let pendingQueries = 0;
+    const signals: AbortSignal[] = [];
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      expect(url.pathname).toBe("/rest/v1/sessions");
+      expect(url.searchParams.get("select")).toBe("id,user_id,completion_outbox_entry_id,completed_at");
+      expect(url.searchParams.get("id")).toBe(`eq.${sessionId}`);
+      expect(url.searchParams.get("user_id")).toBe(`eq.${userId}`);
+      expect(init?.method).toBe("GET");
+      const signal = init?.signal as AbortSignal;
+      signals.push(signal);
+      pendingQueries++;
+      let abort: (() => void) | undefined;
+      try {
+        if (options.holdBackend) await new Promise<void>((_resolve, reject) => {
+          abort = () => reject(new DOMException("Synthetic cancellation", "AbortError"));
+          signal.addEventListener("abort", abort, { once: true });
+          if (signal.aborted) abort();
+        });
+        if (options.readError) throw privateError;
+        return Response.json(row);
+      } finally {
+        if (abort) signal.removeEventListener("abort", abort);
+        pendingQueries--;
+      }
+    });
+    const admin = createClient("http://127.0.0.1:54321", "synthetic-service", {
+      global: { fetch }, auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+    });
+    const evaluateAll = vi.fn(async (classifier: unknown) => {
+      if (options.holdViews) return await views.promise;
+      if (options.viewError) throw privateError;
+      return classifier === classifyWorkoutViewNodes ? { control: "log", result: "editing" } :
+        { count: options.category ? 1 : 0, category: options.category ?? "absent" };
+    });
+    const locator = { or: () => locator, filter: () => locator, evaluateAll };
+    const close = vi.fn(async () => { views.reject(privateError); });
+    const on = vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+      events.on(event, listener);
+      if (options.registrationError && event === "response") throw privateError;
+    });
+    const off = vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+      events.off(event, listener);
+      if (options.detachError) throw privateError;
+    });
+    const toBeVisible = vi.fn(() => primary.promise);
+    const setOffline = vi.fn(async () => {});
+    const testInfo = { annotations: [] as unknown[] };
+    const execute = runInNewContext(transpileModule(`(async () => { ${block} return completionRequest; })`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      page: { on, off, getByRole: () => locator, close }, context: { setOffline }, admin,
+      userId, entry, started, baseURL, testInfo, expect: () => ({ toBeVisible }),
+      a4ReplayBackend, c2HttpClass, c2Transport, unavailableAlert,
+      alertAnnotation: options.annotationError ? () => { throw privateError; } : alertAnnotation,
+      classifyAlertNodes, classifyWorkoutViewNodes, SWIM_ALERT_CODEBOOK, validateAlertCategory,
+      AbortController, URL, performance, setTimeout, clearTimeout,
+    }) as () => Promise<unknown>;
+    const execution = execute().then((captured) => ({ captured, error: undefined }), (error: unknown) => ({ captured: undefined, error }));
+    await vi.advanceTimersByTimeAsync(0);
+    async function finish(success = false) {
+      if (success) primary.resolve();
+      else primary.reject(original);
+      const outcome = await execution;
+      expect(outcome.error).toBe(success ? undefined : original);
+      expect(toBeVisible).toHaveBeenCalledTimes(1);
+      expect(toBeVisible).toHaveBeenCalledWith();
+      expect(setOffline).toHaveBeenCalledTimes(1);
+      expect(setOffline).toHaveBeenCalledWith(false);
+      expect(signals.length).toBeGreaterThan(0);
+      expect(signals.every((signal) => signal.aborted)).toBe(true);
+      expect(pendingQueries).toBe(0);
+      expect(vi.getTimerCount()).toBe(0);
+      expect(off.mock.calls.map(([event]) => event)).toEqual(["request", "response", "requestfailed"]);
+      for (const event of ["request", "response", "requestfailed"]) expect(events.listeners(event)).toEqual([unrelated]);
+      expect(unused).not.toHaveBeenCalled();
+      const reads = fetch.mock.calls.length + evaluateAll.mock.calls.length;
+      const saved = JSON.stringify(testInfo.annotations);
+      events.emit("request", request());
+      events.emit("response", response(request()));
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(fetch.mock.calls.length + evaluateAll.mock.calls.length).toBe(reads);
+      expect(JSON.stringify(testInfo.annotations)).toBe(saved);
+      expect(saved).not.toMatch(/synthetic-|127\.0\.0\.1|completion_outbox_entry_id|completed_at/);
+      for (const id of [userId, entry.id, entry.sessionId, started.id]) expect(saved).not.toContain(id);
+      return { ...outcome, observations: readAlertAnnotations(testInfo.annotations) };
+    }
+    return {
+      events, request, response, finish, close, fetch, evaluateAll,
+      complete: () => { row = { id: sessionId, user_id: userId, completion_outbox_entry_id: receiptId, completed_at: "2026-09-10T00:00:00Z" }; },
+    };
+  }
+  it.each([
+    ["unseen", "request-unseen"], ["pending", "request-pending"], ["failed", "request-failed"],
+    ["200", "http-2xx"], ["303", "http-3xx"], ["403", "http-4xx"], ["503", "http-5xx"],
+    ["wrong-response", "request-pending"], ["wrong-failure", "request-pending"],
+    ["later-request", "http-4xx"], ["invalid-status", "unavailable"], ["getter-error", "unavailable"],
+  ])("pairs only the captured original request: %s", async (mode, expected) => {
+    const harness = await observe();
+    const original = harness.request();
+    if (mode !== "unseen" && mode !== "getter-error") harness.events.emit("request", original);
+    if (/^\d+$/.test(mode)) harness.events.emit("response", harness.response(original, Number(mode)));
+    if (mode === "failed") harness.events.emit("requestfailed", original);
+    if (mode === "wrong-response") harness.events.emit("response", harness.response(harness.request()));
+    if (mode === "wrong-failure") harness.events.emit("requestfailed", harness.request());
+    if (mode === "later-request") {
+      const later = harness.request();
+      harness.events.emit("request", later);
+      harness.events.emit("response", harness.response(later));
+      harness.events.emit("response", harness.response(original, 403));
+    }
+    if (mode === "invalid-status") harness.events.emit("response", harness.response(original, 0));
+    if (mode === "getter-error") harness.events.emit("request", { url() { throw new Error("synthetic-private-url"); } });
+    const result = await harness.finish(mode === "later-request");
+    expect(result.observations?.[1]).toEqual({ ...unavailableAlert("a4-replay-transport"), result: expected });
+    expect(result.observations?.[0]?.backend).toBe("not-reached");
+    if (mode === "later-request") expect(result.captured).toBe(original);
+  });
+  it.each(["origin", "port", "path", "credentials", "method", "action", "receipt", "session", "workout"])(
+    "does not capture a nonmatching %s", async (mode) => {
+    const harness = await observe();
+    const target = new URL(harness.request().url());
+    if (mode === "origin") target.hostname = "example.invalid";
+    if (mode === "port") target.port = "3211";
+    if (mode === "path") target.pathname = "/app/swim/other";
+    if (mode === "credentials") target.username = "synthetic";
+    const override = {
+      url: target.href, method: mode === "method" ? "GET" : "POST", header: mode === "action" ? "" : "synthetic-action",
+      body: mode === "receipt" ? harness.request().postData().replace(receiptId, "") :
+        mode === "session" ? harness.request().postData().replace(sessionId, "") :
+          mode === "workout" ? `${receiptId},${sessionId}` : harness.request().postData(),
+    };
+    const other = harness.request(override);
+    harness.events.emit("request", other);
+    harness.events.emit("response", harness.response(other));
+    harness.events.emit("requestfailed", other);
+    expect((await harness.finish()).observations?.[1]?.result).toBe("request-unseen");
+  });
+  it.each(["absent", "client-queue", "server-stale", "unclassified"])(
+    "samples independently of category %s for only the original five-second UI window", async (category) => {
+      const harness = await observe({ category });
+      harness.complete();
+      await vi.advanceTimersByTimeAsync(4999);
+      const queries = harness.fetch.mock.calls.length;
+      expect(queries).toBeGreaterThan(1);
+      expect(queries).toBeLessThanOrEqual(8);
+      await vi.advanceTimersByTimeAsync(1);
+      const original = harness.request();
+      harness.events.emit("request", original);
+      harness.events.emit("response", harness.response(original));
+      const result = await harness.finish();
+      expect(harness.fetch).toHaveBeenCalledTimes(queries);
+      expect(result.observations?.[0]).toMatchObject({ category, backend: "reached", control: "log", result: "editing" });
+      expect(result.observations?.[1]?.result).toBe("request-unseen");
+      expect(harness.close).not.toHaveBeenCalled();
+    },
+  );
+  it.each([true, false])("settles a pending SDK read on early UI success=%s without extra sampling", async (success) => {
+    const harness = await observe({ holdBackend: true });
+    const result = await harness.finish(success);
+    expect(result.observations?.[0]?.backend).toBe("unavailable");
+    expect(harness.fetch).toHaveBeenCalledOnce();
+    expect(harness.close).not.toHaveBeenCalled();
+  });
+  it("aborts a pending SDK read at the deadline and closes only failed pending browser reads", async () => {
+    const harness = await observe({ holdBackend: true, holdViews: true });
+    await vi.advanceTimersByTimeAsync(5000);
+    const result = await harness.finish();
+    expect(result.observations?.[0]).toEqual(unavailableAlert("a4-replay"));
+    expect(harness.fetch).toHaveBeenCalledOnce();
+    expect(harness.evaluateAll).toHaveBeenCalledTimes(2);
+    expect(harness.close).toHaveBeenCalledOnce();
+  });
+  it.each(["readError", "viewError", "annotationError", "registrationError", "detachError"] as const)(
+    "preserves the primary error through diagnostic %s", async (failure) => {
+      const harness = await observe({ [failure]: true });
+      const result = await harness.finish();
+      if (failure === "annotationError") expect(result.observations).toEqual([]);
+      if (failure === "readError") {
+        expect(result.observations?.[0]?.backend).toBe("unavailable");
+        expect(harness.fetch).toHaveBeenCalledOnce();
+      }
+      if (failure === "viewError") expect(result.observations?.[0]).toMatchObject({
+        category: "unavailable", control: "unavailable", result: "unavailable",
+      });
+      if (failure === "registrationError" || failure === "detachError") expect(result.observations?.[1]?.result).toBe("unavailable");
+    },
+  );
 });
 
 describe("browser environment and static config", () => {
@@ -1798,6 +2029,60 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
           const suite = file.suites.find((suite) => suite.title === item.describe)!;
           return suite.specs.find((spec) => spec.title === item.title)!.tests[0]!;
         }
+        it.each(["request-unseen", "request-pending", "request-failed", "http-2xx", "http-3xx", "http-4xx", "http-5xx", "unavailable"] as const)(
+          "projects A4 %s only at index21, retaining the failed UI ledger even with a completed receipt", (result) => {
+            const fixture = report();
+            const values = [
+              { ...unavailableAlert("a4-replay"), backend: "reached" as const, category: "client-queue" as const,
+                control: "log" as const, result: "editing" as const },
+              { ...unavailableAlert("a4-replay-transport"), result },
+            ];
+            for (const index of SWIM_BROWSER_CASES.keys()) {
+              caseTest(fixture, index).results[0]!.annotations = values.map((value) => alertAnnotation(value)!);
+            }
+            caseTest(fixture, 21).results[0]!.status = "failed";
+            const projection = rejectedReport(fixture);
+            expect(projection.code).toBe("browser-failed");
+            expect(projection.cases?.[21]?.status).toBe("failed");
+            expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual(
+              SWIM_BROWSER_CASES.map((_, index) => index === 21 ? values : unavailableObservations(index)),
+            );
+            expect(projection.cases?.map(({ file, describe, title }) => ({ file, describe, title }))).toEqual(SWIM_BROWSER_CASES);
+          },
+        );
+        it.each(["a4-replay", "a4-replay-transport"] as const)(
+          "defaults missing %s and rejects malformed A4 annotations without losing the frozen ledger", (point) => {
+            const value = point === "a4-replay" ? { ...unavailableAlert(point), backend: "reached" as const } :
+              { ...unavailableAlert(point), result: "http-2xx" as const };
+            const valid = alertAnnotation(value)!;
+            for (const [index, annotations] of [
+              [valid],
+              [valid, alertAnnotation(observations[2])!],
+              [valid, alertAnnotation(unavailableAlert(point))!],
+              [{ ...valid, description: valid.description.replace(point, "a4-other") }],
+              [{ ...valid, raw: "synthetic-private-extra" }],
+              [{ ...valid, description: `${valid.description};raw=synthetic-private-extra` }],
+              [{ ...valid, description: valid.description.replace("category=unavailable", "category=synthetic-private-secret") }],
+              [{ ...valid, description: valid.description.replace("revision=unavailable", "revision=advanced") }],
+              [alertAnnotation({ ...unavailableAlert("a4-replay"), backend: "reached" })!,
+                { ...alertAnnotation(unavailableAlert("a4-replay-transport"))!,
+                  description: alertAnnotation(unavailableAlert("a4-replay-transport"))!.description.replace("backend=unavailable", "backend=reached") }],
+              Array(17).fill(valid),
+            ].entries()) {
+              const fixture = report();
+              const result = caseTest(fixture, 21).results[0]!;
+              Object.assign(result, { status: "failed", annotations });
+              const projection = rejectedReport(fixture);
+              expect(projection.code).toBe("browser-failed");
+              expect(projection.cases).toHaveLength(22);
+              expect(projection.cases?.[21]).toMatchObject({
+                status: "failed", alertObservations: unavailableObservations(21).map((item) =>
+                  index === 0 && item.point === point ? value : item),
+              });
+              expect(JSON.stringify(projection)).not.toContain("synthetic-private");
+            }
+          },
+        );
         it.each(["reached", "not-reached", "unavailable"] as const)(
           "retains the nonqualifying C2 failure with backend=%s and no cross-case evidence", (backend) => {
             const fixture = report();
@@ -1859,7 +2144,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
           expect(projection.cases).toHaveLength(22);
           expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual([
             [], [], [], observations.slice(0, 2), [observations[2]], observations.slice(3), [], [], [],
-            [unavailableAlert("c2-auth-absence")], [], [], [], [], [], [], [], [], [], [], [], [],
+            [unavailableAlert("c2-auth-absence")], [], [], [], [], [], [], [], [], [], [], [], unavailableObservations(21),
           ]);
           expect(projection.cases?.map(({ file, describe, title }) => ({ file, describe, title }))).toEqual(SWIM_BROWSER_CASES);
         });

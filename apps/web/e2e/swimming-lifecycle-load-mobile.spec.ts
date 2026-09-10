@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { errors, type Page, type Request } from "@playwright/test";
+import { errors, type Page, type Request, type Response } from "@playwright/test";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Prescription } from "@hta/db";
 import { ALL_REGIONS, finalEwma, type Region, type SwimActualResult } from "@hta/domain";
@@ -18,8 +18,9 @@ import { deriveDailyRegionLoad } from "../src/lib/engine/region-daily-load";
 import { deriveSwimWeekCandidate, loadSwimHistory, settledSwimResult } from "../src/lib/swim/queries";
 import { isUuid, sortBySeq, type OutboxEntry } from "../src/lib/offline/outbox-core";
 import {
-  SWIM_ALERT_CODEBOOK, alertAnnotation, classifyAlertNodes, classifyWorkoutViewNodes, pauseBackend,
-  unavailableAlert, validateAlertCategory, type AlertObservation,
+  SWIM_ALERT_CODEBOOK, a4ReplayBackend, alertAnnotation, c2HttpClass, c2Transport,
+  classifyAlertNodes, classifyWorkoutViewNodes, pauseBackend,
+  unavailableAlert, validateAlertCategory, type AlertObservation, type C2HttpClass,
 } from "../scripts/swim-alert-membership";
 
 const test = seededTest.extend({
@@ -1101,7 +1102,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
 
   test("A4, DC-SW7/DC-SW8/DC-SW9: an offline swim finishes after archival without duplicate history or load", async ({
     page, context, browser, freshUser, seedConfig, admin, baseURL,
-  }) => {
+  }, testInfo) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
     const primary = await primaryBaseline(admin, userId);
@@ -1169,17 +1170,132 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       expect(isDeepStrictEqual(await lifecycleQueue(page), queued)).toBe(true);
 
       let completionRequest: Request | undefined;
-      const capture = (request: Request) => {
-        if (request.method() !== "POST" || !request.headers()["next-action"]) return;
-        const body = request.postData() ?? "";
-        if ([entry.id, entry.sessionId, started.id].every((id) => body.includes(id))) completionRequest ??= request;
+      const diagnostic = unavailableAlert("a4-replay");
+      const transport = unavailableAlert("a4-replay-transport");
+      const controller = new AbortController();
+      const owned: Promise<unknown>[] = [];
+      let expiry: ReturnType<typeof setTimeout> | undefined;
+      let deadline: number | undefined;
+      let statusClass: C2HttpClass | "unavailable" | null = null;
+      let requestFailed = false;
+      let transportInvalid = false;
+      let pendingViews = 0;
+      let primaryFailed = false;
+      const active = () => !controller.signal.aborted && (deadline === undefined || performance.now() < deadline);
+      const sampleTransport = () => {
+        transport.result = c2Transport(completionRequest ? 1 : 0, statusClass, requestFailed, transportInvalid);
       };
-      page.on("request", capture);
+      const capture = (request: Request) => {
+        if (!active() || completionRequest) return;
+        try {
+          const target = new URL(request.url());
+          const base = new URL(baseURL!);
+          if (base.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(base.hostname) ||
+            base.username || base.password || target.username || target.password ||
+            target.origin !== base.origin || target.pathname !== `/app/swim/${started.id}` ||
+            request.method() !== "POST" || !request.headers()["next-action"]) return;
+          const body = request.postData() ?? "";
+          if ([entry.id, entry.sessionId, started.id].every((id) => body.includes(id))) completionRequest = request;
+        } catch { transportInvalid = true; }
+        sampleTransport();
+      };
+      const response = (value: Response) => {
+        if (!active()) return;
+        try {
+          if (!completionRequest || value.request() !== completionRequest) return;
+          statusClass = c2HttpClass(value.status());
+        } catch { transportInvalid = true; }
+        sampleTransport();
+      };
+      const failed = (request: Request) => {
+        if (!active() || !completionRequest || request !== completionRequest) return;
+        requestFailed = true;
+        sampleTransport();
+      };
       try {
+        try {
+          page.on("request", capture);
+          page.on("response", response);
+          page.on("requestfailed", failed);
+        } catch { transportInvalid = true; }
         await context.setOffline(false);
-        await expect(page.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
+        deadline = performance.now() + 5000;
+        expiry = setTimeout(() => controller.abort(), deadline - performance.now());
+        sampleTransport();
+        // The UI goal owns the original window; diagnostics never gate it.
+        const primary = expect(page.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
+        const polling = (async () => {
+          const intervals = [100, 250, 500, 1000];
+          let attempt = 0;
+          while (active()) {
+            const backend = (async () => {
+              diagnostic.backend = "unavailable";
+              try {
+                const sample = await admin.from("sessions").select("id,user_id,completion_outbox_entry_id,completed_at")
+                  .eq("user_id", userId).eq("id", entry.sessionId).abortSignal(controller.signal).retry(false).single();
+                if (active()) diagnostic.backend = a4ReplayBackend(sample.data, sample.error, userId, entry.sessionId, entry.id);
+              } catch { if (active()) diagnostic.backend = "unavailable"; }
+            })();
+            const view = (async () => {
+              pendingViews++;
+              diagnostic.control = diagnostic.result = "unavailable";
+              try {
+                const value = await page.getByRole("button", { name: /^(Start swim|Starting…)$/ })
+                  .or(page.getByRole("link", { name: /^(Log swim|Restore from Trash)$/ }))
+                  .or(page.getByRole("status").filter({ hasText: /^(Plan paused|Plan finished|Plan archived|Result removed|Swimming is currently unavailable\.)$/ }))
+                  .or(page.getByRole("heading", { name: /^(Edit your swim|Your swim)$/, level: 2 }))
+                  .or(page.getByRole("heading", { name: "404", exact: true, level: 1 }))
+                  .filter({ visible: true }).evaluateAll(classifyWorkoutViewNodes);
+                if (active()) Object.assign(diagnostic, value);
+              } catch { if (active()) diagnostic.control = diagnostic.result = "unavailable"; }
+              finally { pendingViews--; }
+            })();
+            const alert = (async () => {
+              pendingViews++;
+              diagnostic.category = "unavailable";
+              try {
+                const value = await page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK);
+                if (active()) diagnostic.category = value.count < 0 || value.category === "unreadable"
+                  ? "unavailable" : validateAlertCategory(value.category);
+              } catch { if (active()) diagnostic.category = "unavailable"; }
+              finally { pendingViews--; }
+            })();
+            owned.push(backend, view, alert);
+            await Promise.allSettled([backend, view, alert]);
+            if (!active()) return;
+            await new Promise<void>((resolve) => {
+              const finish = () => {
+                clearTimeout(timer);
+                controller.signal.removeEventListener("abort", finish);
+                resolve();
+              };
+              const timer = setTimeout(finish, Math.min(intervals[Math.min(attempt++, intervals.length - 1)], deadline! - performance.now()));
+              controller.signal.addEventListener("abort", finish, { once: true });
+            });
+          }
+        })().catch(() => {
+          if (active()) Object.assign(diagnostic, unavailableAlert("a4-replay"));
+        });
+        owned.push(polling);
+        await primary;
+      } catch (error) {
+        primaryFailed = true;
+        throw error;
       } finally {
-        page.off("request", capture);
+        controller.abort();
+        clearTimeout(expiry);
+        try { page.off("request", capture); } catch { transport.result = "unavailable"; }
+        try { page.off("response", response); } catch { transport.result = "unavailable"; }
+        try { page.off("requestfailed", failed); } catch { transport.result = "unavailable"; }
+        // No post-failure sample. Close only an already-failed page to settle pending browser reads.
+        if (primaryFailed && pendingViews > 0) await page.close().catch(() => undefined);
+        await Promise.allSettled(owned);
+        for (const value of [diagnostic, transport]) {
+          try {
+            const annotation = alertAnnotation(value);
+            if (annotation) testInfo.annotations.push(annotation);
+          } catch { /* Diagnostics cannot replace the primary assertion error. */ }
+        }
       }
       expect(completionRequest !== undefined).toBe(true);
       expect((await lifecycleQueue(page)).length).toBe(0);

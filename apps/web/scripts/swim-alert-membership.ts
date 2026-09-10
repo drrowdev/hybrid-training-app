@@ -96,7 +96,8 @@ export type C2Transport = "request-unseen" | "request-pending" | "request-failed
 export type AlertControl = "start" | "log" | "plan-inactive" | "removed" |
   "unavailable-page" | "not-found" | "none" | C2Location;
 export type AlertResult = "editing" | "summary" | "none" | C2Transport;
-export type AlertPoint = "a1-pause" | "a2-post-start" | "a2-edit" | "c4-owner-1-start" | "c4-owner-2-start" | "c2-auth-absence";
+export type AlertPoint = "a1-pause" | "a2-post-start" | "a2-edit" | "c4-owner-1-start" | "c4-owner-2-start" | "c2-auth-absence" |
+  "a4-replay" | "a4-replay-transport";
 export type AlertObservation = {
   point: AlertPoint; category: AlertCategory; backend: AlertBackend; revision: AlertRevision;
   control: AlertControl; result: AlertResult;
@@ -176,7 +177,8 @@ export function validateAlertCategory(value: unknown): AlertCategory {
 }
 
 export const ALERT_ANNOTATION_TYPE = "hta-swim-alert-membership-v2";
-const POINTS: readonly AlertPoint[] = ["a1-pause", "a2-post-start", "a2-edit", "c4-owner-1-start", "c4-owner-2-start", "c2-auth-absence"];
+const POINTS: readonly AlertPoint[] = ["a1-pause", "a2-post-start", "a2-edit", "c4-owner-1-start", "c4-owner-2-start", "c2-auth-absence",
+  "a4-replay", "a4-replay-transport"];
 const BACKENDS: readonly AlertBackend[] = ["reached", "not-reached", "unavailable"];
 const REVISIONS: readonly AlertRevision[] = ["unchanged", "advanced", "other", "unavailable"];
 const CONTROLS: readonly AlertControl[] = [
@@ -207,7 +209,10 @@ function validObservation(value: unknown): value is AlertObservation {
       ? value.category === "unavailable" && (value.backend === "not-reached"
         ? C2_LOCATIONS.some((control) => control === value.control) && C2_TRANSPORTS.some((result) => result === value.result)
         : value.control === "unavailable" && value.result === "unavailable")
-      : CONTROLS.some((control) => control === value.control) && RESULTS.some((result) => result === value.result));
+      : value.point === "a4-replay-transport"
+        ? value.category === "unavailable" && value.backend === "unavailable" && value.control === "unavailable" &&
+          C2_TRANSPORTS.some((result) => result === value.result)
+        : CONTROLS.some((control) => control === value.control) && RESULTS.some((result) => result === value.result));
 }
 
 export function alertAnnotation(value: unknown) {
@@ -243,11 +248,11 @@ export function readAlertAnnotations(value: unknown): AlertObservation[] | undef
   return observations;
 }
 
-// Declared case order: original isolation C4, then A1/A2, with account C2 at index 9.
+// Declared case order: original isolation C4, A1/A2, account C2 at 9 and A4 at 21.
 export function projectAlertObservations(caseIndex: number, observations: AlertObservation[] | undefined) {
   const points: readonly AlertPoint[] = caseIndex === 3 ? ["c4-owner-1-start", "c4-owner-2-start"] :
     caseIndex === 4 ? ["a1-pause"] : caseIndex === 5 ? ["a2-post-start", "a2-edit"] :
-      caseIndex === 9 ? ["c2-auth-absence"] : [];
+      caseIndex === 9 ? ["c2-auth-absence"] : caseIndex === 21 ? ["a4-replay", "a4-replay-transport"] : [];
   const valid = observations?.every((item) => points.includes(item.point));
   return points.map((point) => (valid && observations?.find((item) => item.point === point)) || unavailableAlert(point));
 }
@@ -268,6 +273,19 @@ export function startBackend(status: unknown, sessionId: unknown): AlertBackend 
   if (typeof status !== "string" || !["scheduled", "started", "completed", "skipped"].includes(status) ||
     !(sessionId === null || typeof sessionId === "string")) return "unavailable";
   return status === "started" && typeof sessionId === "string" && sessionId.length > 0 ? "reached" : "not-reached";
+}
+
+// Receipt completion at sample time only; neither transport nor history/load proof.
+export function a4ReplayBackend(
+  value: unknown, error: unknown, userId: string, sessionId: string, receiptId: string,
+): AlertBackend {
+  try {
+    if (!userId || !sessionId || !receiptId || error !== null || !record(value) || value.id !== sessionId || value.user_id !== userId ||
+      !(value.completion_outbox_entry_id === null || typeof value.completion_outbox_entry_id === "string") ||
+      !(value.completed_at === null ||
+        typeof value.completed_at === "string" && Number.isFinite(Date.parse(value.completed_at)))) return "unavailable";
+    return value.completion_outbox_entry_id === receiptId && value.completed_at !== null ? "reached" : "not-reached";
+  } catch { return "unavailable"; }
 }
 
 // Auth absence at sample time only, never cascade or permanent deletion-outcome proof.
