@@ -1534,3 +1534,27 @@ These controlled source failures are **not proof of historical A2/A3 causation**
 or new-head browser acceptance. B6/B7 fixes, B2/A4 and all22 acceptance sources
 are unchanged. Coordinator inspection/exact-head core/ONE new-head full22 remain;
 no live browser/data work, delegation, dispatch, timeout increase or broader scope.
+
+### PR805 A7 bounded Finish observations — 2026-09-10
+
+Latest full34467283585attempt1@632 ran frozen25 once:24pass/1fail,
+0flaky/skipped,134031ms; only A7 failed9112ms at first-Finish summary.
+Restored exact Notes/draft now passed; canonical completion/future rejection
+remainder was not reached. Core34466774500, original24, first10 non-browser
+stages and both cleanups passed. Main remains failed, not25/25.
+
+Owner's “Allow two bounded observations (Recommended)” is a narrow exception:
+only a7-finish/a7-finish-transport at index24, original five-second assertion,
+same25 and limits. Source c4f7a6fe (early checkpoint6af346d0) adds exact original
+request/session/owner/receipt pairing, one abortable no-retry receipt read and
+one finite closed UI snapshot; original assertion/error stays primary.
+Duplicate/foreign/stale/unavailable evidence cannot imply success; HTTP2xx is
+not canonical completion. A3/A4, all original24 and remaining A7 oracles are
+unchanged. No product cause/fix, schema/RLS change or broader diagnostic approval.
+Under [DC-SW7/SW8/SW9](./hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05),
+1132 affected tests, scoped lint/types and private Playwright1.60.0 collection
+passed (25/sixfiles2/4/7/8/3/1, no execution). CodeQL returned no usable analysis.
+Exact commands/limits are in HANDOFF. Coordinator source/model/ref inspection,
+exact-head core then ONE full25 remain pending; diagnostics-only future success
+is not a causal product-fix claim. Seven of nine gates covered; A7/concurrency
+and separate combined/production approvals remain open. No raw logs fetched.

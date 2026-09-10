@@ -2917,3 +2917,34 @@ changes. Unchanged native hooks passed; source identities verified locally/publi
 Collection is not runtime: coordinator inspection/exact-head core/ONE full25
 pending. Seven of nine gates remain covered; A7/concurrency, combined/production
 approvals and deferred backups unchanged. No services, dispatch or product changes.
+
+## [2026-09-10] refine | PR805 owner-approved bounded A7 first-Finish observations
+
+Exact live63235ae3/basee2758dad verified; sole805 writer, early tested6af346d0,
+completed sourcec4f7a6fe/treee6f39d70. Owner's “Allow two bounded observations
+(Recommended)” permits only a7-finish/a7-finish-transport at index24 inside
+the unchanged original five-second assertion. Original Request/pinned decoder,
+exact target/session/owner/receipt, one AbortSignal/.retry(false) read and finite
+closed UI snapshot; no polling, widened budget, product/schema/RLS change.
+Owned waits/listeners/timer settle on success/failure; late results cannot write,
+only a failed page may close, and the original assertion error retains priority.
+A3/A4 and original24 prefix/shared helpers plus remaining A7 oracles unchanged.
+
+Coordinator latest full34467283585attempt1@632:24pass/1fail/0flaky/skipped,
+134031ms; A7 failed9112ms at original2011 Finish summary, after restored
+Notes/whole-draft equality passed. Canonical completion/future remainder not
+reached. Core34466774500, original24, first10 non-browser stages and both
+cleanups passed; main remains failed. No prior worker restart, reference/agent
+log/transcript/download-URL retrieval or historical run combination.
+
+HANDOFF records exact six-selector command:1132pass (44/13/29/639/406/1),
+source-executing fast/foreign/ambiguous/held/late/success/failure regressions and
+strict projection. Actual private Playwright1.60.0 --list passed25/sixfiles
+2/4/7/8/3/1/zeroexecution/errors/private cleanup. Scoped ESLint, web types,
+diff/secret checks and native source publication hooks passed; local/public
+identities approved. CodeQL returned0 alerts but unusable Actions/JavaScript
+analysis, not a security pass. Collection is not runtime acceptance or causal
+product-fix evidence. Coordinator complete-source/model/ref inspection,
+exact-head core/ONE changed-head full25 pending, all flags/limits unchanged.
+Seven of nine gates covered; A7/concurrency and combined/production approvals
+remain open, existing accounts/deferred backups unchanged.

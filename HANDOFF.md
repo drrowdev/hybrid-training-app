@@ -2,6 +2,79 @@
 
 Current-state snapshot. Updated by whoever last touched the repo. Read this before resuming work.
 
+## LATEST — PR805 bounded A7 first-Finish observations — 2026-09-10
+
+Started at live-verified `63235ae37fb2fd324a99b8d9840daa46f57012dd`, base
+`e2758dadbb110e03794e49d53b47622a6295e988`, sole existing-PR805 writer.
+Early tested checkpoint: `6af346d0f70c7debedac428f2b7872813d98ffa7`.
+Completed source: `c4f7a6fe1472ab1f3db0324d784443fe299a50be`, tested tree
+`e6f39d70d22853449dea94f024a802d85da49864`.
+
+Owner explicitly approved **“Allow two bounded observations (Recommended)”**:
+only `a7-finish` / `a7-finish-transport`, index24, within the original first-Finish
+five-second result assertion. This is not broader diagnostic or product authority.
+Listeners precede the click; the pinned root0/$K/_part_ decoder binds the original
+Request to the exact loopback origin/workout path/query, started session and receipt.
+One owner/session-scoped receipt read uses AbortSignal and SDK `.retry(false)`;
+one finite UI snapshot uses existing closed classifiers. Ambiguous/duplicate/stale
+or unpaired evidence stays unavailable; HTTP2xx is not completion proof.
+The unchanged result-text assertion starts before observation reads, followed by
+the unchanged Edit result assertion. Abort settles owned waits; late resolutions
+cannot write outcomes. Only an already-failed page may close for pending browser
+reads. No renewed clock, polling, retry, raw diagnostic output or product changes.
+Original24/shared spec helpers and A7's remaining oracles are byte-identical;
+Notes/navigation fixes remain. Six-key/160char/max16 grammar is unchanged; A7
+rejects duplicate/extra/cross-case records. A3/A4 remain at20/21.
+
+Latest executed evidence, supplied by coordinator and corroborated by public
+metadata: core **34466774500 attempt1@632 passed**; full
+[34467283585 attempt1@632](https://github.com/drrowdev/hybrid-training-app/actions/runs/34467283585)
+ran all25 once: **24 passed / 1 failed / 0 flaky / 0 skipped**,134031ms.
+A7 alone failed9112ms at original line2011, first-Finish Your swim summary.
+Exact restored Notes/whole draft, limitation creation, unchanged swim rows and
+restored lengths/time/RPE passed; canonical completion and future rejection
+remainder were not reached. Original24, first10 non-browser stages and both
+cleanups passed. **Main remains failed, not25/25; no product cause is demonstrated.**
+Earlier524/full34464675255 remains failed; accepted24/22 remain historical.
+Consumed reference/agent logs, transcripts and download URLs were not fetched;
+prior34465718698 was not restarted. Core failed-job lookup returned zero jobs.
+
+Commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/workout-controls.test.tsx src/lib/swim/__tests__/draft.test.ts src/lib/swim/__tests__/swim-alert-membership.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`
+  — **1132 passed**, six files44/13/29/639/406/1. Source-executing VM tests reuse
+  A3's EventEmitter/fake-clock/real SDK/pinned FormData mechanisms: fast response,
+  unseen/pending/failure, foreign/malformed pairing, exact owner/session/receipt,
+  held/late decoder/backend/view reads, success/failure cleanup and original error
+  priority. Development runs caught two projection/click expectations and the old
+  blanket no-A7-diagnostics source guard; these were narrowly updated.
+- Actual private Playwright1.60.0
+  `test --list --config=playwright.swim-reference.config.ts --project=mobile-chromium --reporter=json`
+  — frozen25/sixfiles2/4/7/8/3/1, original24 prefix, zeroexecution/errors, private
+  modes/cleanup passed; safe result success/exit0/unknown/empty sources.
+- `pnpm --filter @hta/web exec eslint e2e/swimming-lifecycle-load-mobile.spec.ts scripts/swim-alert-membership.ts src/lib/swim/__tests__/swim-alert-membership.test.ts src/lib/swim/__tests__/swim-browser-acceptance.test.ts src/lib/swim/__tests__/swim-acceptance.test.ts`,
+  `pnpm --filter @hta/web typecheck`, `pnpm docs:check-drift` (offline) and
+  `git diff --check` passed.
+  Secret scans clean; native hooks and local/public source identities verified.
+  Required CodeQL returned0 alerts but **no usable analysis**: Actions failed,
+  JavaScript database too large. This is not a security-analysis pass.
+
+[DC-SW7/SW8/SW9](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+oracles and all versions/limits remain unchanged: Node22/pnpm10.33.2,
+Next16.2.6/React19.2.4/Playwright1.60.0; 30s case/300s browser/330s command/
+590s phase/410s server/35m main+3mcleanup/45mjob, CLI2.116/default12,
+loopback/0700dirs/0600files, normal149/separate146–148 identity and existing FK/Auth gates.
+No dependencies, services/browser runtime/DB/Docker/Supabase startup, fixtures,
+workflow dispatch, delegated chain, migration/RLS changes or history rewrite.
+**Collection is not runtime acceptance; diagnostic-only future success is not
+a causal product-fix claim.** Coordinator must inspect the complete saved source,
+model/refs, then exact-head core before ONE changed-head full25 with exact
+`expected_sha`, `swim_acceptance=true`, `migrate_production=false`,
+`allow_undeployed=false`. Seven of nine gates covered; A7/concurrency remain open,
+no combined work before all9. Production reconciliation and owner-approved
+unshipped-only migration ordering/down plan remain required; never reset the
+ledger. Existing getsxc.app accounts and deferred backups are unchanged.
+
 ## LATEST — PR805 A7 filled Notes selector correction — 2026-09-10
 
 Started at exact live `524c59355f04cfd7849c1f161300f761cd874cdc`, base
