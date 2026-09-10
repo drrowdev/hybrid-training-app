@@ -110,6 +110,16 @@ export const SWIM_BROWSER_CASES = Object.freeze([
     describe: "ADR0079 mobile swimming persistence and isolation",
     title: "E2 DC-SW2/DC-SW6: ordinary swim results do not create a pace calibration",
   }),
+  Object.freeze({
+    file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming lifecycle and regional load",
+    title: "A3, DC-SW7: replacing an archived swim plan preserves completed history and primary training",
+  }),
+  Object.freeze({
+    file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
+    describe: "ADR0079 mobile swimming lifecycle and regional load",
+    title: "A4, DC-SW7/DC-SW8/DC-SW9: an offline swim finishes after archival without duplicate history or load",
+  }),
 ]);
 const EXPECTED_FILES = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
 
