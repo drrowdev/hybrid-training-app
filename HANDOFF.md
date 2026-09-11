@@ -3214,3 +3214,10 @@ consumed core log or private transcripts. No hosted writes, services, workflow
 dispatch, dependency install, bootstrap/reset, or frozen26 rerun. Accepted
 application82337/frozen26 evidence remains source-specific. PR stays
 draft/unmerged; corrected exact-head gated configuration remains coordinator-owned.
+
+Published repair `5fba2d94d0ec6eed3ba4e381a2abbb8681f8df4c` directly follows
+START; local and public author/committer identities are allowlisted. Changed-file
+secret scan passed. Required automated validation was attempted: review could
+not load its configured model; CodeQL skipped this test/documentation-only
+repair as trivial. No clean automated review is claimed. Existing DB lint
+command only reports “no lint config yet”.
