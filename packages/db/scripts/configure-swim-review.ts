@@ -19,6 +19,8 @@ export const CONFIGURATION_PATHS = [
   "packages/db/scripts/__tests__/swim-review-config-plan.test.ts",
   "packages/db/scripts/configure-swim-review.ts",
   "packages/db/scripts/__tests__/configure-swim-review.test.ts",
+  "packages/db/scripts/deploy-swim-review.ts",
+  "packages/db/scripts/__tests__/deploy-swim-review.test.ts",
 ] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const ref = `refs/heads/${REVIEW.branch}` as const;
@@ -53,7 +55,7 @@ function select(value: unknown, keys: readonly string[]) {
 const authKeys = ["site_url", "uri_allow_list", "disable_signup"] as const;
 function authFields(value: unknown) { return select(value, authKeys); }
 function same(a: unknown, b: unknown) { return JSON.stringify(a) === JSON.stringify(b); }
-function metadata(value: unknown): EnvironmentMetadata {
+export function metadata(value: unknown): EnvironmentMetadata {
   const item = object(value, "metadata_entry_invalid");
   const result = metadataSchema.safeParse({
     ...select(item, ["key", "type", "target", "id", "createdAt", "updatedAt"]),
@@ -94,6 +96,7 @@ function validateMode(env: NodeJS.ProcessEnv, mode: Mode) {
     env.GITHUB_REF === ref && env.GITHUB_JOB === "configure-swim-review" &&
     env.CONFIGURE_SWIM_REVIEW === (mode === "configure" ? "true" : "false") &&
     env.INSPECT_SWIM_REVIEW_AUTH === (mode === "inspect-auth" ? "true" : "false") &&
+    (env.DEPLOY_SWIM_REVIEW ?? "false") === "false" &&
     env.PREPARE_SWIM_REVIEW === "false" &&
     env.INSPECT_SWIM_REVIEW === "false" && env.SWIM_ACCEPTANCE === "false" &&
     env.MIGRATE_PRODUCTION === "false" && env.ALLOW_UNDEPLOYED === "false" &&
@@ -120,6 +123,7 @@ export function verifyConfigurationSource(env: NodeJS.ProcessEnv, mode: Mode = "
   validateMode(env, mode);
   const event = object(JSON.parse(readFileSync(env.GITHUB_EVENT_PATH!, "utf8")));
   const inputs = object(event.inputs);
+  requireThat(inputs.deploy_swim_review === "false");
   for (const [key, expected] of Object.entries({
     configure_swim_review: mode === "configure" ? "true" : "false",
     inspect_swim_review_auth: mode === "inspect-auth" ? "true" : "false",

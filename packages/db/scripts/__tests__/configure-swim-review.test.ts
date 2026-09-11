@@ -828,7 +828,7 @@ describe("read-only Auth reconciliation", () => {
 describe("configuration workflow boundaries", () => {
   const root = resolve(import.meta.dirname, "../../../..");
   const workflow = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8");
-  const job = workflow.split("\n  configure-swim-review:\n")[1]!;
+  const job = workflow.split("\n  configure-swim-review:\n")[1]!.split("\n  deploy-swim-review:\n")[0]!;
   it("preserves every previously published job byte-for-byte", () => {
     // SHA-256 of prior.trimEnd().split("\njobs:")[1] at b6e09d2240081472ba91f168d94aba3915316218.
     const jobs = workflow.split("\n  configure-swim-review:\n")[0]!.trimEnd().split("\njobs:")[1]!;
@@ -863,7 +863,7 @@ describe("configuration workflow boundaries", () => {
     }
     expect(job).toContain("INSPECT_SWIM_REVIEW_AUTH: ${{ inputs.inspect_swim_review_auth }}");
     expect(job).toContain("group: swim-review-bootstrap");
-    expect(workflow.split("\njobs:")[0]).toContain("(inputs.configure_swim_review || inputs.inspect_swim_review_auth)");
+    expect(workflow.split("\njobs:")[0]).toContain("(inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review)");
     expect(workflow).toMatch(/inspect_swim_review_auth:\n\s+description:.*\n\s+required: false\n\s+default: false\n\s+type: boolean/);
     expect(job).not.toMatch(/run:.*(?:vercel|db:migrate|db:seed|prepare-swim-review\.ts)/);
   });
