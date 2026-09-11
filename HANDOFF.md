@@ -3534,7 +3534,42 @@ pre-receipt read-only checks, never Auth/storage/activation/deployment/runtime/a
 First offline invocation passed all four suites: **642/642** (deployment102,
 configuration201, pure plan122, bootstrap217). Targeted TypeScript initially
 found a new table-test tuple inference error, repaired before publication.
-Final checks and required automated validation are recorded below when complete.
+Final offline batch passed **673/673** (deployment132, configuration202,
+pure plan122, bootstrap217) in one four-suite invocation:
+
+```sh
+pnpm --filter @hta/db exec vitest run scripts/__tests__/deploy-swim-review.test.ts scripts/__tests__/configure-swim-review.test.ts scripts/__tests__/swim-review-config-plan.test.ts scripts/__tests__/prepare-swim-review.test.ts
+pnpm --filter @hta/db exec tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --strict --noUncheckedIndexedAccess --noImplicitReturns --skipLibCheck --esModuleInterop scripts/deploy-swim-review.ts scripts/configure-swim-review.ts scripts/swim-review-config-plan.ts scripts/prepare-swim-review.ts scripts/__tests__/deploy-swim-review.test.ts scripts/__tests__/configure-swim-review.test.ts scripts/__tests__/swim-review-config-plan.test.ts scripts/__tests__/prepare-swim-review.test.ts
+```
+
+Targeted strict TypeScript and `git diff --check` passed. Existing DB lint
+reports no configured checker. Changed-file secret scans passed.
+
+Working implementation was published early at
+`fb761caebd40b44a18a338b1549ba69e77dba6fd`, with both native local/public
+identities verified allowlisted. Subsequent bounded tests additionally cover
+CLI nonzero/single-JSON failure, mixed-mode exclusion from all provider reads
+and configuration/Auth modes, native main/feature drift, every GET failure,
+and private billing/password getter exclusion. The shared immutable prior-job
+digest still passes. No hook bypass or history rewrite.
+
+Finite inspection codes are `passed`, `predicate_refused`, `receipt_invalid`,
+`http_status`, `transport_failed`, `response_invalid`, `deadline`,
+`project_structure`, `project_identity`, `team_structure`, `team_identity`,
+`billing_missing`, `billing_null`, `billing_invalid`, `billing_plan`,
+`supabase_identity`, `{ssoProtection,passwordProtection,trustedIps}_{missing,invalid,deploymentType}`,
+`trustedIps_addresses`, `trustedIps_protectionMode`.
+Nested deploymentType/plan fields also classify absent/null/object/invalid
+values with the same four shape tokens; unrecognized strings become `other`.
+Known deploymentType strings are `all`, `preview`, `production`,
+`prod_deployment_urls_and_all_previews`, `all_except_custom_domains`;
+known plans are `hobby`, `pro`, `enterprise`. Only the existing `hobby`
+predicate passes; classification never changes guard acceptance.
+
+Required automated validation at the first published checkpoint could not
+complete: review's configured model was unavailable, Actions CodeQL analysis
+failed, and JavaScript CodeQL was skipped for database size. No clean automated
+review/security result is claimed. No helper or substitute model was launched.
 
 Coordinator must inspect the published source and exact schema before creating
 the bounded one-time reader and performing one hosted inspection at the new

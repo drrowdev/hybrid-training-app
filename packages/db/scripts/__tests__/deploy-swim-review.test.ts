@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { CONFIGURATION_PATHS, ROUTES, environmentList } from "../configure-swim-review";
@@ -389,6 +390,19 @@ describe("bounded fixed-route transport and saved workflow", () => {
 
 const inspectionEnv = { ...env, DEPLOY_SWIM_REVIEW: "false", INSPECT_SWIM_REVIEW_DEPLOYMENT: "true" };
 describe("native read-only deployment isolation inspection", () => {
+  it.each([["--inspect-isolation"], ["--check-source", "--inspect-isolation"],
+    ["--inspect-isolation", "--unknown"]])("fails closed with one plain JSON record for invalid CLI context %#", (...args) => {
+    const child = spawnSync(process.execPath, ["--import", "tsx", resolve(import.meta.dirname, "../deploy-swim-review.ts"), ...args],
+      { env: { PATH: process.env.PATH }, encoding: "utf8", timeout: 10_000 });
+    expect(child.status).toBe(1);
+    expect(child.stderr).toBe("");
+    const lines = child.stdout.trim().split("\n");
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ scope: "swim-review-deployment-inspection", status: "failed",
+      stages: [{ stage: "source", code: "predicate_refused", status: "failed" }],
+      writesAttempted: false, deploymentAttempted: false, deploymentAccepted: false,
+      runtimePending: true, ownerLoginPending: true });
+  });
   it("validates actual read-only context and event without forging deploy", () => {
     const io = sourceIO();
     io.event = () => ({ inputs: { ...inputs, deploy_swim_review: "false", inspect_swim_review_deployment: "true" } });
@@ -400,6 +414,20 @@ describe("native read-only deployment isolation inspection", () => {
         expect(() => deploymentContext({ ...inspectionEnv, [key]: value }, true)).toThrow();
       }
     }
+  });
+  it.each(["main", "feature"])("refuses a changed live %s in native inspection source checks", (branch) => {
+    const io = sourceIO();
+    io.event = () => ({ inputs: { ...inputs, deploy_swim_review: "false", inspect_swim_review_deployment: "true" } });
+    const original = io.git.getMockImplementation()!;
+    io.git.mockImplementation((...args) => args[0] === "ls-remote" &&
+      (args[3] === "refs/heads/main") === (branch === "main") ? "wrong" : original(...args));
+    expect(() => verifyDeploymentSource(inspectionEnv, io, true)).toThrow();
+  });
+  it.each([...modes, "DEPLOY_SWIM_REVIEW"])("rejects mixed inspection/%s before any provider read", async (key) => {
+    const h = harness();
+    const result = await inspectIsolation({ ...inspectionEnv, [key]: "true" }, h.deps);
+    expect(result.stages).toEqual([{ stage: "source", code: "predicate_refused", status: "failed" }]);
+    expect(h.request).not.toHaveBeenCalled();
   });
   it("emits one safe fixed schema after only five GETs and repeated source checks", async () => {
     const h = harness();
@@ -433,6 +461,34 @@ describe("native read-only deployment isolation inspection", () => {
     expect(sensitive).not.toHaveBeenCalled();
     expect(JSON.stringify(result)).not.toContain(canary);
   });
+  it("never reads billing customer details or trusted IP values into diagnostics", async () => {
+    const h = harness();
+    const sensitive = vi.fn(() => { throw Error(canary); });
+    const billing = { plan: "hobby" };
+    const password = { deploymentType: "all" };
+    for (const row of [billing, password]) {
+      for (const key of ["password", "hash", "customerId", "address", "toJSON"]) {
+        Object.defineProperty(row, key, { get: sensitive });
+      }
+    }
+    Object.assign(h.state.settings, { passwordProtection: password,
+      trustedIps: { deploymentType: "all", addresses: [{ value: canary }], protectionMode: "additional" } });
+    const original = h.request.getMockImplementation()!;
+    h.request.mockImplementation(async (...args) => args[0] === DEPLOY_ROUTES.team ?
+      { id: REVIEW.teamId, slug: "drrowdevs-projects", billing } : original(...args));
+    const result = await inspectIsolation(inspectionEnv, h.deps);
+    expect(result.status).toBe("inspection_pass");
+    expect(sensitive).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain(canary);
+  });
+  it.each(["id", "accountId", "name", "rootDirectory", "framework", "link"])("rejects wrong project %s", async (key) => {
+    const h = harness();
+    Object.assign(h.state.settings, { [key]: key === "link" ? { ...h.state.settings.link, productionBranch: "wrong" } : "wrong" });
+    expect((await inspectIsolation(inspectionEnv, h.deps)).stages.at(-1)).toMatchObject({
+      stage: "project", code: "project_identity", status: "failed",
+    });
+    expect(h.request).toHaveBeenCalledTimes(1);
+  });
   it.each(["ssoProtection", "passwordProtection", "trustedIps"])("keeps strict %s predicates with safe shape evidence", async (key) => {
     for (const [value, suffix, type] of [[undefined, "missing", "missing"], [[], "invalid", "invalid"],
       [canary, "invalid", "invalid"], [{}, "deploymentType", "object"],
@@ -451,6 +507,21 @@ describe("native read-only deployment isolation inspection", () => {
     Object.assign(h.state.settings, { [key]: null });
     expect((await inspectIsolation(inspectionEnv, h.deps)).status).toBe("inspection_pass");
   });
+  it.each([[undefined, "missing"], [null, "null"], [123, "invalid"], [{}, "object"], [canary, "other"]])(
+    "classifies only fixed deploymentType and plan shapes %#", async (value, expected) => {
+      const h = harness();
+      Object.assign(h.state.settings.ssoProtection, { deploymentType: value });
+      const project = await inspectIsolation(inspectionEnv, h.deps);
+      expect(project.classifications.project?.ssoProtection).toEqual({ type: "object", deploymentType: expected });
+      const f = harness();
+      const original = f.request.getMockImplementation()!;
+      f.request.mockImplementation(async (...args) => args[0] === DEPLOY_ROUTES.team ?
+        { id: REVIEW.teamId, slug: "drrowdevs-projects", billing: { plan: value } } : original(...args));
+      const team = await inspectIsolation(inspectionEnv, f.deps);
+      expect(team.classifications.team?.billing).toEqual({ type: "object", plan: expected });
+      expect(team.stages.at(-1)?.code).toBe("billing_plan");
+      expect(JSON.stringify([project, team])).not.toContain(canary);
+    });
   it.each([
     [ROUTES.project, null, "project", "project_structure"],
     [ROUTES.project, { link: {} }, "project", "project_identity"],
@@ -512,5 +583,19 @@ describe("native read-only deployment isolation inspection", () => {
       expect(result.stages.at(-1)).toMatchObject({ stage: "project", code, httpStatus: status });
       expect(JSON.stringify(result)).not.toContain(canary);
     }
+  });
+  it.each(INSPECTION_ROUTES)("stops at an HTTP failure on %s without a write or fallback", async (route) => {
+    const h = harness();
+    const original = h.request.getMockImplementation()!;
+    const fake = vi.fn(async (url: string | URL | Request) => url === route ?
+      new Response(canary, { status: 503 }) : new Response(JSON.stringify(await original(String(url)))));
+    const request = deploymentTransport(inspectionEnv, Date.now() + 300_000, fake, true);
+    const result = await inspectIsolation(inspectionEnv, { ...h.deps, request });
+    expect(result.status).toBe("failed");
+    expect(result.stages.at(-1)).toMatchObject({ code: "http_status", httpStatus: 503 });
+    expect(fake.mock.calls.at(-1)?.[0]).toBe(route);
+    expect(fake.mock.calls).toHaveLength(INSPECTION_ROUTES.indexOf(route) + 1);
+    expect(result.writesAttempted).toBe(false);
+    expect(JSON.stringify(result)).not.toContain(canary);
   });
 });

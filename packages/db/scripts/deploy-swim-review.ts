@@ -195,7 +195,7 @@ function classification(value: unknown, field: "deploymentType" | "plan") {
   if (type !== "object") return { type };
   const known = field === "deploymentType" ? deploymentTypes : ["hobby", "pro", "enterprise"] as const;
   const entry = (value as Record<string, unknown>)[field];
-  return { type, [field]: known.find((item) => item === entry) ?? "other" };
+  return { type, [field]: typeof entry === "string" ? known.find((item) => item === entry) ?? "other" : shape(entry) };
 }
 function projectIdentity(raw: unknown) {
   const row = structure(raw, "project_structure");
