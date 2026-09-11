@@ -254,7 +254,9 @@ function assertSetupWorkouts(
   const audit = plan.state.decisions[0];
   expect(audit.kind).toBe("setup");
   expect(audit.decision).toBe("accepted");
-  expect(isDeepStrictEqual(audit.inputSnapshot, { ...preview.input, versions: preview.generated.versions })).toBe(true);
+  expect(isDeepStrictEqual(audit.inputSnapshot, {
+    ...preview.input, strengthContext: { blockId: null, sessions: [] }, versions: preview.generated.versions,
+  })).toBe(true);
   const generated = generateSwimPlan({
     setup: definition.setup, calibration: plan.state.acceptedCalibration,
     weeks: standaloneWeekRequests(definition.schedule.startDate, definition.schedule.weeks, definition.schedule.weekdays),
