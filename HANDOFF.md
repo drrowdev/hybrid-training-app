@@ -3138,3 +3138,11 @@ CI. Hosted configuration is unexecuted; runtime/deployment/owner login remain
 pending and the proposed alias/review URL remain uncreated. PR stays draft and
 unmerged. No domain DC-/OC- behavior changes
 ([constraint contract](docs/knowledge/hybrid-training-design-constraints.md)).
+
+Published runtime checkpoint `16c86abc923f4ef495e8437bc4dd53bb6618e2a7`;
+public attribution, exact eight-path accepted-source scope and draft/unmerged
+PR state verified. Required automated validation attempted: reviewer unavailable
+(configured model missing), CodeQL Actions analysis failed, JavaScript skipped
+for database size. No successful automated review/security result is claimed.
+The 396 focused tests, targeted TypeScript and changed-file secret scan passed;
+hosted execution and coordinator source inspection remain outstanding.
