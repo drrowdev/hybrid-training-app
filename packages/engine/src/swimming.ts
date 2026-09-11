@@ -547,8 +547,12 @@ function scaleToBudget(
   const budgetMs = context.budgetMinutes * 60_000;
   let current: SwimSection[] = sections.map((section) => ({ ...section, items: [...section.items] }));
 
-  const fits = (candidate: readonly SwimSection[]): boolean =>
-    boundedMs(sectionsTiming(candidate, course, context.calibration)) <= budgetMs;
+  const fits = (candidate: readonly SwimSection[]): boolean => {
+    const timing = sectionsTiming(candidate, course, context.calibration);
+    // Untimed swimming still takes positive time; the known lower bound
+    // cannot consume the entire stopping budget.
+    return timing.allPriced ? boundedMs(timing) <= budgetMs : boundedMs(timing) < budgetMs;
+  };
 
   if (fits(current)) return swimOk(current);
 
@@ -594,14 +598,17 @@ function scaleToBudget(
   }
 
   const minimum = sectionsTiming(current, course, context.calibration);
-  const minimumMinutes = Math.ceil(boundedMs(minimum) / 60_000);
+  const knownMinutes = Math.ceil(boundedMs(minimum) / 60_000);
+  const minimumMinutes = minimum.allPriced
+    ? knownMinutes
+    : Math.floor(boundedMs(minimum) / 60_000) + 1;
   const message = minimum.allPriced
     ? `${context.budgetMinutes} minutes is not enough for an easy start, a main set and an easy finish in a ${formatPoolCourse(
         course,
       )} pool. This session needs about ${minimumMinutes} minutes.`
     : `${context.budgetMinutes} minutes is not enough for this session in a ${formatPoolCourse(
         course,
-      )} pool: the rest and turnarounds it asks for already take about ${minimumMinutes} minutes, before any swimming.`;
+      )} pool: the rest and turnarounds it asks for already take about ${knownMinutes} minutes, before any swimming.`;
   return swimErr("budget_impossible", message, {
     budgetMinutes: context.budgetMinutes,
     minimumMinutes,
@@ -687,7 +694,11 @@ function eventContext(
 ): SwimResult<{ eventDateISO: string | null; prepFromISO: string | null }> {
   const event = input.setup.event;
   if (!event) return swimOk({ eventDateISO: null, prepFromISO: null });
-  const firstWeek = input.weeks[0];
+  const firstWeek = input.weeks.reduce<SwimWeekRequest | undefined>(
+    (earliest, week) =>
+      !earliest || week.startDateISO < earliest.startDateISO ? week : earliest,
+    undefined,
+  );
   if (!firstWeek) return swimOk({ eventDateISO: event.dateISO, prepFromISO: null });
   const days = daysBetweenISO(firstWeek.startDateISO, event.dateISO);
   if (days < 0) {
@@ -765,6 +776,14 @@ export function generateSwimPlan(input: SwimPlanInput): SwimResult<SwimPlan> {
     for (const slot of week.slots) {
       if (!isISODate(slot.dateISO)) {
         return swimErr("setup_invalid", `Slot ${slot.slotId} has no valid date.`, {
+          slotId: slot.slotId,
+        });
+      }
+      if (
+        slot.budgetMinutes !== undefined &&
+        (!Number.isFinite(slot.budgetMinutes) || slot.budgetMinutes <= 0)
+      ) {
+        return swimErr("setup_invalid", "Enter a valid session length greater than zero.", {
           slotId: slot.slotId,
         });
       }

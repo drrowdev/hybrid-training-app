@@ -216,6 +216,30 @@ describe("ADR0079 server actions", () => {
     expect(assertSwimSafety).toHaveBeenCalledTimes(2);
     expect(JSON.stringify({ plan, workouts })).toBe(before);
   });
+  it("DC-SW3/DC-SW5 shows the reviewed resume anchor when editing a later week", async () => {
+    vi.setSystemTime(new Date("2026-10-06T12:00:00Z"));
+    const { plan, workouts } = swimFixture();
+    const dates = ["2026-09-07", "2026-10-08", "2026-10-15", "2026-10-18", "2026-10-22", "2026-10-25"];
+    const rows = workouts.map((row, index) => ({
+      ...row, scheduled_date: dates[index]!,
+      ...(index === 0 ? { status: "completed" as const, session_id: sessionId } : {}),
+    }));
+    const resumed = {
+      ...plan, ends_on: "2026-10-27", state: { ...plan.state, decisions: [{
+        id: "resume", kind: "schedule" as const, decision: "accepted" as const,
+        recordedAt: "2026-10-06T12:00:00Z", ruleVersion: "test", generatorVersion: "test",
+        inputSnapshot: { preview: { startDate: "2026-10-07", dates: rows.slice(1).map((row) => ({ id: row.id, date: row.scheduled_date })) } },
+      }] },
+    };
+    vi.mocked(storage.listSwimPlans).mockResolvedValue([resumed]);
+    vi.mocked(storage.listSwimWorkouts).mockResolvedValue(rows);
+    const response = await previewSwimWeekEdit(weekEditInput());
+    expect(response.error).toBeUndefined();
+    expect(response.preview?.plan.weeks).toMatchObject([{
+      week: 2, startDate: "2026-10-14", workouts: [{ date: "2026-10-15" }, { date: "2026-10-18" }],
+    }]);
+    expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+  });
   it("DC-SW5 excludes linked, non-scheduled and today's workouts from a manual week edit", async () => {
     const { workouts } = swimFixture();
     vi.mocked(storage.listSwimWorkouts).mockResolvedValue([

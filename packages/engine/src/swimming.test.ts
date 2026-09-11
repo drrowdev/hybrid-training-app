@@ -477,6 +477,24 @@ describe("DC-D7 / DC-N2 · threshold is never seeded by default", () => {
     expect(inThePast.ok).toBe(false);
   });
 
+  it("DC-SW3 evaluates event feasibility from the earliest week, not array order", () => {
+    const weeks = [
+      week(0, "2026-09-07", [slot("early", "2026-09-09", "hard")]),
+      week(1, "2026-09-21", [slot("taper", "2026-09-23", "hard")]),
+    ];
+    const input = {
+      setup: { ...SETUP, event: { dateISO: "2026-09-26", distance: 400, unit: "m" as const } },
+      calibration: null,
+      eventPrep: { enabled: true as const, windowWeeks: 2 },
+    };
+    const chronological = generateSwimPlan({ ...input, weeks });
+    const reversed = generateSwimPlan({ ...input, weeks: [...weeks].reverse() });
+    expect(chronological.ok).toBe(true);
+    expect(reversed.ok).toBe(true);
+    if (!chronological.ok || !reversed.ok) return;
+    expect(reversed.value.weeks).toEqual([...chronological.value.weeks].reverse());
+  });
+
   it("eases volume in the week before the event", () => {
     const plan = planOf({
       setup: { event: { dateISO: "2026-09-26", distance: 400, unit: "m" } },

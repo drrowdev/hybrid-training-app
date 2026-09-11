@@ -10,7 +10,7 @@ import {
 } from "@hta/engine";
 import { todayYmd, mondayOfYmd, ymdInTimezone, addDaysToYmd } from "@/lib/dates";
 import { getSwimWorkout, listSwimPlans, listSwimWorkouts, type SwimPlanRow, type SwimWorkoutRow } from "./storage";
-import { swimPlanDefinition, swimWorkoutDefinition, swimWorkoutDateRange, type SwimHistoryRow, type SwimWeekCandidate } from "./model";
+import { standaloneWeekRequests, swimPlanDefinition, swimWorkoutDefinition, swimWorkoutDateRange, type SwimHistoryRow, type SwimWeekCandidate } from "./model";
 import { workoutPresentation, SWIM_STROKE_LABEL } from "./presentation";
 import { formatSwimTime } from "./time";
 import type { SwimHubView, SwimWorkoutView } from "./view-types";
@@ -84,20 +84,26 @@ export function persistedSwimPlan(plan: SwimPlanRow, workouts: SwimWorkoutRow[])
   const weeks = new Map<number, SwimWorkoutRow[]>();
   for (const row of workouts) {
     const index = swimWorkoutDefinition(row).weekIndex;
+    if (index < 0 || index >= definition.schedule.weeks) throw new Error("This swim workout has an unsupported week.");
     weeks.set(index, [...(weeks.get(index) ?? []), row]);
   }
   return {
     setup: plan.definition.setup, calibration: plan.state.acceptedCalibration,
     dose: lastDose ?? definition.initialDose, eventPrep: null,
     versions: { model: workouts[0]?.definition.issued.snapshot.versions.model ?? "swim-model-1", generator: definition.generatorVersion, assessment: plan.state.acceptedCalibration?.version ?? null },
-    weeks: [...weeks].sort(([a], [b]) => a - b).map(([weekIndex, rows]) => ({
-      weekIndex, startDateISO: rows[0]!.scheduled_date, provisional: rows.some((row) => swimWorkoutDefinition(row).provisional),
-      slots: rows.map((row) => ({
-        kind: "workout", slotId: swimWorkoutDefinition(row).slotId, dateISO: row.scheduled_date,
-        source: "swim_date",
-        intent: swimWorkoutDefinition(row).intent, original: row.definition.original, issued: row.definition.issued,
-      })),
-    })),
+    // Keep the declared horizon even when a resume cohort omits earlier workouts.
+    weeks: standaloneWeekRequests(definition.schedule.startDate, definition.schedule.weeks, []).map((week) => {
+      const rows = weeks.get(week.weekIndex) ?? [];
+      return {
+        weekIndex: week.weekIndex, startDateISO: week.startDateISO,
+        provisional: rows.length ? rows.some((row) => swimWorkoutDefinition(row).provisional) : week.weekIndex > 0,
+        slots: rows.map((row) => ({
+          kind: "workout", slotId: swimWorkoutDefinition(row).slotId, dateISO: row.scheduled_date,
+          source: "swim_date",
+          intent: swimWorkoutDefinition(row).intent, original: row.definition.original, issued: row.definition.issued,
+        })),
+      };
+    }),
   };
 }
 

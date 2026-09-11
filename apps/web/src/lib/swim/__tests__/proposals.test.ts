@@ -1,8 +1,50 @@
 import { describe, expect, it } from "vitest";
-import { deriveSwimWeekCandidate } from "../queries";
+import { applySwimProposal, generateSwimPlan } from "@hta/engine";
+import { deriveSwimWeekCandidate, persistedSwimPlan } from "../queries";
+import { standaloneWeekRequests, swimWorkoutDefinition } from "../model";
 import { swimFixture } from "./fixtures";
 
 describe("ADR0079 persisted-actual week proposals", () => {
+  it("DC-SW3 rejects an out-of-range stored week rather than omitting its work", () => {
+    const { plan, workouts } = swimFixture();
+    const row = workouts[0]!;
+    for (const weekIndex of [-1, 3]) {
+      const definition = { ...swimWorkoutDefinition(row), weekIndex };
+      expect(() => persistedSwimPlan(plan, [{ ...row, definition }])).toThrow("unsupported week");
+    }
+  });
+  it("DC-SW3/DC-SW5 preserves the declared event horizon when the first swim is later or only later weeks remain", () => {
+    const fixture = swimFixture();
+    const setup = { ...fixture.plan.definition.setup, event: { dateISO: "2026-09-15", distance: 400, unit: "yd" as const } };
+    const generated = generateSwimPlan({ setup, calibration: null, weeks: standaloneWeekRequests("2026-09-07", 3, [3]) });
+    if (!generated.ok) throw new Error(generated.error.message);
+    const plan = {
+      ...fixture.plan, definition: {
+        ...fixture.plan.definition, setup, initialDose: generated.value.dose,
+        schedule: { startDate: "2026-09-07", weeks: 3, weekdays: [3] },
+      },
+    };
+    const workouts = generated.value.weeks.flatMap((week) => week.slots.map((slot) => {
+      if (slot.kind !== "workout") throw new Error("Expected a generated workout");
+      return {
+        ...fixture.workouts[week.weekIndex]!, scheduled_date: slot.dateISO,
+        definition: {
+          version: 1 as const, original: slot.original, issued: slot.issued, modifications: [],
+          weekIndex: week.weekIndex, slotId: slot.slotId, intent: slot.intent, provisional: week.provisional,
+        },
+      };
+    }));
+    for (const rows of [workouts, workouts.slice(1)]) {
+      const restored = persistedSwimPlan(plan, rows);
+      expect(restored.weeks.map((week) => week.startDateISO)).toEqual(["2026-09-07", "2026-09-14", "2026-09-21"]);
+      expect(restored.weeks[0]!.slots).toHaveLength(rows === workouts ? 1 : 0);
+      const edited = applySwimProposal(restored, { ...restored.dose, mainRepeats: restored.dose.mainRepeats + 1 }, {
+        asOfISO: "2026-09-05", startedSlotIds: [],
+      });
+      expect(edited.ok).toBe(true);
+      if (edited.ok) expect(edited.value.weeks.flatMap((week) => week.slots).every((slot) => slot.kind === "workout")).toBe(true);
+    }
+  });
   it("makes improving, plateaued and missed/high-effort histories produce different future targets", () => {
     const { plan, history } = swimFixture();
     const improving = deriveSwimWeekCandidate(plan, history, "2026-09-12")!;

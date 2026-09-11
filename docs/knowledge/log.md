@@ -3225,3 +3225,23 @@ with synthetic data and existing theme: no visible horizontal overflow at
 not hydrated application, database, watch or release acceptance. Frozen26,
 schema/RLS, provider configuration and live data remain unchanged; source is
 local only. Independent scoped engine work and final integration remain pending.
+
+## [2026-09-11] implementation | Swimming budget and event-horizon integration
+
+Integrated the local programming agent's three reproduced repairs: event
+feasibility is independent of week-array order; explicit slot budgets reject
+non-finite and non-positive values; untimed prescriptions cannot consume their
+entire stopping budget in known rests and turnarounds. Fully timed exact fits
+remain valid.
+
+A synthetic integration regression also reproduced saved-plan reconstruction
+using the first actual swim as the week start. Reconstruction now retains the
+stored program's declared weeks and original event horizon, including empty
+weeks in a filtered resume cohort. Current resumed week/date presentation uses
+the shared reviewed-week boundary. Invalid stored week indices fail visibly
+rather than being omitted. No pace or event-prep opt-in is inferred.
+
+DC-SW3/SW5/SW7 and existing safety/history rules remain intact. Engine and
+affected web checks are local synthetic evidence, not hydrated app, database,
+Garmin/watch or release acceptance. No schema/RLS, frozen26, remote source,
+provider configuration or live data changed.

@@ -54,6 +54,93 @@ function accept(plan: SwimPlan): SwimPlan {
 }
 
 describe("DC-SW3/DC-SW5 resolved slot budgets", () => {
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 0, -1])(
+    "rejects an invalid explicit budget (%s) for workouts and learning guidance",
+    (budgetMinutes) => {
+      for (const recentComfortableLengths of [0, 8]) {
+        const result = generateSwimPlan({
+          setup: { ...setup, recentComfortableLengths },
+          calibration: null,
+          weeks: [{
+            weekIndex: 0, startDateISO: "2026-09-07",
+            slots: [{
+              slotId: "invalid", dateISO: "2026-09-09",
+              intent: "moderate", source: "swim_date", budgetMinutes,
+            }],
+          }],
+        });
+        expect(result.ok).toBe(false);
+        if (!result.ok) {
+          expect(result.error.code).toBe("setup_invalid");
+          expect(result.error.details?.slotId).toBe("invalid");
+        }
+      }
+    },
+  );
+
+  it("requires time for swimming when turnarounds alone exhaust an uncalibrated slot", () => {
+    const generate = (budgetMinutes: number) => generateSwimPlan({
+      setup,
+      calibration: null,
+      weeks: [{
+        weekIndex: 0, startDateISO: "2026-09-07",
+        slots: [{
+          slotId: "short", dateISO: "2026-09-09",
+          intent: "moderate", source: "swim_date", budgetMinutes,
+        }],
+      }],
+    });
+    const result = generate(1);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const outcome = result.value.weeks[0]!.slots[0]!;
+    expect(outcome.kind).toBe("conflict");
+    if (outcome.kind !== "conflict") return;
+    expect(outcome.conflict.code).toBe("budget_impossible");
+    const minimumMinutes = outcome.conflict.details?.minimumMinutes;
+    expect(minimumMinutes).toBeGreaterThan(1);
+    if (typeof minimumMinutes !== "number") throw new Error("Expected a minimum budget");
+    const retried = generate(minimumMinutes);
+    expect(retried.ok).toBe(true);
+    if (!retried.ok) return;
+    const workout = retried.value.weeks[0]!.slots[0]!;
+    expect(workout.kind).toBe("workout");
+    if (workout.kind !== "workout") return;
+    expect(workout.issued.estimatedMs).toBeNull();
+    expect(workout.issued.budget.accountedMs).toBeLessThan(minimumMinutes * 60_000);
+    expect(workout.issued.sections.map((section) => section.kind)).toEqual([
+      "warmup", "main", "cooldown",
+    ]);
+  });
+
+  it("still accepts an exact time-budget fit when every item has a verified pace", () => {
+    const generate = (budgetMinutes: number) => generateSwimPlan({
+      setup,
+      calibration,
+      weeks: [{
+        weekIndex: 0, startDateISO: "2026-09-07",
+        slots: [{
+          slotId: "timed", dateISO: "2026-09-09",
+          intent: "moderate", source: "swim_date", budgetMinutes,
+        }],
+      }],
+    });
+    const generous = generate(90);
+    if (!generous.ok) throw new Error(generous.error.message);
+    const before = generous.value.weeks[0]!.slots[0]!;
+    if (before.kind !== "workout" || before.issued.estimatedMs === null) {
+      throw new Error("Expected a fully timed workout");
+    }
+    const exact = generate(before.issued.estimatedMs / 60_000);
+    expect(exact.ok).toBe(true);
+    if (!exact.ok) return;
+    const after = exact.value.weeks[0]!.slots[0]!;
+    expect(after.kind).toBe("workout");
+    if (after.kind !== "workout") return;
+    expect(after.issued.sections).toEqual(before.issued.sections);
+    expect(after.issued.budget.accountedMs).toBe(after.issued.budget.minutes * 60_000);
+  });
+
   it("retains 20/60/90-minute caps and an impossible slot when accepting a new dose", () => {
     const plan = makePlan();
     const before = slots(plan);

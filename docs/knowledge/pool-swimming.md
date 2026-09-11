@@ -69,6 +69,15 @@ put the complete prescription before the optional in-app start control.
 These changes are local only, not deployed to the review site, and Garmin
 delivery remains unimplemented.
 
+Programming integration also preserves the original declared weeks when a
+saved plan is reconstructed, including empty earlier weeks in a resumed review
+cohort. A later first swim no longer shortens the event's planning horizon;
+edit previews still show the current reviewed resume dates. Event feasibility
+does not depend on input week order. Explicit slot budgets must be finite and
+positive, and uncalibrated prescriptions leave time for swimming beyond their
+known rests and turnarounds. None of this infers pace, event-prep consent or
+completed training.
+
 ### Future Garmin delivery access
 
 The owner confirmed there is **no approved Garmin Connect Developer Program /

@@ -22,7 +22,7 @@ import { assertSwimSafety, swimWorkoutSafetyExposure } from "./safety";
 import { parseActualForm, parseSetupForm, parseBenchmarkForm, parseSwimDate, parseSwimObservation } from "./forms";
 import { swimContext, ownedSwimPlan, ownedSwimWorkout, swimActionFailure, SwimActionError } from "./server-context";
 import {
-  standaloneWeekRequests, swimPlanDefinition, swimWorkoutDefinition, swimWorkoutDateRange, SWIM_SCHEDULE_VERSION,
+  standaloneWeekRequests, swimPlanDefinition, swimWorkoutDefinition, swimWorkoutDateRange, swimWorkoutWeekRange, SWIM_SCHEDULE_VERSION,
   type StandalonePlanDefinition, type StandaloneWorkoutDefinition, type SwimBenchmarkPreview,
 } from "./model";
 import {
@@ -377,7 +377,7 @@ async function prepareSwimWeekEdit(raw: SwimWeekEditInput) {
   const previewPlan = planPreviewPresentation({
     ...generated.value,
     weeks: generated.value.weeks.filter((week) => week.weekIndex === weekIndex).map((week) => ({
-      ...week, provisional: false,
+      ...week, startDateISO: swimWorkoutWeekRange(plan, workouts, targets[0]!).min, provisional: false,
       slots: week.slots.filter((slot) => targets.some((row) => swimWorkoutDefinition(row).slotId === slot.slotId)),
     })),
   });

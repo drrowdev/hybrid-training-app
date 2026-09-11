@@ -57,7 +57,7 @@ export function standaloneWeekRequests(startDate: string, weeks: number, weekday
   return [...result.value];
 }
 
-export function swimWorkoutDateRange(plan: SwimPlanRow, workouts: SwimWorkoutRow[], workout: SwimWorkoutRow, today: string) {
+export function swimWorkoutWeekRange(plan: SwimPlanRow, workouts: SwimWorkoutRow[], workout: SwimWorkoutRow) {
   const weekIndex = swimWorkoutDefinition(workout).weekIndex;
   let startDate = swimPlanDefinition(plan).schedule.startDate;
   let firstWeek = 0;
@@ -74,10 +74,14 @@ export function swimWorkoutDateRange(plan: SwimPlanRow, workouts: SwimWorkoutRow
   }
   const week = standaloneWeekRequests(startDate, weekIndex - firstWeek + 1, [0, 1, 2, 3, 4, 5, 6]).at(-1)!;
   const endDate = addDaysToYmd(week.startDateISO, 6);
-  const tomorrow = addDaysToYmd(today, 1);
-  const min = [week.startDateISO, plan.started_on, tomorrow].sort().at(-1)!;
   return {
-    min,
+    min: week.startDateISO > plan.started_on ? week.startDateISO : plan.started_on,
     max: endDate < plan.ends_on ? endDate : plan.ends_on,
   };
+}
+
+export function swimWorkoutDateRange(plan: SwimPlanRow, workouts: SwimWorkoutRow[], workout: SwimWorkoutRow, today: string) {
+  const range = swimWorkoutWeekRange(plan, workouts, workout);
+  const tomorrow = addDaysToYmd(today, 1);
+  return { ...range, min: range.min > tomorrow ? range.min : tomorrow };
 }
