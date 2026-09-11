@@ -3221,3 +3221,36 @@ secret scan passed. Required automated validation was attempted: review could
 not load its configured model; CodeQL skipped this test/documentation-only
 repair as trivial. No clean automated review is claimed. Existing DB lint
 command only reports “no lint config yet”.
+
+### 2026-09-11 — PR805 documented project-list compatibility
+
+Verified START `92e871de2cb6e2fa42a1b477324dc5863da48a9d` and main
+`672e4202792da122281639e3db810029432573f5`. This forward-only repair changes
+only the configuration runtime, its focused test and this handoff; accepted
+application82337, frozen26, initialized test DB and the exact eight-path source
+boundary remain unchanged. No workflow, protected-job digest or rollback change.
+
+The documented Vercel project-list variant `envs + hiddenProductionEnvCount`
+now requires a native finite integer zero; positive counts refuse with
+`metadata_incomplete`. Malformed counts, mixed pagination, unknown/error fields,
+single-variable responses and the project-only field in shared lists still
+refuse. Existing pagination, 1000-row limit, duplicate and metadata checks remain.
+Explicit projection never reads sensitive entry fields.
+
+Literal synthetic 15-entry documentation fixtures exercise actual `configure`
+through an injected offline provider boundary: all18 encrypted branch-preview
+overrides follow complete isolation checks, with POOL=false. Refusal fixtures
+at initial reads and pre-write rechecks produce no Auth/environment mutation.
+One focused runtime/plan/bootstrap Vitest invocation passed **479/479**
+(140 +122 +217); targeted TypeScript passed after a type-only fixture-table
+annotation correction; diff check passed. DB lint has no configured checker.
+
+This proves documented-envelope compatibility, **not** the actual provider
+response or a successful guarded configuration. The supplied run34576309594
+summary identifies a project-envelope refusal, not its unknown field/value;
+run34575115632 was a distinct earlier core-history failure. No run-log contents
+or private transcripts fetched, provider/DB/cloud mutations, workflow dispatch,
+bootstrap/reset or acceptance rerun. Local full history was fetched solely for
+the existing publication identity hook, without source/history repair.
+PR remains draft/unmerged; coordinator source inspection and guarded
+configuration remain pending, as do deployment and owner login.

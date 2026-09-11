@@ -8,6 +8,42 @@ import {
 import { INHERITED_KEYS, PlanFailure, REVIEW, type EnvironmentMetadata } from "../swim-review-config-plan";
 
 const canary = "offline_canary_never_emit_sensitive_content_42";
+// https://vercel.com/docs/rest-api/projects/retrieve-the-environment-variables-of-a-project-by-id-or-name
+const officialProjectList = {
+  envs: [
+    { id: "old_STRAVA_REDIRECT_URI", key: "STRAVA_REDIRECT_URI", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_ADMIN_EMAILS", key: "ADMIN_EMAILS", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_STRAVA_WEBHOOK_SUBSCRIPTION_ID", key: "STRAVA_WEBHOOK_SUBSCRIPTION_ID", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_STRAVA_CLIENT_SECRET", key: "STRAVA_CLIENT_SECRET", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_STRAVA_CLIENT_ID", key: "STRAVA_CLIENT_ID", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_STRAVA_WEBHOOK_CALLBACK_URL", key: "STRAVA_WEBHOOK_CALLBACK_URL", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_STRAVA_WEBHOOK_VERIFY_TOKEN", key: "STRAVA_WEBHOOK_VERIFY_TOKEN", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_MCP_TOKEN_SIGNING_KEY", key: "MCP_TOKEN_SIGNING_KEY", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_AI_KEY_ENCRYPTION_KEY", key: "AI_KEY_ENCRYPTION_KEY", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_CRON_SECRET", key: "CRON_SECRET", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_NEXT_PUBLIC_SITE_URL", key: "NEXT_PUBLIC_SITE_URL", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_NEXT_PUBLIC_SUPABASE_URL", key: "NEXT_PUBLIC_SUPABASE_URL", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_NEXT_PUBLIC_SUPABASE_ANON_KEY", key: "NEXT_PUBLIC_SUPABASE_ANON_KEY", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_SUPABASE_SERVICE_ROLE_KEY", key: "SUPABASE_SERVICE_ROLE_KEY", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+    { id: "old_DATABASE_URL", key: "DATABASE_URL", type: "encrypted",
+      target: ["production", "preview", "development"], gitBranch: null, createdAt: 1, updatedAt: 2 },
+  ],
+  hiddenProductionEnvCount: 0,
+} satisfies { envs: EnvironmentMetadata[]; hiddenProductionEnvCount: number };
 // https://vercel.com/docs/rest-api/projects/create-one-or-more-environment-variables
 const officialPartialFailure = [
   { error: { key: "STRAVA_WEBHOOK_SUBSCRIPTION_ID", code: "ENV_CONFLICT", message: canary, value: canary } },
@@ -114,6 +150,117 @@ async function run(f = fixture(), values: NodeJS.ProcessEnv = env) {
   return output;
 }
 describe("configuration-only runtime", () => {
+  it("configures all 18 branch-only overrides from the documented 15-entry zero-hidden fixture after isolation checks", async () => {
+    const f = fixture();
+    f.state.project = structuredClone(officialProjectList.envs);
+    const protectedBefore = structuredClone(f.state);
+    const original = f.deps.request.getMockImplementation()!;
+    f.deps.request.mockImplementation(async (...args) => {
+      const response = await original(...args);
+      return args[0] === ROUTES.project_env ? { ...officialProjectList, envs: f.state.project } : response;
+    });
+    const output = await run(f);
+    expect(output.status).toBe("configuration_pass");
+    expect(output.createdEnv).toHaveLength(18);
+    expect(output.protectedUnchanged).toEqual({ project: true, shared: true });
+    expect(f.state.project.filter((e) => e.gitBranch === null)).toEqual(officialProjectList.envs);
+    expect(f.state.shared).toEqual(protectedBefore.shared);
+    const calls = f.deps.request.mock.calls;
+    const firstWrite = calls.findIndex(([, method]) => method !== undefined && method !== "GET");
+    expect(calls.slice(0, firstWrite).map(([url]) => url)).toEqual([
+      ROUTES.project, ROUTES.project_env, ROUTES.shared_env, ROUTES.supabase, ROUTES.auth,
+      ROUTES.settings, ROUTES.alias, ROUTES.project_env, ROUTES.shared_env, ROUTES.auth,
+    ]);
+    expect(f.deps.source.mock.invocationCallOrder[0]).toBeLessThan(f.deps.request.mock.invocationCallOrder[0]!);
+    expect(f.deps.storage).toHaveBeenCalledOnce();
+    expect(f.deps.storage.mock.invocationCallOrder[0]).toBeLessThan(f.deps.request.mock.invocationCallOrder[firstWrite]!);
+    expect(f.deps.liveHead.mock.invocationCallOrder[0]).toBeLessThan(f.deps.request.mock.invocationCallOrder[firstWrite]!);
+    expect(output.stages.slice(0, output.stages.findIndex((s) => s.stage === "auth_write"))).toEqual(
+      ["source", "credentials", "project", "project_env", "shared_env", "supabase", "auth",
+        "settings", "storage", "alias", "plan", "live_head", "protected_verify"]
+        .map((stage) => ({ stage, status: "passed", code: "passed" })));
+    const writes = calls.filter(([, method]) => method && method !== "GET");
+    expect(writes.map(([url, method]) => [url, method])).toEqual([
+      [ROUTES.auth, "PATCH"], [ROUTES.create, "POST"],
+    ]);
+    expect(writes[1]![2]).toHaveLength(18);
+    for (const row of writes[1]![2] as EnvironmentMetadata[]) {
+      expect(row).toMatchObject({ type: "encrypted", target: ["preview"], gitBranch: REVIEW.branch });
+    }
+  });
+  describe.each([1, 2])("documented project envelope at pre-write read %s", (read) => {
+    it.each<[unknown, string]>([
+      [{ ...officialProjectList, hiddenProductionEnvCount: 1 }, PlanFailure.Incomplete],
+      [{ ...officialProjectList, hiddenProductionEnvCount: 15 }, PlanFailure.Incomplete],
+      ...[-1, 0.5, NaN, Infinity, -Infinity, "0", null, undefined, false, {}].map((count): [unknown, string] =>
+        [{ ...officialProjectList, hiddenProductionEnvCount: count }, "metadata_envelope_invalid"]),
+      [{ hiddenProductionEnvCount: 0 }, "metadata_envelope_invalid"],
+      [{ ...officialProjectList, envs: null }, "metadata_envelope_invalid"],
+      [{ ...officialProjectList, envs: [null] }, "metadata_entry_invalid"],
+      [{ ...officialProjectList, envs: [{ ...officialProjectList.envs[0], updatedAt: canary }] }, "metadata_entry_invalid"],
+      [{ ...officialProjectList, envs: [...officialProjectList.envs, officialProjectList.envs[0]] }, PlanFailure.Duplicate],
+      [{ ...officialProjectList, unknown: canary }, "metadata_envelope_invalid"],
+      [{ ...officialProjectList, error: { message: canary } }, "metadata_envelope_invalid"],
+      [{ ...officialProjectList, pagination: { count: 15, next: null } }, "metadata_envelope_invalid"],
+      [{ ...officialProjectList, pagination: { count: 15, next: canary } }, "metadata_envelope_invalid"],
+      [{ ...officialProjectList, pagination: undefined }, "metadata_envelope_invalid"],
+      [{ ...officialProjectList, data: [] }, "metadata_envelope_invalid"],
+      [officialProjectList.envs[0], "metadata_envelope_invalid"],
+    ])("refuses incomplete or unsupported variant %# before any mutation", async (response, code) => {
+      const f = fixture();
+      f.state.project = structuredClone(officialProjectList.envs);
+      const protectedBefore = structuredClone(f.state);
+      const original = f.deps.request.getMockImplementation()!;
+      let reads = 0;
+      f.deps.request.mockImplementation(async (...args) =>
+        args[0] === ROUTES.project_env ? (++reads === read ? response : officialProjectList) : original(...args));
+      const output = await run(f);
+      expect(output.status).toBe("failed");
+      expect(output.stages.at(-1)).toEqual({
+        stage: read === 1 ? "project_env" : "protected_verify", code, status: "failed",
+      });
+      expect(output.createdEnv).toEqual([]);
+      expect(output.rollback).toEqual({ environment: "not_needed", auth: "not_needed" });
+      expect(output.partial).toBe(false);
+      expect(f.deps.request.mock.calls.every(([, method]) => method === undefined || method === "GET")).toBe(true);
+      expect(f.state).toEqual(protectedBefore);
+      if (read === 1) expect(output.auth.previous).toBeNull();
+    });
+    it("refuses a zero-hidden fixture missing inherited metadata before any mutation", async () => {
+      const f = fixture();
+      const original = f.deps.request.getMockImplementation()!;
+      let reads = 0;
+      f.deps.request.mockImplementation(async (...args) =>
+        args[0] === ROUTES.project_env ? (++reads === read ?
+          { ...officialProjectList, envs: officialProjectList.envs.slice(1) } : officialProjectList) : original(...args));
+      const output = await run(f);
+      expect(output.stages.at(-1)).toEqual({
+        stage: read === 1 ? "plan" : "protected_verify",
+        code: read === 1 ? PlanFailure.Incomplete : "predicate_refused", status: "failed",
+      });
+      expect(output.createdEnv).toEqual([]);
+      expect(output.rollback).toEqual({ environment: "not_needed", auth: "not_needed" });
+      expect(output.partial).toBe(false);
+      expect(f.deps.request.mock.calls.every(([, method]) => method === undefined || method === "GET")).toBe(true);
+    });
+    it("refuses the project-only field in shared metadata before any mutation", async () => {
+      const f = fixture();
+      const original = f.deps.request.getMockImplementation()!;
+      let reads = 0;
+      f.deps.request.mockImplementation(async (...args) => {
+        const response = await original(...args);
+        return args[0] === ROUTES.shared_env && ++reads === read ?
+          { data: f.state.shared, pagination: { count: 1, next: null }, hiddenProductionEnvCount: 0 } : response;
+      });
+      const output = await run(f);
+      expect(output.stages.at(-1)).toEqual({
+        stage: read === 1 ? "shared_env" : "protected_verify", code: "metadata_envelope_invalid", status: "failed",
+      });
+      expect(output.createdEnv).toEqual([]);
+      expect(output.rollback).toEqual({ environment: "not_needed", auth: "not_needed" });
+      expect(f.deps.request.mock.calls.every(([, method]) => method === undefined || method === "GET")).toBe(true);
+    });
+  });
   it("projects official envelopes, preserves production/shared metadata and creates only 18 encrypted preview overrides", async () => {
     const f = fixture();
     const protectedBefore = structuredClone(f.state);
@@ -345,6 +492,26 @@ describe("configuration-only runtime", () => {
   });
 });
 describe("bounded fixed-route transport and metadata", () => {
+  it("projects only metadata from the documented zero-hidden fixture without reading sensitive fields", () => {
+    const response = structuredClone(officialProjectList);
+    const readSensitive = vi.fn(() => { throw new Error(canary); });
+    for (const row of response.envs) {
+      for (const key of ["value", "legacyValue", "internalContentHint", "credentials", "error"]) {
+        Object.defineProperty(row, key, { enumerable: true, get: readSensitive });
+      }
+    }
+    expect(environmentList(response, false)).toEqual(officialProjectList.envs);
+    expect(readSensitive).not.toHaveBeenCalled();
+    expect(ROUTES.project_env).toContain("decrypt=false");
+  });
+  it("retains the 1000-entry limit for the zero-hidden variant", () => {
+    const envs = Array.from({ length: 1000 }, (_, i) => ({
+      ...officialProjectList.envs[0]!, id: `metadata_${i}`,
+    }));
+    expect(environmentList({ envs, hiddenProductionEnvCount: 0 }, false)).toHaveLength(1000);
+    expect(() => environmentList({ envs: [...envs, { ...envs[0], id: "overflow" }],
+      hiddenProductionEnvCount: 0 }, false)).toThrow("metadata_envelope_invalid");
+  });
   it.each([
     [{ envs: [], error: canary }, "metadata_envelope_invalid"],
     [{ envs: [], pagination: { count: 0, next: canary } }, "metadata_pagination_invalid"],
@@ -366,6 +533,9 @@ describe("bounded fixed-route transport and metadata", () => {
   it("accepts explicit terminal shared pagination and documented project envelope", () => {
     expect(environmentList({ data: [], pagination: { count: 0, next: null } }, true)).toEqual([]);
     expect(environmentList({ envs: [] }, false)).toEqual([]);
+    expect(environmentList({ envs: officialProjectList.envs,
+      pagination: { count: 15, next: null, prev: null } }, false)).toEqual(officialProjectList.envs);
+    expect(environmentList({ envs: [], hiddenProductionEnvCount: 0 }, false)).toEqual([]);
   });
   it.each([403, 500, 200])("does not mistake alias status %s for unallocated", async (status) => {
     const request = boundedTransport(env, Date.now() + 10_000,

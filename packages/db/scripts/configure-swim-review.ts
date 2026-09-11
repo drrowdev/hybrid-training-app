@@ -66,8 +66,14 @@ function terminalPagination(value: unknown) {
 }
 export function environmentList(value: unknown, shared: boolean): EnvironmentMetadata[] {
   const envelope = object(value, "metadata_envelope_invalid");
-  const allowed = shared ? ["data", "pagination"] : ["envs", "pagination"];
+  const allowed = shared ? ["data", "pagination"] : ["envs", "pagination", "hiddenProductionEnvCount"];
   requireThat(Object.keys(envelope).every((key) => allowed.includes(key)), "metadata_envelope_invalid");
+  if ("hiddenProductionEnvCount" in envelope) {
+    const count = envelope.hiddenProductionEnvCount;
+    requireThat(!shared && !("pagination" in envelope) &&
+      typeof count === "number" && Number.isInteger(count) && count >= 0, "metadata_envelope_invalid");
+    requireThat(count === 0, PlanFailure.Incomplete);
+  }
   if (shared || "pagination" in envelope) terminalPagination(envelope.pagination);
   const entries = envelope[shared ? "data" : "envs"];
   requireThat(Array.isArray(entries) && entries.length <= 1000, "metadata_envelope_invalid");
