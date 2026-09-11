@@ -27,6 +27,14 @@ const env: NodeJS.ProcessEnv = {
 };
 const inputs = { deploy_swim_review: "true", inspect_swim_review_deployment: "false", expected_sha: sha,
   ...Object.fromEntries(modes.map((key) => [key.toLowerCase(), "false"])) };
+const reviewModes = ["deploy_swim_review", "inspect_swim_review_deployment", "provision_swim_review_owner"];
+function checkReviewEvent(eventInputs: Record<string, string> | undefined) {
+  if (!reviewModes.some((key) => eventInputs?.[key] === "true")) return false;
+  expect(reviewModes.filter((key) => eventInputs?.[key] === "true")).toHaveLength(1);
+  expect(reviewModes.every((key) => ["true", "false"].includes(eventInputs?.[key] ?? ""))).toBe(true);
+  expect(modes.every((key) => eventInputs?.[key.toLowerCase()] === "false")).toBe(true);
+  return true;
+}
 function receipt(): EnvironmentMetadata[] {
   return OVERRIDE_KEYS.map((key) => ({ id: RECEIPT[key], key, type: "encrypted",
     target: ["preview"], gitBranch: REVIEW.branch, createdAt: CONFIGURATION.start + 1000, updatedAt: CONFIGURATION.end - 1000 }));
@@ -138,11 +146,7 @@ describe("deployment context and source", () => {
     // Existing mutation jobs all need ci; keep their immutable bytes while refusing mixed dispatches here.
     if (process.env.GITHUB_EVENT_NAME !== "workflow_dispatch") return;
     const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH!, "utf8")) as { inputs?: Record<string, string> };
-    const reviewModes = ["deploy_swim_review", "inspect_swim_review_deployment", "provision_swim_review_owner"];
-    if (!reviewModes.some((key) => event.inputs?.[key] === "true")) return;
-    expect(reviewModes.filter((key) => event.inputs?.[key] === "true")).toHaveLength(1);
-    expect(reviewModes.every((key) => ["true", "false"].includes(event.inputs?.[key] ?? ""))).toBe(true);
-    expect(modes.every((key) => event.inputs?.[key.toLowerCase()] === "false")).toBe(true);
+    if (!checkReviewEvent(event.inputs)) return;
     expect(process.env.GITHUB_REPOSITORY).toBe(REVIEW.repository);
     expect(process.env.GITHUB_REF).toBe(`refs/heads/${REVIEW.branch}`);
     expect(event.inputs?.expected_sha).toMatch(/^[a-f0-9]{40}$/);
@@ -429,6 +433,45 @@ function ownerHarness() {
   return { ...h, user };
 }
 describe("native one-shot owner provisioning", () => {
+  it("refuses every mixed action combination using the same core-event gate", () => {
+    const keys = [...reviewModes, ...modes.map((key) => key.toLowerCase())];
+    for (let mask = 0; mask < 2 ** keys.length; mask++) {
+      const flags = Object.fromEntries(keys.map((key, i) => [key, mask & (1 << i) ? "true" : "false"]));
+      const selected = keys.filter((key) => flags[key] === "true");
+      if (!reviewModes.some((key) => flags[key] === "true")) expect(checkReviewEvent(flags)).toBe(false);
+      else if (selected.length === 1) expect(checkReviewEvent(flags)).toBe(true);
+      else expect(() => checkReviewEvent(flags)).toThrow();
+    }
+  });
+  it("binds owner secrets only to its conditional step after install/offline/source checks", () => {
+    const workflow = readFileSync(resolve(import.meta.dirname, "../../../../.github/workflows/ci.yml"), "utf8");
+    const [before, owner] = workflow.split("      - name: Provision isolated owner once");
+    expect(before).not.toContain("secrets.SWIM_REVIEW_OWNER_");
+    expect(owner!.match(/secrets\.\w+/g)).toEqual([
+      "secrets.VERCEL_REVIEW_TOKEN", "secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN",
+      "secrets.SWIM_REVIEW_SUPABASE_ANON_KEY", "secrets.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY",
+      "secrets.SWIM_REVIEW_OWNER_EMAIL", "secrets.SWIM_REVIEW_OWNER_PASSWORD",
+    ]);
+    expect(owner).not.toContain("DATABASE_URL");
+    expect(owner).toContain("inputs.provision_swim_review_owner == true && inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == false");
+    const job = before!.split("\n  deploy-swim-review:\n")[1]!;
+    expect(job.indexOf("pnpm install")).toBeLessThan(job.indexOf("vitest run"));
+    expect(job.indexOf("vitest run")).toBeLessThan(job.indexOf("--check-source --provision-owner"));
+    expect(job.indexOf("--check-source --provision-owner")).toBeLessThan(job.indexOf("secrets."));
+    expect(job).toContain("PROVISION_SWIM_REVIEW_OWNER: ${{ inputs.provision_swim_review_owner }}");
+    expect(workflow).toMatch(/provision_swim_review_owner:\n\s+description:.*\n\s+required: false\n\s+default: false\n\s+type: boolean/);
+  });
+  it.each([["--provision-owner"], ["--check-source", "--provision-owner"],
+    ["--provision-owner", "--inspect-isolation"], ["--provision-owner", "--provision-owner"]])(
+    "fails closed with one safe JSON record for invalid CLI context %#", (...args) => {
+      const child = spawnSync(process.execPath, ["--import", "tsx", resolve(import.meta.dirname, "../deploy-swim-review.ts"), ...args],
+        { env: { PATH: process.env.PATH }, encoding: "utf8", timeout: 10_000 });
+      expect(child.status).toBe(1);
+      expect(child.stderr).toBe("");
+      expect(child.stdout.trim().split("\n")).toHaveLength(1);
+      expect(JSON.parse(child.stdout)).toMatchObject({ scope: "swim-review-owner-provision", status: "failed",
+        accountCreate: { attempted: false, confirmed: false }, partial: false });
+    });
   it("creates only the exact payload, reads only the returned ID, and leaves login pending", async () => {
     const h = ownerHarness();
     const result = await provisionOwner(ownerEnv, h.deps);
@@ -532,6 +575,44 @@ describe("native one-shot owner provisioning", () => {
     const result = await provisionOwner(ownerEnv, h.deps);
     expect(result.status).toBe("failed");
     expect(result.accountCreate.attempted).toBe(read === 3);
+  });
+  it.each(["source", "project", "shared", "alias", "deployment", "external", "storage"])(
+    "preserves the original uncertain-create failure even when postguard %s also fails", async (kind) => {
+      const h = ownerHarness();
+      const original = h.request.getMockImplementation()!;
+      h.request.mockImplementation(async (...args) => {
+        if (args[0] === OWNER_ROUTE) {
+          if (kind === "source") h.deps.source.mockImplementation(() => { throw Error(canary); });
+          if (kind === "project") h.state.project[0]!.updatedAt++;
+          if (kind === "shared") h.state.shared[0]!.updatedAt++;
+          if (kind === "alias") h.state.alias = false;
+          if (kind === "deployment") h.state.deployment.url = "wrong.vercel.app";
+          if (kind === "storage") h.deps.storage.mockResolvedValue(false);
+          throw Error(canary);
+        }
+        if (kind === "external" && writes(h).length && args[0] === ROUTES.settings) return { external: { email: true, github: true } };
+        return original(...args);
+      });
+      const result = await provisionOwner(ownerEnv, h.deps);
+      expect(result.stages.filter(({ status }) => status === "failed").map(({ stage }) => stage)).toEqual(["account_create", "postcreate"]);
+      expect(result).toMatchObject({ partial: true, manualReconciliation: true, accountCreate: { attempted: true, confirmed: false } });
+      expect(writes(h)).toHaveLength(1);
+    });
+  it("stops at the overall deadline and never retries an uncertain HTTP create", async () => {
+    const h = ownerHarness();
+    const original = h.request.getMockImplementation()!;
+    h.request.mockImplementation(async (...args) => {
+      if (args[0] === OWNER_ROUTE) { h.state.now += 300_000; throw Error(canary); }
+      return original(...args);
+    });
+    const result = await provisionOwner(ownerEnv, h.deps);
+    expect(result.stages.at(-1)).toMatchObject({ stage: "postcreate", code: "deadline" });
+    expect(writes(h)).toHaveLength(1);
+    const fake = vi.fn(async () => new Response(canary, { status: 422 }));
+    const request = deploymentTransport(ownerEnv, Date.now() + 300_000, fake, "provision-owner");
+    await expect(request(OWNER_ROUTE, "POST", ownerInputs(ownerEnv))).rejects.toMatchObject({ code: "http_status", httpStatus: 422 });
+    await expect(request(OWNER_ROUTE, "POST", ownerInputs(ownerEnv))).rejects.toThrow();
+    expect(fake).toHaveBeenCalledTimes(1);
   });
   it("never reads private metadata/user getters or a DATABASE_URL", async () => {
     const h = ownerHarness();

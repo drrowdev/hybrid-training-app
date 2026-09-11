@@ -3740,3 +3740,49 @@ Successful admin creation/lookup alone must leave both pending flags true.
 Coordinator must inspect the complete published source before one separately
 guarded provision dispatch. Production, protected merge, migration, app changes,
 combined swimming, backups and spending remain unapproved/deferred.
+
+Coherent checkpoint `326b7ef2296f44de1e835164a65ae1f7a5f73003` published at
+11:48:22Z, with 905/905 four-suite tests, targeted strict TypeScript (the exact
+eight-file command above), whitespace and changed-file secret scans passing.
+Local and public author/committer identities verified allowlisted. No prior job
+bytes changed; the existing immutable-job test passed.
+
+Final hardening preserves the failed account stage even when its subsequent
+read-only `postcreate` guard also fails. An uncertain create is never retried:
+the producer may contain failed `account_create` (or `account_verify`) followed
+by passed/failed `postcreate`, but remains failed/nonzero, partial and manual,
+without `completion` or cleanup. All successful stage sequences remain as above.
+The exact finite `code` vocabulary is the shared deployment `Code` union:
+`passed`, `predicate_refused`, `receipt_invalid`, `isolation_changed`,
+`http_status`, `transport_failed`, `response_invalid`, `deadline`,
+`deployment_failed`, `alias_conflict`, `project_structure`, `project_identity`,
+`team_structure`, `team_identity`, `billing_missing`, `billing_null`,
+`billing_invalid`, `billing_plan`, `supabase_identity`;
+`{ssoProtection,passwordProtection,trustedIps}_{missing,invalid,deploymentType}`;
+`trustedIps_addresses`, `trustedIps_protectionMode`. Provider strings never
+become codes. Existing deployment/inspection producer schemas are unchanged;
+readers must recognize the new job display name rather than the former display.
+
+Expanded offline regressions exercise all 1,024 action-flag combinations using
+the same core-event assertion, owner CLI rejection, sole-step credential binding,
+source-before-secret rejection, timestamp drift, protection omission versus
+null, fixed deployment/alias/Auth/Hobby mismatches, private getters, one literal
+create and returned-ID lookup, failed/duplicate/uncertain responses, postguard
+failures, deadline, account preservation and blocked transport retry.
+The first-party web reference was unavailable from this worker; the installed
+Supabase SDK's `GoTrueAdminApi.createUser` confirms POST `/admin/users` with
+the supplied attributes and no confirmation email. Existing repository
+`auth.admin.createUser` examples use the same three payload fields; their raw
+logging and cleanup were not reused.
+
+Required automated validation was attempted on the published checkpoint:
+review could not run because its configured model was unavailable; Actions
+CodeQL failed; JavaScript CodeQL was skipped for database size. No clean
+automated review/security result is claimed and no substitute/helper was launched.
+
+Final offline batch: **920/920 passed** in one invocation (deployment378,
+configuration203, pure-plan122, bootstrap217). Targeted strict TypeScript across
+the same four scripts/four test files and `git diff --check` passed. All provider
+dependencies were fake; these results are not hosted provisioning or login
+evidence. This continuation changed only the deployment script/test, workflow,
+handoff and minimal configure exclusion/test compatibility.

@@ -583,6 +583,18 @@ export async function provisionOwner(env: NodeJS.ProcessEnv, deps: Pick<Dependen
   const deadline = deps.now() + 300_000;
   let stage: OwnerStage = "source";
   const time = () => requireThat(deps.now() < deadline, "deadline");
+  const clearEvidence = () => {
+    result.partial = result.accountCreate.attempted;
+    result.manualReconciliation = result.partial;
+    result.protectedUnchanged = { project: false, shared: false };
+    result.protectionUnchanged = false; result.authMatches = false; result.isolationVerified = false;
+  };
+  const failure = (error: unknown) => {
+    result.stages.push({ stage, status: "failed", code: error instanceof Refusal ? error.code : "predicate_refused",
+      ...(error instanceof Refusal && Number.isInteger(error.httpStatus) && error.httpStatus! >= 100 &&
+        error.httpStatus! <= 599 ? { httpStatus: error.httpStatus } : {}) });
+    clearEvidence();
+  };
   async function step<T>(name: OwnerStage, action: () => T | Promise<T>) {
     stage = name; time();
     const value = await action(); time();
@@ -648,28 +660,30 @@ export async function provisionOwner(env: NodeJS.ProcessEnv, deps: Pick<Dependen
         confirmed >= Math.floor(started / 1000) * 1000 && confirmed <= deps.now(), "response_invalid");
       return row.id;
     };
-    const id = await step("account_create", async () => {
-      result.accountCreate.attempted = true;
-      const created = verifyUser(await deps.request(OWNER_ROUTE, "POST", credentials));
-      result.accountCreate.confirmed = true;
-      return created;
-    });
-    await step("account_verify", async () => {
-      deps.source(); time();
-      verifyUser(await deps.request(`${OWNER_ROUTE}/${id}`), id);
-      result.accountVerified = true;
-    });
+    let accountFailed = false;
+    try {
+      const id = await step("account_create", async () => {
+        result.accountCreate.attempted = true;
+        const created = verifyUser(await deps.request(OWNER_ROUTE, "POST", credentials));
+        result.accountCreate.confirmed = true;
+        return created;
+      });
+      await step("account_verify", async () => {
+        deps.source(); time();
+        verifyUser(await deps.request(`${OWNER_ROUTE}/${id}`), id);
+        result.accountVerified = true;
+      });
+    } catch (error) {
+      failure(error);
+      accountFailed = true;
+    }
+    // Even an uncertain create gets a bounded read-only guard pass, never a retry or cleanup.
     await step("postcreate", guards);
+    if (accountFailed) { clearEvidence(); return result; }
     await step("completion", () => { deps.source(); });
     result.status = "owner_provision_pass";
   } catch (error) {
-    result.stages.push({ stage, status: "failed", code: error instanceof Refusal ? error.code : "predicate_refused",
-      ...(error instanceof Refusal && Number.isInteger(error.httpStatus) && error.httpStatus! >= 100 &&
-        error.httpStatus! <= 599 ? { httpStatus: error.httpStatus } : {}) });
-    result.partial = result.accountCreate.attempted;
-    result.manualReconciliation = result.partial;
-    result.protectedUnchanged = { project: false, shared: false };
-    result.protectionUnchanged = false; result.authMatches = false; result.isolationVerified = false;
+    failure(error);
   }
   return result;
 }

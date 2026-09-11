@@ -676,10 +676,10 @@ describe("read-only Auth reconciliation", () => {
     expect(f.state).toEqual(before);
     return result;
   }
-  it("excludes deployment inspection from configuration and Auth inspection", async () => {
-    expect(() => configurationContext({ ...env, INSPECT_SWIM_REVIEW_DEPLOYMENT: "true" })).toThrow();
+  it.each(["INSPECT_SWIM_REVIEW_DEPLOYMENT", "PROVISION_SWIM_REVIEW_OWNER"])("excludes %s from configuration and Auth inspection", async (flag) => {
+    expect(() => configurationContext({ ...env, [flag]: "true" })).toThrow();
     const f = fixture();
-    expect((await inspect(f, { ...inspectionEnv, INSPECT_SWIM_REVIEW_DEPLOYMENT: "true" })).status).toBe("failed");
+    expect((await inspect(f, { ...inspectionEnv, [flag]: "true" })).status).toBe("failed");
     expect(f.deps.request).not.toHaveBeenCalled();
   });
   it.each(["previous", "intended"] as const)("classifies stable %s state without configuration acceptance", async (state) => {
