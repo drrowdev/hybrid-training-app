@@ -3099,3 +3099,9 @@ The initialized DB proven at run34564558960 must not be bootstrapped again.
 Application `82337d2b36436bbe15532b4204e3ee96ba55b3f7` and frozen26 are
 unchanged; no 26-case acceptance is claimed at this new setup SHA. PR805
 remains draft/unmerged; no auto-merge or production action requested.
+
+Published implementation `d9183220cb8537693fc84a8fcfd2cb52c3cb2c49`;
+public native author/committer identities and the three-file scope verified.
+Required automated validation attempted once: reviewer model unavailable,
+CodeQL Actions analysis failed, JavaScript skipped for database size. No clean
+automated review/security result is claimed; no optional review or retry run.
