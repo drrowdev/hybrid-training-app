@@ -3105,3 +3105,36 @@ public native author/committer identities and the three-file scope verified.
 Required automated validation attempted once: reviewer model unavailable,
 CodeQL Actions analysis failed, JavaScript skipped for database size. No clean
 automated review/security result is claimed; no optional review or retry run.
+
+### 2026-09-11 — PR805 bounded configuration runtime (source only)
+
+Verified START `b6e09d2240081472ba91f168d94aba3915316218` and published main
+`672e4202792da122281639e3db810029432573f5`. First checkpoint `ed33691`
+corrects the organization to literal `ttxxqipkcgtirtmhhlnb`, with an independent
+accept/reject fixture. Native public author/committer identities verified.
+
+Added `configure-swim-review.ts`, focused fake-HTTP tests, and the default-off
+manual configuration job at CI EOF. Existing job bodies and bootstrap runtime
+are unchanged; its workflow-source test now stops before the appended job.
+Configuration preflights explicit metadata projections, modern keys, read-only
+readiness, 404-only alias availability, source equivalence and live feature SHA.
+Only the bounded three-field test Auth patch and 18 new encrypted branch
+overrides are writable. Complete returned IDs and live metadata are required
+for conditional cleanup; uncertain writes/concurrent edits remain manual.
+The summary contains no plan values, raw responses or exception messages.
+
+OFFLINE validation: **57 runtime + 122 pure-module + 217 bootstrap = 396/396**
+in one Vitest invocation. Existing targeted TypeScript flags, selecting the
+changed scripts/tests, and `git diff --check` passed. No new dependencies.
+Public documentation fetches failed DNS resolution; official envelopes supplied
+in the task are covered by fixtures, not claimed as hosted integration proof.
+
+No secrets read, target HTTP/DB calls, bootstrap/seed/reset, workflow dispatch,
+browser/server/Docker, deployment, alias assignment or account action occurred.
+The initialized test DB at run34564558960 and accepted application
+`82337d2b36436bbe15532b4204e3ee96ba55b3f7`/frozen26 remain untouched.
+Coordinator must inspect the complete published source before guarded hosted
+CI. Hosted configuration is unexecuted; runtime/deployment/owner login remain
+pending and the proposed alias/review URL remain uncreated. PR stays draft and
+unmerged. No domain DC-/OC- behavior changes
+([constraint contract](docs/knowledge/hybrid-training-design-constraints.md)).

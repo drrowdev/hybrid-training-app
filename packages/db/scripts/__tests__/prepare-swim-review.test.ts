@@ -691,7 +691,8 @@ describe("canonical seed subprocess boundary (fake process only)", () => {
 });
 
 describe("saved workflow and raw-stream boundaries", () => {
-  const workflow = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8");
+  const workflow = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8")
+    .split("\n  configure-swim-review:\n")[0]!.trimEnd() + "\n";
   const job = workflow.split("\n  prepare-swim-review:\n")[1]!.split("\n  prod-migrate:")[0]!;
   const source = readFileSync(resolve(root, "packages/db/scripts/prepare-swim-review.ts"), "utf8");
   it("preserves every existing job byte-for-byte", () => {

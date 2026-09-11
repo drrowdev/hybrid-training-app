@@ -72,7 +72,7 @@ const supabaseSchema = z.object({
 
 const targetSchema = z.enum(["preview", "production", "development"]);
 const marker = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
-const metadataSchema = z.object({
+export const metadataSchema = z.object({
   key: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/),
   type: z.enum(["encrypted", "plain", "secret", "sensitive", "system"]),
   target: z.array(targetSchema).min(1).max(3).refine((t) => new Set(t).size === t.length),
