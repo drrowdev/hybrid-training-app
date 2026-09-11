@@ -3566,7 +3566,13 @@ Known deploymentType strings are `all`, `preview`, `production`,
 known plans are `hobby`, `pro`, `enterprise`. Only the existing `hobby`
 predicate passes; classification never changes guard acceptance.
 
-Required automated validation at the first published checkpoint could not
+Final source/test checkpoint:
+`1f26717aa57cdb077266643c8da86990ae39edf6`. The following HANDOFF-only
+commit records continuity; use its then-current feature SHA for any approved
+hosted inspection. Local/public native identities were verified allowlisted;
+main remained `672e4202792da122281639e3db810029432573f5`.
+
+Required automated validation at both published source checkpoints could not
 complete: review's configured model was unavailable, Actions CodeQL analysis
 failed, and JavaScript CodeQL was skipped for database size. No clean automated
 review/security result is claimed. No helper or substitute model was launched.
