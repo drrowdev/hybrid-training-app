@@ -173,9 +173,9 @@ export async function refresh(env: NodeJS.ProcessEnv, deps: Dependencies): Promi
     supabaseIdentity(await request(ROUTES.supabase));
     const project = environmentList(await request(ROUTES.project_env), false);
     const shared = environmentList(await request(ROUTES.shared_env), true);
-    const auth = record.parse(await request(ROUTES.auth));
-    requireThat(auth.site_url === REVIEW.origin && auth.uri_allow_list === `${REVIEW.origin}/auth/callback` && auth.disable_signup === true);
-    const external = record.parse(record.parse(await request(ROUTES.settings)).external);
+    z.object({ site_url: z.literal(REVIEW.origin), uri_allow_list: z.literal(`${REVIEW.origin}/auth/callback`),
+      disable_signup: z.literal(true) }).parse(await request(ROUTES.auth));
+    const { external } = z.object({ external: record }).parse(await request(ROUTES.settings));
     requireThat(external.email === true && Object.keys(external).length <= 100 &&
       Object.entries(external).every(([key, value]) => key === "email" || value === false));
     requireThat(await deps.storage() === true); time();
@@ -204,8 +204,11 @@ export async function refresh(env: NodeJS.ProcessEnv, deps: Dependencies): Promi
       result.protectedUnchanged = false; result.authMatches = false; result.isolationVerified = false; result.storageReady = false;
       source();
       requireThat(same(await snapshot(), expected));
-      const mapping = aliasMetadata(await request(ROUTES.alias), id, initial.alias.uid);
+      const old = deploymentMetadata(await request(deploymentRoute(ACCEPTED_DEPLOYMENT.id)), ACCEPTED_DEPLOYMENT.sha);
+      requireThat(old.id === ACCEPTED_DEPLOYMENT.id && old.url === ACCEPTED_DEPLOYMENT.url && old.readyState === "READY" &&
+        old.createdAt >= ACCEPTED_DEPLOYMENT.start && old.createdAt <= ACCEPTED_DEPLOYMENT.end);
       source();
+      const mapping = aliasMetadata(await request(ROUTES.alias), id, initial.alias.uid);
       result.protectedUnchanged = true; result.authMatches = true; result.isolationVerified = true; result.storageReady = true;
       return mapping;
     };
@@ -300,7 +303,10 @@ async function main() {
         });
       },
     });
-    if (check) { source(); result.status = "source_pass"; }
+    if (check) {
+      source(); result.status = "source_pass";
+      result.stages.push({ stage: "source", code: "passed", status: "passed" });
+    }
     else {
       const request = refreshTransport(env, deadline);
       result = await refresh(env, { source, request, storage: storageAdapter(env, request), now: Date.now,
