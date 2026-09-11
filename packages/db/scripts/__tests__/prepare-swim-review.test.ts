@@ -38,6 +38,7 @@ function fake() {
       { ...pristine, unexpectedNamespaces: 0, postgresOwnedRelations: 0 },
     ];
     if (text.includes("auth.users")) return [{ usersEmpty: true, storageEmpty: true }];
+    if (text.includes('AS "extensionMember"')) return [];
     if (text.includes("ORDER BY id")) return canonical.map((m, i) =>
       ({ id: i + 1, hash: m.hash, created_at: m.folderMillis }));
     if (text.includes("AS global")) return [{ global: 334, seeded: 330, ready: true }];
@@ -206,15 +207,18 @@ describe("read-only pristine inspection (fake runtime, not hosted proof)", () =>
     expect(runtime.seed).not.toHaveBeenCalled();
     expect(vi.mocked(runtime.emit).mock.calls.every(([r]) => r.mode === "read-only")).toBe(true);
   }
-  it("observes only the two existing reads on success and never verifies setup", async () => {
+  it("observes the two existing reads and one bounded metadata read, never setup", async () => {
     const { runtime, query, close } = fake();
     expect(await prepareReview(url, runtime, true)).toBe(true);
     noWrites(runtime);
-    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledTimes(3);
     expect(query.mock.calls.every(([sql]) => /^\s*SELECT/.test(sql))).toBe(true);
     expect(evidence(runtime)).toEqual({
       phase: "preflight", status: "passed", mode: "read-only",
-      inspection: { predicates: pristine, schemaCounts: { unexpectedNamespaces: 0, postgresOwnedRelations: 0 } },
+      inspection: {
+        predicates: pristine, schemaCounts: { unexpectedNamespaces: 0, postgresOwnedRelations: 0 },
+        unexpectedSchemas: { status: "empty", entries: [] },
+      },
     });
     expect(close).toHaveBeenCalledOnce();
   });
@@ -228,7 +232,7 @@ describe("read-only pristine inspection (fake runtime, not hosted proof)", () =>
     expect(close).toHaveBeenCalledOnce();
   });
   it.each(["unexpectedNamespaces", "postgresOwnedRelations"] as const)(
-    "distinguishes bounded %s evidence without retrieving names", async (key) => {
+    "preserves bounded %s evidence alongside namespace metadata", async (key) => {
       const { runtime, query, close } = fake();
       query.mockResolvedValueOnce([{ ...pristine, unexpectedNamespaces: 0, postgresOwnedRelations: 0, [key]: 1000 }]);
       expect(await prepareReview(url, runtime, true)).toBe(false);
@@ -238,6 +242,131 @@ describe("read-only pristine inspection (fake runtime, not hosted proof)", () =>
       noWrites(runtime);
       expect(close).toHaveBeenCalledOnce();
     });
+  const namespace = {
+    name: "offline_namespace", owner: "other", relations: 0, routines: 1, types: 1000,
+    extensionMember: false,
+  };
+  function metadataFake(rows: Record<string, unknown>[], expected = rows.length) {
+    const state = fake();
+    state.query
+      .mockResolvedValueOnce([{ ...pristine, unexpectedNamespaces: expected, postgresOwnedRelations: 0 }])
+      .mockResolvedValueOnce([{ usersEmpty: true, storageEmpty: true }])
+      .mockResolvedValueOnce(rows);
+    return state;
+  }
+  it("records the one-namespace metadata before rejecting the unchanged pristine guard", async () => {
+    const { runtime, query, close } = metadataFake([namespace]);
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    expect(evidence(runtime)).toMatchObject({
+      phase: "preflight", status: "failed",
+      inspection: {
+        predicates: { ...pristine, schemasExpected: false },
+        schemaCounts: { unexpectedNamespaces: 1, postgresOwnedRelations: 0 },
+        unexpectedSchemas: {
+          status: "readable", entries: [{
+            name: namespace.name, owner: "other",
+            relations: { count: 0, saturated: false },
+            routines: { count: 1, saturated: false },
+            types: { count: 1000, saturated: true },
+            extensionMember: false,
+          }],
+        },
+      },
+    });
+    const sql = query.mock.calls[2]![0];
+    const namespaceFilter = (text: string) => text.match(
+      /(?:n\.)?nspname NOT IN \([\s\S]*?AND (?:n\.)?nspname NOT LIKE 'pg_toast_temp_%'/,
+    )![0].replace(/\bn\./g, "").replace(/\s+/g, " ");
+    expect(namespaceFilter(sql)).toBe(namespaceFilter(query.mock.calls[0]![0]));
+    expect(sql).toMatch(/ORDER BY n\.oid LIMIT 17/);
+    expect(sql.match(/LIMIT 1000/g)).toHaveLength(3);
+    expect(sql).toContain("ELSE 'other' END AS owner");
+    expect(sql).toContain("ELSE NULL END AS name");
+    expect(sql).toContain("d.refclassid = 'pg_catalog.pg_extension'::regclass");
+    expect(sql).not.toMatch(/auth\.|storage\.|public\.|\b(?:relname|proname|typname)\b|pg_get_|INSERT|UPDATE|DELETE|CREATE/);
+    noWrites(runtime);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it.each(["postgres", "supabase_admin", "supabase_auth_admin", "supabase_storage_admin", "other"])(
+    "allows only the fixed owner category %s and explicit saturation", async (owner) => {
+      const { runtime, close } = metadataFake([{
+        ...namespace, name: "_" + "a".repeat(62), owner, relations: 1000, routines: 999,
+        types: 0, extensionMember: true, arbitrary: url,
+      }]);
+      expect(await prepareReview(url, runtime, true)).toBe(false);
+      expect(evidence(runtime).inspection!.unexpectedSchemas).toMatchObject({
+        status: "readable", entries: [{
+          owner, relations: { count: 1000, saturated: true },
+          routines: { count: 999, saturated: false }, types: { count: 0, saturated: false },
+          extensionMember: true,
+        }],
+      });
+      expect(JSON.stringify(evidence(runtime))).not.toMatch(/arbitrary|postgresql|offline-unit/);
+      noWrites(runtime);
+      expect(close).toHaveBeenCalledOnce();
+    });
+  it.each([
+    ...["", "A", "0name", "a-b", "a.b", "<private>", "a".repeat(64), "a\n", "a\r", "a\u2028",
+      "a\u2029", null, undefined, 1].map((name) => ({ name })),
+    ...["private_role", "", null, 1].map((owner) => ({ owner })),
+    ...["relations", "routines", "types"].flatMap((key) =>
+      [-1, 1001, 1.5, "1", null, undefined, NaN, Infinity].map((value) => ({ [key]: value }))),
+    ...["true", 1, null, undefined].map((extensionMember) => ({ extensionMember })),
+  ])("rejects invalid namespace fields without unchecked text: %j", async (override) => {
+    const { runtime, close } = metadataFake([{ ...namespace, ...override }]);
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    expect(evidence(runtime).inspection!.unexpectedSchemas).toEqual({ status: "invalid", entries: [] });
+    expect(evidence(runtime).inspection!.predicates).toEqual({ ...pristine, schemasExpected: false });
+    expect(JSON.stringify(evidence(runtime))).not.toMatch(/private|postgresql/);
+    noWrites(runtime);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it.each([16, 17])("bounds namespace results at sixteen, observing %s rows", async (size) => {
+    const { runtime, close } = metadataFake(Array.from({ length: size }, (_, i) =>
+      ({ ...namespace, name: `offline_${i}` })));
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    const metadata = evidence(runtime).inspection!.unexpectedSchemas!;
+    expect(metadata.status).toBe(size === 16 ? "readable" : "overflow");
+    expect(metadata.entries).toHaveLength(size === 16 ? 16 : 0);
+    noWrites(runtime);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it.each([
+    { rows: [], expected: 1 }, { rows: [namespace], expected: 0 },
+    { rows: [namespace, namespace], expected: 2 },
+  ])("fails closed on inconsistent or duplicate namespace results", async ({ rows, expected }) => {
+    const { runtime, close } = metadataFake(rows, expected);
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    expect(evidence(runtime).inspection!.unexpectedSchemas).toEqual({ status: "invalid", entries: [] });
+    noWrites(runtime);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it("retains all known predicates on a metadata read error", async () => {
+    const { runtime, query, close } = fake();
+    query.mockResolvedValueOnce([{ ...pristine, unexpectedNamespaces: 1, postgresOwnedRelations: 0 }])
+      .mockResolvedValueOnce([{ usersEmpty: true, storageEmpty: true }])
+      .mockRejectedValueOnce(Object.assign(new Error(`private ${url}`), {
+        name: "PostgresError", severity: "ERROR", code: "42501",
+      }));
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    expect(evidence(runtime)).toMatchObject({
+      status: "failed", code: { sqlstate: "42501" },
+      inspection: {
+        predicates: { ...pristine, schemasExpected: false },
+        schemaCounts: { unexpectedNamespaces: 1, postgresOwnedRelations: 0 },
+        unexpectedSchemas: { status: "unreadable", entries: [] },
+      },
+    });
+    expect(JSON.stringify(evidence(runtime))).not.toMatch(/private|postgresql|offline/);
+    noWrites(runtime);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it("never queries or emits namespace metadata in write mode", async () => {
+    const { runtime, query } = fake();
+    expect(await prepareReview(url, runtime)).toBe(true);
+    expect(query.mock.calls.some(([sql]) => sql.includes('AS "extensionMember"'))).toBe(false);
+    expect(vi.mocked(runtime.emit).mock.calls.every(([record]) => record.inspection === undefined)).toBe(true);
+  });
   it.each([0, 1])("keeps unreadable predicates and safe codes when probe %s fails", async (probe) => {
     const { runtime, query, close } = fake();
     if (probe === 1) query.mockResolvedValueOnce([{ ...pristine, unexpectedNamespaces: 0, postgresOwnedRelations: 0 }]);
@@ -287,18 +416,20 @@ describe("read-only pristine inspection (fake runtime, not hosted proof)", () =>
     expect(runtime.connect).not.toHaveBeenCalled();
     noWrites(runtime);
   });
-  it.each([0, 1])("closes after timeout at probe %s without late reads or writes", async (probe) => {
+  it.each([0, 1, 2])("closes after timeout at probe %s without late reads or writes", async (probe) => {
     vi.useFakeTimers();
     try {
       const { runtime, query, close } = fake();
-      if (probe === 1) query.mockResolvedValueOnce([{ ...pristine, unexpectedNamespaces: 0, postgresOwnedRelations: 0 }]);
+      if (probe >= 1) query.mockResolvedValueOnce([{ ...pristine, unexpectedNamespaces: 0, postgresOwnedRelations: 0 }]);
+      if (probe === 2) query.mockResolvedValueOnce([{ usersEmpty: true, storageEmpty: true }]);
       let finish!: (rows: Record<string, unknown>[]) => void;
       query.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
       const result = prepareReview(url, runtime, true);
       await vi.advanceTimersByTimeAsync(300_000);
       expect(await result).toBe(false);
       const before = JSON.stringify(vi.mocked(runtime.emit).mock.calls);
-      expect(evidence(runtime).inspection!.predicates.usersEmpty).toBe("unreadable");
+      expect(evidence(runtime).inspection!.predicates.usersEmpty).toBe(probe === 2 ? true : "unreadable");
+      expect(evidence(runtime).inspection!.unexpectedSchemas).toEqual({ status: "unreadable", entries: [] });
       finish([pristine]);
       await vi.advanceTimersByTimeAsync(1);
       expect(JSON.stringify(vi.mocked(runtime.emit).mock.calls)).toBe(before);
@@ -314,6 +445,25 @@ describe("read-only pristine inspection (fake runtime, not hosted proof)", () =>
     expect(close).toHaveBeenCalledOnce();
     noWrites(runtime);
   });
+  it.each([namespace, { ...namespace, name: "<private>&\n" }])(
+    "emits only projected namespace metadata through the existing escaped summary", async (row) => {
+      vi.stubEnv("GITHUB_STEP_SUMMARY", "/tmp/swim-review-summary-test");
+      const stdout = vi.spyOn(console, "log").mockImplementation(() => {});
+      vi.mocked(appendFileSync).mockClear();
+      try {
+        const { runtime, close } = metadataFake([row]);
+        runtime.emit = vi.fn(emitEvidence);
+        expect(await prepareReview(url, runtime, true)).toBe(false);
+        const lines = stdout.mock.calls.map(([line]) => line as string);
+        expect(lines.join("")).not.toMatch(/private|postgresql|offline-unit/);
+        expect(evidence(runtime).inspection!.unexpectedSchemas!.status).toBe(
+          row === namespace ? "readable" : "invalid");
+        expect(vi.mocked(appendFileSync).mock.calls.map(([, data]) => data)).toEqual(
+          lines.map((line) => `<pre>${line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>\n`));
+        noWrites(runtime);
+        expect(close).toHaveBeenCalledOnce();
+      } finally { stdout.mockRestore(); vi.unstubAllEnvs(); }
+    });
   it("uses the same safe records on stdout and the escaped step summary", async () => {
     vi.stubEnv("GITHUB_STEP_SUMMARY", "/tmp/swim-review-summary-test");
     const stdout = vi.spyOn(console, "log").mockImplementation(() => {});

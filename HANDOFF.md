@@ -2991,3 +2991,25 @@ failure remains undiagnosed until authorized reads; no hosted setup is claimed.
 Required automated validation attempted once: reviewer binary unavailable,
 CodeQL Actions analysis failed, JavaScript skipped for database size; no clean
 scan claimed and no unavailable-tool retry performed.
+
+### 2026-09-11 — PR805 bounded unexpected-schema inspection
+
+From verified head `a80f4dd13a57e97bd73d8de57d479c6a94d0bd56`, base main
+`672e4202792da122281639e3db810029432573f5`: only the bootstrap script, its
+existing unit file and this entry changed. Workflow, seven pristine predicates,
+two schemaCounts fields, write mode and accepted application/26 cases unchanged.
+Inspect-only adds `inspection.unexpectedSchemas = { status, entries }` before
+pristine rejection: status is readable/empty/invalid/unreadable/overflow; invalid,
+unreadable and overflow have no entries and fail closed. One catalog SELECT uses
+the existing unexpected-namespace filter and detects overflow with row 17.
+At most 16 entries contain a validated plain `name`, fixed owner category
+(postgres/supabase_admin/supabase_auth_admin/supabase_storage_admin/other),
+relations/routines/types `{ count, saturated }` (0..1000; saturated means at least
+1000), and boolean `extensionMember`. Read failure preserves known predicates.
+
+Focused offline checks: existing bootstrap unit file **178/178 passed**;
+existing targeted script/test TypeScript command recorded above and
+`git diff --check` passed. Fake-runtime tests are not hosted proof.
+Hosted inspection is unperformed; the actual namespace remains unknown.
+No secrets/database access, migrations/seed, dispatch, app/browser/server/Docker,
+cloud changes or production activity performed.

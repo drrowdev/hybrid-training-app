@@ -87,12 +87,25 @@ export type Pristine = {
   publicCodeEmpty: boolean; usersEmpty: boolean; storageEmpty: boolean; visible: boolean;
 };
 type Predicate = boolean | "unreadable";
+const schemaOwners = ["postgres", "supabase_admin", "supabase_auth_admin", "supabase_storage_admin", "other"] as const;
+type SchemaMetadata = {
+  status: "readable" | "empty" | "invalid" | "unreadable" | "overflow";
+  entries: {
+    name: string;
+    owner: typeof schemaOwners[number];
+    relations: { count: number; saturated: boolean };
+    routines: { count: number; saturated: boolean };
+    types: { count: number; saturated: boolean };
+    extensionMember: boolean;
+  }[];
+};
 type Inspection = {
   predicates: { [K in keyof Pristine]: Predicate };
   schemaCounts: {
     unexpectedNamespaces: number | "unreadable";
     postgresOwnedRelations: number | "unreadable";
   };
+  unexpectedSchemas?: SchemaMetadata;
 };
 function unreadableInspection(): Inspection {
   return {
@@ -153,7 +166,54 @@ const emptyAccounts = `
     NOT EXISTS (SELECT 1 FROM storage.objects)
     AND NOT EXISTS (SELECT 1 FROM storage.buckets) AS "storageEmpty"`;
 
-export async function preflight(client: Client, inspection = unreadableInspection()) {
+async function inspectUnexpectedSchemas(client: Client, expected: number | "unreadable"): Promise<SchemaMetadata> {
+  const rows = await client.query(`
+    SELECT CASE WHEN n.nspname ~ '^[a-z_][a-z0-9_]{0,62}$' THEN n.nspname ELSE NULL END AS name,
+      CASE WHEN r.rolname IN ('postgres', 'supabase_admin', 'supabase_auth_admin', 'supabase_storage_admin')
+        THEN r.rolname ELSE 'other' END AS owner,
+      (SELECT count(*)::int FROM (SELECT 1 FROM pg_catalog.pg_class c
+        WHERE c.relnamespace = n.oid LIMIT 1000) relations) AS relations,
+      (SELECT count(*)::int FROM (SELECT 1 FROM pg_catalog.pg_proc p
+        WHERE p.pronamespace = n.oid LIMIT 1000) routines) AS routines,
+      (SELECT count(*)::int FROM (SELECT 1 FROM pg_catalog.pg_type t
+        WHERE t.typnamespace = n.oid LIMIT 1000) types) AS types,
+      EXISTS (SELECT 1 FROM pg_catalog.pg_depend d
+        WHERE d.classid = 'pg_catalog.pg_namespace'::regclass AND d.objid = n.oid
+          AND d.objsubid = 0 AND d.refclassid = 'pg_catalog.pg_extension'::regclass
+          AND d.deptype = 'e') AS "extensionMember"
+    FROM pg_catalog.pg_namespace n
+    LEFT JOIN pg_catalog.pg_roles r ON r.oid = n.nspowner
+    WHERE n.nspname NOT IN ('public', 'auth', 'storage', 'extensions', 'graphql', 'graphql_public',
+      'realtime', 'supabase_functions', 'vault', 'net',
+      'pg_catalog', 'information_schema', 'pg_toast')
+      AND n.nspname NOT LIKE 'pg_temp_%' AND n.nspname NOT LIKE 'pg_toast_temp_%'
+    ORDER BY n.oid LIMIT 17`);
+  if (rows.length > 16) return { status: "overflow", entries: [] };
+  if (rows.length !== expected) return { status: "invalid", entries: [] };
+  const entries: SchemaMetadata["entries"] = [];
+  for (const row of rows) {
+    const relations = count(row.relations);
+    const routines = count(row.routines);
+    const types = count(row.types);
+    const owner = schemaOwners.find((owner) => owner === row.owner);
+    if (typeof row.name !== "string" || !/^[a-z_][a-z0-9_]{0,62}$/.test(row.name) ||
+      /[^a-z0-9_]/.test(row.name) || entries.some((entry) => entry.name === row.name) ||
+      owner === undefined || relations === "unreadable" || routines === "unreadable" ||
+      types === "unreadable" || typeof row.extensionMember !== "boolean") {
+      return { status: "invalid", entries: [] };
+    }
+    entries.push({
+      name: row.name, owner,
+      relations: { count: relations, saturated: relations === 1000 },
+      routines: { count: routines, saturated: routines === 1000 },
+      types: { count: types, saturated: types === 1000 },
+      extensionMember: row.extensionMember,
+    });
+  }
+  return { status: entries.length === 0 ? "empty" : "readable", entries };
+}
+
+export async function preflight(client: Client, inspection = unreadableInspection(), inspectOnly = false) {
   const rows = await client.query(`
     SELECT current_user = 'postgres' AND session_user = 'postgres' AND
       EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = current_user
@@ -200,6 +260,10 @@ export async function preflight(client: Client, inspection = unreadableInspectio
   const account = accounts.length === 1 ? accounts[0] : undefined;
   for (const key of ["usersEmpty", "storageEmpty"] as const) {
     inspection.predicates[key] = predicate(account?.[key]);
+  }
+  if (inspectOnly) {
+    inspection.unexpectedSchemas = await inspectUnexpectedSchemas(client, unexpectedNamespaces);
+    requireTrue(inspection.unexpectedSchemas.status === "readable" || inspection.unexpectedSchemas.status === "empty");
   }
   assertPristine(inspection.predicates);
 }
@@ -323,6 +387,7 @@ export async function prepareReview(raw: string | undefined, runtime: Runtime, i
   let phase: Phase = "source";
   let passed = false;
   const inspection = unreadableInspection();
+  if (inspectOnly) inspection.unexpectedSchemas = { status: "unreadable", entries: [] };
   const emit = (record: Evidence) => runtime.emit({
     ...record, ...(inspectOnly ? { mode: "read-only" as const } : {}),
     ...(inspectOnly && phase === "preflight" ? { inspection: structuredClone(inspection) } : {}),
@@ -340,7 +405,7 @@ export async function prepareReview(raw: string | undefined, runtime: Runtime, i
     await preflight({
       query: (text, parameters) => bounded(() => client!.query(text, parameters)),
       close: () => client!.close(),
-    }, inspection); complete();
+    }, inspection, inspectOnly); complete();
     if (!inspectOnly) {
       phase = "migrate";
       await bounded(() => runtime.migrate(client!)); complete();
