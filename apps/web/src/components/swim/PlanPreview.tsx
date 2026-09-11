@@ -1,11 +1,11 @@
 import type { SwimPlanPreview } from "@/lib/swim/view-types";
 import styles from "./Swim.module.css";
 
-export function PlanPreview({ plan }: { plan: SwimPlanPreview }) {
+export function PlanPreview({ plan, title = "Plan preview" }: { plan: SwimPlanPreview; title?: string }) {
   return (
     <section className={styles.section} aria-labelledby="swim-plan-preview-title">
       <div className={styles.previewHeading}>
-        <h2 id="swim-plan-preview-title">Plan preview</h2>
+        <h2 id="swim-plan-preview-title">{title}</h2>
         <p className={styles.muted}>
           {plan.course} · {plan.weeks.length} weeks · {plan.workoutCount} swims
         </p>

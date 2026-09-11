@@ -52,9 +52,15 @@
 .previewWorkouts > details { padding: 0 14px; border: 1px solid var(--cp-border); border-radius: 8px; background: var(--cp-bg); min-width: 0; }
 .previewWorkouts > details[open] { padding-bottom: 16px; }
 .previewWorkouts .previewSummary { color: var(--cp-text); }
+.scheduledRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: center; }
+.scheduledRow > .row > span:last-child { flex-shrink: 0; }
+.dateEditor > summary { min-height: 44px; padding: 12px 0; cursor: pointer; color: var(--cp-accent); font-size: 14px; }
+.dateEditor > summary:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 3px; }
+.dateEditor[open] { grid-column: 1 / -1; display: grid; gap: 16px; padding-bottom: 16px; }
 .tableWrap { overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; font-variant-numeric: tabular-nums; }
 .table th, .table td { padding: 12px 10px; border-bottom: 1px solid var(--cp-border); white-space: nowrap; }
 .table th { color: var(--cp-text-soft); font-weight: 500; }
 @media (max-width: 420px) { .section { padding: 16px; } .columns { gap: 10px; } .button, .secondary { padding-inline: 14px; } }
 @media (max-width: 420px) { .splitRow { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); } .splitRow > button { grid-column: 2; justify-self: end; } }
+@media (max-width: 420px) { .scheduledRow { grid-template-columns: minmax(0, 1fr); } .dateEditor:not([open]) { justify-self: end; margin-top: -8px; padding-bottom: 8px; } }

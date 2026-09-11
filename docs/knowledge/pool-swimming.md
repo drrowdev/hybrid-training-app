@@ -51,8 +51,23 @@ structured workout. Preview and creation share generation, setup validation,
 current safety checks and strength-day confirmation. Editing setup clears the
 preview; obsolete responses cannot restore it. Creation still rechecks current
 conditions and is the only save action. Existing direct creation remains
-available. This is not a general editor for saved future workouts or a Garmin
-connector, and it has not been deployed to the review site.
+available.
+
+Saved plans also have local preview/apply controls for a chosen future week's
+main-repeat count, including before any results exist, and for moving an
+individual future swim within its assigned training week. Both paths recheck
+current limitations and revisions, retain original prescriptions and history,
+and record the explicit choice and reason. Date previews show current
+strength-training and other-swim conflicts; changed conflict context requires
+another preview. A resumed plan uses its reviewed resume anchor, including
+partial weeks, rather than assuming calendar-Monday weeks.
+
+The existing database rule that locks plan setup remains intact: changing
+the pool, goal or other setup requires a new plan. Dates cannot silently move
+work into another training week or add catch-up volume. Ordinary workout pages
+put the complete prescription before the optional in-app start control.
+These changes are local only, not deployed to the review site, and Garmin
+delivery remains unimplemented.
 
 ### Future Garmin delivery access
 

@@ -244,9 +244,6 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
         <div className={styles.actions}><p className={styles.distance}>{workout.total}</p><span className={styles.muted}>{workout.course}</span></div>
         <p className={styles.muted}>{workout.date} · Up to {workout.budgetMinutes} min{workout.provisional && !workout.sessionId ? " · Provisional" : ""}</p>
         {workout.calibrationLabel && <p className={styles.muted}>{workout.calibrationLabel}</p>}
-        {!workout.sessionId && workout.status === "scheduled" && workout.planStatus === "active" && (
-          <button className={styles.button} disabled={pending || !ready} onClick={start}>{pending ? "Starting…" : "Start swim"}</button>
-        )}
         {canLog && <a href="#swim-result" className={styles.secondary}>Log swim</a>}
         {!workout.sessionId && workout.status === "scheduled" && workout.planStatus !== "active" && (
           <p role="status" className={styles.muted}>{({ paused: "Plan paused", finished: "Plan finished", archived: "Plan archived" })[workout.planStatus]}</p>
@@ -295,6 +292,9 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
             </li>
           })}
         </ol>
+        {!workout.sessionId && workout.status === "scheduled" && workout.planStatus === "active" && (
+          <button className={styles.secondary} disabled={pending || !ready} onClick={start}>{pending ? "Starting…" : "Start swim"}</button>
+        )}
       </section>
       {completed && !editing && workout.result && <section className={styles.section}>
         <h2>Your swim</h2>

@@ -3,6 +3,8 @@ import { swimWeeksFromWeekdays, type SwimDose, type SwimPlan, type SwimProposal,
 import type { SwimObservation, SwimSettledResult } from "@hta/domain";
 import type { SwimPlanRow, SwimWorkoutRow } from "./storage";
 import { SwimInputError } from "./input-error";
+import { z } from "zod";
+import { addDaysToYmd } from "@/lib/dates";
 
 export const SWIM_SCHEDULE_VERSION = "swim-standalone-schedule-1";
 
@@ -53,4 +55,29 @@ export function standaloneWeekRequests(startDate: string, weeks: number, weekday
   });
   if (!result.ok) throw new SwimInputError(result.error.message);
   return [...result.value];
+}
+
+export function swimWorkoutDateRange(plan: SwimPlanRow, workouts: SwimWorkoutRow[], workout: SwimWorkoutRow, today: string) {
+  const weekIndex = swimWorkoutDefinition(workout).weekIndex;
+  let startDate = swimPlanDefinition(plan).schedule.startDate;
+  let firstWeek = 0;
+  const resume = [...plan.state.decisions].reverse().find((entry) => entry.kind === "schedule" && entry.decision === "accepted");
+  if (resume) {
+    const preview = z.object({
+      startDate: z.string(), dates: z.array(z.object({ id: z.string().uuid() })).min(1),
+    }).parse(resume.inputSnapshot.preview);
+    const ids = new Set(preview.dates.map((entry) => entry.id));
+    if (ids.has(workout.id)) {
+      startDate = preview.startDate;
+      firstWeek = Math.min(...workouts.filter((row) => ids.has(row.id)).map((row) => swimWorkoutDefinition(row).weekIndex));
+    }
+  }
+  const week = standaloneWeekRequests(startDate, weekIndex - firstWeek + 1, [0, 1, 2, 3, 4, 5, 6]).at(-1)!;
+  const endDate = addDaysToYmd(week.startDateISO, 6);
+  const tomorrow = addDaysToYmd(today, 1);
+  const min = [week.startDateISO, plan.started_on, tomorrow].sort().at(-1)!;
+  return {
+    min,
+    max: endDate < plan.ends_on ? endDate : plan.ends_on,
+  };
 }

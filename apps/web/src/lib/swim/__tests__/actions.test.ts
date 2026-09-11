@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { swimFixture, userId, planId, sessionId, receiptId } from "./fixtures";
-import { completeSwimWorkoutResult, createSwimPlan, previewSwimPlan, startSwimWorkout, editSwimResult, decideSwimProposal, previewSwimResume, resumeSwimPlan, proposeSwimBenchmark, decideSwimBenchmark, skipSwimWorkout } from "../actions";
+import { completeSwimWorkoutResult, createSwimPlan, previewSwimPlan, startSwimWorkout, editSwimResult, decideSwimProposal, previewSwimResume, resumeSwimPlan, proposeSwimBenchmark, decideSwimBenchmark, skipSwimWorkout, previewSwimWeekEdit, applySwimWeekEdit, previewSwimDateEdit, applySwimDateEdit } from "../actions";
 import { revalidatePath } from "next/cache";
 import { SWIM_ASSESSMENT_VERSION, swimScheduleAdvice, type SwimWorkout } from "@hta/domain";
 import { loadSwimStrengthContext } from "../strength-schedule";
 import * as queries from "../queries";
 import * as storage from "../storage";
-import type { SwimHubView } from "../view-types";
+import type { SwimDateEditInput, SwimHubView, SwimWeekEditInput } from "../view-types";
 import { workoutPresentation } from "../presentation";
 import { requireSwimSetup, requireSwimStorage } from "../capability";
 import { assertSwimSafety } from "../safety";
 import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-completion-recompute";
-import { swimWorkoutDefinition, type StandaloneWorkoutDefinition } from "../model";
+import { swimPlanDefinition, swimWorkoutDefinition, type StandaloneWorkoutDefinition } from "../model";
 
 const mock = vi.hoisted(() => ({
   user: { id: "00000000-0000-4000-8000-000000000001" } as { id: string } | null,
@@ -52,6 +52,21 @@ function setupForm() {
     weeks: "3", startDate: "2026-09-07", weekdays: "1", strokes: "freestyle",
   })) form.set(key, value);
   return form;
+}
+
+function weekEditInput(overrides: Partial<SwimWeekEditInput> = {}): SwimWeekEditInput {
+  return {
+    planId, revision: 1, week: 2,
+    mainRepeats: swimPlanDefinition(swimFixture().plan).initialDose.mainRepeats + 1,
+    reason: "Adjusting pool time.", ...overrides,
+  };
+}
+
+function dateEditInput(overrides: Partial<SwimDateEditInput> = {}): SwimDateEditInput {
+  return {
+    planId, revision: 1, workoutId: swimFixture().workouts[2]!.id, workoutRevision: 1,
+    date: "2026-09-15", reason: "Pool access changed.", ...overrides,
+  };
 }
 
 function benchmarkForm() {
@@ -123,6 +138,131 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("ADR0079 server actions", () => {
+  it("DC-K4/DC-SW5 previews conflicts and explicitly moves only one swim while retaining issued work", async () => {
+    const { plan, workouts } = swimFixture();
+    const other = { ...workouts[3]!, scheduled_date: "2026-09-15" };
+    vi.mocked(storage.listSwimWorkouts).mockResolvedValue(workouts.map((row, index) => index === 3 ? other : row));
+    const strengthContext = { blockId: "primary", sessions: [{ id: "strength", date: "2026-09-15" }] };
+    vi.mocked(loadSwimStrengthContext).mockResolvedValue(strengthContext);
+    const response = await previewSwimDateEdit(dateEditInput());
+    expect(response.error).toBeUndefined();
+    expect(response.preview).toMatchObject({ previousDate: "2026-09-14", date: "2026-09-15" });
+    expect(response.preview!.warnings).toHaveLength(2);
+    expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
+    const view = mockSavedPlan();
+    expect(await applySwimDateEdit(response.preview!)).toEqual({ ok: true, view });
+    const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
+    expect(saved.definition).toEqual(plan.definition);
+    expect(saved.workouts).toEqual([{
+      id: workouts[2]!.id, expected_revision: 1, scheduled_date: "2026-09-15",
+      slot: workouts[2]!.slot, definition: workouts[2]!.definition,
+    }]);
+    expect(saved.state.decisions.at(-1)).toMatchObject({
+      id: response.preview!.id, kind: "schedule", decision: "overridden",
+      inputSnapshot: { operation: "reschedule", previousDate: "2026-09-14", strengthContext, warnings: response.preview!.warnings },
+    });
+    expect(assertSwimSafety).toHaveBeenCalledTimes(2);
+  });
+  it.each(["2026-09-14", "2026-09-21", "2026-09-13", "2026-02-30", "not-a-date"])(
+    "DC-SW3/DC-SW5 rejects unchanged or out-of-week date %s", async (date) => {
+      expect(await previewSwimDateEdit(dateEditInput({ date }))).toMatchObject({ errorCode: "validation" });
+      expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["paused", "finished", "archived"] as const)("DC-SW7 rejects moving a swim in a %s plan", async (status) => {
+    vi.mocked(storage.listSwimPlans).mockResolvedValue([{ ...swimFixture().plan, status }]);
+    expect(await previewSwimDateEdit(dateEditInput())).toMatchObject({ errorCode: "validation" });
+  });
+  it.each(["strength", "workout", "date", "limitation"] as const)("DC-SW5/DC-SW9 rejects %s changes since date preview", async (change) => {
+    const result = await previewSwimDateEdit(dateEditInput());
+    expect(result.preview).toBeDefined();
+    if (change === "strength") vi.mocked(loadSwimStrengthContext).mockResolvedValue({ blockId: "new", sessions: [] });
+    if (change === "workout") vi.mocked(storage.listSwimWorkouts).mockResolvedValue(swimFixture().workouts.map((row, index) => index === 2 ? { ...row, session_id: sessionId } : row));
+    if (change === "date") result.preview!.date = "2026-09-16";
+    if (change === "limitation") vi.mocked(assertSwimSafety).mockRejectedValueOnce(new Error("Review an active limitation."));
+    expect(await applySwimDateEdit(result.preview!)).toHaveProperty("error");
+    expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+  });
+  it("DC-K4/DC-SW5 previews an explicit week before any results, then saves only that reviewed week", async () => {
+    const { plan, workouts } = swimFixture();
+    const before = JSON.stringify({ plan, workouts });
+    const result = await previewSwimWeekEdit(weekEditInput());
+    expect(result.error).toBeUndefined();
+    expect(result.ok).toBe(true);
+    expect(result.preview).toMatchObject({ planId, week: 2, excludedCount: 0, plan: { workoutCount: 2 } });
+    expect(result.preview!.warning).toBeTruthy();
+    expect(result.preview!.changes.every((change) => change.before !== change.after)).toBe(true);
+    expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
+    const view = mockSavedPlan();
+    expect(await applySwimWeekEdit(result.preview!)).toEqual({ ok: true, view });
+    const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
+    expect(saved.definition).toEqual(plan.definition);
+    expect(saved.workouts.map((row) => row.id)).toEqual(workouts.slice(2, 4).map((row) => row.id));
+    for (const update of saved.workouts) {
+      const original = workouts.find((row) => row.id === update.id)!;
+      expect(update.definition.original).toEqual(original.definition.original);
+      expect(update.definition.modifications).toEqual([
+        expect.objectContaining({ decisionId: result.preview!.id, reason: weekEditInput().reason, previous: original.definition.issued }),
+      ]);
+      expect(update.definition).toMatchObject({ provisional: false });
+    }
+    expect(saved.state.decisions.at(-1)).toMatchObject({
+      id: result.preview!.id, kind: "progression", decision: "overridden",
+      inputSnapshot: { manual: true, targetWeek: 1, appliedDose: { mainRepeats: weekEditInput().mainRepeats } },
+    });
+    expect(assertSwimSafety).toHaveBeenCalledTimes(2);
+    expect(JSON.stringify({ plan, workouts })).toBe(before);
+  });
+  it("DC-SW5 excludes linked, non-scheduled and today's workouts from a manual week edit", async () => {
+    const { workouts } = swimFixture();
+    vi.mocked(storage.listSwimWorkouts).mockResolvedValue([
+      { ...workouts[0]!, session_id: sessionId }, workouts[1]!, ...workouts.slice(2),
+    ]);
+    const result = await previewSwimWeekEdit(weekEditInput({ week: 1 }));
+    expect(result.preview).toMatchObject({ excludedCount: 1, plan: { workoutCount: 1 } });
+    expect(result.preview!.changes.map((change) => change.date)).toEqual([workouts[1]!.scheduled_date]);
+    for (const status of ["started", "completed", "skipped"] as const) {
+      vi.mocked(storage.listSwimWorkouts).mockResolvedValue([{ ...workouts[0]!, status }, { ...workouts[1]!, status }]);
+      expect(await previewSwimWeekEdit(weekEditInput({ week: 1 }))).toMatchObject({ errorCode: "validation" });
+    }
+    vi.mocked(storage.listSwimWorkouts).mockResolvedValue(workouts);
+    vi.setSystemTime(new Date("2026-09-10T12:00:00Z"));
+    expect(await previewSwimWeekEdit(weekEditInput({ week: 1 }))).toMatchObject({ errorCode: "validation" });
+    expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+  });
+  it.each(["started", "revised", "plan-revised", "tampered"] as const)("DC-SW5 rejects a %s manual preview at apply", async (change) => {
+    const result = await previewSwimWeekEdit(weekEditInput());
+    expect(result.preview).toBeDefined();
+    if (change === "tampered") result.preview!.changes[0]!.after = "1 yd";
+    else if (change === "plan-revised") vi.mocked(storage.listSwimPlans).mockResolvedValue([{ ...swimFixture().plan, revision: 2 }]);
+    else vi.mocked(storage.listSwimWorkouts).mockResolvedValue(swimFixture().workouts.map((row, index) =>
+      index === 2 ? { ...row, ...(change === "started" ? { status: "started" as const, session_id: sessionId } : { revision: 2 }) } : row));
+    expect(await applySwimWeekEdit(result.preview!)).toMatchObject({ errorCode: "validation" });
+    expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+  });
+  it.each(["finished", "archived"] as const)("DC-SW7 rejects manual editing of a %s plan", async (status) => {
+    vi.mocked(storage.listSwimPlans).mockResolvedValue([{ ...swimFixture().plan, status }]);
+    expect(await previewSwimWeekEdit(weekEditInput())).toMatchObject({ errorCode: "validation" });
+    expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+  });
+  it("DC-SW9 rechecks limitations on apply and retains a failed atomic-save result", async () => {
+    const result = await previewSwimWeekEdit(weekEditInput());
+    vi.mocked(assertSwimSafety).mockRejectedValueOnce(new Error("Review an active limitation."));
+    expect(await applySwimWeekEdit(result.preview!)).toHaveProperty("error");
+    expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+    vi.mocked(storage.updateSwimPlan).mockRejectedValueOnce(new Error("Workout changed.", { cause: { code: "40001" } }));
+    expect(await applySwimWeekEdit(result.preview!)).toMatchObject({ errorCode: "validation" });
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+  it.each([{ mainRepeats: 0 }, { mainRepeats: 1.5 }, { mainRepeats: 2001 }, { reason: "" }, { week: 100 }, { revision: 0 }])(
+    "DC-K4/DC-SW3 rejects invalid manual input %j", async (input) => {
+      expect(await previewSwimWeekEdit(weekEditInput(input))).toMatchObject({ errorCode: "validation" });
+      expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+    },
+  );
   it.each([false, true])("DC-SW1/DC-SW2/DC-SW3 previews the exact saved prescriptions without writes (assessment=%s)", async (assessed) => {
     const form = setupForm();
     form.append("weekdays", "4");

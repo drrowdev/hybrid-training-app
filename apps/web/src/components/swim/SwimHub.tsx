@@ -5,7 +5,7 @@ import { useState } from "react";
 import {
   proposeSwimWeek, proposeSwimBenchmark, decideSwimProposal,
   changeSwimPlanStatus, previewSwimResume, resumeSwimPlan,
-  decideSwimBenchmark,
+  decideSwimBenchmark, applySwimWeekEdit, applySwimDateEdit,
 } from "@/lib/swim/actions";
 import { nextSwimHubView, type SwimHubView, type SwimResumePreview } from "@/lib/swim/view-types";
 import type { SwimBenchmarkPreview } from "@/lib/swim/model";
@@ -13,6 +13,8 @@ import type { ActionResult } from "@/lib/offline/outbox-core";
 import { createRequestGate } from "@/lib/swim/hub-request";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { BenchmarkFields } from "./SetupForm";
+import { WeekEditor } from "./WeekEditor";
+import { DateEditor } from "./DateEditor";
 import styles from "./Swim.module.css";
 
 export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
@@ -103,14 +105,19 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
       <section className={styles.section}>
         <h2>Swims</h2>
         <ul className={styles.list}>
-          {plan.workouts.map((workout) => <li key={workout.id}>
+          {plan.workouts.map((workout) => <li key={workout.id} className={styles.scheduledRow}>
             <Link href={`/app/swim/${workout.id}`} className={styles.row}>
               <span><strong>{workout.title}</strong><small>{workout.date} · Week {workout.week}{workout.provisional && workout.status === "Scheduled" ? " · Provisional" : ""}</small></span>
               <span>{workout.total}<small>{workout.status}</small></span>
             </Link>
+            {workout.reschedule && <DateEditor key={`${plan.revision}:${workout.reschedule.revision}`}
+              plan={plan} workout={workout} busy={requestBusy} onApply={(changes) => run(() => applySwimDateEdit(changes))} />}
           </li>)}
         </ul>
       </section>
+      {editable && !!plan.editableWeeks?.length && <WeekEditor
+        key={JSON.stringify([plan.id, plan.revision, plan.today, plan.editableWeeks])}
+        plan={plan} busy={requestBusy} onApply={(changes) => run(() => applySwimWeekEdit(changes))} />}
       <section className={styles.section}>
         <h2>Swimming history</h2>
         {plan.analytics.weeks.length === 0 ? <p className={styles.muted}>No swims logged yet.</p> : <div className={styles.tableWrap}>

@@ -10,7 +10,7 @@ import {
 } from "@hta/engine";
 import { todayYmd, mondayOfYmd, ymdInTimezone, addDaysToYmd } from "@/lib/dates";
 import { getSwimWorkout, listSwimPlans, listSwimWorkouts, type SwimPlanRow, type SwimWorkoutRow } from "./storage";
-import { swimPlanDefinition, swimWorkoutDefinition, type SwimHistoryRow, type SwimWeekCandidate } from "./model";
+import { swimPlanDefinition, swimWorkoutDefinition, swimWorkoutDateRange, type SwimHistoryRow, type SwimWeekCandidate } from "./model";
 import { workoutPresentation, SWIM_STROKE_LABEL } from "./presentation";
 import { formatSwimTime } from "./time";
 import type { SwimHubView, SwimWorkoutView } from "./view-types";
@@ -101,6 +101,13 @@ export function persistedSwimPlan(plan: SwimPlanRow, workouts: SwimWorkoutRow[])
   };
 }
 
+export function swimWeekDose(plan: SwimPlanRow, weekIndex: number): SwimDose {
+  const latest = [...plan.state.decisions].reverse().find((entry) =>
+    entry.kind === "progression" && entry.decision !== "rejected" &&
+    entry.inputSnapshot.targetWeek === weekIndex && entry.inputSnapshot.appliedDose);
+  return (latest?.inputSnapshot.appliedDose as SwimDose | undefined) ?? swimPlanDefinition(plan).initialDose;
+}
+
 export function deriveSwimWeekCandidate(plan: SwimPlanRow, history: SwimHistoryRow[], today: string): SwimWeekCandidate | null {
   if (plan.status !== "active") return null;
   const resume = [...plan.state.decisions].reverse().find((entry) => entry.kind === "schedule" && entry.decision === "accepted");
@@ -130,12 +137,7 @@ export function deriveSwimWeekCandidate(plan: SwimPlanRow, history: SwimHistoryR
   })));
   if (plan.state.decisions.some((entry) => entry.kind === "progression" && entry.inputSnapshot.sourceFingerprint === sourceFingerprint)) return null;
   // Re-review edited actuals against their week's dose, not an issued future increase.
-  const sourceDecision = [...plan.state.decisions].reverse().find((entry) =>
-    entry.kind === "progression" && entry.decision !== "rejected" &&
-    entry.inputSnapshot.targetWeek === source.weekIndex &&
-    entry.inputSnapshot.appliedDose);
-  const sourceDose = sourceDecision?.inputSnapshot.appliedDose as SwimDose | undefined;
-  const input = { setup: enginePlan.setup, dose: sourceDose ?? swimPlanDefinition(plan).initialDose, history: sourceRows.map((row) => settledSwimResult(row, plan)), asOfISO: today };
+  const input = { setup: enginePlan.setup, dose: swimWeekDose(plan, source.weekIndex), history: sourceRows.map((row) => settledSwimResult(row, plan)), asOfISO: today };
   const proposal = proposeSwimAdjustment(input);
   const exactInputs = {
     ...input, sourceWeek: source.weekIndex, targetWeek: target.weekIndex, sourceFingerprint,
@@ -196,14 +198,19 @@ export async function loadSwimHubView(client: SupabaseClient, userId: string, pl
   const workouts = (await listSwimWorkouts(client, plan.id)).filter((row) => row.user_id === userId);
   const [history, { today, timezone }] = await Promise.all([loadSwimHistory(client, workouts), swimToday(client, userId)]);
   const candidate = deriveSwimWeekCandidate(plan, history, today);
-  const proposals: SwimHubView["proposals"] = plan.state.decisions.filter((entry) => entry.kind === "progression" || entry.kind === "assessment").map((entry) => {
+  const proposals: SwimHubView["proposals"] = plan.state.decisions.filter((entry) => entry.kind === "progression" || entry.kind === "assessment" ||
+    (entry.kind === "schedule" && entry.inputSnapshot.operation === "reschedule")).map((entry) => {
+    const moved = entry.kind === "schedule" ? z.object({
+      previousDate: z.string(), request: z.object({ date: z.string() }), warnings: z.array(z.string()),
+    }).parse(entry.inputSnapshot) : null;
     const engineDecision = entry.inputSnapshot.engineDecision;
-    const warning = engineDecision && typeof engineDecision === "object" && "warning" in engineDecision && typeof engineDecision.warning === "string"
+    const warning = moved ? moved.warnings.join(" ") || undefined
+      : engineDecision && typeof engineDecision === "object" && "warning" in engineDecision && typeof engineDecision.warning === "string"
       ? engineDecision.warning : undefined;
     return {
-      id: entry.id, kind: entry.kind === "assessment" ? "benchmark" : "week", status: entry.decision,
-      title: entry.kind === "assessment" ? "Assessment" : "Week recommendation",
-      detail: `${entry.recordedAt.slice(0, 10)}${entry.reason ? ` · ${entry.reason}` : ""}`, changes: [], warning,
+      id: entry.id, kind: entry.kind === "assessment" ? "benchmark" : entry.kind === "schedule" ? "schedule" : "week", status: entry.decision,
+      title: entry.kind === "schedule" ? "Swim moved" : entry.kind === "assessment" ? "Assessment" : entry.inputSnapshot.manual === true ? "Week adjustment" : "Week recommendation",
+      detail: `${entry.recordedAt.slice(0, 10)}${moved ? ` · ${moved.previousDate} → ${moved.request.date}` : ""}${entry.reason ? ` · ${entry.reason}` : ""}`, changes: [], warning,
     };
   });
   if (candidate) proposals.unshift({
@@ -261,6 +268,13 @@ export async function loadSwimHubView(client: SupabaseClient, userId: string, pl
   }
   return {
     id: plan.id, revision: plan.revision, status: plan.status, today,
+    editableWeeks: plan.status === "active" || plan.status === "paused"
+      ? [...new Set(workouts.filter((row) => row.status === "scheduled" && !row.session_id && row.scheduled_date > today)
+        .map((row) => swimWorkoutDefinition(row).weekIndex))].sort((a, b) => a - b).map((weekIndex) => ({
+          week: weekIndex + 1, mainRepeats: swimWeekDose(plan, weekIndex).mainRepeats,
+          workoutCount: workouts.filter((row) => swimWorkoutDefinition(row).weekIndex === weekIndex &&
+            row.status === "scheduled" && !row.session_id && row.scheduled_date > today).length,
+        })) : [],
     goal: plan.definition.setup.goal === "endurance" ? "Endurance" : "Technique & base",
     course: formatPoolCourse(plan.definition.setup.course), dates: `${plan.started_on} – ${plan.ends_on}`,
     ...(plan.state.acceptedCalibration ? { assessment: {
@@ -272,6 +286,8 @@ export async function loadSwimHubView(client: SupabaseClient, userId: string, pl
       total: formatSwimDistance(row.definition.issued.totalLengths, row.definition.issued.snapshot.course),
       status: history.find((entry) => entry.workout.id === row.id)?.sourceGone ? "Result removed" : history.find((entry) => entry.workout.id === row.id)?.deleted ? "In Trash" : ({ scheduled: plan.status === "active" ? "Scheduled" : "Unscheduled", started: "In progress", completed: "Completed", skipped: "Skipped" })[row.status],
       week: swimWorkoutDefinition(row).weekIndex + 1, provisional: swimWorkoutDefinition(row).provisional,
+      ...(plan.status === "active" && row.status === "scheduled" && !row.session_id && row.scheduled_date > today
+        ? { reschedule: { revision: row.revision, ...swimWorkoutDateRange(plan, workouts, row, today) } } : {}),
     })), proposals, analytics,
   };
 }

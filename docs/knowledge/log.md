@@ -3203,3 +3203,25 @@ stale responses and errors. DC-K4, DC-SW1/SW2/SW3/SW9. No generator rules, schem
 RLS, saved history, frozen26 cases or provider configuration changed. This is
 local source, not a deployed change or completion of saved-plan editing or
 Garmin delivery. Historical acceptance remains source- and scope-specific.
+
+## [2026-09-11] implementation | Reviewed future swimming changes
+
+Added explicit preview/apply for a selected future week's main repeats, even
+before completed results exist. It reuses the existing generator/override rules,
+warns and records the manual choice, and preserves other weeks and already
+started work. Later progression uses the selected week's stored dose.
+
+Added individual date previews within the assigned training week, with current
+strength/other-swim warnings, explicit confirmation, stale-preview rejection,
+and retained prescriptions. Reviewed resume anchors and partial weeks remain
+intact. Both paths use the unchanged atomic update RPC, immutable setup rule,
+revision checks and current safety path. Workout instructions now precede the
+optional in-app start button. DC-K4, DC-SW1/SW3/SW4/SW5/SW7/SW9.
+
+Fifteen focused offline web suites passed 483 tests; web typechecking and
+changed-file lint passed. Real local Chromium rendered the actual components
+with synthetic data and existing theme: no visible horizontal overflow at
+320/375/768px with date controls collapsed or expanded. That is layout evidence,
+not hydrated application, database, watch or release acceptance. Frozen26,
+schema/RLS, provider configuration and live data remain unchanged; source is
+local only. Independent scoped engine work and final integration remain pending.

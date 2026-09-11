@@ -249,6 +249,16 @@ describe("DC-SW8/DC-SW9 actual completion handler with held stale props (VM/SSR,
 });
 
 describe("DC-SW3 poolside workout controls", () => {
+  it("puts the complete prescription before optional in-app start controls", () => {
+    const workout: SwimWorkoutView = { ...workoutView(), sessionId: null, status: "scheduled" };
+    const html = renderToStaticMarkup(<WorkoutScreen workout={workout} userId={userId} />);
+    const start = html.match(/<button\b[^>]*>Start swim<\/button>/)?.[0];
+    expect(start).toBeDefined();
+    expect(start).toMatch(/class="[^"]*secondary/);
+    expect(html.indexOf("</ol>")).toBeGreaterThan(0);
+    expect(html.indexOf("</ol>")).toBeLessThan(html.indexOf(start!));
+    expect(html).not.toContain('id="swim-result"');
+  });
   it("A7 DC-SW7/DC-SW9: retained Notes match the pinned textbox engine, not the exact label engine (SSR only)", () => {
     const installed = createRequire(import.meta.url);
     const playwrightTest = createRequire(installed.resolve("@playwright/test/package.json"));

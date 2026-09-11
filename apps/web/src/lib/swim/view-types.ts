@@ -53,6 +53,30 @@ export type SwimPlanPreview = {
   }[];
 };
 
+export type SwimWeekEditInput = {
+  planId: string;
+  revision: number;
+  week: number;
+  mainRepeats: number;
+  reason: string;
+};
+
+export type SwimWeekEditPreview = SwimWeekEditInput & {
+  id: string;
+  warning?: string;
+  excludedCount: number;
+  changes: { date: string; before: string; after: string }[];
+  plan: SwimPlanPreview;
+};
+
+export type SwimDateEditInput = {
+  planId: string; revision: number; workoutId: string; workoutRevision: number;
+  date: string; reason: string;
+};
+export type SwimDateEditPreview = SwimDateEditInput & {
+  id: string; previousDate: string; warnings: string[];
+};
+
 const completionPool = z.object({ numerator: z.number().int().positive(), denominator: z.number().int().positive(), unit: z.enum(["m", "yd"]) });
 const completionView = z.object({
   id: z.string().uuid(), sessionId: z.string().uuid(), revision: z.number().int().positive(),
@@ -88,9 +112,13 @@ export type SwimHubView = {
     id: string; revision: number; status: SwimWorkoutView["planStatus"]; goal: string;
     course: string; dates: string; today: string;
     assessment?: { label: string; pace: string };
-    workouts: { id: string; date: string; title: string; total: string; status: string; week: number; provisional: boolean }[];
+    workouts: {
+      id: string; date: string; title: string; total: string; status: string; week: number; provisional: boolean;
+      reschedule?: { revision: number; min: string; max: string };
+    }[];
+    editableWeeks?: { week: number; mainRepeats: number; workoutCount: number }[];
     proposals: {
-      id: string; kind: "week" | "benchmark"; status: string; title: string;
+      id: string; kind: "week" | "benchmark" | "schedule"; status: string; title: string;
       detail: string; changes: { title: string; before: string; after: string }[];
       mainRepeats?: number;
       excludedCount?: number;

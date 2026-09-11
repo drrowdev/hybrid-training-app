@@ -9,7 +9,7 @@ import {
   SWIM_ASSESSMENT_VERSION, type SwimWorkout, type SwimError,
 } from "@hta/domain";
 import {
-  generateSwimPlan, applySwimProposal, applyAcceptedBenchmark, recordSwimDecision,
+  generateSwimPlan, applySwimProposal, applyAcceptedBenchmark, recordSwimDecision, proposeSwimAdjustment,
   SWIM_GENERATOR_VERSION, type SwimPlan,
 } from "@hta/engine";
 import type { SwimActualResult, SwimDecisionRecord } from "@hta/db";
@@ -22,15 +22,15 @@ import { assertSwimSafety, swimWorkoutSafetyExposure } from "./safety";
 import { parseActualForm, parseSetupForm, parseBenchmarkForm, parseSwimDate, parseSwimObservation } from "./forms";
 import { swimContext, ownedSwimPlan, ownedSwimWorkout, swimActionFailure, SwimActionError } from "./server-context";
 import {
-  standaloneWeekRequests, swimPlanDefinition, swimWorkoutDefinition, SWIM_SCHEDULE_VERSION,
+  standaloneWeekRequests, swimPlanDefinition, swimWorkoutDefinition, swimWorkoutDateRange, SWIM_SCHEDULE_VERSION,
   type StandalonePlanDefinition, type StandaloneWorkoutDefinition, type SwimBenchmarkPreview,
 } from "./model";
 import {
-  swimToday, loadSwimHistory, deriveSwimWeekCandidate, persistedSwimPlan, swimInputId, loadSwimHubView, swimWorkoutViewFromRow,
+  swimToday, loadSwimHistory, deriveSwimWeekCandidate, persistedSwimPlan, swimInputId, loadSwimHubView, swimWorkoutViewFromRow, swimWeekDose,
 } from "./queries";
-import { confirmedSwimCompletionView, type SwimCompletion, type SwimHubView, type SwimPlanPreview, type SwimResumePreview, type SwimWorkoutView } from "./view-types";
+import { confirmedSwimCompletionView, type SwimCompletion, type SwimHubView, type SwimPlanPreview, type SwimResumePreview, type SwimWorkoutView, type SwimWeekEditInput, type SwimWeekEditPreview, type SwimDateEditInput, type SwimDateEditPreview } from "./view-types";
 import { planPreviewPresentation } from "./presentation";
-import { formatPoolCourse } from "@hta/domain";
+import { formatPoolCourse, formatSwimDistance } from "@hta/domain";
 import { formatSwimTime } from "./time";
 import { SWIM_REFRESH_WARNING } from "./action-feedback";
 import { loadSwimStrengthContext } from "./strength-schedule";
@@ -336,6 +336,150 @@ function futureUpdates(plan: SwimPlan, workouts: storage.SwimWorkoutRow[], today
     };
     return [{ id: row.id, expected_revision: row.revision, scheduled_date: row.scheduled_date, slot: row.slot, definition }];
   });
+}
+
+const weekEditInput = z.object({
+  planId: z.string().uuid(), revision: z.number().int().positive(),
+  week: z.number().int().positive(), mainRepeats: z.number().int().min(1).max(2000),
+  reason: z.string().trim().min(1).max(1000),
+});
+
+async function prepareSwimWeekEdit(raw: SwimWeekEditInput) {
+  const input = weekEditInput.parse(raw);
+  const { client, user } = await swimContext();
+  const { plan, workouts } = await ownedSwimPlan(client, user.id, input.planId, input.revision);
+  if (plan.status !== "active" && plan.status !== "paused") throw new SwimActionError("This swim plan is no longer editable.", "validation");
+  const { today } = await swimToday(client, user.id);
+  const weekIndex = input.week - 1;
+  const weekRows = workouts.filter((row) => swimWorkoutDefinition(row).weekIndex === weekIndex);
+  const targets = weekRows.filter((row) => row.status === "scheduled" && !row.session_id && row.scheduled_date > today);
+  if (!targets.length) throw new SwimActionError("No future unstarted swims remain in this week.", "validation");
+  const targetIds = targets.map((row) => row.id);
+  const from = swimWeekDose(plan, weekIndex);
+  const proposal = proposeSwimAdjustment({ setup: plan.definition.setup, dose: from, history: [], asOfISO: today });
+  const ledger = recordSwimDecision(null, {
+    proposal, action: "override", atISO: new Date().toISOString(),
+    override: { ...from, mainRepeats: input.mainRepeats }, note: input.reason,
+  });
+  const generated = applySwimProposal({ ...persistedSwimPlan(plan, workouts), dose: from }, ledger.currentDose, {
+    asOfISO: today, startedSlotIds: workouts.filter((row) => !targetIds.includes(row.id)).map((row) => swimWorkoutDefinition(row).slotId),
+  });
+  if (!generated.ok) throw new SwimActionError(generated.error.message, "validation");
+  const exactInputs = {
+    manual: true, request: input, targetWeek: weekIndex, from, appliedDose: ledger.currentDose,
+    versions: generated.value.versions,
+    targets: targets.map((row) => ({ id: row.id, revision: row.revision, date: row.scheduled_date, issued: row.definition.issued })),
+  };
+  const id = swimInputId(exactInputs);
+  const updates = futureUpdates(generated.value, workouts, today, id, input.reason, targetIds);
+  if (!updates.length) throw new SwimActionError("Choose a different repeat count.", "validation");
+  await checkWorkouts(client, user.id, updates.map((row) => row.definition.issued));
+  const previewPlan = planPreviewPresentation({
+    ...generated.value,
+    weeks: generated.value.weeks.filter((week) => week.weekIndex === weekIndex).map((week) => ({
+      ...week, provisional: false,
+      slots: week.slots.filter((slot) => targets.some((row) => swimWorkoutDefinition(row).slotId === slot.slotId)),
+    })),
+  });
+  const warning = ledger.entries[0]?.warning ??
+    (input.mainRepeats !== from.mainRepeats ? "This overrides the suggested repeat count for this week." : undefined);
+  const preview: SwimWeekEditPreview = {
+    ...input, id, ...(warning ? { warning } : {}),
+    excludedCount: weekRows.length - targets.length,
+    changes: targets.map((row) => ({
+      date: row.scheduled_date, before: formatSwimDistance(row.definition.issued.totalLengths, row.definition.issued.snapshot.course),
+      after: previewPlan.weeks[0]!.workouts.find((workout) => workout.slotId === swimWorkoutDefinition(row).slotId)!.total,
+    })),
+    plan: previewPlan,
+  };
+  return { client, user, plan, preview, updates, exactInputs, engineDecision: { ...ledger.entries[0], ...(warning ? { warning } : {}) } };
+}
+
+export async function previewSwimWeekEdit(input: SwimWeekEditInput): Promise<ActionResult & { preview?: SwimWeekEditPreview }> {
+  try {
+    return { ok: true, preview: (await prepareSwimWeekEdit(input)).preview };
+  } catch (error) { return swimActionFailure(error); }
+}
+
+export async function applySwimWeekEdit(preview: SwimWeekEditPreview): Promise<ActionResult & { warning?: string; view?: SwimHubView }> {
+  let prepared: Awaited<ReturnType<typeof prepareSwimWeekEdit>>;
+  let returnedPlan: storage.SwimPlanRow;
+  try {
+    prepared = await prepareSwimWeekEdit(preview);
+    if (JSON.stringify(prepared.preview) !== JSON.stringify(preview)) throw new SwimActionError("This week changed. Preview it again.", "validation");
+    const { client, plan, updates, exactInputs, engineDecision } = prepared;
+    const record = decision("progression", "overridden", { ...exactInputs, engineDecision }, preview.id, prepared.preview.reason);
+    returnedPlan = (await storage.updateSwimPlan(client, {
+      planId: plan.id, expectedRevision: plan.revision, definition: plan.definition,
+      state: { ...plan.state, decisions: [...plan.state.decisions, record] }, workouts: updates,
+    })).plan;
+  } catch (error) { return swimActionFailure(error); }
+  return confirmedPlanView(prepared.client, prepared.user.id, returnedPlan);
+}
+
+const dateEditInput = z.object({
+  planId: z.string().uuid(), revision: z.number().int().positive(),
+  workoutId: z.string().uuid(), workoutRevision: z.number().int().positive(),
+  date: z.string(), reason: z.string().trim().min(1).max(1000),
+});
+
+async function prepareSwimDateEdit(raw: SwimDateEditInput) {
+  const input = dateEditInput.parse(raw);
+  parseSwimDate(input.date);
+  const { client, user } = await swimContext();
+  const { plan, workouts } = await ownedSwimPlan(client, user.id, input.planId, input.revision);
+  if (plan.status !== "active") throw new SwimActionError("Resume this plan before moving a swim.", "validation");
+  const row = workouts.find((workout) => workout.id === input.workoutId);
+  const { today } = await swimToday(client, user.id);
+  if (!row || row.session_id || row.status !== "scheduled" || row.scheduled_date <= today) {
+    throw new SwimActionError("Only future unstarted swims can move.", "validation");
+  }
+  if (row.revision !== input.workoutRevision) throw new SwimActionError("This swim changed. Reload and try again.", "validation");
+  const range = swimWorkoutDateRange(plan, workouts, row, today);
+  if (input.date <= today || input.date < range.min || input.date > range.max) {
+    throw new SwimActionError(`Choose a future date in this swim's week: ${range.min} to ${range.max}.`, "validation");
+  }
+  if (input.date === row.scheduled_date) throw new SwimActionError("Choose a different date.", "validation");
+  const strengthContext = await loadSwimStrengthContext(client, user.id);
+  const otherSwims = workouts.filter((other) => other.id !== row.id && other.scheduled_date === input.date && other.status !== "skipped");
+  const warnings = [
+    ...(strengthContext.sessions.some((session) => session.date === input.date) ? ["Strength training is scheduled on this day."] : []),
+    ...(otherSwims.length ? ["Another swim is scheduled on this day."] : []),
+  ];
+  await checkWorkouts(client, user.id, [row.definition.issued]);
+  const exactInputs = {
+    operation: "reschedule", request: input, previousDate: row.scheduled_date,
+    weekIndex: swimWorkoutDefinition(row).weekIndex, range, issued: row.definition.issued,
+    strengthContext, otherSwims: otherSwims.map((other) => ({ id: other.id, revision: other.revision, status: other.status })),
+    warnings,
+  };
+  const preview: SwimDateEditPreview = { ...input, id: swimInputId(exactInputs), previousDate: row.scheduled_date, warnings };
+  return { client, user, plan, row, exactInputs, preview };
+}
+
+export async function previewSwimDateEdit(input: SwimDateEditInput): Promise<ActionResult & { preview?: SwimDateEditPreview }> {
+  try { return { ok: true, preview: (await prepareSwimDateEdit(input)).preview }; }
+  catch (error) { return swimActionFailure(error); }
+}
+
+export async function applySwimDateEdit(preview: SwimDateEditPreview): Promise<ActionResult & { warning?: string; view?: SwimHubView }> {
+  let prepared: Awaited<ReturnType<typeof prepareSwimDateEdit>>;
+  let returnedPlan: storage.SwimPlanRow;
+  try {
+    prepared = await prepareSwimDateEdit(preview);
+    if (JSON.stringify(prepared.preview) !== JSON.stringify(preview)) throw new SwimActionError("These dates changed. Preview them again.", "validation");
+    const { client, plan, row, exactInputs } = prepared;
+    const record = decision("schedule", "overridden", exactInputs, preview.id, prepared.preview.reason);
+    returnedPlan = (await storage.updateSwimPlan(client, {
+      planId: plan.id, expectedRevision: plan.revision, definition: plan.definition,
+      state: { ...plan.state, decisions: [...plan.state.decisions, record] },
+      workouts: [{
+        id: row.id, expected_revision: row.revision, scheduled_date: prepared.preview.date,
+        slot: row.slot, definition: row.definition,
+      }],
+    })).plan;
+  } catch (error) { return swimActionFailure(error); }
+  return confirmedPlanView(prepared.client, prepared.user.id, returnedPlan);
 }
 
 export async function decideSwimProposal(planId: string, revision: number, proposalId: string, choice: "accepted" | "rejected" | "overridden", override?: string, reason?: string): Promise<ActionResult & { warning?: string; refreshWarning?: string; view?: SwimHubView }> {
