@@ -52,8 +52,10 @@ function harness() {
     settings: { updatedAt: 123, id: REVIEW.projectId, accountId: REVIEW.teamId, name: REVIEW.projectName,
       rootDirectory: "apps/web", framework: "nextjs",
       link: { type: "github", org: "drrowdev", repo: "hybrid-training-app", productionBranch: "main" },
-      ssoProtection: { deploymentType: "all" } },
+      ssoProtection: { deploymentType: "all" }, passwordProtection: null, trustedIps: null },
     deployment: { id: "dpl_Offline123", url: "hybrid-training-app-web-offline.vercel.app", readyState: "QUEUED",
+      createdAt: CONFIGURATION.end + 60_000,
+      gitSource: { type: "github", ref: REVIEW.branch, sha },
       projectId: REVIEW.projectId, ownerId: REVIEW.teamId, target: null as string | null,
       meta: { githubCommitSha: sha, githubCommitRef: REVIEW.branch, githubCommitOrg: "drrowdev", githubCommitRepo: "hybrid-training-app" } },
     alias: false, polls: 0,
@@ -157,7 +159,7 @@ describe("accepted receipt and isolation", () => {
     if (kind === "auth") h.state.auth.disable_signup = false;
     if (kind === "storage") h.deps.storage.mockResolvedValue(false);
     if (kind === "protected" || kind === "shared" || kind === "project") h.deps.source.mockImplementationOnce(() => {}).mockImplementation(() => {
-      if (kind === "protected") h.state.settings.updatedAt++;
+      if (kind === "protected") h.state.settings.ssoProtection.deploymentType = "preview";
       if (kind === "shared") h.state.shared[0]!.updatedAt++;
       if (kind === "project") h.state.project[0]!.updatedAt++;
     });
@@ -206,7 +208,7 @@ describe("one-way deployment and alias state machine", () => {
     expect(result.acceptedEnv).toHaveLength(18);
     expect(result.updatedEnv).toHaveLength(2);
   });
-  it.each(["projectId", "ownerId", "target", "id", "url", "sha", "ref"])("rejects deployment %s mismatch", (key) => {
+  it.each(["projectId", "ownerId", "target", "id", "url", "sha", "ref", "gitSource", "createdAt"])("rejects deployment %s mismatch", (key) => {
     const h = harness();
     const row = h.state.deployment;
     if (key === "sha") row.meta.githubCommitSha = "a".repeat(40);
@@ -245,6 +247,16 @@ describe("one-way deployment and alias state machine", () => {
     expect(result.buildSha).toEqual({ attempted: true, confirmed: false });
     expect(result.activation.attempted).toBe(false);
   });
+  it("allows provider aggregate project timestamps to advance without changing protected settings", async () => {
+    const h = harness();
+    const original = h.request.getMockImplementation()!;
+    h.request.mockImplementation(async (...args) => {
+      const response = await original(...args);
+      if (args[1] === "PATCH" || args[0] === DEPLOY_ROUTES.create) h.state.settings.updatedAt++;
+      return response;
+    });
+    expect((await deploy(env, h.deps)).status).toBe("deployment_pass");
+  });
   it("never mistakes queued for READY and bounds polling to ten minutes", async () => {
     const h = harness();
     const original = h.request.getMockImplementation()!;
@@ -256,6 +268,44 @@ describe("one-way deployment and alias state machine", () => {
     expect(result.ready).toBe(false);
     expect(result.alias.attempted).toBe(false);
     expect(h.state.now - start).toBe(600_000);
+  });
+  it("rejects reuse of a historical deployment even when its SHA matches", async () => {
+    const h = harness();
+    h.state.deployment.createdAt--;
+    const result = await deploy(env, h.deps);
+    expect(result.deployment).toEqual({ attempted: true, confirmed: false });
+    expect(result.alias.attempted).toBe(false);
+    expect(result.manualReconciliation).toBe(true);
+  });
+  it.each(["sha", "project", "production", "failed"])("rejects %s on a readiness observation", async (kind) => {
+    const h = harness();
+    const original = h.request.getMockImplementation()!;
+    h.request.mockImplementation(async (...args) => {
+      const response = await original(...args);
+      if (args[0] !== deploymentRoute(h.state.deployment.id)) return response;
+      const row = { ...(response as typeof h.state.deployment) };
+      if (kind === "sha") row.gitSource = { ...row.gitSource, sha: "a".repeat(40) };
+      if (kind === "project") row.projectId = "wrong" as typeof REVIEW.projectId;
+      if (kind === "production") row.target = "production";
+      if (kind === "failed") row.readyState = "ERROR";
+      return row;
+    });
+    const result = await deploy(env, h.deps);
+    expect(result.status).toBe("failed");
+    expect(result.alias.attempted).toBe(false);
+  });
+  it("retains the original failure and stops when the overall deadline expires", async () => {
+    const h = harness();
+    const original = h.request.getMockImplementation()!;
+    h.request.mockImplementation(async (...args) => {
+      const response = await original(...args);
+      if (args[1] === "PATCH") h.state.now += 18 * 60_000;
+      return response;
+    });
+    const result = await deploy(env, h.deps);
+    expect(result.stages.at(-1)).toMatchObject({ stage: "build_sha", code: "deadline", status: "failed" });
+    expect(writes(h)).toHaveLength(1);
+    expect(result.partial).toBe(true);
   });
   it.each(["before", "after"])("does not conceal an alias race %s assignment", async (when) => {
     const h = harness();

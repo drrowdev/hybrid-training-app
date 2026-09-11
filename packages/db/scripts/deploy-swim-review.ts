@@ -174,29 +174,52 @@ function projectIdentity(raw: unknown) {
     row.rootDirectory === "apps/web" && row.framework === "nextjs" &&
     same(select(row.link, ["type", "org", "repo", "productionBranch"]),
       { type: "github", org: "drrowdev", repo: "hybrid-training-app", productionBranch: "main" }));
-  requireThat(Number.isSafeInteger(row.updatedAt) && (row.updatedAt as number) >= 0);
-  // Project updatedAt covers settings edits; project only protection mode, never password hashes.
-  const protection = (key: string) => row[key] == null ? null : select(row[key], ["deploymentType"]);
-  return { updatedAt: row.updatedAt, sso: protection("ssoProtection"), password: protection("passwordProtection"),
-    trustedIps: protection("trustedIps") };
+  // Project updatedAt also changes for our env/deployment writes; compare settings, not that aggregate marker.
+  // Never inspect password hashes or protection bypass secrets.
+  const protection = (key: string) => {
+    if (row[key] === null) return null;
+    requireThat(row[key] !== undefined, "response_invalid");
+    const value = select(row[key], ["deploymentType"]);
+    requireThat(typeof value.deploymentType === "string" &&
+      ["all", "preview", "production", "prod_deployment_urls_and_all_previews", "all_except_custom_domains"].includes(value.deploymentType));
+    return value;
+  };
+  const ips = row.trustedIps === null ? null : object(row.trustedIps);
+  let addresses: unknown = null;
+  let protectionMode: unknown = null;
+  if (ips) {
+    if (ips.addresses !== undefined) {
+      requireThat(Array.isArray(ips.addresses) && ips.addresses.length <= 1000);
+      addresses = ips.addresses.map((address) => select(address, ["value"]));
+      requireThat((addresses as Record<string, unknown>[]).every((address) =>
+        typeof address.value === "string" && address.value.length <= 128));
+      requireThat(ips.protectionMode === "additional" || ips.protectionMode === "exclusive");
+      protectionMode = ips.protectionMode;
+    } else requireThat(ips.deploymentType === "production");
+  }
+  return { sso: protection("ssoProtection"), password: protection("passwordProtection"),
+    trustedIps: protection("trustedIps"), addresses, protectionMode };
 }
 function teamIdentity(raw: unknown) {
   const row = object(raw);
   requireThat(row.id === REVIEW.teamId && row.slug === "drrowdevs-projects" && object(row.billing).plan === "hobby");
 }
-type Deployment = { id: string; url: string; readyState: string };
+type Deployment = { id: string; url: string; readyState: string; createdAt: number };
 // Official SDK: createdeploymentresponsebody / getdeploymentresponsebody (owner projection).
 export function deploymentMetadata(raw: unknown, sha: string): Deployment {
   const row = object(raw);
   const meta = object(row.meta);
+  const source = object(row.gitSource);
   requireThat(typeof row.id === "string" && deploymentPattern.test(row.id) &&
     typeof row.url === "string" && /^[a-z0-9][a-z0-9-]{0,61}[a-z0-9]\.vercel\.app$/.test(row.url) &&
     row.projectId === REVIEW.projectId && row.ownerId === REVIEW.teamId && row.target === null &&
+    Number.isSafeInteger(row.createdAt) && (row.createdAt as number) >= 0 &&
+    source.type === "github" && source.sha === sha && source.ref === REVIEW.branch &&
     meta.githubCommitSha === sha && meta.githubCommitRef === REVIEW.branch &&
     meta.githubCommitOrg === "drrowdev" && meta.githubCommitRepo === "hybrid-training-app" &&
     typeof row.readyState === "string" && ["QUEUED", "INITIALIZING", "BUILDING", "READY", "ERROR", "CANCELED"].includes(row.readyState),
   "response_invalid");
-  return { id: row.id, url: row.url, readyState: row.readyState };
+  return { id: row.id, url: row.url, readyState: row.readyState, createdAt: row.createdAt as number };
 }
 type Stage = "source" | "credentials" | "isolation" | "prewrite" | "build_sha" | "activation" |
   "predeploy" | "deployment" | "readiness" | "prealias" | "alias" | "completion";
@@ -304,11 +327,13 @@ export async function deploy(env: NodeJS.ProcessEnv, deps: Dependencies) {
     }
     await step("predeploy", async () => { await guards(); await absent(); });
     let deployment = await step("deployment", async () => {
+      const started = deps.now();
       result.deployment.attempted = true;
       const row = deploymentMetadata(await deps.request(DEPLOY_ROUTES.create, "POST", {
         name: REVIEW.projectName, project: REVIEW.projectId,
         gitSource: { type: "github", org: "drrowdev", repo: "hybrid-training-app", ref: REVIEW.branch, sha: env.EXPECTED_SHA },
       }), env.EXPECTED_SHA!);
+      requireThat(row.createdAt >= started && row.createdAt <= deps.now(), "response_invalid");
       result.deployment.confirmed = true;
       result.deploymentId = row.id; result.deploymentUrl = `https://${row.url}`;
       return row;
@@ -321,7 +346,8 @@ export async function deploy(env: NodeJS.ProcessEnv, deps: Dependencies) {
         await deps.sleep(Math.min(5000, pollingDeadline - deps.now()));
         requireThat(deps.now() < pollingDeadline, "deadline");
         const row = deploymentMetadata(await deps.request(deploymentRoute(deployment.id)), env.EXPECTED_SHA!);
-        requireThat(row.id === deployment.id && row.url === deployment.url, "response_invalid");
+        requireThat(row.id === deployment.id && row.url === deployment.url &&
+          row.createdAt === deployment.createdAt, "response_invalid");
         requireThat(deps.now() < pollingDeadline, "deadline");
         deployment = row;
       }
@@ -338,7 +364,8 @@ export async function deploy(env: NodeJS.ProcessEnv, deps: Dependencies) {
       requireThat(current.uid === assigned.uid && current.alias === REVIEW.proposedAlias &&
         current.deploymentId === deployment.id && current.projectId === REVIEW.projectId && current.redirect == null, "alias_conflict");
       const verified = deploymentMetadata(await deps.request(deploymentRoute(deployment.id)), env.EXPECTED_SHA!);
-      requireThat(verified.id === deployment.id && verified.url === deployment.url && verified.readyState === "READY");
+      requireThat(verified.id === deployment.id && verified.url === deployment.url &&
+        verified.createdAt === deployment.createdAt && verified.readyState === "READY");
       result.alias.confirmed = true;
       result.aliasMapping = { alias: REVIEW.proposedAlias, deploymentId: deployment.id, projectId: REVIEW.projectId, teamId: REVIEW.teamId };
     });
