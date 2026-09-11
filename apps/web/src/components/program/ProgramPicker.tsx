@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { BackLink } from "@/components/ui/BackLink";
 import {
   AB_TRIAD_MOVEMENTS,
@@ -1370,6 +1371,7 @@ export function ProgramPicker({
   seasonBlockId,
   prefillRaceDate,
   recoveryAdvised = false,
+  swimHref = null,
 }: {
   programs: PickerProgram[];
   anchoredKeys: string[];
@@ -1406,6 +1408,7 @@ export function ProgramPicker({
    * to run it as week 1 of this block.
    */
   recoveryAdvised?: boolean;
+  swimHref?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -3105,6 +3108,12 @@ export function ProgramPicker({
           {"Pick the methodology you\u2019ll run. Your strength numbers, history and stats stay with you if you switch later."}
         </p>
         <div className={styles.grid}>
+          {swimHref && <Link href={swimHref} className={styles.pcard} data-testid="program-card-swimming" aria-label="Swimming">
+            <Ticks />
+            <div className={styles.kick}>Pool</div>
+            <div className={`${styles.code} ${styles.codeWrap}`}>Swimming</div>
+            <div className={styles.pdesc}>Technique · endurance</div>
+          </Link>}
           {[...programs]
             .sort((a, b) => {
               const leftIndex = CARD_ORDER.indexOf(a.id);

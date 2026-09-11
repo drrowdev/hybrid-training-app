@@ -53,7 +53,7 @@ import {
   matchProtocolsToLibrary,
 } from "@/lib/rehab-protocols/attachment";
 import { rehabFingerprint } from "@/lib/platform/rehab-library";
-import { SwimEntry } from "@/components/swim/SwimEntry";
+import { getSwimNavigation, swimEntryHref } from "@/lib/swim/navigation";
 
 // Sage program-wizard type scale — scoped to this route via CSS variables on
 // the wrapper below (see ProgramPicker.module.css). Not loaded app-wide.
@@ -383,8 +383,8 @@ export default async function ProgramPickerPage({
 
   return (
     <div className={`${archivo.variable} ${oswald.variable} ${saira.variable} ${jetbrains.variable}`}>
-      <SwimEntry />
       <ProgramPicker
+        swimHref={swimEntryHref(await getSwimNavigation(supabase, user.id))}
         programs={programs}
         anchoredKeys={anchoredKeys}
         tbTemplates={tbTemplates}

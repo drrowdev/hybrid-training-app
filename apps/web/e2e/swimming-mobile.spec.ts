@@ -12,10 +12,23 @@ test.describe("ADR0079 standalone swimming", () => {
   test("blockless setup, local progress, offline finish and native history", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
   }) => {
-    await markOnboarded(admin, freshUser.userId);
     await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
-    await page.goto("/app/program");
-    await page.getByRole("link", { name: /Pool swimming/ }).click();
+    await page.goto("/app/plan/new");
+    await expect(page).toHaveURL(/\/onboarding$/);
+    await page.getByRole("button", { name: "Swimming", exact: true }).click();
+    await page.getByRole("button", { name: "Continue →", exact: true }).click();
+    await page.getByRole("button", { name: "Set up swimming →", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/swim\/setup$/);
+    await page.reload();
+    await expect(page).toHaveURL(/\/app\/swim\/setup$/);
+    await page.goto("/app/plan/new");
+    await page.getByRole("link", { name: "Swimming", exact: true }).click();
+    const [{ count: tms }, { count: blocks }] = await Promise.all([
+      admin.from("training_maxes").select("id", { count: "exact", head: true }).eq("user_id", freshUser.userId),
+      admin.from("training_blocks").select("id", { count: "exact", head: true }).eq("user_id", freshUser.userId),
+    ]);
+    expect(tms).toBe(0);
+    expect(blocks).toBe(0);
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
     await page.getByLabel("Recent comfortable continuous lengths").fill("4");
     await page.getByLabel("Weeks", { exact: true }).fill("4");

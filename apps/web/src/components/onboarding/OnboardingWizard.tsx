@@ -99,6 +99,7 @@ export function OnboardingWizard({
   submitBwAssessmentAction,
   finishAction,
   skipAction,
+  swimHref = null,
 }: {
   initialDisplayName: string;
   initialUnits: "metric" | "imperial";
@@ -117,11 +118,13 @@ export function OnboardingWizard({
   ) => Promise<OnboardingResult>;
   finishAction: () => Promise<OnboardingResult>;
   skipAction: () => Promise<void>;
+  swimHref?: string | null;
 }) {
   const router = useRouter();
   const [step, setStep] = useState(initialStep ?? 0);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [swimming, setSwimming] = useState(false);
 
   // Step 2 state
   const [displayName, setDisplayName] = useState(initialDisplayName);
@@ -217,10 +220,10 @@ export function OnboardingWizard({
    *  "Bodyweight assessment" on the BW branch. */
   const visibleStepLabels = useMemo<readonly string[]>(
     () =>
-      useBwAssessment
+      swimming ? ["Welcome", "Profile"] : useBwAssessment
         ? STEPS.map((s) => (s === "Training maxes" ? "Bodyweight assessment" : s))
         : STEPS,
-    [useBwAssessment],
+    [useBwAssessment, swimming],
   );
   /** Index of the current step within the *visible* step list. */
   const visibleStepIndex = useMemo<number>(() => Math.max(0, step), [step]);
@@ -230,7 +233,7 @@ export function OnboardingWizard({
       case "Welcome":
         return null;
       case "Profile":
-        if (trainingExperience == null) return "Pick your training experience to continue.";
+        if (!swimming && trainingExperience == null) return "Pick your training experience to continue.";
         return null;
       case "Equipment":
         // Equipment step is foundational; Continue is always enabled.
@@ -268,7 +271,13 @@ export function OnboardingWizard({
     setError(null);
 
     if (currentLabel === "Profile") {
-      saveProfile(() => setStep((s) => s + 1));
+      saveProfile(async () => {
+        if (!swimming) { setStep((s) => s + 1); return; }
+        const result = await finishAction();
+        if (!result.ok) { setError(result.error); return; }
+        router.push(swimHref!);
+        router.refresh();
+      });
       return;
     }
     if (currentLabel === "Equipment") {
@@ -297,11 +306,11 @@ export function OnboardingWizard({
     setStep((s) => Math.max(0, s - 1));
   };
 
-  const saveProfile = (after: () => void) => {
+  const saveProfile = (after: () => void | Promise<void>) => {
     const payload: ProfilePayload = {
       displayName: displayName.trim() || null,
       units,
-      trainingExperience: trainingExperience ?? undefined,
+      trainingExperience: swimming ? undefined : trainingExperience ?? undefined,
       bodyweightKg: bodyweightKg ? Number(bodyweightKg) : undefined,
     };
     const fd = new FormData();
@@ -312,7 +321,7 @@ export function OnboardingWizard({
         setError(r.error);
         return;
       }
-      after();
+      await after();
     });
   };
 
@@ -435,7 +444,18 @@ export function OnboardingWizard({
         style={{ padding: 28, display: "grid", gap: 18 }}
       >
         {currentLabel === "Welcome" && (
-          <WelcomeStep />
+          <>
+            <WelcomeStep />
+            {swimHref && <fieldset style={{ border: 0, padding: 0, display: "grid", gap: 8 }}>
+              <legend>Start with</legend>
+              {[[false, "Strength & cardio"], [true, "Swimming"]].map(([value, label]) => (
+                <button key={String(value)} type="button" aria-pressed={swimming === value}
+                  style={cardOptionStyle(swimming === value)} onClick={() => setSwimming(value === true)}>
+                  {label}
+                </button>
+              ))}
+            </fieldset>}
+          </>
         )}
 
         {currentLabel === "Profile" && (
@@ -448,6 +468,7 @@ export function OnboardingWizard({
             setTrainingExperience={setTrainingExperience}
             bodyweightKg={bodyweightKg}
             setBodyweightKg={setBodyweightKg}
+            swimming={swimming}
           />
         )}
 
@@ -553,7 +574,7 @@ export function OnboardingWizard({
                 className="cp-btn primary"
                 disabled={pending || canAdvance() != null}
               >
-                {pending ? "Saving…" : "Continue →"}
+                {pending ? "Saving…" : swimming && currentLabel === "Profile" ? "Set up swimming →" : "Continue →"}
               </button>
             )}
           </div>
@@ -580,10 +601,6 @@ function WelcomeStep() {
           Build a training week that fits your life.
         </h1>
       </div>
-      <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.6 }}>
-        Your profile, equipment and main-lift maxes, then the program picker.
-        Skip any step — progress is saved as you go.
-      </p>
     </>
   );
 }
@@ -597,6 +614,7 @@ function ProfileStep({
   setTrainingExperience,
   bodyweightKg,
   setBodyweightKg,
+  swimming = false,
 }: {
   displayName: string;
   setDisplayName: (s: string) => void;
@@ -606,6 +624,7 @@ function ProfileStep({
   setTrainingExperience: (e: TrainingExperience) => void;
   bodyweightKg: string;
   setBodyweightKg: (s: string) => void;
+  swimming?: boolean;
 }) {
   return (
     <>
@@ -656,13 +675,12 @@ function ProfileStep({
               style={{ ...inputStyle, width: 120 }}
             />
             <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-              {units === "metric" ? "kg" : "lb"} · used only to seed conservative TM defaults if you
-              don&apos;t know yours.
+              {units === "metric" ? "kg" : "lb"}
             </span>
           </div>
         </div>
 
-        <div>
+        {!swimming && <div>
           <Label>How long have you been training consistently?</Label>
           <p style={{ margin: "4px 0 8px", fontSize: 12, color: "var(--cp-text-muted)" }}>
             Seeds your starting tier — the app keeps it behavioural, so it
@@ -688,7 +706,7 @@ function ProfileStep({
               );
             })}
           </div>
-        </div>
+        </div>}
       </div>
     </>
   );
