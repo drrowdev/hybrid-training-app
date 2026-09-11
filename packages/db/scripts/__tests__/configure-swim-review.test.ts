@@ -869,7 +869,7 @@ describe("configuration workflow boundaries", () => {
     }
     expect(job).toContain("INSPECT_SWIM_REVIEW_AUTH: ${{ inputs.inspect_swim_review_auth }}");
     expect(job).toContain("group: swim-review-bootstrap");
-    expect(workflow.split("\njobs:")[0]).toContain("(inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review || inputs.inspect_swim_review_deployment)");
+    expect(workflow.split("\njobs:")[0]).toContain("(inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review || inputs.inspect_swim_review_deployment || inputs.provision_swim_review_owner)");
     expect(job).toContain("inputs.inspect_swim_review_deployment == false");
     expect(job).toContain("INSPECT_SWIM_REVIEW_DEPLOYMENT: ${{ inputs.inspect_swim_review_deployment }}");
     expect(workflow).toMatch(/inspect_swim_review_auth:\n\s+description:.*\n\s+required: false\n\s+default: false\n\s+type: boolean/);

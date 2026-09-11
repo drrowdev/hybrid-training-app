@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { z } from "zod";
 import { CONFIGURATION_PATHS, environmentList, metadata, ROUTES, storageAdapter } from "./configure-swim-review";
 import { APPLICATION_SHA, validateDatabaseUrl } from "./prepare-swim-review";
 import { INHERITED_KEYS, OVERRIDE_KEYS, REVIEW, type EnvironmentMetadata } from "./swim-review-config-plan";
@@ -11,6 +12,14 @@ export const CONFIGURATION = {
   start: Date.parse("2026-09-11T09:43:14Z"), end: Date.parse("2026-09-11T09:43:41Z"),
 } as const;
 export const BASE_SHA = "672e4202792da122281639e3db810029432573f5";
+export const ACCEPTED_DEPLOYMENT = {
+  run: "34593741226", sha: "4989c4533939d9db10017590c80d8b62abcbd573",
+  id: "dpl_6nkvV3revZgf1MCD4LnNkJ5Kyynt",
+  url: "hybrid-training-app-pfviecjol-drrowdevs-projects.vercel.app",
+  start: Date.parse("2026-09-11T11:27:09Z"), end: Date.parse("2026-09-11T11:29:18Z"),
+} as const;
+export const OWNER_ROUTE = `${REVIEW.supabaseUrl}/auth/v1/admin/users`;
+const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 export const RECEIPT = {
   STRAVA_REDIRECT_URI: "5s4lV71zocHvhRIV", ADMIN_EMAILS: "mg3o0suSOHFOy755",
   STRAVA_WEBHOOK_SUBSCRIPTION_ID: "Mr7NfhtE7VZszliZ", STRAVA_CLIENT_SECRET: "K0f4bhLbrF9EzjRG",
@@ -54,12 +63,16 @@ function same(a: unknown, b: unknown) { return JSON.stringify(a) === JSON.string
 function canonical(rows: EnvironmentMetadata[]) {
   return [...rows].map((row) => ({ ...row, target: [...row.target].sort() })).sort((a, b) => a.id.localeCompare(b.id));
 }
-export function deploymentContext(env: NodeJS.ProcessEnv, inspect = false) {
+type ReviewMode = boolean | "provision-owner";
+export function deploymentContext(env: NodeJS.ProcessEnv, mode: ReviewMode = false) {
+  const inspect = mode === true;
+  const owner = mode === "provision-owner";
   requireThat(env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
     env.GITHUB_REPOSITORY === REVIEW.repository && env.GITHUB_REF_TYPE === "branch" &&
     env.GITHUB_REF === ref && env.GITHUB_JOB === "deploy-swim-review" &&
-    env.DEPLOY_SWIM_REVIEW === (inspect ? "false" : "true") &&
+    env.DEPLOY_SWIM_REVIEW === (inspect || owner ? "false" : "true") &&
     env.INSPECT_SWIM_REVIEW_DEPLOYMENT === (inspect ? "true" : "false") &&
+    (env.PROVISION_SWIM_REVIEW_OWNER ?? "false") === (owner ? "true" : "false") &&
     otherModes.every((key) => env[key] === "false") &&
     shaPattern.test(env.EXPECTED_SHA ?? "") && env.EXPECTED_SHA === env.GITHUB_SHA &&
     env.EXPECTED_SHA !== APPLICATION_SHA && env.EXPECTED_SHA !== CONFIGURATION.sha);
@@ -69,16 +82,23 @@ type SourceIO = {
   event(): unknown;
   regular(path: string): boolean;
 };
-export function verifyDeploymentSource(env: NodeJS.ProcessEnv, io: SourceIO, inspect = false) {
-  deploymentContext(env, inspect);
+export function verifyDeploymentSource(env: NodeJS.ProcessEnv, io: SourceIO, mode: ReviewMode = false) {
+  deploymentContext(env, mode);
+  const inspect = mode === true;
+  const owner = mode === "provision-owner";
   const inputs = object(object(io.event()).inputs);
-  requireThat(inputs.deploy_swim_review === (inspect ? "false" : "true") &&
+  requireThat(inputs.deploy_swim_review === (inspect || owner ? "false" : "true") &&
     inputs.inspect_swim_review_deployment === (inspect ? "true" : "false") &&
+    (inputs.provision_swim_review_owner ?? "false") === (owner ? "true" : "false") &&
     inputs.expected_sha === env.EXPECTED_SHA &&
     otherModes.every((key) => inputs[key.toLowerCase()] === "false"));
   requireThat(io.git("rev-parse", "HEAD") === env.EXPECTED_SHA);
   io.git("merge-base", "--is-ancestor", APPLICATION_SHA, "HEAD");
   io.git("merge-base", "--is-ancestor", CONFIGURATION.sha, "HEAD");
+  if (owner) {
+    requireThat(env.EXPECTED_SHA !== ACCEPTED_DEPLOYMENT.sha);
+    io.git("merge-base", "--is-ancestor", ACCEPTED_DEPLOYMENT.sha, "HEAD");
+  }
   requireThat(io.git("status", "--porcelain", "--untracked-files=all") === "");
   const paths = io.git("diff", "--name-only", "--no-renames", APPLICATION_SHA, "HEAD").split("\n");
   requireThat(paths.length > 0 && paths.every((path) => (CONFIGURATION_PATHS as readonly string[]).includes(path)));
@@ -104,14 +124,31 @@ export function deploymentRoute(id: string, alias = false) {
 type Request = (url: string, method?: string, body?: unknown) => Promise<unknown>;
 export const INSPECTION_ROUTES = [ROUTES.project, DEPLOY_ROUTES.team, ROUTES.supabase,
   ROUTES.project_env, ROUTES.shared_env] as const;
-export function deploymentTransport(env: NodeJS.ProcessEnv, deadline: number, fetcher: typeof fetch = fetch, inspect = false): Request {
+export function deploymentTransport(env: NodeJS.ProcessEnv, deadline: number, fetcher: typeof fetch = fetch, mode: ReviewMode = false): Request {
+  const inspect = mode === true;
+  const owner = mode === "provision-owner";
+  let createAttempted = false;
+  let createdId: string | undefined;
+  let userRead = false;
   return async (url, method = "GET", body) => {
+    if (owner) {
+      const create = method === "POST" && url === OWNER_ROUTE;
+      const accountRead = method === "GET" && createdId !== undefined && url === `${OWNER_ROUTE}/${createdId}`;
+      requireThat((method === "GET" && body === undefined &&
+        ([...INSPECTION_ROUTES, ROUTES.auth, ROUTES.settings, ROUTES.alias,
+          deploymentRoute(ACCEPTED_DEPLOYMENT.id)] as readonly string[]).includes(url)) ||
+        (method === "POST" && url === ROUTES.storage && same(body, {})) ||
+        (create && !createAttempted && same(body, ownerInputs(env))) ||
+        (accountRead && !userRead && body === undefined));
+      if (create) createAttempted = true;
+      if (accountRead) userRead = true;
+    }
     if (inspect) requireThat(method === "GET" && body === undefined &&
       (INSPECTION_ROUTES as readonly string[]).includes(url));
     const readRoutes: readonly string[] = [ROUTES.project, ROUTES.project_env, ROUTES.shared_env,
       ROUTES.supabase, ROUTES.auth, ROUTES.settings, ROUTES.alias, DEPLOY_ROUTES.team];
     const id = /^https:\/\/api\.vercel\.com\/v(13|2)\/deployments\/(dpl_[A-Za-z0-9]{1,128})(\/aliases)?\?teamId=/.exec(url)?.[2];
-    requireThat((method === "GET" && body === undefined &&
+    requireThat(owner || (method === "GET" && body === undefined &&
       (readRoutes.includes(url) || (id && url === deploymentRoute(id)))) ||
       (method === "PATCH" && [updateRoute("NEXT_PUBLIC_BUILD_SHA"), updateRoute("POOL_SWIMMING_ENABLED")].includes(url)) ||
       (method === "POST" && (url === DEPLOY_ROUTES.create || url === ROUTES.storage ||
@@ -149,14 +186,22 @@ export function deploymentTransport(env: NodeJS.ProcessEnv, deadline: number, fe
         } finally { await reader.cancel(); }
       }
       requireThat(!controller.signal.aborted && Date.now() < deadline, "deadline");
-      try { return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown; }
+      try {
+        const value: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        if (owner && url === OWNER_ROUTE && method === "POST") {
+          const id = object(value).id;
+          requireThat(typeof id === "string" && uuidPattern.test(id), "response_invalid");
+          createdId = id;
+        }
+        return value;
+      }
       catch { throw new Refusal("response_invalid"); }
     } catch (error) {
       throw new Refusal(error instanceof Refusal ? error.code : "transport_failed", status);
     } finally { clearTimeout(timer); }
   };
 }
-export function acceptedReceipt(project: EnvironmentMetadata[], shared: EnvironmentMetadata[]) {
+export function acceptedReceipt(project: EnvironmentMetadata[], shared: EnvironmentMetadata[], postDeployment = false) {
   requireThat(new Set([...project, ...shared].map((row) => row.id)).size === project.length + shared.length, "receipt_invalid");
   for (const rows of [project, shared]) {
     const scopes = new Set<string>();
@@ -176,7 +221,10 @@ export function acceptedReceipt(project: EnvironmentMetadata[], shared: Environm
   requireThat(feature.length === 18 && OVERRIDE_KEYS.every((key) => feature.some((row) =>
     row.key === key && row.id === RECEIPT[key] && row.type === "encrypted" &&
     same(row.target, ["preview"]) && row.createdAt >= CONFIGURATION.start &&
-    row.updatedAt >= row.createdAt && row.updatedAt <= CONFIGURATION.end)), "receipt_invalid");
+    row.createdAt <= CONFIGURATION.end && row.updatedAt >= row.createdAt &&
+    (postDeployment && (key === "NEXT_PUBLIC_BUILD_SHA" || key === "POOL_SWIMMING_ENABLED") ?
+      row.updatedAt >= ACCEPTED_DEPLOYMENT.start && row.updatedAt <= ACCEPTED_DEPLOYMENT.end :
+      row.updatedAt <= CONFIGURATION.end))), "receipt_invalid");
   return feature;
 }
 const intendedAuth = { site_url: REVIEW.origin, uri_allow_list: `${REVIEW.origin}/auth/callback`, disable_signup: true };
@@ -503,15 +551,141 @@ export async function deploy(env: NodeJS.ProcessEnv, deps: Dependencies) {
   }
   return result;
 }
+export function ownerInputs(env: NodeJS.ProcessEnv) {
+  const email = env.SWIM_REVIEW_OWNER_EMAIL;
+  const password = env.SWIM_REVIEW_OWNER_PASSWORD;
+  requireThat(typeof email === "string" && email === email.trim() && email.length <= 254 &&
+    z.string().email().safeParse(email).success);
+  requireThat(typeof password === "string" && password.length >= 12 && password.length <= 256 &&
+    password === password.trim() && !/[\u0000-\u001f\u007f-\u009f]/u.test(password));
+  return { email, password, email_confirm: true as const };
+}
+type OwnerStage = "source" | "credentials" | "snapshot" | "precreate" | "account_create" |
+  "account_verify" | "postcreate" | "completion";
+function ownerSummary(env: NodeJS.ProcessEnv) {
+  return {
+    scope: "swim-review-owner-provision" as const,
+    testedSha: shaPattern.test(env.EXPECTED_SHA ?? "") ? env.EXPECTED_SHA! : null,
+    acceptedApp: APPLICATION_SHA, configurationRun: CONFIGURATION.run, configurationSha: CONFIGURATION.sha,
+    deploymentRun: ACCEPTED_DEPLOYMENT.run, deployedSha: ACCEPTED_DEPLOYMENT.sha,
+    fixedDeploymentId: ACCEPTED_DEPLOYMENT.id,
+    projectId: REVIEW.projectId, teamId: REVIEW.teamId, testProject: REVIEW.supabaseId,
+    status: "failed" as "failed" | "owner_provision_pass",
+    stages: [] as { stage: OwnerStage; code: Code; status: "passed" | "failed"; httpStatus?: number }[],
+    accountCreate: { attempted: false, confirmed: false }, accountVerified: false,
+    protectedUnchanged: { project: false, shared: false }, protectionUnchanged: false,
+    authMatches: false, isolationVerified: false, partial: false, manualReconciliation: false,
+    runtimePending: true, ownerLoginPending: true,
+  };
+}
+export async function provisionOwner(env: NodeJS.ProcessEnv, deps: Pick<Dependencies, "source" | "request" | "storage" | "now">) {
+  const result = ownerSummary(env);
+  const deadline = deps.now() + 300_000;
+  let stage: OwnerStage = "source";
+  const time = () => requireThat(deps.now() < deadline, "deadline");
+  async function step<T>(name: OwnerStage, action: () => T | Promise<T>) {
+    stage = name; time();
+    const value = await action(); time();
+    result.stages.push({ stage, code: "passed", status: "passed" });
+    return value;
+  }
+  const snapshot = async () => {
+    time(); deps.source();
+    const settings = projectIdentity(await deps.request(ROUTES.project));
+    requireThat(same(settings.sso, { deploymentType: "all_except_custom_domains" }), "isolation_changed");
+    teamIdentity(await deps.request(DEPLOY_ROUTES.team));
+    supabaseIdentity(await deps.request(ROUTES.supabase));
+    const project = environmentList(await deps.request(ROUTES.project_env), false);
+    const shared = environmentList(await deps.request(ROUTES.shared_env), true);
+    acceptedReceipt(project, shared, true);
+    const deployment = deploymentMetadata(await deps.request(deploymentRoute(ACCEPTED_DEPLOYMENT.id)), ACCEPTED_DEPLOYMENT.sha);
+    requireThat(deployment.id === ACCEPTED_DEPLOYMENT.id && deployment.url === ACCEPTED_DEPLOYMENT.url &&
+      deployment.readyState === "READY" && deployment.createdAt >= ACCEPTED_DEPLOYMENT.start &&
+      deployment.createdAt <= ACCEPTED_DEPLOYMENT.end, "isolation_changed");
+    const alias = select(await deps.request(ROUTES.alias), ["uid", "alias", "projectId", "deploymentId", "redirect"]);
+    requireThat(typeof alias.uid === "string" && idPattern.test(alias.uid) &&
+      alias.alias === REVIEW.proposedAlias && alias.projectId === REVIEW.projectId &&
+      alias.deploymentId === ACCEPTED_DEPLOYMENT.id && alias.redirect == null, "alias_conflict");
+    const auth = select(await deps.request(ROUTES.auth), Object.keys(intendedAuth));
+    requireThat(same(auth, intendedAuth), "isolation_changed");
+    const external = object(object(await deps.request(ROUTES.settings)).external);
+    requireThat(external.email === true && Object.keys(external).length <= 100 &&
+      Object.entries(external).every(([key, value]) => key === "email" || value === false), "isolation_changed");
+    requireThat(await deps.storage() === true, "isolation_changed");
+    time(); deps.source(); time();
+    return { settings, project: canonical(project), shared: canonical(shared), deployment, alias, auth,
+      external: Object.fromEntries(Object.entries(external).sort(([a], [b]) => a.localeCompare(b))) };
+  };
+  try {
+    await step("source", () => { deploymentContext(env, "provision-owner"); deps.source(); });
+    const credentials = await step("credentials", () => {
+      for (const key of ["VERCEL_REVIEW_TOKEN", "SUPABASE_REVIEW_MANAGEMENT_TOKEN"]) {
+        requireThat(/^[A-Za-z0-9_.-]{20,512}$/.test(env[key] ?? ""));
+      }
+      requireThat(/^sb_publishable_[A-Za-z0-9_-]{20,256}$/.test(env.SWIM_REVIEW_SUPABASE_ANON_KEY ?? "") &&
+        /^sb_secret_[A-Za-z0-9_-]{20,256}$/.test(env.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY ?? ""));
+      return ownerInputs(env);
+    });
+    const initial = await step("snapshot", snapshot);
+    const guards = async () => {
+      const current = await snapshot();
+      requireThat(same(current, initial), "isolation_changed");
+      result.protectedUnchanged = { project: true, shared: true };
+      result.protectionUnchanged = true;
+      result.authMatches = true; result.isolationVerified = true;
+    };
+    await step("precreate", guards);
+    const started = deps.now();
+    const verifyUser = (raw: unknown, id?: string) => {
+      const row = object(raw);
+      const app = object(row.app_metadata);
+      const created = typeof row.created_at === "string" ? Date.parse(row.created_at) : NaN;
+      const confirmed = typeof row.email_confirmed_at === "string" ? Date.parse(row.email_confirmed_at) : NaN;
+      requireThat(typeof row.id === "string" && uuidPattern.test(row.id) && (id === undefined || row.id === id) &&
+        row.email === credentials.email && row.role === "authenticated" && row.aud === "authenticated" &&
+        row.is_anonymous === false && app.provider === "email" && same(app.providers, ["email"]) &&
+        created >= Math.floor(started / 1000) * 1000 && created <= deps.now() &&
+        confirmed >= Math.floor(started / 1000) * 1000 && confirmed <= deps.now(), "response_invalid");
+      return row.id;
+    };
+    const id = await step("account_create", async () => {
+      result.accountCreate.attempted = true;
+      const created = verifyUser(await deps.request(OWNER_ROUTE, "POST", credentials));
+      result.accountCreate.confirmed = true;
+      return created;
+    });
+    await step("account_verify", async () => {
+      deps.source(); time();
+      verifyUser(await deps.request(`${OWNER_ROUTE}/${id}`), id);
+      result.accountVerified = true;
+    });
+    await step("postcreate", guards);
+    await step("completion", () => { deps.source(); });
+    result.status = "owner_provision_pass";
+  } catch (error) {
+    result.stages.push({ stage, status: "failed", code: error instanceof Refusal ? error.code : "predicate_refused",
+      ...(error instanceof Refusal && Number.isInteger(error.httpStatus) && error.httpStatus! >= 100 &&
+        error.httpStatus! <= 599 ? { httpStatus: error.httpStatus } : {}) });
+    result.partial = result.accountCreate.attempted;
+    result.manualReconciliation = result.partial;
+    result.protectedUnchanged = { project: false, shared: false };
+    result.protectionUnchanged = false; result.authMatches = false; result.isolationVerified = false;
+  }
+  return result;
+}
 async function main() {
   const env = process.env;
   const args = process.argv.slice(2);
   const inspect = args.includes("--inspect-isolation");
-  let result: ReturnType<typeof summary> | ReturnType<typeof inspectionSummary> = inspect ? inspectionSummary(env) : summary(env);
+  const owner = args.includes("--provision-owner");
+  const mode: ReviewMode = owner ? "provision-owner" : inspect;
+  let result: ReturnType<typeof summary> | ReturnType<typeof inspectionSummary> | ReturnType<typeof ownerSummary> =
+    owner ? ownerSummary(env) : inspect ? inspectionSummary(env) : summary(env);
   try {
     requireThat(args.length === 0 || same(args, ["--check-source"]) ||
-      same(args, ["--inspect-isolation"]) || same(args, ["--check-source", "--inspect-isolation"]));
-    const deadline = Date.now() + (inspect ? 300_000 : 18 * 60_000);
+      same(args, ["--inspect-isolation"]) || same(args, ["--check-source", "--inspect-isolation"]) ||
+      same(args, ["--provision-owner"]) || same(args, ["--check-source", "--provision-owner"]));
+    const deadline = Date.now() + (inspect || owner ? 300_000 : 18 * 60_000);
     const source = () => verifyDeploymentSource(env, {
       event: () => JSON.parse(readFileSync(env.GITHUB_EVENT_PATH!, "utf8")),
       regular: (path) => { const stat = lstatSync(resolve(root, path)); return stat.isFile() && !stat.isSymbolicLink(); },
@@ -520,10 +694,11 @@ async function main() {
         return execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: limit,
           timeout: Math.max(1, Math.min(15_000, deadline - Date.now())), stdio: ["ignore", "pipe", "ignore"] }).trim();
       },
-    }, inspect);
+    }, mode);
     if (args.includes("--check-source")) { source(); return; }
-    const request = deploymentTransport(env, deadline, fetch, inspect);
-    result = inspect ? await inspectIsolation(env, { source, request, now: Date.now }) :
+    const request = deploymentTransport(env, deadline, fetch, mode);
+    result = owner ? await provisionOwner(env, { source, request, storage: storageAdapter(env, request), now: Date.now }) :
+      inspect ? await inspectIsolation(env, { source, request, now: Date.now }) :
       await deploy(env, { source, request, storage: storageAdapter(env, request), now: Date.now,
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) });
   } catch {

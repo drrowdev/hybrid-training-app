@@ -8,6 +8,7 @@ import { INHERITED_KEYS, OVERRIDE_KEYS, REVIEW, type EnvironmentMetadata } from 
 import {
   acceptedReceipt, BASE_SHA, CONFIGURATION, deploy, deploymentContext, deploymentMetadata, inspectIsolation, INSPECTION_ROUTES,
   deploymentRoute, deploymentTransport, DEPLOY_ROUTES, RECEIPT, updateRoute, verifyDeploymentSource,
+  ACCEPTED_DEPLOYMENT, OWNER_ROUTE, ownerInputs, provisionOwner,
 } from "../deploy-swim-review";
 
 const sha = "b".repeat(40);
@@ -137,14 +138,15 @@ describe("deployment context and source", () => {
     // Existing mutation jobs all need ci; keep their immutable bytes while refusing mixed dispatches here.
     if (process.env.GITHUB_EVENT_NAME !== "workflow_dispatch") return;
     const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH!, "utf8")) as { inputs?: Record<string, string> };
-    if (event.inputs?.deploy_swim_review !== "true" && event.inputs?.inspect_swim_review_deployment !== "true") return;
-    expect((event.inputs.deploy_swim_review === "true" && event.inputs.inspect_swim_review_deployment === "false") ||
-      (event.inputs.deploy_swim_review === "false" && event.inputs.inspect_swim_review_deployment === "true")).toBe(true);
+    const reviewModes = ["deploy_swim_review", "inspect_swim_review_deployment", "provision_swim_review_owner"];
+    if (!reviewModes.some((key) => event.inputs?.[key] === "true")) return;
+    expect(reviewModes.filter((key) => event.inputs?.[key] === "true")).toHaveLength(1);
+    expect(reviewModes.every((key) => ["true", "false"].includes(event.inputs?.[key] ?? ""))).toBe(true);
     expect(modes.every((key) => event.inputs?.[key.toLowerCase()] === "false")).toBe(true);
     expect(process.env.GITHUB_REPOSITORY).toBe(REVIEW.repository);
     expect(process.env.GITHUB_REF).toBe(`refs/heads/${REVIEW.branch}`);
-    expect(event.inputs.expected_sha).toMatch(/^[a-f0-9]{40}$/);
-    expect(event.inputs.expected_sha).toBe(process.env.GITHUB_SHA);
+    expect(event.inputs?.expected_sha).toMatch(/^[a-f0-9]{40}$/);
+    expect(event.inputs?.expected_sha).toBe(process.env.GITHUB_SHA);
   });
 });
 
@@ -390,7 +392,7 @@ describe("bounded fixed-route transport and saved workflow", () => {
     expect(job.indexOf("vitest run")).toBeLessThan(job.indexOf("--check-source"));
     expect(job.indexOf("--check-source")).toBeLessThan(job.indexOf("secrets."));
     const write = job.split("- name: Deploy isolated Preview once")[1]!.split("- name: Inspect deployment isolation")[0]!;
-    const read = job.split("- name: Inspect deployment isolation")[1]!;
+    const read = job.split("- name: Inspect deployment isolation")[1]!.split("- name: Provision isolated owner")[0]!;
     expect(write.match(/secrets\./g)).toHaveLength(5);
     expect(read.match(/secrets\.\w+/g)).toEqual(["secrets.VERCEL_REVIEW_TOKEN", "secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN"]);
     expect(write).toContain("if: inputs.deploy_swim_review == true && inputs.inspect_swim_review_deployment == false");
@@ -401,6 +403,167 @@ describe("bounded fixed-route transport and saved workflow", () => {
 });
 
 const inspectionEnv = { ...env, DEPLOY_SWIM_REVIEW: "false", INSPECT_SWIM_REVIEW_DEPLOYMENT: "true" };
+const ownerEnv = { ...env, DEPLOY_SWIM_REVIEW: "false", PROVISION_SWIM_REVIEW_OWNER: "true",
+  SWIM_REVIEW_OWNER_EMAIL: "offline-owner@example.invalid", SWIM_REVIEW_OWNER_PASSWORD: canary };
+function ownerHarness() {
+  const h = harness();
+  observedProtection(h);
+  h.state.now = ACCEPTED_DEPLOYMENT.end + 60_000;
+  for (const row of h.state.project) if (["NEXT_PUBLIC_BUILD_SHA", "POOL_SWIMMING_ENABLED"].includes(row.key)) {
+    row.updatedAt = ACCEPTED_DEPLOYMENT.end;
+  }
+  Object.assign(h.state.deployment, { id: ACCEPTED_DEPLOYMENT.id, url: ACCEPTED_DEPLOYMENT.url,
+    readyState: "READY", createdAt: ACCEPTED_DEPLOYMENT.start });
+  h.state.deployment.gitSource.sha = ACCEPTED_DEPLOYMENT.sha;
+  h.state.deployment.meta.githubCommitSha = ACCEPTED_DEPLOYMENT.sha;
+  h.state.alias = true;
+  const user = { id: "12345678-1234-4123-8123-123456789abc", email: ownerEnv.SWIM_REVIEW_OWNER_EMAIL,
+    role: "authenticated", aud: "authenticated", is_anonymous: false,
+    app_metadata: { provider: "email", providers: ["email"] },
+    created_at: new Date(h.state.now).toISOString(), email_confirmed_at: new Date(h.state.now).toISOString() };
+  const original = h.request.getMockImplementation()!;
+  h.request.mockImplementation(async (...args) => {
+    if (args[0] === OWNER_ROUTE || args[0] === `${OWNER_ROUTE}/${user.id}`) return user;
+    return original(...args);
+  });
+  return { ...h, user };
+}
+describe("native one-shot owner provisioning", () => {
+  it("creates only the exact payload, reads only the returned ID, and leaves login pending", async () => {
+    const h = ownerHarness();
+    const result = await provisionOwner(ownerEnv, h.deps);
+    expect(result).toMatchObject({ status: "owner_provision_pass", testedSha: sha,
+      deployedSha: ACCEPTED_DEPLOYMENT.sha, accountCreate: { attempted: true, confirmed: true },
+      accountVerified: true, partial: false, manualReconciliation: false, runtimePending: true, ownerLoginPending: true });
+    expect(writes(h)).toEqual([[OWNER_ROUTE, "POST", { email: ownerEnv.SWIM_REVIEW_OWNER_EMAIL,
+      password: canary, email_confirm: true }]]);
+    expect(h.request.mock.calls.filter(([url]) => url.startsWith(OWNER_ROUTE))).toEqual([
+      [OWNER_ROUTE, "POST", ownerInputs(ownerEnv)], [`${OWNER_ROUTE}/${h.user.id}`],
+    ]);
+    expect(result.stages.map(({ stage }) => stage)).toEqual(
+      ["source", "credentials", "snapshot", "precreate", "account_create", "account_verify", "postcreate", "completion"]);
+    for (const secret of [canary, h.user.id, h.user.email]) expect(JSON.stringify(result)).not.toContain(secret);
+  });
+  it("requires native event and deployed ancestry without touching credentials", async () => {
+    const io = sourceIO();
+    io.event = () => ({ inputs: { ...inputs, deploy_swim_review: "false", provision_swim_review_owner: "true" } });
+    expect(() => verifyDeploymentSource(ownerEnv, io, "provision-owner")).not.toThrow();
+    expect(io.git).toHaveBeenCalledWith("merge-base", "--is-ancestor", ACCEPTED_DEPLOYMENT.sha, "HEAD");
+    expect(() => verifyDeploymentSource(ownerEnv, sourceIO(), "provision-owner")).toThrow();
+    for (const key of [...modes, "DEPLOY_SWIM_REVIEW", "INSPECT_SWIM_REVIEW_DEPLOYMENT"]) {
+      const h = ownerHarness();
+      const mixed = { ...ownerEnv, [key]: "true" };
+      Object.defineProperty(mixed, "SWIM_REVIEW_OWNER_PASSWORD", { get() { throw Error(canary); } });
+      expect((await provisionOwner(mixed, h.deps)).stages.at(-1)?.stage).toBe("source");
+      expect(h.request).not.toHaveBeenCalled();
+    }
+    expect(() => deploymentContext(ownerEnv)).toThrow();
+    expect(() => deploymentContext(ownerEnv, true)).toThrow();
+  });
+  it.each(["", "short", " leading-valid-password", "trailing-valid-password ", "valid-password\ncontrol", "x".repeat(257)])(
+    "rejects invalid password without requests %#", async (password) => {
+      const h = ownerHarness();
+      expect((await provisionOwner({ ...ownerEnv, SWIM_REVIEW_OWNER_PASSWORD: password }, h.deps)).status).toBe("failed");
+      expect(h.request).not.toHaveBeenCalled();
+    });
+  it.each(["bad", " offline@example.invalid", "offline@example.invalid ", `${"a".repeat(250)}@example.invalid`])(
+    "rejects invalid email %#", (email) => expect(() => ownerInputs({ ...ownerEnv, SWIM_REVIEW_OWNER_EMAIL: email })).toThrow());
+  it("keeps the original receipt policy and allows only the two exact post-deploy windows", () => {
+    const h = ownerHarness();
+    expect(() => acceptedReceipt(h.state.project, h.state.shared)).toThrow();
+    expect(() => acceptedReceipt(h.state.project, h.state.shared, true)).not.toThrow();
+    for (const row of h.state.project) {
+      const before = row.updatedAt;
+      row.updatedAt = ["NEXT_PUBLIC_BUILD_SHA", "POOL_SWIMMING_ENABLED"].includes(row.key) ?
+        ACCEPTED_DEPLOYMENT.start - 1 : CONFIGURATION.end + 1;
+      expect(() => acceptedReceipt(h.state.project, h.state.shared, true)).toThrow();
+      row.updatedAt = before;
+    }
+  });
+  it.each(["deployment", "alias", "protection", "auth", "storage", "hobby", "supabase"])(
+    "refuses mismatched %s before creation", async (kind) => {
+      const h = ownerHarness();
+      if (kind === "deployment") h.state.deployment.gitSource.sha = sha;
+      if (kind === "alias") h.state.alias = false;
+      if (kind === "protection") h.state.settings.ssoProtection.deploymentType = "all";
+      if (kind === "auth") h.state.auth.disable_signup = false;
+      if (kind === "storage") h.deps.storage.mockResolvedValue(false);
+      const original = h.request.getMockImplementation()!;
+      h.request.mockImplementation(async (...args) => {
+        if (kind === "hobby" && args[0] === DEPLOY_ROUTES.team) return { id: REVIEW.teamId, slug: "drrowdevs-projects", billing: { plan: "pro" } };
+        if (kind === "supabase" && args[0] === ROUTES.supabase) return {};
+        return original(...args);
+      });
+      expect((await provisionOwner(ownerEnv, h.deps)).accountCreate.attempted).toBe(false);
+      expect(writes(h)).toHaveLength(0);
+    });
+  it.each(["throw", "duplicate", "id", "email", "role", "confirmed", "old", "get-mismatch", "postguard"])(
+    "preserves the account and uncertainty after %s; no retry or deletion", async (kind) => {
+      const h = ownerHarness();
+      const original = h.request.getMockImplementation()!;
+      h.request.mockImplementation(async (...args) => {
+        if (args[0] === OWNER_ROUTE) {
+          if (kind === "throw") throw Error(canary);
+          if (kind === "duplicate") return { msg: canary };
+          if (kind === "postguard") h.state.auth.disable_signup = false;
+          return { ...h.user, ...(kind === "id" ? { id: "wrong" } : {}),
+            ...(kind === "email" ? { email: "wrong@example.invalid" } : {}),
+            ...(kind === "role" ? { role: "service_role" } : {}),
+            ...(kind === "confirmed" ? { email_confirmed_at: null } : {}),
+            ...(kind === "old" ? { created_at: "2020-01-01T00:00:00Z" } : {}) };
+        }
+        if (kind === "get-mismatch" && args[0].startsWith(`${OWNER_ROUTE}/`)) return { ...h.user, id: "wrong" };
+        return original(...args);
+      });
+      const result = await provisionOwner(ownerEnv, h.deps);
+      expect(result).toMatchObject({ status: "failed", partial: true, manualReconciliation: true });
+      expect(writes(h)).toHaveLength(1);
+      expect(h.request.mock.calls.some(([, method]) => method === "DELETE" || method === "PATCH")).toBe(false);
+      expect(JSON.stringify(result)).not.toContain(canary);
+    });
+  it.each([2, 3])("retains exact snapshots at guard %s", async (read) => {
+    const h = ownerHarness();
+    let count = 0;
+    const original = h.request.getMockImplementation()!;
+    h.request.mockImplementation(async (...args) => {
+      if (args[0] === ROUTES.project && ++count === read) Object.assign(h.state.settings, { passwordProtection: null });
+      return original(...args);
+    });
+    const result = await provisionOwner(ownerEnv, h.deps);
+    expect(result.status).toBe("failed");
+    expect(result.accountCreate.attempted).toBe(read === 3);
+  });
+  it("never reads private metadata/user getters or a DATABASE_URL", async () => {
+    const h = ownerHarness();
+    const privateGetter = vi.fn(() => { throw Error(canary); });
+    for (const row of [h.user, h.state.settings, ...h.state.project]) {
+      for (const key of ["value", "passwordHash", "encrypted_password", "toJSON"]) Object.defineProperty(row, key, { get: privateGetter });
+    }
+    const credentials = { ...ownerEnv };
+    Object.defineProperty(credentials, "SWIM_REVIEW_DATABASE_URL", { get: privateGetter });
+    expect((await provisionOwner(credentials, h.deps)).status).toBe("owner_provision_pass");
+    expect(privateGetter).not.toHaveBeenCalled();
+  });
+  it("restricts owner transport to one literal create and one returned-ID read", async () => {
+    const h = ownerHarness();
+    const fake = vi.fn(async (_input: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify(h.user)));
+    const request = deploymentTransport(ownerEnv, Date.now() + 300_000, fake, "provision-owner");
+    for (const [url, method, body] of [
+      [OWNER_ROUTE, "GET", undefined], [`${OWNER_ROUTE}/${h.user.id}`, "GET", undefined],
+      [OWNER_ROUTE, "POST", { ...ownerInputs(ownerEnv), email_confirm: false }],
+      [ROUTES.auth, "PATCH", {}], [DEPLOY_ROUTES.create, "POST", {}],
+      [deploymentRoute("dpl_Arbitrary"), "GET", undefined], [OWNER_ROUTE, "DELETE", undefined],
+    ] as const) await expect(request(url, method, body)).rejects.toThrow();
+    expect(fake).not.toHaveBeenCalled();
+    await request(OWNER_ROUTE, "POST", ownerInputs(ownerEnv));
+    await expect(request(OWNER_ROUTE, "POST", ownerInputs(ownerEnv))).rejects.toThrow();
+    await request(`${OWNER_ROUTE}/${h.user.id}`);
+    await expect(request(`${OWNER_ROUTE}/${h.user.id}`)).rejects.toThrow();
+    expect(fake).toHaveBeenCalledTimes(2);
+    expect(fake.mock.calls[0]?.[1]).toMatchObject({ redirect: "error", method: "POST",
+      headers: { apikey: env.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY } });
+  });
+});
 describe("optional project protection snapshots", () => {
   it.each([[optionalProtections[0]], [optionalProtections[1]], [...optionalProtections]])(
     "preserves observed Hobby omission %j through five GETs and fake deployment", async (...keys) => {

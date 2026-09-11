@@ -3666,3 +3666,77 @@ No clean review/security result is claimed, and no substitute/helper agent was
 launched. Changed-file secret scans passed. These limitations do not establish
 runtime safety or acceptance; the hosted read-only, deployment/runtime and
 owner-review gates above remain pending.
+
+## 2026-09-11 — PR805 separate owner provisioning (source only)
+
+START feature `4989c4533939d9db10017590c80d8b62abcbd573` and main
+`672e4202792da122281639e3db810029432573f5` verified against remote refs;
+PR805 verified open/draft/unmerged. No rewrite, dispatch, private-provider access,
+secret retrieval, account operation, deployment, browser, DB or Docker was run.
+The prior consumed safe logs were not fetched. Full history was fetched after
+the initial progress push correctly failed its shallow-history identity guard.
+
+The accepted live milestone supplied by the coordinator supersedes the older
+pending-deployment notes above: `34593741226` attempt1 at `4989c453…` passed all
+18 stages, with READY deployment `dpl_6nkvV3revZgf1MCD4LnNkJ5Kyynt`,
+`https://hybrid-training-app-pfviecjol-drrowdevs-projects.vercel.app`, and fixed
+alias `hybrid-training-app-swim-review-drrowdevs-projects.vercel.app`.
+Only BUILD_SHA and POOL updatedAt markers changed, within
+2026-09-11 11:27:09Z–11:29:18Z. Their original creation window and the other
+16 updatedAt windows remain 09:43:14Z–09:43:41Z, configuration run
+`34585357240` / `5d26364a49d934acdcac0ae8c924ae7e6bb784f4`.
+Do not rerun old pre-activation receipt inspection, configuration, deployment,
+bootstrap or seeding. Frozen26/all9 areas at app82337 remain accepted unchanged.
+
+New default-false input `provision_swim_review_owner` selects the existing job
+ID `deploy-swim-review`, now displayed as **isolated review operation**.
+CLI modes are deployment (no action flag), `--inspect-isolation`, or
+`--provision-owner`; the latter supports `--check-source --provision-owner`.
+Exactly one review mode is true and every other action flag false. Same-workflow
+core and identity checks remain prerequisites; the core event regression rejects
+mixed flags before any old dependent mutation job. Existing prior jobs retain
+their bytes. Workflow and project concurrency remain noncancelling.
+Install, four focused suites and conditional source precheck precede credentials.
+Only **Provision isolated owner once** receives the two new encrypted owner
+inputs, alongside Vercel/management/modern publishable/secret keys, never a DB URL.
+The encrypted owner secrets are retained for coordinator retirement.
+
+Operation tooling `testedSha` must match actual HEAD/expectedSHA/githubSHA and
+the fresh feature ref, descend from configuration/app/deployed4989, and differ
+from deployed4989. The fixed `deployedSha` stays4989; no redeployment to equate
+these bindings. All ten regular setup paths and fresh pinned main remain guarded.
+Receipt policy is explicitly post-deployment only for owner provisioning;
+default deployment/inspection behavior is unchanged, without timestamp rewriting.
+Exact project/team/Hobby/link/Supabase identity, full environment metadata,
+protection snapshot (including distinct omission/null/object), intended Auth,
+email-only settings, storage-ready RPC, immutable deployment GET and fixed alias
+are checked and compared before and after creation.
+
+Producer scope **swim-review-owner-provision** emits one plain JSON object:
+`testedSha`, `acceptedApp`, `configurationRun`, `configurationSha`,
+`deploymentRun`, `deployedSha`, `fixedDeploymentId`, `projectId`, `teamId`,
+`testProject`, `status`, `stages`, `accountCreate{attempted,confirmed}`,
+`accountVerified`, `protectedUnchanged{project,shared}`, `protectionUnchanged`,
+`authMatches`, `isolationVerified`, `partial`, `manualReconciliation`,
+`runtimePending`, `ownerLoginPending`. Status is `owner_provision_pass` or
+`failed`; ordered stages are `source`, `credentials`, `snapshot`, `precreate`,
+`account_create`, `account_verify`, `postcreate`, `completion`.
+Each stage has `stage`, finite existing safe `code`, `status` (`passed`/`failed`),
+and optional validated numeric `httpStatus`. No account ID, email, password,
+session, token, hash, raw error or provider row is emitted.
+
+One exact admin POST contains only `{email,password,email_confirm:true}`;
+the transport admits one create attempt and a single GET using only this
+invocation's returned UUID. Modern keys use `apikey`, not JWT assumptions.
+Creation and lookup require matching confirmed ordinary email user fields and
+fresh creation/confirmation times. Duplicate/malformed/uncertain responses fail;
+no list, adoption, retry, reset, PATCH, DELETE, invitation or cleanup exists.
+Attempted creation followed by failure sets partial/manual reconciliation and
+preserves the account. All requests are fixed-route, redirect-error, 30-second,
+2MB bounded within a 300-second operation.
+
+Actual account creation, browser login and owner usability remain pending.
+Successful admin creation/lookup alone must leave both pending flags true.
+Coordinator must inspect the complete published source before one separately
+guarded provision dispatch. Production, protected merge, migration, app changes,
+combined swimming, backups and spending remain unapproved/deferred.
