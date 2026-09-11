@@ -3260,3 +3260,80 @@ local/public author and committer are allowlisted; changed-file secret scan
 passed. Required automated validation could not complete: review's configured
 model was unavailable, CodeQL Actions analysis failed and JavaScript analysis
 was skipped for database size. No clean automated review/security pass claimed.
+
+## 2026-09-11 — PR805 read-only Auth reconciliation source
+
+START verified locally and publicly:
+`copilot/new-acceptance-cases=53099ccdcc3891f7521e20a2b01192394ba6bfc0`,
+`main=672e4202792da122281639e3db810029432573f5`.
+Source checkpoint `82f7de0484d1cee9991ac4bd13c8d573d53a8c89` directly
+follows START; public/local native author and committer are allowlisted.
+Only `.github/workflows/ci.yml`, `packages/db/scripts/configure-swim-review.ts`
+and its focused test changed; this HANDOFF is the fourth allowed path.
+No history rewrite, helper/coordinator assignment or other PR writer.
+
+The existing configuration job now accepts exactly one mode: configure=true /
+inspect_auth=false, or configure=false / inspect_auth=true. The new workflow
+input `inspect_swim_review_auth` defaults false. All five other action flags
+remain false. Both modes retain same-workflow core+identity prerequisites,
+noncancelling workflow/job concurrency, manual feature/repository/job checks,
+exact expected/checkout/live SHA, accepted application
+`82337d2b36436bbe15532b4204e3ee96ba55b3f7` and the existing eight-path source
+allowlist. Prior-jobs SHA-256 remains
+`c7199fb2c2a1ea40d72d5a0dc5d5aca2400d173f7f4f4158c45453be78408b79`.
+Offline tests and mode-specific source prechecks precede credentials.
+The write step retains exactly five secret bindings; the inspection step binds
+only `SUPABASE_REVIEW_MANAGEMENT_TOKEN`.
+
+Inspection CLI is `--inspect-auth`; its source precheck is
+`--check-source --inspect-auth`. It validates only the exact test project's
+identity/status, then reads `/config/auth` twice with live-head checks.
+Transport permits only those two fixed bodyless GET routes, retains
+redirect:error, 30-second requests, 300-second overall and 2MB bounds.
+Only known identity fields and the three Auth fields are selected; unrelated
+password/SMTP fields and raw responses are neither inspected nor serialized.
+
+One terminal JSON has scope `swim-review-auth-inspection`, `testedSha`,
+`acceptedApplicationSha`, and fixed `supabaseId`, `supabaseName`,
+`organizationId`, `region`. `status` is `inspection_pass`, `unresolved` or
+`failed`; `stages` contains bounded stage/code/status and optional validated
+numeric `httpStatus`. `authState` is `matches_previous`, `matches_intended`
+or `other`; `stable` compares both reads. `fields` maps `site_url`,
+`uri_allow_list`, `disable_signup` to previous/intended/other for the final
+verified read, never URL strings. `signupDisabled` is boolean or null.
+`writesAttempted`, `configurationAccepted` and `deploymentAttempted` are
+always false. Mixed/unknown/unstable state stays unresolved with nonzero exit;
+inspection_pass means stable known Auth state, never completed configuration.
+Guard/read failures retain failed status and no accepted state.
+
+Write diagnostics now optionally retain `underlyingCode` on write_uncertain
+and numeric `httpStatus` only when actually observed and integer 100..599.
+No raw messages/bodies/URLs/headers are emitted. Original failing stage,
+write_uncertain, manual Auth rollback and partial=true remain conservative;
+even an observed 4xx does not authorize retry or imply no write.
+The existing string redirect-list PATCH contract is unchanged.
+
+Offline evidence at the source checkpoint: runtime **201**, pure plan **122**,
+bootstrap **217** — **540/540 passed together** after fixing new test-fixture
+errors. Targeted TypeScript over all six runtime/test files and `git diff
+--check` passed. DB lint reports no configured checker. Coverage includes
+previous/intended/mixed/unstable states, wrong project/modes/arguments,
+fixed GET-only transport, private-getter avoidance, safe numeric HTTP evidence
+and canary redaction, no writes on failure and unchanged uncertain rollback.
+Changed-file secret scanning passed. Required automated validation was
+attempted but unavailable: review's configured model could not load,
+CodeQL Actions analysis failed, JavaScript analysis skipped for database size.
+No clean automated review/security result is claimed.
+
+**Unresolved / next action:** the supplied run34577762329@53099ccd failed at
+auth_write/write_uncertain after protected_verify; createdEnv was empty and
+protected metadata rechecked true, but Auth remained manual/partial. Whether
+that PATCH changed Auth is still unknown. **The new read-only mode has NOT
+been run.** Coordinator first inspects the published source, then separately
+dispatches read-only inspection with the exact then-current feature SHA and
+all other action flags false; consume its distinct safe summary before
+deciding any genuine remainder. No configuration run, PATCH retry or restore
+is authorized by this slice. No provider/DB/RPC/storage/user read or mutation,
+bootstrap/seed/reset, deployment, alias or account operation was executed.
+Previously consumed reconciliation logs/private transcripts were not fetched.
+PR805 remains the implementation owner, draft/unmerged; no auto-merge enabled.
