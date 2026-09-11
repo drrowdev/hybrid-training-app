@@ -3793,3 +3793,40 @@ pinned672e SHA, and the working tree was clean. Required validation was repeated
 after all code changes were committed: the same unavailable review model,
 failed Actions CodeQL and size-skipped JavaScript CodeQL limitations remained.
 No completed security/review pass or hosted success is asserted.
+
+## 2026-09-11 — PR805 four standalone usability repairs
+
+Source tested/published: `c9f1e870c9f8dad5a6f8bc78a10d30103b580493`.
+Early entry-flow checkpoint: `7f4119a21396051bac5e1fc8b1dad6e4812b5858`.
+Starting head/main matched the requested pins; main remains
+`672e4202792da122281639e3db810029432573f5`. Local/public source identities
+are allowlisted. No history rewrite or concurrent work replacement.
+
+Implemented swimming-first blockless onboarding, capability-aware Swimming
+inside New plan (also available in Edit plan), strength-calendar-aware spaced
+defaults with submit-time overlap confirmation/audit, and canonical issued-
+snapshot drill/stroke/effort/focus guidance. Existing safety checks and numeric
+targets remain intact. No schema/RLS/migrations, workflow/tooling changes,
+deployment, credential/account access or initialized-review access.
+
+Offline checks (repository root):
+- `pnpm --filter @hta/domain exec vitest run src/swim-schedule.test.ts src/swim-guidance.test.ts`: **15 passed**.
+- `pnpm --filter @hta/web exec vitest run src/components/onboarding src/components/program/ProgramPicker.test.tsx src/lib/onboarding src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/strength-schedule.test.ts src/lib/swim/__tests__/presentation.test.ts src/lib/swim/__tests__/workout-controls.test.tsx`: **259 passed**.
+- `pnpm --filter @hta/engine exec vitest run src/swimming.test.ts src/swimming-budget.test.ts`: **58 passed**.
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/navigation.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`: **5 passed**, including real pinned CLI collection only.
+- `pnpm --filter @hta/web typecheck`, targeted `pnpm --filter @hta/web exec eslint` on changed web source/tests, and `git diff --check`: **passed**. Secret scans passed; publication hooks passed.
+
+The first existing frozen26 case now exercises real fresh onboarding, refresh,
+the New plan choice, and absence of TMs/primary blocks before retaining its
+progress/offline/history assertions. **E2E source amended, runtime not run**;
+historical26 acceptance does not exercise these repairs. An initial malformed
+Vitest selector ran a broader suite and caught a JSX typo; corrected targeted
+runs above passed. Intermediate new-test failures were corrected, not waived.
+
+Required automated validation was attempted on the committed source:
+review model unavailable (despite the wrapper's success heading), Actions
+CodeQL failed, JavaScript CodeQL skipped for database size. **No completed
+automated review/security pass is claimed.** Remaining work is coordinator
+exact-head guarded ephemeral runtime validation and working automated
+review/security checks. No known functional source remainder; no deployment
+or owner-account operation is authorized by this handoff.
