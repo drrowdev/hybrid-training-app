@@ -475,6 +475,52 @@ describe("optional project protection snapshots", () => {
       expect(h.state.settings[key]).toBe(value);
     }
   });
+  it.each(["id", "accountId", "name", "rootDirectory", "framework",
+    "link.type", "link.org", "link.repo", "link.productionBranch", "team.id", "team.slug",
+    "billing.absent", "billing.null", "billing.pro", "billing.enterprise"])(
+    "still requires exact project/link/team/Hobby predicates with omission: %s", async (field) => {
+      const h = harness();
+      observedProtection(h);
+      const team: Record<string, unknown> = { id: REVIEW.teamId, slug: "drrowdevs-projects", billing: { plan: "hobby" } };
+      if (field.startsWith("link.")) Object.assign(h.state.settings.link, { [field.slice(5)]: "wrong" });
+      else if (field.startsWith("team.")) team[field.slice(5)] = "wrong";
+      else if (field === "billing.absent") delete team.billing;
+      else if (field === "billing.null") team.billing = null;
+      else if (field.startsWith("billing.")) team.billing = { plan: field.slice(8) };
+      else Object.assign(h.state.settings, { [field]: "wrong" });
+      const original = h.request.getMockImplementation()!;
+      h.request.mockImplementation(async (...args) => args[0] === DEPLOY_ROUTES.team ? team : original(...args));
+      const result = await inspectIsolation(inspectionEnv, h.deps);
+      expect(result.status).toBe("failed");
+      expect(result.receiptMatches).toBe(false);
+      expect(result.stages.at(-1)?.stage).toBe(field.startsWith("team.") || field.startsWith("billing.") ? "team" : "project");
+      expect((await deploy(env, h.deps)).status).toBe("failed");
+      expect(writes(h)).toHaveLength(0);
+    });
+  it("does not infer explicit SSO from an inherited value", async () => {
+    const h = harness();
+    observedProtection(h);
+    const inherited = h.state.settings.ssoProtection;
+    Reflect.deleteProperty(h.state.settings, "ssoProtection");
+    Object.setPrototypeOf(h.state.settings, { ssoProtection: inherited });
+    expect((await inspectIsolation(inspectionEnv, h.deps)).status).toBe("failed");
+    expect((await deploy(env, h.deps)).status).toBe("failed");
+    expect(writes(h)).toHaveLength(0);
+  });
+  it("does not read private getters during omitted-setting deployment guards", async () => {
+    const h = harness();
+    observedProtection(h);
+    const sensitive = vi.fn(() => { throw Error(canary); });
+    for (const row of [h.state.settings, h.state.settings.ssoProtection, ...h.state.project]) {
+      for (const key of ["password", "hash", "passwordHash", "bypass", "value", "toJSON", "billingCustomer"]) {
+        Object.defineProperty(row, key, { get: sensitive });
+      }
+    }
+    const result = await deploy(env, h.deps);
+    expect(result.status).toBe("deployment_pass");
+    expect(sensitive).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain(canary);
+  });
   const guards = [
     { read: 2, stage: "prewrite", mutations: 0 }, { read: 3, stage: "build_sha", mutations: 0 },
     { read: 4, stage: "build_sha", mutations: 1 }, { read: 5, stage: "activation", mutations: 1 },
@@ -505,7 +551,8 @@ describe("optional project protection snapshots", () => {
       expect(result.partial).toBe(mutations > 0);
       expect(result.manualReconciliation).toBe(mutations > 0);
     });
-  it.each(["sso", "addresses", "mode", "scope", "link"].flatMap((change) =>
+  it.each(["sso", "sso.null", "sso.missing", "password.undefined", "trusted.undefined",
+    "addresses", "mode", "scope", "link"].flatMap((change) =>
     guards.map((guard) => ({ change, ...guard }))))(
     "refuses changed $change at guard $read before another mutation", async ({ change, read, stage, mutations }) => {
       const h = harness();
@@ -517,6 +564,10 @@ describe("optional project protection snapshots", () => {
       h.request.mockImplementation(async (...args) => {
         if (args[0] === ROUTES.project && ++reads === read) {
           if (change === "sso") h.state.settings.ssoProtection.deploymentType = "preview";
+          if (change === "sso.null") Object.assign(h.state.settings, { ssoProtection: null });
+          if (change === "sso.missing") Reflect.deleteProperty(h.state.settings, "ssoProtection");
+          if (change === "password.undefined") Object.assign(h.state.settings, { passwordProtection: undefined });
+          if (change === "trusted.undefined") Object.assign(h.state.settings, { trustedIps: undefined });
           if (change === "addresses") trusted.addresses = [{ value: "192.0.2.2" }];
           if (change === "mode") trusted.protectionMode = "exclusive";
           if (change === "scope") trusted.deploymentType = "preview";

@@ -3643,3 +3643,26 @@ authorized deployment/runtime gates and owner usability review. No review
 deployment, alias or owner account is claimed. No workflow dispatch, credentials,
 private provider requests, DB/storage/RPC/users/server/browser/Docker, settings
 change, rollback/cleanup/retry, protected merge or production work occurred.
+
+Published the coherent repair checkpoint early at
+`b57321a0d80dcd87348477d98ccc5ea24c9187ec` (11:07:47Z); local and public
+author/committer emails were verified allowlisted. The initial progress push
+was blocked by shallow-history identity validation; fetching full history
+resolved it without bypassing hooks or rewriting history. Actual changed paths
+from app82337 remain exactly the existing ten-path setup allowlist.
+
+Final offline batch: **872/872** (deployment331, configuration202, pure plan122,
+bootstrap217), using the same four-suite Vitest and targeted strict TypeScript
+commands recorded above. Both passed, as did `git diff --check`. The final
+test-only additions cover exact project/link/team/Hobby rejection with omission,
+inherited SSO rejection, private deployment getter exclusion, and SSO
+null/missing or optional explicit-undefined changes at every guard.
+Production code remains the eight-line diff published at b57321a.
+
+Required automated validation was attempted after that source checkpoint:
+the review tool could not run because its configured model was unavailable;
+Actions CodeQL analysis failed; JavaScript CodeQL was skipped for database size.
+No clean review/security result is claimed, and no substitute/helper agent was
+launched. Changed-file secret scans passed. These limitations do not establish
+runtime safety or acceptance; the hosted read-only, deployment/runtime and
+owner-review gates above remain pending.
