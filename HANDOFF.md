@@ -3254,3 +3254,9 @@ bootstrap/reset or acceptance rerun. Local full history was fetched solely for
 the existing publication identity hook, without source/history repair.
 PR remains draft/unmerged; coordinator source inspection and guarded
 configuration remain pending, as do deployment and owner login.
+
+Repair `6b8ea1849d241972862424dcecfa0d44a9f8a9d8` directly follows START;
+local/public author and committer are allowlisted; changed-file secret scan
+passed. Required automated validation could not complete: review's configured
+model was unavailable, CodeQL Actions analysis failed and JavaScript analysis
+was skipped for database size. No clean automated review/security pass claimed.
