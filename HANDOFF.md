@@ -3972,3 +3972,54 @@ is unchanged. Remaining: inspect the published primitive, obtain available
 automated validation, and separately wire the exact-head future workflow with
 credentials supplied only at its final approved operation step. PR805 remains a
 draft based on main; PR811 and production approvals are untouched.
+
+## 2026-09-11 — Refresh workflow wiring blocked by existing integrity contract
+
+Verified local/public feature HEAD `2e3980724d82663770b2380e71e6f5be24fc765f`
+and live main `672e4202792da122281639e3db810029432573f5`. PR805 is open,
+draft, unmerged and main-facing. No workflow or implementation source was changed.
+
+The mandatory root refresh-test step in `ci` conflicts with two existing
+byte-for-byte workflow assertions:
+- `packages/db/scripts/__tests__/prepare-swim-review.test.ts:698-703` pins
+  existing jobs to `f12b596a4038dae77b798b60c8b2f2ebd2486110bde61bf6b952d49e7aca6bc9`.
+- `packages/db/scripts/__tests__/configure-swim-review.test.ts:838-842` pins
+  prior jobs to `c7199fb2c2a1ea40d72d5a0dc5d5aca2400d173f7f4f4158c45453be78408b79`.
+
+An in-memory insertion of the required root command before Typecheck changed
+both digests; the original file was not written. The existing assertions pass:
+`pnpm --filter @hta/db exec vitest run scripts/__tests__/prepare-swim-review.test.ts scripts/__tests__/configure-swim-review.test.ts -t 'preserves every'`
+reported **2 passed, 418 skipped**. This is diagnostic evidence only, not the
+requested full validation. Both test paths are absent from `REFRESH_PATHS`;
+editing them would also require changing the accepted refresh-only allowlist.
+No pin, allowlist, hook or historical assertion was weakened or bypassed.
+
+**Owner decision required:** authorize the two tightly coupled integrity-test
+updates (retaining the historical digest over unchanged job bytes and separately
+asserting the new CI step), plus their exact paths in the refresh-only source
+guard. The old operation guards/receipts/ten-path allowlist must stay unchanged.
+Without that authorization, no coherent workflow change can pass both the
+required publication hook and the accepted refresh source guard.
+
+Future coordinator dispatch remains **unavailable**: `refresh_swim_review` and
+the `refresh-swim-review` job are not wired. The root suite and actual-event
+guard are not yet included in `ci`; no dispatch is appropriate at this head.
+The full root/four-package/web suites and typechecks were not rerun because no
+implementation changed. Existing app acceptance remains source-specific,
+consumed evidence; the 26 cases were not rerun.
+
+The initial progress push hit the full-history identity refusal; full history
+was fetched without rewriting it. GitHub reported no failed-job logs for the
+previous cancelled worker run34610017443. PR comment/review APIs returned no
+threads to reply to, and the browser comment route failed with transport closed.
+The public handoff/progress update therefore carries this blocker.
+
+The explicit native-cloud-bot author/committer commit attempt failed at the
+configured signing service (`Bad Request`), before creating a commit; signing
+was not disabled. Offline doc drift, whitespace checks and the changed-file
+secret scan passed. Required automated validation reported the reviewer binary
+unavailable and skipped CodeQL for documentation-only changes; neither is a
+completed review/security pass.
+
+**NO provider operation performed.** No credentials, provider APIs, account/data
+access, database work, deployment, alias/protection changes or workflow dispatch.

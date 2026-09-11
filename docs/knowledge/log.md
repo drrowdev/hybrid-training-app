@@ -3140,3 +3140,15 @@ passed. Automated reviewer unavailable; CodeQL analysis failed/skipped, not a
 security pass. HANDOFF records exact commands and limitations. No workflow,
 app/E2E/migration/reference changes, credentials/provider/account operations or
 26-case rerun. Later workflow wiring and owner usability remain pending.
+
+## [2026-09-11] blocker | Refresh wiring conflicts with frozen CI job digests
+
+At verified feature `2e398072` / main `672e4202`, the required root refresh-test
+step changes two historical CI-job digests in the prepare/configure review
+suites. Both existing assertions pass (2 passed, 418 skipped); an in-memory
+step insertion demonstrates the conflict without changing workflow source.
+Those test paths are also outside the accepted refresh-only source allowlist.
+HANDOFF records the exact boundaries and requests authorization for narrowly
+scoped integrity-test/source-path updates before wiring can proceed. No guards
+weakened, source implementation changed, full-suite acceptance claimed, provider
+operation performed or workflow dispatched.
