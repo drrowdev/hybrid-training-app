@@ -77,7 +77,7 @@ describe("pure swim review configuration plan", () => {
       NEXT_PUBLIC_SUPABASE_ANON_KEY: credentials.publishableKey,
       SUPABASE_SERVICE_ROLE_KEY: credentials.secretKey, DATABASE_URL: credentials.databaseUrl,
       CRON_SECRET: credentials.testCronSecret, NEXT_PUBLIC_SITE_URL: REVIEW.origin,
-      POOL_SWIMMING_ENABLED: "true", ENABLE_E2E_FIXTURES: "false", NEXT_PUBLIC_BUILD_SHA: sha,
+      POOL_SWIMMING_ENABLED: "false", ENABLE_E2E_FIXTURES: "false", NEXT_PUBLIC_BUILD_SHA: sha,
     });
     expect(plan.environment.overrides.filter((e) => e.value === "").map((e) => e.key).sort())
       .toEqual(["ADMIN_EMAILS", "AI_KEY_ENCRYPTION_KEY", "MCP_TOKEN_SIGNING_KEY",

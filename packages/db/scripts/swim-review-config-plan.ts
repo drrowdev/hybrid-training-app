@@ -191,7 +191,7 @@ export function buildConfigurationPlan(input: ConfigurationInput): PlanResult {
       NEXT_PUBLIC_SUPABASE_URL: REVIEW.supabaseUrl,
       NEXT_PUBLIC_SUPABASE_ANON_KEY: credentials.publishableKey,
       SUPABASE_SERVICE_ROLE_KEY: credentials.secretKey, DATABASE_URL: databaseUrl,
-      POOL_SWIMMING_ENABLED: "true", ENABLE_E2E_FIXTURES: "false",
+      POOL_SWIMMING_ENABLED: "false", ENABLE_E2E_FIXTURES: "false",
       NEXT_PUBLIC_BUILD_SHA: context.expectedSha,
     };
     return { ok: true, plan: {

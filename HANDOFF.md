@@ -3146,3 +3146,26 @@ PR state verified. Required automated validation attempted: reviewer unavailable
 for database size. No successful automated review/security result is claimed.
 The 396 focused tests, targeted TypeScript and changed-file secret scan passed;
 hosted execution and coordinator source inspection remain outstanding.
+
+### 2026-09-11 — PR805 preactivation safety follow-up (offline only)
+
+Verified START `1e13a2b2d59a68ac745f6745159c92c798f97eb7`, main
+`672e4202792da122281639e3db810029432573f5`; preserved the existing runtime.
+All 18 configuration overrides remain; only swimming's default changes to
+`false`. Swimming activation requires a later explicitly approved deployment.
+Uncertain creation, failed cleanup or protected-baseline reconciliation retain
+isolated Auth and report manual/partial. Attributable cleanup rechecks project
+and shared metadata before restoring the three prior Auth fields. Nested
+Vercel `failed[].error.key` attribution and fixed metadata/pure-plan refusal
+codes are covered without exposing raw errors or values.
+
+One OFFLINE Vitest invocation: **85 runtime + 122 plan + 217 bootstrap =
+424/424 passed**. Targeted TypeScript and `git diff --check` passed. Installed
+Supabase-client tests use an injected offline fetch: one exact RPC POST, modern
+test apikey, true-only acceptance, no extra requests/Auth refresh/browser storage.
+No hosted configuration, target HTTP/DB, bootstrap, deployment or activation
+performed. Initialized test DB/frozen26/application82337 remain untouched.
+Only four focused source/test files and this handoff changed; the eight-path
+source guard and workflow remain unchanged. PR remains draft/unmerged;
+configuration-only validation is not hosted proof. Required automated
+review/security validation remains pending at this checkpoint.

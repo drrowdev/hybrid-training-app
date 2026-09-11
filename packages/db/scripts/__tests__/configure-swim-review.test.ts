@@ -3,11 +3,30 @@ import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
-  boundedTransport, configure, configurationContext, environmentList, ROUTES,
+  boundedTransport, configure, configurationContext, environmentList, ROUTES, storageAdapter,
 } from "../configure-swim-review";
-import { INHERITED_KEYS, REVIEW, type EnvironmentMetadata } from "../swim-review-config-plan";
+import { INHERITED_KEYS, PlanFailure, REVIEW, type EnvironmentMetadata } from "../swim-review-config-plan";
 
 const canary = "offline_canary_never_emit_sensitive_content_42";
+// https://vercel.com/docs/rest-api/projects/create-one-or-more-environment-variables
+const officialPartialFailure = [
+  { error: { key: "STRAVA_WEBHOOK_SUBSCRIPTION_ID", code: "ENV_CONFLICT", message: canary, value: canary } },
+  { error: { key: "STRAVA_CLIENT_SECRET" } },
+  { error: { key: "STRAVA_CLIENT_ID" } },
+  { error: { key: "STRAVA_WEBHOOK_CALLBACK_URL" } },
+  { error: { key: "STRAVA_WEBHOOK_VERIFY_TOKEN" } },
+  { error: { key: "MCP_TOKEN_SIGNING_KEY" } },
+  { error: { key: "AI_KEY_ENCRYPTION_KEY" } },
+  { error: { key: "CRON_SECRET" } },
+  { error: { key: "NEXT_PUBLIC_SITE_URL" } },
+  { error: { key: "NEXT_PUBLIC_SUPABASE_URL" } },
+  { error: { key: "NEXT_PUBLIC_SUPABASE_ANON_KEY" } },
+  { error: { key: "SUPABASE_SERVICE_ROLE_KEY" } },
+  { error: { key: "DATABASE_URL" } },
+  { error: { key: "POOL_SWIMMING_ENABLED" } },
+  { error: { key: "ENABLE_E2E_FIXTURES" } },
+  { error: { key: "NEXT_PUBLIC_BUILD_SHA" } },
+];
 const env = {
   GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "workflow_dispatch",
   GITHUB_REPOSITORY: REVIEW.repository, GITHUB_REF_TYPE: "branch",
@@ -67,7 +86,7 @@ function fixture() {
       state.project.push(...created);
       if (state.uncertain) throw new Error(canary);
       return { created: created.map((e) => ({ ...e, value: canary })),
-        failed: state.partial ? overrides.slice(2).map((e) => ({ key: e.key, error: { message: canary } })) : [] };
+        failed: state.partial ? structuredClone(officialPartialFailure) : [] };
     }
     if (method === "DELETE") {
       const id = url.split("/env/")[1]!.split("?")[0]!;
@@ -85,6 +104,13 @@ async function run(f = fixture(), values: NodeJS.ProcessEnv = env) {
   expect(JSON.stringify(output)).not.toContain(canary);
   expect(output.deploymentAttempted).toBe(false);
   expect(output.aliasCreated).toBe(false);
+  for (const [url, , body] of f.deps.request.mock.calls) {
+    if (url === ROUTES.create) {
+      expect(body).toEqual(expect.arrayContaining([{ key: "POOL_SWIMMING_ENABLED", value: "false",
+        type: "encrypted", target: ["preview"], gitBranch: REVIEW.branch }]));
+      expect((body as { value: string }[]).some((row) => row.value === "true")).toBe(false);
+    }
+  }
   return output;
 }
 describe("configuration-only runtime", () => {
@@ -133,22 +159,60 @@ describe("configuration-only runtime", () => {
     f.deps.storage.mockResolvedValue(false);
     expect((await run(f)).stages.at(-1)?.stage).toBe("storage");
   });
-  it("rolls back complete partial creation using only returned IDs", async () => {
+  it("rolls back the literal official nested partial failure using only returned IDs and three prior Auth fields", async () => {
     const f = fixture();
     f.state.partial = true;
     const output = await run(f);
     expect(output.rollback).toEqual({ environment: "restored", auth: "restored" });
     expect(f.state.auth).toEqual(f.prior);
-    expect(f.deps.request.mock.calls.filter(([, method]) => method === "DELETE")).toHaveLength(2);
+    expect(output.stages.at(-1)).toEqual({ stage: "env_write", code: "predicate_refused", status: "failed" });
+    expect(output.protectedUnchanged).toEqual({ project: true, shared: true });
+    expect(output.partial).toBe(false);
+    const calls = f.deps.request.mock.calls;
+    expect(calls.filter(([, method]) => method === "DELETE").map(([url]) => url.split("/env/")[1]!.split("?")[0]))
+      .toEqual(["new_STRAVA_REDIRECT_URI", "new_ADMIN_EMAILS"]);
+    expect(calls.filter(([, method]) => method === "PATCH").at(-1)?.[2]).toEqual(f.prior);
+    const lastDelete = calls.map(([, method]) => method).lastIndexOf("DELETE");
+    const restore = calls.map(([, method]) => method).lastIndexOf("PATCH");
+    expect(calls.slice(lastDelete + 1, restore).map(([url]) => url))
+      .toEqual(expect.arrayContaining([ROUTES.project_env, ROUTES.shared_env]));
   });
   it("preserves uncertain creation without blind deletion", async () => {
     const f = fixture();
     f.state.uncertain = true;
     const output = await run(f);
     expect(output.partial).toBe(true);
-    expect(output.rollback.environment).toBe("manual");
+    expect(output.rollback).toEqual({ environment: "manual", auth: "manual" });
+    expect(output.stages.at(-1)).toMatchObject({ stage: "env_write", code: "write_uncertain" });
+    expect(f.state.auth).toEqual({ site_url: REVIEW.origin,
+      uri_allow_list: `${REVIEW.origin}/auth/callback`, disable_signup: true });
+    expect(f.deps.request.mock.calls.filter(([, method]) => method === "PATCH")).toHaveLength(1);
     expect(f.deps.request.mock.calls.some(([, method]) => method === "DELETE")).toBe(false);
   });
+  it.each(["flat", "unknown", "duplicate", "created_key", "incomplete", "missing_error"])(
+    "leaves malformed failed[] attribution %s isolated and manual", async (fault) => {
+      const f = fixture();
+      f.state.partial = true;
+      const original = f.deps.request.getMockImplementation()!;
+      f.deps.request.mockImplementation(async (...args) => {
+        const response = await original(...args);
+        if (args[0] !== ROUTES.create) return response;
+        const envelope = response as { failed: unknown[] };
+        if (fault === "flat") envelope.failed[0] = { key: "STRAVA_WEBHOOK_SUBSCRIPTION_ID", error: { message: canary } };
+        if (fault === "unknown") envelope.failed[0] = { error: { key: canary, message: canary } };
+        if (fault === "duplicate") envelope.failed[1] = envelope.failed[0];
+        if (fault === "created_key") envelope.failed[0] = { error: { key: "ADMIN_EMAILS" } };
+        if (fault === "incomplete") envelope.failed.pop();
+        if (fault === "missing_error") envelope.failed[0] = { error: null };
+        return envelope;
+      });
+      const output = await run(f);
+      expect(output.rollback).toEqual({ environment: "manual", auth: "manual" });
+      expect(output.partial).toBe(true);
+      expect(f.state.auth.disable_signup).toBe(true);
+      expect(f.deps.request.mock.calls.filter(([, method]) => method === "PATCH")).toHaveLength(1);
+      expect(f.deps.request.mock.calls.some(([, method]) => method === "DELETE")).toBe(false);
+    });
   it.each(["missing", "wrong_target", "duplicate", "old_id"])(
     "preserves overrides when created-ID evidence is %s", async (fault) => {
       const f = fixture();
@@ -190,9 +254,68 @@ describe("configuration-only runtime", () => {
       return original(...args);
     });
     const output = await run(f);
-    expect(output.stages.at(-1)).toMatchObject({ stage: "env_write", status: "failed" });
-    expect(output.rollback.environment).toBe("manual");
+    expect(output.stages.at(-1)).toEqual({ stage: "env_write", code: "predicate_refused", status: "failed" });
+    expect(output.rollback).toEqual({ environment: "manual", auth: "manual" });
+    expect(output.partial).toBe(true);
+    expect(f.state.auth.disable_signup).toBe(true);
+    expect(f.deps.request.mock.calls.filter(([, method]) => method === "PATCH")).toHaveLength(1);
   });
+  it.each(["project", "shared", "ownership", "project_read", "shared_read"])(
+    "does not reopen Auth when post-cleanup protected reconciliation fails: %s", async (fault) => {
+      const f = fixture();
+      f.state.partial = true;
+      const original = f.deps.request.getMockImplementation()!;
+      let cleaned = false;
+      f.deps.request.mockImplementation(async (...args) => {
+        if (cleaned && ((fault === "project_read" && args[0] === ROUTES.project_env) ||
+          (fault === "shared_read" && args[0] === ROUTES.shared_env))) throw new Error(canary);
+        const response = await original(...args);
+        if (args[1] === "DELETE" && !f.state.project.some((e) => e.gitBranch === REVIEW.branch)) {
+          cleaned = true;
+          if (fault === "project") f.state.project[0]!.updatedAt++;
+          if (fault === "shared") f.state.shared[0]!.updatedAt++;
+          if (fault === "ownership") f.state.project.push(entry("DATABASE_URL",
+            { id: "concurrent_owner", gitBranch: REVIEW.branch }));
+        }
+        return response;
+      });
+      const output = await run(f);
+      expect(cleaned).toBe(true);
+      expect(output.stages.at(-1)).toEqual({ stage: "env_write", code: "predicate_refused", status: "failed" });
+      expect(output.rollback).toEqual({ environment: "manual", auth: "manual" });
+      expect(output.partial).toBe(true);
+      expect(f.state.auth.disable_signup).toBe(true);
+      expect(f.deps.request.mock.calls.filter(([, method]) => method === "PATCH")).toHaveLength(1);
+      expect(f.deps.request.mock.calls.filter(([, method]) => method === "DELETE")).toHaveLength(2);
+    });
+  it("does not restore Auth after a concurrent created-entry edit alone", async () => {
+    const f = fixture();
+    Object.assign(f.state, { failReadback: true, concurrentEnv: true });
+    expect((await run(f)).rollback).toEqual({ environment: "manual", auth: "manual" });
+    expect(f.state.auth.disable_signup).toBe(true);
+    expect(f.deps.request.mock.calls.filter(([, method]) => method === "PATCH")).toHaveLength(1);
+  });
+  it.each([PlanFailure.Project, PlanFailure.Supabase, PlanFailure.Incomplete,
+    PlanFailure.ExistingOverride, PlanFailure.UnknownPreviewKey, PlanFailure.Auth])(
+    "preserves the safe pure-plan enum %s without raw diagnostics", async (code) => {
+      const f = fixture();
+      const original = f.deps.request.getMockImplementation()!;
+      if (code === PlanFailure.Incomplete) f.state.project.shift();
+      if (code === PlanFailure.ExistingOverride) f.state.project.push(entry("DATABASE_URL",
+        { id: "existing_override", gitBranch: REVIEW.branch }));
+      if (code === PlanFailure.UnknownPreviewKey) f.state.project.push(entry("UNREVIEWED"));
+      if (code === PlanFailure.Auth) f.state.auth.site_url = canary;
+      f.deps.request.mockImplementation(async (...args) => {
+        const response = await original(...args);
+        if ((code === PlanFailure.Project && args[0] === ROUTES.project) ||
+          (code === PlanFailure.Supabase && args[0] === ROUTES.supabase)) {
+          return { ...(response as object), name: canary };
+        }
+        return response;
+      });
+      expect((await run(f)).stages.at(-1)).toEqual({ stage: "plan", code, status: "failed" });
+      expect(f.deps.request.mock.calls.some(([, method]) => method === "PATCH" || method === "POST")).toBe(false);
+    });
   it.each([{ email: false }, { email: true, google: true }, { email: true, unknown: canary }])(
     "refuses enabled or unknown external-provider state %#", async (external) => {
       const f = fixture();
@@ -222,6 +345,20 @@ describe("configuration-only runtime", () => {
   });
 });
 describe("bounded fixed-route transport and metadata", () => {
+  it.each([
+    [{ envs: [], error: canary }, "metadata_envelope_invalid"],
+    [{ envs: [], pagination: { count: 0, next: canary } }, "metadata_pagination_invalid"],
+    [{ envs: [null] }, "metadata_entry_invalid"],
+    [{ envs: [{ ...entry("DATABASE_URL"), updatedAt: canary }] }, "metadata_entry_invalid"],
+    [{ envs: [entry("DATABASE_URL"), entry("DATABASE_URL")] }, PlanFailure.Duplicate],
+  ])("reports a bounded metadata category %# at its original stage", async (response, code) => {
+    const f = fixture();
+    const original = f.deps.request.getMockImplementation()!;
+    f.deps.request.mockImplementation(async (...args) =>
+      args[0] === ROUTES.project_env ? response : original(...args));
+    expect((await run(f)).stages.at(-1)).toEqual({ stage: "project_env", code, status: "failed" });
+    expect(f.deps.request.mock.calls.some(([, method]) => method === "PATCH" || method === "POST")).toBe(false);
+  });
   it.each([{}, [], { data: [] }, { data: [], pagination: {} },
     { data: [], pagination: { count: 0, next: "cursor" } },
     { data: [], pagination: { count: 0, next: null, more: true } }])(
@@ -274,6 +411,46 @@ describe("bounded fixed-route transport and metadata", () => {
   });
   it("requires the actual configuration job", () => {
     expect(() => configurationContext({ ...env, GITHUB_JOB: "prepare-swim-review" })).toThrow();
+  });
+});
+describe("installed Supabase storage adapter, offline", () => {
+  it.each([
+    { body: true, status: 200, accepted: true },
+    { body: false, status: 200, accepted: false },
+    { body: { error: canary, message: canary }, status: 200, accepted: false },
+    { body: { error: canary, message: canary }, status: 500, accepted: false },
+    { body: canary, status: 200, accepted: false },
+  ])("uses one bounded POST with the installed client and refuses non-true/error outcomes %#", async ({ body, status, accepted }) => {
+    const unexpectedFetch = vi.fn(() => { throw new Error(canary); });
+    const storage = { getItem: vi.fn(), setItem: vi.fn(), removeItem: vi.fn() };
+    vi.stubGlobal("fetch", unexpectedFetch);
+    vi.stubGlobal("localStorage", storage);
+    vi.useFakeTimers();
+    try {
+      const fetcher = vi.fn(async () => new Response(
+        typeof body === "string" ? body : JSON.stringify(body),
+        { status, headers: { "Content-Type": "application/json" } }));
+      const credentials = { ...env, VERCEL_REVIEW_TOKEN: `vercel_${canary}`,
+        SUPABASE_REVIEW_MANAGEMENT_TOKEN: `pat_${canary}` };
+      const request = boundedTransport(credentials, Date.now() + 300_000, fetcher);
+      expect(await storageAdapter(credentials, request)()).toBe(accepted);
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(fetcher).toHaveBeenCalledWith(ROUTES.storage, {
+        method: "POST", body: "{}", redirect: "error", signal: expect.any(AbortSignal),
+        headers: { "Content-Type": "application/json", apikey: env.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY },
+      });
+      const sent = JSON.stringify(fetcher.mock.calls);
+      expect(sent).not.toContain(credentials.VERCEL_REVIEW_TOKEN);
+      expect(sent).not.toContain(credentials.SUPABASE_REVIEW_MANAGEMENT_TOKEN);
+      expect(sent).not.toContain(env.SWIM_REVIEW_SUPABASE_ANON_KEY);
+      expect(unexpectedFetch).not.toHaveBeenCalled();
+      for (const operation of Object.values(storage)) expect(operation).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 });
 describe("configuration workflow boundaries", () => {

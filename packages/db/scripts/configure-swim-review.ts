@@ -7,7 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { APPLICATION_SHA, validateDatabaseUrl } from "./prepare-swim-review";
 import {
-  buildConfigurationPlan, metadataSchema, OVERRIDE_KEYS, REVIEW,
+  buildConfigurationPlan, metadataSchema, OVERRIDE_KEYS, PlanFailure, REVIEW,
   type ConfigurationPlan, type EnvironmentMetadata, type ManualContext,
 } from "./swim-review-config-plan";
 
@@ -28,16 +28,17 @@ type Stage = "source" | "credentials" | "project" | "project_env" | "shared_env"
   "supabase" | "auth" | "settings" | "storage" | "alias" | "plan" | "live_head" |
   "auth_write" | "auth_verify" | "env_write" | "env_verify" | "protected_verify" |
   "completion" | "rollback";
-type Code = "passed" | "predicate_refused" | "http_status" | "transport_failed" |
-  "response_invalid" | "write_uncertain";
+type Code = PlanFailure | "passed" | "predicate_refused" | "http_status" | "transport_failed" |
+  "response_invalid" | "write_uncertain" | "metadata_envelope_invalid" |
+  "metadata_pagination_invalid" | "metadata_entry_invalid";
 class Refusal extends Error {
   constructor(readonly code: Code) { super(code); }
 }
-function requireThat(value: unknown): asserts value {
-  if (!value) throw new Refusal("predicate_refused");
+function requireThat(value: unknown, code: Code = "predicate_refused"): asserts value {
+  if (!value) throw new Refusal(code);
 }
-function object(value: unknown): Record<string, unknown> {
-  requireThat(value !== null && typeof value === "object" && !Array.isArray(value));
+function object(value: unknown, code: Code = "predicate_refused"): Record<string, unknown> {
+  requireThat(value !== null && typeof value === "object" && !Array.isArray(value), code);
   return value as Record<string, unknown>;
 }
 function select(value: unknown, keys: readonly string[]) {
@@ -48,12 +49,12 @@ const authKeys = ["site_url", "uri_allow_list", "disable_signup"] as const;
 function authFields(value: unknown) { return select(value, authKeys); }
 function same(a: unknown, b: unknown) { return JSON.stringify(a) === JSON.stringify(b); }
 function metadata(value: unknown): EnvironmentMetadata {
-  const item = object(value);
+  const item = object(value, "metadata_entry_invalid");
   const result = metadataSchema.safeParse({
     ...select(item, ["key", "type", "target", "id", "createdAt", "updatedAt"]),
     gitBranch: item.gitBranch === undefined ? null : item.gitBranch,
   });
-  requireThat(result.success);
+  requireThat(result.success, "metadata_entry_invalid");
   return result.data;
 }
 function terminalPagination(value: unknown) {
@@ -61,17 +62,17 @@ function terminalPagination(value: unknown) {
     count: z.number().int().min(0).max(1000),
     next: z.null(), prev: z.union([z.number(), z.string(), z.null()]).optional(),
   }).strict().safeParse(value);
-  requireThat(result.success);
+  requireThat(result.success, "metadata_pagination_invalid");
 }
 export function environmentList(value: unknown, shared: boolean): EnvironmentMetadata[] {
-  const envelope = object(value);
+  const envelope = object(value, "metadata_envelope_invalid");
   const allowed = shared ? ["data", "pagination"] : ["envs", "pagination"];
-  requireThat(Object.keys(envelope).every((key) => allowed.includes(key)));
+  requireThat(Object.keys(envelope).every((key) => allowed.includes(key)), "metadata_envelope_invalid");
   if (shared || "pagination" in envelope) terminalPagination(envelope.pagination);
   const entries = envelope[shared ? "data" : "envs"];
-  requireThat(Array.isArray(entries) && entries.length <= 1000);
+  requireThat(Array.isArray(entries) && entries.length <= 1000, "metadata_envelope_invalid");
   const projected = entries.map(metadata);
-  requireThat(new Set(projected.map((entry) => entry.id)).size === projected.length);
+  requireThat(new Set(projected.map((entry) => entry.id)).size === projected.length, PlanFailure.Duplicate);
   return projected;
 }
 export function configurationContext(env: NodeJS.ProcessEnv): ManualContext {
@@ -138,6 +139,20 @@ function deleteRoute(id: string) {
   return `https://api.vercel.com/v9/projects/${REVIEW.projectId}/env/${id}?teamId=${REVIEW.teamId}`;
 }
 type Request = (url: string, method?: string, body?: unknown) => Promise<unknown>;
+export function storageAdapter(env: NodeJS.ProcessEnv, request: Request): () => Promise<boolean> {
+  return async () => {
+    const client = createClient(REVIEW.supabaseUrl, env.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY!, {
+      auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+      global: { fetch: async (input, init) => {
+        requireThat(String(input) === ROUTES.storage && init?.method === "POST" && init.body === "{}");
+        const value = await request(ROUTES.storage, "POST", {});
+        return new Response(JSON.stringify(value), { status: 200, headers: { "Content-Type": "application/json" } });
+      } },
+    });
+    const { data, error } = await client.rpc("swim_storage_ready");
+    return error === null && data === true;
+  };
+}
 export function boundedTransport(env: NodeJS.ProcessEnv, deadline: number,
   fetcher: typeof fetch = fetch): Request {
   return async (url, method = "GET", body) => {
@@ -288,7 +303,7 @@ export async function configure(env: NodeJS.ProcessEnv, deps: Dependencies): Pro
       const built = buildConfigurationPlan({ context, project, supabase, priorAuth, credentials,
         projectEnvironment: { entries: projectEntries, complete: true, pagination: null },
         sharedEnvironment: { entries: sharedEntries, complete: true, pagination: null } });
-      requireThat(built.ok);
+      if (!built.ok) throw new Refusal(built.code);
       requireThat(built.plan.environment.overrides.length === 18);
       requireThat(new Set([...projectEntries, ...sharedEntries].map((e) => e.id)).size ===
         projectEntries.length + sharedEntries.length);
@@ -332,7 +347,7 @@ export async function configure(env: NodeJS.ProcessEnv, deps: Dependencies): Pro
         result.createdEnv.push({ id: entry.id, key: entry.key });
       }
       for (const raw of envelope.failed) {
-        const key = object(raw).key;
+        const key = object(object(raw).error).key;
         requireThat(typeof key === "string" && (OVERRIDE_KEYS as readonly string[]).includes(key) && !keys.has(key));
         keys.add(key);
       }
@@ -357,12 +372,14 @@ export async function configure(env: NodeJS.ProcessEnv, deps: Dependencies): Pro
     result.status = "configuration_pass";
   } catch (error) {
     result.auth.patchMatches = false;
+    result.protectedUnchanged = { project: false, shared: false };
     result.stages.push({ stage, status: "failed",
       code: (authAttempted && !authCertain) || (envAttempted && !envCertain) ?
         "write_uncertain" : error instanceof Refusal ? error.code : "predicate_refused" });
     if (envAttempted) result.rollback.environment = "manual";
     if (authAttempted) result.rollback.auth = "manual";
     // Only complete, attributable responses permit cleanup; unknown writes remain isolated.
+    let protectedReconciled = false;
     try {
       if (envAttempted || authAttempted) deps.liveHead();
       if (envAttempted && envCertain) {
@@ -373,13 +390,23 @@ export async function configure(env: NodeJS.ProcessEnv, deps: Dependencies): Pro
         }
         const remaining = await readProject();
         requireThat(!remaining.some((e) => created.some((c) => c.id === e.id)));
-        result.rollback.environment = "restored";
+      }
+      if (authAttempted && plan && (!envAttempted || envCertain)) {
+        result.protectedUnchanged.project = same(
+          baseline(await readProject()), baseline(plan.environment.preserved.project));
+        result.protectedUnchanged.shared = same(
+          baseline(await readShared()), baseline(plan.environment.preserved.shared));
+        requireThat(result.protectedUnchanged.project && result.protectedUnchanged.shared);
+        protectedReconciled = true;
+        if (envAttempted) result.rollback.environment = "restored";
       }
     } catch { /* Preserve the original failure and leave uncertain resources untouched. */ }
     try {
-      if (authAttempted && authCertain && plan) {
+      if (authAttempted && authCertain && plan && protectedReconciled &&
+        result.rollback.environment !== "manual") {
         deps.liveHead();
-        requireThat(same(authFields(await deps.request(ROUTES.auth)), plan.auth.patch));
+        result.auth.patchMatches = same(authFields(await deps.request(ROUTES.auth)), plan.auth.patch);
+        requireThat(result.auth.patchMatches);
         await deps.request(ROUTES.auth, "PATCH", plan.auth.previous);
         requireThat(same(authFields(await deps.request(ROUTES.auth)), plan.auth.previous));
         result.rollback.auth = "restored";
@@ -410,18 +437,7 @@ async function main() {
         liveHead(env);
       },
       request, cron: () => randomBytes(48).toString("base64url"),
-      storage: async () => {
-        const client = createClient(REVIEW.supabaseUrl, env.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY!, {
-          auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-          global: { fetch: async (input, init) => {
-            requireThat(String(input) === ROUTES.storage && init?.method === "POST" && init.body === "{}");
-            const value = await request(ROUTES.storage, "POST", {});
-            return new Response(JSON.stringify(value), { status: 200, headers: { "Content-Type": "application/json" } });
-          } },
-        });
-        const { data, error } = await client.rpc("swim_storage_ready");
-        return error === null && data === true;
-      },
+      storage: storageAdapter(env, request),
     });
   } catch {
     result = summary(env);
