@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MAX_POOL_LENGTHS, MAX_SESSION_BUDGET_MINUTES } from "@hta/domain";
+import { MAX_POOL_LENGTHS, MAX_SESSION_BUDGET_MINUTES, SWIM_WEEKDAYS, swimScheduleAdvice, type SwimStrengthContext } from "@hta/domain";
 import { createSwimPlan } from "@/lib/swim/actions";
 import styles from "./Swim.module.css";
 
@@ -33,13 +33,19 @@ export function StrokeSelect({ name, defaultValue = "freestyle" }: { name: strin
   </select>;
 }
 
-export function SetupForm({ today }: { today: string }) {
+export function SetupForm({ today, strengthContext: initialContext = { blockId: null, sessions: [] } }: { today: string; strengthContext?: SwimStrengthContext }) {
   const router = useRouter();
   const [pool, setPool] = useState("25m");
   const [error, setError] = useState<string | null>(null);
   const [options, setOptions] = useState<string[]>([]);
   const [guidance, setGuidance] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [strengthContext, setStrengthContext] = useState(initialContext);
+  const [startDate, setStartDate] = useState(today);
+  const [weeks, setWeeks] = useState(6);
+  const [days, setDays] = useState(() => swimScheduleAdvice(initialContext, today, 6).defaults);
+  const [confirmedContext, setConfirmedContext] = useState<string | null>(null);
+  const advice = swimScheduleAdvice(strengthContext, startDate, weeks, days);
 
   function submit(form: FormData) {
     setError(null);
@@ -49,6 +55,10 @@ export function SetupForm({ today }: { today: string }) {
       try {
         const result = await createSwimPlan(form);
         if (result.error) {
+          if (result.strengthContext) {
+            setStrengthContext(result.strengthContext);
+            setConfirmedContext(null);
+          }
           setError(result.error);
           setOptions(result.options ?? []);
         }
@@ -111,15 +121,23 @@ export function SetupForm({ today }: { today: string }) {
       <section className={styles.section}>
         <h2>Schedule</h2>
         <fieldset className={styles.choices}><legend>Swim days</legend>
-          {[[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [0, "Sun"]].map(([value, label]) => (
-            <label key={value} className={styles.choice}><input type="checkbox" name="weekdays" value={value} defaultChecked={value === 1 || value === 4} />{label}</label>
+          {SWIM_WEEKDAYS.map(({ value, label }) => (
+            <label key={value} className={styles.choice}><input type="checkbox" name="weekdays" value={value} checked={days.includes(value)}
+              onChange={(event) => { setDays(event.target.checked ? [...days, value] : days.filter((day) => day !== value)); setConfirmedContext(null); }} />{label.slice(0, 3)}</label>
           ))}
         </fieldset>
+        {advice.occupied.length > 0 && <p>Strength days: {advice.occupied.map((day) => day.label).join(", ")}</p>}
+        {advice.insufficientFreeDays && <p role="status">Fewer than two weekdays are free of strength training. Choose your swim days.</p>}
+        {advice.conflicts.length > 0 && <label className={styles.choice}>
+          <input type="checkbox" name="strengthOverlap" value={advice.confirmationKey}
+            checked={confirmedContext === advice.confirmationKey} onChange={(event) => setConfirmedContext(event.target.checked ? advice.confirmationKey : null)} />
+          Swim on strength days: {advice.conflicts.map((day) => day.label).join(", ")}
+        </label>}
         <div className={styles.columns}>
           <label className={styles.field}>Minutes per swim<input name="timeBudgetMinutes" type="number" min="10" max={MAX_SESSION_BUDGET_MINUTES} step="1" required defaultValue="30" /></label>
-          <label className={styles.field}>Weeks<input name="weeks" type="number" min="2" max="16" step="1" required defaultValue="6" /></label>
+          <label className={styles.field}>Weeks<input name="weeks" type="number" min="2" max="16" step="1" required value={weeks} onChange={(event) => { setWeeks(Number(event.target.value)); setConfirmedContext(null); }} /></label>
         </div>
-        <label className={styles.field}>Start date<input name="startDate" type="date" min={today} required defaultValue={today} /></label>
+        <label className={styles.field}>Start date<input name="startDate" type="date" min={today} required value={startDate} onChange={(event) => { setStartDate(event.target.value); setConfirmedContext(null); }} /></label>
       </section>
       <section className={styles.section}>
         <h2>Optional targets</h2>

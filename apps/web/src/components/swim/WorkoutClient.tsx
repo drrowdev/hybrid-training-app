@@ -265,6 +265,7 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
             return <li key={step.id} className={styles.step} data-done={progress.completed === progress.total}>
               <div className={styles.stepTitle}><span>{step.section}</span><span>{step.title}</span></div>
               <p className={styles.muted}>{step.detail}</p>
+              {step.guidance && <p>{step.guidance}</p>}
               <p className={styles.muted}>{step.effort} · {step.rest}{step.pace ? ` · ${step.pace}` : ""}</p>
               {workout.sessionId && !completed && !workout.deleted && !workout.sourceGone && (
                 step.repeatIds.length === 1 ? <label className={styles.choice}>

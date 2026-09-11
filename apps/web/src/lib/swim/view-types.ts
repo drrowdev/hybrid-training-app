@@ -17,7 +17,7 @@ export type SwimWorkoutView = {
   strokes: string[];
   equipment: string[];
   pool: { numerator: number; denominator: number; unit: "m" | "yd" };
-  steps: { id: string; repeatIds: string[]; section: string; title: string; detail: string; rest: string; effort: string; pace?: string }[];
+  steps: { id: string; repeatIds: string[]; section: string; title: string; detail: string; rest: string; effort: string; pace?: string; guidance?: string }[];
   result: null | {
     lengths: number; timeMs: number; rpe?: number; notes?: string; reason?: string; splits?: string; stroke: string;
     equipment?: string[]; course?: string; strokes?: string[];
@@ -47,7 +47,7 @@ const completionView = z.object({
   stroke: z.string(), strokes: z.array(z.string()), equipment: z.array(z.string()), pool: completionPool,
   steps: z.array(z.object({
     id: z.string(), repeatIds: z.array(z.string()), section: z.string(), title: z.string(), detail: z.string(),
-    rest: z.string(), effort: z.string(), pace: z.string().optional(),
+    rest: z.string(), effort: z.string(), pace: z.string().optional(), guidance: z.string().optional(),
   })),
   result: z.object({
     lengths: z.number().int().positive().safe(), timeMs: z.number().int().positive().safe(),

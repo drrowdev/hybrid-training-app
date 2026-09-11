@@ -1612,3 +1612,22 @@ the accepted25 prefix; sixfiles2/4/7/9/3/1. Private collection passed, not runti
 Coordinator exact-head core then one frozen26 remains required. No product,
 storage/RLS/workflow/deadline changes or new UI; combined and production remain
 owner-gated. HANDOFF carries the exact evidence boundaries.
+
+## 2026-09-11 — Standalone usability repairs (PR805)
+
+Swimming-first onboarding saves the existing completion marker after common
+profile fields, without strength equipment, assessment, training maxes or a block.
+Swimming is a native choice within New plan and remains accessible in Edit plan.
+Defaults consult the active primary plan's materialized strength dates using the
+planner's calendar conversion, including native and fixed/explicit schedules.
+One domain helper selects spaced free weekdays and derives overlaps; unavailable
+reads fail closed. Submit reloads the schedule and requires current-context
+confirmation for overlap, recording the override in existing decision JSON.
+Issued snapshots now supply canonical stroke-specific drill, effort and focus
+guidance without changing prescriptions, saved targets or calibration.
+
+Contracts: [DC-K4, DC-SW2/SW3/SW5/SW7/SW9](./hybrid-training-design-constraints.md).
+The existing first blockless E2E case now traverses actual onboarding and New
+plan; frozen26 is unchanged. Offline unit/type/lint and collection evidence are
+recorded in HANDOFF; no fresh runtime acceptance, account access or deployment
+is claimed. Combined programming remains deferred.

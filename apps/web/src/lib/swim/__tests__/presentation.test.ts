@@ -28,6 +28,19 @@ describe("ADR0079 poolside ordered workout", () => {
   });
   it("does not fabricate pace for an uncalibrated workout", () => {
     expect(workoutPresentation(workout).steps.every((step) => step.pace === undefined)).toBe(true);
+    expect(workoutPresentation(workout).steps.every((step) => !!step.guidance)).toBe(true);
+  });
+  it("DC-SW2/DC-SW5 adds guidance to saved work without changing its calibrated target or snapshot", () => {
+    const saved: SwimWorkout = {
+      ...workout,
+      snapshot: { ...workout.snapshot, calibration: { msPer100: 120000, unit: "yd", protocol: "css_200_400", observedOn: "2026-09-01", heuristic: true, version: "one" } },
+      sections: workout.sections.map((section) => ({ ...section, items: section.items.map((item) => ({ ...item, targetMsPerRepeat: 60000 })) })),
+    };
+    const before = JSON.stringify(saved);
+    const view = workoutPresentation(saved);
+    expect(view.steps[0]?.pace).toBe("Target 1:00");
+    expect(view.steps[0]?.guidance).toBeTruthy();
+    expect(JSON.stringify(saved)).toBe(before);
   });
   it("uses display labels rather than drill identifiers", () => {
     const drill = { ...workout, sections: workout.sections.map((section) => ({

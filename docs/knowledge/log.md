@@ -3116,3 +3116,13 @@ or reread. No services, hosted data, production change or CI dispatch here.
 Coordinator gated exact-SHA CI, owner review and release remain pending.
 App rollback first, then149→148→147→146; base down refuses retained swim history,
 so leave schema/data intact when safe rollback cannot proceed. DC-SW5/SW7/SW8/SW9.
+
+## [2026-09-11] implementation | PR805 standalone swimming usability
+
+Added swimming-first onboarding and an integrated New plan choice; canonical
+strength-calendar-aware defaults with submit-time overlap confirmation/audit;
+and issued-snapshot technique/effort/focus guidance. DC-K4, DC-SW2/SW3/SW5/SW7/SW9.
+The first existing blockless E2E now covers fresh onboarding; frozen26 count is
+unchanged. See `pool-swimming.md` and the appended HANDOFF for offline evidence
+and pending coordinator-only runtime validation. No schema, RLS, deployment,
+account administration or initialized-review access.

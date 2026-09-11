@@ -1,4 +1,4 @@
-import { formatPoolCourse, formatSwimDistance, swimRepeatGroups, type SwimWorkout, type SwimStroke, type SwimEquipment } from "@hta/domain";
+import { formatPoolCourse, formatSwimDistance, swimRepeatGroups, swimItemGuidance, type SwimWorkout, type SwimStroke, type SwimEquipment } from "@hta/domain";
 import type { SwimWorkoutView } from "./view-types";
 import { formatSwimTime } from "./time";
 
@@ -9,14 +9,12 @@ export const SWIM_STROKE_LABEL: Record<SwimStroke, string> = {
 export const SWIM_EQUIPMENT_LABEL: Record<SwimEquipment, string> = {
   kickboard: "Kickboard", pull_buoy: "Pull buoy", fins: "Fins", paddles: "Paddles", snorkel: "Snorkel",
 };
-const SWIM_DRILL_LABEL: Record<string, string> = {
-  single_arm: "Single-arm drill", kick_with_board: "Kick with board",
-};
 
 export function workoutPresentation(workout: SwimWorkout): Pick<SwimWorkoutView, "title" | "course" | "total" | "budgetMinutes" | "stroke" | "strokes" | "steps" | "equipment" | "pool" | "calibrationLabel"> {
   const effort = { easy: "Easy", steady: "Steady", brisk: "Brisk", threshold: "Threshold", sprint: "Sprint" };
   const steps: SwimWorkoutView["steps"] = swimRepeatGroups(workout).map((group) => {
     const item = group.item;
+    const guidance = swimItemGuidance(workout, item);
     return {
       id: group.id,
       repeatIds: group.repeatIds,
@@ -24,10 +22,11 @@ export function workoutPresentation(workout: SwimWorkout): Pick<SwimWorkoutView,
       title: `${item.repeats > 1 ? `${item.repeats} × ` : ""}${formatSwimDistance(item.lengths, workout.snapshot.course)}`,
       detail: [
         SWIM_STROKE_LABEL[item.stroke], ...item.equipment.map((piece) => SWIM_EQUIPMENT_LABEL[piece]),
-        item.drill ? SWIM_DRILL_LABEL[item.drill] ?? "Technique drill" : null,
+        guidance.drillLabel,
         item.note, item.optional ? "Optional" : null,
       ].filter(Boolean).join(" · "),
       effort: effort[item.effort],
+      guidance: `${guidance.instruction} ${guidance.effort} ${guidance.focus}`,
       rest: item.sendoffMs !== undefined ? `Leave every ${formatSwimTime(item.sendoffMs)}`
         : item.restSeconds ? `Rest ${item.restSeconds} sec` : "No rest",
       ...(workout.snapshot.calibration && item.targetMsPerRepeat !== undefined ? { pace: `Target ${formatSwimTime(Math.round(item.targetMsPerRepeat))}` } : {}),

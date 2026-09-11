@@ -5696,6 +5696,7 @@ export function ProgramPicker({
           them to Today instead of into a loop. */}
       <BackLink href={isEditing ? "/app/plan" : "/app"} label={isEditing ? "Plan" : "Today"} />
       <h1 className={styles.pageTitle}>{isEditing ? "Edit your plan" : "Start a program"}</h1>
+      {isEditing && swimHref && <Link href={swimHref} className={styles.btn}>Swimming →</Link>}
 
       {isEditing && (
         <div

@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { swimFixture, userId, planId, sessionId, receiptId } from "./fixtures";
 import { completeSwimWorkoutResult, createSwimPlan, startSwimWorkout, editSwimResult, decideSwimProposal, previewSwimResume, resumeSwimPlan, proposeSwimBenchmark, decideSwimBenchmark, skipSwimWorkout } from "../actions";
-import { SWIM_ASSESSMENT_VERSION, type SwimWorkout } from "@hta/domain";
+import { SWIM_ASSESSMENT_VERSION, swimScheduleAdvice, type SwimWorkout } from "@hta/domain";
+import { loadSwimStrengthContext } from "../strength-schedule";
 import * as queries from "../queries";
 import * as storage from "../storage";
 import type { SwimHubView } from "../view-types";
@@ -20,6 +21,7 @@ vi.mock("@/lib/supabase/server", () => ({
   getAuthUser: async () => ({ data: { user: mock.user } }),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("../strength-schedule", () => ({ loadSwimStrengthContext: vi.fn() }));
 vi.mock("../capability", () => ({ requireSwimSetup: vi.fn(), requireSwimStorage: vi.fn() }));
 vi.mock("../safety", async (importOriginal) => ({
   ...await importOriginal<typeof import("../safety")>(), assertSwimSafety: vi.fn(),
@@ -96,6 +98,7 @@ function mockSavedEdit() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(loadSwimStrengthContext).mockResolvedValue({ blockId: null, sessions: [] });
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
   mock.user = { id: userId };
   const query = { select: vi.fn(), eq: vi.fn(), maybeSingle: vi.fn(), in: vi.fn() };
@@ -119,6 +122,32 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("ADR0079 server actions", () => {
+  it("DC-K4 rechecks overlap on submit, rejects a tampered or stale acknowledgement, and audits current context", async () => {
+    const context = { blockId: "primary", sessions: [{ id: "strength", date: "2026-09-07" }] };
+    vi.mocked(loadSwimStrengthContext).mockResolvedValue(context);
+    const form = setupForm();
+    form.set("strengthOverlap", "on");
+    expect(await createSwimPlan(form)).toMatchObject({ errorCode: "validation", strengthContext: context });
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+    form.set("strengthOverlap", swimScheduleAdvice(context, "2026-09-07", 3, [1]).confirmationKey);
+    const changed = { ...context, blockId: "replacement" };
+    vi.mocked(loadSwimStrengthContext).mockResolvedValue(changed);
+    expect(await createSwimPlan(form)).toMatchObject({ errorCode: "validation", strengthContext: changed });
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+    form.set("strengthOverlap", swimScheduleAdvice(changed, "2026-09-07", 3, [1]).confirmationKey);
+    expect(await createSwimPlan(form)).toEqual({ ok: true, planId });
+    const saved = vi.mocked(storage.createSwimPlan).mock.calls[0]![1];
+    expect(saved.state.decisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "schedule", decision: "overridden", inputSnapshot: expect.objectContaining({ strengthContext: changed, weekdays: [1] }) }),
+    ]));
+    expect(assertSwimSafety).toHaveBeenCalled();
+    expect(saved.definition).toMatchObject({ schedule: { weekdays: [1] } });
+  });
+  it("DC-K4 fails closed when strength schedule cannot be read", async () => {
+    vi.mocked(loadSwimStrengthContext).mockRejectedValue(new Error("Unavailable"));
+    expect(await createSwimPlan(setupForm())).toHaveProperty("error");
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+  });
   it.each(["paused", "finished", "archived"] as const)("DC-SW7 rejects a skip on a %s plan before storage mutation", async (status) => {
     const { plan, workouts } = swimFixture();
     vi.mocked(storage.getSwimWorkout).mockResolvedValue(workouts[0]!);

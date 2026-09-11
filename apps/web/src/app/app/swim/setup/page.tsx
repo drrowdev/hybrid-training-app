@@ -5,6 +5,7 @@ import { todayYmd } from "@/lib/dates";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SetupForm } from "@/components/swim/SetupForm";
 import styles from "@/components/swim/Swim.module.css";
+import { loadSwimStrengthContext } from "@/lib/swim/strength-schedule";
 
 export default async function SwimSetupPage() {
   const client = await createClient();
@@ -16,7 +17,7 @@ export default async function SwimSetupPage() {
     <main className={styles.page}>
       <PageHeader title="Set up swimming" back={{ href: "/app/swim", label: "Swimming" }} />
       {capability.storageAvailable && capability.setupEnabled
-        ? <SetupForm today={todayYmd(profile?.timezone ?? "UTC")} />
+        ? <SetupForm today={todayYmd(profile?.timezone ?? "UTC")} strengthContext={await loadSwimStrengthContext(client, user.id)} />
         : <p role="status">Swimming setup is currently unavailable.</p>}
     </main>
   );
