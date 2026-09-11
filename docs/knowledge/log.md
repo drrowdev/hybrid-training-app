@@ -3164,3 +3164,21 @@ passed. Windows full-web attempts were not accepted because of unchanged
 POSIX/symlink restrictions; Linux CI is still required. No application, migration,
 reference execution or provider/data changes. See HANDOFF for the bounded
 remaining publication and isolated-review operation.
+
+## [2026-09-11] decision | Garmin calendar delivery is part of the owner workflow
+
+The owner clarified that getsxc is for reviewing/editing generated plans and
+the Garmin Forerunner 970 is for executing workouts. Dated workouts should be
+published to Garmin's training calendar; manual in-app swim logging is not the
+owner's intended path. This promotes Garmin delivery from deferred scope,
+beginning with swimming while retaining the wider generated-program goal.
+
+The owner has no approved Training API access. Primary Garmin documentation
+confirms calendar publishing/device sync and business-use application approval;
+the watch manual confirms custom workouts and the training calendar. Detailed
+API behavior and actual swim-step/device fidelity still require verification.
+Updated existing plan/scope/wiki/index and distinguished outbound calendar
+delivery from activity-file import. No connector, credentials, provider
+application, user-data/RLS/schema changes or production operation was performed.
+Frozen26 at0a3 and refreshed review atabbd remain accepted only in their original
+scope; they do not prove this newly required Garmin workflow.

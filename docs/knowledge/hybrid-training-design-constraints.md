@@ -424,11 +424,23 @@ This section captures the deliberate scope boundary set in the Phase D session o
 - **Nutrition self-logging**: protein g/kg/day tracking, calorie tracking, declared-cut/bulk gates beyond a coarse phase toggle
 - **Life-stress weekly toggle** beyond the bodycomp-phase profile field
 - **AI layer (entire Phase 4)**: coach agent, programmer agent, periodizer agent, chat orchestrator, per-user wiki memory, preview-before-write diff layer
-- **Garmin / other wearable integrations** (and, since 2026-08-17, Strava too)
+- **Other wearable integrations and wearable health signals** (including Strava
+  since 2026-08-17). Exception: the owner promoted Garmin workout/calendar
+  delivery on 2026-09-11; see the
+  [Garmin-first workflow](./pool-swimming.md#garmin-first-owner-workflow---2026-09-11).
+  This does not reactivate HRV/sleep/readiness inputs or authorize new personal
+  data collection, schema/RLS changes or production operations.
 
 ### Scope rationale
 
 The MVP loop is: *user logs a session → engine derives everything it can from the logs + movement catalog → asks for at most 2 extra numbers (fatigue + soreness) at session start → produces tomorrow's prescription with cited rationale*. Everything that requires a wearable or a daily self-report beyond those 2 sliders is intentionally deferred. The 5-second budget for the pre-session widget is the single most-load-bearing UX constraint in the scope.
+
+The 2026-09-11 owner workflow is a narrow exception to that original wearable
+deferral: getsxc plans and Garmin executes. Manual in-app workout logging is
+not an acceptance requirement for this owner. Publishing a planned workout
+must never count as completing it; importing watch-recorded results is a
+separate permission and reconciliation decision, not permission to invent
+actuals or require duplicate manual entry.
 
 When a deferred input source returns (e.g., HRV pull via wearable in v1.x or v2), the ⏸ [BACKLOG] constraints are reactivated as written — no re-architecture required.
 

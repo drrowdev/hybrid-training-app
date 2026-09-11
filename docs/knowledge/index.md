@@ -2,7 +2,7 @@
 
 **Purpose:** Catalog of all hand-off files for the hybrid training app project. Organized by role in the Karpathy personal-knowledge-base pattern (plan §6.10): raw sources are immutable; wiki pages are LLM-maintained; the schema governs ingest, citation, and lint workflows. This file is the seed of `docs/knowledge/index.md` in the eventual repo.
 
-**Last updated:** 2026-09-09
+**Last updated:** 2026-09-11
 
 ---
 
@@ -25,12 +25,11 @@ The maintained-by-AI layer. These pages are rewritten as new sources arrive; the
 
 - [`pool-swimming.md`](./pool-swimming.md) - Original standalone prescriptions,
   exact course measurements, optional assessment, versioned adaptation, shared
-  logging and evidence limits. ADR 0079 / DC-SW1 through DC-SW9; combined
-  cardio-slot use remains a later slice. ADR 0080's reversible candidate is narrowed
-  to set_logs only after run34336292485 at0b3b7401 proved the partial candidate's
-  structural success. Original session_movements definition/OID remain unchanged.
-  Baseline/candidate controls and retargeted UPDATE proof await live validation;
-  normal browser12/C2/C3 acceptance remains pending.
+  logging and source-specific evidence. Current owner requirement: review/edit
+  in getsxc and execute scheduled workouts on a Forerunner 970. Garmin calendar
+  delivery is not implemented and official Training API access is pending.
+  Existing standalone26 and isolated review refresh are accepted within their
+  scope. ADR 0079 / DC-SW1 through DC-SW9; combined cardio-slot use stays deferred.
 
 | File | One-line summary |
 |---|---|

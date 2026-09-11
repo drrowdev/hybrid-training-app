@@ -1,5 +1,77 @@
 # Native pool swimming
 
+## Garmin-first owner workflow - 2026-09-11
+
+**Current product requirement, not implemented Garmin functionality.** The
+owner will review and edit plans in getsxc and perform workouts on a Garmin
+Forerunner 970, not log the swim in the app. Generated programs must publish
+their dated workouts to the Garmin Connect training calendar so the scheduled
+workout can be followed on the watch. This supersedes earlier "Garmin later"
+scope statements below. The goal covers generated programs generally; swimming
+is the first end-to-end delivery slice, not a claim of support for every
+program or Garmin activity type.
+
+The four earlier app usability repairs passed frozen26 at application
+`0a3d12e862ad2ffe7acbb8498f3442923005674c` in run34606756220. App-equivalent
+`abbd6583ef0dc459f8ae7cee4dd728a98d85d0d7` is deployed to the existing isolated
+review after successful guarded refresh34625326276. That evidence remains valid
+for its source and scope, but does not establish Garmin delivery or owner
+acceptance of a watch-first workflow. The historical checkpoints below remain
+source-specific; frozen26 is not expanded or rerun for this planning change.
+
+### Delivery requirements
+
+- A generated plan retains its dates and structured workout instructions when
+  published to Garmin. Account authorization is explicit; no Garmin password
+  collection or background transmission before consent.
+- Future workout edits, rescheduling and cancellation must reconcile the same
+  app-owned Garmin entries rather than creating duplicates or changing unrelated
+  calendar entries. Completed results and issued history remain protected.
+- Unsupported workout details must be surfaced, never silently discarded.
+  Verify pool length/unit, stroke, distance, repetitions, rest and supported
+  targets against approved API documentation and the actual Forerunner 970.
+- Distinguish Garmin calendar acceptance from delivery to a physical watch.
+  Failed or pending transfers must remain visible. A manual FIT download alone
+  does not satisfy automatic calendar delivery.
+- Prove one dated swim on the owner's watch, then an edited/rescheduled version,
+  without requiring in-app workout logging. Extend the same delivery contract
+  to other generated program types only with their own supported mappings.
+
+### Access dependency and next implementation boundary
+
+The owner confirmed there is **no approved Garmin Connect Developer Program /
+Training API access**. The current repository has external-cardio labels and a
+planned activity-file import, not a Garmin calendar connector.
+
+Garmin's [Training API overview](https://developer.garmin.com/gc-developer-program/training-api/)
+describes publishing workouts/training plans to Connect's calendar, followed by
+device synchronization through Garmin Connect. Its
+[program FAQ](https://developer.garmin.com/gc-developer-program/program-faq/)
+requires business use and application approval; it states no program licensing
+or maintenance fees, while some other metrics can have additional conditions.
+Do not promise access, approval dates or private endpoint behavior.
+
+The Forerunner 970 manual documents
+[custom workouts and editing](https://www8.garmin.com/manuals/webhelp/GUID-025D75CF-3445-49E1-8D81-1AA74AB4E00F/EN-US/GUID-54A017B7-95D1-4C96-A39F-AEA91B7ACE29.html)
+and its [training calendar](https://www8.garmin.com/manuals/webhelp/GUID-025D75CF-3445-49E1-8D81-1AA74AB4E00F/EN-US/GUID-F5EB9C7C-A74E-4A26-BFB5-1E6DA4399067.html).
+Calendar sync replaces the watch's calendar with the Connect schedule; therefore
+preserving unrelated Connect entries matters. These manuals are not proof of
+our connector or of every swim-step mapping on the physical device.
+
+First obtain an eligible, owner-approved official access route and its detailed
+API contract. Then implement the swim delivery slice with explicit ownership,
+reconciliation and failure behavior. Do not invent API payloads or ship a
+success-shaped sync control while access is missing. Bringing completed
+activities back into getsxc is a separate Activity API/consent and matching
+decision; calendar publication alone must not drive completion or progression.
+No HRV/sleep integration is included.
+
+Existing review data, in-app logging as an optional fallback, prior acceptance
+evidence and all safety/history constraints remain intact. No provider
+application, new credentials, user-data migration, RLS change, production
+release, paid service, combined-program activation or backup work is authorized
+by this planning update.
+
 ### Current source — standalone integration — 2026-09-10
 
 Standalone ships first. The combined foundation described below is deferred,
