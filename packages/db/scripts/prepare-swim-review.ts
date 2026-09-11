@@ -136,7 +136,7 @@ export function assertPristine(state: Inspection["predicates"]) {
 }
 
 type Client = {
-  query(text: string, parameters?: string[]): Promise<Record<string, unknown>[]>;
+  query(text: string, parameters?: (string | boolean)[]): Promise<Record<string, unknown>[]>;
   close(): Promise<void>;
 };
 type Phase = "source" | "credentials" | "canonical" | "client" | "preflight" |
@@ -236,7 +236,7 @@ async function inspectUnexpectedSchemas(client: Client, expected: number | "unre
     LEFT JOIN pg_catalog.pg_roles r ON r.oid = n.nspowner
     WHERE ${unexpectedNamespaceFilter}
       AND NOT ($1::boolean AND n.nspname = 'pgbouncer')
-    ORDER BY n.oid LIMIT 17`, [String(recognized)]);
+    ORDER BY n.oid LIMIT 17`, [recognized]);
   if (rows.length > 16) return { status: "overflow", entries: [] };
   if (rows.length !== expected) return { status: "invalid", entries: [] };
   const entries: SchemaMetadata["entries"] = [];

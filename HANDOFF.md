@@ -3046,3 +3046,23 @@ first; a passing inspection is not bootstrap success or write-mode approval.
 Automated validation was attempted once: reviewer model unavailable, CodeQL
 Actions analysis failed, JavaScript skipped for database size. No clean automated
 review/security result is claimed; no unavailable reviewer retry was attempted.
+
+### 2026-09-11 — PR805 native boolean binding repair
+
+Verified START `copilot/new-acceptance-cases` at `0a317375ccf25262053d2c0ca20929cf309b967b`,
+base `main` at `672e4202792da122281639e3db810029432573f5`. The observed READONLY
+preflight failure came from binding text `"true"`: installed postgres 3.4.9's
+OID16 serializer emits `"f"` unless the value is native `true`. The inspection
+now binds `[recognized]`; the narrow query parameter type and fakes accept
+strings or booleans. Regression coverage passes captured native true/false
+through the installed serializer without executing SQL or opening connections;
+text `"true"` demonstrably emits `"f"`. The lazy client is closed.
+
+Focused bootstrap **217/217 passed**; the existing targeted script/test
+TypeScript command above and `git diff --check` passed. Existing tests retain
+exactly-one namespace removal, unknown-schema rejection and all prior guards.
+SQL, platform/pristine guards, workflow, count/list logic, application82337,
+frozen26 and migrations are unchanged. No consumed runtime logs were retrieved,
+database access, migrations/seed, dispatch or services performed. Hosted runtime
+remains pending coordinator review and exact-new-head READONLY dispatch;
+no setup or release completion is claimed. PR remains draft and unmerged.

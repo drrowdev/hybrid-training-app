@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { appendFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import postgres from "postgres";
 import { describe, expect, it, vi } from "vitest";
 import {
   APPLICATION_SHA, SETUP_PATHS, assertPristine, defaultRuntime, emitEvidence, prepareReview,
@@ -39,7 +40,7 @@ const context = {
 };
 const canonical = Array.from({ length: 150 }, (_, i) => ({ hash: `${i}`, folderMillis: i + 1 }));
 function fake() {
-  const query = vi.fn(async (text: string, _parameters?: string[]): Promise<Record<string, unknown>[]> => {
+  const query = vi.fn(async (text: string, _parameters?: Parameters<ReturnType<Runtime["connect"]>["query"]>[1]): Promise<Record<string, unknown>[]> => {
     if (text.includes('AS "publicEmpty"')) return [
       { ...pristine, unexpectedNamespaces: 0, postgresOwnedRelations: 0, pgbouncer: absentPlatform },
     ];
@@ -270,7 +271,7 @@ describe("read-only pristine inspection (fake runtime, not hosted proof)", () =>
         postgresOwnedRelations: 0, pgbouncer: platform,
       }];
       if (sql.includes('AS "extensionMember"')) return [
-        ...(parameters?.[0] === "true" ? [] : [{ ...namespace, name: "pgbouncer", types: 0 }]),
+        ...(parameters?.[0] === true ? [] : [{ ...namespace, name: "pgbouncer", types: 0 }]),
         ...(extraNamespace ? [namespace] : []),
       ];
       return original(sql, parameters);
@@ -285,9 +286,25 @@ describe("read-only pristine inspection (fake runtime, not hosted proof)", () =>
       schemaCounts: { unexpectedNamespaces: 0, postgresOwnedRelations: 0 },
       unexpectedSchemas: { status: "empty", entries: [] },
     });
-    expect(query.mock.calls[2]![1]).toEqual(["true"]);
+    expect(query.mock.calls[2]![1]).toEqual([true]);
     noWrites(runtime);
     expect(close).toHaveBeenCalledOnce();
+  });
+  it.each([true, false])("binds native %s through the installed driver's boolean serializer offline", async (recognized) => {
+    const sql = postgres({ host: "127.0.0.1", max: 1 });
+    try {
+      const serialize = sql.options.serializers[16]!;
+      const { runtime, query, close } = platformFake({ ...validPlatform, ownerExpected: recognized });
+      expect(await prepareReview(url, runtime, true)).toBe(recognized);
+      const parameters = query.mock.calls.find(([text]) => text.includes('AS "extensionMember"'))![1]!;
+      expect(parameters).toEqual([recognized]);
+      expect(serialize(parameters[0])).toBe(recognized ? "t" : "f");
+      expect(serialize("true")).toBe("f");
+      noWrites(runtime);
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      await sql.end({ timeout: 0 });
+    }
   });
   it.each(Object.keys(validPlatform).filter((key) => key !== "present"))(
     "keeps pgbouncer unexpected when %s fails", async (key) => {
@@ -298,7 +315,7 @@ describe("read-only pristine inspection (fake runtime, not hosted proof)", () =>
         schemaCounts: { unexpectedNamespaces: 1 },
         unexpectedSchemas: { status: "readable", entries: [{ name: "pgbouncer" }] },
       });
-      expect(query.mock.calls[2]![1]).toEqual(["false"]);
+      expect(query.mock.calls[2]![1]).toEqual([false]);
       noWrites(runtime);
       expect(close).toHaveBeenCalledOnce();
     });
@@ -327,7 +344,7 @@ describe("read-only pristine inspection (fake runtime, not hosted proof)", () =>
       pgbouncer: validPlatform, schemaCounts: { unexpectedNamespaces: 1 },
       unexpectedSchemas: { status: "readable", entries: [{ name: namespace.name }] },
     });
-    expect(query.mock.calls[2]![1]).toEqual(["true"]);
+    expect(query.mock.calls[2]![1]).toEqual([true]);
     noWrites(runtime);
   });
   it.each([0, 1000])("fails closed on inconsistent or saturated raw namespace count %s", async (raw) => {
