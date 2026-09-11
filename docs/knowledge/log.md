@@ -3245,3 +3245,26 @@ DC-SW3/SW5/SW7 and existing safety/history rules remain intact. Engine and
 affected web checks are local synthetic evidence, not hydrated app, database,
 Garmin/watch or release acceptance. No schema/RLS, frozen26, remote source,
 provider configuration or live data changed.
+
+## [2026-09-11] implementation | Hydrated swimming review controls
+
+Local React 19.2.4/Chromium execution reproduced duplicate React keys when a
+reviewed week contained two swims on the same date. Read-only change rows now
+have distinct keys; both entries and the explicit Apply payload are retained.
+The existing unit suite includes the regression. DC-K4/DC-SW3/DC-SW5.
+
+Thirteen local hydration scenarios passed with explicit synthetic action and
+navigation stubs and no attempted network requests or client errors. They cover
+stale responses, explicit preview/create/apply, input invalidation, native form
+constraints, conflict warnings, mutation serialization, revision remounts and
+failure recovery. Expanded component layouts fit 320/375/768px. The final
+coordinator run uses the app's current sage palette, with local font fallbacks;
+it is not full Next-shell, real-device or database evidence.
+
+The full existing Next build also passed locally with telemetry disabled and
+synthetic loopback-only Supabase configuration. Focused client tests, current
+web typechecking and changed-file lint passed. The prior complete domain/engine
+coverage run exceeded all 80-percent thresholds. Source remains local only:
+current-source CI/reference, live Garmin/calendar/watch delivery and owner
+acceptance remain separate and pending. No provider, owner-data, schema/RLS or
+frozen26 changes were made.

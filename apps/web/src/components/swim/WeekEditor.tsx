@@ -73,7 +73,7 @@ export function WeekEditor({ plan, busy, onApply }: {
         {preview.excludedCount > 0 && <p className={styles.muted}>
           {preview.excludedCount} {preview.excludedCount === 1 ? "swim" : "swims"} excluded
         </p>}
-        <ul className={styles.list}>{preview.changes.map((change) => <li key={change.date} className={styles.row}>
+        <ul className={styles.list}>{preview.changes.map((change, index) => <li key={index} className={styles.row}>
           <span>{change.date}</span><span>{change.before} → {change.after}</span>
         </li>)}</ul>
         <PlanPreview plan={preview.plan} title="Adjusted week" />

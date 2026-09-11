@@ -83,6 +83,7 @@ function editor() {
     },
     setBusy(value: boolean) { busy = value; },
     buttons: () => elements(tree()).filter((element) => element.type === "button"),
+    rows: () => elements(tree()).filter((element) => element.type === "li"),
   };
 }
 
@@ -93,6 +94,27 @@ beforeEach(() => {
 });
 
 describe("DC-K4/DC-SW5 manual future-week review", () => {
+  it("keeps distinct snapshot rows for two swims on the same date", async () => {
+    const changes = [
+      { date: "2026-09-14", before: "600 yd", after: "550 yd" },
+      { date: "2026-09-14", before: "400 yd", after: "350 yd" },
+    ];
+    vi.mocked(previewSwimWeekEdit).mockResolvedValueOnce({
+      ok: true, preview: { ...preview(), changes },
+    });
+    const flow = editor();
+    await flow.review();
+    const rows = flow.rows();
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((row) => row.key)).size).toBe(2);
+    expect(rows.map((row) => renderToStaticMarkup(row))).toEqual([
+      expect.stringContaining("600 yd"),
+      expect.stringContaining("400 yd"),
+    ]);
+    flow.apply();
+    expect(flow.onApply).toHaveBeenCalledWith(expect.objectContaining({ changes }));
+  });
+
   it("shows a read-only before/after preview and applies only on explicit confirmation", async () => {
     const flow = editor();
     expect(flow.buttons()).toHaveLength(1);
