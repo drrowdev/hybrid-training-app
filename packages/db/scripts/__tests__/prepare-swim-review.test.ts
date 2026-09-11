@@ -339,8 +339,7 @@ describe("read-only pristine inspection (fake runtime, not hosted proof)", () =>
       return rows;
     });
     expect(await prepareReview(url, runtime, true)).toBe(false);
-    expect(evidence(runtime).inspection!.schemaCounts.unexpectedNamespaces).toBe(
-      raw === 0 ? "unreadable" : 1000);
+    expect(evidence(runtime).inspection!.schemaCounts.unexpectedNamespaces).toBe("unreadable");
     expect(evidence(runtime).inspection!.unexpectedSchemas!.status).toBe("invalid");
     noWrites(runtime);
     expect(close).toHaveBeenCalledOnce();

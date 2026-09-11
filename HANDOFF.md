@@ -3025,6 +3025,8 @@ fixed schema owner, zero relations/types, exactly the documented function,
 empty configured search path and expected effective ACLs. No fixed function
 owner is assumed. One exact boolean decision adjusts the namespace count and
 filters the inspection list; other namespaces and all prior guards remain blocked.
+An inconsistent zero or saturated raw count cannot yield an exact adjusted
+count and is reported as unreadable, failing closed.
 
 Safe evidence adds only `inspection.pgbouncer` with boolean-or-`"unreadable"`
 keys: `present`, `ownerExpected`, `relationsEmpty`, `typesEmpty`, `oneRoutine`,
@@ -3041,3 +3043,6 @@ hosted execution, migrations/seed, CI dispatch or services were performed.
 Workflow, accepted application82337, migrations and frozen26 remain unchanged.
 Coordinator must inspect saved source and run exact-head READ-ONLY inspection
 first; a passing inspection is not bootstrap success or write-mode approval.
+Automated validation was attempted once: reviewer model unavailable, CodeQL
+Actions analysis failed, JavaScript skipped for database size. No clean automated
+review/security result is claimed; no unavailable reviewer retry was attempted.

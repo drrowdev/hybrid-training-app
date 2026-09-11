@@ -308,8 +308,8 @@ export async function preflight(client: Client, inspection = unreadableInspectio
   // The raw count includes pgbouncer; only this exact decision removes it from both views.
   if (recognized && typeof inspection.schemaCounts.unexpectedNamespaces === "number") {
     const rawCount = inspection.schemaCounts.unexpectedNamespaces;
-    inspection.schemaCounts.unexpectedNamespaces = rawCount === 0 ? "unreadable" :
-      rawCount === 1000 ? 1000 : rawCount - 1;
+    inspection.schemaCounts.unexpectedNamespaces = rawCount === 0 || rawCount === 1000 ?
+      "unreadable" : rawCount - 1;
   }
   const { unexpectedNamespaces, postgresOwnedRelations } = inspection.schemaCounts;
   inspection.predicates.schemasExpected =
