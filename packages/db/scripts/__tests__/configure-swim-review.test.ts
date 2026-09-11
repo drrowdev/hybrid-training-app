@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -458,10 +458,10 @@ describe("configuration workflow boundaries", () => {
   const workflow = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8");
   const job = workflow.split("\n  configure-swim-review:\n")[1]!;
   it("preserves every previously published job byte-for-byte", () => {
-    const prior = execFileSync("git", ["show", "b6e09d2240081472ba91f168d94aba3915316218:.github/workflows/ci.yml"],
-      { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-    expect(workflow.split("\n  configure-swim-review:\n")[0]!.trimEnd().split("\njobs:")[1])
-      .toBe(prior.trimEnd().split("\njobs:")[1]);
+    // SHA-256 of prior.trimEnd().split("\njobs:")[1] at b6e09d2240081472ba91f168d94aba3915316218.
+    const jobs = workflow.split("\n  configure-swim-review:\n")[0]!.trimEnd().split("\njobs:")[1]!;
+    expect(createHash("sha256").update(jobs).digest("hex"))
+      .toBe("c7199fb2c2a1ea40d72d5a0dc5d5aca2400d173f7f4f4158c45453be78408b79");
   });
   it("places offline checks and source validation before exactly five runtime-only secrets", () => {
     expect(job).toContain("needs: [ci, identity-guard]");

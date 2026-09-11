@@ -3173,3 +3173,44 @@ author/committer identities. Required automated validation attempted once:
 reviewer unavailable (configured model missing), CodeQL Actions analysis
 failed, JavaScript skipped for database size. No clean automated review/security
 result is claimed. Changed-file secret scan passed; activation remains pending.
+
+### 2026-09-11 — PR805 history-independent workflow regression repair
+
+Verified exact START `d675c3db15277ace3467cb32da05569e526eba2e` and main
+`672e4202792da122281639e3db810029432573f5`. Only the configuration test and
+this handoff change; the exact eight-path boundary against accepted
+`82337d2b36436bbe15532b4204e3ee96ba55b3f7` remains unchanged.
+
+Replaced the test's Git subprocess with built-in SHA-256, retaining its exact
+current-string extraction and all other assertions. Derived the immutable
+expected digest **from the actual baseline**, using
+`git show b6e09d2240081472ba91f168d94aba3915316218:.github/workflows/ci.yml`
+and Node `createHash("sha256").update(prior.trimEnd().split("\njobs:")[1]).digest("hex")`:
+`c7199fb2c2a1ea40d72d5a0dc5d5aca2400d173f7f4f4158c45453be78408b79`.
+Inline `node --input-type=module` assertions confirmed exact baseline/current
+equality (28,016 bytes). Replacing one protected-job byte (`ubuntu-latest` →
+`ubuntu-latesu`) preserved length, changed exactly one byte, and made digest
+equality throw `ERR_ASSERTION`; mutation digest:
+`15efd0f07ac39d543808bfd7f2fa1a9ce62ad663a6a8eb73d5c6920a87d3afbc`.
+No workflow file was modified.
+
+Offline commands from `/home/runner/work/hybrid-training-app/hybrid-training-app`:
+- `pnpm --filter @hta/db exec vitest run scripts/__tests__/configure-swim-review.test.ts scripts/__tests__/swim-review-config-plan.test.ts scripts/__tests__/prepare-swim-review.test.ts` — **424/424 passed** (85 + 122 + 217).
+- `pnpm --filter @hta/db exec tsc --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --strict --noUncheckedIndexedAccess --noImplicitReturns --skipLibCheck --esModuleInterop scripts/configure-swim-review.ts scripts/swim-review-config-plan.ts scripts/prepare-swim-review.ts scripts/__tests__/configure-swim-review.test.ts scripts/__tests__/swim-review-config-plan.test.ts scripts/__tests__/prepare-swim-review.test.ts` — passed.
+- `git diff --check` — passed.
+
+Shallow-history limit: the worker initially lacked baseline `b6e09` (`git
+cat-file -t` exited 128), and the initial progress push was refused by the
+full-history identity hook. `git fetch --unshallow origin` and `git fetch origin
+main` supplied history for baseline derivation and normal identity validation;
+no hook bypass or history rewrite. Creating an additional local clone is not
+available in this session, so the requested **new-commit depth-1 clone test was
+not run**; the passing tests above used the existing, now full-history checkout.
+No shallow-checkout pass is claimed.
+
+CI metadata confirmed run34575115632's failed prerequisite and skipped
+configuration; only the separate identity-job cleanup tail was read, not the
+consumed core log or private transcripts. No hosted writes, services, workflow
+dispatch, dependency install, bootstrap/reset, or frozen26 rerun. Accepted
+application82337/frozen26 evidence remains source-specific. PR stays
+draft/unmerged; corrected exact-head gated configuration remains coordinator-owned.
