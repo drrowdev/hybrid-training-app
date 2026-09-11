@@ -53,6 +53,14 @@ function refused(value: ConfigurationInput, code: PlanFailure) {
 }
 
 describe("pure swim review configuration plan", () => {
+  it("accepts the authenticated organization literal, not the mistaken org prefix", () => {
+    const value = input();
+    Object.assign(value.supabase as object, { organization_id: "ttxxqipkcgtirtmhhlnb" });
+    expect(buildConfigurationPlan(value).ok).toBe(true);
+    Object.assign(value.supabase as object, { organization_id: "orgttxxqipkcgtirtmhhlnb" });
+    refused(value, PlanFailure.Supabase);
+  });
+
   it("creates exactly 18 encrypted, preview-only, new branch overrides", () => {
     const plan = accepted();
     expect(plan.environment.operation).toBe("create");

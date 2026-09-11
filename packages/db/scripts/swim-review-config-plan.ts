@@ -9,7 +9,7 @@ export const REVIEW = {
   teamId: "team_iA9mJFP3tnxhxrO7v7DM192Q",
   supabaseId: "whwilnhqfiaquwxgkxwt",
   supabaseName: "sxc-swim-test-stockholm",
-  organizationId: "orgttxxqipkcgtirtmhhlnb",
+  organizationId: "ttxxqipkcgtirtmhhlnb",
   region: "eu-north-1",
   proposedAlias: "hybrid-training-app-swim-review-drrowdevs-projects.vercel.app",
   origin: "https://hybrid-training-app-swim-review-drrowdevs-projects.vercel.app",
