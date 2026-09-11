@@ -3866,3 +3866,40 @@ browser case ran here. Cases and the 30-second cap are unchanged. Coordinator
 must inspect published source and dispatch a new exact-head guarded reference;
 this correction does not establish B6/B7 runtime success. No deployment,
 provider/account operation, or initialized review-state access occurred.
+
+## 2026-09-11 — Reviewed B-prefix integrity pin refresh
+
+Published source: `2fb2233e1f45b207f6c5090215432b4d86f2cd27`.
+Verified starting head `877f8eeb78cf22ba03b6a942d60c50cdaf08eb73` on
+`copilot/new-acceptance-cases` and base `672e4202792da122281639e3db810029432573f5`.
+Independently inspected `4241f8023468a056aebfc4cd87daa05afacd8008..877f8eeb`
+for `apps/web/e2e/swimming-decisions-offline-mobile.spec.ts`: only the strict
+setup-audit expectation adds `strengthContext: { blockId: null, sessions: [] }`.
+Node reproduced both SHA-256 values using UTF-8, the existing `const test =`
+through pre-B9 boundary, and `trimEnd()`:
+- Old: `2c9b00c52dd8037ee6183cd56c0eece8105b395f183d1c22e5e2c1320f9454e7`
+- New: `f819e41cc16c6cccc29a2e96068dc31589fd92e14166d3f445a9e615b9c57da1`
+
+Only the expected literal in
+`apps/web/src/lib/swim/__tests__/swim-browser-acceptance.test.ts` changed.
+The full cryptographic comparison, boundaries, B9 codec, diagnostics exclusion,
+source/count/safety assertions, frozen 26 cases and 30-second caps are unchanged.
+
+Commands from the repository root:
+- `pnpm --filter @hta/web test`: **7,153 passed, 36 skipped; 450 files passed, 1 skipped**, exit 0.
+- `pnpm --filter @hta/web typecheck`: **passed**.
+- `pnpm --filter @hta/web exec eslint src/lib/swim/__tests__/swim-browser-acceptance.test.ts e2e/swimming-decisions-offline-mobile.spec.ts`: **passed**.
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-collection.test.ts`: **1 passed**, exact 26-case collection only.
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/swim-browser-acceptance.test.ts -t 'preserves the accepted B source'`: **1 passed, 645 unselected** before early publication.
+- `git diff --check` and source secret scan: **passed**. Publication hooks passed
+  after fetching full history for the initial shallow-history rejection.
+  Local/public source identities are allowlisted; no rewrite or bypass.
+- Required automated validation: review tool **unavailable**, CodeQL **skipped**
+  for this test-only change; no completed automated review/security pass claimed.
+
+Historical evidence remains distinct: `34602207096` at `4241f802` was browser
+**FAIL** (24/26 passed; B6/B7 failed). `34604655872` attempt 1 at `877f8eeb`
+was core **FAIL** (7,152 passed, 1 failed); reference skipped, no browser execution.
+No historical log contents were retrieved. No browser execution occurred here.
+Pending: coordinator-owned new exact-head guarded reference and available
+automated review. No application, other pin, machinery or provider/account changes.
