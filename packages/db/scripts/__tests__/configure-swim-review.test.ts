@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
-  boundedTransport, configure, configurationContext, environmentList, ROUTES, storageAdapter,
+  boundedTransport, configure, configurationArguments, configurationContext, environmentList, inspectAuth, ROUTES, storageAdapter,
 } from "../configure-swim-review";
 import { INHERITED_KEYS, PlanFailure, REVIEW, type EnvironmentMetadata } from "../swim-review-config-plan";
 
@@ -69,6 +69,7 @@ const env = {
   GITHUB_REF: `refs/heads/${REVIEW.branch}`, GITHUB_JOB: "configure-swim-review",
   EXPECTED_SHA: "a".repeat(40), GITHUB_SHA: "a".repeat(40),
   CONFIGURE_SWIM_REVIEW: "true", PREPARE_SWIM_REVIEW: "false", INSPECT_SWIM_REVIEW: "false",
+  INSPECT_SWIM_REVIEW_AUTH: "false",
   SWIM_ACCEPTANCE: "false", MIGRATE_PRODUCTION: "false", ALLOW_UNDEPLOYED: "false",
   VERCEL_REVIEW_TOKEN: canary, SUPABASE_REVIEW_MANAGEMENT_TOKEN: canary,
   SWIM_REVIEW_SUPABASE_ANON_KEY: `sb_publishable_${canary}`,
@@ -389,8 +390,41 @@ describe("configuration-only runtime", () => {
     });
     const output = await run(f);
     expect(output.rollback.auth).toBe("manual");
+    expect(output.partial).toBe(true);
+    expect(output.stages.at(-1)).toEqual({ stage: "auth_write", code: "write_uncertain", status: "failed" });
     expect(f.deps.request.mock.calls.filter(([, method]) => method === "PATCH")).toHaveLength(1);
     expect(f.deps.request.mock.calls.some(([url]) => url === ROUTES.create)).toBe(false);
+  });
+  it.each([401, 403, 429, 500])("retains observed HTTP %s without retrying or restoring uncertain Auth", async (status) => {
+    const f = fixture();
+    const original = f.deps.request.getMockImplementation()!;
+    const fetcher = vi.fn(async () => new Response(canary, { status }));
+    const transport = boundedTransport(env, Date.now() + 300_000, fetcher);
+    f.deps.request.mockImplementation(async (...args) =>
+      args[1] === "PATCH" ? transport(...args) : original(...args));
+    const output = await run(f);
+    expect(output.stages.at(-1)).toEqual({ stage: "auth_write", code: "write_uncertain",
+      status: "failed", underlyingCode: "http_status", httpStatus: status });
+    expect(output.rollback).toEqual({ environment: "not_needed", auth: "manual" });
+    expect(output.partial).toBe(true);
+    expect(output.createdEnv).toEqual([]);
+    expect(output.protectedUnchanged).toEqual({ project: true, shared: true });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(f.deps.request.mock.calls.filter(([, method]) => method && method !== "GET"))
+      .toEqual([[ROUTES.auth, "PATCH", { site_url: REVIEW.origin,
+        uri_allow_list: `${REVIEW.origin}/auth/callback`, disable_signup: true }]]);
+  });
+  it("retains a transport category without inventing HTTP evidence for uncertain Auth", async () => {
+    const f = fixture();
+    const original = f.deps.request.getMockImplementation()!;
+    const transport = boundedTransport(env, Date.now() + 300_000, vi.fn(async () => { throw new Error(canary); }));
+    f.deps.request.mockImplementation(async (...args) =>
+      args[1] === "PATCH" ? transport(...args) : original(...args));
+    const output = await run(f);
+    expect(output.stages.at(-1)).toEqual({ stage: "auth_write", code: "write_uncertain",
+      status: "failed", underlyingCode: "transport_failed" });
+    expect(output.rollback.auth).toBe("manual");
+    expect(output.partial).toBe(true);
   });
   it("preserves the original failure when cleanup itself fails", async () => {
     const f = fixture();
@@ -623,6 +657,174 @@ describe("installed Supabase storage adapter, offline", () => {
     }
   });
 });
+describe("read-only Auth reconciliation", () => {
+  const inspectionEnv = { ...env, CONFIGURE_SWIM_REVIEW: "false", INSPECT_SWIM_REVIEW_AUTH: "true" };
+  const intended = { site_url: REVIEW.origin, uri_allow_list: `${REVIEW.origin}/auth/callback`, disable_signup: true };
+  async function inspect(f = fixture(), values: NodeJS.ProcessEnv = inspectionEnv) {
+    const before = structuredClone(f.state);
+    const result = await inspectAuth(values, f.deps);
+    expect(result).toMatchObject({ scope: "swim-review-auth-inspection",
+      testedSha: /^[a-f0-9]{40}$/.test(values.EXPECTED_SHA ?? "") ? values.EXPECTED_SHA : null,
+      supabaseId: REVIEW.supabaseId, supabaseName: REVIEW.supabaseName,
+      organizationId: REVIEW.organizationId, region: REVIEW.region,
+      writesAttempted: false, configurationAccepted: false, deploymentAttempted: false });
+    expect(JSON.stringify(result)).not.toContain(canary);
+    expect(JSON.stringify(result)).not.toContain("http");
+    expect(f.deps.request.mock.calls.every(([url, method, body]) =>
+      [ROUTES.supabase, ROUTES.auth].includes(url as typeof ROUTES.auth) && method === "GET" && body === undefined)).toBe(true);
+    expect(f.deps.storage).not.toHaveBeenCalled();
+    expect(f.state).toEqual(before);
+    return result;
+  }
+  it.each(["previous", "intended"] as const)("classifies stable %s state without configuration acceptance", async (state) => {
+    const f = fixture();
+    if (state === "intended") f.state.auth = { ...intended };
+    const output = await inspect(f);
+    expect(output).toMatchObject({ status: "inspection_pass", stable: true, authState: `matches_${state}`,
+      fields: { site_url: state, uri_allow_list: state, disable_signup: state },
+      signupDisabled: state === "intended" });
+    expect(f.deps.request.mock.calls).toEqual([
+      [ROUTES.supabase, "GET"], [ROUTES.auth, "GET"], [ROUTES.auth, "GET"],
+    ]);
+    expect(f.deps.liveHead).toHaveBeenCalledTimes(3);
+    const heads = f.deps.liveHead.mock.invocationCallOrder;
+    const requests = f.deps.request.mock.invocationCallOrder;
+    expect(heads[0]).toBeLessThan(requests[0]!);
+    expect(heads[1]).toBeGreaterThan(requests[1]!);
+    expect(heads[1]).toBeLessThan(requests[2]!);
+    expect(heads[2]).toBeGreaterThan(requests[2]!);
+  });
+  it("leaves mixed known fields unresolved", async () => {
+    const f = fixture();
+    f.state.auth.disable_signup = true;
+    expect(await inspect(f)).toMatchObject({ status: "unresolved", stable: true, authState: "other",
+      fields: { site_url: "previous", uri_allow_list: "previous", disable_signup: "intended" },
+      signupDisabled: true });
+  });
+  it("leaves changing reads unresolved even when the final read matches intended", async () => {
+    const f = fixture();
+    const original = f.deps.request.getMockImplementation()!;
+    let reads = 0;
+    f.deps.request.mockImplementation(async (...args) =>
+      args[0] === ROUTES.auth && ++reads === 2 ? intended : original(...args));
+    expect(await inspect(f)).toMatchObject({ status: "unresolved", stable: false, authState: "other",
+      fields: { site_url: "intended", uri_allow_list: "intended", disable_signup: "intended" } });
+  });
+  it.each([null, undefined, canary, {}, []])("never serializes unknown Auth values %#", async (value) => {
+    const f = fixture();
+    const original = f.deps.request.getMockImplementation()!;
+    f.deps.request.mockImplementation(async (...args) =>
+      args[0] === ROUTES.auth ? { site_url: canary, uri_allow_list: canary, disable_signup: value } : original(...args));
+    expect(await inspect(f)).toMatchObject({ status: "unresolved", authState: "other",
+      signupDisabled: null, fields: { site_url: "other", uri_allow_list: "other", disable_signup: "other" } });
+  });
+  it("selects only identity and Auth fields without accessing private getters or serializing objects", async () => {
+    const f = fixture();
+    const original = f.deps.request.getMockImplementation()!;
+    const readSensitive = vi.fn(() => { throw new Error(canary); });
+    f.deps.request.mockImplementation(async (...args) => {
+      const response = await original(...args) as object;
+      for (const key of ["password", "smtp_pass", "smtp_host", "credentials", "toJSON"]) {
+        Object.defineProperty(response, key, { enumerable: true, get: readSensitive });
+      }
+      return response;
+    });
+    expect((await inspect(f)).status).toBe("inspection_pass");
+    expect(readSensitive).not.toHaveBeenCalled();
+  });
+  it.each(["id", "name", "organization_id", "region", "status"])("refuses wrong project %s before Auth reads", async (key) => {
+    const f = fixture();
+    const original = f.deps.request.getMockImplementation()!;
+    f.deps.request.mockImplementation(async (...args) => ({ ...await original(...args) as object, [key]: canary }));
+    expect((await inspect(f)).stages.at(-1)).toEqual({
+      stage: "supabase", code: PlanFailure.Supabase, status: "failed",
+    });
+    expect(f.deps.request).toHaveBeenCalledOnce();
+    expect(f.deps.request).toHaveBeenCalledWith(ROUTES.supabase, "GET");
+  });
+  it.each(Object.keys(inspectionEnv).filter((key) => key.startsWith("GITHUB_") ||
+    ["EXPECTED_SHA", "CONFIGURE_SWIM_REVIEW", "INSPECT_SWIM_REVIEW_AUTH", "PREPARE_SWIM_REVIEW",
+      "INSPECT_SWIM_REVIEW", "SWIM_ACCEPTANCE", "MIGRATE_PRODUCTION", "ALLOW_UNDEPLOYED"].includes(key)))(
+    "refuses missing/incorrect %s before target access", async (key) => {
+      for (const value of [undefined, "wrong", "true"]) {
+        if (value === inspectionEnv[key as keyof typeof inspectionEnv]) continue;
+        const f = fixture();
+        expect((await inspect(f, { ...inspectionEnv, [key]: value })).status).toBe("failed");
+        expect(f.deps.request).not.toHaveBeenCalled();
+      }
+    });
+  it("does not inspect or require any credential except the management token", async () => {
+    const values = { ...inspectionEnv };
+    const readSensitive = vi.fn(() => { throw new Error(canary); });
+    for (const key of ["VERCEL_REVIEW_TOKEN", "SWIM_REVIEW_DATABASE_URL",
+      "SWIM_REVIEW_SUPABASE_ANON_KEY", "SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY"]) {
+      Object.defineProperty(values, key, { get: readSensitive });
+    }
+    expect((await inspect(fixture(), values)).status).toBe("inspection_pass");
+    expect(readSensitive).not.toHaveBeenCalled();
+    const f = fixture();
+    expect((await inspect(f, { ...inspectionEnv, SUPABASE_REVIEW_MANAGEMENT_TOKEN: "" })).status).toBe("failed");
+    expect(f.deps.request).not.toHaveBeenCalled();
+  });
+  it.each([1, 2, 3])("fails closed at live-head check %s without any writes", async (check) => {
+    const f = fixture();
+    let checks = 0;
+    f.deps.liveHead.mockImplementation(() => { if (++checks === check) throw new Error(canary); });
+    expect(await inspect(f)).toMatchObject({ status: "failed", stable: false, authState: "other" });
+  });
+  it.each([1, 2, 3])("makes no writes or repair attempts after request %s fails", async (check) => {
+    const f = fixture();
+    const original = f.deps.request.getMockImplementation()!;
+    let requests = 0;
+    f.deps.request.mockImplementation(async (...args) => {
+      if (++requests === check) throw new Error(canary);
+      return original(...args);
+    });
+    expect((await inspect(f)).status).toBe("failed");
+    expect(f.deps.request).toHaveBeenCalledTimes(check);
+  });
+  it("permits only the two fixed bodyless GET routes at the actual transport boundary", async () => {
+    const fetcher = vi.fn(async () => new Response("{}"));
+    const request = boundedTransport(inspectionEnv, Date.now() + 300_000, fetcher, "inspect-auth");
+    for (const route of Object.values(ROUTES)) {
+      for (const method of ["GET", "PATCH", "POST", "DELETE"]) {
+        if (method === "GET" && (route === ROUTES.supabase || route === ROUTES.auth)) {
+          expect(await request(route, method)).toEqual({});
+        } else await expect(request(route, method)).rejects.toThrow("predicate_refused");
+      }
+    }
+    for (const route of [ROUTES.auth + "?extra=1", ROUTES.supabase.replace(REVIEW.supabaseId, "other")]) {
+      await expect(request(route)).rejects.toThrow("predicate_refused");
+    }
+    await expect(request(ROUTES.auth, "GET", {})).rejects.toThrow("predicate_refused");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    for (const [, options] of fetcher.mock.calls as unknown as [string, RequestInit][]) {
+      expect(options).toMatchObject({ method: "GET", redirect: "error", signal: expect.any(AbortSignal),
+        headers: { Authorization: ["Bearer", inspectionEnv.SUPABASE_REVIEW_MANAGEMENT_TOKEN].join(" ") } });
+      expect(options.body).toBeUndefined();
+    }
+  });
+  it.each([403, 500, 99, 600, 401.5, NaN, "403"])("only emits validated observed numeric status %#", async (status) => {
+    const f = fixture();
+    const fetcher = vi.fn(async () => ({ ok: false, status, body: null }) as unknown as Response);
+    f.deps.request.mockImplementation(boundedTransport(inspectionEnv, Date.now() + 300_000, fetcher, "inspect-auth"));
+    const output = await inspectAuth(inspectionEnv, f.deps);
+    expect(output.stages.at(-1)).toEqual({ stage: "supabase", code: "http_status", status: "failed",
+      ...(typeof status === "number" && Number.isInteger(status) && status >= 100 && status <= 599 ?
+        { httpStatus: status } : {}) });
+    expect(JSON.stringify(output)).not.toContain(canary);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+  it.each([[], ["--check-source"], ["--inspect-auth"], ["--check-source", "--inspect-auth"]].map((args) => ({ args })))(
+    "parses explicit supported CLI arguments %#", ({ args }) => {
+      expect(configurationArguments(args)).toEqual({ mode: args.includes("--inspect-auth") ? "inspect-auth" : "configure",
+        checkSource: args.includes("--check-source") });
+    });
+  it.each([["--inspect"], ["--configure", "--inspect-auth"], ["--inspect-auth", "--unknown"],
+    ["--inspect-auth", "--inspect-auth"], ["--check-source", "--check-source"], ["--check-source", "--inspect-auth", "extra"]]
+    .map((args) => ({ args })))(
+    "rejects unknown/mixed/duplicate CLI arguments %#", ({ args }) => expect(() => configurationArguments(args)).toThrow());
+});
 describe("configuration workflow boundaries", () => {
   const root = resolve(import.meta.dirname, "../../../..");
   const workflow = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8");
@@ -633,7 +835,7 @@ describe("configuration workflow boundaries", () => {
     expect(createHash("sha256").update(jobs).digest("hex"))
       .toBe("c7199fb2c2a1ea40d72d5a0dc5d5aca2400d173f7f4f4158c45453be78408b79");
   });
-  it("places offline checks and source validation before exactly five runtime-only secrets", () => {
+  it("isolates five write-step secrets from the single read-only secret after offline and source checks", () => {
     expect(job).toContain("needs: [ci, identity-guard]");
     expect(job).toContain("cancel-in-progress: false");
     expect(job).toContain("environment: swim-review");
@@ -641,7 +843,28 @@ describe("configuration workflow boundaries", () => {
     expect(job).toContain("timeout-minutes: 7");
     expect(job.indexOf("vitest run")).toBeLessThan(job.indexOf("--check-source"));
     expect(job.indexOf("--check-source")).toBeLessThan(job.indexOf("secrets."));
-    expect(job.match(/secrets\./g)).toHaveLength(5);
+    const write = job.split("      - name: Configure isolated branch once")[1]!.split("      - name: Inspect isolated test Auth read-only")[0]!;
+    const read = job.split("      - name: Inspect isolated test Auth read-only")[1]!;
+    expect(write.match(/secrets\.(\w+)/g)).toEqual([
+      "secrets.VERCEL_REVIEW_TOKEN", "secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN",
+      "secrets.SWIM_REVIEW_DATABASE_URL", "secrets.SWIM_REVIEW_SUPABASE_ANON_KEY",
+      "secrets.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY",
+    ]);
+    expect(read.match(/secrets\.(\w+)/g)).toEqual(["secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN"]);
+    expect(job.match(/secrets\./g)).toHaveLength(6);
+    expect(write).toContain("if: inputs.configure_swim_review == true && inputs.inspect_swim_review_auth == false");
+    expect(read).toContain("if: inputs.configure_swim_review == false && inputs.inspect_swim_review_auth == true");
+    expect(read).toContain("scripts/configure-swim-review.ts --inspect-auth");
+    expect(job.indexOf("--check-source --inspect-auth")).toBeLessThan(job.indexOf("secrets."));
+    expect(job).toContain("((inputs.configure_swim_review == true && inputs.inspect_swim_review_auth == false) ||");
+    expect(job).toContain("(inputs.configure_swim_review == false && inputs.inspect_swim_review_auth == true))");
+    for (const flag of ["prepare_swim_review", "inspect_swim_review", "swim_acceptance", "migrate_production", "allow_undeployed"]) {
+      expect(job).toContain(`inputs.${flag} == false`);
+    }
+    expect(job).toContain("INSPECT_SWIM_REVIEW_AUTH: ${{ inputs.inspect_swim_review_auth }}");
+    expect(job).toContain("group: swim-review-bootstrap");
+    expect(workflow.split("\njobs:")[0]).toContain("(inputs.configure_swim_review || inputs.inspect_swim_review_auth)");
+    expect(workflow).toMatch(/inspect_swim_review_auth:\n\s+description:.*\n\s+required: false\n\s+default: false\n\s+type: boolean/);
     expect(job).not.toMatch(/run:.*(?:vercel|db:migrate|db:seed|prepare-swim-review\.ts)/);
   });
 });

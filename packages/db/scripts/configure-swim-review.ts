@@ -32,7 +32,12 @@ type Code = PlanFailure | "passed" | "predicate_refused" | "http_status" | "tran
   "response_invalid" | "write_uncertain" | "metadata_envelope_invalid" |
   "metadata_pagination_invalid" | "metadata_entry_invalid";
 class Refusal extends Error {
-  constructor(readonly code: Code) { super(code); }
+  readonly httpStatus?: number;
+  constructor(readonly code: Code, httpStatus?: number) {
+    super(code);
+    if (typeof httpStatus === "number" && Number.isInteger(httpStatus) &&
+      httpStatus >= 100 && httpStatus <= 599) this.httpStatus = httpStatus;
+  }
 }
 function requireThat(value: unknown, code: Code = "predicate_refused"): asserts value {
   if (!value) throw new Refusal(code);
@@ -81,15 +86,22 @@ export function environmentList(value: unknown, shared: boolean): EnvironmentMet
   requireThat(new Set(projected.map((entry) => entry.id)).size === projected.length, PlanFailure.Duplicate);
   return projected;
 }
-export function configurationContext(env: NodeJS.ProcessEnv): ManualContext {
+type Mode = "configure" | "inspect-auth";
+function validateMode(env: NodeJS.ProcessEnv, mode: Mode) {
+  requireThat(mode === "configure" || mode === "inspect-auth");
   requireThat(env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
     env.GITHUB_REPOSITORY === REVIEW.repository && env.GITHUB_REF_TYPE === "branch" &&
     env.GITHUB_REF === ref && env.GITHUB_JOB === "configure-swim-review" &&
-    env.CONFIGURE_SWIM_REVIEW === "true" && env.PREPARE_SWIM_REVIEW === "false" &&
+    env.CONFIGURE_SWIM_REVIEW === (mode === "configure" ? "true" : "false") &&
+    env.INSPECT_SWIM_REVIEW_AUTH === (mode === "inspect-auth" ? "true" : "false") &&
+    env.PREPARE_SWIM_REVIEW === "false" &&
     env.INSPECT_SWIM_REVIEW === "false" && env.SWIM_ACCEPTANCE === "false" &&
     env.MIGRATE_PRODUCTION === "false" && env.ALLOW_UNDEPLOYED === "false" &&
     /^[a-f0-9]{40}$/.test(env.EXPECTED_SHA ?? "") && env.EXPECTED_SHA === env.GITHUB_SHA &&
     env.EXPECTED_SHA !== APPLICATION_SHA);
+}
+export function configurationContext(env: NodeJS.ProcessEnv): ManualContext {
+  validateMode(env, "configure");
   return {
     actions: true, eventName: "workflow_dispatch", repository: REVIEW.repository,
     refType: "branch", ref, configure: true, prepare: false, inspect: false,
@@ -104,12 +116,14 @@ const git = (...args: string[]) => {
     stdio: ["ignore", "pipe", "ignore"],
   }).trim();
 };
-export function verifyConfigurationSource(env: NodeJS.ProcessEnv) {
-  configurationContext(env);
+export function verifyConfigurationSource(env: NodeJS.ProcessEnv, mode: Mode = "configure") {
+  validateMode(env, mode);
   const event = object(JSON.parse(readFileSync(env.GITHUB_EVENT_PATH!, "utf8")));
   const inputs = object(event.inputs);
   for (const [key, expected] of Object.entries({
-    configure_swim_review: "true", prepare_swim_review: "false", inspect_swim_review: "false",
+    configure_swim_review: mode === "configure" ? "true" : "false",
+    inspect_swim_review_auth: mode === "inspect-auth" ? "true" : "false",
+    prepare_swim_review: "false", inspect_swim_review: "false",
     swim_acceptance: "false", migrate_production: "false", allow_undeployed: "false",
     expected_sha: env.EXPECTED_SHA,
   })) requireThat(inputs[key] === expected);
@@ -160,8 +174,10 @@ export function storageAdapter(env: NodeJS.ProcessEnv, request: Request): () => 
   };
 }
 export function boundedTransport(env: NodeJS.ProcessEnv, deadline: number,
-  fetcher: typeof fetch = fetch): Request {
+  fetcher: typeof fetch = fetch, mode: Mode = "configure"): Request {
   return async (url, method = "GET", body) => {
+    requireThat(mode === "configure" || (mode === "inspect-auth" && method === "GET" &&
+      body === undefined && (url === ROUTES.supabase || url === ROUTES.auth)));
     const deletion = method === "DELETE" && url.startsWith(
       `https://api.vercel.com/v9/projects/${REVIEW.projectId}/env/`) &&
       url.endsWith(`?teamId=${REVIEW.teamId}`) &&
@@ -175,6 +191,7 @@ export function boundedTransport(env: NodeJS.ProcessEnv, deadline: number,
     requireThat(remaining > 0);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), Math.min(30_000, remaining));
+    let observedStatus: number | undefined;
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (url.startsWith("https://api.vercel.com/")) headers.Authorization = ["Bearer", env.VERCEL_REVIEW_TOKEN].join(" ");
@@ -185,13 +202,14 @@ export function boundedTransport(env: NodeJS.ProcessEnv, deadline: number,
         method, headers, redirect: "error", signal: controller.signal,
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
+      observedStatus = response.status;
       if (url === ROUTES.alias && response.status === 404) {
         await response.body?.cancel();
         return { available: true };
       }
       if (!response.ok || url === ROUTES.alias) {
         await response.body?.cancel();
-        throw new Refusal("http_status");
+        throw new Refusal("http_status", observedStatus);
       }
       requireThat(Number(response.headers.get("content-length") ?? 0) <= limit);
       const reader = response.body?.getReader();
@@ -212,7 +230,7 @@ export function boundedTransport(env: NodeJS.ProcessEnv, deadline: number,
       try { return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown; }
       catch { throw new Refusal("response_invalid"); }
     } catch (error) {
-      throw error instanceof Refusal ? error : new Refusal("transport_failed");
+      throw new Refusal(error instanceof Refusal ? error.code : "transport_failed", observedStatus);
     } finally { clearTimeout(timer); }
   };
 }
@@ -226,7 +244,8 @@ type Dependencies = {
 type Summary = {
   scope: "swim-review-config"; testedSha: string | null; acceptedApplicationSha: string;
   projectId: string; teamId: string; supabaseId: string;
-  status: "failed" | "configuration_pass"; stages: { stage: Stage; code: Code; status: "passed" | "failed" }[];
+  status: "failed" | "configuration_pass";
+  stages: { stage: Stage; code: Code; status: "passed" | "failed"; underlyingCode?: Code; httpStatus?: number }[];
   createdEnv: { id: string; key: string }[];
   protectedUnchanged: { project: boolean; shared: boolean };
   auth: { previous: ConfigurationPlan["auth"]["previous"] | null; patchMatches: boolean };
@@ -381,7 +400,13 @@ export async function configure(env: NodeJS.ProcessEnv, deps: Dependencies): Pro
     result.protectedUnchanged = { project: false, shared: false };
     result.stages.push({ stage, status: "failed",
       code: (authAttempted && !authCertain) || (envAttempted && !envCertain) ?
-        "write_uncertain" : error instanceof Refusal ? error.code : "predicate_refused" });
+        "write_uncertain" : error instanceof Refusal ? error.code : "predicate_refused",
+      ...(error instanceof Refusal ? {
+        ...((authAttempted && !authCertain) || (envAttempted && !envCertain) ?
+          { underlyingCode: error.code } : {}),
+        ...(error.httpStatus === undefined ? {} : { httpStatus: error.httpStatus }),
+      } : {}),
+    });
     if (envAttempted) result.rollback.environment = "manual";
     if (authAttempted) result.rollback.auth = "manual";
     // Only complete, attributable responses permit cleanup; unknown writes remain isolated.
@@ -424,32 +449,108 @@ export async function configure(env: NodeJS.ProcessEnv, deps: Dependencies): Pro
   return result;
 }
 
+type Classification = "previous" | "intended" | "other";
+type InspectionSummary = {
+  scope: "swim-review-auth-inspection"; testedSha: string | null; acceptedApplicationSha: string;
+  supabaseId: string; supabaseName: string; organizationId: string; region: string;
+  status: "failed" | "unresolved" | "inspection_pass"; stages: Summary["stages"];
+  authState: "matches_previous" | "matches_intended" | "other"; stable: boolean;
+  fields: Record<typeof authKeys[number], Classification>; signupDisabled: boolean | null;
+  writesAttempted: false; configurationAccepted: false; deploymentAttempted: false;
+};
+function inspectionSummary(env: NodeJS.ProcessEnv): InspectionSummary {
+  return {
+    scope: "swim-review-auth-inspection",
+    testedSha: /^[a-f0-9]{40}$/.test(env.EXPECTED_SHA ?? "") ? env.EXPECTED_SHA! : null,
+    acceptedApplicationSha: APPLICATION_SHA, supabaseId: REVIEW.supabaseId,
+    supabaseName: REVIEW.supabaseName, organizationId: REVIEW.organizationId, region: REVIEW.region,
+    status: "failed", stages: [], authState: "other", stable: false,
+    fields: { site_url: "other", uri_allow_list: "other", disable_signup: "other" },
+    signupDisabled: null, writesAttempted: false, configurationAccepted: false, deploymentAttempted: false,
+  };
+}
+export async function inspectAuth(env: NodeJS.ProcessEnv,
+  deps: Pick<Dependencies, "source" | "liveHead" | "request">): Promise<InspectionSummary> {
+  const result = inspectionSummary(env);
+  let stage: Stage = "source";
+  async function step<T>(name: Stage, action: () => T | Promise<T>): Promise<T> {
+    stage = name;
+    const value = await action();
+    result.stages.push({ stage, code: "passed", status: "passed" });
+    return value;
+  }
+  try {
+    await step("source", () => { validateMode(env, "inspect-auth"); deps.source(); });
+    await step("credentials", () =>
+      requireThat(/^[A-Za-z0-9_.-]{20,512}$/.test(env.SUPABASE_REVIEW_MANAGEMENT_TOKEN ?? "")));
+    await step("live_head", deps.liveHead);
+    await step("supabase", async () => {
+      const identity = select(await deps.request(ROUTES.supabase, "GET"),
+        ["id", "name", "organization_id", "region", "status"]);
+      requireThat(identity.id === REVIEW.supabaseId && identity.name === REVIEW.supabaseName &&
+        identity.organization_id === REVIEW.organizationId && identity.region === REVIEW.region &&
+        identity.status === "ACTIVE_HEALTHY", PlanFailure.Supabase);
+    });
+    const first = await step("auth", async () => authFields(await deps.request(ROUTES.auth, "GET")));
+    await step("live_head", deps.liveHead);
+    const second = await step("auth_verify", async () => authFields(await deps.request(ROUTES.auth, "GET")));
+    await step("completion", deps.liveHead);
+    const previous = { site_url: "http://localhost:3000", uri_allow_list: "", disable_signup: false };
+    const intended = { site_url: REVIEW.origin, uri_allow_list: `${REVIEW.origin}/auth/callback`, disable_signup: true };
+    result.stable = authKeys.every((key) =>
+      (second[key] === null || typeof second[key] === (key === "disable_signup" ? "boolean" : "string")) &&
+      first[key] === second[key]);
+    for (const key of authKeys) {
+      result.fields[key] = second[key] === previous[key] ? "previous" :
+        second[key] === intended[key] ? "intended" : "other";
+    }
+    result.signupDisabled = typeof second.disable_signup === "boolean" ? second.disable_signup : null;
+    if (result.stable && authKeys.every((key) => result.fields[key] === "previous")) result.authState = "matches_previous";
+    if (result.stable && authKeys.every((key) => result.fields[key] === "intended")) result.authState = "matches_intended";
+    result.status = result.authState === "other" ? "unresolved" : "inspection_pass";
+  } catch (error) {
+    result.stages.push({ stage, code: error instanceof Refusal ? error.code : "predicate_refused", status: "failed",
+      ...(error instanceof Refusal && error.httpStatus !== undefined ? { httpStatus: error.httpStatus } : {}),
+    });
+  }
+  return result;
+}
+export function configurationArguments(args: string[]): { mode: Mode; checkSource: boolean } {
+  requireThat(args.length <= 2 && new Set(args).size === args.length &&
+    args.every((arg) => arg === "--check-source" || arg === "--inspect-auth"));
+  return { mode: args.includes("--inspect-auth") ? "inspect-auth" : "configure",
+    checkSource: args.includes("--check-source") };
+}
 async function main() {
   const env = process.env;
-  let result: Summary;
+  let result: Summary | InspectionSummary;
   try {
     gitDeadline = Date.now() + 300_000;
-    if (process.argv.length === 3 && process.argv[2] === "--check-source") {
-      verifyConfigurationSource(env);
+    const { mode, checkSource } = configurationArguments(process.argv.slice(2));
+    if (checkSource) {
+      verifyConfigurationSource(env, mode);
       liveHead(env);
       return;
     }
-    requireThat(process.argv.length === 2);
     const deadline = gitDeadline;
-    const request = boundedTransport(env, deadline);
-    result = await configure(env, {
-      source: () => verifyConfigurationSource(env), liveHead: () => {
+    const request = boundedTransport(env, deadline, fetch, mode);
+    const deps = {
+      source: () => verifyConfigurationSource(env, mode), liveHead: () => {
         requireThat(Date.now() < deadline);
         liveHead(env);
       },
-      request, cron: () => randomBytes(48).toString("base64url"),
+      request,
+    };
+    result = mode === "inspect-auth" ? await inspectAuth(env, deps) : await configure(env, {
+      ...deps, cron: () => randomBytes(48).toString("base64url"),
       storage: storageAdapter(env, request),
     });
   } catch {
-    result = summary(env);
+    result = process.argv.includes("--inspect-auth") || env.INSPECT_SWIM_REVIEW_AUTH === "true" ?
+      inspectionSummary(env) : summary(env);
     result.stages.push({ stage: "source", code: "predicate_refused", status: "failed" });
   }
   console.log(JSON.stringify(result));
-  if (result.status !== "configuration_pass") process.exitCode = 1;
+  if (result.status !== "configuration_pass" && result.status !== "inspection_pass") process.exitCode = 1;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) void main();
