@@ -245,7 +245,7 @@ function classification(value: unknown, field: "deploymentType" | "plan") {
   const entry = (value as Record<string, unknown>)[field];
   return { type, [field]: typeof entry === "string" ? known.find((item) => item === entry) ?? "other" : shape(entry) };
 }
-function projectIdentity(raw: unknown) {
+export function projectIdentity(raw: unknown) {
   const row = structure(raw, "project_structure");
   const link = structure(row.link, "project_structure");
   requireThat(row.id === REVIEW.projectId && row.accountId === REVIEW.teamId && row.name === REVIEW.projectName &&
@@ -286,14 +286,14 @@ function projectIdentity(raw: unknown) {
   }
   return { sso, password, trustedIps, addresses, protectionMode };
 }
-function teamIdentity(raw: unknown) {
+export function teamIdentity(raw: unknown) {
   const row = structure(raw, "team_structure");
   requireThat(row.id === REVIEW.teamId && row.slug === "drrowdevs-projects", "team_identity");
   requireThat(row.billing !== undefined, "billing_missing");
   requireThat(row.billing !== null, "billing_null");
   requireThat(structure(row.billing, "billing_invalid").plan === "hobby", "billing_plan");
 }
-function supabaseIdentity(raw: unknown) {
+export function supabaseIdentity(raw: unknown) {
   const row = object(raw);
   requireThat(row.id === REVIEW.supabaseId && row.name === REVIEW.supabaseName &&
     row.organization_id === REVIEW.organizationId && row.region === REVIEW.region &&
