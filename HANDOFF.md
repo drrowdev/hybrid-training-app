@@ -3337,3 +3337,153 @@ is authorized by this slice. No provider/DB/RPC/storage/user read or mutation,
 bootstrap/seed/reset, deployment, alias or account operation was executed.
 Previously consumed reconciliation logs/private transcripts were not fetched.
 PR805 remains the implementation owner, draft/unmerged; no auto-merge enabled.
+
+## 2026-09-11 — PR805 isolated Preview deployment source increment
+
+START verified against local HEAD and live refs:
+`copilot/new-acceptance-cases=5d26364a49d934acdcac0ae8c924ae7e6bb784f4`,
+`main=672e4202792da122281639e3db810029432573f5`.
+Working checkpoint `22378ac562ce0faa46972fe885403769ae50fe38` was published
+early; final tested implementation revision is
+`7a63cc3082590f405bd880d3faf114ded3121d97`. This subsequent HANDOFF-only
+commit does not change executable source. Native forward commits only.
+PR805 remains the sole implementation/integration owner, draft and unmerged.
+
+The owner-supplied accepted state supersedes the preceding unresolved-Auth
+handoff: configuration run **34585357240**, attempt1, source
+**5d26364a49d934acdcac0ae8c924ae7e6bb784f4**, passed all19 stages during
+**2026-09-11T09:43:14Z–09:43:41Z**. Its exact18 encrypted branch-only
+Preview IDs are pinned in `RECEIPT`; both metadata timestamps must be present,
+ordered, and inside that successful job window before any write. Matching
+names alone are insufficient. Auth must already match the fixed review origin,
+its `/auth/callback`, and `disable_signup=true`. The accepted configuration
+is not rerun, reconstructed, deleted, or rolled back by deployment.
+The initialized test project and frozen26/all9areas acceptance remain accepted.
+
+### Source and workflow contract
+
+New `packages/db/scripts/deploy-swim-review.ts` and its focused test implement
+the bounded path. Existing configuration changes only export the safe metadata
+projection, extend its source footprint from eight to exactly ten paths, and
+exclude deployment mode. Configuration/inspection rollback behavior is intact.
+No bootstrap, pure-plan, application/UI/schema/RLS/migration/domain/engine or
+casebook changes; no dependencies. DC-* behavior is unchanged; the applicable
+contract remains [design constraints](docs/knowledge/hybrid-training-design-constraints.md).
+
+The default-false `deploy_swim_review` input selects one appended job, requiring
+existing `ci` and `identity-guard`, exact manual repository/feature/ref/SHA, and
+all seven other action flags false. Full-history exact-SHA checkout has no
+persisted credentials. Node22/pnpm pins are reused. All four focused offline
+suites and source precheck precede the five existing secrets. The project job
+lock remains noncancelling `swim-review-bootstrap`; deployment joins the
+existing noncancelling review workflow group. Limits: job25min,
+credential step/script18min, readiness10min, HTTP30sec, response2MB.
+Existing core/reference/production/bootstrap job bytes and both immutable
+prior-job digests still pass.
+
+Because those prior job bytes cannot change, the deployment test file also
+enforces exclusive deployment dispatch inputs when executed by prerequisite
+`ci`: a mixed deployment dispatch fails CI before its dependent mutation jobs
+can start. The new job independently repeats strict mode guards in YAML and
+the producer. This prerequisite gate is part of the deployment safety contract;
+do not skip/remove that test while leaving the older job conditions unchanged.
+Source prechecks inspect actual HEAD, accepted application/configuration
+ancestry, clean tree, regular files, exact ten-path footprint, live feature and
+the pinned live main. No forged configuration context is used.
+
+### Implemented hosted sequence — not executed here
+
+Fixed Vercel project/team/Hobby/link/root/framework/protection metadata,
+complete project/shared environment metadata, exact test Supabase identity,
+modern credentials, syntactic-only DB target, intended Auth, email-only
+settings, existing read-only storage RPC, and absent review alias are guarded.
+Only safe protection fields are compared; no password hashes/bypass secrets
+are inspected. Aggregate project `updatedAt` is not an environment/protection
+marker because legitimate environment/deployment writes can advance it.
+Every protected environment entry retains full ID/key/type/target/branch and
+createdAt/updatedAt equality throughout.
+
+After fresh guards, PATCH only the receipt's `NEXT_PUBLIC_BUILD_SHA` ID,
+then `POOL_SWIMMING_ENABLED` ID last. Exact encrypted/Preview/feature ownership
+is required in direct200 responses and complete subsequent listings; all
+other16 entries remain unchanged. No credentials or disabled integrations are
+refreshed. Then issue exactly one `/v13/deployments` POST with fixed
+name/project and exact GitHub org/repo/ref/SHA, **omitting target**.
+Require official owner-response projectId/ownerId, target=null, gitSource and
+commit metadata matching SHA/ref, bounded ID/URL, and a fresh createdAt inside
+the creation attempt. Every poll repeats provenance checks, including identical
+ID/URL/createdAt; queued/building is not READY.
+
+After READY, repeat isolation/Auth/source/protection and alias-absence checks,
+then assign only the fixed review alias to that verified deployment. Verify the
+official alias response and subsequent alias/deployment ownership. Only exact
+404 establishes absence. Read-before-write is **not atomic compare-and-swap**:
+a concurrent claim can still race the POST; an observed reassignment is a
+failure requiring reconciliation, never permission to delete or reassign it.
+No provider-supplied URL is fetched; no production target, inline environment,
+settings override, promotion, paid override, protection bypass, or build-log
+route exists. [Vercel cron documentation](https://vercel.com/docs/cron-jobs)
+states cron dispatches production deployments; this path creates Preview only
+and neither invokes cron nor modifies production cron settings.
+
+### Terminal producer schema and failure meaning
+
+One plain JSON result, scope **`swim-review-deployment`**:
+
+- `testedSha`, `acceptedApp`, `configurationRun`, `configurationSha`,
+  `projectId`, `teamId`, `testProject` bind the source and fixed resources.
+- `status` is `deployment_pass` or `failed`; bounded `stages` contain only
+  `stage`, finite `code`, `status`, optional observed integer100..599 `httpStatus`.
+- `acceptedEnv` and `updatedEnv` contain only verified `id`/`key` pairs.
+- `protectedUnchanged.{project,shared}`, `authMatches`, `isolationVerified`
+  are verification booleans, reset conservatively on failure.
+- `buildSha`, `activation`, `deployment`, `alias` each contain independent
+  `attempted`/`confirmed`. Attempted but unconfirmed means uncertain, not absent.
+- `deploymentId`, `deploymentUrl`, `aliasMapping` are null until verified;
+  mapping contains fixed `alias`, verified `deploymentId`, `projectId`, `teamId`.
+- `ready` records observed readiness; `partial` and `manualReconciliation`
+  become true after any attempted mutation followed by failure.
+  `runtimePending=true` and `ownerLoginPending=true` always.
+
+No raw messages, headers, config bodies, secret values/hashes, rows or media
+are emitted. Preserve the first failing stage/code. No blind retries,
+deployment cleanup, history deletion, accepted override deletion, Auth restore,
+localhost restore or signup enablement. An uncertain deployment POST may have
+created a deployment: **do not issue another** without separate reconciliation.
+These semantics deliberately leave activated but isolated settings in place on
+later failure. A future repeat will reject changed receipt markers.
+
+### Offline evidence and remaining proof
+
+At `7a63cc3082590f405bd880d3faf114ded3121d97`, one invocation passed
+**621/621** tests: deployment81, configuration201, pure plan122, bootstrap217.
+Targeted strict TypeScript over all four scripts and four tests passed;
+`git diff --check` passed. Existing DB lint reports no configured checker.
+Tests use fake provider/network/clock/source, plus saved-workflow/source
+boundary assertions and the prerequisite manual-event exclusivity gate.
+Coverage includes receipt edits/missing timestamps, shared/protected changes,
+wrong Auth, malformed/paginated metadata, secret getters/canary redaction,
+literal write envelopes, ordering/ownership, historical deployment reuse,
+provenance changes during polling, readiness/deadline bounds, alias races,
+and uncertain responses with no rollback or cleanup.
+Changed-file secret scans passed. Local/public checkpoint identities are
+allowlisted. Full introduced history was checked by the existing publication
+hook after fetching missing history; no hooks bypassed or history rewritten.
+
+Required automated validation was attempted again after the final source
+repairs, but could not complete: review's configured model was unavailable;
+CodeQL Actions analysis failed and JavaScript analysis was skipped for database
+size. **No clean automated review/security result is claimed.**
+
+**Next:** coordinator must inspect all published source and author the bounded
+one-time consumer for this producer before any hosted execution. Then use the
+exact then-current feature SHA with deployment=true and all other action flags
+false. Missing provider metadata/protection/receipt evidence fails closed; it
+does not authorize initialization, configuration retries, new credentials or
+weaker guards. This worker performed no provider/private-endpoint access,
+credential access, DB connection, server/browser/Docker run, settings write,
+workflow dispatch, deployment, alias or account operation. No previously
+consumed configuration logs were fetched. Only current GitHub run metadata
+and an empty failed-jobs query were inspected. No frozen26 rerun.
+Preview readiness/alias mapping, account access, actual runtime login and owner
+usability are all still pending; READY alone will not prove those outcomes.
