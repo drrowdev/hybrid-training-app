@@ -3126,3 +3126,17 @@ The first existing blockless E2E now covers fresh onboarding; frozen26 count is
 unchanged. See `pool-swimming.md` and the appended HANDOFF for offline evidence
 and pending coordinator-only runtime validation. No schema, RLS, deployment,
 account administration or initialized-review access.
+
+## [2026-09-11] implementation | PR805 bounded isolated-review refresh primitive
+
+Published source `a18738bab1fd807825d1299a3fe27238df1a3f31` (early checkpoint
+`9c6a3e9a`) adds a separate refresh-only guard/transport/state machine and 101
+offline tests, reusing accepted deployment receipt and identity validators.
+Only BUILD_SHA may change before a single exact-SHA Preview and stable-UID alias
+reassignment. Read-before-write/postverification is not atomic CAS; ambiguous
+writes require manual reconciliation, never retry/rollback or data mutation.
+Existing review suites passed 920 tests; db and direct strict source typechecks
+passed. Automated reviewer unavailable; CodeQL analysis failed/skipped, not a
+security pass. HANDOFF records exact commands and limitations. No workflow,
+app/E2E/migration/reference changes, credentials/provider/account operations or
+26-case rerun. Later workflow wiring and owner usability remain pending.

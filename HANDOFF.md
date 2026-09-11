@@ -3903,3 +3903,72 @@ was core **FAIL** (7,152 passed, 1 failed); reference skipped, no browser execut
 No historical log contents were retrieved. No browser execution occurred here.
 Pending: coordinator-owned new exact-head guarded reference and available
 automated review. No application, other pin, machinery or provider/account changes.
+
+## 2026-09-11 — Bounded isolated-review refresh primitive (PR805)
+
+Published substantive checkpoint `9c6a3e9acb193474a7a39de8303d89dd89b55dd2`;
+completed source/tests `a18738bab1fd807825d1299a3fe27238df1a3f31`.
+Starting local/public head was `0a3d12e862ad2ffe7acbb8498f3442923005674c`;
+public main was `672e4202792da122281639e3db810029432573f5`.
+Native cloud-bot author and GitHub committer remain allowlisted. Publication
+hooks ran without bypass after fetching full history for the initial
+shallow-history refusal; no history rewrite.
+
+Source:
+- `packages/db/scripts/refresh-swim-review.ts`: separate refresh-only
+  context/source guard, strict CLI, metadata snapshots and bounded transport.
+- `scripts/__tests__/refresh-swim-review.test.ts`: offline fake-provider tests.
+- `packages/db/scripts/deploy-swim-review.ts`: only three existing pure identity
+  validators exported; old modes/constants/receipt/source/ten-path guards unchanged.
+
+Future entry: `pnpm --filter @hta/db exec tsx scripts/refresh-swim-review.ts`.
+`--check-source` requires no platform credentials. Both paths require the
+dedicated future `refresh-swim-review` workflow-dispatch job, exact live feature
+SHA/main, accepted `0a3` ancestry, clean regular source and the narrow tooling/
+documentation diff allowlist. All other operation flags must be explicitly false
+in environment and event inputs. `.github/workflows/ci.yml` is allowlisted only
+for the later bounded wiring step; **no workflow was changed here**.
+
+The primitive verifies the old post-deploy receipt, READY deployment and fixed
+alias UID/mapping, project/team/Hobby/Supabase identity, Auth/external-provider/
+protection metadata and read-only storage readiness. It patches only the existing
+BUILD_SHA override, creates one exact-SHA GitHub Preview, polls READY for at most
+10 minutes within 18 minutes total, then assigns the fixed alias and verifies its
+stable UID, oldDeploymentId and new mapping. Alias assignment is read-before-write
+plus postverification, **not atomic CAS**; concurrent writers can still race the
+POST. Ambiguous writes are never retried or rolled back. Finite JSON scope
+`swim-review-refresh` retains attempted/confirmed and partial/manual-reconciliation
+truth without raw provider values/errors or account data.
+
+Validation from the repository root:
+- `pnpm exec vitest run scripts/__tests__/refresh-swim-review.test.ts`:
+  **101 passed**, all API activity faked.
+- `pnpm --filter @hta/db exec vitest run scripts/__tests__/prepare-swim-review.test.ts scripts/__tests__/configure-swim-review.test.ts scripts/__tests__/swim-review-config-plan.test.ts scripts/__tests__/deploy-swim-review.test.ts`:
+  **920 passed** (217/203/122/378). Together with refresh: **1,021 passed**.
+- `pnpm --filter @hta/db typecheck`: **passed**.
+- `pnpm --filter @hta/db exec tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --strict scripts/refresh-swim-review.ts`:
+  **passed**; the normal db tsconfig excludes scripts, so this checks them directly.
+- `git diff --check` and changed-source secret scans: **passed**.
+- Required automated validation attempted twice, including after source commit:
+  reviewer unavailable; CodeQL Actions analysis failed and JavaScript analysis
+  skipped for database size. **No completed automated review/security pass**.
+
+Validation limitations: the initial root-cwd legacy test invocation produced
+seven `tsx` resolution failures; the package-cwd rerun above passed unchanged.
+An extra direct check adding `--noUncheckedIndexedAccess --exactOptionalPropertyTypes`
+reported four errors in unchanged imports (`deploy-swim-review.ts` optional
+HTTP-status projections and `seeds/movements.ts`); no out-of-scope repairs made.
+Two new test-fixture mistakes (getter-spreading and CLI table unpacking) were
+corrected before the final passing batch.
+
+**NO provider operation performed.** No platform credential access, SQL/database
+connection, user-row/account access, seeding/reset, deployment, alias mutation,
+configuration mutation, production action or browser acceptance execution occurred.
+App/E2E/migration/reference bytes are unchanged. Owner-supplied accepted
+`34606756220` at `0a3` remains historical evidence; the 26 cases were not rerun and
+their consumed evidence was not reopened. Owner usability is still pending.
+The [DC-SW privacy/isolation contract](docs/knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05)
+is unchanged. Remaining: inspect the published primitive, obtain available
+automated validation, and separately wire the exact-head future workflow with
+credentials supplied only at its final approved operation step. PR805 remains a
+draft based on main; PR811 and production approvals are untouched.
