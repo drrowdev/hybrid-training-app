@@ -387,7 +387,7 @@ describe("bounded fixed-route transport and saved workflow", () => {
   });
   it("appends exactly one guarded job with offline/source checks before five secrets", () => {
     const workflow = readFileSync(resolve(import.meta.dirname, "../../../../.github/workflows/ci.yml"), "utf8");
-    const job = workflow.split("\n  deploy-swim-review:\n")[1]!;
+    const job = workflow.split("\n  deploy-swim-review:\n")[1]!.split("\n  refresh-swim-review:\n")[0]!;
     expect(workflow.match(/\n  deploy-swim-review:/g)).toHaveLength(1);
     for (const text of ["needs: [ci, identity-guard]", "timeout-minutes: 25", "timeout-minutes: 18",
       "environment: swim-review", "contents: read", "fetch-depth: 0", "persist-credentials: false",
@@ -445,7 +445,7 @@ describe("native one-shot owner provisioning", () => {
   });
   it("binds owner secrets only to its conditional step after install/offline/source checks", () => {
     const workflow = readFileSync(resolve(import.meta.dirname, "../../../../.github/workflows/ci.yml"), "utf8");
-    const [before, owner] = workflow.split("      - name: Provision isolated owner once");
+    const [before, owner] = workflow.split("\n  refresh-swim-review:\n")[0]!.split("      - name: Provision isolated owner once");
     expect(before).not.toContain("secrets.SWIM_REVIEW_OWNER_");
     expect(owner!.match(/secrets\.\w+/g)).toEqual([
       "secrets.VERCEL_REVIEW_TOKEN", "secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN",

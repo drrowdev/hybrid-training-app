@@ -3152,3 +3152,15 @@ HANDOFF records the exact boundaries and requests authorization for narrowly
 scoped integrity-test/source-path updates before wiring can proceed. No guards
 weakened, source implementation changed, full-suite acceptance claimed, provider
 operation performed or workflow dispatched.
+
+## [2026-09-11] implementation | Local isolated-review refresh wiring
+
+Moved the refresh suite into existing package test discovery rather than
+modifying the frozen core jobs. Both historical workflow hashes remain intact.
+Added actual-dispatch exclusivity checks and a default-off refresh job gated by
+core and identity, with source checks before its four step-only credentials.
+The five focused suites passed 1,058 tests; direct strict script typechecking
+passed. Windows full-web attempts were not accepted because of unchanged
+POSIX/symlink restrictions; Linux CI is still required. No application, migration,
+reference execution or provider/data changes. See HANDOFF for the bounded
+remaining publication and isolated-review operation.

@@ -4023,3 +4023,40 @@ completed review/security pass.
 
 **NO provider operation performed.** No credentials, provider APIs, account/data
 access, database work, deployment, alias/protection changes or workflow dispatch.
+
+## 2026-09-11 - Local refresh workflow wiring
+
+The owner authorized switching implementation into the persistent local session.
+The final cloud source `82805d144e251e7e0b2c4e1cffc8a8bf7396a41c` was preserved
+by a clean fast-forward; no history was rewritten.
+
+The wiring blocker is resolved without changing either historical job digest.
+Refresh tests now live in `packages/db/scripts/__tests__/refresh-swim-review.test.ts`,
+so the existing package test step discovers them. The new refresh-only source
+allowlist follows that relocation. Legacy deployment assertions are bounded to
+their existing job rather than including the newly appended job; their assertions
+and all old operation code, receipts and ten-path guards are retained.
+
+The default-false `refresh_swim_review` input selects the dedicated
+`refresh-swim-review` job, named `refresh existing isolated review`. It requires
+the existing `ci` and `identity-guard` jobs, exact feature SHA and all other
+operation flags false. Package tests validate the actual dispatch in core before
+any dependent privileged job. Both existing noncancelling locks include refresh.
+Install, focused tests, direct strict script typecheck and `--check-source`
+precede the four step-only credentials. `Refresh existing isolated review`
+has a 20-minute outer limit around the unchanged 18-minute internal deadline.
+
+Local evidence (Node 24.11.1, pnpm 10.33.2, Windows):
+- Five focused review suites: **1,058 passed**, including **138 refresh tests**
+  and both unchanged historical workflow-digest assertions.
+- Direct strict refresh-script TypeScript check: **passed**.
+- Full web validation was attempted, not completed or accepted. The default
+  local fork pool stalled; a bounded thread pool exposed unchanged POSIX-mode
+  and symlink restrictions in reference-diagnostic tests. It was stopped rather
+  than weakening assertions or adding platform skips. Linux CI remains required.
+
+The existing 26-case result at `0a3` remains source-specific; app, E2E, schema,
+migration and reference-runner bytes are unchanged. No provider operation or
+production action has been performed by this local change. Remaining: normal
+publication with required hooks, then one exact-head, core/identity-gated refresh
+using the already approved isolated-review scope. Owner usability remains pending.

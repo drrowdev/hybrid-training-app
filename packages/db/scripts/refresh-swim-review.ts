@@ -14,7 +14,7 @@ export const REFRESH_REFERENCE = {
   sha: "0a3d12e862ad2ffe7acbb8498f3442923005674c", run: "34606756220",
 } as const;
 export const REFRESH_PATHS = [
-  "packages/db/scripts/refresh-swim-review.ts", "scripts/__tests__/refresh-swim-review.test.ts",
+  "packages/db/scripts/refresh-swim-review.ts", "packages/db/scripts/__tests__/refresh-swim-review.test.ts",
   "packages/db/scripts/deploy-swim-review.ts", "packages/db/scripts/__tests__/deploy-swim-review.test.ts",
   "HANDOFF.md", "docs/knowledge/log.md", ".github/workflows/ci.yml",
 ] as const;

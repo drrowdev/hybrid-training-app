@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { OTHER_OPERATIONS, REFRESH_PATHS, REFRESH_REFERENCE, refreshArguments, refreshContext, verifyRefreshSource,
-  refresh, refreshTransport } from "../../packages/db/scripts/refresh-swim-review";
+  refresh, refreshTransport } from "../refresh-swim-review";
 import { ACCEPTED_DEPLOYMENT, BASE_SHA, CONFIGURATION, DEPLOY_ROUTES, RECEIPT, deploymentRoute,
-  updateRoute } from "../../packages/db/scripts/deploy-swim-review";
-import { metadata, ROUTES, storageAdapter } from "../../packages/db/scripts/configure-swim-review";
-import { INHERITED_KEYS, OVERRIDE_KEYS, REVIEW, type EnvironmentMetadata } from "../../packages/db/scripts/swim-review-config-plan";
+  updateRoute } from "../deploy-swim-review";
+import { metadata, ROUTES, storageAdapter } from "../configure-swim-review";
+import { INHERITED_KEYS, OVERRIDE_KEYS, REVIEW, type EnvironmentMetadata } from "../swim-review-config-plan";
 
 const sha = "b".repeat(40);
 const canary = "offline_sensitive_canary_never_emit_12345";
@@ -35,6 +36,98 @@ function sourceIO() {
     }),
   };
 }
+function checkRefreshEvent(inputs: Record<string, unknown> | undefined, context: NodeJS.ProcessEnv) {
+  if (inputs?.refresh_swim_review === undefined || inputs.refresh_swim_review === "false") return false;
+  expect(inputs.refresh_swim_review).toBe("true");
+  expect(OTHER_OPERATIONS.every((key) => inputs[key.toLowerCase()] === "false")).toBe(true);
+  expect(context.GITHUB_ACTIONS).toBe("true");
+  expect(context.GITHUB_EVENT_NAME).toBe("workflow_dispatch");
+  expect(context.GITHUB_REPOSITORY).toBe(REVIEW.repository);
+  expect(context.GITHUB_REF_TYPE).toBe("branch");
+  expect(context.GITHUB_REF).toBe(`refs/heads/${REVIEW.branch}`);
+  expect(inputs.expected_sha).toMatch(/^[a-f0-9]{40}$/);
+  expect(inputs.expected_sha).toBe(context.GITHUB_SHA);
+  return true;
+}
+
+describe("refresh workflow boundaries", () => {
+  const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8");
+  const job = workflow.split("\n  refresh-swim-review:\n")[1]!;
+
+  it("rejects mixed refresh dispatches in prerequisite CI before any privileged job", () => {
+    if (process.env.GITHUB_EVENT_NAME !== "workflow_dispatch") return;
+    const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH!, "utf8")) as {
+      inputs?: Record<string, unknown>;
+    };
+    checkRefreshEvent(event.inputs, process.env);
+  });
+  it("validates the real dispatch in core without impersonating the privileged job", () => {
+    expect(checkRefreshEvent(sourceIO().event().inputs, { ...env, GITHUB_JOB: "ci" })).toBe(true);
+  });
+  it.each(OTHER_OPERATIONS)("rejects refresh mixed with or missing explicit false for %s", (key) => {
+    for (const value of ["true", undefined]) {
+      const inputs = sourceIO().event().inputs;
+      Reflect.set(inputs, key.toLowerCase(), value);
+      expect(() => checkRefreshEvent(inputs, env)).toThrow();
+    }
+  });
+  it.each(OTHER_OPERATIONS)("leaves existing %s dispatches to their original guards", (key) => {
+    expect(checkRefreshEvent(undefined, env)).toBe(false);
+    for (const refresh of [undefined, "false"]) {
+      expect(checkRefreshEvent({ refresh_swim_review: refresh, [key.toLowerCase()]: "true" }, env)).toBe(false);
+    }
+  });
+  it.each(["GITHUB_ACTIONS", "GITHUB_EVENT_NAME", "GITHUB_REPOSITORY", "GITHUB_REF_TYPE", "GITHUB_REF", "GITHUB_SHA"])(
+    "rejects incorrect dispatch %s", (key) => {
+      expect(() => checkRefreshEvent(sourceIO().event().inputs, { ...env, [key]: "wrong" })).toThrow();
+    });
+  it.each(["", "wrong", undefined])("rejects invalid expected SHA %#", (expected) => {
+    expect(() => checkRefreshEvent({ ...sourceIO().event().inputs, expected_sha: expected }, env)).toThrow();
+  });
+  it.each(["yes", true, null])("rejects malformed refresh flags %#", (value) => {
+    expect(() => checkRefreshEvent({ ...sourceIO().event().inputs, refresh_swim_review: value }, env)).toThrow();
+  });
+  it("runs through existing package discovery without modifying frozen core jobs", () => {
+    const config = readFileSync(resolve(__dirname, "../../vitest.config.ts"), "utf8");
+    expect(config).toContain('"scripts/__tests__/**/*.test.ts"');
+    expect(workflow).toContain("run: pnpm -r --filter './packages/**' test");
+    expect(REFRESH_PATHS).toContain("packages/db/scripts/__tests__/refresh-swim-review.test.ts");
+  });
+  it("requires the exact manual feature context and both existing prerequisites", () => {
+    expect(workflow.match(/\n  refresh-swim-review:/g)).toHaveLength(1);
+    expect(workflow).toMatch(/refresh_swim_review:\n\s+description:.*\n\s+required: false\n\s+default: false\n\s+type: boolean/);
+    for (const gate of [
+      "needs: [ci, identity-guard]", "github.event_name == 'workflow_dispatch'",
+      "github.repository == 'drrowdev/hybrid-training-app'", "github.ref_type == 'branch'",
+      "github.ref == 'refs/heads/copilot/new-acceptance-cases'", "inputs.refresh_swim_review == true",
+      "inputs.expected_sha != '' && inputs.expected_sha == github.sha",
+      ...OTHER_OPERATIONS.map((key) => `inputs.${key.toLowerCase()} == false`),
+      "environment: swim-review", "contents: read", "fetch-depth: 0", "persist-credentials: false",
+      "ref: ${{ inputs.expected_sha }}", "group: swim-review-bootstrap", "cancel-in-progress: false",
+      "timeout-minutes: 25", "timeout-minutes: 20", "node-version: 22",
+      "REFRESH_SWIM_REVIEW: ${{ inputs.refresh_swim_review }}", "EXPECTED_SHA: ${{ inputs.expected_sha }}",
+      ...OTHER_OPERATIONS.map((key) => `${key}: \${{ inputs.${key.toLowerCase()} }}`),
+    ]) expect(job).toContain(gate);
+    const concurrency = workflow.split("\nconcurrency:\n")[1]!.split("\njobs:\n")[0]!;
+    expect(concurrency.match(/inputs\.refresh_swim_review/g)).toHaveLength(2);
+    expect(concurrency).toContain("'ci-swim-review-configuration'");
+  });
+  it("keeps four credentials only in the final step after offline and strict source checks", () => {
+    const [before, operation] = job.split("      - name: Refresh existing isolated review\n");
+    expect(before).not.toContain("secrets.");
+    expect(before!.indexOf("pnpm install")).toBeLessThan(before!.indexOf("vitest run"));
+    expect(before!.indexOf("vitest run")).toBeLessThan(before!.indexOf("--check-source"));
+    expect(before).toContain("tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --strict scripts/refresh-swim-review.ts");
+    expect(operation!.match(/secrets\.\w+/g)).toEqual([
+      "secrets.VERCEL_REVIEW_TOKEN", "secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN",
+      "secrets.SWIM_REVIEW_SUPABASE_ANON_KEY", "secrets.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY",
+    ]);
+    expect(operation).toContain("run: pnpm --filter @hta/db exec tsx scripts/refresh-swim-review.ts");
+    expect(job).not.toContain("DATABASE_URL");
+    expect(job).not.toContain("secrets.SWIM_REVIEW_OWNER_");
+  });
+});
+
 describe("bounded refresh source and transport", () => {
   it("uses a separate accepted-source guard and strict CLI", () => {
     const io = sourceIO();
@@ -161,8 +254,8 @@ describe("bounded refresh source and transport", () => {
       it.each([[], ["--check-source"], ["--check-source", "--check-source"], ["--unknown"]].map((args) => ({ args })))(
         "emits one safe record without credentials for refused CLI $args", ({ args }) => {
           const child = spawnSync(process.execPath, ["--import", "tsx",
-            resolve(__dirname, "../../packages/db/scripts/refresh-swim-review.ts"), ...args],
-          { cwd: resolve(__dirname, "../../packages/db"), env: { PATH: process.env.PATH }, encoding: "utf8", timeout: 10_000 });
+            resolve(__dirname, "../refresh-swim-review.ts"), ...args],
+          { cwd: resolve(__dirname, "../.."), env: { PATH: process.env.PATH }, encoding: "utf8", timeout: 10_000 });
           expect(child.status).toBe(1);
           expect(child.stderr).toBe("");
           expect(child.stdout.trim().split("\n")).toHaveLength(1);
