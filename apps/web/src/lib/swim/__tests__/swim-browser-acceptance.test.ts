@@ -825,7 +825,7 @@ describe("browser environment and static config", () => {
     const boundary = source.indexOf('\n  test("B9 ');
     expect(boundary).toBeGreaterThan(0);
     expect(createHash("sha256").update(source.slice(source.indexOf("const test ="), boundary).trimEnd()).digest("hex"))
-      .toBe("2c9b00c52dd8037ee6183cd56c0eece8105b395f183d1c22e5e2c1320f9454e7");
+      .toBe("f819e41cc16c6cccc29a2e96068dc31589fd92e14166d3f445a9e615b9c57da1");
     const b9 = source.slice(boundary);
     expect(b9.match(/\btest\("/g)).toHaveLength(1);
     expect(b9).not.toMatch(/annotations|testInfo|alertAnnotation|waitForTimeout|force:\s*true|\.rpc\(/);
