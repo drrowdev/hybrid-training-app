@@ -292,10 +292,12 @@ export function WorkoutClient({ workout, userId, edit = false, onConfirmed, warn
             </li>
           })}
         </ol>
-        {!workout.sessionId && workout.status === "scheduled" && workout.planStatus === "active" && (
-          <button className={styles.secondary} disabled={pending || !ready} onClick={start}>{pending ? "Starting…" : "Start swim"}</button>
-        )}
       </section>
+      {!workout.sessionId && workout.status === "scheduled" && workout.planStatus === "active" && (
+        <div className={styles.actions}>
+          <button className={styles.secondary} disabled={pending || !ready} onClick={start}>{pending ? "Starting…" : "Start swim"}</button>
+        </div>
+      )}
       {completed && !editing && workout.result && <section className={styles.section}>
         <h2>Your swim</h2>
         {workout.result.distance && <p className={styles.distance}>{workout.result.distance}</p>}

@@ -3268,3 +3268,18 @@ coverage run exceeded all 80-percent thresholds. Source remains local only:
 current-source CI/reference, live Garmin/calendar/watch delivery and owner
 acceptance remain separate and pending. No provider, owner-data, schema/RLS or
 frozen26 changes were made.
+
+## [2026-09-11] fix | Keep swim actions outside the retained prescription
+
+Exact-head disposable reference34642668797 at `f09e7cc2` failed24/26, with no
+flaky or skipped cases. Core/identity and all ten platform stages passed; both
+cleanups verified. A5 failed the retained prescription text comparison after
+result removal; A7 failed its final comparison after completion and pause.
+Fifteen safe summaries were consumed once; the failure remains recorded.
+
+The read-first layout had placed the conditional Start button inside the
+prescription section, adding text that disappeared after completion. Two local
+regressions reproduced that exact mismatch. The optional control now remains
+after the instructions but outside their retained section. Frozen26, data,
+issued work, safety and lifecycle logic are unchanged; no assertions were
+weakened. DC-SW3/SW5/SW7. Corrected-head runtime acceptance is still required.

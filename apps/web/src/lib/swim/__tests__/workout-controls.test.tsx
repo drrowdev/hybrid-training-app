@@ -249,6 +249,20 @@ describe("DC-SW8/DC-SW9 actual completion handler with held stale props (VM/SSR,
 });
 
 describe("DC-SW3 poolside workout controls", () => {
+  it.each(["completed", "removed"] as const)("DC-SW5/DC-SW7 keeps the issued prescription identical after a swim is %s", (state) => {
+    const scheduled: SwimWorkoutView = { ...workoutView(), sessionId: null, status: "scheduled" };
+    const after: SwimWorkoutView = {
+      ...completedView(), planStatus: "paused",
+      ...(state === "removed" ? { sessionId: null, sourceGone: true, result: null } : {}),
+    };
+    const prescription = (workout: SwimWorkoutView) => {
+      const html = renderToStaticMarkup(<WorkoutScreen workout={workout} userId={userId} />);
+      const section = html.match(/<section\b[^>]*><h2>Workout<\/h2>[\s\S]*?<\/section>/)?.[0];
+      expect(section).toBeDefined();
+      return section;
+    };
+    expect(prescription(after)).toBe(prescription(scheduled));
+  });
   it("puts the complete prescription before optional in-app start controls", () => {
     const workout: SwimWorkoutView = { ...workoutView(), sessionId: null, status: "scheduled" };
     const html = renderToStaticMarkup(<WorkoutScreen workout={workout} userId={userId} />);
