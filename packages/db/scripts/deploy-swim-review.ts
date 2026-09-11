@@ -31,7 +31,11 @@ const limit = 2 * 1024 * 1024;
 const otherModes = ["CONFIGURE_SWIM_REVIEW", "INSPECT_SWIM_REVIEW_AUTH", "PREPARE_SWIM_REVIEW",
   "INSPECT_SWIM_REVIEW", "SWIM_ACCEPTANCE", "MIGRATE_PRODUCTION", "ALLOW_UNDEPLOYED"] as const;
 type Code = "passed" | "predicate_refused" | "receipt_invalid" | "isolation_changed" |
-  "http_status" | "transport_failed" | "response_invalid" | "deadline" | "deployment_failed" | "alias_conflict";
+  "http_status" | "transport_failed" | "response_invalid" | "deadline" | "deployment_failed" | "alias_conflict" |
+  "project_structure" | "project_identity" | "team_structure" | "team_identity" |
+  "billing_missing" | "billing_null" | "billing_invalid" | "billing_plan" | "supabase_identity" |
+  `${"ssoProtection" | "passwordProtection" | "trustedIps"}_${"missing" | "invalid" | "deploymentType"}` |
+  "trustedIps_addresses" | "trustedIps_protectionMode";
 class Refusal extends Error {
   constructor(readonly code: Code, readonly httpStatus?: number) { super(code); }
 }
@@ -50,11 +54,13 @@ function same(a: unknown, b: unknown) { return JSON.stringify(a) === JSON.string
 function canonical(rows: EnvironmentMetadata[]) {
   return [...rows].map((row) => ({ ...row, target: [...row.target].sort() })).sort((a, b) => a.id.localeCompare(b.id));
 }
-export function deploymentContext(env: NodeJS.ProcessEnv) {
+export function deploymentContext(env: NodeJS.ProcessEnv, inspect = false) {
   requireThat(env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
     env.GITHUB_REPOSITORY === REVIEW.repository && env.GITHUB_REF_TYPE === "branch" &&
     env.GITHUB_REF === ref && env.GITHUB_JOB === "deploy-swim-review" &&
-    env.DEPLOY_SWIM_REVIEW === "true" && otherModes.every((key) => env[key] === "false") &&
+    env.DEPLOY_SWIM_REVIEW === (inspect ? "false" : "true") &&
+    env.INSPECT_SWIM_REVIEW_DEPLOYMENT === (inspect ? "true" : "false") &&
+    otherModes.every((key) => env[key] === "false") &&
     shaPattern.test(env.EXPECTED_SHA ?? "") && env.EXPECTED_SHA === env.GITHUB_SHA &&
     env.EXPECTED_SHA !== APPLICATION_SHA && env.EXPECTED_SHA !== CONFIGURATION.sha);
 }
@@ -63,10 +69,12 @@ type SourceIO = {
   event(): unknown;
   regular(path: string): boolean;
 };
-export function verifyDeploymentSource(env: NodeJS.ProcessEnv, io: SourceIO) {
-  deploymentContext(env);
+export function verifyDeploymentSource(env: NodeJS.ProcessEnv, io: SourceIO, inspect = false) {
+  deploymentContext(env, inspect);
   const inputs = object(object(io.event()).inputs);
-  requireThat(inputs.deploy_swim_review === "true" && inputs.expected_sha === env.EXPECTED_SHA &&
+  requireThat(inputs.deploy_swim_review === (inspect ? "false" : "true") &&
+    inputs.inspect_swim_review_deployment === (inspect ? "true" : "false") &&
+    inputs.expected_sha === env.EXPECTED_SHA &&
     otherModes.every((key) => inputs[key.toLowerCase()] === "false"));
   requireThat(io.git("rev-parse", "HEAD") === env.EXPECTED_SHA);
   io.git("merge-base", "--is-ancestor", APPLICATION_SHA, "HEAD");
@@ -94,8 +102,12 @@ export function deploymentRoute(id: string, alias = false) {
   return `https://api.vercel.com/${alias ? "v2" : "v13"}/deployments/${id}${alias ? "/aliases" : ""}?teamId=${REVIEW.teamId}`;
 }
 type Request = (url: string, method?: string, body?: unknown) => Promise<unknown>;
-export function deploymentTransport(env: NodeJS.ProcessEnv, deadline: number, fetcher: typeof fetch = fetch): Request {
+export const INSPECTION_ROUTES = [ROUTES.project, DEPLOY_ROUTES.team, ROUTES.supabase,
+  ROUTES.project_env, ROUTES.shared_env] as const;
+export function deploymentTransport(env: NodeJS.ProcessEnv, deadline: number, fetcher: typeof fetch = fetch, inspect = false): Request {
   return async (url, method = "GET", body) => {
+    if (inspect) requireThat(method === "GET" && body === undefined &&
+      (INSPECTION_ROUTES as readonly string[]).includes(url));
     const readRoutes: readonly string[] = [ROUTES.project, ROUTES.project_env, ROUTES.shared_env,
       ROUTES.supabase, ROUTES.auth, ROUTES.settings, ROUTES.alias, DEPLOY_ROUTES.team];
     const id = /^https:\/\/api\.vercel\.com\/v(13|2)\/deployments\/(dpl_[A-Za-z0-9]{1,128})(\/aliases)?\?teamId=/.exec(url)?.[2];
@@ -168,41 +180,70 @@ export function acceptedReceipt(project: EnvironmentMetadata[], shared: Environm
   return feature;
 }
 const intendedAuth = { site_url: REVIEW.origin, uri_allow_list: `${REVIEW.origin}/auth/callback`, disable_signup: true };
+const deploymentTypes = ["all", "preview", "production", "prod_deployment_urls_and_all_previews", "all_except_custom_domains"] as const;
+type Shape = "missing" | "null" | "object" | "invalid";
+function shape(value: unknown): Shape {
+  return value === undefined ? "missing" : value === null ? "null" :
+    typeof value === "object" && !Array.isArray(value) ? "object" : "invalid";
+}
+function structure(value: unknown, code: Code) {
+  requireThat(shape(value) === "object", code);
+  return value as Record<string, unknown>;
+}
+function classification(value: unknown, field: "deploymentType" | "plan") {
+  const type = shape(value);
+  if (type !== "object") return { type };
+  const known = field === "deploymentType" ? deploymentTypes : ["hobby", "pro", "enterprise"] as const;
+  const entry = (value as Record<string, unknown>)[field];
+  return { type, [field]: known.find((item) => item === entry) ?? "other" };
+}
 function projectIdentity(raw: unknown) {
-  const row = object(raw);
+  const row = structure(raw, "project_structure");
+  const link = structure(row.link, "project_structure");
   requireThat(row.id === REVIEW.projectId && row.accountId === REVIEW.teamId && row.name === REVIEW.projectName &&
     row.rootDirectory === "apps/web" && row.framework === "nextjs" &&
-    same(select(row.link, ["type", "org", "repo", "productionBranch"]),
-      { type: "github", org: "drrowdev", repo: "hybrid-training-app", productionBranch: "main" }));
+    same(select(link, ["type", "org", "repo", "productionBranch"]),
+      { type: "github", org: "drrowdev", repo: "hybrid-training-app", productionBranch: "main" }), "project_identity");
   // Project updatedAt also changes for our env/deployment writes; compare settings, not that aggregate marker.
   // Never inspect password hashes or protection bypass secrets.
-  const protection = (key: string) => {
+  const protection = (key: "ssoProtection" | "passwordProtection" | "trustedIps") => {
     if (row[key] === null) return null;
-    requireThat(row[key] !== undefined, "response_invalid");
-    const value = select(row[key], ["deploymentType"]);
+    requireThat(row[key] !== undefined, `${key}_missing`);
+    const value = select(structure(row[key], `${key}_invalid`), ["deploymentType"]);
     requireThat(typeof value.deploymentType === "string" &&
-      ["all", "preview", "production", "prod_deployment_urls_and_all_previews", "all_except_custom_domains"].includes(value.deploymentType));
+      (deploymentTypes as readonly string[]).includes(value.deploymentType), `${key}_deploymentType`);
     return value;
   };
-  const ips = row.trustedIps === null ? null : object(row.trustedIps);
+  const sso = protection("ssoProtection");
+  const password = protection("passwordProtection");
+  const trustedIps = protection("trustedIps");
+  const ips = trustedIps === null ? null : structure(row.trustedIps, "trustedIps_invalid");
   let addresses: unknown = null;
   let protectionMode: unknown = null;
   if (ips) {
     if (ips.addresses !== undefined) {
-      requireThat(Array.isArray(ips.addresses) && ips.addresses.length <= 1000);
+      requireThat(Array.isArray(ips.addresses) && ips.addresses.length <= 1000, "trustedIps_addresses");
       addresses = ips.addresses.map((address) => select(address, ["value"]));
       requireThat((addresses as Record<string, unknown>[]).every((address) =>
-        typeof address.value === "string" && address.value.length <= 128));
-      requireThat(ips.protectionMode === "additional" || ips.protectionMode === "exclusive");
+        typeof address.value === "string" && address.value.length <= 128), "trustedIps_addresses");
+      requireThat(ips.protectionMode === "additional" || ips.protectionMode === "exclusive", "trustedIps_protectionMode");
       protectionMode = ips.protectionMode;
-    } else requireThat(ips.deploymentType === "production");
+    } else requireThat(ips.deploymentType === "production", "trustedIps_deploymentType");
   }
-  return { sso: protection("ssoProtection"), password: protection("passwordProtection"),
-    trustedIps: protection("trustedIps"), addresses, protectionMode };
+  return { sso, password, trustedIps, addresses, protectionMode };
 }
 function teamIdentity(raw: unknown) {
+  const row = structure(raw, "team_structure");
+  requireThat(row.id === REVIEW.teamId && row.slug === "drrowdevs-projects", "team_identity");
+  requireThat(row.billing !== undefined, "billing_missing");
+  requireThat(row.billing !== null, "billing_null");
+  requireThat(structure(row.billing, "billing_invalid").plan === "hobby", "billing_plan");
+}
+function supabaseIdentity(raw: unknown) {
   const row = object(raw);
-  requireThat(row.id === REVIEW.teamId && row.slug === "drrowdevs-projects" && object(row.billing).plan === "hobby");
+  requireThat(row.id === REVIEW.supabaseId && row.name === REVIEW.supabaseName &&
+    row.organization_id === REVIEW.organizationId && row.region === REVIEW.region &&
+    row.status === "ACTIVE_HEALTHY", "supabase_identity");
 }
 type Deployment = { id: string; url: string; readyState: string; createdAt: number };
 // Official SDK: createdeploymentresponsebody / getdeploymentresponsebody (owner projection).
@@ -221,7 +262,7 @@ export function deploymentMetadata(raw: unknown, sha: string): Deployment {
   "response_invalid");
   return { id: row.id, url: row.url, readyState: row.readyState, createdAt: row.createdAt as number };
 }
-type Stage = "source" | "credentials" | "isolation" | "prewrite" | "build_sha" | "activation" |
+type Stage = InspectionStage | "isolation" | "prewrite" | "build_sha" | "activation" |
   "predeploy" | "deployment" | "readiness" | "prealias" | "alias" | "completion";
 type Attempt = { attempted: boolean; confirmed: boolean };
 function summary(env: NodeJS.ProcessEnv) {
@@ -245,6 +286,78 @@ function summary(env: NodeJS.ProcessEnv) {
   };
 }
 type Dependencies = { source(): void; request: Request; storage(): Promise<boolean>; now(): number; sleep(ms: number): Promise<void> };
+type InspectionStage = "source" | "credentials" | "project" | "team" | "supabase" |
+  "project_env" | "shared_env" | "receipt" | "completion";
+function inspectionSummary(env: NodeJS.ProcessEnv) {
+  return {
+    scope: "swim-review-deployment-inspection" as const,
+    testedSha: shaPattern.test(env.EXPECTED_SHA ?? "") ? env.EXPECTED_SHA! : null,
+    acceptedApp: APPLICATION_SHA, configurationRun: CONFIGURATION.run, configurationSha: CONFIGURATION.sha,
+    projectId: REVIEW.projectId, teamId: REVIEW.teamId, testProject: REVIEW.supabaseId,
+    status: "failed" as "failed" | "inspection_pass",
+    stages: [] as { stage: InspectionStage; code: Code; status: "passed" | "failed"; httpStatus?: number }[],
+    classifications: {
+      project: null as null | Record<"ssoProtection" | "passwordProtection" | "trustedIps", ReturnType<typeof classification>>,
+      team: null as null | { billing: ReturnType<typeof classification> },
+    },
+    receiptMatches: false, writesAttempted: false, deploymentAttempted: false, deploymentAccepted: false,
+    runtimePending: true, ownerLoginPending: true,
+  };
+}
+export async function inspectIsolation(env: NodeJS.ProcessEnv, deps: Pick<Dependencies, "source" | "request" | "now">) {
+  const result = inspectionSummary(env);
+  const deadline = deps.now() + 300_000;
+  let stage: InspectionStage = "source";
+  const checkTime = () => requireThat(deps.now() < deadline, "deadline");
+  async function step<T>(name: InspectionStage, action: () => T | Promise<T>) {
+    stage = name; checkTime();
+    deps.source(); checkTime();
+    const value = await action(); checkTime();
+    result.stages.push({ stage, code: "passed", status: "passed" });
+    return value;
+  }
+  try {
+    deploymentContext(env, true);
+    await step("source", () => {});
+    await step("credentials", () => {
+      for (const key of ["VERCEL_REVIEW_TOKEN", "SUPABASE_REVIEW_MANAGEMENT_TOKEN"]) {
+        requireThat(/^[A-Za-z0-9_.-]{20,512}$/.test(env[key] ?? ""));
+      }
+    });
+    await step("project", async () => {
+      const raw = await deps.request(ROUTES.project);
+      const row = structure(raw, "project_structure");
+      result.classifications.project = {
+        ssoProtection: classification(row.ssoProtection, "deploymentType"),
+        passwordProtection: classification(row.passwordProtection, "deploymentType"),
+        trustedIps: classification(row.trustedIps, "deploymentType"),
+      };
+      projectIdentity(raw);
+    });
+    await step("team", async () => {
+      const raw = await deps.request(DEPLOY_ROUTES.team);
+      const row = structure(raw, "team_structure");
+      result.classifications.team = { billing: classification(row.billing, "plan") };
+      teamIdentity(raw);
+    });
+    await step("supabase", async () => supabaseIdentity(await deps.request(ROUTES.supabase)));
+    const read = async (url: string, shared: boolean) => {
+      const raw = await deps.request(url);
+      try { return environmentList(raw, shared); }
+      catch { throw new Refusal("response_invalid"); }
+    };
+    const project = await step("project_env", () => read(ROUTES.project_env, false));
+    const shared = await step("shared_env", () => read(ROUTES.shared_env, true));
+    await step("receipt", () => { acceptedReceipt(project, shared); result.receiptMatches = true; });
+    await step("completion", () => {});
+    result.status = "inspection_pass";
+  } catch (error) {
+    result.stages.push({ stage, status: "failed", code: error instanceof Refusal ? error.code : "predicate_refused",
+      ...(error instanceof Refusal && Number.isInteger(error.httpStatus) && error.httpStatus! >= 100 &&
+        error.httpStatus! <= 599 ? { httpStatus: error.httpStatus } : {}) });
+  }
+  return result;
+}
 export async function deploy(env: NodeJS.ProcessEnv, deps: Dependencies) {
   const result = summary(env);
   const deadline = deps.now() + 18 * 60_000;
@@ -278,20 +391,20 @@ export async function deploy(env: NodeJS.ProcessEnv, deps: Dependencies) {
         /^sb_secret_[A-Za-z0-9_-]{20,256}$/.test(env.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY ?? ""));
       validateDatabaseUrl(env.SWIM_REVIEW_DATABASE_URL);
     });
-    const initial = await step("isolation", async () => {
-      const project = projectIdentity(await deps.request(ROUTES.project));
-      teamIdentity(await deps.request(DEPLOY_ROUTES.team));
-      const supabase = object(await deps.request(ROUTES.supabase));
-      requireThat(supabase.id === REVIEW.supabaseId && supabase.name === REVIEW.supabaseName &&
-        supabase.organization_id === REVIEW.organizationId && supabase.region === REVIEW.region &&
-        supabase.status === "ACTIVE_HEALTHY");
-      const rows = await read();
-      result.acceptedEnv = acceptedReceipt(rows.project, rows.shared).map(({ id, key }) => ({ id, key }));
+    const settings = await step("project", async () => projectIdentity(await deps.request(ROUTES.project)));
+    await step("team", async () => teamIdentity(await deps.request(DEPLOY_ROUTES.team)));
+    await step("supabase", async () => supabaseIdentity(await deps.request(ROUTES.supabase)));
+    const project = await step("project_env", async () => environmentList(await deps.request(ROUTES.project_env), false));
+    const shared = await step("shared_env", async () => environmentList(await deps.request(ROUTES.shared_env), true));
+    await step("receipt", () => {
+      result.acceptedEnv = acceptedReceipt(project, shared).map(({ id, key }) => ({ id, key }));
+    });
+    await step("isolation", async () => {
       await auth();
       requireThat(await deps.storage() === true);
       await absent();
-      return { ...rows, settings: project };
     });
+    const initial = { project, shared, settings };
     let expectedProject = initial.project;
     const guards = async () => {
       checkTime(); deps.source();
@@ -386,11 +499,13 @@ export async function deploy(env: NodeJS.ProcessEnv, deps: Dependencies) {
 }
 async function main() {
   const env = process.env;
-  let result = summary(env);
+  const args = process.argv.slice(2);
+  const inspect = args.includes("--inspect-isolation");
+  let result: ReturnType<typeof summary> | ReturnType<typeof inspectionSummary> = inspect ? inspectionSummary(env) : summary(env);
   try {
-    const args = process.argv.slice(2);
-    requireThat(args.length === 0 || same(args, ["--check-source"]));
-    const deadline = Date.now() + 18 * 60_000;
+    requireThat(args.length === 0 || same(args, ["--check-source"]) ||
+      same(args, ["--inspect-isolation"]) || same(args, ["--check-source", "--inspect-isolation"]));
+    const deadline = Date.now() + (inspect ? 300_000 : 18 * 60_000);
     const source = () => verifyDeploymentSource(env, {
       event: () => JSON.parse(readFileSync(env.GITHUB_EVENT_PATH!, "utf8")),
       regular: (path) => { const stat = lstatSync(resolve(root, path)); return stat.isFile() && !stat.isSymbolicLink(); },
@@ -399,15 +514,16 @@ async function main() {
         return execFileSync("git", args, { cwd: root, encoding: "utf8", maxBuffer: limit,
           timeout: Math.max(1, Math.min(15_000, deadline - Date.now())), stdio: ["ignore", "pipe", "ignore"] }).trim();
       },
-    });
-    if (args.length) { source(); return; }
-    const request = deploymentTransport(env, deadline);
-    result = await deploy(env, { source, request, storage: storageAdapter(env, request), now: Date.now,
-      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) });
+    }, inspect);
+    if (args.includes("--check-source")) { source(); return; }
+    const request = deploymentTransport(env, deadline, fetch, inspect);
+    result = inspect ? await inspectIsolation(env, { source, request, now: Date.now }) :
+      await deploy(env, { source, request, storage: storageAdapter(env, request), now: Date.now,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) });
   } catch {
     result.stages.push({ stage: "source", code: "predicate_refused", status: "failed" });
   }
   console.log(JSON.stringify(result));
-  if (result.status !== "deployment_pass") process.exitCode = 1;
+  if (result.status === "failed") process.exitCode = 1;
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) void main();

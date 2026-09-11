@@ -3487,3 +3487,60 @@ consumed configuration logs were fetched. Only current GitHub run metadata
 and an empty failed-jobs query were inspected. No frozen26 rerun.
 Preview readiness/alias mapping, account access, actual runtime login and owner
 usability are all still pending; READY alone will not prove those outcomes.
+
+## PR805 — bounded deployment-isolation diagnostic continuation
+
+Starting refs verified exactly: feature `7cf6f9ce15784ae62f5f4cdbb87e3a59a81eec79`,
+main `672e4202792da122281639e3db810029432573f5`. Dispatch
+`34588981646` attempt 1 stopped at `isolation/response_invalid` before
+acceptedEnv or any mutation. The rejected provider/field remains unknown.
+No activation, deployment, alias, partial change, or reconciliation was reported.
+The accepted configuration `34585357240` at
+`5d26364a49d934acdcac0ae8c924ae7e6bb784f4` remains untouched:
+18 encrypted exact-branch overrides, POOL=false, fixtures=false, signup disabled.
+TestDB must never be initialized/configured/seeded/reset again.
+
+The existing deployment job now selects a truthful deployment/inspection XOR,
+with all seven other operations false. Both retain CI + identity prerequisites,
+manual exact-source checks, accepted-app/configuration ancestry and live feature
+and main checks, and noncancelling workflow/project locks. Inspection source
+precheck is `--check-source --inspect-isolation`; execution is
+`--inspect-isolation`. Only the Vercel and Supabase management tokens are bound
+to inspection. The separately guarded deployment step retains its five secrets.
+Previous job digests remain unchanged; prerequisite CI rejects mixed dispatches.
+
+Inspection permits only five fixed bodyless GETs: project, team, exact test
+Supabase project, project env with decrypt=false, shared env. Shared strict
+metadata/receipt predicates remain strict; missing protection is not disabled.
+No Auth/settings/storage/DB/browser/deployment/alias operations are authorized.
+Transport retains redirect:error, 30-second HTTP and 2MB bounds; inspection is
+bounded to 300 seconds with repeated live source checks.
+
+Terminal JSON schema: scope `swim-review-deployment-inspection`; testedSha,
+acceptedApp, configurationRun, configurationSha, projectId, teamId, testProject;
+status `failed|inspection_pass`; ordered stages
+`source,credentials,project,team,supabase,project_env,shared_env,receipt,completion`
+(stop at first failure), each with stage/code/status and optional numeric
+httpStatus. Classifications contain only project ssoProtection/passwordProtection/
+trustedIps shapes and known deploymentType or `other`, and team billing shape
+and known plan or `other`; unread projections are null. Shapes are
+`missing|null|object|invalid`. No raw response, arbitrary provider text, password,
+bypass, address, billing customer, secret or environment values are emitted.
+receiptMatches is boolean; writesAttempted, deploymentAttempted and
+deploymentAccepted are always false; runtimePending and ownerLoginPending
+are always true. Failure is nonzero. inspection_pass accepts only these
+pre-receipt read-only checks, never Auth/storage/activation/deployment/runtime/account.
+
+First offline invocation passed all four suites: **642/642** (deployment102,
+configuration201, pure plan122, bootstrap217). Targeted TypeScript initially
+found a new table-test tuple inference error, repaired before publication.
+Final checks and required automated validation are recorded below when complete.
+
+Coordinator must inspect the published source and exact schema before creating
+the bounded one-time reader and performing one hosted inspection at the new
+exact feature SHA, inspect deployment=true, deploy=false, all other flags=false.
+Do not deploy or retry configuration to diagnose this failure. Frozen26/app82337
+and all application/schema/RLS/UI/engine/migration files remain untouched.
+This worker used offline tests and GitHub source/run metadata only; the failure
+log URL was resolved without fetching its body or any private agent transcript.
+No hosted inspection or provider operation has occurred in this continuation.

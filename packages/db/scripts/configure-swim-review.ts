@@ -97,6 +97,7 @@ function validateMode(env: NodeJS.ProcessEnv, mode: Mode) {
     env.CONFIGURE_SWIM_REVIEW === (mode === "configure" ? "true" : "false") &&
     env.INSPECT_SWIM_REVIEW_AUTH === (mode === "inspect-auth" ? "true" : "false") &&
     (env.DEPLOY_SWIM_REVIEW ?? "false") === "false" &&
+    (env.INSPECT_SWIM_REVIEW_DEPLOYMENT ?? "false") === "false" &&
     env.PREPARE_SWIM_REVIEW === "false" &&
     env.INSPECT_SWIM_REVIEW === "false" && env.SWIM_ACCEPTANCE === "false" &&
     env.MIGRATE_PRODUCTION === "false" && env.ALLOW_UNDEPLOYED === "false" &&
@@ -124,6 +125,7 @@ export function verifyConfigurationSource(env: NodeJS.ProcessEnv, mode: Mode = "
   const event = object(JSON.parse(readFileSync(env.GITHUB_EVENT_PATH!, "utf8")));
   const inputs = object(event.inputs);
   requireThat(inputs.deploy_swim_review === "false");
+  requireThat(inputs.inspect_swim_review_deployment === "false");
   for (const [key, expected] of Object.entries({
     configure_swim_review: mode === "configure" ? "true" : "false",
     inspect_swim_review_auth: mode === "inspect-auth" ? "true" : "false",

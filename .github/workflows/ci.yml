@@ -54,10 +54,15 @@ on:
         required: false
         default: false
         type: boolean
+      inspect_swim_review_deployment:
+        description: Inspect isolated deployment metadata read-only
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && (inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review) && 'ci-swim-review-configuration' || (github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review) && 'ci-swim-review-bootstrap' || (github.event_name == 'workflow_dispatch' && inputs.swim_acceptance && format('ci-swim-{0}', github.ref) || format('ci-{0}', github.ref))) }}
-  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review)) && !(github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review || inputs.swim_acceptance)) }}
+  group: ${{ github.event_name == 'workflow_dispatch' && (inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review || inputs.inspect_swim_review_deployment) && 'ci-swim-review-configuration' || (github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review) && 'ci-swim-review-bootstrap' || (github.event_name == 'workflow_dispatch' && inputs.swim_acceptance && format('ci-swim-{0}', github.ref) || format('ci-{0}', github.ref))) }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && (inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review || inputs.inspect_swim_review_deployment)) && !(github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review || inputs.swim_acceptance)) }}
 
 jobs:
   identity-guard:
@@ -735,6 +740,7 @@ jobs:
       ((inputs.configure_swim_review == true && inputs.inspect_swim_review_auth == false) ||
       (inputs.configure_swim_review == false && inputs.inspect_swim_review_auth == true)) &&
       inputs.deploy_swim_review == false &&
+      inputs.inspect_swim_review_deployment == false &&
       inputs.prepare_swim_review == false && inputs.inspect_swim_review == false &&
       inputs.swim_acceptance == false && inputs.migrate_production == false &&
       inputs.allow_undeployed == false &&
@@ -751,6 +757,7 @@ jobs:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       CONFIGURE_SWIM_REVIEW: ${{ inputs.configure_swim_review }}
       DEPLOY_SWIM_REVIEW: ${{ inputs.deploy_swim_review }}
+      INSPECT_SWIM_REVIEW_DEPLOYMENT: ${{ inputs.inspect_swim_review_deployment }}
       INSPECT_SWIM_REVIEW_AUTH: ${{ inputs.inspect_swim_review_auth }}
       PREPARE_SWIM_REVIEW: ${{ inputs.prepare_swim_review }}
       INSPECT_SWIM_REVIEW: ${{ inputs.inspect_swim_review }}
@@ -806,14 +813,15 @@ jobs:
         run: pnpm --filter @hta/db exec tsx scripts/configure-swim-review.ts --inspect-auth
 
   deploy-swim-review:
-    name: deploy isolated exact-SHA review Preview
+    name: isolated deployment or read-only inspection
     needs: [ci, identity-guard]
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.repository == 'drrowdev/hybrid-training-app' &&
       github.ref_type == 'branch' &&
       github.ref == 'refs/heads/copilot/new-acceptance-cases' &&
-      inputs.deploy_swim_review == true &&
+      ((inputs.deploy_swim_review == true && inputs.inspect_swim_review_deployment == false) ||
+      (inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == true)) &&
       inputs.configure_swim_review == false && inputs.inspect_swim_review_auth == false &&
       inputs.prepare_swim_review == false && inputs.inspect_swim_review == false &&
       inputs.swim_acceptance == false && inputs.migrate_production == false &&
@@ -830,6 +838,7 @@ jobs:
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       DEPLOY_SWIM_REVIEW: ${{ inputs.deploy_swim_review }}
+      INSPECT_SWIM_REVIEW_DEPLOYMENT: ${{ inputs.inspect_swim_review_deployment }}
       CONFIGURE_SWIM_REVIEW: ${{ inputs.configure_swim_review }}
       INSPECT_SWIM_REVIEW_AUTH: ${{ inputs.inspect_swim_review_auth }}
       PREPARE_SWIM_REVIEW: ${{ inputs.prepare_swim_review }}
@@ -860,9 +869,15 @@ jobs:
         run: pnpm --filter @hta/db exec vitest run scripts/__tests__/deploy-swim-review.test.ts scripts/__tests__/configure-swim-review.test.ts scripts/__tests__/swim-review-config-plan.test.ts scripts/__tests__/prepare-swim-review.test.ts
 
       - name: Verify deployment source before credentials
+        if: inputs.deploy_swim_review == true && inputs.inspect_swim_review_deployment == false
         run: pnpm --filter @hta/db exec tsx scripts/deploy-swim-review.ts --check-source
 
+      - name: Verify deployment inspection source before credentials
+        if: inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == true
+        run: pnpm --filter @hta/db exec tsx scripts/deploy-swim-review.ts --check-source --inspect-isolation
+
       - name: Deploy isolated Preview once
+        if: inputs.deploy_swim_review == true && inputs.inspect_swim_review_deployment == false
         timeout-minutes: 18
         env:
           VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}
@@ -871,3 +886,11 @@ jobs:
           SWIM_REVIEW_SUPABASE_ANON_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_ANON_KEY }}
           SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY }}
         run: pnpm --filter @hta/db exec tsx scripts/deploy-swim-review.ts
+
+      - name: Inspect deployment isolation read-only once
+        if: inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == true
+        timeout-minutes: 6
+        env:
+          VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}
+          SUPABASE_REVIEW_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN }}
+        run: pnpm --filter @hta/db exec tsx scripts/deploy-swim-review.ts --inspect-isolation
