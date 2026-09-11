@@ -3066,3 +3066,36 @@ frozen26 and migrations are unchanged. No consumed runtime logs were retrieved,
 database access, migrations/seed, dispatch or services performed. Hosted runtime
 remains pending coordinator review and exact-new-head READONLY dispatch;
 no setup or release completion is claimed. PR remains draft and unmerged.
+
+### 2026-09-11 — PR805 pure configuration-plan first slice
+
+START head `6a6b666d3cdb91bbfaffb6bc95dda7957a830ceb`, base main
+`672e4202792da122281639e3db810029432573f5`, verified locally/publicly.
+Added only `packages/db/scripts/swim-review-config-plan.ts` and its focused
+test file: supplied-context/target guards, strict metadata-only snapshots,
+exactly 18 encrypted new branch Preview overrides, safe enum failures,
+value-free metadata projection, and a three-field Auth patch with bounded
+previous fields for future compare-and-swap restoration. The existing guarded
+DSN validator is reused without invoking its CLI or database runtime.
+
+The future adapter must explicitly supply complete project/shared metadata
+snapshots (`entries`, `complete: true`, `pagination: null`), including IDs and
+created/updated markers; missing fields, values, pagination, duplicates,
+unreviewed inherited Preview keys, and existing feature overrides fail closed.
+Shared known keys may be shadowed; all existing metadata is retained, not
+mutated. Credential checks are syntax/target checks only; independently
+generated test cron input remains the runtime's responsibility.
+
+Focused OFFLINE Vitest: **121 new + 217 existing = 338/338 passed**.
+Existing targeted TypeScript command (same flags recorded above, selecting
+the new script/test) and `git diff --check` passed.
+Pure module only: no workflow wiring, hosted calls, environment mutation,
+secrets access, Auth access, database connection, bootstrap, migration/seed,
+deployment, alias creation, browser/server/Docker, or dependencies added.
+Alias availability, actual HEAD/clean worktree/live refs, source-equivalence
+allowlisting, project/shared/branch deployed precedence, credential
+authentication, and inspected hosted configuration/CAS remain runtime-pending.
+The initialized DB proven at run34564558960 must not be bootstrapped again.
+Application `82337d2b36436bbe15532b4204e3ee96ba55b3f7` and frozen26 are
+unchanged; no 26-case acceptance is claimed at this new setup SHA. PR805
+remains draft/unmerged; no auto-merge or production action requested.
