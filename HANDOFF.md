@@ -3585,3 +3585,61 @@ and all application/schema/RLS/UI/engine/migration files remain untouched.
 This worker used offline tests and GitHub source/run metadata only; the failure
 log URL was resolved without fetching its body or any private agent transcript.
 No hosted inspection or provider operation has occurred in this continuation.
+
+## 2026-09-11 — PR805 optional protection omission repair (source/offline only)
+
+Verified START feature `1506992ef553905a9f599597c62fd9dbe71dc40c`
+and main `672e4202792da122281639e3db810029432573f5`. PR805 remains
+draft/unmerged; no auto-merge or history rewrite is authorized. This is a
+three-file repair only: deployment source, its existing tests, and this handoff.
+The prior be866/888 tasks are not restarted.
+
+Coordinator-supplied runtime evidence remains failed:
+`34591549664` attempt1 at `1506992` passed same-workflow core/identity and
+focused offline/source checks, then stopped at `project/passwordProtection_missing`.
+SSO classified `{type:"object",deploymentType:"all_except_custom_domains"}`;
+passwordProtection and trustedIps classified `{type:"missing"}`; team unread.
+Source/credentials passed; receipt was not reached; writesAttempted,
+deploymentAttempted and deploymentAccepted were false. This narrows, but does
+not replace or turn into a pass, the earlier `34588981646`
+`isolation/response_invalid` failure. Neither consumed log was fetched again.
+
+The coordinator's official OpenAPI contract check establishes optional nullable
+passwordProtection/trustedIps, not that omission means disabled. The shared
+`projectIdentity` now records true own-property omission as the literal snapshot
+state `"missing"` (not undefined/null/false/an empty object), only beside an
+explicit valid own SSO object with `all_except_custom_domains`. Null and valid
+present settings remain distinct. Existing JSON snapshot comparisons retain
+that state at every deployment guard, and absent trustedIps skips present-object
+address validation. Explicit undefined and malformed present values still fail.
+Diagnostics retain `missing`; no schema, stage, route, code or token scope changed.
+Exact project/team/link/Hobby, receipt, source, Auth/storage, mutation ordering,
+Preview-only exact SHA, single creation and fixed absent alias guards remain.
+
+Offline evidence at the first repair checkpoint: **823/823** passed in one
+four-suite invocation (deployment282, configuration202, pure plan122,
+bootstrap217). Targeted strict TypeScript and `git diff --check` passed after
+repairing one test-table inference error; the initial test invocation had also
+passed823. Added evidence covers individual/both omissions, five-GET completion
+with unchanged missing classifications, fake deployment, explicit undefined,
+malformed present fields, null/present preservation, all six setting-state
+transitions at all eight deployment guards, scope/address/mode/link drift,
+private getter exclusion and existing mutation uncertainty with omission.
+Only fake dependencies were used; no provider mutation or deployment occurred.
+
+Accepted configuration `34585357240` at
+`5d26364a49d934acdcac0ae8c924ae7e6bb784f4` remains unchanged: 18 encrypted
+exact-branch Preview overrides, POOL=false, fixtures=false, BUILD_SHA5d,
+test Auth review URLs and signup disabled. Management-token diagnosis is
+resolved. TestDB `whwilnhqfiaquwxgkxwt` is already initialized: never bootstrap,
+seed, reset, or assume empty state. LIVE `grhetczkxawkcfgkwerj` was not accessed.
+Frozen26/all nine areas at `82337d2b36436bbe15532b4204e3ee96ba55b3f7`
+remain accepted without repetition. No app/schema/RLS/migration/engine/casebook,
+workflow/configure/prepare/plan/dependency changes; exact ten setup paths remain.
+
+Pending, not evidenced by these offline passes: coordinator-approved hosted
+read-only reinspection at the published exact feature SHA, then separately
+authorized deployment/runtime gates and owner usability review. No review
+deployment, alias or owner account is claimed. No workflow dispatch, credentials,
+private provider requests, DB/storage/RPC/users/server/browser/Docker, settings
+change, rollback/cleanup/retry, protected merge or production work occurred.

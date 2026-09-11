@@ -94,6 +94,16 @@ function harness() {
   return { state, deps, request };
 }
 const writes = (h: ReturnType<typeof harness>) => h.request.mock.calls.filter(([, method]) => method === "PATCH" || method === "POST");
+const optionalProtections = ["passwordProtection", "trustedIps"] as const;
+function observedProtection(h: ReturnType<typeof harness>, keys: readonly string[] = optionalProtections) {
+  h.state.settings.ssoProtection.deploymentType = "all_except_custom_domains";
+  for (const key of keys) Reflect.deleteProperty(h.state.settings, key);
+}
+function presentProtection(key: typeof optionalProtections[number]) {
+  return key === "trustedIps" ?
+    { deploymentType: "all", addresses: [{ value: "192.0.2.1" }], protectionMode: "additional" } :
+    { deploymentType: "all" };
+}
 
 describe("deployment context and source", () => {
   it("accepts only the dedicated context and exact ten regular source paths", () => {
@@ -219,8 +229,10 @@ describe("one-way deployment and alias state machine", () => {
     else Object.assign(row, { [key]: "wrong" });
     expect(() => deploymentMetadata(row, sha)).toThrow();
   });
-  it.each(["build_sha", "activation", "deployment", "alias"])("retains uncertain %s without retry or cleanup", async (stage) => {
+  it.each(["build_sha", "activation", "deployment", "alias"].flatMap((stage) =>
+    [false, true].map((omitted) => ({ stage, omitted }))))("retains uncertain $stage with optional omission=$omitted without retry or cleanup", async ({ stage, omitted }) => {
     const h = harness();
+    if (omitted) observedProtection(h);
     const original = h.request.getMockImplementation()!;
     const route = { build_sha: updateRoute("NEXT_PUBLIC_BUILD_SHA"), activation: updateRoute("POOL_SWIMMING_ENABLED"),
       deployment: DEPLOY_ROUTES.create, alias: deploymentRoute(h.state.deployment.id, true) }[stage]!;
@@ -389,6 +401,135 @@ describe("bounded fixed-route transport and saved workflow", () => {
 });
 
 const inspectionEnv = { ...env, DEPLOY_SWIM_REVIEW: "false", INSPECT_SWIM_REVIEW_DEPLOYMENT: "true" };
+describe("optional project protection snapshots", () => {
+  it.each([[optionalProtections[0]], [optionalProtections[1]], [...optionalProtections]])(
+    "preserves observed Hobby omission %j through five GETs and fake deployment", async (...keys) => {
+      const h = harness();
+      observedProtection(h, keys);
+      const result = await inspectIsolation(inspectionEnv, h.deps);
+      expect(result).toMatchObject({ status: "inspection_pass", receiptMatches: true,
+        writesAttempted: false, deploymentAttempted: false, deploymentAccepted: false,
+        runtimePending: true, ownerLoginPending: true });
+      expect(result.stages).toEqual(
+        ["source", "credentials", "project", "team", "supabase", "project_env", "shared_env", "receipt", "completion"]
+          .map((stage) => ({ stage, code: "passed", status: "passed" })));
+      expect(result.classifications.project).toEqual({
+        ssoProtection: { type: "object", deploymentType: "all_except_custom_domains" },
+        ...Object.fromEntries(optionalProtections.map((key) => [key, { type: keys.some((entry) => entry === key) ? "missing" : "null" }])),
+      });
+      expect(h.request.mock.calls).toEqual(INSPECTION_ROUTES.map((route) => [route]));
+      expect(h.deps.storage).not.toHaveBeenCalled();
+      expect(writes(h)).toHaveLength(0);
+      expect((await deploy(env, h.deps)).status).toBe("deployment_pass");
+      expect(writes(h).map(([route, method]) => [route, method])).toEqual([
+        [updateRoute("NEXT_PUBLIC_BUILD_SHA"), "PATCH"], [updateRoute("POOL_SWIMMING_ENABLED"), "PATCH"],
+        [DEPLOY_ROUTES.create, "POST"], [deploymentRoute(h.state.deployment.id, true), "POST"],
+      ]);
+      for (const key of keys) expect(Object.hasOwn(h.state.settings, key)).toBe(false);
+    });
+  it.each(optionalProtections)("requires explicit observed SSO for omitted %s", async (key) => {
+    for (const value of ["absent", undefined, null, [], {}, { deploymentType: "all" },
+      { deploymentType: "preview" }, { deploymentType: "production" },
+      { deploymentType: "prod_deployment_urls_and_all_previews" }, { deploymentType: canary }]) {
+      const h = harness();
+      observedProtection(h, [key]);
+      if (value === "absent") Reflect.deleteProperty(h.state.settings, "ssoProtection");
+      else Object.assign(h.state.settings, { ssoProtection: value });
+      expect((await inspectIsolation(inspectionEnv, h.deps)).status).toBe("failed");
+      expect(h.request).toHaveBeenCalledTimes(1);
+      expect((await deploy(env, h.deps)).status).toBe("failed");
+      expect(writes(h)).toHaveLength(0);
+    }
+  });
+  it.each(optionalProtections)("does not treat own undefined or malformed %s as absence", async (key) => {
+    for (const value of [undefined, [], false, 42, canary, {}, { deploymentType: canary },
+      ...(key === "trustedIps" ? [
+        { deploymentType: "all", addresses: null, protectionMode: "additional" },
+        { deploymentType: "all", addresses: [null], protectionMode: "additional" },
+        { deploymentType: "all", addresses: [{ value: 42 }], protectionMode: "additional" },
+        { deploymentType: "all", addresses: [{ value: "x".repeat(129) }], protectionMode: "additional" },
+        { deploymentType: "all", addresses: [], protectionMode: "wrong" },
+      ] : [])]) {
+      const h = harness();
+      observedProtection(h);
+      Object.assign(h.state.settings, { [key]: value });
+      expect(Object.hasOwn(h.state.settings, key)).toBe(true);
+      const result = await inspectIsolation(inspectionEnv, h.deps);
+      expect(result.status).toBe("failed");
+      expect(h.request).toHaveBeenCalledTimes(1);
+      expect((await deploy(env, h.deps)).status).toBe("failed");
+      expect(writes(h)).toHaveLength(0);
+      expect(JSON.stringify(result)).not.toContain(canary);
+    }
+  });
+  it.each(optionalProtections)("preserves explicit null and present %s beside omission", async (key) => {
+    for (const value of [null, presentProtection(key)]) {
+      const h = harness();
+      observedProtection(h);
+      Object.assign(h.state.settings, { [key]: value });
+      const result = await inspectIsolation(inspectionEnv, h.deps);
+      expect(result.status).toBe("inspection_pass");
+      expect(result.classifications.project?.[key]).toEqual(value === null ?
+        { type: "null" } : { type: "object", deploymentType: "all" });
+      expect((await deploy(env, h.deps)).status).toBe("deployment_pass");
+      expect(h.state.settings[key]).toBe(value);
+    }
+  });
+  const guards = [
+    { read: 2, stage: "prewrite", mutations: 0 }, { read: 3, stage: "build_sha", mutations: 0 },
+    { read: 4, stage: "build_sha", mutations: 1 }, { read: 5, stage: "activation", mutations: 1 },
+    { read: 6, stage: "activation", mutations: 2 }, { read: 7, stage: "predeploy", mutations: 2 },
+    { read: 8, stage: "prealias", mutations: 3 }, { read: 9, stage: "completion", mutations: 4 },
+  ];
+  it.each(optionalProtections.flatMap((key) => ["missing", "null", "object"].flatMap((from) =>
+    ["missing", "null", "object"].filter((to) => to !== from).flatMap((to) =>
+      guards.map((guard) => ({ key, from, to, ...guard }))))))(
+    "refuses $key $from->$to at guard $read ($stage)", async ({ key, from, to, read, stage, mutations }) => {
+      const h = harness();
+      observedProtection(h);
+      const set = (state: string) => {
+        if (state === "missing") Reflect.deleteProperty(h.state.settings, key);
+        else Object.assign(h.state.settings, { [key]: state === "null" ? null : presentProtection(key) });
+      };
+      set(from);
+      let reads = 0;
+      const original = h.request.getMockImplementation()!;
+      h.request.mockImplementation(async (...args) => {
+        if (args[0] === ROUTES.project && ++reads === read) set(to);
+        return original(...args);
+      });
+      const result = await deploy(env, h.deps);
+      expect(result.status).toBe("failed");
+      expect(result.stages.at(-1)).toEqual({ stage, code: "isolation_changed", status: "failed" });
+      expect(writes(h)).toHaveLength(mutations);
+      expect(result.partial).toBe(mutations > 0);
+      expect(result.manualReconciliation).toBe(mutations > 0);
+    });
+  it.each(["sso", "addresses", "mode", "scope", "link"].flatMap((change) =>
+    guards.map((guard) => ({ change, ...guard }))))(
+    "refuses changed $change at guard $read before another mutation", async ({ change, read, stage, mutations }) => {
+      const h = harness();
+      observedProtection(h);
+      const trusted = presentProtection("trustedIps");
+      Object.assign(h.state.settings, { trustedIps: trusted });
+      let reads = 0;
+      const original = h.request.getMockImplementation()!;
+      h.request.mockImplementation(async (...args) => {
+        if (args[0] === ROUTES.project && ++reads === read) {
+          if (change === "sso") h.state.settings.ssoProtection.deploymentType = "preview";
+          if (change === "addresses") trusted.addresses = [{ value: "192.0.2.2" }];
+          if (change === "mode") trusted.protectionMode = "exclusive";
+          if (change === "scope") trusted.deploymentType = "preview";
+          if (change === "link") h.state.settings.link.productionBranch = "wrong";
+        }
+        return original(...args);
+      });
+      const result = await deploy(env, h.deps);
+      expect(result.status).toBe("failed");
+      expect(result.stages.at(-1)?.stage).toBe(stage);
+      expect(writes(h)).toHaveLength(mutations);
+    });
+});
 describe("native read-only deployment isolation inspection", () => {
   it.each([["--inspect-isolation"], ["--check-source", "--inspect-isolation"],
     ["--inspect-isolation", "--unknown"]])("fails closed with one plain JSON record for invalid CLI context %#", (...args) => {
@@ -429,8 +570,9 @@ describe("native read-only deployment isolation inspection", () => {
     expect(result.stages).toEqual([{ stage: "source", code: "predicate_refused", status: "failed" }]);
     expect(h.request).not.toHaveBeenCalled();
   });
-  it("emits one safe fixed schema after only five GETs and repeated source checks", async () => {
+  it.each([false, true])("emits one safe fixed schema after only five GETs with omission=%s", async (omitted) => {
     const h = harness();
+    if (omitted) observedProtection(h);
     const sensitive = vi.fn(() => { throw Error(canary); });
     const values = { ...inspectionEnv };
     for (const key of ["SWIM_REVIEW_DATABASE_URL", "SWIM_REVIEW_SUPABASE_ANON_KEY", "SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY"]) {
@@ -449,8 +591,8 @@ describe("native read-only deployment isolation inspection", () => {
       status: "inspection_pass",
       stages: ["source", "credentials", "project", "team", "supabase", "project_env", "shared_env", "receipt", "completion"]
         .map((stage) => ({ stage, code: "passed", status: "passed" })),
-      classifications: { project: { ssoProtection: { type: "object", deploymentType: "all" },
-        passwordProtection: { type: "null" }, trustedIps: { type: "null" } },
+      classifications: { project: { ssoProtection: { type: "object", deploymentType: omitted ? "all_except_custom_domains" : "all" },
+        passwordProtection: { type: omitted ? "missing" : "null" }, trustedIps: { type: omitted ? "missing" : "null" } },
       team: { billing: { type: "object", plan: "hobby" } } },
       receiptMatches: true, writesAttempted: false, deploymentAttempted: false, deploymentAccepted: false,
       runtimePending: true, ownerLoginPending: true,

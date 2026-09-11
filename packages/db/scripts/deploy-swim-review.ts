@@ -207,6 +207,12 @@ function projectIdentity(raw: unknown) {
   // Project updatedAt also changes for our env/deployment writes; compare settings, not that aggregate marker.
   // Never inspect password hashes or protection bypass secrets.
   const protection = (key: "ssoProtection" | "passwordProtection" | "trustedIps") => {
+    if (key !== "ssoProtection" && !Object.hasOwn(row, key)) {
+      requireThat(Object.hasOwn(row, "ssoProtection") && shape(row.ssoProtection) === "object" &&
+        (row.ssoProtection as Record<string, unknown>).deploymentType === "all_except_custom_domains", `${key}_missing`);
+      // Optional omission is preserved metadata, not null or disabled protection.
+      return "missing" as const;
+    }
     if (row[key] === null) return null;
     requireThat(row[key] !== undefined, `${key}_missing`);
     const value = select(structure(row[key], `${key}_invalid`), ["deploymentType"]);
@@ -217,7 +223,7 @@ function projectIdentity(raw: unknown) {
   const sso = protection("ssoProtection");
   const password = protection("passwordProtection");
   const trustedIps = protection("trustedIps");
-  const ips = trustedIps === null ? null : structure(row.trustedIps, "trustedIps_invalid");
+  const ips = trustedIps === null || trustedIps === "missing" ? null : structure(row.trustedIps, "trustedIps_invalid");
   let addresses: unknown = null;
   let protectionMode: unknown = null;
   if (ips) {
