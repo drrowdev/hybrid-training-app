@@ -3830,3 +3830,39 @@ automated review/security pass is claimed.** Remaining work is coordinator
 exact-head guarded ephemeral runtime validation and working automated
 review/security checks. No known functional source remainder; no deployment
 or owner-account operation is authorized by this handoff.
+
+## 2026-09-11 — B6/B7 setup-audit expectation repair
+
+Published source checkpoint: `f7fcc70ef72fb1ca49492ccd6b5f5a93d417fe6a`.
+Starting PR805 head `4241f8023468a056aebfc4cd87daa05afacd8008` and base
+`672e4202792da122281639e3db810029432573f5` were verified before editing.
+
+Only `apps/web/e2e/swimming-decisions-offline-mobile.spec.ts:257` changed:
+the full boolean-only `isDeepStrictEqual` expectation now explicitly includes
+`strengthContext: { blockId: null, sessions: [] }`, independently expected from
+the fresh blockless B6/B7 fixtures. No other stale instance was found in the
+directly coupled swimming tests. Decision count/kind, original inputs/versions,
+definitions, workouts, budgets, zero-write/correction, reload/history and all
+other assertions remain unchanged. No application or machinery changes.
+
+Commands from the repository root:
+- `pnpm --filter @hta/web exec vitest run src/lib/swim/__tests__/actions.test.ts src/lib/swim/__tests__/swim-browser-collection.test.ts`: **40 passed** (39 action tests and one pinned-CLI collection check).
+- `pnpm --filter @hta/web exec eslint e2e/swimming-decisions-offline-mobile.spec.ts`: **passed**.
+- `pnpm --filter @hta/web typecheck` and `git diff --check`: **passed**.
+- Secret scan: **passed**. Checkpoint publication hooks passed after fetching
+  full history to satisfy the initial shallow-history rejection; no hook bypass
+  or history rewrite. Local/public checkpoint identities are allowlisted.
+- Required automated validation: review tool **unavailable**; CodeQL **skipped**
+  for the test-only change. No automated review/security pass is claimed.
+
+Original boundary, from coordinator-supplied evidence: run `34602207096`,
+attempt 1 at `4241f802…`, executed 26 cases once: 24 passed, only B6/B7 failed,
+zero flaky/skipped. Both failures reached the former shared assertion at
+257:110 (callers 1029 and 1098); private actual/expected values were not observed.
+No log content was reopened. Cleanup was verified, not acceptance.
+
+**Runtime pending:** collection confirmed the same frozen 26 cases only; no
+browser case ran here. Cases and the 30-second cap are unchanged. Coordinator
+must inspect published source and dispatch a new exact-head guarded reference;
+this correction does not establish B6/B7 runtime success. No deployment,
+provider/account operation, or initialized review-state access occurred.
