@@ -3013,3 +3013,31 @@ existing targeted script/test TypeScript command recorded above and
 Hosted inspection is unperformed; the actual namespace remains unknown.
 No secrets/database access, migrations/seed, dispatch, app/browser/server/Docker,
 cloud changes or production activity performed.
+
+## 2026-09-11 — Narrow pgbouncer platform inspection correction
+
+Owner-approved source-only continuation of PR805 from `d1e8bc133d73666a27b44f569e760dde1adb2c24`;
+main verified at `672e4202792da122281639e3db810029432573f5`. Only the existing
+bootstrap script/unit file and this entry changed. Supabase postgres source
+`2f5f2c2eb01271905a0351fde1451bcc294293ae` / auth-schema blob
+`d9d8af0898788c7380df8502e94d4141692dc703` supports the narrow exception:
+fixed schema owner, zero relations/types, exactly the documented function,
+empty configured search path and expected effective ACLs. No fixed function
+owner is assumed. One exact boolean decision adjusts the namespace count and
+filters the inspection list; other namespaces and all prior guards remain blocked.
+
+Safe evidence adds only `inspection.pgbouncer` with boolean-or-`"unreadable"`
+keys: `present`, `ownerExpected`, `relationsEmpty`, `typesEmpty`, `oneRoutine`,
+`signatureExpected`, `languageExpected`, `securityDefiner`, `searchPathEmpty`,
+`publicExecuteRevoked`, `pgbouncerExecuteGranted`. Prior safe fields and escaped
+summary remain. Catalog metadata only; no function execution, deployed bodies,
+password catalogs, row contents or raw errors are emitted.
+
+Focused offline checks: existing bootstrap Vitest **215/215 passed**, existing
+targeted script/test TypeScript command above and `git diff --check` passed.
+Full introduced-history identity check passed (170 existing commits).
+These fake-runtime checks are not hosted proof. No secret/database access,
+hosted execution, migrations/seed, CI dispatch or services were performed.
+Workflow, accepted application82337, migrations and frozen26 remain unchanged.
+Coordinator must inspect saved source and run exact-head READ-ONLY inspection
+first; a passing inspection is not bootstrap success or write-mode approval.

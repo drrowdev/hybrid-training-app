@@ -87,6 +87,10 @@ export type Pristine = {
   publicCodeEmpty: boolean; usersEmpty: boolean; storageEmpty: boolean; visible: boolean;
 };
 type Predicate = boolean | "unreadable";
+const platformKeys = ["present", "ownerExpected", "relationsEmpty", "typesEmpty", "oneRoutine",
+  "signatureExpected", "languageExpected", "securityDefiner", "searchPathEmpty",
+  "publicExecuteRevoked", "pgbouncerExecuteGranted"] as const;
+type Platform = { [K in typeof platformKeys[number]]: Predicate };
 const schemaOwners = ["postgres", "supabase_admin", "supabase_auth_admin", "supabase_storage_admin", "other"] as const;
 type SchemaMetadata = {
   status: "readable" | "empty" | "invalid" | "unreadable" | "overflow";
@@ -106,6 +110,7 @@ type Inspection = {
     postgresOwnedRelations: number | "unreadable";
   };
   unexpectedSchemas?: SchemaMetadata;
+  pgbouncer: Platform;
 };
 function unreadableInspection(): Inspection {
   return {
@@ -115,6 +120,7 @@ function unreadableInspection(): Inspection {
       usersEmpty: "unreadable", storageEmpty: "unreadable",
     },
     schemaCounts: { unexpectedNamespaces: "unreadable", postgresOwnedRelations: "unreadable" },
+    pgbouncer: Object.fromEntries(platformKeys.map((key) => [key, "unreadable"])) as Platform,
   };
 }
 function predicate(value: unknown): Predicate {
@@ -166,7 +172,52 @@ const emptyAccounts = `
     NOT EXISTS (SELECT 1 FROM storage.objects)
     AND NOT EXISTS (SELECT 1 FROM storage.buckets) AS "storageEmpty"`;
 
-async function inspectUnexpectedSchemas(client: Client, expected: number | "unreadable"): Promise<SchemaMetadata> {
+const unexpectedNamespaceFilter = `
+  n.nspname NOT IN ('public', 'auth', 'storage', 'extensions', 'graphql', 'graphql_public',
+    'realtime', 'supabase_functions', 'vault', 'net',
+    'pg_catalog', 'information_schema', 'pg_toast')
+    AND n.nspname NOT LIKE 'pg_temp_%' AND n.nspname NOT LIKE 'pg_toast_temp_%'`;
+
+// Supabase postgres 2f5f2c2: pgbouncer_auth_schema.sql. Never read or execute its body.
+const platformShape = `
+  SELECT n.oid IS NOT NULL AS present,
+    COALESCE(r.rolname = 'pgbouncer', false) AS "ownerExpected",
+    NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class WHERE relnamespace = n.oid) AS "relationsEmpty",
+    NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type WHERE typnamespace = n.oid) AS "typesEmpty",
+    (SELECT count(*) = 1 FROM (SELECT 1 FROM pg_catalog.pg_proc
+      WHERE pronamespace = n.oid LIMIT 2) routines) AS "oneRoutine",
+    COALESCE(p.proname = 'get_auth' AND p.prokind = 'f' AND p.pronargs = 1
+      AND p.pronargdefaults = 0 AND p.provariadic = 0
+      AND p.proargtypes[0] = 'pg_catalog.text'::regtype
+      AND p.proallargtypes = ARRAY['pg_catalog.text'::regtype, 'pg_catalog.text'::regtype,
+        'pg_catalog.text'::regtype]::oid[]
+      AND p.proargmodes = ARRAY['i', 't', 't']::"char"[]
+      AND p.proargnames = ARRAY['p_usename', 'username', 'password']
+      AND p.proretset AND p.prorettype = 'pg_catalog.record'::regtype, false) AS "signatureExpected",
+    COALESCE(l.lanname = 'plpgsql', false) AS "languageExpected",
+    COALESCE(p.prosecdef, false) AS "securityDefiner",
+    COALESCE(p.proconfig = ARRAY['search_path=""'] OR p.proconfig = ARRAY['search_path='],
+      false) AS "searchPathEmpty",
+    p.oid IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))) a
+      WHERE a.grantee = 0 AND a.privilege_type = 'EXECUTE') AS "publicExecuteRevoked",
+    EXISTS (
+      SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl, pg_catalog.acldefault('f', p.proowner))) a
+      JOIN pg_catalog.pg_roles grantee ON grantee.oid = a.grantee
+      WHERE grantee.rolname = 'pgbouncer' AND a.privilege_type = 'EXECUTE') AS "pgbouncerExecuteGranted"
+  FROM (SELECT 1) singleton
+  LEFT JOIN pg_catalog.pg_namespace n ON n.nspname = 'pgbouncer'
+  LEFT JOIN pg_catalog.pg_roles r ON r.oid = n.nspowner
+  LEFT JOIN LATERAL (
+    SELECT oid, proname, prokind, pronargs, pronargdefaults, provariadic, proargtypes,
+      proallargtypes, proargmodes, proargnames, proretset, prorettype, prolang,
+      prosecdef, proconfig, proacl, proowner
+    FROM pg_catalog.pg_proc WHERE pronamespace = n.oid ORDER BY oid LIMIT 1
+  ) p ON true
+  LEFT JOIN pg_catalog.pg_language l ON l.oid = p.prolang`;
+
+async function inspectUnexpectedSchemas(client: Client, expected: number | "unreadable",
+  recognized: boolean): Promise<SchemaMetadata> {
   const rows = await client.query(`
     SELECT CASE WHEN n.nspname ~ '^[a-z_][a-z0-9_]{0,62}$' THEN n.nspname ELSE NULL END AS name,
       CASE WHEN r.rolname IN ('postgres', 'supabase_admin', 'supabase_auth_admin', 'supabase_storage_admin')
@@ -183,11 +234,9 @@ async function inspectUnexpectedSchemas(client: Client, expected: number | "unre
           AND d.deptype = 'e') AS "extensionMember"
     FROM pg_catalog.pg_namespace n
     LEFT JOIN pg_catalog.pg_roles r ON r.oid = n.nspowner
-    WHERE n.nspname NOT IN ('public', 'auth', 'storage', 'extensions', 'graphql', 'graphql_public',
-      'realtime', 'supabase_functions', 'vault', 'net',
-      'pg_catalog', 'information_schema', 'pg_toast')
-      AND n.nspname NOT LIKE 'pg_temp_%' AND n.nspname NOT LIKE 'pg_toast_temp_%'
-    ORDER BY n.oid LIMIT 17`);
+    WHERE ${unexpectedNamespaceFilter}
+      AND NOT ($1::boolean AND n.nspname = 'pgbouncer')
+    ORDER BY n.oid LIMIT 17`, [String(recognized)]);
   if (rows.length > 16) return { status: "overflow", entries: [] };
   if (rows.length !== expected) return { status: "invalid", entries: [] };
   const entries: SchemaMetadata["entries"] = [];
@@ -224,11 +273,8 @@ export async function preflight(client: Client, inspection = unreadableInspectio
     NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = 'drizzle')
       AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class WHERE relname = '__drizzle_migrations')
       AS "ledgerAbsent",
-    (SELECT count(*)::int FROM (SELECT 1 FROM pg_catalog.pg_namespace
-      WHERE nspname NOT IN ('public', 'auth', 'storage', 'extensions', 'graphql', 'graphql_public',
-        'realtime', 'supabase_functions', 'vault', 'net',
-        'pg_catalog', 'information_schema', 'pg_toast')
-      AND nspname NOT LIKE 'pg_temp_%' AND nspname NOT LIKE 'pg_toast_temp_%'
+    (SELECT count(*)::int FROM (SELECT 1 FROM pg_catalog.pg_namespace n
+      WHERE ${unexpectedNamespaceFilter}
       LIMIT 1000) unexpected) AS "unexpectedNamespaces",
     (SELECT count(*)::int FROM (
       SELECT 1 FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
@@ -245,13 +291,26 @@ export async function preflight(client: Client, inspection = unreadableInspectio
     AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_type t JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
       WHERE n.nspname = 'public' AND t.typelem = 0 AND NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_depend d WHERE d.classid = 'pg_type'::regclass
-          AND d.objid = t.oid AND d.deptype = 'e')) AS "publicCodeEmpty"`);
+          AND d.objid = t.oid AND d.deptype = 'e')) AS "publicCodeEmpty",
+    (SELECT row_to_json(platform) FROM (${platformShape}) platform) AS pgbouncer`);
   const row = rows.length === 1 ? rows[0] : undefined;
   for (const key of ["visible", "publicEmpty", "ledgerAbsent", "publicCodeEmpty"] as const) {
     inspection.predicates[key] = predicate(row?.[key]);
   }
   inspection.schemaCounts.unexpectedNamespaces = count(row?.unexpectedNamespaces);
   inspection.schemaCounts.postgresOwnedRelations = count(row?.postgresOwnedRelations);
+  const platform = row?.pgbouncer;
+  for (const key of platformKeys) {
+    inspection.pgbouncer[key] = predicate(platform && typeof platform === "object" ?
+      (platform as Record<string, unknown>)[key] : undefined);
+  }
+  const recognized = platformKeys.every((key) => inspection.pgbouncer[key] === true);
+  // The raw count includes pgbouncer; only this exact decision removes it from both views.
+  if (recognized && typeof inspection.schemaCounts.unexpectedNamespaces === "number") {
+    const rawCount = inspection.schemaCounts.unexpectedNamespaces;
+    inspection.schemaCounts.unexpectedNamespaces = rawCount === 0 ? "unreadable" :
+      rawCount === 1000 ? 1000 : rawCount - 1;
+  }
   const { unexpectedNamespaces, postgresOwnedRelations } = inspection.schemaCounts;
   inspection.predicates.schemasExpected =
     unexpectedNamespaces === "unreadable" || postgresOwnedRelations === "unreadable" ?
@@ -262,9 +321,10 @@ export async function preflight(client: Client, inspection = unreadableInspectio
     inspection.predicates[key] = predicate(account?.[key]);
   }
   if (inspectOnly) {
-    inspection.unexpectedSchemas = await inspectUnexpectedSchemas(client, unexpectedNamespaces);
+    inspection.unexpectedSchemas = await inspectUnexpectedSchemas(client, unexpectedNamespaces, recognized);
     requireTrue(inspection.unexpectedSchemas.status === "readable" || inspection.unexpectedSchemas.status === "empty");
   }
+  requireTrue(inspection.pgbouncer.present === false || recognized);
   assertPristine(inspection.predicates);
 }
 

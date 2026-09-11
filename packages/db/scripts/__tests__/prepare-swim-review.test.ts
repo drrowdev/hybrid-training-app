@@ -23,6 +23,12 @@ const pristine = {
   publicEmpty: true, ledgerAbsent: true, schemasExpected: true,
   publicCodeEmpty: true, usersEmpty: true, storageEmpty: true, visible: true,
 };
+const absentPlatform = {
+  present: false, ownerExpected: false, relationsEmpty: true, typesEmpty: true, oneRoutine: false,
+  signatureExpected: false, languageExpected: false, securityDefiner: false, searchPathEmpty: false,
+  publicExecuteRevoked: false, pgbouncerExecuteGranted: false,
+};
+const validPlatform = Object.fromEntries(Object.keys(absentPlatform).map((key) => [key, true]));
 const sha = "a".repeat(40);
 const context = {
   GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "workflow_dispatch",
@@ -33,9 +39,9 @@ const context = {
 };
 const canonical = Array.from({ length: 150 }, (_, i) => ({ hash: `${i}`, folderMillis: i + 1 }));
 function fake() {
-  const query = vi.fn(async (text: string): Promise<Record<string, unknown>[]> => {
+  const query = vi.fn(async (text: string, _parameters?: string[]): Promise<Record<string, unknown>[]> => {
     if (text.includes('AS "publicEmpty"')) return [
-      { ...pristine, unexpectedNamespaces: 0, postgresOwnedRelations: 0 },
+      { ...pristine, unexpectedNamespaces: 0, postgresOwnedRelations: 0, pgbouncer: absentPlatform },
     ];
     if (text.includes("auth.users")) return [{ usersEmpty: true, storageEmpty: true }];
     if (text.includes('AS "extensionMember"')) return [];
@@ -218,6 +224,7 @@ describe("read-only pristine inspection (fake runtime, not hosted proof)", () =>
       inspection: {
         predicates: pristine, schemaCounts: { unexpectedNamespaces: 0, postgresOwnedRelations: 0 },
         unexpectedSchemas: { status: "empty", entries: [] },
+        pgbouncer: absentPlatform,
       },
     });
     expect(close).toHaveBeenCalledOnce();
@@ -254,6 +261,133 @@ describe("read-only pristine inspection (fake runtime, not hosted proof)", () =>
       .mockResolvedValueOnce(rows);
     return state;
   }
+  function platformFake(platform: unknown = validPlatform, extraNamespace = false) {
+    const state = fake();
+    const original = state.query.getMockImplementation()!;
+    state.query.mockImplementation(async (sql, parameters) => {
+      if (sql.includes('AS "publicEmpty"')) return [{
+        ...pristine, unexpectedNamespaces: extraNamespace ? 2 : 1,
+        postgresOwnedRelations: 0, pgbouncer: platform,
+      }];
+      if (sql.includes('AS "extensionMember"')) return [
+        ...(parameters?.[0] === "true" ? [] : [{ ...namespace, name: "pgbouncer", types: 0 }]),
+        ...(extraNamespace ? [namespace] : []),
+      ];
+      return original(sql, parameters);
+    });
+    return state;
+  }
+  it("recognizes only the documented pgbouncer shape in both the count and namespace list", async () => {
+    const { runtime, query, close } = platformFake();
+    expect(await prepareReview(url, runtime, true)).toBe(true);
+    expect(evidence(runtime).inspection).toEqual({
+      predicates: pristine, pgbouncer: validPlatform,
+      schemaCounts: { unexpectedNamespaces: 0, postgresOwnedRelations: 0 },
+      unexpectedSchemas: { status: "empty", entries: [] },
+    });
+    expect(query.mock.calls[2]![1]).toEqual(["true"]);
+    noWrites(runtime);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it.each(Object.keys(validPlatform).filter((key) => key !== "present"))(
+    "keeps pgbouncer unexpected when %s fails", async (key) => {
+      const { runtime, query, close } = platformFake({ ...validPlatform, [key]: false });
+      expect(await prepareReview(url, runtime, true)).toBe(false);
+      expect(evidence(runtime).inspection).toMatchObject({
+        pgbouncer: { [key]: false }, predicates: { schemasExpected: false },
+        schemaCounts: { unexpectedNamespaces: 1 },
+        unexpectedSchemas: { status: "readable", entries: [{ name: "pgbouncer" }] },
+      });
+      expect(query.mock.calls[2]![1]).toEqual(["false"]);
+      noWrites(runtime);
+      expect(close).toHaveBeenCalledOnce();
+    });
+  it.each(Object.keys(validPlatform))("fails closed on unreadable platform %s", async (key) => {
+    for (const value of [undefined, null, "true", "<private>", 1]) {
+      const { runtime, close } = platformFake({ ...validPlatform, [key]: value, arbitrary: url });
+      expect(await prepareReview(url, runtime, true)).toBe(false);
+      expect(evidence(runtime).inspection!.pgbouncer[key as keyof typeof absentPlatform]).toBe("unreadable");
+      expect(JSON.stringify(evidence(runtime))).not.toMatch(/private|arbitrary|postgresql/);
+      noWrites(runtime);
+      expect(close).toHaveBeenCalledOnce();
+    }
+  });
+  it.each([null, "private", [], [{ ...validPlatform }]])(
+    "rejects absent or ambiguous platform metadata: %j", async (platform) => {
+      const { runtime, close } = platformFake(platform);
+      expect(await prepareReview(url, runtime, true)).toBe(false);
+      expect(Object.values(evidence(runtime).inspection!.pgbouncer)).toEqual(Array(11).fill("unreadable"));
+      noWrites(runtime);
+      expect(close).toHaveBeenCalledOnce();
+    });
+  it("keeps additional unknown namespaces blocked beside valid pgbouncer", async () => {
+    const { runtime, query } = platformFake(validPlatform, true);
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    expect(evidence(runtime).inspection).toMatchObject({
+      pgbouncer: validPlatform, schemaCounts: { unexpectedNamespaces: 1 },
+      unexpectedSchemas: { status: "readable", entries: [{ name: namespace.name }] },
+    });
+    expect(query.mock.calls[2]![1]).toEqual(["true"]);
+    noWrites(runtime);
+  });
+  it.each([0, 1000])("fails closed on inconsistent or saturated raw namespace count %s", async (raw) => {
+    const { runtime, query, close } = platformFake();
+    const original = query.getMockImplementation()!;
+    query.mockImplementation(async (sql, parameters) => {
+      const rows = await original(sql, parameters);
+      if (sql.includes('AS "publicEmpty"')) rows[0]!.unexpectedNamespaces = raw;
+      return rows;
+    });
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    expect(evidence(runtime).inspection!.schemaCounts.unexpectedNamespaces).toBe(
+      raw === 0 ? "unreadable" : 1000);
+    expect(evidence(runtime).inspection!.unexpectedSchemas!.status).toBe("invalid");
+    noWrites(runtime);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it.each(["visible", "publicEmpty", "ledgerAbsent", "publicCodeEmpty", "usersEmpty",
+    "storageEmpty", "postgresOwnedRelations"])("valid pgbouncer cannot bypass %s", async (key) => {
+    const { runtime, query, close } = platformFake();
+    const original = query.getMockImplementation()!;
+    query.mockImplementation(async (sql, parameters) => {
+      const rows = await original(sql, parameters);
+      if (sql.includes('AS "publicEmpty"') || sql.includes("auth.users")) {
+        rows[0]![key] = key === "postgresOwnedRelations" ? 1 : false;
+      }
+      return rows;
+    });
+    expect(await prepareReview(url, runtime, true)).toBe(false);
+    noWrites(runtime);
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it("uses bounded catalog predicates, default ACLs, and never a deployed body or function call", async () => {
+    const { runtime, query } = platformFake();
+    expect(await prepareReview(url, runtime, true)).toBe(true);
+    const sql = query.mock.calls[0]![0];
+    expect(sql).toContain("r.rolname = 'pgbouncer'");
+    expect(sql).toContain("pg_catalog.pg_class WHERE relnamespace = n.oid");
+    expect(sql).toContain("pg_catalog.pg_type WHERE typnamespace = n.oid");
+    expect(sql).toContain("count(*) = 1");
+    expect(sql).toContain("WHERE pronamespace = n.oid LIMIT 2");
+    expect(sql).toContain("p.proname = 'get_auth' AND p.prokind = 'f' AND p.pronargs = 1");
+    expect(sql).toContain("p.proargtypes[0] = 'pg_catalog.text'::regtype");
+    expect(sql).toContain("p.pronargdefaults = 0 AND p.provariadic = 0");
+    expect(sql).toContain("p.proallargtypes = ARRAY['pg_catalog.text'::regtype, 'pg_catalog.text'::regtype,");
+    expect(sql).toContain("'pg_catalog.text'::regtype]::oid[]");
+    expect(sql).toContain("p.proargmodes = ARRAY['i', 't', 't']::\"char\"[]");
+    expect(sql).toContain("p.proargnames = ARRAY['p_usename', 'username', 'password']");
+    expect(sql).toContain("p.proretset AND p.prorettype = 'pg_catalog.record'::regtype");
+    expect(sql).toContain("l.lanname = 'plpgsql'");
+    expect(sql).toContain("COALESCE(p.prosecdef, false)");
+    expect(sql).toContain("p.proconfig = ARRAY['search_path=\"\"'] OR p.proconfig = ARRAY['search_path=']");
+    expect(sql.match(/pg_catalog\.aclexplode\(COALESCE\(p\.proacl, pg_catalog\.acldefault\('f', p\.proowner\)\)\)/g)).toHaveLength(2);
+    expect(sql).toContain("a.grantee = 0 AND a.privilege_type = 'EXECUTE'");
+    expect(sql).toContain("grantee.rolname = 'pgbouncer' AND a.privilege_type = 'EXECUTE'");
+    expect(sql).not.toMatch(/p\.proowner\s*=|pg_shadow|prosrc|prosqlbody|pg_get_|pgbouncer\.get_auth\s*\(/);
+    expect(query.mock.calls[2]![0]).toContain("NOT ($1::boolean AND n.nspname = 'pgbouncer')");
+    expect(query.mock.calls.every(([text]) => /^\s*SELECT/.test(text))).toBe(true);
+    noWrites(runtime);
+  });
   it("records the one-namespace metadata before rejecting the unchanged pristine guard", async () => {
     const { runtime, query, close } = metadataFake([namespace]);
     expect(await prepareReview(url, runtime, true)).toBe(false);
