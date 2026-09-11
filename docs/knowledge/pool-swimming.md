@@ -37,7 +37,24 @@ source-specific; frozen26 is not expanded or rerun for this planning change.
   without requiring in-app workout logging. Extend the same delivery contract
   to other generated program types only with their own supported mappings.
 
-### Access dependency and next implementation boundary
+### Offline app and programming first
+
+The owner subsequently clarified the execution order: finish the app,
+especially its programming, **offline with synthetic data before live Garmin
+or production work**. Missing Garmin API approval does not block this work.
+Browser-assisted calendar entry remains a possible later assisted route, not
+automatic synchronization or current permission to inspect an account or send
+workouts. Any live pilot needs a separate explicit go-ahead.
+
+New-plan setup now has a local, read-only preview of every dated week and
+structured workout. Preview and creation share generation, setup validation,
+current safety checks and strength-day confirmation. Editing setup clears the
+preview; obsolete responses cannot restore it. Creation still rechecks current
+conditions and is the only save action. Existing direct creation remains
+available. This is not a general editor for saved future workouts or a Garmin
+connector, and it has not been deployed to the review site.
+
+### Future Garmin delivery access
 
 The owner confirmed there is **no approved Garmin Connect Developer Program /
 Training API access**. The current repository has external-cardio labels and a
@@ -58,9 +75,9 @@ Calendar sync replaces the watch's calendar with the Connect schedule; therefore
 preserving unrelated Connect entries matters. These manuals are not proof of
 our connector or of every swim-step mapping on the physical device.
 
-First obtain an eligible, owner-approved official access route and its detailed
-API contract. Then implement the swim delivery slice with explicit ownership,
-reconciliation and failure behavior. Do not invent API payloads or ship a
+Before implementing an official connector, obtain an eligible, owner-approved
+access route and its detailed API contract. The swim delivery slice needs
+explicit ownership, reconciliation and failure behavior. Do not invent API payloads or ship a
 success-shaped sync control while access is missing. Bringing completed
 activities back into getsxc is a separate Activity API/consent and matching
 decision; calendar publication alone must not drive completion or progression.

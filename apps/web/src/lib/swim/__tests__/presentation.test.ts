@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { SwimWorkout } from "@hta/domain";
-import { workoutPresentation } from "../presentation";
+import { generateSwimPlan } from "@hta/engine";
+import { planPreviewPresentation, workoutPresentation } from "../presentation";
+import { standaloneWeekRequests } from "../model";
+import { swimFixture } from "./fixtures";
 
 const workout: SwimWorkout = {
   kind: "swim_workout", focus: "technique_base", totalLengths: 8, estimatedMs: null,
@@ -25,6 +28,33 @@ describe("ADR0079 poolside ordered workout", () => {
     expect(view.total).toContain("200");
     expect(view.total).toContain("yd");
     expect(view.steps[0]).toMatchObject({ title: "2 × 50 yd", detail: "Freestyle · Fins", effort: "Easy", rest: "Rest 30 sec" });
+  });
+
+  describe("DC-SW1/DC-SW3 full program preview", () => {
+    it("preserves explicit empty weeks, exact native totals and every issued workout without mutation", () => {
+      const setup = swimFixture().plan.definition.setup;
+      const weeks = standaloneWeekRequests("2026-09-07", 3, [1, 4]);
+      const generated = generateSwimPlan({ setup, calibration: null, weeks: weeks.map((week, index) => index === 0 ? { ...week, slots: [] } : week) });
+      if (!generated.ok) throw new Error(generated.error.message);
+      const before = JSON.stringify(generated.value);
+      const preview = planPreviewPresentation(generated.value);
+      expect(preview.weeks).toHaveLength(3);
+      expect(preview.workoutCount).toBe(4);
+      expect(preview.weeks[0]).toMatchObject({ week: 1, startDate: "2026-09-07", total: "0 yd", workouts: [] });
+      expect(preview.weeks.flatMap((week) => week.workouts.map((entry) => entry.date))).toEqual([
+        "2026-09-14", "2026-09-17", "2026-09-21", "2026-09-24",
+      ]);
+      expect(preview.weeks[1]!.total).toBe(`${generated.value.weeks[1]!.slots.reduce(
+        (lengths, slot) => lengths + (slot.kind === "workout" ? slot.issued.totalLengths : 0), 0,
+      ) * 25} yd`);
+      expect(JSON.stringify(generated.value)).toBe(before);
+    });
+    it("does not silently hide unresolved learning guidance", () => {
+      const setup = { ...swimFixture().plan.definition.setup, recentComfortableLengths: 0 };
+      const generated = generateSwimPlan({ setup, calibration: null, weeks: standaloneWeekRequests("2026-09-07", 2, [1]) });
+      if (!generated.ok) throw new Error(generated.error.message);
+      expect(() => planPreviewPresentation(generated.value)).toThrow();
+    });
   });
   it("does not fabricate pace for an uncalibrated workout", () => {
     expect(workoutPresentation(workout).steps.every((step) => step.pace === undefined)).toBe(true);

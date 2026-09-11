@@ -1,5 +1,6 @@
 import { formatPoolCourse, formatSwimDistance, swimRepeatGroups, swimItemGuidance, type SwimWorkout, type SwimStroke, type SwimEquipment } from "@hta/domain";
-import type { SwimWorkoutView } from "./view-types";
+import { swimPlanWeekLengths, type SwimPlan } from "@hta/engine";
+import type { SwimPlanPreview, SwimWorkoutView } from "./view-types";
 import { formatSwimTime } from "./time";
 
 export const SWIM_STROKE_LABEL: Record<SwimStroke, string> = {
@@ -43,5 +44,24 @@ export function workoutPresentation(workout: SwimWorkout): Pick<SwimWorkoutView,
     equipment: [...workout.snapshot.equipment],
     pool: workout.snapshot.course,
     steps,
+  };
+}
+
+export function planPreviewPresentation(plan: SwimPlan): SwimPlanPreview {
+  const weeks = plan.weeks.map((week) => ({
+    week: week.weekIndex + 1,
+    startDate: week.startDateISO,
+    provisional: week.provisional,
+    total: formatSwimDistance(swimPlanWeekLengths(week), plan.setup.course),
+    workouts: week.slots.map((slot) => {
+      if (slot.kind !== "workout") throw new Error("Cannot preview an unresolved swim plan.");
+      const { title, total, budgetMinutes, calibrationLabel, steps } = workoutPresentation(slot.issued);
+      return { slotId: slot.slotId, date: slot.dateISO, title, total, budgetMinutes, calibrationLabel, steps };
+    }),
+  }));
+  return {
+    course: formatPoolCourse(plan.setup.course),
+    workoutCount: weeks.reduce((count, week) => count + week.workouts.length, 0),
+    weeks,
   };
 }

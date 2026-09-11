@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { MAX_POOL_LENGTHS, MAX_SESSION_BUDGET_MINUTES, SWIM_WEEKDAYS, swimScheduleAdvice, type SwimStrengthContext } from "@hta/domain";
-import { createSwimPlan } from "@/lib/swim/actions";
+import { createSwimPlan, previewSwimPlan } from "@/lib/swim/actions";
+import type { SwimPlanPreview } from "@/lib/swim/view-types";
+import { PlanPreview } from "./PlanPreview";
 import styles from "./Swim.module.css";
 
 export function BenchmarkFields() {
@@ -45,15 +47,22 @@ export function SetupForm({ today, strengthContext: initialContext = { blockId: 
   const [weeks, setWeeks] = useState(6);
   const [days, setDays] = useState(() => swimScheduleAdvice(initialContext, today, 6).defaults);
   const [confirmedContext, setConfirmedContext] = useState<string | null>(null);
+  const [preview, setPreview] = useState<SwimPlanPreview | null>(null);
+  const request = useRef(0);
+  const [operation, setOperation] = useState<"preview" | "create" | null>(null);
   const advice = swimScheduleAdvice(strengthContext, startDate, weeks, days);
 
-  function submit(form: FormData) {
+  function submit(form: FormData, mode: "preview" | "create") {
+    const revision = ++request.current;
+    setOperation(mode);
+    setPreview(null);
     setError(null);
     setOptions([]);
     setGuidance(null);
     startTransition(async () => {
       try {
-        const result = await createSwimPlan(form);
+        const result = await (mode === "preview" ? previewSwimPlan(form) : createSwimPlan(form));
+        if (mode === "preview" && revision !== request.current) return;
         if (result.error) {
           if (result.strengthContext) {
             setStrengthContext(result.strengthContext);
@@ -63,12 +72,17 @@ export function SetupForm({ today, strengthContext: initialContext = { blockId: 
           setOptions(result.options ?? []);
         }
         else if (result.guidance) setGuidance(result.guidance);
+        else if (result.preview) setPreview(result.preview);
         else if (result.planId) {
           router.push(`/app/swim?plan=${result.planId}`);
           router.refresh();
         }
       } catch {
-        setError("Could not save your swim plan. Try again.");
+        if (mode !== "preview" || revision === request.current) {
+          setError(mode === "preview" ? "Could not preview your swim plan. Try again." : "Could not save your swim plan. Try again.");
+        }
+      } finally {
+        if (revision === request.current) setOperation(null);
       }
     });
   }
@@ -76,8 +90,9 @@ export function SetupForm({ today, strengthContext: initialContext = { blockId: 
   return (
     <form method="post" onSubmit={(event) => {
       event.preventDefault();
-      submit(new FormData(event.currentTarget));
-    }} className={styles.form}>
+      const submitter = (event.nativeEvent as SubmitEvent | undefined)?.submitter;
+      submit(new FormData(event.currentTarget), submitter?.getAttribute("value") === "preview" ? "preview" : "create");
+    }} onChange={() => { request.current++; setPreview(null); }} className={styles.form}>
       <section className={styles.section}>
         <h2>Your swimming</h2>
         <label className={styles.field}>Goal
@@ -155,7 +170,15 @@ export function SetupForm({ today, strengthContext: initialContext = { blockId: 
         {options.length > 0 && <ul>{options.map((option) => <li key={option}>{option}</li>)}</ul>}
       </div>}
       {guidance && <p role="status" className={styles.status}>{guidance}</p>}
-      <button type="submit" className={styles.button} disabled={pending}>{pending ? "Saving…" : "Create swim plan"}</button>
+      <div className={styles.actions}>
+        <button type="submit" name="intent" value="preview" className={styles.secondary} disabled={pending}>
+          {pending && operation === "preview" ? "Preparing…" : "Preview plan"}
+        </button>
+        <button type="submit" className={styles.button} disabled={pending}>
+          {pending && operation === "create" ? "Saving…" : "Create swim plan"}
+        </button>
+      </div>
+      {preview && <PlanPreview plan={preview} />}
     </form>
   );
 }

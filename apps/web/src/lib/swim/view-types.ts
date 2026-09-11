@@ -38,6 +38,21 @@ export type SwimCompletion = {
   warning?: string;
 };
 
+export type SwimPlanPreview = {
+  course: string;
+  workoutCount: number;
+  weeks: {
+    week: number;
+    startDate: string;
+    provisional: boolean;
+    total: string;
+    workouts: (Pick<SwimWorkoutView, "title" | "total" | "budgetMinutes" | "calibrationLabel" | "steps"> & {
+      slotId: string;
+      date: string;
+    })[];
+  }[];
+};
+
 const completionPool = z.object({ numerator: z.number().int().positive(), denominator: z.number().int().positive(), unit: z.enum(["m", "yd"]) });
 const completionView = z.object({
   id: z.string().uuid(), sessionId: z.string().uuid(), revision: z.number().int().positive(),

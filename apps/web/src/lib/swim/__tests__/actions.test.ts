@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { swimFixture, userId, planId, sessionId, receiptId } from "./fixtures";
-import { completeSwimWorkoutResult, createSwimPlan, startSwimWorkout, editSwimResult, decideSwimProposal, previewSwimResume, resumeSwimPlan, proposeSwimBenchmark, decideSwimBenchmark, skipSwimWorkout } from "../actions";
+import { completeSwimWorkoutResult, createSwimPlan, previewSwimPlan, startSwimWorkout, editSwimResult, decideSwimProposal, previewSwimResume, resumeSwimPlan, proposeSwimBenchmark, decideSwimBenchmark, skipSwimWorkout } from "../actions";
+import { revalidatePath } from "next/cache";
 import { SWIM_ASSESSMENT_VERSION, swimScheduleAdvice, type SwimWorkout } from "@hta/domain";
 import { loadSwimStrengthContext } from "../strength-schedule";
 import * as queries from "../queries";
@@ -122,6 +123,110 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("ADR0079 server actions", () => {
+  it.each([false, true])("DC-SW1/DC-SW2/DC-SW3 previews the exact saved prescriptions without writes (assessment=%s)", async (assessed) => {
+    const form = setupForm();
+    form.append("weekdays", "4");
+    if (assessed) {
+      form.set("comfortableLengths", "16");
+      for (const [name, value] of benchmarkForm()) form.set(name, value);
+    }
+    const response = await previewSwimPlan(form);
+    expect(response.ok).toBe(true);
+    expect(response.planId).toBeUndefined();
+    expect(response.preview).toMatchObject({ course: "25 yd", workoutCount: 6 });
+    expect(response.preview!.weeks.map((week) => [week.week, week.startDate, week.provisional])).toEqual([
+      [1, "2026-09-07", false], [2, "2026-09-14", true], [3, "2026-09-21", true],
+    ]);
+    expect(Object.values(storage).every((method) => vi.mocked(method).mock.calls.length === 0)).toBe(true);
+    expect(revalidatePath).not.toHaveBeenCalled();
+    expect(assertSwimSafety).toHaveBeenCalledOnce();
+
+    expect(await createSwimPlan(form)).toEqual({ ok: true, planId });
+    const saved = vi.mocked(storage.createSwimPlan).mock.calls[0]![1];
+    const previewWorkouts = response.preview!.weeks.flatMap((week) => week.workouts);
+    expect(previewWorkouts).toHaveLength(saved.workouts.length);
+    expect(previewWorkouts.map(({ slotId, ...view }, index) => {
+      expect(saved.workouts[index]!.definition).toMatchObject({ slotId });
+      return view;
+    })).toEqual(saved.workouts.map((row) => {
+      const { title, total, budgetMinutes, calibrationLabel, steps } = workoutPresentation(row.definition.issued);
+      return { date: row.scheduled_date, title, total, budgetMinutes, calibrationLabel, steps };
+    }));
+    expect(response.preview!.weeks.flatMap((week) => week.workouts.flatMap((workout) => workout.steps))
+      .some((step) => step.pace !== undefined)).toBe(assessed);
+    expect(assertSwimSafety).toHaveBeenCalledTimes(2);
+  });
+  it("DC-SW3 regenerates the preview from edited setup without saving a plan", async () => {
+    const form = setupForm();
+    const before = await previewSwimPlan(form);
+    form.set("pool", "50m");
+    form.set("weeks", "4");
+    form.set("weekdays", "3");
+    form.set("startDate", "2026-09-14");
+    const after = await previewSwimPlan(form);
+    expect(before.preview).toMatchObject({ course: "25 yd", workoutCount: 3 });
+    expect(after.preview).toMatchObject({ course: "50 m", workoutCount: 4 });
+    expect(after.preview!.weeks.flatMap((week) => week.workouts.map((workout) => workout.date))).toEqual([
+      "2026-09-16", "2026-09-23", "2026-09-30", "2026-10-07",
+    ]);
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+  });
+  it("DC-SW1/DC-SW3 includes the entire supported horizon and exact custom pool", async () => {
+    const form = setupForm();
+    form.set("pool", "custom"); form.set("poolLength", "33 1/3"); form.set("poolUnit", "m");
+    form.set("weeks", "16");
+    form.delete("weekdays");
+    for (let day = 0; day < 7; day++) form.append("weekdays", String(day));
+    const result = await previewSwimPlan(form);
+    expect(result.ok).toBe(true);
+    expect(result.preview!.weeks).toHaveLength(16);
+    expect(result.preview!.workoutCount).toBe(112);
+    expect(result.preview!.weeks.every((week) => week.workouts.length === 7)).toBe(true);
+    expect(result.preview!.weeks[15]!.workouts[6]!.date).toBe("2026-12-27");
+    expect(result.preview!.course).toBe("100/3 m");
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+  });
+  it("DC-SW9 rechecks current safety at save even after a successful preview", async () => {
+    const form = setupForm();
+    expect(await previewSwimPlan(form)).toHaveProperty("preview");
+    vi.mocked(assertSwimSafety).mockRejectedValueOnce(new Error("Review an active limitation."));
+    expect(await createSwimPlan(form)).toHaveProperty("error");
+    expect(assertSwimSafety).toHaveBeenCalledTimes(2);
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+  });
+  it("DC-SW8 requires authentication and the setup capability for a preview", async () => {
+    mock.user = null;
+    expect(await previewSwimPlan(setupForm())).toHaveProperty("error");
+    mock.user = { id: userId };
+    vi.mocked(requireSwimSetup).mockRejectedValueOnce(new Error("Setup disabled"));
+    expect(await previewSwimPlan(setupForm())).toHaveProperty("error");
+    expect(assertSwimSafety).not.toHaveBeenCalled();
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+  });
+  it("DC-K4 returns current strength context for preview and rechecks it when saving", async () => {
+    const form = setupForm();
+    expect(await previewSwimPlan(form)).toHaveProperty("preview");
+    const context = { blockId: "primary", sessions: [{ id: "strength", date: "2026-09-07" }] };
+    vi.mocked(loadSwimStrengthContext).mockResolvedValue(context);
+    expect(await previewSwimPlan(form)).toMatchObject({ errorCode: "validation", strengthContext: context });
+    expect(await createSwimPlan(form)).toMatchObject({ errorCode: "validation", strengthContext: context });
+    form.set("strengthOverlap", swimScheduleAdvice(context, "2026-09-07", 3, [1]).confirmationKey);
+    expect(await previewSwimPlan(form)).toHaveProperty("preview");
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+  });
+  it.each([createSwimPlan, previewSwimPlan])("DC-SW2/DC-SW3 retains validation and learning guidance in %s", async (action) => {
+    const form = setupForm();
+    form.set("startDate", "2026-09-01");
+    expect(await action(form)).toMatchObject({ errorCode: "validation" });
+    form.set("startDate", "2026-09-07");
+    for (const [name, value] of benchmarkForm()) form.set(name, value);
+    form.set("benchmarkDate", "2026-09-06");
+    expect(await action(form)).toMatchObject({ errorCode: "validation" });
+    form.delete("time200"); form.delete("time400"); form.delete("verified"); form.delete("benchmarkDate");
+    form.set("comfortableLengths", "0");
+    expect(await action(form)).toHaveProperty("guidance");
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+  });
   it("DC-K4 rechecks overlap on submit, rejects a tampered or stale acknowledgement, and audits current context", async () => {
     const context = { blockId: "primary", sessions: [{ id: "strength", date: "2026-09-07" }] };
     vi.mocked(loadSwimStrengthContext).mockResolvedValue(context);

@@ -28,6 +28,8 @@ The maintained-by-AI layer. These pages are rewritten as new sources arrive; the
   logging and source-specific evidence. Current owner requirement: review/edit
   in getsxc and execute scheduled workouts on a Forerunner 970. Garmin calendar
   delivery is not implemented and official Training API access is pending.
+  Current work is offline app/programming completion, including a local
+  read-only new-plan preview; no live Garmin pilot is authorized.
   Existing standalone26 and isolated review refresh are accepted within their
   scope. ADR 0079 / DC-SW1 through DC-SW9; combined cardio-slot use stays deferred.
 

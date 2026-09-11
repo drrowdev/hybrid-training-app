@@ -3182,3 +3182,24 @@ delivery from activity-file import. No connector, credentials, provider
 application, user-data/RLS/schema changes or production operation was performed.
 Frozen26 at0a3 and refreshed review atabbd remain accepted only in their original
 scope; they do not prove this newly required Garmin workflow.
+
+## [2026-09-11] implementation | Offline swim plan review before saving
+
+The owner clarified that app/programming completion comes before any live
+Garmin or production work. Missing API approval is not an offline blocker;
+browser-assisted transfer is a possible later route requiring explicit
+authorization, not a current live pilot.
+
+Added a read-only setup preview using the same generation, input validation,
+current limitations and strength-day confirmation as creation. It displays
+all dated weeks and structured prescriptions using existing native-distance,
+repeat, effort and pacing presentation. Input changes invalidate the preview,
+and obsolete responses cannot overwrite newer setup state. Saving rechecks
+conditions; existing direct creation remains available.
+
+Synthetic regressions cover preview/save fidelity, no preview writes, optional
+assessment, explicit empty weeks, current safety/overlap checks, editable setup,
+stale responses and errors. DC-K4, DC-SW1/SW2/SW3/SW9. No generator rules, schema,
+RLS, saved history, frozen26 cases or provider configuration changed. This is
+local source, not a deployed change or completion of saved-plan editing or
+Garmin delivery. Historical acceptance remains source- and scope-specific.
