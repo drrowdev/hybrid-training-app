@@ -126,9 +126,10 @@ try {
   });
   const definition: SwimPlanDefinition = { version: 1, setup, generatorVersion: "swim-gen-1" };
   const state: SwimPlanState = { version: 1, observations: [estimate.value.observation], acceptedCalibration: estimate.value, decisions: [] };
+  // Bind serialized JSON as text so the driver does not encode it twice.
   const create = (user: string) => as(user, async (tx) =>
-    (await tx<{ result: Snapshot }[]>`SELECT public.swim_create_plan(${today}::date, ${today}::date, ${JSON.stringify(definition)}::jsonb, ${JSON.stringify(state)}::jsonb,
-      ${JSON.stringify(definitions.map((definition) => ({ scheduled_date: today, slot: "single", definition })))}::jsonb) AS result`)[0]!.result);
+    (await tx<{ result: Snapshot }[]>`SELECT public.swim_create_plan(${today}::date, ${today}::date, ${JSON.stringify(definition)}::text::jsonb, ${JSON.stringify(state)}::text::jsonb,
+      ${JSON.stringify(definitions.map((definition) => ({ scheduled_date: today, slot: "single", definition })))}::text::jsonb) AS result`)[0]!.result);
   let own = await create(a);
   const other = await create(b);
 
@@ -183,7 +184,7 @@ try {
   };
   const update = (user: string, snapshot: Snapshot, change: PoolRequest) => as(user, async (tx) =>
     (await tx<{ result: Snapshot }[]>`SELECT public.swim_update_plan(${snapshot.plan.id}::uuid, ${snapshot.plan.revision},
-      ${JSON.stringify(snapshot.plan.definition)}::jsonb, ${JSON.stringify(change.state)}::jsonb, ${JSON.stringify(change.workouts)}::jsonb) AS result`)[0]!.result);
+      ${JSON.stringify(snapshot.plan.definition)}::text::jsonb, ${JSON.stringify(change.state)}::text::jsonb, ${JSON.stringify(change.workouts)}::text::jsonb) AS result`)[0]!.result);
 
   stage = "atomic-pool-choice-and-history";
   const initial = own, change = request(own);

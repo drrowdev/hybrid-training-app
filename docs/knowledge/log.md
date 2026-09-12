@@ -3546,3 +3546,10 @@ Automatic34704943639 ata09f073f passed core, identity and general Playwright.
 The copy cleanup therefore has full application CI acceptance. It remains
 undeployed; this successful application run does not replace failed pool SQL
 acceptance or owner usability acceptance.
+
+Diagnostic34705479075 at03b49162 mapped the fixture refusal to0146:348, the
+plan/state-shape guard. The generated synthetic objects were valid; the driver
+JSON-encoded pre-serialized parameters again when PostgreSQL inferred JSONB.
+The fixture now binds those strings through text before JSONB conversion.
+This repairs test transport only, without changing application SQL or relaxing
+the guard. The diagnostic run remains failed; actual-RPC acceptance is pending.
