@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 
 // Reuse Vitest's locked compiler; no app server, environment files or HTTP backend.
 const require = createRequire(import.meta.url);
@@ -18,6 +18,7 @@ try {
         import { createRoot } from "react-dom/client";
         import { PoolEditor } from "./src/components/swim/PoolEditor";
         import { SetupForm } from "./src/components/swim/SetupForm";
+        import { SwimImportConnection } from "./src/components/swim/SwimImportConnection";
         import styles from "./src/components/swim/Swim.module.css";
         import "./src/app/globals.css";
         const root = createRoot(document.getElementById("root"));
@@ -33,6 +34,34 @@ try {
               distance: "400 m", beforeLengths: 8, afterLengths: 16 }] } };
         };
         let key = 0;
+        window.importMode = "success"; window.clipboardMode = "success";
+        window.importKey = "swim_" + "a".repeat(43); window.connectCalls = 0; window.disconnectCalls = [];
+        window.connection = {
+          id: "00000000-0000-4000-8000-000000000003",
+          created_at: "2026-09-14T12:00:00Z", revoked_at: null,
+        };
+        window.connectDashboard = async () => {
+          window.connectCalls++;
+          if (window.importMode === "delay") await new Promise(resolve => window.resolveConnect = resolve);
+          if (window.importMode === "throw") throw new Error("Synthetic unavailable action");
+          if (window.importMode === "error") return { ok: false, error: "Could not create the key." };
+          return { ok: true, id: window.connection.id, key: window.importKey };
+        };
+        window.disconnectDashboard = async (id) => {
+          window.disconnectCalls.push(id);
+          if (window.importMode === "error") return { ok: false, error: "Could not disconnect." };
+          return { ok: true };
+        };
+        Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+          writeText: async value => {
+            if (window.clipboardMode === "error") throw new Error("Synthetic clipboard refusal");
+            window.copiedKey = value;
+          },
+        } });
+        window.showConnection = (enabled, active) => root.render(
+          <main className={styles.page}><SwimImportConnection key={++key}
+            enabled={enabled} connection={active ? window.connection : null} /></main>
+        );
         window.showSetup = () => root.render(<main className={styles.page}><SetupForm key={++key} today="2026-09-14" /></main>);
         window.showEditor = () => root.render(<main className={styles.page}><section className={styles.section}>
           <h2>Swimming</h2><PoolEditor key={++key} busy={false} context={{
@@ -51,10 +80,12 @@ try {
     plugins: [{
       name: "synthetic-actions",
       setup(build) {
-        build.onResolve({ filter: /^(?:@\/lib\/swim\/actions|next\/navigation)$/ }, (args) => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions)|next\/navigation)$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "next/navigation"
             ? "export const useRouter = () => ({ push() { throw new Error('Unexpected navigation'); }, refresh() {} });"
+            : args.path === "@/lib/swim/import-actions"
+              ? "export const connectSwimDashboard = () => window.connectDashboard(); export const disconnectSwimDashboard = id => window.disconnectDashboard(id);"
             : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = () => { throw new Error('Unexpected save'); }; export const previewSwimPlan = createSwimPlan;",
           loader: "js",
         }));
@@ -122,6 +153,88 @@ try {
   await page.getByRole("button", { name: "Preview pool change", exact: true }).click();
   await page.getByRole("alert").waitFor();
   assert.equal(await page.getByRole("button", { name: "Save pool", exact: true }).count(), 0);
+  assert.deepEqual(failures, []);
+  stages.push(stage);
+
+  for (const width of [375, 1280]) {
+    stage = `connection-create-copy-disconnect-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => {
+      window.showConnection(true, false); window.importMode = "delay";
+      window.clipboardMode = "success"; window.connectCalls = 0; window.disconnectCalls = [];
+    });
+    const create = page.getByRole("button", { name: "Create import key", exact: true });
+    await create.click();
+    await page.waitForFunction(() => typeof window.resolveConnect === "function");
+    stage = `connection-pending-${width}`;
+    assert.equal(await create.isDisabled(), true);
+    assert.equal(await page.evaluate(() => window.connectCalls), 1);
+    await page.evaluate(() => { window.resolveConnect(); window.resolveConnect = undefined; window.importMode = "success"; });
+    const key = page.getByRole("textbox", { name: "Import key", exact: true });
+    await key.waitFor();
+    stage = `connection-key-readonly-${width}`;
+    assert.equal(await key.getAttribute("readonly"), "");
+    stage = `connection-key-value-${width}`;
+    assert.equal(await key.inputValue(), await page.evaluate(() => window.importKey));
+    assert.equal(await create.count(), 0);
+    stage = `connection-no-overflow-${width}`;
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await page.getByRole("button", { name: "Copy key", exact: true }).click();
+    await page.getByRole("button", { name: "Copied", exact: true }).waitFor();
+    stage = `connection-copied-key-${width}`;
+    assert.equal(await page.evaluate(() => window.copiedKey), await key.inputValue());
+    const disconnect = page.getByRole("button", { name: "Disconnect dashboard", exact: true });
+    await page.evaluate(() => { window.importMode = "error"; });
+    await disconnect.click();
+    await page.getByRole("alert").waitFor();
+    stage = `connection-failed-revocation-retains-key-${width}`;
+    assert.equal(await key.inputValue(), await page.evaluate(() => window.importKey));
+    stage = `connection-failed-revocation-allows-retry-${width}`;
+    await expect(disconnect).toBeEnabled();
+    await page.evaluate(() => { window.importMode = "success"; });
+    await disconnect.click();
+    await create.waitFor();
+    stage = `connection-revocation-clears-key-${width}`;
+    assert.equal(await key.count(), 0);
+    assert.equal(await page.getByRole("alert").count(), 0);
+    assert.deepEqual(await page.evaluate(() => window.disconnectCalls), [
+      "00000000-0000-4000-8000-000000000003", "00000000-0000-4000-8000-000000000003",
+    ]);
+    stages.push(stage);
+  }
+
+  stage = "connection-key-not-restored-and-disabled-revocation";
+  await page.evaluate(() => window.showConnection(false, true));
+  await page.getByRole("button", { name: "Disconnect dashboard", exact: true }).waitFor();
+  assert.equal(await page.getByRole("textbox", { name: "Import key", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Create import key", exact: true }).count(), 0);
+  await page.getByRole("button", { name: "Disconnect dashboard", exact: true }).click();
+  await page.getByText("No active key", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button").count(), 0);
+  stages.push(stage);
+
+  stage = "connection-failure-and-clipboard-recovery";
+  await page.evaluate(() => { window.showConnection(true, false); window.importMode = "error"; });
+  await page.getByRole("button", { name: "Create import key", exact: true }).click();
+  await page.getByRole("alert").waitFor();
+  assert.equal(await page.getByRole("textbox", { name: "Import key", exact: true }).count(), 0);
+  await page.evaluate(() => { window.importMode = "throw"; });
+  await page.getByRole("button", { name: "Create import key", exact: true }).click();
+  await page.getByRole("alert").waitFor();
+  assert.equal(await page.getByRole("textbox", { name: "Import key", exact: true }).count(), 0);
+  await page.evaluate(() => { window.importMode = "success"; window.clipboardMode = "error"; });
+  await page.getByRole("button", { name: "Create import key", exact: true }).click();
+  const importKey = page.getByRole("textbox", { name: "Import key", exact: true });
+  await importKey.waitFor();
+  await page.getByRole("button", { name: "Copy key", exact: true }).click();
+  await page.getByRole("alert").waitFor();
+  await importKey.focus();
+  assert.deepEqual(await importKey.evaluate(input => [input.selectionStart, input.selectionEnd]), [0, 48]);
+  assert.equal(await page.getByRole("button", { name: "Copied", exact: true }).count(), 0);
+  await page.evaluate(() => { window.clipboardMode = "success"; });
+  await page.getByRole("button", { name: "Copy key", exact: true }).click();
+  await page.getByRole("button", { name: "Copied", exact: true }).waitFor();
+  assert.equal(await page.getByRole("alert").count(), 0);
   assert.deepEqual(failures, []);
   stages.push(stage);
   status = "passed";

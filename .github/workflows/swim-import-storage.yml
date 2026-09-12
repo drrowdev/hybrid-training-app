@@ -91,5 +91,5 @@ jobs:
         run: pnpm --filter @hta/web exec tsc --noEmit --module esnext --moduleResolution bundler --target es2022 --skipLibCheck --allowImportingTsExtensions --strict --esModuleInterop --types node ../../packages/db/integration-tests/swim-pool-storage.mts
       - name: Install test browser
         run: pnpm --filter @hta/web exec playwright install --with-deps chromium
-      - name: Verify pool controls without external services
+      - name: Verify pool and import controls without external services
         run: pnpm --filter @hta/web exec node scripts/test-swim-pool-ui.mjs

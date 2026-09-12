@@ -3571,3 +3571,16 @@ actual termination of an owned disposable child. This increment does not
 access the owner's cache, connect an existing account, change a provider,
 deploy, create a scheduler or establish watch delivery. The coaching-source
 gate and integrated end-user release remain unfinished.
+
+## [2026-09-12] acceptance | Swimming connection controls
+
+Extended the existing synthetic pool browser runner to cover actual connection
+controls at375/1280: key creation/copy/revocation, duplicate prevention while
+pending, failed-revocation retry, one-time visibility, revocation while imports
+are disabled and clipboard recovery. Networking is blocked and actions are
+synthetic. The first run caught a new test racing React's pending transition;
+the retry assertion now waits for the same required enabled state. No product
+behaviour or assertion was removed. Local browser checks and script lint passed.
+The existing isolated CI job runs both control groups without new credentials.
+Native Auth/server-action integration, live transfer and watch delivery remain
+separate requirements.

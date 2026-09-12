@@ -208,6 +208,13 @@ and termination of a disposable sleeping child. They do not establish a live
 account connection, automatic synchronization or delivery to a watch. No owner
 cache, live transfer, provider change or new scheduler is authorized here.
 
+The existing isolated pool-control browser runner also exercises the real
+connection component at mobile and desktop widths with synthetic actions and
+blocked networking: create/copy/disconnect, pending-state duplicate prevention,
+failed-disconnect retry, key disappearance after remount/revocation,
+disconnect while ingestion is disabled, and clipboard/manual-copy recovery.
+These checks are not native Auth, server-action transport or live-account proof.
+
 ### Account pairing and observation capture
 
 [ADR 0081](../adr/0081-swimming-import-connection.md) adds two account-owned
