@@ -3500,3 +3500,18 @@ controls at375/1280 widths and current web typechecking. The disposable fixture
 now reproduces hosted function defaults; new helpers explicitly revoke those
 defaults before granting intended callers. Actual Postgres execution remains
 pending. A separate owner-requested app-wide copy cleanup is in progress.
+
+## [2026-09-12] implementation | Concise app copy
+
+Completed the owner's copy cleanup across onboarding, login, planning,
+workouts, history, statistics, settings and swimming. Removed duplicated
+instructions, welcome/marketing filler and implementation narration.
+Empty-state body text is optional without leaving an empty paragraph.
+Corrected stale equipment-save, plan-edit scope and 1RM labels; retained
+prescriptions, consent, safety/override warnings and failure recovery.
+
+Non-swimming source8c940c76 carries875 passing focused tests and a web typecheck.
+Swimming controls passed60 focused cases plus synthetic375/1280 browser checks.
+These are development checks, not live-browser, owner or production acceptance.
+The combined source still needs publication and exact-head CI. The existing
+protected review and production have not changed.
