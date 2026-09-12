@@ -15,7 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sessions, sessionSlot } from "./sessions";
 import type {
-  SwimSetup, SwimWorkout, SwimObservation, SwimCalibration, SwimActualResult, PoolCourse,
+  SwimSetup, SwimWorkout, SwimObservation, SwimCalibration, SwimActualResult, PoolCourse, SwimCourse, SwimCourseWorkout,
 } from "@hta/domain";
 export type { SwimActualResult } from "@hta/domain";
 
@@ -26,6 +26,7 @@ export type SwimPlanDefinition = {
   version: 1;
   setup: SwimSetup;
   generatorVersion: string;
+  privateCourse?: Pick<SwimCourse, "version" | "title" | "source">;
 };
 export type SwimDecisionRecord = {
   id: string;
@@ -51,6 +52,7 @@ export type SwimWorkoutDefinition = {
   original: SwimWorkout;
   issued: SwimWorkout;
   poolCourse?: PoolCourse;
+  courseSource?: SwimCourseWorkout;
   modifications: {
     id: string; recordedAt: string; reason: string; decisionId: string; previous: SwimWorkout;
   }[];

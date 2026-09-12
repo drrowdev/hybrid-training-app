@@ -6,7 +6,7 @@ import { z } from "zod";
 import {
   estimateCriticalSwimSpeed, poolCourseEquals, normalizePoolCourse, SWIM_POOL_CHANGE_VERSION,
   swimScheduleAdvice, type SwimStrengthContext,
-  SWIM_ASSESSMENT_VERSION, type SwimWorkout, type SwimError,
+  SWIM_ASSESSMENT_VERSION, type SwimError,
 } from "@hta/domain";
 import {
   generateSwimPlan, applySwimProposal, applyAcceptedBenchmark, recordSwimDecision, proposeSwimAdjustment,
@@ -18,12 +18,13 @@ import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-comp
 import type { ActionResult } from "@/lib/offline/outbox-core";
 import { prescriptionsEquivalent } from "@/lib/platform/forward-rewrite";
 import * as storage from "./storage";
-import { assertSwimSafety, swimWorkoutSafetyExposure } from "./safety";
+import { checkSwimWorkouts as checkWorkouts } from "./workout-safety";
 import { parseActualForm, parseSetupForm, parseBenchmarkForm, parseSwimDate, parseSwimObservation } from "./forms";
 import { swimContext, ownedSwimPlan, ownedSwimWorkout, swimActionFailure, SwimActionError } from "./server-context";
 import {
   standaloneWeekRequests, swimPlanDefinition, swimWorkoutDefinition, swimWorkoutDateRange, swimWorkoutWeekRange, SWIM_SCHEDULE_VERSION,
   type StandalonePlanDefinition, type StandaloneWorkoutDefinition, type SwimBenchmarkPreview,
+  requireGeneratedSwimPlan,
 } from "./model";
 import {
   swimToday, loadSwimHistory, deriveSwimWeekCandidate, persistedSwimPlan, swimInputId, loadSwimHubView, swimWorkoutViewFromRow, swimWeekDose,
@@ -61,18 +62,6 @@ async function confirmedPlanView(
   } catch {
     return { ok: true, warning: SWIM_REFRESH_WARNING };
   }
-}
-
-async function checkWorkouts(client: Parameters<typeof assertSwimSafety>[0], userId: string, workouts: readonly SwimWorkout[]) {
-  const regions = new Set(workouts.flatMap((workout) => swimWorkoutSafetyExposure(workout).regions));
-  const slugs = new Set(workouts.map((workout) => workout.sections.some((section) =>
-    section.items.some((item) => item.effort !== "easy" && item.effort !== "steady"))
-    ? "swim-intervals" : "swim-easy"));
-  const { data, error } = await client.from("movements").select("id,slug").in("slug", [...slugs]);
-  if (error || !data || [...slugs].some((slug) => !data.some((row) => row.slug === slug))) {
-    throw new SwimActionError("Could not check swim movements. Try again.", "transient");
-  }
-  await assertSwimSafety(client, userId, { regions: [...regions], movementIds: data.map((row) => row.id) });
 }
 
 function decision(kind: SwimDecisionRecord["kind"], selected: SwimDecisionRecord["decision"], inputSnapshot: Record<string, unknown>, id: string = randomUUID(), reason?: string): SwimDecisionRecord {
@@ -645,6 +634,7 @@ export async function proposeSwimBenchmark(planId: string, revision: number, for
   try {
     const { client, user } = await swimContext();
     const { plan } = await ownedSwimPlan(client, user.id, planId, revision);
+    requireGeneratedSwimPlan(plan);
     const observation = parseBenchmarkForm(form, plan.definition.setup.course);
     if (!observation) throw new SwimActionError("Enter both 200 and 400 times.", "validation");
     const { today } = await swimToday(client, user.id);

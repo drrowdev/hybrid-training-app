@@ -23,6 +23,7 @@ import {
   MAX_POOL_LENGTHS,
   SWIM_HEURISTIC_DOC,
   SWIM_MODEL_VERSION,
+  SWIM_COURSE_VERSION,
   calibrationSnapshot,
   changeSwimLengths,
   swimProgressionExclusion,
@@ -69,6 +70,7 @@ import {
   type SwimStroke,
   type SwimWorkout,
 } from "@hta/domain";
+import { swimCourseKnownDuration } from "./swim-course";
 
 /** Generator rule version stamped into every issued prescription (DC-SW5). */
 export const SWIM_GENERATOR_VERSION = "swim-gen-1" as const;
@@ -336,7 +338,8 @@ export function changeSwimWorkoutPool(
 ): SwimResult<SwimWorkout> {
   const total = changeSwimLengths(workout.totalLengths, workout.snapshot.course, course);
   if (!total.ok) return total;
-  const compatible = calibration && isUsableSwimCalibration(calibration) &&
+  const imported = workout.snapshot.versions.generator === SWIM_COURSE_VERSION;
+  const compatible = !imported && calibration && isUsableSwimCalibration(calibration) &&
     poolCourseEquals(calibration.course, course) ? calibration : null;
   const sections: SwimSection[] = [];
   for (const section of workout.sections) {
@@ -355,7 +358,9 @@ export function changeSwimWorkoutPool(
     }
     sections.push({ ...section, items });
   }
-  const timing = sectionsTiming(sections, course, compatible);
+  const timing = imported
+    ? { knownMs: swimCourseKnownDuration({ ...workout, sections }), pricedSwimMs: 0, allPriced: false }
+    : sectionsTiming(sections, course, compatible);
   if (boundedMs(timing) > workout.budget.minutes * 60_000) {
     return swimErr("budget_impossible", "This swim does not fit its time budget. Adjust the workout before changing pools.");
   }

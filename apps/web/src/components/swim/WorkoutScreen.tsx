@@ -8,6 +8,7 @@ import { skipSwimWorkout, applySwimPoolEdit } from "@/lib/swim/actions";
 import { formatSwimTime } from "@/lib/swim/time";
 import { nextConfirmedView, type SwimWorkoutView } from "@/lib/swim/view-types";
 import { PoolEditor } from "./PoolEditor";
+import { CourseWorkoutEditor } from "./CourseWorkoutEditor";
 import { createRequestGate } from "@/lib/swim/hub-request";
 import { SWIM_REFRESH_WARNING } from "@/lib/swim/action-feedback";
 import styles from "./Swim.module.css";
@@ -21,6 +22,7 @@ export function WorkoutScreen({ workout: incomingWorkout }: { workout: SwimWorko
   const [warning, setWarning] = useState<string | null>(null);
   const [requestGate] = useState(createRequestGate);
   const [poolBusy, setPoolBusy] = useState(false);
+  const [courseBusy, setCourseBusy] = useState(false);
   const [pending, startTransition] = useTransition();
 
   return (
@@ -30,7 +32,7 @@ export function WorkoutScreen({ workout: incomingWorkout }: { workout: SwimWorko
         <p className={styles.muted}>{workout.date} · Up to {workout.budgetMinutes} min{workout.provisional && !workout.sessionId ? " · Draft" : ""}</p>
         {workout.calibrationLabel && <p className={styles.muted}>{workout.calibrationLabel}</p>}
         {workout.poolEditing && <PoolEditor key={`${workout.id}:${workout.revision}:${workout.poolEditing.revision}`}
-          context={workout.poolEditing} busy={pending || poolBusy} onApply={(preview) => {
+          context={workout.poolEditing} busy={pending || poolBusy || courseBusy} onApply={(preview) => {
             setError(null); setWarning(null);
             void requestGate(async () => {
               try {
@@ -66,6 +68,8 @@ export function WorkoutScreen({ workout: incomingWorkout }: { workout: SwimWorko
           ))}
         </ol>
       </section>
+      {workout.courseEditing && <CourseWorkoutEditor key={`${workout.id}:${workout.revision}:${workout.courseEditing.revision}`}
+        context={workout.courseEditing} busy={pending || poolBusy} onBusyChange={setCourseBusy} />}
       {!workout.sourceGone && workout.result && <section className={styles.section}>
         <h2>Your swim</h2>
         {workout.result.distance && <p className={styles.distance}>{workout.result.distance}</p>}
@@ -86,7 +90,7 @@ export function WorkoutScreen({ workout: incomingWorkout }: { workout: SwimWorko
       }} className={styles.section}>
         <details className={styles.details}><summary>Skip swim</summary>
           <label className={styles.field}>Reason<textarea name="reason" maxLength={1000} required /></label>
-          <button className={styles.secondary} disabled={pending || poolBusy}>Skip swim</button>
+          <button className={styles.secondary} disabled={pending || poolBusy || courseBusy}>Skip swim</button>
         </details>
       </form>}
       {error && <p role="alert" className={styles.error}>{error}</p>}

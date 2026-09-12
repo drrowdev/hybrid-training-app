@@ -19,11 +19,41 @@ try {
         import { PoolEditor } from "./src/components/swim/PoolEditor";
         import { SetupForm } from "./src/components/swim/SetupForm";
         import { SwimImportConnection } from "./src/components/swim/SwimImportConnection";
+        import { CourseImportForm } from "./src/components/swim/CourseImportForm";
+        import { CourseWorkoutEditor } from "./src/components/swim/CourseWorkoutEditor";
+        import { syntheticCourse } from "./src/lib/swim/__tests__/course-fixtures";
+        import { planPrivateSwimCourse } from "./src/lib/swim/course-planning";
         import styles from "./src/components/swim/Swim.module.css";
         import "./src/app/globals.css";
         const root = createRoot(document.getElementById("root"));
         const long = { numerator: 50, denominator: 1, unit: "m" };
         const short = { numerator: 25, denominator: 1, unit: "m" };
+        window.courseSource = syntheticCourse(); window.courseMode = "success"; window.courseCalls = []; window.destinations = [];
+        const prepared = planPrivateSwimCourse({
+          source: window.courseSource, setup: {
+            course: long, goal: "endurance", experience: "recreational", knownStrokes: ["freestyle"],
+            equipment: [], recentComfortableLengths: 4, sessionBudgetMinutes: 30,
+          }, startDate: "2026-09-14", weekdays: [1, 4], poolChoices: [],
+        });
+        window.previewCourse = async (form) => {
+          window.courseCalls.push("preview");
+          if (window.courseMode === "delay") await new Promise(resolve => window.resolveCourse = resolve);
+          if (window.courseMode === "error") return { error: "Review the selected pool.", errorCode: "validation" };
+          return { ok: true, preview: { id: "synthetic-course", title: window.courseSource.title, plan: prepared.preview,
+            totals: [{ key: "course-0-0", week: 1, workout: 1, reported: 999, calculated: 350 }], strengthDays: ["Monday"] } };
+        };
+        window.saveCourse = async (form, id) => {
+          window.courseCalls.push("save");
+          window.courseConfirmed = id === "synthetic-course" && form.get("reviewed") === "on" &&
+            form.get("acceptSetTotals") === "on" && form.get("acceptOverlap") === "on";
+          if (window.courseMode === "error") return { error: "The plan changed. Review it again.", errorCode: "validation" };
+          return { ok: true, planId: "00000000-0000-4000-8000-000000000004" };
+        };
+        window.previewCourseEdit = async input => {
+          window.courseCalls.push("edit-preview"); window.editedWorkout = input.workout;
+          return { ok: true, preview: { id: "synthetic-edit", before: "350 m", after: "250 m", plan: prepared.preview } };
+        };
+        window.saveCourseEdit = async () => { window.courseCalls.push("edit-save"); return { ok: true }; };
         window.requests = []; window.applied = []; window.mode = "success";
         window.previewPool = async (input) => {
           window.requests.push(input);
@@ -34,6 +64,12 @@ try {
               distance: "400 m", beforeLengths: 8, afterLengths: 16 }] } };
         };
         let key = 0;
+        window.showCourse = () => root.render(<main className={styles.page}><CourseImportForm key={++key} today="2026-09-14" /></main>);
+        window.showCourseEdit = () => root.render(<main className={styles.page}><CourseWorkoutEditor key={++key} context={{
+          planId: "00000000-0000-4000-8000-000000000001", revision: 1,
+          workoutId: "00000000-0000-4000-8000-000000000002", workoutRevision: 1,
+          workout: window.courseSource.weeks[0].workouts[0],
+        }} /></main>);
         window.importMode = "success"; window.clipboardMode = "success";
         window.importKey = "swim_" + "a".repeat(43); window.connectCalls = 0; window.disconnectCalls = [];
         window.connection = {
@@ -80,10 +116,12 @@ try {
     plugins: [{
       name: "synthetic-actions",
       setup(build) {
-        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions)|next\/navigation)$/ }, (args) => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions)|next\/navigation)$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "next/navigation"
-            ? "export const useRouter = () => ({ push() { throw new Error('Unexpected navigation'); }, refresh() {} });"
+            ? "export const useRouter = () => ({ push(path) { window.destinations.push(path); }, refresh() {} });"
+            : args.path === "@/lib/swim/course-actions"
+              ? "export const previewPrivateSwimCourse = form => window.previewCourse(form); export const importPrivateSwimCourse = (form, id) => window.saveCourse(form, id); export const previewPrivateSwimEdit = input => window.previewCourseEdit(input); export const savePrivateSwimEdit = input => window.saveCourseEdit(input);"
             : args.path === "@/lib/swim/import-actions"
               ? "export const connectSwimDashboard = () => window.connectDashboard(); export const disconnectSwimDashboard = id => window.disconnectDashboard(id);"
             : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = () => { throw new Error('Unexpected save'); }; export const previewSwimPlan = createSwimPlan;",
@@ -112,6 +150,72 @@ try {
   await page.getByRole("combobox", { name: "Pool length", exact: true }).waitFor();
   assert.equal(await page.getByRole("combobox", { name: "Pool length", exact: true }).inputValue(), "50m");
   stages.push(stage);
+
+  for (const width of [375, 1280]) {
+    stage = `private-course-review-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => { window.courseCalls = []; window.courseMode = "delay"; window.showCourse(); });
+    const file = page.getByLabel("Prepared plan file", { exact: true });
+    const source = await page.evaluate(() => JSON.stringify(window.courseSource));
+    await file.setInputFiles({ name: "synthetic.json", mimeType: "application/json", buffer: Buffer.from(source) });
+    await page.getByRole("heading", { name: "Synthetic private course", exact: true }).waitFor();
+    await page.getByRole("spinbutton", { name: "Minutes per swim", exact: true }).fill("30");
+    await page.getByRole("checkbox", { name: "Mon", exact: true }).check();
+    await page.getByRole("checkbox", { name: "Thu", exact: true }).check();
+    await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("regular");
+    await page.getByRole("spinbutton", { name: "Comfortable non-stop lengths in the plan pool", exact: true }).fill("4");
+    await page.getByRole("checkbox", { name: "Freestyle", exact: true }).check();
+    await page.getByRole("button", { name: "Review plan", exact: true }).click();
+    await page.waitForFunction(() => typeof window.resolveCourse === "function");
+    assert.equal(await file.isDisabled(), true);
+    assert.deepEqual(await page.evaluate(() => window.courseCalls), ["preview"]);
+    await page.evaluate(() => { window.resolveCourse(); window.resolveCourse = undefined; window.courseMode = "success"; });
+    const importPlan = page.getByRole("button", { name: "Import plan", exact: true });
+    await importPlan.waitFor();
+    assert.equal(await page.getByRole("checkbox", { name: "Use the distances from the listed sets", exact: true }).isChecked(), false);
+    await importPlan.click();
+    assert.deepEqual(await page.evaluate(() => window.courseCalls), ["preview"]);
+    await page.getByRole("checkbox", { name: "Use the distances from the listed sets", exact: true }).check();
+    await page.getByRole("checkbox", { name: "Swim on strength days: Monday", exact: true }).check();
+    await page.getByRole("checkbox", { name: "I have reviewed the workouts, dates and pools", exact: true }).check();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await page.evaluate(() => { window.courseMode = "error"; });
+    await importPlan.click();
+    await page.getByRole("alert").waitFor();
+    assert.equal(await page.getByRole("spinbutton", { name: "Minutes per swim", exact: true }).inputValue(), "30");
+    await page.getByRole("spinbutton", { name: "Minutes per swim", exact: true }).fill("40");
+    assert.equal(await importPlan.count(), 0);
+    await page.evaluate(() => { window.courseMode = "success"; });
+    await page.getByRole("button", { name: "Review plan", exact: true }).click();
+    await importPlan.waitFor();
+    await page.getByRole("checkbox", { name: "Use the distances from the listed sets", exact: true }).check();
+    await page.getByRole("checkbox", { name: "Swim on strength days: Monday", exact: true }).check();
+    await page.getByRole("checkbox", { name: "I have reviewed the workouts, dates and pools", exact: true }).check();
+    await importPlan.click();
+    await page.getByRole("link", { name: "Open swimming plan", exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.courseConfirmed), true);
+    stages.push(stage);
+
+    stage = `private-course-editor-${width}`;
+    await page.evaluate(() => { window.courseCalls = []; window.showCourseEdit(); });
+    await page.getByText("Edit workout", { exact: true }).click();
+    const main = page.getByRole("spinbutton", { name: "Repeats", exact: true }).nth(1);
+    await main.fill("3");
+    await page.getByRole("textbox", { name: "Reason for change", exact: true }).fill("Less pool time.");
+    await page.getByRole("button", { name: "Review changes", exact: true }).click();
+    const save = page.getByRole("button", { name: "Save changes", exact: true });
+    await save.waitFor();
+    assert.deepEqual(await page.evaluate(() => window.courseCalls), ["edit-preview"]);
+    assert.equal(await page.evaluate(() => window.editedWorkout.sections[1].items[0].repeats), 3);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await main.fill("4");
+    assert.equal(await save.count(), 0);
+    await page.getByRole("button", { name: "Review changes", exact: true }).click();
+    await save.click();
+    await page.getByRole("button", { name: "Refresh workout", exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.courseCalls), ["edit-preview", "edit-preview", "edit-save"]);
+    stages.push(stage);
+  }
 
   for (const width of [375, 1280]) {
     stage = `review-and-confirm-${width}`;

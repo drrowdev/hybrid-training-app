@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { PoolCourse } from "@hta/domain";
+import type { PoolCourse, SwimCourse } from "@hta/domain";
+import type { SwimCourseEditInput } from "./course-view";
 
 export type SwimPoolEditContext = {
   planId: string; revision: number; defaultCourse: PoolCourse;
@@ -33,6 +34,7 @@ export type SwimWorkoutView = {
   equipment: string[];
   pool: { numerator: number; denominator: number; unit: "m" | "yd" };
   poolEditing?: SwimPoolEditContext;
+  courseEditing?: Omit<SwimCourseEditInput, "reason">;
   steps: { id: string; repeatIds: string[]; section: string; title: string; detail: string; rest: string; effort: string; pace?: string; guidance?: string; lengths?: number }[];
   result: null | {
     lengths: number; timeMs: number; rpe?: number; notes?: string; reason?: string; splits?: string; stroke: string;
@@ -126,6 +128,7 @@ export function confirmedSwimCompletionView(
 }
 
 export type SwimHubView = {
+  imported?: Pick<SwimCourse, "version" | "title" | "source">;
     id: string; revision: number; status: SwimWorkoutView["planStatus"]; goal: string;
     course: string; dates: string; today: string;
     poolEditing?: SwimPoolEditContext;

@@ -22,10 +22,12 @@ and approved planning/building an externally grounded replacement. Goals must
 be selectable when creating a programme; the owner's current goal is endurance
 and fitness alongside strength. See the
 [implementation and evidence plan](../design/swimming-programme-rebuild.md).
-No complete adaptive source programme has been selected or activated yet.
-The owner subsequently chose a qualified coach's programme with explicit
-adjustment rules as the required basis. Obtaining that authored programme is
-still a blocker; this is not authorization to commission paid work.
+A finite coach-authored source is selected for private import, not activated.
+Unspecified coaching decisions remain manual. [ADR 0083](../adr/0083-private-swimming-courses.md)
+defines a reviewed prepared-file import and future-workout editing without
+generic regeneration. Migration0152/default-off`SWIM_PRIVATE_COURSE_ENABLED`
+are development-only. The owner-supplied PDF, private preparation, installation
+and existing-account release remain outstanding; no paid commissioning is authorized.
 
 The owner approved an opt-in connection that sends only swimming evidence from
 the existing local dashboard to getsxc, then separately approved additive

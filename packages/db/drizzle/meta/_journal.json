@@ -1065,6 +1065,13 @@
       "when": 1789228800000,
       "tag": "0151_swim_pool_changes",
       "breakpoints": false
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1789236000000,
+      "tag": "0152_swim_private_courses",
+      "breakpoints": false
     }
   ]
 }

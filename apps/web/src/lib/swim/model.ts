@@ -1,6 +1,6 @@
 import type { SwimActualResult, SwimPlanDefinition, SwimWorkoutDefinition } from "@hta/db";
 import { swimWeeksFromWeekdays, type SwimDose, type SwimPlan, type SwimProposal, type SwimSlotIntent, type SwimWeekRequest } from "@hta/engine";
-import type { SwimObservation, SwimSettledResult } from "@hta/domain";
+import { SWIM_COURSE_VERSION, type SwimObservation, type SwimSettledResult } from "@hta/domain";
 import type { SwimPlanRow, SwimWorkoutRow } from "./storage";
 import { SwimInputError } from "./input-error";
 import { z } from "zod";
@@ -10,8 +10,10 @@ export const SWIM_SCHEDULE_VERSION = "swim-standalone-schedule-1";
 
 export type StandalonePlanDefinition = SwimPlanDefinition & {
   schedule: { startDate: string; weeks: number; weekdays: number[] };
-  initialDose: SwimDose;
-};
+} & (
+  | { privateCourse?: never; initialDose: SwimDose }
+  | { privateCourse: NonNullable<SwimPlanDefinition["privateCourse"]>; initialDose?: never }
+);
 export type StandaloneWorkoutDefinition = SwimWorkoutDefinition & {
   weekIndex: number; slotId: string; intent: SwimSlotIntent["intent"]; provisional: boolean;
   skip?: { reason: string | null; recordedAt: string };
@@ -39,7 +41,20 @@ export type SwimBenchmarkPreview = {
 
 export function swimPlanDefinition(plan: SwimPlanRow): StandalonePlanDefinition {
   const definition = plan.definition as StandalonePlanDefinition;
-  if (!definition.schedule || !definition.initialDose) throw new Error("This swim plan has an unsupported schedule.");
+  if (!definition.schedule || (!definition.initialDose && !isPrivateSwimPlan(plan))) throw new Error("This swim plan has an unsupported schedule.");
+  return definition;
+}
+
+export function isPrivateSwimPlan(plan: Pick<SwimPlanRow, "definition">): boolean {
+  return plan.definition.generatorVersion === SWIM_COURSE_VERSION &&
+    plan.definition.privateCourse?.version === SWIM_COURSE_VERSION;
+}
+
+export function requireGeneratedSwimPlan(plan: SwimPlanRow): StandalonePlanDefinition & { initialDose: SwimDose } {
+  const definition = swimPlanDefinition(plan);
+  if (isPrivateSwimPlan(plan) || definition.privateCourse || !definition.initialDose) {
+    throw new SwimInputError("Edit the imported workout instead of generating a new week.");
+  }
   return definition;
 }
 

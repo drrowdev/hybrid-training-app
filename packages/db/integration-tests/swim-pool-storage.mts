@@ -5,6 +5,8 @@ import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { generateSwimPlan, changeSwimWorkoutPool } from "../../engine/src/swimming.ts";
 import { poolCourse, estimateCriticalSwimSpeed, type SwimWorkout } from "../../domain/src/swimming.ts";
+import { compileSwimCourseWorkout, editableSwimCourseWorkout } from "../../engine/src/swim-course.ts";
+import { SWIM_COURSE_VERSION, type SwimCourseWorkout } from "../../domain/src/swim-course.ts";
 import type { SwimDecisionRecord, SwimPlanRow, SwimWorkoutRow, SwimPlanState, SwimPlanDefinition } from "../src/schema/swimming.ts";
 
 type PoolRow = Pick<SwimWorkoutRow, "id" | "revision" | "slot"> & {
@@ -58,8 +60,8 @@ try {
     GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
   `);
   const journal: { entries: { idx: number; tag: string }[] } = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"));
-  assert.equal(journal.entries.length, 152);
-  assert.equal(journal.entries[151].tag, "0151_swim_pool_changes");
+  assert.equal(journal.entries.length, 153);
+  assert.equal(journal.entries[152].tag, "0152_swim_private_courses");
   for (const [index, migration] of journal.entries.entries()) {
     assert.equal(migration.idx, index);
     assert.match(migration.tag, /^\d{4}_[a-z0-9_]+$/);
@@ -75,16 +77,23 @@ try {
   stages.push("synthetic-auth-and-full-schema");
   const up = readFileSync(new URL("../drizzle/0151_swim_pool_changes.sql", import.meta.url), "utf8");
   const down = readFileSync(new URL("../rollbacks/0151_swim_pool_changes.down.sql", import.meta.url), "utf8");
-  const revert = async () => {
+  const courseUp = readFileSync(new URL("../drizzle/0152_swim_private_courses.sql", import.meta.url), "utf8");
+  const courseDown = readFileSync(new URL("../rollbacks/0152_swim_private_courses.down.sql", import.meta.url), "utf8");
+  const revertScript = async (source: string) => {
     const connection = await database.reserve();
-    try { await connection.unsafe(down); }
+    try { await connection.unsafe(source); }
     catch (error) { await connection.unsafe("ROLLBACK"); throw error; }
     finally { connection.release(); }
   };
+  const revert = () => revertScript(down);
+  const revertCourse = () => revertScript(courseDown);
   stage = "unused-down-and-up";
+  await revertCourse();
+  assert.equal((await database`SELECT to_regprocedure('public.swim_private_course_ready()') AS name`)[0]!.name, null);
   await revert();
   assert.equal((await database`SELECT to_regprocedure('public.swim_pool_editing_ready()') AS name`)[0]!.name, null);
   await database.begin((tx) => tx.unsafe(up));
+  await database.begin((tx) => tx.unsafe(courseUp));
   stages.push(stage);
 
   const as = <T,>(user: string | null, fn: (tx: postgres.TransactionSql) => Promise<T>) =>
@@ -95,9 +104,9 @@ try {
     });
   const denied = async (fn: () => Promise<unknown>, expected: string) =>
     assert.rejects(fn, (error: unknown) => typeof error === "object" && error !== null && "code" in error && error.code === expected);
-  const a = randomUUID(), b = randomUUID();
+  const a = randomUUID(), b = randomUUID(), c = randomUUID();
   stage = "owned-plan-fixtures";
-  await database`INSERT INTO auth.users(id) VALUES (${a}), (${b})`;
+  await database`INSERT INTO auth.users(id) VALUES (${a}), (${b}), (${c})`;
   const [{ today }] = await database<{ today: string }[]>`SELECT to_char(current_date, 'YYYY-MM-DD') AS today`;
   const long = poolCourse(50, 1, "m"), short = poolCourse(25, 1, "m");
   const setup = {
@@ -249,10 +258,119 @@ try {
   assert.equal((await as(a, (tx) => tx`SELECT revision FROM public.swim_plans WHERE id=${own.plan.id}`))[0]!.revision, own.plan.revision);
   stages.push(stage);
 
+  stage = "private-course-grants-and-atomic-import";
+  assert.equal((await as(c, (tx) => tx`SELECT public.swim_private_course_ready() AS ready`))[0]!.ready, true);
+  await denied(() => as(null, (tx) => tx`SELECT public.swim_private_course_ready()`), "42501");
+  const courseGrants = await database<{ rolname: string; allowed: boolean }[]>`SELECT rolname,
+    has_function_privilege(oid, 'public.swim_validate_private_course_binding(jsonb,jsonb,jsonb,jsonb)', 'EXECUTE') AS allowed
+    FROM pg_roles WHERE rolname IN ('anon', 'authenticated', 'service_role', 'swim_writer')`;
+  assert.deepEqual(Object.fromEntries(courseGrants.map((row) => [row.rolname, row.allowed])), {
+    anon: false, authenticated: false, service_role: false, swim_writer: true,
+  });
+  const source: SwimCourseWorkout = {
+    title: "Synthetic practice", reportedDistanceMetres: 350,
+    sections: [
+      { kind: "warmup", label: "Warm-up", rounds: 1, items: [
+        { repeats: 1, distanceMetres: 50, stroke: "freestyle", effort: "easy", equipment: [] },
+      ] },
+      { kind: "main", label: "Main", rounds: 1, items: [
+        { repeats: 5, distanceMetres: 50, stroke: "freestyle", effort: "steady", equipment: [], restSeconds: 20 },
+      ] },
+      { kind: "cooldown", label: "Cool-down", rounds: 1, items: [
+        { repeats: 1, distanceMetres: 50, stroke: "freestyle", effort: "easy", equipment: [] },
+      ] },
+    ],
+  };
+  const [{ tomorrow, later }] = await database<{ tomorrow: string; later: string }[]>`SELECT
+    to_char(current_date + 1, 'YYYY-MM-DD') AS tomorrow, to_char(current_date + 4, 'YYYY-MM-DD') AS later`;
+  const courseDefinition = {
+    version: 1 as const, setup, generatorVersion: SWIM_COURSE_VERSION,
+    privateCourse: { version: SWIM_COURSE_VERSION, title: "Synthetic course", source: { reference: "Synthetic fixture", edition: "Test" } },
+    schedule: { startDate: today, weeks: 2, weekdays: [1, 4] },
+  };
+  const courseRows = [short, long].map((course, index) => {
+    const compiled = compileSwimCourseWorkout(source, course, 60, setup);
+    if (!compiled.ok) throw new Error("Invalid synthetic course");
+    return {
+      scheduled_date: index === 0 ? tomorrow : later, slot: "single" as const,
+      definition: {
+        version: 1 as const, original: compiled.value.workout, issued: compiled.value.workout, modifications: [],
+        courseSource: source, weekIndex: 0, slotId: `course-0-${index}`, intent: "moderate", provisional: false,
+        ...(index === 0 ? { poolCourse: course } : {}),
+      },
+    };
+  });
+  const courseState: SwimPlanState = {
+    version: 1, observations: [], acceptedCalibration: null, decisions: [{
+      id: randomUUID(), kind: "setup", decision: "accepted", recordedAt: new Date().toISOString(),
+      ruleVersion: SWIM_COURSE_VERSION, generatorVersion: SWIM_COURSE_VERSION,
+      inputSnapshot: { operation: "course-import", acceptSetTotals: false,
+        workouts: courseRows.map((row) => ({ slotId: row.definition.slotId, course: row.definition.issued.snapshot.course })) },
+    }],
+  };
+  const createCourse = (rows = courseRows, state = courseState) => as(c, async (tx) =>
+    (await tx<{ result: Snapshot }[]>`SELECT public.swim_create_plan(${today}::date, (${today}::date + 13),
+      ${JSON.stringify(courseDefinition)}::text::jsonb, ${JSON.stringify(state)}::text::jsonb,
+      ${JSON.stringify(rows)}::text::jsonb) AS result`)[0]!.result);
+  const conflictingTotals = structuredClone(courseRows);
+  conflictingTotals[0]!.definition.courseSource = { ...source, reportedDistanceMetres: 999 };
+  await denied(() => createCourse(conflictingTotals), "P0001");
+  assert.equal((await as(c, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_plans`))[0]!.count, 0);
+  const course = await createCourse();
+  await denied(() => createCourse(), "23505");
+  assert.deepEqual(course.workouts[0].definition.original, courseRows[0]!.definition.original);
+  assert.deepEqual(course.workouts[1].definition.issued.snapshot.course, long);
+  assert.deepEqual((await as(c, (tx) => tx`SELECT id FROM public.swim_plans`)).map((row) => row.id), [course.plan.id]);
+  stages.push(stage);
+
+  stage = "private-course-manual-edit-and-isolation";
+  const editedSource = editableSwimCourseWorkout(source.title, course.workouts[0].definition.issued);
+  const edited = compileSwimCourseWorkout({
+    ...editedSource, sections: editedSource.sections.map((section) => section.kind === "main"
+      ? { ...section, items: section.items.map((item) => ({ ...item, repeats: 3 })) } : section),
+  }, short, 60, setup);
+  if (!edited.ok) throw new Error("Invalid synthetic edit");
+  const editDecision: SwimDecisionRecord = {
+    id: randomUUID(), kind: "progression", decision: "overridden", reason: "Synthetic manual adjustment.",
+    recordedAt: new Date().toISOString(), ruleVersion: SWIM_COURSE_VERSION, generatorVersion: SWIM_COURSE_VERSION,
+    inputSnapshot: { operation: "course-edit", slotId: course.workouts[0].definition.slotId, issued: edited.value.workout },
+  };
+  const manual: PoolRequest = {
+    state: { ...course.plan.state, decisions: [...course.plan.state.decisions, editDecision] },
+    workouts: [{
+      id: course.workouts[0].id, expected_revision: course.workouts[0].revision,
+      scheduled_date: tomorrow, slot: course.workouts[0].slot,
+      definition: { ...course.workouts[0].definition, issued: edited.value.workout, modifications: [{
+        id: randomUUID(), decisionId: editDecision.id, recordedAt: editDecision.recordedAt,
+        reason: editDecision.reason!, previous: course.workouts[0].definition.issued,
+      }] },
+    }],
+  };
+  await denied(() => update(b, course, manual), "P0001");
+  const foreignCourse = structuredClone(manual);
+  foreignCourse.workouts[0].id = other.workouts[0].id;
+  await denied(() => update(c, course, foreignCourse), "P0001");
+  const automated = structuredClone(manual);
+  automated.state.decisions.at(-1)!.inputSnapshot.operation = "week";
+  await denied(() => update(c, course, automated), "P0001");
+  const changedSource = structuredClone(manual);
+  changedSource.workouts[0].definition.courseSource = { ...source, title: "Replaced" };
+  await denied(() => update(c, course, changedSource), "P0001");
+  const editedCourse = await update(c, course, manual);
+  assert.equal(editedCourse.plan.revision, course.plan.revision + 1);
+  assert.deepEqual(editedCourse.workouts[0].definition.original, course.workouts[0].definition.original);
+  assert.deepEqual(editedCourse.workouts[0].definition.modifications[0].previous, course.workouts[0].definition.issued);
+  assert.deepEqual(editedCourse.workouts[1], course.workouts[1]);
+  await denied(() => update(c, course, manual), "40001");
+  await denied(revertCourse, "P0001");
+  assert.equal((await as(c, (tx) => tx`SELECT revision FROM public.swim_plans WHERE id=${course.plan.id}`))[0]!.revision, editedCourse.plan.revision);
+  stages.push(stage);
+
   stage = "synthetic-cleanup-and-unused-down";
-  await database`DELETE FROM auth.users WHERE id IN (${a}, ${b})`;
+  await database`DELETE FROM auth.users WHERE id IN (${a}, ${b}, ${c})`;
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_plans`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_workouts`)[0]!.count, 0);
+  await revertCourse();
   await revert();
   stages.push(stage);
   status = "passed";

@@ -64,13 +64,13 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
         </Link>)}
       </nav>}
       <section className={styles.section}>
-        <h2>{plan.goal}</h2>
+        <h2>{plan.imported?.title ?? plan.goal}</h2>
         <p className={styles.muted}>{plan.course} · {plan.dates}</p>
         {plan.poolEditing && <PoolEditor key={`pool:${plan.id}:${plan.revision}`} context={plan.poolEditing}
           busy={requestBusy} onApply={(change) => run(() => applySwimPoolEdit(change))} />}
         {plan.assessment && <p className={styles.muted}>{plan.assessment.label} · {plan.assessment.pace}</p>}
         <p className={styles.status}>{({ active: "Active", paused: "Paused", finished: "Finished", archived: "Archived" })[plan.status]}</p>
-        {plan.status === "active" && <button className={styles.secondary} disabled={requestBusy} onClick={() => run(() => proposeSwimWeek(plan.id, plan.revision))}>Review next week</button>}
+        {plan.status === "active" && !plan.imported && <button className={styles.secondary} disabled={requestBusy} onClick={() => run(() => proposeSwimWeek(plan.id, plan.revision))}>Review next week</button>}
       </section>
       {warnings.map((warning, index) => <p key={index} role="status" className={styles.warning}>{warning}</p>)}
       {plan.proposals.filter((proposal) => proposal.status === "pending").map((proposal) => (
@@ -146,7 +146,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
           </li>)}</ul>
         </>}
       </section>}
-      {editable && <section className={styles.section}>
+      {editable && !plan.imported && <section className={styles.section}>
         <h2>New assessment</h2>
         {plan.assessmentPool && <p className={styles.muted}>Assessment pool: {plan.assessmentPool}</p>}
         <form className={styles.form} method="post" onSubmit={(event) => {

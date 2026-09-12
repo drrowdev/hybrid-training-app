@@ -594,6 +594,12 @@ connection are described in the [rebuild plan](../design/swimming-programme-rebu
 The existing numerical progression rules are legacy behavior, not accepted
 training methodology for that replacement.
 
+**Private finite courses (ADR 0083, 2026-09-12):** A prepared course supplies its
+explicit sequence; it does not use the legacy generated dose or automatic
+assessment/week replacement. Unspecified coaching decisions remain manual.
+Exact source/pool binding, reviewed corrections and source/issued history
+remain required. This introduces no numerical coaching rule or public catalogue.
+
 - **DC-SW1 - Exact native measurements [DEF].** A pool is a bounded, reduced
   positive rational length with native `m` or `yd` units. Work uses integer whole
   lengths and integer milliseconds. Totals, formatting and comparison share one

@@ -35,3 +35,4 @@ export {
 } from "./tier-detection";
 
 export * from "./swimming";
+export * from "./swim-course";

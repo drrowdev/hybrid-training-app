@@ -11,11 +11,15 @@ import { workoutPresentation } from "../presentation";
 import { requireSwimSetup, requireSwimStorage } from "../capability";
 import { assertSwimSafety } from "../safety";
 import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-completion-recompute";
-import { swimPlanDefinition, swimWorkoutDefinition, type StandaloneWorkoutDefinition } from "../model";
+import { swimWorkoutDefinition, requireGeneratedSwimPlan, type StandaloneWorkoutDefinition } from "../model";
 import { previewSwimPoolEdit, applySwimPoolEdit } from "../actions";
 import * as poolEditing from "../pool-editing";
 import { poolCourse } from "@hta/domain";
 import type { SwimPoolEditInput } from "../view-types";
+import { syntheticCourse } from "./course-fixtures";
+import { previewPrivateSwimCourse, importPrivateSwimCourse, previewPrivateSwimEdit, savePrivateSwimEdit } from "../course-actions";
+import * as courseCapability from "../course-capability";
+import { planPrivateSwimCourse } from "../course-planning";
 
 const mock = vi.hoisted(() => ({
   user: { id: "00000000-0000-4000-8000-000000000001" } as { id: string } | null,
@@ -61,7 +65,7 @@ function setupForm() {
 function weekEditInput(overrides: Partial<SwimWeekEditInput> = {}): SwimWeekEditInput {
   return {
     planId, revision: 1, week: 2,
-    mainRepeats: swimPlanDefinition(swimFixture().plan).initialDose.mainRepeats + 1,
+    mainRepeats: requireGeneratedSwimPlan(swimFixture().plan).initialDose.mainRepeats + 1,
     reason: "Adjusting pool time.", ...overrides,
   };
 }
@@ -141,6 +145,118 @@ beforeEach(() => {
   });
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+describe("DC-SW5/SW8/SW9 private course actions", () => {
+  function formForCourse() {
+    vi.spyOn(courseCapability, "privateSwimCourseAvailable").mockResolvedValue(true);
+    vi.mocked(storage.listSwimPlans).mockResolvedValue([]);
+    const form = setupForm();
+    form.set("pool", "50m");
+    form.set("goal", "endurance");
+    form.set("courseFile", JSON.stringify(syntheticCourse()));
+    form.append("weekdays", "4");
+    return form;
+  }
+  it("reviews before an atomic save and preserves source plus initial prescriptions", async () => {
+    const form = formForCourse();
+    const preview = await previewPrivateSwimCourse(form);
+    expect(preview.preview?.plan.workoutCount).toBe(3);
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+    expect((await importPrivateSwimCourse(form, preview.preview!.id)).errorCode).toBe("validation");
+    form.set("reviewed", "on");
+    expect((await importPrivateSwimCourse(form, preview.preview!.id)).ok).toBe(true);
+    const request = vi.mocked(storage.createSwimPlan).mock.calls[0]![1];
+    expect(request.workouts).toHaveLength(3);
+    expect(request.definition).not.toHaveProperty("initialDose");
+    expect(request.workouts[0]!.definition.courseSource).toEqual(syntheticCourse().weeks[0]!.workouts[0]);
+    expect(request.workouts[0]!.definition.issued).toEqual(request.workouts[0]!.definition.original);
+    expect(assertSwimSafety).toHaveBeenCalled();
+  });
+  it("invalidates changed previews and refuses safety, auth and capability failures before writes", async () => {
+    const form = formForCourse();
+    const preview = await previewPrivateSwimCourse(form);
+    form.set("reviewed", "on");
+    form.set("startDate", "2026-09-08");
+    expect((await importPrivateSwimCourse(form, preview.preview!.id)).errorCode).toBe("validation");
+    vi.mocked(assertSwimSafety).mockRejectedValueOnce(new Error("Safety check unavailable."));
+    expect((await previewPrivateSwimCourse(form)).error).toBeDefined();
+    vi.mocked(courseCapability.privateSwimCourseAvailable).mockResolvedValue(false);
+    expect((await previewPrivateSwimCourse(form)).errorCode).toBe("validation");
+    mock.user = null;
+    expect((await previewPrivateSwimCourse(form)).errorCode).toBe("auth");
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+  });
+  it("requires a separate acknowledgement for contradictory printed totals", async () => {
+    const form = formForCourse();
+    const source = syntheticCourse();
+    form.set("courseFile", JSON.stringify({ ...source, weeks: source.weeks.map((week) => ({
+      workouts: week.workouts.map((workout) => ({ ...workout, reportedDistanceMetres: 999 })),
+    })) }));
+    const preview = await previewPrivateSwimCourse(form);
+    expect(preview.preview?.totals).toHaveLength(3);
+    form.set("reviewed", "on");
+    expect((await importPrivateSwimCourse(form, preview.preview!.id)).errorCode).toBe("validation");
+    form.set("acceptSetTotals", "on");
+    expect((await importPrivateSwimCourse(form, preview.preview!.id)).ok).toBe(true);
+  });
+  it("recognizes a saved import without writing twice and never replaces another active plan", async () => {
+    const form = formForCourse();
+    const preview = await previewPrivateSwimCourse(form);
+    form.set("reviewed", "on");
+    const fixture = swimFixture();
+    vi.mocked(storage.listSwimPlans).mockResolvedValue([fixture.plan]);
+    expect((await importPrivateSwimCourse(form, preview.preview!.id)).errorCode).toBe("validation");
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+    const planned = planPrivateSwimCourse({
+      source: syntheticCourse(), setup: { ...fixture.plan.definition.setup, course: poolCourse(50, 1, "m") },
+      startDate: "2026-09-07", weekdays: [1, 4], poolChoices: [],
+    });
+    vi.mocked(storage.listSwimPlans).mockResolvedValue([{
+      ...fixture.plan, definition: planned.definition, state: {
+        ...fixture.plan.state, decisions: [{
+          id: preview.preview!.id, kind: "setup", decision: "accepted", recordedAt: "2026-09-05T12:00:00Z",
+          generatorVersion: "swim-course-1", ruleVersion: "swim-course-1", inputSnapshot: { operation: "course-import" },
+        }],
+      },
+    }]);
+    expect(await importPrivateSwimCourse(form, preview.preview!.id)).toMatchObject({ ok: true, planId: fixture.plan.id });
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+  });
+  it("retains manual edits and refuses generic benchmark replacement", async () => {
+    formForCourse();
+    const fixture = swimFixture({ course: poolCourse(50, 1, "m") });
+    const planned = planPrivateSwimCourse({
+      source: syntheticCourse(), setup: fixture.plan.definition.setup,
+      startDate: "2026-09-07", weekdays: [1, 4], poolChoices: [],
+    });
+    const plan = { ...fixture.plan, definition: planned.definition, state: { ...fixture.plan.state, decisions: [], observations: [], acceptedCalibration: null } };
+    const row = { ...fixture.workouts[0]!, definition: planned.workouts[0]!.definition, status: "scheduled" as const, session_id: null };
+    vi.mocked(storage.listSwimPlans).mockResolvedValue([plan]);
+    vi.mocked(storage.listSwimWorkouts).mockResolvedValue([row]);
+    vi.mocked(storage.getSwimWorkout).mockResolvedValue(row);
+    vi.mocked(storage.updateSwimPlan).mockResolvedValue({ plan, workouts: [row] });
+    const original = syntheticCourse().weeks[0]!.workouts[0]!;
+    const input = {
+      planId: plan.id, revision: plan.revision, workoutId: row.id, workoutRevision: row.revision, reason: "Less pool time.",
+      workout: { ...original, sections: original.sections.map((section) => section.kind === "main"
+        ? { ...section, items: section.items.map((item) => ({ ...item, repeats: 3 })) } : section) },
+    };
+    const preview = await previewPrivateSwimEdit(input);
+    expect(preview.preview).toMatchObject({ before: "350 m", after: "250 m" });
+    expect((await savePrivateSwimEdit(input, preview.preview!.id)).ok).toBe(true);
+    const request = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
+    expect(request.workouts[0]!.definition.original).toEqual(row.definition.original);
+    expect(request.workouts[0]!.definition.courseSource).toEqual(row.definition.courseSource);
+    expect(request.workouts[0]!.definition.modifications[0]!.previous).toEqual(row.definition.issued);
+    expect(request.state.decisions.at(-1)).toMatchObject({ decision: "overridden", inputSnapshot: { operation: "course-edit" } });
+    expect((await proposeSwimBenchmark(plan.id, plan.revision, benchmarkForm())).errorCode).toBe("validation");
+    vi.mocked(storage.getSwimWorkout).mockResolvedValue({ ...row, session_id: sessionId });
+    expect((await previewPrivateSwimEdit(input)).errorCode).toBe("validation");
+    vi.mocked(storage.getSwimWorkout).mockResolvedValue({ ...row, user_id: "00000000-0000-4000-8000-000000000099" });
+    expect((await previewPrivateSwimEdit(input)).errorCode).toBe("not_found");
+    expect(storage.updateSwimPlan).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("ADR0079 server actions", () => {
   describe("DC-SW1/DC-SW2/DC-SW5 editable swimming pools", () => {

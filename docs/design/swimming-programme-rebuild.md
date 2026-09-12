@@ -5,13 +5,17 @@ projection and cache-only reader are published and tested with synthetic SQLite
 data. Account pairing and immutable observation storage are implemented on the
 development branch; the isolated synthetic Postgres contract passed at0961b7ac.
 A preview-first authenticated local sender is implemented for synthetic
-development checks. Programme selection and the live connection remain unfinished.
+development checks. A finite coach-authored course and private prepared-file
+import are selected; import/edit implementation is in development. The live
+connection and watch delivery remain unfinished.
 **Owner decision:** 2026-09-12.
 
-The owner subsequently selected a qualified coach's programme with explicit
-adjustment rules as the training replacement's basis. No such complete
-programme has been obtained yet; commissioning a coach or paying for content
-is not authorized by that selection.
+The owner selected a finite coach-authored course, with unspecified coaching
+decisions remaining manual. Full prescriptions stay private rather than entering
+the public catalogue. The owner will supply the PDF for one-time preparation;
+no PDF parser, paid commissioning or external processing service is authorized.
+[ADR 0083](../adr/0083-private-swimming-courses.md) records the approved
+development-only import/storage extension.
 
 ## Outcome
 
@@ -67,12 +71,13 @@ Before enabling each new programme, record:
 - Which rules are coaching prescriptions and which are software safeguards
   such as exact measurements, ownership, replay protection and history retention.
 
-No complete adaptive programme has passed this gate yet. This is a release
-blocker, not permission to activate a generic replacement.
+The selected finite course does not require a complete adaptive algorithm.
+Its original content still needs private preparation and review before
+installation; selection is not proof of a working import or released programme.
 
-The author must specify which available observations drive changes, what
-happens when they are missing or incompatible, and when reassessment is
-needed. The programme must work with the approved watch-first workflow:
+Any automated change requires a source-defined rule and compatible observations.
+Where those rules are unspecified, use an explicit manual decision rather than
+inventing them. The programme must work with the approved watch-first workflow:
 swimming-only distance, timing, stroke, pool and workout references, without
 requiring routine in-app workout logging or silently importing more health
 data.

@@ -3584,3 +3584,17 @@ behaviour or assertion was removed. Local browser checks and script lint passed.
 The existing isolated CI job runs both control groups without new credentials.
 Native Auth/server-action integration, live transfer and watch delivery remain
 separate requirements.
+
+## [2026-09-12] implementation | Private finite swimming course import
+
+Implemented the approved prepared-file import and explicit workout editor,
+using synthetic content only. Courses preserve their listed sessions,
+sections/repeats/rests and source metadata; inconsistent totals need confirmation
+and incompatible pools fail without changed distances. Imported courses are
+excluded from legacy automatic generation and assessment replacement.
+Migration0152 retains existing owned RPC/RLS boundaries and immutable history;
+its locked down refuses saved imported plans. ADR0083 records scope and guards.
+Targeted application/engine and network-blocked375/1280 controls passed locally.
+Real disposable Postgres acceptance remains pending. No existing database,
+protected course, owner account, live transfer, watch calendar or deployment
+was accessed. Actual private-file preparation awaits the owner-supplied PDF.
