@@ -131,7 +131,7 @@ export async function updateRehabProtocol(
   if (!updated) {
     return {
       ok: false,
-      error: "That protocol changed somewhere else. Reopen it and redo your edit.",
+      error: "Protocol changed elsewhere. Reopen it and repeat your edit.",
     };
   }
 

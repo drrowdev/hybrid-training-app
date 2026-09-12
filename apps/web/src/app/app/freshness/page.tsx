@@ -11,7 +11,6 @@ import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getMuscleFreshness } from "@/lib/muscle/muscle-freshness";
 import { MuscleGrid16 } from "@/components/muscle-grid/MuscleGrid16";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { MetricHelp } from "@/components/ui/MetricHelp";
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -43,7 +42,7 @@ export default async function FreshnessPage() {
             <MetricHelp term="muscle_freshness" />
           </>
         }
-        subtitle="16-muscle resolution. Green ≥ 4 days fresh · yellow 2–3 days · red < 2 days · grey not yet trained. Hover a muscle for the last movements that loaded it."
+        subtitle="Days since last load: green ≥ 4 · yellow 2–3 · red < 2 · grey no recorded load."
       />
 
       <section
@@ -58,19 +57,13 @@ export default async function FreshnessPage() {
         <MuscleGrid16 rows={rows} />
       </section>
 
-      <EmptyState
-        variant="inline"
-        title="Some muscles still grey?"
-        body="Log strength sessions with main lifts or cardio with relevant modalities to start tracking freshness on every muscle. Grey means no load recorded yet."
-      />
-
       <footer>
         <Link
           href="/app/stats/engine"
           data-testid="freshness-engine-link"
           style={{ color: "var(--cp-accent)", fontSize: 13, textDecoration: "none" }}
         >
-          View 7-region engine state →
+          Regional training load →
         </Link>
       </footer>
     </div>

@@ -294,8 +294,7 @@ export function LimitationResponseCard({
                 Adjust remaining sessions
               </h2>
               <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-                Uncheck anything you want to keep. For each swap you can pick the
-                replacement.
+                Choose which changes to apply.
               </p>
             </div>
 

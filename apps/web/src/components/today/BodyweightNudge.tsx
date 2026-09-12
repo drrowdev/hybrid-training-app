@@ -165,10 +165,7 @@ export function BodyweightNudge({
           Quick check-in
         </div>
         <div style={{ fontSize: 14, marginTop: 2 }}>
-          <strong>Bodyweight today?</strong>{" "}
-          <span style={{ color: "var(--cp-text-muted)" }}>
-            Tracks weekly — never blocks training.
-          </span>
+          <strong>Bodyweight today</strong>
         </div>
       </div>
       <input

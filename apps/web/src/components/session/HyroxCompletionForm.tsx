@@ -259,11 +259,6 @@ export function HyroxCompletionForm({
             Cancel
           </button>
         )}
-        <div style={{ fontSize: 11, color: "var(--cp-text-muted)", textAlign: "center", lineHeight: 1.5 }}>
-          {editMode
-            ? "Saving re-materializes this workout's logged loads, time and effort."
-            : "Muscle freshness updates only after you complete. Load is driven by time × RPE (sRPE)."}
-        </div>
       </div>
     </section>
   );

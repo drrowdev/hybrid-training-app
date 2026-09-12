@@ -157,7 +157,12 @@ describe("EditCardioForm", () => {
     expect(html).not.toContain('data-testid="edit-cardio-submit"');
     expect(html).not.toContain("Save changes");
     expect(html).toContain('data-testid="edit-cardio-imported-note"');
-    expect(html).toContain("kept exactly as recorded");
+    const fields = html.match(/<(?:input|textarea)\b[^>]*>/g) ?? [];
+    const editableFields = fields.filter((field) => !field.includes('type="hidden"'));
+    expect(editableFields).toHaveLength(6);
+    for (const field of editableFields) {
+      expect(field).toContain('readOnly=""');
+    }
     // The dead upstream must not be named — there is nothing to re-sync from.
     expect(html).not.toMatch(/strava/i);
     expect(html).not.toMatch(/re-?sync/i);

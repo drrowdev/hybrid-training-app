@@ -40,7 +40,7 @@ const sairaStencil = Saira_Stencil_One({
 export const metadata: Metadata = {
   metadataBase: new URL("https://getsxc.app"),
   title: "S×C",
-  description: "Train hybrid. One plan, two modalities, zero collisions.",
+  description: "Strength and cardio training planner.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -63,7 +63,7 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "S×C",
     title: "S×C",
-    description: "Train hybrid. One plan, two modalities, zero collisions.",
+    description: "Strength and cardio training planner.",
     url: "https://getsxc.app",
     images: [
       {
@@ -77,7 +77,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "S×C",
-    description: "Train hybrid. One plan, two modalities, zero collisions.",
+    description: "Strength and cardio training planner.",
     images: ["/og-image.png"],
   },
   other: {

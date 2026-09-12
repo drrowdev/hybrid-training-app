@@ -136,7 +136,7 @@ export default async function SettingsPage() {
             href="/app/settings/bodyweight-progression"
             icon={<SettingsIcon name="bw-progression" />}
             title="Bodyweight progression"
-            description="Per-family progression nodes."
+            description="Movement levels and progress."
             testId="settings-hub-bw-progression"
           />
         )}
@@ -152,7 +152,7 @@ export default async function SettingsPage() {
           href="/app/settings/rehab-protocols"
           icon={<SettingsIcon name="rehab-protocols" />}
           title="Rehab protocols"
-          description="Rehab you can add to a program."
+          description="Saved rehab routines."
           badge={`${rehabProtocolCount} saved`}
           testId="settings-hub-rehab-protocols"
         />

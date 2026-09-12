@@ -271,7 +271,7 @@ export function BwFamiliesManualPicker({
           flexWrap: "wrap",
         }}
       >
-        <h2 style={{ fontSize: 14, margin: 0 }}>Edit nodes directly</h2>
+        <h2 style={{ fontSize: 14, margin: 0 }}>Edit progression levels</h2>
         <label
           style={{
             display: "flex",
@@ -287,7 +287,7 @@ export function BwFamiliesManualPicker({
             checked={allowAnyNode}
             onChange={(e) => setAllowAnyNode(e.target.checked)}
           />
-          Allow any node
+          Allow any level
         </label>
       </div>
       <p
@@ -298,9 +298,7 @@ export function BwFamiliesManualPicker({
           lineHeight: 1.5,
         }}
       >
-        Off by default — only nodes you&apos;ve earned through prerequisites
-        are selectable. Toggle on if you want to seed an advanced starting
-        point.
+        Allows levels beyond your current progression.
       </p>
       <div style={{ display: "grid", gap: 8 }}>
         {families.map((f) => (

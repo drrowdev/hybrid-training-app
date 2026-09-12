@@ -147,22 +147,13 @@ export default async function TrainingMaxesPage() {
           data-testid="training-maxes-bodyweight-note"
           style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14, lineHeight: 1.55 }}
         >
-          Your 1-rep maxes are the best single-rep estimate for each main lift.
-          You&apos;re on a bodyweight-only setup, so there&apos;s no loaded main lift to
-          attach a number to yet. If you add a barbell or dumbbells in{" "}
+          Add a barbell or dumbbells in{" "}
           <Link href="/app/settings/equipment" style={{ color: "var(--cp-accent)" }}>
             Settings → Equipment
           </Link>{" "}
-          later, this page becomes useful again.
+          to set loaded lift maxes.
         </p>
-      ) : (
-        <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14, lineHeight: 1.55 }}>
-          Enter your 1-rep max for each main lift — your active program turns these into
-          the working weights it trains at. Pick whichever variant of squat, bench,
-          deadlift, or overhead press you actually train; back squat, front squat,
-          trap-bar deadlift, push press, etc. are all valid.
-        </p>
-      )}
+      ) : null}
 
       <TmSection
         units={units}

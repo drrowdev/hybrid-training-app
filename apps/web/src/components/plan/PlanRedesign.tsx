@@ -2964,7 +2964,7 @@ export function SessionDrawer({
           </div>
           <textarea
             className="notes"
-            placeholder="Anything to remember about this session…"
+            placeholder="Session notes"
             data-testid="plan-drawer-notes"
             value={notesValue}
             onChange={onNotesChange}

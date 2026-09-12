@@ -47,27 +47,27 @@ const EXPERIENCE_OPTIONS: { id: TrainingExperience; label: string; hint: string 
   {
     id: "beginner_lt_6m",
     label: "Beginner",
-    hint: "New to training. <6 months. Still building the habit.",
+    hint: "Less than 6 months",
   },
   {
     id: "novice_6m_2y",
     label: "Novice",
-    hint: "6 months – 2 years. Consistent, learning the lifts.",
+    hint: "6 months – 2 years",
   },
   {
     id: "intermediate_2y_5y",
     label: "Intermediate",
-    hint: "2 – 5 years. Programmed work, plateaus emerging.",
+    hint: "2 – 5 years",
   },
   {
     id: "advanced_5y_10y",
     label: "Advanced",
-    hint: "5 – 10 years. Needs structured waves and periodisation.",
+    hint: "5 – 10 years",
   },
   {
     id: "highly_advanced_10y_plus",
     label: "Highly advanced",
-    hint: "10+ years. Long-term context, minimal noob gains.",
+    hint: "10+ years",
   },
 ];
 
@@ -251,7 +251,7 @@ export function OnboardingWizard({
         const anyReady = readyRoles.size > 0;
         const allSkipped = MAIN_ROLES.every((r) => modeByRole[r] === "skip");
         if (!anyReady && !allSkipped)
-          return "Enter or seed a 1RM for at least one lift, or skip them all.";
+          return "Enter or estimate at least one 1RM, or skip all lifts.";
         return null;
       }
       case "Start training":
@@ -425,7 +425,7 @@ export function OnboardingWizard({
         <ProgressPills
           total={visibleStepLabels.length}
           current={visibleStepIndex}
-          labels={visibleStepLabels}
+          labels={visibleStepLabels.map((label) => label === "Welcome" ? "Setup" : label)}
         />
         <button
           type="button"
@@ -532,13 +532,7 @@ export function OnboardingWizard({
         )}
 
         {currentLabel === "Start training" && (
-          <div style={{ display: "grid", gap: 12 }}>
-            <Heading kicker="Step 5" title="Setup complete" />
-            <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.6 }}>
-              Pick your first program. You can switch or rebuild any time from
-              the program picker.
-            </p>
-          </div>
+          <Heading kicker="Step 5" title="Choose your first program" />
         )}
 
         {error && (
@@ -596,9 +590,9 @@ function WelcomeStep() {
   return (
     <>
       <div>
-        <div style={kickerStyle}>Welcome</div>
+        <div style={kickerStyle}>Setup</div>
         <h1 style={{ fontSize: 28, margin: "4px 0 0", letterSpacing: "-0.01em" }}>
-          Build a training week that fits your life.
+          Set up your training
         </h1>
       </div>
     </>
@@ -628,7 +622,7 @@ function ProfileStep({
 }) {
   return (
     <>
-      <Heading kicker="Step 2" title="A bit about you" />
+      <Heading kicker="Step 2" title="Training profile" />
       <div style={{ display: "grid", gap: 14 }}>
         <div>
           <Label>Display name (optional)</Label>
@@ -637,7 +631,7 @@ function ProfileStep({
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             maxLength={60}
-            placeholder="What should we call you?"
+            placeholder="Name"
             style={inputStyle}
           />
         </div>
@@ -682,11 +676,7 @@ function ProfileStep({
 
         {!swimming && <div>
           <Label>How long have you been training consistently?</Label>
-          <p style={{ margin: "4px 0 8px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Seeds your starting tier — the app keeps it behavioural, so it
-            refines as it observes your training.
-          </p>
-          <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
             {EXPERIENCE_OPTIONS.map((opt) => {
               const sel = opt.id === trainingExperience;
               return (
@@ -736,10 +726,6 @@ function TmStep({
   return (
     <>
       <Heading kicker="Step 4" title="Your main-lift maxes" />
-      <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.55 }}>
-        Enter your 1RM for each of the four main lifts, seed conservatively, or
-        skip a lift entirely. Editable later in Settings.
-      </p>
 
       <div style={{ display: "grid", gap: 12 }}>
         {roleCandidates.map((g) => {
@@ -768,7 +754,7 @@ function TmStep({
                       {m === "enter"
                         ? "Enter"
                         : m === "seed"
-                          ? "I don\u2019t know yet"
+                          ? "Estimate"
                           : "Skip"}
                     </button>
                   ))}
@@ -838,19 +824,14 @@ function TmStep({
 
               {mode === "seed" && (
                 <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-                  We&apos;ll seed{" "}
+                  Estimated 1RM:{" "}
                   <strong className="mono">
                     {seedPreview} {units === "metric" ? "kg" : "kg"}
-                  </strong>{" "}
-                  as a conservative starting TM. Recalibrate from Settings after a few sessions.
+                  </strong>
+                  . Review in Settings after a few sessions.
                 </p>
               )}
 
-              {mode === "skip" && (
-                <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-                  No TM saved. Blocks that need this role will warn you before starting.
-                </p>
-              )}
             </div>
           );
         })}

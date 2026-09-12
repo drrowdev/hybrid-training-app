@@ -108,8 +108,7 @@ export function SkillChipsPage({ selected, onChange }: SkillChipsPageProps) {
           lineHeight: 1.55,
         }}
       >
-        Tap any skill you can perform with strict form right now. These set the
-        starting node for each family.
+        Select skills you can perform with strict form.
       </p>
 
       <div
@@ -147,11 +146,6 @@ export function SkillChipsPage({ selected, onChange }: SkillChipsPageProps) {
         })}
       </div>
 
-      <p style={{ margin: 0, fontSize: 11, color: "var(--cp-text-muted)" }}>
-        {selectedSet.size === 0
-          ? "Nothing selected. The rep tests on the previous page are enough to start."
-          : `${selectedSet.size} skill${selectedSet.size === 1 ? "" : "s"} selected.`}
-      </p>
     </div>
   );
 }

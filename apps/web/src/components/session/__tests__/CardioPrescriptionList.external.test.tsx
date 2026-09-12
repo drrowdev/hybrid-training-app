@@ -70,6 +70,20 @@ describe("CardioPrescriptionList — cardio_external rows", () => {
     expect(html).not.toContain('data-testid="cardio-prescription-swap-button-0"');
   });
 
+  it("preserves workout instructions without repeating the completion control", () => {
+    const html = renderToStaticMarkup(
+      <CardioPrescriptionList
+        plannedSessionId="00000000-0000-0000-0000-000000000001"
+        items={[{ item: { ...externalItem, notes: "Run 30 minutes at an easy pace." }, itemIndex: 0 }]}
+        ownedCardio={[]}
+        swapAction={noopSwap}
+        markExternalCompleteAction={noopMark}
+      />,
+    );
+    expect(html).toContain("Run 30 minutes at an easy pace.");
+    expect(html.match(/Mark done/g)).toHaveLength(1);
+  });
+
   it("falls back to 'External cardio' when no program name is provided", () => {
     const unnamed: PrescriptionItem = {
       movementId: "",

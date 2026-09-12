@@ -144,11 +144,8 @@ export function EarlyDeloadCard({
                 Deload this week?
               </h2>
               <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-                Converts your {reco.sessionCount} un-started session
-                {reco.sessionCount === 1 ? "" : "s"} this week to deload volume
-                (reduced load + sets). Already-logged sessions are untouched. Your
-                scheduled deload remains — if you recover, you&apos;ll be offered
-                the option to skip it.
+                Reduces load and sets for {reco.sessionCount} unstarted session
+                {reco.sessionCount === 1 ? "" : "s"} this week.
               </p>
             </div>
 

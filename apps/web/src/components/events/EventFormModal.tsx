@@ -235,9 +235,6 @@ export function EventFormModal({
           <h2 id="event-modal-title" style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
             {initial ? "Edit event" : "Add event"}
           </h2>
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Mark a race, comp, meet or test so the app can suggest a taper.
-          </p>
         </header>
 
         <div style={{ display: "grid", gap: 14 }}>
@@ -252,7 +249,7 @@ export function EventFormModal({
               maxLength={120}
               required
               style={fieldStyle}
-              placeholder="Half marathon / squat meet / club ladder final"
+              placeholder="Event name"
             />
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>

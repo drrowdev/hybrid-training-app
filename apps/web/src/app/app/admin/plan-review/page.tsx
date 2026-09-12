@@ -35,11 +35,8 @@ export default async function AdminPlanReviewPage({
       <PageHeader back={{ href: "/app", label: "Today" }} title="Plan review export" />
 
       <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14, lineHeight: 1.55 }}>
-        Admin-only. Exports a self-contained markdown document for the{" "}
-        {blockId ? "specified" : "active"} block — full athlete context, the
-        archetype&rsquo;s intended design, and the complete week-by-week
-        prescription — with a review rubric on top, ready for an objective
-        quality review.
+        Markdown export of the {blockId ? "selected" : "active"} block:
+        athlete context, program design, weekly prescriptions and review criteria.
       </p>
 
       {data ? (

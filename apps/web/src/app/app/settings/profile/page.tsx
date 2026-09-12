@@ -91,13 +91,12 @@ export default async function ProfileSettingsPage() {
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
         title="Training profile"
-        subtitle="How the app calibrates a new block to you."
       />
 
       <div className="settings-profile-grid">
         <SettingCard
           id="experience"
-          eyebrow="Calibration"
+          eyebrow="Experience"
           title="Training experience"
           value={experience ? EXPERIENCE_LABEL[experience] : "Not set"}
           testId="settings-card-experience"
@@ -106,19 +105,10 @@ export default async function ProfileSettingsPage() {
               label="How training experience works"
               testId="settings-experience-how"
             >
-              Your declared experience anchors your starting tier. From there
-              the app refines it from four observed signals: per-lift strength
-              relative to bodyweight, 12-week training adherence, schedule
-              regularity, and recovery check-in fill rate. When your declared
-              tier and what the app observes disagree, the app keeps your choice
-              and shows a soft note — it never silently overrules you.
+              Starting level for movement variations and loading.
             </SettingInfo>
           }
         >
-          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Sets which movement variations you&apos;re offered and how your
-            loading progresses. Used by every program.
-          </p>
           <TrainingExperienceAutoSave initial={experience} />
 
           <div
@@ -144,13 +134,12 @@ export default async function ProfileSettingsPage() {
             <p
               style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}
             >
-              Sets sex-specific strength standards and the loads used for
-              standardised race stations.
+              Sex-specific strength standards and race-station loads.
             </p>
             <GenderAutoSave initial={gender} />
             {gender == null && (
               <SettingNote>
-                Not set — standards stay unisex until you choose.
+                Using unisex standards.
               </SettingNote>
             )}
           </div>
@@ -162,17 +151,7 @@ export default async function ProfileSettingsPage() {
           title="Units"
           value={units === "imperial" ? "lb / mi" : "kg / km"}
           testId="settings-card-units"
-          info={
-            <SettingInfo label="How units work" testId="settings-units-how">
-              Display only. Everything is stored in metric and converted for
-              display — switching never changes your logged numbers.
-            </SettingInfo>
-          }
         >
-          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Show weights and distances in kilograms and kilometres, or pounds
-            and miles.
-          </p>
           <div data-testid="settings-units">
             <UnitsAutoSave initialUnits={units} />
           </div>
@@ -185,9 +164,6 @@ export default async function ProfileSettingsPage() {
           value={displayName || "Not set"}
           testId="settings-card-identity"
         >
-          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
-            What the app calls you. Display only — it never affects programming.
-          </p>
           <DisplayNameAutoSave initialDisplayName={displayName} />
         </SettingCard>
 
@@ -202,16 +178,10 @@ export default async function ProfileSettingsPage() {
               label="How training windows work"
               testId="settings-windows-how"
             >
-              When you train twice in a day, the app has to decide which
-              session is the morning one and which is the evening one. These
-              two times are how it decides. Each window covers two hours from
-              the time you set.
+              Morning and evening start times. Each window lasts two hours.
             </SettingInfo>
           }
         >
-          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
-            When your usual morning and evening sessions start.
-          </p>
           <TrainingWindowsAutoSave
             initialAmStart={amWindowStart}
             initialPmStart={pmWindowStart}
@@ -225,10 +195,6 @@ export default async function ProfileSettingsPage() {
           value={trainingNotes ? "Written" : "Empty"}
           testId="settings-card-training-notes"
         >
-          <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Anything worth remembering about how you train — what works, what
-            flares up, what you want to keep an eye on.
-          </p>
           <TrainingNotesEditor
             initialValue={trainingNotes}
             action={updateTrainingNotes}

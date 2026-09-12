@@ -1754,7 +1754,7 @@ export default async function SessionDetailPage({
             ? "Log at least 1 strength set to finish."
             : "Log at least 1 set to finish."
           : partial
-            ? `${unloggedStrengthCount} of ${strengthItemCount} planned sets aren't logged. You can still finish; the session will be marked complete with what you logged. · Finish anyway`
+            ? `${unloggedStrengthCount} of ${strengthItemCount} planned sets aren't logged. Finish with logged sets only. · Finish anyway`
             : null;
         return (
           <FinishSessionBottomSlot
