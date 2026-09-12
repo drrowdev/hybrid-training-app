@@ -3525,3 +3525,11 @@ annotation were read, not logs. The unshipped migration now brackets CASE
 expressions inside its IF condition and JSON extraction before key subtraction.
 No prior migration, assertion or runtime guard changed. New exact-source SQL
 execution is required; no existing database was touched.
+
+The same source's automatic run34704146324 passed core types/lint/all unit
+tests/build and identity, but failed general mobile logger E2E. Its exit test
+pinned deleted reassurance text. Repair609254c7 asserts the existing
+"Leave workout" accessible name instead, retaining visibility, destination,
+touch-target, dock and session-mode checks. Focused22 unit tests, types and
+spec lint passed; actual browser acceptance still requires the new-head run.
+Both failed workflows remain failed and are not combined with successful jobs.
