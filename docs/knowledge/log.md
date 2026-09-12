@@ -3465,3 +3465,13 @@ Postgres CI contract for actual RLS, privileges, replay/correction/reconnection,
 concurrent receipts, revocation, deletion and empty/nonempty down. Database
 runtime acceptance is pending. No review migration/deployment, owner-data read,
 live transfer, Garmin calendar delivery or replacement training model is claimed.
+
+The exact capture source0961b7ac passed disposable database run34693878236:
+all job steps, including container cleanup, succeeded. Evidence is public
+metadata only, scoped to the synthetic Postgres contract. Main CI34693878212
+failed three older web-test assertions that expected the entire repository to
+remain at150 migrations. Its one log retrieval failed before parsing and was
+not repeated; public check annotations identified the three source locations.
+Those tests now pin the new151-file source while explicitly preserving the
+historical runtime's150-only refusal and original identity level148. No runtime
+guard, old migration, frozen case or deployment profile was changed.

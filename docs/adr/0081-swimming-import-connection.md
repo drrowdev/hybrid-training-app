@@ -1,7 +1,7 @@
 # ADR 0081 - Account-owned swimming imports
 
 **Date:** 2026-09-12
-**Status:** Development approved; isolated database acceptance pending.
+**Status:** Development approved; isolated synthetic Postgres contract passed.
 No existing review or production migration is authorized.
 
 ## Decision and scope
@@ -89,6 +89,11 @@ replay/correction/reconnection, concurrent receives, revocation, malformed
 payloads, account deletion and empty/nonempty down behavior. This database
 contract test is not live Supabase Auth, browser, owner-data or device proof.
 Those remain separate rollout gates before any review migration or live pilot.
+
+Source `0961b7ac0d0eb2f8ec1691e996b061526c0076b2` passed
+[run34693878236](https://github.com/drrowdev/hybrid-training-app/actions/runs/34693878236),
+including container cleanup. This evidence does not authorize migration of
+an existing review/account database. Full application CI is a separate gate.
 
 Related: [DC-SW1/SW4/SW5/SW8](../knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05),
 [rebuild plan](../design/swimming-programme-rebuild.md).

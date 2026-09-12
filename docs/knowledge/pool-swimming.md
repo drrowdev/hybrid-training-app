@@ -20,7 +20,8 @@ This does not authorize live data access, transfer, Garmin calendar writes,
 existing review/production migrations or deployment. [ADR 0081](../adr/0081-swimming-import-connection.md)
 now defines the development-only connection and immutable observation storage.
 Migration 0150 and its empty-only down are implemented but not applied to an
-existing account database. Real isolated database acceptance is pending.
+existing account database. The isolated synthetic Postgres contract passed
+at0961b7ac/run34693878236; native Auth/PostgREST/browser proof remains separate.
 
 A local cache-only reader now selects only swimming fields from explicitly
 provided SQLite/detail paths and dates, with bounded batches and no dashboard

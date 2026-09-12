@@ -3,7 +3,7 @@
 **Status:** evidence-integrity corrections and a synthetic-only, swimming-field
 projection and cache-only reader are published and tested with synthetic SQLite
 data. Account pairing and immutable observation storage are implemented on the
-development branch; isolated database acceptance is pending. Programme
+development branch; the isolated synthetic Postgres contract passed at0961b7ac. Programme
 selection, authenticated local sending and the live connection remain unfinished.
 **Owner decision:** 2026-09-12.
 
