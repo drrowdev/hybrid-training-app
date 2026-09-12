@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { swimSchemaAvailable } from "@/lib/swim/capability";
 import { connectionColumns, importColumns, swimImportStorageAvailable } from "@/lib/swim/import-storage";
+import { exportSwimImportMatches, swimImportMatchingAvailable, type SwimImportMatch } from "@/lib/swim/import-matching";
 
 /**
  * GDPR Article 15 / 20 — right to access + portability.
@@ -71,7 +72,13 @@ export async function GET() {
 
   const swimmingAvailable = await swimSchemaAvailable(supabase);
   let swimImportsAvailable: boolean;
-  try { swimImportsAvailable = await swimImportStorageAvailable(supabase); }
+  let matchesAvailable: boolean;
+  let swimMatches: SwimImportMatch[];
+  try {
+    swimImportsAvailable = await swimImportStorageAvailable(supabase);
+    matchesAvailable = swimImportsAvailable && await swimImportMatchingAvailable(supabase);
+    swimMatches = matchesAvailable ? await exportSwimImportMatches(supabase, user.id) : [];
+  }
   catch {
     return NextResponse.json({ error: "Swimming history could not be exported. Try again." }, { status: 503 });
   }
@@ -171,6 +178,8 @@ export async function GET() {
     swimming_import_schema_available: swimImportsAvailable,
     swim_connections: swimConnections.data ?? [],
     swim_imports: swimImports.data ?? [],
+    swimming_import_matching_available: matchesAvailable,
+    swim_import_matches: swimMatches,
     wellness: wellness.data ?? [],
     limitations: limitations.data ?? [],
     limitation_events: limitationEvents.data ?? [],

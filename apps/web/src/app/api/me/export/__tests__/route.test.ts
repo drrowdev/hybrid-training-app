@@ -11,7 +11,7 @@
  *  - Secrets and derived tables are NEVER queried and NEVER appear as payload
  *    sections; they are instead declared under `excluded`.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const fromCalls: string[] = [];
 let currentUser: { id: string; email: string; created_at: string } | null = null;
@@ -19,6 +19,8 @@ let swimmingAvailable = true;
 let swimReadFails = false;
 let importsAvailable = true;
 let importReadFails = false;
+let matchingAvailable = true;
+let matchReadFails = false;
 const selectedColumns: Record<string, string> = {};
 
 function makeBuilder(table: string) {
@@ -37,7 +39,7 @@ function makeBuilder(table: string) {
         }
       : {
           data: [],
-          error: (swimReadFails && table === "swim_workouts") || (importReadFails && table === "swim_imports")
+          error: (swimReadFails && table === "swim_workouts") || (importReadFails && table === "swim_imports") || (matchReadFails && table === "swim_import_matches")
             ? { message: "read unavailable" }
             : null,
         };
@@ -53,6 +55,7 @@ function makeBuilder(table: string) {
     order() {
       return builder;
     },
+    range() { return builder; },
     maybeSingle() {
       return Promise.resolve(result);
     },
@@ -83,8 +86,31 @@ vi.mock("@/lib/swim/import-storage", () => ({
   connectionColumns: "id,created_at,revoked_at",
   importColumns: "id,activity_id,revision,evidence,received_at",
 }));
+vi.mock("@/lib/swim/import-matching", async (original) => ({
+  ...await original<typeof import("@/lib/swim/import-matching")>(),
+  swimImportMatchingAvailable: vi.fn(async () => matchingAvailable),
+}));
 
 import { GET } from "../route";
+
+it("retains match export while new matching is disabled and fails on an unreadable ledger", async () => {
+  vi.stubEnv("SWIM_IMPORT_MATCHING_ENABLED", "false");
+  const response = await GET();
+  expect(response.status).toBe(200);
+  expect((await response.json()).swim_import_matches).toEqual([]);
+  matchReadFails = true;
+  expect((await GET()).status).toBe(503);
+});
+
+afterEach(() => vi.unstubAllEnvs());
+
+it("does not query an uninstalled match ledger", async () => {
+  matchingAvailable = false;
+  const response = await GET();
+  expect(response.status).toBe(200);
+  expect((await response.json()).swimming_import_matching_available).toBe(false);
+  expect(fromCalls).not.toContain("swim_import_matches");
+});
 
 beforeEach(() => {
   fromCalls.length = 0;
@@ -92,6 +118,8 @@ beforeEach(() => {
   swimReadFails = false;
   importsAvailable = true;
   importReadFails = false;
+  matchingAvailable = true;
+  matchReadFails = false;
   currentUser = { id: "u1", email: "u1@example.test", created_at: "2026-01-01T00:00:00Z" };
 });
 
@@ -111,6 +139,7 @@ const REQUIRED_TABLES = [
   "swim_workouts",
   "swim_connections",
   "swim_imports",
+  "swim_import_matches",
   "wellness",
   "limitations",
   "limitation_events",
@@ -138,6 +167,7 @@ const REQUIRED_SECTIONS = [
   "swim_workouts",
   "swim_connections",
   "swim_imports",
+  "swim_import_matches",
   "wellness",
   "limitations",
   "limitation_events",

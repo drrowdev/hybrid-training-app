@@ -49,7 +49,7 @@ The down takes bounded exclusive locks, refuses any retained imported plan or
 workout, and otherwise restores the exact0151 binding validator. It never
 deletes imported history. No existing data is backfilled.
 
-Source now contains153 migrations. Historical150-only execution profiles must
+This increment brought the source to153 migrations. Historical150-only execution profiles must
 continue refusing appended migrations. Existing-account rollout still requires
 current-main/migration-order reconciliation and separate owner approval.
 

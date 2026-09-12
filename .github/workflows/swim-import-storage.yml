@@ -10,6 +10,7 @@ on:
       - "packages/db/drizzle/**"
       - "packages/db/rollbacks/0151_swim_pool_changes.down.sql"
       - "packages/db/rollbacks/0152_swim_private_courses.down.sql"
+      - "packages/db/rollbacks/0153_swim_import_matching.down.sql"
       - "packages/db/integration-tests/swim-pool-storage.mts"
       - "packages/domain/src/swim-pool-change*"
       - "packages/domain/src/swim-course*"

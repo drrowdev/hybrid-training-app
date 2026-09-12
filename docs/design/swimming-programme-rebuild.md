@@ -144,6 +144,18 @@ Important gaps must be handled explicitly:
 - Cache-only reads must not trigger Garmin fetches. Failed or incomplete detail
   retrieval stays visible. When the local computer is off, data can be stale.
 
+### Explicit recording matches
+
+[ADR0084](../adr/0084-explicit-swimming-recording-matches.md) adds the owner's
+approved manual association of an existing recording with a planned workout.
+The user chooses a date filter and then a workout; neither dates, distance nor
+the source workout reference selects a match automatically. Corrections and
+removals preserve prior evidence and the prescription snapshot that was selected.
+Matching changes no workout status, results, pace, workload or coaching decision.
+Migration0153 and default-off `SWIM_IMPORT_MATCHING_ENABLED` are isolated
+development only. History/export and undo remain available when matching is
+disabled. Native account/watch acceptance and hosted rollout remain separate.
+
 ### Local reader development
 
 `scripts/swim_dashboard_cache.py` reads an explicitly selected SQLite cache

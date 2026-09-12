@@ -3610,3 +3610,28 @@ unexpected database error for the existing closed code/location reporter
 instead of hiding it behind a generic assertion. Expected denials are unchanged;
 raw SQL, rows and error text remain unreported. A new-source runtime pass is
 still required. No older migration or existing database was changed.
+
+## [2026-09-12] acceptance | Private course import and editor
+
+Exact repair4867f380 passed application CI34716088906 and disposable
+storage34716088896, attempt1: identity/core/general Playwright, all153 migrations,
+private-source binding, owned atomic import/edit, history/rollback, actual
+React375/1280 controls and both cleanups. Parent0731 core34715731256 also passed;
+its failed storage34715731285 remains failed. Public terminal metadata was
+consumed once; no logs fetched. PR805 retains the full evidence and earlier
+protected-review receipts. No existing account or deployment was changed.
+
+## [2026-09-12] implementation | Explicit recorded-swim matching
+
+Owner approved choosing which planned workout an imported recording belongs to.
+ADR0084 records the additive owned match ledger, exact evidence/prescription
+snapshots, current invoker-security projection, correction/undo history, bounded
+down and default-off capability. The user chooses a date and a workout; no
+automatic date/distance/provider-reference matching or training-state writes.
+The new actions, recording/workout views, paged import browsing and full match
+export reuse existing account boundaries. Focused local tests, app/runner types
+and actual375/1280 React controls passed after correcting an unsupported test
+assertion, a fixture variable collision and the standalone navigation stub.
+The browser uses an intercepted HTTPS origin for native Web Crypto; all other
+requests are blocked. Disposable SQL acceptance is still required. No live data,
+provider, hosted migration, protected merge, new agent, watcher or deployment.

@@ -1,13 +1,23 @@
-import { redirect } from "next/navigation";
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SwimImportConnection } from "@/components/swim/SwimImportConnection";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { loadSwimImports } from "@/lib/swim/import-storage";
+import { swimImportMatchingAvailable } from "@/lib/swim/import-matching";
+import { formatImportedSwimDistance } from "@/lib/swim/import-presentation";
 
-export default async function SwimmingImportSettings() {
+export default async function SwimmingImportSettings({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const { data: { user } } = await getAuthUser();
   if (!user) redirect("/login");
-  const view = await loadSwimImports(await createClient(), user.id);
+  const pageValue = (await searchParams).page ?? "1";
+  if (!/^[1-9]\d{0,5}$/.test(pageValue)) notFound();
+  const page = Number(pageValue);
+  const client = await createClient();
+  const [view, matching] = await Promise.all([
+    loadSwimImports(client, user.id, (page - 1) * 50),
+    swimImportMatchingAvailable(client),
+  ]);
   return (
     <div className="space-y-6">
       <PageHeader back={{ href: "/app/settings", label: "Settings" }} title="Swimming imports" />
@@ -27,11 +37,16 @@ export default async function SwimmingImportSettings() {
                     <time className="text-sm" dateTime={item.evidence.date} style={{ color: "var(--cp-text-muted)" }}>{item.evidence.date}</time>
                   </div>
                   <div className="text-right">
-                    <p>{new Intl.NumberFormat("en", { maximumFractionDigits: 2 }).format(item.evidence.distanceMetres)} m</p>
-                    {item.revision > 1 && <p className="text-xs" style={{ color: "var(--cp-text-muted)" }}>Revision {item.revision}</p>}
+                    <p>{formatImportedSwimDistance(item.evidence.distanceMetres)}</p>
+                    {item.revision > 1 && <p className="text-xs" style={{ color: "var(--cp-text-muted)" }}>Updated recording</p>}
+                    {matching && <Link href={`/app/swim/recordings/${item.id}`}>View recording</Link>}
                   </div>
                 </li>)}
               </ol>}
+            {(page > 1 || view.imports.length === 50) && <nav aria-label="Imports pages" className="flex flex-wrap gap-4">
+              {page > 1 && <Link href={`/app/settings/swimming?page=${page - 1}`}>Newer imports</Link>}
+              {view.imports.length === 50 && <Link href={`/app/settings/swimming?page=${page + 1}`}>Older imports</Link>}
+            </nav>}
           </section>
         </>}
     </div>

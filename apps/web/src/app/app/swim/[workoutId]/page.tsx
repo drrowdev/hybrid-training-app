@@ -4,6 +4,7 @@ import { getSwimCapability } from "@/lib/swim/capability";
 import { loadSwimWorkoutView } from "@/lib/swim/queries";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { WorkoutScreen } from "@/components/swim/WorkoutScreen";
+import { MatchedRecordings } from "@/components/swim/MatchedRecordings";
 import styles from "@/components/swim/Swim.module.css";
 
 export default async function SwimWorkoutPage({ params }: {
@@ -23,6 +24,7 @@ export default async function SwimWorkoutPage({ params }: {
     <main className={styles.page}>
       <PageHeader title={view.title} back={{ href: "/app/swim", label: "Swimming" }} />
       <WorkoutScreen key={`${view.id}:${view.revision}`} workout={view} />
+      <MatchedRecordings client={client} userId={user.id} workoutId={view.id} revision={view.revision} />
     </main>
   );
 }

@@ -106,6 +106,7 @@ export const swimWorkouts = pgTable("swim_workouts", {
     foreignColumns: [sessions.userId, sessions.id],
   }),
   ownerDateIdx: index("swim_workouts_owner_date_idx").on(t.userId, t.scheduledDate, t.id),
+  ownerIdKey: unique("swim_workouts_user_id_id_key").on(t.userId, t.id),
   planIdx: index("swim_workouts_plan_idx").on(t.planId, t.scheduledDate),
   statusCheck: check("swim_workouts_status_check", sql`${t.status} IN ('scheduled', 'started', 'completed', 'skipped')`),
   revisionCheck: check("swim_workouts_revision_check", sql`${t.revision} > 0`),

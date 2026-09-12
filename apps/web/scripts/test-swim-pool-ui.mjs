@@ -21,6 +21,7 @@ try {
         import { SwimImportConnection } from "./src/components/swim/SwimImportConnection";
         import { CourseImportForm } from "./src/components/swim/CourseImportForm";
         import { CourseWorkoutEditor } from "./src/components/swim/CourseWorkoutEditor";
+        import { RecordingMatcher } from "./src/components/swim/RecordingMatcher";
         import { syntheticCourse } from "./src/lib/swim/__tests__/course-fixtures";
         import { planPrivateSwimCourse } from "./src/lib/swim/course-planning";
         import styles from "./src/components/swim/Swim.module.css";
@@ -64,6 +65,26 @@ try {
               distance: "400 m", beforeLengths: 8, afterLengths: 16 }] } };
         };
         let key = 0;
+        window.matchMode = "success"; window.matchCalls = []; window.findCalls = [];
+        window.findWorkouts = async date => {
+          window.findCalls.push(date);
+          if (window.matchMode === "delay") await new Promise(resolve => window.resolveFind = resolve);
+          return { ok: true, value: [{
+            id: "00000000-0000-4000-8000-000000000002", revision: 3, date,
+            title: "Synthetic endurance workout", distance: "350 m", pool: "50 m",
+            plan: "Synthetic course · 2026-09-14", slot: "AM",
+          }] };
+        };
+        window.saveMatch = async input => {
+          window.matchCalls.push(input);
+          return window.matchMode === "error" ? { ok: false, error: "The match could not be saved." } : { ok: true, value: input.requestId };
+        };
+        window.showMatcher = (matched = false, enabled = true) => root.render(<main className={styles.page}>
+          <RecordingMatcher key={++key} importId="00000000-0000-4000-8000-000000000001" enabled={enabled}
+            expectedMatchId={matched ? "00000000-0000-4000-8000-000000000003" : null}
+            current={matched ? { importId: "00000000-0000-4000-8000-000000000001",
+              workoutId: "00000000-0000-4000-8000-000000000002", title: "Synthetic endurance workout", date: "2026-09-15" } : null} />
+        </main>);
         window.showCourse = () => root.render(<main className={styles.page}><CourseImportForm key={++key} today="2026-09-14" /></main>);
         window.showCourseEdit = () => root.render(<main className={styles.page}><CourseWorkoutEditor key={++key} context={{
           planId: "00000000-0000-4000-8000-000000000001", revision: 1,
@@ -116,16 +137,20 @@ try {
     plugins: [{
       name: "synthetic-actions",
       setup(build) {
-        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions)|next\/navigation)$/ }, (args) => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions)|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "next/navigation"
             ? "export const useRouter = () => ({ push(path) { window.destinations.push(path); }, refresh() {} });"
+            : args.path === "next/link"
+              ? "import { createElement } from 'react'; export default function Link(props) { return createElement('a', props); }"
             : args.path === "@/lib/swim/course-actions"
               ? "export const previewPrivateSwimCourse = form => window.previewCourse(form); export const importPrivateSwimCourse = (form, id) => window.saveCourse(form, id); export const previewPrivateSwimEdit = input => window.previewCourseEdit(input); export const savePrivateSwimEdit = input => window.saveCourseEdit(input);"
             : args.path === "@/lib/swim/import-actions"
               ? "export const connectSwimDashboard = () => window.connectDashboard(); export const disconnectSwimDashboard = id => window.disconnectDashboard(id);"
+            : args.path === "@/lib/swim/import-match-actions"
+              ? "export const findSwimMatchWorkouts = date => window.findWorkouts(date); export const saveSwimImportMatch = input => window.saveMatch(input);"
             : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = () => { throw new Error('Unexpected save'); }; export const previewSwimPlan = createSwimPlan;",
-          loader: "js",
+          loader: "js", resolveDir: root,
         }));
       },
     }],
@@ -140,8 +165,11 @@ try {
   page.setDefaultTimeout(10_000);
   const failures = [];
   page.on("pageerror", () => failures.push("page-error"));
-  await page.route("**/*", (route) => route.abort());
-  await page.setContent('<!doctype html><html data-theme="dark"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>');
+  // An intercepted HTTPS origin exercises native Web Crypto without network access.
+  await page.route("**/*", (route) => route.request().url() === "https://swim-ui.test/"
+    ? route.fulfill({ contentType: "text/html", body: '<!doctype html><html data-theme="dark"><head><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>' })
+    : route.abort());
+  await page.goto("https://swim-ui.test/");
   await page.addStyleTag({ content: css });
   await page.addScriptTag({ content: script });
 
@@ -152,6 +180,47 @@ try {
   stages.push(stage);
 
   for (const width of [375, 1280]) {
+    stage = `explicit-recording-match-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => { window.matchCalls = []; window.findCalls = []; window.matchMode = "delay"; window.showMatcher(); });
+    const date = page.getByLabel("Workout date", { exact: true });
+    await expect(date).toHaveValue("");
+    await date.fill("2026-09-15");
+    await page.getByRole("button", { name: "Find workouts", exact: true }).evaluate(button => { button.click(); button.click(); });
+    await expect(date).toBeDisabled();
+    assert.equal(await page.evaluate(() => window.findCalls.length), 1);
+    await page.evaluate(() => { window.matchMode = "success"; window.resolveFind(); });
+    const choices = page.getByRole("combobox", { name: "Workout", exact: true });
+    await expect(choices).toHaveValue("");
+    assert.equal(await page.getByRole("button", { name: "Match workout", exact: true }).count(), 0);
+    await choices.selectOption("00000000-0000-4000-8000-000000000002");
+    await date.fill("2026-09-16");
+    assert.equal(await page.getByRole("button", { name: "Match workout", exact: true }).count(), 0);
+    await page.getByRole("button", { name: "Find workouts", exact: true }).click();
+    await choices.selectOption("00000000-0000-4000-8000-000000000002");
+    await page.evaluate(() => { window.matchMode = "error"; });
+    await page.getByRole("button", { name: "Match workout", exact: true }).click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(choices).toHaveValue("00000000-0000-4000-8000-000000000002");
+    await page.evaluate(() => { window.matchMode = "success"; });
+    await page.getByRole("button", { name: "Match workout", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Match workout", exact: true })).toBeEnabled();
+    const calls = await page.evaluate(() => window.matchCalls);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].requestId, calls[1].requestId);
+    assert.deepEqual(Object.keys(calls[0]).sort(), ["expectedMatchId", "importId", "requestId", "workoutId", "workoutRevision"]);
+    assert.equal(calls[0].workoutRevision, 3);
+    assert.equal(await page.getByRole("button", { name: /Start|Finish|Complete/ }).count(), 0);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.evaluate(() => { window.matchCalls = []; window.showMatcher(true, false); });
+    await expect(page.getByRole("button", { name: "Remove match", exact: true })).toBeVisible();
+    assert.equal(await page.getByRole("button", { name: "Find workouts", exact: true }).count(), 0);
+    await page.getByRole("button", { name: "Remove match", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Remove match", exact: true })).toBeEnabled();
+    assert.equal(await page.evaluate(() => window.matchCalls[0].workoutId), null);
+    assert.equal(await page.evaluate(() => window.matchCalls[0].workoutRevision), null);
+    stages.push(stage);
+
     stage = `private-course-review-${width}`;
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => { window.courseCalls = []; window.courseMode = "delay"; window.showCourse(); });

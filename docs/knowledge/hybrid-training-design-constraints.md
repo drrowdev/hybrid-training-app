@@ -600,6 +600,12 @@ assessment/week replacement. Unspecified coaching decisions remain manual.
 Exact source/pool binding, reviewed corrections and source/issued history
 remain required. This introduces no numerical coaching rule or public catalogue.
 
+**Explicit recording matches (ADR 0084, 2026-09-12):** An owner-selected
+association preserves the exact imported evidence and selected issued snapshot.
+It is not a session start, prescription-completion claim, pace calibration or
+workload write. Changed evidence requires explicit rematching; removal and
+correction retain history. No date/distance or provider-reference inference.
+
 - **DC-SW1 - Exact native measurements [DEF].** A pool is a bounded, reduced
   positive rational length with native `m` or `yd` units. Work uses integer whole
   lengths and integer milliseconds. Totals, formatting and comparison share one

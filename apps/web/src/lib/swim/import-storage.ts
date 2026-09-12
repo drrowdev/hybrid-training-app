@@ -8,7 +8,7 @@ export const importColumns = "id,activity_id,revision,evidence,received_at";
 const connectionSchema = z.object({
   id: z.string().uuid(), created_at: z.string(), revoked_at: z.string().nullable(),
 }).strict();
-const importSchema = z.object({
+export const importSchema = z.object({
   id: z.string().uuid(), activity_id: z.string(), revision: z.number().int().positive(),
   evidence: swimImportEvidenceSchema, received_at: z.string(),
 }).strict();
@@ -26,14 +26,16 @@ export async function swimImportStorageAvailable(client: SupabaseClient): Promis
   return true;
 }
 
-export async function loadSwimImports(client: SupabaseClient, userId: string) {
+export async function loadSwimImports(client: SupabaseClient, userId: string, offset?: number) {
+  if (offset !== undefined && (!Number.isSafeInteger(offset) || offset < 0)) throw new Error("Choose a valid imports page.");
   const available = await swimImportStorageAvailable(client);
   if (!available) return { available, enabled: false, connections: [], imports: [] };
+  const importsQuery = () => client.from("swim_imports").select(importColumns).eq("user_id", userId)
+    .order("received_at", { ascending: false });
   const [connections, imports] = await Promise.all([
     client.from("swim_connections").select(connectionColumns).eq("user_id", userId)
       .order("created_at", { ascending: false }).limit(20),
-    client.from("swim_imports").select(importColumns).eq("user_id", userId)
-      .order("received_at", { ascending: false }).limit(50),
+    offset === undefined ? importsQuery().limit(50) : importsQuery().order("id").range(offset, offset + 49),
   ]);
   if (connections.error || imports.error) throw new Error("Swimming imports could not be loaded.");
   const parsedConnections = z.array(connectionSchema).safeParse(connections.data);

@@ -60,8 +60,8 @@ try {
     GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
   `);
   const journal: { entries: { idx: number; tag: string }[] } = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"));
-  assert.equal(journal.entries.length, 153);
-  assert.equal(journal.entries[152].tag, "0152_swim_private_courses");
+  assert.equal(journal.entries.length, 154);
+  assert.equal(journal.entries[153].tag, "0153_swim_import_matching");
   for (const [index, migration] of journal.entries.entries()) {
     assert.equal(migration.idx, index);
     assert.match(migration.tag, /^\d{4}_[a-z0-9_]+$/);
@@ -79,6 +79,8 @@ try {
   const down = readFileSync(new URL("../rollbacks/0151_swim_pool_changes.down.sql", import.meta.url), "utf8");
   const courseUp = readFileSync(new URL("../drizzle/0152_swim_private_courses.sql", import.meta.url), "utf8");
   const courseDown = readFileSync(new URL("../rollbacks/0152_swim_private_courses.down.sql", import.meta.url), "utf8");
+  const matchUp = readFileSync(new URL("../drizzle/0153_swim_import_matching.sql", import.meta.url), "utf8");
+  const matchDown = readFileSync(new URL("../rollbacks/0153_swim_import_matching.down.sql", import.meta.url), "utf8");
   const revertScript = async (source: string) => {
     const connection = await database.reserve();
     try { await connection.unsafe(source); }
@@ -87,13 +89,17 @@ try {
   };
   const revert = () => revertScript(down);
   const revertCourse = () => revertScript(courseDown);
+  const revertMatches = () => revertScript(matchDown);
   stage = "unused-down-and-up";
+  await revertMatches();
+  assert.equal((await database`SELECT to_regprocedure('public.swim_import_matching_ready()') AS name`)[0]!.name, null);
   await revertCourse();
   assert.equal((await database`SELECT to_regprocedure('public.swim_private_course_ready()') AS name`)[0]!.name, null);
   await revert();
   assert.equal((await database`SELECT to_regprocedure('public.swim_pool_editing_ready()') AS name`)[0]!.name, null);
   await database.begin((tx) => tx.unsafe(up));
   await database.begin((tx) => tx.unsafe(courseUp));
+  await database.begin((tx) => tx.unsafe(matchUp));
   stages.push(stage);
 
   const as = <T,>(user: string | null, fn: (tx: postgres.TransactionSql) => Promise<T>) =>
@@ -369,10 +375,100 @@ try {
   assert.equal((await as(c, (tx) => tx`SELECT revision FROM public.swim_plans WHERE id=${course.plan.id}`))[0]!.revision, editedCourse.plan.revision);
   stages.push(stage);
 
+  stage = "matching-grants-and-owned-recordings";
+  assert.equal((await as(c, (tx) => tx`SELECT public.swim_import_matching_ready() AS ready`))[0]!.ready, true);
+  const matchGrants = await database`SELECT rolname,
+    has_function_privilege(oid,'public.swim_match_import(uuid,uuid,uuid,uuid,integer)','EXECUTE') AS allowed
+    FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role')`;
+  assert.deepEqual(Object.fromEntries(matchGrants.map((row) => [row.rolname, row.allowed])), {
+    anon: false, authenticated: true, service_role: false,
+  });
+  const hash = "d".repeat(64);
+  await as(c, (tx) => tx`SELECT public.swim_import_connect(${hash})`);
+  const evidence = {
+    version: 1, source: "local_dashboard", activityId: "10001", date: today, environment: "pool",
+    workoutReference: "42", distanceMetres: 300, recordedDurationMs: 300000, durationKind: "unspecified",
+    nativeCourse: null, detail: { status: "missing", fetchedAt: null, splits: [] },
+  };
+  const receive = async (value = evidence) => database.begin(async (tx) => {
+    await tx.unsafe("SET LOCAL ROLE service_role");
+    return (await tx<{ receipt: { id: string; revision: number } }[]>`SELECT public.swim_import_receive(
+      ${hash}, ${JSON.stringify(value)}::text::jsonb) AS receipt`)[0]!.receipt;
+  });
+  const imported = await receive();
+  const work = editedCourse.workouts[0];
+  const match = (user: string | null, receipt: string, expected: string | null, target: string | null = work.id,
+    revision: number | null = target ? work.revision : null, requestId = randomUUID()) =>
+    as(user, async (tx) => (await tx<{ id: string }[]>`SELECT public.swim_match_import(
+      ${requestId}::uuid, ${receipt}::uuid, ${target}::uuid, ${expected}::uuid, ${revision}::integer) AS id`)[0]!.id);
+  await denied(() => match(null, imported.id, null), "42501");
+  await denied(() => match(b, imported.id, null), "42501");
+  await denied(() => match(c, imported.id, null, other.workouts[0].id, other.workouts[0].revision), "42501");
+  await denied(() => match(c, imported.id, null, work.id, work.revision + 1), "40001");
+  await denied(() => as(c, (tx) => tx`INSERT INTO public.swim_import_matches(id) VALUES (${randomUUID()})`), "42501");
+  await denied(() => database.begin(async (tx) => {
+    await tx.unsafe("SET LOCAL ROLE service_role");
+    await tx`SELECT public.swim_match_import(${randomUUID()},${imported.id},${work.id},null,${work.revision})`;
+  }), "42501");
+  stages.push(stage);
+
+  stage = "explicit-matching-replay-and-no-training-writes";
+  const trainingBefore = await database`SELECT id,revision,status,session_id,definition FROM public.swim_workouts ORDER BY id`;
+  const sessionsBefore = await database`SELECT count(*)::int AS count FROM public.sessions`;
+  const cardioBefore = await database`SELECT count(*)::int AS count FROM public.cardio_logs`;
+  const matched = randomUUID();
+  assert.equal(await match(c, imported.id, null, work.id, work.revision, matched), matched);
+  assert.equal(await match(c, imported.id, null, work.id, work.revision, matched), matched);
+  await denied(() => match(c, imported.id, null), "40001");
+  await denied(() => match(c, imported.id, null, null, null, matched), "22023");
+  assert.equal((await as(b, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_current_import_matches`))[0]!.count, 0);
+  const saved = (await as(c, (tx) => tx`SELECT * FROM public.swim_current_import_matches`))[0]!;
+  assert.equal(saved.import_id, imported.id);
+  assert.deepEqual(saved.metadata.workout.issued, work.definition.issued);
+  assert.equal(saved.metadata.workout.revision, work.revision);
+  await denied(() => as(c, (tx) => tx`UPDATE public.swim_import_matches SET workout_id=null`), "42501");
+  await denied(() => as(c, (tx) => tx`DELETE FROM public.swim_import_matches`), "42501");
+  await denied(() => database`INSERT INTO public.swim_import_matches(id,user_id,activity_id,import_id,workout_id,revision,metadata)
+    VALUES (${randomUUID()},${c},${evidence.activityId},${imported.id},${other.workouts[0].id},2,'{}'::jsonb)`, "23503");
+  await denied(() => database`INSERT INTO public.swim_import_matches(id,user_id,activity_id,import_id,workout_id,revision,metadata)
+    VALUES (${randomUUID()},${b},${evidence.activityId},${imported.id},${other.workouts[0].id},1,'{}'::jsonb)`, "23503");
+  assert.deepEqual(await database`SELECT id,revision,status,session_id,definition FROM public.swim_workouts ORDER BY id`, trainingBefore);
+  assert.deepEqual(await database`SELECT count(*)::int AS count FROM public.sessions`, sessionsBefore);
+  assert.deepEqual(await database`SELECT count(*)::int AS count FROM public.cardio_logs`, cardioBefore);
+  stages.push(stage);
+
+  stage = "matching-corrections-concurrency-and-undo";
+  const corrected = await receive({ ...evidence, distanceMetres: 350 });
+  assert.equal((await as(c, (tx) => tx`SELECT import_id FROM public.swim_current_import_matches`))[0]!.import_id, imported.id);
+  await denied(() => match(c, imported.id, matched), "40001");
+  const races = await Promise.allSettled([match(c, corrected.id, matched), match(c, corrected.id, matched)]);
+  assert.equal(races.filter((result) => result.status === "fulfilled").length, 1);
+  const rejected = races.find((result) => result.status === "rejected");
+  assert.ok(rejected?.status === "rejected" && rejected.reason.code === "40001");
+  const attached = races.find((result) => result.status === "fulfilled");
+  assert.ok(attached?.status === "fulfilled");
+  const undone = await match(c, corrected.id, attached.value, null, null);
+  const currentMatch = (await as(c, (tx) => tx`SELECT * FROM public.swim_current_import_matches`))[0]!;
+  assert.equal(currentMatch.id, undone);
+  assert.equal(currentMatch.workout_id, null);
+  assert.equal((await as(c, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_import_matches`))[0]!.count, 3);
+  assert.equal((await as(c, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_current_import_matches WHERE workout_id=${work.id}`))[0]!.count, 0);
+  await denied(() => match(c, imported.id, null, work.id, work.revision, matched), "40001");
+  const sameReference = await receive({ ...evidence, activityId: "10002" });
+  assert.equal((await as(c, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_current_import_matches WHERE activity_id='10002'`))[0]!.count, 0);
+  await match(c, sameReference.id, null);
+  const water = await receive({ ...evidence, activityId: "10003", environment: "open_water" });
+  await denied(() => match(c, water.id, null), "22023");
+  await denied(revertMatches, "P0001");
+  assert.equal((await as(c, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_imports`))[0]!.count, 4);
+  stages.push(stage);
+
   stage = "synthetic-cleanup-and-unused-down";
   await database`DELETE FROM auth.users WHERE id IN (${a}, ${b}, ${c})`;
+  assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_import_matches`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_plans`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_workouts`)[0]!.count, 0);
+  await revertMatches();
   await revertCourse();
   await revert();
   stages.push(stage);

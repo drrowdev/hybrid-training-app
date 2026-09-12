@@ -40,6 +40,14 @@ Migration 0150 and its empty-only down are implemented but not applied to an
 existing account database. The isolated synthetic Postgres contract passed
 at0961b7ac/run34693878236; native Auth/PostgREST/browser proof remains separate.
 
+The owner also approved explicitly matching an existing recording to a chosen
+workout. [ADR0084](../adr/0084-explicit-swimming-recording-matches.md) defines the
+isolated-development implementation: user-selected date/workout, immutable
+match/correction/removal history, same-owner FKs/RLS and prescription snapshots.
+Matching does not establish completion or add pace, workload or progression.
+New matching requires migration0153 and default-off `SWIM_IMPORT_MATCHING_ENABLED`;
+history/export/undo remain accessible when new matching is disabled.
+
 A local cache-only reader now selects only swimming fields from explicitly
 provided SQLite/detail paths and dates, with bounded batches and no dashboard
 initialization or network requests. Synthetic Python checks run through the
