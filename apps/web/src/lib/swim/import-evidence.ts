@@ -44,7 +44,8 @@ export const swimImportEvidenceSchema = z.object({
   environment: z.enum(["pool", "open_water"]),
   workoutReference: id.nullable(),
   distanceMetres: distance,
-  elapsedMs: milliseconds,
+  recordedDurationMs: milliseconds,
+  durationKind: z.literal("unspecified"),
   // The inspected dashboard projection does not retain exact native course units.
   nativeCourse: z.null(),
   detail: z.object({
@@ -93,12 +94,13 @@ export function projectDashboardSwim(activity: unknown, detail: unknown): SwimIm
     activityId: source.activity_id, date: source.date,
     environment: source.type === "lap_swimming" ? "pool" : "open_water",
     workoutReference: source.workout_id ?? null,
-    distanceMetres: source.distance_m, elapsedMs: Math.round(source.duration_s * 1000),
+    distanceMetres: source.distance_m, recordedDurationMs: Math.round(source.duration_s * 1000),
+    durationKind: "unspecified",
     nativeCourse: null,
     detail: {
       status, fetchedAt: cached?.fetched_at ?? null,
       splits: (cached?.splits ?? []).map((split) => {
-        const parsedStroke = stroke.safeParse(split.stroke);
+        const parsedStroke = stroke.safeParse(split.stroke?.toLowerCase());
         return {
           distanceMetres: split.distance_m, elapsedMs: ms(split.duration_s),
           reportedActiveMs: ms(split.active_s),

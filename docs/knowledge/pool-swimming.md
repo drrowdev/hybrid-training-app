@@ -8,6 +8,9 @@ be selectable when creating a programme; the owner's current goal is endurance
 and fitness alongside strength. See the
 [implementation and evidence plan](../design/swimming-programme-rebuild.md).
 No complete adaptive source programme has been selected or activated yet.
+The owner subsequently chose a qualified coach's programme with explicit
+adjustment rules as the required basis. Obtaining that authored programme is
+still a blocker; this is not authorization to commission paid work.
 
 The owner approved an opt-in connection that sends only swimming evidence from
 the existing local dashboard to getsxc, then separately approved additive
@@ -16,6 +19,12 @@ tests, including cross-account isolation and a history-preserving down plan.
 This does not authorize live data access, transfer, Garmin calendar writes,
 existing review/production migrations or deployment. The storage/access change
 still requires its ADR and reversible migration; neither is implemented yet.
+
+A local cache-only reader now selects only swimming fields from explicitly
+provided SQLite/detail paths and dates, with bounded batches and no dashboard
+initialization or network requests. Synthetic Python checks run through the
+normal web test suite, including an actual Python-to-TypeScript contract check.
+Pairing, persisted imports and live account transfers are not implemented.
 
 The first correction makes unrecorded workouts unknown rather than missed.
 Explicit skips remain misses. Unknown outcomes retain planned distance, but

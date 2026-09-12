@@ -1,9 +1,15 @@
 # Goal-led swimming programmes and observed progress
 
 **Status:** evidence-integrity corrections and a synthetic-only, swimming-field
-projection are implemented locally. Programme selection, import storage,
-pairing and the live connection are not implemented.
+projection are published. A cache-only reader is implemented locally and tested
+with synthetic SQLite data. Programme selection, import storage, pairing and
+the live connection are not implemented.
 **Owner decision:** 2026-09-12.
+
+The owner subsequently selected a qualified coach's programme with explicit
+adjustment rules as the training replacement's basis. No such complete
+programme has been obtained yet; commissioning a coach or paying for content
+is not authorized by that selection.
 
 ## Outcome
 
@@ -44,6 +50,13 @@ Before enabling each new programme, record:
 
 No complete adaptive programme has passed this gate yet. This is a release
 blocker, not permission to activate a generic replacement.
+
+The author must specify which available observations drive changes, what
+happens when they are missing or incompatible, and when reassessment is
+needed. The programme must work with the approved watch-first workflow:
+swimming-only distance, timing, stroke, pool and workout references, without
+requiring routine in-app workout logging or silently importing more health
+data.
 
 ### Evidence and applicability
 
@@ -96,6 +109,8 @@ Important gaps must be handled explicitly:
   available; otherwise mark them unknown and do not calibrate from them.
 - A lap's fallback duration may include rest. Preserve whether active time was
   reported; do not turn a fallback into a verified moving-time measurement.
+  The activity summary's unspecified duration is not labelled elapsed or active;
+  the reader retains the source duration without inventing that distinction.
 - Stroke classification, equipment, exact timestamps and prescription identity
   may be incomplete. Same day or similar distance is not sufficient to
   automatically complete a scheduled workout.
@@ -104,6 +119,26 @@ Important gaps must be handled explicitly:
   change pace targets.
 - Cache-only reads must not trigger Garmin fetches. Failed or incomplete detail
   retrieval stays visible. When the local computer is off, data can be stale.
+
+### Local reader development
+
+`scripts/swim_dashboard_cache.py` reads an explicitly selected SQLite cache
+with `mode=ro` and query-only access. It imports no dashboard modules, discovers
+no accounts/paths/environment and performs no network requests. Python 3.10+
+and its standard library are sufficient. It accepts an explicit date range
+of at most 31 inclusive dates and at most 50 swimming activities. Details and
+the whole projected output each have a 2 MiB limit; a detail may contain at
+most 2,000 splits. Exceeding a bound fails the entire batch, never silently
+truncates it. Missing detail is distinct from malformed or unreadable detail.
+Database locking waits at most one second; a SQLite progress handler interrupts
+queries after five seconds rather than retrying or returning partial results.
+
+The development CLI prints only the projected observations as JSON on success;
+fixed error codes go to stderr without source rows, paths or exception text.
+That output is still personal swimming data when used with a real cache:
+do not run it on owner data, capture it in CI or attach it to a public issue.
+Current validation uses disposable synthetic SQLite files only. This is the
+local read adapter, not account pairing, persistence or a live connection.
 
 ### Approved development-only storage boundary
 

@@ -28,7 +28,8 @@ describe("DC-SW1/DC-SW4 swimming-only dashboard evidence", () => {
     if (!result.ok) throw new Error("Expected synthetic swim evidence");
     expect(result.value).toEqual({
       version: 1, source: "local_dashboard", activityId: "12345", date: "2026-09-12",
-      environment: "pool", workoutReference: "54321", distanceMetres: 900, elapsedMs: 1200123,
+      environment: "pool", workoutReference: "54321", distanceMetres: 900, recordedDurationMs: 1200123,
+      durationKind: "unspecified",
       nativeCourse: null,
       detail: {
         status: "available", fetchedAt: "2026-09-12T12:00:00",
@@ -76,6 +77,21 @@ describe("DC-SW1/DC-SW4 swimming-only dashboard evidence", () => {
     expect(projectDashboardSwim({ ...activity, type: "open_water_swimming" }, null)).toMatchObject({
       ok: true, value: { environment: "open_water", nativeCourse: null },
     });
+  });
+
+  it("does not infer elapsed or active session time from the dashboard's unspecified duration", () => {
+    const result = projectDashboardSwim(activity, detail);
+    expect(result).toMatchObject({
+      ok: true, value: { recordedDurationMs: 1200123, durationKind: "unspecified" },
+    });
+    if (!result.ok) throw new Error("Expected synthetic swim evidence");
+    expect(result.value).not.toHaveProperty("elapsedMs");
+    expect(result.value).not.toHaveProperty("activeMs");
+  });
+
+  it("normalizes known provider stroke labels without inferring an unfamiliar stroke", () => {
+    expect(projectDashboardSwim(activity, { ...detail, splits: [{ ...split, stroke: "FREESTYLE" }] }))
+      .toMatchObject({ ok: true, value: { detail: { splits: [{ stroke: "freestyle", strokeKnown: true }] } } });
   });
 
   it.each([

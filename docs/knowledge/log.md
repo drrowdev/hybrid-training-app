@@ -3411,3 +3411,36 @@ all three affected package typechecks and the offline knowledge-doc guard.
 The progression checks include a changed pool with missing results and
 excluded paused/trashed/late outcomes. No migration, live import, new programme
 or review deployment is included in this acceptance.
+
+## [2026-09-12] decision | Coach-authored progression and cache-only swim reader
+
+The owner selected a qualified coach's programme with explicit adjustment
+rules rather than combining general principles into a new coaching model.
+An identified suitable programme is still needed. That choice does not
+authorize commissioning a coach, paying for content or activating unsupported
+training rules.
+
+Evidence-integrity source `b41fb80e` passed automatic CI34691302459: core,
+identity and E2E jobs succeeded. Public metadata was consumed once; no logs
+were fetched. The isolated review and production remain unchanged.
+
+Added a read-only local dashboard adapter that selects only swimming fields
+from explicit cache paths and a bounded date range. It uses Python's standard
+library, never imports dashboard initialization/authentication code, never
+contacts Garmin and never emits a partial batch. Invalid input returns fixed
+codes rather than raw errors or source content. Tests use disposable synthetic
+SQLite data and verify the real adapter output against the application parser.
+Source session duration remains unspecified rather than being relabelled
+elapsed/active; fallback lap timing cannot become verified moving pace.
+
+The first fixture run exposed unclosed test-writer connections on Windows;
+the fixture now commits and closes them explicitly, and the named synthetic
+remnants were removed. No assertion or application safeguard was weakened.
+Storage, pairing, live transfer and the training replacement remain unfinished.
+
+The reader increment passed 31 focused web tests, including execution of 21
+synthetic Python/SQLite cases and the real adapter-to-parser contract. Checks
+cover committed WAL data, unchanged database/detail contents, exact output
+byte limits including the envelope/newline, query interruption, missing files,
+malformed evidence and complete-batch failure. Web typechecking, changed-file
+lint and offline documentation checks passed. No owner cache was accessed.
