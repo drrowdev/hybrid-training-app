@@ -40,7 +40,7 @@ BEGIN
      OR p_workout->>'slotId' IS NULL OR p_workout->>'slotId' !~ '^course-[0-9]+-[0-6]$'
      OR split_part(p_workout->>'slotId', '-', 2)::integer <> (p_workout->>'weekIndex')::integer
      OR p_workout->'provisional' IS DISTINCT FROM 'false'::jsonb
-     OR NOT (p_plan->'setup'->'equipment' @> p_workout->'issued'->'snapshot'->'equipment') THEN
+     OR NOT ((p_plan->'setup'->'equipment') @> (p_workout->'issued'->'snapshot'->'equipment')) THEN
     RAISE EXCEPTION 'Invalid imported swimming schedule or equipment.';
   END IF;
   PERFORM (p_plan->'schedule'->>'startDate')::date;

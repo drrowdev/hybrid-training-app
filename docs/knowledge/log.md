@@ -3598,3 +3598,15 @@ Targeted application/engine and network-blocked375/1280 controls passed locally.
 Real disposable Postgres acceptance remains pending. No existing database,
 protected course, owner account, live transfer, watch calendar or deployment
 was accessed. Actual private-file preparation awaits the owner-supplied PDF.
+
+## [2026-09-12] repair | Private course SQL containment
+
+The first isolated private-course run34715731285 at0731cf81 failed in the new
+atomic-import section; existing import storage and both container cleanups
+passed. Its closed annotation reported an assertion, not successful import.
+Grouped both JSON operands of the new equipment-containment check to avoid
+PostgreSQL operator-precedence ambiguity. The denial helper now preserves an
+unexpected database error for the existing closed code/location reporter
+instead of hiding it behind a generic assertion. Expected denials are unchanged;
+raw SQL, rows and error text remain unreported. A new-source runtime pass is
+still required. No older migration or existing database was changed.

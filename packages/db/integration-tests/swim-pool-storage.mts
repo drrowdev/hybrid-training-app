@@ -103,7 +103,10 @@ try {
       return fn(tx);
     });
   const denied = async (fn: () => Promise<unknown>, expected: string) =>
-    assert.rejects(fn, (error: unknown) => typeof error === "object" && error !== null && "code" in error && error.code === expected);
+    assert.rejects(fn, (error: unknown) => {
+      if (typeof error !== "object" || error === null || !("code" in error) || error.code !== expected) throw error;
+      return true;
+    });
   const a = randomUUID(), b = randomUUID(), c = randomUUID();
   stage = "owned-plan-fixtures";
   await database`INSERT INTO auth.users(id) VALUES (${a}), (${b}), (${c})`;
