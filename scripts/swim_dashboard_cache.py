@@ -114,7 +114,8 @@ def _detail(directory, activity_id):
             not isinstance(fetched_at, str)
             or len(fetched_at) > 40
             or not re.fullmatch(
-                r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})?",
+                r"\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d"
+                r"(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?",
                 fetched_at,
             )
         ):

@@ -43,8 +43,11 @@ provided SQLite/detail paths and dates, with bounded batches and no dashboard
 initialization or network requests. Synthetic Python checks run through the
 normal web test suite, including an actual Python-to-TypeScript contract check.
 Pairing actions, a bounded receiver and owner-visible import history/export are
-implemented behind a default-off flag. Authenticated local sending and live
-account transfers remain unfinished. Captured revisions are not planned-workout
+implemented behind a default-off flag. The separate preview-first local sender
+now adds explicit authenticated sending, exact HTTPS destinations, bounded
+execution and safe aggregate receipts. Only synthetic checks are authorized;
+automatic synchronization and live account transfers remain unfinished.
+Captured revisions are not planned-workout
 completion, shared workload or evidence for an automatic pace change.
 
 The first correction makes unrecorded workouts unknown rather than missed.

@@ -3553,3 +3553,21 @@ JSON-encoded pre-serialized parameters again when PostgreSQL inferred JSONB.
 The fixture now binds those strings through text before JSONB conversion.
 This repairs test transport only, without changing application SQL or relaxing
 the guard. The diagnostic run remains failed; actual-RPC acceptance is pending.
+
+## [2026-09-12] implementation | Explicit swimming observation sender
+
+Added a preview-first local sender around the existing swimming-only reader
+and scoped receiver. It validates the whole batch before networking, requires
+an explicit approved HTTPS destination and send action, keeps the import key
+off command arguments and child environment, and accepts only closed receipts.
+No redirects, provider credentials, guessed workout links, local deduplication
+state or automatic retries. Timeouts retain uncertainty instead of claiming
+that an unconfirmed request was never saved. An isolated process deadline
+also bounds DNS and slow HTTP responses.
+
+Synthetic checks cover the cache-to-request-to-receiver schema, private-field
+exclusion, key isolation, partial failures, redirects, response limits and
+actual termination of an owned disposable child. This increment does not
+access the owner's cache, connect an existing account, change a provider,
+deploy, create a scheduler or establish watch delivery. The coaching-source
+gate and integrated end-user release remain unfinished.

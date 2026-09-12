@@ -26,6 +26,14 @@ there is no caller-supplied account ID. Its receipt contains an import ID,
 revision and replay flag, not account data. The key cannot read history,
 change a prescription, disconnect another connection or invoke general APIs.
 
+The [local sender](../design/swimming-programme-rebuild.md#bounded-local-sender)
+reuses the cache reader's complete privacy projection. It requires explicit
+sending and an exact approved HTTPS endpoint, keeps keys off command arguments,
+and follows no redirects. A bounded child process prevents stalled networking
+from running indefinitely. A failed or unconfirmed request stops the batch;
+server receipts, not local inference, distinguish imports and replays.
+There is no automatic synchronization or live-account acceptance yet.
+
 The service RPC is SECURITY INVOKER, not a new privileged definer or role.
 The server's existing service-role client is confined to this narrow request
 boundary. Anonymous and authenticated clients cannot call the receiver or

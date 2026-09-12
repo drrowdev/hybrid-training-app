@@ -171,6 +171,7 @@ class SwimmingCacheTests(unittest.TestCase):
         for fields in [
             {"fetched_at": "SYNTHETIC_PRIVATE_TIMESTAMP"},
             {"fetched_at": "2026-02-30T12:00:00"},
+            {"fetched_at": "2026-09-12T12:00:00+22:60"},
             {"fetch_status": {"splits": "SYNTHETIC_PRIVATE_STATUS"}},
         ]:
             with self.subTest(fields=fields):

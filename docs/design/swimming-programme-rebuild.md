@@ -3,8 +3,9 @@
 **Status:** evidence-integrity corrections and a synthetic-only, swimming-field
 projection and cache-only reader are published and tested with synthetic SQLite
 data. Account pairing and immutable observation storage are implemented on the
-development branch; the isolated synthetic Postgres contract passed at0961b7ac. Programme
-selection, authenticated local sending and the live connection remain unfinished.
+development branch; the isolated synthetic Postgres contract passed at0961b7ac.
+A preview-first authenticated local sender is implemented for synthetic
+development checks. Programme selection and the live connection remain unfinished.
 **Owner decision:** 2026-09-12.
 
 The owner subsequently selected a qualified coach's programme with explicit
@@ -85,7 +86,7 @@ data.
 | [US Masters Swimming beginner guidance](https://www.usms.org/fitness-and-training/articles-and-videos/articles/best-swimming-workouts-for-beginners) | Technique, rest, repeatability and understanding intervals. | Individual workouts and coaching guidance, not an adaptive multiweek algorithm. |
 | [Critical-speed assessment study, 2019](https://doi.org/10.3390/sports7010025) | Bounds on interpreting the paired-distance estimate. | Children and adolescents; an estimate is not a measured threshold or a whole programming method. |
 | [Swim-training volume and shoulder pain review](https://pmc.ncbi.nlm.nih.gov/articles/PMC6961642/) | Individual loading and avoiding abrupt changes. | No universal safe weekly percentage; association is not proof of causation. |
-| [Swim Ireland published training materials](https://www.swimforamile.com/sfam-training) | Concrete 12-week, three-session progression toward a distance event, with pool-specific versions. | Candidate for a distance-building goal, not yet selected for ongoing fitness alongside strength; adaptive rules and distribution rights need resolution. |
+| [Swim Ireland published training materials](https://www.swimforamile.com/sfam-training) | The linked 2021-labelled, 2022-built 25 m/50 m PDFs contain 34 preparatory sessions over 12 weeks, technique feedback and an 800 m time trial/event estimate. | Fixed course, not an adaptive ongoing programme. Conditional progression/recovery, pool-edition discrepancies and distribution rights remain unresolved. |
 
 Research comparisons stay outside the repository. Product and engine identifiers
 remain original and methodology-neutral.
@@ -156,7 +157,56 @@ fixed error codes go to stderr without source rows, paths or exception text.
 That output is still personal swimming data when used with a real cache:
 do not run it on owner data, capture it in CI or attach it to a public issue.
 Current validation uses disposable synthetic SQLite files only. This is the
-local read adapter, not an authenticated sender or a live connection.
+local read adapter; the separate sender below reuses its projection.
+
+### Bounded local sender
+
+`scripts/swim_dashboard_send.py` defaults to a count-only preview. It reads the
+same explicitly selected cache and date range, validates the entire batch
+before any request, and adds the receiver's version envelope. Each request
+is at most 1 MiB; total request bodies remain at most 2 MiB. No observation is
+truncated or skipped to make a batch fit.
+
+Development preview, using deliberately nonexistent example paths:
+
+```powershell
+python -I -B .\scripts\swim_dashboard_send.py --database "C:\example\activities.db" --details "C:\example\detail" --since 2026-09-01 --until 2026-09-30
+```
+
+Actual sending additionally requires `--send` and an explicit `--endpoint`.
+The only accepted destinations are the exact HTTPS `/api/swim/import` URLs
+on getsxc.app and the existing fixed protected-review hostname. Requests do
+not follow redirects, use proxy environment variables or bypass review
+protection. The receiver must separately have its migration and explicit
+ingestion flag; this implementation does not enable either.
+
+The import key is entered through a hidden terminal prompt, with no echoed
+fallback. A noninteractive caller can supply `SWIM_IMPORT_KEY` through a
+trusted process-secret source. Do not put it in command arguments, shell
+history, logs or a plaintext configuration file. The sender saves no key,
+receipt IDs, observation files or checkpoints. Its isolated child receives
+the key only through stdin and inherits only basic OS/path/temp variables.
+
+Each connection has a 30-second socket timeout. A 180-second process deadline
+also bounds DNS, TLS and slow response reads, terminating only the owned
+sender child. The first failed or unconfirmed request stops the batch without
+automatic retries. Output contains fixed status codes and aggregate counts,
+not dates, activity IDs, receipt IDs, source paths or server error text.
+On a hard timeout, confirmation counts are explicitly unknown; some requests
+may have committed. Repeating the same selection is safe through the server's
+existing replay/correction rules, not a local guessed deduplication cache.
+
+Successful responses require the exact closed receipt, a valid revision/ID,
+and agreement between HTTP status and replay flag. HTML, redirects, oversized
+or compressed responses, extra fields and malformed receipts are failures.
+Cleanup failure remains visible without hiding an earlier failure or a
+confirmed receipt.
+
+Synthetic tests exercise actual reader output and HTTP request construction,
+the receiver's real validation schema, fail-fast partial sends, key isolation
+and termination of a disposable sleeping child. They do not establish a live
+account connection, automatic synchronization or delivery to a watch. No owner
+cache, live transfer, provider change or new scheduler is authorized here.
 
 ### Account pairing and observation capture
 
@@ -175,8 +225,8 @@ revision. Reconnecting does not reset duplicate identity.
 Imported revisions are visible in settings and export, but do not complete
 planned workouts, alter targets, enter shared workload or calibrate pace.
 Planned-workout links remain a later slice, not a guessed side effect of
-capture. The local cache reader does not upload yet, and the UI does not claim
-that creating a key establishes automatic synchronization.
+capture. The local sender is an explicit one-shot tool; creating a key does
+not establish automatic synchronization.
 
 The independent `Swimming import storage` CI workflow uses a fresh loopback
 Postgres service with synthetic Auth identities and no provider credentials.
