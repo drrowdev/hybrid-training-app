@@ -3342,3 +3342,30 @@ readable results, retained skip validation/failure handling and the existing
 13 planning scenarios. Expanded layouts fit 320/375/768px. Web typechecking,
 changed-file lint and offline knowledge-doc checks passed. These are not
 real-database, physical-watch or new-deployment acceptance.
+
+## [2026-09-12] decision | Refresh isolated review without swim logging
+
+The owner approved updating the existing protected review to logging-removal
+source `1c082ee854c5b3e595ebf198b01f878e4d9fe39d`, which passed automatic
+CI34676255050. The owner also removed this session's scheduler: continue work
+on completion rather than scheduled wakes. No new production or Garmin
+permission was granted.
+
+A new default-false read-only-review profile reuses the bounded refresh state
+machine and pins current deployment da91/34675114561, its exact READY identity,
+fixed alias UID and BUILD_SHA receipt window. Only seven tooling/doc paths may
+differ from the accepted removal application. All twelve other operation flags
+must be false in both the actual event and job context; core and identity
+finish before the protected job. All twelve previous job bodies and spent
+profile pins remain unchanged. The only permitted writes remain one exact
+branch BUILD_SHA update, one exact-source Preview and the existing review alias;
+no account, data, Auth, pool flag or production writes.
+
+The summary explicitly identifies the accepted run as automatic CI, not
+frozen26. The matching session reader checks that evidence kind and prior
+receipt before accepting its single-use safe summary. Focused offline checks
+passed 1,331 tests and strict source/test typechecking. Reader fixtures passed
+the original four, plan-review six and read-only-review seven cases, including
+partial failure, missing operation/source, wrong receipt/alias/evidence kind
+and refusal to fetch logs twice. Provider execution and owner usability
+acceptance remain separate from this source checkpoint.

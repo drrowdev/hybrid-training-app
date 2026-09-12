@@ -43,6 +43,17 @@ Keep that source/evidence intact rather than silently rewriting or skipping
 its assertions. Current regression coverage must verify absent logging controls,
 readable history and retained planning routes.
 
+The removal source `1c082ee854c5b3e595ebf198b01f878e4d9fe39d` passed automatic
+CI34676255050, plus focused action and synthetic browser checks. The owner
+approved updating the same isolated review. A separate default-false
+`refresh_swim_readonly_review` operation binds that application and the current
+da91/34675114561 deployment receipt. Its summary explicitly labels the accepted
+evidence `automatic_ci`, not a new frozen26 reference. Only seven inspected
+tooling/documentation paths may differ. Existing spent refresh profiles,
+protection, account data and all prior configuration receipt windows remain
+unchanged. This source checkpoint prepares the update; a successful terminal
+operation receipt is still required before calling the review updated.
+
 ### Delivery requirements
 
 - A generated plan retains its dates and structured workout instructions when

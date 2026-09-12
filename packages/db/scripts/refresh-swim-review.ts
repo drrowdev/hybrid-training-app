@@ -24,11 +24,11 @@ export const OTHER_OPERATIONS = [
   "INSPECT_SWIM_REVIEW", "SWIM_ACCEPTANCE", "MIGRATE_PRODUCTION", "ALLOW_UNDEPLOYED",
 ] as const;
 export type RefreshProfile = Readonly<{
-  reference: Readonly<{ sha: string; run: string }>;
+  reference: Readonly<{ sha: string; run: string; kind?: "automatic_ci" }>;
   paths: readonly string[];
-  operation: "REFRESH_SWIM_REVIEW" | "REFRESH_SWIM_PLAN_REVIEW";
-  job: "refresh-swim-review" | "refresh-swim-plan-review";
-  scope: "swim-review-refresh" | "swim-plan-review-refresh";
+  operation: "REFRESH_SWIM_REVIEW" | "REFRESH_SWIM_PLAN_REVIEW" | "REFRESH_SWIM_READONLY_REVIEW";
+  job: "refresh-swim-review" | "refresh-swim-plan-review" | "refresh-swim-readonly-review";
+  scope: "swim-review-refresh" | "swim-plan-review-refresh" | "swim-readonly-review-refresh";
   otherOperations: readonly string[];
   previous: Readonly<{ run: string; sha: string; id: string; url: string; start: number; end: number }>;
   aliasUid?: string;
@@ -147,6 +147,7 @@ type Stage = "source" | "credentials" | "snapshot" | "build_sha" | "deployment" 
 type Attempt = { attempted: boolean; confirmed: boolean };
 type Summary = {
   scope: RefreshProfile["scope"]; testedSha: string | null; acceptedSha: string; acceptedReferenceRun: string;
+  acceptedEvidenceKind?: "automatic_ci";
   projectId: string; teamId: string; testProject: string; status: "failed" | "refresh_pass" | "source_pass";
   stages: { stage: Stage; code: Code; status: "passed" | "failed"; httpStatus?: number }[];
   oldDeploymentId: string; oldDeploymentUrl: string; newDeploymentId: string | null; newDeploymentUrl: string | null;
@@ -161,6 +162,7 @@ function summary(env: NodeJS.ProcessEnv, profile: RefreshProfile): Summary {
   return {
     scope: profile.scope, testedSha: sha.success ? sha.data : null,
     acceptedSha: profile.reference.sha, acceptedReferenceRun: profile.reference.run,
+    ...(profile.reference.kind ? { acceptedEvidenceKind: profile.reference.kind } : {}),
     projectId: REVIEW.projectId, teamId: REVIEW.teamId, testProject: REVIEW.supabaseId, status: "failed", stages: [],
     oldDeploymentId: profile.previous.id, oldDeploymentUrl: `https://${profile.previous.url}`,
     newDeploymentId: null, newDeploymentUrl: null, aliasMapping: null, changedEnv: [],

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { OTHER_OPERATIONS, REFRESH_PATHS, REFRESH_REFERENCE, refreshArguments, refreshContext as getContext,
   verifyRefreshSource as verifySource, refresh as runRefresh, refreshTransport as makeTransport, type RefreshProfile } from "../refresh-swim-review";
 import { PLAN_REVIEW_REFRESH } from "../refresh-swim-plan-review";
+import { READONLY_REVIEW_REFRESH } from "../refresh-swim-readonly-review";
 import { ACCEPTED_DEPLOYMENT, BASE_SHA, CONFIGURATION, DEPLOY_ROUTES, RECEIPT, deploymentRoute,
   updateRoute } from "../deploy-swim-review";
 import { metadata, ROUTES, storageAdapter } from "../configure-swim-review";
@@ -140,6 +141,7 @@ describe("refresh workflow boundaries", () => {
 describe.each([
   { name: "original", profile: undefined },
   { name: "plan review", profile: PLAN_REVIEW_REFRESH },
+  { name: "read-only review", profile: READONLY_REVIEW_REFRESH },
 ])("$name bounded refresh source and transport", ({ profile }) => {
   const env = profile ? { ...originalEnv, GITHUB_JOB: profile.job, [profile.operation]: "true",
     ...Object.fromEntries(profile.otherOperations.map((key) => [key, "false"])) } : originalEnv;
@@ -237,6 +239,7 @@ describe.each([
       const before = structuredClone(h.state.project);
       const result = await refresh(env, h.deps);
       expect(result.status).toBe("refresh_pass");
+      expect(result.acceptedEvidenceKind).toBe(profile?.reference.kind);
       expect(writes(h)).toEqual([
         [updateRoute("NEXT_PUBLIC_BUILD_SHA"), "PATCH", { key: "NEXT_PUBLIC_BUILD_SHA", value: sha,
           type: "encrypted", target: ["preview"], gitBranch: REVIEW.branch }],
@@ -287,6 +290,7 @@ describe.each([
           expect(child.stdout.trim().split("\n")).toHaveLength(1);
           expect(JSON.parse(child.stdout)).toMatchObject({ scope: profile?.scope ?? "swim-review-refresh", status: "failed",
             buildSha: { attempted: false }, deployment: { attempted: false }, alias: { attempted: false } });
+          expect(JSON.parse(child.stdout).acceptedEvidenceKind).toBe(profile?.reference.kind);
         });
       it.each(["redirect", "oversized_header", "oversized_stream", "bad_json", "timeout", "http_error"])(
         "bounds and refuses %s responses", async (kind) => {
