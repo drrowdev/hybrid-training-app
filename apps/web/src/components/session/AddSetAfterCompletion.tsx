@@ -46,9 +46,9 @@ import {
   type SetKind,
 } from "@/lib/sessions/set-kind-labels";
 
-/** DC-K4 — warn, don't block. Exported so the copy can be pinned by a test. */
+/** DC-K4 — make the post-completion change explicit. */
 export const POST_HOC_SET_WARNING =
-  "This session is already finished. The set is recorded as part of it — the session stays complete, and stress load plus region freshness are recalculated.";
+  "Adds a set to this completed session and updates its training load.";
 
 export type PostHocSetInput = {
   sessionId: string;

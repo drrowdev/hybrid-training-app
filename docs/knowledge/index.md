@@ -2,7 +2,7 @@
 
 **Purpose:** Catalog of all hand-off files for the hybrid training app project. Organized by role in the Karpathy personal-knowledge-base pattern (plan §6.10): raw sources are immutable; wiki pages are LLM-maintained; the schema governs ingest, citation, and lint workflows. This file is the seed of `docs/knowledge/index.md` in the eventual repo.
 
-**Last updated:** 2026-06-01
+**Last updated:** 2026-09-12
 
 ---
 
@@ -23,12 +23,24 @@ The three research files. Never edited; new sources appended here when ingested.
 
 The maintained-by-AI layer. These pages are rewritten as new sources arrive; they cite raw sources via the index. The eventual home is `docs/knowledge/` in the repo.
 
+- [`pool-swimming.md`](./pool-swimming.md) - Original standalone prescriptions,
+  exact course measurements, optional assessment, versioned adaptation, retained
+  history and source-specific evidence. Current owner requirement: review/edit
+  in getsxc and execute scheduled workouts on a Forerunner 970. Garmin calendar
+  delivery is not implemented and official Training API access is pending.
+  In-app swim workout logging is removed; historical results remain readable.
+  Current work is offline app/programming completion: local new-plan preview,
+  reviewed future-week adjustments and same-week date moves. No live Garmin
+  pilot is authorized.
+  Existing standalone26 and isolated review refresh are accepted within their
+  scope. ADR 0079 / DC-SW1 through DC-SW9; combined cardio-slot use stays deferred.
+
 | File | One-line summary |
 |---|---|
 | [`hybrid-training-app-plan.md`](./hybrid-training-app-plan.md) | **Master orchestrator.** Scope, product identity, architecture (stack, repo layout, data model, RLS, GDPR), 6-phase roadmap, engineering practices (testing, observability, security, schema discipline, knowledge-as-wiki §6.10), 8 open questions, AI onboarding protocol (Phases A–F). |
 | [`hybrid-training-design-constraints.md`](./hybrid-training-design-constraints.md) | **Testable engine contract — Phase D resolved.** 108 testable constraints (103 active + 5 ⏸ [BACKLOG]) across sections A–V. Phase C structure (A–T) preserved; sections **U** (MVP scope contract — 2026-05-19) and **V** (active limitations + load-recency soft block) added in Phase D. All 22 original Open Conflicts resolved (20 closed, 2 deferred with HRV); plan §7 verdicts captured. Each constraint cites every supporting source + HIGH / HIGH-MODERATE / MODERATE-LOW confidence label. Backlog-marked constraints kept as forward contracts (engine MUST NOT depend on them in v1; restored when input source returns). CI will enforce each active constraint as a unit test in `packages/domain`. Ready for Phase E. |
 | [`hybrid-training-design-constraints-draft1.md`](./hybrid-training-design-constraints-draft1.md) | **Phase C draft 1 (historical).** Predecessor of design-constraints.md. 65 constraints derived from v1+v2+plan only, before `new` existed. Retained for diff/lineage. Will be deleted once `design-constraints.md` is reviewed in Phase D. |
-| [`ai-roadmap.md`](./ai-roadmap.md) | **Deferred UX & feature items.** 8 features parked for a later wave (#9 /races, #10 /injuries, #11 Training Profile, #12 calendar view modes, #13 phase auto-shift, #14 "what is this?" inline help, #15 AMRAP→e1RM vs entered 1RM, #16 TAPER auto-detection with Accept/Dismiss). Each item: rationale, current gap, UX sketch, dependencies. Build-order recommendation at the bottom. Created 2026-05-23. |
+| [`ai-roadmap.md`](./ai-roadmap.md) | **Deferred UX & feature items.** 8 features parked for a later wave (#9 /races, #10 /injuries, #11 Training Profile, #12 calendar view modes, #13 phase auto-shift, #14 "what is this?" inline help, #15 AMRAP→e1RM vs entered 1RM, #16 TAPER auto-detection with Accept/Dismiss). Each item: rationale, current gap, UX sketch, dependencies. Stockholm production hosting deferred on 2026-09-05 so swim delivery remains the priority. Build-order recommendation at the bottom. Created 2026-05-23. |
 | [`bodyweight-progression-plan.md`](./bodyweight-progression-plan.md) | **7-phase plan for bodyweight progression.** Operationalises the bodyweight addendum into shipped code. DAG-based skill trees (~75 nodes across push H/V, pull H/V, squat unilateral/bilateral, hinge, planche, lever, flag, muscle-up, handstand, core), multi-page onboarding assessment (rep tests + skill chips + hinge-gap ack), TUT-gated progression, mixed-modal classifier, strength-mass drift detection. Decision matrix (A–F) at the bottom — pending project-owner confirmation before Phase 1 dispatches. Created 2026-05-24. |
 
 ---
@@ -63,6 +75,11 @@ Each new page is appended to this index. Each new ingest appends to `hybrid-trai
 
 Per-feature design notes that capture rationale, data model, UX, engine deltas, build sequence, and open questions before a major feature ships. Living documents updated as features land.
 
+The [goal-led swimming rebuild](../design/swimming-programme-rebuild.md)
+records the 2026-09-12 source-defined training gate, observed-progress integrity,
+approved swimming-only local dashboard connection, development-only storage
+approval and standalone/cardio integration acceptance.
+
 | File | One-line summary |
 |---|---|
 | [`docs/design/two-a-days.md`](../design/two-a-days.md) | **Two-a-day sessions.** Pre-build design (status: prep). AM + PM session split for hybrid users. Data model: `sessions.slot`, `sessions.planned_at`. Engine: per-slot interference math. UX: dual cards, AM/PM toggle in custom builder. References DC-D1 / DC-D2 / DC-D3 / DC-L1 / DC-L3 / DC-K4 / DC-S3. Preference column `profiles.allows_two_a_days` shipped 2026-05-21 (commit `fba1f38`). Build kicks off next sync. |
@@ -83,6 +100,10 @@ edit.
 
 | ADR | One-line summary |
 |---|---|
+| [`0079-pool-swim-track-and-calendar.md`](../adr/0079-pool-swim-track-and-calendar.md) | **Pool swimming architecture approved for implementation (2026-09-05).** Progressive swim workouts fill an existing program's cardio days or use separate dates; one calendar and logging path. Pausing restores regular cardio on unstarted bound days. Additive storage/access work approved, no production migration or swim release yet. |
+| [`0080-deferred-custom-movement-references.md`](../adr/0080-deferred-custom-movement-references.md) | **Reversible disposable single-FK candidate (2026-09-09), not accepted.** Run34336292485 at0b3b7401 proved set-logs-only structural success, requiring narrowing within the existing up-to-two approval. Only set_logs changes; session_movements definition/OID remain original. Normal149 versus identity148 unchanged. Live narrowed down/up, baseline/candidate, UPDATE and browser12/C2/C3 proof pending. No production authorization. |
+| [`0081-swimming-import-connection.md`](../adr/0081-swimming-import-connection.md) | **Development-only storage approved (2026-09-12).** Narrow revocable pairing keys, account-owned immutable swimming observations, replay/correction protection and empty-only down. Additive migration0150 passed isolated synthetic Postgres at0961b7ac/run34693878236. No existing review/production migration, live data transfer or inferred workout completion. |
+| [`0082-editable-swimming-pools.md`](../adr/0082-editable-swimming-pools.md) | **Development-only pool editing approved (2026-09-12).** 50 m setup default, reviewed programme/workout choices, exact repeat-distance preservation and course-specific pace. Function-only migration0151 preserves ownership and history; controls default off and used-down refuses history loss. No existing account migration or deployment. |
 | [`0075-offline-completion-receipt.md`](../adr/0075-offline-completion-receipt.md) | **Offline completion stores its durable receipt (2026-09-01).** `sessions.completion_outbox_entry_id` records the outbox UUID that completed a session in the same transaction, so a replay does not become a second completion event. Migration 0144. |
 | [`0074-bodyweight-external-set-load.md`](../adr/0074-bodyweight-external-set-load.md) | **Bodyweight external load is recorded per set (2026-09-01).** `set_logs.external_load_kg` stores the actual belt, vest, or assistance value separately from ordinary set weight so progress history can be reconstructed after edits or deletes. Nullable legacy values remain unknown rather than inferred. Migration 0144. |
 | [`0073-rehab-protocol-library.md`](../adr/0073-rehab-protocol-library.md) | **Rehab protocols become a user-owned library (2026-08-19).** Authoring moves from the program wizard to Settings. A protocol is a first-class `rehab_protocols` row attached via `program_rehab_bindings`, so it outlives its program and a Settings edit reaches the live plan. A binding table rather than a `libraryId` field in the strict customization blob, because this repo deploys app-first and the previous build would silently drop a stamped blob; the FK also makes "cannot delete a protocol in use" a database guarantee. Library owns content, program owns placement. Migration 0134. TB only. |

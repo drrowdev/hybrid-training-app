@@ -19,10 +19,70 @@ on:
         required: false
         default: false
         type: boolean
+      swim_acceptance:
+        description: Run disposable local swim RPC acceptance
+        required: false
+        default: false
+        type: boolean
+      expected_sha:
+        description: Reviewed full commit SHA required for swim acceptance
+        required: false
+        default: ""
+        type: string
+      prepare_swim_review:
+        description: Bootstrap the isolated empty swim-review database
+        required: false
+        default: false
+        type: boolean
+      inspect_swim_review:
+        description: Inspect isolated swim-review pristine predicates read-only
+        required: false
+        default: false
+        type: boolean
+      configure_swim_review:
+        description: Configure isolated branch review settings without deployment
+        required: false
+        default: false
+        type: boolean
+      inspect_swim_review_auth:
+        description: Inspect the isolated test Auth state without settings writes
+        required: false
+        default: false
+        type: boolean
+      deploy_swim_review:
+        description: Deploy the isolated exact-SHA swimming review Preview
+        required: false
+        default: false
+        type: boolean
+      inspect_swim_review_deployment:
+        description: Inspect isolated deployment metadata read-only
+        required: false
+        default: false
+        type: boolean
+      provision_swim_review_owner:
+        description: Create the separate isolated review owner account once
+        required: false
+        default: false
+        type: boolean
+      refresh_swim_review:
+        description: Update the existing isolated swimming review
+        required: false
+        default: false
+        type: boolean
+      refresh_swim_plan_review:
+        description: Update the isolated review with accepted plan editing
+        required: false
+        default: false
+        type: boolean
+      refresh_swim_readonly_review:
+        description: Update the isolated review without in-app swim logging
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'workflow_dispatch' && ((inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review || inputs.inspect_swim_review_deployment || inputs.provision_swim_review_owner) || inputs.refresh_swim_review || inputs.refresh_swim_plan_review || inputs.refresh_swim_readonly_review) && 'ci-swim-review-configuration' || (github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review) && 'ci-swim-review-bootstrap' || (github.event_name == 'workflow_dispatch' && inputs.swim_acceptance && format('ci-swim-{0}', github.ref) || format('ci-{0}', github.ref))) }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && ((inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review || inputs.inspect_swim_review_deployment || inputs.provision_swim_review_owner) || inputs.refresh_swim_review || inputs.refresh_swim_plan_review || inputs.refresh_swim_readonly_review)) && !(github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review || inputs.swim_acceptance)) }}
 
 jobs:
   identity-guard:
@@ -32,61 +92,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # Need full history to inspect every commit a PR introduces.
+          # Inspect the real PR source, never GitHub's synthetic merge commit.
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
 
       - name: Reject non-allowlisted commit identities
-        # The repo's GitHub contributors graph must only ever resolve to
-        # drrowdev (or local/cloud Copilot accounts / GitHub web-flow). Stray
-        # identities (seed scripts, local agents committing as
-        # mlagus@…/agent@local/…) have repeatedly polluted the graph and
-        # required a history rewrite to undo. This guard blocks them at the
-        # PR before they can reach main. Allowlist by EMAIL (author + committer
-        # of every commit the PR/push introduces), not actor authentication.
-        env:
-          BASE_REF: ${{ github.base_ref }}
-          EVENT: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-          ALLOWED="280348738+drrowdev@users.noreply.github.com 223556219+Copilot@users.noreply.github.com 198982749+Copilot@users.noreply.github.com noreply@github.com"
-          if [ "$EVENT" = "pull_request" ]; then
-            git fetch --no-tags origin "$BASE_REF"
-            RANGE="origin/${BASE_REF}..HEAD"
-          else
-            # push: inspect the most recent commit on the ref (squash-merge
-            # lands a single commit). Fall back to HEAD if there is no parent.
-            RANGE="HEAD^..HEAD"
-            git rev-parse HEAD^ >/dev/null 2>&1 || RANGE="HEAD"
-          fi
-          echo "Inspecting commit range: $RANGE"
-          BAD=0
-          while IFS='|' read -r sha ae ce; do
-            [ -z "$sha" ] && continue
-            ok_a=0; ok_c=0
-            for e in $ALLOWED; do
-              [ "$ae" = "$e" ] && ok_a=1
-              [ "$ce" = "$e" ] && ok_c=1
-            done
-            if [ "$ok_a" -ne 1 ] || [ "$ok_c" -ne 1 ]; then
-              echo "::error::Commit $sha has a non-allowlisted identity (author=<$ae> committer=<$ce>). Both author and committer emails must be allowlisted."
-              BAD=1
-            fi
-          done < <(git log --no-merges --pretty=format:'%H|%ae|%ce' $RANGE)
-          if [ "$BAD" -ne 0 ]; then
-            {
-              echo "## ❌ Disallowed commit identity"
-              echo ""
-              echo "Every commit must have author AND committer email in the allowlist:"
-              echo "- \`280348738+drrowdev@users.noreply.github.com\` (drrowdev)"
-              echo "- \`223556219+Copilot@users.noreply.github.com\` (Copilot local)"
-              echo "- \`198982749+Copilot@users.noreply.github.com\` (Copilot cloud)"
-              echo "- \`noreply@github.com\` (GitHub web-flow)"
-              echo ""
-              echo "Use your own account's allowlisted email for local commits, and retain the Copilot cloud agent or GitHub web-flow email on commits they create. If your account is not listed, contact the repository owner."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
-          echo "All commit identities are allowlisted."
+        run: node scripts/check-commit-identities.mjs ci
 
   ci:
     name: lint + typecheck + test + build
@@ -375,12 +386,95 @@ jobs:
           fi
           pnpm --filter @hta/web test:rpc-smoke
 
+  swim-acceptance:
+    needs: [ci, identity-guard]
+    name: disposable swim RPC and browser acceptance
+    if: github.event_name == 'workflow_dispatch' && inputs.swim_acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      SWIM_ACCEPTANCE: ${{ inputs.swim_acceptance }}
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
+      ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
+    steps:
+      - name: Validate reviewed manual context
+        run: |
+          set -euo pipefail
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$EXPECTED_SHA" == "$GITHUB_SHA" ]]
+          [[ "$GITHUB_REF_TYPE" == "branch" ]]
+          [[ "$GITHUB_REF" == refs/heads/* && "$GITHUB_REF" != "refs/heads/main" ]]
+          [[ "$MIGRATE_PRODUCTION" == "false" && "$ALLOW_UNDEPLOYED" == "false" ]]
+
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Create owned browser cache
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ "$GITHUB_JOB" == "swim-acceptance" ]]
+          [[ "$GITHUB_RUN_ID" =~ ^[1-9][0-9]*$ && "$GITHUB_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          [[ -z "${PLAYWRIGHT_BROWSERS_PATH+x}" ]]
+          [[ -z "${HTA_SWIM_BROWSER_CACHE+x}" ]]
+          temp="$(realpath -e "$RUNNER_TEMP")"
+          checkout="$(realpath -e "$GITHUB_WORKSPACE")"
+          cache="$temp/swim-browser-cache-swim-acceptance-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          [[ "$cache" != "$checkout" && "$cache" != "$checkout/"* ]]
+          [[ ! -e "$cache" && ! -L "$cache" ]]
+          mkdir -m 700 -- "$cache"
+          printf 'HTA_SWIM_BROWSER_CACHE=%s\n' "$cache" >> "$GITHUB_ENV"
+
+      - name: Install Chromium system dependencies
+        timeout-minutes: 5
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ env.HTA_SWIM_BROWSER_CACHE }}
+        run: pnpm --filter @hta/web exec playwright install-deps chromium
+
+      - name: Install owned Chromium
+        timeout-minutes: 5
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ env.HTA_SWIM_BROWSER_CACHE }}
+        run: pnpm --filter @hta/web exec playwright install chromium
+
+      - name: Prove synthetic announcer exclusion
+        timeout-minutes: 2
+        run: pnpm --filter @hta/web exec tsx scripts/swim-alert-announcer-probe.ts
+
+      - name: Run guarded reference acceptance
+        run: pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts
+
+      - name: Verify task cleanup
+        if: always()
+        run: |
+          if [ -n "${SWIM_ACCEPTANCE_DIR:-}" ]; then
+            pnpm --filter @hta/web exec tsx scripts/swim-acceptance.ts --cleanup
+          fi
+
   prod-migrate:
     name: apply prod migrations
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.ref == 'refs/heads/main' &&
-      inputs.migrate_production
+      inputs.migrate_production &&
+      !inputs.swim_acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: ci
@@ -595,3 +689,473 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
+
+  prepare-swim-review:
+    name: bootstrap isolated swim review database
+    needs: [ci, identity-guard]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'drrowdev/hybrid-training-app' &&
+      github.ref_type == 'branch' &&
+      github.ref == 'refs/heads/copilot/new-acceptance-cases' &&
+      ((inputs.prepare_swim_review && !inputs.inspect_swim_review) ||
+       (inputs.inspect_swim_review && !inputs.prepare_swim_review)) &&
+      inputs.expected_sha != '' && inputs.expected_sha == github.sha &&
+      !inputs.migrate_production && !inputs.allow_undeployed &&
+      !inputs.swim_acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: swim-review
+    permissions:
+      contents: read
+    concurrency:
+      group: swim-review-bootstrap
+      cancel-in-progress: false
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      PREPARE_SWIM_REVIEW: ${{ inputs.prepare_swim_review }}
+      INSPECT_SWIM_REVIEW: ${{ inputs.inspect_swim_review }}
+      MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
+      ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
+      SWIM_ACCEPTANCE: ${{ inputs.swim_acceptance }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install without database credentials
+        run: pnpm install --frozen-lockfile
+
+      - name: Focused offline bootstrap checks
+        run: pnpm --filter @hta/db exec vitest run scripts/__tests__/prepare-swim-review.test.ts
+
+      - name: Verify reviewed tooling and fresh live head
+        run: pnpm --filter @hta/db exec tsx scripts/prepare-swim-review.ts --check-source
+
+      - name: Run isolated review mode once
+        timeout-minutes: 7
+        env:
+          SWIM_REVIEW_DATABASE_URL: ${{ secrets.SWIM_REVIEW_DATABASE_URL }}
+        run: pnpm --filter @hta/db exec tsx scripts/prepare-swim-review.ts ${{ inputs.inspect_swim_review && '--inspect-only' || '' }}
+
+  configure-swim-review:
+    name: configure isolated branch review without deployment
+    needs: [ci, identity-guard]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'drrowdev/hybrid-training-app' &&
+      github.ref_type == 'branch' &&
+      github.ref == 'refs/heads/copilot/new-acceptance-cases' &&
+      ((inputs.configure_swim_review == true && inputs.inspect_swim_review_auth == false) ||
+      (inputs.configure_swim_review == false && inputs.inspect_swim_review_auth == true)) &&
+      inputs.deploy_swim_review == false &&
+      inputs.inspect_swim_review_deployment == false &&
+      inputs.prepare_swim_review == false && inputs.inspect_swim_review == false &&
+      inputs.swim_acceptance == false && inputs.migrate_production == false &&
+      inputs.allow_undeployed == false &&
+      inputs.expected_sha != '' && inputs.expected_sha == github.sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment: swim-review
+    permissions:
+      contents: read
+    concurrency:
+      group: swim-review-bootstrap
+      cancel-in-progress: false
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      CONFIGURE_SWIM_REVIEW: ${{ inputs.configure_swim_review }}
+      DEPLOY_SWIM_REVIEW: ${{ inputs.deploy_swim_review }}
+      INSPECT_SWIM_REVIEW_DEPLOYMENT: ${{ inputs.inspect_swim_review_deployment }}
+      INSPECT_SWIM_REVIEW_AUTH: ${{ inputs.inspect_swim_review_auth }}
+      PREPARE_SWIM_REVIEW: ${{ inputs.prepare_swim_review }}
+      INSPECT_SWIM_REVIEW: ${{ inputs.inspect_swim_review }}
+      SWIM_ACCEPTANCE: ${{ inputs.swim_acceptance }}
+      MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
+      ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install without configuration credentials
+        run: pnpm install --frozen-lockfile
+
+      - name: Focused offline configuration checks
+        run: pnpm --filter @hta/db exec vitest run scripts/__tests__/configure-swim-review.test.ts scripts/__tests__/swim-review-config-plan.test.ts scripts/__tests__/prepare-swim-review.test.ts
+
+      - name: Verify configuration source before credentials
+        if: inputs.configure_swim_review == true && inputs.inspect_swim_review_auth == false
+        run: pnpm --filter @hta/db exec tsx scripts/configure-swim-review.ts --check-source
+
+      - name: Verify Auth inspection source before credentials
+        if: inputs.configure_swim_review == false && inputs.inspect_swim_review_auth == true
+        run: pnpm --filter @hta/db exec tsx scripts/configure-swim-review.ts --check-source --inspect-auth
+
+      - name: Configure isolated branch once
+        if: inputs.configure_swim_review == true && inputs.inspect_swim_review_auth == false
+        timeout-minutes: 7
+        env:
+          VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}
+          SUPABASE_REVIEW_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN }}
+          SWIM_REVIEW_DATABASE_URL: ${{ secrets.SWIM_REVIEW_DATABASE_URL }}
+          SWIM_REVIEW_SUPABASE_ANON_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_ANON_KEY }}
+          SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm --filter @hta/db exec tsx scripts/configure-swim-review.ts
+
+      - name: Inspect isolated test Auth read-only
+        if: inputs.configure_swim_review == false && inputs.inspect_swim_review_auth == true
+        timeout-minutes: 7
+        env:
+          SUPABASE_REVIEW_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN }}
+        run: pnpm --filter @hta/db exec tsx scripts/configure-swim-review.ts --inspect-auth
+
+  deploy-swim-review:
+    name: isolated review operation
+    needs: [ci, identity-guard]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'drrowdev/hybrid-training-app' &&
+      github.ref_type == 'branch' &&
+      github.ref == 'refs/heads/copilot/new-acceptance-cases' &&
+      ((inputs.deploy_swim_review == true && inputs.inspect_swim_review_deployment == false && inputs.provision_swim_review_owner == false) ||
+      (inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == true && inputs.provision_swim_review_owner == false) ||
+      (inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == false && inputs.provision_swim_review_owner == true)) &&
+      inputs.configure_swim_review == false && inputs.inspect_swim_review_auth == false &&
+      inputs.prepare_swim_review == false && inputs.inspect_swim_review == false &&
+      inputs.swim_acceptance == false && inputs.migrate_production == false &&
+      inputs.allow_undeployed == false &&
+      inputs.expected_sha != '' && inputs.expected_sha == github.sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: swim-review
+    permissions:
+      contents: read
+    concurrency:
+      group: swim-review-bootstrap
+      cancel-in-progress: false
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      DEPLOY_SWIM_REVIEW: ${{ inputs.deploy_swim_review }}
+      INSPECT_SWIM_REVIEW_DEPLOYMENT: ${{ inputs.inspect_swim_review_deployment }}
+      CONFIGURE_SWIM_REVIEW: ${{ inputs.configure_swim_review }}
+      INSPECT_SWIM_REVIEW_AUTH: ${{ inputs.inspect_swim_review_auth }}
+      PREPARE_SWIM_REVIEW: ${{ inputs.prepare_swim_review }}
+      INSPECT_SWIM_REVIEW: ${{ inputs.inspect_swim_review }}
+      SWIM_ACCEPTANCE: ${{ inputs.swim_acceptance }}
+      MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
+      ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
+      PROVISION_SWIM_REVIEW_OWNER: ${{ inputs.provision_swim_review_owner }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install without deployment credentials
+        run: pnpm install --frozen-lockfile
+
+      - name: Focused offline review checks
+        run: pnpm --filter @hta/db exec vitest run scripts/__tests__/deploy-swim-review.test.ts scripts/__tests__/configure-swim-review.test.ts scripts/__tests__/swim-review-config-plan.test.ts scripts/__tests__/prepare-swim-review.test.ts
+
+      - name: Verify deployment source before credentials
+        if: inputs.deploy_swim_review == true && inputs.inspect_swim_review_deployment == false
+        run: pnpm --filter @hta/db exec tsx scripts/deploy-swim-review.ts --check-source
+
+      - name: Verify deployment inspection source before credentials
+        if: inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == true
+        run: pnpm --filter @hta/db exec tsx scripts/deploy-swim-review.ts --check-source --inspect-isolation
+
+      - name: Verify owner provisioning source before credentials
+        if: inputs.provision_swim_review_owner == true && inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == false
+        run: pnpm --filter @hta/db exec tsx scripts/deploy-swim-review.ts --check-source --provision-owner
+
+      - name: Deploy isolated Preview once
+        if: inputs.deploy_swim_review == true && inputs.inspect_swim_review_deployment == false
+        timeout-minutes: 18
+        env:
+          VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}
+          SUPABASE_REVIEW_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN }}
+          SWIM_REVIEW_DATABASE_URL: ${{ secrets.SWIM_REVIEW_DATABASE_URL }}
+          SWIM_REVIEW_SUPABASE_ANON_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_ANON_KEY }}
+          SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm --filter @hta/db exec tsx scripts/deploy-swim-review.ts
+
+      - name: Inspect deployment isolation read-only once
+        if: inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == true
+        timeout-minutes: 6
+        env:
+          VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}
+          SUPABASE_REVIEW_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN }}
+        run: pnpm --filter @hta/db exec tsx scripts/deploy-swim-review.ts --inspect-isolation
+
+      - name: Provision isolated owner once
+        if: inputs.provision_swim_review_owner == true && inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == false
+        timeout-minutes: 6
+        env:
+          VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}
+          SUPABASE_REVIEW_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN }}
+          SWIM_REVIEW_SUPABASE_ANON_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_ANON_KEY }}
+          SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY }}
+          SWIM_REVIEW_OWNER_EMAIL: ${{ secrets.SWIM_REVIEW_OWNER_EMAIL }}
+          SWIM_REVIEW_OWNER_PASSWORD: ${{ secrets.SWIM_REVIEW_OWNER_PASSWORD }}
+        run: pnpm --filter @hta/db exec tsx scripts/deploy-swim-review.ts --provision-owner
+
+  refresh-swim-readonly-review:
+    name: refresh read-only swim review
+    needs: [ci, identity-guard]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'drrowdev/hybrid-training-app' &&
+      github.ref_type == 'branch' &&
+      github.ref == 'refs/heads/copilot/new-acceptance-cases' &&
+      inputs.refresh_swim_readonly_review == true &&
+      inputs.refresh_swim_plan_review == false && inputs.refresh_swim_review == false &&
+      inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == false &&
+      inputs.provision_swim_review_owner == false &&
+      inputs.configure_swim_review == false && inputs.inspect_swim_review_auth == false &&
+      inputs.prepare_swim_review == false && inputs.inspect_swim_review == false &&
+      inputs.swim_acceptance == false && inputs.migrate_production == false &&
+      inputs.allow_undeployed == false &&
+      inputs.expected_sha != '' && inputs.expected_sha == github.sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: swim-review
+    permissions:
+      contents: read
+    concurrency:
+      group: swim-review-bootstrap
+      cancel-in-progress: false
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      REFRESH_SWIM_READONLY_REVIEW: ${{ inputs.refresh_swim_readonly_review }}
+      REFRESH_SWIM_PLAN_REVIEW: ${{ inputs.refresh_swim_plan_review }}
+      REFRESH_SWIM_REVIEW: ${{ inputs.refresh_swim_review }}
+      DEPLOY_SWIM_REVIEW: ${{ inputs.deploy_swim_review }}
+      INSPECT_SWIM_REVIEW_DEPLOYMENT: ${{ inputs.inspect_swim_review_deployment }}
+      PROVISION_SWIM_REVIEW_OWNER: ${{ inputs.provision_swim_review_owner }}
+      CONFIGURE_SWIM_REVIEW: ${{ inputs.configure_swim_review }}
+      INSPECT_SWIM_REVIEW_AUTH: ${{ inputs.inspect_swim_review_auth }}
+      PREPARE_SWIM_REVIEW: ${{ inputs.prepare_swim_review }}
+      INSPECT_SWIM_REVIEW: ${{ inputs.inspect_swim_review }}
+      SWIM_ACCEPTANCE: ${{ inputs.swim_acceptance }}
+      MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
+      ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install without refresh credentials
+        run: pnpm install --frozen-lockfile
+
+      - name: Focused offline read-only review checks
+        run: pnpm --filter @hta/db exec vitest run scripts/__tests__/refresh-swim-readonly-review.test.ts scripts/__tests__/refresh-swim-plan-review.test.ts scripts/__tests__/refresh-swim-review.test.ts scripts/__tests__/deploy-swim-review.test.ts scripts/__tests__/configure-swim-review.test.ts scripts/__tests__/swim-review-config-plan.test.ts scripts/__tests__/prepare-swim-review.test.ts
+
+      - name: Typecheck read-only review refresh source
+        run: pnpm --filter @hta/db exec tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --strict scripts/refresh-swim-readonly-review.ts
+
+      - name: Verify read-only review source before credentials
+        run: pnpm --filter @hta/db exec tsx scripts/refresh-swim-readonly-review.ts --check-source
+
+      - name: Refresh read-only swim review
+        timeout-minutes: 20
+        env:
+          VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}
+          SUPABASE_REVIEW_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN }}
+          SWIM_REVIEW_SUPABASE_ANON_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_ANON_KEY }}
+          SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm --filter @hta/db exec tsx scripts/refresh-swim-readonly-review.ts
+
+  refresh-swim-plan-review:
+    name: refresh isolated plan review
+    needs: [ci, identity-guard]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'drrowdev/hybrid-training-app' &&
+      github.ref_type == 'branch' &&
+      github.ref == 'refs/heads/copilot/new-acceptance-cases' &&
+      inputs.refresh_swim_plan_review == true &&
+      inputs.refresh_swim_review == false &&
+      inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == false &&
+      inputs.provision_swim_review_owner == false &&
+      inputs.configure_swim_review == false && inputs.inspect_swim_review_auth == false &&
+      inputs.prepare_swim_review == false && inputs.inspect_swim_review == false &&
+      inputs.swim_acceptance == false && inputs.migrate_production == false &&
+      inputs.allow_undeployed == false &&
+      inputs.expected_sha != '' && inputs.expected_sha == github.sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: swim-review
+    permissions:
+      contents: read
+    concurrency:
+      group: swim-review-bootstrap
+      cancel-in-progress: false
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      REFRESH_SWIM_PLAN_REVIEW: ${{ inputs.refresh_swim_plan_review }}
+      REFRESH_SWIM_REVIEW: ${{ inputs.refresh_swim_review }}
+      DEPLOY_SWIM_REVIEW: ${{ inputs.deploy_swim_review }}
+      INSPECT_SWIM_REVIEW_DEPLOYMENT: ${{ inputs.inspect_swim_review_deployment }}
+      PROVISION_SWIM_REVIEW_OWNER: ${{ inputs.provision_swim_review_owner }}
+      CONFIGURE_SWIM_REVIEW: ${{ inputs.configure_swim_review }}
+      INSPECT_SWIM_REVIEW_AUTH: ${{ inputs.inspect_swim_review_auth }}
+      PREPARE_SWIM_REVIEW: ${{ inputs.prepare_swim_review }}
+      INSPECT_SWIM_REVIEW: ${{ inputs.inspect_swim_review }}
+      SWIM_ACCEPTANCE: ${{ inputs.swim_acceptance }}
+      MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
+      ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install without refresh credentials
+        run: pnpm install --frozen-lockfile
+
+      - name: Focused offline plan-review checks
+        run: pnpm --filter @hta/db exec vitest run scripts/__tests__/refresh-swim-plan-review.test.ts scripts/__tests__/refresh-swim-review.test.ts scripts/__tests__/deploy-swim-review.test.ts scripts/__tests__/configure-swim-review.test.ts scripts/__tests__/swim-review-config-plan.test.ts scripts/__tests__/prepare-swim-review.test.ts
+
+      - name: Typecheck plan-review refresh source
+        run: pnpm --filter @hta/db exec tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --strict scripts/refresh-swim-plan-review.ts
+
+      - name: Verify plan-review source before credentials
+        run: pnpm --filter @hta/db exec tsx scripts/refresh-swim-plan-review.ts --check-source
+
+      - name: Refresh isolated plan review
+        timeout-minutes: 20
+        env:
+          VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}
+          SUPABASE_REVIEW_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN }}
+          SWIM_REVIEW_SUPABASE_ANON_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_ANON_KEY }}
+          SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm --filter @hta/db exec tsx scripts/refresh-swim-plan-review.ts
+
+  refresh-swim-review:
+    name: refresh existing isolated review
+    needs: [ci, identity-guard]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'drrowdev/hybrid-training-app' &&
+      github.ref_type == 'branch' &&
+      github.ref == 'refs/heads/copilot/new-acceptance-cases' &&
+      inputs.refresh_swim_review == true &&
+      inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == false &&
+      inputs.provision_swim_review_owner == false &&
+      inputs.configure_swim_review == false && inputs.inspect_swim_review_auth == false &&
+      inputs.prepare_swim_review == false && inputs.inspect_swim_review == false &&
+      inputs.swim_acceptance == false && inputs.migrate_production == false &&
+      inputs.allow_undeployed == false &&
+      inputs.expected_sha != '' && inputs.expected_sha == github.sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: swim-review
+    permissions:
+      contents: read
+    concurrency:
+      group: swim-review-bootstrap
+      cancel-in-progress: false
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+      REFRESH_SWIM_REVIEW: ${{ inputs.refresh_swim_review }}
+      DEPLOY_SWIM_REVIEW: ${{ inputs.deploy_swim_review }}
+      INSPECT_SWIM_REVIEW_DEPLOYMENT: ${{ inputs.inspect_swim_review_deployment }}
+      PROVISION_SWIM_REVIEW_OWNER: ${{ inputs.provision_swim_review_owner }}
+      CONFIGURE_SWIM_REVIEW: ${{ inputs.configure_swim_review }}
+      INSPECT_SWIM_REVIEW_AUTH: ${{ inputs.inspect_swim_review_auth }}
+      PREPARE_SWIM_REVIEW: ${{ inputs.prepare_swim_review }}
+      INSPECT_SWIM_REVIEW: ${{ inputs.inspect_swim_review }}
+      SWIM_ACCEPTANCE: ${{ inputs.swim_acceptance }}
+      MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
+      ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+
+      - name: Set up Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install without refresh credentials
+        run: pnpm install --frozen-lockfile
+
+      - name: Focused offline refresh checks
+        run: pnpm --filter @hta/db exec vitest run scripts/__tests__/refresh-swim-review.test.ts scripts/__tests__/deploy-swim-review.test.ts scripts/__tests__/configure-swim-review.test.ts scripts/__tests__/swim-review-config-plan.test.ts scripts/__tests__/prepare-swim-review.test.ts
+
+      - name: Typecheck refresh source
+        run: pnpm --filter @hta/db exec tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --strict scripts/refresh-swim-review.ts
+
+      - name: Verify refresh source before credentials
+        run: pnpm --filter @hta/db exec tsx scripts/refresh-swim-review.ts --check-source
+
+      - name: Refresh existing isolated review
+        timeout-minutes: 20
+        env:
+          VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}
+          SUPABASE_REVIEW_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN }}
+          SWIM_REVIEW_SUPABASE_ANON_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_ANON_KEY }}
+          SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY }}
+        run: pnpm --filter @hta/db exec tsx scripts/refresh-swim-review.ts

@@ -403,7 +403,7 @@ export function PostSessionSummary({
             rows={3}
             maxLength={2000}
             defaultValue={savedNote ?? ""}
-            placeholder="What worked, what hurt, anything to chase next time."
+            placeholder="Session notes"
             style={{
               padding: 12,
               borderRadius: 10,

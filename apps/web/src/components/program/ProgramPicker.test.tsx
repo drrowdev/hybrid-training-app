@@ -1,6 +1,14 @@
 import { describe, it, expect, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
+it("DC-SW7 offers native Swimming inside the chooser, not as a strength program", () => {
+  const html = renderToStaticMarkup(<ProgramPicker programs={[]} anchoredKeys={[]} swimHref="/app/swim/setup" />);
+  expect(html).toMatch(/data-testid="program-card-swimming"[^>]*href="\/app\/swim\/setup"/);
+  expect(html.match(/program-card-swimming/g)).toHaveLength(1);
+  expect(renderToStaticMarkup(<ProgramPicker programs={[]} anchoredKeys={[]} swimHref={null} />)).not.toContain("program-card-swimming");
+  expect(renderToStaticMarkup(<ProgramPicker programs={[]} anchoredKeys={[]} swimHref="/app/swim" />)).toContain('href="/app/swim"');
+});
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
 }));

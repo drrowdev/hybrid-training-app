@@ -14,12 +14,14 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r --workspace-concurrency=1 test",
+    "test:coverage": "pnpm -r --filter @hta/domain --filter @hta/engine exec vitest run --coverage --coverage.thresholds.lines=80 --coverage.thresholds.statements=80 --coverage.thresholds.functions=80 --coverage.thresholds.branches=80",
     "db:generate": "pnpm --filter @hta/db db:generate",
     "db:migrate": "pnpm --filter @hta/db db:migrate",
     "docs:check-drift": "node scripts/check-doc-drift.mjs",
     "prepare": "husky"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "2.1.9",
     "husky": "^9.1.7",
     "sharp": "^0.34.5",
     "typescript": "^5.9.3",

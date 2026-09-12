@@ -55,9 +55,8 @@ export function BwLoadedFamiliesSection({ rows }: { rows: LoadedFamilyRow[] }) {
             lineHeight: 1.5,
           }}
         >
-          No loadable families on your current bodyweight rotation.
-          Add a weighted vest, dip belt, or ankle weights in
-          settings → equipment to unlock loaded variants.
+          No weighted variants available. Add a vest, dip belt, or ankle
+          weights in Settings → Equipment.
         </p>
       </section>
     );

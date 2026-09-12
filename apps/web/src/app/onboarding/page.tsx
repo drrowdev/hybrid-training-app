@@ -17,6 +17,7 @@ import {
 import { needsOnboarding } from "@/lib/onboarding/gate";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import { sanitizePreferredModalities } from "@/lib/planner/preferred-cardio-modality";
+import { getSwimNavigation, swimEntryHref } from "@/lib/swim/navigation";
 
 const MAIN_ROLES: StrengthRole[] = ["squat", "horizontal_press", "deadlift", "vertical_press"];
 
@@ -79,6 +80,7 @@ export default async function OnboardingPage() {
 
   return (
     <OnboardingWizard
+      swimHref={swimEntryHref(await getSwimNavigation(supabase, user.id))}
       initialDisplayName={profile?.display_name ?? ""}
       initialUnits={(profile?.units as "metric" | "imperial") ?? "metric"}
       initialBodyweightKg={profile?.bodyweight_kg ? Number(profile.bodyweight_kg) : null}

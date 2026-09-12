@@ -424,11 +424,23 @@ This section captures the deliberate scope boundary set in the Phase D session o
 - **Nutrition self-logging**: protein g/kg/day tracking, calorie tracking, declared-cut/bulk gates beyond a coarse phase toggle
 - **Life-stress weekly toggle** beyond the bodycomp-phase profile field
 - **AI layer (entire Phase 4)**: coach agent, programmer agent, periodizer agent, chat orchestrator, per-user wiki memory, preview-before-write diff layer
-- **Garmin / other wearable integrations** (and, since 2026-08-17, Strava too)
+- **Other wearable integrations and wearable health signals** (including Strava
+  since 2026-08-17). Exception: the owner promoted Garmin workout/calendar
+  delivery on 2026-09-11; see the
+  [Garmin-first workflow](./pool-swimming.md#garmin-first-owner-workflow---2026-09-11).
+  This does not reactivate HRV/sleep/readiness inputs or authorize new personal
+  data collection, schema/RLS changes or production operations.
 
 ### Scope rationale
 
 The MVP loop is: *user logs a session → engine derives everything it can from the logs + movement catalog → asks for at most 2 extra numbers (fatigue + soreness) at session start → produces tomorrow's prescription with cited rationale*. Everything that requires a wearable or a daily self-report beyond those 2 sliders is intentionally deferred. The 5-second budget for the pre-session widget is the single most-load-bearing UX constraint in the scope.
+
+The 2026-09-11 owner workflow is a narrow exception to that original wearable
+deferral: getsxc plans and Garmin executes. Manual in-app workout logging is
+not an acceptance requirement for this owner. Publishing a planned workout
+must never count as completing it; importing watch-recorded results is a
+separate permission and reconciliation decision, not permission to invent
+actuals or require duplicate manual entry.
 
 When a deferred input source returns (e.g., HRV pull via wearable in v1.x or v2), the ⏸ [BACKLOG] constraints are reactivated as written — no re-architecture required.
 
@@ -557,4 +569,98 @@ For each Open Conflict OC-1 through OC-22 above, the deliverable is one of:
 
 ---
 
-**End of design constraints.** Total: **108 constraints** (103 active + 5 ⏸ [BACKLOG]) across 22 sections (A–V) + **0 open conflicts remaining** + **0 plan §7 questions remaining** (Q5 deferred to pre-launch with Gmail-sender interim; Q8 accepted). Constraints document is **ready for Phase E**.
+**Original Phase D total:** **108 constraints** (103 active + 5 ⏸ [BACKLOG]) across 22 sections (A–V) + **0 open conflicts remaining** + **0 plan §7 questions remaining** (Q5 deferred to pre-launch with Gmail-sender interim; Q8 accepted).
+
+## SW. Native pool swimming (ADR 0079, 2026-09-05)
+
+These nine additional constraints govern the additive swim track. Evidence,
+engineering choices and calibration limits are separated in
+[`pool-swimming.md`](./pool-swimming.md). The original primary-program contracts
+remain in force.
+
+**Owner workflow update (2026-09-12):** Swimming is review/edit-only in getsxc;
+in-app workout start, progress capture and result entry/editing are removed.
+DC-SW7/SW8's existing atomic storage, queued legacy completions, ownership and
+history guarantees remain compatibility contracts, not a requirement to expose
+the retired logger. This changes no engine calculations and authorizes no data
+deletion, migration or inferred watch results. See [current swimming scope](./pool-swimming.md#in-app-swim-logging-removed---2026-09-12).
+
+**Observed-progress correction (2026-09-12):** An absent result is unknown,
+not a missed swim. Only an explicit skipped status establishes a miss. Unknown
+outcomes retain planned distance but cannot establish adherence or training
+response; a partial result contributes actual workload, not full completion.
+The source-backed programme replacement and approved swimming-only local data
+connection are described in the [rebuild plan](../design/swimming-programme-rebuild.md).
+The existing numerical progression rules are legacy behavior, not accepted
+training methodology for that replacement.
+
+- **DC-SW1 - Exact native measurements [DEF].** A pool is a bounded, reduced
+  positive rational length with native `m` or `yd` units. Work uses integer whole
+  lengths and integer milliseconds. Totals, formatting and comparison share one
+  pure implementation. `100/3 m` and `33.33 m` are different courses. Rounded
+  generic cardio projections never become swim truth. Prescriptions, observations
+  and results snapshot their conditions and versions.
+- **DC-SW2 - Optional, condition-specific assessment [EV/DEF].** The supported
+  paired assessment uses exact 200/400 native distances, compatible course,
+  stroke, equipment and protocol, and valid positive timings with plausible
+  ordering. Its critical-speed estimate is not a laboratory threshold; native
+  yards have weaker physiological support. No arbitrary-distance extrapolation,
+  no pace guessed from experience, and no mandatory maximal test. Someone unable
+  to swim one whole length receives learning guidance.
+- **DC-SW3 - Useful whole-length prescriptions [DEF].** Deterministic generation
+  accepts explicit dated slot intents, including empty weeks. Scaling preserves
+  an easy start, purpose-specific main work and an easy finish; unavailable
+  equipment is not prescribed. An impossible budget fails with an actionable
+  error. Without verified pace the time budget is a stopping limit, not a promised
+  finish time. DC-D7/DC-N2 remain binding; no general threshold goal.
+- **DC-SW4 - Reproducible, bounded progression [DEF to calibrate].** The next
+  related week is proposed from persisted settled work, completion, reported
+  effort and compatible actual volume/time, not an incremented fitness counter.
+  An incompletely observed week cannot generate a training adjustment. Missing
+  imports neither count as missed nor imply success.
+  Poor completion or high effort holds/reduces; missing effort is not success.
+  Improving, plateau and missed/high-effort fixtures must yield meaningfully
+  different exact outputs. One main dose lever changes within its versioned cap;
+  hold if one whole length would exceed it. Never carry missed volume forward.
+- **DC-SW5 - Decisions preserve issued history [DEF].** Accepted, rejected and
+  overridden progression/benchmark proposals retain their exact consulted
+  inputs, rules and versions. Only future unstarted work may change. Original
+  and subsequent issued versions remain available. A persisted session link
+  defines started; a browser progress cursor does not.
+  **Pool-choice extension (ADR 0082):** today's unstarted work is eligible.
+  Reviewed programme/workout pool choices preserve every repeat's exact
+  distance, original setup units and issued history; incompatible whole-length
+  conversions fail rather than silently changing the training prescription.
+- **DC-SW6 - Honest analytics [DEF].** Weekly distance/frequency/adherence and
+  planned-versus-actual use native course-specific data. Benchmarks and best
+  efforts compare only compatible conditions. Paused dates and deleted sessions
+  do not masquerade as missed or completed work. Generic historical swimming
+  still counts toward shared workload, but provides no inferred native pace.
+  Planned unknown outcomes are visible in planned totals; adherence remains
+  unknown until outcomes are known. Partial swimming counts as actual distance
+  and frequency, not a completed prescription.
+- **DC-SW7 - Independent lifecycle [DEF].** Pause/finish/archive retain targets
+  and history without replacing a primary program. Resume previews fresh dates
+  for acceptance, never catch-up. Started swims can finish after archive, with
+  actual workload credited but no progression of a replacement plan. Session
+  trash/undo retains the link; hard purge may clear it while retaining targets.
+- **DC-SW8 - Owned, atomic single logging [DEF].** Composite ownership links and
+  RLS protect plans, workouts and sessions. Concurrent starts obtain one ordinary
+  session. One serialized completion atomically writes the native result, its
+  single aggregate cardio summary and the durable receipt. Same/new UUID retries
+  cannot add work twice. Generic writes cannot add or contradict structured swim
+  results. Stale edits fail. Export/account deletion include the new data.
+  **Imported-observation extension (ADR 0081):** a revocable account-bound key
+  can submit only closed swimming evidence. It cannot read account data or
+  complete work. Cross-account links and direct client writes are denied;
+  replay returns one durable receipt, corrections retain prior revisions,
+  and reconnecting does not reset duplicate identity. Revocation serializes
+  with receipt creation. Export/deletion include owned observations, never key
+  secrets. A down must refuse nonempty storage. Disposable synthetic Postgres
+  tests cover these boundaries separately from native Auth/browser acceptance.
+- **DC-SW9 - One shared safety/load path [EV/DEF].** Structured stroke/equipment
+  exposure reaches the existing regional workload path once per aggregate swim,
+  including shoulder/elbow and relevant lower-body regions. Existing generic
+  swimming retains its behavior. Generation/start/future changes use current
+  limitations; historical actuals are not rejected for a newly added limitation.
+  No separate injury model or purported quantitative swim injury-risk ratio.

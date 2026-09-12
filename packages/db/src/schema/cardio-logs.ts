@@ -19,6 +19,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
+import type { SwimActualResult } from "./swimming";
 
 export const cardioLogs = pgTable(
   "cardio_logs",
@@ -62,6 +63,7 @@ export const cardioLogs = pgTable(
     inferredConfidence: numeric("inferred_confidence", { precision: 3, scale: 2 }),
     // Offline-logging idempotency key (migration 0097). See set_logs.client_log_id.
     clientLogId: uuid("client_log_id"),
+    swimResult: jsonb("swim_result").$type<SwimActualResult>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .default(sql`now()`)
       .notNull(),
@@ -69,6 +71,8 @@ export const cardioLogs = pgTable(
   (t) => ({
     // Migration 0097 — unique idempotency key for offline replay.
     clientLogIdKey: uniqueIndex("cardio_logs_client_log_id_key").on(t.clientLogId),
+    swimSessionKey: uniqueIndex("cardio_logs_one_swim_result_per_session")
+      .on(t.sessionId).where(sql`${t.swimResult} IS NOT NULL`),
   }),
 );
 

@@ -3,8 +3,8 @@
  *
  * Vitest runs in a Node environment (`vitest.config.ts`), so there is
  * no DOM. We call EmptyState as a plain function and inspect the
- * returned React element tree — enough to pin "title + body always
- * render", "action only when supplied", "inline variant has no
+ * returned React element tree — enough to pin optional body and
+ * action rendering, "inline variant has no
  * border", and "action href round-trips".
  */
 import { describe, it, expect } from "vitest";
@@ -47,6 +47,17 @@ function textOf(el: AnyEl | undefined): string {
 }
 
 describe("EmptyState", () => {
+  it.each([undefined, ""])("omits the body element when body is %s", (body) => {
+    const el = EmptyState({
+      title: "No sessions",
+      body,
+      action: { label: "Log session", href: "/app/sessions/new" },
+    }) as AnyEl;
+    expect(findByTestId(el, "empty-state-body")).toBeUndefined();
+    expect(findByTestId(el, "empty-state-title")).toBeTruthy();
+    expect(findByTestId(el, "empty-state-action")?.props.href).toBe("/app/sessions/new");
+  });
+
   it("renders title and body", () => {
     const el = EmptyState({
       title: "No HR-zone data",

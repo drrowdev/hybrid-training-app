@@ -1,0 +1,95 @@
+name: Swimming import storage
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "packages/db/drizzle/0150_swim_import_storage.sql"
+      - "packages/db/rollbacks/0150_swim_import_storage.down.sql"
+      - "packages/db/integration-tests/swim-import-storage.mjs"
+      - ".github/workflows/swim-import-storage.yml"
+      - "packages/db/drizzle/**"
+      - "packages/db/rollbacks/0151_swim_pool_changes.down.sql"
+      - "packages/db/integration-tests/swim-pool-storage.mts"
+      - "packages/domain/src/swim-pool-change*"
+      - "packages/engine/src/swimming.ts"
+      - "apps/web/src/components/swim/**"
+      - "apps/web/src/lib/swim/**"
+      - "apps/web/scripts/test-swim-pool-ui.mjs"
+permissions:
+  contents: read
+concurrency:
+  group: swim-import-storage-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+jobs:
+  storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: swim_import_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U postgres -d swim_import_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Verify native source identities
+        run: node scripts/check-commit-identities.mjs ci
+      - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify isolated swimming import storage
+        timeout-minutes: 3
+        env:
+          SWIM_IMPORT_TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/swim_import_test
+          TESTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm --filter @hta/db exec node integration-tests/swim-import-storage.mjs
+  pool-storage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: swim_pool_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - "127.0.0.1:5432:5432"
+        options: >-
+          --health-cmd "pg_isready -U postgres -d swim_pool_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Verify native source identities
+        run: node scripts/check-commit-identities.mjs ci
+      - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Verify isolated swimming pool storage
+        timeout-minutes: 5
+        env:
+          SWIM_POOL_TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/swim_pool_test
+          TESTED_SHA: ${{ github.event.pull_request.head.sha }}
+        run: pnpm --filter @hta/db exec tsx integration-tests/swim-pool-storage.mts
+      - name: Type-check the pool contract runner
+        run: pnpm --filter @hta/web exec tsc --noEmit --module esnext --moduleResolution bundler --target es2022 --skipLibCheck --allowImportingTsExtensions --strict --esModuleInterop --types node ../../packages/db/integration-tests/swim-pool-storage.mts
+      - name: Install test browser
+        run: pnpm --filter @hta/web exec playwright install --with-deps chromium
+      - name: Verify pool controls without external services
+        run: pnpm --filter @hta/web exec node scripts/test-swim-pool-ui.mjs

@@ -131,7 +131,7 @@ export function TmSection({
       <section className="cp-card" style={{ padding: 20 }}>
         <h2 style={{ margin: "0 0 4px", fontSize: 16 }}>Add a max for any other lift</h2>
         <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-          Pick from the catalog of compound movements — autosaves once you select a movement and enter your 1RM.
+          Saves after you select a movement and enter a 1RM.
         </p>
         <TmAutoForm mode="new" units={units} candidateGroups={pickerGroups} action={upsertAction} />
       </section>
@@ -307,7 +307,7 @@ function EstimatePopover({
   return (
     <div className={styles.pop} role="dialog" aria-label="Estimate 1RM from a set">
       <span className={styles.popH}>Estimate from a set</span>
-      <p className={styles.popP}>Enter a recent hard set and we&apos;ll work out your 1-rep max.</p>
+      <p className={styles.popP}>Use a recent hard set.</p>
       <div className={styles.popFields}>
         <div className={styles.popField}>
           <label htmlFor="est-weight">

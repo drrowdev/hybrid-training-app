@@ -6,6 +6,7 @@
 import { ALL_REGIONS, type Region } from "@hta/domain";
 import { ymdInTimezone } from "@/lib/dates";
 import { MODALITY_REGION } from "@/lib/cardio/modality-region";
+import { structuredSwimRegions } from "@/lib/swim/load";
 import {
   CARDIO_LOAD_SCALAR,
   computeSetLoad,
@@ -36,6 +37,7 @@ export type RegionLoadCardio = {
   rpe: number | string | null;
   modality: string | null;
   hrZones: unknown;
+  swimResult?: unknown;
   movement: unknown;
 };
 
@@ -68,11 +70,11 @@ export function deriveDailyRegionLoad(args: {
   }
 
   for (const cardio of args.cardio) {
-    const movement =
-      normaliseMovement(cardio.movement) ?? modalityFallback(cardio.modality);
+    const swim = structuredSwimRegions(cardio.swimResult);
+    const movement = normaliseMovement(cardio.movement) ?? modalityFallback(cardio.modality);
     const date = localYmd(cardio.performedAt, args.userTz);
     const durationSec = Number(cardio.durationSec);
-    if (!movement || !date || durationSec <= 0) continue;
+    if ((!swim && !movement) || !date || durationSec <= 0) continue;
 
     const load =
       (durationSec / 60) *
@@ -82,7 +84,12 @@ export function deriveDailyRegionLoad(args: {
         rpe: cardio.rpe == null ? null : Number(cardio.rpe),
       }) *
       CARDIO_LOAD_SCALAR;
-    if (load > 0) creditRegions(dailyLoad, movement, date, load);
+    if (load > 0 && swim) {
+      for (const region of swim.primaryRegions) addLoad(dailyLoad, region, date, load * PRIMARY_REGION_WEIGHT);
+      for (const region of swim.secondaryRegions) addLoad(dailyLoad, region, date, load * SECONDARY_REGION_WEIGHT);
+    } else if (load > 0 && movement) {
+      creditRegions(dailyLoad, movement, date, load);
+    }
   }
 
   return dailyLoad;

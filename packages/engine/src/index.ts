@@ -33,3 +33,5 @@ export {
   type TierResult,
   type Contributor,
 } from "./tier-detection";
+
+export * from "./swimming";

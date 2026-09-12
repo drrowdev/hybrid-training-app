@@ -26,7 +26,7 @@ export default async function BwAssessmentStandalonePage() {
           label: "Bodyweight progression",
         }}
         title="Bodyweight assessment"
-        subtitle="Three short pages — rep tests, skill chips, and a hinge-gap acknowledgement — seed your starting node per movement family. Re-running the assessment overwrites your current nodes and zeroes the accumulators."
+        subtitle="Reassessing replaces your current progression levels and resets accumulated progress."
       />
 
       <BwAssessmentRunner />

@@ -86,7 +86,7 @@ export default async function StatsAdherencePage({
       <PageHeader
         back={{ href: "/app/stats", label: "Stats" }}
         title="Consistency"
-        subtitle="Sessions completed vs planned, the weekdays you train best, and how skipped sessions accumulate. Skipped counts as missed for every % we report."
+        subtitle="Completed vs planned sessions. Skipped sessions count as missed."
       />
 
       {/* Range toggle + range-dependent cards are client-owned so

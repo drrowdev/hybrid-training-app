@@ -89,7 +89,8 @@ describe("createProgramInstance — strength superset link validation", () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain("aren't in that session anymore");
+      expect(result.error).toMatch(/superset.*missing.*session/i);
+      expect(result.error).toContain("Remove the link or add the lift back.");
     }
   });
 
@@ -160,7 +161,8 @@ describe("createProgramInstance — strength superset link validation", () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain("aren't in that session anymore");
+      expect(result.error).toMatch(/superset.*missing.*session/i);
+      expect(result.error).toContain("Remove the link or add the lift back.");
     }
   });
 
@@ -187,7 +189,8 @@ describe("createProgramInstance — strength superset link validation", () => {
     });
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain("aren't in that session anymore");
+      expect(result.error).toMatch(/superset.*missing.*session/i);
+      expect(result.error).toContain("Remove the link or add the lift back.");
     }
   });
 

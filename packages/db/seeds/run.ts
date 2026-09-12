@@ -12,6 +12,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { sql as drizzleSql } from "drizzle-orm";
 import { movements } from "../src/schema/movements";
 import { requiresPrimaryMuscle, SEED_MOVEMENTS } from "./movements";
+import { resolveSeedSsl } from "./db-ssl";
 
 config({ path: ".env.local" });
 
@@ -21,7 +22,11 @@ if (!url) {
   process.exit(1);
 }
 
-const sql = postgres(url, { prepare: false, ssl: "require", max: 4 });
+const sql = postgres(url, {
+  prepare: false,
+  ssl: resolveSeedSsl(url, process.env.PGSSLMODE),
+  max: 4,
+});
 const db = drizzle(sql);
 
 async function main() {

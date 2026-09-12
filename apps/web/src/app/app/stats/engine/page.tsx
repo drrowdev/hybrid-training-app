@@ -73,7 +73,6 @@ export default async function EnginePage() {
         back={{ href: "/app/stats", label: "Stats" }}
         title="How the planner sees you"
         titleTestId="stats-engine-header"
-        subtitle="Plain-language explanation of why today's session is what it is."
       />
 
       <DecisionTraceCard trace={trace} />
@@ -191,7 +190,7 @@ function RegionFreshnessCard({ regions }: { regions: RegionFreshnessDetail[] }) 
         <EmptyState
           variant="inline"
           title="No region load yet"
-          body="Log a completed session — strength or cardio — and per-region freshness materialises here with maintenance-to-recovery reference bands."
+          body="Requires a completed strength or cardio session."
         />
       ) : (
         <div style={{ display: "grid", gap: 12 }}>
@@ -326,15 +325,13 @@ function BucketPressureCard({ buckets }: { buckets: BucketPressureRow[] }) {
         </span>
       </h2>
       <p style={{ margin: "4px 0 16px", color: "var(--cp-text-muted)", fontSize: 13 }}>
-        Where the load is concentrated, and how close each bucket is to its
-        own ceiling. Different from regions — regions are anatomy; buckets
-        are the type of stress.
+        Training load by stress type, relative to each ceiling.
       </p>
       {!hasData ? (
         <EmptyState
           variant="inline"
           title="No stress data yet"
-          body="Log a few sessions and bucket pressure (chronic vs acute, by stress type) materialises here."
+          body="Requires logged training."
         />
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 10 }}>
@@ -452,10 +449,6 @@ function CeilingExplainerCard({
           </span>
         </span>
       </h2>
-      <p style={{ margin: "4px 0 16px", color: "var(--cp-text-muted)", fontSize: 13 }}>
-        Plain-language render of the engine&apos;s ceiling equation —
-        inputs you can see, output the engine actually uses.
-      </p>
 
       {/* "Why this many?" recovered-weeks badge */}
       <div
@@ -670,14 +663,12 @@ function RecentOverridesCard({
         </span>
       </h2>
       <p style={{ margin: "4px 0 12px", color: "var(--cp-text-muted)", fontSize: 13 }}>
-        Last 10 cases where you took a different action than the engine
-        recommended.
+        Last 10 changes to recommended training.
       </p>
       {notTracked ? (
         <EmptyState
           variant="inline"
           title="No overrides yet"
-          body="When you skip a planned session, swap a movement, or end a block early, the engine logs it here. Quiet means the engine's calls are sticking."
         />
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>

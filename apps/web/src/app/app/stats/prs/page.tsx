@@ -27,13 +27,13 @@ export default async function AllPrsPage() {
       <PageHeader
         back={{ href: "/app/stats", label: "Stats" }}
         title="All PRs"
-        subtitle="Your personal records, newest first — best weight, best reps at a weight, and best estimated 1-rep max."
+        subtitle="Best weight, reps at a weight, and estimated 1RM."
       />
 
       {prs.length === 0 ? (
         <section className="cp-card" style={{ padding: 20 }}>
           <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14 }}>
-            No PRs logged yet. Start lifting; we&apos;ll catch them.
+            No PRs logged yet.
           </p>
         </section>
       ) : (

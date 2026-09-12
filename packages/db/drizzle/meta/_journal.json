@@ -1023,6 +1023,48 @@
       "when": 1788912000000,
       "tag": "0145_seed_single_leg_rdl_variants",
       "breakpoints": false
+    },
+    {
+      "idx": 146,
+      "version": "7",
+      "when": 1788912000001,
+      "tag": "0146_standalone_pool_swimming",
+      "breakpoints": false
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1788912000002,
+      "tag": "0147_swim_request_identity",
+      "breakpoints": false
+    },
+    {
+      "idx": 148,
+      "version": "7",
+      "when": 1788912000003,
+      "tag": "0148_shared_completion_identity",
+      "breakpoints": false
+    },
+    {
+      "idx": 149,
+      "version": "7",
+      "when": 1788912000004,
+      "tag": "0149_defer_custom_movement_references",
+      "breakpoints": false
+    },
+    {
+      "idx": 150,
+      "version": "7",
+      "when": 1789214400000,
+      "tag": "0150_swim_import_storage",
+      "breakpoints": false
+    },
+    {
+      "idx": 151,
+      "version": "7",
+      "when": 1789228800000,
+      "tag": "0151_swim_pool_changes",
+      "breakpoints": false
     }
   ]
 }

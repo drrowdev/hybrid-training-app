@@ -157,7 +157,7 @@ export function MovementPicker({
           onBlur={() => {
             blurTimer.current = window.setTimeout(() => setFocused(false), 120);
           }}
-          placeholder="Search movements (e.g. squat)…"
+          placeholder="Search movements…"
           data-testid="movement-picker-input"
           style={{
             width: "100%",

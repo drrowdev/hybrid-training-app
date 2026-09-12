@@ -34,10 +34,6 @@ export function TrainingProgressionCards({
       {showTrainingMaxes && (
         <section className="space-y-3" data-testid="settings-training-maxes-card">
           <h2 className="text-lg font-medium">1-rep maxes</h2>
-          <p className="text-xs text-foreground/60">
-            Your 1RM per main lift. Your active program uses these to set your
-            working weights.
-          </p>
           <Link
             href="/app/settings/training-maxes"
             className="inline-flex items-center justify-between gap-3 rounded-lg border border-foreground/10 p-4 w-full hover:bg-foreground/5"
@@ -52,8 +48,7 @@ export function TrainingProgressionCards({
         <section className="space-y-3" data-testid="settings-bw-progression-card">
           <h2 className="text-lg font-medium">Bodyweight progression</h2>
           <p className="text-xs text-foreground/60">
-            Your current level per family, accumulated time under tension, recent
-            progressions, and recommendations. Tap to review or adjust.
+            Current movement levels, time under tension, and progress.
           </p>
           <Link
             href="/app/settings/bodyweight-progression"

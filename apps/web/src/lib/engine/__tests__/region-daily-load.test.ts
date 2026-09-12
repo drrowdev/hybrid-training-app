@@ -185,6 +185,7 @@ function makeRegionStateStub(store: {
   region_state: Array<Record<string, unknown>>;
 }) {
   return {
+    rpc: async () => ({ data: null, error: { code: "PGRST202", message: "Swimming storage is not installed" } }),
     from(table: keyof typeof store) {
       const builder: Record<string, unknown> = {};
       Object.assign(builder, {

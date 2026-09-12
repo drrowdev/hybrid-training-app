@@ -24,6 +24,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { getSwimNavigation } from "@/lib/swim/navigation";
 import { getUserTimezone } from "@/lib/planner/queries";
 import { getActiveBlockProgress } from "@/lib/stats/active-block-progress";
 import { getAdherenceForWindow } from "@/lib/stats/adherence";
@@ -107,6 +108,7 @@ export default async function StatsOverviewPage({
     endurance30d,
     endurance90d,
     enduranceAll,
+    swimNavigation,
   ] = await Promise.all([
     getActiveBlockProgress(supabase, user.id, tz),
     getFreshnessMini(supabase, user.id),
@@ -129,6 +131,7 @@ export default async function StatsOverviewPage({
     getEnduranceProgress(supabase, user.id, tz, strengthWindow("30d")),
     getEnduranceProgress(supabase, user.id, tz, strengthWindow("90d")),
     getEnduranceProgress(supabase, user.id, tz, strengthWindow("all")),
+    getSwimNavigation(supabase, user.id),
   ]);
 
   const byRange: Record<Range, StatsRangeBucket> = {
@@ -167,7 +170,6 @@ export default async function StatsOverviewPage({
     <div style={{ display: "grid", gap: 18 }}>
       <PageHeader
         title="Stats"
-        subtitle="Where strength and endurance are trending, how recovered you are, and whether you're showing up."
       />
 
       <StatsCommandCenter
@@ -184,7 +186,7 @@ export default async function StatsOverviewPage({
         relevance={{ strength: strengthRelevant, cardio: cardioRelevant }}
       />
 
-      <DeepDiveLinks showEngine={Boolean(block?.usesAdaptiveEngine)} />
+      <DeepDiveLinks showEngine={Boolean(block?.usesAdaptiveEngine)} showSwimming={swimNavigation.hasPlans} />
     </div>
   );
 }
@@ -200,7 +202,7 @@ export default async function StatsOverviewPage({
 // them — see `usesAdaptiveEngine` on ActiveBlockProgress.
 // ──────────────────────────────────────────────────────────────────────
 
-function DeepDiveLinks({ showEngine }: { showEngine: boolean }) {
+function DeepDiveLinks({ showEngine, showSwimming }: { showEngine: boolean; showSwimming: boolean }) {
   const links: Array<{ label: string; href: string }> = [
     { label: "PRs & per-movement", href: "/app/stats/prs" },
     ...(showEngine
@@ -208,6 +210,7 @@ function DeepDiveLinks({ showEngine }: { showEngine: boolean }) {
       : []),
     { label: "Block analytics", href: "/app/stats/blocks" },
     { label: "Consistency details", href: "/app/stats/adherence" },
+    ...(showSwimming ? [{ label: "Swimming", href: "/app/swim" }] : []),
   ];
   return (
     <section

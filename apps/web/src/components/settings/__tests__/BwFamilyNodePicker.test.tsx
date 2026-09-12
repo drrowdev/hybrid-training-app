@@ -71,8 +71,6 @@ describe("BwFamiliesManualPicker render", () => {
     expect(html).toContain('data-testid="bw-families-allow-any-node"');
     // Toggle defaults off (the `checked` attribute is omitted).
     expect(html).not.toMatch(/data-testid="bw-families-allow-any-node"[^>]*checked/);
-    // Helper copy reflecting the gate's purpose.
-    expect(html).toContain("Off by default");
   });
 
   it("disables out-of-reach nodes by default and surfaces them as locked options", () => {

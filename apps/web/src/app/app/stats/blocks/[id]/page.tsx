@@ -166,7 +166,7 @@ function MainLiftsGrid({
         <EmptyState
           variant="inline"
           title="No main-lift sets"
-          body="Log a top set on a tracked main lift (squat, bench, deadlift, press) and the per-lift progression cards populate."
+          body="Requires a logged top set: squat, bench, deadlift, or press."
         />
       </section>
     );
@@ -375,7 +375,7 @@ function RpeCreepSection({ rows }: { rows: BlockRpeCreepRow[] }): ReactElement {
         <EmptyState
           variant="inline"
           title="No RPE logged"
-          body="Log RPE on your main sets and the per-lift RPE-over-time view populates here."
+          body="Requires RPE on main-lift sets."
         />
       </section>
     );

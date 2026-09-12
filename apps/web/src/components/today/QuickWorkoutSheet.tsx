@@ -132,17 +132,6 @@ export function QuickWorkoutSheet({
           >
             Quick workout
           </h2>
-          <p
-            style={{
-              margin: "4px 0 0",
-              fontSize: 13,
-              color: "var(--cp-text-muted)",
-              lineHeight: 1.4,
-            }}
-          >
-            Generate one tuned to what&apos;s recovered, or build your own. It
-            won&apos;t replace your planned workout — it&apos;s logged on top.
-          </p>
         </div>
       }
     >
@@ -262,7 +251,7 @@ export function QuickWorkoutSheet({
             }}
           >
             {canGenerateHyrox
-              ? "Builds a station circuit, an erg/run, or a compromised run \u2014 picking whichever you\u2019re due for. Weights are set to your division standard."
+              ? "Station weights follow your division standard."
               : "Pick an erg or run, or at least two stations, to generate."}
           </p>
         </div>
@@ -281,7 +270,7 @@ export function QuickWorkoutSheet({
             fontWeight: 600,
           }}
         >
-          Generate for me
+          Generate workout
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <GenerateTile
@@ -307,17 +296,6 @@ export function QuickWorkoutSheet({
             }
           />
         </div>
-        <p
-          style={{
-            margin: "2px 0 0",
-            fontSize: 11,
-            color: "var(--cp-text-muted)",
-            lineHeight: 1.4,
-          }}
-        >
-          Picks the freshest lift for today and fills accessories around the
-          muscles you haven&apos;t hit recently.
-        </p>
       </div>
 
       <div

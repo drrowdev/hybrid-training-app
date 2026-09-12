@@ -20,6 +20,8 @@ import {
   completeSessionResult,
   logCardioSession,
 } from "@/lib/sessions/actions";
+import { completeSwimWorkoutResult } from "@/lib/swim/actions";
+import type { SwimCompletion } from "@/lib/swim/view-types";
 import {
   claimEntry,
   deadLetter,
@@ -43,14 +45,16 @@ export type FlushResult = {
   dropped: number;
   completed: number;
   completedSessionIds: string[];
+  swimCompletions?: SwimCompletion[];
 };
 
-let flushing = false;
+let activeFlush: Promise<FlushResult> | null = null;
+let flushRequested = false;
 
 async function runEntry(
   entry: OutboxEntry,
 ): Promise<{
-  result?: ActionResult;
+  result?: ActionResult & { completion?: SwimCompletion };
   threw: boolean;
 }> {
   try {
@@ -64,6 +68,12 @@ async function runEntry(
     }
     if (entry.op === "cardio_session") {
       const result = await logCardioSession(payloadToFormData(entry.payload));
+      return { result, threw: false };
+    }
+    if (entry.op === "swim_complete") {
+      const result = await completeSwimWorkoutResult(
+        payloadToFormData({ ...entry.payload, clientLogId: entry.id }),
+      );
       return { result, threw: false };
     }
     // complete — redirect-free core; payload carries sessionId + optional notes.
@@ -80,14 +90,18 @@ async function runEntry(
 
 /**
  * Drain the outbox FIFO. Returns counts. Concurrency-guarded — overlapping
- * triggers (online + visibility firing together) collapse into one drain.
+ * triggers join one drain and request a fresh snapshot before it settles.
+ * A transient failure or occupied lease still stops all overlapping requests.
  */
 export async function flushOutbox(): Promise<FlushResult> {
-  if (!outboxAvailable() || flushing) {
-    const remaining = outboxAvailable() ? (await listPending()).length : 0;
+  if (activeFlush) {
+    flushRequested = true;
+    return activeFlush;
+  }
+  if (!outboxAvailable()) {
     return {
       flushed: 0,
-      remaining,
+      remaining: 0,
       dropped: 0,
       completed: 0,
       completedSessionIds: [],
@@ -103,55 +117,75 @@ export async function flushOutbox(): Promise<FlushResult> {
     };
   }
 
-  flushing = true;
+  activeFlush = drainOutbox();
+  return activeFlush;
+}
+
+async function drainOutbox(): Promise<FlushResult> {
   let flushed = 0;
   let dropped = 0;
   let completed = 0;
+  let remaining = 0;
+  let stopped = false;
   const completedSessionIds: string[] = [];
+  const swimCompletions: SwimCompletion[] = [];
   try {
-    const pending = await listPending(); // FIFO
-    for (const entry of pending) {
-      const leaseToken = await claimEntry(entry.id);
-      // An active lease means another tab is sending this head. Do not overtake
-      // it or FIFO ordering can be broken across tabs.
-      if (!leaseToken) break;
-      try {
-        const { result, threw } = await runEntry(entry);
-        const outcome = classifyActionResult(result, threw);
-        if (outcome === "done") {
-          await remove(entry.id);
-          flushed += 1;
-          if (entry.op === "complete") {
-            completed += 1;
-            completedSessionIds.push(entry.sessionId);
+    do {
+      // Reset before reading: an enqueue can finish after this snapshot.
+      flushRequested = false;
+      const pending = await listPending(); // FIFO
+      for (const entry of pending) {
+        const leaseToken = await claimEntry(entry.id);
+        // An active lease means another tab is sending this head. Do not overtake
+        // it or FIFO ordering can be broken across tabs.
+        if (!leaseToken) { stopped = true; break; }
+        try {
+          const { result, threw } = await runEntry(entry);
+          const outcome = classifyActionResult(result, threw);
+          if (outcome === "done") {
+            await remove(entry.id);
+            flushed += 1;
+            if (entry.op === "complete" || entry.op === "swim_complete") {
+              completed += 1;
+              completedSessionIds.push(entry.sessionId);
+              if (entry.op === "swim_complete" && result?.completion &&
+                result.completion.receiptId === entry.id &&
+                result.completion.sessionId === entry.sessionId &&
+                result.completion.workoutId === entry.payload.workoutId) {
+                swimCompletions.push(result.completion);
+              }
+            }
+          } else if (outcome === "drop") {
+            // Native swim drafts need the rejection after a different tab flushes.
+            if (entry.op === "swim_complete") await deadLetter(entry.id, result?.error ?? "Review your swim entries.");
+            else await remove(entry.id);
+            dropped += 1;
+          } else if (outcome === "dead_letter") {
+            // Ownership/not-found failures cannot recover by retrying. Keep the
+            // row inspectable but skip it so later sessions still make progress.
+            await deadLetter(entry.id, result?.error ?? "permanent failure");
+            dropped += 1;
+          } else {
+            // Transient (offline / network). Record + STOP to preserve FIFO order
+            // unless this row has exhausted its bounded retry budget.
+            const attempt = await recordAttempt(
+              entry.id,
+              result?.error ?? "network",
+            );
+            if (attempt.deadLettered) dropped += 1;
+            else { stopped = true; break; }
           }
-        } else if (outcome === "drop") {
-          // Explicit validation rejection — discard so it can't wedge the queue.
-          await remove(entry.id);
-          dropped += 1;
-        } else if (outcome === "dead_letter") {
-          // Ownership/not-found failures cannot recover by retrying. Keep the
-          // row inspectable but skip it so later sessions still make progress.
-          await deadLetter(entry.id, result?.error ?? "permanent failure");
-          dropped += 1;
-        } else {
-          // Transient (offline / network). Record + STOP to preserve FIFO order
-          // unless this row has exhausted its bounded retry budget.
-          const attempt = await recordAttempt(
-            entry.id,
-            result?.error ?? "network",
-          );
-          if (attempt.deadLettered) dropped += 1;
-          else break;
+        } finally {
+          await releaseEntry(entry.id, leaseToken);
         }
-      } finally {
-        await releaseEntry(entry.id, leaseToken);
       }
-    }
-    const remaining = (await listPending()).length;
-    return { flushed, remaining, dropped, completed, completedSessionIds };
+      remaining = (await listPending()).length;
+    } while (flushRequested && !stopped && outboxAvailable() &&
+      (typeof navigator === "undefined" || navigator.onLine !== false));
+    return { flushed, remaining, dropped, completed, completedSessionIds,
+      ...(swimCompletions.length ? { swimCompletions } : {}) };
   } finally {
-    flushing = false;
+    activeFlush = null;
   }
 }
 
