@@ -21,7 +21,7 @@ export default async function EditCardioPage({
   } = await getAuthUser();
   if (!user) redirect("/login");
   const swimWorkoutId = await findSwimWorkoutForSession(supabase, user.id, id);
-  if (swimWorkoutId) redirect(`/app/swim/${swimWorkoutId}?edit=1`);
+  if (swimWorkoutId) redirect(`/app/swim/${swimWorkoutId}`);
 
   const { data: block } = await supabase
     .from("cardio_logs")

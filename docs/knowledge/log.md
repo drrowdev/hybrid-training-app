@@ -3310,3 +3310,35 @@ before writes. Ambiguous writes remain failed/partial and require manual
 reconciliation, never retries or destructive rollback. The old spent refresh
 is not rerun. Production, Garmin, schema/RLS, owner data and frozen26 are
 unchanged; the review update remains pending guarded execution.
+
+## [2026-09-12] decision | Remove in-app swim workout logging
+
+The approved plan-review refresh34675114561 at `da91ab60` completed successfully.
+Two safe records were consumed once; source and all eight operation stages,
+same-workflow prerequisites, READY mapping, original alias UID, protection,
+Auth, isolation and storage readiness passed. The fixed review now serves the
+accepted plan-editing app. No production, Garmin or owner-data writes occurred.
+That one-shot operation is spent.
+
+The owner then explicitly requested removal of in-app swim logging. Removed
+the workout logger, Start/Finish, per-repeat progress, result-entry/edit UI and
+its local draft/queue creation. Old result-edit URLs now show the prescription
+and saved historical result without editing. Keep scheduled-skip, future plan
+adjustments, optional calibration, history and existing trash/restore. The hub
+omits an empty logging-history prompt. Other sports' logging is unchanged.
+
+DC-SW3/SW5/SW7/SW8 preserve prescriptions, stored results and legacy atomic
+completion processing; no schema, RLS, data or browser-storage cleanup occurs.
+The frozen26 source/evidence remains historical because it exercises removed
+UI. New regression coverage asserts the requested absence of logging, intact
+instructions/history and read-only old edit routes; this is not another
+frozen26 pass or evidence of a new review deployment.
+
+Focused local validation passed 410 tests across workout review, old routes,
+history, planning/actions and legacy outbox handling. Fifteen actual
+React/Chromium hydration scenarios passed using synthetic actions and blocked
+networking, including absence of logging across all workout/plan states,
+readable results, retained skip validation/failure handling and the existing
+13 planning scenarios. Expanded layouts fit 320/375/768px. Web typechecking,
+changed-file lint and offline knowledge-doc checks passed. These are not
+real-database, physical-watch or new-deployment acceptance.

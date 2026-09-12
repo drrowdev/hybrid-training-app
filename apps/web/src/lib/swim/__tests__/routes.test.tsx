@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import SwimPage from "@/app/app/swim/page";
 import SwimWorkoutPage from "@/app/app/swim/[workoutId]/page";
+import EditCardioPage from "@/app/app/sessions/[id]/cardio/[cardioId]/edit/page";
 import { SwimHub } from "@/components/swim/SwimHub";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { WorkoutScreen } from "@/components/swim/WorkoutScreen";
 import { getSwimCapability } from "../capability";
+import { findSwimWorkoutForSession } from "../navigation";
 import { listSwimPlans } from "../storage";
 import { loadSwimHubView, loadSwimWorkoutView } from "../queries";
 import { swimFixture, userId, sessionId } from "./fixtures";
@@ -21,6 +23,9 @@ vi.mock("@/lib/supabase/server", () => ({
   getAuthUser: async () => ({ data: { user: { id: "00000000-0000-4000-8000-000000000001" } } }),
 }));
 vi.mock("../capability", () => ({ getSwimCapability: vi.fn() }));
+vi.mock("../navigation", () => ({ findSwimWorkoutForSession: vi.fn() }));
+vi.mock("@/lib/sessions/actions", () => ({ editCardio: vi.fn() }));
+vi.mock("@/components/session/EditCardioForm", () => ({ EditCardioForm: () => null }));
 vi.mock("../storage", () => ({ listSwimPlans: vi.fn() }));
 vi.mock("../queries", () => ({ loadSwimHubView: vi.fn(), loadSwimWorkoutView: vi.fn() }));
 vi.mock("@/components/swim/SwimHub", () => ({ SwimHub: () => null }));
@@ -38,7 +43,7 @@ beforeEach(() => {
   vi.mocked(getSwimCapability).mockResolvedValue({ storageAvailable: true, setupEnabled: false });
   vi.mocked(listSwimPlans).mockResolvedValue([swimFixture().plan]);
   vi.mocked(loadSwimHubView).mockResolvedValue({ id: "view" } as Awaited<ReturnType<typeof loadSwimHubView>>);
-  vi.mocked(loadSwimWorkoutView).mockResolvedValue({ id: "workout", title: "Pool swim" } as Awaited<ReturnType<typeof loadSwimWorkoutView>>);
+  vi.mocked(loadSwimWorkoutView).mockResolvedValue({ id: "workout", revision: 2, title: "Pool swim" } as Awaited<ReturnType<typeof loadSwimWorkoutView>>);
 });
 
 describe("ADR0079 reachable standalone routes", () => {
@@ -81,14 +86,14 @@ describe("ADR0079 reachable standalone routes", () => {
       { id: other.id, startedOn: other.started_on, status: "paused" },
     ]);
   });
-  it("keeps the structured workout and edit link reachable after setup is disabled", async () => {
+  it("keeps the structured workout readable but ignores old result-edit links after setup is disabled", async () => {
     const page = await SwimWorkoutPage({ params: Promise.resolve({ workoutId: "workout" }), searchParams: Promise.resolve({ edit: "1" }) });
     const screen = elements(page).find((element) => element.type === WorkoutScreen)!;
-    expect(screen.props).toEqual({ workout: { id: "workout", title: "Pool swim" }, userId, edit: true });
-    expect(screen.key).toBe("workout");
+    expect(screen.props).toEqual({ workout: { id: "workout", revision: 2, title: "Pool swim" } });
+    expect(screen.key).toBe("workout:2");
     expect(elements(page).filter((element) => element.type === PageHeader)).toHaveLength(1);
   });
-  it("passes query entry, clear and same-revision re-entry to the same owner key (route elements only)", async () => {
+  it("never restores result editing on query entry, clear or re-entry", async () => {
     const row = swimFixture().history[0]!.workout;
     const workout: SwimWorkoutView = {
       ...workoutPresentation(row.definition.issued),
@@ -102,9 +107,9 @@ describe("ADR0079 reachable standalone routes", () => {
         params: Promise.resolve({ workoutId: workout.id }), searchParams: Promise.resolve({ edit }),
       });
       const screen = elements(page).find((element) => element.type === WorkoutScreen)!;
-      expect(screen.key).toBe(workout.id);
+      expect(screen.key).toBe(`${workout.id}:${workout.revision}`);
       expect(screen.props.workout).toBe(workout);
-      expect(screen.props).toEqual({ workout, userId, edit: edit === "1" });
+      expect(screen.props).toEqual({ workout });
     }
     expect(loadSwimWorkoutView).toHaveBeenCalledTimes(3);
     expect(loadSwimWorkoutView).toHaveBeenCalledWith({}, userId, workout.id);
@@ -112,5 +117,11 @@ describe("ADR0079 reachable standalone routes", () => {
   it("does not fall back to a generic editor for missing structured work", async () => {
     vi.mocked(loadSwimWorkoutView).mockResolvedValue(null);
     await expect(SwimWorkoutPage({ params: Promise.resolve({ workoutId: "missing" }), searchParams: Promise.resolve({}) })).rejects.toThrow("not-found");
+  });
+  it("redirects a structured swim's generic cardio-edit URL to read-only workout review", async () => {
+    vi.mocked(findSwimWorkoutForSession).mockResolvedValue("workout");
+    await expect(EditCardioPage({ params: Promise.resolve({ id: sessionId, cardioId: "cardio" }) }))
+      .rejects.toEqual(new Error("redirect:/app/swim/workout"));
+    expect(findSwimWorkoutForSession).toHaveBeenCalledWith({}, userId, sessionId);
   });
 });

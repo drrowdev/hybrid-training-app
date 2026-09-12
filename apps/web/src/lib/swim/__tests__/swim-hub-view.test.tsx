@@ -73,6 +73,18 @@ describe("DC-SW7 lifecycle controls and parent navigation SSR", () => {
   const selectedChoice = { id: "selected", startedOn: "2026-09-07", status: "active" as const };
   const otherChoice = { id: "other", startedOn: "2026-08-01", status: "archived" as const };
 
+  it("omits empty logging history but preserves saved history and planning controls", () => {
+    const plan = view(2);
+    const render = () => renderToStaticMarkup(<SwimHub plan={plan} plans={[selectedChoice]} setupEnabled />);
+    expect(render()).not.toContain("<h2>Swimming history</h2>");
+    expect(render()).toContain('href="/app/swim/workout"');
+    plan.analytics.weeks.push({
+      week: "2026-09-07", course: "25 yd", planned: "400 yd", actual: "300 yd", frequency: 1, adherence: "100%",
+    });
+    expect(render()).toContain("<h2>Swimming history</h2>");
+    expect(render()).toContain("300 yd");
+  });
+
   it.each([
     ["active", true, true, false, true, true, false],
     ["paused", false, false, true, true, true, true],

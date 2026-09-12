@@ -578,6 +578,13 @@ engineering choices and calibration limits are separated in
 [`pool-swimming.md`](./pool-swimming.md). The original primary-program contracts
 remain in force.
 
+**Owner workflow update (2026-09-12):** Swimming is review/edit-only in getsxc;
+in-app workout start, progress capture and result entry/editing are removed.
+DC-SW7/SW8's existing atomic storage, queued legacy completions, ownership and
+history guarantees remain compatibility contracts, not a requirement to expose
+the retired logger. This changes no engine calculations and authorizes no data
+deletion, migration or inferred watch results. See [current swimming scope](./pool-swimming.md#in-app-swim-logging-removed---2026-09-12).
+
 - **DC-SW1 - Exact native measurements [DEF].** A pool is a bounded, reduced
   positive rational length with native `m` or `yd` units. Work uses integer whole
   lengths and integer milliseconds. Totals, formatting and comparison share one

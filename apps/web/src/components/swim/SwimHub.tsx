@@ -118,9 +118,9 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
       {editable && !!plan.editableWeeks?.length && <WeekEditor
         key={JSON.stringify([plan.id, plan.revision, plan.today, plan.editableWeeks])}
         plan={plan} busy={requestBusy} onApply={(changes) => run(() => applySwimWeekEdit(changes))} />}
-      <section className={styles.section}>
+      {!!(plan.analytics.weeks.length || plan.analytics.bests.length || plan.analytics.benchmarks.length) && <section className={styles.section}>
         <h2>Swimming history</h2>
-        {plan.analytics.weeks.length === 0 ? <p className={styles.muted}>No swims logged yet.</p> : <div className={styles.tableWrap}>
+        {plan.analytics.weeks.length > 0 && <div className={styles.tableWrap}>
           <table className={styles.table}>
             <caption className={styles.muted}>Weekly distance by pool</caption>
             <thead><tr><th scope="col">Week</th><th scope="col">Pool</th><th scope="col">Planned</th><th scope="col">Swum</th><th scope="col">Swims</th><th scope="col">Adherence</th></tr></thead>
@@ -141,7 +141,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
             <span>{benchmark.label}<small>{benchmark.date}</small></span><strong>{benchmark.pace}</strong>
           </li>)}</ul>
         </>}
-      </section>
+      </section>}
       {editable && <section className={styles.section}>
         <h2>New assessment</h2>
         <form className={styles.form} method="post" onSubmit={(event) => {

@@ -2,7 +2,7 @@
 
 **Purpose:** Catalog of all hand-off files for the hybrid training app project. Organized by role in the Karpathy personal-knowledge-base pattern (plan §6.10): raw sources are immutable; wiki pages are LLM-maintained; the schema governs ingest, citation, and lint workflows. This file is the seed of `docs/knowledge/index.md` in the eventual repo.
 
-**Last updated:** 2026-09-11
+**Last updated:** 2026-09-12
 
 ---
 
@@ -24,10 +24,11 @@ The three research files. Never edited; new sources appended here when ingested.
 The maintained-by-AI layer. These pages are rewritten as new sources arrive; they cite raw sources via the index. The eventual home is `docs/knowledge/` in the repo.
 
 - [`pool-swimming.md`](./pool-swimming.md) - Original standalone prescriptions,
-  exact course measurements, optional assessment, versioned adaptation, shared
-  logging and source-specific evidence. Current owner requirement: review/edit
+  exact course measurements, optional assessment, versioned adaptation, retained
+  history and source-specific evidence. Current owner requirement: review/edit
   in getsxc and execute scheduled workouts on a Forerunner 970. Garmin calendar
   delivery is not implemented and official Training API access is pending.
+  In-app swim workout logging is removed; historical results remain readable.
   Current work is offline app/programming completion: local new-plan preview,
   reviewed future-week adjustments and same-week date moves. No live Garmin
   pilot is authorized.

@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { WorkoutScreen } from "@/components/swim/WorkoutScreen";
 import styles from "@/components/swim/Swim.module.css";
 
-export default async function SwimWorkoutPage({ params, searchParams }: {
+export default async function SwimWorkoutPage({ params }: {
   params: Promise<{ workoutId: string }>; searchParams: Promise<{ edit?: string }>;
 }) {
   const client = await createClient();
@@ -22,7 +22,7 @@ export default async function SwimWorkoutPage({ params, searchParams }: {
   return (
     <main className={styles.page}>
       <PageHeader title={view.title} back={{ href: "/app/swim", label: "Swimming" }} />
-      <WorkoutScreen key={view.id} workout={view} userId={user.id} edit={(await searchParams).edit === "1"} />
+      <WorkoutScreen key={`${view.id}:${view.revision}`} workout={view} />
     </main>
   );
 }

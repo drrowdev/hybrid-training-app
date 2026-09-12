@@ -11,13 +11,37 @@ scope statements below. The goal covers generated programs generally; swimming
 is the first end-to-end delivery slice, not a claim of support for every
 program or Garmin activity type.
 
-The four earlier app usability repairs passed frozen26 at application
-`0a3d12e862ad2ffe7acbb8498f3442923005674c` in run34606756220. App-equivalent
-`abbd6583ef0dc459f8ae7cee4dd728a98d85d0d7` is deployed to the existing isolated
-review after successful guarded refresh34625326276. That evidence remains valid
+The plan-review/editing application passed frozen26 at
+`c1f25d2b2704d710f83c1e5be2d14839d1a545fe` in run34645293193. App-equivalent
+`da91ab606680d5436591d7fe51446f184147602e` is deployed to the existing isolated
+review after successful guarded refresh34675114561. That evidence remains valid
 for its source and scope, but does not establish Garmin delivery or owner
 acceptance of a watch-first workflow. The historical checkpoints below remain
-source-specific; frozen26 is not expanded or rerun for this planning change.
+source-specific.
+
+### In-app swim logging removed - 2026-09-12
+
+The owner explicitly removed in-app workout logging from the swimming product,
+not merely made it optional. Workout pages show the prescription and any saved
+historical result, without Start, repeat checkboxes/counters, result entry,
+Finish, result editing or local logging drafts. Old result-edit URLs open the
+read-only workout. Skipping a scheduled swim, future-week/date editing and plan
+lifecycle controls remain available. Empty history no longer prompts logging.
+Other sports' logging is unchanged.
+
+No saved results, issued prescriptions, browser drafts or database rows are
+deleted by this UI removal. Existing atomic result storage, legacy queued
+completion processing, ownership, export and trash/restore paths are retained;
+the current swimming UI creates no new completion requests. This does not add
+Garmin imports or infer completion, effort, pace or progression from the
+calendar.
+
+This is a new application change after the accepted review deployment above,
+not yet deployed there. The historical frozen26 suite exercises the removed
+logging UI and is not current acceptance evidence for this behaviour change.
+Keep that source/evidence intact rather than silently rewriting or skipping
+its assertions. Current regression coverage must verify absent logging controls,
+readable history and retained planning routes.
 
 ### Delivery requirements
 
@@ -64,14 +88,13 @@ partial weeks, rather than assuming calendar-Monday weeks.
 
 The existing database rule that locks plan setup remains intact: changing
 the pool, goal or other setup requires a new plan. Dates cannot silently move
-work into another training week or add catch-up volume. Ordinary workout pages
-put the complete prescription before the optional in-app start control.
+work into another training week or add catch-up volume.
 These changes are published on PR805 and passed the existing frozen26
 standalone reference at `c1f25d2b2704d710f83c1e5be2d14839d1a545fe`
 (run34645293193, all26 once, all11 stages and both cleanups). New preview/edit
 controls also have focused action and hydrated-client coverage; frozen26 does
 not independently exercise every new control against the database. The review
-site still serves `abbd6583`, and Garmin delivery remains unimplemented.
+site serves app-equivalent `da91ab60`, and Garmin delivery remains unimplemented.
 
 The owner approved updating that existing isolated review with the accepted
 plan-editing application. A separate default-false `refresh_swim_plan_review`
@@ -80,8 +103,12 @@ requires application equivalence to `c1f25d2b`. It reuses the bounded refresh
 state machine without changing the original operation's pins. Only the
 existing branch BUILD_SHA override, one exact-source Preview and the existing
 review alias may change. Account, data, configuration and protection remain
-unchanged; production and Garmin are outside this approval. Source preparation
-is not evidence that the review deployment has been updated.
+unchanged; production and Garmin are outside this approval. Guarded run34675114561
+completed with source verification and all eight operation stages accepted.
+Both safe records were consumed once. The fixed protected review points to
+READY deployment `dpl_3vfgXX3bpYQ9BL5JhA6F8U3Qwy73`; the original alias UID,
+Auth, protection, isolation and storage-readiness checks passed. This operation
+is spent and must not be reused for a later application change.
 
 Programming integration also preserves the original declared weeks when a
 saved plan is reconstructed, including empty earlier weeks in a resumed review
@@ -121,8 +148,9 @@ activities back into getsxc is a separate Activity API/consent and matching
 decision; calendar publication alone must not drive completion or progression.
 No HRV/sleep integration is included.
 
-Existing review data, in-app logging as an optional fallback, prior acceptance
-evidence and all safety/history constraints remain intact. No provider
+Existing review data, prior source-specific acceptance evidence and all
+safety/history constraints remain intact. In-app swim logging is no longer an
+optional fallback. No provider
 application, new credentials, user-data migration, RLS change, production
 release, paid service, combined-program activation or backup work is authorized
 by this planning update.

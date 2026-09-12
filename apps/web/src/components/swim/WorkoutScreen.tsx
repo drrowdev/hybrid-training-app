@@ -1,21 +1,71 @@
 "use client";
 
-import { useState } from "react";
-import { nextConfirmedView, nextEditMode, type SwimWorkoutView } from "@/lib/swim/view-types";
-import { WorkoutClient } from "./WorkoutClient";
+import Link from "next/link";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { DeleteSessionButton } from "@/components/trash/DeleteSessionButton";
+import { skipSwimWorkout } from "@/lib/swim/actions";
+import { formatSwimTime } from "@/lib/swim/time";
+import type { SwimWorkoutView } from "@/lib/swim/view-types";
+import styles from "./Swim.module.css";
 
-export function WorkoutScreen({ workout: incomingWorkout, userId, edit = false }: {
-  workout: SwimWorkoutView; userId: string; edit?: boolean;
-}) {
-  const [heldWorkout, setWorkout] = useState(incomingWorkout);
-  const effective = nextConfirmedView(heldWorkout, incomingWorkout, "props");
-  if (effective !== heldWorkout) setWorkout(effective);
-  const [warning, setWarning] = useState<string | null>(null);
-  const [editIntent, setEditIntent] = useState<number | null>(null);
-  const mode = nextEditMode(editIntent, edit, effective.revision);
-  if (mode.intent !== editIntent) setEditIntent(mode.intent);
+export function WorkoutScreen({ workout }: { workout: SwimWorkoutView }) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
 
-  return <WorkoutClient key={`${effective.id}:${effective.revision}`} workout={effective} userId={userId} edit={mode.open}
-    onConfirmed={(view) => setWorkout((current) => nextConfirmedView(current, view, "confirmed"))}
-    warning={warning} setWarning={setWarning} />;
+  return (
+    <>
+      <section className={styles.section}>
+        <div className={styles.actions}><p className={styles.distance}>{workout.total}</p><span className={styles.muted}>{workout.course}</span></div>
+        <p className={styles.muted}>{workout.date} · Up to {workout.budgetMinutes} min{workout.provisional && !workout.sessionId ? " · Provisional" : ""}</p>
+        {workout.calibrationLabel && <p className={styles.muted}>{workout.calibrationLabel}</p>}
+        {!workout.sessionId && workout.status === "scheduled" && workout.planStatus !== "active" && (
+          <p role="status" className={styles.muted}>{({ paused: "Plan paused", finished: "Plan finished", archived: "Plan archived" })[workout.planStatus]}</p>
+        )}
+        {workout.deleted && <Link href="/app/settings/trash" className={styles.secondary}>Restore from Trash</Link>}
+        {workout.sourceGone && <p role="status" className={styles.muted}>Result removed</p>}
+      </section>
+      <section className={styles.section}>
+        <h2>Workout</h2>
+        <ol className={styles.steps}>
+          {workout.steps.map((step) => (
+            <li key={step.id} className={styles.step}>
+              <div className={styles.stepTitle}><span>{step.section}</span><span>{step.title}</span></div>
+              <p className={styles.muted}>{step.detail}</p>
+              {step.guidance && <p>{step.guidance}</p>}
+              <p className={styles.muted}>{step.effort} · {step.rest}{step.pace ? ` · ${step.pace}` : ""}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+      {!workout.sourceGone && workout.result && <section className={styles.section}>
+        <h2>Your swim</h2>
+        {workout.result.distance && <p className={styles.distance}>{workout.result.distance}</p>}
+        <p>{workout.result.lengths} lengths · {formatSwimTime(workout.result.timeMs)}{workout.result.rpe != null ? ` · RPE ${workout.result.rpe}` : ""}</p>
+        {workout.result.course && <p className={styles.muted}>{workout.result.course}</p>}
+        {workout.result.notes && <p className={styles.muted}>{workout.result.notes}</p>}
+      </section>}
+      {!workout.sessionId && workout.status === "scheduled" && workout.planStatus === "active" && <form method="post" onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        setError(null);
+        startTransition(async () => {
+          try {
+            const result = await skipSwimWorkout(workout.id, workout.revision, String(form.get("reason") ?? ""));
+            if (result.error) setError(result.error); else router.refresh();
+          } catch { setError("Could not skip this swim. Try again."); }
+        });
+      }} className={styles.section}>
+        <details className={styles.details}><summary>Skip swim</summary>
+          <label className={styles.field}>Reason<textarea name="reason" maxLength={1000} required /></label>
+          <button className={styles.secondary} disabled={pending}>Skip swim</button>
+        </details>
+      </form>}
+      {error && <p role="alert" className={styles.error}>{error}</p>}
+      {workout.sessionId && !workout.deleted && !workout.sourceGone && (
+        <DeleteSessionButton sessionId={workout.sessionId} label="Swim" redirectTo="/app/swim" variant="menu" />
+      )}
+    </>
+  );
 }
