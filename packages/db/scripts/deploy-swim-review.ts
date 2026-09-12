@@ -201,7 +201,9 @@ export function deploymentTransport(env: NodeJS.ProcessEnv, deadline: number, fe
     } finally { clearTimeout(timer); }
   };
 }
-export function acceptedReceipt(project: EnvironmentMetadata[], shared: EnvironmentMetadata[], postDeployment = false) {
+type ReceiptWindow = Readonly<{ start: number; end: number }>;
+export function acceptedReceipt(project: EnvironmentMetadata[], shared: EnvironmentMetadata[], postDeployment = false,
+  buildShaWindow: ReceiptWindow = ACCEPTED_DEPLOYMENT) {
   requireThat(new Set([...project, ...shared].map((row) => row.id)).size === project.length + shared.length, "receipt_invalid");
   for (const rows of [project, shared]) {
     const scopes = new Set<string>();
@@ -222,8 +224,10 @@ export function acceptedReceipt(project: EnvironmentMetadata[], shared: Environm
     row.key === key && row.id === RECEIPT[key] && row.type === "encrypted" &&
     same(row.target, ["preview"]) && row.createdAt >= CONFIGURATION.start &&
     row.createdAt <= CONFIGURATION.end && row.updatedAt >= row.createdAt &&
-    (postDeployment && (key === "NEXT_PUBLIC_BUILD_SHA" || key === "POOL_SWIMMING_ENABLED") ?
-      row.updatedAt >= ACCEPTED_DEPLOYMENT.start && row.updatedAt <= ACCEPTED_DEPLOYMENT.end :
+    (postDeployment && key === "NEXT_PUBLIC_BUILD_SHA" ?
+      row.updatedAt >= buildShaWindow.start && row.updatedAt <= buildShaWindow.end :
+      postDeployment && key === "POOL_SWIMMING_ENABLED" ?
+        row.updatedAt >= ACCEPTED_DEPLOYMENT.start && row.updatedAt <= ACCEPTED_DEPLOYMENT.end :
       row.updatedAt <= CONFIGURATION.end))), "receipt_invalid");
   return feature;
 }

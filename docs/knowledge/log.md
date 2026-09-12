@@ -3283,3 +3283,30 @@ regressions reproduced that exact mismatch. The optional control now remains
 after the instructions but outside their retained section. Frozen26, data,
 issued work, safety and lifecycle logic are unchanged; no assertions were
 weakened. DC-SW3/SW5/SW7. Corrected-head runtime acceptance is still required.
+
+## [2026-09-12] decision | Accept standalone repair and prepare plan-review refresh
+
+Reference34645293193 at `c1f25d2b` passed all26 scenarios once with no failed,
+flaky or skipped cases, all11 stages, core/identity and both cleanups. A5 and A7
+passed completely. Fifteen safe summaries were consumed once. Earlier
+reference34642668797 remains failed; no logs were refetched or runs combined.
+The existing nine standalone areas are revalidated, not Garmin delivery or
+owner usability. The new editing controls additionally have focused action and
+hydrated-client coverage, not dedicated database E2E coverage from frozen26.
+
+The owner separately approved updating the existing isolated review while
+preserving account, plans/history, isolation and sign-in protection. A new
+default-false operation pins accepted application `c1f25d2b` and the existing
+READY deployment/alias from34625326276. The shared bounded state machine retains
+the old operation's original pins and guards. Its only new receipt window is
+the prior authorized BUILD_SHA update; pool and other configuration windows
+stay fixed. Existing workflow job bodies remain unchanged, including core,
+identity, frozen26 and old provider jobs. New-mode exclusivity is checked in
+core before credentials, then again in the dedicated protected job.
+
+Only one branch-encrypted BUILD_SHA update, one exact-source Preview and the
+fixed review alias assignment are allowed. The known alias UID is pinned
+before writes. Ambiguous writes remain failed/partial and require manual
+reconciliation, never retries or destructive rollback. The old spent refresh
+is not rerun. Production, Garmin, schema/RLS, owner data and frozen26 are
+unchanged; the review update remains pending guarded execution.

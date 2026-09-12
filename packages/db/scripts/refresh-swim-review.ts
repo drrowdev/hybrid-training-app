@@ -23,6 +23,22 @@ export const OTHER_OPERATIONS = [
   "CONFIGURE_SWIM_REVIEW", "INSPECT_SWIM_REVIEW_AUTH", "PREPARE_SWIM_REVIEW",
   "INSPECT_SWIM_REVIEW", "SWIM_ACCEPTANCE", "MIGRATE_PRODUCTION", "ALLOW_UNDEPLOYED",
 ] as const;
+export type RefreshProfile = Readonly<{
+  reference: Readonly<{ sha: string; run: string }>;
+  paths: readonly string[];
+  operation: "REFRESH_SWIM_REVIEW" | "REFRESH_SWIM_PLAN_REVIEW";
+  job: "refresh-swim-review" | "refresh-swim-plan-review";
+  scope: "swim-review-refresh" | "swim-plan-review-refresh";
+  otherOperations: readonly string[];
+  previous: Readonly<{ run: string; sha: string; id: string; url: string; start: number; end: number }>;
+  aliasUid?: string;
+  receipt(project: EnvironmentMetadata[], shared: EnvironmentMetadata[]): void;
+}>;
+const originalProfile: RefreshProfile = {
+  reference: REFRESH_REFERENCE, paths: REFRESH_PATHS, operation: "REFRESH_SWIM_REVIEW",
+  job: "refresh-swim-review", scope: "swim-review-refresh", otherOperations: OTHER_OPERATIONS,
+  previous: ACCEPTED_DEPLOYMENT, receipt: (project, shared) => { acceptedReceipt(project, shared, true); },
+};
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const shaSchema = z.string().regex(/^[a-f0-9]{40}$/);
 const record = z.record(z.unknown());
@@ -36,25 +52,25 @@ export function refreshArguments(args: string[]) {
   requireThat(args.length === 0 || same(args, ["--check-source"]));
   return args.length === 1;
 }
-export function refreshContext(env: NodeJS.ProcessEnv) {
+export function refreshContext(env: NodeJS.ProcessEnv, profile: RefreshProfile = originalProfile) {
   const sha = shaSchema.parse(env.EXPECTED_SHA);
   requireThat(env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
     env.GITHUB_REPOSITORY === REVIEW.repository && env.GITHUB_REF_TYPE === "branch" &&
-    env.GITHUB_REF === `refs/heads/${REVIEW.branch}` && env.GITHUB_JOB === "refresh-swim-review" &&
-    env.REFRESH_SWIM_REVIEW === "true" && OTHER_OPERATIONS.every((key) => env[key] === "false") &&
-    env.GITHUB_SHA === sha && sha !== REFRESH_REFERENCE.sha);
+    env.GITHUB_REF === `refs/heads/${REVIEW.branch}` && env.GITHUB_JOB === profile.job &&
+    env[profile.operation] === "true" && profile.otherOperations.every((key) => env[key] === "false") &&
+    env.GITHUB_SHA === sha && sha !== profile.reference.sha);
   return sha;
 }
 type SourceIO = { git(...args: string[]): string; event(): unknown; regular(path: string): boolean };
-export function verifyRefreshSource(env: NodeJS.ProcessEnv, io: SourceIO) {
-  const sha = refreshContext(env);
+export function verifyRefreshSource(env: NodeJS.ProcessEnv, io: SourceIO, profile: RefreshProfile = originalProfile) {
+  const sha = refreshContext(env, profile);
   const inputs = record.parse(record.parse(io.event()).inputs);
-  requireThat(inputs.refresh_swim_review === "true" && inputs.expected_sha === sha &&
-    OTHER_OPERATIONS.every((key) => inputs[key.toLowerCase()] === "false"));
+  requireThat(inputs[profile.operation.toLowerCase()] === "true" && inputs.expected_sha === sha &&
+    profile.otherOperations.every((key) => inputs[key.toLowerCase()] === "false"));
   requireThat(io.git("rev-parse", "HEAD") === sha && io.git("status", "--porcelain", "--untracked-files=all") === "");
-  io.git("merge-base", "--is-ancestor", REFRESH_REFERENCE.sha, "HEAD");
-  const paths = io.git("diff", "--name-only", "--no-renames", REFRESH_REFERENCE.sha, "HEAD").split("\n");
-  requireThat(paths.length > 0 && paths.every((path) => REFRESH_PATHS.some((allowed) => path === allowed)));
+  io.git("merge-base", "--is-ancestor", profile.reference.sha, "HEAD");
+  const paths = io.git("diff", "--name-only", "--no-renames", profile.reference.sha, "HEAD").split("\n");
+  requireThat(paths.length > 0 && paths.every((path) => profile.paths.some((allowed) => path === allowed)));
   // Check every tracked source path, including unchanged files and parent directories.
   for (const entry of io.git("ls-tree", "-r", "HEAD").split("\n")) {
     const match = /^(100644|100755) blob [a-f0-9]{40}\t([^\t\r\n]+)$/.exec(entry);
@@ -74,10 +90,11 @@ const createBody = (sha: string) => ({
 });
 const reads: readonly string[] = [
   ROUTES.project, DEPLOY_ROUTES.team, ROUTES.supabase, ROUTES.project_env,
-  ROUTES.shared_env, ROUTES.auth, ROUTES.settings, ROUTES.alias, deploymentRoute(ACCEPTED_DEPLOYMENT.id),
+  ROUTES.shared_env, ROUTES.auth, ROUTES.settings, ROUTES.alias,
 ];
-export function refreshTransport(env: NodeJS.ProcessEnv, deadline: number, fetcher: typeof fetch = fetch): Request {
-  const sha = refreshContext(env);
+export function refreshTransport(env: NodeJS.ProcessEnv, deadline: number, fetcher: typeof fetch = fetch,
+  profile: RefreshProfile = originalProfile): Request {
+  const sha = refreshContext(env, profile);
   const transport = deploymentTransport(env, deadline, fetcher);
   let patched = false;
   let created = false;
@@ -89,7 +106,7 @@ export function refreshTransport(env: NodeJS.ProcessEnv, deadline: number, fetch
     const create = method === "POST" && url === DEPLOY_ROUTES.create && same(body, createBody(sha)) && patched && !created;
     const alias = method === "POST" && deployment && ready && url === deploymentRoute(deployment.id, true) &&
       same(body, { alias: REVIEW.proposedAlias }) && !assigned;
-    requireThat((method === "GET" && body === undefined && (reads.includes(url) ||
+    requireThat((method === "GET" && body === undefined && (reads.includes(url) || url === deploymentRoute(profile.previous.id) ||
       (deployment && url === deploymentRoute(deployment.id)))) ||
       (method === "POST" && url === ROUTES.storage && same(body, {})) || patch || create || alias);
     if (patch) patched = true;
@@ -105,7 +122,7 @@ export function refreshTransport(env: NodeJS.ProcessEnv, deadline: number, fetch
     }
     if (create) {
       deployment = deploymentMetadata(raw, sha);
-      requireThat(deployment.id !== ACCEPTED_DEPLOYMENT.id && deployment.createdAt >= started && deployment.createdAt <= Date.now());
+      requireThat(deployment.id !== profile.previous.id && deployment.createdAt >= started && deployment.createdAt <= Date.now());
       ready = deployment.readyState === "READY";
     } else if (deployment && url === deploymentRoute(deployment.id)) {
       const next = deploymentMetadata(raw, sha);
@@ -129,7 +146,7 @@ const canonical = (rows: EnvironmentMetadata[]) =>
 type Stage = "source" | "credentials" | "snapshot" | "build_sha" | "deployment" | "readiness" | "alias" | "completion";
 type Attempt = { attempted: boolean; confirmed: boolean };
 type Summary = {
-  scope: "swim-review-refresh"; testedSha: string | null; acceptedSha: string; acceptedReferenceRun: string;
+  scope: RefreshProfile["scope"]; testedSha: string | null; acceptedSha: string; acceptedReferenceRun: string;
   projectId: string; teamId: string; testProject: string; status: "failed" | "refresh_pass" | "source_pass";
   stages: { stage: Stage; code: Code; status: "passed" | "failed"; httpStatus?: number }[];
   oldDeploymentId: string; oldDeploymentUrl: string; newDeploymentId: string | null; newDeploymentUrl: string | null;
@@ -139,13 +156,13 @@ type Summary = {
   ready: boolean; storageReady: boolean; protectedUnchanged: boolean; authMatches: boolean; isolationVerified: boolean;
   partial: boolean; manualReconciliation: boolean;
 };
-function summary(env: NodeJS.ProcessEnv): Summary {
+function summary(env: NodeJS.ProcessEnv, profile: RefreshProfile): Summary {
   const sha = shaSchema.safeParse(env.EXPECTED_SHA);
   return {
-    scope: "swim-review-refresh", testedSha: sha.success ? sha.data : null,
-    acceptedSha: REFRESH_REFERENCE.sha, acceptedReferenceRun: REFRESH_REFERENCE.run,
+    scope: profile.scope, testedSha: sha.success ? sha.data : null,
+    acceptedSha: profile.reference.sha, acceptedReferenceRun: profile.reference.run,
     projectId: REVIEW.projectId, teamId: REVIEW.teamId, testProject: REVIEW.supabaseId, status: "failed", stages: [],
-    oldDeploymentId: ACCEPTED_DEPLOYMENT.id, oldDeploymentUrl: `https://${ACCEPTED_DEPLOYMENT.url}`,
+    oldDeploymentId: profile.previous.id, oldDeploymentUrl: `https://${profile.previous.url}`,
     newDeploymentId: null, newDeploymentUrl: null, aliasMapping: null, changedEnv: [],
     buildSha: { attempted: false, confirmed: false }, deployment: { attempted: false, confirmed: false },
     alias: { attempted: false, confirmed: false }, ready: false, storageReady: false, protectedUnchanged: false,
@@ -153,8 +170,10 @@ function summary(env: NodeJS.ProcessEnv): Summary {
   };
 }
 type Dependencies = { source(): void; request: Request; storage(): Promise<boolean>; now(): number; sleep(ms: number): Promise<void> };
-export async function refresh(env: NodeJS.ProcessEnv, deps: Dependencies): Promise<Summary> {
-  const result = summary(env);
+export async function refresh(env: NodeJS.ProcessEnv, deps: Dependencies,
+  profile: RefreshProfile = originalProfile): Promise<Summary> {
+  const result = summary(env, profile);
+  const previous = profile.previous;
   const deadline = deps.now() + 18 * 60_000;
   let stage: Stage = "source";
   const time = () => { if (deps.now() >= deadline) throw new Refusal("deadline"); };
@@ -183,7 +202,7 @@ export async function refresh(env: NodeJS.ProcessEnv, deps: Dependencies): Promi
       external: Object.entries(external).sort(([a], [b]) => a.localeCompare(b)) };
   };
   try {
-    const sha = await step("source", () => { source(); return refreshContext(env); });
+    const sha = await step("source", () => { source(); return refreshContext(env, profile); });
     await step("credentials", () => {
       for (const key of ["VERCEL_REVIEW_TOKEN", "SUPABASE_REVIEW_MANAGEMENT_TOKEN"]) {
         requireThat(/^[A-Za-z0-9_.-]{20,512}$/.test(env[key] ?? ""));
@@ -193,20 +212,20 @@ export async function refresh(env: NodeJS.ProcessEnv, deps: Dependencies): Promi
     });
     const initial = await step("snapshot", async () => {
       const state = await snapshot();
-      acceptedReceipt(state.project, state.shared, true);
-      const old = deploymentMetadata(await request(deploymentRoute(ACCEPTED_DEPLOYMENT.id)), ACCEPTED_DEPLOYMENT.sha);
-      requireThat(old.id === ACCEPTED_DEPLOYMENT.id && old.url === ACCEPTED_DEPLOYMENT.url && old.readyState === "READY" &&
-        old.createdAt >= ACCEPTED_DEPLOYMENT.start && old.createdAt <= ACCEPTED_DEPLOYMENT.end);
-      return { state, alias: aliasMetadata(await request(ROUTES.alias), old.id) };
+      profile.receipt(state.project, state.shared);
+      const old = deploymentMetadata(await request(deploymentRoute(previous.id)), previous.sha);
+      requireThat(old.id === previous.id && old.url === previous.url && old.readyState === "READY" &&
+        old.createdAt >= previous.start && old.createdAt <= previous.end);
+      return { state, alias: aliasMetadata(await request(ROUTES.alias), old.id, profile.aliasUid) };
     });
     let expected = initial.state;
-    const guards = async (id: string = ACCEPTED_DEPLOYMENT.id) => {
+    const guards = async (id: string = previous.id) => {
       result.protectedUnchanged = false; result.authMatches = false; result.isolationVerified = false; result.storageReady = false;
       source();
       requireThat(same(await snapshot(), expected));
-      const old = deploymentMetadata(await request(deploymentRoute(ACCEPTED_DEPLOYMENT.id)), ACCEPTED_DEPLOYMENT.sha);
-      requireThat(old.id === ACCEPTED_DEPLOYMENT.id && old.url === ACCEPTED_DEPLOYMENT.url && old.readyState === "READY" &&
-        old.createdAt >= ACCEPTED_DEPLOYMENT.start && old.createdAt <= ACCEPTED_DEPLOYMENT.end);
+      const old = deploymentMetadata(await request(deploymentRoute(previous.id)), previous.sha);
+      requireThat(old.id === previous.id && old.url === previous.url && old.readyState === "READY" &&
+        old.createdAt >= previous.start && old.createdAt <= previous.end);
       source();
       const mapping = aliasMetadata(await request(ROUTES.alias), id, initial.alias.uid);
       result.protectedUnchanged = true; result.authMatches = true; result.isolationVerified = true; result.storageReady = true;
@@ -230,7 +249,7 @@ export async function refresh(env: NodeJS.ProcessEnv, deps: Dependencies): Promi
       const started = deps.now();
       result.deployment.attempted = true;
       const row = deploymentMetadata(await request(DEPLOY_ROUTES.create, "POST", createBody(sha)), sha);
-      requireThat(row.id !== ACCEPTED_DEPLOYMENT.id && row.createdAt >= started && row.createdAt <= deps.now());
+      requireThat(row.id !== previous.id && row.createdAt >= started && row.createdAt <= deps.now());
       result.newDeploymentId = row.id; result.newDeploymentUrl = `https://${row.url}`;
       await guards();
       result.deployment.confirmed = true;
@@ -258,7 +277,7 @@ export async function refresh(env: NodeJS.ProcessEnv, deps: Dependencies): Promi
       // Read-before-write and postverification are NOT atomic CAS; a concurrent writer can race this POST.
       result.alias.attempted = true;
       const assigned = z.object({ alias: z.literal(REVIEW.proposedAlias),
-        uid: z.literal(initial.alias.uid), oldDeploymentId: z.literal(ACCEPTED_DEPLOYMENT.id) })
+        uid: z.literal(initial.alias.uid), oldDeploymentId: z.literal(previous.id) })
         .parse(await request(deploymentRoute(deployment.id, true), "POST", { alias: REVIEW.proposedAlias }));
       const mapping = aliasMetadata(await request(ROUTES.alias), deployment.id, assigned.uid);
       requireThat((await verifyDeployment()).readyState === "READY");
@@ -278,9 +297,9 @@ export async function refresh(env: NodeJS.ProcessEnv, deps: Dependencies): Promi
   }
   return result;
 }
-async function main() {
+export async function runRefreshCli(profile: RefreshProfile = originalProfile) {
   const env = process.env;
-  let result = summary(env);
+  let result = summary(env, profile);
   try {
     const check = refreshArguments(process.argv.slice(2));
     const deadline = Date.now() + (check ? 300_000 : 18 * 60_000);
@@ -302,18 +321,18 @@ async function main() {
           return !stat.isSymbolicLink() && (i === parts.length - 1 ? stat.isFile() : stat.isDirectory());
         });
       },
-    });
+    }, profile);
     if (check) {
       source(); result.status = "source_pass";
       result.stages.push({ stage: "source", code: "passed", status: "passed" });
     }
     else {
-      const request = refreshTransport(env, deadline);
+      const request = refreshTransport(env, deadline, fetch, profile);
       result = await refresh(env, { source, request, storage: storageAdapter(env, request), now: Date.now,
-        sleep: (ms) => new Promise((done) => setTimeout(done, ms)) });
+        sleep: (ms) => new Promise((done) => setTimeout(done, ms)) }, profile);
     }
   } catch { result.stages.push({ stage: "source", code: "refused", status: "failed" }); }
   console.log(JSON.stringify(result));
   if (result.status === "failed") process.exitCode = 1;
 }
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) void main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) void runRefreshCli();

@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { OTHER_OPERATIONS, REFRESH_PATHS, REFRESH_REFERENCE, refreshArguments, refreshContext, verifyRefreshSource,
-  refresh, refreshTransport } from "../refresh-swim-review";
+import { OTHER_OPERATIONS, REFRESH_PATHS, REFRESH_REFERENCE, refreshArguments, refreshContext as getContext,
+  verifyRefreshSource as verifySource, refresh as runRefresh, refreshTransport as makeTransport, type RefreshProfile } from "../refresh-swim-review";
+import { PLAN_REVIEW_REFRESH } from "../refresh-swim-plan-review";
 import { ACCEPTED_DEPLOYMENT, BASE_SHA, CONFIGURATION, DEPLOY_ROUTES, RECEIPT, deploymentRoute,
   updateRoute } from "../deploy-swim-review";
 import { metadata, ROUTES, storageAdapter } from "../configure-swim-review";
@@ -20,22 +21,30 @@ const env: NodeJS.ProcessEnv = {
   SWIM_REVIEW_SUPABASE_ANON_KEY: `sb_publishable_${canary}`,
   SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY: `sb_secret_${canary}`,
 };
+const originalEnv = env;
+const originalDeployment = ACCEPTED_DEPLOYMENT;
+const originalReference = REFRESH_REFERENCE;
+const originalOperations = OTHER_OPERATIONS;
 afterEach(() => vi.restoreAllMocks());
-function sourceIO() {
+function sourceIO(profile?: RefreshProfile) {
+  const paths = profile?.paths ?? REFRESH_PATHS;
+  const operation = profile?.operation ?? "REFRESH_SWIM_REVIEW";
+  const others = profile?.otherOperations ?? OTHER_OPERATIONS;
   return {
     regular: () => true,
-    event: () => ({ inputs: { refresh_swim_review: "true", expected_sha: sha,
-      ...Object.fromEntries(OTHER_OPERATIONS.map((key) => [key.toLowerCase(), "false"])) } }),
+    event: () => ({ inputs: { [operation.toLowerCase()]: "true", expected_sha: sha,
+      ...Object.fromEntries(others.map((key) => [key.toLowerCase(), "false"])) } }),
     git: vi.fn((...args: string[]) => {
       if (args[0] === "rev-parse") return sha;
       if (args[0] === "status" || args[0] === "merge-base") return "";
-      if (args[0] === "diff") return REFRESH_PATHS.join("\n");
-      if (args[0] === "ls-tree") return REFRESH_PATHS.map((path) => `100644 blob ${sha}\t${path}`).join("\n");
+      if (args[0] === "diff") return paths.join("\n");
+      if (args[0] === "ls-tree") return paths.map((path) => `100644 blob ${sha}\t${path}`).join("\n");
       if (args[0] === "ls-remote") return `${args[3] === "refs/heads/main" ? BASE_SHA : sha}\t${args[3]}`;
       throw Error("offline_canary");
     }),
   };
 }
+const makeSourceIO = sourceIO;
 function checkRefreshEvent(inputs: Record<string, unknown> | undefined, context: NodeJS.ProcessEnv) {
   if (inputs?.refresh_swim_review === undefined || inputs.refresh_swim_review === "false") return false;
   expect(inputs.refresh_swim_review).toBe("true");
@@ -128,7 +137,24 @@ describe("refresh workflow boundaries", () => {
   });
 });
 
-describe("bounded refresh source and transport", () => {
+describe.each([
+  { name: "original", profile: undefined },
+  { name: "plan review", profile: PLAN_REVIEW_REFRESH },
+])("$name bounded refresh source and transport", ({ profile }) => {
+  const env = profile ? { ...originalEnv, GITHUB_JOB: profile.job, [profile.operation]: "true",
+    ...Object.fromEntries(profile.otherOperations.map((key) => [key, "false"])) } : originalEnv;
+  const ACCEPTED_DEPLOYMENT = profile?.previous ?? originalDeployment;
+  const REFRESH_REFERENCE = profile?.reference ?? originalReference;
+  const OTHER_OPERATIONS = profile?.otherOperations ?? originalOperations;
+  const aliasUid = profile?.aliasUid ?? "alias_offline";
+  const sourceIO = () => makeSourceIO(profile);
+  const refreshContext = (context: NodeJS.ProcessEnv) => getContext(context, profile);
+  const verifyRefreshSource = (context: NodeJS.ProcessEnv, io: Parameters<typeof verifySource>[1]) =>
+    verifySource(context, io, profile);
+  const refresh = (context: NodeJS.ProcessEnv, deps: Parameters<typeof runRefresh>[1]) =>
+    runRefresh(context, deps, profile);
+  const refreshTransport = (context: NodeJS.ProcessEnv, deadline: number, fetcher: typeof fetch = fetch) =>
+    makeTransport(context, deadline, fetcher, profile);
   it("uses a separate accepted-source guard and strict CLI", () => {
     const io = sourceIO();
     verifyRefreshSource(env, io);
@@ -152,8 +178,8 @@ describe("bounded refresh source and transport", () => {
     const project: EnvironmentMetadata[] = OVERRIDE_KEYS.map((key) => ({
       id: RECEIPT[key], key, type: "encrypted", target: ["preview"], gitBranch: REVIEW.branch,
       createdAt: CONFIGURATION.start + 1000,
-      updatedAt: key === "NEXT_PUBLIC_BUILD_SHA" || key === "POOL_SWIMMING_ENABLED" ?
-        ACCEPTED_DEPLOYMENT.start + 1000 : CONFIGURATION.end - 1000,
+      updatedAt: key === "NEXT_PUBLIC_BUILD_SHA" ? ACCEPTED_DEPLOYMENT.start + 1000 :
+        key === "POOL_SWIMMING_ENABLED" ? originalDeployment.start + 1000 : CONFIGURATION.end - 1000,
     }));
     const shared: EnvironmentMetadata[] = INHERITED_KEYS.map((key) => ({
       id: `shared_${key}`, key, type: "encrypted", target: ["preview"], gitBranch: null, createdAt: 1, updatedAt: 1,
@@ -171,7 +197,7 @@ describe("bounded refresh source and transport", () => {
       settings: { external: { email: true, github: false } },
       old: deployment(ACCEPTED_DEPLOYMENT.id, ACCEPTED_DEPLOYMENT.url, ACCEPTED_DEPLOYMENT.sha, ACCEPTED_DEPLOYMENT.start + 1000),
       next: deployment("dpl_RefreshOffline123", "hybrid-training-app-refresh-offline.vercel.app", sha, now),
-      alias: { uid: "alias_offline", alias: REVIEW.proposedAlias, projectId: REVIEW.projectId,
+      alias: { uid: aliasUid, alias: REVIEW.proposedAlias, projectId: REVIEW.projectId,
         deploymentId: String(ACCEPTED_DEPLOYMENT.id), redirect: null as string | null },
     };
     const request = vi.fn(async (url: string, method = "GET", _body?: unknown): Promise<unknown> => {
@@ -221,7 +247,7 @@ describe("bounded refresh source and transport", () => {
       expect(h.state.project.filter((row) => row.key !== "NEXT_PUBLIC_BUILD_SHA")).toEqual(before.filter((row) => row.key !== "NEXT_PUBLIC_BUILD_SHA"));
       expect(result).toMatchObject({ protectedUnchanged: true, authMatches: true, isolationVerified: true, storageReady: true,
         ready: true, partial: false, manualReconciliation: false, alias: { attempted: true, confirmed: true },
-        aliasMapping: { uid: "alias_offline", deploymentId: h.state.next.id } });
+        aliasMapping: { uid: aliasUid, deploymentId: h.state.next.id } });
       expect(result.changedEnv).toEqual([{ key: "NEXT_PUBLIC_BUILD_SHA", id: RECEIPT.NEXT_PUBLIC_BUILD_SHA }]);
       expect(JSON.stringify(result)).not.toContain(canary);
     });
@@ -254,12 +280,12 @@ describe("bounded refresh source and transport", () => {
       it.each([[], ["--check-source"], ["--check-source", "--check-source"], ["--unknown"]].map((args) => ({ args })))(
         "emits one safe record without credentials for refused CLI $args", ({ args }) => {
           const child = spawnSync(process.execPath, ["--import", "tsx",
-            resolve(__dirname, "../refresh-swim-review.ts"), ...args],
+            resolve(__dirname, `../${profile?.job ?? "refresh-swim-review"}.ts`), ...args],
           { cwd: resolve(__dirname, "../.."), env: { PATH: process.env.PATH }, encoding: "utf8", timeout: 10_000 });
           expect(child.status).toBe(1);
           expect(child.stderr).toBe("");
           expect(child.stdout.trim().split("\n")).toHaveLength(1);
-          expect(JSON.parse(child.stdout)).toMatchObject({ scope: "swim-review-refresh", status: "failed",
+          expect(JSON.parse(child.stdout)).toMatchObject({ scope: profile?.scope ?? "swim-review-refresh", status: "failed",
             buildSha: { attempted: false }, deployment: { attempted: false }, alias: { attempted: false } });
         });
       it.each(["redirect", "oversized_header", "oversized_stream", "bad_json", "timeout", "http_error"])(
@@ -299,6 +325,7 @@ describe("bounded refresh source and transport", () => {
       });
     });
     it.each(["receipt", "alias_missing", "alias_moved", "alias_uid", "alias_redirect", "alias_project",
+      ...(profile?.aliasUid ? ["alias_pin"] : []),
       "protection", "auth", "external", "storage", "team", "supabase", "old_sha", "old_url", "old_time", "old_not_ready"])(
       "refuses %s before any write", async (kind) => {
         const h = harness();
@@ -306,6 +333,7 @@ describe("bounded refresh source and transport", () => {
         if (kind === "alias_missing") Reflect.deleteProperty(h.state.alias, "uid");
         if (kind === "alias_moved") h.state.alias.deploymentId = "dpl_Other";
         if (kind === "alias_uid") h.state.alias.uid = "bad\nuid";
+        if (kind === "alias_pin") h.state.alias.uid = "valid_but_wrong_uid";
         if (kind === "alias_redirect") h.state.alias.redirect = REVIEW.origin;
         if (kind === "alias_project") Reflect.set(h.state.alias, "projectId", "prj_other");
         if (kind === "protection") h.state.protection.ssoProtection.deploymentType = "all";
@@ -335,7 +363,7 @@ describe("bounded refresh source and transport", () => {
         deployment: { attempted: true, confirmed: false }, alias: { attempted: false, confirmed: false } });
       expect(writes(h)).toHaveLength(2);
     });
-    it.each(["build_sha", "deployment", "alias"])("retains ambiguous %s truth without retries or rollback", async (kind) => {
+    it.each(["build_sha", "deployment", "alias"] as const)("retains ambiguous %s truth without retries or rollback", async (kind) => {
       const h = harness();
       const original = h.request.getMockImplementation()!;
       const url = kind === "build_sha" ? updateRoute("NEXT_PUBLIC_BUILD_SHA") :
@@ -360,7 +388,7 @@ describe("bounded refresh source and transport", () => {
         if (args[1] === "PATCH") {
           if (kind === "project") h.state.project[0]!.updatedAt++;
           if (kind === "shared") h.state.shared[0]!.updatedAt++;
-          if (kind === "auth") h.state.auth.site_url = "https://wrong.example";
+          if (kind === "auth") Reflect.set(h.state.auth, "site_url", "https://wrong.example");
           if (kind === "protection") h.state.protection.ssoProtection.deploymentType = "preview";
           if (kind === "optional_missing") Reflect.set(h.state.protection, "passwordProtection", null);
           if (kind === "source") h.deps.source.mockImplementation(() => { throw Error(canary); });
@@ -382,7 +410,7 @@ describe("bounded refresh source and transport", () => {
         const value = await original(...args);
         if (args[0] === deploymentRoute(h.state.next.id, true)) {
           if (kind === "oldDeploymentId" || kind === "uid") return { alias: REVIEW.proposedAlias,
-            uid: kind === "uid" ? "alias_Race" : "alias_offline",
+            uid: kind === "uid" ? "alias_Race" : aliasUid,
             oldDeploymentId: kind === "oldDeploymentId" ? "dpl_Race" : ACCEPTED_DEPLOYMENT.id };
           if (kind === "post_mapping") h.state.alias.deploymentId = "dpl_Race";
           if (kind === "post_ready") h.state.next.readyState = "ERROR";
@@ -424,7 +452,7 @@ describe("bounded refresh source and transport", () => {
     });
   });
   it.each([...OTHER_OPERATIONS, "GITHUB_JOB", "GITHUB_SHA", "EXPECTED_SHA", "GITHUB_REF", "GITHUB_REPOSITORY",
-    "GITHUB_EVENT_NAME", "GITHUB_REF_TYPE", "GITHUB_ACTIONS", "REFRESH_SWIM_REVIEW"])("rejects missing or mixed %s", (key) => {
+    "GITHUB_EVENT_NAME", "GITHUB_REF_TYPE", "GITHUB_ACTIONS", profile?.operation ?? "REFRESH_SWIM_REVIEW"])("rejects missing or mixed %s", (key) => {
     expect(() => refreshContext({ ...env, [key]: undefined })).toThrow();
     expect(() => refreshContext({ ...env, [key]: "wrong" })).toThrow();
   });

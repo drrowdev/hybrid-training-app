@@ -445,7 +445,8 @@ describe("native one-shot owner provisioning", () => {
   });
   it("binds owner secrets only to its conditional step after install/offline/source checks", () => {
     const workflow = readFileSync(resolve(import.meta.dirname, "../../../../.github/workflows/ci.yml"), "utf8");
-    const [before, owner] = workflow.split("\n  refresh-swim-review:\n")[0]!.split("      - name: Provision isolated owner once");
+    const [before, after] = workflow.split("      - name: Provision isolated owner once");
+    const owner = after!.split(/\n  [a-z][a-z0-9-]+:\n/)[0]!;
     expect(before).not.toContain("secrets.SWIM_REVIEW_OWNER_");
     expect(owner!.match(/secrets\.\w+/g)).toEqual([
       "secrets.VERCEL_REVIEW_TOKEN", "secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN",

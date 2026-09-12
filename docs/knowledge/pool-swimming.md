@@ -66,8 +66,22 @@ The existing database rule that locks plan setup remains intact: changing
 the pool, goal or other setup requires a new plan. Dates cannot silently move
 work into another training week or add catch-up volume. Ordinary workout pages
 put the complete prescription before the optional in-app start control.
-These changes are local only, not deployed to the review site, and Garmin
-delivery remains unimplemented.
+These changes are published on PR805 and passed the existing frozen26
+standalone reference at `c1f25d2b2704d710f83c1e5be2d14839d1a545fe`
+(run34645293193, all26 once, all11 stages and both cleanups). New preview/edit
+controls also have focused action and hydrated-client coverage; frozen26 does
+not independently exercise every new control against the database. The review
+site still serves `abbd6583`, and Garmin delivery remains unimplemented.
+
+The owner approved updating that existing isolated review with the accepted
+plan-editing application. A separate default-false `refresh_swim_plan_review`
+operation pins the current deployment and alias receipt from34625326276 and
+requires application equivalence to `c1f25d2b`. It reuses the bounded refresh
+state machine without changing the original operation's pins. Only the
+existing branch BUILD_SHA override, one exact-source Preview and the existing
+review alias may change. Account, data, configuration and protection remain
+unchanged; production and Garmin are outside this approval. Source preparation
+is not evidence that the review deployment has been updated.
 
 Programming integration also preserves the original declared weeks when a
 saved plan is reconstructed, including empty earlier weeks in a resumed review
