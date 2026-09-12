@@ -10,11 +10,11 @@ DECLARE
 BEGIN
   IF (p_old - 'sections' - 'totalLengths' - 'snapshot' - 'estimatedMs' - 'budget')
        IS DISTINCT FROM (p_new - 'sections' - 'totalLengths' - 'snapshot' - 'estimatedMs' - 'budget')
-     OR (p_old->'snapshot' - 'course' - 'calibration' - 'protocol' - 'versions')
-       IS DISTINCT FROM (p_new->'snapshot' - 'course' - 'calibration' - 'protocol' - 'versions')
-     OR (p_old->'snapshot'->'versions' - 'assessment')
-       IS DISTINCT FROM (p_new->'snapshot'->'versions' - 'assessment')
-     OR (p_old->'budget' - 'accountedMs') IS DISTINCT FROM (p_new->'budget' - 'accountedMs')
+     OR ((p_old->'snapshot') - 'course' - 'calibration' - 'protocol' - 'versions')
+       IS DISTINCT FROM ((p_new->'snapshot') - 'course' - 'calibration' - 'protocol' - 'versions')
+     OR ((p_old->'snapshot'->'versions') - 'assessment')
+       IS DISTINCT FROM ((p_new->'snapshot'->'versions') - 'assessment')
+     OR ((p_old->'budget') - 'accountedMs') IS DISTINCT FROM ((p_new->'budget') - 'accountedMs')
      OR jsonb_array_length(p_old->'sections') IS DISTINCT FROM jsonb_array_length(p_new->'sections') THEN
     RAISE EXCEPTION 'A pool change must preserve the prescribed workout.';
   END IF;
@@ -28,9 +28,9 @@ BEGIN
       v_old_item := v_old_section->'items'->v_item; v_new_item := v_new_section->'items'->v_item;
       IF (v_old_item - 'lengths' - 'targetMsPerRepeat') IS DISTINCT FROM (v_new_item - 'lengths' - 'targetMsPerRepeat')
          OR (v_old_item->>'lengths')::numeric * (v_from->>'numerator')::numeric * (v_to->>'denominator')::numeric
-            * CASE WHEN v_from->>'unit' = 'yd' THEN 9144 ELSE 10000 END
+            * (CASE WHEN v_from->>'unit' = 'yd' THEN 9144 ELSE 10000 END)
            <> (v_new_item->>'lengths')::numeric * (v_to->>'numerator')::numeric * (v_from->>'denominator')::numeric
-            * CASE WHEN v_to->>'unit' = 'yd' THEN 9144 ELSE 10000 END THEN
+            * (CASE WHEN v_to->>'unit' = 'yd' THEN 9144 ELSE 10000 END) THEN
         RAISE EXCEPTION 'A pool change must preserve every repeat distance.';
       END IF;
     END LOOP;

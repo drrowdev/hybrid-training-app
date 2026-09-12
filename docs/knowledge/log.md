@@ -3515,3 +3515,13 @@ Swimming controls passed60 focused cases plus synthetic375/1280 browser checks.
 These are development checks, not live-browser, owner or production acceptance.
 The combined source still needs publication and exact-head CI. The existing
 protected review and production have not changed.
+
+## [2026-09-12] repair | Pool migration expression grouping
+
+First disposable pool run34704146362 atd4f10d47 reached migration0151 and failed
+with syntax code42601. Import storage and both container cleanups succeeded;
+the pool run remains failed. Only public metadata and the safe stage/code
+annotation were read, not logs. The unshipped migration now brackets CASE
+expressions inside its IF condition and JSON extraction before key subtraction.
+No prior migration, assertion or runtime guard changed. New exact-source SQL
+execution is required; no existing database was touched.
