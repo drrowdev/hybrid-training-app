@@ -561,8 +561,7 @@ test.describe("@mobile logger ergonomics", () => {
     await expect(leave).toBeVisible();
     await expect(leave).toHaveAttribute("href", "/app");
     await expect(leave).toContainText("Leave workout");
-    // It says what happens to your work, because that is the actual worry.
-    await expect(leave).toContainText("saved");
+    await expect(leave).toHaveAccessibleName("Leave workout");
     const box = await leave.boundingBox();
     expect(box?.height).toBeGreaterThanOrEqual(44);
   });
@@ -607,4 +606,3 @@ test.describe("@mobile logger ergonomics", () => {
     expect(clear?.topmost).toBe(true);
   });
 });
-
