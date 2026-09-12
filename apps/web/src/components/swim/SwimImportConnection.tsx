@@ -25,7 +25,7 @@ export function SwimImportConnection({ enabled, connection }: { enabled: boolean
         setCopied(false);
         router.refresh();
       } catch {
-        setError("The connection could not be confirmed. Reload to check its status.");
+        setError("Connection status unconfirmed. Reload.");
       }
     });
   }
@@ -42,7 +42,7 @@ export function SwimImportConnection({ enabled, connection }: { enabled: boolean
         setCopied(false);
         router.refresh();
       } catch {
-        setError("The disconnection could not be confirmed. Reload to check its status.");
+        setError("Connection status unconfirmed. Reload.");
       }
     });
   }
@@ -82,7 +82,7 @@ export function SwimImportConnection({ enabled, connection }: { enabled: boolean
             <p className="text-sm" style={{ color: "var(--cp-text-muted)" }}>Import swim dates, distance, timing, strokes and workout references.</p>
             <button type="button" className="cp-btn primary" disabled={pending} onClick={connect}>Create import key</button>
           </>
-          : <p className="text-sm" style={{ color: "var(--cp-text-muted)" }}>New connections are not available yet.</p>}
+          : <p className="text-sm" style={{ color: "var(--cp-text-muted)" }}>New connections unavailable.</p>}
     </section>
   );
 }

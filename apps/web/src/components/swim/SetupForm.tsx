@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { MAX_POOL_LENGTHS, MAX_SESSION_BUDGET_MINUTES, SWIM_WEEKDAYS, swimScheduleAdvice, type SwimStrengthContext } from "@hta/domain";
+import { DEFAULT_SWIM_POOL, MAX_POOL_LENGTHS, MAX_SESSION_BUDGET_MINUTES, SWIM_WEEKDAYS, swimScheduleAdvice, type SwimStrengthContext } from "@hta/domain";
 import { createSwimPlan, previewSwimPlan } from "@/lib/swim/actions";
 import type { SwimPlanPreview } from "@/lib/swim/view-types";
 import { PlanPreview } from "./PlanPreview";
@@ -37,7 +37,7 @@ export function StrokeSelect({ name, defaultValue = "freestyle" }: { name: strin
 
 export function SetupForm({ today, strengthContext: initialContext = { blockId: null, sessions: [] } }: { today: string; strengthContext?: SwimStrengthContext }) {
   const router = useRouter();
-  const [pool, setPool] = useState("25m");
+  const [pool, setPool] = useState(`${DEFAULT_SWIM_POOL.numerator}m`);
   const [error, setError] = useState<string | null>(null);
   const [options, setOptions] = useState<string[]>([]);
   const [guidance, setGuidance] = useState<string | null>(null);
@@ -94,18 +94,18 @@ export function SetupForm({ today, strengthContext: initialContext = { blockId: 
       submit(new FormData(event.currentTarget), submitter?.getAttribute("value") === "preview" ? "preview" : "create");
     }} onChange={() => { request.current++; setPreview(null); }} className={styles.form}>
       <section className={styles.section}>
-        <h2>Your swimming</h2>
+        <h2>Training</h2>
         <label className={styles.field}>Goal
           <select name="goal" defaultValue="base">
             <option value="base">Technique & base</option><option value="endurance">Endurance</option>
           </select>
         </label>
-        <label className={styles.field}>Swimming experience
+        <label className={styles.field}>Experience
           <select name="experience" defaultValue="beginner">
-            <option value="beginner">Getting started</option><option value="returning">Returning to swimming</option><option value="regular">Swimming regularly</option><option value="trained">Experienced swimmer</option>
+            <option value="beginner">Beginner</option><option value="returning">Returning</option><option value="regular">Regular swimmer</option><option value="trained">Experienced</option>
           </select>
         </label>
-        <label className={styles.field}>Recent comfortable continuous lengths
+        <label className={styles.field}>Recent comfortable non-stop lengths
           <input name="comfortableLengths" type="number" required min="0" max={MAX_POOL_LENGTHS} step="1" defaultValue="1" />
         </label>
         <fieldset className={styles.choices}><legend>Known strokes</legend>
@@ -128,7 +128,7 @@ export function SetupForm({ today, strengthContext: initialContext = { blockId: 
         </label>
         {pool === "custom" && <>
           <div className={styles.columns}>
-            <label className={styles.field}>Custom pool length<input name="poolLength" maxLength={64} required placeholder="33 1/3" /></label>
+            <label className={styles.field}>Custom length<input name="poolLength" maxLength={64} required placeholder="33 1/3" /></label>
             <label className={styles.field}>Unit<select name="poolUnit"><option value="m">Metres</option><option value="yd">Yards</option></select></label>
           </div>
         </>}
@@ -142,7 +142,6 @@ export function SetupForm({ today, strengthContext: initialContext = { blockId: 
           ))}
         </fieldset>
         {advice.occupied.length > 0 && <p>Strength days: {advice.occupied.map((day) => day.label).join(", ")}</p>}
-        {advice.insufficientFreeDays && <p role="status">Fewer than two weekdays are free of strength training. Choose your swim days.</p>}
         {advice.conflicts.length > 0 && <label className={styles.choice}>
           <input type="checkbox" name="strengthOverlap" value={advice.confirmationKey}
             checked={confirmedContext === advice.confirmationKey} onChange={(event) => setConfirmedContext(event.target.checked ? advice.confirmationKey : null)} />
@@ -155,7 +154,7 @@ export function SetupForm({ today, strengthContext: initialContext = { blockId: 
         <label className={styles.field}>Start date<input name="startDate" type="date" min={today} required value={startDate} onChange={(event) => { setStartDate(event.target.value); setConfirmedContext(null); }} /></label>
       </section>
       <section className={styles.section}>
-        <h2>Optional targets</h2>
+        <h2>Targets</h2>
         <details className={styles.details}><summary>Pool event</summary>
           <label className={styles.field}>Event date<input name="eventDate" type="date" min={today} /></label>
           <div className={styles.columns}>

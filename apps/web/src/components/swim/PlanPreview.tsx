@@ -15,7 +15,7 @@ export function PlanPreview({ plan, title = "Plan preview" }: { plan: SwimPlanPr
           <summary className={styles.previewSummary}>
             <span>
               <strong>Week {week.week}</strong>
-              <small>{week.startDate}{week.provisional ? " · Provisional" : ""}</small>
+              <small>{week.startDate}{week.provisional ? " · Draft" : ""}</small>
             </span>
             <span>{week.total}</span>
           </summary>
@@ -30,13 +30,14 @@ export function PlanPreview({ plan, title = "Plan preview" }: { plan: SwimPlanPr
                     </span>
                     <span>{workout.total}</span>
                   </summary>
-                  <p className={styles.muted}>{workout.budgetMinutes} min limit</p>
+                  <p className={styles.muted}>{workout.course && `${workout.course} · `}{workout.budgetMinutes} min limit</p>
                   {workout.calibrationLabel && <p className={styles.muted}>{workout.calibrationLabel}</p>}
                   <ol className={styles.steps}>
                     {workout.steps.map((step) => (
                       <li key={step.id} className={styles.step}>
                         <span className={styles.muted}>{step.section}</span>
                         <div className={styles.stepTitle}><strong>{step.title}</strong><span>{step.effort}</span></div>
+                        {step.lengths !== undefined && <span className={styles.muted}>{step.lengths} lengths per repeat</span>}
                         <span>{step.detail}</span>
                         <span className={styles.muted}>{step.rest}{step.pace && ` · ${step.pace}`}</span>
                         {step.guidance && <p className={styles.muted}>{step.guidance}</p>}

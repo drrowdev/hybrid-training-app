@@ -1,4 +1,19 @@
 import { z } from "zod";
+import type { PoolCourse } from "@hta/domain";
+
+export type SwimPoolEditContext = {
+  planId: string; revision: number; defaultCourse: PoolCourse;
+  workout?: { id: string; revision: number; course: PoolCourse; override?: PoolCourse };
+};
+export type SwimPoolEditInput = {
+  planId: string; revision: number;
+  target: { kind: "plan" } | { kind: "workout"; id: string; revision: number };
+  course: PoolCourse | null;
+};
+export type SwimPoolEditPreview = SwimPoolEditInput & {
+  id: string; courseLabel: string; warning?: string;
+  changes: { id: string; date: string; beforeCourse: string; afterCourse: string; distance: string; beforeLengths: number; afterLengths: number }[];
+};
 
 export type SwimWorkoutView = {
   id: string;
@@ -17,7 +32,8 @@ export type SwimWorkoutView = {
   strokes: string[];
   equipment: string[];
   pool: { numerator: number; denominator: number; unit: "m" | "yd" };
-  steps: { id: string; repeatIds: string[]; section: string; title: string; detail: string; rest: string; effort: string; pace?: string; guidance?: string }[];
+  poolEditing?: SwimPoolEditContext;
+  steps: { id: string; repeatIds: string[]; section: string; title: string; detail: string; rest: string; effort: string; pace?: string; guidance?: string; lengths?: number }[];
   result: null | {
     lengths: number; timeMs: number; rpe?: number; notes?: string; reason?: string; splits?: string; stroke: string;
     equipment?: string[]; course?: string; strokes?: string[];
@@ -49,6 +65,7 @@ export type SwimPlanPreview = {
     workouts: (Pick<SwimWorkoutView, "title" | "total" | "budgetMinutes" | "calibrationLabel" | "steps"> & {
       slotId: string;
       date: string;
+      course?: string;
     })[];
   }[];
 };
@@ -111,10 +128,14 @@ export function confirmedSwimCompletionView(
 export type SwimHubView = {
     id: string; revision: number; status: SwimWorkoutView["planStatus"]; goal: string;
     course: string; dates: string; today: string;
+    poolEditing?: SwimPoolEditContext;
+    assessmentPool?: string;
     assessment?: { label: string; pace: string };
     workouts: {
       id: string; date: string; title: string; total: string; status: string; week: number; provisional: boolean;
       reschedule?: { revision: number; min: string; max: string };
+      course?: string;
+      poolEditing?: SwimPoolEditContext;
     }[];
     editableWeeks?: { week: number; mainRepeats: number; workoutCount: number }[];
     proposals: {

@@ -24,6 +24,7 @@ import {
   SWIM_HEURISTIC_DOC,
   SWIM_MODEL_VERSION,
   calibrationSnapshot,
+  changeSwimLengths,
   swimProgressionExclusion,
   daysBetweenISO,
   formatPoolCourse,
@@ -272,7 +273,7 @@ interface SessionTiming {
 
 /** Rest between repeats plus one turnaround. Never an estimate of swimming. */
 function itemKnownMs(item: SwimItem): number {
-  const restMs = (item.restSeconds ?? 0) * 1000 * Math.max(0, item.repeats - 1);
+  const restMs = (item.sendoffMs ?? (item.restSeconds ?? 0) * 1000) * Math.max(0, item.repeats - 1);
   return restMs + SWIM_TRANSITION_SECONDS * 1000;
 }
 
@@ -297,7 +298,8 @@ function itemSwimMs(
     item.stroke,
     item.equipment,
   );
-  return perRepeat === null ? null : perRepeat * item.repeats;
+  // Earlier departures already include their swim time in itemKnownMs.
+  return perRepeat === null ? null : perRepeat * (item.sendoffMs === undefined ? item.repeats : 1);
 }
 
 function sectionsTiming(
@@ -326,6 +328,48 @@ function sectionsTiming(
  */
 function boundedMs(timing: SessionTiming): number {
   return timing.knownMs + timing.pricedSwimMs;
+}
+
+/** Re-express an issued prescription without changing any repeat's distance. */
+export function changeSwimWorkoutPool(
+  workout: SwimWorkout, course: PoolCourse, calibration: SwimCalibration | null = null,
+): SwimResult<SwimWorkout> {
+  const total = changeSwimLengths(workout.totalLengths, workout.snapshot.course, course);
+  if (!total.ok) return total;
+  const compatible = calibration && isUsableSwimCalibration(calibration) &&
+    poolCourseEquals(calibration.course, course) ? calibration : null;
+  const sections: SwimSection[] = [];
+  for (const section of workout.sections) {
+    const items: SwimItem[] = [];
+    for (const item of section.items) {
+      const lengths = changeSwimLengths(item.lengths, workout.snapshot.course, course);
+      if (!lengths.ok) return lengths;
+      const { targetMsPerRepeat: _previousTarget, ...untimed } = item;
+      const target = item.drill ? null : paceTargetMs(
+        compatible, item.effort, lengths.value, course, item.stroke, item.equipment,
+      );
+      if (target !== null && item.sendoffMs !== undefined && target > item.sendoffMs) {
+        return swimErr("budget_impossible", "The pace estimate exceeds a send-off. Adjust the timing before changing pools.");
+      }
+      items.push({ ...untimed, lengths: lengths.value, ...(target === null ? {} : { targetMsPerRepeat: target }) });
+    }
+    sections.push({ ...section, items });
+  }
+  const timing = sectionsTiming(sections, course, compatible);
+  if (boundedMs(timing) > workout.budget.minutes * 60_000) {
+    return swimErr("budget_impossible", "This swim does not fit its time budget. Adjust the workout before changing pools.");
+  }
+  return swimOk({
+    ...workout, sections, totalLengths: total.value,
+    snapshot: {
+      ...workout.snapshot, course,
+      calibration: compatible ? calibrationSnapshot(compatible) : null,
+      protocol: compatible?.protocol ?? null,
+      versions: { ...workout.snapshot.versions, assessment: compatible?.version ?? null },
+    },
+    estimatedMs: timing.allPriced ? boundedMs(timing) : null,
+    budget: { ...workout.budget, accountedMs: boundedMs(timing) },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1172,9 +1216,13 @@ export function applySwimProposal(
   dose: SwimDose,
   scope: SwimFutureScope,
 ): SwimResult<SwimPlan> {
-  const regenerated = generateSwimPlan({
+  const calibration = plan.calibration;
+  const needsCalibration = calibration && plan.weeks.some((week) => week.slots.some((slot) =>
+    slot.kind === "workout" && isFutureUnstarted(slot, scope) &&
+    poolCourseEquals(slot.issued.snapshot.course, calibration.course)));
+  const generationInput: SwimPlanInput = {
     setup: plan.setup,
-    calibration: plan.calibration,
+    calibration: needsCalibration ? plan.calibration : null,
     weeks: plan.weeks.map((week) => ({
       weekIndex: week.weekIndex,
       startDateISO: week.startDateISO,
@@ -1188,11 +1236,31 @@ export function applySwimProposal(
     })),
     dose,
     ...(plan.eventPrep ? { eventPrep: plan.eventPrep } : {}),
-  });
+  };
+  const regenerated = generateSwimPlan(generationInput);
   if (!regenerated.ok) return regenerated;
+  const needsUnpriced = calibration && needsCalibration && plan.weeks.some((week) => week.slots.some((slot) =>
+    slot.kind === "workout" && isFutureUnstarted(slot, scope) &&
+    !poolCourseEquals(slot.issued.snapshot.course, calibration.course)));
+  const unpriced = needsUnpriced ? generateSwimPlan({ ...generationInput, calibration: null }) : null;
+  if (unpriced && !unpriced.ok) return unpriced;
+  const unpricedSlots = new Map(unpriced?.ok
+    ? unpriced.value.weeks.flatMap((week) => week.slots.map((slot) => [slot.slotId, slot] as const)) : []);
   const replacement = new Map<string, SwimSlotOutcome>();
   for (const week of regenerated.value.weeks) {
     for (const slot of week.slots) replacement.set(slot.slotId, slot);
+  }
+  for (const week of plan.weeks) {
+    for (const slot of week.slots) {
+      if (slot.kind !== "workout" || !isFutureUnstarted(slot, scope)) continue;
+      const next = plan.calibration && !poolCourseEquals(slot.issued.snapshot.course, plan.calibration.course)
+        ? unpricedSlots.get(slot.slotId) ?? replacement.get(slot.slotId) : replacement.get(slot.slotId);
+      if (next) replacement.set(slot.slotId, next);
+      if (next?.kind !== "workout" || poolCourseEquals(next.issued.snapshot.course, slot.issued.snapshot.course)) continue;
+      const converted = changeSwimWorkoutPool(next.issued, slot.issued.snapshot.course, plan.calibration);
+      if (!converted.ok) return converted;
+      replacement.set(slot.slotId, { ...next, issued: converted.value });
+    }
   }
   const weeks: SwimPlanWeek[] = plan.weeks.map((week) => ({
     ...week,
@@ -1227,7 +1295,8 @@ export function applyAcceptedBenchmark(
   const weeks: SwimPlanWeek[] = plan.weeks.map((week) => ({
     ...week,
     slots: week.slots.map((slot) => {
-      if (slot.kind !== "workout" || !isFutureUnstarted(slot, scope)) return slot;
+      if (slot.kind !== "workout" || !isFutureUnstarted(slot, scope) ||
+        !poolCourseEquals(slot.issued.snapshot.course, calibration.course)) return slot;
       const issued = slot.issued;
       const sections = issued.sections.map((section) => ({
         ...section,
@@ -1262,11 +1331,15 @@ export function applyAcceptedBenchmark(
 }
 
 /** Total prescribed lengths in a generated week. Used by analytics and tests. */
-export function swimPlanWeekLengths(week: SwimPlanWeek): number {
-  return week.slots.reduce(
-    (sum, slot) => (slot.kind === "workout" ? sum + slot.issued.totalLengths : sum),
-    0,
-  );
+export function swimPlanWeekLengths(week: SwimPlanWeek, course?: PoolCourse): number {
+  const workouts = week.slots.flatMap((slot) => slot.kind === "workout" ? [slot.issued] : []);
+  const totalCourse = course ?? workouts[0]?.snapshot.course;
+  if (!totalCourse) return 0;
+  return workouts.reduce((sum, workout) => {
+    const lengths = changeSwimLengths(workout.totalLengths, workout.snapshot.course, totalCourse);
+    if (!lengths.ok) throw new Error(lengths.error.message);
+    return sum + lengths.value;
+  }, 0);
 }
 
 // ---------------------------------------------------------------------------

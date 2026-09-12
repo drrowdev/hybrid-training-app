@@ -4,13 +4,13 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
-  estimateCriticalSwimSpeed, poolCourseEquals,
+  estimateCriticalSwimSpeed, poolCourseEquals, normalizePoolCourse, SWIM_POOL_CHANGE_VERSION,
   swimScheduleAdvice, type SwimStrengthContext,
   SWIM_ASSESSMENT_VERSION, type SwimWorkout, type SwimError,
 } from "@hta/domain";
 import {
   generateSwimPlan, applySwimProposal, applyAcceptedBenchmark, recordSwimDecision, proposeSwimAdjustment,
-  SWIM_GENERATOR_VERSION, type SwimPlan,
+  SWIM_GENERATOR_VERSION, changeSwimWorkoutPool, type SwimPlan,
 } from "@hta/engine";
 import type { SwimActualResult, SwimDecisionRecord } from "@hta/db";
 import { addDaysToYmd } from "@/lib/dates";
@@ -34,6 +34,8 @@ import { formatPoolCourse, formatSwimDistance } from "@hta/domain";
 import { formatSwimTime } from "./time";
 import { SWIM_REFRESH_WARNING } from "./action-feedback";
 import { loadSwimStrengthContext } from "./strength-schedule";
+import { swimPoolEditingAvailable, swimProgrammePool } from "./pool-editing";
+import type { SwimPoolEditInput, SwimPoolEditPreview } from "./view-types";
 
 function refreshSwims(sessionId?: string) {
   for (const path of ["/app", "/app/plan", "/app/swim", "/app/stats", "/app/sessions"]) revalidatePath(path);
@@ -343,6 +345,123 @@ const weekEditInput = z.object({
   week: z.number().int().positive(), mainRepeats: z.number().int().min(1).max(2000),
   reason: z.string().trim().min(1).max(1000),
 });
+
+const poolEditInput = z.object({
+  planId: z.string().uuid(), revision: z.number().int().positive(),
+  target: z.discriminatedUnion("kind", [
+    z.object({ kind: z.literal("plan") }),
+    z.object({ kind: z.literal("workout"), id: z.string().uuid(), revision: z.number().int().positive() }),
+  ]),
+  course: z.object({
+    numerator: z.number().int().positive(), denominator: z.number().int().positive(), unit: z.enum(["m", "yd"]),
+  }).nullable(),
+});
+
+async function prepareSwimPoolEdit(raw: SwimPoolEditInput) {
+  const parsed = poolEditInput.parse(raw);
+  const normalized = parsed.course && normalizePoolCourse(parsed.course);
+  if (normalized && !normalized.ok) throw new SwimActionError(normalized.error.message, "validation");
+  const input: SwimPoolEditInput = { ...parsed, course: normalized?.ok ? normalized.value : null };
+  const { client, user } = await swimContext();
+  if (!await swimPoolEditingAvailable(client)) throw new SwimActionError("Pool changes are not available yet.", "validation");
+  const { plan, workouts } = await ownedSwimPlan(client, user.id, input.planId, input.revision);
+  if (plan.status !== "active" && plan.status !== "paused") throw new SwimActionError("This swim plan is no longer editable.", "validation");
+  const { today } = await swimToday(client, user.id);
+  const target = input.target;
+  const selected = target.kind === "workout" ? workouts.find((row) => row.id === target.id && row.plan_id === plan.id) : undefined;
+  if (target.kind === "workout" && (!selected || selected.revision !== target.revision)) {
+    throw new SwimActionError("This swim changed. Reload and try again.", "validation");
+  }
+  const eligible = (row: storage.SwimWorkoutRow) => row.status === "scheduled" && !row.session_id && row.scheduled_date >= today;
+  if (selected && !eligible(selected)) throw new SwimActionError("Only today’s or future unstarted swims can change pool.", "validation");
+  if (target.kind === "plan" && !input.course) throw new SwimActionError("Choose a programme pool.", "validation");
+  const course = input.course ?? swimProgrammePool(plan);
+  if (target.kind === "plan" && poolCourseEquals(course, swimProgrammePool(plan))) {
+    throw new SwimActionError("Choose a different programme pool.", "validation");
+  }
+  if (selected && (input.course === null ? !selected.definition.poolCourse && poolCourseEquals(course, selected.definition.issued.snapshot.course)
+    : selected.definition.poolCourse && poolCourseEquals(input.course, selected.definition.poolCourse))) {
+    throw new SwimActionError("Choose a different pool setting.", "validation");
+  }
+  const targets = selected ? [selected] : workouts.filter((row) => eligible(row) && !row.definition.poolCourse);
+  const exactInputs = {
+    operation: "pool", scope: target.kind, course: input.course,
+    ruleVersion: SWIM_POOL_CHANGE_VERSION,
+    ...(selected ? { slotId: swimWorkoutDefinition(selected).slotId } : {}),
+    request: input, today,
+    previousDefault: swimProgrammePool(plan),
+    targets: targets.map((row) => ({ id: row.id, revision: row.revision, date: row.scheduled_date, definition: row.definition })),
+  };
+  const id = swimInputId(exactInputs);
+  const changes: SwimPoolEditPreview["changes"] = [];
+  let removedPace = false;
+  const updates = targets.map((row) => {
+    const current = swimWorkoutDefinition(row);
+    const converted = poolCourseEquals(current.issued.snapshot.course, course)
+      ? { ok: true as const, value: current.issued }
+      : changeSwimWorkoutPool(current.issued, course, plan.state.acceptedCalibration);
+    if (!converted.ok) throw new SwimActionError(`${row.scheduled_date}: ${converted.error.message}`, "validation");
+    removedPace ||= !!current.issued.snapshot.calibration && !converted.value.snapshot.calibration;
+    const { poolCourse: previousOverride, ...withoutOverride } = current;
+    const override = selected ? input.course : previousOverride;
+    const definition: StandaloneWorkoutDefinition = {
+      ...withoutOverride, ...(override ? { poolCourse: override } : {}), issued: converted.value,
+      modifications: [...current.modifications, {
+        id: randomUUID(), recordedAt: new Date().toISOString(), decisionId: id,
+        reason: `Pool set to ${formatPoolCourse(course)}.`, previous: current.issued,
+      }],
+    };
+    changes.push({
+      id: row.id, date: row.scheduled_date,
+      beforeCourse: formatPoolCourse(current.issued.snapshot.course), afterCourse: formatPoolCourse(course),
+      distance: formatSwimDistance(converted.value.totalLengths, course),
+      beforeLengths: current.issued.totalLengths, afterLengths: converted.value.totalLengths,
+    });
+    return { id: row.id, expected_revision: row.revision, scheduled_date: row.scheduled_date, slot: row.slot, definition };
+  });
+  if (updates.length) await checkWorkouts(client, user.id, updates.map((row) => row.definition.issued));
+  const preview: SwimPoolEditPreview = {
+    ...input, id, courseLabel: formatPoolCourse(course), changes,
+    ...(removedPace ? { warning: "Pace targets will be removed from swims without a matching assessment." } : {}),
+  };
+  return { client, user, plan, updates, exactInputs, preview, course };
+}
+
+export async function previewSwimPoolEdit(input: SwimPoolEditInput): Promise<ActionResult & { preview?: SwimPoolEditPreview }> {
+  try { return { ok: true, preview: (await prepareSwimPoolEdit(input)).preview }; }
+  catch (error) { return swimActionFailure(error); }
+}
+
+export async function applySwimPoolEdit(preview: SwimPoolEditPreview): Promise<ActionResult & {
+  warning?: string; view?: SwimHubView; workoutView?: SwimWorkoutView;
+}> {
+  let prepared: Awaited<ReturnType<typeof prepareSwimPoolEdit>>;
+  let result: Awaited<ReturnType<typeof storage.updateSwimPlan>>;
+  try {
+    prepared = await prepareSwimPoolEdit(preview);
+    if (JSON.stringify(prepared.preview) !== JSON.stringify(preview)) throw new SwimActionError("This pool change is out of date. Preview it again.", "validation");
+    const record = { ...decision("setup", "accepted", prepared.exactInputs, preview.id), ruleVersion: SWIM_POOL_CHANGE_VERSION };
+    result = await storage.updateSwimPlan(prepared.client, {
+      planId: prepared.plan.id, expectedRevision: prepared.plan.revision, definition: prepared.plan.definition,
+      state: {
+        ...prepared.plan.state, ...(preview.target.kind === "plan" ? { poolCourse: prepared.course } : {}),
+        decisions: [...prepared.plan.state.decisions, record],
+      },
+      workouts: prepared.updates,
+    });
+  } catch (error) { return swimActionFailure(error); }
+  const saved = await confirmedPlanView(prepared.client, prepared.user.id, result.plan);
+  if (preview.target.kind === "workout") {
+    const id = preview.target.id;
+    try {
+      const row = result.workouts.find((workout) => workout.id === id);
+      const workoutView = row && await swimWorkoutViewFromRow(prepared.client, prepared.user.id, row);
+      if (workoutView) return { ...saved, workoutView };
+    } catch { return { ...saved, warning: SWIM_REFRESH_WARNING }; }
+    return { ...saved, warning: SWIM_REFRESH_WARNING };
+  }
+  return saved;
+}
 
 async function prepareSwimWeekEdit(raw: SwimWeekEditInput) {
   const input = weekEditInput.parse(raw);

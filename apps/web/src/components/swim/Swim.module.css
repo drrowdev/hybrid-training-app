@@ -57,6 +57,11 @@
 .dateEditor > summary { min-height: 44px; padding: 12px 0; cursor: pointer; color: var(--cp-accent); font-size: 14px; }
 .dateEditor > summary:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 3px; }
 .dateEditor[open] { grid-column: 1 / -1; display: grid; gap: 16px; padding-bottom: 16px; }
+.poolEditor { grid-column: 1 / -1; min-width: 0; }
+.poolEditor > summary { min-height: 44px; padding: 12px 0; cursor: pointer; color: var(--cp-accent); font-size: 14px; }
+.poolEditor > summary:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 3px; }
+.poolEditor[open] { display: grid; gap: 16px; padding-bottom: 16px; }
+.poolEditor .row > span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
 .tableWrap { overflow-x: auto; }
 .table { width: 100%; border-collapse: collapse; text-align: left; font-size: 14px; font-variant-numeric: tabular-nums; }
 .table th, .table td { padding: 12px 10px; border-bottom: 1px solid var(--cp-border); white-space: nowrap; }

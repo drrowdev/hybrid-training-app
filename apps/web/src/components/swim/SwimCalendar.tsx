@@ -41,7 +41,7 @@ export async function SwimCalendar({ todayOnly = false }: { todayOnly?: boolean 
         {entries.slice(0, todayOnly ? 4 : 12).map((entry) => (
           <li key={entry.id}><Link className={styles.row} href={entry.href}>
             <span><strong>Pool swim</strong><small>{entry.date}{entry.slot !== "single" ? ` · ${entry.slot.toUpperCase()}` : ""}</small></span>
-            <span>{entry.status === "completed" ? "Completed" : entry.status === "started" ? "Continue →" : "View →"}</span>
+            <span>{entry.status === "completed" ? "Completed" : "View →"}</span>
           </Link></li>
         ))}
       </ul>}

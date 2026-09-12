@@ -5,7 +5,7 @@ import { useState } from "react";
 import {
   proposeSwimWeek, proposeSwimBenchmark, decideSwimProposal,
   changeSwimPlanStatus, previewSwimResume, resumeSwimPlan,
-  decideSwimBenchmark, applySwimWeekEdit, applySwimDateEdit,
+  decideSwimBenchmark, applySwimWeekEdit, applySwimDateEdit, applySwimPoolEdit,
 } from "@/lib/swim/actions";
 import { nextSwimHubView, type SwimHubView, type SwimResumePreview } from "@/lib/swim/view-types";
 import type { SwimBenchmarkPreview } from "@/lib/swim/model";
@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { BenchmarkFields } from "./SetupForm";
 import { WeekEditor } from "./WeekEditor";
 import { DateEditor } from "./DateEditor";
+import { PoolEditor } from "./PoolEditor";
 import styles from "./Swim.module.css";
 
 export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
@@ -65,6 +66,8 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
       <section className={styles.section}>
         <h2>{plan.goal}</h2>
         <p className={styles.muted}>{plan.course} · {plan.dates}</p>
+        {plan.poolEditing && <PoolEditor key={`pool:${plan.id}:${plan.revision}`} context={plan.poolEditing}
+          busy={requestBusy} onApply={(change) => run(() => applySwimPoolEdit(change))} />}
         {plan.assessment && <p className={styles.muted}>{plan.assessment.label} · {plan.assessment.pace}</p>}
         <p className={styles.status}>{({ active: "Active", paused: "Paused", finished: "Finished", archived: "Archived" })[plan.status]}</p>
         {plan.status === "active" && <button className={styles.secondary} disabled={requestBusy} onClick={() => run(() => proposeSwimWeek(plan.id, plan.revision))}>Review next week</button>}
@@ -74,7 +77,6 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
         <section key={proposal.id} className={styles.section}>
           <h2>{proposal.title}</h2>
           <p className={styles.muted}>{proposal.detail}</p>
-          {!!proposal.excludedCount && <p className={styles.muted}>{proposal.excludedCount} {proposal.excludedCount === 1 ? "swim" : "swims"} excluded</p>}
           {proposal.changes.length > 0 && <ul className={styles.list}>
             {proposal.changes.map((change, index) => <li className={styles.row} key={index}>
               <span>{change.title}</span><span>{change.before} → {change.after}</span>
@@ -85,7 +87,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
               <button className={styles.button} disabled={requestBusy} onClick={() => run(() => decideSwimProposal(plan.id, plan.revision, proposal.id, "accepted"))}>Accept</button>
               <button className={styles.secondary} disabled={requestBusy} onClick={() => run(() => decideSwimProposal(plan.id, plan.revision, proposal.id, "rejected"))}>Reject</button>
             </div>
-            {proposal.kind === "week" && <details className={styles.details}><summary>Choose a different week</summary>
+            {proposal.kind === "week" && <details className={styles.details}><summary>Adjust repeats</summary>
               <form className={styles.form} method="post" onSubmit={(event) => {
                 event.preventDefault();
                 const form = new FormData(event.currentTarget);
@@ -96,7 +98,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
               }}>
                 <label className={styles.field}>Main repeats<input name="repeats" type="number" min="1" max="2000" defaultValue={proposal.mainRepeats} required /></label>
                 <label className={styles.field}>Reason<textarea name="reason" maxLength={1000} required /></label>
-                <button className={styles.secondary} disabled={requestBusy}>Apply my choice</button>
+                <button className={styles.secondary} disabled={requestBusy}>Save repeats</button>
               </form>
             </details>}
           </>}
@@ -107,11 +109,13 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
         <ul className={styles.list}>
           {plan.workouts.map((workout) => <li key={workout.id} className={styles.scheduledRow}>
             <Link href={`/app/swim/${workout.id}`} className={styles.row}>
-              <span><strong>{workout.title}</strong><small>{workout.date} · Week {workout.week}{workout.provisional && workout.status === "Scheduled" ? " · Provisional" : ""}</small></span>
-              <span>{workout.total}<small>{workout.status}</small></span>
+              <span><strong>{workout.title}</strong><small>{workout.date} · Week {workout.week}{workout.provisional && workout.status === "Scheduled" ? " · Draft" : ""}</small></span>
+              <span>{workout.total}<small>{workout.course && `${workout.course} · `}{workout.status}</small></span>
             </Link>
             {workout.reschedule && <DateEditor key={`${plan.revision}:${workout.reschedule.revision}`}
               plan={plan} workout={workout} busy={requestBusy} onApply={(changes) => run(() => applySwimDateEdit(changes))} />}
+            {workout.poolEditing && <PoolEditor key={`pool:${plan.revision}:${workout.poolEditing.workout?.revision}`}
+              context={workout.poolEditing} busy={requestBusy} onApply={(changes) => run(() => applySwimPoolEdit(changes))} />}
           </li>)}
         </ul>
       </section>
@@ -144,6 +148,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
       </section>}
       {editable && <section className={styles.section}>
         <h2>New assessment</h2>
+        {plan.assessmentPool && <p className={styles.muted}>Assessment pool: {plan.assessmentPool}</p>}
         <form className={styles.form} method="post" onSubmit={(event) => {
           event.preventDefault();
           const form = new FormData(event.currentTarget);

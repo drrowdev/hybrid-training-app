@@ -45,7 +45,7 @@ export function DateEditor({ plan, workout, busy, onApply }: {
           <label className={styles.field}>Swim date
             <input type="date" name="date" min={range.min} max={range.max} defaultValue={workout.date} required />
           </label>
-          <label className={styles.field}>Reason for moving<textarea name="reason" maxLength={1000} required /></label>
+          <label className={styles.field}>Reason<textarea name="reason" maxLength={1000} required /></label>
           <button className={styles.secondary} disabled={busy || pending}>{pending ? "Preparing…" : "Preview date"}</button>
         </fieldset>
       </form>
@@ -53,7 +53,7 @@ export function DateEditor({ plan, workout, busy, onApply }: {
       {preview && <div className={styles.form}>
         <p>{preview.previousDate} → {preview.date}</p>
         {preview.warnings.map((warning) => <p key={warning} role="status" className={styles.warning}>{warning}</p>)}
-        <button type="button" className={styles.button} disabled={busy || pending} onClick={() => onApply(preview)}>Move to this date</button>
+        <button type="button" className={styles.button} disabled={busy || pending} onClick={() => onApply(preview)}>Save date</button>
       </div>}
     </details>
   );

@@ -54,12 +54,16 @@ export function parseBenchmarkForm(form: FormData, course: PoolCourse): SwimObse
   return observation;
 }
 
-export function parseSetupForm(form: FormData) {
+export function parsePoolForm(form: FormData): PoolCourse {
   const pool = z.enum(["25m", "50m", "25yd", "custom"]).parse(form.get("pool"));
-  const course = courseFromFields(pool, {
+  return courseFromFields(pool, {
     poolLength: form.has("poolLength") ? String(form.get("poolLength")) : undefined,
     poolNumerator: form.get("poolNumerator"), poolDenominator: form.get("poolDenominator"), poolUnit: form.get("poolUnit"),
   });
+}
+
+export function parseSetupForm(form: FormData) {
+  const course = parsePoolForm(form);
   const goal = z.enum(["technique", "base", "endurance"]).parse(form.get("goal"));
   const experience = z.enum(["beginner", "returning", "regular", "trained"]).parse(form.get("experience"));
   const weekdays = z.array(z.coerce.number().int().min(0).max(6)).min(1).max(7).parse(form.getAll("weekdays"));

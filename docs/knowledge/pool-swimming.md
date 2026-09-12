@@ -1,5 +1,20 @@
 # Native pool swimming
 
+## Editable programme and workout pools - 2026-09-12
+
+The owner approved a 50 m initial default with individual 25 m workout choices,
+then separately approved the database-rule extension and disposable synthetic
+testing only. [ADR 0082](../adr/0082-editable-swimming-pools.md) defines the
+development implementation. Pool editing requires migration0151 and default-off
+`SWIM_POOL_EDITING_ENABLED`; it is not deployed to an existing account.
+
+Each repeat keeps its exact distance, with no rounding of incompatible sets.
+Today's and future unstarted workouts can be reviewed and changed; programme
+changes preserve explicit individual choices. Original prescriptions, previous
+issued work and original setup units remain intact. Later week edits retain
+the issued pool, and a 50 m assessment cannot supply a 25 m pace target.
+The pool controls are not a general set editor or the replacement training model.
+
 ## Programme rebuild and swimming-only feedback - 2026-09-12
 
 The owner rejected the separate-program UI and the legacy progression model,
@@ -136,8 +151,10 @@ strength-training and other-swim conflicts; changed conflict context requires
 another preview. A resumed plan uses its reviewed resume anchor, including
 partial weeks, rather than assuming calendar-Monday weeks.
 
-The existing database rule that locks plan setup remains intact: changing
-the pool, goal or other setup requires a new plan. Dates cannot silently move
+At this historical checkpoint the database locked all setup, including pool
+changes, to a new plan. The development-only pool extension above preserves
+original setup while adding explicit pool choices; goals and other setup still
+require a new plan. Dates cannot silently move
 work into another training week or add catch-up volume.
 These changes are published on PR805 and passed the existing frozen26
 standalone reference at `c1f25d2b2704d710f83c1e5be2d14839d1a545fe`

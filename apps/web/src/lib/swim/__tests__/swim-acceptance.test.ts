@@ -276,8 +276,9 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
     expect(files).toEqual([...new Set(files)].sort());
     for (const path of declaredPaths) expect(files).toContain(path);
     expect(files).toContain("packages/db/drizzle/meta/_journal.json");
-    expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(151);
+    expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(152);
     expect(files).toContain("packages/db/drizzle/0150_swim_import_storage.sql");
+    expect(files).toContain("packages/db/drizzle/0151_swim_pool_changes.sql");
     expect(files).toContain("packages/db/drizzle/0145_seed_single_leg_rdl_variants.sql");
     expect(files).not.toContain("packages/db/drizzle/0149_dormant_swim_primary_cardio_link.sql");
     expect(files).not.toContain("packages/db/rollbacks/0149_dormant_swim_primary_cardio_link.down.sql");
@@ -779,11 +780,12 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     const journal = JSON.parse(readFileSync(new URL(
       "../../../../../../packages/db/drizzle/meta/_journal.json", import.meta.url,
     ), "utf8")) as { entries: { tag: string }[] };
-    expect(journal.entries).toHaveLength(151);
+    expect(journal.entries).toHaveLength(152);
     expect(journal.entries.length).not.toBe(ACTIVE_MIGRATION_TOTAL);
     expect(journal.entries[148]?.tag).toBe("0148_shared_completion_identity");
     expect(journal.entries[149]?.tag).toBe("0149_defer_custom_movement_references");
-    expect(journal.entries.at(-1)?.tag).toBe("0150_swim_import_storage");
+    expect(journal.entries[150]?.tag).toBe("0150_swim_import_storage");
+    expect(journal.entries.at(-1)?.tag).toBe("0151_swim_pool_changes");
     expect(source).toContain("checkAuthBoundary(authPrivileges, 148)");
   });
 

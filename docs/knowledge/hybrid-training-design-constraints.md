@@ -627,6 +627,10 @@ training methodology for that replacement.
   inputs, rules and versions. Only future unstarted work may change. Original
   and subsequent issued versions remain available. A persisted session link
   defines started; a browser progress cursor does not.
+  **Pool-choice extension (ADR 0082):** today's unstarted work is eligible.
+  Reviewed programme/workout pool choices preserve every repeat's exact
+  distance, original setup units and issued history; incompatible whole-length
+  conversions fail rather than silently changing the training prescription.
 - **DC-SW6 - Honest analytics [DEF].** Weekly distance/frequency/adherence and
   planned-versus-actual use native course-specific data. Benchmarks and best
   efforts compare only compatible conditions. Paused dates and deleted sessions

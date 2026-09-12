@@ -8,11 +8,12 @@ export const planId = "00000000-0000-4000-8000-000000000002";
 export const sessionId = "00000000-0000-4000-8000-000000000003";
 export const receiptId = "00000000-0000-4000-8000-000000000004";
 
-export function swimFixture() {
+export function swimFixture(overrides: Partial<SwimSetup> = {}) {
   const setup: SwimSetup = {
     goal: "technique_base", experience: "recreational",
     course: { numerator: 25, denominator: 1, unit: "yd" }, knownStrokes: ["freestyle"],
     equipment: [], recentComfortableLengths: 12, sessionBudgetMinutes: 60,
+    ...overrides,
   };
   const generated = generateSwimPlan({ setup, calibration: null, weeks: standaloneWeekRequests("2026-09-07", 3, [1, 4]) });
   if (!generated.ok) throw new Error(generated.error.message);

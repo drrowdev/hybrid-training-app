@@ -27,6 +27,23 @@ No programme guarantees a result. Acceptance requires traceable training
 prescriptions and correct responses to observed progress, not just passing tests
 of arbitrary rules.
 
+### Personal-use and pool decisions
+
+The owner clarified personal use outside the US. Focus on metric recreational
+fitness/endurance alongside strength, not a commercial programme catalogue or
+military selection targets. Personal use does not authorize publishing protected
+plan text in this public repository. Select a suitable authored progression
+and documented adjustment rules; a complete published software algorithm for
+every possible edge case is not required. Unspecified coaching decisions remain
+manual rather than receiving invented thresholds.
+
+The owner usually swims in a 50 m pool and sometimes uses 25 m. New setup now
+selects 50 m. [ADR 0082](../adr/0082-editable-swimming-pools.md) defines reviewed
+programme-default and individual-workout pool changes, exact distance retention,
+course-specific pace and history, and the separately approved development-only
+database-rule extension. Controls remain off until the new migration and
+explicit feature flag are available. Existing account databases are untouched.
+
 ## Training-method gate
 
 The owner rejects the current generic progression heuristics. Do not disguise

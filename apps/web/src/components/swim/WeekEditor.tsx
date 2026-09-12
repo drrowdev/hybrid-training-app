@@ -22,7 +22,7 @@ export function WeekEditor({ plan, busy, onApply }: {
   if (!weeks.length) return null;
   return (
     <section className={styles.section}>
-      <h2>Adjust a week</h2>
+      <h2>Adjust week</h2>
       <form className={styles.form} method="post"
         onChange={() => { request.current++; setPreview(null); setError(null); }}
         onSubmit={(event) => {
@@ -63,16 +63,13 @@ export function WeekEditor({ plan, busy, onApply }: {
                 onChange={(event) => setRepeats(Number(event.target.value))} />
             </label>
           </div>
-          <label className={styles.field}>Adjustment reason<textarea name="reason" maxLength={1000} required /></label>
+          <label className={styles.field}>Reason<textarea name="reason" maxLength={1000} required /></label>
           <button className={styles.secondary} disabled={busy || pending}>{pending ? "Preparing…" : "Preview changes"}</button>
         </fieldset>
       </form>
       {error && <p role="alert" className={styles.error}>{error}</p>}
       {preview && <>
         {preview.warning && <p role="status" className={styles.warning}>{preview.warning}</p>}
-        {preview.excludedCount > 0 && <p className={styles.muted}>
-          {preview.excludedCount} {preview.excludedCount === 1 ? "swim" : "swims"} excluded
-        </p>}
         <ul className={styles.list}>{preview.changes.map((change, index) => <li key={index} className={styles.row}>
           <span>{change.date}</span><span>{change.before} → {change.after}</span>
         </li>)}</ul>

@@ -18,6 +18,7 @@ export function workoutPresentation(workout: SwimWorkout): Pick<SwimWorkoutView,
     const guidance = swimItemGuidance(workout, item);
     return {
       id: group.id,
+      lengths: item.lengths,
       repeatIds: group.repeatIds,
       section: `${group.section}${group.rounds > 1 ? ` · Round ${group.round}/${group.rounds}` : ""}`,
       title: `${item.repeats > 1 ? `${item.repeats} × ` : ""}${formatSwimDistance(item.lengths, workout.snapshot.course)}`,
@@ -52,15 +53,15 @@ export function planPreviewPresentation(plan: SwimPlan): SwimPlanPreview {
     week: week.weekIndex + 1,
     startDate: week.startDateISO,
     provisional: week.provisional,
-    total: formatSwimDistance(swimPlanWeekLengths(week), plan.setup.course),
+    total: formatSwimDistance(swimPlanWeekLengths(week, plan.setup.course), plan.setup.course),
     workouts: week.slots.map((slot) => {
       if (slot.kind !== "workout") throw new Error("Cannot preview an unresolved swim plan.");
-      const { title, total, budgetMinutes, calibrationLabel, steps } = workoutPresentation(slot.issued);
-      return { slotId: slot.slotId, date: slot.dateISO, title, total, budgetMinutes, calibrationLabel, steps };
+      const { title, course, total, budgetMinutes, calibrationLabel, steps } = workoutPresentation(slot.issued);
+      return { slotId: slot.slotId, date: slot.dateISO, title, course, total, budgetMinutes, calibrationLabel, steps };
     }),
   }));
   return {
-    course: formatPoolCourse(plan.setup.course),
+    course: [...new Set(weeks.flatMap((week) => week.workouts.map((workout) => workout.course)))].join(" / ") || formatPoolCourse(plan.setup.course),
     workoutCount: weeks.reduce((count, week) => count + week.workouts.length, 0),
     weeks,
   };

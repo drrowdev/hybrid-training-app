@@ -15,7 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sessions, sessionSlot } from "./sessions";
 import type {
-  SwimSetup, SwimWorkout, SwimObservation, SwimCalibration, SwimActualResult,
+  SwimSetup, SwimWorkout, SwimObservation, SwimCalibration, SwimActualResult, PoolCourse,
 } from "@hta/domain";
 export type { SwimActualResult } from "@hta/domain";
 
@@ -42,6 +42,7 @@ export type SwimPlanState = {
   observations: SwimObservation[];
   acceptedCalibration: SwimCalibration | null;
   decisions: SwimDecisionRecord[];
+  poolCourse?: PoolCourse;
   lifecycle?: { from: SwimPlanStatus; to: SwimPlanStatus; recordedAt: string }[];
   pauseSnapshot?: { pausedAt: string; workoutIds: string[] };
 };
@@ -49,6 +50,7 @@ export type SwimWorkoutDefinition = {
   version: 1;
   original: SwimWorkout;
   issued: SwimWorkout;
+  poolCourse?: PoolCourse;
   modifications: {
     id: string; recordedAt: string; reason: string; decisionId: string; previous: SwimWorkout;
   }[];

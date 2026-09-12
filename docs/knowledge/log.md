@@ -3475,3 +3475,28 @@ not repeated; public check annotations identified the three source locations.
 Those tests now pin the new151-file source while explicitly preserving the
 historical runtime's150-only refusal and original identity level148. No runtime
 guard, old migration, frozen case or deployment profile was changed.
+
+## [2026-09-12] implementation | Editable swimming pools
+
+The owner confirmed a mostly-50 m, occasionally-25 m workflow and separately
+approved extending and testing database rules in isolated development only.
+ADR0082 keeps original setup and prescriptions intact, stores optional pool
+choices in existing JSONB and preserves exact repeat distance. Unsupported
+whole-length conversions fail explicitly. New setup selects50 m; reviewed
+programme and per-workout controls require a default-off flag and readiness
+probe. Later week changes retain selected pools and mixed-pool totals, without
+transferring assessment pace between courses.
+
+Migration0151 changes invoker validation only, retaining the existing identity,
+owner-scoped RPC, RLS, ordered locks and revision checks. Its down refuses saved
+pool-choice history. Added actual-RPC tests for fresh synthetic Postgres and
+isolated mobile/desktop component checks; runtime acceptance is not yet claimed.
+Historical150-migration execution guards remain unchanged and reject the new
+152-migration source. No owner data, review/production migration, deployment,
+Garmin transfer or replacement coaching programme is included.
+
+Local domain, engine and action checks passed, along with actual-React pool
+controls at375/1280 widths and current web typechecking. The disposable fixture
+now reproduces hosted function defaults; new helpers explicitly revoke those
+defaults before granting intended callers. Actual Postgres execution remains
+pending. A separate owner-requested app-wide copy cleanup is in progress.
