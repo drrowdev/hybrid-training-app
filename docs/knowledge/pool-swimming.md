@@ -17,14 +17,19 @@ the existing local dashboard to getsxc, then separately approved additive
 account-owned pairing/import/link storage and synthetic isolated development
 tests, including cross-account isolation and a history-preserving down plan.
 This does not authorize live data access, transfer, Garmin calendar writes,
-existing review/production migrations or deployment. The storage/access change
-still requires its ADR and reversible migration; neither is implemented yet.
+existing review/production migrations or deployment. [ADR 0081](../adr/0081-swimming-import-connection.md)
+now defines the development-only connection and immutable observation storage.
+Migration 0150 and its empty-only down are implemented but not applied to an
+existing account database. Real isolated database acceptance is pending.
 
 A local cache-only reader now selects only swimming fields from explicitly
 provided SQLite/detail paths and dates, with bounded batches and no dashboard
 initialization or network requests. Synthetic Python checks run through the
 normal web test suite, including an actual Python-to-TypeScript contract check.
-Pairing, persisted imports and live account transfers are not implemented.
+Pairing actions, a bounded receiver and owner-visible import history/export are
+implemented behind a default-off flag. Authenticated local sending and live
+account transfers remain unfinished. Captured revisions are not planned-workout
+completion, shared workload or evidence for an automatic pace change.
 
 The first correction makes unrecorded workouts unknown rather than missed.
 Explicit skips remain misses. Unknown outcomes retain planned distance, but

@@ -1,7 +1,9 @@
 import { z } from "zod";
+import type { SwimImportEvidence } from "@hta/domain";
+export type { SwimImportEvidence } from "@hta/domain";
 
 const id = z.string().regex(/^\d{1,24}$/);
-const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+const date = z.string().regex(/^(?!0000)\d{4}-\d{2}-\d{2}$/).refine((value) => {
   const parsed = new Date(`${value}T00:00:00Z`);
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 });
@@ -9,7 +11,9 @@ const distance = z.number().finite().min(0).max(1_000_000);
 const seconds = z.number().finite().min(0).max(86_400);
 const milliseconds = z.number().int().min(0).max(86_400_000);
 const stroke = z.enum(["freestyle", "backstroke", "breaststroke", "butterfly", "mixed", "drill"]);
-const timestamp = z.string().datetime({ offset: true, local: true });
+const timestamp = z.string().max(40)
+  .regex(/^(?!0000)\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)?$/)
+  .refine((value) => date.safeParse(value.slice(0, 10)).success);
 
 const dashboardActivity = z.object({
   activity_id: id,
@@ -35,6 +39,15 @@ const dashboardDetail = z.object({
     splits: z.enum(["ok", "failed", "empty"]).optional(),
   }).optional(),
 });
+
+export const swimDashboardObservationSchema = z.object({
+  version: z.literal(1),
+  activity: dashboardActivity.strict(),
+  detail: dashboardDetail.extend({
+    splits: z.array(dashboardSplit.strict()).max(2000),
+    fetch_status: z.object({ splits: z.enum(["ok", "failed", "empty"]).optional() }).strict().optional(),
+  }).strict().nullable(),
+}).strict();
 
 export const swimImportEvidenceSchema = z.object({
   version: z.literal(1),
@@ -63,9 +76,17 @@ export const swimImportEvidenceSchema = z.object({
       workoutStep: z.number().int().min(0).max(10000).nullable(),
     }).strict()).max(2000),
   }).strict(),
-}).strict();
+}).strict().superRefine((value, context) => {
+  if (value.detail.status === "missing" && (value.detail.fetchedAt !== null || value.detail.splits.length !== 0)) {
+    context.addIssue({ code: "custom", path: ["detail"], message: "Missing detail cannot contain observations." });
+  }
+  value.detail.splits.forEach((split, index) => {
+    if (split.strokeKnown !== (split.stroke !== null)) {
+      context.addIssue({ code: "custom", path: ["detail", "splits", index, "strokeKnown"], message: "Stroke status does not match the observation." });
+    }
+  });
+}) satisfies z.ZodType<SwimImportEvidence>;
 
-export type SwimImportEvidence = z.infer<typeof swimImportEvidenceSchema>;
 export type SwimImportResult =
   | { ok: true; value: SwimImportEvidence }
   | { ok: false; code: "unsupported_activity" | "invalid_activity" | "invalid_detail" };

@@ -646,6 +646,14 @@ training methodology for that replacement.
   single aggregate cardio summary and the durable receipt. Same/new UUID retries
   cannot add work twice. Generic writes cannot add or contradict structured swim
   results. Stale edits fail. Export/account deletion include the new data.
+  **Imported-observation extension (ADR 0081):** a revocable account-bound key
+  can submit only closed swimming evidence. It cannot read account data or
+  complete work. Cross-account links and direct client writes are denied;
+  replay returns one durable receipt, corrections retain prior revisions,
+  and reconnecting does not reset duplicate identity. Revocation serializes
+  with receipt creation. Export/deletion include owned observations, never key
+  secrets. A down must refuse nonempty storage. Disposable synthetic Postgres
+  tests cover these boundaries separately from native Auth/browser acceptance.
 - **DC-SW9 - One shared safety/load path [EV/DEF].** Structured stroke/equipment
   exposure reaches the existing regional workload path once per aggregate swim,
   including shoulder/elbow and relevant lower-body regions. Existing generic

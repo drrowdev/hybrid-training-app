@@ -111,8 +111,8 @@ describe("isolated review guards (offline, not hosted proof)", () => {
       expect(() => assertPristine({ ...pristine, [key]: value })).toThrow();
     }
   });
-  it("reads the unchanged 150 canonical files and validates the 330-entry seed offline", () => {
-    expect(defaultRuntime().canonical()).toHaveLength(150);
+  it("refuses newer migrations in the spent 150-file bootstrap profile", () => {
+    expect(() => defaultRuntime().canonical()).toThrow();
   });
 });
 

@@ -17,6 +17,9 @@ const fromCalls: string[] = [];
 let currentUser: { id: string; email: string; created_at: string } | null = null;
 let swimmingAvailable = true;
 let swimReadFails = false;
+let importsAvailable = true;
+let importReadFails = false;
+const selectedColumns: Record<string, string> = {};
 
 function makeBuilder(table: string) {
   const result =
@@ -34,13 +37,14 @@ function makeBuilder(table: string) {
         }
       : {
           data: [],
-          error: swimReadFails && table === "swim_workouts"
+          error: (swimReadFails && table === "swim_workouts") || (importReadFails && table === "swim_imports")
             ? { message: "read unavailable" }
             : null,
         };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const builder: any = {
-    select() {
+    select(columns: string) {
+      selectedColumns[table] = columns;
       return builder;
     },
     eq() {
@@ -74,6 +78,11 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/swim/capability", () => ({
   swimSchemaAvailable: vi.fn(async () => swimmingAvailable),
 }));
+vi.mock("@/lib/swim/import-storage", () => ({
+  swimImportStorageAvailable: vi.fn(async () => importsAvailable),
+  connectionColumns: "id,created_at,revoked_at",
+  importColumns: "id,activity_id,revision,evidence,received_at",
+}));
 
 import { GET } from "../route";
 
@@ -81,6 +90,8 @@ beforeEach(() => {
   fromCalls.length = 0;
   swimmingAvailable = true;
   swimReadFails = false;
+  importsAvailable = true;
+  importReadFails = false;
   currentUser = { id: "u1", email: "u1@example.test", created_at: "2026-01-01T00:00:00Z" };
 });
 
@@ -98,6 +109,8 @@ const REQUIRED_TABLES = [
   "cardio_logs",
   "swim_plans",
   "swim_workouts",
+  "swim_connections",
+  "swim_imports",
   "wellness",
   "limitations",
   "limitation_events",
@@ -123,6 +136,8 @@ const REQUIRED_SECTIONS = [
   "cardio_logs",
   "swim_plans",
   "swim_workouts",
+  "swim_connections",
+  "swim_imports",
   "wellness",
   "limitations",
   "limitation_events",
@@ -154,6 +169,25 @@ const FORBIDDEN_TABLES = [
 ];
 
 describe("GET /api/me/export", () => {
+  it("DC-SW8 includes imported revisions but never requests connection keys or hashes", async () => {
+    const body = await (await GET()).json();
+    expect(body.swimming_import_schema_available).toBe(true);
+    expect(body.swim_imports).toEqual([]);
+    expect(selectedColumns.swim_connections).toBe("id,created_at,revoked_at");
+    expect(selectedColumns.swim_imports).not.toContain("content_hash");
+    expect(body.excluded.secrets).toContain("swim_connections.token_hash");
+  });
+  it("remains compatible before import storage is installed", async () => {
+    importsAvailable = false;
+    const body = await (await GET()).json();
+    expect(body.swimming_import_schema_available).toBe(false);
+    expect(fromCalls).not.toContain("swim_connections");
+    expect(fromCalls).not.toContain("swim_imports");
+  });
+  it("does not conceal an import-history export failure", async () => {
+    importReadFails = true;
+    expect((await GET()).status).toBe(503);
+  });
   it("DC-SW8 exports swim history without depending on the new-setup flag", async () => {
     const body = await (await GET()).json();
     expect(body.swimming_schema_available).toBe(true);
@@ -229,9 +263,7 @@ describe("GET /api/me/export", () => {
 
   it("declares the remaining excluded secret + derived tables", async () => {
     const body = await (await GET()).json();
-    // No secret tables remain to exclude: `strava_connections` was the only
-    // entry and it was dropped in migration 0130 with the Strava removal.
-    expect(body.excluded.secrets).toEqual([]);
+    expect(body.excluded.secrets).toEqual(["swim_connections.token_hash"]);
     expect(body.excluded.derived).toEqual(
       expect.arrayContaining([
         "tm_suggestions",

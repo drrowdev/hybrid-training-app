@@ -15,6 +15,27 @@ const detail = {
 };
 
 describe("DC-SW1/DC-SW4 swimming-only dashboard evidence", () => {
+  it.each(["2026-02-30T12:00:00", "2026-09-12T24:00:00", "2026-09-12T12:00:60",
+    "2026-09-12T12:00:00+24:00", "0000-01-01T12:00:00"])("rejects unsupported provenance timestamps before storage: %s", (fetched_at) => {
+    expect(projectDashboardSwim(activity, { ...detail, fetched_at }).ok).toBe(false);
+  });
+  it.each(["2026-09-12T12:00:00", "2026-09-12T12:00:00.123456", "2026-09-12T12:00:00Z",
+    "2026-09-12T12:00:00+03:00"])("preserves valid provenance without inventing its timezone: %s", (fetched_at) => {
+    expect(projectDashboardSwim(activity, { ...detail, fetched_at })).toMatchObject({
+      ok: true, value: { detail: { fetchedAt: fetched_at } },
+    });
+  });
+  it("requires stored evidence quality markers to agree with its observations", () => {
+    const result = projectDashboardSwim(activity, detail);
+    if (!result.ok) throw new Error("Invalid synthetic fixture");
+    expect(swimImportEvidenceSchema.safeParse({
+      ...result.value, detail: { ...result.value.detail, status: "missing" },
+    }).success).toBe(false);
+    expect(swimImportEvidenceSchema.safeParse({
+      ...result.value, detail: { ...result.value.detail,
+        splits: result.value.detail.splits.map((item) => ({ ...item, strokeKnown: false })) },
+    }).success).toBe(false);
+  });
   it("projects only approved fields and makes no completion or calibration claim", () => {
     const result = projectDashboardSwim({
       ...activity, name: "PRIVATE_NAME", notes: "PRIVATE_NOTE", avg_hr: 160,

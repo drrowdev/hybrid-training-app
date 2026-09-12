@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { swimSchemaAvailable } from "@/lib/swim/capability";
+import { connectionColumns, importColumns, swimImportStorageAvailable } from "@/lib/swim/import-storage";
 
 /**
  * GDPR Article 15 / 20 — right to access + portability.
@@ -69,6 +70,11 @@ export async function GET() {
   }
 
   const swimmingAvailable = await swimSchemaAvailable(supabase);
+  let swimImportsAvailable: boolean;
+  try { swimImportsAvailable = await swimImportStorageAvailable(supabase); }
+  catch {
+    return NextResponse.json({ error: "Swimming history could not be exported. Try again." }, { status: 503 });
+  }
   const [
     profile,
     trainingMaxes,
@@ -91,6 +97,8 @@ export async function GET() {
     customMovements,
     swimPlans,
     swimWorkouts,
+    swimConnections,
+    swimImports,
   ] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     supabase.from("training_maxes").select(MOVEMENT_JOIN).order("created_at", { ascending: true }),
@@ -117,11 +125,19 @@ export async function GET() {
     swimmingAvailable
       ? supabase.from("swim_workouts").select("*").eq("user_id", user.id).order("created_at", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
+    swimImportsAvailable
+      ? supabase.from("swim_connections").select(connectionColumns).eq("user_id", user.id).order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    swimImportsAvailable
+      ? supabase.from("swim_imports").select(importColumns).eq("user_id", user.id).order("received_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (
     swimPlans.error ||
     swimWorkouts.error ||
+    swimConnections.error ||
+    swimImports.error ||
     (swimmingAvailable && (cardioLogs.error || sessions.error))
   ) {
     return NextResponse.json(
@@ -152,6 +168,9 @@ export async function GET() {
     swimming_schema_available: swimmingAvailable,
     swim_plans: swimPlans.data ?? [],
     swim_workouts: swimWorkouts.data ?? [],
+    swimming_import_schema_available: swimImportsAvailable,
+    swim_connections: swimConnections.data ?? [],
+    swim_imports: swimImports.data ?? [],
     wellness: wellness.data ?? [],
     limitations: limitations.data ?? [],
     limitation_events: limitationEvents.data ?? [],
@@ -163,7 +182,7 @@ export async function GET() {
     region_state: regionState.data ?? [],
     custom_movements: customMovements.data ?? [],
     excluded: {
-      secrets: [],
+      secrets: ["swim_connections.token_hash"],
       derived: [
         "tm_suggestions",
         "region_state_history",

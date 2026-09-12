@@ -10,6 +10,7 @@ import { formatRelativeEventDate } from "@/lib/events/format";
 import { QuickSearchRow } from "@/components/profile/QuickSearchRow";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SettingsIcon } from "@/components/settings/SettingsIcons";
+import { swimImportStorageAvailable } from "@/lib/swim/import-storage";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -52,6 +53,7 @@ export default async function SettingsPage() {
     { count: activeLim },
     { count: upcomingEvents },
     { count: tmCount },
+    importsAvailable,
   ] = await Promise.all([
     supabase
       .from("limitations")
@@ -66,6 +68,7 @@ export default async function SettingsPage() {
       .from("training_maxes")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id),
+    swimImportStorageAvailable(supabase),
   ]);
 
   const activeLimCount = activeLim ?? 0;
@@ -93,6 +96,10 @@ export default async function SettingsPage() {
       </div>
 
       <div className="settings-hub-grid">
+        {(importsAvailable || process.env.SWIM_IMPORT_ENABLED === "true") && (
+          <SettingsHubCard href="/app/settings/swimming" icon={<SettingsIcon name="preferences" />}
+            title="Swimming imports" description="Connect your local dashboard." testId="settings-hub-swimming" />
+        )}
         <SettingsHubCard
           href="/app/settings/profile"
           icon={<SettingsIcon name="profile" />}

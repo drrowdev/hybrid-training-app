@@ -3444,3 +3444,24 @@ cover committed WAL data, unchanged database/detail contents, exact output
 byte limits including the envelope/newline, query interruption, missing files,
 malformed evidence and complete-batch failure. Web typechecking, changed-file
 lint and offline documentation checks passed. No owner cache was accessed.
+
+## [2026-09-12] implementation | Owned swimming observation capture
+
+Under the owner's existing isolated-development approval, added ADR0081,
+account-owned connections and immutable observation revisions in migration0150,
+plus a down that refuses any connection/import history. The first150 migrations
+and spent review-profile bounds remain unchanged; the old bootstrap test now
+verifies refusal of the newer source rather than weakening its guard.
+
+The default-off receiver accepts only the minimized swimming envelope, hashes
+the narrow key, derives ownership server-side and returns a minimal replay-safe
+receipt. Settings support one-time key creation, disconnect and retained import
+history; export includes all revisions but no key hashes. Ingestion-off still
+permits disconnect and export. Capture cannot write native results, completion,
+prescriptions or shared workload.
+
+Added focused request/ownership-interface tests and a credential-free disposable
+Postgres CI contract for actual RLS, privileges, replay/correction/reconnection,
+concurrent receipts, revocation, deletion and empty/nonempty down. Database
+runtime acceptance is pending. No review migration/deployment, owner-data read,
+live transfer, Garmin calendar delivery or replacement training model is claimed.

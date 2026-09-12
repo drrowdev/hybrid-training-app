@@ -1,9 +1,10 @@
 # Goal-led swimming programmes and observed progress
 
 **Status:** evidence-integrity corrections and a synthetic-only, swimming-field
-projection are published. A cache-only reader is implemented locally and tested
-with synthetic SQLite data. Programme selection, import storage, pairing and
-the live connection are not implemented.
+projection and cache-only reader are published and tested with synthetic SQLite
+data. Account pairing and immutable observation storage are implemented on the
+development branch; isolated database acceptance is pending. Programme
+selection, authenticated local sending and the live connection remain unfinished.
 **Owner decision:** 2026-09-12.
 
 The owner subsequently selected a qualified coach's programme with explicit
@@ -138,7 +139,35 @@ fixed error codes go to stderr without source rows, paths or exception text.
 That output is still personal swimming data when used with a real cache:
 do not run it on owner data, capture it in CI or attach it to a public issue.
 Current validation uses disposable synthetic SQLite files only. This is the
-local read adapter, not account pairing, persistence or a live connection.
+local read adapter, not an authenticated sender or a live connection.
+
+### Account pairing and observation capture
+
+[ADR 0081](../adr/0081-swimming-import-connection.md) adds two account-owned
+tables in migration 0150, after the unchanged 150-file baseline. A signed-in
+user can create one narrow import key and disconnect it. Only the hash is
+stored; plaintext is displayed once in memory and excluded from export.
+The settings link remains available after ingestion is disabled.
+
+The default-off `/api/swim/import` receiver accepts one closed, minimized
+observation, bounds its body and request time, validates the evidence and
+derives ownership from the key. It accepts no account identifier. A repeated
+observation returns its original receipt; a correction appends an immutable
+revision. Reconnecting does not reset duplicate identity.
+
+Imported revisions are visible in settings and export, but do not complete
+planned workouts, alter targets, enter shared workload or calibrate pace.
+Planned-workout links remain a later slice, not a guessed side effect of
+capture. The local cache reader does not upload yet, and the UI does not claim
+that creating a key establishes automatic synchronization.
+
+The independent `Swimming import storage` CI workflow uses a fresh loopback
+Postgres service with synthetic Auth identities and no provider credentials.
+It applies the exact migration and checks ownership, privileges, replay,
+corrections, concurrency, revocation, deletion and the history-preserving down.
+It produces only a closed status summary. This is database-contract evidence,
+not native Supabase Auth/PostgREST, browser, device or owner-data acceptance.
+The old one-shot review bootstrap still refuses any source beyond 150 files.
 
 ### Approved development-only storage boundary
 
