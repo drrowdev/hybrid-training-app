@@ -3533,3 +3533,16 @@ pinned deleted reassurance text. Repair609254c7 asserts the existing
 touch-target, dock and session-mode checks. Focused22 unit tests, types and
 spec lint passed; actual browser acceptance still requires the new-head run.
 Both failed workflows remain failed and are not combined with successful jobs.
+
+Second disposable run34704943718 ata09f073f passed the repaired migration and
+unused down/up, then stopped at owned-plan fixture creation withP0001. Import
+storage and cleanup passed; pool acceptance remains blocked. Rather than guess
+at a generic exception, the runner now maps only exact known source-literal
+errors to migration/line numbers. Unknown messages, raw SQL, exception text and
+rows remain unreported. A bounded diagnostic execution is needed to locate the
+remaining refusal; no assertion, privilege or application code is relaxed.
+
+Automatic34704943639 ata09f073f passed core, identity and general Playwright.
+The copy cleanup therefore has full application CI acceptance. It remains
+undeployed; this successful application run does not replace failed pool SQL
+acceptance or owner usability acceptance.

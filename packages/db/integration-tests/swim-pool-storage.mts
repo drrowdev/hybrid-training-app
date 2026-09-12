@@ -14,6 +14,8 @@ type Snapshot = { plan: Pick<SwimPlanRow, "id" | "revision" | "definition" | "st
 type PoolRequest = { state: SwimPlanState; workouts: (Omit<PoolRow, "revision"> & { expected_revision: number })[] };
 
 const stages: string[] = [];
+const knownFailures = new Map<string, { migration: number; line: number }>();
+let failureLocation: { migration: number; line: number } | undefined;
 let stage = "guard", status = "failed", code = "unexpected";
 let sql: ReturnType<typeof postgres> | undefined;
 try {
@@ -62,7 +64,13 @@ try {
     assert.equal(migration.idx, index);
     assert.match(migration.tag, /^\d{4}_[a-z0-9_]+$/);
     stage = `migration-${index}`;
-    await database.begin((tx) => tx.unsafe(readFileSync(new URL(`../drizzle/${migration.tag}.sql`, import.meta.url), "utf8")));
+    const source = readFileSync(new URL(`../drizzle/${migration.tag}.sql`, import.meta.url), "utf8");
+    for (const match of source.matchAll(/\bRAISE EXCEPTION '((?:''|[^'])*)'/g)) {
+      knownFailures.set(match[1].replaceAll("''", "'"), {
+        migration: index, line: source.slice(0, match.index).split("\n").length,
+      });
+    }
+    await database.begin((tx) => tx.unsafe(source));
   }
   stages.push("synthetic-auth-and-full-schema");
   const up = readFileSync(new URL("../drizzle/0151_swim_pool_changes.sql", import.meta.url), "utf8");
@@ -248,6 +256,7 @@ try {
   stages.push(stage);
   status = "passed";
 } catch (error) {
+  if (error instanceof Error) failureLocation = knownFailures.get(error.message);
   const known = ["42501", "23503", "23505", "23514", "22023", "P0001", "42601", "42703", "42883", "42P01", "42P07", "42704", "25P02", "57014", "55P03", "40P01", "40001"];
   code = typeof error === "object" && error !== null && "code" in error &&
     typeof error.code === "string" ? (known.includes(error.code) ? error.code : error.code === "ERR_ASSERTION" ? "assertion" : "unexpected") : "unexpected";
@@ -259,7 +268,9 @@ try {
 }
 console.log(JSON.stringify({
   scope: "swim-pool-storage", sha: /^[0-9a-f]{40}$/.test(process.env.TESTED_SHA ?? "") ? process.env.TESTED_SHA : null,
-  status, stages, ...(status === "failed" ? { stage, code } : {}),
+  status, stages, ...(status === "failed" ? { stage, code, ...(failureLocation ? { failureLocation } : {}) } : {}),
 }));
-if (status !== "passed" && process.env.GITHUB_ACTIONS === "true") console.log(`::error title=Swimming pool storage::${stage} [${code}]`);
+if (status !== "passed" && process.env.GITHUB_ACTIONS === "true") {
+  console.log(`::error title=Swimming pool storage::${stage} [${code}]${failureLocation ? ` at migration-${failureLocation.migration}:${failureLocation.line}` : ""}`);
+}
 if (status !== "passed") process.exitCode = 1;
