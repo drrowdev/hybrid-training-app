@@ -1106,7 +1106,7 @@ export function paceTargetMs(
 // Results, lifecycle and analytics
 // ---------------------------------------------------------------------------
 
-export type SwimCompletion = "completed" | "partial" | "missed";
+export type SwimCompletion = "completed" | "partial" | "missed" | "unknown";
 
 export interface SwimResultLifecycle {
   /** The plan was paused over this planned date (ADR 0079 lifecycle). */
@@ -1211,6 +1211,7 @@ export type SwimLever = "main_repeats" | "main_rep_lengths" | "none";
 
 export type SwimProposalReason =
   | "no_settled_work"
+  | "unobserved_work"
   | "completed_as_prescribed"
   | "effort_comfortable"
   | "effort_high"
@@ -1222,7 +1223,7 @@ export type SwimProposalReason =
   | "already_at_minimum";
 
 /** Why a settled result was not evidence for this proposal. */
-export type SwimEvidenceExclusion = "lifecycle" | "different_course";
+export type SwimEvidenceExclusion = "lifecycle" | "different_course" | "unobserved";
 
 /**
  * The progression thresholds in force when a proposal was made. Frozen with the
@@ -1331,13 +1332,15 @@ export interface SwimSettledContext {
   /** The pool the session was prescribed in. Used only when nothing was swum. */
   readonly plannedCourse: PoolCourse;
   readonly lifecycle: SwimResultLifecycle;
+  /** A recorded skip, not merely a date without imported results. */
+  readonly explicitlyMissed: boolean;
 }
 
 /**
  * The single conversion from stored rows to the engine's view (plan §6.9).
  *
- * A skipped or unlogged slot is passed as `null` and settles as MISSED, which
- * is how a miss reaches adherence without inventing an actual. Course, stroke
+ * A missing actual stays unknown unless the slot was explicitly skipped.
+ * Unknown work cannot establish adherence or a training response. Course, stroke
  * and equipment come from the snapshot — what was actually swum — so a swimmer
  * who moved pool or dropped the paddles is never scored against the plan's
  * conditions.
@@ -1356,7 +1359,7 @@ export function settledFromStoredActual(
       plannedLengths: context.plannedLengths,
       actualLengths: null,
       actualMs: null,
-      completion: "missed",
+      completion: context.explicitlyMissed ? "missed" : "unknown",
       rpe: null,
       lifecycle: context.lifecycle,
     };
@@ -1591,11 +1594,11 @@ export function parseSwimActualResult(input: unknown): SwimResult<SwimActualResu
   return swimOk(candidate);
 }
 
-/** Real swimming that happened. Trashed rows and misses are not history. */
+/** Real swimming that happened, not a planned or inferred activity. */
 export function countsTowardHistory(result: SwimSettledResult): boolean {
   return (
     !result.lifecycle.trashed &&
-    result.completion !== "missed" &&
+    (result.completion === "completed" || result.completion === "partial") &&
     result.actualLengths !== null &&
     result.actualLengths > 0
   );
@@ -1608,9 +1611,12 @@ export function countsTowardAdherence(result: SwimSettledResult): boolean {
 
 /** A late completion is history and load, but it cannot advance a plan. */
 export function countsTowardProgression(result: SwimSettledResult): boolean {
-  return (
-    !result.lifecycle.trashed && !result.lifecycle.planPaused && !result.lifecycle.archivedLate
-  );
+  return swimProgressionExclusion(result) === null;
+}
+
+export function swimProgressionExclusion(result: SwimSettledResult): "lifecycle" | "unobserved" | null {
+  if (result.lifecycle.trashed || result.lifecycle.planPaused || result.lifecycle.archivedLate) return "lifecycle";
+  return result.completion === "unknown" ? "unobserved" : null;
 }
 
 export interface SwimCourseTotals {
@@ -1627,13 +1633,15 @@ export interface SwimCourseTotals {
   readonly sessionsPlanned: number;
   /** Planned sessions that were completed — the adherence numerator. */
   readonly sessionsCompleted: number;
+  /** Planned sessions with no observed outcome. Not missed sessions. */
+  readonly sessionsUnknown: number;
   /**
    * Swims that actually happened, including ones no adherence figure can count
    * (a paused plan, a late archived completion). Frequency, not compliance.
    */
   readonly actualSessions: number;
   readonly actualMs: number | null;
-  /** Completed ÷ planned sessions, or `null` when nothing was planned. */
+  /** Completed / planned, or null when the outcome of any planned session is unknown. */
   readonly adherence: number | null;
 }
 
@@ -1643,6 +1651,7 @@ export interface SwimWeeklyAnalytics {
   readonly byCourse: readonly SwimCourseTotals[];
   readonly sessionsPlanned: number;
   readonly sessionsCompleted: number;
+  readonly sessionsUnknown: number;
   /** Swims that happened, whether or not adherence could count them. */
   readonly actualSessions: number;
   readonly adherence: number | null;
@@ -1665,6 +1674,7 @@ export function summarizeSwimWeek(input: {
       actualLengths: number;
       sessionsPlanned: number;
       sessionsCompleted: number;
+      sessionsUnknown: number;
       actualSessions: number;
       actualMs: number | null;
     }
@@ -1680,17 +1690,19 @@ export function summarizeSwimWeek(input: {
       actualLengths: 0,
       sessionsPlanned: 0,
       sessionsCompleted: 0,
+      sessionsUnknown: 0,
       actualSessions: 0,
       actualMs: null,
     };
     if (countsTowardAdherence(result)) {
       bucket.plannedLengths += result.plannedLengths;
       bucket.sessionsPlanned += 1;
+      if (result.completion === "unknown") bucket.sessionsUnknown += 1;
     }
     if (countsTowardHistory(result)) {
       bucket.actualLengths += result.actualLengths ?? 0;
       bucket.actualSessions += 1;
-      if (countsTowardAdherence(result)) bucket.sessionsCompleted += 1;
+      if (countsTowardAdherence(result) && result.completion === "completed") bucket.sessionsCompleted += 1;
       if (result.actualMs !== null) bucket.actualMs = (bucket.actualMs ?? 0) + result.actualMs;
     }
     buckets.set(key, bucket);
@@ -1712,22 +1724,25 @@ export function summarizeSwimWeek(input: {
         actualDistanceLabel: formatSwimDistance(bucket.actualLengths, bucket.course),
         sessionsPlanned: bucket.sessionsPlanned,
         sessionsCompleted: bucket.sessionsCompleted,
+        sessionsUnknown: bucket.sessionsUnknown,
         actualSessions: bucket.actualSessions,
         actualMs: bucket.actualMs,
         adherence:
-          bucket.sessionsPlanned === 0 ? null : bucket.sessionsCompleted / bucket.sessionsPlanned,
+          bucket.sessionsPlanned === 0 || bucket.sessionsUnknown > 0 ? null : bucket.sessionsCompleted / bucket.sessionsPlanned,
       };
     });
   const sessionsPlanned = byCourse.reduce((sum, entry) => sum + entry.sessionsPlanned, 0);
   const sessionsCompleted = byCourse.reduce((sum, entry) => sum + entry.sessionsCompleted, 0);
+  const sessionsUnknown = byCourse.reduce((sum, entry) => sum + entry.sessionsUnknown, 0);
   const actualSessions = byCourse.reduce((sum, entry) => sum + entry.actualSessions, 0);
   return {
     weekStartISO: input.weekStartISO,
     byCourse,
     sessionsPlanned,
     sessionsCompleted,
+    sessionsUnknown,
     actualSessions,
-    adherence: sessionsPlanned === 0 ? null : sessionsCompleted / sessionsPlanned,
+    adherence: sessionsPlanned === 0 || sessionsUnknown > 0 ? null : sessionsCompleted / sessionsPlanned,
   };
 }
 

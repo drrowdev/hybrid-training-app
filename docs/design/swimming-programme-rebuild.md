@@ -1,0 +1,153 @@
+# Goal-led swimming programmes and observed progress
+
+**Status:** evidence-integrity corrections and a synthetic-only, swimming-field
+projection are implemented locally. Programme selection, import storage,
+pairing and the live connection are not implemented.
+**Owner decision:** 2026-09-12.
+
+## Outcome
+
+Create a swimming programme by selecting a goal. The owner's current goal is
+endurance and fitness alongside strength, not a hardcoded goal for every user.
+Review and edit the programme in getsxc; execute swims on the watch. Keep
+in-app swim logging removed.
+
+Swimming must be either a standalone programme or the selected activity for
+eligible cardio days in another programme. It must not remain a detached
+calendar with a shortcut inside the strength editor.
+
+No programme guarantees a result. Acceptance requires traceable training
+prescriptions and correct responses to observed progress, not just passing tests
+of arbitrary rules.
+
+## Training-method gate
+
+The owner rejects the current generic progression heuristics. Do not disguise
+new numerical rules as established practice by citing general research.
+
+Before enabling each new programme, record:
+
+- Its published or qualified-coach-authored source, edition and exact sections.
+- The supported goal, entry capability, weekly frequency, duration and pool
+  conditions. Do not stretch a three-session programme into arbitrary schedules
+  and imply that its original evidence still applies.
+- The actual sequence of training and recovery sessions, not just a distance
+  ramp. Identify what develops: technique, repeatability, continuous distance,
+  pace or event performance.
+- The source's advancement, repetition, recovery and reassessment rules.
+  If an adjustment is unspecified, it remains unspecified; no invented
+  percentage, effort cutoff, fitness score or unconditional weekly increase.
+- Any permission needed to distribute workout content. Publicly downloadable
+  material is not automatically licensed for redistribution.
+- Which rules are coaching prescriptions and which are software safeguards
+  such as exact measurements, ownership, replay protection and history retention.
+
+No complete adaptive programme has passed this gate yet. This is a release
+blocker, not permission to activate a generic replacement.
+
+### Evidence and applicability
+
+| Source | Supported use | Limit |
+| --- | --- | --- |
+| [Training intensity distribution, volume and periodization in elite swimmers, 2021](https://doi.org/10.1123/ijspp.2020-0906) | Event-specific training emphasis and periodized variation. | Nine studies of elite swimming; not a numerical prescription for recreational swimmers alongside strength. |
+| [Reverse periodization systematic review, 2022](https://doi.org/10.1186/s40798-022-00445-8) | Comparison of established periodization approaches. | Does not establish reverse periodization as universally superior. |
+| [US Masters Swimming beginner guidance](https://www.usms.org/fitness-and-training/articles-and-videos/articles/best-swimming-workouts-for-beginners) | Technique, rest, repeatability and understanding intervals. | Individual workouts and coaching guidance, not an adaptive multiweek algorithm. |
+| [Critical-speed assessment study, 2019](https://doi.org/10.3390/sports7010025) | Bounds on interpreting the paired-distance estimate. | Children and adolescents; an estimate is not a measured threshold or a whole programming method. |
+| [Swim-training volume and shoulder pain review](https://pmc.ncbi.nlm.nih.gov/articles/PMC6961642/) | Individual loading and avoiding abrupt changes. | No universal safe weekly percentage; association is not proof of causation. |
+| [Swim Ireland published training materials](https://www.swimforamile.com/sfam-training) | Concrete 12-week, three-session progression toward a distance event, with pool-specific versions. | Candidate for a distance-building goal, not yet selected for ongoing fitness alongside strength; adaptive rules and distribution rights need resolution. |
+
+Research comparisons stay outside the repository. Product and engine identifiers
+remain original and methodology-neutral.
+
+## Feedback connection
+
+The owner explicitly approved an opt-in, swimming-only connection from the
+existing local dashboard to the owner's getsxc account. This replaces a
+requirement for routine manual activity-file uploads; it does not authorize a
+live transfer, account inspection or Garmin calendar writes during development.
+
+### Direction and allowed data
+
+The local connector initiates outbound HTTPS. Do not expose the dashboard's
+HTTP server or SQLite database to the Internet. The hosted application must not
+attempt to contact a user's localhost.
+
+Transfer only swim activity identifiers, dates, pool/stroke information,
+distance, elapsed/active timing, rest and available workout references, together
+with import coverage and source-version metadata. Exclude credentials, names,
+notes, GPS, sleep, heart rate and other health information. Do not upload raw
+dashboard rows, complete detail files or unrestricted tool responses.
+
+Garmin authentication stays in the dashboard. A getsxc connection must be
+explicitly paired, account-bound, narrowly scoped and revocable. A connection
+must not obtain general account access or permission to alter prescribed work.
+
+### Source inspection
+
+Dashboard source `f074712ab98a50afe7cfed35cabece05af3ee02a` contains cache-only
+activity detail, per-lap distances/times/strokes/length counts/step references,
+sync freshness and conservative planned-workout matching.
+
+Important gaps must be handled explicitly:
+
+- The current summary and planned-workout projection uses metres and can lose
+  native yard-course information. Do not reconstruct an exact native course
+  from a rounded conversion. Preserve explicit original conditions where
+  available; otherwise mark them unknown and do not calibrate from them.
+- A lap's fallback duration may include rest. Preserve whether active time was
+  reported; do not turn a fallback into a verified moving-time measurement.
+- Stroke classification, equipment, exact timestamps and prescription identity
+  may be incomplete. Same day or similar distance is not sufficient to
+  automatically complete a scheduled workout.
+- A generic average pace is not an assessment, race result or technical-skill
+  measurement. Mixed-stroke, drill and rest-heavy sessions cannot silently
+  change pace targets.
+- Cache-only reads must not trigger Garmin fetches. Failed or incomplete detail
+  retrieval stays visible. When the local computer is off, data can be stale.
+
+### Approved development-only storage boundary
+
+Imported evidence must not be represented as a manual result, a fabricated
+in-app Start/Finish, or a Strava activity. Existing source and atomic completion
+contracts do not support this connection as-is.
+
+Prepare a separate ADR and reversible migration proposal covering account-owned
+connection records, minimal immutable import revisions and explicit workout
+links. Provider IDs and replay keys must be unique within their proper account
+scope. All links must enforce common ownership. Domain observations live in
+versioned JSON; any relational column must satisfy plan section 6.8.
+
+The owner approved isolated development and synthetic testing of this
+account-owned pairing/import/link storage on 2026-09-12, including cross-account
+isolation, duplicate protection and a rollback that refuses to erase history.
+The ADR and migration must include export, account deletion, disconnect and
+corrected imports. A rollback must refuse to erase issued prescriptions or
+imported history; disable the new application path and retain evidence when a
+data-preserving down is impossible.
+
+No production or existing review migration is authorized. Use synthetic data;
+cross-account and replay acceptance requires isolated real-Postgres CI.
+
+## Implementation order and acceptance
+
+| Stage | Deliverable | Acceptance |
+| --- | --- | --- |
+| 1. Evidence integrity | Distinguish unknown results, explicit skips, partial swims and completed swims in the existing domain and UI. | Unimported swims never cause a reduction or fabricated success; incomplete weeks have no adherence percentage; historical work and explicit skips are retained. |
+| 2. Source-defined programmes | Goal selection backed by programme sources passing the training-method gate. | Exact expected prescriptions and adjustment decisions trace to source sections. No unsupported goal silently uses another goal's plan. |
+| 3. Local result connection | A minimal export adapter, paired transport and approved account-owned storage. | Synthetic source-contract tests; no excluded fields; retries are idempotent; corrections preserve prior evidence; two-account isolation; disconnect stops future transfers. |
+| 4. Observed progression | Programme-specific decisions consume eligible imported observations and assessments. | Improved, unchanged, difficult, partial, stale, missing and incompatible observations follow documented rules. Every changed target retains its evidence and prior version. No repeated advancement from one observation. |
+| 5. Programme integration | Standalone programme selection or replacement of eligible primary cardio slots. | One schedule, no duplicate cardio, shared recovery context, preserved original cardio and issued history, reviewed future changes. |
+| 6. User acceptance | Updated isolated review followed by a separately approved live connection/watch pilot. | Actual goal choice, schedule, a swim, its import and the justified next prescription are reviewed end to end. CI is not owner or device acceptance. |
+
+Calendar delivery to Garmin is separate from activity import. Neither a local
+dashboard connection nor a file export establishes that a future workout
+reached Connect's calendar or the watch.
+
+Existing plan versions and audit entries remain readable. Replacing the
+generator must not silently regenerate existing plans. The current legacy
+numeric rules remain compatibility behavior pending the source-defined
+replacement; the evidence-integrity fix does not validate those rules.
+
+The session scheduler remains removed. Implementation stays in the current
+isolated worktree; no new model, cloud agent or implementation session is part
+of this plan.

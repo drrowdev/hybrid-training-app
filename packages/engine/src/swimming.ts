@@ -24,7 +24,7 @@ import {
   SWIM_HEURISTIC_DOC,
   SWIM_MODEL_VERSION,
   calibrationSnapshot,
-  countsTowardProgression,
+  swimProgressionExclusion,
   daysBetweenISO,
   formatPoolCourse,
   isISODate,
@@ -106,7 +106,7 @@ export const SWIM_EASY_RPE = 6.5;
 export const SWIM_STRONG_COMPLETION = 0.95;
 
 /** Version of the progression rule set, stamped into every proposal. */
-export const SWIM_PROGRESSION_RULES_VERSION = "swim-prog-1" as const;
+export const SWIM_PROGRESSION_RULES_VERSION = "swim-prog-2" as const;
 
 /**
  * The rule constants above, frozen into each proposal so a decision stays
@@ -899,12 +899,13 @@ export function proposeSwimAdjustment(input: SwimProposalInput): SwimProposal {
   const considered: SwimSettledResult[] = [];
   const excluded: { result: SwimSettledResult; reason: SwimEvidenceExclusion }[] = [];
   for (const result of input.history) {
-    if (!poolCourseEquals(result.course, course)) {
-      excluded.push({ result, reason: "different_course" });
+    const exclusion = swimProgressionExclusion(result);
+    if (exclusion) {
+      excluded.push({ result, reason: exclusion });
       continue;
     }
-    if (!countsTowardProgression(result)) {
-      excluded.push({ result, reason: "lifecycle" });
+    if (!poolCourseEquals(result.course, course)) {
+      excluded.push({ result, reason: "different_course" });
       continue;
     }
     considered.push(result);
@@ -958,6 +959,8 @@ export function proposeSwimAdjustment(input: SwimProposalInput): SwimProposal {
   const hold = (reasons: readonly SwimProposalReason[]): SwimProposal =>
     finish("hold", "none", input.dose, reasons, snapshot);
 
+  // Do not assess a partially observed week using only the available swims.
+  if (excluded.some((entry) => entry.reason === "unobserved")) return hold(["unobserved_work"]);
   if (considered.length === 0) return hold(["no_settled_work"]);
 
   const reduceTriggered =

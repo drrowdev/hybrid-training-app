@@ -3369,3 +3369,45 @@ the original four, plan-review six and read-only-review seven cases, including
 partial failure, missing operation/source, wrong receipt/alias/evidence kind
 and refusal to fetch logs twice. Provider execution and owner usability
 acceptance remain separate from this source checkpoint.
+
+## [2026-09-12] decision | Source-defined swimming rebuild and observed outcomes
+
+The owner rejected the separate-program experience and legacy progression
+heuristics, and requested a goal-selectable, externally grounded programme
+that develops with observed progress. The immediate personal goal is endurance
+and fitness alongside strength. The owner approved a swimming-only connection
+from the existing local dashboard to getsxc; credentials and unrelated health
+data remain local. No live data transfer, new schema/RLS or production operation
+is authorized. The [rebuild plan](../design/swimming-programme-rebuild.md)
+records source selection, applicability, import/storage gates and end-to-end
+acceptance. No complete adaptive source programme has been selected yet.
+
+DC-SW4/SW6 now distinguish unrecorded outcomes from explicit skips. Unknown
+outcomes retain planned distance but cannot establish adherence or cause a
+week adjustment. Partial swims remain actual work without claiming full
+completion. `swim-prog-2` stamps the evidence correction while retaining
+legacy numerical thresholds and prior decision history. Focused domain,
+engine and application coverage passed 205 tests; domain, engine and web
+typechecks passed. This is a local foundation, not a new training model,
+live connector, review update or accepted swimming release.
+
+## [2026-09-12] decision | Approve isolated swimming import storage development
+
+The owner separately approved additive account-owned pairing, imported swim
+revisions and planned-workout links, developed and tested with synthetic data.
+Cross-account isolation, duplicate protection and a rollback that refuses to
+erase history are required. This does not authorize existing review/production
+migrations, a live dashboard read/transfer or Garmin calendar operations.
+
+The first local import boundary projects only approved swim fields from the
+inspected dashboard source. It rejects malformed input and extra transport
+fields, preserves missing/failed/unverified lap detail, keeps open-water data
+separate and never treats fallback timing or converted pool lengths as verified
+native measurements. It performs no I/O and is not connected to storage or
+the UI yet. The complete training-method gate remains unresolved.
+
+The coherent increment passed 236 focused domain/engine/application tests,
+all three affected package typechecks and the offline knowledge-doc guard.
+The progression checks include a changed pool with missing results and
+excluded paused/trashed/late outcomes. No migration, live import, new programme
+or review deployment is included in this acceptance.

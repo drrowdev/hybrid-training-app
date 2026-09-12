@@ -742,6 +742,27 @@ describe("DC-SW4 · progression from settled results", () => {
     expect(proposal.reasons).toEqual(["no_settled_work"]);
   });
 
+  it.each(["unknown", "completed", "partial", "missed"] as const)(
+    "DC-SW4 never adapts an incompletely observed week with another %s swim",
+    (completion) => {
+      const proposal = proposeSwimAdjustment({
+        setup: SETUP, dose, asOfISO: "2026-09-14",
+        history: [
+          settled({ workoutId: "unknown", completion: "unknown", actualLengths: null, actualMs: null, rpe: null }),
+          settled({ workoutId: "other", completion, actualLengths: completion === "completed" ? 20 : null, actualMs: null, rpe: completion === "partial" ? 9 : null }),
+        ],
+      });
+      expect(proposal.decision).toBe("hold");
+      expect(proposal.to).toEqual(dose);
+      expect(proposal.reasons).toEqual(["unobserved_work"]);
+      expect(proposal.snapshot.consideredResults.every((result) => result.completion !== "unknown")).toBe(true);
+      expect(proposal.snapshot.excludedResults).toContainEqual(expect.objectContaining({
+        result: expect.objectContaining({ workoutId: "unknown" }), reason: "unobserved",
+      }));
+      expect(proposal.snapshot.missedSessions).toBe(completion === "missed" ? 1 : 0);
+    },
+  );
+
   it("only reads same-course, progression-eligible results", () => {
     const proposal = proposeSwimAdjustment({
       setup: SETUP,
@@ -780,6 +801,37 @@ describe("DC-SW4 · progression from settled results", () => {
     expect(proposal.decision).toBe("progress");
   });
 
+  it("DC-SW4 does not bypass missing evidence after a pool change", () => {
+    const proposal = proposeSwimAdjustment({
+      setup: SETUP, dose, asOfISO: "2026-09-14",
+      history: [
+        settled({ rpe: 6 }),
+        settled({ workoutId: "unknown", course: YARDS_25, completion: "unknown", actualLengths: null, actualMs: null, rpe: null }),
+      ],
+    });
+    expect(proposal.decision).toBe("hold");
+    expect(proposal.reasons).toEqual(["unobserved_work"]);
+    expect(proposal.to).toEqual(dose);
+  });
+
+  it.each(["planPaused", "trashed", "archivedLate"] as const)(
+    "DC-SW4 does not let an unknown %s outcome block eligible training evidence",
+    (key) => {
+      const proposal = proposeSwimAdjustment({
+        setup: SETUP, dose, asOfISO: "2026-09-14",
+        history: [
+          settled({ rpe: 6 }),
+          settled({
+            workoutId: "excluded", completion: "unknown", actualLengths: null, actualMs: null, rpe: null,
+            lifecycle: { planPaused: false, trashed: false, archivedLate: false, [key]: true },
+          }),
+        ],
+      });
+      expect(proposal.decision).toBe("progress");
+      expect(proposal.snapshot.excludedResults[0]?.reason).toBe("lifecycle");
+    },
+  );
+
   it("freezes the evidence itself, so a later edit cannot rewrite the decision", () => {
     const w1 = settled({ workoutId: "w1", rpe: 6 });
     const history = [w1, settled({ workoutId: "w2", rpe: 6 })];
@@ -787,7 +839,7 @@ describe("DC-SW4 · progression from settled results", () => {
     expect(proposal.snapshot.consideredResults).toEqual(history);
     expect(proposal.snapshot.setup).toEqual(SETUP);
     expect(proposal.snapshot.rules).toEqual(SWIM_PROGRESSION_RULES);
-    expect(proposal.snapshot.rules.version).toBe("swim-prog-1");
+    expect(proposal.snapshot.rules.version).toBe("swim-prog-2");
 
     const edited = [{ ...w1, actualLengths: 4, completion: "partial" as const }, history[1]!];
     const afterEdit = proposeSwimAdjustment({

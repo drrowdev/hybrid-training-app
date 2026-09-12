@@ -8,6 +8,25 @@ vi.mock("../storage", () => ({ listSwimWorkouts: vi.fn() }));
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("ADR0079 native analytics", () => {
+  it("DC-SW4/DC-SW6 keeps unimported swims planned without reporting failed adherence or zero recorded distance", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-13T12:00:00Z"));
+    const { plan, workouts } = swimFixture();
+    vi.mocked(listSwimWorkouts).mockResolvedValue(workouts);
+    const client = {
+      from: vi.fn((table: string) => {
+        if (table !== "profiles") throw new Error("No sessions should be read for unrecorded workouts");
+        return { select: () => ({ eq: () => ({ maybeSingle: async () => ({
+          data: { timezone: "UTC" }, error: null,
+        }) }) }) };
+      }),
+    };
+    const view = await loadSwimHubView(client as never, userId, plan);
+    expect(view.proposals).toEqual([]);
+    expect(view.analytics.weeks).toEqual([expect.objectContaining({
+      planned: expect.stringContaining("yd"), actual: "—", adherence: "—", frequency: 0,
+    })]);
+  });
+
   it("keeps a late actual in its performed week and actual course without relabelling the plan", async () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-28T12:00:00Z"));
     const { plan, workouts, history } = swimFixture();

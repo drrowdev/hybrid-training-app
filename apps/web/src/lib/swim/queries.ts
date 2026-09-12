@@ -68,6 +68,7 @@ export function settledSwimResult(row: SwimHistoryRow, plan: SwimPlanRow): SwimS
     workoutId: row.workout.id, dateISO: row.workout.scheduled_date,
     plannedCourse: workout.snapshot.course,
     plannedLengths: workout.totalLengths,
+    explicitlyMissed: row.workout.status === "skipped",
     lifecycle: {
       trashed: row.deleted || row.sourceGone,
       planPaused: completedStatus === "paused" || unstartedPaused,
@@ -145,6 +146,7 @@ export function deriveSwimWeekCandidate(plan: SwimPlanRow, history: SwimHistoryR
   // Re-review edited actuals against their week's dose, not an issued future increase.
   const input = { setup: enginePlan.setup, dose: swimWeekDose(plan, source.weekIndex), history: sourceRows.map((row) => settledSwimResult(row, plan)), asOfISO: today };
   const proposal = proposeSwimAdjustment(input);
+  if (proposal.reasons.includes("unobserved_work")) return null;
   const exactInputs = {
     ...input, sourceWeek: source.weekIndex, targetWeek: target.weekIndex, sourceFingerprint,
     resumeDecisionId: resume?.id ?? null,
@@ -195,6 +197,7 @@ export async function swimWorkoutViewFromRow(client: SupabaseClient, userId: str
 
 const reasonLabels: Record<string, string> = {
   no_settled_work: "No completed swims to assess", completed_as_prescribed: "Planned work completed",
+  unobserved_work: "Swim results unavailable",
   effort_comfortable: "Effort was comfortable", effort_high: "Effort was high", missed_sessions: "Missed swims",
   partial_completion: "Some work was unfinished", effort_not_reported: "Effort not recorded",
   recovery_context: "Recovery week", minimum_increment_exceeds_cap: "Keep the current step", already_at_minimum: "Keep the current minimum",
@@ -253,7 +256,7 @@ export async function loadSwimHubView(client: SupabaseClient, userId: string, pl
       const a = actual.byCourse.find((row) => row.courseKey === key);
       analytics.weeks.push({
         week, course: (p ?? a)!.courseLabel, planned: p?.plannedDistanceLabel ?? "—",
-        actual: a?.actualDistanceLabel ?? "—", frequency: a?.actualSessions ?? 0,
+        actual: a && a.actualSessions > 0 ? a.actualDistanceLabel : "—", frequency: a?.actualSessions ?? 0,
         adherence: p?.adherence != null ? `${Math.round(p.adherence * 100)}%` : "—",
       });
     }

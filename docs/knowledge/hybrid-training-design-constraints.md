@@ -585,6 +585,15 @@ history guarantees remain compatibility contracts, not a requirement to expose
 the retired logger. This changes no engine calculations and authorizes no data
 deletion, migration or inferred watch results. See [current swimming scope](./pool-swimming.md#in-app-swim-logging-removed---2026-09-12).
 
+**Observed-progress correction (2026-09-12):** An absent result is unknown,
+not a missed swim. Only an explicit skipped status establishes a miss. Unknown
+outcomes retain planned distance but cannot establish adherence or training
+response; a partial result contributes actual workload, not full completion.
+The source-backed programme replacement and approved swimming-only local data
+connection are described in the [rebuild plan](../design/swimming-programme-rebuild.md).
+The existing numerical progression rules are legacy behavior, not accepted
+training methodology for that replacement.
+
 - **DC-SW1 - Exact native measurements [DEF].** A pool is a bounded, reduced
   positive rational length with native `m` or `yd` units. Work uses integer whole
   lengths and integer milliseconds. Totals, formatting and comparison share one
@@ -607,6 +616,8 @@ deletion, migration or inferred watch results. See [current swimming scope](./po
 - **DC-SW4 - Reproducible, bounded progression [DEF to calibrate].** The next
   related week is proposed from persisted settled work, completion, reported
   effort and compatible actual volume/time, not an incremented fitness counter.
+  An incompletely observed week cannot generate a training adjustment. Missing
+  imports neither count as missed nor imply success.
   Poor completion or high effort holds/reduces; missing effort is not success.
   Improving, plateau and missed/high-effort fixtures must yield meaningfully
   different exact outputs. One main dose lever changes within its versioned cap;
@@ -621,6 +632,9 @@ deletion, migration or inferred watch results. See [current swimming scope](./po
   efforts compare only compatible conditions. Paused dates and deleted sessions
   do not masquerade as missed or completed work. Generic historical swimming
   still counts toward shared workload, but provides no inferred native pace.
+  Planned unknown outcomes are visible in planned totals; adherence remains
+  unknown until outcomes are known. Partial swimming counts as actual distance
+  and frequency, not a completed prescription.
 - **DC-SW7 - Independent lifecycle [DEF].** Pause/finish/archive retain targets
   and history without replacing a primary program. Resume previews fresh dates
   for acceptance, never catch-up. Started swims can finish after archive, with

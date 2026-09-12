@@ -74,6 +74,28 @@ describe("ADR0079 persisted-actual week proposals", () => {
     };
     expect(deriveSwimWeekCandidate(updated, history, "2026-09-12")).toBeNull();
   });
+
+  it.each([1, 2])("DC-SW4 does not recommend changing training with %s unimported swims", (count) => {
+    const { plan, history } = swimFixture();
+    const unobserved = history.map((row, index) => index < count ? {
+      ...row, workout: { ...row.workout, session_id: null, status: "scheduled" as const },
+      result: null, completedAt: null, performedAt: null,
+    } : row);
+    expect(deriveSwimWeekCandidate(plan, unobserved, "2026-09-12")).toBeNull();
+    expect(plan.state.decisions).toEqual([]);
+    expect(unobserved.map((row) => row.workout.definition)).toEqual(history.map((row) => row.workout.definition));
+  });
+
+  it("DC-SW4 still assesses explicitly skipped swims rather than calling them unobserved", () => {
+    const { plan, history } = swimFixture();
+    const skipped = history.map((row, index) => index < 2 ? {
+      ...row, workout: { ...row.workout, session_id: null, status: "skipped" as const },
+      result: null, completedAt: null, performedAt: null,
+    } : row);
+    const candidate = deriveSwimWeekCandidate(plan, skipped, "2026-09-12")!;
+    expect(candidate.proposal.snapshot.missedSessions).toBe(2);
+    expect(candidate.proposal.reasons).toContain("missed_sessions");
+  });
   it("DC-K5 does not compound an accepted future increase when the source actual is edited", () => {
     const { plan, history } = swimFixture();
     const first = deriveSwimWeekCandidate(plan, history, "2026-09-12")!;

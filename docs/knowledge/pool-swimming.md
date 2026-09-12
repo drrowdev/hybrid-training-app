@@ -1,5 +1,29 @@
 # Native pool swimming
 
+## Programme rebuild and swimming-only feedback - 2026-09-12
+
+The owner rejected the separate-program UI and the legacy progression model,
+and approved planning/building an externally grounded replacement. Goals must
+be selectable when creating a programme; the owner's current goal is endurance
+and fitness alongside strength. See the
+[implementation and evidence plan](../design/swimming-programme-rebuild.md).
+No complete adaptive source programme has been selected or activated yet.
+
+The owner approved an opt-in connection that sends only swimming evidence from
+the existing local dashboard to getsxc, then separately approved additive
+account-owned pairing/import/link storage and synthetic isolated development
+tests, including cross-account isolation and a history-preserving down plan.
+This does not authorize live data access, transfer, Garmin calendar writes,
+existing review/production migrations or deployment. The storage/access change
+still requires its ADR and reversible migration; neither is implemented yet.
+
+The first correction makes unrecorded workouts unknown rather than missed.
+Explicit skips remain misses. Unknown outcomes retain planned distance, but
+withhold adherence and automatic week recommendations; partial swims count as
+actual work, not full completion. Evidence rule version `swim-prog-2` records
+this distinction without changing legacy numerical training thresholds or
+rewriting prior decisions. It is not the replacement training model.
+
 ## Garmin-first owner workflow - 2026-09-11
 
 **Current product requirement, not implemented Garmin functionality.** The

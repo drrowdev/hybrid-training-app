@@ -644,6 +644,42 @@ describe("DC-SW6 · native analytics", () => {
     expect(summary.adherence).toBe(0.5);
   });
 
+  it("DC-SW6 preserves planned distance but withholds adherence for unknown outcomes", () => {
+    const unknown = settled({ workoutId: "unknown", completion: "unknown", actualLengths: null, actualMs: null, rpe: null });
+    expect(countsTowardHistory(unknown)).toBe(false);
+    expect(countsTowardProgression(unknown)).toBe(false);
+    const summary = summarizeSwimWeek({
+      weekStartISO: "2026-09-07",
+      results: [settled(), unknown],
+    });
+    expect(summary).toMatchObject({ sessionsPlanned: 2, sessionsCompleted: 1, sessionsUnknown: 1, actualSessions: 1, adherence: null });
+    expect(summary.byCourse[0]).toMatchObject({
+      plannedLengths: 40, actualLengths: 20, sessionsUnknown: 1, adherence: null,
+    });
+  });
+
+  it("DC-SW6 counts partial swimming as actual work, not a completed prescription", () => {
+    const summary = summarizeSwimWeek({
+      weekStartISO: "2026-09-07",
+      results: [settled({ completion: "partial", actualLengths: 10 })],
+    });
+    expect(summary).toMatchObject({ sessionsPlanned: 1, sessionsCompleted: 0, actualSessions: 1, adherence: 0 });
+    expect(summary.byCourse[0]?.actualLengths).toBe(10);
+  });
+
+  it("DC-SW6 unknown work in one course cannot imply complete cross-course adherence", () => {
+    const summary = summarizeSwimWeek({
+      weekStartISO: "2026-09-07",
+      results: [
+        settled(),
+        settled({ course: SHORT_COURSE_YARDS, completion: "unknown", actualLengths: null, actualMs: null, rpe: null }),
+      ],
+    });
+    expect(summary.byCourse.find((entry) => entry.courseKey === "25/1:m")?.adherence).toBe(1);
+    expect(summary.byCourse.find((entry) => entry.courseKey === "25/1:yd")?.adherence).toBeNull();
+    expect(summary.adherence).toBeNull();
+  });
+
   it("returns null adherence when nothing was planned", () => {
     const summary = summarizeSwimWeek({ weekStartISO: "2026-09-07", results: [] });
     expect(summary.adherence).toBeNull();
@@ -1167,6 +1203,7 @@ describe("DC-SW7 · one conversion from stored rows to the engine view", () => {
     plannedLengths: 24,
     plannedCourse: SHORT_COURSE_METRES,
     lifecycle: { planPaused: false, trashed: false, archivedLate: false },
+    explicitlyMissed: false,
   };
 
   it("takes the conditions actually swum from the snapshot, not the plan", () => {
@@ -1195,15 +1232,22 @@ describe("DC-SW7 · one conversion from stored rows to the engine view", () => {
     expect(countsTowardHistory(settledRow)).toBe(true);
   });
 
-  it("settles an unlogged slot as missed in the pool it was planned for", () => {
+  it("DC-SW4 keeps an unrecorded slot unknown in the pool it was planned for", () => {
     const settledRow = settledFromStoredActual(null, context);
-    expect(settledRow.completion).toBe("missed");
+    expect(settledRow.completion).toBe("unknown");
     expect(settledRow.actualLengths).toBeNull();
     expect(settledRow.actualMs).toBeNull();
     expect(settledRow.rpe).toBeNull();
     expect(settledRow.course).toEqual(SHORT_COURSE_METRES);
     expect(countsTowardHistory(settledRow)).toBe(false);
     expect(countsTowardAdherence(settledRow)).toBe(true);
+    expect(countsTowardProgression(settledRow)).toBe(false);
+  });
+
+  it("DC-SW4 preserves an explicit skip as missed without inventing a result", () => {
+    const settledRow = settledFromStoredActual(null, { ...context, explicitlyMissed: true });
+    expect(settledRow).toMatchObject({ completion: "missed", actualLengths: null, actualMs: null, rpe: null });
+    expect(countsTowardProgression(settledRow)).toBe(true);
   });
 
   it("orders splits by position only, so an unvalidated extra key cannot fail the parse", () => {
