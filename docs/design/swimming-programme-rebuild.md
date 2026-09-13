@@ -607,3 +607,14 @@ repository scope. Main execution therefore refuses missing reader access before
 connecting to the database. No credential was retrieved, copied or re-scoped.
 A suitable read-only production verification path needs separate approval.
 No production updater dispatch is authorized by development or rehearsal.
+
+The real-Postgres rehearsal passed in
+[run34776769214](https://github.com/drrowdev/hybrid-training-app/actions/runs/34776769214)
+at `886dc7fe`, including the existing storage and browser journeys and container
+cleanup. It exercised each rollback, postcommit-failure, replay and retention
+case above. This validates the synthetic baseline, not live production execution.
+The parallel source check found a test-only shallow-checkout dependency: its
+old-job comparison tried to read a historical Git object unavailable in CI.
+The comparison now uses the full historical job body's SHA-256, preserving the
+same exact-content assertion without requiring history. Source acceptance remains
+pending until the corrected revision passes CI.

@@ -3950,3 +3950,16 @@ Read-only secret-name metadata confirms that the Vercel reader remains limited
 to `swim-review`; production and repository scope have no reader binding. No
 secret value, credential transfer or permission change occurred. Production
 execution remains blocked on that access boundary and separate owner approval.
+
+## [2026-09-13] validation | Production updater rehearsal passes; repair shallow-checkout test
+
+Disposable storage run34776769214 at `886dc7fe` passed both jobs, including the
+new203-to-212 updater rehearsal, failure/rollback/replay cases, profile and
+history retention, existing browser controls and container cleanup. No hosted
+database or deployment changed.
+
+Parallel source run34776769212 failed only the new historical production-job
+comparison; its Git lookup assumed full history in a shallow CI checkout. The
+test now pins the complete old body by SHA-256, retaining its exact-content
+guarantee. The production job itself is unchanged. Corrected source acceptance
+remains pending; rehearsal is not production release authorization.

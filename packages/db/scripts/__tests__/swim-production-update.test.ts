@@ -1,4 +1,5 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -155,10 +156,10 @@ describe("DC-SW3/SW5/SW8 history-preserving production updater", () => {
   it("keeps the old production job unchanged and new credentials in the final guarded step", () => {
     const path = resolve(__dirname, "../../../../.github/workflows/ci.yml");
     const current = readFileSync(path, "utf8").replaceAll("\r\n", "\n");
-    const old = execFileSync("git", ["show", `${PRODUCTION_UPDATE.reference.sha}:.github/workflows/ci.yml`],
-      { encoding: "utf8", timeout: 15_000 }).replaceAll("\r\n", "\n");
     const existing = (text: string) => text.split("\n  prod-migrate:\n")[1]!.split("\n  prod-drift:\n")[0];
-    expect(existing(current)).toBe(existing(old));
+    // Full job body from 08f89f05, independent of CI's shallow checkout.
+    expect(createHash("sha256").update(existing(current)!).digest("hex"))
+      .toBe("4c3643cb734fcaeb1f70d97b5f12590f84684fb7625f7d6b3fe3eb15e6272a06");
     const job = current.split("\n  update-swim-production:\n")[1]!.split("\n  inspect-swim-production:\n")[0]!;
     for (const guard of ["needs: [ci, identity-guard]", "github.ref == 'refs/heads/main'", "inputs.accept_legacy_swim_history == true",
       "group: production-database-migrations", "cancel-in-progress: false", "persist-credentials: false",
