@@ -26,9 +26,9 @@ export const OTHER_OPERATIONS = [
 export type RefreshProfile = Readonly<{
   reference: Readonly<{ sha: string; run: string; kind?: "automatic_ci" }>;
   paths: readonly string[];
-  operation: "REFRESH_SWIM_REVIEW" | "REFRESH_SWIM_PLAN_REVIEW" | "REFRESH_SWIM_READONLY_REVIEW" | "UPGRADE_SWIM_REVIEW" | "UPDATE_UNTIMED_SWIM_REVIEW";
-  job: "refresh-swim-review" | "refresh-swim-plan-review" | "refresh-swim-readonly-review" | "upgrade-swim-review" | "update-untimed-swim-review";
-  scope: "swim-review-refresh" | "swim-plan-review-refresh" | "swim-readonly-review-refresh" | "swim-existing-review-upgrade" | "swim-untimed-review-update";
+  operation: "REFRESH_SWIM_REVIEW" | "REFRESH_SWIM_PLAN_REVIEW" | "REFRESH_SWIM_READONLY_REVIEW" | "UPGRADE_SWIM_REVIEW" | "UPDATE_UNTIMED_SWIM_REVIEW" | "TEST_SWIM_ACCOUNT_FLOW";
+  job: "refresh-swim-review" | "refresh-swim-plan-review" | "refresh-swim-readonly-review" | "upgrade-swim-review" | "update-untimed-swim-review" | "test-swim-account-flow";
+  scope: "swim-review-refresh" | "swim-plan-review-refresh" | "swim-readonly-review-refresh" | "swim-existing-review-upgrade" | "swim-untimed-review-update" | "swim-account-flow";
   otherOperations: readonly string[];
   previous: Readonly<{ run: string; sha: string; id: string; url: string; start: number; end: number }>;
   aliasUid?: string;
@@ -62,7 +62,7 @@ export function refreshContext(env: NodeJS.ProcessEnv, profile: RefreshProfile =
   return sha;
 }
 type SourceIO = { git(...args: string[]): string; event(): unknown; regular(path: string): boolean };
-export function verifyRefreshSource(env: NodeJS.ProcessEnv, io: SourceIO, profile: RefreshProfile = originalProfile) {
+export function verifyRefreshCheckout(env: NodeJS.ProcessEnv, io: SourceIO, profile: RefreshProfile = originalProfile) {
   const sha = refreshContext(env, profile);
   const inputs = record.parse(record.parse(io.event()).inputs);
   requireThat(inputs[profile.operation.toLowerCase()] === "true" && inputs.expected_sha === sha &&
@@ -76,6 +76,10 @@ export function verifyRefreshSource(env: NodeJS.ProcessEnv, io: SourceIO, profil
     const match = /^(100644|100755) blob [a-f0-9]{40}\t([^\t\r\n]+)$/.exec(entry);
     requireThat(match && match[2] && io.regular(match[2]));
   }
+  return sha;
+}
+export function verifyRefreshSource(env: NodeJS.ProcessEnv, io: SourceIO, profile: RefreshProfile = originalProfile) {
+  const sha = verifyRefreshCheckout(env, io, profile);
   for (const [branch, expected] of [[`refs/heads/${REVIEW.branch}`, sha], ["refs/heads/main", BASE_SHA]]) {
     requireThat(io.git("ls-remote", "--exit-code", `https://github.com/${REVIEW.repository}.git`, branch!) === `${expected}\t${branch}`);
   }

@@ -1,18 +1,16 @@
 # Goal-led swimming programmes and observed progress
 
-**Status:** evidence-integrity corrections and a synthetic-only, swimming-field
-projection and cache-only reader are published and tested with synthetic SQLite
-data. Account pairing and immutable observation storage are implemented on the
-development branch; the isolated synthetic Postgres contract passed at0961b7ac.
-A preview-first authenticated local sender is implemented for synthetic
-development checks. A finite coach-authored course and private prepared-file
-import are selected; import/edit implementation is in development. The live
-connection and watch delivery remain unfinished.
+**Status:** private course import/editing, untimed imports and distinct weekly
+names are delivered on the protected test site. The selected course was prepared
+privately and imported by the owner. Account pairing, the cache-only reader,
+preview-first sender, immutable observations and explicit recording matches have
+development acceptance. Two disposable-account checks are now authorized below.
+Real swimming-data transfer and watch delivery remain unfinished and held.
 **Owner decision:** 2026-09-12.
 
 The owner selected a finite coach-authored course, with unspecified coaching
 decisions remaining manual. Full prescriptions stay private rather than entering
-the public catalogue. The owner will supply the PDF for one-time preparation;
+the public catalogue. One-time private preparation is complete;
 no PDF parser, paid commissioning or external processing service is authorized.
 [ADR 0083](../adr/0083-private-swimming-courses.md) records the approved
 development-only import/storage extension.
@@ -377,3 +375,43 @@ the branch build SHA and the fixed protected alias may change.
 The same guarded append helper is rehearsed with existing synthetic data and
 injected transactional failure before hosted use. Earlier jobs and spent
 profiles remain unchanged; production and account operations remain excluded.
+
+The update completed at856b9b60 in run34760308225: migration0154 committed,
+the155-entry ledger was verified, and the new READY deployment and fixed
+protected alias were confirmed with unchanged Auth, access protection and
+isolation. The154-to155 operation is now spent too. Neither migration profile
+may be replayed against the current review.
+
+### Bounded synthetic account acceptance
+
+On 2026-09-13 the owner approved two disposable accounts and synthetic swims in
+the existing protected test environment, followed by account removal. This
+permission excludes the existing owner programme, real dashboard data, Garmin
+and production. It does not permit schema, role, Auth-setting, feature-flag,
+alias or deployment changes.
+
+The default-off account-flow job uses the same exact-source, core/identity and
+shared-review locks. It verifies the accepted protected configuration and155
+ledger read-only, then builds the unchanged application on the GitHub runner.
+The browser exercises the runner's loopback server with real review-project
+Auth and PostgREST; it neither bypasses Vercel protection nor changes redirect
+settings. Admin access is limited to two run/source-bound fixture identities,
+their onboarding precondition and explicit post-deletion zero-row checks.
+No user listing or existing-account inspection is allowed.
+
+The bounded journey covers native password sign-in, three prepared synthetic
+workouts per account, one reviewed edit with source/history retention and stable
+names, native pairing, receive/replay/correction, explicit match/undo, cross-account
+denial, unchanged other-account state and disconnect rejection. It uses no
+in-app swim logging, external source cache, provider action or generated coaching.
+
+Both accounts must be absent with their owned rows removed. Cleanup verifies
+server-owned fixture metadata before deletion, continues with the second account
+if the first fails, and is independently callable after the main step. That
+cleanup retains immutable source/context checks but can survive a changed live
+branch. Main failure cannot be hidden by successful cleanup. Only bounded
+counters and fixed diagnostics are reported; no credentials, account rows,
+screenshots, traces or raw errors are retained.
+
+This proves native application/Auth/storage transport for synthetic accounts,
+not the protected-alias browser session, a real local-cache transfer or a watch.

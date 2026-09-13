@@ -3754,3 +3754,31 @@ protected test site only, preserving programme/accounts and leaving production
 untouched. A new154-to155 profile pins the accepted application, current READY
 deployment and four existing feature IDs; it cannot reuse the spent150-to154
 operation or modify source prescriptions, accounts, Auth, protection or flags.
+
+## [2026-09-13] acceptance | Protected untimed update delivered
+
+Source856b9b607c050fa200963e2591837b11209b64ee passed automatic application
+CI34759406630 and disposable storage/control CI34759406674, including the
+actual154-to155 helper's injected rollback and successful append. Read-only
+inspection34759846621 passed before the owner-approved apply34760308225.
+Its marked main and nested records confirm155 migrations, READY deployment,
+fixed protected alias, unchanged Auth/protection/isolation and successful
+closure. Existing accounts, programme source and history were not rewritten.
+Both historical update profiles are now spent. Production remains untouched.
+
+## [2026-09-13] decision | Two synthetic account-flow checks approved
+
+The owner approved a bounded real-sign-in/course/connection check with two
+disposable accounts and synthetic data in the existing protected test environment,
+then removal of those accounts. No existing owner programme, real activity data,
+Garmin or production access is included. The implementation uses a runner-local
+copy of the accepted application and existing review Auth/storage, with no
+protection or schema changes. Independent identity-bound cleanup must preserve
+the main result; credentials, rows, media and raw errors are excluded from
+reports. This is not yet runtime acceptance.
+
+Read-only release preparation also confirmed that current main's146-entry
+migration prefix is unchanged, with nine ordered additions0146-0154 and matching
+downs. The earlier source-order collision is resolved. Live production state
+was not queried; used-data downs remain refusal-safe rather than a deletion or
+ledger-reset plan.

@@ -23,7 +23,8 @@ export const UNTIMED_FLAG_RECEIPT = {
 } as const;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 function requireThat(value: unknown): asserts value { if (!value) throw new Error("refused"); }
-export function untimedReceipt(project: EnvironmentMetadata[], shared: EnvironmentMetadata[]) {
+export function untimedReceipt(project: EnvironmentMetadata[], shared: EnvironmentMetadata[],
+  buildShaWindow: { start: number; end: number } = previous) {
   const ids: readonly string[] = Object.values(UNTIMED_FLAG_RECEIPT);
   const flags = project.filter((row) => ids.includes(row.id));
   requireThat(new Set([...project, ...shared].map((row) => row.id)).size === project.length + shared.length &&
@@ -31,7 +32,7 @@ export function untimedReceipt(project: EnvironmentMetadata[], shared: Environme
       row.id === id && row.key === key && row.type === "encrypted" && row.gitBranch === REVIEW.branch &&
       same(row.target, ["preview"]) && row.createdAt >= previous.start && row.createdAt <= previous.end &&
       row.updatedAt >= row.createdAt && row.updatedAt <= previous.end)));
-  acceptedReceipt(project.filter((row) => !ids.includes(row.id)), shared, true, previous);
+  acceptedReceipt(project.filter((row) => !ids.includes(row.id)), shared, true, buildShaWindow);
 }
 export const UNTIMED_REVIEW: RefreshProfile = {
   reference: { sha: "73ef5be96518905a4a96930f2b43d189145a139e", run: "34758418894", kind: "automatic_ci" },
