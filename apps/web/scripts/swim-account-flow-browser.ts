@@ -57,7 +57,7 @@ async function importCourse(page: Page, slot: "a" | "b", report: NativeReport) {
   await page.getByLabel("Start date", { exact: true }).fill(start.toISOString().slice(0, 10));
   await page.locator('input[name="weekdays"][value="1"]').check();
   await page.locator('input[name="weekdays"][value="3"]').check();
-  await page.getByLabel("Experience", { exact: true }).selectOption("regular");
+  await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("regular");
   await page.getByLabel("Comfortable non-stop lengths in the plan pool").fill("4");
   await page.locator('input[name="strokes"][value="freestyle"]').check();
   await expect(page.locator('input[name="timeBudgetMinutes"]')).toHaveCount(0);
@@ -212,7 +212,7 @@ export async function nativeAccountFlow(
       await a.goto(`${origin}/app/swim/recordings/${importA}`);
       await a.getByLabel("Workout date", { exact: true }).fill(first.scheduled_date);
       await a.getByRole("button", { name: "Find workouts", exact: true }).click();
-      await a.getByLabel("Workout", { exact: true }).selectOption(first.id);
+      await a.getByRole("combobox", { name: "Workout", exact: true }).selectOption(first.id);
       await a.getByRole("button", { name: "Match workout", exact: true }).click();
       await expect(a.getByRole("button", { name: "Remove match", exact: true })).toBeVisible();
       const correction = await receive(a, keys[0]!, {

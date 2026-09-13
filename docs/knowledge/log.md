@@ -3804,3 +3804,16 @@ the existing review database connection, returning boolean absence for allocated
 test identities only. No permissions, schema or RLS policies change. The repair
 verifies the previous pair before creating a new pair and adds fixed import-step
 diagnostics without recording UI text, rows or credentials.
+
+## [2026-09-13] acceptance | Synthetic cleanup closed; native form selector isolated
+
+Run34764155036 at cb337adf verified absence of the previous pair and their
+six-table records, then deleted and independently verified the new pair too.
+Both real sign-ins passed. Import stopped while filling fields, before preview
+or submission; this was not evidence of an application import failure.
+
+The same Experience `getByLabel` selector reproduced a timeout locally in the
+existing network-blocked actual-React harness. The control's accessible combobox
+name works, as the established harness already uses. The native runner now uses
+that selector for Experience and the same nested-label pattern in workout
+selection. No product, permission or schema change is required.
