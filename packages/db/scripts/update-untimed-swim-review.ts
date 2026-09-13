@@ -39,6 +39,7 @@ export const UNTIMED_REVIEW: RefreshProfile = {
     ".github/workflows/ci.yml", ".github/workflows/swim-import-storage.yml",
     "packages/db/scripts/update-untimed-swim-review.ts", "packages/db/scripts/untimed-swim-review-storage.ts",
     "packages/db/scripts/__tests__/update-untimed-swim-review.test.ts",
+    "packages/db/scripts/__tests__/refresh-swim-review.test.ts",
     "packages/db/scripts/refresh-swim-review.ts", "packages/db/scripts/upgrade-swim-review.ts",
     "packages/db/integration-tests/swim-pool-storage.mts",
     "docs/knowledge/log.md", "docs/design/swimming-programme-rebuild.md", "docs/adr/0083-private-swimming-courses.md",

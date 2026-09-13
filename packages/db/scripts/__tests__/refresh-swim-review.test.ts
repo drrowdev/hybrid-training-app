@@ -61,8 +61,8 @@ function checkRefreshEvent(inputs: Record<string, unknown> | undefined, context:
 }
 
 describe("refresh workflow boundaries", () => {
-  const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8");
-  const job = workflow.split("\n  refresh-swim-review:\n")[1]!;
+  const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
+  const job = workflow.split("\n  refresh-swim-review:\n")[1]!.split(/\n  [a-z][a-z0-9-]+:\n/)[0]!;
 
   it("rejects mixed refresh dispatches in prerequisite CI before any privileged job", () => {
     if (process.env.GITHUB_EVENT_NAME !== "workflow_dispatch") return;
