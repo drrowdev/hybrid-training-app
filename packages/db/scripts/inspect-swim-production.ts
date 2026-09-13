@@ -9,7 +9,7 @@ import { verifyRefreshSource } from "./refresh-swim-review";
 import {
   PRODUCTION, PRODUCTION_READONLY, PRODUCTION_ROUTES, ProductionInspectionRefusal,
   productionContext, productionDispatch, productionDatabaseUrl, productionRequestAllowed, productionAlias,
-  productionDeploymentRoute, productionDeployment, productionSettings, productionLedger, requireInspection,
+  productionDeploymentRoute, productionDeployment, productionSettings, productionLedger, productionLedgerDiagnostics, requireInspection,
 } from "./swim-production-readonly-guards";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -28,6 +28,7 @@ export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = fal
     deployment: null as ReturnType<typeof productionDeployment> | null,
     settings: null as ReturnType<typeof productionSettings> | null,
     ledger: null as ReturnType<typeof productionLedger> | null,
+    ledgerDiagnostics: null as ReturnType<typeof productionLedgerDiagnostics> | null,
   };
   const deadline = Date.now() + 180_000;
   let stage = "source", deploymentId: string | undefined, sql: postgres.Sql | undefined;
@@ -114,6 +115,7 @@ export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = fal
       result.ledger = await sql.begin(async (tx) => {
         await tx.unsafe("SET TRANSACTION READ ONLY");
         const rows = await tx.unsafe("SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id LIMIT 156");
+        result.ledgerDiagnostics = productionLedgerDiagnostics(Array.from(rows), expected);
         return productionLedger(Array.from(rows), expected);
       });
       await sql.end({ timeout: 5 }); sql = undefined; result.databaseClosed = true;

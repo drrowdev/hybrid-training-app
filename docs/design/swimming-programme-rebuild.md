@@ -459,3 +459,15 @@ unknown or duplicate history as harmless. Only counts, canonical-prefix status
 and pending count are retained. No user/Auth table, seed, migration, ledger
 repair, environment write or deployment API is available. The existing
 app-first production migration job remains unchanged and separately held.
+
+The first inspection, run34767421905 atf5aa4231, confirmed the expected READY
+main deployment and found no bindings for the seven selected production flags.
+Flag values were not read. The database-history read failed the strict ledger
+shape check; its connection closed, and no writes were attempted. This does
+not establish the ledger count or release readiness.
+
+The same bounded query now reports aggregate shape, duplicate, unknown-hash,
+order and timestamp mismatch counts before strict validation. It retains no
+ledger rows or hash values and does not accept any previously refused history.
+Only a changed-source diagnostic inspection is eligible; the failed head is
+not rerun, and migration-history repair remains unauthorized.

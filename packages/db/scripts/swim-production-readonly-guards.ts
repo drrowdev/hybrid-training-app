@@ -115,12 +115,40 @@ export function productionSettings(project: unknown, projectEnv: unknown, shared
   };
 }
 type ExpectedMigration = { hash: string; folderMillis: number };
+const ledgerRow = z.object({
+  id: z.number().int().positive(), hash: z.string().regex(/^[a-f0-9]{64}$/),
+  created_at: z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative()]),
+}).strict();
+export function productionLedgerDiagnostics(raw: unknown, expected: readonly ExpectedMigration[]) {
+  requireInspection(expected.length === PRODUCTION.candidateCount, "source_journal");
+  const parsed = z.array(z.unknown()).max(PRODUCTION.candidateCount + 1).safeParse(raw);
+  requireInspection(parsed.success, "ledger_shape");
+  const entries = parsed.data;
+  const fields = entries.map((row) => z.record(z.unknown()).safeParse(row));
+  const ids = fields.map((row) => ledgerRow.shape.id.safeParse(row.success ? row.data.id : undefined));
+  const hashes = fields.map((row) => ledgerRow.shape.hash.safeParse(row.success ? row.data.hash : undefined));
+  const timestamps = fields.map((row) => ledgerRow.shape.created_at.safeParse(row.success ? row.data.created_at : undefined));
+  const validHashes = hashes.flatMap((row) => row.success ? [row.data] : []);
+  const known = new Map(expected.map((row) => [row.hash, row.folderMillis]));
+  return {
+    rowsRead: entries.length, rowLimitReached: entries.length === PRODUCTION.candidateCount + 1,
+    invalidRows: entries.filter((row) => !ledgerRow.safeParse(row).success).length,
+    invalidIds: ids.filter((row) => !row.success).length,
+    invalidHashes: hashes.filter((row) => !row.success).length,
+    invalidTimestamps: timestamps.filter((row) => !row.success).length,
+    duplicateHashes: validHashes.length - new Set(validHashes).size,
+    unknownHashes: validHashes.filter((hash) => !known.has(hash)).length,
+    orderMismatches: hashes.filter((row, index) => row.success && row.data !== expected[index]?.hash).length,
+    timestampMismatches: hashes.filter((row, index) => {
+      const timestamp = timestamps[index]!;
+      return row.success && known.has(row.data) && timestamp.success &&
+        String(timestamp.data) !== String(known.get(row.data));
+    }).length,
+  };
+}
 export function productionLedger(raw: unknown, expected: readonly ExpectedMigration[]) {
   requireInspection(expected.length === PRODUCTION.candidateCount, "source_journal");
-  const rows = z.array(z.object({
-    id: z.number().int().positive(), hash: z.string().regex(/^[a-f0-9]{64}$/),
-    created_at: z.union([z.string().regex(/^\d+$/), z.number().int().nonnegative()]),
-  }).strict()).max(PRODUCTION.candidateCount).safeParse(raw);
+  const rows = z.array(ledgerRow).max(PRODUCTION.candidateCount).safeParse(raw);
   requireInspection(rows.success, "ledger_shape");
   const entries = rows.data;
   requireInspection(entries.length >= PRODUCTION.mainCount, "ledger_count");

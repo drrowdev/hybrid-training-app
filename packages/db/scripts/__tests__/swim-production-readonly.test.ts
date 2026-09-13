@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   PRODUCTION, PRODUCTION_READONLY as profile, PRODUCTION_ROUTES,
   productionContext, productionDispatch, productionDatabaseUrl, productionRequestAllowed,
-  productionDeploymentRoute, productionAlias, productionDeployment, productionSettings, productionLedger,
+  productionDeploymentRoute, productionAlias, productionDeployment, productionSettings, productionLedger, productionLedgerDiagnostics,
 } from "../swim-production-readonly-guards";
 import { REVIEW } from "../swim-review-config-plan";
 
@@ -108,6 +108,34 @@ describe("DC-SW8 production inspection never writes or reads personal tables", (
     expect(() => productionLedger(changed, expected)).toThrow();
     const complete = expected.map((row, index) => ({ id: index + 1, hash: row.hash, created_at: row.folderMillis }));
     expect(productionLedger(complete, expected).pending).toBe(0);
+  });
+  it("reports only bounded ledger diagnostics without relaxing acceptance", () => {
+    expect(productionLedgerDiagnostics(rows(), expected)).toEqual({
+      rowsRead: 146, rowLimitReached: false, invalidRows: 0, invalidIds: 0, invalidHashes: 0,
+      invalidTimestamps: 0, duplicateHashes: 0, unknownHashes: 0, orderMismatches: 0, timestampMismatches: 0,
+    });
+    const changed: unknown[] = rows();
+    changed[0] = { ...rows()[0], id: 0 };
+    changed[1] = { ...rows()[1], hash: "PrivateSyntheticCanary" };
+    changed[2] = { ...rows()[2], created_at: null };
+    changed[3] = { ...rows()[3], created_at: "999" };
+    changed[4] = { ...rows()[0], id: 5 };
+    changed[5] = { ...rows()[5], hash: "f".repeat(64) };
+    const diagnostics = productionLedgerDiagnostics(changed, expected);
+    expect(diagnostics).toEqual({
+      rowsRead: 146, rowLimitReached: false, invalidRows: 3, invalidIds: 1, invalidHashes: 1,
+      invalidTimestamps: 1, duplicateHashes: 1, unknownHashes: 1, orderMismatches: 2, timestampMismatches: 1,
+    });
+    expect(JSON.stringify(diagnostics)).not.toContain("PrivateSyntheticCanary");
+    expect(() => productionLedger(changed, expected)).toThrow("ledger_shape");
+    const overflow = [...expected.map((row, index) => ({ id: index + 1, hash: row.hash, created_at: row.folderMillis })),
+      { id: 156, hash: "f".repeat(64), created_at: 9999 }];
+    expect(productionLedgerDiagnostics(overflow, expected)).toMatchObject({ rowsRead: 156, rowLimitReached: true, unknownHashes: 1 });
+    expect(() => productionLedger(overflow, expected)).toThrow("ledger_shape");
+    expect(() => productionLedgerDiagnostics([...overflow, overflow[0]], expected)).toThrow("ledger_shape");
+    expect(productionLedgerDiagnostics([null], expected)).toMatchObject({
+      invalidRows: 1, invalidIds: 1, invalidHashes: 1, invalidTimestamps: 1,
+    });
   });
   it("refuses local execution without connecting or exposing credentials", () => {
     const canary = "PrivateSyntheticCanary";

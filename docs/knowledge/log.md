@@ -3854,3 +3854,18 @@ green result. A bounded, default-off CI inspector will verify the current alias,
 non-decrypted settings metadata and strict migration prefix using existing
 credentials. No production database connection has yet been made for this
 inspection.
+
+## [2026-09-13] finding | Production deployment verified; ledger shape unresolved
+
+Run34767421905 atf5aa4231 passed source, credential and deployment checks.
+The `getsxc.app` alias pointed to the expected READY main672e4202 deployment;
+the selected seven flag bindings were absent from production metadata. No
+flag values were read. The ledger check refused its row shape, the connection
+closed, and no write was attempted. Its marked receipt was consumed once into
+a safe summary; no runtime logs, ledger rows or raw errors were retained.
+
+Added bounded aggregate diagnostics to the unchanged migration-history query
+to distinguish malformed fields, excess rows, duplicate/unknown hashes and
+order/timestamp mismatches. Strict acceptance, source, target, read-only and
+closure guards are unchanged. This is diagnosis under the existing read-only
+approval, not permission to repair history or deploy.
