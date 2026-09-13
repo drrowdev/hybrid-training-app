@@ -33,7 +33,7 @@ beforeEach(() => {
   rpc.mockResolvedValue({ data: requestId, error: null });
   rows = [{
     id: workoutId, user_id: user, revision: 3, scheduled_date: "2026-09-15", slot: "am",
-    definition: { issued: {}, courseSource: { title: "Synthetic workout" } },
+    definition: { issued: {}, courseSource: { title: "Synthetic workout" }, slotId: "course-0-0", weekIndex: 0 },
     swim_plans: { started_on: "2026-09-14", definition: { privateCourse: { title: "Synthetic course" } } },
   }];
   readError = null;
@@ -93,7 +93,7 @@ describe("DC-SW4/SW5/SW8 explicit recording matches", () => {
   it("searches only the user-selected date and account without selecting a match", async () => {
     const result = await findSwimMatchWorkouts("2026-09-15");
     expect(result).toEqual({ ok: true, value: [{
-      id: workoutId, revision: 3, date: "2026-09-15", title: "Synthetic workout",
+      id: workoutId, revision: 3, date: "2026-09-15", title: "Week 1 A · Synthetic workout",
       distance: "300 m", pool: "50 m", plan: "Synthetic course · 2026-09-14", slot: "AM",
     }] });
     expect(eq.mock.calls).toEqual([["user_id", user], ["scheduled_date", "2026-09-15"]]);

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import {
   checkUpgradeDispatch, UPGRADE_FLAGS, UPGRADE_REVIEW, upgradeFlagBody,
   upgradeFlagTransport, upgradeReview, upgradeSnapshotTransport, upgradeSummary,
@@ -153,7 +154,8 @@ describe("approved existing-data review upgrade", () => {
     }
   });
   it("validates every ledger hash and timestamp, preserving legitimate sequence gaps", () => {
-    const migrations = reviewMigrations();
+    expect(reviewMigrations).toThrow("migration_source");
+    const migrations = readMigrationFiles({ migrationsFolder: resolve(__dirname, "../../drizzle") }).slice(0, 154);
     const rows = migrations.map((entry, index) => ({ id: index + 10, hash: entry.hash, created_at: String(entry.folderMillis) }));
     expect(() => validateReviewLedger(rows.slice(0, 150), migrations, 150)).not.toThrow();
     expect(() => validateReviewLedger(rows, migrations, 154)).not.toThrow();

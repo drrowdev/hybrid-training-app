@@ -137,6 +137,7 @@ describe("DC-SW3/DC-SW5 resolved slot budgets", () => {
     const after = exact.value.weeks[0]!.slots[0]!;
     expect(after.kind).toBe("workout");
     if (after.kind !== "workout") return;
+    if (after.issued.budget.minutes === null) throw new Error("Generated workout lost its time budget");
     expect(after.issued.sections).toEqual(before.issued.sections);
     expect(after.issued.budget.accountedMs).toBe(after.issued.budget.minutes * 60_000);
   });

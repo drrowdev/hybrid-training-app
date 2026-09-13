@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   formatPoolCourse, formatSwimDistance, poolCourseKey, summarizeSwimWeek,
-  swimBenchmarkTrend, parseSwimActualResult, settledFromStoredActual, type SwimSettledResult,
+  swimBenchmarkTrend, parseSwimActualResult, settledFromStoredActual, swimCourseWorkoutTitle, type SwimSettledResult,
 } from "@hta/domain";
 import {
   applySwimProposal, proposeSwimAdjustment, editableSwimCourseWorkout, type SwimDose, type SwimPlan,
@@ -91,7 +91,7 @@ export function persistedSwimPlan(plan: SwimPlanRow, workouts: SwimWorkoutRow[])
     weeks.set(index, [...(weeks.get(index) ?? []), row]);
   }
   return {
-    setup: plan.definition.setup, calibration: plan.state.acceptedCalibration,
+    setup: definition.setup, calibration: plan.state.acceptedCalibration,
     dose: lastDose ?? definition.initialDose, eventPrep: null,
     versions: { model: workouts[0]?.definition.issued.snapshot.versions.model ?? "swim-model-1", generator: definition.generatorVersion, assessment: plan.state.acceptedCalibration?.version ?? null },
     // Keep the declared horizon even when a resume cohort omits earlier workouts.
@@ -188,7 +188,7 @@ export async function swimWorkoutViewFromRow(client: SupabaseClient, userId: str
     } : undefined;
   return {
     ...workoutPresentation(workout.definition.issued),
-    ...(workout.definition.courseSource ? { title: workout.definition.courseSource.title } : {}),
+    ...(workout.definition.courseSource ? { title: swimCourseWorkoutTitle(workout.definition.courseSource.title, swimWorkoutDefinition(workout).slotId) } : {}),
     id: workout.id, revision: workout.revision, sessionId: workout.session_id,
     status: workout.status, planStatus: plan.status, date: workout.scheduled_date,
     provisional: swimWorkoutDefinition(workout).provisional, deleted: row.deleted, sourceGone: row.sourceGone,
@@ -310,7 +310,9 @@ export async function loadSwimHubView(client: SupabaseClient, userId: string, pl
       pace: `${formatSwimTime(Math.round(plan.state.acceptedCalibration.msPer100))} / 100 ${plan.state.acceptedCalibration.unit}`,
     } } : {}),
     workouts: workouts.map((row) => ({
-      id: row.id, date: row.scheduled_date, title: row.definition.courseSource?.title ?? workoutPresentation(row.definition.issued).title,
+      id: row.id, date: row.scheduled_date, title: row.definition.courseSource
+        ? swimCourseWorkoutTitle(row.definition.courseSource.title, swimWorkoutDefinition(row).slotId)
+        : workoutPresentation(row.definition.issued).title,
       total: formatSwimDistance(row.definition.issued.totalLengths, row.definition.issued.snapshot.course),
       status: history.find((entry) => entry.workout.id === row.id)?.sourceGone ? "Result removed" : history.find((entry) => entry.workout.id === row.id)?.deleted ? "In Trash" : ({ scheduled: plan.status === "active" ? "Scheduled" : "Unscheduled", started: "In progress", completed: "Completed", skipped: "Skipped" })[row.status],
       week: swimWorkoutDefinition(row).weekIndex + 1, provisional: swimWorkoutDefinition(row).provisional,

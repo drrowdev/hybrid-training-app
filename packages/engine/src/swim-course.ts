@@ -33,16 +33,13 @@ export function editableSwimCourseWorkout(title: string, workout: SwimWorkout): 
 
 /** Retain supplied work exactly; never scale, trim, calibrate or infer progression. */
 export function compileSwimCourseWorkout(
-  source: SwimCourseWorkout, course: PoolCourse, budgetMinutes: number,
+  source: SwimCourseWorkout, course: PoolCourse,
   available?: Pick<SwimSetup, "knownStrokes" | "equipment">,
 ): SwimResult<CompiledSwimCourseWorkout> {
   const parsed = normalizePoolCourse(course);
   if (!parsed.ok) return parsed;
   if (parsed.value.unit !== "m") {
     return { ok: false, error: { code: "setup_invalid", message: "Choose a metre pool for this course." } };
-  }
-  if (!Number.isInteger(budgetMinutes) || budgetMinutes < 10 || budgetMinutes > 240) {
-    return { ok: false, error: { code: "setup_invalid", message: "Choose between 10 and 240 minutes per swim." } };
   }
   if (source.sections.length < 3 || source.sections.length > 20 ||
       source.sections.some((section) => section.items.length < 1 || section.items.length > 100)) {
@@ -77,14 +74,14 @@ export function compileSwimCourseWorkout(
       course: parsed.value, strokes: [], equipment: [], calibration: null, protocol: null,
       versions: { model: SWIM_MODEL_VERSION, generator: SWIM_COURSE_VERSION, assessment: null },
     },
-    estimatedMs: null, budget: { minutes: budgetMinutes, accountedMs: 0 },
+    estimatedMs: null, budget: { minutes: null, accountedMs: 0 },
   };
   const totalLengths = swimWorkoutLengths(initial);
   const accountedMs = swimCourseKnownDuration(initial);
   const workout: SwimWorkout = {
     ...initial, totalLengths,
     snapshot: { ...initial.snapshot, strokes: swimWorkoutStrokes(initial), equipment: swimWorkoutEquipment(initial) },
-    budget: { minutes: budgetMinutes, accountedMs },
+    budget: { minutes: null, accountedMs },
   };
   const issue = validateSwimWorkout(workout).find((entry) => entry.severity === "blocking");
   if (issue) return { ok: false, error: { code: "setup_invalid", message: issue.message } };
@@ -99,9 +96,6 @@ export function compileSwimCourseWorkout(
   }
   if (totalLengths > 2000) {
     return { ok: false, error: { code: "lengths_invalid", message: "This workout exceeds 2,000 pool lengths." } };
-  }
-  if (accountedMs > budgetMinutes * 60_000) {
-    return { ok: false, error: { code: "budget_impossible", message: "The listed rests and send-offs exceed the available time." } };
   }
   const distanceMetres = totalLengths * parsed.value.numerator / parsed.value.denominator;
   return {

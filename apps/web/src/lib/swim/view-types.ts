@@ -27,7 +27,7 @@ export type SwimWorkoutView = {
   course: string;
   total: string;
   provisional: boolean;
-  budgetMinutes: number;
+  budgetMinutes: number | null;
   calibrationLabel?: string;
   stroke: string;
   strokes: string[];
@@ -101,7 +101,7 @@ const completionView = z.object({
   id: z.string().uuid(), sessionId: z.string().uuid(), revision: z.number().int().positive(),
   status: z.literal("completed"), planStatus: z.enum(["active", "paused", "finished", "archived"]),
   date: z.string(), title: z.string(), course: z.string(), total: z.string(),
-  provisional: z.boolean(), budgetMinutes: z.number().positive(), calibrationLabel: z.string().optional(),
+  provisional: z.boolean(), budgetMinutes: z.number().positive().nullable(), calibrationLabel: z.string().optional(),
   stroke: z.string(), strokes: z.array(z.string()), equipment: z.array(z.string()), pool: completionPool,
   steps: z.array(z.object({
     id: z.string(), repeatIds: z.array(z.string()), section: z.string(), title: z.string(), detail: z.string(),

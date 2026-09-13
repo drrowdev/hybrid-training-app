@@ -26,6 +26,7 @@
  */
 
 import type { Region } from "./types";
+import { SWIM_COURSE_VERSION } from "./swim-course";
 
 /** Model/schema version stamped into every snapshot (DC-SW1, DC-SW5). */
 export const SWIM_MODEL_VERSION = "swim-model-1" as const;
@@ -588,7 +589,8 @@ export interface SwimWorkoutSnapshot {
 export type SwimFocus = "technique_base" | "endurance" | "event_specific";
 
 export interface SwimBudget {
-  readonly minutes: number;
+  /** Imported courses have no time budget. Older imports may retain an unused value. */
+  readonly minutes: number | null;
   /**
    * The part of the session that is known: the stated rest, the turnarounds,
    * and any straight swim the swimmer's own verified pace covers for exactly
@@ -647,6 +649,12 @@ export function swimWorkoutEquipment(workout: SwimWorkout): readonly SwimEquipme
 /** Structural invariants of an issued workout (DC-SW3). */
 export function validateSwimWorkout(workout: SwimWorkout): SwimIssue[] {
   const issues: SwimIssue[] = [];
+  if (workout.budget.minutes === null && workout.snapshot.versions.generator !== SWIM_COURSE_VERSION) {
+    issues.push({
+      field: "budget.minutes", code: "setup_incomplete", severity: "blocking",
+      message: "Set the available time for this swim.",
+    });
+  }
   const kinds = workout.sections.map((section) => section.kind);
   const ordered = [...kinds].sort(
     (a, b) => SWIM_SECTION_ORDER.indexOf(a) - SWIM_SECTION_ORDER.indexOf(b),
@@ -728,7 +736,7 @@ export interface SwimEventTarget {
   readonly unit: PoolUnit;
 }
 
-export interface SwimSetup {
+export interface SwimSetup<Budget extends number | null = number> {
   readonly goal: SwimGoal;
   readonly experience: SwimExperience;
   readonly course: PoolCourse;
@@ -736,7 +744,7 @@ export interface SwimSetup {
   readonly equipment: readonly SwimEquipment[];
   /** Whole lengths of this pool the swimmer can currently swim comfortably. */
   readonly recentComfortableLengths: number;
-  readonly sessionBudgetMinutes: number;
+  readonly sessionBudgetMinutes: Budget;
   readonly event?: SwimEventTarget | undefined;
   readonly benchmarks?: readonly SwimObservation[] | undefined;
 }
@@ -745,7 +753,7 @@ export interface SwimSetup {
 export const MIN_SESSION_BUDGET_MINUTES = 10;
 export const MAX_SESSION_BUDGET_MINUTES = 240;
 
-export function validateSwimSetup(setup: SwimSetup): SwimIssue[] {
+export function validateSwimSetup(setup: SwimSetup<number | null>, untimedCourse = false): SwimIssue[] {
   const issues: SwimIssue[] = [];
   if (!isValidPoolCourse(setup.course)) {
     issues.push({
@@ -770,12 +778,12 @@ export function validateSwimSetup(setup: SwimSetup): SwimIssue[] {
       message: `Recent comfortable lengths above the ${MAX_POOL_LENGTHS} limit.`,
     });
   }
-  if (
+  if (!(untimedCourse && setup.sessionBudgetMinutes === null) && (
     typeof setup.sessionBudgetMinutes !== "number" ||
     !Number.isFinite(setup.sessionBudgetMinutes) ||
     setup.sessionBudgetMinutes < MIN_SESSION_BUDGET_MINUTES ||
     setup.sessionBudgetMinutes > MAX_SESSION_BUDGET_MINUTES
-  ) {
+  )) {
     issues.push({
       field: "sessionBudgetMinutes",
       code: "setup_invalid",

@@ -2,10 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { swimCourseWorkoutTitle } from "@hta/domain";
 import { createClient, getAuthUser } from "../supabase/server";
 import { parseSwimDate } from "./forms";
 import type { SwimPlanRow, SwimWorkoutRow } from "./storage";
 import { workoutPresentation } from "./presentation";
+import { swimWorkoutDefinition } from "./model";
 import { swimImportMatchingAvailable, type MatchActionResult, type MatchWorkoutChoice } from "./import-matching";
 
 export async function findSwimMatchWorkouts(date: string): Promise<MatchActionResult<MatchWorkoutChoice[]>> {
@@ -33,7 +35,8 @@ export async function findSwimMatchWorkouts(date: string): Promise<MatchActionRe
     const view = workoutPresentation(row.definition.issued);
     choices.push({
       id: row.id, revision: row.revision, date: row.scheduled_date,
-      title: row.definition.courseSource?.title ?? view.title,
+      title: row.definition.courseSource
+        ? swimCourseWorkoutTitle(row.definition.courseSource.title, swimWorkoutDefinition(row).slotId) : view.title,
       distance: view.total, pool: view.course,
       plan: `${row.swim_plans.definition.privateCourse?.title ?? "Swimming plan"} · ${row.swim_plans.started_on}`,
       slot: row.slot === "single" ? "" : row.slot.toUpperCase(),

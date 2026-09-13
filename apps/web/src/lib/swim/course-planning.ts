@@ -1,5 +1,5 @@
 import {
-  SWIM_COURSE_VERSION, formatPoolCourse, formatExactDistance, swimCourseWorkoutKey,
+  SWIM_COURSE_VERSION, formatPoolCourse, formatExactDistance, swimCourseWorkoutKey, swimCourseWorkoutTitle,
   type SwimCourse, type SwimCourseWorkoutChoice, type SwimSetup,
 } from "@hta/domain";
 import { compileSwimCourseWorkout } from "@hta/engine";
@@ -9,7 +9,7 @@ import { workoutPresentation } from "./presentation";
 import type { SwimPlanPreview } from "./view-types";
 
 export function planPrivateSwimCourse(input: {
-  source: SwimCourse; setup: SwimSetup; startDate: string; weekdays: number[];
+  source: SwimCourse; setup: SwimSetup<null>; startDate: string; weekdays: number[];
   poolChoices: readonly SwimCourseWorkoutChoice[];
 }) {
   const { source, setup, startDate, weekdays, poolChoices } = input;
@@ -42,7 +42,7 @@ export function planPrivateSwimCourse(input: {
       const key = swimCourseWorkoutKey(weekIndex, workoutIndex);
       const choice = choices.get(key);
       const course = choice?.course ?? setup.course;
-      const compiled = compileSwimCourseWorkout(workout, course, setup.sessionBudgetMinutes, setup);
+      const compiled = compileSwimCourseWorkout(workout, course, setup);
       if (!compiled.ok) {
         throw new SwimInputError(`Week ${weekIndex + 1}, swim ${workoutIndex + 1}: ${compiled.error.message}`);
       }
@@ -61,7 +61,7 @@ export function planPrivateSwimCourse(input: {
         weekIndex, slotId: key, intent: "moderate", provisional: false,
       };
       weekPreview.workouts.push({
-        ...workoutPresentation(issued), title: workout.title, slotId: key,
+        ...workoutPresentation(issued), title: swimCourseWorkoutTitle(workout.title, key), slotId: key,
         date: slot.dateISO, course: formatPoolCourse(course),
       });
       metres += compiled.value.distanceMetres;

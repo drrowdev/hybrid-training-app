@@ -31,6 +31,18 @@ Display it without substituting generic technique, effort or focus advice.
 An omitted rest stays unspecified; only an explicit zero means no rest.
 These presentation rules do not change saved prescriptions or storage validation.
 
+**Owner refinement, 2026-09-13:** imported courses have no time-available
+input, display or enforcement. The swimmer manages time; explicit rests and
+send-offs are preserved. New imported setup/prescription budgets use JSON null,
+not an invented numeric default. Existing numeric imported budgets stay stored
+but do not constrain edits or pool changes. Generated programmes retain their
+numeric-budget contract.
+
+Display repeated swims as Week N A/B, using their original source positions,
+not scheduled dates. Retain descriptive source titles alongside that prefix.
+Do not invent differing effort labels for identical sessions or overwrite
+source titles, prescriptions or historical recording-match snapshots.
+
 ## Storage and safeguards
 
 No new table or top-level column is needed. `swim_plans.definition.privateCourse`
@@ -72,3 +84,19 @@ The existing network-blocked browser runner exercises real import/editor
 controls at375/1280, including preview invalidation and failed-save recovery.
 These checks do not establish native Auth/server-action or watch delivery.
 Preparing and installing the owner's actual file remains a separate step.
+
+## Untimed-course compatibility
+
+Migration0154 permits explicit JSON null only for imported-course budgets in
+the existing plan/prescription validators and adds an authenticated readiness
+probe. Missing fields and generated null budgets still fail. No table, column,
+ownership policy, row, original prescription or history is rewritten.
+Imports and manual course edits require this readiness alongside existing
+capabilities. The down migration locks both swimming tables with bounded
+timeouts and refuses any retained untimed setup or nested prescription history.
+Otherwise it restores the exact pre-change validators.
+
+The source now contains155 migrations. The spent150-to154 hosted profile
+continues refusing this source. Development and synthetic migration tests were
+approved; a new reviewed154-to155 profile and separate owner approval are
+required before applying this change or deploying it to the protected review.

@@ -62,7 +62,13 @@ export function parsePoolForm(form: FormData): PoolCourse {
   });
 }
 
-export function parseSetupForm(form: FormData) {
+interface ParsedSwimSetup<Budget extends number | null> {
+  setup: SwimSetup<Budget>; startDate: string; weeks: number; weekdays: number[]; observation: SwimObservation | null;
+}
+
+export function parseSetupForm(form: FormData): ParsedSwimSetup<number>;
+export function parseSetupForm(form: FormData, mode: "course"): ParsedSwimSetup<null>;
+export function parseSetupForm(form: FormData, mode?: "course"): ParsedSwimSetup<number | null> {
   const course = parsePoolForm(form);
   const goal = z.enum(["technique", "base", "endurance"]).parse(form.get("goal"));
   const experience = z.enum(["beginner", "returning", "regular", "trained"]).parse(form.get("experience"));
@@ -79,18 +85,19 @@ export function parseSetupForm(form: FormData) {
       (form.has("eventDistance") ? 1 : z.coerce.number().positive().max(1000000).parse(form.get("eventDenominator"))),
     unit: z.enum(["m", "yd"]).parse(form.get("eventUnit")),
   } : undefined;
-  const setup: SwimSetup = {
+  const setup: SwimSetup<number | null> = {
     goal: goal === "endurance" ? "endurance" : "technique_base",
     experience: experience === "beginner" ? "learning" : experience === "regular" ? "recreational" : experience,
     course,
     knownStrokes: z.array(stroke).parse(form.getAll("strokes")),
     equipment: z.array(equipment).parse(form.getAll("equipment")),
     recentComfortableLengths: z.coerce.number().int().min(0).max(2000).parse(form.get("comfortableLengths")),
-    sessionBudgetMinutes: z.coerce.number().int().min(10).max(240).parse(form.get("timeBudgetMinutes")),
+    sessionBudgetMinutes: mode === "course" ? null
+      : z.coerce.number().int().min(10).max(240).parse(form.get("timeBudgetMinutes")),
     ...(event ? { event } : {}),
     ...(observation ? { benchmarks: [observation] } : {}),
   };
-  const issue = validateSwimSetup(setup).find((item) => item.severity === "blocking");
+  const issue = validateSwimSetup(setup, mode === "course").find((item) => item.severity === "blocking");
   if (issue) throw new SwimInputError(issue.message);
   return { setup, startDate, weeks, weekdays, observation };
 }

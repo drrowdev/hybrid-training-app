@@ -1,6 +1,6 @@
 import type { SwimActualResult, SwimPlanDefinition, SwimWorkoutDefinition } from "@hta/db";
 import { swimWeeksFromWeekdays, type SwimDose, type SwimPlan, type SwimProposal, type SwimSlotIntent, type SwimWeekRequest } from "@hta/engine";
-import { SWIM_COURSE_VERSION, type SwimObservation, type SwimSettledResult } from "@hta/domain";
+import { SWIM_COURSE_VERSION, type SwimObservation, type SwimSettledResult, type SwimSetup } from "@hta/domain";
 import type { SwimPlanRow, SwimWorkoutRow } from "./storage";
 import { SwimInputError } from "./input-error";
 import { z } from "zod";
@@ -50,12 +50,13 @@ export function isPrivateSwimPlan(plan: Pick<SwimPlanRow, "definition">): boolea
     plan.definition.privateCourse?.version === SWIM_COURSE_VERSION;
 }
 
-export function requireGeneratedSwimPlan(plan: SwimPlanRow): StandalonePlanDefinition & { initialDose: SwimDose } {
+export function requireGeneratedSwimPlan(plan: SwimPlanRow): StandalonePlanDefinition & { initialDose: SwimDose; setup: SwimSetup } {
   const definition = swimPlanDefinition(plan);
   if (isPrivateSwimPlan(plan) || definition.privateCourse || !definition.initialDose) {
     throw new SwimInputError("Edit the imported workout instead of generating a new week.");
   }
-  return definition;
+  if (definition.setup.sessionBudgetMinutes === null) throw new SwimInputError("Generated swim plans require a time budget.");
+  return { ...definition, setup: { ...definition.setup, sessionBudgetMinutes: definition.setup.sessionBudgetMinutes } };
 }
 
 export function swimWorkoutDefinition(workout: SwimWorkoutRow): StandaloneWorkoutDefinition {

@@ -28,10 +28,14 @@ describe("ADR0079 poolside ordered workout", () => {
           ...item, ...(index === 0 ? { drill } : {}), ...(index === 2 ? { restSeconds: 0 } : {}),
         })),
       })),
-    }, { numerator: 25, denominator: 1, unit: "m" }, 30);
+    }, { numerator: 25, denominator: 1, unit: "m" });
     if (!compiled.ok) throw new Error(compiled.error.message);
     const before = JSON.stringify(compiled.value.workout);
     const view = workoutPresentation(compiled.value.workout);
+    expect(view.budgetMinutes).toBeNull();
+    expect(workoutPresentation({
+      ...compiled.value.workout, budget: { ...compiled.value.workout.budget, minutes: 60 },
+    }).budgetMinutes).toBeNull();
     expect(view.steps.map((step) => step.guidance)).toEqual([drill, "", ""]);
     expect(view.steps[0]!.rest).toBeTruthy();
     expect(view.steps[0]!.rest).not.toBe(view.steps[2]!.rest);
@@ -52,13 +56,14 @@ describe("ADR0079 poolside ordered workout", () => {
       ...source, sections: source.sections.map((section) => ({
         ...section, items: section.items.map((item) => ({ ...item, restSeconds: undefined, sendoffSeconds: 80 })),
       })),
-    }, { numerator: 25, denominator: 1, unit: "m" }, 30);
+    }, { numerator: 25, denominator: 1, unit: "m" });
     if (!compiled.ok) throw new Error(compiled.error.message);
     expect(workoutPresentation(compiled.value.workout).steps.every((step) => step.rest === "Leave every 1:20")).toBe(true);
   });
 
   it("groups repeats while preserving every round and individual progress identity", () => {
     const view = workoutPresentation(workout);
+    expect(view.budgetMinutes).toBe(30);
     expect(view.steps).toHaveLength(2);
     expect(new Set(view.steps.map((step) => step.id)).size).toBe(2);
     expect(view.steps.map((step) => step.repeatIds)).toEqual([

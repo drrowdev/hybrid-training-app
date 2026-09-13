@@ -30,7 +30,10 @@ export function PlanPreview({ plan, title = "Plan preview" }: { plan: SwimPlanPr
                     </span>
                     <span>{workout.total}</span>
                   </summary>
-                  <p className={styles.muted}>{workout.course && `${workout.course} · `}{workout.budgetMinutes} min limit</p>
+                  {(workout.course || workout.budgetMinutes !== null) && <p className={styles.muted}>
+                    {workout.course}{workout.course && workout.budgetMinutes !== null && " · "}
+                    {workout.budgetMinutes !== null && `${workout.budgetMinutes} min limit`}
+                  </p>}
                   {workout.calibrationLabel && <p className={styles.muted}>{workout.calibrationLabel}</p>}
                   <ol className={styles.steps}>
                     {workout.steps.map((step) => (

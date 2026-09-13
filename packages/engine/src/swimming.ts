@@ -361,7 +361,7 @@ export function changeSwimWorkoutPool(
   const timing = imported
     ? { knownMs: swimCourseKnownDuration({ ...workout, sections }), pricedSwimMs: 0, allPriced: false }
     : sectionsTiming(sections, course, compatible);
-  if (boundedMs(timing) > workout.budget.minutes * 60_000) {
+  if (!imported && (workout.budget.minutes === null || boundedMs(timing) > workout.budget.minutes * 60_000)) {
     return swimErr("budget_impossible", "This swim does not fit its time budget. Adjust the workout before changing pools.");
   }
   return swimOk({
@@ -811,11 +811,14 @@ function thresholdAllowed(
  * results, so there is nothing to progress from. Weeks after the first are
  * marked provisional and `proposeSwimAdjustment` moves them from real history.
  */
-export function generateSwimPlan(input: SwimPlanInput): SwimResult<SwimPlan> {
-  const blocking = validateSwimSetup(input.setup).filter((issue) => issue.severity === "blocking");
-  if (blocking.length > 0) {
+export function generateSwimPlan(rawInput: Omit<SwimPlanInput, "setup"> & { setup: SwimSetup<number | null> }): SwimResult<SwimPlan> {
+  const blocking = validateSwimSetup(rawInput.setup).filter((issue) => issue.severity === "blocking");
+  if (blocking.length > 0 || rawInput.setup.sessionBudgetMinutes === null) {
     return swimErr("setup_invalid", firstMessage(blocking), { issues: blocking });
   }
+  const input: SwimPlanInput = {
+    ...rawInput, setup: { ...rawInput.setup, sessionBudgetMinutes: rawInput.setup.sessionBudgetMinutes },
+  };
   for (const week of input.weeks) {
     if (!isISODate(week.startDateISO)) {
       return swimErr("setup_invalid", `Week ${week.weekIndex} has no valid start date.`, {
@@ -1205,7 +1208,10 @@ function isFutureUnstarted(outcome: SwimSlotOutcome, scope: SwimFutureScope): bo
 
 function slotBudgetMinutes(slot: SwimSlotOutcome, defaultMinutes: number): number {
   if (slot.budgetMinutes !== undefined) return slot.budgetMinutes;
-  if (slot.kind === "workout") return slot.issued.budget.minutes;
+  if (slot.kind === "workout") {
+    if (slot.issued.budget.minutes === null) throw new Error("Generated workouts require a time budget.");
+    return slot.issued.budget.minutes;
+  }
   if (slot.kind === "guidance") return slot.guidance.minutes;
   const previousBudget = slot.conflict.details?.budgetMinutes;
   return typeof previousBudget === "number" ? previousBudget : defaultMinutes;

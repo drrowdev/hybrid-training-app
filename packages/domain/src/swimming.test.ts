@@ -492,6 +492,13 @@ describe("DC-SW2 · 200/400 assessment", () => {
 });
 
 describe("DC-SW3 · workout invariants", () => {
+  it("allows absent budgets only for imported course prescriptions", () => {
+    const untimed = workout({ budget: { minutes: null, accountedMs: 240_000 } });
+    expect(validateSwimWorkout(untimed)).toContainEqual(expect.objectContaining({ field: "budget.minutes", severity: "blocking" }));
+    expect(validateSwimWorkout({
+      ...untimed, snapshot: { ...untimed.snapshot, versions: { ...untimed.snapshot.versions, generator: "swim-course-1" } },
+    })).toEqual([]);
+  });
   it("accepts a well-formed workout", () => {
     expect(validateSwimWorkout(workout())).toEqual([]);
   });

@@ -17,11 +17,11 @@ export function swimFixture(overrides: Partial<SwimSetup> = {}) {
   };
   const generated = generateSwimPlan({ setup, calibration: null, weeks: standaloneWeekRequests("2026-09-07", 3, [1, 4]) });
   if (!generated.ok) throw new Error(generated.error.message);
-  const definition: StandalonePlanDefinition = {
+  const definition: StandalonePlanDefinition & { setup: SwimSetup } = {
     version: 1, setup, generatorVersion: SWIM_GENERATOR_VERSION,
     schedule: { startDate: "2026-09-07", weeks: 3, weekdays: [1, 4] }, initialDose: generated.value.dose,
   };
-  const plan: SwimPlanRow = {
+  const plan: SwimPlanRow & { definition: typeof definition } = {
     id: planId, user_id: userId, status: "active", started_on: "2026-09-07", ends_on: "2026-09-27", revision: 1,
     definition, state: { version: 1, observations: [], acceptedCalibration: null, decisions: [] },
     created_at: "2026-09-05T12:00:00Z", updated_at: "2026-09-05T12:00:00Z",

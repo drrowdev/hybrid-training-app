@@ -46,3 +46,10 @@ export interface SwimCourseWorkoutChoice {
 export function swimCourseWorkoutKey(weekIndex: number, workoutIndex: number): string {
   return `course-${weekIndex}-${workoutIndex}`;
 }
+
+export function swimCourseWorkoutTitle(title: string, slotId: string): string {
+  const match = /^course-(\d+)-([0-6])$/.exec(slotId);
+  if (!match || Number(match[1]) > 15) throw new Error("Invalid imported workout slot.");
+  const label = `Week ${Number(match[1]) + 1} ${String.fromCharCode(65 + Number(match[2]))}`;
+  return /^Week\s+\d+$/i.test(title.trim()) ? label : `${label} · ${title}`;
+}

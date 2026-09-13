@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  MAX_SWIM_COURSE_BYTES, SWIM_WEEKDAYS, parsePoolLengthInput, swimCourseWorkoutKey,
+  MAX_SWIM_COURSE_BYTES, SWIM_WEEKDAYS, parsePoolLengthInput, swimCourseWorkoutKey, swimCourseWorkoutTitle,
   type SwimCourse, type SwimCourseWorkoutChoice,
 } from "@hta/domain";
 import { parseSwimCourseFile } from "@/lib/swim/course-file";
@@ -109,10 +109,7 @@ export function CourseImportForm({ today }: { today: string }) {
       {source && <>
         <section className={styles.section}>
           <h2>Schedule</h2>
-          <div className={styles.columns}>
-            <label className={styles.field}>Start date<input name="startDate" type="date" min={today} defaultValue={today} required /></label>
-            <label className={styles.field}>Minutes per swim<input name="timeBudgetMinutes" type="number" min="10" max="240" step="1" required /></label>
-          </div>
+          <label className={styles.field}>Start date<input name="startDate" type="date" min={today} defaultValue={today} required /></label>
           <fieldset className={styles.choices}><legend>Swim days</legend>
             {SWIM_WEEKDAYS.map(({ value, label }) => <label key={value} className={styles.choice}>
               <input name="weekdays" type="checkbox" value={value} />{label.slice(0, 3)}
@@ -133,7 +130,7 @@ export function CourseImportForm({ today }: { today: string }) {
               <summary>Week {weekIndex + 1}</summary>
               <div className={styles.columns}>{week.workouts.map((workout, workoutIndex) => <label
                 key={workoutIndex} className={styles.field}>
-                Swim {workoutIndex + 1}: {workout.title}
+                {swimCourseWorkoutTitle(workout.title, swimCourseWorkoutKey(weekIndex, workoutIndex))}
                 <input name={`pool-${swimCourseWorkoutKey(weekIndex, workoutIndex)}`} maxLength={64}
                   placeholder="Use plan pool" aria-label={`Week ${weekIndex + 1}, swim ${workoutIndex + 1} pool length in metres`} />
               </label>)}</div>

@@ -1079,6 +1079,13 @@
       "when": 1789246800000,
       "tag": "0153_swim_import_matching",
       "breakpoints": false
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1789304400000,
+      "tag": "0154_swim_untimed_courses",
+      "breakpoints": false
     }
   ]
 }

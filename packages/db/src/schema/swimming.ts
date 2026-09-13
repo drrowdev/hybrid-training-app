@@ -24,7 +24,7 @@ export type SwimWorkoutStatus = "scheduled" | "started" | "completed" | "skipped
 
 export type SwimPlanDefinition = {
   version: 1;
-  setup: SwimSetup;
+  setup: SwimSetup<number | null>;
   generatorVersion: string;
   privateCourse?: Pick<SwimCourse, "version" | "title" | "source">;
 };

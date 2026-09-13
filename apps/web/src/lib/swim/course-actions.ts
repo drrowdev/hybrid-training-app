@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { SWIM_COURSE_VERSION, swimScheduleAdvice, formatPoolCourse, formatSwimDistance } from "@hta/domain";
+import { SWIM_COURSE_VERSION, swimScheduleAdvice, formatPoolCourse, formatSwimDistance, swimCourseWorkoutTitle } from "@hta/domain";
 import { compileSwimCourseWorkout } from "@hta/engine";
 import { addDaysToYmd } from "@/lib/dates";
 import type { ActionResult } from "@/lib/offline/outbox-core";
@@ -37,7 +37,7 @@ async function prepare(form: FormData) {
   const fields = new FormData();
   form.forEach((value, key) => fields.append(key, value));
   fields.set("weeks", String(source.weeks.length));
-  const input = parseSetupForm(fields);
+  const input = parseSetupForm(fields, "course");
   if (input.observation) throw new SwimActionError("Import the course without an assessment.", "validation");
   const { today } = await swimToday(client, user.id);
   if (input.startDate < today) throw new SwimActionError("Choose today or a future start date.", "validation");
@@ -76,9 +76,12 @@ async function prepareEdit(value: SwimCourseEditInput) {
       row.scheduled_date <= today) {
     throw new SwimActionError("Only future, unstarted workouts in this plan can be edited. Refresh and try again.", "validation");
   }
-  const compiled = compileSwimCourseWorkout(input.workout, row.definition.issued.snapshot.course, row.definition.issued.budget.minutes, plan.definition.setup);
+  const compiled = compileSwimCourseWorkout(input.workout, row.definition.issued.snapshot.course, plan.definition.setup);
   if (!compiled.ok) throw new SwimActionError(compiled.error.message, "validation");
-  const issued = compiled.value.workout;
+  const issued = {
+    ...compiled.value.workout,
+    budget: { ...compiled.value.workout.budget, minutes: row.definition.issued.budget.minutes },
+  };
   if (JSON.stringify(issued) === JSON.stringify(row.definition.issued)) {
     throw new SwimActionError("Change a workout field before saving.", "validation");
   }
@@ -93,7 +96,7 @@ async function prepareEdit(value: SwimCourseEditInput) {
         week: swimWorkoutDefinition(row).weekIndex + 1, startDate: row.scheduled_date, provisional: false,
         total: formatSwimDistance(issued.totalLengths, issued.snapshot.course),
         workouts: [{
-          ...workoutPresentation(issued), title: source.title,
+          ...workoutPresentation(issued), title: swimCourseWorkoutTitle(source.title, swimWorkoutDefinition(row).slotId),
           date: row.scheduled_date, slotId: swimWorkoutDefinition(row).slotId,
         }],
       }],

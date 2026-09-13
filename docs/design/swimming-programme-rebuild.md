@@ -351,3 +351,18 @@ in run34746629650. The protected review now has154 migrations and the four
 branch-only features enabled. This150-entry/previous-deployment profile is
 spent; do not rerun it. Account import, native acceptance, production and
 Garmin delivery remain separately gated.
+
+### Imported-course control refinement
+
+The owner requested removal of available-time controls and limits from imported
+courses and distinct names for repeated weekly swims. New imports store explicit
+null budgets; older numeric imported budgets remain in history but no longer
+constrain imports, manual edits or pool changes. Generated swimming budgets and
+authored rests/send-offs are unchanged. Stable Week N A/B display labels follow
+source position even after rescheduling, without altering saved source titles.
+
+Migration0154 is an additive validator/readiness change with no data backfill.
+Its down refuses retained null-budget plans or nested prescription history.
+Development and synthetic tests are authorized; protected-review migration and
+deployment require separate approval and a current154-to155 operation profile.
+The spent150-to154 profile must remain closed to this source.

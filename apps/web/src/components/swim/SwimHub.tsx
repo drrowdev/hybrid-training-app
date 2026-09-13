@@ -109,7 +109,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
         <ul className={styles.list}>
           {plan.workouts.map((workout) => <li key={workout.id} className={styles.scheduledRow}>
             <Link href={`/app/swim/${workout.id}`} className={styles.row}>
-              <span><strong>{workout.title}</strong><small>{workout.date} · Week {workout.week}{workout.provisional && workout.status === "Scheduled" ? " · Draft" : ""}</small></span>
+              <span><strong>{workout.title}</strong><small>{workout.date}{!plan.imported && ` · Week ${workout.week}`}{workout.provisional && workout.status === "Scheduled" ? " · Draft" : ""}</small></span>
               <span>{workout.total}<small>{workout.course && `${workout.course} · `}{workout.status}</small></span>
             </Link>
             {workout.reschedule && <DateEditor key={`${plan.revision}:${workout.reschedule.revision}`}

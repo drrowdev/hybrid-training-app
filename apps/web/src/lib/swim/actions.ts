@@ -464,7 +464,7 @@ async function prepareSwimWeekEdit(raw: SwimWeekEditInput) {
   if (!targets.length) throw new SwimActionError("No future unstarted swims remain in this week.", "validation");
   const targetIds = targets.map((row) => row.id);
   const from = swimWeekDose(plan, weekIndex);
-  const proposal = proposeSwimAdjustment({ setup: plan.definition.setup, dose: from, history: [], asOfISO: today });
+  const proposal = proposeSwimAdjustment({ setup: requireGeneratedSwimPlan(plan).setup, dose: from, history: [], asOfISO: today });
   const ledger = recordSwimDecision(null, {
     proposal, action: "override", atISO: new Date().toISOString(),
     override: { ...from, mainRepeats: input.mainRepeats }, note: input.reason,

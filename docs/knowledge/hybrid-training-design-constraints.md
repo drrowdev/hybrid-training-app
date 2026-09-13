@@ -624,7 +624,11 @@ correction retain history. No date/distance or provider-reference inference.
   an easy start, purpose-specific main work and an easy finish; unavailable
   equipment is not prescribed. An impossible budget fails with an actionable
   error. Without verified pace the time budget is a stopping limit, not a promised
-  finish time. DC-D7/DC-N2 remain binding; no general threshold goal.
+  finish time. Imported private courses (ADR 0083) have no available-time
+  input or budget enforcement; their explicit rests and send-offs remain
+  unchanged and timing is managed by the swimmer. Retained numeric budgets
+  on older imports are not displayed or enforced. Generated plans still
+  require their numeric budgets. DC-D7/DC-N2 remain binding; no general threshold goal.
 - **DC-SW4 - Reproducible, bounded progression [DEF to calibrate].** The next
   related week is proposed from persisted settled work, completion, reported
   effort and compatible actual volume/time, not an incremented fitness counter.
@@ -643,6 +647,9 @@ correction retain history. No date/distance or provider-reference inference.
   Reviewed programme/workout pool choices preserve every repeat's exact
   distance, original setup units and issued history; incompatible whole-length
   conversions fail rather than silently changing the training prescription.
+  Imported workout display names use immutable source positions (Week N A/B),
+  retaining descriptive source titles without inventing easy/hard categories.
+  Rescheduling does not change those labels or rewrite source/history.
 - **DC-SW6 - Honest analytics [DEF].** Weekly distance/frequency/adherence and
   planned-versus-actual use native course-specific data. Benchmarks and best
   efforts compare only compatible conditions. Paused dates and deleted sessions

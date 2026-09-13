@@ -21,6 +21,9 @@ try {
         import { SwimImportConnection } from "./src/components/swim/SwimImportConnection";
         import { CourseImportForm } from "./src/components/swim/CourseImportForm";
         import { CourseWorkoutEditor } from "./src/components/swim/CourseWorkoutEditor";
+        import { SwimHub } from "./src/components/swim/SwimHub";
+        import { WorkoutScreen } from "./src/components/swim/WorkoutScreen";
+        import { workoutPresentation } from "./src/lib/swim/presentation";
         import { RecordingMatcher } from "./src/components/swim/RecordingMatcher";
         import { syntheticCourse } from "./src/lib/swim/__tests__/course-fixtures";
         import { planPrivateSwimCourse } from "./src/lib/swim/course-planning";
@@ -30,12 +33,13 @@ try {
         const long = { numerator: 50, denominator: 1, unit: "m" };
         const short = { numerator: 25, denominator: 1, unit: "m" };
         window.courseSource = syntheticCourse(); window.courseMode = "success"; window.courseCalls = []; window.destinations = [];
+        window.courseSource.weeks.forEach((week, index) => week.workouts.forEach(workout => workout.title = "Week " + (index + 1)));
         window.sourceDrill = "Alternate relaxed swimming and kicking within each repeat.";
         window.courseSource.weeks[0].workouts[0].sections[0].items[0].drill = window.sourceDrill;
         const prepared = planPrivateSwimCourse({
           source: window.courseSource, setup: {
             course: long, goal: "endurance", experience: "recreational", knownStrokes: ["freestyle"],
-            equipment: [], recentComfortableLengths: 4, sessionBudgetMinutes: 30,
+            equipment: [], recentComfortableLengths: 4, sessionBudgetMinutes: null,
           }, startDate: "2026-09-14", weekdays: [1, 4], poolChoices: [],
         });
         window.previewCourse = async (form) => {
@@ -67,6 +71,29 @@ try {
               distance: "400 m", beforeLengths: 8, afterLengths: 16 }] } };
         };
         let key = 0;
+        window.showCourseHub = () => root.render(<main className={styles.page}><SwimHub key={++key}
+          setupEnabled={false} plans={[]} plan={{
+            id: "00000000-0000-4000-8000-000000000001", revision: 1, status: "active",
+            imported: { title: window.courseSource.title }, goal: "Endurance", course: "50 m",
+            dates: "2026-09-14 – 2026-09-27", today: "2026-09-14",
+            proposals: [], analytics: { weeks: [], bests: [], benchmarks: [] },
+            workouts: prepared.preview.weeks.flatMap(week => week.workouts.map(workout => ({
+              ...workout, id: workout.slotId, week: week.week, status: "Scheduled", provisional: false,
+            }))),
+          }} /></main>);
+        window.showWorkout = (generated = false) => {
+          const issued = prepared.workouts[0].definition.issued;
+          const view = workoutPresentation({ ...issued, budget: { ...issued.budget, minutes: 60 },
+            snapshot: { ...issued.snapshot, versions: { ...issued.snapshot.versions,
+              generator: generated ? "swim-gen-1" : issued.snapshot.versions.generator } },
+          });
+          const title = prepared.preview.weeks[0].workouts[0].title;
+          root.render(<main className={styles.page}><h1>{title}</h1><WorkoutScreen key={++key} workout={{
+            ...view, title, id: "00000000-0000-4000-8000-000000000002", revision: 1,
+            sessionId: null, status: "scheduled", planStatus: "active", date: "2026-09-14",
+            provisional: false, deleted: false, result: null,
+          }} /></main>);
+        };
         window.matchMode = "success"; window.matchCalls = []; window.findCalls = [];
         window.findWorkouts = async date => {
           window.findCalls.push(date);
@@ -139,7 +166,7 @@ try {
     plugins: [{
       name: "synthetic-actions",
       setup(build) {
-        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions)|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions)|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "next/navigation"
             ? "export const useRouter = () => ({ push(path) { window.destinations.push(path); }, refresh() {} });"
@@ -151,7 +178,9 @@ try {
               ? "export const connectSwimDashboard = () => window.connectDashboard(); export const disconnectSwimDashboard = id => window.disconnectDashboard(id);"
             : args.path === "@/lib/swim/import-match-actions"
               ? "export const findSwimMatchWorkouts = date => window.findWorkouts(date); export const saveSwimImportMatch = input => window.saveMatch(input);"
-            : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = () => { throw new Error('Unexpected save'); }; export const previewSwimPlan = createSwimPlan;",
+            : args.path === "@/components/trash/DeleteSessionButton"
+              ? "export const DeleteSessionButton = () => { throw new Error('Unexpected delete control'); };"
+            : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = () => { throw new Error('Unexpected save'); }; export const previewSwimPlan = createSwimPlan; export const proposeSwimWeek = createSwimPlan, proposeSwimBenchmark = createSwimPlan, decideSwimProposal = createSwimPlan, changeSwimPlanStatus = createSwimPlan, previewSwimResume = createSwimPlan, resumeSwimPlan = createSwimPlan, decideSwimBenchmark = createSwimPlan, applySwimWeekEdit = createSwimPlan, applySwimDateEdit = createSwimPlan, applySwimPoolEdit = createSwimPlan, previewSwimWeekEdit = createSwimPlan, previewSwimDateEdit = createSwimPlan, skipSwimWorkout = createSwimPlan;",
           loader: "js", resolveDir: root,
         }));
       },
@@ -230,7 +259,7 @@ try {
     const source = await page.evaluate(() => JSON.stringify(window.courseSource));
     await file.setInputFiles({ name: "synthetic.json", mimeType: "application/json", buffer: Buffer.from(source) });
     await page.getByRole("heading", { name: "Synthetic private course", exact: true }).waitFor();
-    await page.getByRole("spinbutton", { name: "Minutes per swim", exact: true }).fill("30");
+    assert.equal(await page.locator('[name="timeBudgetMinutes"]').count(), 0);
     await page.getByRole("checkbox", { name: "Mon", exact: true }).check();
     await page.getByRole("checkbox", { name: "Thu", exact: true }).check();
     await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("regular");
@@ -244,6 +273,11 @@ try {
     const importPlan = page.getByRole("button", { name: "Import plan", exact: true });
     await importPlan.waitFor();
     const coursePreview = page.getByRole("region", { name: "Synthetic private course", exact: true });
+    assert.equal(await coursePreview.getByText(/min limit|Up to .* min/).count(), 0);
+    const previewTitles = await coursePreview.locator("details details summary strong").allTextContents();
+    assert.ok(previewTitles[0].startsWith("Week 1 A"));
+    assert.ok(previewTitles[1].startsWith("Week 1 B"));
+    assert.equal(new Set(previewTitles).size, previewTitles.length);
     await coursePreview.locator("details details summary").first().click();
     const sourceDrill = await page.evaluate(() => window.sourceDrill);
     await coursePreview.getByText(sourceDrill, { exact: true }).first().waitFor();
@@ -258,8 +292,8 @@ try {
     await page.evaluate(() => { window.courseMode = "error"; });
     await importPlan.click();
     await page.getByRole("alert").waitFor();
-    assert.equal(await page.getByRole("spinbutton", { name: "Minutes per swim", exact: true }).inputValue(), "30");
-    await page.getByRole("spinbutton", { name: "Minutes per swim", exact: true }).fill("40");
+    assert.equal(await page.getByLabel("Start date", { exact: true }).inputValue(), "2026-09-14");
+    await page.getByLabel("Start date", { exact: true }).fill("2026-09-15");
     assert.equal(await importPlan.count(), 0);
     await page.evaluate(() => { window.courseMode = "success"; });
     await page.getByRole("button", { name: "Review plan", exact: true }).click();
@@ -295,6 +329,25 @@ try {
     await save.click();
     await page.getByRole("button", { name: "Refresh workout", exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.courseCalls), ["edit-preview", "edit-preview", "edit-save"]);
+    stages.push(stage);
+  }
+
+  for (const width of [375, 1280]) {
+    stage = `untimed-saved-course-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.showCourseHub());
+    await page.getByRole("heading", { name: "Swims", exact: true }).waitFor();
+    const links = page.locator('a[href^="/app/swim/course-"]');
+    assert.deepEqual(await links.locator("strong").allTextContents(), ["Week 1 A", "Week 1 B", "Week 2 A"]);
+    assert.equal(await links.locator("small").filter({ hasText: /Week \d/ }).count(), 0);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await page.evaluate(() => window.showWorkout());
+    await page.getByRole("heading", { name: "Week 1 A", exact: true }).waitFor();
+    assert.equal(await page.getByText(/min limit|Up to .* min/).count(), 0);
+    await page.getByText(/Rest 20 sec/).waitFor();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await page.evaluate(() => window.showWorkout(true));
+    await page.getByText(/Up to 60 min/).waitFor();
     stages.push(stage);
   }
 

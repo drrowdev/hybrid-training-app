@@ -8,9 +8,9 @@ import { isPrivateSwimPlan, requireGeneratedSwimPlan } from "../model";
 import { deriveSwimWeekCandidate, persistedSwimPlan } from "../queries";
 import { readFileSync } from "node:fs";
 
-const setup: SwimSetup = {
+const setup: SwimSetup<null> = {
   course: poolCourse(50, 1, "m"), goal: "endurance", experience: "recreational",
-  knownStrokes: ["freestyle"], equipment: [], recentComfortableLengths: 4, sessionBudgetMinutes: 30,
+  knownStrokes: ["freestyle"], equipment: [], recentComfortableLengths: 4, sessionBudgetMinutes: null,
 };
 function prepare(source = syntheticCourse(), poolChoices: Parameters<typeof planPrivateSwimCourse>[0]["poolChoices"] = []) {
   return planPrivateSwimCourse({ source, setup, startDate: "2026-09-14", weekdays: [1, 4], poolChoices });

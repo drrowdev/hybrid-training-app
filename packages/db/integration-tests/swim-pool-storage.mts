@@ -3,12 +3,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { generateSwimPlan, changeSwimWorkoutPool } from "../../engine/src/swimming.ts";
 import { poolCourse, estimateCriticalSwimSpeed, type SwimWorkout } from "../../domain/src/swimming.ts";
 import { compileSwimCourseWorkout, editableSwimCourseWorkout } from "../../engine/src/swim-course.ts";
 import { SWIM_COURSE_VERSION, type SwimCourseWorkout } from "../../domain/src/swim-course.ts";
 import type { SwimDecisionRecord, SwimPlanRow, SwimWorkoutRow, SwimPlanState, SwimPlanDefinition } from "../src/schema/swimming.ts";
 import { appendReviewMigrations, inspectReviewLedger, reviewMigrations, ReviewStorageRefusal } from "../scripts/upgrade-swim-review-storage.ts";
+import { verifyMigrationDependencyParity } from "../scripts/migrate-with-evidence.ts";
 
 type PoolRow = Pick<SwimWorkoutRow, "id" | "revision" | "slot"> & {
   scheduled_date: string; definition: SwimWorkoutRow["definition"] & { slotId: string };
@@ -60,14 +63,27 @@ try {
     GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
     GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
   `);
-  const journal: { entries: { idx: number; tag: string }[] } = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"));
-  assert.equal(journal.entries.length, 154);
+  const journal: { entries: { idx: number; tag: string; when: number; breakpoints: boolean }[] } = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"));
+  assert.equal(journal.entries.length, 155);
   assert.equal(journal.entries[153].tag, "0153_swim_import_matching");
-  const canonical = reviewMigrations();
+  assert.equal(journal.entries[154].tag, "0154_swim_untimed_courses");
+  assert.deepEqual(journal.entries.slice(150).map((entry) => entry.tag), [
+    "0150_swim_import_storage", "0151_swim_pool_changes", "0152_swim_private_courses",
+    "0153_swim_import_matching", "0154_swim_untimed_courses",
+  ]);
+  verifyMigrationDependencyParity();
+  assert.throws(reviewMigrations, (error) => error instanceof ReviewStorageRefusal && error.code === "migration_source");
+  const migrations = readMigrationFiles({ migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)) });
+  assert.equal(migrations.length, 155);
+  // Rehearse the historical 150-to-154 operation without widening its hosted source guard.
+  const canonical = migrations.slice(0, 154);
   await database.unsafe(`CREATE SCHEMA drizzle;
     CREATE TABLE drizzle.__drizzle_migrations(id serial PRIMARY KEY,hash text NOT NULL,created_at bigint)`);
   for (const [index, migration] of journal.entries.entries()) {
     assert.equal(migration.idx, index);
+    assert.equal(migration.when, migrations[index]!.folderMillis);
+    if (index > 0) assert.ok(migration.when > journal.entries[index - 1]!.when);
+    if (index >= 150) assert.equal(migration.breakpoints, false);
     assert.match(migration.tag, /^\d{4}_[a-z0-9_]+$/);
     stage = `migration-${index}`;
     const source = readFileSync(new URL(`../drizzle/${migration.tag}.sql`, import.meta.url), "utf8");
@@ -91,6 +107,8 @@ try {
   const courseDown = readFileSync(new URL("../rollbacks/0152_swim_private_courses.down.sql", import.meta.url), "utf8");
   const matchUp = readFileSync(new URL("../drizzle/0153_swim_import_matching.sql", import.meta.url), "utf8");
   const matchDown = readFileSync(new URL("../rollbacks/0153_swim_import_matching.down.sql", import.meta.url), "utf8");
+  const untimedUp = readFileSync(new URL("../drizzle/0154_swim_untimed_courses.sql", import.meta.url), "utf8");
+  const untimedDown = readFileSync(new URL("../rollbacks/0154_swim_untimed_courses.down.sql", import.meta.url), "utf8");
   const revertScript = async (source: string) => {
     const connection = await database.reserve();
     try { await connection.unsafe(source); }
@@ -100,6 +118,7 @@ try {
   const revert = () => revertScript(down);
   const revertCourse = () => revertScript(courseDown);
   const revertMatches = () => revertScript(matchDown);
+  const revertUntimed = () => revertScript(untimedDown);
   const as = <T,>(user: string | null, fn: (tx: postgres.TransactionSql) => Promise<T>) =>
     database.begin(async (tx) => {
       await tx.unsafe(user ? "SET LOCAL ROLE authenticated" : "SET LOCAL ROLE anon");
@@ -111,9 +130,9 @@ try {
       if (typeof error !== "object" || error === null || !("code" in error) || error.code !== expected) throw error;
       return true;
     });
-  const a = randomUUID(), b = randomUUID(), c = randomUUID();
+  const a = randomUUID(), b = randomUUID(), c = randomUUID(), d = randomUUID();
   stage = "owned-plan-fixtures";
-  await database`INSERT INTO auth.users(id) VALUES (${a}), (${b}), (${c})`;
+  await database`INSERT INTO auth.users(id) VALUES (${a}), (${b}), (${c}), (${d})`;
   const [{ today }] = await database<{ today: string }[]>`SELECT to_char(current_date, 'YYYY-MM-DD') AS today`;
   const long = poolCourse(50, 1, "m"), short = poolCourse(25, 1, "m");
   const setup = {
@@ -322,12 +341,12 @@ try {
   const [{ tomorrow, later }] = await database<{ tomorrow: string; later: string }[]>`SELECT
     to_char(current_date + 1, 'YYYY-MM-DD') AS tomorrow, to_char(current_date + 4, 'YYYY-MM-DD') AS later`;
   const courseDefinition = {
-    version: 1 as const, setup, generatorVersion: SWIM_COURSE_VERSION,
-    privateCourse: { version: SWIM_COURSE_VERSION, title: "Synthetic course", source: { reference: "Synthetic fixture", edition: "Test" } },
+    version: 1 as const, setup: { ...setup, sessionBudgetMinutes: null }, generatorVersion: SWIM_COURSE_VERSION,
+    privateCourse: { version: SWIM_COURSE_VERSION, title: "Synthetic course", source: { reference: "Synthetic fixture", edition: "Test" } } satisfies NonNullable<SwimPlanDefinition["privateCourse"]>,
     schedule: { startDate: today, weeks: 2, weekdays: [1, 4] },
   };
   const courseRows = [short, long].map((course, index) => {
-    const compiled = compileSwimCourseWorkout(source, course, 60, setup);
+    const compiled = compileSwimCourseWorkout(source, course, setup);
     if (!compiled.ok) throw new Error("Invalid synthetic course");
     return {
       scheduled_date: index === 0 ? tomorrow : later, slot: "single" as const,
@@ -346,15 +365,96 @@ try {
         workouts: courseRows.map((row) => ({ slotId: row.definition.slotId, course: row.definition.issued.snapshot.course })) },
     }],
   };
-  const createCourse = (rows = courseRows, state = courseState) => as(c, async (tx) =>
+  const createCourse = (rows = courseRows, state = courseState, owner = c, planDefinition: SwimPlanDefinition = courseDefinition) => as(owner, async (tx) =>
     (await tx<{ result: Snapshot }[]>`SELECT public.swim_create_plan(${today}::date, (${today}::date + 13),
-      ${JSON.stringify(courseDefinition)}::text::jsonb, ${JSON.stringify(state)}::text::jsonb,
+      ${JSON.stringify(planDefinition)}::text::jsonb, ${JSON.stringify(state)}::text::jsonb,
       ${JSON.stringify(rows)}::text::jsonb) AS result`)[0]!.result);
+
+  stage = "untimed-course-upgrade-and-preservation";
+  const legacyRows = courseRows.map((row) => ({
+    ...row, definition: { ...row.definition,
+      original: { ...row.definition.original, budget: { ...row.definition.original.budget, minutes: 60 } },
+      issued: { ...row.definition.issued, budget: { ...row.definition.issued.budget, minutes: 60 } },
+    },
+  }));
+  const legacyCourse = await createCourse(legacyRows, courseState, d, { ...courseDefinition, setup });
+  await denied(() => createCourse(), "P0001");
+  const beforeUntimed = await legacySnapshot();
+  const validatorGrants = () => database`SELECT p.proname,p.proowner,p.proacl,p.prosecdef,p.proconfig
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+    WHERE n.nspname='public' AND p.proname IN ('swim_validate_plan','swim_validate_prescription') ORDER BY p.proname`;
+  const beforeGrants = await validatorGrants();
+  await database.begin(async (tx) => {
+    await tx.unsafe(untimedUp);
+    await tx`INSERT INTO drizzle.__drizzle_migrations(hash,created_at)
+      VALUES (${migrations[154]!.hash},${migrations[154]!.folderMillis})`;
+  });
+  assert.deepEqual(await legacySnapshot(), beforeUntimed);
+  assert.deepEqual(await validatorGrants(), beforeGrants);
+  assert.equal((await as(c, (tx) => tx`SELECT public.swim_untimed_course_ready() AS ready`))[0]!.ready, true);
+  await denied(() => as(null, (tx) => tx`SELECT public.swim_untimed_course_ready()`), "42501");
+  await denied(() => database.begin(async (tx) => {
+    await tx.unsafe("SET LOCAL ROLE service_role");
+    await tx`SELECT public.swim_untimed_course_ready()`;
+  }), "42501");
+  await revertUntimed();
+  assert.equal((await database`SELECT to_regprocedure('public.swim_untimed_course_ready()') AS name`)[0]!.name, null);
+  await denied(() => createCourse(), "P0001");
+  assert.deepEqual(await legacySnapshot(), beforeUntimed);
+  await database.begin((tx) => tx.unsafe(untimedUp));
+  assert.deepEqual(await validatorGrants(), beforeGrants);
+  assert.equal((await database`SELECT count(*)::int AS count FROM drizzle.__drizzle_migrations`)[0]!.count, 155);
+  const validate = (prescription: unknown, planDefinition: unknown) => database.begin(async (tx) => {
+    await tx.unsafe("SET LOCAL ROLE swim_writer");
+    await tx`SELECT public.swim_validate_prescription(${JSON.stringify(prescription)}::text::jsonb)`;
+    await tx`SELECT public.swim_validate_plan(${JSON.stringify(planDefinition)}::text::jsonb, ${JSON.stringify(courseState)}::text::jsonb)`;
+  });
+  await validate(courseRows[0]!.definition.issued, courseDefinition);
+  for (const invalid of [null, 0, -1, 241, "60", undefined]) {
+    await denied(() => validate({
+      ...definitions[0]!.issued, budget: { ...definitions[0]!.issued.budget, minutes: invalid },
+    }, courseDefinition), "P0001");
+  }
+  for (const invalid of [0, -1, 241, "60", undefined]) {
+    await denied(() => validate({
+      ...courseRows[0]!.definition.issued, budget: { ...courseRows[0]!.definition.issued.budget, minutes: invalid },
+    }, courseDefinition), "P0001");
+  }
+  await denied(() => validate(courseRows[0]!.definition.issued, {
+    ...definition, setup: { ...setup, sessionBudgetMinutes: null },
+  }), "P0001");
+  await denied(() => validate(courseRows[0]!.definition.issued, {
+    ...courseDefinition, setup: { ...setup, sessionBudgetMinutes: undefined },
+  }), "P0001");
+  assert.deepEqual(await legacySnapshot(), beforeUntimed);
+  assert.equal(legacyCourse.plan.definition.setup.sessionBudgetMinutes, 60);
+  const legacyChange = request(legacyCourse, "plan");
+  legacyChange.state.decisions.at(-1)!.generatorVersion = SWIM_COURSE_VERSION;
+  const legacyChanged = await update(d, legacyCourse, legacyChange);
+  assert.deepEqual(legacyChanged.plan.definition, legacyCourse.plan.definition);
+  assert.deepEqual(legacyChanged.workouts[1].definition.original, legacyCourse.workouts[1].definition.original);
+  assert.deepEqual(legacyChanged.workouts[1].definition.modifications[0].previous, legacyCourse.workouts[1].definition.issued);
+  assert.equal(legacyChanged.workouts[1].definition.issued.budget.minutes, 60);
+  const downPath = /jsonb_path_exists\(definition, '([^']+)'\)/.exec(untimedDown)?.[1];
+  assert.ok(downPath);
+  for (const retained of [
+    { issued: courseRows[0]!.definition.issued },
+    { original: courseRows[0]!.definition.original },
+    { modifications: [{ previous: courseRows[0]!.definition.original }] },
+  ]) {
+    assert.equal((await database`SELECT jsonb_path_exists(${JSON.stringify(retained)}::text::jsonb, ${downPath}::jsonpath) AS blocked`)[0]!.blocked, true);
+  }
+  stages.push(stage);
+  stage = "private-course-grants-and-atomic-import";
   const conflictingTotals = structuredClone(courseRows);
   conflictingTotals[0]!.definition.courseSource = { ...source, reportedDistanceMetres: 999 };
   await denied(() => createCourse(conflictingTotals), "P0001");
   assert.equal((await as(c, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_plans`))[0]!.count, 0);
   const course = await createCourse();
+  assert.equal(course.plan.definition.setup.sessionBudgetMinutes, null);
+  assert.equal(course.workouts[0].definition.issued.budget.minutes, null);
+  await denied(revertUntimed, "P0001");
+  assert.equal((await as(c, (tx) => tx`SELECT public.swim_untimed_course_ready() AS ready`))[0]!.ready, true);
   await denied(() => createCourse(), "23505");
   assert.deepEqual(course.workouts[0].definition.original, courseRows[0]!.definition.original);
   assert.deepEqual(course.workouts[1].definition.issued.snapshot.course, long);
@@ -366,7 +466,7 @@ try {
   const edited = compileSwimCourseWorkout({
     ...editedSource, sections: editedSource.sections.map((section) => section.kind === "main"
       ? { ...section, items: section.items.map((item) => ({ ...item, repeats: 3 })) } : section),
-  }, short, 60, setup);
+  }, short, setup);
   if (!edited.ok) throw new Error("Invalid synthetic edit");
   const editDecision: SwimDecisionRecord = {
     id: randomUUID(), kind: "progression", decision: "overridden", reason: "Synthetic manual adjustment.",
@@ -493,10 +593,11 @@ try {
   stages.push(stage);
 
   stage = "synthetic-cleanup-and-unused-down";
-  await database`DELETE FROM auth.users WHERE id IN (${a}, ${b}, ${c})`;
+  await database`DELETE FROM auth.users WHERE id IN (${a}, ${b}, ${c}, ${d})`;
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_import_matches`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_plans`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_workouts`)[0]!.count, 0);
+  await revertUntimed();
   await revertMatches();
   await revertCourse();
   await revert();

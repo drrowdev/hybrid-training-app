@@ -3722,3 +3722,20 @@ before delivery. Native account, owner and watch acceptance remain separate.
 The150-entry/previous-deployment upgrade profile is now spent and must not be
 rerun, including in inspection mode. Future operations require a reviewed
 profile for the current154-entry ledger and accepted deployment receipt.
+
+## [2026-09-13] decision | Untimed imported courses and distinct swim names
+
+The owner requested removal of available-time controls and enforcement for
+imported courses, plus distinguishable repeated workouts. Use stable Week N A/B
+labels from source positions, retaining descriptive titles without inventing
+effort differences. Source prescriptions, explicit rests/send-offs, historical
+titles and older numeric budget data are not rewritten. Generated programmes
+retain numeric budgeting.
+
+The owner approved migration0154 development and synthetic testing: explicit
+null budgets only for imports, authenticated readiness, no new columns or row
+backfill, and a down that refuses retained untimed plans/prescription history.
+The source ledger advances to155; the old hosted150-to154 profile remains
+spent and refuses this source. Hosted migration/deployment require a separate
+reviewed operation and owner approval. No reimport or archive is part of this
+refinement.

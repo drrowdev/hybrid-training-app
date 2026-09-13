@@ -11,6 +11,7 @@ on:
       - "packages/db/rollbacks/0151_swim_pool_changes.down.sql"
       - "packages/db/rollbacks/0152_swim_private_courses.down.sql"
       - "packages/db/rollbacks/0153_swim_import_matching.down.sql"
+      - "packages/db/rollbacks/0154_swim_untimed_courses.down.sql"
       - "packages/db/integration-tests/swim-pool-storage.mts"
       - "packages/db/scripts/upgrade-swim-review*.ts"
       - "packages/db/scripts/__tests__/upgrade-swim-review.test.ts"

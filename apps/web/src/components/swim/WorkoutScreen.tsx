@@ -29,7 +29,7 @@ export function WorkoutScreen({ workout: incomingWorkout }: { workout: SwimWorko
     <>
       <section className={styles.section}>
         <div className={styles.actions}><p className={styles.distance}>{workout.total}</p><span className={styles.muted}>{workout.course}</span></div>
-        <p className={styles.muted}>{workout.date} · Up to {workout.budgetMinutes} min{workout.provisional && !workout.sessionId ? " · Draft" : ""}</p>
+        <p className={styles.muted}>{workout.date}{workout.budgetMinutes !== null && ` · Up to ${workout.budgetMinutes} min`}{workout.provisional && !workout.sessionId ? " · Draft" : ""}</p>
         {workout.calibrationLabel && <p className={styles.muted}>{workout.calibrationLabel}</p>}
         {workout.poolEditing && <PoolEditor key={`${workout.id}:${workout.revision}:${workout.poolEditing.revision}`}
           context={workout.poolEditing} busy={pending || poolBusy || courseBusy} onApply={(preview) => {

@@ -151,6 +151,7 @@ describe("DC-SW5/SW8/SW9 private course actions", () => {
     vi.spyOn(courseCapability, "privateSwimCourseAvailable").mockResolvedValue(true);
     vi.mocked(storage.listSwimPlans).mockResolvedValue([]);
     const form = setupForm();
+    form.delete("timeBudgetMinutes");
     form.set("pool", "50m");
     form.set("goal", "endurance");
     form.set("courseFile", JSON.stringify(syntheticCourse()));
@@ -168,9 +169,20 @@ describe("DC-SW5/SW8/SW9 private course actions", () => {
     const request = vi.mocked(storage.createSwimPlan).mock.calls[0]![1];
     expect(request.workouts).toHaveLength(3);
     expect(request.definition).not.toHaveProperty("initialDose");
+    expect(request.definition.setup.sessionBudgetMinutes).toBeNull();
+    expect(request.workouts.every((row) => row.definition.issued.budget.minutes === null)).toBe(true);
     expect(request.workouts[0]!.definition.courseSource).toEqual(syntheticCourse().weeks[0]!.workouts[0]);
     expect(request.workouts[0]!.definition.issued).toEqual(request.workouts[0]!.definition.original);
     expect(assertSwimSafety).toHaveBeenCalled();
+  });
+  it("ignores retired time input without changing the reviewed course", async () => {
+    const form = formForCourse();
+    const before = await previewPrivateSwimCourse(form);
+    form.set("timeBudgetMinutes", "not-a-time");
+    const after = await previewPrivateSwimCourse(form);
+    expect(before.preview).toBeDefined();
+    expect(after.preview).toEqual(before.preview);
+    expect(after.preview!.plan.weeks.flatMap((week) => week.workouts).every((workout) => workout.budgetMinutes === null)).toBe(true);
   });
   it("invalidates changed previews and refuses safety, auth and capability failures before writes", async () => {
     const form = formForCourse();
@@ -208,7 +220,7 @@ describe("DC-SW5/SW8/SW9 private course actions", () => {
     expect((await importPrivateSwimCourse(form, preview.preview!.id)).errorCode).toBe("validation");
     expect(storage.createSwimPlan).not.toHaveBeenCalled();
     const planned = planPrivateSwimCourse({
-      source: syntheticCourse(), setup: { ...fixture.plan.definition.setup, course: poolCourse(50, 1, "m") },
+      source: syntheticCourse(), setup: { ...fixture.plan.definition.setup, sessionBudgetMinutes: null, course: poolCourse(50, 1, "m") },
       startDate: "2026-09-07", weekdays: [1, 4], poolChoices: [],
     });
     vi.mocked(storage.listSwimPlans).mockResolvedValue([{
@@ -222,15 +234,20 @@ describe("DC-SW5/SW8/SW9 private course actions", () => {
     expect(await importPrivateSwimCourse(form, preview.preview!.id)).toMatchObject({ ok: true, planId: fixture.plan.id });
     expect(storage.createSwimPlan).not.toHaveBeenCalled();
   });
-  it("retains manual edits and refuses generic benchmark replacement", async () => {
+  it.each([null, 30])("retains manual edits and refuses generic benchmark replacement with budget %s", async (minutes) => {
     formForCourse();
     const fixture = swimFixture({ course: poolCourse(50, 1, "m") });
     const planned = planPrivateSwimCourse({
-      source: syntheticCourse(), setup: fixture.plan.definition.setup,
+      source: syntheticCourse(), setup: { ...fixture.plan.definition.setup, sessionBudgetMinutes: null },
       startDate: "2026-09-07", weekdays: [1, 4], poolChoices: [],
     });
-    const plan = { ...fixture.plan, definition: planned.definition, state: { ...fixture.plan.state, decisions: [], observations: [], acceptedCalibration: null } };
-    const row = { ...fixture.workouts[0]!, definition: planned.workouts[0]!.definition, status: "scheduled" as const, session_id: null };
+    const plan = { ...fixture.plan, definition: { ...planned.definition, setup: { ...planned.definition.setup, sessionBudgetMinutes: minutes } },
+      state: { ...fixture.plan.state, decisions: [], observations: [], acceptedCalibration: null } };
+    const definition = planned.workouts[0]!.definition;
+    const row = { ...fixture.workouts[0]!, definition: { ...definition,
+      original: { ...definition.original, budget: { ...definition.original.budget, minutes } },
+      issued: { ...definition.issued, budget: { ...definition.issued.budget, minutes } },
+    }, status: "scheduled" as const, session_id: null };
     vi.mocked(storage.listSwimPlans).mockResolvedValue([plan]);
     vi.mocked(storage.listSwimWorkouts).mockResolvedValue([row]);
     vi.mocked(storage.getSwimWorkout).mockResolvedValue(row);
@@ -239,15 +256,18 @@ describe("DC-SW5/SW8/SW9 private course actions", () => {
     const input = {
       planId: plan.id, revision: plan.revision, workoutId: row.id, workoutRevision: row.revision, reason: "Less pool time.",
       workout: { ...original, sections: original.sections.map((section) => section.kind === "main"
-        ? { ...section, items: section.items.map((item) => ({ ...item, repeats: 3 })) } : section) },
+        ? { ...section, items: section.items.map((item) => ({ ...item, repeats: 3, restSeconds: 1800 })) } : section) },
     };
+    expect((await previewPrivateSwimEdit({ ...input, workout: original })).errorCode).toBe("validation");
     const preview = await previewPrivateSwimEdit(input);
     expect(preview.preview).toMatchObject({ before: "350 m", after: "250 m" });
+    expect(preview.preview!.plan.weeks[0]!.workouts[0]!.budgetMinutes).toBeNull();
     expect((await savePrivateSwimEdit(input, preview.preview!.id)).ok).toBe(true);
     const request = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
     expect(request.workouts[0]!.definition.original).toEqual(row.definition.original);
     expect(request.workouts[0]!.definition.courseSource).toEqual(row.definition.courseSource);
     expect(request.workouts[0]!.definition.modifications[0]!.previous).toEqual(row.definition.issued);
+    expect(request.workouts[0]!.definition.issued.budget).toMatchObject({ minutes, accountedMs: 3_600_000 });
     expect(request.state.decisions.at(-1)).toMatchObject({ decision: "overridden", inputSnapshot: { operation: "course-edit" } });
     expect((await proposeSwimBenchmark(plan.id, plan.revision, benchmarkForm())).errorCode).toBe("validation");
     vi.mocked(storage.getSwimWorkout).mockResolvedValue({ ...row, session_id: sessionId });
@@ -255,6 +275,35 @@ describe("DC-SW5/SW8/SW9 private course actions", () => {
     vi.mocked(storage.getSwimWorkout).mockResolvedValue({ ...row, user_id: "00000000-0000-4000-8000-000000000099" });
     expect((await previewPrivateSwimEdit(input)).errorCode).toBe("not_found");
     expect(storage.updateSwimPlan).toHaveBeenCalledTimes(1);
+  });
+  it("keeps saved A/B names stable after date changes without rewriting source or editor titles", async () => {
+    formForCourse();
+    const fixture = swimFixture({ course: poolCourse(50, 1, "m") });
+    const source = syntheticCourse();
+    const planned = planPrivateSwimCourse({
+      source: { ...source, weeks: source.weeks.map((week, index) => ({
+        workouts: week.workouts.map((workout) => ({ ...workout, title: `Week ${index + 1}` })),
+      })) },
+      setup: { ...fixture.plan.definition.setup, sessionBudgetMinutes: null },
+      startDate: "2026-09-07", weekdays: [1, 4], poolChoices: [],
+    });
+    const plan = { ...fixture.plan, definition: planned.definition, state: {
+      ...fixture.plan.state, decisions: [], observations: [], acceptedCalibration: null,
+    } };
+    const rows = planned.workouts.map((workout, index) => ({
+      ...fixture.workouts[index]!, ...workout, status: "scheduled" as const, session_id: null,
+      scheduled_date: index === 0 ? "2026-09-12" : workout.scheduled_date,
+    }));
+    const before = structuredClone(rows);
+    vi.mocked(storage.listSwimPlans).mockResolvedValue([plan]);
+    vi.mocked(storage.listSwimWorkouts).mockResolvedValue(rows);
+    const hub = await queries.loadSwimHubView(await import("@/lib/supabase/server").then((module) => module.createClient()), userId, plan);
+    expect(hub.workouts.find((workout) => workout.id === rows[0]!.id)?.title).toBe("Week 1 A");
+    expect(hub.workouts.find((workout) => workout.id === rows[1]!.id)?.title).toBe("Week 1 B");
+    vi.mocked(storage.getSwimWorkout).mockResolvedValue(rows[0]!);
+    const detail = await queries.loadSwimWorkoutView(await import("@/lib/supabase/server").then((module) => module.createClient()), userId, rows[0]!.id);
+    expect(detail).toMatchObject({ title: "Week 1 A", budgetMinutes: null, courseEditing: { workout: { title: "Week 1" } } });
+    expect(rows).toEqual(before);
   });
 });
 
