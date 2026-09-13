@@ -3963,3 +3963,18 @@ comparison; its Git lookup assumed full history in a shallow CI checkout. The
 test now pins the complete old body by SHA-256, retaining its exact-content
 guarantee. The production job itself is unchanged. Corrected source acceptance
 remains pending; rehearsal is not production release authorization.
+
+## [2026-09-13] acceptance | Guarded production updater development complete
+
+Corrected source `f3c29120` passed core/build/unit/type/lint, identity and general
+browser CI34777061287. Storage CI34777061280 also passed both jobs, including
+the real-Postgres updater rehearsal, pool typecheck, browser controls and
+container cleanup. The historical production-job assertion remains exact; no
+production-job body or migration SQL was changed by the repair.
+
+Development and isolated rehearsal are accepted. Production verification access
+is still missing, and adopting the exact legacy exceptions, merging, deploying,
+applying migrations and activating swimming require separate authorization.
+Future integration must retain the source guard's reference ancestry. No token
+transfer, environment-policy change, production operation or private programme
+transfer was performed.

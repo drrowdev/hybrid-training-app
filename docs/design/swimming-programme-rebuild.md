@@ -564,10 +564,10 @@ not proof of the entire production schema or owner usability.
    fresh approval and evidence that no prescriptions, results or import history
    would be erased. No automatic destructive database rollback is proposed.
 
-The next decision is whether to develop and rehearse this guarded updater, or
-investigate the unmatched history first. Neither choice authorizes production
-changes. Real account-data transfer, Garmin/watch acceptance, combined training
-and backup work remain outside this task.
+The owner subsequently selected guarded updater development and rehearsal,
+as recorded below. That approval does not authorize production changes.
+Real account-data transfer, Garmin/watch acceptance, combined training and
+backup work remain outside this task.
 
 ### Guarded updater development
 
@@ -616,5 +616,18 @@ case above. This validates the synthetic baseline, not live production execution
 The parallel source check found a test-only shallow-checkout dependency: its
 old-job comparison tried to read a historical Git object unavailable in CI.
 The comparison now uses the full historical job body's SHA-256, preserving the
-same exact-content assertion without requiring history. Source acceptance remains
-pending until the corrected revision passes CI.
+same exact-content assertion without requiring history.
+
+Corrected source `f3c29120` passed
+[core, identity and general browser CI34777061287](https://github.com/drrowdev/hybrid-training-app/actions/runs/34777061287)
+and [storage CI34777061280](https://github.com/drrowdev/hybrid-training-app/actions/runs/34777061280),
+including the updater rehearsal, pool-runner typecheck, existing controls and
+container cleanup. Development and isolated rehearsal are complete. This is
+not a production dry run or authorization to accept the unexplained live history.
+
+The next boundary is production verification access, followed by separate
+approval for the exact legacy baseline and release. Do not widen the review
+environment's branch policy or transfer its credential under development
+approval. A later approved merge must preserve `08f89f05` ancestry for the
+main-only source guard; squash or rebase integration would be refused.
+No production dispatch, activation or owner-programme transfer has occurred.
