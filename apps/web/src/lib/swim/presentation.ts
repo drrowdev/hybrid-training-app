@@ -1,4 +1,4 @@
-import { formatPoolCourse, formatSwimDistance, swimRepeatGroups, swimItemGuidance, type SwimWorkout, type SwimStroke, type SwimEquipment } from "@hta/domain";
+import { SWIM_COURSE_VERSION, formatPoolCourse, formatSwimDistance, swimRepeatGroups, swimItemGuidance, type SwimWorkout, type SwimStroke, type SwimEquipment } from "@hta/domain";
 import { swimPlanWeekLengths, type SwimPlan } from "@hta/engine";
 import type { SwimPlanPreview, SwimWorkoutView } from "./view-types";
 import { formatSwimTime } from "./time";
@@ -28,8 +28,9 @@ export function workoutPresentation(workout: SwimWorkout): Pick<SwimWorkoutView,
         item.note, item.optional ? "Optional" : null,
       ].filter(Boolean).join(" · "),
       effort: effort[item.effort],
-      guidance: `${guidance.instruction} ${guidance.effort} ${guidance.focus}`,
+      guidance: [guidance.instruction, guidance.effort, guidance.focus].filter(Boolean).join(" "),
       rest: item.sendoffMs !== undefined ? `Leave every ${formatSwimTime(item.sendoffMs)}`
+        : item.restSeconds === undefined && workout.snapshot.versions.generator === SWIM_COURSE_VERSION ? "Rest not specified"
         : item.restSeconds ? `Rest ${item.restSeconds} sec` : "No rest",
       ...(workout.snapshot.calibration && item.targetMsPerRepeat !== undefined ? { pace: `Target ${formatSwimTime(Math.round(item.targetMsPerRepeat))}` } : {}),
     };

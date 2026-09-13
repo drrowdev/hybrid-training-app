@@ -1,10 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { swimItemGuidance } from "./swim-guidance";
+import { SWIM_COURSE_VERSION } from "./swim-course";
 import type { SwimItem, SwimWorkout, SwimStroke } from "./swimming";
 
-const workout = { focus: "technique_base", snapshot: { strokes: ["freestyle"] } } as SwimWorkout;
 const item: SwimItem = { repeats: 2, lengths: 2, stroke: "freestyle", effort: "easy", equipment: [], optional: false };
+const workout: SwimWorkout = {
+  kind: "swim_workout", focus: "technique_base", totalLengths: 4, estimatedMs: null,
+  budget: { minutes: 30, accountedMs: 0 },
+  snapshot: {
+    course: { numerator: 25, denominator: 1, unit: "m" }, strokes: ["freestyle"], equipment: [],
+    calibration: null, protocol: null, versions: { model: "test", generator: "test", assessment: null },
+  },
+  sections: [{ kind: "main", label: "Main", rounds: 1, items: [item] }],
+};
 describe("DC-SW2/DC-SW3/DC-SW5 snapshot-only guidance", () => {
+  it.each([undefined, "Alternate relaxed swimming and kicking within each repeat.", "single_arm"])(
+    "retains private course instructions without substituting generic coaching: %s", (drill) => {
+      const imported: SwimWorkout = {
+        ...workout, snapshot: { ...workout.snapshot, versions: { ...workout.snapshot.versions, generator: SWIM_COURSE_VERSION } },
+      };
+      const issued = { ...item, ...(drill === undefined ? {} : { drill }) };
+      const before = JSON.stringify({ imported, issued });
+      expect(swimItemGuidance(imported, issued)).toEqual({
+        drillLabel: null, instruction: drill ?? "", effort: "", focus: "",
+      });
+      expect(JSON.stringify({ imported, issued })).toBe(before);
+    },
+  );
   it.each(["single_arm", "kick_with_board", "pull_count_strokes"])("explains generated drill %s without inventing pace or changing targets", (drill) => {
     const issued = { ...item, drill, targetMsPerRepeat: 123456 };
     const before = JSON.stringify(issued);

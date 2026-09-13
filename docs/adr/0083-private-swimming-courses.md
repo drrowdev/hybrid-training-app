@@ -26,6 +26,11 @@ and every previous issued prescription remain available. Pool/date/lifecycle
 controls retain their existing eligibility and history rules. Unknown outcomes
 remain unknown. Imported prescriptions are not proof of performed work.
 
+Imported drill text is the instruction, not a legacy generated-drill identifier.
+Display it without substituting generic technique, effort or focus advice.
+An omitted rest stays unspecified; only an explicit zero means no rest.
+These presentation rules do not change saved prescriptions or storage validation.
+
 ## Storage and safeguards
 
 No new table or top-level column is needed. `swim_plans.definition.privateCourse`

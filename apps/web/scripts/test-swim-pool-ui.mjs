@@ -30,6 +30,8 @@ try {
         const long = { numerator: 50, denominator: 1, unit: "m" };
         const short = { numerator: 25, denominator: 1, unit: "m" };
         window.courseSource = syntheticCourse(); window.courseMode = "success"; window.courseCalls = []; window.destinations = [];
+        window.sourceDrill = "Alternate relaxed swimming and kicking within each repeat.";
+        window.courseSource.weeks[0].workouts[0].sections[0].items[0].drill = window.sourceDrill;
         const prepared = planPrivateSwimCourse({
           source: window.courseSource, setup: {
             course: long, goal: "endurance", experience: "recreational", knownStrokes: ["freestyle"],
@@ -241,6 +243,11 @@ try {
     await page.evaluate(() => { window.resolveCourse(); window.resolveCourse = undefined; window.courseMode = "success"; });
     const importPlan = page.getByRole("button", { name: "Import plan", exact: true });
     await importPlan.waitFor();
+    const coursePreview = page.getByRole("region", { name: "Synthetic private course", exact: true });
+    await coursePreview.locator("details details summary").first().click();
+    const sourceDrill = await page.evaluate(() => window.sourceDrill);
+    await coursePreview.getByText(sourceDrill, { exact: true }).first().waitFor();
+    assert.deepEqual(await coursePreview.locator("li").first().locator("p").allTextContents(), [sourceDrill]);
     assert.equal(await page.getByRole("checkbox", { name: "Use the distances from the listed sets", exact: true }).isChecked(), false);
     await importPlan.click();
     assert.deepEqual(await page.evaluate(() => window.courseCalls), ["preview"]);

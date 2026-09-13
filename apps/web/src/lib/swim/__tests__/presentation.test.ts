@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { SwimWorkout } from "@hta/domain";
-import { generateSwimPlan } from "@hta/engine";
+import { compileSwimCourseWorkout, generateSwimPlan } from "@hta/engine";
 import { planPreviewPresentation, workoutPresentation } from "../presentation";
 import { standaloneWeekRequests } from "../model";
 import { swimFixture } from "./fixtures";
+import { syntheticCourse } from "./course-fixtures";
 
 const workout: SwimWorkout = {
   kind: "swim_workout", focus: "technique_base", totalLengths: 8, estimatedMs: null,
@@ -18,6 +19,44 @@ const workout: SwimWorkout = {
 };
 
 describe("ADR0079 poolside ordered workout", () => {
+  it("DC-SW3/DC-SW5 preserves imported drills and distinguishes unspecified rest from explicit zero", () => {
+    const source = syntheticCourse().weeks[0]!.workouts[0]!;
+    const drill = "Alternate relaxed swimming and kicking within each repeat.";
+    const compiled = compileSwimCourseWorkout({
+      ...source, sections: source.sections.map((section, index) => ({
+        ...section, items: section.items.map((item) => ({
+          ...item, ...(index === 0 ? { drill } : {}), ...(index === 2 ? { restSeconds: 0 } : {}),
+        })),
+      })),
+    }, { numerator: 25, denominator: 1, unit: "m" }, 30);
+    if (!compiled.ok) throw new Error(compiled.error.message);
+    const before = JSON.stringify(compiled.value.workout);
+    const view = workoutPresentation(compiled.value.workout);
+    expect(view.steps.map((step) => step.guidance)).toEqual([drill, "", ""]);
+    expect(view.steps[0]!.rest).toBeTruthy();
+    expect(view.steps[0]!.rest).not.toBe(view.steps[2]!.rest);
+    expect(view.steps[1]!.rest).toBe("Rest 20 sec");
+    expect(view.steps[2]!.rest).toBe("No rest");
+    expect(JSON.stringify(compiled.value.workout)).toBe(before);
+  });
+
+  it("DC-SW3 keeps explicit send-offs and legacy omitted-rest presentation unchanged", () => {
+    const legacy = {
+      ...workout, sections: workout.sections.map((section) => ({
+        ...section, items: section.items.map((item) => ({ ...item, restSeconds: undefined })),
+      })),
+    };
+    expect(workoutPresentation(legacy).steps[0]!.rest).toBe("No rest");
+    const source = syntheticCourse().weeks[0]!.workouts[0]!;
+    const compiled = compileSwimCourseWorkout({
+      ...source, sections: source.sections.map((section) => ({
+        ...section, items: section.items.map((item) => ({ ...item, restSeconds: undefined, sendoffSeconds: 80 })),
+      })),
+    }, { numerator: 25, denominator: 1, unit: "m" }, 30);
+    if (!compiled.ok) throw new Error(compiled.error.message);
+    expect(workoutPresentation(compiled.value.workout).steps.every((step) => step.rest === "Leave every 1:20")).toBe(true);
+  });
+
   it("groups repeats while preserving every round and individual progress identity", () => {
     const view = workoutPresentation(workout);
     expect(view.steps).toHaveLength(2);

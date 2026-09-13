@@ -3635,3 +3635,24 @@ assertion, a fixture variable collision and the standalone navigation stub.
 The browser uses an intercepted HTTPS origin for native Web Crypto; all other
 requests are blocked. Disposable SQL acceptance is still required. No live data,
 provider, hosted migration, protected merge, new agent, watcher or deployment.
+
+## [2026-09-13] acceptance | Explicit recorded-swim matching
+
+Exact source1da9ec79 passed application CI34718867397 and disposable
+storage/control CI34718867489, including all154 migrations, matching isolation,
+history and cleanup. Public terminal/job metadata was consumed once; no logs
+were fetched. These are development checks, not existing-account, native
+Auth/server-action, Garmin or production acceptance.
+
+## [2026-09-13] repair | Preserve imported swimming instructions
+
+Private-course drill text was being hidden behind generic generated-drill
+guidance. Imported workouts now display their supplied instruction without
+added technique/effort/focus advice. Omitted rest is distinct from explicit
+zero; legacy generated-workout presentation remains unchanged. No saved
+prescription or storage rule changes. ADR0083 records the display contract.
+Synthetic domain/parser/presentation checks and real React375/1280 controls
+passed. The initial new browser assertion targeted collapsed pool controls;
+scoping it to the named preview fixed the test without weakening its assertion.
+Source workouts remain outside the repository. Existing-account migration,
+protected review update and live provider/watch work remain separately gated.

@@ -1,4 +1,5 @@
 import { swimPrimaryStroke, type SwimEffort, type SwimItem, type SwimStroke, type SwimWorkout } from "./swimming";
+import { SWIM_COURSE_VERSION } from "./swim-course";
 
 const STROKE_CUES: Record<SwimStroke, string> = {
   freestyle: "Look down, rotate with each stroke and breathe to the side without lifting your head.",
@@ -25,6 +26,9 @@ const SINGLE_ARM: Partial<Record<SwimStroke, string>> = {
 
 /** Read-only guidance for current and historical issued snapshots; never alters targets. */
 export function swimItemGuidance(workout: SwimWorkout, item: SwimItem) {
+  if (workout.snapshot.versions.generator === SWIM_COURSE_VERSION) {
+    return { drillLabel: null, instruction: item.drill ?? "", effort: "", focus: "" };
+  }
   const primary = item.stroke === "kick" ? swimPrimaryStroke(workout.snapshot.strokes) : item.stroke;
   let drillLabel: string | null = null;
   let instruction = STROKE_CUES[item.stroke];
