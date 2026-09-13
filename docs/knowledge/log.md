@@ -3817,3 +3817,24 @@ existing network-blocked actual-React harness. The control's accessible combobox
 name works, as the established harness already uses. The native runner now uses
 that selector for Experience and the same nested-label pattern in workout
 selection. No product, permission or schema change is required.
+
+## [2026-09-13] acceptance | Native swimming account journey passed
+
+Run34765192325, job103745405234, tested8cdccbd2c9951cc02cbf9eeb2a9780192dff998f.
+All eleven main stages and seven native checks passed: sign-in, private course
+import, source-preserving edit, connection/receive/replay, account isolation,
+recording correction and explicit match/undo, and disconnect/revoked-key denial.
+The two accounts each imported three synthetic workouts with null time budgets
+and distinct weekly names. Neither matching nor correction inferred completion
+or altered the issued workouts.
+
+Both accounts were removed; main and independent cleanup verified Auth and
+six-table absence. The earlier pairs were also reconciled as absent. Browser,
+server, build and database connections closed. Exact-head application
+CI34764734711 and disposable storage34764734714 passed beforehand. Only the
+marked, bound, whitelisted runtime summary was retained.
+
+This is native runner-local application transport with the existing review
+project's real Auth/PostgREST, not protected-alias visual acceptance, personal
+dashboard transfer, Garmin or watch delivery. The protected deployment remains
+856b9b60; production remains untouched. No unchanged-source repeat is needed.

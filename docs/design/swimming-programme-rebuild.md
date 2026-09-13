@@ -4,7 +4,8 @@
 names are delivered on the protected test site. The selected course was prepared
 privately and imported by the owner. Account pairing, the cache-only reader,
 preview-first sender, immutable observations and explicit recording matches have
-development acceptance. Two disposable-account checks are now authorized below.
+development acceptance. Seven native checks passed with two disposable accounts,
+followed by verified cleanup, as recorded below.
 Real swimming-data transfer and watch delivery remain unfinished and held.
 **Owner decision:** 2026-09-12.
 
@@ -413,7 +414,7 @@ branch. Main failure cannot be hidden by successful cleanup. Only bounded
 counters and fixed diagnostics are reported; no credentials, account rows,
 screenshots, traces or raw errors are retained.
 
-This proves native application/Auth/storage transport for synthetic accounts,
+This acceptance covers native application/Auth/storage transport for synthetic accounts,
 not the protected-alias browser session, a real local-cache transfer or a watch.
 
 The first native run34762904789 signed in both accounts but stopped during
@@ -424,4 +425,15 @@ The owner then approved read-only, parameter-bound absence checks using the
 existing review database connection. No grant or RLS change is made. The two
 previous run-bound identities must be confirmed absent before another pair is
 created; only boolean absence results and fixed import-step diagnostics leave
-the runner. Native import and the complete journey are not yet accepted.
+the runner. That first run did not establish native import or complete-journey
+acceptance.
+
+Run34765192325 at8cdccbd2 subsequently passed all seven native checks and all
+eleven main stages. Both accounts imported three workouts with untimed budgets
+and stable weekly names; an edit preserved source/history and the other
+account's work. Pairing, receive/replay/correction, explicit match/undo,
+cross-account denial and revoked-key rejection passed. Main cleanup and the
+independent cleanup both verified account and six-table absence. The earlier
+run pairs were also verified absent. Browser, server, build and database
+connections closed. No deployment, permission or schema change was made by
+these tests; the protected site remains at856b9b60.
