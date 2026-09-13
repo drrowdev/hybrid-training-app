@@ -3665,3 +3665,22 @@ zero. Explicit zero remains supported; fixed send-offs remain required and
 positive. Actual React375/1280 checks cover setting, clearing and preserving
 the omission through review alongside other edits. Web types and lint passed.
 No storage, account, deployment or provider operation changed.
+
+## [2026-09-13] authorization | Protected existing-review upgrade
+
+The owner approved the protected test-site update only, including existing
+additive migrations0150-0153 after checks, preserving accounts and protection.
+Production, actual account imports and Garmin access remain outside approval.
+Application196045c8 passed exact-head CI34741360990 and storage34741360974,
+including all teardown; terminal/job metadata was consumed once without logs.
+
+The dedicated operation retains old bootstrap/refresh profiles and jobs,
+requires the full150-entry ledger prefix, appends four migrations atomically,
+checks owned storage and authenticated-role readiness, creates only four
+review-branch capability flags and reuses guarded exact-SHA deployment/alias
+handling. The disposable runner now exercises upgrade and injected rollback
+with existing synthetic owned data before its full pool/course/matching suite.
+Hosted execution remains pending source and runtime acceptance.
+The42 new offline cases and1331 existing guard cases passed, including previous
+job-content pins, strict source/test/runner types and closed refusal output.
+Real disposable Postgres upgrade acceptance remains required before dispatch.

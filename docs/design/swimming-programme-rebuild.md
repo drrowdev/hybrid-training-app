@@ -280,8 +280,39 @@ corrected imports. A rollback must refuse to erase issued prescriptions or
 imported history; disable the new application path and retain evidence when a
 data-preserving down is impossible.
 
-No production or existing review migration is authorized. Use synthetic data;
-cross-account and replay acceptance requires isolated real-Postgres CI.
+Production migrations remain unauthorized. Cross-account and replay development
+acceptance uses synthetic data in isolated real-Postgres CI.
+
+### Protected existing-review update
+
+On 2026-09-13 the owner approved implementing and running a guarded update of
+the protected test site, including existing migrations0150-0153 after acceptance.
+This does not authorize production, actual account imports or Garmin access.
+The existing review contains account data: its historical150-only bootstrap,
+seed and spent refresh operations must not be reused.
+
+The dedicated update checks the exact source and unchanged current-main
+boundary, accepted deployment/alias receipt, protected environment metadata,
+Auth settings and review database identity. It requires the complete canonical
+150-entry ledger prefix, appends only the four approved migrations in one
+transaction under a bounded exclusive ledger lock, and verifies the154-entry
+result, owned RLS policies, restricted writer and authenticated-role readiness.
+It never reads or changes existing account rows.
+
+Only after database acceptance may it create the four named swimming feature
+flags on the review branch, build one exact-SHA Preview and update the existing
+protected alias. It preserves the previous deployment, account data, signup
+restriction and production environment. Mixed-operation dispatches fail in
+prerequisite CI; the old jobs and profiles remain unchanged. Every mutation
+rechecks source and protected state. Ambiguous failures retain their attempted
+and confirmed status and stop for reconciliation, without automatic retries,
+deletion or ledger repair.
+
+Existing downs remain history-preserving and ordered0153 through0150. Once
+new features hold data, disable new-entry capabilities and roll forward with
+compatible readers rather than erase history or deploy an old reader that
+cannot understand it. Native account review and physical-watch acceptance
+remain separate from database-role probes and CI.
 
 ## Implementation order and acceptance
 

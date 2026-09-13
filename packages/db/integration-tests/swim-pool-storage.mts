@@ -8,6 +8,7 @@ import { poolCourse, estimateCriticalSwimSpeed, type SwimWorkout } from "../../d
 import { compileSwimCourseWorkout, editableSwimCourseWorkout } from "../../engine/src/swim-course.ts";
 import { SWIM_COURSE_VERSION, type SwimCourseWorkout } from "../../domain/src/swim-course.ts";
 import type { SwimDecisionRecord, SwimPlanRow, SwimWorkoutRow, SwimPlanState, SwimPlanDefinition } from "../src/schema/swimming.ts";
+import { appendReviewMigrations, inspectReviewLedger, reviewMigrations, ReviewStorageRefusal } from "../scripts/upgrade-swim-review-storage.ts";
 
 type PoolRow = Pick<SwimWorkoutRow, "id" | "revision" | "slot"> & {
   scheduled_date: string; definition: SwimWorkoutRow["definition"] & { slotId: string };
@@ -44,7 +45,7 @@ try {
   assert.equal(count, 0);
   stages.push(stage);
 
-  stage = "synthetic-auth-and-full-schema";
+  stage = "synthetic-auth-and-base-schema";
   await database.unsafe(`
     CREATE SCHEMA auth;
     CREATE ROLE anon NOLOGIN;
@@ -62,6 +63,9 @@ try {
   const journal: { entries: { idx: number; tag: string }[] } = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"));
   assert.equal(journal.entries.length, 154);
   assert.equal(journal.entries[153].tag, "0153_swim_import_matching");
+  const canonical = reviewMigrations();
+  await database.unsafe(`CREATE SCHEMA drizzle;
+    CREATE TABLE drizzle.__drizzle_migrations(id serial PRIMARY KEY,hash text NOT NULL,created_at bigint)`);
   for (const [index, migration] of journal.entries.entries()) {
     assert.equal(migration.idx, index);
     assert.match(migration.tag, /^\d{4}_[a-z0-9_]+$/);
@@ -72,9 +76,15 @@ try {
         migration: index, line: source.slice(0, match.index).split("\n").length,
       });
     }
-    await database.begin((tx) => tx.unsafe(source));
+    if (index < 150) {
+      await database.begin(async (tx) => {
+        await tx.unsafe(source);
+        await tx`INSERT INTO drizzle.__drizzle_migrations(hash,created_at)
+          VALUES (${canonical[index]!.hash},${canonical[index]!.folderMillis})`;
+      });
+    }
   }
-  stages.push("synthetic-auth-and-full-schema");
+  stages.push("synthetic-auth-and-base-schema");
   const up = readFileSync(new URL("../drizzle/0151_swim_pool_changes.sql", import.meta.url), "utf8");
   const down = readFileSync(new URL("../rollbacks/0151_swim_pool_changes.down.sql", import.meta.url), "utf8");
   const courseUp = readFileSync(new URL("../drizzle/0152_swim_private_courses.sql", import.meta.url), "utf8");
@@ -90,18 +100,6 @@ try {
   const revert = () => revertScript(down);
   const revertCourse = () => revertScript(courseDown);
   const revertMatches = () => revertScript(matchDown);
-  stage = "unused-down-and-up";
-  await revertMatches();
-  assert.equal((await database`SELECT to_regprocedure('public.swim_import_matching_ready()') AS name`)[0]!.name, null);
-  await revertCourse();
-  assert.equal((await database`SELECT to_regprocedure('public.swim_private_course_ready()') AS name`)[0]!.name, null);
-  await revert();
-  assert.equal((await database`SELECT to_regprocedure('public.swim_pool_editing_ready()') AS name`)[0]!.name, null);
-  await database.begin((tx) => tx.unsafe(up));
-  await database.begin((tx) => tx.unsafe(courseUp));
-  await database.begin((tx) => tx.unsafe(matchUp));
-  stages.push(stage);
-
   const as = <T,>(user: string | null, fn: (tx: postgres.TransactionSql) => Promise<T>) =>
     database.begin(async (tx) => {
       await tx.unsafe(user ? "SET LOCAL ROLE authenticated" : "SET LOCAL ROLE anon");
@@ -150,6 +148,37 @@ try {
       ${JSON.stringify(definitions.map((definition) => ({ scheduled_date: today, slot: "single", definition })))}::text::jsonb) AS result`)[0]!.result);
   let own = await create(a);
   const other = await create(b);
+
+  stage = "existing-data-upgrade-atomicity";
+  const legacySnapshot = () => database`SELECT
+    (SELECT jsonb_agg(to_jsonb(p) ORDER BY p.id) FROM public.swim_plans p) AS plans,
+    (SELECT jsonb_agg(to_jsonb(w) ORDER BY w.id) FROM public.swim_workouts w) AS workouts,
+    (SELECT jsonb_agg(to_jsonb(u) ORDER BY u.id) FROM auth.users u) AS users`;
+  const legacyBefore = await legacySnapshot();
+  let guards = 0;
+  await assert.rejects(appendReviewMigrations(database, canonical, async () => {
+    if (++guards === 3) throw new Error("synthetic_upgrade_guard");
+  }), /synthetic_upgrade_guard/);
+  await inspectReviewLedger(database, canonical, 150);
+  assert.equal((await database`SELECT to_regprocedure('public.swim_import_storage_ready()') AS name`)[0]!.name, null);
+  assert.deepEqual(await legacySnapshot(), legacyBefore);
+  await appendReviewMigrations(database, canonical, async () => {});
+  await inspectReviewLedger(database, canonical, 154);
+  assert.deepEqual(await legacySnapshot(), legacyBefore);
+  await assert.rejects(appendReviewMigrations(database, canonical, async () => {}));
+  stages.push(stage, "synthetic-auth-and-full-schema");
+
+  stage = "unused-down-and-up";
+  await revertMatches();
+  assert.equal((await database`SELECT to_regprocedure('public.swim_import_matching_ready()') AS name`)[0]!.name, null);
+  await revertCourse();
+  assert.equal((await database`SELECT to_regprocedure('public.swim_private_course_ready()') AS name`)[0]!.name, null);
+  await revert();
+  assert.equal((await database`SELECT to_regprocedure('public.swim_pool_editing_ready()') AS name`)[0]!.name, null);
+  await database.begin((tx) => tx.unsafe(up));
+  await database.begin((tx) => tx.unsafe(courseUp));
+  await database.begin((tx) => tx.unsafe(matchUp));
+  stages.push(stage);
 
   stage = "existing-ownership-and-capability";
   assert.equal((await as(a, (tx) => tx`SELECT public.swim_pool_editing_ready() AS ready`))[0]!.ready, true);
@@ -478,6 +507,7 @@ try {
   const known = ["42501", "23503", "23505", "23514", "22023", "P0001", "42601", "42703", "42883", "42P01", "42P07", "42704", "25P02", "57014", "55P03", "40P01", "40001"];
   code = typeof error === "object" && error !== null && "code" in error &&
     typeof error.code === "string" ? (known.includes(error.code) ? error.code : error.code === "ERR_ASSERTION" ? "assertion" : "unexpected") : "unexpected";
+  if (error instanceof ReviewStorageRefusal) code = error.code;
 } finally {
   if (sql) {
     try { await sql.end({ timeout: 5 }); }
