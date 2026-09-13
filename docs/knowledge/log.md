@@ -3703,3 +3703,22 @@ The operation now defaults to read-only inspection, with explicit
 source, environment and protection guards. Closed snapshot check/code/status
 diagnostics replace the insufficient generic refusal; raw responses are never
 reported. No unchanged-source update retry or historical-profile reuse.
+
+## [2026-09-13] acceptance | Protected swimming review upgraded
+
+The owner-approved review-only operation passed at source
+`daec45dbae033abbca94cd2180378c2a124f96e4` in run34746629650,
+job103696173182. All main and deployment stages passed: the canonical ledger
+advanced atomically from150 to154, the four branch-only Preview flags were
+confirmed, and the fixed protected review alias was read back against READY
+deployment `dpl_699GApEwBMqPgJqSWqcfqM6FbRxM`.
+
+Auth settings, deployment protection, isolation and the previous deployment
+were preserved; the database client closed successfully. No account import,
+seed, production change or Garmin operation was included. The existing-data
+rollback/preservation rehearsal and exact-source application checks passed
+before delivery. Native account, owner and watch acceptance remain separate.
+
+The150-entry/previous-deployment upgrade profile is now spent and must not be
+rerun, including in inspection mode. Future operations require a reviewed
+profile for the current154-entry ledger and accepted deployment receipt.

@@ -345,3 +345,9 @@ same protected snapshot and 150-entry ledger but never
 appends migrations, creates flags or deploys. Applying requires an explicit
 `review_upgrade_read_only=false` after acceptance. Snapshot failures retain only
 closed check/code/HTTP-status diagnostics, never raw responses.
+
+The approved operation completed at `daec45dbae033abbca94cd2180378c2a124f96e4`
+in run34746629650. The protected review now has154 migrations and the four
+branch-only features enabled. This150-entry/previous-deployment profile is
+spent; do not rerun it. Account import, native acceptance, production and
+Garmin delivery remain separately gated.
