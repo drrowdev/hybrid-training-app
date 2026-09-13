@@ -3739,3 +3739,18 @@ The source ledger advances to155; the old hosted150-to154 profile remains
 spent and refuses this source. Hosted migration/deployment require a separate
 reviewed operation and owner approval. No reimport or archive is part of this
 refinement.
+
+## [2026-09-13] acceptance | Untimed-course source and protected-update approval
+
+Source73ef5be96518905a4a96930f2b43d189145a139e passed application
+CI34758418894, including general Playwright and server teardown, and disposable
+SQL/control CI34758418882, including both container teardowns. Synthetic
+acceptance covers existing numeric imports, explicit null budgets, generated
+budget rejection, source/history preservation, safe down refusal, and actual
+375/1280 controls. Native account acceptance is separate.
+
+The owner then approved the required database update and deployment to the
+protected test site only, preserving programme/accounts and leaving production
+untouched. A new154-to155 profile pins the accepted application, current READY
+deployment and four existing feature IDs; it cannot reuse the spent150-to154
+operation or modify source prescriptions, accounts, Auth, protection or flags.

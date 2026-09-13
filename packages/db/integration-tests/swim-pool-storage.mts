@@ -3,8 +3,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { readMigrationFiles } from "drizzle-orm/migrator";
 import { generateSwimPlan, changeSwimWorkoutPool } from "../../engine/src/swimming.ts";
 import { poolCourse, estimateCriticalSwimSpeed, type SwimWorkout } from "../../domain/src/swimming.ts";
 import { compileSwimCourseWorkout, editableSwimCourseWorkout } from "../../engine/src/swim-course.ts";
@@ -12,6 +10,7 @@ import { SWIM_COURSE_VERSION, type SwimCourseWorkout } from "../../domain/src/sw
 import type { SwimDecisionRecord, SwimPlanRow, SwimWorkoutRow, SwimPlanState, SwimPlanDefinition } from "../src/schema/swimming.ts";
 import { appendReviewMigrations, inspectReviewLedger, reviewMigrations, ReviewStorageRefusal } from "../scripts/upgrade-swim-review-storage.ts";
 import { verifyMigrationDependencyParity } from "../scripts/migrate-with-evidence.ts";
+import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations } from "../scripts/untimed-swim-review-storage.ts";
 
 type PoolRow = Pick<SwimWorkoutRow, "id" | "revision" | "slot"> & {
   scheduled_date: string; definition: SwimWorkoutRow["definition"] & { slotId: string };
@@ -73,7 +72,7 @@ try {
   ]);
   verifyMigrationDependencyParity();
   assert.throws(reviewMigrations, (error) => error instanceof ReviewStorageRefusal && error.code === "migration_source");
-  const migrations = readMigrationFiles({ migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)) });
+  const migrations = untimedReviewMigrations();
   assert.equal(migrations.length, 155);
   // Rehearse the historical 150-to-154 operation without widening its hosted source guard.
   const canonical = migrations.slice(0, 154);
@@ -384,11 +383,17 @@ try {
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname='public' AND p.proname IN ('swim_validate_plan','swim_validate_prescription') ORDER BY p.proname`;
   const beforeGrants = await validatorGrants();
-  await database.begin(async (tx) => {
-    await tx.unsafe(untimedUp);
-    await tx`INSERT INTO drizzle.__drizzle_migrations(hash,created_at)
-      VALUES (${migrations[154]!.hash},${migrations[154]!.folderMillis})`;
-  });
+  let untimedGuards = 0;
+  await assert.rejects(appendUntimedMigration(database, migrations, async () => {
+    if (++untimedGuards === 2) throw new Error("synthetic_untimed_guard");
+  }), /synthetic_untimed_guard/);
+  await inspectUntimedLedger(database, migrations, 154);
+  assert.equal((await database`SELECT to_regprocedure('public.swim_untimed_course_ready()') AS name`)[0]!.name, null);
+  assert.deepEqual(await legacySnapshot(), beforeUntimed);
+  assert.deepEqual(await validatorGrants(), beforeGrants);
+  await appendUntimedMigration(database, migrations, async () => {});
+  await inspectUntimedLedger(database, migrations, 155);
+  await assert.rejects(appendUntimedMigration(database, migrations, async () => {}));
   assert.deepEqual(await legacySnapshot(), beforeUntimed);
   assert.deepEqual(await validatorGrants(), beforeGrants);
   assert.equal((await as(c, (tx) => tx`SELECT public.swim_untimed_course_ready() AS ready`))[0]!.ready, true);

@@ -106,10 +106,11 @@ async function snapshotCheck<T>(part: SnapshotPart, read: () => T | Promise<T>):
   }
 }
 
-export function upgradeSnapshotTransport(env: NodeJS.ProcessEnv, deadline: number, fetcher: typeof fetch = fetch): Request {
+export function upgradeSnapshotTransport(env: NodeJS.ProcessEnv, deadline: number, fetcher: typeof fetch = fetch,
+  profile: RefreshProfile = UPGRADE_REVIEW): Request {
   const request = deploymentTransport(env, deadline, fetcher);
   const reads: readonly string[] = [ROUTES.project, DEPLOY_ROUTES.team, ROUTES.supabase, ROUTES.project_env,
-    ROUTES.shared_env, ROUTES.auth, ROUTES.settings, ROUTES.alias, deploymentRoute(UPGRADE_REVIEW.previous.id)];
+    ROUTES.shared_env, ROUTES.auth, ROUTES.settings, ROUTES.alias, deploymentRoute(profile.previous.id)];
   return (url, method = "GET", body) => {
     requireThat((method === "GET" && body === undefined && reads.includes(url)) ||
       (method === "POST" && url === ROUTES.storage && same(body, {})));
@@ -122,7 +123,8 @@ const aliasSchema = z.object({
   projectId: z.literal(REVIEW.projectId), deploymentId: z.literal(UPGRADE_REVIEW.previous.id),
   redirect: z.null().optional(),
 });
-export async function inspectUpgradeSnapshot(request: Request, storage: () => Promise<boolean>) {
+export async function inspectUpgradeSnapshot(request: Request, storage: () => Promise<boolean>,
+  profile: RefreshProfile = UPGRADE_REVIEW) {
   const protection = await snapshotCheck("project", async () => {
     const result = projectIdentity(await request(ROUTES.project));
     requireThat(same(result.sso, { deploymentType: "all_except_custom_domains" }));
@@ -143,13 +145,15 @@ export async function inspectUpgradeSnapshot(request: Request, storage: () => Pr
     return external;
   });
   const old = await snapshotCheck("previous", async () => {
-    const result = deploymentMetadata(await request(deploymentRoute(UPGRADE_REVIEW.previous.id)), UPGRADE_REVIEW.previous.sha);
-    requireThat(result.readyState === "READY" && result.id === UPGRADE_REVIEW.previous.id &&
-      result.url === UPGRADE_REVIEW.previous.url && result.createdAt >= UPGRADE_REVIEW.previous.start &&
-      result.createdAt <= UPGRADE_REVIEW.previous.end);
+    const result = deploymentMetadata(await request(deploymentRoute(profile.previous.id)), profile.previous.sha);
+    requireThat(result.readyState === "READY" && result.id === profile.previous.id &&
+      result.url === profile.previous.url && result.createdAt >= profile.previous.start &&
+      result.createdAt <= profile.previous.end);
     return result;
   });
-  const alias = await snapshotCheck("alias", async () => aliasSchema.parse(await request(ROUTES.alias)));
+  const alias = await snapshotCheck("alias", async () => aliasSchema.extend({
+    uid: z.literal(profile.aliasUid!), deploymentId: z.literal(profile.previous.id),
+  }).parse(await request(ROUTES.alias)));
   await snapshotCheck("storage", async () => requireThat(await storage() === true));
   return { protection, team, database, project, shared, auth, external: Object.entries(external).sort(), old, alias };
 }

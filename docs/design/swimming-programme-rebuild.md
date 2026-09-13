@@ -366,3 +366,14 @@ Its down refuses retained null-budget plans or nested prescription history.
 Development and synthetic tests are authorized; protected-review migration and
 deployment require separate approval and a current154-to155 operation profile.
 The spent150-to154 profile must remain closed to this source.
+
+After source73ef5be9 passed CI34758418894 and disposable SQL/control
+CI34758418882, the owner approved the protected-site update only.
+`update_untimed_swim_review=true` selects the new154-to155 operation; all other
+operations must be false. `review_upgrade_read_only=true` is the default.
+The profile requires the current protected deployment/alias, exact existing
+feature receipts, unchanged Auth/isolation and full canonical ledger. Only0154,
+the branch build SHA and the fixed protected alias may change.
+The same guarded append helper is rehearsed with existing synthetic data and
+injected transactional failure before hosted use. Earlier jobs and spent
+profiles remain unchanged; production and account operations remain excluded.

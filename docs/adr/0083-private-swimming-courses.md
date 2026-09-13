@@ -1,7 +1,9 @@
 # ADR 0083: Private swimming course imports
 
-**Status:** Approved for isolated development and synthetic testing, 2026-09-12.
-No existing-account migration, live import, provider transfer or deployment is authorized.
+**Status:** Protected test-site update approved, 2026-09-13.
+The owner approved migration 0154 and deployment of untimed imports and distinct
+weekly names while preserving existing accounts and programmes. Production,
+provider transfer and further account changes remain outside this update.
 
 ## Decision
 
@@ -100,3 +102,12 @@ The source now contains155 migrations. The spent150-to154 hosted profile
 continues refusing this source. Development and synthetic migration tests were
 approved; a new reviewed154-to155 profile and separate owner approval are
 required before applying this change or deploying it to the protected review.
+
+The owner subsequently approved the protected test-site update only after
+source73ef5be9 passed application CI34758418894 and disposable SQL/control
+CI34758418882. The new untimed-update profile pins that application, the current
+READY deployment receipt and all four existing branch-only feature IDs. It
+checks the entire154-entry ledger, appends only0154 atomically, then deploys.
+Inspection remains the default; applying requires explicit selection.
+No production change, source reimport, account operation or feature-flag write
+is part of this approval.

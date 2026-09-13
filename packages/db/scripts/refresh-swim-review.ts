@@ -26,9 +26,9 @@ export const OTHER_OPERATIONS = [
 export type RefreshProfile = Readonly<{
   reference: Readonly<{ sha: string; run: string; kind?: "automatic_ci" }>;
   paths: readonly string[];
-  operation: "REFRESH_SWIM_REVIEW" | "REFRESH_SWIM_PLAN_REVIEW" | "REFRESH_SWIM_READONLY_REVIEW" | "UPGRADE_SWIM_REVIEW";
-  job: "refresh-swim-review" | "refresh-swim-plan-review" | "refresh-swim-readonly-review" | "upgrade-swim-review";
-  scope: "swim-review-refresh" | "swim-plan-review-refresh" | "swim-readonly-review-refresh" | "swim-existing-review-upgrade";
+  operation: "REFRESH_SWIM_REVIEW" | "REFRESH_SWIM_PLAN_REVIEW" | "REFRESH_SWIM_READONLY_REVIEW" | "UPGRADE_SWIM_REVIEW" | "UPDATE_UNTIMED_SWIM_REVIEW";
+  job: "refresh-swim-review" | "refresh-swim-plan-review" | "refresh-swim-readonly-review" | "upgrade-swim-review" | "update-untimed-swim-review";
+  scope: "swim-review-refresh" | "swim-plan-review-refresh" | "swim-readonly-review-refresh" | "swim-existing-review-upgrade" | "swim-untimed-review-update";
   otherOperations: readonly string[];
   previous: Readonly<{ run: string; sha: string; id: string; url: string; start: number; end: number }>;
   aliasUid?: string;
