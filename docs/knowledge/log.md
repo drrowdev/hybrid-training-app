@@ -3684,3 +3684,9 @@ Hosted execution remains pending source and runtime acceptance.
 The42 new offline cases and1331 existing guard cases passed, including previous
 job-content pins, strict source/test/runner types and closed refusal output.
 Real disposable Postgres upgrade acceptance remains required before dispatch.
+The first real rehearsal (34742542154, source891805a1) stopped at the new
+owner-policy check: the canonical policies use `(SELECT auth.uid())`, not the
+direct function-call spelling assumed by that check. The appended transaction
+did not pass; both disposable jobs cleaned up, and no hosted update ran.
+The check now requires the exact canonical scalar-subquery expression for both
+read and write predicates. Policy definitions and permissions are unchanged.

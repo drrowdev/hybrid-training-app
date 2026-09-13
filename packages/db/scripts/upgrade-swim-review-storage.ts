@@ -85,6 +85,11 @@ export async function inspectReviewLedger(sql: postgres.Sql, migrations: readonl
   });
 }
 
+export function isReviewOwnerPredicate(value: unknown): boolean {
+  return typeof value === "string" &&
+    value.replace(/\s+/g, "") === "((SELECTauth.uid()ASuid)=user_id)";
+}
+
 export async function verifyUpgradedReviewStorage(tx: postgres.TransactionSql) {
   const policies = await tx.unsafe(`SELECT c.relname, c.relrowsecurity,
     pg_get_expr(p.polqual,p.polrelid) AS predicate, pg_get_expr(p.polwithcheck,p.polrelid) AS check_predicate
@@ -93,8 +98,8 @@ export async function verifyUpgradedReviewStorage(tx: postgres.TransactionSql) {
     WHERE n.nspname='public' AND c.relname IN ('swim_connections','swim_imports','swim_import_matches')
     ORDER BY c.relname`);
   requireThat(policies.length === 3 && new Set(policies.map((row) => row.relname)).size === 3 &&
-    policies.every((row) => row.relrowsecurity === true && row.predicate === "(auth.uid() = user_id)" &&
-      (row.check_predicate === null || row.check_predicate === "(auth.uid() = user_id)")), "owner_policies");
+    policies.every((row) => row.relrowsecurity === true && isReviewOwnerPredicate(row.predicate) &&
+      isReviewOwnerPredicate(row.check_predicate)), "owner_policies");
   const roles = await tx.unsafe("SELECT rolbypassrls, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='swim_writer'");
   requireThat(roles.length === 1 && roles[0]!.rolbypassrls === false &&
     roles[0]!.rolsuper === false && roles[0]!.rolcanlogin === false, "writer_role");

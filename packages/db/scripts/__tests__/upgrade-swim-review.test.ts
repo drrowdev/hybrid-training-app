@@ -6,7 +6,7 @@ import {
   checkUpgradeDispatch, UPGRADE_FLAGS, UPGRADE_REVIEW, upgradeFlagBody,
   upgradeFlagTransport, upgradeReview, upgradeSummary,
 } from "../upgrade-swim-review";
-import { reviewMigrations, validateReviewLedger } from "../upgrade-swim-review-storage";
+import { isReviewOwnerPredicate, reviewMigrations, validateReviewLedger } from "../upgrade-swim-review-storage";
 import { refresh, verifyRefreshSource } from "../refresh-swim-review";
 import {
   ACCEPTED_DEPLOYMENT, BASE_SHA, CONFIGURATION, DEPLOY_ROUTES, RECEIPT, deploymentRoute, updateRoute,
@@ -159,6 +159,16 @@ describe("approved existing-data review upgrade", () => {
       rows.slice(0, 150).map((row, index) => index === 42 ? { ...row, created_at: "1" } : row),
       rows.slice(0, 150).map((row, index) => index === 42 ? { ...row, id: 1 } : row),
     ]) expect(() => validateReviewLedger(change, migrations, 150)).toThrow();
+  });
+  it("requires the canonical scalar-subquery owner predicate, not a guessed direct-call spelling", () => {
+    expect(isReviewOwnerPredicate("(( SELECT auth.uid() AS uid) = user_id)")).toBe(true);
+    expect(isReviewOwnerPredicate("(( SELECT auth.uid() AS uid\n    ) = user_id)")).toBe(true);
+    expect(isReviewOwnerPredicate("(( SELECT  auth.uid() AS uid) = user_id)")).toBe(true);
+    for (const value of [
+      null, undefined, true, "(auth.uid() = user_id)", "true",
+      "(( SELECT auth.uid() AS uid) = other_user_id)",
+      "((( SELECT auth.uid() AS uid) = user_id) OR true)",
+    ]) expect(isReviewOwnerPredicate(value)).toBe(false);
   });
   it("migrates before enabling branch-only features and reuses the guarded exact-SHA deployment", async () => {
     const h = harness(), result = await upgradeReview(env, h.deps);
