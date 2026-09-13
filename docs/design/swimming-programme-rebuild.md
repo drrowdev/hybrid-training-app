@@ -508,3 +508,63 @@ Successful collection is not schema compatibility or production readiness:
 both remain explicitly false. The existing disposable storage CI rehearses
 the exact catalog queries before a hosted reconciliation. No history rewrite,
 repair, migration, deployment, flag activation or permission change is approved.
+
+### Data-preserving production proposal
+
+The authorized reconciliation completed in run34770948980 at0d25f5d6, with all
+seven stages passed, unchanged deployment metadata and a closed read-only
+connection. The complete inventory has203 records:150 rows cover all146 current
+main migration hashes,50 rows match historical source variants, two hashes
+remain unmatched and one value is not in canonical hash format. Eleven repeated
+hash rows overlap those groups;65 canonical-hash rows have different timestamps
+from the current journal. No history was rewritten.
+
+None of migrations0146-0154 is recorded. All nine timestamps are later than the
+latest recorded timestamp; no already-recorded main migration is later than
+that boundary. The five named swimming tables, seven selected swimming routines
+and swim-result column are absent. The shared completion body matches the
+pre0148 version; both inspected movement references retain their original
+validated, immediate RESTRICT configuration. This is targeted metadata evidence,
+not proof of the entire production schema or owner usability.
+
+**Proposed approach, not approved for execution:**
+
+1. Preserve all203 existing records byte-for-byte, including original IDs,
+   hashes and timestamps. Do not reset, deduplicate, normalize or relabel the
+   history. The two unmatched hashes and noncanonical-format record remain
+   explicit audit exceptions, not verified migrations. Adopting this exact
+   legacy baseline requires owner approval or further investigation first.
+2. Build a dedicated default-off updater that checks a fresh complete history
+   fingerprint, all146 main hash memberships, the exact nine pending source
+   files and timestamp boundary, and every affected schema precondition.
+   It must refuse any changed baseline or unexpected existing swimming object.
+   The old strict155-prefix check remains failed; do not weaken it to obtain
+   acceptance. Rehearse the new legacy-baseline operation with synthetic history
+   and injected failures in the existing disposable Postgres CI.
+3. Preserve the existing main-only, app-first deployment order: a separately
+   approved release must first have a successful Vercel-created Production
+   deployment for the exact approved main SHA. Keep swimming activation off
+   through deployment and database preparation; verify effective settings
+   rather than inferring them solely from missing environment bindings.
+   No `allow_undeployed` bypass is part of this proposal.
+4. Under separate production approval, use the existing production migration
+   lock and a bounded transaction to append only0146-0154. Take a bounded
+   exclusive database ledger lock and recheck the fingerprint inside that same
+   transaction before any DDL. Keep credentials confined to the final operation
+   step, after installation and source checks. Rehearsal must first
+   prove that the whole batch can commit or roll back atomically. A successful
+   append would retain the original203-record prefix and add exactly nine rows,
+   for212 total; it would not replace that history with a155-row ledger. Verify
+   source hashes, new schema, ownership/RLS, role privileges and readiness
+   before any separately approved swimming activation.
+5. A failed transaction must leave the baseline unchanged and stop, without
+   automatic retries or ledger repair. After a committed update, the default
+   recovery is to disable new entry and roll forward with compatible readers.
+   Existing reverse0154-to0146 down proposals remain unused-only and require
+   fresh approval and evidence that no prescriptions, results or import history
+   would be erased. No automatic destructive database rollback is proposed.
+
+The next decision is whether to develop and rehearse this guarded updater, or
+investigate the unmatched history first. Neither choice authorizes production
+changes. Real account-data transfer, Garmin/watch acceptance, combined training
+and backup work remain outside this task.

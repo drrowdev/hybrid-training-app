@@ -3904,3 +3904,28 @@ production readiness and schema compatibility false.
 Synthetic checks cover bounded history classification, incomplete inventories,
 safe summaries and exact scope binding. The existing isolated storage runner
 also rehearses the exact metadata queries against its disposable database.
+
+## [2026-09-13] proposal | Preserve production history and append swimming only
+
+Read-only reconciliation34770948980 at0d25f5d6 passed all seven stages and closed
+its connection without writes. The complete203-record inventory includes all
+146 current-main hashes,50 historical-variant rows, two unmatched hash rows and
+one noncanonical-format row. Repeated hashes and differing timestamps remain
+recorded, not normalized. All nine swimming migrations are absent and later
+than the recorded timestamp boundary; no current-main file would be replayed
+by that boundary. The named swimming objects are absent, and the inspected
+shared completion and movement-reference metadata match the pre-swimming state.
+
+The repair proposal deliberately avoids cleaning the ledger: preserve its exact
+203-record prefix and, only after separately approved development/rehearsal and
+production execution, append the nine new changes under strict source, baseline,
+schema, transaction and app-first deployment guards. The intended resulting
+history would contain212 records. Unmatched entries remain explicit audit
+exceptions requiring owner acceptance or further investigation, not silent
+success. Failed transactions roll back; used history is preserved and recovery
+defaults to disabling new entry and rolling forward.
+
+The proposal is in the existing swimming design page. No merge, deployment,
+migration, flag activation, permission change or personal-data access was
+authorized or performed. Metadata collection is complete; production readiness
+and actual device/user acceptance remain separate gates.
