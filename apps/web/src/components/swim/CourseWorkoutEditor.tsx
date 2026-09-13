@@ -79,9 +79,13 @@ export function CourseWorkoutEditor({ context, busy = false, onBusyChange }: {
               <label className={styles.field}>Metres per repeat<input type="number" min="1" max="100000" step="1" required
                 value={item.distanceMetres} onChange={(event) => itemChange(sectionIndex, itemIndex, { distanceMetres: Number(event.target.value) })} /></label>
               <label className={styles.field}>{item.sendoffSeconds === undefined ? "Rest (seconds)" : "Send-off (seconds)"}
-                <input type="number" min={item.sendoffSeconds === undefined ? "0" : "1"} max="86400" step="1" required
-                  value={item.sendoffSeconds ?? item.restSeconds ?? 0} onChange={(event) => itemChange(sectionIndex, itemIndex,
-                    item.sendoffSeconds === undefined ? { restSeconds: Number(event.target.value) } : { sendoffSeconds: Number(event.target.value) })} />
+                <input type="number" min={item.sendoffSeconds === undefined ? "0" : "1"} max="86400" step="1"
+                  required={item.sendoffSeconds !== undefined}
+                  placeholder={item.sendoffSeconds === undefined ? "Not specified" : undefined}
+                  value={item.sendoffSeconds ?? item.restSeconds ?? ""} onChange={(event) => itemChange(sectionIndex, itemIndex,
+                    item.sendoffSeconds === undefined
+                      ? { restSeconds: event.target.value === "" ? undefined : Number(event.target.value) }
+                      : { sendoffSeconds: Number(event.target.value) })} />
               </label>
               <label className={styles.field}>Effort<select value={item.effort} onChange={(event) => {
                 const effort = event.target.value;

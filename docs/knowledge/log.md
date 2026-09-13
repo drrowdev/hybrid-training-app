@@ -3656,3 +3656,12 @@ passed. The initial new browser assertion targeted collapsed pool controls;
 scoping it to the named preview fixed the test without weakening its assertion.
 Source workouts remain outside the repository. Existing-account migration,
 protected review update and live provider/watch work remain separately gated.
+
+## [2026-09-13] repair | Keep unspecified rest editable
+
+The imported-workout editor also presented an omitted rest as zero. Its rest
+field now stays blank when unspecified and can be cleared without recording
+zero. Explicit zero remains supported; fixed send-offs remain required and
+positive. Actual React375/1280 checks cover setting, clearing and preserving
+the omission through review alongside other edits. Web types and lint passed.
+No storage, account, deployment or provider operation changed.

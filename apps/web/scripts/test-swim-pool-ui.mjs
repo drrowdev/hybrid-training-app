@@ -275,6 +275,10 @@ try {
     stage = `private-course-editor-${width}`;
     await page.evaluate(() => { window.courseCalls = []; window.showCourseEdit(); });
     await page.getByText("Edit workout", { exact: true }).click();
+    const unspecifiedRest = page.getByRole("spinbutton", { name: "Rest (seconds)", exact: true }).first();
+    assert.equal(await unspecifiedRest.inputValue(), "");
+    await unspecifiedRest.fill("10");
+    await unspecifiedRest.fill("");
     const main = page.getByRole("spinbutton", { name: "Repeats", exact: true }).nth(1);
     await main.fill("3");
     await page.getByRole("textbox", { name: "Reason for change", exact: true }).fill("Less pool time.");
@@ -283,6 +287,7 @@ try {
     await save.waitFor();
     assert.deepEqual(await page.evaluate(() => window.courseCalls), ["edit-preview"]);
     assert.equal(await page.evaluate(() => window.editedWorkout.sections[1].items[0].repeats), 3);
+    assert.equal(await page.evaluate(() => window.editedWorkout.sections[0].items[0].restSeconds === undefined), true);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     await main.fill("4");
     assert.equal(await save.count(), 0);
