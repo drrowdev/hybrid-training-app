@@ -3869,3 +3869,20 @@ to distinguish malformed fields, excess rows, duplicate/unknown hashes and
 order/timestamp mismatches. Strict acceptance, source, target, read-only and
 closure guards are unchanged. This is diagnosis under the existing read-only
 approval, not permission to repair history or deploy.
+
+## [2026-09-13] blocker | Production migration history needs reconciliation
+
+Changed-source diagnostic run34768570211 at74089d04 again verified the expected
+READY main deployment, then refused the production ledger. Among the first156
+ordered entries, the read limit was reached; one hash had an unexpected format,
+eleven were repeated, and51 well-formed hashes were outside the candidate
+journal. There were144 order mismatches and65 timestamp mismatches. These are
+overlapping aggregate counts, not a full ledger inventory. Offline source
+inspection confirmed155 entries with no duplicate source hashes.
+
+The read-only database connection closed and no write was attempted. The receipt
+was consumed exactly once into a closed safe summary. No migration, deployment,
+permission change, personal-record inspection or history repair occurred.
+Native swimming acceptance and exact-source CI remain passed, but production
+readiness is blocked. Further historical/schema-metadata reconciliation needs
+its own bounded scope; any repair or rollout remains separately unauthorized.

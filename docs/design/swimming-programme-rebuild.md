@@ -471,3 +471,19 @@ order and timestamp mismatch counts before strict validation. It retains no
 ledger rows or hash values and does not accept any previously refused history.
 Only a changed-source diagnostic inspection is eligible; the failed head is
 not rerun, and migration-history repair remains unauthorized.
+
+The changed-source diagnostic run34768570211 at74089d04 confirmed a history
+mismatch, not a successful preflight. Its first156 ordered rows reached the
+query limit: one hash had an unexpected format, eleven hashes were repeated,
+and51 well-formed hashes were absent from the candidate journal. It also found
+144 position mismatches and65 timestamp mismatches against known source
+entries. These counts overlap and describe only the capped read, not the
+complete ledger. The source journal itself has155 distinct hashes.
+
+The database connection closed and no writes were attempted. The total ledger
+size, safe pending-migration count and actual schema compatibility remain
+unknown. Production release is blocked pending separately scoped historical
+and schema-metadata reconciliation and a data-preserving remediation proposal.
+Do not reset history, treat the old membership-only check as acceptance, or
+apply the candidate's migrations blindly. Real account-data and watch work
+remain separately held.
