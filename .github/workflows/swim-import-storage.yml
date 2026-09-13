@@ -18,6 +18,8 @@ on:
       - "packages/db/scripts/untimed-swim-review-storage.ts"
       - "packages/db/scripts/update-untimed-swim-review.ts"
       - "packages/db/scripts/__tests__/update-untimed-swim-review.test.ts"
+      - "packages/db/scripts/*production*.ts"
+      - "packages/db/scripts/__tests__/swim-production*.test.ts"
       - "packages/domain/src/swim-pool-change*"
       - "packages/domain/src/swim-course*"
       - "packages/engine/src/swim-course*"

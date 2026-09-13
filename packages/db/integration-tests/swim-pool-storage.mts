@@ -11,6 +11,10 @@ import type { SwimDecisionRecord, SwimPlanRow, SwimWorkoutRow, SwimPlanState, Sw
 import { appendReviewMigrations, inspectReviewLedger, reviewMigrations, ReviewStorageRefusal } from "../scripts/upgrade-swim-review-storage.ts";
 import { verifyMigrationDependencyParity } from "../scripts/migrate-with-evidence.ts";
 import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations } from "../scripts/untimed-swim-review-storage.ts";
+import {
+  historicalMigrationHashes, productionHistoryInventory, productionSchemaInventory,
+  SCHEMA_TABLE_SQL, SCHEMA_FUNCTION_SQL, SCHEMA_SHARED_SQL, SWIM_SCHEMA_TABLES, SWIM_SCHEMA_FUNCTIONS,
+} from "../scripts/swim-production-reconciliation.ts";
 
 type PoolRow = Pick<SwimWorkoutRow, "id" | "revision" | "slot"> & {
   scheduled_date: string; definition: SwimWorkoutRow["definition"] & { slotId: string };
@@ -464,6 +468,35 @@ try {
   assert.deepEqual(course.workouts[0].definition.original, courseRows[0]!.definition.original);
   assert.deepEqual(course.workouts[1].definition.issued.snapshot.course, long);
   assert.deepEqual((await as(c, (tx) => tx`SELECT id FROM public.swim_plans`)).map((row) => row.id), [course.plan.id]);
+  stages.push(stage);
+
+  stage = "readonly-production-inventory-rehearsal";
+  const historicalHashes = historicalMigrationHashes((args, input) => execFileSync("git", args, {
+    cwd: new URL("../../../", import.meta.url), input, timeout: 15000, maxBuffer: 2 * 1024 * 1024,
+    env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", NODE_ENV: "test" },
+    stdio: ["pipe", "pipe", "ignore"],
+  }));
+  await database.begin(async (tx) => {
+    await tx.unsafe("SET TRANSACTION READ ONLY");
+    await tx.unsafe("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    const ledger = await tx.unsafe("SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id LIMIT 512");
+    const inventory = productionHistoryInventory(Array.from(ledger),
+      migrations.map((entry, index) => ({ ...entry, tag: journal.entries[index]!.tag })), historicalHashes);
+    assert.equal(inventory.rowsRead, 155);
+    assert.equal(inventory.complete, true);
+    assert.equal(inventory.productionReady, false);
+    assert.ok(inventory.current.every((entry) => entry.canonicalRows === 1 && entry.canonicalTimestampRows === 1));
+    const metadata = productionSchemaInventory(
+      Array.from(await tx.unsafe(SCHEMA_TABLE_SQL, [[...SWIM_SCHEMA_TABLES]])),
+      Array.from(await tx.unsafe(SCHEMA_FUNCTION_SQL, [[...SWIM_SCHEMA_FUNCTIONS]])),
+      Array.from(await tx.unsafe(SCHEMA_SHARED_SQL)));
+    assert.ok(metadata.tables.every((entry) => entry.present && entry.rls && entry.owner_uuid && entry.policies > 0));
+    assert.ok(metadata.functions.every((entry) => entry.definitions === 1));
+    assert.equal(metadata.shared.completion_body, "after");
+    assert.equal(metadata.shared.swim_result, true);
+    assert.equal(metadata.shared.movement_keys?.find((entry) => entry.name === "set_logs_movement_id_fkey")?.deferred, true);
+    assert.equal(metadata.compatibilityVerified, false);
+  });
   stages.push(stage);
 
   stage = "private-course-manual-edit-and-isolation";

@@ -15,8 +15,10 @@ const env = {
   GITHUB_REF: `refs/heads/${REVIEW.branch}`, GITHUB_REF_TYPE: "branch", GITHUB_JOB: profile.job,
   GITHUB_RUN_ID: "34765799999", GITHUB_RUN_ATTEMPT: "1", GITHUB_SHA: sha, EXPECTED_SHA: sha,
   INSPECT_SWIM_PRODUCTION: "true", ...Object.fromEntries(profile.otherOperations.map((key) => [key, "false"])),
+  PRODUCTION_READONLY_SCOPE: "preflight",
 };
 const inputs = () => ({ inspect_swim_production: "true", review_upgrade_read_only: "true", expected_sha: sha,
+  production_readonly_scope: "preflight",
   ...Object.fromEntries(profile.otherOperations.map((key) => [key.toLowerCase(), "false"])) });
 const url = `postgresql://postgres.${PRODUCTION.project}:synthetic-only-password@aws-0-eu-north-1.pooler.supabase.com:5432/postgres?sslmode=require`;
 const expected = Array.from({ length: 155 }, (_, index) => ({ hash: index.toString(16).padStart(64, "0"), folderMillis: 1000 + index }));
@@ -32,7 +34,7 @@ describe("DC-SW8 production inspection never writes or reads personal tables", (
   it("validates a selected real dispatch in prerequisite CI", () => {
     if (process.env.GITHUB_EVENT_NAME !== "workflow_dispatch") return;
     const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH!, "utf8")) as { inputs?: Record<string, unknown> };
-    productionDispatch(event.inputs, process.env);
+    productionDispatch(event.inputs, { ...process.env, PRODUCTION_READONLY_SCOPE: String(event.inputs?.production_readonly_scope) });
   });
   it("requires exactly one operation and a reviewed feature head", () => {
     expect(productionDispatch(inputs(), env)).toBe(true);
@@ -46,7 +48,7 @@ describe("DC-SW8 production inspection never writes or reads personal tables", (
     expect(() => productionDispatch({ ...inputs(), review_upgrade_read_only: "false" }, env)).toThrow();
   });
   it.each(["GITHUB_ACTIONS", "GITHUB_EVENT_NAME", "GITHUB_REPOSITORY", "GITHUB_REF", "GITHUB_REF_TYPE",
-    "GITHUB_JOB", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_SHA"])("refuses incorrect %s before credentials", (key) => {
+    "GITHUB_JOB", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_SHA", "PRODUCTION_READONLY_SCOPE"])("refuses incorrect %s before credentials", (key) => {
     expect(() => productionContext({ ...env, [key]: "wrong" })).toThrow();
   });
   it("accepts only the pinned production DB target over TLS", () => {

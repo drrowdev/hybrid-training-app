@@ -17,9 +17,19 @@ export const PRODUCTION_READONLY: GuardedSourceProfile = {
     ".github/workflows/ci.yml", "packages/db/scripts/refresh-swim-review.ts",
     "packages/db/scripts/swim-production-readonly-guards.ts", "packages/db/scripts/inspect-swim-production.ts",
     "packages/db/scripts/__tests__/swim-production-readonly.test.ts",
+    "packages/db/scripts/swim-production-reconciliation.ts",
+    "packages/db/scripts/__tests__/swim-production-reconciliation.test.ts",
+    "packages/db/integration-tests/swim-pool-storage.mts", ".github/workflows/swim-import-storage.yml",
     "docs/design/swimming-programme-rebuild.md", "docs/knowledge/log.md",
   ],
 };
+export const PRODUCTION_RECONCILIATION: GuardedSourceProfile = {
+  ...PRODUCTION_READONLY,
+  reference: { sha: "0b20778ff37f6d17a38b10a7c8a57b86e60a89a2", run: "34769083569", kind: "automatic_ci" },
+};
+export function productionProfile(env: NodeJS.ProcessEnv) {
+  return env.PRODUCTION_READONLY_SCOPE === "reconciliation" ? PRODUCTION_RECONCILIATION : PRODUCTION_READONLY;
+}
 export class ProductionInspectionRefusal extends Error {
   constructor(readonly code: string, readonly httpStatus?: number) { super(code); }
 }
@@ -27,21 +37,25 @@ export function requireInspection(value: unknown, code: string): asserts value {
   if (!value) throw new ProductionInspectionRefusal(code);
 }
 export function productionContext(env: NodeJS.ProcessEnv) {
-  const sha = refreshContext(env, PRODUCTION_READONLY);
+  requireInspection(["preflight", "reconciliation"].includes(env.PRODUCTION_READONLY_SCOPE ?? ""), "context");
+  const sha = refreshContext(env, productionProfile(env));
   requireInspection(env.GITHUB_RUN_ATTEMPT === "1" && /^\d{8,16}$/.test(env.GITHUB_RUN_ID ?? ""), "context");
   return sha;
 }
 export function productionDispatch(inputs: Record<string, unknown> | undefined, env: NodeJS.ProcessEnv) {
   if (inputs?.inspect_swim_production === undefined || inputs.inspect_swim_production === "false") return false;
+  const profile = productionProfile(env);
   requireInspection(inputs.inspect_swim_production === "true" && inputs.review_upgrade_read_only === "true" &&
+    ["preflight", "reconciliation"].includes(String(inputs.production_readonly_scope)) &&
+    inputs.production_readonly_scope === env.PRODUCTION_READONLY_SCOPE &&
     PRODUCTION_READONLY.otherOperations.every((key) => inputs[key.toLowerCase()] === "false") &&
-    Object.keys(inputs).every((key) => ["inspect_swim_production", "review_upgrade_read_only", "expected_sha",
+    Object.keys(inputs).every((key) => ["inspect_swim_production", "review_upgrade_read_only", "expected_sha", "production_readonly_scope",
       ...PRODUCTION_READONLY.otherOperations.map((key) => key.toLowerCase())].includes(key)) &&
     env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
     env.GITHUB_REPOSITORY === REVIEW.repository && env.GITHUB_REF_TYPE === "branch" &&
     env.GITHUB_REF === `refs/heads/${REVIEW.branch}` && inputs.expected_sha === env.GITHUB_SHA &&
     typeof inputs.expected_sha === "string" && /^[a-f0-9]{40}$/.test(inputs.expected_sha) &&
-    inputs.expected_sha !== PRODUCTION_READONLY.reference.sha, "dispatch");
+    inputs.expected_sha !== profile.reference.sha, "dispatch");
   return true;
 }
 export function productionDatabaseUrl(raw: string | undefined) {

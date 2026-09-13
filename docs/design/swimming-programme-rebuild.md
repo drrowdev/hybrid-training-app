@@ -487,3 +487,24 @@ and schema-metadata reconciliation and a data-preserving remediation proposal.
 Do not reset history, treat the old membership-only check as acceptance, or
 apply the candidate's migrations blindly. Real account-data and watch work
 remain separately held.
+
+The owner then approved a bounded read-only reconciliation of schema metadata
+and up to512 migration-history entries, followed by a data-preserving repair
+proposal. The explicit `production_readonly_scope=reconciliation` choice uses
+the same default-off operation, locks, exact-source checks and final-step
+credentials. The original preflight remains a separate strict155-prefix check.
+
+Reconciliation compares the bounded history with current migrations and SQL
+blobs reachable from the pinned main commit, including LF/CRLF variants.
+It reads only named catalog metadata for five swimming tables, seven routines,
+the swim-result column, the shared completion body classification and two
+movement-reference constraints. It never executes application routines or
+reads personal tables. A repeatable-read, read-only transaction and the existing
+connection deadlines bound all four queries.
+
+Only source-tag classifications, counters, a history fingerprint and closed
+schema metadata leave the runner. A512-row result is incomplete and refused.
+Successful collection is not schema compatibility or production readiness:
+both remain explicitly false. The existing disposable storage CI rehearses
+the exact catalog queries before a hosted reconciliation. No history rewrite,
+repair, migration, deployment, flag activation or permission change is approved.

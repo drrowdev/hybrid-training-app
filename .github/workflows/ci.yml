@@ -104,6 +104,14 @@ on:
         required: false
         default: false
         type: boolean
+      production_readonly_scope:
+        description: Approved read-only production inspection scope
+        required: false
+        default: preflight
+        type: choice
+        options:
+          - preflight
+          - reconciliation
 
 concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && ((inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review || inputs.inspect_swim_review_deployment || inputs.provision_swim_review_owner) || inputs.refresh_swim_review || inputs.refresh_swim_plan_review || inputs.refresh_swim_readonly_review || inputs.upgrade_swim_review || inputs.update_untimed_swim_review || inputs.test_swim_account_flow || inputs.inspect_swim_production) && 'ci-swim-review-configuration' || (github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review) && 'ci-swim-review-bootstrap' || (github.event_name == 'workflow_dispatch' && inputs.swim_acceptance && format('ci-swim-{0}', github.ref) || format('ci-{0}', github.ref))) }}
@@ -1265,6 +1273,7 @@ jobs:
       github.ref_type == 'branch' &&
       github.ref == 'refs/heads/copilot/new-acceptance-cases' &&
       inputs.inspect_swim_production == true && inputs.review_upgrade_read_only == true &&
+      (inputs.production_readonly_scope == 'preflight' || inputs.production_readonly_scope == 'reconciliation') &&
       inputs.test_swim_account_flow == false && inputs.update_untimed_swim_review == false &&
       inputs.upgrade_swim_review == false && inputs.refresh_swim_readonly_review == false &&
       inputs.refresh_swim_plan_review == false && inputs.refresh_swim_review == false &&
@@ -1286,6 +1295,7 @@ jobs:
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       INSPECT_SWIM_PRODUCTION: ${{ inputs.inspect_swim_production }}
+      PRODUCTION_READONLY_SCOPE: ${{ inputs.production_readonly_scope }}
       TEST_SWIM_ACCOUNT_FLOW: ${{ inputs.test_swim_account_flow }}
       UPDATE_UNTIMED_SWIM_REVIEW: ${{ inputs.update_untimed_swim_review }}
       UPGRADE_SWIM_REVIEW: ${{ inputs.upgrade_swim_review }}

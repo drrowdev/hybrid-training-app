@@ -7,20 +7,26 @@ import postgres from "postgres";
 import { z } from "zod";
 import { verifyRefreshSource } from "./refresh-swim-review";
 import {
-  PRODUCTION, PRODUCTION_READONLY, PRODUCTION_ROUTES, ProductionInspectionRefusal,
+  PRODUCTION, PRODUCTION_ROUTES, ProductionInspectionRefusal, productionProfile,
   productionContext, productionDispatch, productionDatabaseUrl, productionRequestAllowed, productionAlias,
   productionDeploymentRoute, productionDeployment, productionSettings, productionLedger, productionLedgerDiagnostics, requireInspection,
 } from "./swim-production-readonly-guards";
+import {
+  historicalMigrationHashes, productionHistoryInventory, productionSchemaInventory,
+  SCHEMA_TABLE_SQL, SCHEMA_FUNCTION_SQL, SCHEMA_SHARED_SQL, SWIM_SCHEMA_TABLES, SWIM_SCHEMA_FUNCTIONS,
+} from "./swim-production-reconciliation";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const jsonRecord = z.record(z.unknown());
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = false) {
+  const reconciliation = env.PRODUCTION_READONLY_SCOPE === "reconciliation", profile = productionProfile(env);
   const result = {
-    scope: "swim-production-readonly", testedSha: /^[a-f0-9]{40}$/.test(env.EXPECTED_SHA ?? "") ? env.EXPECTED_SHA : null,
+    scope: reconciliation ? "swim-production-reconciliation" : "swim-production-readonly",
+    testedSha: /^[a-f0-9]{40}$/.test(env.EXPECTED_SHA ?? "") ? env.EXPECTED_SHA : null,
     run: /^\d{8,16}$/.test(env.GITHUB_RUN_ID ?? "") ? env.GITHUB_RUN_ID : null,
     mainSha: PRODUCTION.main, project: PRODUCTION.project, alias: PRODUCTION.alias,
-    referenceSha: PRODUCTION_READONLY.reference.sha, referenceRun: PRODUCTION_READONLY.reference.run,
+    referenceSha: profile.reference.sha, referenceRun: profile.reference.run,
     status: "failed", stages: [] as { stage: string; status: "passed" | "failed"; code: string }[],
     httpStatus: null as number | null,
     databaseCode: null as string | null,
@@ -29,9 +35,17 @@ export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = fal
     settings: null as ReturnType<typeof productionSettings> | null,
     ledger: null as ReturnType<typeof productionLedger> | null,
     ledgerDiagnostics: null as ReturnType<typeof productionLedgerDiagnostics> | null,
+    inventory: null as ReturnType<typeof productionHistoryInventory> | null,
+    schema: null as ReturnType<typeof productionSchemaInventory> | null,
   };
   const deadline = Date.now() + 180_000;
   let stage = "source", deploymentId: string | undefined, sql: postgres.Sql | undefined;
+  const gitBytes = (args: string[], input?: string) => {
+    requireInspection(Date.now() < deadline, "deadline");
+    return execFileSync("git", args, { cwd: root, timeout: 15_000, input,
+      env: { PATH: env.PATH ?? "", HOME: env.HOME ?? "", NODE_ENV: "production" },
+      maxBuffer: 2 * 1024 * 1024, stdio: ["pipe", "pipe", "ignore"] });
+  };
   const step = async (name: string, action: () => Promise<void> | void) => {
     stage = name; requireInspection(Date.now() < deadline, "deadline"); await action();
     requireInspection(Date.now() < deadline, "deadline");
@@ -40,12 +54,7 @@ export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = fal
   const source = () => {
     productionContext(env);
     verifyRefreshSource(env, {
-      git: (...args) => {
-        requireInspection(Date.now() < deadline, "deadline");
-        return execFileSync("git", args, { cwd: root, encoding: "utf8", timeout: 15_000,
-          env: { PATH: env.PATH ?? "", HOME: env.HOME ?? "", NODE_ENV: "production" },
-          maxBuffer: 2 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] }).trim();
-      },
+      git: (...args) => gitBytes(args).toString("utf8").trim(),
       event: () => {
         const path = env.GITHUB_EVENT_PATH;
         requireInspection(path && lstatSync(path).isFile() && !lstatSync(path).isSymbolicLink() &&
@@ -58,7 +67,7 @@ export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = fal
         const entry = lstatSync(resolve(root, ...parts.slice(0, index + 1)));
         return !entry.isSymbolicLink() && (index === parts.length - 1 ? entry.isFile() : entry.isDirectory());
       }),
-    }, PRODUCTION_READONLY);
+    }, profile);
   };
   const request = async (url: string) => {
     requireInspection(Date.now() < deadline && ++result.httpRequests <= 12 &&
@@ -92,6 +101,8 @@ export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = fal
   };
   try {
     await step("source", source);
+    let history: ReturnType<typeof historicalMigrationHashes> | undefined;
+    if (reconciliation) await step("source_history", () => { history = historicalMigrationHashes(gitBytes); });
     if (sourceOnly) { result.status = "source_pass"; return result; }
     let databaseUrl = "";
     await step("credentials", () => {
@@ -114,6 +125,26 @@ export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = fal
       result.databaseReadAttempted = true;
       result.ledger = await sql.begin(async (tx) => {
         await tx.unsafe("SET TRANSACTION READ ONLY");
+        if (reconciliation) {
+          await tx.unsafe("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+          requireInspection(history, "history_shape");
+          const journal = z.object({ entries: z.array(z.object({
+            tag: z.string().regex(/^\d{4}_[A-Za-z0-9_-]+$/),
+          })).length(PRODUCTION.candidateCount) }).parse(JSON.parse(
+            readFileSync(resolve(root, "packages/db/drizzle/meta/_journal.json"), "utf8")));
+          const sourceEntries = expected.map((entry, index) => ({ ...entry, tag: journal.entries[index]!.tag }));
+          const rows = await tx.unsafe("SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id LIMIT 512");
+          result.inventory = productionHistoryInventory(Array.from(rows), sourceEntries, history);
+          requireInspection(result.inventory.complete, "ledger_inventory_limit");
+          await step("schema", async () => {
+            const tables = await tx.unsafe(SCHEMA_TABLE_SQL, [[...SWIM_SCHEMA_TABLES]]);
+            const functions = await tx.unsafe(SCHEMA_FUNCTION_SQL, [[...SWIM_SCHEMA_FUNCTIONS]]);
+            const shared = await tx.unsafe(SCHEMA_SHARED_SQL);
+            result.schema = productionSchemaInventory(Array.from(tables), Array.from(functions), Array.from(shared));
+          });
+          stage = "ledger";
+          return null;
+        }
         const rows = await tx.unsafe("SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id LIMIT 156");
         result.ledgerDiagnostics = productionLedgerDiagnostics(Array.from(rows), expected);
         return productionLedger(Array.from(rows), expected);
@@ -123,10 +154,10 @@ export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = fal
     await step("completion", async () => {
       source(); requireInspection(equal(await snapshot(), before), "deployment_changed"); source();
     });
-    result.status = "inspection_pass";
+    result.status = reconciliation ? "reconciliation_pass" : "inspection_pass";
   } catch (error) {
     if (error instanceof ProductionInspectionRefusal && error.httpStatus !== undefined) result.httpStatus = error.httpStatus;
-    if (stage === "ledger" && error instanceof Error) {
+    if ((stage === "ledger" || stage === "schema") && error instanceof Error) {
       const code: unknown = Object.getOwnPropertyDescriptor(error, "code")?.value;
       if (typeof code === "string" && (/^[0-9A-Z]{5}$/.test(code) ||
         ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "CONNECT_TIMEOUT", "CONNECTION_CLOSED"].includes(code))) {
@@ -149,7 +180,8 @@ async function main() {
     console.log("SWIM_PRODUCTION_READONLY_REFUSED"); process.exitCode = 1; return;
   }
   const result = await inspectProduction(process.env, args.length === 1);
-  const marker = args.length ? "SWIM_PRODUCTION_READONLY_SOURCE" : "SWIM_PRODUCTION_READONLY_SUMMARY";
+  const marker = args.length ? "SWIM_PRODUCTION_READONLY_SOURCE" : result.scope === "swim-production-reconciliation"
+    ? "SWIM_PRODUCTION_RECONCILIATION_SUMMARY" : "SWIM_PRODUCTION_READONLY_SUMMARY";
   const summary = () => `${marker}\n<pre>${JSON.stringify(result).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>\n`;
   try { if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary()); }
   catch { result.status = "failed"; result.stages.push({ stage: "report", status: "failed", code: "report_failed" }); }

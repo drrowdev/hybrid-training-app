@@ -3886,3 +3886,21 @@ permission change, personal-record inspection or history repair occurred.
 Native swimming acceptance and exact-source CI remain passed, but production
 readiness is blocked. Further historical/schema-metadata reconciliation needs
 its own bounded scope; any repair or rollout remains separately unauthorized.
+
+## [2026-09-13] authorization | Read-only historical and schema reconciliation
+
+The owner approved inspecting schema metadata and up to512 migration-history
+entries to prepare a data-preserving repair plan. This excludes personal
+records and all repairs, migrations, releases or permission changes.
+
+The new explicit reconciliation scope retains the existing one-operation,
+source, credential, transport, read-only and closure guards. Source history
+is restricted to the pinned main; offline measurement found147 SQL blobs and
+294 distinct raw/LF/CRLF variants. No source content or database rows are
+published by the inventory. Three fixed catalog queries inspect named objects;
+no application routine is called. A complete metadata collection still marks
+production readiness and schema compatibility false.
+
+Synthetic checks cover bounded history classification, incomplete inventories,
+safe summaries and exact scope binding. The existing isolated storage runner
+also rehearses the exact metadata queries against its disposable database.
