@@ -23,13 +23,17 @@ export const OTHER_OPERATIONS = [
   "CONFIGURE_SWIM_REVIEW", "INSPECT_SWIM_REVIEW_AUTH", "PREPARE_SWIM_REVIEW",
   "INSPECT_SWIM_REVIEW", "SWIM_ACCEPTANCE", "MIGRATE_PRODUCTION", "ALLOW_UNDEPLOYED",
 ] as const;
-export type RefreshProfile = Readonly<{
+export type GuardedSourceProfile = Readonly<{
   reference: Readonly<{ sha: string; run: string; kind?: "automatic_ci" }>;
   paths: readonly string[];
+  operation: string;
+  job: string;
+  otherOperations: readonly string[];
+}>;
+export type RefreshProfile = GuardedSourceProfile & Readonly<{
   operation: "REFRESH_SWIM_REVIEW" | "REFRESH_SWIM_PLAN_REVIEW" | "REFRESH_SWIM_READONLY_REVIEW" | "UPGRADE_SWIM_REVIEW" | "UPDATE_UNTIMED_SWIM_REVIEW" | "TEST_SWIM_ACCOUNT_FLOW";
   job: "refresh-swim-review" | "refresh-swim-plan-review" | "refresh-swim-readonly-review" | "upgrade-swim-review" | "update-untimed-swim-review" | "test-swim-account-flow";
   scope: "swim-review-refresh" | "swim-plan-review-refresh" | "swim-readonly-review-refresh" | "swim-existing-review-upgrade" | "swim-untimed-review-update" | "swim-account-flow";
-  otherOperations: readonly string[];
   previous: Readonly<{ run: string; sha: string; id: string; url: string; start: number; end: number }>;
   aliasUid?: string;
   receipt(project: EnvironmentMetadata[], shared: EnvironmentMetadata[]): void;
@@ -52,7 +56,7 @@ export function refreshArguments(args: string[]) {
   requireThat(args.length === 0 || same(args, ["--check-source"]));
   return args.length === 1;
 }
-export function refreshContext(env: NodeJS.ProcessEnv, profile: RefreshProfile = originalProfile) {
+export function refreshContext(env: NodeJS.ProcessEnv, profile: GuardedSourceProfile = originalProfile) {
   const sha = shaSchema.parse(env.EXPECTED_SHA);
   requireThat(env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
     env.GITHUB_REPOSITORY === REVIEW.repository && env.GITHUB_REF_TYPE === "branch" &&
@@ -62,7 +66,7 @@ export function refreshContext(env: NodeJS.ProcessEnv, profile: RefreshProfile =
   return sha;
 }
 type SourceIO = { git(...args: string[]): string; event(): unknown; regular(path: string): boolean };
-export function verifyRefreshCheckout(env: NodeJS.ProcessEnv, io: SourceIO, profile: RefreshProfile = originalProfile) {
+export function verifyRefreshCheckout(env: NodeJS.ProcessEnv, io: SourceIO, profile: GuardedSourceProfile = originalProfile) {
   const sha = refreshContext(env, profile);
   const inputs = record.parse(record.parse(io.event()).inputs);
   requireThat(inputs[profile.operation.toLowerCase()] === "true" && inputs.expected_sha === sha &&
@@ -78,7 +82,7 @@ export function verifyRefreshCheckout(env: NodeJS.ProcessEnv, io: SourceIO, prof
   }
   return sha;
 }
-export function verifyRefreshSource(env: NodeJS.ProcessEnv, io: SourceIO, profile: RefreshProfile = originalProfile) {
+export function verifyRefreshSource(env: NodeJS.ProcessEnv, io: SourceIO, profile: GuardedSourceProfile = originalProfile) {
   const sha = verifyRefreshCheckout(env, io, profile);
   for (const [branch, expected] of [[`refs/heads/${REVIEW.branch}`, sha], ["refs/heads/main", BASE_SHA]]) {
     requireThat(io.git("ls-remote", "--exit-code", `https://github.com/${REVIEW.repository}.git`, branch!) === `${expected}\t${branch}`);

@@ -3838,3 +3838,19 @@ This is native runner-local application transport with the existing review
 project's real Auth/PostgREST, not protected-alias visual acceptance, personal
 dashboard transfer, Garmin or watch delivery. The protected deployment remains
 856b9b60; production remains untouched. No unchanged-source repeat is needed.
+
+## [2026-09-13] decision | Read-only production readiness inspection approved
+
+The owner approved production deployment settings and migration-history reads
+only, excluding personal records and every merge, deployment, database or
+permission change. Public GitHub metadata identifies current main672e4202 and
+successful Vercel Production deployment6357402341 from2026-09-09. Existing
+Production access has no extra environment secrets or branch restrictions;
+only the repository secret's name was inspected, never its value.
+
+The old drift job proves expected-hash membership but treats unknown hashes as
+warnings and does not prove ordered history. It is not being replayed for a
+green result. A bounded, default-off CI inspector will verify the current alias,
+non-decrypted settings metadata and strict migration prefix using existing
+credentials. No production database connection has yet been made for this
+inspection.

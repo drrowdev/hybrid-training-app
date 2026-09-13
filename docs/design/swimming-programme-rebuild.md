@@ -437,3 +437,25 @@ independent cleanup both verified account and six-table absence. The earlier
 run pairs were also verified absent. Browser, server, build and database
 connections closed. No deployment, permission or schema change was made by
 these tests; the protected site remains at856b9b60.
+
+### Read-only production preflight
+
+After native acceptance, the owner approved inspection of production deployment
+settings and migration history only. No personal records, merges, deployments,
+database changes or permission changes are authorized.
+
+The default-off exact-source inspection uses the existing Vercel reader and the
+repository-scoped production database secret only in its final CI step. It
+shares the protected-review workflow lock and the production-migration job lock.
+Vercel requests are limited to fixed metadata GETs, with environment decryption
+disabled. The current `getsxc.app` alias must point to a READY production build
+for the verified main commit. Settings and alias/deployment metadata are checked
+again after the database read.
+
+The sole data query reads bounded migration-history metadata inside a read-only
+transaction. It checks the ordered hashes and timestamps against the unchanged
+146-entry main prefix and the155-entry candidate journal, without accepting
+unknown or duplicate history as harmless. Only counts, canonical-prefix status
+and pending count are retained. No user/Auth table, seed, migration, ledger
+repair, environment write or deployment API is available. The existing
+app-first production migration job remains unchanged and separately held.
