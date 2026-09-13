@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import {
   ACCOUNT_FLOW as profile, ACCOUNT_FLOW_SUPABASE as origin, accountIdentity, verifyAccountIdentity,
-  accountAdminRequestAllowed as allowed, accountFlowContext, checkAccountFlowDispatch, cleanupAccountFixtures,
+  accountAdminRequestAllowed as allowed, accountAbsenceQuery, accountFlowContext, checkAccountFlowDispatch, cleanupAccountFixtures,
 } from "../swim-account-flow-guards";
 import { verifyRefreshCheckout, verifyRefreshSource } from "../refresh-swim-review";
 
@@ -98,37 +98,48 @@ describe("DC-SW3/SW5/SW8 bounded synthetic account flow", () => {
   it("cleans both allocated accounts and verifies cascade absence", async () => {
     const remaining = new Set(identities.map((identity) => identity.id));
     const requests: string[] = [];
+    const checked: string[] = [];
     const result = await cleanupAccountFixtures(identities, async (path, method) => {
       requests.push(`${method} ${path}`);
-      if (method === "HEAD") return { status: 200, value: { count: 0 } };
       const id = path.split("/").at(-1)!;
       if (method === "DELETE") { remaining.delete(id); return { status: 200, value: {} }; }
       return remaining.has(id) ? { status: 200, value: { user: user(identities.findIndex((identity) => identity.id === id)) } }
         : { status: 404, value: {} };
-    });
+    }, async (identity) => { checked.push(identity.id); return !remaining.has(identity.id); });
     expect(result).toEqual({ removed: 2, absent: 2, failed: 0 });
-    expect(requests.filter((request) => request.startsWith("HEAD"))).toHaveLength(12);
+    expect(checked).toEqual(identities.map((identity) => identity.id));
     expect(requests.some((request) => request === "GET /auth/v1/admin/users")).toBe(false);
   });
   it("never deletes a collision and still cleans the other owned fixture", async () => {
     const removed: string[] = [];
     const result = await cleanupAccountFixtures(identities, async (path, method) => {
-      if (method === "HEAD") return { status: 200, value: { count: 0 } };
       const id = path.split("/").at(-1)!;
       if (method === "DELETE") { removed.push(id); return { status: 200, value: {} }; }
       if (removed.includes(id)) return { status: 404, value: {} };
       return { status: 200, value: id === identities[0]!.id ? { ...user(0), app_metadata: {} } : user(1) };
-    });
+    }, async () => true);
     expect(removed).toEqual([identities[1]!.id]);
     expect(result).toEqual({ removed: 1, absent: 1, failed: 1 });
   });
   it("surfaces missing cascade cleanup without persisting error text", async () => {
-    const result = await cleanupAccountFixtures(identities, async (_path, method) => {
-      if (method === "HEAD") throw new Error("PrivateSyntheticCanary");
-      return { status: 404, value: {} };
-    });
+    const result = await cleanupAccountFixtures(identities, async () => ({ status: 404, value: {} }),
+      async () => { throw new Error("PrivateSyntheticCanary"); });
     expect(result).toEqual({ removed: 0, absent: 0, failed: 2 });
     expect(JSON.stringify(result)).not.toContain("PrivateSyntheticCanary");
+  });
+  it("keeps cleanup read-only and parameter-bound without granting service-role table access", () => {
+    const query = accountAbsenceQuery(identities[0]!);
+    expect(query.parameters).toEqual([identities[0]!.id]);
+    expect(query.query.match(/NOT EXISTS/g)).toHaveLength(6);
+    expect(query.query.match(/\$1::uuid/g)).toHaveLength(6);
+    expect(query.query).not.toMatch(/GRANT|DELETE|UPDATE|SELECT \*/);
+    expect(query.query).not.toContain(identities[0]!.id);
+    expect(allowed(`${origin}/rest/v1/swim_import_matches?select=id&user_id=eq.${identities[0]!.id}`,
+      "HEAD", undefined, identities, true)).toBe(false);
+    expect(() => accountAbsenceQuery({ ...identities[0]!, id: identities[1]!.id })).toThrow();
+    const script = readFileSync(resolve(__dirname, "../../../../apps/web/scripts/swim-account-flow.ts"), "utf8");
+    expect(script).toContain('tx.unsafe("SET TRANSACTION READ ONLY")');
+    expect(script.indexOf('step("prior_cleanup"')).toBeLessThan(script.indexOf('step("accounts"'));
   });
   it("keeps immutable source checks during cleanup without depending on live refs", () => {
     const io = {

@@ -415,3 +415,13 @@ screenshots, traces or raw errors are retained.
 
 This proves native application/Auth/storage transport for synthetic accounts,
 not the protected-alias browser session, a real local-cache transfer or a watch.
+
+The first native run34762904789 signed in both accounts but stopped during
+course import. Both Auth deletions and absence rechecks succeeded; the final
+table-absence check did not. Migration0153 intentionally withholds
+`service_role` table access to matching history, so that API check was invalid.
+The owner then approved read-only, parameter-bound absence checks using the
+existing review database connection. No grant or RLS change is made. The two
+previous run-bound identities must be confirmed absent before another pair is
+created; only boolean absence results and fixed import-step diagnostics leave
+the runner. Native import and the complete journey are not yet accepted.

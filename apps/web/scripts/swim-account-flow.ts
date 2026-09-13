@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { ACCOUNT_FLOW, ACCOUNT_FLOW_ORIGIN, ACCOUNT_FLOW_SUPABASE, AccountFlowRefusal,
   accountFlowContext, checkAccountFlowDispatch, accountIdentity, accountSlots, verifyAccountIdentity,
-  accountAdminRequestAllowed, cleanupAccountFixtures, demand, type AccountIdentity,
+  accountAdminRequestAllowed, accountAbsenceQuery, priorAccountRun, cleanupAccountFixtures, demand, type AccountIdentity,
 } from "../../../packages/db/scripts/swim-account-flow-guards";
 import { verifyRefreshCheckout, verifyRefreshSource } from "../../../packages/db/scripts/refresh-swim-review";
 import { inspectUpgradeSnapshot, upgradeSnapshotTransport } from "../../../packages/db/scripts/upgrade-swim-review";
@@ -80,8 +80,10 @@ export async function runAccountFlow(env: NodeJS.ProcessEnv, mode: "source" | "r
     acceptedApplicationSha: ACCOUNT_FLOW.reference.sha, acceptedApplicationRun: ACCOUNT_FLOW.reference.run,
     mode, status: "failed", stages: [] as { stage: string; status: "passed" | "failed"; code: string }[],
     accountsAttempted: 0, accountsCreated: 0, accountsRemoved: 0, accountsAbsent: 0, accountCleanupFailures: 0, adminRequests: 0,
+    priorAccountsAbsent: 0, priorCleanupPassed: false,
     databaseClosed: false, serverClosed: false, buildClosed: false, cleanupPassed: false,
-    native: { checks: [], browserClosed: false, browserRequests: 0, clientRequests: 0 } as NativeReport,
+    native: { checks: [], browserClosed: false, browserRequests: 0, clientRequests: 0,
+      importPhase: null, importAccount: null } as NativeReport,
   };
   let stage = "source", server: ChildProcess | undefined, build: ChildProcess | undefined;
   let sql: ReturnType<typeof connectReviewDatabase> | undefined;
@@ -92,11 +94,13 @@ export async function runAccountFlow(env: NodeJS.ProcessEnv, mode: "source" | "r
     demand(Date.now() < deadline, "deadline");
     result.stages.push({ stage: name, status: "passed", code: "passed" });
   };
-  async function admin(path: string, method: string, body: unknown, cleanup: boolean) {
+  async function admin(path: string, method: string, body: unknown, cleanup: boolean,
+    allocated: readonly AccountIdentity[] = identities) {
     const url = ACCOUNT_FLOW_SUPABASE + path;
     const requestDeadline = cleanup ? deadline + 60_000 : deadline;
     demand(credentialsChecked && Date.now() < requestDeadline && ++result.adminRequests <= 70 &&
-      accountAdminRequestAllowed(url, method, body, identities, cleanup), "admin_transport");
+      (allocated === identities || method === "GET") &&
+      accountAdminRequestAllowed(url, method, body, allocated, cleanup), "admin_transport");
     if (method === "POST") {
       const id = z.object({ id: z.string() }).parse(body).id;
       demand(!created.has(id), "duplicate_create"); created.add(id);
@@ -109,14 +113,10 @@ export async function runAccountFlow(env: NodeJS.ProcessEnv, mode: "source" | "r
       headers: {
         apikey: env.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY!,
         Authorization: `Bearer ${env.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY!}`,
-        "Content-Type": "application/json", ...(method === "HEAD" ? { Prefer: "count=exact" } : {}),
+        "Content-Type": "application/json",
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    if (method === "HEAD") {
-      demand(response.ok && /\/0$/.test(response.headers.get("content-range") ?? ""), "cleanup_rows");
-      return { status: response.status, value: { count: 0 } };
-    }
     const chunks: Uint8Array[] = [];
     const reader = response.body?.getReader();
     let bytes = 0;
@@ -135,9 +135,26 @@ export async function runAccountFlow(env: NodeJS.ProcessEnv, mode: "source" | "r
     const value: unknown = text ? JSON.parse(text) : null;
     return { status: response.status, value };
   }
+  async function rowsAbsent(identity: AccountIdentity) {
+    demand(Date.now() < deadline + 60_000 && sql === undefined, "cleanup_context");
+    const query = accountAbsenceQuery(identity);
+    sql = connectReviewDatabase(env.SWIM_REVIEW_DATABASE_URL);
+    result.databaseClosed = false;
+    try {
+      return await sql.begin(async (tx) => {
+        await tx.unsafe("SET TRANSACTION READ ONLY");
+        await tx.unsafe("SET LOCAL statement_timeout='10s'");
+        const rows = await tx.unsafe(query.query, query.parameters);
+        demand(rows.length === 1 && typeof rows[0]!.empty === "boolean", "cleanup_rows");
+        return rows[0]!.empty === true;
+      });
+    } finally {
+      await sql.end({ timeout: 5 }); result.databaseClosed = true; sql = undefined;
+    }
+  }
   async function cleanup() {
     demand(credentialsChecked && identities.length === 2, "cleanup_context");
-    const cleaned = await cleanupAccountFixtures(identities, (path, method) => admin(path, method, undefined, true));
+    const cleaned = await cleanupAccountFixtures(identities, (path, method) => admin(path, method, undefined, true), rowsAbsent);
     result.accountsRemoved = cleaned.removed; result.accountsAbsent = cleaned.absent;
     result.accountCleanupFailures = cleaned.failed;
     demand(cleaned.failed === 0 && cleaned.absent === 2, "cleanup_count");
@@ -154,6 +171,15 @@ export async function runAccountFlow(env: NodeJS.ProcessEnv, mode: "source" | "r
       credentialsChecked = true;
     });
     if (mode === "cleanup") { await step("cleanup", cleanup); result.status = "cleanup_pass"; return result; }
+    await step("prior_cleanup", async () => {
+      const prior = accountSlots.map((slot) => accountIdentity(priorAccountRun.run, priorAccountRun.sha, slot));
+      for (const identity of prior) {
+        const response = await admin(`/auth/v1/admin/users/${identity.id}`, "GET", undefined, true, prior);
+        demand(response.status === 404 && await rowsAbsent(identity), "prior_cleanup");
+        result.priorAccountsAbsent++;
+      }
+      result.priorCleanupPassed = true;
+    });
     const request = upgradeSnapshotTransport(env, deadline, fetch, ACCOUNT_FLOW);
     const snapshot = () => inspectUpgradeSnapshot(request, storageAdapter(env, request), ACCOUNT_FLOW);
     let expected: Awaited<ReturnType<typeof snapshot>>;
@@ -165,6 +191,7 @@ export async function runAccountFlow(env: NodeJS.ProcessEnv, mode: "source" | "r
     };
     await step("ledger", async () => {
       sql = connectReviewDatabase(env.SWIM_REVIEW_DATABASE_URL);
+      result.databaseClosed = false;
       await inspectUntimedLedger(sql, untimedReviewMigrations(), 155);
       await sql.end({ timeout: 5 }); result.databaseClosed = true; sql = undefined;
     });
@@ -243,7 +270,7 @@ export async function runAccountFlow(env: NodeJS.ProcessEnv, mode: "source" | "r
         catch { result.status = "failed"; result.stages.push({ stage: "close", status: "failed", code: `${name}_close` }); }
       }
       if (sql) {
-        try { await sql.end({ timeout: 5 }); result.databaseClosed = true; }
+        try { await sql.end({ timeout: 5 }); result.databaseClosed = true; sql = undefined; }
         catch { result.status = "failed"; result.stages.push({ stage: "close", status: "failed", code: "database_close" }); }
       }
       if (credentialsChecked && identities.length === 2) {

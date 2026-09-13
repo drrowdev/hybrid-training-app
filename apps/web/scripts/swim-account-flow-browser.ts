@@ -11,6 +11,8 @@ export type NativeAccount = { identity: AccountIdentity; password: string };
 export type NativeReport = {
   checks: { name: string; status: "passed" | "failed" }[];
   browserClosed: boolean; browserRequests: number; clientRequests: number;
+  importPhase: "file" | "fields" | "preview" | "titles" | "commit" | "hub" | "layout" | null;
+  importAccount: "a" | "b" | null;
 };
 const workoutSchema = z.object({
   id: z.string().uuid(), plan_id: z.string().uuid(), scheduled_date: z.string(),
@@ -37,7 +39,8 @@ async function nativeSignIn(page: Page, account: NativeAccount) {
   await page.getByTestId("auth-submit").click();
   await expect(page).toHaveURL(`${origin}/app/swim/import`);
 }
-async function importCourse(page: Page, slot: string) {
+async function importCourse(page: Page, slot: "a" | "b", report: NativeReport) {
+  report.importAccount = slot; report.importPhase = "file";
   const fixture = syntheticCourse();
   const source = {
     ...fixture, title: `Synthetic account ${slot}`,
@@ -49,6 +52,7 @@ async function importCourse(page: Page, slot: string) {
     name: "synthetic-course.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(source)),
   });
   await page.getByRole("heading", { name: source.title, exact: true }).waitFor();
+  report.importPhase = "fields";
   const start = new Date(); start.setUTCDate(start.getUTCDate() + 14);
   await page.getByLabel("Start date", { exact: true }).fill(start.toISOString().slice(0, 10));
   await page.locator('input[name="weekdays"][value="1"]').check();
@@ -58,16 +62,21 @@ async function importCourse(page: Page, slot: string) {
   await page.locator('input[name="strokes"][value="freestyle"]').check();
   await expect(page.locator('input[name="timeBudgetMinutes"]')).toHaveCount(0);
   await expect(page.getByLabel("Minutes per swim", { exact: true })).toHaveCount(0);
+  report.importPhase = "preview";
   await page.getByRole("button", { name: "Review plan", exact: true }).click();
   await expect(page.getByRole("button", { name: "Import plan", exact: true })).toBeVisible();
+  report.importPhase = "titles";
   const preview = page.locator('section[aria-labelledby="swim-plan-preview-title"]');
   await expect(preview.getByText("Week 1 A", { exact: true })).toBeVisible();
   await expect(preview.getByText("Week 1 B", { exact: true })).toBeVisible();
+  report.importPhase = "commit";
   await page.locator('input[name="reviewed"]').check();
   await page.getByRole("button", { name: "Import plan", exact: true }).click();
   await expect(page).toHaveURL(/\/app\/swim\?plan=[a-f0-9-]+$/);
+  report.importPhase = "hub";
   await expect(page.getByRole("link", { name: /Week 1 A/ }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: /Week 1 B/ }).first()).toBeVisible();
+  report.importPhase = "layout";
   demand(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "layout");
 }
 export async function nativeAccountFlow(
@@ -119,8 +128,8 @@ export async function nativeAccountFlow(
       }
     });
     await step("native_course_import", async () => {
-      await importCourse(a, "A");
-      await importCourse(b, "B");
+      await importCourse(a, "a", report);
+      await importCourse(b, "b", report);
       demand(!blockedRequest, "browser_network");
     });
     const initialA = await workouts(ca, accounts[0]), initialB = await workouts(cb, accounts[1]);

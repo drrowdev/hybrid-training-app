@@ -3788,3 +3788,19 @@ typechecking: Next's global environment type was applied to imported Node-only
 database tooling. The runner now has a separate strict Node compiler context,
 included in the ordinary web typecheck command and the guarded CI job. No check
 is removed and the historical child-process credential boundary is unchanged.
+
+## [2026-09-13] finding | Native sign-in passed; import and cleanup checks need repair
+
+Run34762904789 at eaa5afd4 passed source/configuration/155-ledger/build checks
+and real sign-in in two browser contexts. It failed during native course import.
+Both allocated Auth accounts were deleted and rechecked as absent. Final
+six-table cleanup verification failed because0153 deliberately denies
+`service_role` SELECT on matching history; independent cleanup hit that same
+boundary. The failed main remains failed. Browser, server, build and database
+closed; only the safe marked receipt was retained.
+
+The owner explicitly approved narrowly scoped read-only cleanup checks through
+the existing review database connection, returning boolean absence for allocated
+test identities only. No permissions, schema or RLS policies change. The repair
+verifies the previous pair before creating a new pair and adds fixed import-step
+diagnostics without recording UI text, rows or credentials.

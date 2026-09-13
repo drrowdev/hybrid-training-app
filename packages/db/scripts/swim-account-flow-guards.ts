@@ -28,6 +28,9 @@ export const ACCOUNT_FLOW_ORIGIN = "http://127.0.0.1:4229";
 export const ACCOUNT_FLOW_SUPABASE = `https://${REVIEW.supabaseId}.supabase.co`;
 export type AccountSlot = "a" | "b";
 export const accountSlots: readonly AccountSlot[] = ["a", "b"];
+export const priorAccountRun = {
+  run: "34762904789", sha: "eaa5afd4c68adea797af3e7206b0ae264e3b6d3f",
+} as const;
 export class AccountFlowRefusal extends Error {
   constructor(readonly code: string) { super(code); }
 }
@@ -77,6 +80,16 @@ export function verifyAccountIdentity(user: unknown, identity: AccountIdentity) 
 export const accountTables = [
   "profiles", "swim_plans", "swim_workouts", "swim_connections", "swim_imports", "swim_import_matches",
 ] as const;
+export function accountAbsenceQuery(identity: AccountIdentity) {
+  const expected = accountIdentity(identity.marker.run, identity.marker.sha, identity.marker.slot);
+  demand(identity.id === expected.id && identity.email === expected.email, "identity");
+  return {
+    query: `SELECT ${accountTables.map((table) =>
+      `NOT EXISTS (SELECT 1 FROM public.${table} WHERE ${table === "profiles" ? "id" : "user_id"} = $1::uuid)`,
+    ).join(" AND ")} AS empty`,
+    parameters: [identity.id],
+  };
+}
 export function accountAdminRequestAllowed(url: string, method: string, body: unknown,
   identities: readonly AccountIdentity[], cleanup: boolean) {
   const parsed = new URL(url);
@@ -102,11 +115,11 @@ export function accountAdminRequestAllowed(url: string, method: string, body: un
     [...parsed.searchParams.keys()].join() === column) {
     return z.object({ onboarded_at: z.string().datetime() }).strict().safeParse(body).success;
   }
-  return method === "HEAD" && body === undefined && parsed.searchParams.get("select") === "id" &&
-    [...parsed.searchParams.keys()].sort().join() === [column, "select"].sort().join();
+  return false;
 }
 type AccountRequest = (path: string, method: string) => Promise<{ status: number; value: unknown }>;
-export async function cleanupAccountFixtures(identities: readonly AccountIdentity[], request: AccountRequest) {
+export async function cleanupAccountFixtures(identities: readonly AccountIdentity[], request: AccountRequest,
+  rowsAbsent: (identity: AccountIdentity) => Promise<boolean>) {
   demand(identities.length === 2 && identities[0]!.id !== identities[1]!.id, "cleanup_context");
   const result = { removed: 0, absent: 0, failed: 0 };
   for (const identity of identities) {
@@ -120,11 +133,7 @@ export async function cleanupAccountFixtures(identities: readonly AccountIdentit
         result.removed++;
       } else demand(existing.status === 404, "account_lookup");
       demand((await request(path, "GET")).status === 404, "account_remaining");
-      for (const table of accountTables) {
-        const column = table === "profiles" ? "id" : "user_id";
-        const rows = await request(`/rest/v1/${table}?select=id&${column}=eq.${identity.id}`, "HEAD");
-        demand([200, 206].includes(rows.status) && z.object({ count: z.literal(0) }).safeParse(rows.value).success, "cleanup_rows");
-      }
+      demand(await rowsAbsent(identity), "cleanup_rows");
       result.absent++;
     } catch { result.failed++; }
   }
