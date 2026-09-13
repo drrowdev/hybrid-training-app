@@ -46,9 +46,20 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const canonical = (rows: EnvironmentMetadata[]) =>
   [...rows].map((row) => ({ ...row, target: [...row.target].sort() })).sort((a, b) => a.id.localeCompare(b.id));
-type Code = "passed" | "refused" | "deadline" | "storage_refused" | "deployment_refused" | "close_failed" | "report_failed";
+const snapshotParts = ["project", "team", "database", "project_env", "shared_env", "auth", "settings", "previous", "alias", "storage", "receipt"] as const;
+type SnapshotPart = typeof snapshotParts[number];
+type Code = "passed" | "refused" | "deadline" | "storage_refused" | "deployment_refused" | "close_failed" | "report_failed" | `snapshot_${SnapshotPart}`;
+const diagnosticCodes = z.enum([
+  "refused", "predicate_refused", "receipt_invalid", "http_status", "transport_failed", "response_invalid", "deadline",
+  "project_structure", "project_identity", "team_structure", "team_identity", "billing_missing", "billing_null",
+  "billing_invalid", "billing_plan", "supabase_identity", "trustedIps_addresses", "trustedIps_protectionMode",
+  "ssoProtection_missing", "ssoProtection_invalid", "ssoProtection_deploymentType",
+  "passwordProtection_missing", "passwordProtection_invalid", "passwordProtection_deploymentType",
+  "trustedIps_missing", "trustedIps_invalid", "trustedIps_deploymentType",
+]);
+type SnapshotDiagnostic = { code: z.infer<typeof diagnosticCodes> | "shape" | "unclassified"; httpStatus?: number };
 class Refusal extends Error {
-  constructor(readonly code: Code) { super(code); }
+  constructor(readonly code: Code, readonly diagnostic?: SnapshotDiagnostic) { super(code); }
 }
 function requireThat(value: unknown): asserts value {
   if (!value) throw new Refusal("refused");
@@ -57,8 +68,10 @@ function requireThat(value: unknown): asserts value {
 export function checkUpgradeDispatch(inputs: Record<string, unknown> | undefined, env: NodeJS.ProcessEnv) {
   if (inputs?.upgrade_swim_review === undefined || inputs.upgrade_swim_review === "false") return false;
   requireThat(inputs.upgrade_swim_review === "true" &&
+    typeof inputs.review_upgrade_read_only === "string" &&
+    ["true", "false"].includes(inputs.review_upgrade_read_only) &&
     UPGRADE_REVIEW.otherOperations.every((key) => inputs[key.toLowerCase()] === "false") &&
-    Object.keys(inputs).every((key) => ["upgrade_swim_review", "expected_sha",
+    Object.keys(inputs).every((key) => ["upgrade_swim_review", "review_upgrade_read_only", "expected_sha",
       ...UPGRADE_REVIEW.otherOperations.map((name) => name.toLowerCase())].includes(key)) &&
     env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
     env.GITHUB_REPOSITORY === REVIEW.repository && env.GITHUB_REF_TYPE === "branch" &&
@@ -77,9 +90,30 @@ export function upgradeFlagTransport(env: NodeJS.ProcessEnv, deadline: number, f
   const transport = boundedTransport(env, deadline, fetcher);
   let attempted = false;
   return async (url, method, body) => {
+    requireThat(env.REVIEW_UPGRADE_READ_ONLY === "false");
     requireThat(!attempted && url === ROUTES.create && method === "POST" && same(body, upgradeFlagBody()));
     attempted = true;
     return transport(url, method, body);
+  };
+}
+
+async function snapshotCheck<T>(part: SnapshotPart, read: () => T | Promise<T>): Promise<T> {
+  try { return await read(); }
+  catch (error) {
+    const parsed = z.object({ code: diagnosticCodes, httpStatus: z.number().int().min(100).max(599).optional() }).safeParse(error);
+    throw new Refusal(`snapshot_${part}`, parsed.success ? parsed.data :
+      { code: error instanceof z.ZodError ? "shape" : "unclassified" });
+  }
+}
+
+export function upgradeSnapshotTransport(env: NodeJS.ProcessEnv, deadline: number, fetcher: typeof fetch = fetch): Request {
+  const request = deploymentTransport(env, deadline, fetcher);
+  const reads: readonly string[] = [ROUTES.project, DEPLOY_ROUTES.team, ROUTES.supabase, ROUTES.project_env,
+    ROUTES.shared_env, ROUTES.auth, ROUTES.settings, ROUTES.alias, deploymentRoute(UPGRADE_REVIEW.previous.id)];
+  return (url, method = "GET", body) => {
+    requireThat((method === "GET" && body === undefined && reads.includes(url)) ||
+      (method === "POST" && url === ROUTES.storage && same(body, {})));
+    return request(url, method, body);
   };
 }
 
@@ -89,25 +123,34 @@ const aliasSchema = z.object({
   redirect: z.null().optional(),
 });
 export async function inspectUpgradeSnapshot(request: Request, storage: () => Promise<boolean>) {
-  const protection = projectIdentity(await request(ROUTES.project));
-  requireThat(same(protection.sso, { deploymentType: "all_except_custom_domains" }));
-  const team = teamIdentity(await request(DEPLOY_ROUTES.team));
-  const database = supabaseIdentity(await request(ROUTES.supabase));
-  const project = canonical(environmentList(await request(ROUTES.project_env), false));
-  const shared = canonical(environmentList(await request(ROUTES.shared_env), true));
-  const auth = z.object({
+  const protection = await snapshotCheck("project", async () => {
+    const result = projectIdentity(await request(ROUTES.project));
+    requireThat(same(result.sso, { deploymentType: "all_except_custom_domains" }));
+    return result;
+  });
+  const team = await snapshotCheck("team", async () => teamIdentity(await request(DEPLOY_ROUTES.team)));
+  const database = await snapshotCheck("database", async () => supabaseIdentity(await request(ROUTES.supabase)));
+  const project = await snapshotCheck("project_env", async () => canonical(environmentList(await request(ROUTES.project_env), false)));
+  const shared = await snapshotCheck("shared_env", async () => canonical(environmentList(await request(ROUTES.shared_env), true)));
+  const auth = await snapshotCheck("auth", async () => z.object({
     site_url: z.literal(REVIEW.origin), uri_allow_list: z.literal(`${REVIEW.origin}/auth/callback`),
     disable_signup: z.literal(true),
-  }).parse(await request(ROUTES.auth));
-  const { external } = z.object({ external: z.record(z.boolean()) }).parse(await request(ROUTES.settings));
-  requireThat(external.email === true && Object.keys(external).length <= 100 &&
-    Object.entries(external).every(([key, value]) => key === "email" || value === false));
-  const old = deploymentMetadata(await request(deploymentRoute(UPGRADE_REVIEW.previous.id)), UPGRADE_REVIEW.previous.sha);
-  requireThat(old.readyState === "READY" && old.id === UPGRADE_REVIEW.previous.id &&
-    old.url === UPGRADE_REVIEW.previous.url && old.createdAt >= UPGRADE_REVIEW.previous.start &&
-    old.createdAt <= UPGRADE_REVIEW.previous.end);
-  const alias = aliasSchema.parse(await request(ROUTES.alias));
-  requireThat(await storage() === true);
+  }).parse(await request(ROUTES.auth)));
+  const external = await snapshotCheck("settings", async () => {
+    const { external } = z.object({ external: z.record(z.boolean()) }).parse(await request(ROUTES.settings));
+    requireThat(external.email === true && Object.keys(external).length <= 100 &&
+      Object.entries(external).every(([key, value]) => key === "email" || value === false));
+    return external;
+  });
+  const old = await snapshotCheck("previous", async () => {
+    const result = deploymentMetadata(await request(deploymentRoute(UPGRADE_REVIEW.previous.id)), UPGRADE_REVIEW.previous.sha);
+    requireThat(result.readyState === "READY" && result.id === UPGRADE_REVIEW.previous.id &&
+      result.url === UPGRADE_REVIEW.previous.url && result.createdAt >= UPGRADE_REVIEW.previous.start &&
+      result.createdAt <= UPGRADE_REVIEW.previous.end);
+    return result;
+  });
+  const alias = await snapshotCheck("alias", async () => aliasSchema.parse(await request(ROUTES.alias)));
+  await snapshotCheck("storage", async () => requireThat(await storage() === true));
   return { protection, team, database, project, shared, auth, external: Object.entries(external).sort(), old, alias };
 }
 
@@ -115,7 +158,9 @@ type Stage = "source" | "credentials" | "snapshot" | "ledger" | "migrations" | "
 export type UpgradeResult = {
   scope: "swim-existing-review-upgrade"; testedSha: string | null; project: typeof REVIEW.supabaseId;
   acceptedApplicationSha: string; acceptedApplicationRun: string;
-  status: "failed" | "source_pass" | "upgrade_pass";
+  status: "failed" | "source_pass" | "inspection_pass" | "upgrade_pass";
+  readOnly: boolean;
+  snapshotDiagnostic?: SnapshotDiagnostic;
   stages: { stage: Stage; status: "passed" | "failed"; code: Code | ReviewStorageCode }[];
   error?: ReturnType<typeof projectMigrationError>["error"];
   migrations: { before: 150; after: 154; attempted: boolean; committed: boolean; verified: boolean };
@@ -128,6 +173,7 @@ function initialResult(env: NodeJS.ProcessEnv): UpgradeResult {
     scope: "swim-existing-review-upgrade",
     testedSha: /^[a-f0-9]{40}$/.test(env.EXPECTED_SHA ?? "") ? env.EXPECTED_SHA! : null,
     project: REVIEW.supabaseId, acceptedApplicationSha: UPGRADE_REVIEW.reference.sha,
+    readOnly: env.REVIEW_UPGRADE_READ_ONLY !== "false",
     acceptedApplicationRun: UPGRADE_REVIEW.reference.run, status: "failed", stages: [],
     migrations: { before: 150, after: 154, attempted: false, committed: false, verified: false },
     flags: { attempted: false, confirmed: false, entries: [] }, deployment: null,
@@ -156,6 +202,7 @@ export async function upgradeReview(env: NodeJS.ProcessEnv, deps: Dependencies):
   }
   try {
     await step("source", () => { source(); refreshContext(env, UPGRADE_REVIEW); });
+    requireThat(env.REVIEW_UPGRADE_READ_ONLY === "true" || env.REVIEW_UPGRADE_READ_ONLY === "false");
     await step("credentials", () => {
       validateDatabaseUrl(env.SWIM_REVIEW_DATABASE_URL);
       for (const key of ["VERCEL_REVIEW_TOKEN", "SUPABASE_REVIEW_MANAGEMENT_TOKEN"]) {
@@ -166,7 +213,7 @@ export async function upgradeReview(env: NodeJS.ProcessEnv, deps: Dependencies):
     });
     let expected = await step("snapshot", async () => {
       const snapshot = await inspectUpgradeSnapshot(deps.request, deps.storage);
-      UPGRADE_REVIEW.receipt(snapshot.project, snapshot.shared);
+      await snapshotCheck("receipt", () => UPGRADE_REVIEW.receipt(snapshot.project, snapshot.shared));
       return snapshot;
     });
     const guard = async () => {
@@ -175,6 +222,10 @@ export async function upgradeReview(env: NodeJS.ProcessEnv, deps: Dependencies):
       source();
     };
     await step("ledger", async () => { await guard(); await deps.inspectLedger(REVIEW_BASE_COUNT); });
+    if (result.readOnly) {
+      result.status = "inspection_pass";
+      return result;
+    }
     await step("migrations", async () => {
       await guard();
       result.migrations.attempted = true;
@@ -222,6 +273,7 @@ export async function upgradeReview(env: NodeJS.ProcessEnv, deps: Dependencies):
     await step("completion", () => source());
     result.status = "upgrade_pass";
   } catch (error) {
+    if (error instanceof Refusal && error.diagnostic) result.snapshotDiagnostic = error.diagnostic;
     result.error = projectMigrationError(error).error;
     result.stages.push({ stage, status: "failed", code: error instanceof Refusal || error instanceof ReviewStorageRefusal ? error.code :
       ["ledger", "migrations"].includes(stage) ? "storage_refused" : "refused" });
@@ -264,6 +316,7 @@ async function main() {
         const event: unknown = JSON.parse(readFileSync(path, "utf8"));
         const { inputs } = z.object({ inputs: z.record(z.unknown()) }).parse(event);
         requireThat(checkUpgradeDispatch(inputs, env));
+        requireThat(inputs.review_upgrade_read_only === env.REVIEW_UPGRADE_READ_ONLY);
         return event;
       },
       regular: (path) => path.split("/").every((_, index, parts) => {
@@ -280,7 +333,7 @@ async function main() {
       const migrations = reviewMigrations();
       let sql: ReturnType<typeof connectReviewDatabase> | undefined;
       const database = () => sql ??= connectReviewDatabase(env.SWIM_REVIEW_DATABASE_URL);
-      const request = deploymentTransport(env, deadline);
+      const request = upgradeSnapshotTransport(env, deadline);
       result = await upgradeReview(env, {
         source, request, createFlags: upgradeFlagTransport(env, deadline),
         storage: storageAdapter(env, request), now: Date.now,

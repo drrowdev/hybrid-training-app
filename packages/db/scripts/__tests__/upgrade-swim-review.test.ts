@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   checkUpgradeDispatch, UPGRADE_FLAGS, UPGRADE_REVIEW, upgradeFlagBody,
-  upgradeFlagTransport, upgradeReview, upgradeSummary,
+  upgradeFlagTransport, upgradeReview, upgradeSnapshotTransport, upgradeSummary,
 } from "../upgrade-swim-review";
 import { isReviewOwnerPredicate, reviewMigrations, validateReviewLedger } from "../upgrade-swim-review-storage";
 import { refresh, verifyRefreshSource } from "../refresh-swim-review";
@@ -19,6 +19,7 @@ const env: NodeJS.ProcessEnv = {
   GITHUB_ACTIONS: "true", GITHUB_EVENT_NAME: "workflow_dispatch", GITHUB_REPOSITORY: REVIEW.repository,
   GITHUB_REF_TYPE: "branch", GITHUB_REF: `refs/heads/${REVIEW.branch}`, GITHUB_SHA: sha,
   GITHUB_JOB: "upgrade-swim-review", EXPECTED_SHA: sha, UPGRADE_SWIM_REVIEW: "true",
+  REVIEW_UPGRADE_READ_ONLY: "false",
   ...Object.fromEntries(UPGRADE_REVIEW.otherOperations.map((key) => [key, "false"])),
   SWIM_REVIEW_DATABASE_URL: `postgresql://postgres.${REVIEW.supabaseId}:${canary}@aws-0-eu-north-1.pooler.supabase.com:5432/postgres?sslmode=require`,
   VERCEL_REVIEW_TOKEN: canary, SUPABASE_REVIEW_MANAGEMENT_TOKEN: canary,
@@ -26,7 +27,7 @@ const env: NodeJS.ProcessEnv = {
   SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY: `sb_secret_${canary}`,
 };
 const inputs = () => ({
-  upgrade_swim_review: "true", expected_sha: sha,
+  upgrade_swim_review: "true", review_upgrade_read_only: "false", expected_sha: sha,
   ...Object.fromEntries(UPGRADE_REVIEW.otherOperations.map((key) => [key.toLowerCase(), "false"])),
 });
 function harness() {
@@ -129,6 +130,9 @@ describe("approved existing-data review upgrade", () => {
     expect(() => checkUpgradeDispatch({ ...inputs(), upgrade_swim_review: true }, env)).toThrow();
     expect(() => checkUpgradeDispatch({ ...inputs(), expected_sha: UPGRADE_REVIEW.reference.sha },
       { ...env, GITHUB_SHA: UPGRADE_REVIEW.reference.sha })).toThrow();
+    for (const value of [undefined, true, "unknown"]) {
+      expect(() => checkUpgradeDispatch({ ...inputs(), review_upgrade_read_only: value }, env)).toThrow();
+    }
   });
   it("reuses whole-source/head/base/symlink guards without admitting application or migration edits", () => {
     const io = {
@@ -186,6 +190,42 @@ describe("approved existing-data review upgrade", () => {
     expect(JSON.stringify(result)).not.toContain(canary);
     expect(h.request.mock.calls.filter(([, method]) => method === "POST").map(([url]) => url))
       .toEqual([DEPLOY_ROUTES.create, deploymentRoute(h.state.next.id, true)]);
+  });
+  it("inspects without migration, environment or deployment writes and closes its read-only ledger client", async () => {
+    const h = harness();
+    const result = await upgradeReview({ ...env, REVIEW_UPGRADE_READ_ONLY: "true" }, h.deps);
+    expect(result).toMatchObject({ status: "inspection_pass", readOnly: true, databaseClosed: true,
+      partial: false, migrations: { attempted: false }, flags: { attempted: false }, deployment: null });
+    expect(h.deps.inspectLedger).toHaveBeenCalledTimes(1);
+    expect(h.deps.inspectLedger).toHaveBeenCalledWith(150);
+    expect(h.deps.append).not.toHaveBeenCalled();
+    expect(h.deps.createFlags).not.toHaveBeenCalled();
+    expect(h.deps.deploy).not.toHaveBeenCalled();
+    expect(h.request.mock.calls.every(([, method]) => method === undefined || method === "GET")).toBe(true);
+  });
+  it("retains only the failed snapshot check and closed transport details", async () => {
+    const h = harness(), read = h.deps.request;
+    h.deps.request = async (...args) => {
+      if (args[0] === ROUTES.project) throw Object.assign(new Error(canary), { code: "http_status", httpStatus: 401 });
+      return read(...args);
+    };
+    const result = await upgradeReview({ ...env, REVIEW_UPGRADE_READ_ONLY: "true" }, h.deps);
+    expect(result.stages).toContainEqual({ stage: "snapshot", status: "failed", code: "snapshot_project" });
+    expect(result.snapshotDiagnostic).toEqual({ code: "http_status", httpStatus: 401 });
+    expect(upgradeSummary(result)).not.toContain(canary);
+    expect(h.deps.append).not.toHaveBeenCalled();
+  });
+  it("never permits a snapshot transport to mutate settings and blocks flags in inspection mode", async () => {
+    const fetcher = vi.fn<typeof fetch>();
+    const read = upgradeSnapshotTransport(env, Date.now() + 60_000, fetcher);
+    for (const [url, method, body] of [
+      [ROUTES.auth, "PATCH", {}], [ROUTES.create, "POST", upgradeFlagBody()],
+      [DEPLOY_ROUTES.create, "POST", {}], [updateRoute("NEXT_PUBLIC_BUILD_SHA"), "PATCH", {}],
+      [ROUTES.storage, "POST", { unexpected: true }],
+    ] as const) expect(() => read(url, method, body)).toThrow();
+    await expect(upgradeFlagTransport({ ...env, REVIEW_UPGRADE_READ_ONLY: "true" }, Date.now() + 60_000, fetcher)(
+      ROUTES.create, "POST", upgradeFlagBody())).rejects.toThrow();
+    expect(fetcher).not.toHaveBeenCalled();
   });
   it.each(["receipt", "protection", "auth", "alias", "previous", "storage", "ledger"] as const)(
     "refuses %s before migration or flag creation", async (kind) => {
@@ -300,6 +340,8 @@ describe("approved existing-data review upgrade", () => {
     const [before, operation] = job.split("      - name: Upgrade existing protected review once\n");
     expect(before).not.toContain("secrets.");
     expect(before).toContain("--check-source");
+    expect(before).toContain("REVIEW_UPGRADE_READ_ONLY: ${{ inputs.review_upgrade_read_only }}");
+    expect(workflow).toContain("review_upgrade_read_only:\n        description: Inspect existing review upgrade guards without making changes\n        required: false\n        default: true");
     expect(operation!.match(/secrets\.\w+/g)).toHaveLength(5);
     expect(UPGRADE_FLAGS).toHaveLength(4);
   });

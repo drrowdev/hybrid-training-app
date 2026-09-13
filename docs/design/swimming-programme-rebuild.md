@@ -337,3 +337,11 @@ replacement; the evidence-integrity fix does not validate those rules.
 The session scheduler remains removed. Implementation stays in the current
 isolated worktree; no new model, cloud agent or implementation session is part
 of this plan.
+
+### Existing-review recovery
+
+Read-only is the default for the guarded upgrade dispatch. It verifies the
+same protected snapshot and 150-entry ledger but never
+appends migrations, creates flags or deploys. Applying requires an explicit
+`review_upgrade_read_only=false` after acceptance. Snapshot failures retain only
+closed check/code/HTTP-status diagnostics, never raw responses.

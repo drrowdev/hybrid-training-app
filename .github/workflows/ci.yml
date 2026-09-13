@@ -84,6 +84,11 @@ on:
         required: false
         default: false
         type: boolean
+      review_upgrade_read_only:
+        description: Inspect existing review upgrade guards without making changes
+        required: false
+        default: true
+        type: boolean
 
 concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && ((inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review || inputs.inspect_swim_review_deployment || inputs.provision_swim_review_owner) || inputs.refresh_swim_review || inputs.refresh_swim_plan_review || inputs.refresh_swim_readonly_review || inputs.upgrade_swim_review) && 'ci-swim-review-configuration' || (github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review) && 'ci-swim-review-bootstrap' || (github.event_name == 'workflow_dispatch' && inputs.swim_acceptance && format('ci-swim-{0}', github.ref) || format('ci-{0}', github.ref))) }}
@@ -966,6 +971,7 @@ jobs:
     env:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       UPGRADE_SWIM_REVIEW: ${{ inputs.upgrade_swim_review }}
+      REVIEW_UPGRADE_READ_ONLY: ${{ inputs.review_upgrade_read_only }}
       REFRESH_SWIM_READONLY_REVIEW: ${{ inputs.refresh_swim_readonly_review }}
       REFRESH_SWIM_PLAN_REVIEW: ${{ inputs.refresh_swim_plan_review }}
       REFRESH_SWIM_REVIEW: ${{ inputs.refresh_swim_review }}

@@ -3690,3 +3690,16 @@ direct function-call spelling assumed by that check. The appended transaction
 did not pass; both disposable jobs cleaned up, and no hosted update ran.
 The check now requires the exact canonical scalar-subquery expression for both
 read and write predicates. Policy definitions and permissions are unchanged.
+## [2026-09-13] acceptance | Existing-review upgrade stopped before writes
+
+Sourcee128b739 passed exact application34742743519 and real database/control
+rehearsal34742743532, including transactional rollback and preservation of
+existing synthetic data. Approved hosted operation34743153238 then refused its
+initial protected snapshot: no migration, flag or deployment was attempted;
+client closure passed. This is not a hosted upgrade acceptance.
+
+The operation now defaults to read-only inspection, with explicit
+`review_upgrade_read_only=false` required for writes. It preserves the same
+source, environment and protection guards. Closed snapshot check/code/status
+diagnostics replace the insufficient generic refusal; raw responses are never
+reported. No unchanged-source update retry or historical-profile reuse.
