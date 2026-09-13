@@ -173,4 +173,15 @@ describe("DC-SW3/SW5/SW8 bounded synthetic account flow", () => {
     expect(operation).toContain("swim-account-flow.ts --cleanup");
     expect(job).not.toContain("upload-artifact");
   });
+  it("checks Node tooling separately without Next's global environment augmentation", () => {
+    const web = resolve(__dirname, "../../../../apps/web");
+    const app = JSON.parse(readFileSync(resolve(web, "tsconfig.json"), "utf8"));
+    const cli = JSON.parse(readFileSync(resolve(web, "tsconfig.account-flow.json"), "utf8"));
+    const packageJson = JSON.parse(readFileSync(resolve(web, "package.json"), "utf8"));
+    expect(packageJson.scripts.typecheck).toBe("tsc --noEmit && tsc -p tsconfig.account-flow.json");
+    expect(cli.compilerOptions.strict).toBe(true);
+    expect(cli.compilerOptions.types).toEqual(["node"]);
+    expect(cli.files).toEqual(["scripts/swim-account-flow.ts", "scripts/swim-account-flow-browser.ts"]);
+    for (const path of cli.files) expect(app.exclude).toContain(path);
+  });
 });

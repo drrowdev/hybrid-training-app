@@ -3782,3 +3782,9 @@ migration prefix is unchanged, with nine ordered additions0146-0154 and matching
 downs. The earlier source-order collision is resolved. Live production state
 was not queried; used-data downs remain refusal-safe rather than a deletion or
 ledger-reset plan.
+
+The first account-runner push was correctly blocked by full application
+typechecking: Next's global environment type was applied to imported Node-only
+database tooling. The runner now has a separate strict Node compiler context,
+included in the ordinary web typecheck command and the guarded CI job. No check
+is removed and the historical child-process credential boundary is unchanged.

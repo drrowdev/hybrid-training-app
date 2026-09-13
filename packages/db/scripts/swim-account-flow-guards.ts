@@ -20,6 +20,7 @@ export const ACCOUNT_FLOW: RefreshProfile = {
     "packages/db/scripts/__tests__/swim-account-flow-guards.test.ts",
     "packages/db/scripts/refresh-swim-review.ts", "packages/db/scripts/update-untimed-swim-review.ts",
     "apps/web/scripts/swim-account-flow.ts", "apps/web/scripts/swim-account-flow-browser.ts",
+    "apps/web/package.json", "apps/web/tsconfig.json", "apps/web/tsconfig.account-flow.json",
     "docs/knowledge/log.md", "docs/design/swimming-programme-rebuild.md",
   ],
 };
