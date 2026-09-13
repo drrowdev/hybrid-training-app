@@ -11,6 +11,7 @@ import type { SwimDecisionRecord, SwimPlanRow, SwimWorkoutRow, SwimPlanState, Sw
 import { appendReviewMigrations, inspectReviewLedger, reviewMigrations, ReviewStorageRefusal } from "../scripts/upgrade-swim-review-storage.ts";
 import { verifyMigrationDependencyParity } from "../scripts/migrate-with-evidence.ts";
 import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations } from "../scripts/untimed-swim-review-storage.ts";
+import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehearsal.ts";
 import {
   historicalMigrationHashes, productionHistoryInventory, productionSchemaInventory,
   SCHEMA_TABLE_SQL, SCHEMA_FUNCTION_SQL, SCHEMA_SHARED_SQL, SWIM_SCHEMA_TABLES, SWIM_SCHEMA_FUNCTIONS,
@@ -96,6 +97,11 @@ try {
       });
     }
     if (index < 150) {
+      if (index === 146) {
+        await rehearseProductionSwimmingUpdate(database, (name) => { stage = name; });
+        stages.push("production-updater-rehearsal");
+        stage = `migration-${index}`;
+      }
       await database.begin(async (tx) => {
         await tx.unsafe(source);
         await tx`INSERT INTO drizzle.__drizzle_migrations(hash,created_at)

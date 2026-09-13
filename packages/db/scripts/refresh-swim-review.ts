@@ -29,6 +29,7 @@ export type GuardedSourceProfile = Readonly<{
   operation: string;
   job: string;
   otherOperations: readonly string[];
+  mainOnly?: true;
 }>;
 export type RefreshProfile = GuardedSourceProfile & Readonly<{
   operation: "REFRESH_SWIM_REVIEW" | "REFRESH_SWIM_PLAN_REVIEW" | "REFRESH_SWIM_READONLY_REVIEW" | "UPGRADE_SWIM_REVIEW" | "UPDATE_UNTIMED_SWIM_REVIEW" | "TEST_SWIM_ACCOUNT_FLOW";
@@ -60,7 +61,7 @@ export function refreshContext(env: NodeJS.ProcessEnv, profile: GuardedSourcePro
   const sha = shaSchema.parse(env.EXPECTED_SHA);
   requireThat(env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
     env.GITHUB_REPOSITORY === REVIEW.repository && env.GITHUB_REF_TYPE === "branch" &&
-    env.GITHUB_REF === `refs/heads/${REVIEW.branch}` && env.GITHUB_JOB === profile.job &&
+    env.GITHUB_REF === (profile.mainOnly ? "refs/heads/main" : `refs/heads/${REVIEW.branch}`) && env.GITHUB_JOB === profile.job &&
     env[profile.operation] === "true" && profile.otherOperations.every((key) => env[key] === "false") &&
     env.GITHUB_SHA === sha && sha !== profile.reference.sha);
   return sha;
@@ -84,7 +85,9 @@ export function verifyRefreshCheckout(env: NodeJS.ProcessEnv, io: SourceIO, prof
 }
 export function verifyRefreshSource(env: NodeJS.ProcessEnv, io: SourceIO, profile: GuardedSourceProfile = originalProfile) {
   const sha = verifyRefreshCheckout(env, io, profile);
-  for (const [branch, expected] of [[`refs/heads/${REVIEW.branch}`, sha], ["refs/heads/main", BASE_SHA]]) {
+  const refs = profile.mainOnly ? [["refs/heads/main", sha]] :
+    [[`refs/heads/${REVIEW.branch}`, sha], ["refs/heads/main", BASE_SHA]];
+  for (const [branch, expected] of refs) {
     requireThat(io.git("ls-remote", "--exit-code", `https://github.com/${REVIEW.repository}.git`, branch!) === `${expected}\t${branch}`);
   }
 }

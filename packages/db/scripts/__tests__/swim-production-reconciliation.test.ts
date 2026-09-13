@@ -51,6 +51,7 @@ describe("DC-SW8 bounded read-only production history reconciliation", () => {
       ...Object.fromEntries(PRODUCTION_RECONCILIATION.otherOperations.map((key) => [key, "false"])),
     };
     const inputs = { inspect_swim_production: "true", review_upgrade_read_only: "true", expected_sha: sha,
+      accept_legacy_swim_history: "false",
       production_readonly_scope: "reconciliation",
       ...Object.fromEntries(PRODUCTION_RECONCILIATION.otherOperations.map((key) => [key.toLowerCase(), "false"])) };
     expect(productionDispatch(inputs, env)).toBe(true);

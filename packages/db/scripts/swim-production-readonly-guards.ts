@@ -12,7 +12,7 @@ export const PRODUCTION = {
 export const PRODUCTION_READONLY: GuardedSourceProfile = {
   reference: { sha: "912fa419dc101cf7737c8d940c6c76101c03cad0", run: "34765760175", kind: "automatic_ci" },
   operation: "INSPECT_SWIM_PRODUCTION", job: "inspect-swim-production",
-  otherOperations: [...ACCOUNT_FLOW.otherOperations, "TEST_SWIM_ACCOUNT_FLOW"],
+  otherOperations: [...ACCOUNT_FLOW.otherOperations, "TEST_SWIM_ACCOUNT_FLOW", "UPDATE_SWIM_PRODUCTION"],
   paths: [
     ".github/workflows/ci.yml", "packages/db/scripts/refresh-swim-review.ts",
     "packages/db/scripts/swim-production-readonly-guards.ts", "packages/db/scripts/inspect-swim-production.ts",
@@ -20,6 +20,9 @@ export const PRODUCTION_READONLY: GuardedSourceProfile = {
     "packages/db/scripts/swim-production-reconciliation.ts",
     "packages/db/scripts/__tests__/swim-production-reconciliation.test.ts",
     "packages/db/integration-tests/swim-pool-storage.mts", ".github/workflows/swim-import-storage.yml",
+    "packages/db/scripts/swim-production-update-storage.ts", "packages/db/scripts/swim-production-update-guards.ts",
+    "packages/db/scripts/update-swim-production.ts", "packages/db/integration-tests/swim-production-update-rehearsal.ts",
+    "packages/db/scripts/__tests__/swim-production-update.test.ts",
     "docs/design/swimming-programme-rebuild.md", "docs/knowledge/log.md",
   ],
 };
@@ -46,10 +49,11 @@ export function productionDispatch(inputs: Record<string, unknown> | undefined, 
   if (inputs?.inspect_swim_production === undefined || inputs.inspect_swim_production === "false") return false;
   const profile = productionProfile(env);
   requireInspection(inputs.inspect_swim_production === "true" && inputs.review_upgrade_read_only === "true" &&
+    inputs.accept_legacy_swim_history === "false" &&
     ["preflight", "reconciliation"].includes(String(inputs.production_readonly_scope)) &&
     inputs.production_readonly_scope === env.PRODUCTION_READONLY_SCOPE &&
     PRODUCTION_READONLY.otherOperations.every((key) => inputs[key.toLowerCase()] === "false") &&
-    Object.keys(inputs).every((key) => ["inspect_swim_production", "review_upgrade_read_only", "expected_sha", "production_readonly_scope",
+    Object.keys(inputs).every((key) => ["inspect_swim_production", "review_upgrade_read_only", "expected_sha", "production_readonly_scope", "accept_legacy_swim_history",
       ...PRODUCTION_READONLY.otherOperations.map((key) => key.toLowerCase())].includes(key)) &&
     env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
     env.GITHUB_REPOSITORY === REVIEW.repository && env.GITHUB_REF_TYPE === "branch" &&
@@ -93,20 +97,21 @@ export function productionAlias(raw: unknown) {
   requireInspection(parsed.success, "alias_shape");
   return parsed.data;
 }
-export function productionDeployment(raw: unknown, id: string) {
+export function productionDeployment(raw: unknown, id: string, sha: string = PRODUCTION.main) {
+  requireInspection(/^[a-f0-9]{40}$/.test(sha), "deployment_shape");
   const row = z.object({
     id: z.literal(id), projectId: z.literal(REVIEW.projectId), ownerId: z.literal(REVIEW.teamId),
     target: z.literal("production"), readyState: z.literal("READY"),
     url: z.string().regex(/^hybrid-training-app-[a-z0-9-]+\.vercel\.app$/),
     createdAt: z.number().int().nonnegative(),
-    gitSource: z.object({ type: z.literal("github"), sha: z.literal(PRODUCTION.main),
-      ref: z.enum(["main", PRODUCTION.main]) }),
-    meta: z.object({ githubCommitSha: z.literal(PRODUCTION.main), githubCommitRef: z.literal("main"),
+    gitSource: z.object({ type: z.literal("github"), sha: z.literal(sha),
+      ref: z.enum(["main", sha]) }),
+    meta: z.object({ githubCommitSha: z.literal(sha), githubCommitRef: z.literal("main"),
       githubCommitOrg: z.literal("drrowdev"), githubCommitRepo: z.literal("hybrid-training-app") }),
   }).safeParse(raw);
   requireInspection(row.success, "deployment_shape");
   const value = row.data;
-  return { id: value.id, sha: PRODUCTION.main, url: value.url, ready: true, target: value.target };
+  return { id: value.id, sha, url: value.url, ready: true, target: value.target };
 }
 const flagKeys = [
   "POOL_SWIMMING_ENABLED", "SWIM_POOL_EDITING_ENABLED", "SWIM_PRIVATE_COURSE_ENABLED",

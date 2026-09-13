@@ -13,6 +13,7 @@ on:
       - "packages/db/rollbacks/0153_swim_import_matching.down.sql"
       - "packages/db/rollbacks/0154_swim_untimed_courses.down.sql"
       - "packages/db/integration-tests/swim-pool-storage.mts"
+      - "packages/db/integration-tests/swim-production-update-rehearsal.ts"
       - "packages/db/scripts/upgrade-swim-review*.ts"
       - "packages/db/scripts/__tests__/upgrade-swim-review.test.ts"
       - "packages/db/scripts/untimed-swim-review-storage.ts"

@@ -12,6 +12,14 @@ const row = z.object({
 export type SourceMigration = { tag: string; hash: string; folderMillis: number };
 type Git = (args: string[], input?: string) => Buffer;
 const digest = (value: Buffer | string) => createHash("sha256").update(value).digest("hex");
+export function productionHistoryRows(raw: unknown) {
+  const parsed = z.array(row).max(512).safeParse(raw);
+  requireInspection(parsed.success, "ledger_inventory_shape");
+  return parsed.data;
+}
+export function productionHistoryFingerprint(raw: unknown) {
+  return digest(JSON.stringify(productionHistoryRows(raw)));
+}
 
 export function historicalMigrationHashes(git: Git) {
   const listing = git(["rev-list", "--objects", PRODUCTION.main, "--", "packages/db/drizzle"]).toString("utf8");
@@ -53,9 +61,7 @@ export function productionHistoryInventory(raw: unknown, source: readonly Source
     source.every((entry) => tag.safeParse(entry.tag).success && hash.safeParse(entry.hash).success &&
       Number.isSafeInteger(entry.folderMillis)) &&
     new Set(source.map((entry) => entry.hash)).size === source.length, "source_journal");
-  const parsed = z.array(row).max(512).safeParse(raw);
-  requireInspection(parsed.success, "ledger_inventory_shape");
-  const entries = parsed.data;
+  const entries = productionHistoryRows(raw);
   const stamps = entries.map((entry) => timestamp.safeParse(entry.created_at));
   const validStamps = stamps.flatMap((entry) => entry.success ? [BigInt(entry.data)] : []);
   const latest = validStamps.reduce<bigint | null>((value, next) => value === null || next > value ? next : value, null);
@@ -76,7 +82,7 @@ export function productionHistoryInventory(raw: unknown, source: readonly Source
   });
   return {
     rowsRead: entries.length, complete: entries.length < 512,
-    fingerprint: digest(JSON.stringify(entries)),
+    fingerprint: productionHistoryFingerprint(entries),
     sourceHistoryBlobs: history.blobs,
     malformedHashRows: entries.length - wellFormed.length,
     duplicateHashRows: wellFormed.length - new Set(wellFormed.map((entry) => entry.hash)).size,

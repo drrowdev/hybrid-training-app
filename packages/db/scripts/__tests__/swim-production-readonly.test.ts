@@ -18,6 +18,7 @@ const env = {
   PRODUCTION_READONLY_SCOPE: "preflight",
 };
 const inputs = () => ({ inspect_swim_production: "true", review_upgrade_read_only: "true", expected_sha: sha,
+  accept_legacy_swim_history: "false",
   production_readonly_scope: "preflight",
   ...Object.fromEntries(profile.otherOperations.map((key) => [key.toLowerCase(), "false"])) });
 const url = `postgresql://postgres.${PRODUCTION.project}:synthetic-only-password@aws-0-eu-north-1.pooler.supabase.com:5432/postgres?sslmode=require`;

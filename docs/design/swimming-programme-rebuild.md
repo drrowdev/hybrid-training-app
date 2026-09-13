@@ -568,3 +568,42 @@ The next decision is whether to develop and rehearse this guarded updater, or
 investigate the unmatched history first. Neither choice authorizes production
 changes. Real account-data transfer, Garmin/watch acceptance, combined training
 and backup work remain outside this task.
+
+### Guarded updater development
+
+The owner approved developing and rehearsing the proposal only. Production
+execution and acceptance of the live legacy exceptions are still separate
+decisions.
+
+The new default-off `update_swim_production` operation is main-only and requires
+`accept_legacy_swim_history=true`, an exact reviewed source, core/identity
+success and no other selected operation. Its source guard preserves the
+historical review defaults. It verifies both a Vercel-created successful GitHub
+Production deployment and the current READY Vercel alias for the exact release.
+Swimming and fixture bindings must remain unset; the frozen application source
+defaults them off. An encrypted binding is refused even if someone says its
+value is false. No flag, alias, deployment or permission is changed by the updater.
+
+Only the final operation receives credentials. Inside one bounded transaction,
+it locks the ledger, rechecks the203-record fingerprint and source/timestamp
+boundary, refuses existing swimming objects, appends only the nine unchanged
+migrations and verifies the212-row result, all five new owner policies, writer role and
+authenticated capabilities. Source and deployment guards are repeated before
+commit. Attempted, staged and confirmed work remain distinct; any failure after
+a mutation attempt requires reconciliation, even if connection closure succeeds.
+Sequence gaps after rollback are allowed and are never reset.
+
+The existing disposable pool-storage runner rehearses the same updater from
+the146-migration main schema using203 artificial history rows and an existing
+synthetic profile. It covers changed-baseline rejection, mid-batch rollback,
+a real SQL lock-timeout failure, precommit rollback, postcommit failure with
+confirmed data, replay refusal and a successful nine-file commit. Unused downs
+and fixture-only cleanup restore the test baseline; the production helper
+contains no history update, delete, truncate or sequence reset.
+
+**Access remains blocked:** current secret-name metadata shows the Vercel reader
+only in the branch-restricted `swim-review` environment, not in `Production` or
+repository scope. Main execution therefore refuses missing reader access before
+connecting to the database. No credential was retrieved, copied or re-scoped.
+A suitable read-only production verification path needs separate approval.
+No production updater dispatch is authorized by development or rehearsal.

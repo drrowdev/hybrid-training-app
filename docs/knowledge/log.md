@@ -3929,3 +3929,24 @@ The proposal is in the existing swimming design page. No merge, deployment,
 migration, flag activation, permission change or personal-data access was
 authorized or performed. Metadata collection is complete; production readiness
 and actual device/user acceptance remain separate gates.
+
+## [2026-09-13] authorization | Develop and rehearse the production updater only
+
+The owner approved a guarded updater preserving all203 legacy records and
+appending only the nine swimming changes. This is development and isolated
+rehearsal, not approval to adopt unexplained history, merge, deploy or mutate
+production.
+
+The main-only, default-off operation requires explicit legacy acknowledgement,
+exact-source/core/identity checks, successful Vercel app deployment, the live
+alias and unset feature bindings. Its transaction locks and fingerprints the
+legacy prefix, verifies schema preconditions, applies the unchanged nine SQL
+files and checks append retention, policies, roles and readiness before commit.
+Receipts distinguish staged work from confirmed commit and retain uncertainty.
+The existing disposable storage runner adds rollback, SQL-failure, retention,
+postcommit-failure and replay-refusal rehearsal cases.
+
+Read-only secret-name metadata confirms that the Vercel reader remains limited
+to `swim-review`; production and repository scope have no reader binding. No
+secret value, credential transfer or permission change occurred. Production
+execution remains blocked on that access boundary and separate owner approval.
