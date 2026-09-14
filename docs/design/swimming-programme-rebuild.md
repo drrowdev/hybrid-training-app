@@ -801,6 +801,7 @@ pace or workload can be fabricated from missing evidence.
 Implementation has started with pure eligibility/date/identity validation,
 controlled activity selection and a reusable wizard progress control. The
 conditioning component is not yet connected to final-save persistence or exposed
-as a live fifth step. Transactional storage, imported outcomes, shared surfaces
-and isolated end-to-end acceptance remain outstanding. No release acceptance is
-claimed by these initial unit checks.
+as a live fifth step. Imported-outcome confirmation now has default-off UI,
+action, export and append-only storage code; real Postgres acceptance is pending.
+The single programme/swim transaction, shared surfaces and complete isolated
+journey remain outstanding. These checkpoints do not establish release acceptance.

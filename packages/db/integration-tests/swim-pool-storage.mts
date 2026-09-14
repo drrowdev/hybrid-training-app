@@ -678,17 +678,21 @@ try {
   assert.equal((await as(b, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_current_import_outcomes`))[0]!.count, 0);
   await denied(() => as(c, (tx) => tx`UPDATE public.swim_import_outcomes SET match_id=null`), "42501");
   await denied(() => as(c, (tx) => tx`DELETE FROM public.swim_import_outcomes`), "42501");
+  stages.push(stage);
+  stage = "outcome-owned-storage-constraints";
   await denied(() => database`INSERT INTO public.swim_import_outcomes(id,user_id,workout_id,match_id,revision,metadata)
     VALUES (${randomUUID()},${b},${work.id},${matched},1,
-      ${JSON.stringify({ outcome: "completed", previousOutcomeId: null, workoutRevision: work.revision })}::jsonb)`, "23503");
+      ${JSON.stringify({ outcome: "completed", previousOutcomeId: null, workoutRevision: work.revision })}::text::jsonb)`, "23503");
   await denied(() => database`INSERT INTO public.swim_import_outcomes(id,user_id,workout_id,match_id,revision,metadata)
     VALUES (${randomUUID()},${c},${work.id},${matched},2,
-      ${JSON.stringify({ outcome: null, previousOutcomeId: confirmed, workoutRevision: work.revision })}::jsonb)`, "23514");
+      ${JSON.stringify({ outcome: null, previousOutcomeId: confirmed, workoutRevision: work.revision })}::text::jsonb)`, "23514");
   for (const workoutRevision of [null, 0, 1.5, 2147483648]) {
     await denied(() => database`INSERT INTO public.swim_import_outcomes(id,user_id,workout_id,match_id,revision,metadata)
       VALUES (${randomUUID()},${c},${work.id},${matched},2,
-        ${JSON.stringify({ outcome: "completed", previousOutcomeId: confirmed, workoutRevision })}::jsonb)`, "23514");
+        ${JSON.stringify({ outcome: "completed", previousOutcomeId: confirmed, workoutRevision })}::text::jsonb)`, "23514");
   }
+  stages.push(stage);
+  stage = "outcome-concurrency-and-removal";
   const outcomeRaces = await Promise.allSettled([
     confirm(c, "completed", confirmed), confirm(c, "stopped_early", confirmed),
   ]);
