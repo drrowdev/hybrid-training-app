@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { MIGRATION_DIAGNOSTIC_FIELDS } from "./migrate-evidence";
 import { requireInspection } from "./swim-production-readonly-guards";
-import type { productionHistoryInventory, productionSchemaInventory } from "./swim-production-reconciliation";
-import { PRODUCTION_SWIM_BASELINE } from "./swim-production-update-storage";
+import { PRODUCTION_SWIM_BASELINE, type productionHistoryInventory, type productionSchemaInventory } from "./swim-production-reconciliation";
 
 export const SHARED_PRE_FIELDS = MIGRATION_DIAGNOSTIC_FIELDS.attributes.slice(2, 25);
 export const SHARED_ACL_ROLES = ["postgres", "authenticated", "service_role", "anon", "public", "swim_writer", "other"] as const;
@@ -83,9 +82,7 @@ SELECT
   (SELECT count(*)::integer FROM defaults WHERE is_grantable) AS default_grant_options
 FROM roles r`;
 
-export function productionPostUpdateInventory(raw: unknown,
-  history: Pick<ReturnType<typeof productionHistoryInventory>, "complete" | "rowsRead" | "fingerprint">,
-  schema: ReturnType<typeof productionSchemaInventory>) {
+export function productionCompletionCatalog(raw: unknown) {
   const count = z.number().int().min(0).max(128);
   const parsed = z.array(z.object({
     shared_present: z.boolean(), writer_present: z.boolean(), swim_objects: z.boolean(), swim_routines: z.boolean(),
@@ -96,7 +93,13 @@ export function productionPostUpdateInventory(raw: unknown,
     other_default_grants: count, default_grant_options: count,
   }).strict()).length(1).safeParse(raw);
   requireInspection(parsed.success, "post_update_shape");
-  const row = parsed.data[0]!;
+  return parsed.data[0]!;
+}
+
+export function productionPostUpdateInventory(raw: unknown,
+  history: Pick<ReturnType<typeof productionHistoryInventory>, "complete" | "rowsRead" | "fingerprint">,
+  schema: ReturnType<typeof productionSchemaInventory>) {
+  const row = productionCompletionCatalog(raw);
   const historyUnchanged = history.complete && history.rowsRead === PRODUCTION_SWIM_BASELINE.entries &&
     history.fingerprint === PRODUCTION_SWIM_BASELINE.fingerprint;
   const schemaRestored = !row.writer_present && !row.swim_objects && !row.swim_routines &&

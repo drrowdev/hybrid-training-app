@@ -7,7 +7,8 @@ export const PRODUCTION_UPDATE: GuardedSourceProfile = {
   reference: { sha: "08f89f05255c2f53072d5b7b936920df481595bc", run: "34771687862", kind: "automatic_ci" },
   operation: "UPDATE_SWIM_PRODUCTION", job: "update-swim-production", mainOnly: true,
   otherOperations: [...PRODUCTION_READONLY.otherOperations.filter((key) => key !== "UPDATE_SWIM_PRODUCTION"), "INSPECT_SWIM_PRODUCTION"],
-  paths: PRODUCTION_READONLY.paths,
+  paths: [...PRODUCTION_READONLY.paths, "packages/db/scripts/swim-production-post-update.ts",
+    "packages/db/scripts/__tests__/swim-production-post-update.test.ts"],
 };
 export function productionUpdateContext(env: NodeJS.ProcessEnv) {
   const sha = refreshContext(env, PRODUCTION_UPDATE);

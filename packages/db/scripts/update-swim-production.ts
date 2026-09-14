@@ -6,6 +6,7 @@ import postgres from "postgres";
 import { z } from "zod";
 import { verifyRefreshSource } from "./refresh-swim-review";
 import { ReviewStorageRefusal } from "./upgrade-swim-review-storage";
+import { parseMigrationScid, type MigrationDiagnostic } from "./migrate-evidence";
 import {
   PRODUCTION, PRODUCTION_ROUTES, ProductionInspectionRefusal, requireInspection, productionDatabaseUrl,
   productionAlias, productionDeployment, productionDeploymentRoute, productionSettings,
@@ -32,6 +33,8 @@ export async function updateProductionSwimming(env: NodeJS.ProcessEnv, sourceOnl
     status: "failed", stages: [] as { stage: string; status: "passed" | "failed"; code: string }[],
     progress, databaseConnectionAttempted: false, databaseClosed: false, httpRequests: 0,
     httpStatus: null as number | null, databaseCode: null as string | null,
+    migrationDiagnostic: null as MigrationDiagnostic | null,
+    completionAcl: { attempted: false, staged: false, verified: false },
     legacyExceptionsAcknowledged: false, manualReconciliation: false,
     gitHubDeploymentId: null as number | null, deployment: null as ReturnType<typeof productionDeployment> | null,
     ledger: null as { entries: number; retainedEntries: number; appendedEntries: number } | null,
@@ -152,7 +155,7 @@ export async function updateProductionSwimming(env: NodeJS.ProcessEnv, sourceOnl
             productionGitHubStatusRoute(result.gitHubDeploymentId!), "github")), "deployment_evidence");
           source();
         }
-      }, progress);
+      }, progress, PRODUCTION_SWIM_BASELINE, result.completionAcl);
       await sql.end({ timeout: 5 }); sql = undefined; result.databaseClosed = true;
     });
     await step("completion", source);
@@ -160,6 +163,7 @@ export async function updateProductionSwimming(env: NodeJS.ProcessEnv, sourceOnl
   } catch (error) {
     if (error instanceof ProductionInspectionRefusal && error.httpStatus !== undefined) result.httpStatus = error.httpStatus;
     if (stage === "append" && error instanceof Error) {
+      result.migrationDiagnostic = parseMigrationScid(Object.getOwnPropertyDescriptor(error, "message")?.value) ?? null;
       const code: unknown = Object.getOwnPropertyDescriptor(error, "code")?.value;
       if (typeof code === "string" && (/^[0-9A-Z]{5}$/.test(code) ||
         ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "CONNECT_TIMEOUT", "CONNECTION_CLOSED"].includes(code))) result.databaseCode = code;

@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { PRODUCTION, requireInspection } from "./swim-production-readonly-guards";
 
+export const PRODUCTION_SWIM_BASELINE = {
+  entries: 203,
+  fingerprint: "d7629fb1b19f6403175852f70eeb85b85aee5fe1ccf06e3012be40f58f68948f",
+} as const;
+
 const tag = z.string().regex(/^\d{4}_[A-Za-z0-9_-]+$/);
 const hash = z.string().regex(/^[a-f0-9]{64}$/);
 const timestamp = z.union([z.string().regex(/^\d{1,16}$/), z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER)]);

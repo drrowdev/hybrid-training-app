@@ -4009,3 +4009,35 @@ source `635ee9ff`, preserving historical guard defaults. It reports closed
 attribute comparisons and role-count/access summaries, checks the original
 history and schema footprint, and cannot authorize updater retry. Existing
 disposable SQL tests cover the new query and metadata differences.
+
+## [2026-09-14] diagnosis | Rollback verified; redundant anon grant is missing
+
+Diagnostic source `5517fa6c` passed exact source/identity/browser CI34811800635
+and real-Postgres storage/query rehearsal34811800636. Read-only production
+run34812371814 then passed eight stages, closed its connection and verified the
+original203-row fingerprint and inspected schema/body footprint. All nine
+migrations remain pending; deployed `549110bc` still has swimming disabled.
+
+The23 shared completion attributes match0148. Direct ACL entries are
+postgres/authenticated/service-role/PUBLIC, with expected grantors and options,
+but no direct anon grant. Effective anon EXECUTE is already true via PUBLIC.
+Thus0148's exact pre-ACL membership check cannot pass this equivalent access
+representation. The read-only result does not authorize permission changes,
+guard weakening or an updater retry. A conditional same-transaction compatibility
+preparation, retaining the original SQL and final tighter permissions, is a
+proposal pending owner approval.
+
+## [2026-09-14] authorization | Guarded equivalent-ACL fix and one new attempt
+
+The owner approved developing and rehearsing the compatibility fix, merging and
+deploying it, and one new guarded production-update attempt with swimming
+disabled. Only the already-inherited anon EXECUTE permission may receive a
+redundant direct entry, within the same transaction and after exact-state checks.
+Unchanged 0148 must then remove PUBLIC and anon access as originally authored.
+
+The implementation retains every migration file/hash and the original guards,
+checks all shared attributes and remaining ACL/privilege metadata, and refuses
+any unsupported state. New rehearsal cases cover missing PUBLIC refusal,
+grant rollback and final permission/history retention. Preparation progress and
+closed SCID diagnostics are explicit; no raw error is emitted. Source validation
+and real-Postgres rehearsal remain required before the authorized new attempt.

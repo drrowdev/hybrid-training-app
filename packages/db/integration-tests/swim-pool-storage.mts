@@ -13,6 +13,7 @@ import { verifyMigrationDependencyParity } from "../scripts/migrate-with-evidenc
 import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations } from "../scripts/untimed-swim-review-storage.ts";
 import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehearsal.ts";
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
+import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
 import {
   historicalMigrationHashes, productionHistoryInventory, productionSchemaInventory,
   SCHEMA_TABLE_SQL, SCHEMA_FUNCTION_SQL, SCHEMA_SHARED_SQL, SWIM_SCHEMA_TABLES, SWIM_SCHEMA_FUNCTIONS,
@@ -683,7 +684,7 @@ try {
   const known = ["42501", "23503", "23505", "23514", "22023", "P0001", "42601", "42703", "42883", "42P01", "42P07", "42704", "25P02", "57014", "55P03", "40P01", "40001"];
   code = typeof error === "object" && error !== null && "code" in error &&
     typeof error.code === "string" ? (known.includes(error.code) ? error.code : error.code === "ERR_ASSERTION" ? "assertion" : "unexpected") : "unexpected";
-  if (error instanceof ReviewStorageRefusal) code = error.code;
+  if (error instanceof ReviewStorageRefusal || error instanceof ProductionInspectionRefusal) code = error.code;
 } finally {
   if (sql) {
     try { await sql.end({ timeout: 5 }); }

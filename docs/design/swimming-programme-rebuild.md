@@ -666,3 +666,42 @@ policy. The metadata report cannot authorize a retry. Migration SQL, permission
 guards, production settings and deployment remain unchanged. The additional
 query and detection of altered metadata are rehearsed only in the existing
 disposable pool-storage test.
+
+Read-only run34812371814 at `5517fa6c` passed all eight stages and verified the
+original203-record fingerprint and inspected schema/body footprint. All nine
+additions remain absent. The live app remains `549110bc`; swimming and fixture
+bindings remain unset.
+
+All23 inspected shared-function attributes match0148. Its ACL has the expected
+postgres, authenticated, service-role and PUBLIC entries, with matching grantors
+and options, but no direct anon entry. Anonymous EXECUTE is nevertheless already
+effective through PUBLIC. This is a concrete mismatch with0148's exact pre-ACL
+list, not a lack of effective access. No unexpected role grants or default grant
+options were observed in the bounded inspection.
+
+A possible repair is a tightly guarded, same-transaction preparation of that
+equivalent ACL representation before the unchanged0148 migration revokes both
+PUBLIC and anon. It must require the exact observed state, preserve every other
+guard and migration hash, and demonstrate no effective-access widening. This
+permission-related repair, a further protected merge and a new production
+attempt require fresh authorization. The diagnostic itself authorizes none.
+
+The owner subsequently approved the guarded compatibility fix, its rehearsal,
+merge/deployment and one new update attempt, with swimming still disabled.
+The preparation accepts only the canonical ACL or the observed equivalent ACL
+with PUBLIC EXECUTE present and the direct anon entry absent. It checks all 23
+shared attributes, exact remaining membership, grantors/options, named effective
+privileges and default-grant bounds. Any other state is refused.
+
+Only the equivalent case receives a direct anon grant, from postgres, inside
+the existing migration transaction immediately before unchanged 0148. A second
+catalogue check requires the canonical representation and unchanged effective
+access. The original migration then revokes both PUBLIC and anon, with its full
+original pre/post checks intact. No migration source or hash changes, and no
+extra permission survives the successful batch.
+
+Preparation attempt, staging and verification are recorded separately. Future
+failures can expose only the existing closed SCID diagnostic, not raw errors.
+The disposable rehearsal retains canonical-path coverage and adds refusal
+without PUBLIC access, rollback of the redundant grant, and successful update
+with the original final permissions and 203-record history retained.
