@@ -127,7 +127,7 @@ export function EditCardioForm({
           data-testid="edit-cardio-imported-note"
           className="text-xs text-foreground/70 rounded-md border border-foreground/15 p-2"
         >
-          Imported from an external activity — kept exactly as recorded.
+          Imported activity. Read-only.
         </p>
       )}
 

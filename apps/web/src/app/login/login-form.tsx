@@ -129,7 +129,7 @@ export function LoginForm({ next }: { next: string }) {
             className="cp-btn primary big"
             style={{ width: "100%" }}
           >
-            {sendPending ? "Sending code…" : "Email me a 6-digit code"}
+            {sendPending ? "Sending code…" : "Send code"}
           </button>
           {sendState?.error && (
             <p className="text-sm text-red-600">{sendState.error}</p>
@@ -142,7 +142,7 @@ export function LoginForm({ next }: { next: string }) {
           <input type="hidden" name="next" value={next} />
           <input type="hidden" name="email" value={email} />
           <p className="text-sm text-muted-foreground">
-            Enter the 6-digit code we emailed to <strong>{email}</strong>.
+            6-digit code sent to <strong>{email}</strong>.
           </p>
           <input
             name="token"
@@ -167,9 +167,6 @@ export function LoginForm({ next }: { next: string }) {
           </button>
           {verifyState?.error && (
             <p className="text-sm text-red-600">{verifyState.error}</p>
-          )}
-          {sendState?.message && !verifyState?.error && (
-            <p className="text-sm text-emerald-600">{sendState.message}</p>
           )}
           <button
             type="button"

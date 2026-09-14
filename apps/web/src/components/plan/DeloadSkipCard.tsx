@@ -136,11 +136,8 @@ export function DeloadSkipCard({
                 Skip this deload?
               </h2>
               <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-                Converts your {offer.sessionCount} un-started deload session
-                {offer.sessionCount === 1 ? "" : "s"} into a normal loading week —
-                a fresh wave at full volume and intensity. Already-logged sessions
-                are untouched. You can still take a deload later whenever fatigue
-                catches up.
+                Returns {offer.sessionCount} unstarted deload session
+                {offer.sessionCount === 1 ? "" : "s"} to full volume and intensity.
               </p>
             </div>
 

@@ -11,7 +11,7 @@
  *      marker is sent through the wizard.
  *   2. Skipping is fine — gate fires again on the next visit. So the
  *      `onboarded_at` flag is ONLY set when the user actually finished
- *      the wizard (created their first block), not when they bailed.
+ *      the wizard, including the blockless swimming path, not when they bailed.
  *   3. A returning user with TMs (or an explicit completion marker) is
  *      never sent through onboarding again.
  *   4. Equipment configuration is collected inside the wizard for fresh

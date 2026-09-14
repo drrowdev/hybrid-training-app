@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 The format is loosely based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+### Standalone pool swimming (ADR 0079, Slice 1)
+- Added swim setup, multiweek plans, Today/Plan access, whole-pool-length
+  workouts, set progress, actual results and durable offline completion.
+- Optional paired 200/400 assessments and reviewed next-week changes preserve
+  issued targets and completed history. Weekly distance stays separate by pool.
+- Pause, reviewed resume dates, finish, archive and session Trash retain swim
+  history. Export includes the native swim records.
+- Custom pool lengths accept ordinary numbers or fractions. Compact repeat sets,
+  optional split rows and actual-distance summaries simplify poolside logging.
+- Plan updates retain each workout's time limit; only active plans allow skips.
+- Additive migration 0145 and an empty-only guarded rollback are included.
+  Setup remains capability-gated and off by default. No production migration
+  has been applied; real database/mobile acceptance remains blocked.
+- Filling an existing program's cardio slots and Garmin support are not part
+  of this slice.
+- A cloud-only acceptance pass added a narrow, loopback-only local test mode
+  to the RPC/Playwright hosted-ref guards and ran the migration chain, catalog
+  seed and RPC smoke suite against a disposable synthetic Postgres stack for
+  the first time (reported 19/24, incomplete case ledger; not a reference
+  platform). A follow-up binds fixture/app local origins exactly, isolates
+  ownership-FK and duplicate-session fixtures, and documents per-case web
+  Vitest JSON reporting. All 108 guard tests pass; revised RPC cases remain
+  unexecuted. One official Supabase attempt failed during initialization.
+  The suspected stale `swim_update_plan` hang remains undiagnosed; mobile
+  and actual shared-load acceptance are blocked. No production or hosted
+  database was touched.
 ### Tactical Barbell program editing
 - Sessions with more than eight exercises can now be saved.
 - Dead Hang is prescribed and logged as a timed hold. Its editor uses seconds

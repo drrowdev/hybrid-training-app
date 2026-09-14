@@ -57,7 +57,7 @@ const PRESET_HINT: Record<EquipmentPreset, string> = {
     "No equipment beyond your body. Pull-up bar optional.",
   travel_hotel:
     "Limited dumbbells, treadmill, bands. Mostly bodyweight.",
-  custom: "Configure exactly what you have.",
+  custom: "Choose equipment individually.",
 };
 
 /** Single emoji glyph per preset — matches the simple icon style of
@@ -115,21 +115,9 @@ export function EquipmentStep({
       <div>
         <div style={kickerStyle}>Step 3</div>
         <h2 style={{ fontSize: 22, margin: "4px 0 0", letterSpacing: "-0.01em" }}>
-          What equipment do you train with?
+          Training equipment
         </h2>
       </div>
-      <p
-        style={{
-          margin: 0,
-          fontSize: 13,
-          color: "var(--cp-text-muted)",
-          lineHeight: 1.55,
-        }}
-      >
-        Pick the option closest to your usual setup. The app uses this to
-        decide which accessory movements you can actually perform — you can
-        change it any time in Settings.
-      </p>
 
       <div
         data-testid="onboarding-equipment-presets"
@@ -180,17 +168,12 @@ export function EquipmentStep({
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent: "flex-end",
           alignItems: "center",
           gap: 8,
           flexWrap: "wrap",
         }}
       >
-        <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-          {selectedPreset
-            ? `Selected: ${PRESET_LABEL[selectedPreset]}.`
-            : "Pick a preset to continue."}
-        </span>
         <button
           type="button"
           onClick={() => onToggleCustomize(!customizing)}
@@ -215,18 +198,6 @@ export function EquipmentStep({
             gap: 12,
           }}
         >
-          <p
-            style={{
-              margin: 0,
-              fontSize: 12,
-              color: "var(--cp-text-muted)",
-              lineHeight: 1.5,
-            }}
-          >
-            Fine-tune the preset below and hit <strong>Save</strong> here, then
-            return to <strong>Continue →</strong>. Skipping save will keep the
-            preset values as-is.
-          </p>
           <EquipmentEditor
             key={`${selectedPreset ?? "initial"}-${editorRev}`}
             initial={editorInitial}

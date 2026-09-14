@@ -133,10 +133,9 @@ export function VolumeAutoregCard({
                 Ease this week&apos;s accessory volume?
               </h2>
               <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-                Trims accessory sets on your remaining un-started session
+                Trims accessory sets on your remaining unstarted session
                 {offer.sessionCount === 1 ? "" : "s"} to ~{offer.keepPct}% of plan.
-                Main lifts, back-off and warm-ups are untouched. Reversible — clear
-                the trim from a session to restore the full plan.
+                Clear a session&apos;s trim to restore its full accessory volume.
               </p>
             </div>
 

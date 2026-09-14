@@ -5,9 +5,9 @@ Conventions for any AI assistant (or future-self) working on this codebase.
 ## Read first
 
 1. `docs/knowledge/hybrid-training-app-plan.md` — scope, architecture, phasing
-2. `docs/knowledge/design-constraints.md` — 108 testable engine invariants (DC-* identifiers). **This is the contract every change must respect.**
-3. `docs/knowledge/hybrid-training-index.md` — catalog of the wiki
-4. `docs/knowledge/hybrid-training-log.md` — append-only chronological record
+2. `docs/knowledge/hybrid-training-design-constraints.md` — testable engine invariants (DC-* identifiers). **This is the contract every change must respect.**
+3. `docs/knowledge/index.md` — catalog of the wiki
+4. `docs/knowledge/log.md` — append-only chronological record
 
 The three research papers (`hybrid-training-research-{v1,v2,new}.md`) are **raw sources** — never edited.
 
@@ -16,7 +16,7 @@ The three research papers (`hybrid-training-research-{v1,v2,new}.md`) are **raw 
 - **Branching:** trunk-based. Feature branch → PR → CI passes → merge to `main`. No long-lived branches.
 - **Migrations:** every PR that changes schema includes a Drizzle migration in `packages/db/drizzle/`. Backwards-compatible only on main.
 - **Domain code is pure:** `packages/domain` has no DB, no React, no I/O. Tests run in milliseconds.
-- **Engine code respects DC-*:** every constraint in `design-constraints.md` that touches the engine has at least one Vitest test in `packages/domain` or `packages/engine` that fails if the constraint is violated. Cite the DC-* identifier in the test description.
+- **Engine code respects DC-*:** every constraint in `docs/knowledge/hybrid-training-design-constraints.md` that touches the engine has at least one Vitest test in `packages/domain` or `packages/engine` that fails if the constraint is violated. Cite the DC-* identifier in the test description.
 - **Schema discipline (plan §6.8):** before adding a top-level column, answer (a) what removes it? (b) is it observable from outside the engine? If both no, put it in a `definition`/`metadata` JSONB blob. ADR required for any new top-level column.
 - **Single home for derived state (plan §6.9):** every derived value has one canonical function in `packages/domain` or `packages/engine`. UI imports; never re-derives.
 - **RLS on every user-data table:** every table with `user_id` has a `USING (auth.uid() = user_id)` policy. Verified by the multi-user e2e test in `apps/web`.
@@ -50,7 +50,7 @@ The `docs/knowledge/` directory follows the Karpathy personal-knowledge-base pat
 
 - **Raw sources** (immutable) — the three `hybrid-training-research-*.md` files. Never edited.
 - **Wiki pages** (LLM-maintained) — the plan, design constraints, eventual per-archetype / per-bucket / per-region pages.
-- **Index + log** — `hybrid-training-index.md` (catalog) and `hybrid-training-log.md` (append-only `## [YYYY-MM-DD] kind | title` record).
+- **Index + log** — `index.md` (catalog) and `log.md` (append-only `## [YYYY-MM-DD] kind | title` record).
 
 Operations:
 
@@ -58,18 +58,41 @@ Operations:
 - **Query** — read the wiki first; cite sources via the wiki's resolved citations.
 - **Lint** — periodic health check for contradictions, stale claims, orphan pages. Run quarterly.
 
-Every ingest / refine / decision / lint pass MUST append a log entry. Every new wiki page MUST be added to the index.
+Log meaningful decisions, migrations, acceptance evidence and handoffs, not every internal read or routine lint pass. Every new wiki page MUST be added to the index.
 
 ## Commit hygiene
 
 - Conventional Commits style preferred: `feat(scope): ...`, `fix(scope): ...`, `chore: ...`, `docs: ...`.
-- **Always include the AI-coauthor trailer when an AI assistant wrote or substantively edited the commit:**
+- Every source commit, including merges, must have both author and committer
+  email in the exact allowlist: `198982749+Copilot@users.noreply.github.com`,
+  `223556219+Copilot@users.noreply.github.com`,
+  `280348738+drrowdev@users.noreply.github.com`, `noreply@github.com`.
+  The first two are the official Copilot cloud and CLI bots, respectively.
+  Preserve native authorship; do not impersonate the other bot. Inspect effective
+  identities before committing, local metadata afterward, and public metadata
+  after publishing. If publication uses an unapproved identity, stop; do not
+  conceal it with another commit.
+- Native authorship by either approved Copilot bot is sufficient AI credit;
+  no extra co-author line is required in bot-authored commits. Human-authored
+  commits containing AI-written or substantively AI-edited work still require
+  AI co-author credit using either approved bot email, for example:
 
   ```
   Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+  Co-authored-by: Copilot App <223556219+Copilot@users.noreply.github.com>
   ```
 
-- PR descriptions reference any DC-* / OC-* identifiers touched and link to the relevant section of `design-constraints.md`.
+- `scripts/check-commit-identities.mjs` is shared by CI and pre-push. Check the
+  entire introduced history, never only the newest commit or `--no-merges`.
+  PRs use declared source/base OIDs; pushes use before/after OIDs; manual feature
+  runs and pre-push include all unmerged stack layers against the destination's
+  verified default branch, not archive refs or the immediate stack parent.
+  Missing boundaries fail closed. Do not bypass hooks. Existing legitimate
+  human commits do not need retroactive App trailers. History repair requires
+  fresh, explicit owner approval; a guard failure is not permission to rewrite.
+  Preserve existing credit lines and signatures; no retroactive history rewrite
+  or signature stripping. All prior rewrite approvals are consumed.
+- PR descriptions reference any DC-* / OC-* identifiers touched and link to the relevant section of `docs/knowledge/hybrid-training-design-constraints.md`.
 
 ## Tests
 
@@ -87,6 +110,6 @@ Every ingest / refine / decision / lint pass MUST append a log entry. Every new 
 - Library choices that meaningfully affect hosting cost.
 - Any user-data migration (always pause, write the down-migration too).
 - Privacy / GDPR questions.
-- Ambiguity in `design-constraints.md` interpretation.
+- Ambiguity in `docs/knowledge/hybrid-training-design-constraints.md` interpretation.
 
 Don't ask about: internal naming, micro-library choices (`clsx` vs `classnames`), test-framework config, file structure inside `packages/`.

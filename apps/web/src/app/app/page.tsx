@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SwimCalendar } from "@/components/swim/SwimCalendar";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   archetypeDisplayName,
@@ -649,6 +650,7 @@ export default async function TodayPage() {
             stacks below the main column. */}
         <div className="today-grid">
           <div className="today-main" style={{ display: "grid", gap: 18, minWidth: 0 }}>
+            <SwimCalendar todayOnly />
             {raceCheckInProps && <RaceCheckInCard {...raceCheckInProps} />}
 
             {taperBannerProps && <TaperBanner {...taperBannerProps} />}
@@ -816,7 +818,6 @@ function ActivitySection({
         <EmptyState
           variant="inline"
           title="No sessions yet"
-          body="Sessions you log appear here, grouped by date."
         />
       </section>
     );
@@ -974,9 +975,6 @@ function TodaySessionCard({
             Resume today&apos;s workout
           </div>
           <h2 style={{ fontSize: 22, margin: 0 }}>{openSession.title ?? "In-progress session"}</h2>
-          <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
-            You started this earlier today. Pick up where you left off.
-          </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <Link href={`/app/sessions/${openSession.id}`} className="cp-btn primary big">
               ⚡ Resume workout
@@ -1008,7 +1006,7 @@ function TodaySessionCard({
             {completedToday.length === 1 ? "Session logged ✓" : `${completedToday.length} sessions logged ✓`}
           </h2>
           <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
-            {completedToday[0]?.title ?? "Untitled session"} — rest and recover. Tomorrow is in the plan.
+            {completedToday[0]?.title ?? "Untitled session"}
           </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <Link href="/app/sessions/new" className="cp-btn">Add another session</Link>
@@ -1042,15 +1040,6 @@ function TodaySessionCard({
             <h2 style={{ fontSize: 22, margin: 0 }}>
               No remaining workouts
             </h2>
-            <p
-              style={{
-                color: "var(--cp-text-muted)",
-                margin: 0,
-                fontSize: 14,
-              }}
-            >
-              Today&apos;s planned sessions are completed or skipped.
-            </p>
           </section>
         </>
       );
@@ -1103,9 +1092,6 @@ function TodaySessionCard({
             <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
               <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: "-0.01em" }}>
                 Rest day
-              </div>
-              <div style={{ fontSize: 12.5, color: "var(--cp-text-muted)" }}>
-                Recovery is where the adaptation happens. Nothing scheduled today.
               </div>
             </div>
           </div>

@@ -179,7 +179,7 @@ function WeeklyCard({ weeks, range }: { weeks: WeekBucket[]; range: AdherenceRan
       <CardTitle
         title="Sessions completed vs planned"
         subtitle={subtitle}
-        tooltip="Skipped sessions count as missed: the user explicitly chose not to do the planned session, so it's a deviation from the plan — not a neutral 'didn't happen'."
+        tooltip="Skipped sessions count as missed."
         helpTerm="adherence"
       />
       <div style={{ display: "flex", gap: 12, alignItems: "stretch", flexWrap: "wrap" }}>
@@ -505,7 +505,7 @@ function SkipNotesCard({ rows }: { rows: SkippedNote[] }) {
           title="When you skipped, what did you write?"
           subtitle="Last 10 skipped sessions"
         />
-        <EmptyText>No skipped sessions in this range — nice</EmptyText>
+        <EmptyText>No skipped sessions in this range</EmptyText>
       </Card>
     );
   }

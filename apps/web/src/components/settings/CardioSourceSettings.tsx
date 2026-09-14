@@ -64,9 +64,7 @@ export function CardioSourceSettings({ initial }: CardioSourceSettingsProps) {
           lineHeight: 1.5,
         }}
       >
-        Reserves cardio days for recovery math but lets you log runs via your
-        program of choice (Runna, Garmin Coach, Hal Higdon, etc.). Applies to
-        new blocks; existing blocks aren&apos;t changed.
+        Use a separate cardio plan for new blocks.
       </p>
 
       <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
@@ -83,7 +81,7 @@ export function CardioSourceSettings({ initial }: CardioSourceSettingsProps) {
           style={{ marginTop: 3 }}
         />
         <span style={{ fontSize: 13, fontWeight: 600 }}>
-          Use external run program by default
+          Follow an external cardio plan
         </span>
       </label>
 
@@ -104,7 +102,7 @@ export function CardioSourceSettings({ initial }: CardioSourceSettingsProps) {
             value={value.name}
             onChange={(e) => setValue({ ...value, name: e.target.value })}
             maxLength={80}
-            placeholder="Runna"
+            placeholder="Plan name"
             data-testid="cardio-source-name"
             style={{
               padding: "8px 10px",

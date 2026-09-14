@@ -182,18 +182,6 @@ export function WarmupSettings({
       data-testid="warmup-settings-form"
       style={{ display: "grid", gap: 16 }}
     >
-      <p
-        style={{
-          margin: 0,
-          fontSize: 13,
-          color: "var(--cp-text-muted)",
-          lineHeight: 1.5,
-        }}
-      >
-        A warmup ladder ramps you into the working weight before each main
-        lift. Pick a preset — or go Custom and dial it in.
-      </p>
-
       <label
         style={{
           display: "grid",
@@ -238,9 +226,8 @@ export function WarmupSettings({
             background: "var(--cp-surface)",
           }}
         >
-          You&rsquo;re running {activeProgramWithOwnRamp.name}, and your ladder
-          replaces the warm-up it prescribes as part of its method. Pick{" "}
-          <strong>{programWarmupOptionLabel()}</strong> to hand it back.
+          Your ladder replaces {activeProgramWithOwnRamp.name}&rsquo;s prescribed warm-up. Choose{" "}
+          <strong>{programWarmupOptionLabel()}</strong> to restore it.
         </p>
       )}
 
@@ -351,11 +338,11 @@ export function WarmupSettings({
         >
           {followsProgram && activeProgramWithOwnRamp
             ? `${activeProgramWithOwnRamp.name}'s own warm-up`
-            : `Preview against an ${PREVIEW_TOP_PERCENT}% TM top set`}
+            : `Preview: ${PREVIEW_TOP_PERCENT}% TM top set`}
         </span>
         {preview.length === 0 ? (
           <span style={{ fontSize: 13, color: "var(--cp-text-muted)", fontStyle: "italic" }}>
-            No warm-ups — your sessions start at the first working set.
+            No warm-up sets.
           </span>
         ) : (
           <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 2 }}>
@@ -394,8 +381,8 @@ export function WarmupSettings({
             style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}
           >
             {activeProgramWithOwnRamp
-              ? `A fixed percentage of your Training Max — the same loads every week of the wave. Other programs use the standard ramp.`
-              : `Nothing is set, so you're on the standard ramp. A program that prescribes its own warm-up would use that instead.`}
+              ? `Fixed percentages of your training max each week.`
+              : `Standard ramp unless your program specifies one.`}
           </span>
         )}
       </div>

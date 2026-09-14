@@ -42,11 +42,7 @@ export function EventsClient({ todayYmd, upcoming, past }: EventsClientProps): R
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", maxWidth: 480 }}>
-          Mark the races, comps, meets and tests you&apos;re peaking for. The planner
-          uses A and B events to suggest a taper inside the final 14 days.
-        </p>
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 12 }}>
         <button
           type="button"
           data-testid="add-event-button"
@@ -78,7 +74,7 @@ export function EventsClient({ todayYmd, upcoming, past }: EventsClientProps): R
         </h2>
         {upcoming.length === 0 ? (
           <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)" }}>
-            Nothing scheduled — add one with the button above.
+            No upcoming events.
           </p>
         ) : (
           <ul ref={upcomingRef} style={{ padding: 0, margin: 0, display: "grid", gap: 8 }}>

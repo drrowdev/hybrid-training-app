@@ -34,7 +34,6 @@ export default async function AccountSettingsPage() {
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
         title="Account & data"
-        subtitle="Trash, exports, and account deletion."
       />
       <p className="text-xs text-foreground/50 font-mono">{user.email}</p>
 
@@ -42,7 +41,7 @@ export default async function AccountSettingsPage() {
         {/* Trash */}
         <div className="space-y-2">
           <p className="text-xs text-foreground/60">
-            Recover or permanently remove soft-deleted programs and sessions.
+            Restore or permanently delete programs and sessions.
           </p>
           <Link
             href="/app/settings/trash"
@@ -59,7 +58,7 @@ export default async function AccountSettingsPage() {
         {/* Export */}
         <div className="space-y-2">
           <p className="text-xs text-foreground/60">
-            Download everything we hold on you (GDPR Articles 15 + 20).
+            Download your account data (GDPR Articles 15 + 20).
           </p>
           <a
             href="/api/me/export"
@@ -86,9 +85,8 @@ export default async function AccountSettingsPage() {
               Delete account (GDPR Art. 17)
             </button>
             <p className="text-xs text-foreground/50 mt-2">
-              Hard-deletes your auth record and cascades to all sessions,
-              sets, cardio entries, limitations, and bodyweight history.
-              Irreversible.
+              Permanently deletes your account, sessions, sets, cardio entries,
+              limitations, and bodyweight history. Cannot be undone.
             </p>
           </form>
         </div>

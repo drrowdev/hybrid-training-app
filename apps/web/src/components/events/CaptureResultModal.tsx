@@ -133,7 +133,7 @@ export function CaptureResultModal({
             Capture result · {event.name}
           </h2>
           <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Record what you actually did. All fields optional.
+            All fields optional.
           </p>
         </header>
 

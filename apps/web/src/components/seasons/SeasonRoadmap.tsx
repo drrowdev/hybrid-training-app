@@ -269,9 +269,7 @@ function SeasonEmptyState({
         Plan your training season
       </h2>
       <p className={styles.emptyLead}>
-        A season is a flexible roadmap of training blocks &mdash; base &rarr;
-        focus blocks &rarr; peak. Only your current block is scheduled
-        day-by-day; future blocks are intentions you can change anytime.
+        Plan future blocks. Only the current block has a daily schedule.
       </p>
 
       <div className={styles.field}>

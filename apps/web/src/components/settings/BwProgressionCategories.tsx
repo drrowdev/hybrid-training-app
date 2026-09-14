@@ -74,7 +74,7 @@ export function BwProgressionCategories({
             checked={allowAnyNode}
             onChange={(e) => setAllowAnyNode(e.target.checked)}
           />
-          Allow any node
+          Allow any level
         </label>
       </div>
       <p
@@ -85,9 +85,7 @@ export function BwProgressionCategories({
           lineHeight: 1.5,
         }}
       >
-        Off by default — only nodes reachable from your current node are
-        selectable. Toggle on to seed an advanced starting point on any
-        family.
+        Allows levels beyond your current progression.
       </p>
       <div style={{ display: "grid", gap: 8 }}>
         {categories.map((cat) => (

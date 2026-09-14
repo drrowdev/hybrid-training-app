@@ -248,16 +248,6 @@ export function AddLimitationModal({
           >
             {initial ? "Edit limitation" : "Add a limitation"}
           </h2>
-          <p
-            style={{
-              margin: "4px 0 0",
-              fontSize: 12,
-              color: "var(--cp-text-muted)",
-            }}
-          >
-            The app will cap or rotate around the affected muscles and
-            movements you select.
-          </p>
         </header>
 
         <div style={{ display: "grid", gap: 16 }}>
@@ -271,7 +261,7 @@ export function AddLimitationModal({
               type="text"
               value={kind}
               onChange={(e) => setKind(e.target.value)}
-              placeholder="e.g. left knee, lower back, shoulder"
+              placeholder="Left knee, lower back, shoulder"
               maxLength={80}
               style={fieldStyle}
               required
@@ -327,7 +317,7 @@ export function AddLimitationModal({
 
           <div>
             <label htmlFor="lim-region" style={labelStyle}>
-              Engine region
+              Affected region
             </label>
             <select
               id="lim-region"
@@ -363,10 +353,8 @@ export function AddLimitationModal({
                 color: "var(--cp-text-muted)",
               }}
             >
-              The region is the app&apos;s strongest safety filter and
-              can&apos;t be bypassed by the allow-list below. Leave on
-              &ldquo;Auto&rdquo; to infer it from the muscles, or set it
-              explicitly (e.g. elbow / forearm for cubital tunnel).
+              Region exclusions also apply to allowed movements.
+              &ldquo;Auto&rdquo; uses the selected muscles.
             </p>
           </div>
 
@@ -379,9 +367,7 @@ export function AddLimitationModal({
                 color: "var(--cp-text-muted)",
               }}
             >
-              Pick one side for the whole limitation. To capture &ldquo;left
-              adductor&rdquo; + &ldquo;right quad&rdquo; as one issue, create
-              two limitations.
+              Use separate limitations for different muscles on opposite sides.
             </p>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               {AFFECTED_SIDES.map((s) => (

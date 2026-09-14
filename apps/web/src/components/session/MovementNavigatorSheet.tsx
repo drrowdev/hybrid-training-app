@@ -219,9 +219,6 @@ export function MovementNavigatorSheet({
             data-testid="movement-navigator-leave"
           >
             <span className="cp-nav-leave-title">Leave workout</span>
-            <span className="cp-nav-leave-sub">
-              Your logged sets are saved — you can pick this up later
-            </span>
           </a>
       </div>
     </div>

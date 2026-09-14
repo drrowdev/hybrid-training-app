@@ -47,27 +47,27 @@ const EXPERIENCE_OPTIONS: { id: TrainingExperience; label: string; hint: string 
   {
     id: "beginner_lt_6m",
     label: "Beginner",
-    hint: "New to training. <6 months. Still building the habit.",
+    hint: "Less than 6 months",
   },
   {
     id: "novice_6m_2y",
     label: "Novice",
-    hint: "6 months – 2 years. Consistent, learning the lifts.",
+    hint: "6 months – 2 years",
   },
   {
     id: "intermediate_2y_5y",
     label: "Intermediate",
-    hint: "2 – 5 years. Programmed work, plateaus emerging.",
+    hint: "2 – 5 years",
   },
   {
     id: "advanced_5y_10y",
     label: "Advanced",
-    hint: "5 – 10 years. Needs structured waves and periodisation.",
+    hint: "5 – 10 years",
   },
   {
     id: "highly_advanced_10y_plus",
     label: "Highly advanced",
-    hint: "10+ years. Long-term context, minimal noob gains.",
+    hint: "10+ years",
   },
 ];
 
@@ -99,6 +99,7 @@ export function OnboardingWizard({
   submitBwAssessmentAction,
   finishAction,
   skipAction,
+  swimHref = null,
 }: {
   initialDisplayName: string;
   initialUnits: "metric" | "imperial";
@@ -117,11 +118,13 @@ export function OnboardingWizard({
   ) => Promise<OnboardingResult>;
   finishAction: () => Promise<OnboardingResult>;
   skipAction: () => Promise<void>;
+  swimHref?: string | null;
 }) {
   const router = useRouter();
   const [step, setStep] = useState(initialStep ?? 0);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [swimming, setSwimming] = useState(false);
 
   // Step 2 state
   const [displayName, setDisplayName] = useState(initialDisplayName);
@@ -217,10 +220,10 @@ export function OnboardingWizard({
    *  "Bodyweight assessment" on the BW branch. */
   const visibleStepLabels = useMemo<readonly string[]>(
     () =>
-      useBwAssessment
+      swimming ? ["Welcome", "Profile"] : useBwAssessment
         ? STEPS.map((s) => (s === "Training maxes" ? "Bodyweight assessment" : s))
         : STEPS,
-    [useBwAssessment],
+    [useBwAssessment, swimming],
   );
   /** Index of the current step within the *visible* step list. */
   const visibleStepIndex = useMemo<number>(() => Math.max(0, step), [step]);
@@ -230,7 +233,7 @@ export function OnboardingWizard({
       case "Welcome":
         return null;
       case "Profile":
-        if (trainingExperience == null) return "Pick your training experience to continue.";
+        if (!swimming && trainingExperience == null) return "Pick your training experience to continue.";
         return null;
       case "Equipment":
         // Equipment step is foundational; Continue is always enabled.
@@ -248,7 +251,7 @@ export function OnboardingWizard({
         const anyReady = readyRoles.size > 0;
         const allSkipped = MAIN_ROLES.every((r) => modeByRole[r] === "skip");
         if (!anyReady && !allSkipped)
-          return "Enter or seed a 1RM for at least one lift, or skip them all.";
+          return "Enter or estimate at least one 1RM, or skip all lifts.";
         return null;
       }
       case "Start training":
@@ -268,7 +271,13 @@ export function OnboardingWizard({
     setError(null);
 
     if (currentLabel === "Profile") {
-      saveProfile(() => setStep((s) => s + 1));
+      saveProfile(async () => {
+        if (!swimming) { setStep((s) => s + 1); return; }
+        const result = await finishAction();
+        if (!result.ok) { setError(result.error); return; }
+        router.push(swimHref!);
+        router.refresh();
+      });
       return;
     }
     if (currentLabel === "Equipment") {
@@ -297,11 +306,11 @@ export function OnboardingWizard({
     setStep((s) => Math.max(0, s - 1));
   };
 
-  const saveProfile = (after: () => void) => {
+  const saveProfile = (after: () => void | Promise<void>) => {
     const payload: ProfilePayload = {
       displayName: displayName.trim() || null,
       units,
-      trainingExperience: trainingExperience ?? undefined,
+      trainingExperience: swimming ? undefined : trainingExperience ?? undefined,
       bodyweightKg: bodyweightKg ? Number(bodyweightKg) : undefined,
     };
     const fd = new FormData();
@@ -312,7 +321,7 @@ export function OnboardingWizard({
         setError(r.error);
         return;
       }
-      after();
+      await after();
     });
   };
 
@@ -416,7 +425,7 @@ export function OnboardingWizard({
         <ProgressPills
           total={visibleStepLabels.length}
           current={visibleStepIndex}
-          labels={visibleStepLabels}
+          labels={visibleStepLabels.map((label) => label === "Welcome" ? "Setup" : label)}
         />
         <button
           type="button"
@@ -435,7 +444,18 @@ export function OnboardingWizard({
         style={{ padding: 28, display: "grid", gap: 18 }}
       >
         {currentLabel === "Welcome" && (
-          <WelcomeStep />
+          <>
+            <WelcomeStep />
+            {swimHref && <fieldset style={{ border: 0, padding: 0, display: "grid", gap: 8 }}>
+              <legend>Start with</legend>
+              {[[false, "Strength & cardio"], [true, "Swimming"]].map(([value, label]) => (
+                <button key={String(value)} type="button" aria-pressed={swimming === value}
+                  style={cardOptionStyle(swimming === value)} onClick={() => setSwimming(value === true)}>
+                  {label}
+                </button>
+              ))}
+            </fieldset>}
+          </>
         )}
 
         {currentLabel === "Profile" && (
@@ -448,6 +468,7 @@ export function OnboardingWizard({
             setTrainingExperience={setTrainingExperience}
             bodyweightKg={bodyweightKg}
             setBodyweightKg={setBodyweightKg}
+            swimming={swimming}
           />
         )}
 
@@ -511,13 +532,7 @@ export function OnboardingWizard({
         )}
 
         {currentLabel === "Start training" && (
-          <div style={{ display: "grid", gap: 12 }}>
-            <Heading kicker="Step 5" title="Setup complete" />
-            <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.6 }}>
-              Pick your first program. You can switch or rebuild any time from
-              the program picker.
-            </p>
-          </div>
+          <Heading kicker="Step 5" title="Choose your first program" />
         )}
 
         {error && (
@@ -553,7 +568,7 @@ export function OnboardingWizard({
                 className="cp-btn primary"
                 disabled={pending || canAdvance() != null}
               >
-                {pending ? "Saving…" : "Continue →"}
+                {pending ? "Saving…" : swimming && currentLabel === "Profile" ? "Set up swimming →" : "Continue →"}
               </button>
             )}
           </div>
@@ -575,15 +590,11 @@ function WelcomeStep() {
   return (
     <>
       <div>
-        <div style={kickerStyle}>Welcome</div>
+        <div style={kickerStyle}>Setup</div>
         <h1 style={{ fontSize: 28, margin: "4px 0 0", letterSpacing: "-0.01em" }}>
-          Build a training week that fits your life.
+          Set up your training
         </h1>
       </div>
-      <p style={{ margin: 0, fontSize: 14, color: "var(--cp-text-muted)", lineHeight: 1.6 }}>
-        Your profile, equipment and main-lift maxes, then the program picker.
-        Skip any step — progress is saved as you go.
-      </p>
     </>
   );
 }
@@ -597,6 +608,7 @@ function ProfileStep({
   setTrainingExperience,
   bodyweightKg,
   setBodyweightKg,
+  swimming = false,
 }: {
   displayName: string;
   setDisplayName: (s: string) => void;
@@ -606,10 +618,11 @@ function ProfileStep({
   setTrainingExperience: (e: TrainingExperience) => void;
   bodyweightKg: string;
   setBodyweightKg: (s: string) => void;
+  swimming?: boolean;
 }) {
   return (
     <>
-      <Heading kicker="Step 2" title="A bit about you" />
+      <Heading kicker="Step 2" title="Training profile" />
       <div style={{ display: "grid", gap: 14 }}>
         <div>
           <Label>Display name (optional)</Label>
@@ -618,7 +631,7 @@ function ProfileStep({
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             maxLength={60}
-            placeholder="What should we call you?"
+            placeholder="Name"
             style={inputStyle}
           />
         </div>
@@ -656,19 +669,14 @@ function ProfileStep({
               style={{ ...inputStyle, width: 120 }}
             />
             <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-              {units === "metric" ? "kg" : "lb"} · used only to seed conservative TM defaults if you
-              don&apos;t know yours.
+              {units === "metric" ? "kg" : "lb"}
             </span>
           </div>
         </div>
 
-        <div>
+        {!swimming && <div>
           <Label>How long have you been training consistently?</Label>
-          <p style={{ margin: "4px 0 8px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-            Seeds your starting tier — the app keeps it behavioural, so it
-            refines as it observes your training.
-          </p>
-          <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
             {EXPERIENCE_OPTIONS.map((opt) => {
               const sel = opt.id === trainingExperience;
               return (
@@ -688,7 +696,7 @@ function ProfileStep({
               );
             })}
           </div>
-        </div>
+        </div>}
       </div>
     </>
   );
@@ -718,10 +726,6 @@ function TmStep({
   return (
     <>
       <Heading kicker="Step 4" title="Your main-lift maxes" />
-      <p style={{ margin: 0, fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.55 }}>
-        Enter your 1RM for each of the four main lifts, seed conservatively, or
-        skip a lift entirely. Editable later in Settings.
-      </p>
 
       <div style={{ display: "grid", gap: 12 }}>
         {roleCandidates.map((g) => {
@@ -750,7 +754,7 @@ function TmStep({
                       {m === "enter"
                         ? "Enter"
                         : m === "seed"
-                          ? "I don\u2019t know yet"
+                          ? "Estimate"
                           : "Skip"}
                     </button>
                   ))}
@@ -820,19 +824,14 @@ function TmStep({
 
               {mode === "seed" && (
                 <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-                  We&apos;ll seed{" "}
+                  Estimated 1RM:{" "}
                   <strong className="mono">
                     {seedPreview} {units === "metric" ? "kg" : "kg"}
-                  </strong>{" "}
-                  as a conservative starting TM. Recalibrate from Settings after a few sessions.
+                  </strong>
+                  . Review in Settings after a few sessions.
                 </p>
               )}
 
-              {mode === "skip" && (
-                <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}>
-                  No TM saved. Blocks that need this role will warn you before starting.
-                </p>
-              )}
             </div>
           );
         })}

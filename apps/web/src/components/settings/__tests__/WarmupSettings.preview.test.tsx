@@ -178,7 +178,8 @@ describe("WarmupSettings — DC-K4 override-and-warn", () => {
         activeProgramWithOwnRamp={ACTIVE_531}
       />,
     );
-    expect(html).toContain("No warm-ups");
+    expect(html).toContain('<option value="skip" selected="">');
+    expect(html).not.toMatch(/data-testid="warmup-preview-\d+"/);
     expect(html).toContain('data-testid="warmup-program-override-warning"');
   });
 });

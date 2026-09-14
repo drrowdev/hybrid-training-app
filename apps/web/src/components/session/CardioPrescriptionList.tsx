@@ -212,10 +212,10 @@ function ExternalCardioRow({
   const body = hasClassification
     ? null
     : richNote.length > 0
-      ? `${richNote} Tap Mark done when finished.`
+      ? richNote
       : protoNote.length > 0
-        ? `${protoNote} Tap Mark done when finished.`
-        : `Complete this cardio session, then tap Mark done.`;
+        ? protoNote
+        : null;
 
   const onClick = () => {
     if (!markCompleteAction || !plannedSessionId) return;
@@ -276,7 +276,7 @@ function ExternalCardioRow({
               {isLowConfidence && (
                 <span
                   data-testid={`cardio-external-low-confidence-${itemIndex}`}
-                  title="We weren't sure about this one — heart-rate data may have been incomplete."
+                  title="Uncertain classification: heart-rate data may be incomplete."
                   aria-label="Uncertain classification"
                   style={{
                     marginLeft: 4,

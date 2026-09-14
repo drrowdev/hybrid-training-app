@@ -38,6 +38,8 @@
     ".next/dev/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "scripts/swim-account-flow.ts",
+    "scripts/swim-account-flow-browser.ts"
   ]
 }

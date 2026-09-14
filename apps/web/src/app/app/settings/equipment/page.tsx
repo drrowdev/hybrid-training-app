@@ -47,7 +47,6 @@ export default async function EquipmentSettingsPage() {
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
         title="Equipment"
-        subtitle="Tell us what you have to train with. We use this to pick the right plate breakdown and (later) to filter accessory suggestions to gear you actually own."
       />
 
       <EquipmentEditor initial={equipment} units={units} />

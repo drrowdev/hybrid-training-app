@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { findSwimWorkoutForSession } from "@/lib/swim/navigation";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import {
   addCardioBlock,
@@ -94,6 +95,8 @@ export default async function SessionDetailPage({
     data: { user },
   } = await getAuthUser();
   if (!user) redirect("/login");
+  const swimWorkoutId = await findSwimWorkoutForSession(supabase, user.id, id);
+  if (swimWorkoutId) redirect(`/app/swim/${swimWorkoutId}`);
 
   // The production migration intentionally follows the app deploy. Until it is
   // present, omit its new column so loading an existing session stays available.
@@ -1751,7 +1754,7 @@ export default async function SessionDetailPage({
             ? "Log at least 1 strength set to finish."
             : "Log at least 1 set to finish."
           : partial
-            ? `${unloggedStrengthCount} of ${strengthItemCount} planned sets aren't logged. You can still finish; the session will be marked complete with what you logged. · Finish anyway`
+            ? `${unloggedStrengthCount} of ${strengthItemCount} planned sets aren't logged. Finish with logged sets only. · Finish anyway`
             : null;
         return (
           <FinishSessionBottomSlot

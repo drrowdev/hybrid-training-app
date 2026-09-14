@@ -16,7 +16,7 @@
  * `cardio_session` entries use the same server-side key.
  */
 
-export type OutboxOp = "set" | "cardio" | "cardio_session" | "complete";
+export type OutboxOp = "set" | "cardio" | "cardio_session" | "complete" | "swim_complete";
 
 export type ActionErrorCode =
   | "validation"

@@ -268,7 +268,7 @@ function TopSetsCard({
     >
       <h2 style={{ margin: 0, fontSize: 16 }}>Top sets</h2>
       <p style={{ margin: "2px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-        Heaviest set per session, last 20. Tap a row to open that session.
+        Heaviest set per session, last 20.
       </p>
       {rows.length === 0 ? (
         <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>

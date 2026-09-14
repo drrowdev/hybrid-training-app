@@ -16,7 +16,6 @@ export default function NewSessionPage() {
       <PageHeader
         back={{ href: "/app", label: "Today" }}
         title="Start workout"
-        subtitle="Off-plan workout. Log what you actually did on the next screen."
       />
       <form action={startSession} className="space-y-4">
         <div className="space-y-2">
@@ -27,7 +26,7 @@ export default function NewSessionPage() {
             id="title"
             name="title"
             type="text"
-            placeholder="e.g. Upper push + Z2 bike"
+            placeholder="Upper push + Z2 bike"
             maxLength={120}
             className="w-full rounded-md border border-foreground/15 bg-transparent px-3 py-2 text-sm"
           />

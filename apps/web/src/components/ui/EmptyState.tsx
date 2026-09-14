@@ -1,11 +1,7 @@
 /**
  * EmptyState — shared empty-card primitive.
  *
- * "Explain what unlocks this card": every empty surface
- * should tell the user the answer ("no data"), the action ("log a run"),
- * and the reason ("…with heart-rate data populate this card") in
- * one short block. This component is the canonical render for that
- * pattern across the app.
+ * Add body copy only when the title and action need further context.
  *
  * Two variants:
  *   - card   → full-card replacement, padded, neutral border + tint,
@@ -22,7 +18,7 @@ import type { ReactElement, ReactNode } from "react";
 
 export type EmptyStateProps = {
   title: string;
-  body: string;
+  body?: string;
   action?: {
     label: string;
     href: string;
@@ -90,7 +86,7 @@ export function EmptyState({
       >
         {title}
       </div>
-      <p
+      {body && <p
         data-testid="empty-state-body"
         style={{
           margin: 0,
@@ -101,7 +97,7 @@ export function EmptyState({
         }}
       >
         {body}
-      </p>
+      </p>}
       {action != null && (
         <Link
           href={action.href}

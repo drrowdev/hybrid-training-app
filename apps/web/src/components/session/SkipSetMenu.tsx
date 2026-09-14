@@ -101,7 +101,7 @@ export function SkipSetMenu({ onConfirm, onCancel, pending, error, prompt }: Ski
           value={note}
           onChange={(e) => setNote(e.target.value)}
           maxLength={120}
-          placeholder="One-line note (optional)"
+          placeholder="Note (optional)"
           data-testid="skip-note-input"
           style={{
             padding: "8px 10px",

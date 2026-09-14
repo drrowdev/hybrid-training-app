@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { swimSchemaAvailable } from "@/lib/swim/capability";
+import { connectionColumns, importColumns, swimImportStorageAvailable } from "@/lib/swim/import-storage";
+import { exportSwimImportMatches, swimImportMatchingAvailable, type SwimImportMatch } from "@/lib/swim/import-matching";
 
 /**
  * GDPR Article 15 / 20 — right to access + portability.
@@ -67,6 +70,18 @@ export async function GET() {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }
 
+  const swimmingAvailable = await swimSchemaAvailable(supabase);
+  let swimImportsAvailable: boolean;
+  let matchesAvailable: boolean;
+  let swimMatches: SwimImportMatch[];
+  try {
+    swimImportsAvailable = await swimImportStorageAvailable(supabase);
+    matchesAvailable = swimImportsAvailable && await swimImportMatchingAvailable(supabase);
+    swimMatches = matchesAvailable ? await exportSwimImportMatches(supabase, user.id) : [];
+  }
+  catch {
+    return NextResponse.json({ error: "Swimming history could not be exported. Try again." }, { status: 503 });
+  }
   const [
     profile,
     trainingMaxes,
@@ -87,6 +102,10 @@ export async function GET() {
     engineOverrideEvents,
     regionState,
     customMovements,
+    swimPlans,
+    swimWorkouts,
+    swimConnections,
+    swimImports,
   ] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     supabase.from("training_maxes").select(MOVEMENT_JOIN).order("created_at", { ascending: true }),
@@ -107,7 +126,32 @@ export async function GET() {
     supabase.from("engine_override_events").select("*").order("occurred_at", { ascending: true }),
     supabase.from("region_state").select("*"),
     supabase.from("movements").select("*").eq("user_id", user.id),
+    swimmingAvailable
+      ? supabase.from("swim_plans").select("*").eq("user_id", user.id).order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    swimmingAvailable
+      ? supabase.from("swim_workouts").select("*").eq("user_id", user.id).order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    swimImportsAvailable
+      ? supabase.from("swim_connections").select(connectionColumns).eq("user_id", user.id).order("created_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    swimImportsAvailable
+      ? supabase.from("swim_imports").select(importColumns).eq("user_id", user.id).order("received_at", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
   ]);
+
+  if (
+    swimPlans.error ||
+    swimWorkouts.error ||
+    swimConnections.error ||
+    swimImports.error ||
+    (swimmingAvailable && (cardioLogs.error || sessions.error))
+  ) {
+    return NextResponse.json(
+      { error: "Swimming history could not be exported. Try again." },
+      { status: 503 },
+    );
+  }
 
   const exportedAt = new Date().toISOString();
   const payload = {
@@ -128,6 +172,14 @@ export async function GET() {
     session_movements: sessionMovements.data ?? [],
     set_logs: setLogs.data ?? [],
     cardio_logs: cardioLogs.data ?? [],
+    swimming_schema_available: swimmingAvailable,
+    swim_plans: swimPlans.data ?? [],
+    swim_workouts: swimWorkouts.data ?? [],
+    swimming_import_schema_available: swimImportsAvailable,
+    swim_connections: swimConnections.data ?? [],
+    swim_imports: swimImports.data ?? [],
+    swimming_import_matching_available: matchesAvailable,
+    swim_import_matches: swimMatches,
     wellness: wellness.data ?? [],
     limitations: limitations.data ?? [],
     limitation_events: limitationEvents.data ?? [],
@@ -139,7 +191,7 @@ export async function GET() {
     region_state: regionState.data ?? [],
     custom_movements: customMovements.data ?? [],
     excluded: {
-      secrets: [],
+      secrets: ["swim_connections.token_hash"],
       derived: [
         "tm_suggestions",
         "region_state_history",

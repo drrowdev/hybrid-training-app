@@ -153,7 +153,7 @@ export function RestTimer({
           type="button"
           data-testid="rest-timer-done"
           onClick={dismiss}
-          aria-label="Rest complete — tap to dismiss"
+          aria-label="Dismiss completed rest"
           style={{
             width: "100%",
             minHeight: 48,
@@ -167,7 +167,7 @@ export function RestTimer({
             cursor: "pointer",
           }}
         >
-          Ready ✓ — tap to dismiss
+          Ready ✓
         </button>
       </div>
     );
@@ -198,8 +198,8 @@ export function RestTimer({
         onClick={dismiss}
         aria-label={
           movementName
-            ? `Rest timer ${fmt(remaining)} before next ${movementName} set — tap to dismiss`
-            : `Rest timer ${fmt(remaining)} — tap to dismiss`
+            ? `Dismiss rest timer: ${fmt(remaining)} before next ${movementName} set`
+            : `Dismiss rest timer: ${fmt(remaining)}`
         }
         style={{
           flex: "0 0 auto",

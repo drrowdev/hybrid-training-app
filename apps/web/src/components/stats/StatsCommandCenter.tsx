@@ -828,7 +828,7 @@ export function StrengthDrawer({
         <p style={{ margin: 0, fontSize: 12.5, color: "var(--cp-text-muted)" }}>{data.detail}</p>
         {liftRows.length === 0 ? (
           <p style={{ margin: 0, fontSize: 12.5, color: "var(--cp-text-muted)" }}>
-            No main lift has enough logged sets in this window to chart yet.
+            Not enough main-lift sets in this period.
           </p>
         ) : (
           liftRows.map((l) => {
@@ -1223,7 +1223,7 @@ function RecoveryLoadTile({
         <EmptyState
           variant="inline"
           title="No region load yet"
-          body="Log a session and freshness builds up region by region."
+          body="Requires completed sessions."
         />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -1537,7 +1537,6 @@ function ConsistencyTile({
         <EmptyState
           variant="inline"
           title="No sessions logged yet"
-          body="Log strength and cardio sessions and your weekly rhythm builds up here."
         />
       ) : (
         <>
@@ -1796,7 +1795,7 @@ function BodyweightTile({ data, units }: { data: BodyweightTrend; units: WeightU
         <EmptyState
           variant="inline"
           title="No bodyweight logged"
-          body="Log bodyweight on the Today page or in Settings and your 30-day trend appears here."
+          body="Log bodyweight in Today or Settings."
         />
       </Tile>
     );
@@ -1861,7 +1860,7 @@ function VolumeTile({
         <EmptyState
           variant="inline"
           title="No strength volume yet"
-          body="Log working strength sets and your weekly tonnage builds up here."
+          body="Requires logged working sets."
         />
       ) : (
         <>

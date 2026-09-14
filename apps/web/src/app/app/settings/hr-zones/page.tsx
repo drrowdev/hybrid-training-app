@@ -58,11 +58,9 @@ export default async function HrZonesSettingsPage() {
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
         title="HR zones"
-        subtitle="Configure how Z1–Z5 are derived for the Time-in-HR-zones card and for any session classifier that uses HR. Changes auto-save."
       />
 
       <HrZonesSettings initial={initial} age={age} />
     </main>
   );
 }
-

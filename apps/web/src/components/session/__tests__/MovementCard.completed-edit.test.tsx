@@ -171,12 +171,6 @@ describe("PostHocSetForm — DC-K4 override-and-warn, never a hard block", () =>
     expect(html).toContain('data-testid="add-set-after-completion-save-m1"');
   });
 
-  it("states that the session stays complete", () => {
-    // Product call: a post-hoc set is a record correction, not a resumed
-    // workout — `completed_at` is never cleared.
-    expect(renderForm()).toContain("the session stays complete");
-  });
-
   it("pre-selects the movement's programmed set kind", () => {
     expect(renderForm("back_off")).toContain('value="back_off" selected=""');
   });

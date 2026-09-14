@@ -52,7 +52,6 @@ export default async function StatsBlocksIndexPage() {
       <PageHeader
         back={{ href: "/app/stats", label: "Stats" }}
         title="Block analytics"
-        subtitle="Every block you've run — open one to see e1RM progression, adherence, RPE creep, power emphasis outcomes, and wellness during the block."
       />
 
       {blocks.length === 0 ? (
@@ -81,8 +80,7 @@ function BlocksEmpty(): ReactElement {
     >
       <EmptyState
         title="No blocks finished yet"
-        body="Once you complete a block it'll appear here with summary stats — e1RM delta, PRs hit, adherence, and wellness during the block."
-        action={{ label: "Start your first →", href: "/app/plan/new" }}
+        action={{ label: "Start a block →", href: "/app/plan/new" }}
       />
     </section>
   );

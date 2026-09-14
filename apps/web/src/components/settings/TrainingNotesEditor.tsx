@@ -75,7 +75,7 @@ export function TrainingNotesEditor({
         value={value}
         rows={5}
         maxLength={4000}
-        placeholder="Write what works for you — e.g. 'Better on heavy days after a rest day.'"
+        placeholder="Training notes"
         onChange={(e) => setValue(e.target.value)}
         onBlur={save}
         onKeyDown={(e) => {
@@ -113,7 +113,7 @@ export function TrainingNotesEditor({
       >
         {pending && <span data-testid="training-notes-status">Saving…</span>}
         {!pending && dirty && (
-          <span data-testid="training-notes-status">Unsaved · blur to save</span>
+          <span data-testid="training-notes-status">Unsaved · leave field to save</span>
         )}
         {!pending && !dirty && savedAt != null && (
           <span data-testid="training-notes-status">Saved</span>

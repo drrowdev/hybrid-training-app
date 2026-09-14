@@ -81,7 +81,7 @@ export async function updateWarmupScheme(formData: FormData): Promise<void> {
     throw new Error("Warmup ladder lengths must match the set count");
   }
   if (!isWellFormedScheme(scheme)) {
-    throw new Error("Warmup scheme failed the engine validator");
+    throw new Error("Invalid warm-up settings. Check set count, percentages and reps.");
   }
 
   const { error } = await supabase

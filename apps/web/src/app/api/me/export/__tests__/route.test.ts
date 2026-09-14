@@ -11,10 +11,17 @@
  *  - Secrets and derived tables are NEVER queried and NEVER appear as payload
  *    sections; they are instead declared under `excluded`.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const fromCalls: string[] = [];
 let currentUser: { id: string; email: string; created_at: string } | null = null;
+let swimmingAvailable = true;
+let swimReadFails = false;
+let importsAvailable = true;
+let importReadFails = false;
+let matchingAvailable = true;
+let matchReadFails = false;
+const selectedColumns: Record<string, string> = {};
 
 function makeBuilder(table: string) {
   const result =
@@ -30,10 +37,16 @@ function makeBuilder(table: string) {
           },
           error: null,
         }
-      : { data: [], error: null };
+      : {
+          data: [],
+          error: (swimReadFails && table === "swim_workouts") || (importReadFails && table === "swim_imports") || (matchReadFails && table === "swim_import_matches")
+            ? { message: "read unavailable" }
+            : null,
+        };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const builder: any = {
-    select() {
+    select(columns: string) {
+      selectedColumns[table] = columns;
       return builder;
     },
     eq() {
@@ -42,11 +55,12 @@ function makeBuilder(table: string) {
     order() {
       return builder;
     },
+    range() { return builder; },
     maybeSingle() {
       return Promise.resolve(result);
     },
     // Thenable so `await supabase.from(t).select(...).order(...)` resolves.
-    then(onFulfilled: (v: { data: unknown; error: null }) => unknown) {
+    then(onFulfilled: (v: { data: unknown; error: { message: string } | null }) => unknown) {
       return Promise.resolve(result).then(onFulfilled);
     },
   };
@@ -64,11 +78,48 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: vi.fn(async () => fakeClient),
   getAuthUser: vi.fn(async () => ({ data: { user: currentUser } })),
 }));
+vi.mock("@/lib/swim/capability", () => ({
+  swimSchemaAvailable: vi.fn(async () => swimmingAvailable),
+}));
+vi.mock("@/lib/swim/import-storage", () => ({
+  swimImportStorageAvailable: vi.fn(async () => importsAvailable),
+  connectionColumns: "id,created_at,revoked_at",
+  importColumns: "id,activity_id,revision,evidence,received_at",
+}));
+vi.mock("@/lib/swim/import-matching", async (original) => ({
+  ...await original<typeof import("@/lib/swim/import-matching")>(),
+  swimImportMatchingAvailable: vi.fn(async () => matchingAvailable),
+}));
 
 import { GET } from "../route";
 
+it("retains match export while new matching is disabled and fails on an unreadable ledger", async () => {
+  vi.stubEnv("SWIM_IMPORT_MATCHING_ENABLED", "false");
+  const response = await GET();
+  expect(response.status).toBe(200);
+  expect((await response.json()).swim_import_matches).toEqual([]);
+  matchReadFails = true;
+  expect((await GET()).status).toBe(503);
+});
+
+afterEach(() => vi.unstubAllEnvs());
+
+it("does not query an uninstalled match ledger", async () => {
+  matchingAvailable = false;
+  const response = await GET();
+  expect(response.status).toBe(200);
+  expect((await response.json()).swimming_import_matching_available).toBe(false);
+  expect(fromCalls).not.toContain("swim_import_matches");
+});
+
 beforeEach(() => {
   fromCalls.length = 0;
+  swimmingAvailable = true;
+  swimReadFails = false;
+  importsAvailable = true;
+  importReadFails = false;
+  matchingAvailable = true;
+  matchReadFails = false;
   currentUser = { id: "u1", email: "u1@example.test", created_at: "2026-01-01T00:00:00Z" };
 });
 
@@ -84,6 +135,11 @@ const REQUIRED_TABLES = [
   "session_movements",
   "set_logs",
   "cardio_logs",
+  "swim_plans",
+  "swim_workouts",
+  "swim_connections",
+  "swim_imports",
+  "swim_import_matches",
   "wellness",
   "limitations",
   "limitation_events",
@@ -107,6 +163,11 @@ const REQUIRED_SECTIONS = [
   "session_movements",
   "set_logs",
   "cardio_logs",
+  "swim_plans",
+  "swim_workouts",
+  "swim_connections",
+  "swim_imports",
+  "swim_import_matches",
   "wellness",
   "limitations",
   "limitation_events",
@@ -138,6 +199,48 @@ const FORBIDDEN_TABLES = [
 ];
 
 describe("GET /api/me/export", () => {
+  it("DC-SW8 includes imported revisions but never requests connection keys or hashes", async () => {
+    const body = await (await GET()).json();
+    expect(body.swimming_import_schema_available).toBe(true);
+    expect(body.swim_imports).toEqual([]);
+    expect(selectedColumns.swim_connections).toBe("id,created_at,revoked_at");
+    expect(selectedColumns.swim_imports).not.toContain("content_hash");
+    expect(body.excluded.secrets).toContain("swim_connections.token_hash");
+  });
+  it("remains compatible before import storage is installed", async () => {
+    importsAvailable = false;
+    const body = await (await GET()).json();
+    expect(body.swimming_import_schema_available).toBe(false);
+    expect(fromCalls).not.toContain("swim_connections");
+    expect(fromCalls).not.toContain("swim_imports");
+  });
+  it("does not conceal an import-history export failure", async () => {
+    importReadFails = true;
+    expect((await GET()).status).toBe(503);
+  });
+  it("DC-SW8 exports swim history without depending on the new-setup flag", async () => {
+    const body = await (await GET()).json();
+    expect(body.swimming_schema_available).toBe(true);
+    expect(body.swim_plans).toEqual([]);
+    expect(body.swim_workouts).toEqual([]);
+  });
+
+  it("preserves app-first export before the additive swimming migration", async () => {
+    swimmingAvailable = false;
+    const body = await (await GET()).json();
+    expect(body.swimming_schema_available).toBe(false);
+    expect(fromCalls).not.toContain("swim_plans");
+    expect(fromCalls).not.toContain("swim_workouts");
+    expect(body.sessions).toEqual([]);
+  });
+
+  it("does not return a success-shaped export with missing swim history", async () => {
+    swimReadFails = true;
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(await response.json()).not.toHaveProperty("swim_workouts");
+  });
+
   it("returns 401 when unauthenticated", async () => {
     currentUser = null;
     const res = await GET();
@@ -190,9 +293,7 @@ describe("GET /api/me/export", () => {
 
   it("declares the remaining excluded secret + derived tables", async () => {
     const body = await (await GET()).json();
-    // No secret tables remain to exclude: `strava_connections` was the only
-    // entry and it was dropped in migration 0130 with the Strava removal.
-    expect(body.excluded.secrets).toEqual([]);
+    expect(body.excluded.secrets).toEqual(["swim_connections.token_hash"]);
     expect(body.excluded.derived).toEqual(
       expect.arrayContaining([
         "tm_suggestions",

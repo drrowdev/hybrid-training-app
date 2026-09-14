@@ -352,8 +352,8 @@ export default async function BodyweightProgressionPage() {
         title="Bodyweight progression"
         subtitle={
           seeded
-            ? "You have completed your assessment. Here is your current node per family."
-            : "You haven’t completed the bodyweight assessment yet. Run it to seed your starting nodes per movement family."
+            ? undefined
+            : "Complete the assessment to set starting levels."
         }
       />
       <div style={{ display: "grid", gap: 8 }}>

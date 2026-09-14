@@ -120,7 +120,6 @@ export default async function PlanHistoryPage({
       <PageHeader
         back={{ href: "/app/plan", label: "Plan" }}
         title="Program history"
-        subtitle="Every program you've run — most recent first. Expand a row to see the planned sessions and jump into anything you logged."
       />
 
       {pageBlocks.length === 0 ? (
@@ -129,10 +128,6 @@ export default async function PlanHistoryPage({
           style={{ padding: 24, display: "grid", gap: 10, justifyItems: "start" }}
         >
           <h2 style={{ margin: 0, fontSize: 16 }}>No programs yet</h2>
-          <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 13 }}>
-            Once you start your first program, it&apos;ll show up here with a per-session completion
-            ratio.
-          </p>
           <Link href="/app/plan/new" className="cp-btn primary">
             Start your first program →
           </Link>

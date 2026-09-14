@@ -121,7 +121,7 @@ export function FinishSessionBar({
         } remain. Log or explicitly skip them before finishing.`
       : disabled && loggingState?.hasStrengthSets
       ? loggingState.remainingPlannedSets > 0
-        ? `${loggingState.remainingPlannedSets} planned sets aren't logged. You can still finish; the session will be marked complete with what you logged. · Finish anyway`
+        ? `${loggingState.remainingPlannedSets} planned sets aren't logged. Finish with logged sets only. · Finish anyway`
         : null
       : subtitle;
 

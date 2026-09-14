@@ -12,6 +12,7 @@
  */
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { BackLink } from "@/components/ui/BackLink";
 import {
   AB_TRIAD_MOVEMENTS,
@@ -394,31 +395,31 @@ const PROG_INFO: Record<string, ProgInfo> = {
   "wendler-531": {
     kick: "Wendler 5/3/1",
     title: "5/3/1",
-    body: "The most trusted \u201Cget strong slowly\u201D barbell plan. It\u2019s built on a simple idea: start lighter than you think, add a little weight every few weeks, focus on the big lifts \u2014 squat, bench, deadlift and overhead press \u2014 and aim to beat your old numbers by a rep or two rather than maxing out.\n\nYou train off a conservative working weight, so sessions feel manageable and you almost never miss. Each block pushes for a few weeks, then eases off to let you recover.\n\nPatience is the whole point: it\u2019s designed to keep you progressing for years, not weeks. Best if your main goal is raw barbell strength and you want a proven, low-stress routine.",
+    body: "Barbell strength built around squat, bench, deadlift and overhead press. Uses a conservative training max, gradual load increases and planned recovery weeks.",
     meta: ["4 main lifts", "Slow, steady strength"],
   },
   [TB_PROGRAM_ID]: {
     kick: "Tactical Barbell",
     title: "Tactical Barbell",
-    body: "Strength training for people who also have to run, ruck, fight \u2014 or just have a life outside the gym. It was written by a tactical operator who needed to stay very strong without living under the barbell, so the sessions are short (often 20\u201330 minutes) and you lift at controlled, submaximal weights: hard work, but never grinding to failure.\n\nThat leaves plenty of energy for conditioning and sport. You pick a small handful of main lifts and train them often, following a percentage plan that climbs over a 6-week block before you retest your maxes.\n\nTemplates like Operator, Fighter and Zulu simply change how many days a week you lift and how many lifts you carry. Best if you want to be strong and keep doing cardio or hybrid training.",
-    meta: ["Strength + conditioning", "Short 20\u201330 min sessions"],
+    body: "Submaximal strength work alongside conditioning. Train a small cluster of main lifts using percentage-based loading. The template sets lifting frequency and block length; retest maxes between blocks.",
+    meta: ["Strength + conditioning", "Percentage-based loading"],
   },
   "green-protocol": {
     kick: "Tactical Barbell \u00B7 Green Protocol",
     title: "Green Protocol",
-    body: "Tactical Barbell\u2019s bigger sibling, for people who need serious endurance on top of strength \u2014 think military selection, tactical roles, or any hybrid athlete chasing an ultra-runner\u2019s engine with real barbell strength.\n\nInstead of just programming your lifts, it programs your running and rucking too: you build a wide aerobic base first, then ramp up intensity toward a goal. It runs in longer phases \u2014 Hybrid is the everyday baseline you can stay on indefinitely, while blocks like Capacity, Velocity and Outcome peak you for a specific event.\n\nThe guiding idea is to build the foundation gradually: the wider the base, the higher the peak. Your lifting plan is shown here in the app; you log your runs and rucks yourself. Best when endurance matters as much as strength.",
+    body: "Strength, running and rucking in longer phases. Foundation progresses through Capacity, Velocity and Outcome toward an event; Continuation offers ongoing training after that base. Log runs and rucks separately.",
     meta: ["Strength + endurance", "Event & selection prep"],
   },
   hybrid: {
     kick: "Hybrid",
     title: "Build your own",
-    body: "The do-it-all option: tell us roughly what you want \u2014 how many days a week you can train and which muscles to bias \u2014 and the app builds a balanced concurrent plan that trains strength and conditioning side by side.\n\nIt runs off the same four main lifts as everything else, so your numbers and history carry straight over, and it quietly keeps strength and cardio in balance so neither crowds the other out.\n\nThere\u2019s no fixed recipe to follow: the plan adapts to the days you give it. Best if you want a bit of everything \u2014 strength, muscle and an engine \u2014 without committing to a single named methodology.",
+    body: "Strength and cardio planned around your training days and muscle priorities.",
     meta: ["Strength + cardio", "Adapts to your goals"],
   },
   hyrox: {
     kick: "Hybrid Racing",
     title: "HYROX",
-    body: "Race-specific training for HYROX \u2014 the standardised fitness race of eight 1 km runs alternating with eight functional stations (ski erg, sled push & pull, burpee broad jumps, row, farmers carry, sandbag lunges and wall balls).\n\nThe plan periodises toward race day: a Base block builds your aerobic engine and a strength foundation, Build adds heavy strength and threshold running, Race-prep sharpens the signature \u201Ccompromised running\u201D (running hard on legs pre-fatigued by the stations) plus station circuits and a simulation or two, then a Taper leaves you fresh for the start line.\n\nYou log your running and ergs yourself; the loaded stations log against the standardised division weights. Pick your experience level (it sets a 10\u201316 week build), your division (Open / Pro / Doubles) and how many days a week you can train. Best if you\u2019re targeting a HYROX event.",
+    body: "Race preparation combining strength, running and eight functional stations. A 10\u201316 week build progresses through Base, Build, Race-prep and Taper. Experience, division and training days set the plan; loaded stations use division weights.",
     meta: ["Run + stations", "Event-targeted \u00B7 10\u201316 weeks"],
   },
 };
@@ -451,7 +452,7 @@ interface ProgramLoadoutMeta {
 const PROGRAM_LOADOUT: Record<string, ProgramLoadoutMeta> = {
   "wendler-531": {
     title: "Configure your 5/3/1 cycle",
-    sub: "Choose a template and how often you\u2019ll train. The defaults are the recommended starting point.",
+    sub: "Template and training frequency.",
     structLabel: "Cycle",
     struct: "2\u00D7 Leader \u2192 7th week \u2192 1\u00D7 Anchor",
     lenNote: "11 weeks",
@@ -459,20 +460,20 @@ const PROGRAM_LOADOUT: Record<string, ProgramLoadoutMeta> = {
   },
   [TB_PROGRAM_ID]: {
     title: "Configure your Tactical Barbell block",
-    sub: "Pick a TB template \u2014 each one sets its own training frequency and block length. Operator is the recommended starting point.",
+    sub: "Each template sets training frequency and block length.",
     structLabel: "Loading",
     struct: "Submaximal % of 1RM \u00B7 retest every 6\u201312 weeks",
   },
   "green-protocol": {
     title: "Configure your Green Protocol block",
-    sub: "Green Protocol runs in two phases. Foundation builds your base from the ground up; Continuation is your flexible long-term baseline once that base is in place. New to this? Start with Capacity.",
+    sub: "Foundation builds the base; Continuation provides ongoing training.",
     structLabel: "Conditioning",
     struct: "Prescribed in-app \u00B7 runs & rucks logged by you",
     grouped: true,
   },
   hyrox: {
     title: "Configure your HYROX build",
-    sub: "Pick your experience level (it sets a 10\u201316 week build), your division and how many days a week you can train. The plan periodises toward race day.",
+    sub: "Experience, division and training frequency.",
     structLabel: "Phases",
     struct: "Base \u2192 Build \u2192 Race-prep \u2192 Taper",
   },
@@ -1370,6 +1371,7 @@ export function ProgramPicker({
   seasonBlockId,
   prefillRaceDate,
   recoveryAdvised = false,
+  swimHref = null,
 }: {
   programs: PickerProgram[];
   anchoredKeys: string[];
@@ -1406,6 +1408,7 @@ export function ProgramPicker({
    * to run it as week 1 of this block.
    */
   recoveryAdvised?: boolean;
+  swimHref?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -1414,7 +1417,7 @@ export function ProgramPicker({
 
   // Edit mode: re-enter the wizard for an active plan. Behaves like a locked
   // preselect — start on Loadout, program fixed, schedule/loadout prefilled from
-  // the live block. Changes apply only to untouched sessions after today.
+  // the live block. Changes apply only to untouched sessions from today onward.
   const editProgram = editContext
     ? programs.find((p) => p.id === editContext.programId) ?? null
     : null;
@@ -3101,10 +3104,13 @@ export function ProgramPicker({
     return (
       <div className={styles.step}>
         <h2 className={styles.h1}>Choose your program</h2>
-        <p className={styles.sub}>
-          {"Pick the methodology you\u2019ll run. Your strength numbers, history and stats stay with you if you switch later."}
-        </p>
         <div className={styles.grid}>
+          {swimHref && <Link href={swimHref} className={styles.pcard} data-testid="program-card-swimming" aria-label="Swimming">
+            <Ticks />
+            <div className={styles.kick}>Pool</div>
+            <div className={`${styles.code} ${styles.codeWrap}`}>Swimming</div>
+            <div className={styles.pdesc}>Technique · endurance</div>
+          </Link>}
           {[...programs]
             .sort((a, b) => {
               const leftIndex = CARD_ORDER.indexOf(a.id);
@@ -4054,7 +4060,7 @@ export function ProgramPicker({
         <div className={styles.label}>Assistance volume</div>
         <p className={styles.sub} style={{ marginTop: 6 }}>
           {
-            "How much push / pull / single-leg-or-core work follows your main lifts. Your main and supplemental sets are unchanged, and a template that prescribes no assistance stays that way."
+            "Push, pull, single-leg and core volume after main lifts."
           }
         </p>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
@@ -4134,8 +4140,7 @@ export function ProgramPicker({
       >
         <div className={styles.label}>Armor supplemental clusters</div>
         <p className={styles.sub} style={{ marginTop: 6 }}>
-          Choose each cluster once. The same Supp A and Supp B choices are used
-          throughout all three Armor weeks.
+          Supplementary clusters for all three Armor weeks.
         </p>
         <div style={{ display: "grid", gap: 18 }}>
           {groups.map((group) => (
@@ -4182,11 +4187,6 @@ export function ProgramPicker({
       return (
         <div className={styles.step}>
           <h2 className={styles.h1}>{isHyrox ? "Set up your race build" : "Build for your goals"}</h2>
-          <p className={styles.sub}>
-            {isHyrox
-              ? "Pick your experience level (it sets a 10\u201316 week build), your division, and how many days a week you can train. You\u2019ll set your strength numbers next."
-              : "Tell us what you\u2019re training for and we build a balanced concurrent plan around it \u2014 the more you set, the more it\u2019s tailored to you."}
-          </p>
           <div className={styles.label}>{isHyrox ? "Your race" : "Your goals"}</div>
           <div style={{ display: "grid", gap: 14, maxWidth: 460 }}>
             {selected.fields.map((f) => (
@@ -4199,7 +4199,7 @@ export function ProgramPicker({
     return (
       <div className={styles.step}>
         <h2 className={styles.h1}>{loadoutMeta?.title ?? "Configure your block"}</h2>
-        <p className={styles.sub}>{loadoutMeta?.sub ?? "Choose how you\u2019ll run it."}</p>
+        {loadoutMeta?.sub && <p className={styles.sub}>{loadoutMeta.sub}</p>}
         <div className={styles.label}>{loadoutMeta?.grouped ? "Choose a block" : "Template"}</div>
         {renderLoadoutOptions()}
         {isTb ? (
@@ -4370,10 +4370,10 @@ export function ProgramPicker({
         : "Your strength cluster"
       : "Your benchmarks";
     const sub = isActivation
-      ? "Optional when starting from Base. Its test week establishes the main lifts. A direct Armor start requires every loaded Armor max now; supplemental A is prescribed by effort and needs no max."
+      ? "Starting maxes are optional for Base. For Armor, enter each loaded lift's max."
       : isCluster
-      ? "Pick the main lifts for your cluster. Enter a 1-rep max for each, or estimate it from a recent set."
-      : "Enter a 1-rep max for each lift, switch the variant, or estimate from a recent set.";
+      ? "Main lifts and 1-rep maxes."
+      : "Enter a 1-rep max or estimate from a recent hard set.";
 
     const activationMaxCount = relevantBenchKeys.filter(
       (key) => Number(benchVals[key]?.valueStr ?? 0) > 0,
@@ -4399,22 +4399,22 @@ export function ProgramPicker({
       : isHyrox
         ? "Your strength sessions use these 1RMs to set their loads \u2014 a submaximal %, no Training Max needed. Your run paces and station weights come from your division standard, which you'll confirm when you log. Enter the lifts you train; you can skip any you don't."
         : isActivation
-          ? "Activation owns its phase-specific exercise selection. Enter any maxes you already know; missing values remain visible and can be set from the week-5 tests before Armor begins."
+          ? "Use the week-5 tests to set missing maxes before Armor."
         : isCluster && activeTbTemplate!.structure === "split"
-          ? `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM"}. Each lift sits in an A or B session; you train each session twice a week. Tap the A/B chip to move a lift.`
-          : `Tactical Barbell loads ${useTm ? `off a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM \u2014 no Training Max required"}.${
+          ? `Tactical Barbell uses ${useTm ? `a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM"}. Train A and B twice each week.`
+          : `Tactical Barbell uses ${useTm ? `a Training Max (${tmPct}% of your 1RM)` : "a submaximal % of your 1RM"}.${
               bodyweightEntry
                 ? " An optional bodyweight movement (e.g. pull-ups) doesn\u2019t count toward the cap and is set as a % of your max reps, not a weight."
-                : " Switch a lift\u2019s variant from its dropdown."
+                : ""
             }`;
 
     const lockHint =
       selected.id === "wendler-531"
         ? "\uD83D\uDD12 5/3/1 always trains the four main lifts \u2014 squat, bench, deadlift and press."
         : isActivation
-          ? "\uD83D\uDD12 Activation uses a fixed, phase-specific loadout. These fields only set starting loads; they do not change the exercises."
+          ? "\uD83D\uDD12 Fixed exercises for each phase."
         : isCluster && activeTbTemplate!.clusterMin === activeTbTemplate!.clusterMax
-          ? `\uD83D\uDD12 ${activeTbTemplate!.name} uses a fixed cluster of exactly ${activeTbTemplate!.clusterMax} lifts. Swap a lift by changing its variant.`
+          ? `\uD83D\uDD12 ${activeTbTemplate!.name}: exactly ${activeTbTemplate!.clusterMax} lifts.`
           : null;
 
     return (
@@ -4427,8 +4427,8 @@ export function ProgramPicker({
             {activeTbTemplate?.fixedLoadout
               ? `Add a 1-rep max for ${missingRelevantBenchKeys
                   .map((key) => movementLabel(key))
-                  .join(", ")} so every programmed lift has a real load.`
-              : "Enter a 1-rep max for each lift below so the program can set your weights."}
+                  .join(", ")}.`
+              : "Enter a 1-rep max for each lift."}
           </p>
         )}
 
@@ -4543,7 +4543,7 @@ export function ProgramPicker({
         {estimate && (
           <div className={styles.pop}>
             <h4 className={styles.popH4}>Estimate from a set</h4>
-            <p className={styles.popP}>{"Enter a recent hard set and we\u2019ll work out your 1-rep max."}</p>
+            <p className={styles.popP}>Use a recent hard set.</p>
             <div className={styles.popfields}>
               <div className={styles.pf}>
                 <label>WEIGHT</label>
@@ -4711,8 +4711,7 @@ export function ProgramPicker({
         <div className={styles.label}>Rehab protocols</div>
         {libraryProtocols.length === 0 ? (
           <p className={styles.note} data-testid="rehab-library-empty">
-            No rehab protocols yet. Create one in Settings &rarr; Rehab
-            protocols, then pick it here.
+            Create a protocol in Settings &rarr; Rehab protocols.
           </p>
         ) : (
           <div className={styles.rehabProtocols}>
@@ -5348,15 +5347,6 @@ export function ProgramPicker({
     return (
       <div className={styles.step}>
         <h2 className={styles.h1}>Set your schedule</h2>
-        <p className={styles.sub}>
-          {fixedSchedule
-            ? isActivation
-              ? customizeTb
-                ? "Customize each work phase. Milestone tests and peaks stay protected."
-                : "Activation sets the lifting days for each phase. Pick when week 1 starts."
-              : `${selected.name} plans both your lifting and conditioning days \u2014 just pick a start date.`
-            : "Your training days come from your program. Pick which weekdays you'll train, then pick a start date."}
-        </p>
 
         <div style={{ marginBottom: 18 }}>
           <div className={styles.label}>Start date</div>
@@ -5367,11 +5357,6 @@ export function ProgramPicker({
             onChange={(e) => setStartedOn(e.target.value)}
             disabled={isEditing}
           />
-          <div className={styles.note} style={{ marginTop: 6 }}>
-            {isEditing
-              ? "Your start date stays fixed — edits apply to untouched workouts after today, including later this week."
-              : "Programs run in full weeks, so we start on a Monday by default."}
-          </div>
           {selected?.id === "hyrox" ? (
             <div style={{ marginTop: 16 }}>
               <div className={styles.label}>Race date (optional)</div>
@@ -5384,8 +5369,8 @@ export function ProgramPicker({
               />
               <div className={styles.note} style={{ marginTop: 6 }}>
                 {raceDate
-                  ? "Your build runs from the start date to race week, ending on a taper. We'll also add it to your races."
-                  : "Leave blank for an ongoing build that holds your fitness — no taper. Add a date to peak for a specific race."}
+                  ? "Build ends with a race-week taper. Race date is also saved to Events."
+                  : "Leave blank for an ongoing build without a taper."}
               </div>
             </div>
           ) : null}
@@ -5425,11 +5410,6 @@ export function ProgramPicker({
                 </option>
               ))}
             </select>
-            <div className={styles.note} style={{ marginTop: 6 }}>
-              {startWeekIndex === 0
-                ? "Begin at the start of the program."
-                : "Already done some of this program elsewhere? Jump in at a later phase \u2014 your plan starts there and runs to the end."}
-            </div>
           </div>
         ) : null}
 
@@ -5441,7 +5421,7 @@ export function ProgramPicker({
               ? selectedStartSchedule
                 ? `Starting ${selectedStartSchedule.label}: ${selectedStartSchedule.strength} strength, ${selectedStartSchedule.cardio} cardio and ${selectedStartSchedule.rest} rest ${selectedStartSchedule.rest === 1 ? "day" : "days"}. The schedule changes automatically with each phase.`
                 : "Activation sets the strength and conditioning schedule for each phase."
-              : `${selected.name} sets its own weekly schedule (strength and conditioning days are set by the program). It owns your calendar \u2014 you just pick the start date.`}
+              : `${selected.name} uses a fixed weekly schedule.`}
           </p>
         ) : (
           <>
@@ -5588,8 +5568,7 @@ export function ProgramPicker({
                   <div className={styles.label}>Rehab days</div>
                   {libraryProtocols.length === 0 ? (
                     <p className={styles.note} data-testid="rehab-library-empty-v1">
-                      No rehab protocols yet. Create one in Settings &rarr; Rehab
-                      protocols, then pick it here.
+                      Create a protocol in Settings &rarr; Rehab protocols.
                     </p>
                   ) : (
                     <div className={styles.activationRehabDays}>
@@ -5687,6 +5666,7 @@ export function ProgramPicker({
           them to Today instead of into a loop. */}
       <BackLink href={isEditing ? "/app/plan" : "/app"} label={isEditing ? "Plan" : "Today"} />
       <h1 className={styles.pageTitle}>{isEditing ? "Edit your plan" : "Start a program"}</h1>
+      {isEditing && swimHref && <Link href={swimHref} className={styles.btn}>Swimming →</Link>}
 
       {isEditing && (
         <div
@@ -5699,9 +5679,8 @@ export function ProgramPicker({
             borderColor: "var(--cp-border)",
           }}
         >
-          Editing your active {editProgram?.name ?? "plan"}. Past, today, and
-          anything already started or skipped stay unchanged; open workouts
-          after today can be regenerated.
+          Edits to {editProgram?.name ?? "your active plan"} apply from today
+          to workouts you haven&apos;t started, skipped or edited.
         </div>
       )}
 

@@ -41,15 +41,6 @@ export function RestTimerToggle({ initial }: { initial: boolean }) {
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 600 }}>Rest timer</div>
-          <div
-            style={{
-              fontSize: 12.5,
-              color: "var(--cp-text-muted)",
-              marginTop: 3,
-            }}
-          >
-            Counts down between sets and can buzz when it hits zero.
-          </div>
         </div>
         <button
           type="button"

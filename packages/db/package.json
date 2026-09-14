@@ -11,6 +11,7 @@
     "lint": "echo '(no lint config yet)'",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/normalize-migrations-lf.ts && drizzle-kit migrate",
+    "db:migrate:evidence": "tsx scripts/normalize-migrations-lf.ts && tsx scripts/migrate-with-evidence.ts",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx seeds/run.ts",
     "db:seed:bw": "tsx seeds/run-bw-seed.ts",

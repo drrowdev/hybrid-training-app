@@ -326,7 +326,7 @@ function deriveActivationMilestoneOverrides(
           const label = TB_MOVEMENT_LABEL[source] ?? source;
           return {
             overrides: {},
-            error: `You've swapped ${label} for more than one movement before week ${week}. Pick a single replacement so the test in that week knows which one to use.`,
+            error: `Choose one replacement for ${label} before its week ${week} test.`,
           };
         }
         const [resolved] = remaining;
@@ -663,7 +663,7 @@ export async function createProgramInstance(
       const count = orphans.reduce((n, o) => n + o.missing.length, 0);
       return {
         ok: false,
-        error: `A linked superset references ${count === 1 ? "a lift" : "lifts"} that aren't in that session anymore. Remove the link or add the ${count === 1 ? "lift" : "lifts"} back.`,
+        error: `Superset ${count === 1 ? "lift is" : "lifts are"} missing from this session. Remove the link or add the ${count === 1 ? "lift" : "lifts"} back.`,
       };
     }
   }
@@ -690,7 +690,7 @@ export async function createProgramInstance(
       return {
         ok: false,
         error:
-          "A linked superset belongs to a rehab protocol that no longer exists. Remove the link and re-create it.",
+          "Superset protocol no longer exists. Remove the link and re-create it.",
       };
     }
     const rehabOrphans = findOrphanedLinkMembers(
@@ -701,7 +701,7 @@ export async function createProgramInstance(
       const count = rehabOrphans.reduce((n, o) => n + o.missing.length, 0);
       return {
         ok: false,
-        error: `A linked superset references ${count === 1 ? "a movement" : "movements"} that aren't in that rehab protocol anymore. Remove the link or add the ${count === 1 ? "movement" : "movements"} back.`,
+        error: `Superset ${count === 1 ? "movement is" : "movements are"} missing from this protocol. Remove the link or add the ${count === 1 ? "movement" : "movements"} back.`,
       };
     }
   }
@@ -731,7 +731,7 @@ export async function createProgramInstance(
         return {
           ok: false,
           error:
-            "A linked superset belongs to a rehab protocol that no longer exists. Remove the link and re-create it.",
+            "Superset protocol no longer exists. Remove the link and re-create it.",
         };
       }
     }
@@ -754,7 +754,7 @@ export async function createProgramInstance(
       const count = orphans.reduce((n, o) => n + o.missing.length, 0);
       return {
         ok: false,
-        error: `A linked superset references ${count === 1 ? "a movement" : "movements"} that aren't in that rehab protocol anymore. Remove the link or add the ${count === 1 ? "movement" : "movements"} back.`,
+        error: `Superset ${count === 1 ? "movement is" : "movements are"} missing from this protocol. Remove the link or add the ${count === 1 ? "movement" : "movements"} back.`,
       };
     }
   }
@@ -1442,7 +1442,7 @@ async function computeForeignWrite(
     );
     if (orphan) {
       throw new Error(
-        `Customized strength slot '${orphan}' no longer exists in this template. Review the program setup.`,
+        "A customized strength session no longer exists in this template. Review the program setup.",
       );
     }
     const replacements = isTbCustomizationV1(customization)
@@ -1456,7 +1456,7 @@ async function computeForeignWrite(
     for (const movement of replacements) {
       if (!resolveMovement(movement.movement)) {
         throw new Error(
-          `Customized movement '${movement.movement}' is not available. Choose another movement.`,
+          `${movement.displayName ?? TB_MOVEMENT_LABEL[movement.movement] ?? "This movement"} is not available. Choose another movement.`,
         );
       }
     }
@@ -1484,7 +1484,7 @@ async function computeForeignWrite(
             if (!movement.sourceMovement) continue;
             if (!known?.has(movement.sourceMovement)) {
               throw new Error(
-                `Customized movement '${movement.movement}' refers to a slot this template no longer has. Review the program setup.`,
+                `${movement.displayName ?? TB_MOVEMENT_LABEL[movement.movement] ?? "This movement"} no longer has a slot in this template. Review the program setup.`,
               );
             }
           }

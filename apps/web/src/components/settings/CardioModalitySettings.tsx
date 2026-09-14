@@ -82,10 +82,8 @@ export function CardioModalitySettings({
           lineHeight: 1.5,
         }}
       >
-        Pick which cardio forms get programmed, in priority order. New blocks
-        use your top choice that fits the day and your equipment. Running is
-        the fallback — hard interval days may stay running if your picks
-        can&apos;t cover them. Leave empty to run everything.
+        Preferred order for new blocks. Defaults to running when no choice
+        fits the session or equipment.
       </p>
 
       {selected.length > 0 && (

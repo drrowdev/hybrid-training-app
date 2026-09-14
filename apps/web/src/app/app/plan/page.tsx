@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { SwimCalendar } from "@/components/swim/SwimCalendar";
+import { getSwimNavigation } from "@/lib/swim/navigation";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
@@ -84,6 +87,7 @@ export default async function PlanPage({
   if (!user) redirect("/login");
 
   const sp = await searchParams;
+  const swimNavigation = await getSwimNavigation(supabase, user.id);
   // `?new=1` requests a fresh block mid-stream; like the empty state it routes
   // to the program wizard, which archives any prior active block on deploy.
   const forceNew = sp?.new === "1";
@@ -159,12 +163,22 @@ export default async function PlanPage({
     return (
       <div style={{ display: "grid", gap: 24 }}>
         <SeasonViewTabs />
+        <SwimCalendar />
         {seasonContent}
       </div>
     );
   }
 
   if (!block || forceNew) {
+    if (!block && !forceNew && swimNavigation.hasPlans) {
+      return (
+        <div style={{ display: "grid", gap: 24 }}>
+          <PageHeader title="Plan" actions={<Link href="/app/program">Add a program</Link>} />
+          <SwimCalendar />
+          {seasonContent}
+        </div>
+      );
+    }
     // Season-enabled users with an active Season but no live block would
     // otherwise be bounced straight to the program wizard and never reach their
     // roadmap (UX audit P2). Route them to the Season view instead — unless they
@@ -374,6 +388,7 @@ export default async function PlanPage({
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
+      <SwimCalendar />
       {sp?.kept === "today" && (
         <div
           data-testid="plan-today-kept-notice"

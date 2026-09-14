@@ -28,7 +28,6 @@ export function GoalsCard() {
       <EmptyState
         variant="inline"
         title="No goals set"
-        body="Set a goal (race date, lift target, weekly volume) and we'll show progress here."
       />
     </section>
   );

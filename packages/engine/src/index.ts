@@ -33,3 +33,6 @@ export {
   type TierResult,
   type Contributor,
 } from "./tier-detection";
+
+export * from "./swimming";
+export * from "./swim-course";

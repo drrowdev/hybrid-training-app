@@ -43,7 +43,6 @@ export default async function BodyweightSettingsPage() {
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
         title="Bodyweight"
-        subtitle="Log when you weigh — weekly is plenty. Helps the app spot weight drift over time."
       />
 
       <section className="space-y-3">

@@ -352,7 +352,7 @@ export function SessionLogClient({
             data-testid="empty-session-helper"
             style={{ fontSize: 13, color: "var(--cp-text-muted)", lineHeight: 1.4 }}
           >
-            Pick a movement to start logging, or tap a planned set above to prefill the form.
+            Choose a movement or planned set.
           </div>
         )}
         <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
@@ -586,7 +586,7 @@ export function SessionLogClient({
                 </span>
               </span>
               <span className="mono" style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-                {rpe == null ? "tap to rate after the set" : `selected: ${rpe}`}
+                {rpe == null ? "Not rated" : `RPE ${rpe}`}
               </span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(10, 1fr)", gap: 4 }}>
@@ -622,9 +622,6 @@ export function SessionLogClient({
 
           <LogButton weight={weight} reps={reps} />
 
-          <div style={{ textAlign: "center", fontSize: 11, color: "var(--cp-text-muted)", marginTop: -4 }}>
-            weight &amp; reps pre-filled from last set · RPE stays blank until you tap
-          </div>
         </form>
       )}
 

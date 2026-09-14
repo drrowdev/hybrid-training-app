@@ -1,1 +1,2 @@
+node scripts/check-commit-identities.mjs pre-push "$2" || exit 1
 pnpm -r typecheck && pnpm -r --filter './packages/**' test && pnpm --filter @hta/db db:check && pnpm docs:check-drift

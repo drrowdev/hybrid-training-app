@@ -279,7 +279,12 @@ The hybrid story is the moat.
 - Race-week taper suggestions (rule-based, not AI)
 - Modality-aware scheduling: scheduler knows running has higher interference cost than cycling per `new` §1.2 and proposes substitutions when interference would block a high-priority strength session
 - ~~Strava integration: pull cardio activities, match to planned slots~~ **(shipped, then removed 2026-08-17 — paid API. Replaced by manual cardio logging + link-an-existing-activity.)**
-- Garmin integration (later — Connect API is annoying)
+- Garmin workout/calendar delivery (**owner-promoted 2026-09-11**): review and
+  edit plans in getsxc; follow scheduled workouts on Garmin, without requiring
+  in-app workout logging. Cover generated programs through a shared delivery
+  path, beginning with pool swimming on the owner's Forerunner 970. Official
+  Training API access is not yet approved; no connector is implemented.
+  See [current scope and access dependencies](./pool-swimming.md#garmin-first-owner-workflow---2026-09-11).
 
 ### Phase 4 — AI layer (backlog until Phase 3 is solid)
 

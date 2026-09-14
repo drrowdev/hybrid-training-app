@@ -17,7 +17,7 @@ import { formatDateTime, type ProfileForFormat } from "@/lib/format/datetime";
 
 export type EngineResponseSectionProps = {
   events: EngineEventRow[];
-  /** True if at least one limitation is active. Used in the empty copy. */
+  /** True if at least one limitation is active. */
   hasActiveLimitation: boolean;
   /** User's date/time preferences for the absolute-time tooltip. */
   formatProfile?: ProfileForFormat;
@@ -25,7 +25,6 @@ export type EngineResponseSectionProps = {
 
 export function EngineResponseSection({
   events,
-  hasActiveLimitation,
   formatProfile = null,
 }: EngineResponseSectionProps): ReactElement {
   return (
@@ -46,11 +45,6 @@ export function EngineResponseSection({
         <EmptyState
           variant="inline"
           title="No automatic adjustments recently"
-          body={
-            hasActiveLimitation
-              ? "When the app caps or substitutes affected movements, those adjustments appear here."
-              : "When you have an active limitation, the app automatically caps or substitutes affected movements. Recent adjustments appear here."
-          }
         />
       ) : (
         <ul

@@ -26,10 +26,6 @@ export function HingeAcknowledgementPage() {
         drills — but the gap is real. If you add a vest, belt, or bands
         later, weighted variants unlock automatically.
       </p>
-      <p style={{ margin: 0, fontSize: 11, color: "var(--cp-text-muted)" }}>
-        You can revisit your assessment any time from
-        Settings → Bodyweight progression.
-      </p>
     </div>
   );
 }

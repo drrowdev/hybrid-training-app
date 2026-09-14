@@ -54,8 +54,7 @@ export function SeasonPlanningToggle({ initial }: { initial: boolean }) {
             </span>
           </div>
           <div style={{ fontSize: 12.5, color: "var(--cp-text-muted)", marginTop: 3 }}>
-            Plan several blocks ahead toward a goal. Off by default — your normal one-block flow is
-            unchanged until you turn this on.
+            Plan several blocks toward a goal.
           </div>
         </div>
         <button

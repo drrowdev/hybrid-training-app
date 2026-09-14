@@ -55,6 +55,12 @@ covered table is dropped or an excluded (secret/derived) table leaks in.
   "session_movements": [],
   "set_logs": [],
   "cardio_logs": [],
+  "swimming_schema_available": true,
+  "swim_plans": [],
+  "swim_workouts": [],
+  "swimming_import_schema_available": true,
+  "swim_connections": [],
+  "swim_imports": [],
   "wellness": [],
   "limitations": [],
   "limitation_events": [],
@@ -67,7 +73,7 @@ covered table is dropped or an excluded (secret/derived) table leaks in.
   "custom_movements": [],
 
   "excluded": {
-    "secrets": ["strava_connections"],
+    "secrets": ["swim_connections.token_hash"],
     "derived": ["tm_suggestions", "region_state_history", "muscle_state_history",
                 "bw_diagnostics_snapshots"],
     "note": "…"
@@ -93,6 +99,10 @@ user's, never the global catalog.
 | `session_movements`          | `session_movements`          | Off-plan / freestyle movements attached to a session. Joined to `movement`. |
 | `set_logs`                   | `set_logs`                   | Individual logged sets (reps, weight, RPE, kind…). Joined to `movement`. Also carries the ADR 0070 prescribed snapshot — see below. |
 | `cardio_logs`                | `cardio_logs`                | Logged cardio sessions. Joined to `movement`.                              |
+| `swim_plans`                 | `swim_plans`                 | Standalone pool setup, lifecycle, accepted/rejected decisions and their input snapshots. |
+| `swim_workouts`              | `swim_workouts`              | Dated pool workouts, original and issued targets, revisions and ordinary-session links. |
+| `swim_connections`           | `swim_connections`           | Connection ID, creation and revocation dates; never plaintext keys or hashes. |
+| `swim_imports`               | `swim_imports`               | Every retained observation revision: receipt/activity IDs, revision, evidence and arrival time. Not planned-workout completion. |
 | `wellness`                   | `wellness`                   | Daily log rows — body weight (live), plus retained legacy wellness check-in fields (fatigue/soreness/motivation/notes) kept for history (see ADR 0018). |
 | `limitations`                | `limitations`                | Active/historical injury or training limitations.                         |
 | `limitation_events`          | `limitation_events`          | Event log of limitation changes.                                          |
@@ -103,6 +113,30 @@ user's, never the global catalog.
 | `engine_override_events`     | `engine_override_events`     | Logged overrides of engine decisions.                                     |
 | `region_state`               | `region_state`               | Per-body-region load/recovery state.                                      |
 | `custom_movements`           | `movements` (user-owned)     | The user's own custom movements (`user_id = <you>`). The global catalog is excluded. |
+
+### Native pool swimming (ADR 0079)
+
+The swim sections include retained paused, finished and archived history,
+regardless of whether new swimming setup is enabled. `swimming_schema_available`
+is false on an app-first deployment before the additive migration, where both
+new table sections are empty. A failed read of installed swim storage fails the
+export instead of silently omitting history.
+
+`cardio_logs.swim_result` retains exact native course, whole lengths,
+millisecond timings and conditions. The generic kilometre/second summary is a
+rounded projection, not the source for reconstructing pool distance or pace.
+
+### Swimming observation imports (ADR 0081)
+
+`swimming_import_schema_available` is false before migration 0150; the two
+import sections are then empty. Once installed, they are exported even when
+new imports are disabled. An unreadable capability or installed import table
+fails the export instead of silently omitting observations.
+
+All revisions are included, not just the latest correction. Connection hashes
+and internal content hashes are excluded through explicit column projections.
+Observation timing retains its reported quality and unknown native course;
+it is not converted into a verified result, an assessment or shared workload.
 
 ### Prescribed vs actual on `set_logs` (ADR 0070)
 

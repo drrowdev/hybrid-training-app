@@ -66,7 +66,6 @@ describe("QuickWorkoutSheet", () => {
     expect(html).not.toContain('data-testid="quick-tile-ride"');
     expect(html).not.toContain('data-testid="quick-tile-other"');
     expect(html).toContain("Quick workout");
-    expect(html).toContain("won&#x27;t replace your planned");
   });
 
   it("never renders a cardio duration picker row", () => {

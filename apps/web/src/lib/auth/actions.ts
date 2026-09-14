@@ -20,7 +20,7 @@ const SIGNUPS_ENABLED = false;
  */
 export async function signUp(formData: FormData) {
   if (!SIGNUPS_ENABLED) {
-    return { error: "New sign-ups are currently disabled." };
+    return { error: "Sign-ups are closed." };
   }
 
   const email = String(formData.get("email") ?? "").trim();
@@ -85,7 +85,7 @@ export async function sendEmailCode(formData: FormData) {
   });
   if (error) return { error: error.message };
 
-  return { ok: true as const, message: "We emailed you a 6-digit code." };
+  return { ok: true as const, message: "6-digit code sent." };
 }
 
 /**

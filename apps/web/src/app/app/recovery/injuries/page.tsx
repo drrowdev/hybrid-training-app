@@ -143,7 +143,6 @@ export default async function InjuriesPage() {
       <PageHeader
         back={{ href: "/app/settings", label: "Settings" }}
         title="Limitations"
-        subtitle="Flag an injury or other restriction; the app will cap or rotate around the affected muscles and movements so you can keep training around the issue."
       />
 
       {limitationOffer && (
@@ -158,7 +157,6 @@ export default async function InjuriesPage() {
           <EmptyState
             variant="card"
             title="No limitations recorded"
-            body="Limitations let the app cap or rotate around an affected muscle or movement so you can keep training around an issue."
           />
           <div style={{ display: "flex", justifyContent: "center" }}>
             <AddLimitationButton />

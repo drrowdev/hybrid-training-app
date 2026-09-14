@@ -3,6 +3,12 @@
 Status: planning · not yet implemented
 Last updated: 2026-05-25
 
+**2026-09-11 scope update:** the owner now requires outbound Garmin workout and
+training-calendar delivery. That is distinct from the activity-file import
+below; its current requirements and access dependency are recorded in
+[the Garmin-first swimming workflow](./pool-swimming.md#garmin-first-owner-workflow---2026-09-11).
+It must not be presented as implemented by a TCX/FIT import or manual export.
+
 ## TL;DR
 
 Two distinct features that share infrastructure but solve different problems:
