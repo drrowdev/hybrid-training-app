@@ -18,6 +18,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -162,6 +163,7 @@ export const trainingBlocks = pgTable("training_blocks", {
    */
   allowsTwoADays: boolean("allows_two_a_days"),
 }, (table) => [
+  unique("conditioning_blocks_owner_id_key").on(table.userId, table.id),
   check(
     "training_blocks_weeks_check",
     sql`${table.weeks} >= 1 AND ${table.weeks} <= 52`,
@@ -554,6 +556,7 @@ export const plannedSessions = pgTable(
       .notNull(),
   },
   (t) => ({
+    ownerId: unique("conditioning_sessions_owner_id_key").on(t.userId, t.id),
     blockWeekDaySlotUnique: uniqueIndex("planned_sessions_block_week_day_slot_unique_idx").on(
       t.blockId,
       t.weekIndex,

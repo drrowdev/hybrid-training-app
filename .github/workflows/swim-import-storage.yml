@@ -13,6 +13,8 @@ on:
       - "packages/db/rollbacks/0153_swim_import_matching.down.sql"
       - "packages/db/rollbacks/0154_swim_untimed_courses.down.sql"
       - "packages/db/rollbacks/0155_swim_import_outcomes.down.sql"
+      - "packages/db/rollbacks/0156_atomic_swim_conditioning.down.sql"
+      - "packages/db/integration-tests/swim-conditioning-storage.ts"
       - "packages/db/integration-tests/swim-pool-storage.mts"
       - "packages/db/integration-tests/historical-swim-migrations.ts"
       - "packages/db/integration-tests/historical-swim-migrations.json"

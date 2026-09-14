@@ -65,6 +65,9 @@ covered table is dropped or an excluded (secret/derived) table leaks in.
   "swim_import_matches": [],
   "swimming_import_outcomes_available": true,
   "swim_import_outcomes": [],
+  "swimming_conditioning_available": true,
+  "swim_conditioning_bindings": [],
+  "swim_conditioning_saves": [],
   "wellness": [],
   "limitations": [],
   "limitation_events": [],
@@ -109,6 +112,8 @@ user's, never the global catalog.
 | `swim_imports`               | `swim_imports`               | Every retained observation revision: receipt/activity IDs, revision, evidence and arrival time. Not planned-workout completion. |
 | `swim_import_matches`        | `swim_import_matches`        | Every explicit association, correction and removal with its original workout snapshot. |
 | `swim_import_outcomes`       | `swim_import_outcomes`       | User-confirmed Completed / Stopped early claims and removals, tied to exact matches. Not inferred measurements or physiological load. |
+| `swim_conditioning_bindings` | `swim_conditioning_bindings` | Owned primary-slot/swim associations, including original identities and prescription snapshots retained after primary purge. |
+| `swim_conditioning_saves`    | `swim_conditioning_saves`    | Original coupled-save receipts and input fingerprints, not the full input or credentials. |
 | `wellness`                   | `wellness`                   | Daily log rows — body weight (live), plus retained legacy wellness check-in fields (fatigue/soreness/motivation/notes) kept for history (see ADR 0018). |
 | `limitations`                | `limitations`                | Active/historical injury or training limitations.                         |
 | `limitation_events`          | `limitation_events`          | Event log of limitation changes.                                          |
@@ -121,6 +126,12 @@ user's, never the global catalog.
 | `custom_movements`           | `movements` (user-owned)     | The user's own custom movements (`user_id = <you>`). The global catalog is excluded. |
 
 ### Native pool swimming (ADR 0079)
+
+The conditioning sections (ADR0086) are available after migration0156, even when
+new conditioning saves are disabled. They use explicit safe fields, stable
+pagination and owner checks. Before installation the availability flag is false
+and both sections are empty. A failed or malformed installed-storage read fails
+the whole export rather than silently dropping retained associations.
 
 The swim sections include retained paused, finished and archived history,
 regardless of whether new swimming setup is enabled. `swimming_schema_available`

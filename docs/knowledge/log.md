@@ -4112,3 +4112,21 @@ confirmation after explicitly matching a recording. This is not permission to
 infer missing native pool, active duration, pace or workload. Association alone
 still does not establish completion. The implementation remains in development;
 initial assignment and component checks are not end-to-end or release acceptance.
+
+## [2026-09-14] implementation | Atomic programme and swimming save
+
+The imported-outcome checkpoint4387d026 passed exact-source core and storage
+workflows34878088126/34878088068. Its22 SQL stages are not the frozen22 browser
+cases or owner usability acceptance.
+
+The next development slice adds migration0156 and an empty-only down for owned
+primary-slot links and stable save receipts. The server creates or attaches a
+swim course in the primary transaction, rejects partial fit and recovers an
+unchanged request before recomputation. Authenticated direct writes are denied.
+Deferred consistency guards refuse live-slot detachment while allowing complete
+primary purge to retain original history; account deletion removes the owned
+graph. Export includes both new tables even with creation disabled.
+
+This is not a hosted rollout. The Conditioning step, shared daily/history flow
+and coordinated edits still need integration; new native/recovery/edit paths
+remain gated. See ADR0086 for schema discipline and outstanding acceptance.

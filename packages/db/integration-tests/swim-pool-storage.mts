@@ -15,6 +15,7 @@ import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehea
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
 import { historicalSwimMigrations } from "./historical-swim-migrations.ts";
+import { exerciseSwimConditioning } from "./swim-conditioning-storage.ts";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { fileURLToPath } from "node:url";
 import {
@@ -73,12 +74,13 @@ try {
     GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
   `);
   const journal: { entries: { idx: number; tag: string; when: number; breakpoints: boolean }[] } = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"));
-  assert.equal(journal.entries.length, 156);
+  assert.equal(journal.entries.length, 157);
   assert.equal(journal.entries[153].tag, "0153_swim_import_matching");
   assert.equal(journal.entries[154].tag, "0154_swim_untimed_courses");
   assert.deepEqual(journal.entries.slice(150).map((entry) => entry.tag), [
     "0150_swim_import_storage", "0151_swim_pool_changes", "0152_swim_private_courses",
     "0153_swim_import_matching", "0154_swim_untimed_courses", "0155_swim_import_outcomes",
+    "0156_atomic_swim_conditioning",
   ]);
   verifyMigrationDependencyParity();
   assert.throws(reviewMigrations, (error) => error instanceof ReviewStorageRefusal && error.code === "migration_source");
@@ -739,12 +741,31 @@ try {
   assert.equal((await as(c, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_imports`))[0]!.count, 4);
   stages.push(stage);
 
+  stage = "conditioning-migration-up-and-down";
+  const conditioningUp = readFileSync(new URL("../drizzle/0156_atomic_swim_conditioning.sql", import.meta.url), "utf8");
+  const conditioningDown = readFileSync(new URL("../rollbacks/0156_atomic_swim_conditioning.down.sql", import.meta.url), "utf8");
+  const revertConditioning = () => revertScript(conditioningDown);
+  await database.begin((tx) => tx.unsafe(conditioningUp));
+  await revertConditioning();
+  await database.begin((tx) => tx.unsafe(conditioningUp));
+  stages.push(stage);
+  await exerciseSwimConditioning(database, c, b, editedCourse.plan, {
+    started_on: today,
+    ends_on: new Date(Date.parse(`${today}T00:00:00Z`) + 13 * 86400000).toISOString().slice(0, 10),
+    definition: courseDefinition, state: courseState, workouts: courseRows,
+  }, (name) => { stage = name; });
+  stages.push("conditioning-atomic-save-and-lifecycle");
+  await denied(revertConditioning, "P0001");
+
   stage = "synthetic-cleanup-and-unused-down";
   await database`DELETE FROM auth.users WHERE id IN (${a}, ${b}, ${c}, ${d})`;
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_import_outcomes`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_import_matches`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_plans`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_workouts`)[0]!.count, 0);
+  assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_conditioning_bindings`)[0]!.count, 0);
+  assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_conditioning_saves`)[0]!.count, 0);
+  await revertConditioning();
   await revertOutcomes();
   await revertUntimed();
   await revertMatches();

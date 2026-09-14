@@ -4,6 +4,7 @@ import { swimSchemaAvailable } from "@/lib/swim/capability";
 import { connectionColumns, importColumns, swimImportStorageAvailable } from "@/lib/swim/import-storage";
 import { exportSwimImportMatches, swimImportMatchingAvailable, type SwimImportMatch } from "@/lib/swim/import-matching";
 import { exportSwimImportOutcomes, swimImportOutcomesAvailable, type SwimImportOutcome } from "@/lib/swim/import-outcomes";
+import { conditioningStorageAvailable, exportSwimConditioning } from "@/lib/swim/conditioning-storage";
 
 /**
  * GDPR Article 15 / 20 — right to access + portability.
@@ -77,12 +78,16 @@ export async function GET() {
   let swimMatches: SwimImportMatch[];
   let swimOutcomes: SwimImportOutcome[];
   let outcomesAvailable: boolean;
+  let conditioningAvailable: boolean;
+  let conditioning: Awaited<ReturnType<typeof exportSwimConditioning>>;
   try {
     swimImportsAvailable = await swimImportStorageAvailable(supabase);
     matchesAvailable = swimImportsAvailable && await swimImportMatchingAvailable(supabase);
     swimMatches = matchesAvailable ? await exportSwimImportMatches(supabase, user.id) : [];
     outcomesAvailable = matchesAvailable && await swimImportOutcomesAvailable(supabase);
     swimOutcomes = outcomesAvailable ? await exportSwimImportOutcomes(supabase, user.id) : [];
+    conditioningAvailable = swimmingAvailable && await conditioningStorageAvailable(supabase);
+    conditioning = conditioningAvailable ? await exportSwimConditioning(supabase, user.id) : { bindings: [], saves: [] };
   }
   catch {
     return NextResponse.json({ error: "Swimming history could not be exported. Try again." }, { status: 503 });
@@ -187,6 +192,9 @@ export async function GET() {
     swim_import_matches: swimMatches,
     swim_import_outcomes: swimOutcomes,
     swimming_import_outcomes_available: outcomesAvailable,
+    swimming_conditioning_available: conditioningAvailable,
+    swim_conditioning_bindings: conditioning.bindings,
+    swim_conditioning_saves: conditioning.saves,
     wellness: wellness.data ?? [],
     limitations: limitations.data ?? [],
     limitation_events: limitationEvents.data ?? [],

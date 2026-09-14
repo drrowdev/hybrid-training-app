@@ -23,6 +23,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
@@ -68,6 +69,7 @@ export const programInstances = pgTable(
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (t) => ({
+    ownerId: unique("conditioning_instances_owner_id_key").on(t.userId, t.id),
     userStatusIdx: index("program_instances_user_status_idx").on(t.userId, t.status),
     customizationVersionCheck: check(
       "program_instances_customization_version_check",

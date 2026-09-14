@@ -800,8 +800,16 @@ pace or workload can be fabricated from missing evidence.
 
 Implementation has started with pure eligibility/date/identity validation,
 controlled activity selection and a reusable wizard progress control. The
-conditioning component is not yet connected to final-save persistence or exposed
-as a live fifth step. Imported-outcome confirmation now has default-off UI,
-action, export and append-only storage code; real Postgres acceptance is pending.
-The single programme/swim transaction, shared surfaces and complete isolated
-journey remain outstanding. These checkpoints do not establish release acceptance.
+conditioning component is not yet exposed as a live fifth step. Imported-outcome
+confirmation has default-off UI, action, export and append-only storage code;
+its development checkpoint `4387d026` passed core CI34878088126 and disposable
+storage CI34878088068. Those SQL stages are not the frozen browser casebook.
+
+The next slice adds the default-off single programme/swim transaction and
+server-action connection, stable retry receipts and exported ownership links
+([ADR0086](../adr/0086-atomic-swim-conditioning.md)). Local slot deletion cannot
+detach a swim, while whole primary purge retains original association history.
+Edits, native programmes and recovery-week insertion remain unavailable in this
+new path pending coordinated lifecycle work. Real Postgres acceptance of0156,
+wizard mounting, shared surfaces and the complete isolated journey remain
+outstanding. These checkpoints do not establish release acceptance.

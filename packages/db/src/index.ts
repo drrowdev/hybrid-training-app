@@ -19,6 +19,7 @@ export * from "./schema/set-logs";
 export * from "./schema/cardio-logs";
 export * from "./schema/swimming";
 export * from "./schema/swim-imports";
+export * from "./schema/swim-conditioning";
 export * from "./schema/wellness";
 export * from "./schema/region-state";
 export * from "./schema/region-state-history";

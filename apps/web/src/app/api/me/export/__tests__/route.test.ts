@@ -23,6 +23,8 @@ let matchingAvailable = true;
 let matchReadFails = false;
 let outcomesAvailable = true;
 let outcomeReadFails = false;
+let conditioningAvailable = true;
+let conditioningReadFails = false;
 const selectedColumns: Record<string, string> = {};
 
 function makeBuilder(table: string) {
@@ -41,7 +43,7 @@ function makeBuilder(table: string) {
         }
       : {
           data: [],
-          error: (swimReadFails && table === "swim_workouts") || (importReadFails && table === "swim_imports") || (matchReadFails && table === "swim_import_matches") || (outcomeReadFails && table === "swim_import_outcomes")
+          error: (swimReadFails && table === "swim_workouts") || (importReadFails && table === "swim_imports") || (matchReadFails && table === "swim_import_matches") || (outcomeReadFails && table === "swim_import_outcomes") || (conditioningReadFails && table === "swim_conditioning_bindings")
             ? { message: "read unavailable" }
             : null,
         };
@@ -96,6 +98,10 @@ vi.mock("@/lib/swim/import-outcomes", async (original) => ({
   ...await original<typeof import("@/lib/swim/import-outcomes")>(),
   swimImportOutcomesAvailable: vi.fn(async () => outcomesAvailable),
 }));
+vi.mock("@/lib/swim/conditioning-storage", async (original) => ({
+  ...await original<typeof import("@/lib/swim/conditioning-storage")>(),
+  conditioningStorageAvailable: vi.fn(async () => conditioningAvailable),
+}));
 
 import { GET } from "../route";
 
@@ -128,6 +134,8 @@ beforeEach(() => {
   matchReadFails = false;
   outcomesAvailable = true;
   outcomeReadFails = false;
+  conditioningAvailable = true;
+  conditioningReadFails = false;
   currentUser = { id: "u1", email: "u1@example.test", created_at: "2026-01-01T00:00:00Z" };
 });
 
@@ -149,6 +157,8 @@ const REQUIRED_TABLES = [
   "swim_imports",
   "swim_import_matches",
   "swim_import_outcomes",
+  "swim_conditioning_bindings",
+  "swim_conditioning_saves",
   "wellness",
   "limitations",
   "limitation_events",
@@ -178,6 +188,8 @@ const REQUIRED_SECTIONS = [
   "swim_imports",
   "swim_import_matches",
   "swim_import_outcomes",
+  "swim_conditioning_bindings",
+  "swim_conditioning_saves",
   "wellness",
   "limitations",
   "limitation_events",
@@ -337,5 +349,21 @@ describe("GET /api/me/export", () => {
     expect(res.headers.get("content-type")).toContain("application/json");
     expect(res.headers.get("content-disposition")).toContain("attachment");
     expect(res.headers.get("content-disposition")).toContain(".json");
+  });
+
+  it("exports an explicit unavailable state before conditioning storage is installed", async () => {
+    conditioningAvailable = false;
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      swimming_conditioning_available: false, swim_conditioning_bindings: [], swim_conditioning_saves: [],
+    });
+    expect(fromCalls).not.toContain("swim_conditioning_bindings");
+    expect(fromCalls).not.toContain("swim_conditioning_saves");
+  });
+
+  it("does not deliver an incomplete export when installed conditioning storage is unreadable", async () => {
+    conditioningReadFails = true;
+    expect((await GET()).status).toBe(503);
   });
 });
