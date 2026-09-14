@@ -9,6 +9,8 @@ GRANT SELECT, UPDATE ON public.training_maxes TO conditioning_writer;
 GRANT SELECT (id, timezone) ON public.profiles TO conditioning_writer;
 GRANT SELECT ON public.swim_plans, public.swim_workouts,
   public.swim_import_outcomes TO conditioning_writer;
+-- PostgreSQL row locks require UPDATE on at least one column, even without a write.
+GRANT UPDATE (revision) ON public.swim_plans, public.swim_workouts TO conditioning_writer;
 GRANT EXECUTE ON FUNCTION public.deploy_program_instance_atomically(jsonb,jsonb,jsonb,jsonb),
   public.swim_create_plan(date,date,jsonb,jsonb,jsonb) TO conditioning_writer;
 

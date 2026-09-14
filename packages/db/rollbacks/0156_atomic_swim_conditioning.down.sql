@@ -25,6 +25,7 @@ REVOKE EXECUTE ON FUNCTION public.deploy_program_instance_atomically(jsonb,jsonb
 REVOKE ALL ON public.training_blocks, public.planned_sessions, public.program_instances,
   public.training_maxes, public.swim_plans, public.swim_workouts, public.swim_import_outcomes FROM conditioning_writer;
 REVOKE SELECT (id, timezone) ON public.profiles FROM conditioning_writer;
+REVOKE UPDATE (revision) ON public.swim_plans, public.swim_workouts FROM conditioning_writer;
 REVOKE USAGE ON SCHEMA public, auth FROM conditioning_writer;
 DROP ROLE conditioning_writer;
 COMMIT;

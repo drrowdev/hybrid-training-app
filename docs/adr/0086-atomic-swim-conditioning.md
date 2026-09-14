@@ -58,6 +58,8 @@ these checks.
 The non-login, non-inheriting `conditioning_writer` has no RLS bypass or service
 role membership. Its bounded grants support the existing primary/swim functions
 and owner reads, not import credentials or general administrative access.
+Revision-column UPDATE grants on the two swim tables permit PostgreSQL row locks;
+the wrapper does not use them to change revisions or receive table-wide updates.
 Authenticated clients can read their own links/receipts and execute the wrapper,
 but cannot directly insert, update or delete those records.
 

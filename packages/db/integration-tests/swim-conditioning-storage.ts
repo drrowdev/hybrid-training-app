@@ -75,9 +75,12 @@ export async function exerciseSwimConditioning(
   await denied(() => deploy(null, randomUUID()), "42501");
   await denied(() => deploy(other, randomUUID()), "42501");
   assert.deepEqual(await primarySnapshot(other), otherBefore);
+  mark("conditioning-stale-plan-atomic-refusal");
   await denied(() => deploy(owner, randomUUID(), { ...attach, expected_revision: existing.revision + 1 }), "40001");
+  mark("conditioning-incomplete-fit-atomic-refusal");
   await denied(() => deploy(owner, randomUUID(), attach, planned.slice(1)), "22023");
   assert.deepEqual(await primarySnapshot(owner), before);
+  mark("conditioning-bounded-writer-grants");
   await denied(() => as(owner, (tx) => tx`INSERT INTO public.swim_conditioning_saves(user_id,request_id)
     VALUES (${owner},${randomUUID()})`), "42501");
   const grants = await database`SELECT rolname,
@@ -86,6 +89,13 @@ export async function exerciseSwimConditioning(
   assert.deepEqual(Object.fromEntries(grants.map((row) => [row.rolname, row.allowed])), {
     anon: false, authenticated: true, service_role: false,
   });
+  for (const table of ["swim_plans", "swim_workouts"]) {
+    const privilege = (await database`SELECT
+      has_table_privilege('conditioning_writer',${`public.${table}`},'UPDATE') AS full_update,
+      has_column_privilege('conditioning_writer',${`public.${table}`},'revision','UPDATE') AS lock_column,
+      has_column_privilege('conditioning_writer',${`public.${table}`},'definition','UPDATE') AS definition_update`)[0]!;
+    assert.deepEqual(privilege, { full_update: false, lock_column: true, definition_update: false });
+  }
 
   mark("conditioning-existing-plan-and-replay");
   const requestId = randomUUID();
