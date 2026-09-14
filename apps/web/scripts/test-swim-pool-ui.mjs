@@ -25,6 +25,7 @@ try {
         import { WorkoutScreen } from "./src/components/swim/WorkoutScreen";
         import { workoutPresentation } from "./src/lib/swim/presentation";
         import { RecordingMatcher } from "./src/components/swim/RecordingMatcher";
+        import { RecordingOutcome } from "./src/components/swim/RecordingOutcome";
         import { syntheticCourse } from "./src/lib/swim/__tests__/course-fixtures";
         import { planPrivateSwimCourse } from "./src/lib/swim/course-planning";
         import styles from "./src/components/swim/Swim.module.css";
@@ -114,6 +115,26 @@ try {
             current={matched ? { importId: "00000000-0000-4000-8000-000000000001",
               workoutId: "00000000-0000-4000-8000-000000000002", title: "Synthetic endurance workout", date: "2026-09-15" } : null} />
         </main>);
+        window.outcomeMode = "success"; window.outcomeCalls = [];
+        window.saveOutcome = async input => {
+          window.outcomeCalls.push(input);
+          if (window.outcomeMode === "delay") await new Promise(resolve => window.resolveOutcome = resolve);
+          if (window.outcomeMode === "throw") throw new Error("Synthetic unavailable action");
+          if (window.outcomeMode === "error" || window.outcomeMode === "stale")
+            return { ok: false, error: window.outcomeMode === "stale"
+              ? "The recording, match or workout changed. Reload before confirming."
+              : "The outcome could not be saved." };
+          return { ok: true, value: input.requestId,
+            ...(window.outcomeMode === "refresh-error" ? { warning: "Outcome saved. Reload the page to see the update." } : {}) };
+        };
+        window.showOutcome = (confirmed = false, enabled = true, needsReview = false) => root.render(
+          <main className={styles.page}><RecordingOutcome key={++key}
+            workoutId="00000000-0000-4000-8000-000000000002"
+            matchId="00000000-0000-4000-8000-000000000003" workoutRevision={3}
+            expectedOutcomeId={confirmed ? "00000000-0000-4000-8000-000000000004" : null}
+            current={confirmed && !needsReview ? "completed" : null}
+            enabled={enabled} canRemove={confirmed} needsReview={needsReview} otherMatch={false} /></main>
+        );
         window.showCourse = () => root.render(<main className={styles.page}><CourseImportForm key={++key} today="2026-09-14" /></main>);
         window.showCourseEdit = () => root.render(<main className={styles.page}><CourseWorkoutEditor key={++key} context={{
           planId: "00000000-0000-4000-8000-000000000001", revision: 1,
@@ -166,7 +187,7 @@ try {
     plugins: [{
       name: "synthetic-actions",
       setup(build) {
-        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions)|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions|import-outcome-actions)|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "next/navigation"
             ? "export const useRouter = () => ({ push(path) { window.destinations.push(path); }, refresh() {} });"
@@ -178,6 +199,8 @@ try {
               ? "export const connectSwimDashboard = () => window.connectDashboard(); export const disconnectSwimDashboard = id => window.disconnectDashboard(id);"
             : args.path === "@/lib/swim/import-match-actions"
               ? "export const findSwimMatchWorkouts = date => window.findWorkouts(date); export const saveSwimImportMatch = input => window.saveMatch(input);"
+            : args.path === "@/lib/swim/import-outcome-actions"
+              ? "export const saveSwimImportOutcome = input => window.saveOutcome(input);"
             : args.path === "@/components/trash/DeleteSessionButton"
               ? "export const DeleteSessionButton = () => { throw new Error('Unexpected delete control'); };"
             : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = () => { throw new Error('Unexpected save'); }; export const previewSwimPlan = createSwimPlan; export const proposeSwimWeek = createSwimPlan, proposeSwimBenchmark = createSwimPlan, decideSwimProposal = createSwimPlan, changeSwimPlanStatus = createSwimPlan, previewSwimResume = createSwimPlan, resumeSwimPlan = createSwimPlan, decideSwimBenchmark = createSwimPlan, applySwimWeekEdit = createSwimPlan, applySwimDateEdit = createSwimPlan, applySwimPoolEdit = createSwimPlan, previewSwimWeekEdit = createSwimPlan, previewSwimDateEdit = createSwimPlan, skipSwimWorkout = createSwimPlan;",
@@ -211,6 +234,69 @@ try {
   stages.push(stage);
 
   for (const width of [375, 1280]) {
+    stage = `explicit-recording-outcome-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => { window.outcomeCalls = []; window.outcomeMode = "delay"; window.showOutcome(); });
+    const completed = page.getByRole("radio", { name: "Completed", exact: true });
+    const stoppedEarly = page.getByRole("radio", { name: "Stopped early", exact: true });
+    const confirmOutcome = page.getByRole("button", { name: "Confirm outcome", exact: true });
+    await expect(completed).not.toBeChecked();
+    await expect(stoppedEarly).not.toBeChecked();
+    await expect(confirmOutcome).toBeDisabled();
+    await stoppedEarly.focus();
+    await page.keyboard.press("Space");
+    await expect(stoppedEarly).toBeChecked();
+    await confirmOutcome.evaluate(button => { button.click(); button.click(); });
+    await expect(stoppedEarly).toBeDisabled();
+    assert.equal(await page.evaluate(() => window.outcomeCalls.length), 1);
+    await page.evaluate(() => { window.outcomeMode = "error"; window.resolveOutcome(); });
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(stoppedEarly).toBeChecked();
+    await page.evaluate(() => { window.outcomeMode = "success"; });
+    await confirmOutcome.click();
+    await expect(confirmOutcome).toHaveCount(0);
+    await expect(page.getByText("Stopped early", { exact: true })).toBeVisible();
+    const outcomeCalls = await page.evaluate(() => window.outcomeCalls);
+    assert.equal(outcomeCalls.length, 2);
+    assert.equal(outcomeCalls[0].requestId, outcomeCalls[1].requestId);
+    assert.equal(outcomeCalls[0].outcome, "stopped_early");
+    assert.equal(outcomeCalls[0].workoutRevision, 3);
+    assert.deepEqual(Object.keys(outcomeCalls[0]).sort(),
+      ["expectedOutcomeId", "matchId", "outcome", "requestId", "workoutId", "workoutRevision"]);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+
+    await page.evaluate(() => { window.outcomeMode = "stale"; window.showOutcome(); });
+    await completed.check();
+    await confirmOutcome.click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(completed).toBeChecked();
+    await page.evaluate(() => { window.outcomeMode = "refresh-error"; });
+    await confirmOutcome.click();
+    await expect(page.getByRole("status")).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(confirmOutcome).toHaveCount(0);
+    await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Change outcome", exact: true }).click();
+    await stoppedEarly.check();
+    const preceding = await page.evaluate(() => window.outcomeCalls.at(-1));
+    await confirmOutcome.click();
+    const changed = await page.evaluate(() => window.outcomeCalls.at(-1));
+    assert.equal(changed.expectedOutcomeId, preceding.requestId);
+    assert.notEqual(changed.requestId, preceding.requestId);
+    await expect(page.getByText("Stopped early", { exact: true })).toBeVisible();
+
+    await page.evaluate(() => { window.outcomeCalls = []; window.outcomeMode = "success"; window.showOutcome(true, false, true); });
+    await expect(confirmOutcome).toHaveCount(0);
+    await expect(page.getByRole("radio")).toHaveCount(0);
+    await page.getByRole("button", { name: "Remove confirmation", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Remove confirmation", exact: true })).toHaveCount(0);
+    const removal = await page.evaluate(() => window.outcomeCalls[0]);
+    assert.equal(removal.matchId, null);
+    assert.equal(removal.outcome, null);
+    assert.equal(removal.workoutRevision, null);
+    assert.equal(removal.expectedOutcomeId, "00000000-0000-4000-8000-000000000004");
+    stages.push(stage);
+
     stage = `explicit-recording-match-${width}`;
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => { window.matchCalls = []; window.findCalls = []; window.matchMode = "delay"; window.showMatcher(); });

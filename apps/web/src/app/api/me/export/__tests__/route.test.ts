@@ -21,6 +21,8 @@ let importsAvailable = true;
 let importReadFails = false;
 let matchingAvailable = true;
 let matchReadFails = false;
+let outcomesAvailable = true;
+let outcomeReadFails = false;
 const selectedColumns: Record<string, string> = {};
 
 function makeBuilder(table: string) {
@@ -39,7 +41,7 @@ function makeBuilder(table: string) {
         }
       : {
           data: [],
-          error: (swimReadFails && table === "swim_workouts") || (importReadFails && table === "swim_imports") || (matchReadFails && table === "swim_import_matches")
+          error: (swimReadFails && table === "swim_workouts") || (importReadFails && table === "swim_imports") || (matchReadFails && table === "swim_import_matches") || (outcomeReadFails && table === "swim_import_outcomes")
             ? { message: "read unavailable" }
             : null,
         };
@@ -90,6 +92,10 @@ vi.mock("@/lib/swim/import-matching", async (original) => ({
   ...await original<typeof import("@/lib/swim/import-matching")>(),
   swimImportMatchingAvailable: vi.fn(async () => matchingAvailable),
 }));
+vi.mock("@/lib/swim/import-outcomes", async (original) => ({
+  ...await original<typeof import("@/lib/swim/import-outcomes")>(),
+  swimImportOutcomesAvailable: vi.fn(async () => outcomesAvailable),
+}));
 
 import { GET } from "../route";
 
@@ -120,6 +126,8 @@ beforeEach(() => {
   importReadFails = false;
   matchingAvailable = true;
   matchReadFails = false;
+  outcomesAvailable = true;
+  outcomeReadFails = false;
   currentUser = { id: "u1", email: "u1@example.test", created_at: "2026-01-01T00:00:00Z" };
 });
 
@@ -140,6 +148,7 @@ const REQUIRED_TABLES = [
   "swim_connections",
   "swim_imports",
   "swim_import_matches",
+  "swim_import_outcomes",
   "wellness",
   "limitations",
   "limitation_events",
@@ -168,6 +177,7 @@ const REQUIRED_SECTIONS = [
   "swim_connections",
   "swim_imports",
   "swim_import_matches",
+  "swim_import_outcomes",
   "wellness",
   "limitations",
   "limitation_events",
@@ -199,6 +209,24 @@ const FORBIDDEN_TABLES = [
 ];
 
 describe("GET /api/me/export", () => {
+  it("DC-SW8 preserves outcome history when confirmations are disabled", async () => {
+    vi.stubEnv("SWIM_IMPORT_OUTCOMES_ENABLED", "false");
+    const response = await GET();
+    expect(response.status).toBe(200);
+    expect((await response.json()).swim_import_outcomes).toEqual([]);
+    expect(fromCalls).toContain("swim_import_outcomes");
+    outcomeReadFails = true;
+    expect((await GET()).status).toBe(503);
+  });
+  it("does not query an uninstalled outcome ledger", async () => {
+    outcomesAvailable = false;
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.swimming_import_outcomes_available).toBe(false);
+    expect(body.swim_import_outcomes).toEqual([]);
+    expect(fromCalls).not.toContain("swim_import_outcomes");
+  });
   it("DC-SW8 includes imported revisions but never requests connection keys or hashes", async () => {
     const body = await (await GET()).json();
     expect(body.swimming_import_schema_available).toBe(true);

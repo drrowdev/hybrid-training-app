@@ -1,1098 +1,1245 @@
 {
-  "version": "7",
-  "dialect": "postgresql",
+  "sourceSha": "8d4311987ccc2ab8858a87bc3153db2396bc69ed",
   "entries": [
     {
       "idx": 0,
       "version": "7",
       "when": 1779193374667,
       "tag": "0000_perfect_thunderbird",
-      "breakpoints": true
+      "breakpoints": true,
+      "hash": "560212429a4cfb95a253d20e03fd52abeb5fccaaf9fc6c326700d22c5ad3ded3"
     },
     {
       "idx": 1,
       "version": "7",
       "when": 1779193400000,
       "tag": "0001_auth_and_rls",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "a5cae76c03ebd9ae47adcf9317731db8c8072c3fb6650411c65f71989551034c"
     },
     {
       "idx": 2,
       "version": "7",
       "when": 1779210000000,
       "tag": "0002_movement_metadata",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "f6049af7316e31d970482d440df8a6ba2d9de404e80aa6daf16c44ef4119e542"
     },
     {
       "idx": 3,
       "version": "7",
       "when": 1779216000000,
       "tag": "0003_logging_tables",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "59b32ec213a012175602aa04ec08e3b81129d64e6cd518df811d8012f5579416"
     },
     {
       "idx": 4,
       "version": "7",
       "when": 1779220000000,
       "tag": "0004_body_comp_phase",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "dc1cecb27427d6926059b170046af8912e83516df4b9b4255faf9c36d0e79658"
     },
     {
       "idx": 5,
       "version": "7",
       "when": 1779226000000,
       "tag": "0005_region_state",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "e93ae3c8ffb846cc935b4eaf44e73be0da69297b31de8e533639ddf42a29c58a"
     },
     {
       "idx": 6,
       "version": "7",
       "when": 1779228000000,
       "tag": "0006_service_role_grants",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "c06a9993a71e64ff4291ef6160941b19e19a5a7951308641b15a49b2a13ebe3b"
     },
     {
       "idx": 7,
       "version": "7",
       "when": 1779255000000,
       "tag": "0007_training_maxes",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "ba5cde95fd3c22d1f5b4dd4b3518154be3e58fb74fefe6445bc76e0358923f6e"
     },
     {
       "idx": 8,
       "version": "7",
       "when": 1779258000000,
       "tag": "0008_planner",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "593d7cfe294abeda49d975ec516ddc65d67451a2399962695ebedf586a24c45b"
     },
     {
       "idx": 9,
       "version": "7",
       "when": 1779260000000,
       "tag": "0009_training_max_model",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "7ebad760559fbdfecdf5d5e112fdf5f72314811162440bdda53e25ebb333eac4"
     },
     {
       "idx": 10,
       "version": "7",
       "when": 1779267000000,
       "tag": "0010_grants_for_planner_and_tm",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "1281864c4e8aa622ed84ee41a724a9e589f300a3436311b6a2422b5712cb2c27"
     },
     {
       "idx": 11,
       "version": "7",
       "when": 1779272000000,
       "tag": "0011_training_days_per_week",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "0b5f51822beccf18263c6b8c0dc3053277147c7611a285392e81f0f14fe4f13d"
     },
     {
       "idx": 12,
       "version": "7",
       "when": 1779287000000,
       "tag": "0012_onboarding",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "6413e2cb35e3e0341984d2d9e87218a2a7640fa159924b7b0245915e8f6a67df"
     },
     {
       "idx": 13,
       "version": "7",
       "when": 1779300000000,
       "tag": "0013_allows_two_a_days",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "e0733d61797ac04fc751701e0f31eb5bb0d1e64fdab63276b8dcae96a5928726"
     },
     {
       "idx": 14,
       "version": "7",
       "when": 1779360000000,
       "tag": "0014_sessions_two_a_day",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "425a06418a8b9619e6931146febd54530ff8c620b27348435312b92a025c78c6"
     },
     {
       "idx": 15,
       "version": "7",
       "when": 1779420000000,
       "tag": "0015_tm_history",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "802fbc8eb078a0e18342ce45905de8bec0a3ed5d3f22e40c58b80750c301ed3c"
     },
     {
       "idx": 16,
       "version": "7",
       "when": 1779480000000,
       "tag": "0016_strava_integration",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "e2bc09061358197f4efbe8f2a64688b4e9ba28997bd03227b836c6c63f038355"
     },
     {
       "idx": 17,
       "version": "7",
       "when": 1779486000000,
       "tag": "0017_events",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "14dd27bc1b3d3e8be918191fa6cd23a68a28a8bbf8097d7e96bb745fed7ce96f"
     },
     {
       "idx": 18,
       "version": "7",
       "when": 1779492000000,
       "tag": "0018_accessory_roles",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "2b598a1ed8f32e2d8d339db47287a3a2be8a54e675e20bb8f9e74ff286483102"
     },
     {
       "idx": 19,
       "version": "7",
       "when": 1779498000000,
       "tag": "0019_tag_accessory_roles",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "272ddfccb0487d445efc635caff6bd0f08ddc930b05fd2c4fc20baaa0e289bc9"
     },
     {
       "idx": 20,
       "version": "7",
       "when": 1779504000000,
       "tag": "0020_block_day_index_overrides",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "884178be3ee2bb1b4af1b09be56d8e2a86fb694cca5e02b19f6745bee2bf4edb"
     },
     {
       "idx": 21,
       "version": "7",
       "when": 1779510000000,
       "tag": "0021_training_experience",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "d8c1ec0db9983814cc09d8d4071b3ea970ffd0bf3b862150cfef33428e95a0e4"
     },
     {
       "idx": 22,
       "version": "7",
       "when": 1779516000000,
       "tag": "0022_power_emphasis",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "a06104f89fd1a959be36fad099fbcedc7740c7ee03c67a482d857a30403bd0ab"
     },
     {
       "idx": 23,
       "version": "7",
       "when": 1779522000000,
       "tag": "0023_power_movement_tagging",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "16008187561aca084a2104ab59d3933a4043781c2f5094ddc282b70992adcd7c"
     },
     {
       "idx": 24,
       "version": "7",
       "when": 1779528000000,
       "tag": "0024_power_movements_seed",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "811c8d84dc06f4e7fa2853e86ef7e393547b83ee883da721321516af514fafee"
     },
     {
       "idx": 25,
       "version": "7",
       "when": 1779534000000,
       "tag": "0025_block_lifecycle_timestamps",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "2ead5ab2c77864d111dce36823d899a9221138648ee87042831a8d6899dfda87"
     },
     {
       "idx": 26,
       "version": "7",
       "when": 1779540000000,
       "tag": "0026_soft_delete",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "84bab8e8868a7314f957edc40393c2d2c8600d5bb33541888fd795269a3f4993"
     },
     {
       "idx": 27,
       "version": "7",
       "when": 1779546000000,
       "tag": "0027_daily_check_ins",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "82f0de1ca9ff511f5a39591c4de719750b73430741ac05a62dad41c0a42b21ab"
     },
     {
       "idx": 28,
       "version": "7",
       "when": 1779552000000,
       "tag": "0028_engine_override_events",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "2329a24a30b92c5ee3822f0a3fabd9ef3bf70944429c73175e64d7f354a370d5"
     },
     {
       "idx": 29,
       "version": "7",
       "when": 1779558000000,
       "tag": "0029_region_state_history",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "07d5ace50d1d30d7f7595303ab4257e5c81f732ee3e63a867e6a6117d028dfd7"
     },
     {
       "idx": 30,
       "version": "7",
       "when": 1779564000000,
       "tag": "0030_wellness_fatigue_soreness",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "359c9fb49286894fd5a1675503f42e3e77e74a9ee355f788c816dc60ebe38fcb"
     },
     {
       "idx": 31,
       "version": "7",
       "when": 1779570000000,
       "tag": "0031_muscle_state_history",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "992e98fbf49d119e41ed7260a914536436fe888c024256b56b8cf939b8946323"
     },
     {
       "idx": 32,
       "version": "7",
       "when": 1779576000000,
       "tag": "0032_training_maxes_source",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "b4d9a668f43bac4aabc6e07a938a9433b087307cedcd753f35c3a248fb100016"
     },
     {
       "idx": 33,
       "version": "7",
       "when": 1779582000000,
       "tag": "0033_limitations_full_shape",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "b6439adef2983b55e9a6c740c5aad3956b16058da3680870674a033cf6bd1d48"
     },
     {
       "idx": 34,
       "version": "7",
       "when": 1779588000000,
       "tag": "0034_profiles_ai_notes",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "afdc6466c5cdc6cb7e98a8eb11b581c1a509a8d9b44f2864b05fb8e9db2763dd"
     },
     {
       "idx": 35,
       "version": "7",
       "when": 1779594000000,
       "tag": "0035_priority_events_full_shape",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "9f0fab5419d42cdc0a08e32e7927270834581b7b87c7bca44106d89d206bc8d3"
     },
     {
       "idx": 36,
       "version": "7",
       "when": 1779680400000,
       "tag": "0036_set_logs_prescription_link",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "5a66aa77cee72d3e3fb1f5536e16401a99fa25d37a0dea86c37f8758cd8397a5"
     },
     {
       "idx": 37,
       "version": "7",
       "when": 1779681600000,
       "tag": "0037_set_logs_skipped",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "fa32304e61a0cdb68c06d7f9a2b04a510f578d2fc62599766c4da76cc356f1c0"
     },
     {
       "idx": 38,
       "version": "7",
       "when": 1779682800000,
       "tag": "0038_profiles_equipment",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "d1e93893cc8bb591cc80c056e0cec67f6e36343ea043eed4dd48cbd99ba23119"
     },
     {
       "idx": 39,
       "version": "7",
       "when": 1779684000000,
       "tag": "0039_profiles_warmup_scheme",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "60bfb2178332d5177c1f5c2cedc7422f6a53ae8f7847e74086dd95bab682a33e"
     },
     {
       "idx": 40,
       "version": "7",
       "when": 1779685200000,
       "tag": "0040_profiles_equipment",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "9e8281642d3a2d440cf908a9481e1fec97a1646fe5141dc50ea679d1709a20ef"
     },
     {
       "idx": 41,
       "version": "7",
       "when": 1779686400000,
       "tag": "0041_profiles_time_date_format",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "3265f45e0f2018e7fc586c8f789d53f2a5a0a56fab9ae2406a3844ac9adf563e"
     },
     {
       "idx": 42,
       "version": "7",
       "when": 1779692400000,
       "tag": "0042_bw_skill_tree",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "9805e215c20e7a468a0426dd119e503bbe25b2352f5295474717502e89048876"
     },
     {
       "idx": 43,
       "version": "7",
       "when": 1779778800000,
       "tag": "0043_bw_assessment",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "f5d2fb33cc27204ba2ef6b235812ad7861981cba55be45403d99067c14fbf5ac"
     },
     {
       "idx": 44,
       "version": "7",
       "when": 1779865200000,
       "tag": "0044_bw_main_prescription",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "eddd1ba941f97d45eafb8e19c4d0609f94fb71d0dc5a96cda9dbc4b980fe461b"
     },
     {
       "idx": 45,
       "version": "7",
       "when": 1779951600000,
       "tag": "0045_bw_progression_events",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "a569ba30a04626d0ec78c3eda796f1a4745bd78c58945ce22f7332632da28330"
     },
     {
       "idx": 46,
       "version": "7",
       "when": 1780038000000,
       "tag": "0046_session_modality",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "1c1b658413d810f23c24c715729f5001d26df747f5208e13725d3b34bfe772d7"
     },
     {
       "idx": 47,
       "version": "7",
       "when": 1780124400000,
       "tag": "0047_bw_diagnostics_snapshots",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "2f7f985684bc361833eef92cf837a2cedafdede9897de67f4d43ed71455138db"
     },
     {
       "idx": 48,
       "version": "7",
       "when": 1780210800000,
       "tag": "0048_bw_loaded",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "ff0d161d5502d464ddadba449f9ae292b304725d0d4d43b7abbd5c9f45efe8b9"
     },
     {
       "idx": 49,
       "version": "7",
       "when": 1780297200000,
       "tag": "0049_today_recovery_card_setting",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "1b5c8b5d948c45113d2928372ba8b2077dd8c945e2242a9d42d4ad051138e0e1"
     },
     {
       "idx": 50,
       "version": "7",
       "when": 1780383600000,
       "tag": "0050_bw_catalog_grants",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "f4be22b390842acffe060152627a438ca33486dfeea4dbe30a577a7010fcccd2"
     },
     {
       "idx": 51,
       "version": "7",
       "when": 1780470000000,
       "tag": "0051_bw_table_grants",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "3893de3f7f1efdcdc740c0a1d1fa8ab1b8e348ffd11ab741453a9411fa273684"
     },
     {
       "idx": 52,
       "version": "7",
       "when": 1780556400000,
       "tag": "0052_training_experience_5_tiers",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "1a295ddbfbfa6e2368c38bcafaacb0c66932b5f9262647f3152588d0dc729384"
     },
     {
       "idx": 53,
       "version": "7",
       "when": 1780815600000,
       "tag": "0053_perf_indexes",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "c025e62d43cb3f97737b2f2821f84d5b96f746c7c74b3536e19228b83853a559"
     },
     {
       "idx": 54,
       "version": "7",
       "when": 1780902000000,
       "tag": "0054_prior_bests_rpc",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "f5dcf0be0573a0ec321cb2d85f1b5dd928259cc77cebfdcb66c4e57ff588d930"
     },
     {
       "idx": 55,
       "version": "7",
       "when": 1781161200000,
       "tag": "0055_user_meaningful_state",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "e146e7c4702a88eae5dd0b4c8e64f512605765442f037cf12432f334fbc3d2ce"
     },
     {
       "idx": 56,
       "version": "7",
       "when": 1781247600000,
       "tag": "0056_tag_power_roles",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "b27ca752ec95e0b7598944ba30a23d397b47d19e08a9b69b97a5016613b1f090"
     },
     {
       "idx": 57,
       "version": "7",
       "when": 1781334000000,
       "tag": "0057_movement_experience_bands",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "a8ce59b82a7c9deb62d7e9f73f8d58757662fcbc2f9da1353f7b539d85c8332e"
     },
     {
       "idx": 58,
       "version": "7",
       "when": 1781334060000,
       "tag": "0058_backfill_experience_bands",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "5eecdc966ec48c9f796eba697da4df524c2e59b26e581653ed4cbc15c3902723"
     },
     {
       "idx": 59,
       "version": "7",
       "when": 1781420400000,
       "tag": "0059_session_movements",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "8366a82d480075bfd62822e224368d3230ac2f66ab79da4b2cc361eb35d0a673"
     },
     {
       "idx": 60,
       "version": "7",
       "when": 1781506800000,
       "tag": "0060_session_movements_rpcs",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "55178bac32acdc1965ef1430f70f8e5c275589f59e0858b5cc22fb659526df16"
     },
     {
       "idx": 61,
       "version": "7",
       "when": 1781600400000,
       "tag": "0061_session_movements_fix_ambiguous",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "d6e063bc9d6e0694b9c6639648ed3779856b7e92fae4724ac60dcc44be1b1850"
     },
     {
       "idx": 62,
       "version": "7",
       "when": 1781605200000,
       "tag": "0062_session_movements_grants",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "b37204803a13b7d72471b776019a43ad57c06ef5104e104224958cbb6c97cbf0"
     },
     {
       "idx": 63,
       "version": "7",
       "when": 1781610000000,
       "tag": "0063_session_movements_grant_update",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "f21549797543aa511bf9b91d3c8e00c4b1788bd2d16bc53b586cc8dd2c2d4b6c"
     },
     {
       "idx": 64,
       "version": "7",
       "when": 1781700000000,
       "tag": "0064_external_cardio_source",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "6760bc0f655fd2895ddf5cd8c816b8703c8b1322b1dd7b7f7fa486fca9dc620e"
     },
     {
       "idx": 65,
       "version": "7",
       "when": 1781800000000,
       "tag": "0065_cardio_inferred_kind",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "fd497d78cffea664290a3613607e862cf625e72079be197ee229d17cd8a381ad"
     },
     {
       "idx": 66,
       "version": "7",
       "when": 1781803600000,
       "tag": "0066_cardio_inferred_confidence_check",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "11bb39f763b939f4f3b1859694afde76f9448a9ef0130c0bb352c8171be31a7a"
     },
     {
       "idx": 67,
       "version": "7",
       "when": 1781892065569,
       "tag": "0067_enable_rls_movement_nodes",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "7b12cbbb9a76457f883abbc652e4d6c5d2dbf3f4df629f727d0a154613af7d88"
     },
     {
       "idx": 68,
       "version": "7",
       "when": 1781899200000,
       "tag": "0068_planned_sessions_completed_or_skipped_check",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "345970a4ea6fe741629a4c14e2caa3041bc5166c078c74307b73a5e5aa4be0f9"
     },
     {
       "idx": 69,
       "version": "7",
       "when": 1781985600000,
       "tag": "0069_ai_plumbing",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "8f6d2f86599ec105373ad6d924c65f32825ec3212c9fb8fc951efbf009a56902"
     },
     {
       "idx": 70,
       "version": "7",
       "when": 1782072000000,
       "tag": "0070_limitations_v2_lifecycle",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "0d852ec822be1d58f6b9ce2990cca780bc88a0a683016aba5699002d5498ff65"
     },
     {
       "idx": 71,
       "version": "7",
       "when": 1782158400000,
       "tag": "0071_mcp",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "cf45b337c7cc7b525e9bf139d3c41cab1f280a3ff8fb2fe17ad4538f4cf22b84"
     },
     {
       "idx": 72,
       "version": "7",
       "when": 1782244800000,
       "tag": "0072_mcp_consumed_codes",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "9a07e6750f9f69f2024c6f1302ef4300e33fdc4cbf65d70d8514c871d381e8ea"
     },
     {
       "idx": 73,
       "version": "7",
       "when": 1782331200000,
       "tag": "0073_drop_ai_opted_in",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "3f7295d741a88eed0f874c9c1c20532a7b9696ea6d3cb836bcffb6502efb2cff"
     },
     {
       "idx": 74,
       "version": "7",
       "when": 1782417600000,
       "tag": "0074_cardio_logs_finish_unique",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "e41bbdabe117695e1eab057f82939d140ea98115c77ebf6b09a59b2b7a0ab0ad"
     },
     {
       "idx": 75,
       "version": "7",
       "when": 1782504000000,
       "tag": "0075_strava_event_log",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "c64579c1a2c37287904a7e9083a5f4624f52df10f58e6e5d84d5d98550ac4805"
     },
     {
       "idx": 76,
       "version": "7",
       "when": 1782547200000,
       "tag": "0076_strava_event_log_add_payload",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "e0e7b189dfe4b3b58294cd5536fb73614258dc40fa5fea615a0f07b0a62c13c8"
     },
     {
       "idx": 77,
       "version": "7",
       "when": 1782590400000,
       "tag": "0077_prescription_modifications",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "63c5f21993481840fae5a5bae1b232e1a0e4a6002d0b5b9eea5f678d8c39e3ee"
     },
     {
       "idx": 78,
       "version": "7",
       "when": 1782676800000,
       "tag": "0078_prescription_modifications_rls_fix",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "1597c074cabe088144bb3a42ee7436b14cdb06660efbb82e408a6422384f8c37"
     },
     {
       "idx": 79,
       "version": "7",
       "when": 1782763200000,
       "tag": "0079_training_blocks_focus_muscles",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "a8959a32e6a7024b4486ffff9114548b108b2eba04866980e0d8caa49aeaa0f0"
     },
     {
       "idx": 80,
       "version": "7",
       "when": 1782849600000,
       "tag": "0080_profiles_effort_preference",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "42f77dbf293885ef9a8cfe4df42a33fc09be7665688c14e244a2ae778d466c17"
     },
     {
       "idx": 81,
       "version": "7",
       "when": 1782936000000,
       "tag": "0081_profiles_preferred_cardio_modalities",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "2bd3765371850c0c997360a748cbff7c369f169a51fb1c9055c5decef15155e7"
     },
     {
       "idx": 82,
       "version": "7",
       "when": 1783022400000,
       "tag": "0082_training_blocks_goal_secondary_focus",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "5db5e3c13882cfa66a63b5c94d8bbeb68228b1d54bb9908ac7ec1077c5e7d6f3"
     },
     {
       "idx": 83,
       "version": "7",
       "when": 1783108800000,
       "tag": "0083_training_blocks_accessory_volume",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "4a62704a158cba1cc81340cf5f46d02f527d361657b0f0d3987639e06324e957"
     },
     {
       "idx": 84,
       "version": "7",
       "when": 1783195200000,
       "tag": "0084_profiles_superset_accessories",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "a0b6cb41a3c08fe55696e256a59e93267586e03e6e27b4bd90b598c4d780205a"
     },
     {
       "idx": 85,
       "version": "7",
       "when": 1783281600000,
       "tag": "0085_sessions_quick_cardio_intent",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "efa5164cd83f5152cf9f5a8773477ced39e62755981f1662ae3118332987befb"
     },
     {
       "idx": 86,
       "version": "7",
       "when": 1783368000000,
       "tag": "0086_backfill_strava_cardio_pace",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "3a14bba96303a850d505b12bf303b3293d167f4079a3acabf416735f47592ee5"
     },
     {
       "idx": 87,
       "version": "7",
       "when": 1783454400000,
       "tag": "0087_sessions_prescription",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "8e1980588956bc2bef0c0f86c013c7802d07299722bd0cc2d8dbbf040b71a341"
     },
     {
       "idx": 88,
       "version": "7",
       "when": 1783540800000,
       "tag": "0088_tag_accessory_roles_v2",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "17be0ec14adbb33d87973197e97eae7a46b29d2e050ee26884fcd0ff9d25dc74"
     },
     {
       "idx": 89,
       "version": "7",
       "when": 1783627200000,
       "tag": "0089_seed_prehab_movements",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "21fee78fc36634aa6beb67e2c874aedcfc76262dad333a1f15152a336f5e751c"
     },
     {
       "idx": 90,
       "version": "7",
       "when": 1783714200000,
       "tag": "0090_byoai_pgcrypto_search_path",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "c74b5808052b9958148e75e94a237bd1b92994c161d68667d8759fa0ee7e5bd2"
     },
     {
       "idx": 91,
       "version": "7",
       "when": 1783715400000,
       "tag": "0091_byoai_model",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "2c40c980c7b5ad62476bbed9235a8eddb48a4705863372aea0dff84da7341687"
     },
     {
       "idx": 92,
       "version": "7",
       "when": 1783801800000,
       "tag": "0092_tag_shoulder_stability_roles",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "f39eebe54b094b71d23962070581398442b1a5313405f3ea27f1627d2e90b54c"
     },
     {
       "idx": 93,
       "version": "7",
       "when": 1783888200000,
       "tag": "0093_tag_pull_roles",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "1da83874ed8a40e9b69cbc606710780edd14bd9d3ae046d60f9d59b6171721c3"
     },
     {
       "idx": 94,
       "version": "7",
       "when": 1783974600000,
       "tag": "0094_seed_machine_free_calf_hsr",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "100d607617399fd8b178ba997c54be917be86965681ba8aa681ad34cba7e8d8d"
     },
     {
       "idx": 95,
       "version": "7",
       "when": 1784061000000,
       "tag": "0095_seed_forearm_rotation",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "461c8bcfaa2dea39b2014bec791c4df795d79cbafc311a9101f693b275e7b9e4"
     },
     {
       "idx": 96,
       "version": "7",
       "when": 1784104800000,
       "tag": "0096_session_custom_accessory_order",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "3505beb866a88be28c66b92db88116c02792273082c62c9ef0f539aaabe3b49b"
     },
     {
       "idx": 97,
       "version": "7",
       "when": 1784191200000,
       "tag": "0097_log_client_idempotency",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "654c890380af5ed2869053b8fb1ec55146cd7e6aefb09a08f4c2f2f64aa20288"
     },
     {
       "idx": 98,
       "version": "7",
       "when": 1784277600000,
       "tag": "0098_movement_instructions",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "f7aa29d2ade7b726f442731541819656acf9d005902b520863a20dea927ffc66"
     },
     {
       "idx": 99,
       "version": "7",
       "when": 1784364000000,
       "tag": "0099_tag_adductor_loaders",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "e389d152837067f371070fd2c343404e51aff8fb996f3f4e94d0531c157161cd"
     },
     {
       "idx": 100,
       "version": "7",
       "when": 1784450400000,
       "tag": "0100_catalog_tagging_audit",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "7f13813400c5218188cb16fb38c6741f1d9950ce924b3a9fbf42641633ae9727"
     },
     {
       "idx": 101,
       "version": "7",
       "when": 1784536800000,
       "tag": "0101_limitation_adjustments",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "a098eb25d3066fbb90ab9fde4a39be6fc21353009e2e4c6789962940e5f562c4"
     },
     {
       "idx": 102,
       "version": "7",
       "when": 1784623200000,
       "tag": "0102_program_instances",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "7dddeb1a73902819e44377fa2cd6b6fc0236efb4d596035b49cfa202b86d94c5"
     },
     {
       "idx": 103,
       "version": "7",
       "when": 1784709600000,
       "tag": "0103_training_block_program_columns",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "962e386650d7a119217ba47e7283ab94e02a62bbd7ba95946810a583d2407d75"
     },
     {
       "idx": 104,
       "version": "7",
       "when": 1784796000000,
       "tag": "0104_program_recommendations",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "d4154a73965e60fb65fbf33faac9c024c2cb187272e68cc88db73889c9650acc"
     },
     {
       "idx": 105,
       "version": "7",
       "when": 1784882400000,
       "tag": "0105_program_recommendations_unique",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "b1a27dda339f17a3ee91e47501a6345d41a78116314db0db4b0a54aaf21111e6"
     },
     {
       "idx": 106,
       "version": "7",
       "when": 1784968800000,
       "tag": "0106_deload_week_rpcs",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "0e08aa4d716c8c7d8693d6edec0e7d6e524f7e29db2a3092c70d90d27190140f"
     },
     {
       "idx": 107,
       "version": "7",
       "when": 1785055200000,
       "tag": "0107_seed_hyrox_stations",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "ce2242db1e569b5c3399964ad985d39b8e6debc25215b422fec3cd194416f74e"
     },
     {
       "idx": 108,
       "version": "7",
       "when": 1785141600000,
       "tag": "0108_uncap_staple_experience_bands",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "9cdd98e98d2bfb5e045291b1b2e92586a8d1711622ae766b677652b5ab8ca8ba"
     },
     {
       "idx": 109,
       "version": "7",
       "when": 1785228000000,
       "tag": "0109_cardio_logs_hr_histogram",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "4bbb9f1fa17fcf2831eada0d0032c94b5af847c4773845dcb42c523e78666c80"
     },
     {
       "idx": 110,
       "version": "7",
       "when": 1785314400000,
       "tag": "0110_training_blocks_two_a_days",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "882558b0c85379041dd28af8d0de1ab3ceb4c3b103ebeffb2d5665c34ff4395c"
     },
     {
       "idx": 111,
       "version": "7",
       "when": 1785400800000,
       "tag": "0111_training_blocks_superset_accessories",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "d5e4b14af2d987e91bf335b15c862ac9edd8d8fc8abd27c1f58110770effe46a"
     },
     {
       "idx": 112,
       "version": "7",
       "when": 1785487200000,
       "tag": "0112_seed_core_staples",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "b902bed0ad4dc0dc1d86641e909cf1507167294aad853b66a6d29fd8f479765b"
     },
     {
       "idx": 113,
       "version": "7",
       "when": 1785573600000,
       "tag": "0113_training_seasons",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "935ad76f1ea47438a38e2df49a30dd037a021efdec3fc441202fd1c4f543d397"
     },
     {
       "idx": 114,
       "version": "7",
       "when": 1785660000000,
       "tag": "0114_training_seasons_goal_anchor",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "8e95640de921d769e27c355aa2e8da41131217115189f50d14d4ccfd3230782b"
     },
     {
       "idx": 115,
       "version": "7",
       "when": 1785746400000,
       "tag": "0115_hyrox_gender_weight_category",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "32f7ef9417233629d93072311a8b4f201b59977bcd611c7979afb892beac5901"
     },
     {
       "idx": 116,
       "version": "7",
       "when": 1785750000000,
       "tag": "0116_expand_training_block_weeks",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "33685768926c9954f38de3ef349832ee32182c430b0cc50e6560709c45f1f89a"
     },
     {
       "idx": 117,
       "version": "7",
       "when": 1785753600000,
       "tag": "0117_instant_logging_hot_path",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "e84c1caa1ab9944d6ddab176c87872aafac08fecf1bce645598f2109306ba5de"
     },
     {
       "idx": 118,
       "version": "7",
       "when": 1785757200000,
       "tag": "0118_complete_session_rpc",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "793b462cd25ed2e4fa89e729e81be136be2648e2e14f0cc8f57beb36352e9c2a"
     },
     {
       "idx": 119,
       "version": "7",
       "when": 1785760800000,
       "tag": "0119_enforce_atomic_set_index",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "33546e1d664d5e56d0c24d778d940d5343e23b3c6fefb800a9a8e6394118df16"
     },
     {
       "idx": 120,
       "version": "7",
       "when": 1785925200000,
       "tag": "0120_program_customization_identity",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "ca174726343dcd015dff0e43331777d9b3cd40914177e2ac097d77e69a09ae9c"
     },
     {
       "idx": 121,
       "version": "7",
       "when": 1786041600000,
       "tag": "0121_remove_ai_functionality",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "0d3e83e95754d9970556ba669ad84269629546aa683127ed2e2d4e56bf8810d3"
     },
     {
       "idx": 122,
       "version": "7",
       "when": 1786298400000,
       "tag": "0122_seed_landmine_squat_to_box",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "ecc4f4f28d63fec5db605a8b9ee58696bfc945f8ea7628117c649d3b22a402ca"
     },
     {
       "idx": 123,
       "version": "7",
       "when": 1786305600000,
       "tag": "0123_seed_banded_four_way_hip",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "d3929e168fde3a4a3eca80f442f51aa85ff260bf42110ce4ed1f901f879eb124"
     },
     {
       "idx": 124,
       "version": "7",
       "when": 1786388400000,
       "tag": "0124_expand_rehab_prescription_sets",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "0d320c1eee075ae69cc1c2179577e0e46e80a737ab3c4b3efe29fea62592d75c"
     },
     {
       "idx": 125,
       "version": "7",
       "when": 1786392000000,
       "tag": "0125_seed_supported_wrist_deviation",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "0998ff972839743cbff8721610d5abfcb7cec2d556ccc9475a92d91f1f5a77e2"
     },
     {
       "idx": 126,
       "version": "7",
       "when": 1786441104881,
       "tag": "0126_separate_supported_wrist_rehab",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "abc8992aa53ebb3a5e84911e8d35f4452d2bacc3699cabdeabb340e86922ced8"
     },
     {
       "idx": 127,
       "version": "7",
       "when": 1786441200000,
       "tag": "0127_embed_same_day_rehab",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "6ba820ca7cb32465f3abe97df1a8cea62b97d9d6af4c2c944602f3810acf5776"
     },
     {
       "idx": 128,
       "version": "7",
       "when": 1786752000000,
       "tag": "0128_set_logs_prescribed_snapshot",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "e8a2588836f7d79767892e9f722d9a5263a6085ee57fc0d1c86166e7378cb0ea"
     },
     {
       "idx": 129,
       "version": "7",
       "when": 1786838400000,
       "tag": "0129_drop_superset_accessories",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "c4cb2140636e673fd76bfcd96711a326ccb59ba1f661b42261818d0dcf3f54c2"
     },
     {
       "idx": 130,
       "version": "7",
       "when": 1786924800000,
       "tag": "0130_drop_strava_tables",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "88f5212288e25f6bc52f07d97d3b84554ceae5389e0af286cce250c722c27fab"
     },
     {
       "idx": 131,
       "version": "7",
       "when": 1787011200000,
       "tag": "0131_drop_body_comp_phase",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "64c9c6b3f7a0f76c8bf7b915955b41dab6acde1ccab6110b5471aaa6be204ad0"
     },
     {
       "idx": 132,
       "version": "7",
       "when": 1787097600000,
       "tag": "0132_split_rack_pull_from_block_pull",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "de13e27d827d4ddb07852d47cc4fb87457870a49403dc8137f66b4376045fecc"
     },
     {
       "idx": 133,
       "version": "7",
       "when": 1787184000000,
       "tag": "0133_rest_timer_enabled",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "0869b7e4c2f10cef18af65db46ffb2391ab9e19dc28d80695eb2b42d27914624"
     },
     {
       "idx": 134,
       "version": "7",
       "when": 1787270400000,
       "tag": "0134_rehab_protocol_library",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "7dcde93e42755c4e9e7b38da42aa484e2f2fc528c0f0211b0c14434e6f287251"
     },
     {
       "idx": 135,
       "version": "7",
       "when": 1787356800000,
       "tag": "0135_recommendation_occurrence_key",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "ddf02d28a0b265225c784fa1dd97e6e16e15d27c5109741ec4db29c4e8f20bd5"
     },
     {
       "idx": 136,
       "version": "7",
       "when": 1787443200000,
       "tag": "0136_insert_deload_week_idempotent",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "29ff62a019998cc7fb7de631861cf857917d9b41fd317689379b23c72c8a9e0c"
     },
     {
       "idx": 137,
       "version": "7",
       "when": 1787529600000,
       "tag": "0137_seed_weighted_dip",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "ae2a16f1fd0a4c3ee4aecb380ba1404a5ca15c8a97735284271b1e90985a8fc2"
     },
     {
       "idx": 138,
       "version": "7",
       "when": 1787616000000,
       "tag": "0138_merge_duplicate_copenhagen",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "39bdf940cceeff7316463992a53a2e62a024587f944ed0c4e2dcc8cf7797228d"
     },
     {
       "idx": 139,
       "version": "7",
       "when": 1787702400000,
       "tag": "0139_seed_lunges",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "85ac2bbb8e22783e09d1bb779788e67eecae6eac5a34bc74f6865aaabb722067"
     },
     {
       "idx": 140,
       "version": "7",
       "when": 1787788800000,
       "tag": "0140_seed_lunge_variants",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "7eaa8e02055a1ecf3313cad2647b50d26fc83093b70811891aa70f3ff765c007"
     },
     {
       "idx": 141,
       "version": "7",
       "when": 1787875200000,
       "tag": "0141_seed_sliding_leg_curl",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "476ab88199848f1d632df035485454b0e556e0224c91fc702a7f4f2fc5984de1"
     },
     {
       "idx": 142,
       "version": "7",
       "when": 1787961600000,
       "tag": "0142_seed_ghd_back_extension",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "f4c6b65de38292c43613d08e9943abdf4afe6a95eb404951f698808a677fe9ef"
     },
     {
       "idx": 143,
       "version": "7",
       "when": 1788566400000,
       "tag": "0143_seed_single_arm_bulgarian_split_squat",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "fc7adf0f8d39ad25ec53163f88c26dc2a604a11f84b2041495d665a4ff15a26d"
     },
     {
       "idx": 144,
       "version": "7",
       "when": 1788652800000,
       "tag": "0144_atomic_user_workflows",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "7c808956d20e9d83ea9a2c6bd35e42bd22bd4a911c80e7857fc631f2ef83d57c"
     },
     {
       "idx": 145,
       "version": "7",
       "when": 1788912000000,
       "tag": "0145_seed_single_leg_rdl_variants",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "0e9026d9edb48825987c2f86d5c47440d46f8dee03ac96438c4b0049c00971a8"
     },
     {
       "idx": 146,
       "version": "7",
       "when": 1788912000001,
       "tag": "0146_standalone_pool_swimming",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "7bc7da1817736138dc6827d90f51e7132a473626f900056ae7b5ceab58676ed8"
     },
     {
       "idx": 147,
       "version": "7",
       "when": 1788912000002,
       "tag": "0147_swim_request_identity",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "0c3bbd83fbff9005681d533b066047fa26a680457bd31529f5f3ab9ef9a67c90"
     },
     {
       "idx": 148,
       "version": "7",
       "when": 1788912000003,
       "tag": "0148_shared_completion_identity",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "7efb41789fff86a774b2a77fcc4918d9a908907a629e70381617dd8a5b673115"
     },
     {
       "idx": 149,
       "version": "7",
       "when": 1788912000004,
       "tag": "0149_defer_custom_movement_references",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "40212c4209449a5c148c11ee271f298d9ea2eeac0b114da5a144d5bc98a262b2"
     },
     {
       "idx": 150,
       "version": "7",
       "when": 1789214400000,
       "tag": "0150_swim_import_storage",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "105089a068a4d6927f9bfcf4aa13eec48af7e1b1ced3cbc4252f92c63b08b1f2"
     },
     {
       "idx": 151,
       "version": "7",
       "when": 1789228800000,
       "tag": "0151_swim_pool_changes",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "ebfb5d98797c723770b67da7d753d0a6ac0dc06f7003173c445f46858be78588"
     },
     {
       "idx": 152,
       "version": "7",
       "when": 1789236000000,
       "tag": "0152_swim_private_courses",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "a9cf90299560cf95cfb1c4b466d05ec09fc47cdae4a53678754d75cd9609ddea"
     },
     {
       "idx": 153,
       "version": "7",
       "when": 1789246800000,
       "tag": "0153_swim_import_matching",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "a057987c484ac58b5c1439e331d2a24aed443c2f994ab7d54b12a47d665e1917"
     },
     {
       "idx": 154,
       "version": "7",
       "when": 1789304400000,
       "tag": "0154_swim_untimed_courses",
-      "breakpoints": false
-    },
-    {
-      "idx": 155,
-      "version": "7",
-      "when": 1789408800000,
-      "tag": "0155_swim_import_outcomes",
-      "breakpoints": false
+      "breakpoints": false,
+      "hash": "36b1a16fb610507971ebb0b409b413bf98ddc42d9bc69a34555bb40e8f1ca15e"
     }
   ]
 }

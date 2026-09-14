@@ -47,6 +47,7 @@ import {
 import { movementUsesTimedHold } from "@hta/domain";
 import styles from "./ProgramPicker.module.css";
 import { SessionLinkEditor, type LinkableMovement } from "./SessionLinkEditor";
+import { WizardProgress } from "./WizardProgress";
 import { LinkBadge, rowLinkClass } from "./LinkBadge";
 import {
   activationLinkableMovements,
@@ -5666,8 +5667,6 @@ export function ProgramPicker({
           them to Today instead of into a loop. */}
       <BackLink href={isEditing ? "/app/plan" : "/app"} label={isEditing ? "Plan" : "Today"} />
       <h1 className={styles.pageTitle}>{isEditing ? "Edit your plan" : "Start a program"}</h1>
-      {isEditing && swimHref && <Link href={swimHref} className={styles.btn}>Swimming →</Link>}
-
       {isEditing && (
         <div
           className="cp-card"
@@ -5690,52 +5689,7 @@ export function ProgramPicker({
         </div>
       </div>
 
-      <div className={styles.rail}>
-        {STEP_LABELS.map((label, i) => {
-          const navigable = i >= minStep && i <= maxStep && i !== step;
-          return (
-            <div
-              key={label}
-              role={navigable ? "button" : undefined}
-              tabIndex={navigable ? 0 : undefined}
-              aria-label={navigable ? `Go to ${label}` : undefined}
-              onClick={navigable ? () => goToStep(i) : undefined}
-              onKeyDown={
-                navigable
-                  ? (e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        goToStep(i);
-                      }
-                    }
-                  : undefined
-              }
-              className={`${styles.seg}${i === step ? ` ${styles.segActive}` : i < step ? ` ${styles.segDone}` : ""}${navigable ? ` ${styles.segNav}` : ""}`}
-            >
-              <i />
-            </div>
-          );
-        })}
-      </div>
-      <div className={styles.raillabels}>
-        {STEP_LABELS.map((label, i) => {
-          const navigable = i >= minStep && i <= maxStep && i !== step;
-          return navigable ? (
-            <button
-              key={label}
-              type="button"
-              onClick={() => goToStep(i)}
-              className={`${styles.rlBtn}${i === step ? ` ${styles.rlActive}` : ""}`}
-            >
-              {label}
-            </button>
-          ) : (
-            <span key={label} className={i === step ? styles.rlActive : undefined}>
-              {label}
-            </span>
-          );
-        })}
-      </div>
+      <WizardProgress labels={STEP_LABELS} current={step} first={minStep} furthest={maxStep} onSelect={goToStep} />
 
       {step === 0 && renderProgramStep()}
       {step === 1 && renderLoadoutStep()}

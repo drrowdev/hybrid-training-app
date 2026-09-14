@@ -774,3 +774,33 @@ This is reachability evidence, not owner-account visual acceptance. The private
 provisioning or application/Auth-row access occurred during activation. PR814
 contains the operational tooling, not a new production app revision, and is
 not merged as part of this release.
+
+### Approved conditioning integration - 2026-09-14
+
+The owner approved implementing the reviewed built-in journey. The main
+programme's Schedule step supplies the eligible conditioning days; a conditional
+Conditioning step assigns activities and exposes swimming options without a
+second wizard, weekday selector or start date. One final save must persist the
+programme and swimming relationship together. Today, the calendar and history
+must refer to one workout, not parallel conditioning and swimming entries.
+
+The owner subsequently approved development-only database ownership checks and
+backward-compatible migration/down files. No hosted apply, production deployment
+or real-account mutation is authorized. Explicit slot identities, source
+prescriptions and prior results must survive edits, removal and lifecycle changes.
+Unsupported course fit must be shown before saving, never handled by truncating
+or repeating workouts.
+
+Recording remains outside GetSXC. The owner approved a separate Completed /
+Stopped early confirmation after matching an imported recording, not restored
+measurement entry. Existing imports do not establish native pool length or
+verified active time. Matching, outcome confirmation, recorded measurements and
+any shared workload projection must therefore remain distinct. No native result,
+pace or workload can be fabricated from missing evidence.
+
+Implementation has started with pure eligibility/date/identity validation,
+controlled activity selection and a reusable wizard progress control. The
+conditioning component is not yet connected to final-save persistence or exposed
+as a live fifth step. Transactional storage, imported outcomes, shared surfaces
+and isolated end-to-end acceptance remain outstanding. No release acceptance is
+claimed by these initial unit checks.

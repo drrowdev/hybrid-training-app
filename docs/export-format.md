@@ -61,6 +61,10 @@ covered table is dropped or an excluded (secret/derived) table leaks in.
   "swimming_import_schema_available": true,
   "swim_connections": [],
   "swim_imports": [],
+  "swimming_import_matching_available": true,
+  "swim_import_matches": [],
+  "swimming_import_outcomes_available": true,
+  "swim_import_outcomes": [],
   "wellness": [],
   "limitations": [],
   "limitation_events": [],
@@ -103,6 +107,8 @@ user's, never the global catalog.
 | `swim_workouts`              | `swim_workouts`              | Dated pool workouts, original and issued targets, revisions and ordinary-session links. |
 | `swim_connections`           | `swim_connections`           | Connection ID, creation and revocation dates; never plaintext keys or hashes. |
 | `swim_imports`               | `swim_imports`               | Every retained observation revision: receipt/activity IDs, revision, evidence and arrival time. Not planned-workout completion. |
+| `swim_import_matches`        | `swim_import_matches`        | Every explicit association, correction and removal with its original workout snapshot. |
+| `swim_import_outcomes`       | `swim_import_outcomes`       | User-confirmed Completed / Stopped early claims and removals, tied to exact matches. Not inferred measurements or physiological load. |
 | `wellness`                   | `wellness`                   | Daily log rows — body weight (live), plus retained legacy wellness check-in fields (fatigue/soreness/motivation/notes) kept for history (see ADR 0018). |
 | `limitations`                | `limitations`                | Active/historical injury or training limitations.                         |
 | `limitation_events`          | `limitation_events`          | Event log of limitation changes.                                          |

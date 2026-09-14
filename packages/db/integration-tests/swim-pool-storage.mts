@@ -14,6 +14,9 @@ import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations }
 import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehearsal.ts";
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
+import { historicalSwimMigrations } from "./historical-swim-migrations.ts";
+import { readMigrationFiles } from "drizzle-orm/migrator";
+import { fileURLToPath } from "node:url";
 import {
   historicalMigrationHashes, productionHistoryInventory, productionSchemaInventory,
   SCHEMA_TABLE_SQL, SCHEMA_FUNCTION_SQL, SCHEMA_SHARED_SQL, SWIM_SCHEMA_TABLES, SWIM_SCHEMA_FUNCTIONS,
@@ -70,16 +73,18 @@ try {
     GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
   `);
   const journal: { entries: { idx: number; tag: string; when: number; breakpoints: boolean }[] } = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"));
-  assert.equal(journal.entries.length, 155);
+  assert.equal(journal.entries.length, 156);
   assert.equal(journal.entries[153].tag, "0153_swim_import_matching");
   assert.equal(journal.entries[154].tag, "0154_swim_untimed_courses");
   assert.deepEqual(journal.entries.slice(150).map((entry) => entry.tag), [
     "0150_swim_import_storage", "0151_swim_pool_changes", "0152_swim_private_courses",
-    "0153_swim_import_matching", "0154_swim_untimed_courses",
+    "0153_swim_import_matching", "0154_swim_untimed_courses", "0155_swim_import_outcomes",
   ]);
   verifyMigrationDependencyParity();
   assert.throws(reviewMigrations, (error) => error instanceof ReviewStorageRefusal && error.code === "migration_source");
-  const migrations = untimedReviewMigrations();
+  assert.throws(untimedReviewMigrations, (error) => error instanceof ReviewStorageRefusal && error.code === "migration_source");
+  const migrations = historicalSwimMigrations();
+  const currentMigrations = readMigrationFiles({ migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)) });
   assert.equal(migrations.length, 155);
   // Rehearse the historical 150-to-154 operation without widening its hosted source guard.
   const canonical = migrations.slice(0, 154);
@@ -87,7 +92,7 @@ try {
     CREATE TABLE drizzle.__drizzle_migrations(id serial PRIMARY KEY,hash text NOT NULL,created_at bigint)`);
   for (const [index, migration] of journal.entries.entries()) {
     assert.equal(migration.idx, index);
-    assert.equal(migration.when, migrations[index]!.folderMillis);
+    assert.equal(migration.when, currentMigrations[index]!.folderMillis);
     if (index > 0) assert.ok(migration.when > journal.entries[index - 1]!.when);
     if (index >= 150) assert.equal(migration.breakpoints, false);
     assert.match(migration.tag, /^\d{4}_[a-z0-9_]+$/);
@@ -150,6 +155,8 @@ try {
   const matchDown = readFileSync(new URL("../rollbacks/0153_swim_import_matching.down.sql", import.meta.url), "utf8");
   const untimedUp = readFileSync(new URL("../drizzle/0154_swim_untimed_courses.sql", import.meta.url), "utf8");
   const untimedDown = readFileSync(new URL("../rollbacks/0154_swim_untimed_courses.down.sql", import.meta.url), "utf8");
+  const outcomeUp = readFileSync(new URL("../drizzle/0155_swim_import_outcomes.sql", import.meta.url), "utf8");
+  const outcomeDown = readFileSync(new URL("../rollbacks/0155_swim_import_outcomes.down.sql", import.meta.url), "utf8");
   const revertScript = async (source: string) => {
     const connection = await database.reserve();
     try { await connection.unsafe(source); }
@@ -160,6 +167,7 @@ try {
   const revertCourse = () => revertScript(courseDown);
   const revertMatches = () => revertScript(matchDown);
   const revertUntimed = () => revertScript(untimedDown);
+  const revertOutcomes = () => revertScript(outcomeDown);
   const as = <T,>(user: string | null, fn: (tx: postgres.TransactionSql) => Promise<T>) =>
     database.begin(async (tx) => {
       await tx.unsafe(user ? "SET LOCAL ROLE authenticated" : "SET LOCAL ROLE anon");
@@ -642,8 +650,67 @@ try {
   assert.deepEqual(await database`SELECT count(*)::int AS count FROM public.cardio_logs`, cardioBefore);
   stages.push(stage);
 
+  stage = "outcome-owned-confirmation-and-replay";
+  await database.begin((tx) => tx.unsafe(outcomeUp));
+  await revertOutcomes();
+  await database.begin((tx) => tx.unsafe(outcomeUp));
+  assert.equal((await as(c, (tx) => tx`SELECT public.swim_import_outcomes_ready() AS ready`))[0]!.ready, true);
+  const outcomeGrants = await database`SELECT rolname,
+    has_function_privilege(oid,'public.swim_confirm_import_outcome(uuid,uuid,uuid,text,uuid,integer)','EXECUTE') AS allowed
+    FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role')`;
+  assert.deepEqual(Object.fromEntries(outcomeGrants.map((row) => [row.rolname, row.allowed])), {
+    anon: false, authenticated: true, service_role: false,
+  });
+  const confirm = (user: string | null, outcome: string | null, expected: string | null,
+    requestId = randomUUID(), matchId: string | null = outcome === null ? null : matched) =>
+    as(user, async (tx) => (await tx<{ id: string }[]>`SELECT public.swim_confirm_import_outcome(
+      ${requestId}::uuid, ${work.id}::uuid, ${matchId}::uuid, ${outcome}::text,
+      ${expected}::uuid, ${outcome === null ? null : work.revision}::integer) AS id`)[0]!.id);
+  await denied(() => confirm(null, "completed", null), "42501");
+  await denied(() => confirm(b, "completed", null), "42501");
+  await denied(() => confirm(c, "guessed", null), "22023");
+  await denied(() => as(c, (tx) => tx`INSERT INTO public.swim_import_outcomes(id) VALUES (${randomUUID()})`), "42501");
+  const confirmed = randomUUID();
+  assert.equal(await confirm(c, "completed", null, confirmed), confirmed);
+  assert.equal(await confirm(c, "completed", null, confirmed), confirmed);
+  await denied(() => confirm(c, "stopped_early", null, confirmed), "22023");
+  await denied(() => confirm(c, "completed", null), "40001");
+  assert.equal((await as(b, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_current_import_outcomes`))[0]!.count, 0);
+  await denied(() => as(c, (tx) => tx`UPDATE public.swim_import_outcomes SET match_id=null`), "42501");
+  await denied(() => as(c, (tx) => tx`DELETE FROM public.swim_import_outcomes`), "42501");
+  await denied(() => database`INSERT INTO public.swim_import_outcomes(id,user_id,workout_id,match_id,revision,metadata)
+    VALUES (${randomUUID()},${b},${work.id},${matched},1,
+      ${JSON.stringify({ outcome: "completed", previousOutcomeId: null, workoutRevision: work.revision })}::jsonb)`, "23503");
+  await denied(() => database`INSERT INTO public.swim_import_outcomes(id,user_id,workout_id,match_id,revision,metadata)
+    VALUES (${randomUUID()},${c},${work.id},${matched},2,
+      ${JSON.stringify({ outcome: null, previousOutcomeId: confirmed, workoutRevision: work.revision })}::jsonb)`, "23514");
+  for (const workoutRevision of [null, 0, 1.5, 2147483648]) {
+    await denied(() => database`INSERT INTO public.swim_import_outcomes(id,user_id,workout_id,match_id,revision,metadata)
+      VALUES (${randomUUID()},${c},${work.id},${matched},2,
+        ${JSON.stringify({ outcome: "completed", previousOutcomeId: confirmed, workoutRevision })}::jsonb)`, "23514");
+  }
+  const outcomeRaces = await Promise.allSettled([
+    confirm(c, "completed", confirmed), confirm(c, "stopped_early", confirmed),
+  ]);
+  assert.equal(outcomeRaces.filter((result) => result.status === "fulfilled").length, 1);
+  const outcomeRejected = outcomeRaces.find((result) => result.status === "rejected");
+  assert.ok(outcomeRejected?.status === "rejected" && outcomeRejected.reason.code === "40001");
+  const outcomeWinner = outcomeRaces.find((result) => result.status === "fulfilled");
+  assert.ok(outcomeWinner?.status === "fulfilled");
+  const removedOutcome = await confirm(c, null, outcomeWinner.value);
+  assert.equal((await as(c, (tx) => tx`SELECT match_id FROM public.swim_current_import_outcomes`))[0]!.match_id, null);
+  const renewedOutcome = await confirm(c, "completed", removedOutcome);
+  assert.deepEqual(await database`SELECT id,revision,status,session_id,definition FROM public.swim_workouts ORDER BY id`, trainingBefore);
+  assert.deepEqual(await database`SELECT count(*)::int AS count FROM public.sessions`, sessionsBefore);
+  assert.deepEqual(await database`SELECT count(*)::int AS count FROM public.cardio_logs`, cardioBefore);
+  await denied(revertOutcomes, "P0001");
+  stages.push(stage);
+
   stage = "matching-corrections-concurrency-and-undo";
   const corrected = await receive({ ...evidence, distanceMetres: 350 });
+  await denied(() => confirm(c, "completed", renewedOutcome), "40001");
+  const clearedChangedOutcome = await confirm(c, null, renewedOutcome);
+  assert.equal((await as(c, (tx) => tx`SELECT id FROM public.swim_current_import_outcomes`))[0]!.id, clearedChangedOutcome);
   assert.equal((await as(c, (tx) => tx`SELECT import_id FROM public.swim_current_import_matches`))[0]!.import_id, imported.id);
   await denied(() => match(c, imported.id, matched), "40001");
   const races = await Promise.allSettled([match(c, corrected.id, matched), match(c, corrected.id, matched)]);
@@ -670,9 +737,11 @@ try {
 
   stage = "synthetic-cleanup-and-unused-down";
   await database`DELETE FROM auth.users WHERE id IN (${a}, ${b}, ${c}, ${d})`;
+  assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_import_outcomes`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_import_matches`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_plans`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_workouts`)[0]!.count, 0);
+  await revertOutcomes();
   await revertUntimed();
   await revertMatches();
   await revertCourse();

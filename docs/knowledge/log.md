@@ -4097,3 +4097,18 @@ owner-account visual acceptance is claimed. The private 16-workout programme
 remains on the protected test site; its transfer is still held. PR814 remains
 operational tooling, not a merged production app change. Backups, watch work and
 combined training remain outside the approved scope.
+
+## [2026-09-14] authorization | Integrate swimming into conditioning
+
+Following a read-only product review, the owner approved the conditional
+Conditioning step after the main wizard's Schedule step, one shared schedule and
+an integrated next-workout/history flow. The floating swimming escape link is
+being replaced rather than retained as the entry from the primary editor.
+Development-only ownership links and backward-compatible migration/down work
+were separately approved; hosted changes and real-account mutations were not.
+
+The owner retained external recording and approved Completed / Stopped early
+confirmation after explicitly matching a recording. This is not permission to
+infer missing native pool, active duration, pace or workload. Association alone
+still does not establish completion. The implementation remains in development;
+initial assignment and component checks are not end-to-end or release acceptance.

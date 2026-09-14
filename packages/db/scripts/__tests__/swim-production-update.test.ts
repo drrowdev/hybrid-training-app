@@ -15,6 +15,7 @@ import { productionHistoryFingerprint } from "../swim-production-reconciliation"
 import { PRODUCTION_READONLY, productionDeployment, productionSettings } from "../swim-production-readonly-guards";
 import { refreshContext, verifyRefreshSource } from "../refresh-swim-review";
 import { REVIEW } from "../swim-review-config-plan";
+import { historicalSwimMigrations } from "../../integration-tests/historical-swim-migrations";
 
 const sha = "c".repeat(40);
 const env = {
@@ -29,7 +30,7 @@ const inputs = () => ({
   production_readonly_scope: "preflight", review_upgrade_read_only: "true",
   ...Object.fromEntries(PRODUCTION_UPDATE.otherOperations.map((key) => [key.toLowerCase(), "false"])),
 });
-const migrations = productionSwimmingMigrations();
+const migrations = historicalSwimMigrations();
 const rows = () => [
   ...migrations.slice(0, 146).map((entry, index) => ({ id: index + 1, hash: entry.hash, created_at: String(entry.folderMillis) })),
   ...Array.from({ length: 57 }, (_, index) => ({ id: index + 147, hash: `synthetic-legacy-${index}`, created_at: "1" })),
@@ -39,6 +40,9 @@ const appended = () => [...rows(), ...migrations.slice(146).map((entry, index) =
   ({ id: 1000 + index, hash: entry.hash, created_at: String(entry.folderMillis) }))];
 
 describe("DC-SW3/SW5/SW8 history-preserving production updater", () => {
+  it("keeps the spent updater closed to the newer migration chain", () => {
+    expect(() => productionSwimmingMigrations()).toThrow("migration_source");
+  });
   it("validates selected dispatches in prerequisite CI without connecting", () => {
     if (process.env.GITHUB_EVENT_NAME !== "workflow_dispatch") return;
     const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH!, "utf8")) as { inputs?: Record<string, unknown> };
