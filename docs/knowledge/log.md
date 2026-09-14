@@ -4041,3 +4041,24 @@ any unsupported state. New rehearsal cases cover missing PUBLIC refusal,
 grant rollback and final permission/history retention. Preparation progress and
 closed SCID diagnostics are explicit; no raw error is emitted. Source validation
 and real-Postgres rehearsal remain required before the authorized new attempt.
+
+## [2026-09-14] release | Swimming database update completed with features disabled
+
+The guarded compatibility repair passed exact-source CI 34814413709 and
+real-Postgres rehearsal 34814413726 at `dab7624b`, including absent-PUBLIC refusal,
+permission rollback and final-access/history retention. PR813 merged as
+`8d431198` with the same tested tree and allowlisted public author/committer.
+The exact app source deployed successfully before the database update.
+
+The one approved new attempt, run34815744151/job103886961627, passed all five
+stages and confirmed the nine-migration commit. Its verified preparation added
+only the already-inherited anon entry before unchanged 0148 removed PUBLIC/anon.
+The 212-record result retains all 203 original records; final permissions, owner
+policies and capabilities passed, and the connection closed. The safe receipt
+was consumed once, with no raw SQL, errors, credentials or user rows persisted.
+
+Only the existing read-only drift job was refreshed after the database changed.
+Run34814905742 attempt2/job103887551022 verified all 155 journal entries online;
+the other successful jobs retained their original execution timestamps.
+Swimming remains disabled and private programme transfer is held. The updater
+is spent and must not be replayed. Activation is the next required owner decision.

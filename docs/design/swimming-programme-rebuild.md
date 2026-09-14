@@ -705,3 +705,26 @@ failures can expose only the existing closed SCID diagnostic, not raw errors.
 The disposable rehearsal retains canonical-path coverage and adds refusal
 without PUBLIC access, rollback of the redundant grant, and successful update
 with the original final permissions and 203-record history retained.
+
+### Production update completed - 2026-09-14
+
+Repair source `dab7624b` passed exact-source CI 34814413709 and the real-Postgres
+rehearsal 34814413726. PR813 was merged as `8d431198`, preserving the tested tree
+and approved authorship. The exact app source reached a successful Vercel
+Production deployment before the database attempt.
+
+The single authorized update, run34815744151/job103886961627, passed all five
+stages. The equivalent-ACL preparation was staged and verified; the transaction
+committed all nine unchanged migrations. All 203 original history records were
+retained, with nine appended for 212 total. Final permission, policy and capability
+checks passed, and the connection closed. No reconciliation is required.
+
+The existing read-only drift job was then refreshed against the changed database.
+Run34814905742 attempt2/job103887551022 verified all 155 canonical journal entries
+online. Only that job executed again; the successful source/browser/RPC results
+retained their original execution timestamps. The updater was not replayed.
+
+Swimming remains disabled. Activation and private programme transfer require
+separate authorization; the protected test programme is unchanged. Both the old
+203-record updater profile and the post-failure diagnostic pinned to `549110bc`
+are historical, spent profiles and must not be replayed.
