@@ -4130,3 +4130,22 @@ graph. Export includes both new tables even with creation disabled.
 This is not a hosted rollout. The Conditioning step, shared daily/history flow
 and coordinated edits still need integration; new native/recovery/edit paths
 remain gated. See ADR0086 for schema discipline and outstanding acceptance.
+
+## [2026-09-14] implementation | Swimming in the main programme wizard
+
+Atomic backend source00fa09d3 passed core34890112070 and disposable storage
+34890112131. All24 SQL stages passed, including column-only row-lock privileges,
+rollback, replay, retained purge history and cleanup. The prior privilege failure
+was corrected in source, not bypassed.
+
+The default-off wizard now exposes swimming inline after Schedule for eligible
+new programmes. It reuses the course controls, preserves entered values and the
+selected file across Back, invalidates changed reviews and uses one final save.
+Focused component checks and the synthetic browser runner cover new/existing
+sources, file replacement, mobile-width error recovery, duplicate prevention,
+unchanged retry and unchanged flag-off/standalone paths.
+
+These are not authenticated end-to-end or owner usability results. Shared
+Today/calendar/history, coordinated lifecycle changes and benchmark-write/slot-fit
+recovery remain release blockers. No hosted configuration, migration, deployment
+or real-account change occurred.

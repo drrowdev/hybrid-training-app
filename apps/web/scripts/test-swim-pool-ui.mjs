@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { chromium, expect } from "@playwright/test";
 
@@ -10,6 +11,7 @@ const { build } = viteRequire("esbuild");
 const root = fileURLToPath(new URL("..", import.meta.url));
 const stages = [];
 let browser, stage = "bundle", status = "failed", code = "unexpected";
+let failureLine;
 try {
   const output = await build({
     stdin: {
@@ -20,6 +22,7 @@ try {
         import { SetupForm } from "./src/components/swim/SetupForm";
         import { SwimImportConnection } from "./src/components/swim/SwimImportConnection";
         import { CourseImportForm } from "./src/components/swim/CourseImportForm";
+        import { ProgramPicker } from "./src/components/program/ProgramPicker";
         import { CourseWorkoutEditor } from "./src/components/swim/CourseWorkoutEditor";
         import { SwimHub } from "./src/components/swim/SwimHub";
         import { WorkoutScreen } from "./src/components/swim/WorkoutScreen";
@@ -72,6 +75,30 @@ try {
               distance: "400 m", beforeLengths: 8, afterLengths: 16 }] } };
         };
         let key = 0;
+        window.programCalls = []; window.programMode = "success";
+        window.saveProgram = async input => {
+          window.programCalls.push(input);
+          if (window.programMode === "delay") await new Promise(resolve => window.resolveProgram = resolve);
+          if (window.programMode === "throw") throw new Error("Synthetic interrupted response");
+          if (window.programMode === "error") return { ok: false, error: "The program could not be saved." };
+          return { ok: true, blockId: "00000000-0000-4000-8000-000000000008",
+            programInstanceId: "00000000-0000-4000-8000-000000000009", skipped: 0 };
+        };
+        window.showWizard = (enabled = true, existing = false) => {
+          window.programCalls = []; window.destinations = [];
+          root.render(<ProgramPicker key={++key} initialProgramId="tactical-barbell"
+            programs={[{ id: "tactical-barbell", name: "Tactical Barbell", family: "tactical-barbell",
+              summary: "Synthetic strength programme", enabled: true, sessionsPerWeek: 3,
+              fields: [{ key: "templateId", label: "Template", type: "select",
+                options: [{ value: "operator", label: "Operator" }], defaultValue: "operator" }] }]}
+            tbTemplates={[{ id: "operator", name: "Operator", structure: "cluster",
+              clusterMin: 2, clusterMax: 3, allowsBodyweightFourth: true, sessionsPerWeek: 3,
+              defaultCluster: [{ movement: "squat" }, { movement: "bench" }, { movement: "deadlift" }] }]}
+            anchoredKeys={["squat", "bench", "deadlift"]} conditioningEnabled={enabled}
+            conditioningPlans={existing ? [{
+              id: "00000000-0000-4000-8000-000000000007", revision: 3, title: "Current swimming plan",
+            }] : []} />);
+        };
         window.showCourseHub = () => root.render(<main className={styles.page}><SwimHub key={++key}
           setupEnabled={false} plans={[]} plan={{
             id: "00000000-0000-4000-8000-000000000001", revision: 1, status: "active",
@@ -187,12 +214,16 @@ try {
     plugins: [{
       name: "synthetic-actions",
       setup(build) {
-        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions|import-outcome-actions)|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions|import-outcome-actions)|@\/lib\/platform\/actions|@\/lib\/training-maxes\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "next/navigation"
             ? "export const useRouter = () => ({ push(path) { window.destinations.push(path); }, refresh() {} });"
             : args.path === "next/link"
               ? "import { createElement } from 'react'; export default function Link(props) { return createElement('a', props); }"
+            : args.path === "@/lib/platform/actions"
+              ? "export const createProgramInstance = input => window.saveProgram(input); export const getProgramSegments = async () => ({ ok: true, segments: [] });"
+            : args.path === "@/lib/training-maxes/actions"
+              ? "export const upsertTrainingMax = async () => { throw new Error('Unexpected benchmark mutation'); };"
             : args.path === "@/lib/swim/course-actions"
               ? "export const previewPrivateSwimCourse = form => window.previewCourse(form); export const importPrivateSwimCourse = (form, id) => window.saveCourse(form, id); export const previewPrivateSwimEdit = input => window.previewCourseEdit(input); export const savePrivateSwimEdit = input => window.saveCourseEdit(input);"
             : args.path === "@/lib/swim/import-actions"
@@ -213,6 +244,20 @@ try {
   const css = output.outputFiles.find((file) => file.path.endsWith(".css"))?.text;
   assert.ok(script && css);
   stages.push(stage);
+  if (process.argv.includes("--preview")) {
+    const server = createServer((request, response) => {
+      if (request.url !== "/") { response.writeHead(404).end(); return; }
+      response.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'",
+      });
+      response.end(`<!doctype html><html data-theme="dark"><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script>${script}</script><script>window.showWizard();</script></body></html>`);
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    console.log(`Synthetic preview: http://127.0.0.1:${server.address().port}/`);
+    await new Promise(() => {});
+  }
   stage = "browser";
   browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
@@ -234,6 +279,101 @@ try {
   stages.push(stage);
 
   for (const width of [375, 1280]) {
+    stage = `conditioning-wizard-new-course-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => { window.programMode = "success"; window.showWizard(); });
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByLabel("Start date", { exact: true }).fill("2026-09-14");
+    await page.getByRole("button", { name: /^Tue\s*Rest$/ }).click();
+    await page.getByRole("button", { name: /^Tue\s*Strength$/ }).click();
+    await page.getByRole("button", { name: /^Thu\s*Rest$/ }).click();
+    await page.getByRole("button", { name: /^Thu\s*Strength$/ }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Conditioning", exact: true })).toBeVisible();
+    await page.getByRole("combobox", { name: "Tuesday", exact: true }).selectOption("swimming");
+    await page.getByRole("combobox", { name: "Thursday", exact: true }).selectOption("swimming");
+    const fileName = `synthetic-course-${"review-".repeat(12)}draft.json`;
+    await page.locator('input[type="file"]').setInputFiles({
+      name: fileName, mimeType: "application/json",
+      buffer: Buffer.from(await page.evaluate(() => JSON.stringify(window.courseSource))),
+    });
+    await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("regular");
+    await page.getByLabel("Comfortable non-stop lengths in the plan pool", { exact: true }).fill("4");
+    await page.getByRole("checkbox", { name: "Freestyle", exact: true }).check();
+    await expect(page.getByRole("button", { name: "Create program", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Review swims", exact: true }).click();
+    await page.getByRole("checkbox", { name: "I have reviewed the workouts, dates and pools", exact: true }).check();
+    await expect(page.getByRole("button", { name: "Create program", exact: true })).toBeEnabled();
+    assert.equal(await page.locator('input[type="date"]').count(), 0);
+    assert.equal(await page.locator('input[name="timeBudgetMinutes"]').count(), 0);
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByLabel("Start date", { exact: true }).fill("2026-09-21");
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page.getByText(fileName, { exact: true })).toBeVisible();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await expect(page.getByLabel("Comfortable non-stop lengths in the plan pool", { exact: true })).toHaveValue("4");
+    await expect(page.getByRole("button", { name: "Create program", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Review swims", exact: true }).click();
+    await page.getByRole("checkbox", { name: "I have reviewed the workouts, dates and pools", exact: true }).check();
+    const replacementFile = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Change plan file", exact: true }).click();
+    await (await replacementFile).setFiles({
+      name: "synthetic-replacement.json", mimeType: "application/json",
+      buffer: Buffer.from(await page.evaluate(() => JSON.stringify({ ...window.courseSource, title: "Replacement course" }))),
+    });
+    await expect(page.getByText("synthetic-replacement.json", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create program", exact: true })).toBeDisabled();
+    await expect(page.getByLabel("Comfortable non-stop lengths in the plan pool", { exact: true })).toHaveValue("4");
+    await page.getByRole("button", { name: "Review swims", exact: true }).click();
+    await page.getByRole("checkbox", { name: "I have reviewed the workouts, dates and pools", exact: true }).check();
+    await page.evaluate(() => { window.programMode = "delay"; });
+    await page.getByRole("button", { name: "Create program", exact: true }).evaluate(button => { button.click(); button.click(); });
+    await expect(page.getByRole("combobox", { name: "Tuesday", exact: true })).toBeDisabled();
+    assert.equal(await page.evaluate(() => window.programCalls.length), 1);
+    await page.evaluate(() => { window.programMode = "throw"; window.resolveProgram(); });
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByLabel("Comfortable non-stop lengths in the plan pool", { exact: true })).toHaveValue("4");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.evaluate(() => { window.programMode = "success"; });
+    await page.getByRole("button", { name: "Create program", exact: true }).click();
+    const programCalls = await page.evaluate(() => window.programCalls);
+    assert.equal(programCalls.length, 2);
+    assert.deepEqual(programCalls[1], programCalls[0]);
+    assert.equal(programCalls[0].startedOn, "2026-09-21");
+    assert.deepEqual(programCalls[0].conditioning.choices, [
+      { weekday: 1, activity: "swimming" }, { weekday: 3, activity: "swimming" },
+    ]);
+    assert.equal(programCalls[0].conditioning.swim.kind, "course");
+    assert.equal(programCalls[0].conditioning.swim.reviewed, true);
+    assert.equal(await page.evaluate(() => window.destinations.at(-1)), "/app");
+    stages.push(stage);
+
+    stage = `conditioning-wizard-existing-plan-${width}`;
+    await page.evaluate(() => window.showWizard(true, true));
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: /^Tue\s*Rest$/ }).click();
+    await page.getByRole("button", { name: /^Tue\s*Strength$/ }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("combobox", { name: "Tuesday", exact: true }).selectOption("swimming");
+    await page.getByRole("button", { name: "Create program", exact: true }).click();
+    assert.deepEqual(await page.evaluate(() => window.programCalls[0].conditioning.swim), {
+      kind: "existing", planId: "00000000-0000-4000-8000-000000000007", revision: 3,
+    });
+    stages.push(stage);
+
+    stage = `conditioning-wizard-disabled-${width}`;
+    await page.evaluate(() => window.showWizard(false));
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: /^Tue\s*Rest$/ }).click();
+    await page.getByRole("button", { name: /^Tue\s*Strength$/ }).click();
+    await expect(page.getByRole("button", { name: "Create program", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Create program", exact: true }).click();
+    assert.equal(await page.evaluate(() => window.programCalls[0].conditioning), undefined);
+    stages.push(stage);
+
     stage = `explicit-recording-outcome-${width}`;
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => { window.outcomeCalls = []; window.outcomeMode = "delay"; window.showOutcome(); });
@@ -563,6 +703,8 @@ try {
   stages.push(stage);
   status = "passed";
 } catch (error) {
+  const location = error instanceof Error ? error.stack?.match(/test-swim-pool-ui\.mjs:(\d+):\d+/) : null;
+  if (location) failureLine = Number(location[1]);
   code = error?.code === "ERR_ASSERTION" ? "assertion"
     : /Executable doesn't exist/.test(error?.message ?? "") ? "missing-browser"
       : error?.name === "TimeoutError" ? "timeout" : "unexpected";
@@ -572,6 +714,7 @@ try {
     catch { if (status !== "failed") { stage = "browser-cleanup"; code = "cleanup"; } status = "failed"; }
   }
 }
-console.log(JSON.stringify({ scope: "swim-pool-ui-synthetic", status, stages, ...(status === "failed" ? { stage, code } : {}) }));
+console.log(JSON.stringify({ scope: "swim-pool-ui-synthetic", status, stages,
+  ...(status === "failed" ? { stage, code, ...(failureLine ? { failureLine } : {}) } : {}) }));
 if (status !== "passed" && process.env.GITHUB_ACTIONS === "true") console.log(`::error title=Swimming pool controls::${stage} [${code}]`);
 if (status !== "passed") process.exitCode = 1;

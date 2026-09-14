@@ -3,19 +3,20 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  MAX_SWIM_COURSE_BYTES, SWIM_WEEKDAYS, parsePoolLengthInput, swimCourseWorkoutKey, swimCourseWorkoutTitle,
+  MAX_SWIM_COURSE_BYTES, SWIM_WEEKDAYS, parsePoolLengthInput, swimCourseWorkoutKey,
   type SwimCourse, type SwimCourseWorkoutChoice,
 } from "@hta/domain";
 import { parseSwimCourseFile } from "@/lib/swim/course-file";
 import { previewPrivateSwimCourse, importPrivateSwimCourse } from "@/lib/swim/course-actions";
 import type { SwimCourseImportPreview } from "@/lib/swim/course-view";
 import { PlanPreview } from "./PlanPreview";
+import { CourseFields, initialCourseFields } from "./CourseFields";
 import styles from "./Swim.module.css";
 
 export function CourseImportForm({ today }: { today: string }) {
   const router = useRouter();
   const [source, setSource] = useState<SwimCourse | null>(null);
-  const [pool, setPool] = useState("50m");
+  const [fields, setFields] = useState(initialCourseFields);
   const [preview, setPreview] = useState<SwimCourseImportPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
@@ -28,6 +29,7 @@ export function CourseImportForm({ today }: { today: string }) {
   async function chooseFile(file?: File) {
     const revision = ++fileRevision.current;
     setSource(null);
+    setFields((previous) => ({ ...previous, poolLengths: {} }));
     setPreview(null);
     setError(null);
     if (!file) { setReading(false); return; }
@@ -116,47 +118,7 @@ export function CourseImportForm({ today }: { today: string }) {
             </label>)}
           </fieldset>
         </section>
-        <section className={styles.section}>
-          <h2>Pool</h2>
-          <label className={styles.field}>Pool length<select name="pool" value={pool} onChange={(event) => setPool(event.target.value)}>
-            <option value="50m">50 metres</option><option value="25m">25 metres</option><option value="custom">Other length</option>
-          </select></label>
-          {pool === "custom" && <label className={styles.field}>Length in metres
-            <input name="poolLength" required maxLength={64} placeholder="33 1/3" />
-          </label>}
-          <input name="poolUnit" type="hidden" value="m" />
-          <details className={styles.details}><summary>Different pool for a workout</summary>
-            {source.weeks.map((week, weekIndex) => <details key={weekIndex} className={styles.details}>
-              <summary>Week {weekIndex + 1}</summary>
-              <div className={styles.columns}>{week.workouts.map((workout, workoutIndex) => <label
-                key={workoutIndex} className={styles.field}>
-                {swimCourseWorkoutTitle(workout.title, swimCourseWorkoutKey(weekIndex, workoutIndex))}
-                <input name={`pool-${swimCourseWorkoutKey(weekIndex, workoutIndex)}`} maxLength={64}
-                  placeholder="Use plan pool" aria-label={`Week ${weekIndex + 1}, swim ${workoutIndex + 1} pool length in metres`} />
-              </label>)}</div>
-            </details>)}
-          </details>
-        </section>
-        <section className={styles.section}>
-          <h2>Swimming experience</h2>
-          <input name="goal" type="hidden" value="endurance" />
-          <label className={styles.field}>Experience<select name="experience" required defaultValue="">
-            <option value="" disabled>Choose experience</option>
-            <option value="beginner">Beginner</option><option value="returning">Returning</option>
-            <option value="regular">Regular swimmer</option><option value="trained">Experienced</option>
-          </select></label>
-          <label className={styles.field}>Comfortable non-stop lengths in the plan pool
-            <input name="comfortableLengths" type="number" min="1" max="2000" step="1" required />
-          </label>
-          <fieldset className={styles.choices}><legend>Known strokes</legend>
-            {[["freestyle", "Freestyle"], ["backstroke", "Backstroke"], ["breaststroke", "Breaststroke"], ["butterfly", "Butterfly"]].map(([value, label]) =>
-              <label key={value} className={styles.choice}><input name="strokes" type="checkbox" value={value} />{label}</label>)}
-          </fieldset>
-          <fieldset className={styles.choices}><legend>Equipment</legend>
-            {[["kickboard", "Kickboard"], ["pull_buoy", "Pull buoy"], ["fins", "Fins"], ["paddles", "Paddles"], ["snorkel", "Snorkel"]].map(([value, label]) =>
-              <label key={value} className={styles.choice}><input name="equipment" type="checkbox" value={value} />{label}</label>)}
-          </fieldset>
-        </section>
+        <CourseFields source={source} value={fields} onChange={setFields} />
       </>}
     </fieldset>
     {preview && <>

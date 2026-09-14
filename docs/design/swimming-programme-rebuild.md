@@ -798,18 +798,29 @@ verified active time. Matching, outcome confirmation, recorded measurements and
 any shared workload projection must therefore remain distinct. No native result,
 pace or workload can be fabricated from missing evidence.
 
-Implementation has started with pure eligibility/date/identity validation,
-controlled activity selection and a reusable wizard progress control. The
-conditioning component is not yet exposed as a live fifth step. Imported-outcome
+Implementation includes pure eligibility/date/identity validation, controlled
+activity selection and a reusable wizard progress control. The main wizard now
+mounts a default-off fifth step for eligible new open-conditioning programmes.
+Existing course selection and source import use shared inline pool/experience
+controls, the primary dates and the same final save. Drafts survive Back;
+changed dates, files and pools require a fresh review. Imported-outcome
 confirmation has default-off UI, action, export and append-only storage code;
 its development checkpoint `4387d026` passed core CI34878088126 and disposable
 storage CI34878088068. Those SQL stages are not the frozen browser casebook.
 
-The next slice adds the default-off single programme/swim transaction and
+The default-off single programme/swim transaction includes the
 server-action connection, stable retry receipts and exported ownership links
 ([ADR0086](../adr/0086-atomic-swim-conditioning.md)). Local slot deletion cannot
 detach a swim, while whole primary purge retains original association history.
 Edits, native programmes and recovery-week insertion remain unavailable in this
-new path pending coordinated lifecycle work. Real Postgres acceptance of0156,
-wizard mounting, shared surfaces and the complete isolated journey remain
-outstanding. These checkpoints do not establish release acceptance.
+new path pending coordinated lifecycle work. Source `00fa09d3` passed core
+CI34890112070 and disposable storage CI34890112131, including24 SQL stages.
+The mounted wizard's synthetic375/1280 browser journeys cover new/existing
+sources, draft recovery, unchanged retry and the flag-off path.
+
+Shared surfaces and the complete isolated authenticated journey remain
+outstanding. The wizard still saves edited benchmark values separately before
+the programme transaction; complete slot-fit preflight and safe recovery across
+those writes are release blockers, not covered by the atomic alignment claim.
+The new path remains disabled until these and the lifecycle gaps are resolved.
+No physical-device or owner usability acceptance is claimed.

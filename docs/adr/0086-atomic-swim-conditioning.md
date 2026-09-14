@@ -28,6 +28,9 @@ never enters the legacy primary-only fallback.
 The transaction covers primary block, planned rows, programme instance, training
 max alignment, swimming creation/attachment, links and receipt. Existing optional
 post-save rehabilitation/season behavior is not made transactional by this work.
+The wizard's earlier benchmark-value writes are also separate. Full slot-fit
+preflight and benchmark-save recovery must be resolved before enabling this path;
+the transaction is not a claim that every wizard side effect is atomic.
 
 ## Schema discipline and retention
 
@@ -73,8 +76,12 @@ and retain the schema rather than running the down migration.
 conditioning saves. Export and receipt recovery do not depend on that flag.
 The current server path supports new foreign programmes only; edits, native
 programmes and inserted recovery weeks remain unavailable until their coordinated
-paths are complete. The real wizard and shared Today/calendar/history surfaces
-are not yet connected, so this migration is not release readiness.
+paths are complete. The real wizard now mounts a conditional fifth step for
+eligible new open-conditioning programmes, with the existing pool/experience
+controls inline and one final action. Its date and source changes invalidate
+review; file selection and entered values survive Back and interrupted saves.
+Shared Today/calendar/history surfaces are not yet connected, so this checkpoint
+is not release readiness.
 
 The existing disposable GitHub Postgres job exercises same-owner refusal,
 rollback after late failure, new/existing course saves, concurrent replay,
@@ -82,3 +89,10 @@ retained purge history, immutable client access and account deletion. Local
 checks cover closed input, schedule fit, no independent-write fallback and
 complete paginated export. No hosted application or usability acceptance is
 implied. Relevant constraints: DC-SW3, DC-SW5, DC-SW8 and DC-K4.
+
+Source `00fa09d3` passed core34890112070 and storage34890112131, including all24
+SQL stages and cleanup. The mounted wizard has separate synthetic browser
+coverage at375/1280 for new/existing courses, review invalidation, file replacement,
+unchanged retry, duplicate prevention and disabled-feature behavior. Those
+browser actions use synthetic fixtures and no server account; they do not
+establish authenticated transport, native-device usability or owner acceptance.

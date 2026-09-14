@@ -262,7 +262,7 @@ test("creates and restores a phase-aware customized Activation plan", async ({
   );
   expect(overflow).toBeLessThanOrEqual(1);
 
-  const deploy = page.getByRole("button", { name: "Deploy program" });
+  const deploy = page.getByRole("button", { name: "Create program" });
   await expect(deploy).toBeEnabled();
   await deploy.click();
   await page.waitForURL("**/app", { timeout: 30_000 });
@@ -673,7 +673,7 @@ test("blocks an untouched canonical Activation movement under an active limitati
   await page.getByRole("button", { name: "Continue" }).click();
   await page.getByRole("button", { name: "Continue" }).click();
 
-  const deploy = page.getByRole("button", { name: "Deploy program" });
+  const deploy = page.getByRole("button", { name: "Create program" });
   await expect(deploy).toBeEnabled();
   await deploy.click();
   await expect(

@@ -54,6 +54,8 @@ import {
 } from "@/lib/rehab-protocols/attachment";
 import { rehabFingerprint } from "@/lib/platform/rehab-library";
 import { getSwimNavigation, swimEntryHref } from "@/lib/swim/navigation";
+import { programConditioningAvailable } from "@/lib/swim/program-conditioning";
+import { listSwimPlans } from "@/lib/swim/storage";
 
 // Sage program-wizard type scale — scoped to this route via CSS variables on
 // the wrapper below (see ProgramPicker.module.css). Not loaded app-wide.
@@ -381,10 +383,18 @@ export default async function ProgramPickerPage({
     }
   }
 
+  const conditioningEnabled = !editContext && await programConditioningAvailable(supabase);
+  const conditioningPlans = conditioningEnabled
+    ? (await listSwimPlans(supabase)).filter((plan) => plan.user_id === user.id && plan.status === "active")
+      .map((plan) => ({ id: plan.id, revision: plan.revision, title: plan.definition.privateCourse?.title ?? "Swimming plan" }))
+    : [];
+
   return (
     <div className={`${archivo.variable} ${oswald.variable} ${saira.variable} ${jetbrains.variable}`}>
       <ProgramPicker
         swimHref={swimEntryHref(await getSwimNavigation(supabase, user.id))}
+        conditioningEnabled={conditioningEnabled}
+        conditioningPlans={conditioningPlans}
         programs={programs}
         anchoredKeys={anchoredKeys}
         tbTemplates={tbTemplates}

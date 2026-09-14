@@ -96,7 +96,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     await next.click();
 
     // Deploy from the final (Schedule) step.
-    const deploy = page.getByRole("button", { name: /Deploy program/ });
+    const deploy = page.getByRole("button", { name: /Create program/ });
     await expect(deploy).toBeEnabled();
     await deploy.click();
 
@@ -188,7 +188,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     await next.click();
     await next.click();
 
-    const deploy = page.getByRole("button", { name: /Deploy program/ });
+    const deploy = page.getByRole("button", { name: /Create program/ });
     await expect(deploy).toBeEnabled();
     await deploy.click();
     await page.waitForURL("**/app", { timeout: 15_000 });
@@ -262,7 +262,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     await next.click(); // Loadout → Benchmarks
     await next.click(); // Benchmarks → Schedule
 
-    const deploy = page.getByRole("button", { name: /Deploy program/ });
+    const deploy = page.getByRole("button", { name: /Create program/ });
     await expect(deploy).toBeEnabled();
     await deploy.click();
     await page.waitForURL("**/app", { timeout: 15_000 });
@@ -360,7 +360,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
       page.getByText(/requires a 1-rep max for Reverse Hyperextension/),
     ).toBeVisible();
 
-    const deploy = page.getByRole("button", { name: /Deploy program/ });
+    const deploy = page.getByRole("button", { name: /Create program/ });
     await expect(deploy).toBeDisabled();
     await page.getByRole("button", { name: "Back" }).click();
     await page.getByLabel("Reverse Hyperextension 1-rep max").fill("80");
@@ -685,7 +685,7 @@ test.describe("@desktop /app/program · deploy 5/3/1", () => {
     await next.click();
     await next.click();
 
-    const deploy = page.getByRole("button", { name: /Deploy program/ });
+    const deploy = page.getByRole("button", { name: /Create program/ });
     await expect(deploy).toBeEnabled();
     await deploy.click();
     await page.waitForURL("**/app", { timeout: 15_000 });
