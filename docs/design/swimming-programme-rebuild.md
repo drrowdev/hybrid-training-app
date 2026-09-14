@@ -631,3 +631,77 @@ environment's branch policy or transfer its credential under development
 approval. A later approved merge must preserve `08f89f05` ancestry for the
 main-only source guard; squash or rebase integration would be refused.
 No production dispatch, activation or owner-programme transfer has occurred.
+
+### Staged release and stopped database update
+
+On2026-09-14 the owner added the Production verification token and approved the
+staged release, explicitly retaining the203-record history and its unresolved
+exceptions while keeping swimming disabled. PR805 merged as `549110bc`, with
+the exact `635ee9ff` tree and reference ancestry preserved. Vercel Production
+deployment6430719935 succeeded for that source.
+
+Fresh read-only run34807281322 confirmed the original history fingerprint,
+pending nine migrations and unset swimming/fixture bindings before merge.
+Main source, identity and browser checks passed; the drift job reported exactly
+the nine pending additions.
+
+Guarded updater34808199183 verified source, credentials, the live alias and
+disabled features, then stopped with `P0001` during0148. Two changes were staged
+inside the transaction; no commit was attempted or confirmed. The connection
+closed. This is not a successful update or independent proof of rollback.
+The result was consumed once into a safe receipt; it must not be rerun blindly.
+
+The owner approved a separate read-only rollback/diagnostic check. The
+`post_update` inspection profile pins deployed main `549110bc` and accepted
+source reference `635ee9ff`; historical profiles retain their original main
+boundary. It uses the existing branch-restricted inspection environment and
+bounded read-only transaction. One additional catalogue query reports fixed
+completion-function attribute comparisons, permission counts and effective
+access for named roles, plus remaining swimming-object presence. It never
+returns routine bodies, arbitrary role names, personal rows or raw errors.
+
+Rollback verification covers the original history fingerprint and inspected
+schema/body footprint, not an assertion about uninspected data or permission
+policy. The metadata report cannot authorize a retry. Migration SQL, permission
+guards, production settings and deployment remain unchanged. The additional
+query and detection of altered metadata are rehearsed only in the existing
+disposable pool-storage test.
+
+Read-only run34812371814 at `5517fa6c` passed all eight stages and verified the
+original203-record fingerprint and inspected schema/body footprint. All nine
+additions remain absent. The live app remains `549110bc`; swimming and fixture
+bindings remain unset.
+
+All23 inspected shared-function attributes match0148. Its ACL has the expected
+postgres, authenticated, service-role and PUBLIC entries, with matching grantors
+and options, but no direct anon entry. Anonymous EXECUTE is nevertheless already
+effective through PUBLIC. This is a concrete mismatch with0148's exact pre-ACL
+list, not a lack of effective access. No unexpected role grants or default grant
+options were observed in the bounded inspection.
+
+A possible repair is a tightly guarded, same-transaction preparation of that
+equivalent ACL representation before the unchanged0148 migration revokes both
+PUBLIC and anon. It must require the exact observed state, preserve every other
+guard and migration hash, and demonstrate no effective-access widening. This
+permission-related repair, a further protected merge and a new production
+attempt require fresh authorization. The diagnostic itself authorizes none.
+
+The owner subsequently approved the guarded compatibility fix, its rehearsal,
+merge/deployment and one new update attempt, with swimming still disabled.
+The preparation accepts only the canonical ACL or the observed equivalent ACL
+with PUBLIC EXECUTE present and the direct anon entry absent. It checks all 23
+shared attributes, exact remaining membership, grantors/options, named effective
+privileges and default-grant bounds. Any other state is refused.
+
+Only the equivalent case receives a direct anon grant, from postgres, inside
+the existing migration transaction immediately before unchanged 0148. A second
+catalogue check requires the canonical representation and unchanged effective
+access. The original migration then revokes both PUBLIC and anon, with its full
+original pre/post checks intact. No migration source or hash changes, and no
+extra permission survives the successful batch.
+
+Preparation attempt, staging and verification are recorded separately. Future
+failures can expose only the existing closed SCID diagnostic, not raw errors.
+The disposable rehearsal retains canonical-path coverage and adds refusal
+without PUBLIC access, rollback of the redundant grant, and successful update
+with the original final permissions and 203-record history retained.

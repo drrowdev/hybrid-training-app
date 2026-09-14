@@ -30,7 +30,15 @@ export const PRODUCTION_RECONCILIATION: GuardedSourceProfile = {
   ...PRODUCTION_READONLY,
   reference: { sha: "0b20778ff37f6d17a38b10a7c8a57b86e60a89a2", run: "34769083569", kind: "automatic_ci" },
 };
+export const PRODUCTION_POST_UPDATE: GuardedSourceProfile = {
+  ...PRODUCTION_READONLY,
+  reference: { sha: "635ee9ffcdd8021abfb8b9e8e8df88afe10650a9", run: "34777630573", kind: "automatic_ci" },
+  expectedMain: "549110bc3863cdf97353fce29ad615501181a9ca",
+  paths: [...PRODUCTION_READONLY.paths, "packages/db/scripts/swim-production-post-update.ts",
+    "packages/db/scripts/__tests__/swim-production-post-update.test.ts"],
+};
 export function productionProfile(env: NodeJS.ProcessEnv) {
+  if (env.PRODUCTION_READONLY_SCOPE === "post_update") return PRODUCTION_POST_UPDATE;
   return env.PRODUCTION_READONLY_SCOPE === "reconciliation" ? PRODUCTION_RECONCILIATION : PRODUCTION_READONLY;
 }
 export class ProductionInspectionRefusal extends Error {
@@ -40,7 +48,7 @@ export function requireInspection(value: unknown, code: string): asserts value {
   if (!value) throw new ProductionInspectionRefusal(code);
 }
 export function productionContext(env: NodeJS.ProcessEnv) {
-  requireInspection(["preflight", "reconciliation"].includes(env.PRODUCTION_READONLY_SCOPE ?? ""), "context");
+  requireInspection(["preflight", "reconciliation", "post_update"].includes(env.PRODUCTION_READONLY_SCOPE ?? ""), "context");
   const sha = refreshContext(env, productionProfile(env));
   requireInspection(env.GITHUB_RUN_ATTEMPT === "1" && /^\d{8,16}$/.test(env.GITHUB_RUN_ID ?? ""), "context");
   return sha;
@@ -50,7 +58,7 @@ export function productionDispatch(inputs: Record<string, unknown> | undefined, 
   const profile = productionProfile(env);
   requireInspection(inputs.inspect_swim_production === "true" && inputs.review_upgrade_read_only === "true" &&
     inputs.accept_legacy_swim_history === "false" &&
-    ["preflight", "reconciliation"].includes(String(inputs.production_readonly_scope)) &&
+    ["preflight", "reconciliation", "post_update"].includes(String(inputs.production_readonly_scope)) &&
     inputs.production_readonly_scope === env.PRODUCTION_READONLY_SCOPE &&
     PRODUCTION_READONLY.otherOperations.every((key) => inputs[key.toLowerCase()] === "false") &&
     Object.keys(inputs).every((key) => ["inspect_swim_production", "review_upgrade_read_only", "expected_sha", "production_readonly_scope", "accept_legacy_swim_history",

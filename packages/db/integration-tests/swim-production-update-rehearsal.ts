@@ -4,9 +4,10 @@ import { readFileSync } from "node:fs";
 import type postgres from "postgres";
 import {
   appendProductionSwimming, productionSwimmingMigrations, validateProductionSwimAppend, verifyProductionSwimBefore,
-  PRODUCTION_UPDATE_LEDGER_QUERY, PRODUCTION_SWIM_TAGS, type ProductionUpdateProgress,
+  PRODUCTION_UPDATE_LEDGER_QUERY, PRODUCTION_SWIM_TAGS, type ProductionUpdateProgress, type CompletionAclProgress,
 } from "../scripts/swim-production-update-storage";
 import { productionHistoryFingerprint } from "../scripts/swim-production-reconciliation";
+import { POST_UPDATE_CATALOG_SQL, productionCompletionCatalog } from "../scripts/swim-production-post-update";
 
 const progress = (): ProductionUpdateProgress => ({
   attemptedMigrations: 0, stagedMigrations: 0, commitAttempted: false, commitConfirmed: false,
@@ -136,6 +137,49 @@ export async function rehearseProductionSwimmingUpdate(database: postgres.Sql, s
     { entries: 212, retainedEntries: 203, appendedEntries: 9 });
   assert.equal(committed.commitConfirmed, true);
   assert.equal(committed.stagedMigrations, 9);
+  assert.deepEqual(await database`SELECT to_jsonb(p) AS profile FROM public.profiles p WHERE id=${user}`, userSnapshot);
+  await unusedDown();
+  await database`DELETE FROM drizzle.__drizzle_migrations WHERE id>${lastLegacyId}`;
+  await unchanged();
+
+  stage("production-updater-equivalent-acl-refusal");
+  await database.unsafe("REVOKE EXECUTE ON FUNCTION public.complete_training_session_with_transition(uuid,text,uuid) FROM anon, PUBLIC");
+  const deniedAcl = productionCompletionCatalog(Array.from(await database.unsafe(POST_UPDATE_CATALOG_SQL)));
+  assert.equal(deniedAcl.shared_privileges![3], false);
+  const refusedAcl: CompletionAclProgress = { attempted: false, staged: false, verified: false };
+  await assert.rejects(appendProductionSwimming(database, migrations, async () => {}, progress(), baseline, refusedAcl),
+    /completion_acl_state/);
+  assert.equal(refusedAcl.attempted, false);
+  await unchanged();
+  assert.deepEqual(productionCompletionCatalog(Array.from(await database.unsafe(POST_UPDATE_CATALOG_SQL))), deniedAcl);
+  await database.unsafe("GRANT EXECUTE ON FUNCTION public.complete_training_session_with_transition(uuid,text,uuid) TO PUBLIC");
+  const inherited = productionCompletionCatalog(Array.from(await database.unsafe(POST_UPDATE_CATALOG_SQL)));
+  assert.equal(inherited.shared_acl_counts[3], 0);
+  assert.equal(inherited.shared_privileges![3], true);
+
+  stage("production-updater-equivalent-acl-rollback");
+  const rolledBackAcl: CompletionAclProgress = { attempted: false, staged: false, verified: false };
+  const rolledBackProgress = progress();
+  await assert.rejects(appendProductionSwimming(database, migrations, async (phase) => {
+    if (phase === "before_commit") throw new Error("synthetic_acl_before_commit");
+  }, rolledBackProgress, baseline, rolledBackAcl), /synthetic_acl_before_commit/);
+  assert.deepEqual(rolledBackAcl, { attempted: true, staged: true, verified: true });
+  assert.equal(rolledBackProgress.commitAttempted, false);
+  await unchanged();
+  const restoredAcl = productionCompletionCatalog(Array.from(await database.unsafe(POST_UPDATE_CATALOG_SQL)));
+  assert.deepEqual(restoredAcl, inherited);
+
+  stage("production-updater-equivalent-acl-commit");
+  const committedAcl: CompletionAclProgress = { attempted: false, staged: false, verified: false };
+  const fixedProgress = progress();
+  assert.deepEqual(await appendProductionSwimming(database, migrations, async () => {}, fixedProgress, baseline, committedAcl),
+    { entries: 212, retainedEntries: 203, appendedEntries: 9 });
+  assert.deepEqual(committedAcl, { attempted: true, staged: true, verified: true });
+  assert.equal(fixedProgress.commitConfirmed, true);
+  const finalAcl = productionCompletionCatalog(Array.from(await database.unsafe(POST_UPDATE_CATALOG_SQL)));
+  assert.deepEqual(finalAcl.shared_acl_counts, [1, 1, 1, 0, 0, 1, 0]);
+  assert.deepEqual(finalAcl.shared_privileges, [true, true, true, false]);
+  assert.equal(finalAcl.shared_acl_options, true);
   assert.deepEqual(await database`SELECT to_jsonb(p) AS profile FROM public.profiles p WHERE id=${user}`, userSnapshot);
   await unusedDown();
   await database`DELETE FROM drizzle.__drizzle_migrations WHERE id>${originalLastId}`;

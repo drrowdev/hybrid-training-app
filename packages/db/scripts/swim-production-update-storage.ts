@@ -8,12 +8,11 @@ import { requireInspection } from "./swim-production-readonly-guards";
 import {
   productionHistoryRows, productionHistoryFingerprint, productionSchemaInventory,
   SCHEMA_TABLE_SQL, SCHEMA_FUNCTION_SQL, SCHEMA_SHARED_SQL, SWIM_SCHEMA_TABLES, SWIM_SCHEMA_FUNCTIONS,
+  PRODUCTION_SWIM_BASELINE,
 } from "./swim-production-reconciliation";
+import { POST_UPDATE_CATALOG_SQL, productionCompletionCatalog } from "./swim-production-post-update";
 
-export const PRODUCTION_SWIM_BASELINE = {
-  entries: 203,
-  fingerprint: "d7629fb1b19f6403175852f70eeb85b85aee5fe1ccf06e3012be40f58f68948f",
-} as const;
+export { PRODUCTION_SWIM_BASELINE } from "./swim-production-reconciliation";
 export const PRODUCTION_SWIM_TAGS = [
   "0146_standalone_pool_swimming", "0147_swim_request_identity", "0148_shared_completion_identity",
   "0149_defer_custom_movement_references", "0150_swim_import_storage", "0151_swim_pool_changes",
@@ -27,6 +26,33 @@ export type ProductionUpdateProgress = {
   attemptedMigrations: number; stagedMigrations: number; commitAttempted: boolean; commitConfirmed: boolean;
 };
 export type ProductionUpdateGuard = (phase: "before" | "migration" | "before_commit" | "after_commit") => Promise<void>;
+export type CompletionAclProgress = { attempted: boolean; staged: boolean; verified: boolean };
+
+export function productionCompletionAclState(raw: unknown): "canonical" | "equivalent" {
+  const row = productionCompletionCatalog(raw);
+  requireInspection(row.shared_present && row.writer_present && row.swim_objects && row.swim_routines &&
+    row.shared_attributes?.every((value) => value === true) && row.shared_acl_options === true &&
+    row.shared_privileges?.every((value) => value === true) &&
+    row.other_default_grants === 0 && row.default_grant_options === 0 &&
+    [0, 1].includes(row.shared_acl_counts[3]!) &&
+    row.shared_acl_counts.every((value, index) => value === [1, 1, 1, row.shared_acl_counts[3], 1, 1, 0][index]),
+  "completion_acl_state");
+  return row.shared_acl_counts[3] === 1 ? "canonical" : "equivalent";
+}
+
+async function prepareCompletionAcl(tx: postgres.TransactionSql, progress: CompletionAclProgress) {
+  const state = productionCompletionAclState(Array.from(await tx.unsafe(POST_UPDATE_CATALOG_SQL)));
+  if (state === "canonical") return;
+  const actor = await tx.unsafe("SELECT current_user='postgres' AS expected_actor");
+  requireInspection(actor.length === 1 && actor[0]!.expected_actor === true, "completion_acl_actor");
+  // PUBLIC already supplies this access. The unchanged 0148 revokes both entries in this transaction.
+  progress.attempted = true;
+  await tx.unsafe("GRANT EXECUTE ON FUNCTION public.complete_training_session_with_transition(uuid,text,uuid) TO anon");
+  progress.staged = true;
+  requireInspection(productionCompletionAclState(Array.from(await tx.unsafe(POST_UPDATE_CATALOG_SQL))) === "canonical",
+    "completion_acl_state");
+  progress.verified = true;
+}
 
 export function productionSwimmingMigrations() {
   const migrations = untimedReviewMigrations();
@@ -122,10 +148,12 @@ export async function verifyProductionSwimAfter(tx: postgres.TransactionSql) {
 
 export async function appendProductionSwimming(sql: postgres.Sql, migrations: readonly ProductionSwimmingMigration[],
   guard: ProductionUpdateGuard, progress: ProductionUpdateProgress,
-  baseline: ProductionSwimmingBaseline = PRODUCTION_SWIM_BASELINE) {
+  baseline: ProductionSwimmingBaseline = PRODUCTION_SWIM_BASELINE,
+  completionAcl: CompletionAclProgress = { attempted: false, staged: false, verified: false }) {
   validateProductionMigrationSource(migrations);
   requireInspection(progress.attemptedMigrations === 0 && progress.stagedMigrations === 0 &&
-    !progress.commitAttempted && !progress.commitConfirmed, "progress_state");
+    !progress.commitAttempted && !progress.commitConfirmed &&
+    !completionAcl.attempted && !completionAcl.staged && !completionAcl.verified, "progress_state");
   const deadline = Date.now() + 120_000;
   const check = async (phase: Parameters<ProductionUpdateGuard>[0]) => {
     requireInspection(Date.now() < deadline, "deadline"); await guard(phase);
@@ -137,9 +165,10 @@ export async function appendProductionSwimming(sql: postgres.Sql, migrations: re
     validateProductionSwimBaseline(Array.from(await tx.unsafe(PRODUCTION_UPDATE_LEDGER_QUERY)), migrations, baseline);
     await verifyProductionSwimBefore(tx);
     await check("before");
-    for (const migration of migrations.slice(146)) {
+    for (const [index, migration] of migrations.slice(146).entries()) {
       await check("migration");
       progress.attemptedMigrations += 1;
+      if (index === 2) await prepareCompletionAcl(tx, completionAcl);
       await tx.unsafe(migration.sql[0]!);
       await tx.unsafe("INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES ($1,$2)", [migration.hash, migration.folderMillis]);
       progress.stagedMigrations += 1;

@@ -3978,3 +3978,66 @@ applying migrations and activating swimming require separate authorization.
 Future integration must retain the source guard's reference ancestry. No token
 transfer, environment-policy change, production operation or private programme
 transfer was performed.
+
+## [2026-09-14] release | App deployed; database update stopped before commit
+
+The owner configured the Production verification token and approved merging
+PR805, app-first deployment and the nine-change updater, retaining all203
+history rows and their explicit exceptions. Swimming activation and private
+programme transfer stayed held. Fresh read-only34807281322 verified the old
+baseline and disabled flags.
+
+PR805 merged as `549110bc`; its tree matches accepted `635ee9ff`, native
+attribution passed, and reference ancestry is intact. Vercel deployment6430719935
+succeeded. Main source/identity/browser checks passed; the drift check reported
+exactly the nine pending additions.
+
+Updater34808199183 passed source, credential and deployment checks but failed
+with `P0001` during0148 after two staged migrations. Commit was not attempted or
+confirmed; the connection closed. Its safe receipt requires reconciliation and
+does not independently establish rollback. No retry was dispatched.
+
+## [2026-09-14] authorization | Read-only rollback verification and diagnosis
+
+The owner approved a bounded diagnostic for the deployed release, limited to
+migration history and catalogue/function settings and access metadata. No user
+records, permission changes, migration retry, activation or further protected
+merge are authorized by this diagnostic approval.
+
+A separate `post_update` reader profile pins deployed `549110bc` and accepted
+source `635ee9ff`, preserving historical guard defaults. It reports closed
+attribute comparisons and role-count/access summaries, checks the original
+history and schema footprint, and cannot authorize updater retry. Existing
+disposable SQL tests cover the new query and metadata differences.
+
+## [2026-09-14] diagnosis | Rollback verified; redundant anon grant is missing
+
+Diagnostic source `5517fa6c` passed exact source/identity/browser CI34811800635
+and real-Postgres storage/query rehearsal34811800636. Read-only production
+run34812371814 then passed eight stages, closed its connection and verified the
+original203-row fingerprint and inspected schema/body footprint. All nine
+migrations remain pending; deployed `549110bc` still has swimming disabled.
+
+The23 shared completion attributes match0148. Direct ACL entries are
+postgres/authenticated/service-role/PUBLIC, with expected grantors and options,
+but no direct anon grant. Effective anon EXECUTE is already true via PUBLIC.
+Thus0148's exact pre-ACL membership check cannot pass this equivalent access
+representation. The read-only result does not authorize permission changes,
+guard weakening or an updater retry. A conditional same-transaction compatibility
+preparation, retaining the original SQL and final tighter permissions, is a
+proposal pending owner approval.
+
+## [2026-09-14] authorization | Guarded equivalent-ACL fix and one new attempt
+
+The owner approved developing and rehearsing the compatibility fix, merging and
+deploying it, and one new guarded production-update attempt with swimming
+disabled. Only the already-inherited anon EXECUTE permission may receive a
+redundant direct entry, within the same transaction and after exact-state checks.
+Unchanged 0148 must then remove PUBLIC and anon access as originally authored.
+
+The implementation retains every migration file/hash and the original guards,
+checks all shared attributes and remaining ACL/privilege metadata, and refuses
+any unsupported state. New rehearsal cases cover missing PUBLIC refusal,
+grant rollback and final permission/history retention. Preparation progress and
+closed SCID diagnostics are explicit; no raw error is emitted. Source validation
+and real-Postgres rehearsal remain required before the authorized new attempt.

@@ -9,6 +9,7 @@ import {
 } from "../swim-production-update-guards";
 import {
   productionSwimmingMigrations, validateProductionMigrationSource, validateProductionSwimBaseline, validateProductionSwimAppend,
+  productionCompletionAclState,
 } from "../swim-production-update-storage";
 import { productionHistoryFingerprint } from "../swim-production-reconciliation";
 import { PRODUCTION_READONLY, productionDeployment, productionSettings } from "../swim-production-readonly-guards";
@@ -80,6 +81,8 @@ describe("DC-SW3/SW5/SW8 history-preserving production updater", () => {
       ["ls-remote", "--exit-code", `https://github.com/${REVIEW.repository}.git`, "refs/heads/main"],
     ]);
     expect(calls).toContainEqual(["merge-base", "--is-ancestor", PRODUCTION_UPDATE.reference.sha, "HEAD"]);
+    expect(PRODUCTION_UPDATE.paths).toContain("packages/db/scripts/swim-production-post-update.ts");
+    expect(PRODUCTION_READONLY.paths).not.toContain("packages/db/scripts/swim-production-post-update.ts");
     expect(() => verifyRefreshSource(env, { ...io, regular: () => false }, PRODUCTION_UPDATE)).toThrow();
     const reader = { ...env, GITHUB_REF: `refs/heads/${REVIEW.branch}`, GITHUB_JOB: PRODUCTION_READONLY.job,
       UPDATE_SWIM_PRODUCTION: "false", INSPECT_SWIM_PRODUCTION: "true" };
@@ -114,6 +117,42 @@ describe("DC-SW3/SW5/SW8 history-preserving production updater", () => {
     const altered = structuredClone(migrations); altered[146]!.sql[0] += "\nSELECT 1;";
     expect(() => validateProductionMigrationSource(altered)).toThrow("migration_source");
     expect(() => validateProductionMigrationSource(migrations.slice(1))).toThrow("migration_source");
+  });
+  it("accepts only the exact canonical ACL or the observed equivalent PUBLIC-backed ACL", () => {
+    const row = {
+      shared_present: true, writer_present: true, swim_objects: true, swim_routines: true,
+      shared_attributes: Array<boolean>(23).fill(true), shared_acl_counts: [1, 1, 1, 0, 1, 1, 0],
+      shared_acl_options: true, shared_privileges: [true, true, true, true],
+      other_default_grants: 0, default_grant_options: 0,
+    };
+    expect(productionCompletionAclState([row])).toBe("equivalent");
+    const canonical = structuredClone(row); canonical.shared_acl_counts[3] = 1;
+    expect(productionCompletionAclState([canonical])).toBe("canonical");
+    for (let index = 0; index < 23; index += 1) {
+      const changed = structuredClone(row); changed.shared_attributes[index] = false;
+      expect(() => productionCompletionAclState([changed])).toThrow("completion_acl_state");
+    }
+    for (let index = 0; index < 7; index += 1) {
+      const changed = structuredClone(row);
+      changed.shared_acl_counts[index] = index === 3 ? 2 : index === 6 ? 1 : 0;
+      expect(() => productionCompletionAclState([changed])).toThrow("completion_acl_state");
+    }
+    for (let index = 0; index < 4; index += 1) {
+      const changed = structuredClone(row); changed.shared_privileges[index] = false;
+      expect(() => productionCompletionAclState([changed])).toThrow("completion_acl_state");
+    }
+    for (const key of ["shared_present", "writer_present", "swim_objects", "swim_routines", "shared_acl_options"]) {
+      expect(() => productionCompletionAclState([{ ...row, [key]: false }])).toThrow("completion_acl_state");
+    }
+    for (const key of ["other_default_grants", "default_grant_options"]) {
+      expect(() => productionCompletionAclState([{ ...row, [key]: 1 }])).toThrow("completion_acl_state");
+    }
+    for (const key of ["shared_attributes", "shared_acl_options", "shared_privileges"]) {
+      expect(() => productionCompletionAclState([{ ...row, [key]: null }])).toThrow("completion_acl_state");
+    }
+    expect(() => productionCompletionAclState([{ ...row, shared_attributes: [] }])).toThrow("post_update_shape");
+    expect(() => productionCompletionAclState([{ ...row, shared_acl_counts: [1, 1, 1] }])).toThrow("post_update_shape");
+    expect(() => productionCompletionAclState([{ ...row, extra: true }])).toThrow("post_update_shape");
   });
   it("requires a Vercel-created successful Production deployment for the exact release", () => {
     const deployment = { id: 123, sha, environment: "Production", creator: { login: "vercel[bot]", type: "Bot" } };
@@ -151,6 +190,8 @@ describe("DC-SW3/SW5/SW8 history-preserving production updater", () => {
     expect(child.status).toBe(1); expect(child.stderr).toBe("");
     expect(child.stdout).toContain('"databaseConnectionAttempted":false');
     expect(child.stdout).toContain('"commitConfirmed":false');
+    expect(child.stdout).toContain('"completionAcl":{"attempted":false,"staged":false,"verified":false}');
+    expect(child.stdout).toContain('"migrationDiagnostic":null');
     expect(child.stdout).not.toContain(canary);
   });
   it("keeps the old production job unchanged and new credentials in the final guarded step", () => {

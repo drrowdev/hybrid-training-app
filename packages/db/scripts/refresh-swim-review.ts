@@ -30,6 +30,7 @@ export type GuardedSourceProfile = Readonly<{
   job: string;
   otherOperations: readonly string[];
   mainOnly?: true;
+  expectedMain?: string;
 }>;
 export type RefreshProfile = GuardedSourceProfile & Readonly<{
   operation: "REFRESH_SWIM_REVIEW" | "REFRESH_SWIM_PLAN_REVIEW" | "REFRESH_SWIM_READONLY_REVIEW" | "UPGRADE_SWIM_REVIEW" | "UPDATE_UNTIMED_SWIM_REVIEW" | "TEST_SWIM_ACCOUNT_FLOW";
@@ -86,7 +87,7 @@ export function verifyRefreshCheckout(env: NodeJS.ProcessEnv, io: SourceIO, prof
 export function verifyRefreshSource(env: NodeJS.ProcessEnv, io: SourceIO, profile: GuardedSourceProfile = originalProfile) {
   const sha = verifyRefreshCheckout(env, io, profile);
   const refs = profile.mainOnly ? [["refs/heads/main", sha]] :
-    [[`refs/heads/${REVIEW.branch}`, sha], ["refs/heads/main", BASE_SHA]];
+    [[`refs/heads/${REVIEW.branch}`, sha], ["refs/heads/main", profile.expectedMain ?? BASE_SHA]];
   for (const [branch, expected] of refs) {
     requireThat(io.git("ls-remote", "--exit-code", `https://github.com/${REVIEW.repository}.git`, branch!) === `${expected}\t${branch}`);
   }
