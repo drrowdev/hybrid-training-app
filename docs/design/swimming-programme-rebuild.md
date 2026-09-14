@@ -724,8 +724,8 @@ Run34814905742 attempt2/job103887551022 verified all 155 canonical journal entri
 online. Only that job executed again; the successful source/browser/RPC results
 retained their original execution timestamps. The updater was not replayed.
 
-Swimming remains disabled. Activation and private programme transfer require
-separate authorization; the protected test programme is unchanged. Both the old
+Swimming was still disabled at this checkpoint; the subsequent activation is
+recorded below. Private programme transfer remains separately held. Both the old
 203-record updater profile and the post-failure diagnostic pinned to `549110bc`
 are historical, spent profiles and must not be replayed.
 
@@ -751,3 +751,26 @@ deployment attempt. Failures after a write require reconciliation, not replay.
 No migrations, application/Auth rows, account provisioning or private files are
 part of activation. The final receipt must verify the ready deployment and
 getsxc.app alias before claiming activation.
+
+### Production activation completed - 2026-09-14
+
+Tooling source `ef0a78ac` passed CI 34820629716 and SQL rehearsal 34820629649,
+including the read-only storage check and refusal of a read-write transaction.
+The single owner-approved activation, run34821521831/job103905224340, passed all
+eight stages. Its read-only verification accepted the unchanged 212-record
+history and final capabilities, then closed the database connection.
+
+The five approved production flags were created and verified. A fresh build of
+the existing main source `8d431198` reached READY as
+`dpl_5G7ZMAyyg9JzZAYgPJEwgAKnHcH4`, and getsxc.app was verified against that
+deployment. Other settings, protection and the protected review alias were
+preserved; fixtures and build-SHA overrides remained absent. The safe receipt
+was consumed once: 31 HTTP requests, no errors and no reconciliation required.
+The activation profile is now spent and must not be replayed.
+
+The public `/app/swim` entry reaches sign-in with its return path retained.
+This is reachability evidence, not owner-account visual acceptance. The private
+16-workout programme remains on the protected test site; no transfer, account
+provisioning or application/Auth-row access occurred during activation. PR814
+contains the operational tooling, not a new production app revision, and is
+not merged as part of this release.

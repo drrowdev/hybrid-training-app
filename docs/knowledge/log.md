@@ -4076,3 +4076,24 @@ in a read-only transaction, creates only five production swimming flags, and
 builds that same main revision. Other settings and the protected review alias
 must remain unchanged. Exact feature-source CI, disposable SQL read-only checks
 and a closed receipt are required; a partial write cannot authorize a rerun.
+
+## [2026-09-14] release | Swimming enabled on getsxc.app
+
+Activation tooling `ef0a78ac` passed exact-source CI 34820629716 and real-Postgres
+rehearsal 34820629649, including read-only verification and read-write refusal.
+The single approved activation, run34821521831/job103905224340, passed all eight
+stages. It verified the unchanged 212-record history and final storage
+capabilities, closed the read-only connection, created the five approved flags
+and rebuilt the existing production main `8d431198`.
+
+Deployment `dpl_5G7ZMAyyg9JzZAYgPJEwgAKnHcH4` reached READY and getsxc.app was
+verified against it. Other settings, protection and the protected review alias
+were preserved; fixture/build overrides stayed absent. The bound safe receipt
+was consumed once, with 31 HTTP requests and no error or reconciliation.
+This activation profile is spent and must not be replayed.
+
+The public swimming entry redirects to sign-in with its return path. No
+owner-account visual acceptance is claimed. The private 16-workout programme
+remains on the protected test site; its transfer is still held. PR814 remains
+operational tooling, not a merged production app change. Backups, watch work and
+combined training remain outside the approved scope.
