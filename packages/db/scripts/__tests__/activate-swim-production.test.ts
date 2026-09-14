@@ -169,7 +169,7 @@ describe("DC-SW3/SW5/SW8 bounded production swimming activation", () => {
   });
   it("keeps credentials final, uses a read-only transaction and serializes production changes", () => {
     const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8");
-    const job = workflow.split("\n  activate-swim-production:\n")[1]!.split("\n  identity-guard:\n")[0]!;
+    const job = workflow.split("\n  activate-swim-production:\n")[1]!.split("\n  update-swim-production:\n")[0]!;
     const [before, operation] = job.split("      - name: Activate approved swimming features once\n");
     expect(before).toContain("needs: [ci, identity-guard]");
     expect(before).toContain("environment: Production");
