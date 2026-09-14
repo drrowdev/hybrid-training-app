@@ -4062,3 +4062,17 @@ Run34814905742 attempt2/job103887551022 verified all 155 journal entries online;
 the other successful jobs retained their original execution timestamps.
 Swimming remains disabled and private programme transfer is held. The updater
 is spent and must not be replayed. Activation is the next required owner decision.
+
+## [2026-09-14] authorization | Enable reviewed swimming on production
+
+The owner selected "Enable swimming on getsxc.app" after the successful database
+update and final online drift check. This authorizes the reviewed swimming
+features for existing accounts, not private programme transfer, fixtures or
+watch operations.
+
+The guarded activation tooling uses the existing Production environment without
+permission changes. It checks the exact deployed main `8d431198`, reads storage
+in a read-only transaction, creates only five production swimming flags, and
+builds that same main revision. Other settings and the protected review alias
+must remain unchanged. Exact feature-source CI, disposable SQL read-only checks
+and a closed receipt are required; a partial write cannot authorize a rerun.

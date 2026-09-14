@@ -728,3 +728,26 @@ Swimming remains disabled. Activation and private programme transfer require
 separate authorization; the protected test programme is unchanged. Both the old
 203-record updater profile and the post-failure diagnostic pinned to `549110bc`
 are historical, spent profiles and must not be replayed.
+
+### Authorized production activation
+
+The owner subsequently approved enabling the reviewed swimming features for
+existing getsxc.app accounts. Private programme transfer remains separate.
+The activation runner is feature-branch tooling, not a new production app
+revision: it pins the deployed application to `8d431198` and checks that live main
+has not moved. Existing Production environment protections and secrets are used
+without changing access policies.
+
+After a read-only check of the 212-record history and final storage capabilities,
+the runner may create only the five swimming flags for production, with value
+`true`. These non-secret flags use plain values so they can be verified directly.
+Existing settings, preview bindings and the protected review alias must remain
+unchanged; fixture and build-SHA overrides stay absent. A fresh production build
+uses the pinned main source, not the activation runner's feature revision.
+
+The workflow has one non-cancelling production-operation slot, a ten-minute
+runtime, at most 60 bounded HTTP requests, one flag-creation attempt and one
+deployment attempt. Failures after a write require reconciliation, not replay.
+No migrations, application/Auth rows, account provisioning or private files are
+part of activation. The final receipt must verify the ready deployment and
+getsxc.app alias before claiming activation.
