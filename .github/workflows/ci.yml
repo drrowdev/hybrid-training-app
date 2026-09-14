@@ -112,6 +112,7 @@ on:
         options:
           - preflight
           - reconciliation
+          - post_update
       update_swim_production:
         description: Append only the nine approved swimming migrations after the production app deploy
         required: false
@@ -1359,7 +1360,7 @@ jobs:
       github.ref == 'refs/heads/copilot/new-acceptance-cases' &&
       inputs.inspect_swim_production == true && inputs.review_upgrade_read_only == true &&
       inputs.update_swim_production == false && inputs.accept_legacy_swim_history == false &&
-      (inputs.production_readonly_scope == 'preflight' || inputs.production_readonly_scope == 'reconciliation') &&
+      (inputs.production_readonly_scope == 'preflight' || inputs.production_readonly_scope == 'reconciliation' || inputs.production_readonly_scope == 'post_update') &&
       inputs.test_swim_account_flow == false && inputs.update_untimed_swim_review == false &&
       inputs.upgrade_swim_review == false && inputs.refresh_swim_readonly_review == false &&
       inputs.refresh_swim_plan_review == false && inputs.refresh_swim_review == false &&

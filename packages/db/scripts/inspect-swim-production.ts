@@ -15,17 +15,20 @@ import {
   historicalMigrationHashes, productionHistoryInventory, productionSchemaInventory,
   SCHEMA_TABLE_SQL, SCHEMA_FUNCTION_SQL, SCHEMA_SHARED_SQL, SWIM_SCHEMA_TABLES, SWIM_SCHEMA_FUNCTIONS,
 } from "./swim-production-reconciliation";
+import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "./swim-production-post-update";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const jsonRecord = z.record(z.unknown());
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = false) {
-  const reconciliation = env.PRODUCTION_READONLY_SCOPE === "reconciliation", profile = productionProfile(env);
+  const postUpdate = env.PRODUCTION_READONLY_SCOPE === "post_update";
+  const reconciliation = postUpdate || env.PRODUCTION_READONLY_SCOPE === "reconciliation", profile = productionProfile(env);
+  const mainSha = profile.expectedMain ?? PRODUCTION.main;
   const result = {
-    scope: reconciliation ? "swim-production-reconciliation" : "swim-production-readonly",
+    scope: postUpdate ? "swim-production-post-update" : reconciliation ? "swim-production-reconciliation" : "swim-production-readonly",
     testedSha: /^[a-f0-9]{40}$/.test(env.EXPECTED_SHA ?? "") ? env.EXPECTED_SHA : null,
     run: /^\d{8,16}$/.test(env.GITHUB_RUN_ID ?? "") ? env.GITHUB_RUN_ID : null,
-    mainSha: PRODUCTION.main, project: PRODUCTION.project, alias: PRODUCTION.alias,
+    mainSha, project: PRODUCTION.project, alias: PRODUCTION.alias,
     referenceSha: profile.reference.sha, referenceRun: profile.reference.run,
     status: "failed", stages: [] as { stage: string; status: "passed" | "failed"; code: string }[],
     httpStatus: null as number | null,
@@ -37,6 +40,7 @@ export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = fal
     ledgerDiagnostics: null as ReturnType<typeof productionLedgerDiagnostics> | null,
     inventory: null as ReturnType<typeof productionHistoryInventory> | null,
     schema: null as ReturnType<typeof productionSchemaInventory> | null,
+    ...(postUpdate ? { postUpdate: null as ReturnType<typeof productionPostUpdateInventory> | null } : {}),
   };
   const deadline = Date.now() + 180_000;
   let stage = "source", deploymentId: string | undefined, sql: postgres.Sql | undefined;
@@ -97,7 +101,7 @@ export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = fal
     if (deploymentId !== undefined) requireInspection(alias.deploymentId === deploymentId, "alias_changed");
     deploymentId = alias.deploymentId;
     return { settings: productionSettings(project, projectEnv, sharedEnv),
-      deployment: productionDeployment(await request(productionDeploymentRoute(deploymentId)), deploymentId) };
+      deployment: productionDeployment(await request(productionDeploymentRoute(deploymentId)), deploymentId, mainSha) };
   };
   try {
     await step("source", source);
@@ -142,6 +146,11 @@ export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = fal
             const shared = await tx.unsafe(SCHEMA_SHARED_SQL);
             result.schema = productionSchemaInventory(Array.from(tables), Array.from(functions), Array.from(shared));
           });
+          if (postUpdate) await step("post_update", async () => {
+            requireInspection(result.inventory && result.schema, "post_update_shape");
+            const rows = await tx.unsafe(POST_UPDATE_CATALOG_SQL);
+            result.postUpdate = productionPostUpdateInventory(Array.from(rows), result.inventory, result.schema);
+          });
           stage = "ledger";
           return null;
         }
@@ -154,10 +163,10 @@ export async function inspectProduction(env: NodeJS.ProcessEnv, sourceOnly = fal
     await step("completion", async () => {
       source(); requireInspection(equal(await snapshot(), before), "deployment_changed"); source();
     });
-    result.status = reconciliation ? "reconciliation_pass" : "inspection_pass";
+    result.status = postUpdate ? "post_update_pass" : reconciliation ? "reconciliation_pass" : "inspection_pass";
   } catch (error) {
     if (error instanceof ProductionInspectionRefusal && error.httpStatus !== undefined) result.httpStatus = error.httpStatus;
-    if ((stage === "ledger" || stage === "schema") && error instanceof Error) {
+    if (["ledger", "schema", "post_update"].includes(stage) && error instanceof Error) {
       const code: unknown = Object.getOwnPropertyDescriptor(error, "code")?.value;
       if (typeof code === "string" && (/^[0-9A-Z]{5}$/.test(code) ||
         ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "ENOTFOUND", "CONNECT_TIMEOUT", "CONNECTION_CLOSED"].includes(code))) {
@@ -180,8 +189,9 @@ async function main() {
     console.log("SWIM_PRODUCTION_READONLY_REFUSED"); process.exitCode = 1; return;
   }
   const result = await inspectProduction(process.env, args.length === 1);
-  const marker = args.length ? "SWIM_PRODUCTION_READONLY_SOURCE" : result.scope === "swim-production-reconciliation"
-    ? "SWIM_PRODUCTION_RECONCILIATION_SUMMARY" : "SWIM_PRODUCTION_READONLY_SUMMARY";
+  const marker = args.length ? "SWIM_PRODUCTION_READONLY_SOURCE" : result.scope === "swim-production-post-update"
+    ? "SWIM_PRODUCTION_POST_UPDATE_SUMMARY" : result.scope === "swim-production-reconciliation"
+      ? "SWIM_PRODUCTION_RECONCILIATION_SUMMARY" : "SWIM_PRODUCTION_READONLY_SUMMARY";
   const summary = () => `${marker}\n<pre>${JSON.stringify(result).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>\n`;
   try { if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary()); }
   catch { result.status = "failed"; result.stages.push({ stage: "report", status: "failed", code: "report_failed" }); }

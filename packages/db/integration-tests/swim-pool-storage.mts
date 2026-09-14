@@ -12,6 +12,7 @@ import { appendReviewMigrations, inspectReviewLedger, reviewMigrations, ReviewSt
 import { verifyMigrationDependencyParity } from "../scripts/migrate-with-evidence.ts";
 import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations } from "../scripts/untimed-swim-review-storage.ts";
 import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehearsal.ts";
+import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import {
   historicalMigrationHashes, productionHistoryInventory, productionSchemaInventory,
   SCHEMA_TABLE_SQL, SCHEMA_FUNCTION_SQL, SCHEMA_SHARED_SQL, SWIM_SCHEMA_TABLES, SWIM_SCHEMA_FUNCTIONS,
@@ -98,6 +99,36 @@ try {
     }
     if (index < 150) {
       if (index === 146) {
+        stage = "post-update-readonly-probe";
+        const inspect = (tx: postgres.TransactionSql) => tx.unsafe(POST_UPDATE_CATALOG_SQL);
+        const before = await database.begin(async (tx) => {
+          await tx.unsafe("SET TRANSACTION READ ONLY");
+          const rows = await inspect(tx);
+          const schema = productionSchemaInventory(
+            Array.from(await tx.unsafe(SCHEMA_TABLE_SQL, [[...SWIM_SCHEMA_TABLES]])),
+            Array.from(await tx.unsafe(SCHEMA_FUNCTION_SQL, [[...SWIM_SCHEMA_FUNCTIONS]])),
+            Array.from(await tx.unsafe(SCHEMA_SHARED_SQL)));
+          return productionPostUpdateInventory(Array.from(rows), { complete: true, rowsRead: 146, fingerprint: "" }, schema);
+        });
+        assert.equal(before.schemaRestored, true);
+        assert.equal(before.rollbackVerified, false);
+        assert.ok(Object.values(before.sharedAttributes!).every((value) => value === true));
+        assert.deepEqual(before.sharedAclCounts, { postgres: 1, authenticated: 1, service_role: 1, anon: 1, public: 1, swim_writer: 0, other: 0 });
+        await assert.rejects(database.begin(async (tx) => {
+          await tx.unsafe("ALTER FUNCTION public.complete_training_session_with_transition(uuid,text,uuid) SET search_path=public,pg_catalog");
+          await tx.unsafe("REVOKE EXECUTE ON FUNCTION public.complete_training_session_with_transition(uuid,text,uuid) FROM anon");
+          const changed = await inspect(tx);
+          assert.equal(changed[0]!.shared_attributes[9], false);
+          assert.equal(changed[0]!.shared_acl_counts[3], 0);
+          assert.equal(changed[0]!.shared_privileges[3], true);
+          throw new Error("synthetic_catalog_probe_rollback");
+        }), /synthetic_catalog_probe_rollback/);
+        const restored = await database.begin(async (tx) => {
+          await tx.unsafe("SET TRANSACTION READ ONLY"); return inspect(tx);
+        });
+        assert.equal(restored[0]!.shared_attributes[9], true);
+        assert.equal(restored[0]!.shared_acl_counts[3], 1);
+        stages.push(stage);
         await rehearseProductionSwimmingUpdate(database, (name) => { stage = name; });
         stages.push("production-updater-rehearsal");
         stage = `migration-${index}`;

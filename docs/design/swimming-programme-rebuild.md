@@ -631,3 +631,38 @@ environment's branch policy or transfer its credential under development
 approval. A later approved merge must preserve `08f89f05` ancestry for the
 main-only source guard; squash or rebase integration would be refused.
 No production dispatch, activation or owner-programme transfer has occurred.
+
+### Staged release and stopped database update
+
+On2026-09-14 the owner added the Production verification token and approved the
+staged release, explicitly retaining the203-record history and its unresolved
+exceptions while keeping swimming disabled. PR805 merged as `549110bc`, with
+the exact `635ee9ff` tree and reference ancestry preserved. Vercel Production
+deployment6430719935 succeeded for that source.
+
+Fresh read-only run34807281322 confirmed the original history fingerprint,
+pending nine migrations and unset swimming/fixture bindings before merge.
+Main source, identity and browser checks passed; the drift job reported exactly
+the nine pending additions.
+
+Guarded updater34808199183 verified source, credentials, the live alias and
+disabled features, then stopped with `P0001` during0148. Two changes were staged
+inside the transaction; no commit was attempted or confirmed. The connection
+closed. This is not a successful update or independent proof of rollback.
+The result was consumed once into a safe receipt; it must not be rerun blindly.
+
+The owner approved a separate read-only rollback/diagnostic check. The
+`post_update` inspection profile pins deployed main `549110bc` and accepted
+source reference `635ee9ff`; historical profiles retain their original main
+boundary. It uses the existing branch-restricted inspection environment and
+bounded read-only transaction. One additional catalogue query reports fixed
+completion-function attribute comparisons, permission counts and effective
+access for named roles, plus remaining swimming-object presence. It never
+returns routine bodies, arbitrary role names, personal rows or raw errors.
+
+Rollback verification covers the original history fingerprint and inspected
+schema/body footprint, not an assertion about uninspected data or permission
+policy. The metadata report cannot authorize a retry. Migration SQL, permission
+guards, production settings and deployment remain unchanged. The additional
+query and detection of altered metadata are rehearsed only in the existing
+disposable pool-storage test.

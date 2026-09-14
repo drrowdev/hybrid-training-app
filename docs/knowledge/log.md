@@ -3978,3 +3978,34 @@ applying migrations and activating swimming require separate authorization.
 Future integration must retain the source guard's reference ancestry. No token
 transfer, environment-policy change, production operation or private programme
 transfer was performed.
+
+## [2026-09-14] release | App deployed; database update stopped before commit
+
+The owner configured the Production verification token and approved merging
+PR805, app-first deployment and the nine-change updater, retaining all203
+history rows and their explicit exceptions. Swimming activation and private
+programme transfer stayed held. Fresh read-only34807281322 verified the old
+baseline and disabled flags.
+
+PR805 merged as `549110bc`; its tree matches accepted `635ee9ff`, native
+attribution passed, and reference ancestry is intact. Vercel deployment6430719935
+succeeded. Main source/identity/browser checks passed; the drift check reported
+exactly the nine pending additions.
+
+Updater34808199183 passed source, credential and deployment checks but failed
+with `P0001` during0148 after two staged migrations. Commit was not attempted or
+confirmed; the connection closed. Its safe receipt requires reconciliation and
+does not independently establish rollback. No retry was dispatched.
+
+## [2026-09-14] authorization | Read-only rollback verification and diagnosis
+
+The owner approved a bounded diagnostic for the deployed release, limited to
+migration history and catalogue/function settings and access metadata. No user
+records, permission changes, migration retry, activation or further protected
+merge are authorized by this diagnostic approval.
+
+A separate `post_update` reader profile pins deployed `549110bc` and accepted
+source `635ee9ff`, preserving historical guard defaults. It reports closed
+attribute comparisons and role-count/access summaries, checks the original
+history and schema footprint, and cannot authorize updater retry. Existing
+disposable SQL tests cover the new query and metadata differences.
