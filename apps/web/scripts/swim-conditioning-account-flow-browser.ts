@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { randomUUID } from "node:crypto";
-import { chromium, expect, type Page } from "@playwright/test";
+import { chromium, expect as baseExpect, type Page } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { syntheticCourse } from "../src/lib/swim/__tests__/course-fixtures";
@@ -11,6 +11,7 @@ import { conditioningSaveDiagnostic } from "../../../packages/db/scripts/swim-co
 
 export const conditioningChecks = ["native_sign_in", "programme_creation", "shared_next_swim",
   "recording_confirmation", "history_and_isolation", "programme_edit_and_pause", "disconnect"] as const;
+const expect = baseExpect.configure({ timeout: 20_000 });
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 const shortDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const linkedSchema = z.object({
@@ -93,7 +94,7 @@ async function createProgramme(page: Page, slot: "a" | "b", monday: string, swim
       await page.getByRole("button", { name: /^Creating/ }).count() === 1 ? "pending" : "absent";
     const path = new URL(page.url()).pathname;
     report.savePage = path === "/app/program" ? "programme" : path === "/app" ? "today" : "other";
-    report.saveDiagnostic = conditioningSaveDiagnostic(await page.getByRole("alert").allTextContents());
+    report.saveDiagnostic = conditioningSaveDiagnostic(await page.locator('p[role="alert"]').allTextContents());
     throw error;
   }
 }

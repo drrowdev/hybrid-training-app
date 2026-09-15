@@ -4364,3 +4364,17 @@ allowlisted public error codes, never URLs, bodies, headers, messages or rows.
 Error-response inspection is limited to16 KiB/one second; output is capped at20
 validated records. No app, schema, policy, production or owner-course change is
 made to investigate this rejection.
+
+## [2026-09-15] correction | Use the declared browser wait for assertions
+
+07324e46 passed core34962078649/storage34962078731. Native34962929512 reached
+the same save, with the replay RPC returning200, but the five-second assertion
+expired while the control still showed Creating. The configured20-second browser
+timeout did not apply to Playwright assertions. The integrated assertions now use
+that same20-second bound; the18-minute run and all request limits remain unchanged.
+Save diagnostics inspect actual form-alert paragraphs, excluding route announcements.
+
+Both disposable accounts were removed; all15 checked tables, independent cleanup,
+and browser/server/build/database closure passed. No source application or owner
+data changed. This does not yet establish why the earlier save showed a refusal
+or establish successful programme creation.

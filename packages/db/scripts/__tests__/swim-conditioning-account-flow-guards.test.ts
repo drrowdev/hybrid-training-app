@@ -47,6 +47,12 @@ function installed(): EnvironmentMetadata[] {
   ];
 }
 describe("DC-SW3/SW5/SW8 integrated disposable-account boundary", () => {
+  it("uses the declared action bound for browser assertions and excludes route announcements from save errors", () => {
+    const browser = readFileSync(resolve(__dirname, "../../../../apps/web/scripts/swim-conditioning-account-flow-browser.ts"), "utf8");
+    expect(browser).toContain("baseExpect.configure({ timeout: 20_000 })");
+    expect(browser).toContain("context.setDefaultTimeout(20_000)");
+    expect(browser).toContain(`page.locator('p[role="alert"]')`);
+  });
   it("reduces save alerts to fixed categories without retaining their text", () => {
     expect(conditioningSaveDiagnostic([])).toBe("no_alert");
     expect(conditioningSaveDiagnostic(["PrivateSyntheticCanary"])).toBe("unclassified_alert");
