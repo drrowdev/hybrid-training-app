@@ -4334,3 +4334,17 @@ changed. The existing GitHub PostgreSQL job executes the actual absence query
 against the full schema with unrelated fixtures present before another account
 attempt. The failed run's safe summaries were consumed once; raw logs were not
 persisted. No existing private course/history or production changes occurred.
+
+## [2026-09-15] acceptance | Integrated native sign-in and cleanup
+
+The corrected0c6e72ba passed core34956864545 and storage34956864475, including
+the actual absence query against the full schema. Native34957737036 then passed
+live protected settings,158-entry ledger, build/start, two account creations and
+native sign-in. Programme creation stopped at Save for the first account.
+The summary did not distinguish a disabled control from a rejected save.
+
+Both accounts were deleted and their15 checked tables verified empty; independent
+cleanup also passed. Browser, server, build and database closed. No raw logs or
+private rows were retained. The next unchanged journey adds only fixed diagnostic
+categories for the save control, route and visible alert, never the alert text.
+Complete integration and owner usability remain unaccepted.

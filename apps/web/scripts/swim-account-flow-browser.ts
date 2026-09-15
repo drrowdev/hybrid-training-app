@@ -13,10 +13,14 @@ export type NativeReport = {
   browserClosed: boolean; browserRequests: number; clientRequests: number;
   importPhase: "file" | "fields" | "preview" | "titles" | "commit" | "hub" | "layout" | null;
   importAccount: "a" | "b" | null;
-  journeyPhase?: "loadout" | "benchmarks" | "schedule" | "course" | "preview" | "save" |
+  journeyPhase?: "loadout" | "benchmarks" | "schedule" | "course" | "preview" | "save" | "save_result" |
     "today" | "calendar" | "receive" | "match" | "outcome" | "sessions" | "isolation" | "pause" | "edit" | "resume" | "disconnect";
   journeyAccount?: "a" | "b";
   networkBlock?: "http_limit" | "http_origin" | "websocket";
+  saveControl?: "enabled" | "disabled" | "pending" | "absent";
+  savePage?: "programme" | "today" | "other";
+  saveDiagnostic?: "no_alert" | "unconfirmed" | "unavailable" | "course_fit" | "changed" |
+    "save_refused" | "benchmarks" | "review_required" | "unclassified_alert";
 };
 const workoutSchema = z.object({
   id: z.string().uuid(), plan_id: z.string().uuid(), scheduled_date: z.string(),

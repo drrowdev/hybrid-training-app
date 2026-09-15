@@ -8,6 +8,18 @@ import { REVIEW } from "./swim-review-config-plan";
 export const CONDITIONING_ACCOUNT_REFERENCE = {
   sha: "9d42be34302fd194e8fca0224db9fea88226fd8e", run: "34950063605", kind: "automatic_ci",
 } as const;
+export function conditioningSaveDiagnostic(alerts: readonly string[]) {
+  if (!alerts.length) return "no_alert";
+  const text = alerts.join("\n");
+  if (text.includes("not confirmed")) return "unconfirmed";
+  if (text.includes("not available") || text.includes("unavailable")) return "unavailable";
+  if (text.includes("does not fit")) return "course_fit";
+  if (text.includes("plan changed")) return "changed";
+  if (text.includes("could not be saved")) return "save_refused";
+  if (text.includes("training maxes") || text.includes("1-rep max")) return "benchmarks";
+  if (text.includes("Review the swims")) return "review_required";
+  return "unclassified_alert";
+}
 const operations = [...CONDITIONING_REVIEW.otherOperations, "UPDATE_CONDITIONING_SWIM_REVIEW"];
 const updateReceipt = z.object({
   run: z.string().regex(/^\d{8,16}$/), sha: z.literal(CONDITIONING_ACCOUNT_REFERENCE.sha),

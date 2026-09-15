@@ -7,6 +7,7 @@ import { syntheticCourse } from "../src/lib/swim/__tests__/course-fixtures";
 import { ACCOUNT_FLOW_ORIGIN as origin, ACCOUNT_FLOW_SUPABASE as supabaseUrl,
   AccountFlowRefusal, demand } from "../../../packages/db/scripts/swim-account-flow-guards";
 import type { NativeAccount, NativeReport } from "./swim-account-flow-browser";
+import { conditioningSaveDiagnostic } from "../../../packages/db/scripts/swim-conditioning-account-flow-guards";
 
 export const conditioningChecks = ["native_sign_in", "programme_creation", "shared_next_swim",
   "recording_confirmation", "history_and_isolation", "programme_edit_and_pause", "disconnect"] as const;
@@ -81,8 +82,20 @@ async function createProgramme(page: Page, slot: "a" | "b", monday: string, swim
   await page.getByRole("checkbox", { name: "I have reviewed the workouts, dates and pools", exact: true }).check();
   await layout(page);
   report.journeyPhase = "save";
-  await page.getByRole("button", { name: "Create program", exact: true }).click();
-  await expect(page).toHaveURL(`${origin}/app`);
+  const save = page.getByRole("button", { name: "Create program", exact: true });
+  try {
+    await expect(save).toBeEnabled();
+    await save.click();
+    report.journeyPhase = "save_result";
+    await expect(page).toHaveURL(`${origin}/app`);
+  } catch (error) {
+    report.saveControl = await save.count() === 1 ? await save.isEnabled() ? "enabled" : "disabled" :
+      await page.getByRole("button", { name: /^Creating/ }).count() === 1 ? "pending" : "absent";
+    const path = new URL(page.url()).pathname;
+    report.savePage = path === "/app/program" ? "programme" : path === "/app" ? "today" : "other";
+    report.saveDiagnostic = conditioningSaveDiagnostic(await page.getByRole("alert").allTextContents());
+    throw error;
+  }
 }
 export async function conditioningAccountFlow(
   accounts: readonly [NativeAccount, NativeAccount], anonKey: string, report: NativeReport, guard: () => Promise<void>,

@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { conditioningAccountProfile, checkConditioningAccountDispatch, conditioningAccountAbsenceQuery,
-  conditioningAccountTables, CONDITIONING_ACCOUNT_REFERENCE } from "../swim-conditioning-account-flow-guards";
+  conditioningAccountTables, conditioningSaveDiagnostic, CONDITIONING_ACCOUNT_REFERENCE } from "../swim-conditioning-account-flow-guards";
 import { accountIdentity, accountFlowContext } from "../swim-account-flow-guards";
 import { verifyRefreshCheckout, verifyRefreshSource } from "../refresh-swim-review";
 import { OVERRIDE_KEYS, REVIEW, type EnvironmentMetadata } from "../swim-review-config-plan";
@@ -47,6 +47,13 @@ function installed(): EnvironmentMetadata[] {
   ];
 }
 describe("DC-SW3/SW5/SW8 integrated disposable-account boundary", () => {
+  it("reduces save alerts to fixed categories without retaining their text", () => {
+    expect(conditioningSaveDiagnostic([])).toBe("no_alert");
+    expect(conditioningSaveDiagnostic(["PrivateSyntheticCanary"])).toBe("unclassified_alert");
+    expect(conditioningSaveDiagnostic(["The programme and swimming could not be saved."])).toBe("save_refused");
+    expect(conditioningSaveDiagnostic(["This plan does not fit the selected sessions."])).toBe("course_fit");
+    expect(conditioningSaveDiagnostic(["The save was not confirmed."])).toBe("unconfirmed");
+  });
   it("validates an actual manual dispatch before privileged account work", () => {
     if (process.env.GITHUB_EVENT_NAME !== "workflow_dispatch") return;
     const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH!, "utf8")) as { inputs?: Record<string, unknown> };
