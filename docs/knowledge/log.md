@@ -4487,3 +4487,18 @@ remain. All seven cases, both accounts, server-owned identity checks,500/100
 request bounds, network restrictions and cleanup remain unchanged. No response
 is mocked or filtered out of the request counter. The next full execution must
 prove that these real user interactions fit the existing bound.
+
+## [2026-09-15] investigation | Isolate the remaining recording-match failure
+
+8de3b725 passed core34987720822/storage34987720923. Native34988692684 again
+passed both programme saves and shared Today/Plan paths. It stopped at account
+B's matching stage with417 browser requests, below500; the cap is no longer an
+explanation. Both accounts/all15 tables and independent cleanup passed. The
+first account's confirmation/reload succeeded before the second reached matching,
+but the full seven-case journey remains failed.
+
+The next bounded run records the exact matching action and boolean form state
+only, never field values, workout IDs, choices or alert text. The existing
+response-preserving observer also covers the named matching RPC and failed
+workout reads, retaining its16KiB/one-second/20-record bounds. No application,
+permissions, history or request-limit change is made without a proven cause.

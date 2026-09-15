@@ -9,7 +9,7 @@ export const CONDITIONING_ACCOUNT_REFERENCE = {
   sha: "9d42be34302fd194e8fca0224db9fea88226fd8e", run: "34950063605", kind: "automatic_ci",
 } as const;
 export const conditioningRequestDiagnosticSchema = z.object({
-  operation: z.enum(["replay", "save", "context"]), status: z.number().int().min(100).max(599),
+  operation: z.enum(["replay", "save", "match", "context"]), status: z.number().int().min(100).max(599),
   code: z.union([z.enum(["ok", "other", "unreadable"]),
     z.string().regex(/^(?:[0-9][0-9A-Z][0-9A-Z]{3}|(?:P0|XX|HV|F0)[0-9A-Z]{3}|PGRST[0-9]{3})$/)]),
   authorization: z.union([
@@ -59,6 +59,9 @@ export function repairedConditioningAccountProfile(): RefreshProfile {
       "packages/db/scripts/__tests__/swim-conditioning-account-flow-guards.test.ts",
       "apps/web/scripts/swim-conditioning-account-flow.ts",
       "apps/web/scripts/swim-conditioning-account-flow-browser.ts",
+      "apps/web/scripts/swim-account-flow-browser.ts",
+      "apps/web/scripts/swim-conditioning-account-flow-observer.mjs",
+      "packages/db/scripts/__tests__/swim-conditioning-account-flow-observer.test.ts",
       "apps/web/src/components/plan/__tests__/PlanRedesign.swimming.test.tsx",
       "docs/adr/0086-atomic-swim-conditioning.md", "docs/design/swimming-programme-rebuild.md", "docs/knowledge/log.md",
     ],

@@ -26,7 +26,9 @@ function authorizationReason(value) {
 const operations = new Map([
   ["/rest/v1/rpc/swim_conditioning_replay", "replay"],
   ["/rest/v1/rpc/deploy_program_with_swimming", "save"],
+  ["/rest/v1/rpc/swim_match_import", "match"],
   ["/rest/v1/profiles", "context"], ["/rest/v1/training_maxes", "context"], ["/rest/v1/movements", "context"],
+  ["/rest/v1/swim_workouts", "context"],
 ]);
 async function observe(response, operation) {
   let code = "ok";

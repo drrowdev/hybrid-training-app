@@ -29,6 +29,9 @@ describe("DC-SW8 bounded account-runner request observation", () => {
         ["/rest/v1/rpc/deploy_program_with_swimming", 403, { code: "42501", message: "permission denied for table " + canary }],
         ["/rest/v1/rpc/deploy_program_with_swimming", 403, { code: "42501", message: "permission denied for table profiles " + canary }],
         ["/rest/v1/swim_workouts", 400, { code: "23503", details: canary }],
+        ["/rest/v1/rpc/swim_match_import", 409, { code: "40001", message: canary }],
+        ["/rest/v1/swim_workouts", 200, { rows: canary }],
+        ["/rest/v1/sessions", 400, { code: "23503", message: canary }],
       ];
       for (const [path, expectedStatus, value] of cases) {
         status = expectedStatus; body = JSON.stringify(value);
@@ -52,7 +55,7 @@ describe("DC-SW8 bounded account-runner request observation", () => {
       expect(line).toMatch(/^SWIM_CONDITIONING_REQUEST /);
       return conditioningRequestDiagnosticSchema.parse(JSON.parse(line.slice("SWIM_CONDITIONING_REQUEST ".length)));
     });
-    expect(records).toHaveLength(14);
+    expect(records).toHaveLength(16);
     expect(records).toEqual(expect.arrayContaining([
       { operation: "replay", status: 200, code: "ok" },
       { operation: "save", status: 400, code: "23503" },
@@ -66,6 +69,8 @@ describe("DC-SW8 bounded account-runner request observation", () => {
       { operation: "save", status: 403, code: "42501", authorization: "table:movements" },
       { operation: "save", status: 403, code: "42501", authorization: "rls:training_maxes" },
       { operation: "save", status: 403, code: "42501", authorization: "schema:auth" },
+      { operation: "match", status: 409, code: "40001" },
+      { operation: "context", status: 400, code: "23503" },
     ]));
     expect(records.filter((record) => record.authorization === "unknown")).toHaveLength(2);
     expect(conditioningRequestDiagnosticSchema.safeParse({

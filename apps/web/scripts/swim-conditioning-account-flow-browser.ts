@@ -230,12 +230,35 @@ export async function conditioningAccountFlow(
         const receipt = z.object({ id: z.string().uuid(), revision: z.literal(1), replayed: z.literal(false) }).parse(await response.json());
         recordings.push(receipt.id);
         report.journeyPhase = "match";
-        await page.goto(`${origin}/app/swim/recordings/${receipt.id}?from=sessions`);
-        await page.getByLabel("Workout date", { exact: true }).fill(today);
-        await page.getByRole("button", { name: "Find workouts", exact: true }).click();
-        await page.getByRole("combobox", { name: "Workout", exact: true }).selectOption(next[index]!.id);
-        await page.getByRole("button", { name: "Match workout", exact: true }).click();
-        await expect(page.getByRole("button", { name: "Remove match", exact: true })).toBeVisible();
+        try {
+          report.matchAction = "open";
+          await page.goto(`${origin}/app/swim/recordings/${receipt.id}?from=sessions`);
+          report.matchAction = "date";
+          await page.getByLabel("Workout date", { exact: true }).fill(today);
+          report.matchAction = "search";
+          await page.getByRole("button", { name: "Find workouts", exact: true }).click();
+          report.matchAction = "select";
+          await page.getByRole("combobox", { name: "Workout", exact: true }).selectOption(next[index]!.id);
+          report.matchAction = "save";
+          await page.getByRole("button", { name: "Match workout", exact: true }).click();
+          report.matchAction = "result";
+          await expect(page.getByRole("button", { name: "Remove match", exact: true })).toBeVisible();
+        } catch (error) {
+          report.matchObserved = false;
+          try {
+            const date = page.getByLabel("Workout date", { exact: true });
+            const choice = page.getByRole("combobox", { name: "Workout", exact: true });
+            const save = page.getByRole("button", { name: "Match workout", exact: true });
+            report.matchDateCorrect = await date.count() === 1 && await date.inputValue({ timeout: 1000 }) === today;
+            report.matchChoicePresent = await choice.locator(`option[value="${next[index]!.id}"]`).count() === 1;
+            report.matchSelected = await choice.count() === 1 && await choice.inputValue({ timeout: 1000 }) === next[index]!.id;
+            report.matchSaveEnabled = await save.count() === 1 && await save.isEnabled({ timeout: 1000 });
+            report.matchResultPresent = await page.getByRole("button", { name: "Remove match", exact: true }).count() === 1;
+            report.matchAlertPresent = await page.locator('p[role="alert"]').count() > 0;
+            report.matchObserved = true;
+          } catch { report.matchObserved = false; }
+          throw error;
+        }
         report.journeyPhase = "outcome";
         await page.getByRole("radio", { name: index === 0 ? "Completed" : "Stopped early", exact: true }).check();
         await page.getByRole("button", { name: "Confirm outcome", exact: true }).click();

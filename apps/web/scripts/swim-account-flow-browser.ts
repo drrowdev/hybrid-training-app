@@ -16,6 +16,14 @@ export type NativeReport = {
   journeyPhase?: "loadout" | "benchmarks" | "schedule" | "course" | "preview" | "save" | "save_result" |
     "today" | "calendar" | "receive" | "match" | "outcome" | "sessions" | "isolation" | "pause" | "edit" | "resume" | "disconnect";
   journeyAccount?: "a" | "b";
+  matchAction?: "open" | "date" | "search" | "select" | "save" | "result";
+  matchObserved?: boolean;
+  matchDateCorrect?: boolean;
+  matchChoicePresent?: boolean;
+  matchSelected?: boolean;
+  matchSaveEnabled?: boolean;
+  matchResultPresent?: boolean;
+  matchAlertPresent?: boolean;
   networkBlock?: "http_limit" | "http_origin" | "websocket";
   saveControl?: "enabled" | "disabled" | "pending" | "absent";
   savePage?: "programme" | "today" | "other";
