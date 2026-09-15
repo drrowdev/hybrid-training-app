@@ -1,6 +1,5 @@
 const marker = "SWIM_CONDITIONING_REQUEST ";
-const codes = new Set(["42501", "23503", "23505", "23514", "22023", "P0001", "42703", "42883",
-  "42P01", "40001", "57014", "55P03", "PGRST202", "PGRST204", "PGRST205", "PGRST116"]);
+const publicCode = /^(?:[0-9][0-9A-Z][0-9A-Z]{3}|(?:P0|XX|HV|F0)[0-9A-Z]{3}|PGRST[0-9]{3})$/;
 const operations = new Map([
   ["/rest/v1/rpc/swim_conditioning_replay", "replay"],
   ["/rest/v1/rpc/deploy_program_with_swimming", "save"],
@@ -26,7 +25,7 @@ async function observe(response, operation) {
               chunks.push(part.value);
             }
             const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-            code = codes.has(value?.code) ? value.code : "other";
+            code = typeof value?.code === "string" && publicCode.test(value.code) ? value.code : "other";
           })(),
           new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("diagnostic_bound")), 1000); }),
         ]);

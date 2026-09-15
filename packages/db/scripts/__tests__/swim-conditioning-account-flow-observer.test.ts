@@ -17,6 +17,8 @@ describe("DC-SW8 bounded account-runner request observation", () => {
         ["/rest/v1/rpc/swim_conditioning_replay", 200, { id: canary }],
         ["/rest/v1/rpc/deploy_program_with_swimming", 400, { code: "23503", message: canary }],
         ["/rest/v1/training_maxes", 400, { code: "42703", details: canary }],
+        ["/rest/v1/rpc/deploy_program_with_swimming", 400, { code: "42702", details: canary }],
+        ["/rest/v1/rpc/swim_conditioning_replay", 300, { code: "PGRST203", details: canary }],
         ["/rest/v1/rpc/deploy_program_with_swimming", 400, { code: canary, message: canary }],
         ["/rest/v1/rpc/deploy_program_with_swimming", 400, { code: "23503", details: canary.repeat(2000) }],
         ["/rest/v1/swim_workouts", 400, { code: "23503", details: canary }],
@@ -43,11 +45,13 @@ describe("DC-SW8 bounded account-runner request observation", () => {
       expect(line).toMatch(/^SWIM_CONDITIONING_REQUEST /);
       return conditioningRequestDiagnosticSchema.parse(JSON.parse(line.slice("SWIM_CONDITIONING_REQUEST ".length)));
     });
-    expect(records).toHaveLength(5);
+    expect(records).toHaveLength(7);
     expect(records).toEqual(expect.arrayContaining([
       { operation: "replay", status: 200, code: "ok" },
       { operation: "save", status: 400, code: "23503" },
       { operation: "context", status: 400, code: "42703" },
+      { operation: "save", status: 400, code: "42702" },
+      { operation: "replay", status: 300, code: "PGRST203" },
       { operation: "save", status: 400, code: "other" },
       { operation: "save", status: 400, code: "unreadable" },
     ]));

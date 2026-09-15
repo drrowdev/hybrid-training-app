@@ -10,8 +10,8 @@ export const CONDITIONING_ACCOUNT_REFERENCE = {
 } as const;
 export const conditioningRequestDiagnosticSchema = z.object({
   operation: z.enum(["replay", "save", "context"]), status: z.number().int().min(100).max(599),
-  code: z.enum(["ok", "other", "unreadable", "42501", "23503", "23505", "23514", "22023", "P0001",
-    "42703", "42883", "42P01", "40001", "57014", "55P03", "PGRST202", "PGRST204", "PGRST205", "PGRST116"]),
+  code: z.union([z.enum(["ok", "other", "unreadable"]),
+    z.string().regex(/^(?:[0-9][0-9A-Z][0-9A-Z]{3}|(?:P0|XX|HV|F0)[0-9A-Z]{3}|PGRST[0-9]{3})$/)]),
 }).strict();
 export function conditioningSaveDiagnostic(alerts: readonly string[]) {
   if (!alerts.length) return "no_alert";
