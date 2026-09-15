@@ -4450,3 +4450,22 @@ The integrated native runner now uses accepted42154e14 and verifies repaired159
 storage, retaining the actual9d42be34 deployment receipt and all existing account,
 request and cleanup bounds. End-to-end and owner-usability acceptance are still
 pending; this entry records repair delivery, not a successful user journey.
+
+## [2026-09-15] correction | Exercise the current shared programme schedule
+
+e6265b76 passed core34980862067/storage34980861994. Native34982294392 confirmed
+successful sign-in and combined programme saves for both accounts after0158:
+both replay and Save requests returned200. Account A also opened today's swim.
+The next check stopped on Plan because the runner looked for the Today-only
+week rail; the current Plan page uses programme agenda cards instead. The
+runner now addresses that existing card by the linked primary-session identity,
+retaining exact one-card, drawer, outcome and completion assertions. A rendering
+regression covers the actual programme surface. No application code changed.
+
+The same run observed three400/42703 context reads. Source inspection found an
+unrelated Today movement query selecting `name` instead of `display_name`; this
+does not explain the absent rail. It remains a separate follow-up, not grounds
+for changing the calendar or widening this execution's scope before it completes.
+Both accounts/all15 tables were removed; independent cleanup and all main
+process closure passed. The main journey still failed, and its safe main/cleanup
+summaries were consumed once. No unchanged-head rerun is authorized.

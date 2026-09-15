@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { conditioningSwimView } from "@/lib/swim/conditioning-view";
 import { swimFixture } from "@/lib/swim/__tests__/fixtures";
-import { SessionDrawer, type PlanSessionInput } from "../PlanRedesign";
+import { PlanRedesign, SessionDrawer, type PlanSessionInput } from "../PlanRedesign";
 import { buildWeekRailRows, RailList } from "../ThisWeekRail";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh() {}, push() {}, replace() {} }) }));
@@ -21,6 +21,16 @@ const session: PlanSessionInput = {
   items: [{ movementId: "", kind: "cardio_external" }], estDurationMin: null, notes: null, swim,
 };
 describe("linked swimming in the shared plan", () => {
+  it("exposes the linked primary identity in the programme schedule, not the Today-only rail", () => {
+    const html = renderToStaticMarkup(<PlanRedesign archetypeName="Synthetic programme"
+      startedOn="2026-09-07" weeks={3} today="2026-09-07" currentWeekIndex={0}
+      sessions={[session]} view="timeline" moveAction={noop} skipAction={noop} unskipAction={noop}
+      updateNotesAction={async () => ({ ok: true })} />);
+    expect(html.match(/data-testid="plan-pill-planned"/g)).toHaveLength(1);
+    expect(html).not.toContain('data-testid="plan-rail-');
+    expect(html).toContain('class="plan-agenda-session"');
+    expect(html).toContain('draggable="false"');
+  });
   it.each([true, false])("uses the existing drawer without native completion controls (logging=%s)", (allowLogging) => {
     const html = renderToStaticMarkup(<SessionDrawer session={session} allowLogging={allowLogging}
       today="2026-09-15" weeks={3} onClose={noop} moveAction={noop} skipAction={noop} unskipAction={noop}

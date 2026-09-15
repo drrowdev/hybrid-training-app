@@ -58,6 +58,8 @@ export function repairedConditioningAccountProfile(): RefreshProfile {
       "packages/db/scripts/swim-conditioning-account-flow-guards.ts",
       "packages/db/scripts/__tests__/swim-conditioning-account-flow-guards.test.ts",
       "apps/web/scripts/swim-conditioning-account-flow.ts",
+      "apps/web/scripts/swim-conditioning-account-flow-browser.ts",
+      "apps/web/src/components/plan/__tests__/PlanRedesign.swimming.test.tsx",
       "docs/adr/0086-atomic-swim-conditioning.md", "docs/design/swimming-programme-rebuild.md", "docs/knowledge/log.md",
     ],
   };

@@ -103,7 +103,7 @@ export async function conditioningAccountFlow(
   accounts: readonly [NativeAccount, NativeAccount], anonKey: string, report: NativeReport, guard: () => Promise<void>,
 ) {
   const schedule = conditioningFixtureSchedule(new Date().toISOString().slice(0, 10));
-  const { today, todayDay } = schedule;
+  const { today } = schedule;
   const linked = (client: SupabaseClient, account: NativeAccount) => readLinked(client, account, schedule.workoutCount);
   const browser = await chromium.launch();
   let failure: unknown, blocked = false;
@@ -173,10 +173,11 @@ export async function conditioningAccountFlow(
         await view.click();
         await expect(page).toHaveURL(`${origin}/app/swim/${next[index]!.id}?from=today`);
         await layout(page);
-        report.journeyPhase = "calendar";
+        report.journeyPhase = "schedule";
         await page.goto(`${origin}/app/plan`);
-        const rail = page.getByTestId(`plan-rail-${todayDay}`);
-        await rail.click();
+        const scheduled = page.getByTestId(`plan-pill-${next[index]!.planned_session_id}`);
+        await expect(scheduled).toHaveCount(1);
+        await scheduled.click();
         const drawer = page.getByRole("dialog");
         await expect(drawer.getByRole("link", { name: "View swim", exact: true }))
           .toHaveAttribute("href", `/app/swim/${next[index]!.id}?from=plan`);
@@ -225,11 +226,12 @@ export async function conditioningAccountFlow(
       for (const [index, page] of pages.entries()) {
         report.journeyAccount = accounts[index]!.identity.marker.slot; report.journeyPhase = "sessions";
         await page.goto(`${origin}/app/plan`);
-        const rail = page.getByTestId(`plan-rail-${todayDay}`);
-        if (index === 0) await expect(rail).toHaveClass(/\bdone\b/);
+        const scheduled = page.getByTestId(`plan-pill-${next[index]!.planned_session_id}`);
+        await expect(scheduled).toHaveCount(1);
+        if (index === 0) await expect(scheduled).toHaveClass(/\bdone\b/);
         else {
-          await expect(rail).not.toHaveClass(/\bdone\b/);
-          await rail.click();
+          await expect(scheduled).not.toHaveClass(/\bdone\b/);
+          await scheduled.click();
           await expect(page.getByRole("dialog").getByText("Stopped early", { exact: true })).toBeVisible();
           await page.keyboard.press("Escape");
         }
