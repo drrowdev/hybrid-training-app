@@ -4395,3 +4395,19 @@ against the real course compiler and binding/edit rules for all seven weekdays.
 Monday through Thursday exercise two swims/week; late-week fixtures use one so
 the course fits the primary block and a valid future edit remains possible.
 All seven browser checks and exact identity/cleanup assertions remain required.
+
+## [2026-09-15] fix | Reuse the restricted swimming identity boundary
+
+ad805d6f passed core34972105798/storage34972105804. Native34973187607 confirmed
+the exact denied target as schema `auth`; both accounts, all15 checked tables
+and independent cleanup passed. No logs were reread or raw errors retained.
+
+Source inspection found the existing0147/0148 identity helper already solves
+this managed-schema boundary. New0156/0157 routines had bypassed it. Additive0158
+uses the same helper in five exact-hash routine bodies and grants only its
+execution to the restricted conditioning role. Existing RLS, function attributes
+and managed-auth permissions are preserved. The down restores the prior bodies
+and grant without deleting history. The existing PostgreSQL job now reproduces
+missing auth-schema access before exercising repair, rollback and all existing
+save/lifecycle/isolation cases. Hosted repair and the complete native journey
+remain pending; the spent updater and production are untouched.

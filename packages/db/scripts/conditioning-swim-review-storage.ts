@@ -23,14 +23,16 @@ export function conditioningReviewMigrations(): Migration[] {
     idx: z.number().int(), when: z.number().int(), tag: z.string(), breakpoints: z.boolean(),
   })) }).parse(JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8")));
   const historical = historicalSwimMigrations();
-  demand(migrations.length === 158 && journal.entries.length === 158 &&
+  demand(migrations.length === 159 && journal.entries.length === 159 &&
     journal.entries.every((entry, index) => entry.idx === index && entry.when === migrations[index]!.folderMillis &&
       (index === 0 || entry.when > journal.entries[index - 1]!.when)) &&
     historical.length === 155 && historical.every((entry, index) => entry.hash === migrations[index]!.hash &&
       entry.folderMillis === migrations[index]!.folderMillis), "migration_source");
   const appended = ["0155_swim_import_outcomes", "0156_atomic_swim_conditioning", "0157_swim_conditioning_lifecycle"];
-  demand(journal.entries.slice(155).every((entry, index) => entry.tag === appended[index] && !entry.breakpoints), "migration_source");
-  return migrations;
+  demand(journal.entries.slice(155, 158).every((entry, index) => entry.tag === appended[index] && !entry.breakpoints) &&
+    journal.entries[158]!.tag === "0158_conditioning_request_identity" && !journal.entries[158]!.breakpoints, "migration_source");
+  // Historical updater/account profiles still observe the exact deployed158 prefix.
+  return migrations.slice(0, 158);
 }
 export function validateConditioningLedger(value: unknown, migrations: readonly Migration[], count: number) {
   const parsed = ledgerSchema.safeParse(value);

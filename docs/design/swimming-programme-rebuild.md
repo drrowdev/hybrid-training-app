@@ -921,3 +921,14 @@ Output is a closed, source-bound summary with fixed phase codes, never user rows
 raw errors, keys, recordings or screenshots. This checks the same application
 source against the protected database; it is not yet owner usability acceptance
 or a browser test through Vercel's protected hostname.
+
+Native34973187607 confirmed that the combined Save is denied access to schema
+`auth`. The earlier restricted identity helper was not used by the new combined
+writer. The owner approved a bounded protected-site repair. Additive0158 reuses
+that unchanged helper, preserves RLS and function attributes, and grants no
+managed-auth access. Its paired down preserves all history. The GitHub PostgreSQL
+fixture now reproduces this missing-schema-access condition and exercises
+repair/down/restore before the full save/lifecycle/isolation suite.
+The protected site remains at9d42be34/158 until a fresh guarded repair succeeds;
+the previous updater cannot be replayed. Native journey and owner usability
+acceptance are still outstanding.

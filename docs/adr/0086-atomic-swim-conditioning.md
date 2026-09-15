@@ -78,6 +78,30 @@ unchanged. The down migration removes these grants along with the unused wrapper
 Authenticated clients can read their own links/receipts and execute the wrapper,
 but cannot directly insert, update or delete those records.
 
+### Restricted request identity repair
+
+Protected account run34973187607 confirmed SQLSTATE42501 for schema `auth`.
+The combined writer had reintroduced direct `auth.uid()` calls, despite the
+existing0147/0148 `swim_request_user_id()` boundary. The synthetic PostgreSQL
+fixture owned its `auth` schema and could grant access that managed hosting did
+not provide, so earlier database tests missed the failure.
+
+Under the owner's bounded protected-site repair approval, migration0158 grants
+only EXECUTE on that existing helper to `conditioning_writer`. Five exact-hash
+function bodies use it for the same caller identity: combined Save, its replay,
+the nested primary deployer, linked lifecycle changes and the programme lock.
+The helper remains unchanged. Function owners, ACLs, invoker/definer modes,
+row-security settings, user rows and managed-auth permissions remain unchanged.
+Source or attribute drift aborts the whole transaction.
+
+The existing PostgreSQL service now removes synthetic auth-schema access,
+reproduces the exact denial, rehearses repair/down/restore and then runs the full
+atomic save/lifecycle/two-owner suite in that restricted state. The down restores
+only the five bodies and helper grant, retaining all history and ledger records.
+Disable integrated conditioning before any explicitly approved hosted rollback;
+restoring the prior bodies also restores the known Save failure. No automatic
+rollback or reuse of the spent protected updater is authorized.
+
 The empty-only down migration uses bounded locks and refuses retained records.
 It never deletes history to make rollback pass. Once used, disable new creation
 and retain the schema rather than running the down migration.

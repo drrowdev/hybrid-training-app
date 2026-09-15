@@ -17,6 +17,7 @@ import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scrip
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
 import { historicalSwimMigrations } from "./historical-swim-migrations.ts";
 import { exerciseSwimConditioning } from "./swim-conditioning-storage.ts";
+import { exerciseConditioningIdentity } from "./swim-conditioning-identity.ts";
 import { accountIdentity } from "../scripts/swim-account-flow-guards.ts";
 import { conditioningAccountAbsenceQuery } from "../scripts/swim-conditioning-account-flow-guards.ts";
 import { readMigrationFiles } from "drizzle-orm/migrator";
@@ -78,13 +79,13 @@ try {
     GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
   `);
   const journal: { entries: { idx: number; tag: string; when: number; breakpoints: boolean }[] } = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"));
-  assert.equal(journal.entries.length, 158);
+  assert.equal(journal.entries.length, 159);
   assert.equal(journal.entries[153].tag, "0153_swim_import_matching");
   assert.equal(journal.entries[154].tag, "0154_swim_untimed_courses");
   assert.deepEqual(journal.entries.slice(150).map((entry) => entry.tag), [
     "0150_swim_import_storage", "0151_swim_pool_changes", "0152_swim_private_courses",
     "0153_swim_import_matching", "0154_swim_untimed_courses", "0155_swim_import_outcomes",
-    "0156_atomic_swim_conditioning", "0157_swim_conditioning_lifecycle",
+    "0156_atomic_swim_conditioning", "0157_swim_conditioning_lifecycle", "0158_conditioning_request_identity",
   ]);
   verifyMigrationDependencyParity();
   assert.throws(reviewMigrations, (error) => error instanceof ReviewStorageRefusal && error.code === "migration_source");
@@ -795,6 +796,8 @@ try {
   assert.equal(absentRows.length, 1);
   assert.equal(absentRows[0]!.empty, true);
   stages.push(stage);
+  const revertIdentity = await exerciseConditioningIdentity(database, c, (name) => { stage = name; });
+  stages.push("conditioning-identity-repair-and-rollback");
   await exerciseSwimConditioning(database, c, b, editedCourse.plan, {
     started_on: today,
     ends_on: new Date(Date.parse(`${today}T00:00:00Z`) + 13 * 86400000).toISOString().slice(0, 10),
@@ -812,6 +815,7 @@ try {
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_workouts`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_conditioning_bindings`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_conditioning_saves`)[0]!.count, 0);
+  await revertIdentity();
   await revertLifecycle();
   await revertConditioning();
   await revertOutcomes();
