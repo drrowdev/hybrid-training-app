@@ -89,9 +89,9 @@ conditioning saves. New saves also require `swim_conditioning_benchmarks_ready()
 so an earlier0156 implementation cannot silently ignore submitted benchmarks.
 They also require `swim_conditioning_lifecycle_ready()`.
 Export and receipt recovery do not depend on that flag or the new readiness check.
-The current server path supports new foreign programmes only; edits, native
-programmes and inserted recovery weeks remain unavailable until their coordinated
-paths are complete. The real wizard now mounts a conditional fifth step for
+The current server path supports new foreign programmes and the bounded edit
+path below; native programmes and inserted recovery weeks remain unavailable.
+The real wizard now mounts a conditional fifth step for
 eligible new open-conditioning programmes, with the existing pool/experience
 controls inline and one final action. Its date and source changes invalidate
 review; file selection and entered values survive Back and interrupted saves.
@@ -140,8 +140,36 @@ retain session deletion, effort and duration. Imported day-only dates never gain
 an invented timestamp or shift through the user's timezone. Readiness is separate
 from the setup flag and fails visibly for a broken installed view.
 
-Programme-edit paths and authenticated journey acceptance remain unfinished;
-this is not release readiness.
+### Editing the primary programme
+
+The owner separately chose moving future unstarted swims when the main training
+days change. This does not change the fixed-calendar pause/resume decision.
+The normal Edit plan action remaps the existing activity choices in weekday order.
+It retains all linked identities, original/issued prescriptions, source labels,
+claims and history. Only future scheduled, unstarted, unclaimed work moves;
+paused plans stay paused. Generated replacements for retained swims are omitted.
+A frozen swim cannot silently suppress a newly generated strength session.
+Current saved conditioning choices, not all historical weekdays, reopen the editor.
+
+This bounded path retains programme length, weekly conditioning frequency and
+single/am/pm placement. It does not stretch/truncate courses or support inserted
+recovery weeks. An incompatible fit or occupied retained slot produces an explicit
+failure rather than partially saving a different schedule.
+
+The new0157 wrapper remains SECURITY INVOKER for the native rewrite. A separate
+owner-scoped locking function uses the existing restricted `conditioning_writer`
+to lock the primary block, linked plans/workouts and primary rows in order before
+comparing exact snapshots. It grants authenticated users no swimming table writes.
+Moves use the existing lifecycle/safety function and expected revisions, preserving
+its audit history. Free destinations are processed first; links are never detached
+and fake dates are never used to evade the unique calendar constraint.
+Deletion of unbound future rows, paired moves, native insertions and programme
+metadata share one transaction. A late failure rolls everything back.
+
+Linked edits require `swim_conditioning_program_edit_ready()` and never enter a
+primary-only legacy fallback. A stale whole-edit retry is refused; this path does
+not claim a separate whole-programme replay receipt. Authenticated complete-journey
+and owner usability acceptance remain outstanding.
 
 The existing disposable GitHub Postgres job exercises same-owner refusal,
 rollback after late failure, new/existing course saves, concurrent replay,
@@ -160,6 +188,8 @@ The benchmark extension at `50750d51` passed core34928353200 and disposable
 storage34928353211. The subsequent shared presentation has focused state/read-model
 checks and synthetic375/1280 drawer coverage. Source `4cad18c0` passed
 core34935940196 and storage34935940221, including invoker isolation, recording
-corrections, retained purge history and cleanup. The later lifecycle work adds
-focused action and mobile/desktop control coverage plus a disposable SQL fixture;
-its exact-source PostgreSQL acceptance is still pending.
+corrections, retained purge history and cleanup. Lifecycle and ordinary activity
+history subsequently passed core34944116720 and storage34944116919 at `2bdffde7`,
+including migration/down/up and cleanup. The newer coordinated edit has focused
+action/preparation tests and a disposable SQL fixture; its exact-source PostgreSQL
+acceptance is still pending. This is not hosted release readiness.

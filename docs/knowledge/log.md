@@ -4258,3 +4258,26 @@ helpers corrected it. SQL assertions cover original recording dates through
 correction, unmatching and clear. Exact-source CI/SQL, coordinated programme-edit
 paths, authenticated end-to-end acceptance and owner usability remain pending.
 No hosted schema, deployment, private data or real-account changes occurred.
+
+## [2026-09-15] decision | Move future swims with explicit programme edits
+
+Lifecycle and ordinary activity history at2bdffde7 passed core34944116720 and
+disposable storage34944116919. Public terminal metadata was consumed once;
+successful logs were not downloaded. This is development acceptance, not delivery
+to the protected review site or production.
+
+The owner explicitly chose moving future unstarted swims when the main programme's
+training days change. Fixed-calendar pause/resume remains unchanged. The Edit plan
+path now retains all bound identities and prescriptions, keeps past/today and
+started/claimed/skipped work fixed, and updates saved activity weekdays. Frequency,
+programme length and single/am/pm placement stay fixed; recovery insertion remains
+held. Conflicting frozen work is refused instead of silently removing strength.
+
+Unshipped0157 adds an invoker-owned atomic rewrite around the existing native
+update and paired lifecycle moves. A narrowly scoped definer locks owned linked
+rows before exact-snapshot comparison, without granting authenticated swimming
+table writes. Free-target ordering avoids temporary fake dates or detached links.
+Focused preparation/action/native-regression tests and a disposable SQL fixture
+cover stale saves, isolation, occupied targets, paused multi-moves, concurrent
+saves, claimed history and late rollback. Exact-source SQL acceptance remains
+pending. Hosted updates and real-account changes still require separate approval.

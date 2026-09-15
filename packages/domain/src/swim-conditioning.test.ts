@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  planSwimConditioningBindings, validateConditioningChoices,
+  planSwimConditioningBindings, planSwimConditioningEdit, remapConditioningChoices, validateConditioningChoices,
   type SwimConditioningSlot, type SwimConditioningWorkout,
 } from "./swim-conditioning";
 
@@ -21,6 +21,58 @@ describe("conditioning choices", () => {
     ])).toEqual({ ok: true, value: [
       { weekday: 2, activity: "running" }, { weekday: 5, activity: "swimming" },
     ] });
+  });
+
+  describe("coordinated programme edits", () => {
+    const workouts = [
+      { ...workout, id: "a", plannedSessionId: "pa", date: "2026-09-16", weekIndex: 0, movable: true },
+      { ...workout, id: "b", plannedSessionId: "pb", date: "2026-09-18", weekIndex: 0, movable: true },
+    ];
+    const slots = [
+      { ...workout, id: "first", date: "2026-09-17", weekIndex: 0 },
+      { ...workout, id: "second", date: "2026-09-19", weekIndex: 0 },
+    ];
+    it("DC-SW5/SW7 preserves activity order while moving weekday assignments", () => {
+      expect(remapConditioningChoices([
+        { weekday: 4, activity: "swimming" }, { weekday: 2, activity: "cycling" },
+      ], [5, 3])).toEqual({ ok: true, value: [
+        { weekday: 3, activity: "cycling" }, { weekday: 5, activity: "swimming" },
+      ] });
+      expect(remapConditioningChoices([{ weekday: 2, activity: "swimming" }], [3, 5]).ok).toBe(false);
+      expect(remapConditioningChoices([{ weekday: 2, activity: "swimming" }], [7]).ok).toBe(false);
+    });
+    it("DC-SW5/SW7 moves future unstarted swims without replacing either identity or mutating inputs", () => {
+      const before = JSON.stringify({ workouts, slots });
+      expect(planSwimConditioningEdit({ today, workouts, slots })).toEqual({ ok: true, value: {
+        moves: [
+          { id: "a", plannedSessionId: "pa", date: "2026-09-17" },
+          { id: "b", plannedSessionId: "pb", date: "2026-09-19" },
+        ], claimedSlotIds: ["first", "second"],
+      } });
+      expect(JSON.stringify({ workouts, slots })).toBe(before);
+    });
+    it("DC-SW7 keeps past/today and settled or claimed work in place without regenerating duplicates", () => {
+      const frozen = [{ ...workouts[0]!, date: today }, { ...workouts[1]!, movable: false }];
+      expect(planSwimConditioningEdit({ today, workouts: frozen, slots })).toEqual({ ok: true, value: {
+        moves: [], claimedSlotIds: ["first", "second"],
+      } });
+    });
+    it("DC-SW5 refuses lost frequency, earlier dates, changed AM/PM slots and retained-work collisions", () => {
+      expect(planSwimConditioningEdit({ today, workouts, slots: slots.slice(1) }).ok).toBe(false);
+      expect(planSwimConditioningEdit({ today, workouts, slots: [{ ...slots[0]!, date: today }, slots[1]!] }).ok).toBe(false);
+      expect(planSwimConditioningEdit({ today, workouts, slots: [{ ...slots[0]!, slot: "am" }, slots[1]!] }).ok).toBe(false);
+      expect(planSwimConditioningEdit({ today, workouts: [{ ...workouts[0]!, movable: false }, workouts[1]!],
+        slots: [{ ...slots[0]!, date: "2026-09-15" }, { ...slots[1]!, date: workouts[0]!.date }] }).ok).toBe(false);
+    });
+    it("DC-SW7 has no moves for unchanged placement and ignores wholly historical weeks", () => {
+      expect(planSwimConditioningEdit({ today, workouts, slots: workouts }).ok).toBe(true);
+      const result = planSwimConditioningEdit({ today: "2026-09-21", workouts, slots: [] });
+      expect(result).toEqual({ ok: true, value: { moves: [], claimedSlotIds: [] } });
+    });
+    it("DC-SW8 refuses duplicate identities and invalid dates", () => {
+      expect(planSwimConditioningEdit({ today, workouts: [workouts[0]!, workouts[0]!], slots }).ok).toBe(false);
+      expect(planSwimConditioningEdit({ today, workouts, slots: [{ ...slots[0]!, date: "2026-02-30" }, slots[1]!] }).ok).toBe(false);
+    });
   });
   it("DC-SW5 refuses removed or duplicate assignments instead of silently dropping them", () => {
     expect(validateConditioningChoices([2], [{ weekday: 5, activity: "swimming" }]).ok).toBe(false);

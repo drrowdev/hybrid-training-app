@@ -67,7 +67,7 @@ export async function readConditioningSave(
   return parsed.data[0] ?? null;
 }
 
-export function applyConditioningChoices(write: ProgramInstanceWrite, conditioning: ProgramConditioning): ProgramInstanceWrite {
+export function applyConditioningChoices(write: ProgramInstanceWrite, conditioning: Pick<ProgramConditioning, "choices">): ProgramInstanceWrite {
   const eligible = write.sessions.filter((session) =>
     session.role === "cardio" && session.prescription.items.length === 1 &&
     session.prescription.items[0]?.kind === "cardio_external");

@@ -9,6 +9,9 @@ DO $$ BEGIN
   END IF;
 END $$;
 DROP TRIGGER swim_conditioning_end_with_program ON public.training_blocks;
+DROP FUNCTION public.swim_update_conditioning_program(uuid,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb,uuid);
+DROP FUNCTION public.swim_lock_conditioning_program(uuid);
+DROP FUNCTION public.swim_conditioning_program_edit_ready();
 DROP FUNCTION public.swim_conditioning_end_with_program();
 DROP TRIGGER swim_conditioning_state_guard ON public.swim_plans;
 DROP FUNCTION public.swim_conditioning_state_guard();

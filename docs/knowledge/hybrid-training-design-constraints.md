@@ -679,6 +679,11 @@ correction retain history. No date/distance or provider-reference inference.
   There is no extension, compressed catch-up or independent continuation.
   Ending the primary programme ends its linked swimming, retaining every target
   and result. The standalone fresh-date resume rule does not apply to these links.
+  **Programme-edit decision (2026-09-15):** changing the primary training days
+  moves future unstarted, unclaimed swims with the programme, preserving both
+  identities and prescriptions. Past/today, started, claimed and skipped work
+  keeps its dates. This explicit edit is separate from fixed-calendar pause/resume.
+  The primary rewrite and swim moves either all save or all roll back.
 - **DC-SW8 - Owned, atomic single logging [DEF].** Composite ownership links and
   RLS protect plans, workouts and sessions. Concurrent starts obtain one ordinary
   session. One serialized completion atomically writes the native result, its

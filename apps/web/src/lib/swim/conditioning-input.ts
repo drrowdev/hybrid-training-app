@@ -18,13 +18,16 @@ export const conditioningCourseSchema = z.object({
   reviewed: z.boolean(),
   acceptSetTotals: z.boolean().default(false),
 }).strict();
+const conditioningChoicesSchema = z.array(z.object({
+    weekday: z.number().int().min(0).max(6),
+    activity: z.enum(CONDITIONING_ACTIVITIES),
+  }).strict()).max(7).refine((choices) => new Set(choices.map((choice) => choice.weekday)).size === choices.length,
+    { message: "Choose one activity for each conditioning day." });
+export const savedConditioningSchema = z.object({ choices: conditioningChoicesSchema }).passthrough();
 export const programConditioningSchema = z.object({
   requestId: z.string().uuid(),
   benchmarks: trainingMaxEditsSchema.optional(),
-  choices: z.array(z.object({
-    weekday: z.number().int().min(0).max(6),
-    activity: z.enum(CONDITIONING_ACTIVITIES),
-  }).strict()).max(7),
+  choices: conditioningChoicesSchema,
   swim: z.discriminatedUnion("kind", [
     conditioningCourseSchema,
     z.object({ kind: z.literal("existing"), planId: z.string().uuid(), revision: z.number().int().positive() }).strict(),

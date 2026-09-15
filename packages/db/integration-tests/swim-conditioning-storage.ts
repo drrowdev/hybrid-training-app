@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import type postgres from "postgres";
 import { exerciseConditioningLifecycle } from "./swim-conditioning-lifecycle.ts";
+import { exerciseConditioningProgramEdit } from "./swim-conditioning-program-edit.ts";
 
 type SwimCreate = {
   started_on: string; ends_on: string; definition: unknown; state: unknown;
@@ -199,6 +200,9 @@ export async function exerciseSwimConditioning(
     assert.notEqual(created.swim_plan_id, existing.id);
     assert.equal((await as(fresh, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_conditioning_bindings`))[0]!.count, source.workouts.length);
     await exerciseConditioningLifecycle(database, fresh, other, created.swim_plan_id, mark);
+    const assertClaimedEditRefusal = await exerciseConditioningProgramEdit(
+      database, fresh, other, created.block_id, created.swim_plan_id, mark,
+    );
     mark("conditioning-current-recording-projection");
     const [work] = await as(fresh, (tx) => tx<{ id: string; revision: number; scheduled_date: string }[]>`
       SELECT id,revision,scheduled_date::text AS scheduled_date
@@ -235,6 +239,8 @@ export async function exerciseSwimConditioning(
     assert.equal(completedView.matched_import_id, imported.id);
     assert.equal(completedView.latest_import_id, imported.id);
     assert.equal(completedView.matched_workout_revision, completedView.revision);
+    await assertClaimedEditRefusal();
+    mark("conditioning-current-recording-projection");
     assert.equal(completedView.native_completed_at, null);
     assert.equal(completedView.claim_recording_date, evidence.date);
     const [{ plan_revision: confirmedPlanRevision }] = await as(fresh, (tx) => tx`SELECT plan_revision

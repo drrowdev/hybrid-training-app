@@ -812,8 +812,8 @@ The default-off single programme/swim transaction includes the
 server-action connection, stable retry receipts and exported ownership links
 ([ADR0086](../adr/0086-atomic-swim-conditioning.md)). Local slot deletion cannot
 detach a swim, while whole primary purge retains original association history.
-Edits, native programmes and recovery-week insertion remain unavailable in this
-new path pending coordinated lifecycle work. Source `00fa09d3` passed core
+Native programmes and recovery-week insertion remain unavailable in this new
+path; the bounded programme edit is described below. Source `00fa09d3` passed core
 CI34890112070 and disposable storage CI34890112131, including24 SQL stages.
 The mounted wizard's synthetic375/1280 browser journeys cover new/existing
 sources, draft recovery, unchanged retry and the flag-off path.
@@ -843,8 +843,17 @@ past swims remain unknown/incomplete; skip/undo is explicit. Development0157 add
 atomic paired date changes, fixed-calendar pause/resume and retained retry history.
 Ending the primary programme also finishes its linked swimming in the same
 transaction. Shared drawer/workout controls use the existing components and
-reviewed pool, course and date editors. This lifecycle checkpoint still requires
-exact-source PostgreSQL acceptance; broader activity history, programme editing
-and the authenticated full journey remain unfinished.
-The new path remains disabled until acceptance and the lifecycle gaps are resolved.
+reviewed pool, course and date editors. Lifecycle and ordinary Sessions/Recent
+activity history passed exact-source core34944116720 and storage34944116919 at
+2bdffde7, including schema reversal/reinstallation and cleanup.
+
+The owner separately chose moving future unstarted swims with changed primary
+training days. The normal Edit plan path now prepares one paired rewrite,
+preserving linked identities, prescriptions and settled work. Paused plans remain
+paused. Weekday activities retain their order; frequency, programme length and
+single/am/pm placement stay fixed. A frozen swim cannot silently remove new
+strength work. Current saved choices reopen the editor without historic weekdays.
+SQL acceptance of this newer edit path and the authenticated full journey remain
+outstanding. The new path stays disabled pending complete acceptance and separate
+hosted authorization.
 No physical-device or owner usability acceptance is claimed.

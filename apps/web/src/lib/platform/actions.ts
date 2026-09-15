@@ -30,6 +30,7 @@ import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 import { programConditioningSchema, type ProgramConditioning } from "@/lib/swim/conditioning-input";
+import { prepareConditioningProgramEdit, readConditioningEditRows } from "@/lib/swim/conditioning-program-edit";
 import {
   applyConditioningChoices, conditioningSaveError, deployProgramWithSwimming,
   prepareConditioningSwim, programConditioningAvailable, readConditioningSave,
@@ -2377,6 +2378,25 @@ async function updateForeignProgramInstance(
       ),
     ),
   ].sort((a, b) => a - b);
+  let swimEdit: ReturnType<typeof prepareConditioningProgramEdit> | undefined;
+  try {
+    const rows = await readConditioningEditRows(supabase, user.id, blockId);
+    if (rows.length || priorSetupInput.conditioning != null) {
+      if (rows.length && insertedRecoveryWeeks.length) {
+        return { ok: false, error: "Swimming programme edits with inserted recovery weeks are not available yet." };
+      }
+      if (rows.length && write.weeks !== block.weeks) {
+        return { ok: false, error: "Keep the programme length when changing its swimming schedule." };
+      }
+      swimEdit = prepareConditioningProgramEdit({
+        rows, primary: blockRows ?? [], write, conditioning: priorSetupInput.conditioning,
+        startedOn: blockStartedOn, today: todayYmd(tz),
+      });
+      write = swimEdit.write;
+    }
+  } catch (error) {
+    return { ok: false, error: conditioningSaveError(error) };
+  }
   const futureRows = (blockRows ?? []).filter(
     (row) => (row.week_index as number) >= currentWeekIndex,
   );
@@ -2474,7 +2494,7 @@ async function updateForeignProgramInstance(
       insertedRecoveryWeeks,
     ),
   }));
-  const sessionsForRewrite = shiftedSessions.map((session) =>
+  const sessionsForRewrite = shiftedSessions.filter((_, index) => !swimEdit?.claimedIndices.has(index)).map((session) =>
     session.role === "strength" &&
     touchedSeparateRehabDays.has(
       dayKey(session.weekIndex, session.dayIndex),
@@ -2504,7 +2524,14 @@ async function updateForeignProgramInstance(
     currentWeekIndex,
     currentDayIndex,
     writeWeeks: write.weeks + insertedRecoveryWeeks.length,
-    existingFuture,
+    existingFuture: existingFuture.map((row) => {
+      if (!swimEdit?.retainedIds.has(row.id)) return row;
+      const move = swimEdit.moves.find((entry) => entry.plannedSessionId === row.id);
+      const offset = move ? daysBetweenYmd(blockMonday, move.date) : null;
+      return { ...row, touched: true, ...(offset !== null ? {
+        weekIndex: Math.floor(offset / 7), dayIndex: offset % 7,
+      } : {}) };
+    }),
     newSessions: sessionsForRewrite.map((s) => ({
       weekIndex: s.weekIndex,
       dayIndex: s.dayIndex,
@@ -2766,8 +2793,9 @@ async function updateForeignProgramInstance(
       error: "Couldn't build a safe snapshot of upcoming workouts.",
     };
   }
+  const linkedEdit = (swimEdit?.expected.length ?? 0) > 0;
   const atomicRewrite = await supabase.rpc(
-    "update_program_instance_atomically",
+    linkedEdit ? "swim_update_conditioning_program" : "update_program_instance_atomically",
     {
       p_block_id: blockId,
       p_strength_updates: strengthPrescriptionUpdates,
@@ -2786,7 +2814,7 @@ async function updateForeignProgramInstance(
       p_tm_percents: write.tmPercents,
       p_program_instance: {
         instance,
-        setup_input: programSetupAuditInput({
+        setup_input: { ...programSetupAuditInput({
           values: args.setupValues,
           weekdays: args.weekdays,
           startedOn: blockStartedOn,
@@ -2794,12 +2822,23 @@ async function updateForeignProgramInstance(
           ...(customization ? { customization } : {}),
           ...(sessionLinks ? { sessionLinks } : {}),
           ...(rehabSchedule ? { rehabSchedule } : {}),
-        }),
+        }), ...(swimEdit ? { conditioning: swimEdit.conditioning } : {}) },
         display_name: customization?.displayName ?? null,
         customization_version: customization?.version ?? null,
       },
+      ...(linkedEdit ? {
+        p_expected_swims: swimEdit!.expected, p_moves: swimEdit!.moves, p_request_id: crypto.randomUUID(),
+      } : {}),
     },
   );
+  if (linkedEdit && atomicRewrite.error) {
+    const code = atomicRewrite.error.code;
+    return { ok: false, error: code === "40001"
+      ? "The programme or swimming changed. Reload before saving."
+      : code === "22023" || code === "23505" || code === "23514"
+        ? "The remaining swims do not fit this schedule. Review the conditioning days and programme length."
+        : "The programme and swimming could not be saved. Try again." };
+  }
   let updatedProgramInstanceId = atomicRewrite.data;
   let rewriteErr = atomicRewrite.error;
   if (isMissingRpc(rewriteErr)) {
@@ -2896,6 +2935,11 @@ async function updateForeignProgramInstance(
     };
   }
 
+  if (linkedEdit) {
+    revalidatePath("/app/swim", "layout");
+    revalidatePath("/app/plan/history");
+    revalidatePath("/app/sessions");
+  }
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/stats");

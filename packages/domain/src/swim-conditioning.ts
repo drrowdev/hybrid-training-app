@@ -87,3 +87,64 @@ export function planSwimConditioningBindings(input: {
   }
   return swimOk(bindings);
 }
+
+export function remapConditioningChoices(
+  choices: readonly ConditioningChoice[], weekdays: readonly number[],
+): SwimResult<readonly ConditioningChoice[]> {
+  const prior = validateConditioningChoices(choices.map((choice) => choice.weekday), choices);
+  if (!prior.ok) return prior;
+  if (choices.length !== weekdays.length) {
+    return swimErr("setup_invalid", "Keep the same number of conditioning days when editing this swimming programme.");
+  }
+  const days = [...weekdays].sort((a, b) => a - b);
+  return validateConditioningChoices(days, prior.value.map((choice, index) => ({ ...choice, weekday: days[index]! })));
+}
+
+/** Keep recorded work in place and move each remaining swim to its week's corresponding slot. */
+export function planSwimConditioningEdit(input: {
+  today: string;
+  workouts: readonly (SwimConditioningWorkout & { plannedSessionId: string; weekIndex: number; movable: boolean })[];
+  slots: readonly (SwimConditioningWorkout & { weekIndex: number })[];
+}): SwimResult<{
+  moves: { id: string; plannedSessionId: string; date: string }[];
+  claimedSlotIds: string[];
+}> {
+  const { today, workouts, slots } = input;
+  const all = [...workouts, ...slots];
+  if (!validDate(today) || all.some((row) => !validDate(row.date) ||
+    !Number.isSafeInteger(row.weekIndex) || row.weekIndex < 0) ||
+    new Set(workouts.map((row) => row.id)).size !== workouts.length ||
+    new Set(workouts.map((row) => row.plannedSessionId)).size !== workouts.length ||
+    new Set(slots.map((row) => row.id)).size !== slots.length ||
+    new Set(slots.map((row) => `${row.date}:${row.slot}`)).size !== slots.length) {
+    return swimErr("setup_invalid", "The swimming schedule changed. Reload before saving.");
+  }
+  const order = (a: SwimConditioningWorkout, b: SwimConditioningWorkout) =>
+    a.date.localeCompare(b.date) || a.slot.localeCompare(b.slot) || a.id.localeCompare(b.id);
+  const moves: { id: string; plannedSessionId: string; date: string }[] = [];
+  const claimedSlotIds: string[] = [];
+  for (const week of new Set(workouts.map((row) => row.weekIndex))) {
+    const existing = workouts.filter((row) => row.weekIndex === week).sort(order);
+    const targets = slots.filter((row) => row.weekIndex === week).sort(order);
+    if (existing.every((row) => row.date < today) && targets.every((row) => row.date < today)) continue;
+    if (targets.length !== existing.length) {
+      return swimErr("setup_invalid", "The remaining swims do not fit this schedule. Keep their weekly frequency and programme length.");
+    }
+    for (const [index, workout] of existing.entries()) {
+      const target = targets[index]!;
+      claimedSlotIds.push(target.id);
+      if (!workout.movable || workout.date <= today) continue;
+      if (target.date <= today || target.slot !== workout.slot) {
+        return swimErr("setup_invalid", "Choose future conditioning days without changing morning or evening sessions.");
+      }
+      if (workout.date === target.date) continue;
+      moves.push({ id: workout.id, plannedSessionId: workout.plannedSessionId, date: target.date });
+    }
+  }
+  const dates = new Map(moves.map((move) => [move.id, move.date]));
+  const occupied = workouts.map((workout) => `${dates.get(workout.id) ?? workout.date}:${workout.slot}`);
+  if (new Set(occupied).size !== occupied.length) {
+    return swimErr("setup_invalid", "This schedule overlaps a swim that must keep its date. Choose different conditioning days.");
+  }
+  return swimOk({ moves, claimedSlotIds });
+}
