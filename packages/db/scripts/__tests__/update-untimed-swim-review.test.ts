@@ -245,7 +245,7 @@ describe("DC-SW3/SW5/SW8 protected untimed-course update", () => {
     };
     const current = jobs(workflow);
     for (const [name, hash] of Object.entries(baseline)) expect(current.get(name), name).toBe(hash);
-    const job = workflow.split("\n  update-untimed-swim-review:\n")[1]!;
+    const job = workflow.split("\n  update-untimed-swim-review:\n")[1]!.split(/\n  [a-z][a-z0-9-]+:\n/)[0]!;
     for (const gate of ["needs: [ci, identity-guard]", "environment: swim-review", "group: swim-review-bootstrap",
       "cancel-in-progress: false", "persist-credentials: false", "inputs.expected_sha != '' && inputs.expected_sha == github.sha",
       ...profile.otherOperations.map((key) => `inputs.${key.toLowerCase()} == false`)]) expect(job).toContain(gate);

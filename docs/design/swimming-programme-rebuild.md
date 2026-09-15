@@ -853,7 +853,36 @@ preserving linked identities, prescriptions and settled work. Paused plans remai
 paused. Weekday activities retain their order; frequency, programme length and
 single/am/pm placement stay fixed. A frozen swim cannot silently remove new
 strength work. Current saved choices reopen the editor without historic weekdays.
-SQL acceptance of this newer edit path and the authenticated full journey remain
-outstanding. The new path stays disabled pending complete acceptance and separate
-hosted authorization.
+Source410ea93c passed core34947730470 and storage34947730472, including paused
+multi-moves, stale snapshots, concurrent saves, occupied destinations, late
+transaction rollback, claimed-history protection and synthetic cleanup.
+The authenticated full journey and hosted delivery remain outstanding.
 No physical-device or owner usability acceptance is claimed.
+
+### Approved protected conditioning update - 2026-09-15
+
+The owner approved updating the protected test site and exercising the complete
+journey with disposable accounts. The existing private course and all existing
+history must remain untouched. Production, private-data transfer, watch work and
+backups remain outside this approval.
+
+The new default-off `update_conditioning_swim_review` operation pins application
+410ea93c and its successful core run. Only declared tooling/docs may differ.
+It requires an exact clean feature source, unchanged main, the current protected
+deployment/alias receipt, existing Auth/protection settings and all155 canonical
+ledger records. A fresh read-only preflight must pass before an apply dispatch.
+Historical update profiles remain spent and unchanged.
+
+One bounded transaction appends only0155-0157 and verifies the158-entry ledger,
+owner policies, restricted writer and authenticated capabilities. It cannot
+rewrite the existing ledger or modify owner rows. The updater may then create
+only `SWIM_CONDITIONING_ENABLED` and `SWIM_IMPORT_OUTCOMES_ENABLED`, both encrypted
+and scoped to the review branch's Preview environment. The existing guarded
+refresh changes its build SHA, creates one exact-source Preview and updates the
+same protected alias. All previous flags and unrelated settings are preserved.
+
+An attempted or partial write is reported as requiring reconciliation; no
+automatic retry or destructive down is allowed. The existing PostgreSQL service
+fixture rehearses precommit rollback, preservation, replay refusal and unused
+downs on synthetic data only. Native disposable-account integration and owner
+usability are separate acceptance gates, not inferred from this update.

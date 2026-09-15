@@ -4281,3 +4281,21 @@ Focused preparation/action/native-regression tests and a disposable SQL fixture
 cover stale saves, isolation, occupied targets, paused multi-moves, concurrent
 saves, claimed history and late rollback. Exact-source SQL acceptance remains
 pending. Hosted updates and real-account changes still require separate approval.
+
+## [2026-09-15] decision | Approve protected conditioning update and disposable accounts
+
+Programme editing at410ea93c passed core34947730470 and storage34947730472.
+Public terminal metadata was consumed; no successful logs were downloaded.
+
+The owner approved updating the protected test site and testing the integrated
+journey with disposable accounts, preserving the existing private course and
+history. Production, real-data transfer, watch work and backups stay held.
+
+A fresh default-off updater reuses the guarded snapshot/refresh state machine
+without reopening historical profiles. It verifies the unchanged155-entry
+prefix, appends only0155-0157, checks storage and creates only two branch-Preview
+flags before refreshing the protected alias. Read-only preflight precedes apply.
+Partial writes require explicit reconciliation, never blind retry or a ledger
+reset. The existing GitHub PostgreSQL fixture adds synthetic preservation,
+precommit rollback, replay refusal and unused-down rehearsal. Hosted execution
+and authenticated integration are not yet accepted.

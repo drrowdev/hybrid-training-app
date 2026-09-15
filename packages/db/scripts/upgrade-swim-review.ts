@@ -81,17 +81,18 @@ export function checkUpgradeDispatch(inputs: Record<string, unknown> | undefined
   return true;
 }
 
-export const upgradeFlagBody = () => UPGRADE_FLAGS.map((key) => ({
+export const upgradeFlagBody = (flags: readonly string[] = UPGRADE_FLAGS) => flags.map((key) => ({
   key, value: "true", type: "encrypted", target: ["preview"], gitBranch: REVIEW.branch,
 }));
 type Request = (url: string, method?: string, body?: unknown) => Promise<unknown>;
-export function upgradeFlagTransport(env: NodeJS.ProcessEnv, deadline: number, fetcher: typeof fetch = fetch): Request {
-  refreshContext(env, UPGRADE_REVIEW);
+export function upgradeFlagTransport(env: NodeJS.ProcessEnv, deadline: number, fetcher: typeof fetch = fetch,
+  profile: RefreshProfile = UPGRADE_REVIEW, flags: readonly string[] = UPGRADE_FLAGS): Request {
+  refreshContext(env, profile);
   const transport = boundedTransport(env, deadline, fetcher);
   let attempted = false;
   return async (url, method, body) => {
     requireThat(env.REVIEW_UPGRADE_READ_ONLY === "false");
-    requireThat(!attempted && url === ROUTES.create && method === "POST" && same(body, upgradeFlagBody()));
+    requireThat(!attempted && url === ROUTES.create && method === "POST" && same(body, upgradeFlagBody(flags)));
     attempted = true;
     return transport(url, method, body);
   };
@@ -160,26 +161,34 @@ export async function inspectUpgradeSnapshot(request: Request, storage: () => Pr
 
 type Stage = "source" | "credentials" | "snapshot" | "ledger" | "migrations" | "flags" | "deployment" | "completion" | "close" | "report";
 export type UpgradeResult = {
-  scope: "swim-existing-review-upgrade"; testedSha: string | null; project: typeof REVIEW.supabaseId;
+  scope: "swim-existing-review-upgrade" | "swim-conditioning-review-update"; testedSha: string | null; project: typeof REVIEW.supabaseId;
   acceptedApplicationSha: string; acceptedApplicationRun: string;
   status: "failed" | "source_pass" | "inspection_pass" | "upgrade_pass";
   readOnly: boolean;
   snapshotDiagnostic?: SnapshotDiagnostic;
   stages: { stage: Stage; status: "passed" | "failed"; code: Code | ReviewStorageCode }[];
   error?: ReturnType<typeof projectMigrationError>["error"];
-  migrations: { before: 150; after: 154; attempted: boolean; committed: boolean; verified: boolean };
+  migrations: { before: 150 | 155; after: 154 | 158; attempted: boolean; committed: boolean; verified: boolean };
   flags: { attempted: boolean; confirmed: boolean; entries: { id: string; key: string }[] | null };
   deployment: Awaited<ReturnType<typeof refresh>> | null;
   partial: boolean; manualReconciliation: boolean; databaseClosed: boolean;
 };
-function initialResult(env: NodeJS.ProcessEnv): UpgradeResult {
+export type UpgradeConfiguration = {
+  profile: RefreshProfile; scope: UpgradeResult["scope"]; flags: readonly string[];
+  before: UpgradeResult["migrations"]["before"]; after: UpgradeResult["migrations"]["after"];
+};
+const originalConfiguration: UpgradeConfiguration = {
+  profile: UPGRADE_REVIEW, scope: "swim-existing-review-upgrade", flags: UPGRADE_FLAGS,
+  before: REVIEW_BASE_COUNT, after: REVIEW_UPGRADED_COUNT,
+};
+export function initialUpgradeResult(env: NodeJS.ProcessEnv, configuration = originalConfiguration): UpgradeResult {
   return {
-    scope: "swim-existing-review-upgrade",
+    scope: configuration.scope,
     testedSha: /^[a-f0-9]{40}$/.test(env.EXPECTED_SHA ?? "") ? env.EXPECTED_SHA! : null,
-    project: REVIEW.supabaseId, acceptedApplicationSha: UPGRADE_REVIEW.reference.sha,
+    project: REVIEW.supabaseId, acceptedApplicationSha: configuration.profile.reference.sha,
     readOnly: env.REVIEW_UPGRADE_READ_ONLY !== "false",
-    acceptedApplicationRun: UPGRADE_REVIEW.reference.run, status: "failed", stages: [],
-    migrations: { before: 150, after: 154, attempted: false, committed: false, verified: false },
+    acceptedApplicationRun: configuration.profile.reference.run, status: "failed", stages: [],
+    migrations: { before: configuration.before, after: configuration.after, attempted: false, committed: false, verified: false },
     flags: { attempted: false, confirmed: false, entries: [] }, deployment: null,
     partial: false, manualReconciliation: false, databaseClosed: false,
   };
@@ -192,8 +201,9 @@ type Dependencies = {
   deploy(profile: RefreshProfile): Promise<Awaited<ReturnType<typeof refresh>>>;
   now(): number;
 };
-export async function upgradeReview(env: NodeJS.ProcessEnv, deps: Dependencies): Promise<UpgradeResult> {
-  const result = initialResult(env);
+export async function upgradeReview(env: NodeJS.ProcessEnv, deps: Dependencies, configuration = originalConfiguration): Promise<UpgradeResult> {
+  const { profile: approvedProfile, flags, before, after } = configuration;
+  const result = initialUpgradeResult(env, configuration);
   const deadline = deps.now() + 18 * 60_000;
   let stage: Stage = "source";
   const time = () => { if (deps.now() >= deadline) throw new Refusal("deadline"); };
@@ -205,7 +215,11 @@ export async function upgradeReview(env: NodeJS.ProcessEnv, deps: Dependencies):
     return value;
   }
   try {
-    await step("source", () => { source(); refreshContext(env, UPGRADE_REVIEW); });
+    await step("source", () => {
+      requireThat(configuration.scope === approvedProfile.scope && flags.length > 0 && flags.length <= 4 &&
+        new Set(flags).size === flags.length);
+      source(); refreshContext(env, approvedProfile);
+    });
     requireThat(env.REVIEW_UPGRADE_READ_ONLY === "true" || env.REVIEW_UPGRADE_READ_ONLY === "false");
     await step("credentials", () => {
       validateDatabaseUrl(env.SWIM_REVIEW_DATABASE_URL);
@@ -216,16 +230,17 @@ export async function upgradeReview(env: NodeJS.ProcessEnv, deps: Dependencies):
         /^sb_secret_[A-Za-z0-9_-]{20,256}$/.test(env.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY ?? ""));
     });
     let expected = await step("snapshot", async () => {
-      const snapshot = await inspectUpgradeSnapshot(deps.request, deps.storage);
-      await snapshotCheck("receipt", () => UPGRADE_REVIEW.receipt(snapshot.project, snapshot.shared));
+      const snapshot = await inspectUpgradeSnapshot(deps.request, deps.storage, approvedProfile);
+      await snapshotCheck("receipt", () => approvedProfile.receipt(snapshot.project, snapshot.shared));
+      requireThat([...snapshot.project, ...snapshot.shared].every((row) => !flags.includes(row.key)));
       return snapshot;
     });
     const guard = async () => {
       source();
-      requireThat(same(await inspectUpgradeSnapshot(deps.request, deps.storage), expected));
+      requireThat(same(await inspectUpgradeSnapshot(deps.request, deps.storage, approvedProfile), expected));
       source();
     };
-    await step("ledger", async () => { await guard(); await deps.inspectLedger(REVIEW_BASE_COUNT); });
+    await step("ledger", async () => { await guard(); await deps.inspectLedger(before); });
     if (result.readOnly) {
       result.status = "inspection_pass";
       return result;
@@ -235,7 +250,7 @@ export async function upgradeReview(env: NodeJS.ProcessEnv, deps: Dependencies):
       result.migrations.attempted = true;
       await deps.append(guard);
       result.migrations.committed = true;
-      await deps.inspectLedger(REVIEW_UPGRADED_COUNT);
+      await deps.inspectLedger(after);
       await guard();
       result.migrations.verified = true;
     });
@@ -245,17 +260,17 @@ export async function upgradeReview(env: NodeJS.ProcessEnv, deps: Dependencies):
       result.flags.attempted = true;
       result.flags.entries = null;
       const envelope = z.object({ created: z.unknown(), failed: z.array(z.unknown()).max(4) }).strict()
-        .parse(await deps.createFlags(ROUTES.create, "POST", upgradeFlagBody()));
+        .parse(await deps.createFlags(ROUTES.create, "POST", upgradeFlagBody(flags)));
       const rows = (Array.isArray(envelope.created) ? envelope.created : [envelope.created]).map(metadata);
       const knownIds = new Set([...expected.project, ...expected.shared].map((row) => row.id));
-      requireThat(rows.length <= 4 &&
+      requireThat(rows.length <= flags.length &&
         new Set(rows.map((row) => row.key)).size === rows.length && new Set(rows.map((row) => row.id)).size === rows.length &&
-        rows.every((row) => !knownIds.has(row.id) && UPGRADE_FLAGS.some((key) => key === row.key) &&
+        rows.every((row) => !knownIds.has(row.id) && flags.some((key) => key === row.key) &&
           row.type === "encrypted" && row.gitBranch === REVIEW.branch && same(row.target, ["preview"]) &&
           row.createdAt >= started && row.createdAt <= deps.now() && row.updatedAt >= row.createdAt &&
           row.updatedAt <= deps.now()));
       result.flags.entries = rows.map(({ id, key }) => ({ id, key }));
-      requireThat(envelope.failed.length === 0 && rows.length === 4);
+      requireThat(envelope.failed.length === 0 && rows.length === flags.length);
       expected = { ...expected, project: canonical([...expected.project, ...rows]) };
       await guard();
       result.flags.confirmed = true;
@@ -265,10 +280,10 @@ export async function upgradeReview(env: NodeJS.ProcessEnv, deps: Dependencies):
       await guard();
       const ids = new Set(created.map((row) => row.id));
       const profile: RefreshProfile = {
-        ...UPGRADE_REVIEW,
+        ...approvedProfile,
         receipt: (project, shared) => {
           requireThat(same(canonical(project.filter((row) => ids.has(row.id))), canonical(created)));
-          UPGRADE_REVIEW.receipt(project.filter((row) => !ids.has(row.id)), shared);
+          approvedProfile.receipt(project.filter((row) => !ids.has(row.id)), shared);
         },
       };
       result.deployment = await deps.deploy(profile);
@@ -304,7 +319,7 @@ export function upgradeSummary(result: UpgradeResult) {
 }
 async function main() {
   const env = process.env;
-  let result = initialResult(env);
+  let result = initialUpgradeResult(env);
   try {
     const check = refreshArguments(process.argv.slice(2));
     const deadline = Date.now() + (check ? 300_000 : 18 * 60_000);

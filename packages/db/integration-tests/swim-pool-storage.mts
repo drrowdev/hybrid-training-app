@@ -11,6 +11,7 @@ import type { SwimDecisionRecord, SwimPlanRow, SwimWorkoutRow, SwimPlanState, Sw
 import { appendReviewMigrations, inspectReviewLedger, reviewMigrations, ReviewStorageRefusal } from "../scripts/upgrade-swim-review-storage.ts";
 import { verifyMigrationDependencyParity } from "../scripts/migrate-with-evidence.ts";
 import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations } from "../scripts/untimed-swim-review-storage.ts";
+import { appendConditioningMigrations, conditioningReviewMigrations, inspectConditioningLedger } from "../scripts/conditioning-swim-review-storage.ts";
 import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehearsal.ts";
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
@@ -160,6 +161,8 @@ try {
   const untimedDown = readFileSync(new URL("../rollbacks/0154_swim_untimed_courses.down.sql", import.meta.url), "utf8");
   const outcomeUp = readFileSync(new URL("../drizzle/0155_swim_import_outcomes.sql", import.meta.url), "utf8");
   const outcomeDown = readFileSync(new URL("../rollbacks/0155_swim_import_outcomes.down.sql", import.meta.url), "utf8");
+  const conditioningDown = readFileSync(new URL("../rollbacks/0156_atomic_swim_conditioning.down.sql", import.meta.url), "utf8");
+  const lifecycleDown = readFileSync(new URL("../rollbacks/0157_swim_conditioning_lifecycle.down.sql", import.meta.url), "utf8");
   const revertScript = async (source: string) => {
     const connection = await database.reserve();
     try { await connection.unsafe(source); }
@@ -449,6 +452,30 @@ try {
   await assert.rejects(appendUntimedMigration(database, migrations, async () => {}));
   assert.deepEqual(await legacySnapshot(), beforeUntimed);
   assert.deepEqual(await validatorGrants(), beforeGrants);
+  stages.push(stage);
+  stage = "conditioning-review-upgrade-and-preservation";
+  const conditioningMigrations = conditioningReviewMigrations();
+  const originalLedger = await database`SELECT id,hash,created_at FROM drizzle.__drizzle_migrations ORDER BY id`;
+  let conditioningGuards = 0;
+  await assert.rejects(appendConditioningMigrations(database, conditioningMigrations, async () => {
+    if (++conditioningGuards === 4) throw new Error("synthetic_conditioning_guard");
+  }), /synthetic_conditioning_guard/);
+  await inspectConditioningLedger(database, conditioningMigrations, 155);
+  assert.equal((await database`SELECT to_regclass('public.swim_import_outcomes') AS name`)[0]!.name, null);
+  assert.deepEqual(await legacySnapshot(), beforeUntimed);
+  await appendConditioningMigrations(database, conditioningMigrations, async () => {});
+  await inspectConditioningLedger(database, conditioningMigrations, 158);
+  assert.deepEqual(await database`SELECT id,hash,created_at FROM drizzle.__drizzle_migrations ORDER BY id LIMIT 155`, originalLedger);
+  assert.deepEqual(await legacySnapshot(), beforeUntimed);
+  await assert.rejects(appendConditioningMigrations(database, conditioningMigrations, async () => {}));
+  await revertScript(lifecycleDown);
+  await revertScript(conditioningDown);
+  await revertOutcomes();
+  await database`DELETE FROM drizzle.__drizzle_migrations WHERE created_at > ${migrations[154]!.folderMillis}`;
+  await inspectConditioningLedger(database, conditioningMigrations, 155);
+  assert.deepEqual(await legacySnapshot(), beforeUntimed);
+  stages.push(stage);
+  stage = "untimed-course-upgrade-and-preservation";
   assert.equal((await as(c, (tx) => tx`SELECT public.swim_untimed_course_ready() AS ready`))[0]!.ready, true);
   await denied(() => as(null, (tx) => tx`SELECT public.swim_untimed_course_ready()`), "42501");
   await denied(() => database.begin(async (tx) => {
@@ -744,7 +771,6 @@ try {
 
   stage = "conditioning-migration-up-and-down";
   const conditioningUp = readFileSync(new URL("../drizzle/0156_atomic_swim_conditioning.sql", import.meta.url), "utf8");
-  const conditioningDown = readFileSync(new URL("../rollbacks/0156_atomic_swim_conditioning.down.sql", import.meta.url), "utf8");
   const revertConditioning = () => revertScript(conditioningDown);
   await database.begin((tx) => tx.unsafe(conditioningUp));
   await revertConditioning();
@@ -752,7 +778,6 @@ try {
   stages.push(stage);
   stage = "conditioning-lifecycle-migration-up-and-down";
   const lifecycleUp = readFileSync(new URL("../drizzle/0157_swim_conditioning_lifecycle.sql", import.meta.url), "utf8");
-  const lifecycleDown = readFileSync(new URL("../rollbacks/0157_swim_conditioning_lifecycle.down.sql", import.meta.url), "utf8");
   const revertLifecycle = () => revertScript(lifecycleDown);
   await database.begin((tx) => tx.unsafe(lifecycleUp));
   await revertLifecycle();
