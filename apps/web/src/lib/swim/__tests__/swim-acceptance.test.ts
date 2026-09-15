@@ -276,7 +276,8 @@ describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
     expect(files).toEqual([...new Set(files)].sort());
     for (const path of declaredPaths) expect(files).toContain(path);
     expect(files).toContain("packages/db/drizzle/meta/_journal.json");
-    expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(158);
+    expect(files.filter((file) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(file))).toHaveLength(159);
+    expect(files).toContain("packages/db/drizzle/0158_conditioning_request_identity.sql");
     expect(files).toContain("packages/db/drizzle/0157_swim_conditioning_lifecycle.sql");
     expect(files).toContain("packages/db/drizzle/0156_atomic_swim_conditioning.sql");
     expect(files).toContain("packages/db/drizzle/0155_swim_import_outcomes.sql");
@@ -783,7 +784,7 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     const journal = JSON.parse(readFileSync(new URL(
       "../../../../../../packages/db/drizzle/meta/_journal.json", import.meta.url,
     ), "utf8")) as { entries: { tag: string }[] };
-    expect(journal.entries).toHaveLength(158);
+    expect(journal.entries).toHaveLength(159);
     expect(journal.entries.length).not.toBe(ACTIVE_MIGRATION_TOTAL);
     expect(journal.entries[148]?.tag).toBe("0148_shared_completion_identity");
     expect(journal.entries[149]?.tag).toBe("0149_defer_custom_movement_references");
@@ -791,7 +792,8 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     expect(journal.entries[154]?.tag).toBe("0154_swim_untimed_courses");
     expect(journal.entries[155]?.tag).toBe("0155_swim_import_outcomes");
     expect(journal.entries[156]?.tag).toBe("0156_atomic_swim_conditioning");
-    expect(journal.entries.at(-1)?.tag).toBe("0157_swim_conditioning_lifecycle");
+    expect(journal.entries[157]?.tag).toBe("0157_swim_conditioning_lifecycle");
+    expect(journal.entries.at(-1)?.tag).toBe("0158_conditioning_request_identity");
     expect(source).toContain("checkAuthBoundary(authPrivileges, 148)");
   });
 
