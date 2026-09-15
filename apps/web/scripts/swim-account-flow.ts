@@ -3,13 +3,14 @@ import { randomBytes } from "node:crypto";
 import { appendFileSync, lstatSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ACCOUNT_FLOW, ACCOUNT_FLOW_ORIGIN, ACCOUNT_FLOW_SUPABASE, AccountFlowRefusal,
   accountFlowContext, checkAccountFlowDispatch, accountIdentity, accountSlots, verifyAccountIdentity,
   accountAdminRequestAllowed, accountAbsenceQuery, priorAccountRun, cleanupAccountFixtures, demand, type AccountIdentity,
 } from "../../../packages/db/scripts/swim-account-flow-guards";
 import { verifyRefreshCheckout, verifyRefreshSource, type RefreshProfile } from "../../../packages/db/scripts/refresh-swim-review";
+import { conditioningRequestDiagnosticSchema } from "../../../packages/db/scripts/swim-conditioning-account-flow-guards";
 import { inspectUpgradeSnapshot, upgradeSnapshotTransport } from "../../../packages/db/scripts/upgrade-swim-review";
 import { storageAdapter } from "../../../packages/db/scripts/configure-swim-review";
 import { connectReviewDatabase } from "../../../packages/db/scripts/upgrade-swim-review-storage";
@@ -52,6 +53,7 @@ function webEnvironment(env: NodeJS.ProcessEnv, server: boolean, configuration: 
     POOL_SWIMMING_ENABLED: "true", SWIM_POOL_EDITING_ENABLED: "true", SWIM_PRIVATE_COURSE_ENABLED: "true",
     SWIM_IMPORT_ENABLED: "true", SWIM_IMPORT_MATCHING_ENABLED: "true",
     ...Object.fromEntries(configuration.flags.map((key) => [key, "true"])),
+    ...(server && configuration.scope === "swim-conditioning-account-flow" ? { SWIM_ACCOUNT_FLOW_OBSERVE: "1" } : {}),
     ENABLE_E2E_FIXTURES: "0",
   };
 }
@@ -98,6 +100,7 @@ export async function runAccountFlow(env: NodeJS.ProcessEnv, mode: "source" | "r
     acceptedApplicationSha: configuration.profile.reference.sha, acceptedApplicationRun: configuration.profile.reference.run,
     mode, status: "failed", stages: [] as { stage: string; status: "passed" | "failed"; code: string }[],
     accountsAttempted: 0, accountsCreated: 0, accountsRemoved: 0, accountsAbsent: 0, accountCleanupFailures: 0, adminRequests: 0,
+    requestDiagnostics: [] as z.infer<typeof conditioningRequestDiagnosticSchema>[], requestDiagnosticsValid: true,
     priorAccountsAbsent: 0, priorCleanupPassed: false,
     databaseClosed: false, serverClosed: false, buildClosed: false, cleanupPassed: false,
     native: { checks: [], browserClosed: false, browserRequests: 0, clientRequests: 0,
@@ -223,12 +226,32 @@ export async function runAccountFlow(env: NodeJS.ProcessEnv, mode: "source" | "r
       result.buildClosed = true;
     });
     await step("server", async () => {
-      server = spawn(process.execPath, [next, "start", "--hostname", "127.0.0.1", "--port", "4229"], {
+      const observe = configuration.scope === "swim-conditioning-account-flow";
+      server = spawn(process.execPath, [
+        ...(observe ? ["--import", pathToFileURL(resolve(web, "scripts/swim-conditioning-account-flow-observer.mjs")).href] : []),
+        next, "start", "--hostname", "127.0.0.1", "--port", "4229",
+      ], {
         cwd: web, env: webEnvironment(env, true, configuration), stdio: ["ignore", "pipe", "ignore"],
       });
       let spawnFailed = false, listening = false, outputBytes = 0, output = "";
       server.on("error", () => { spawnFailed = true; });
       const stdout = server.stdout!;
+      if (observe) {
+        let pending = "";
+        stdout.on("data", (chunk: Buffer) => {
+          pending += chunk.toString("utf8");
+          const lines = pending.split("\n"); pending = lines.pop()!.slice(-2048);
+          for (const line of lines) {
+            if (!line.startsWith("SWIM_CONDITIONING_REQUEST ")) continue;
+            try {
+              demand(line.length <= 512 && result.requestDiagnostics.length < 20, "diagnostic_bound");
+              result.requestDiagnostics.push(conditioningRequestDiagnosticSchema.parse(
+                JSON.parse(line.slice("SWIM_CONDITIONING_REQUEST ".length)),
+              ));
+            } catch { result.requestDiagnosticsValid = false; }
+          }
+        });
+      }
       const readyMessage = (chunk: Buffer) => {
         outputBytes += chunk.byteLength;
         if (outputBytes > 16_384) spawnFailed = true;
@@ -275,7 +298,7 @@ export async function runAccountFlow(env: NodeJS.ProcessEnv, mode: "source" | "r
       env.SWIM_REVIEW_SUPABASE_ANON_KEY!, result.native, guard));
     await step("completion", async () => {
       await guard();
-      demand(result.accountsCreated === 2 && result.native.checks.length === configuration.checks.length &&
+      demand(result.requestDiagnosticsValid && result.accountsCreated === 2 && result.native.checks.length === configuration.checks.length &&
         result.native.checks.every((check, index) => check.name === configuration.checks[index] && check.status === "passed") &&
         result.native.browserClosed, "native_completion");
     });

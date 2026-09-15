@@ -4348,3 +4348,19 @@ cleanup also passed. Browser, server, build and database closed. No raw logs or
 private rows were retained. The next unchanged journey adds only fixed diagnostic
 categories for the save control, route and visible alert, never the alert text.
 Complete integration and owner usability remain unaccepted.
+
+## [2026-09-15] diagnosis | Programme save is explicitly refused
+
+9b375c1d passed core34959286653/storage34959286850. Diagnostic34960069889 confirmed
+that Save was clicked, returned to an enabled state and displayed the fixed save-
+refused message; it was not a disabled control or pending request. The first
+account remained in programme setup. Both accounts and all checked rows were
+removed, with independent cleanup and process/database closure verified.
+
+The next bounded diagnostic observes only the existing account runner's server
+requests: two named swimming RPCs and failed profile/benchmark/catalogue reads.
+It preserves responses and emits fixed operation names, HTTP statuses and
+allowlisted public error codes, never URLs, bodies, headers, messages or rows.
+Error-response inspection is limited to16 KiB/one second; output is capped at20
+validated records. No app, schema, policy, production or owner-course change is
+made to investigate this rejection.

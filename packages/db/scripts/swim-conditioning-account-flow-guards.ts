@@ -8,6 +8,11 @@ import { REVIEW } from "./swim-review-config-plan";
 export const CONDITIONING_ACCOUNT_REFERENCE = {
   sha: "9d42be34302fd194e8fca0224db9fea88226fd8e", run: "34950063605", kind: "automatic_ci",
 } as const;
+export const conditioningRequestDiagnosticSchema = z.object({
+  operation: z.enum(["replay", "save", "context"]), status: z.number().int().min(100).max(599),
+  code: z.enum(["ok", "other", "unreadable", "42501", "23503", "23505", "23514", "22023", "P0001",
+    "42703", "42883", "42P01", "40001", "57014", "55P03", "PGRST202", "PGRST204", "PGRST205", "PGRST116"]),
+}).strict();
 export function conditioningSaveDiagnostic(alerts: readonly string[]) {
   if (!alerts.length) return "no_alert";
   const text = alerts.join("\n");
@@ -50,6 +55,8 @@ export function conditioningAccountProfile(value: ConditioningReviewReceipt): Re
       "packages/db/integration-tests/swim-pool-storage.mts",
       "apps/web/scripts/swim-account-flow.ts", "apps/web/scripts/swim-account-flow-browser.ts",
       "apps/web/scripts/swim-conditioning-account-flow.ts", "apps/web/scripts/swim-conditioning-account-flow-browser.ts",
+      "apps/web/scripts/swim-conditioning-account-flow-observer.mjs",
+      "packages/db/scripts/__tests__/swim-conditioning-account-flow-observer.test.ts",
       "apps/web/tsconfig.account-flow.json", "apps/web/tsconfig.json",
       "docs/design/swimming-programme-rebuild.md", "docs/knowledge/log.md",
     ],
