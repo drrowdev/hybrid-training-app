@@ -4187,3 +4187,9 @@ Focused checks and synthetic mobile/desktop drawer actions cover the presentatio
 Coordinated lifecycle operations, broader activity-history integration and an
 isolated authenticated complete journey remain unfinished. Creation remains
 default-off. No hosted apply, deployment or real-account mutation occurred.
+
+The first shared-view SQL run34935145186 reached the new recording fixture, then
+rejected its evidence with22023 at0150:190. Only the closed public annotation was
+read; no logs were downloaded. The fixture now selects the PostgreSQL calendar
+date as text instead of serializing the driver's Date value and verifies the
+actual closed import schema before sending it. Production validation is unchanged.

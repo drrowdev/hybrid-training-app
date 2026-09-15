@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import type postgres from "postgres";
+import { swimImportEvidenceSchema } from "../../../apps/web/src/lib/swim/import-evidence.ts";
 
 type SwimCreate = {
   started_on: string; ends_on: string; definition: unknown; state: unknown;
@@ -198,7 +199,9 @@ export async function exerciseSwimConditioning(
     assert.notEqual(created.swim_plan_id, existing.id);
     assert.equal((await as(fresh, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_conditioning_bindings`))[0]!.count, source.workouts.length);
     mark("conditioning-current-recording-projection");
-    const [work] = await as(fresh, (tx) => tx`SELECT id,revision,scheduled_date FROM public.swim_conditioning_sessions ORDER BY scheduled_date,id LIMIT 1`);
+    const [work] = await as(fresh, (tx) => tx<{ id: string; revision: number; scheduled_date: string }[]>`
+      SELECT id,revision,scheduled_date::text AS scheduled_date
+      FROM public.swim_conditioning_sessions ORDER BY scheduled_date,id LIMIT 1`);
     const tokenHash = createHash("sha256").update(randomUUID()).digest("hex");
     await as(fresh, (tx) => tx`SELECT public.swim_import_connect(${tokenHash})`);
     const evidence = {
@@ -207,6 +210,7 @@ export async function exerciseSwimConditioning(
       durationKind: "unspecified", nativeCourse: null, detail: { status: "missing", fetchedAt: null, splits: [] },
     };
     const receive = (value = evidence) => database.begin(async (tx) => {
+      assert.equal(swimImportEvidenceSchema.safeParse(value).success, true);
       await tx.unsafe("SET LOCAL ROLE service_role");
       return (await tx<{ receipt: { id: string } }[]>`SELECT public.swim_import_receive(
         ${tokenHash},${JSON.stringify(value)}::text::jsonb) AS receipt`)[0]!.receipt;
