@@ -4536,3 +4536,26 @@ acceptance work. Only the integrated browser ceiling changes. Both accounts,
 all seven cases,100 client/70 admin requests, time/origin restrictions, required
 reloads and cleanup remain unchanged. The standalone ceiling remains500.
 No production operation, personal-data change or permission change was approved.
+
+## [2026-09-15] acceptance | Complete integrated swimming journey passes
+
+fd9c01f3 passed core35004291663/storage35004291658, then the entire frozen
+seven-case native journey35005360323/job104505373816. Both accounts created
+programmes through the normal picker, found the next swim in Today and Plan,
+matched recordings, confirmed Completed/Stopped early through reload, and
+revisited ordinary history. Both-owner isolation, absence of invented native
+session/cardio rows, future paired edits while paused, fixed-date resume and
+disconnection/revoked-key checks passed.
+
+The full run used651 browser/40 client/14 admin requests, within the owner-approved
+750/100/70 limits. Both accounts/all15 tables and independent cleanup passed;
+database, server, build and browser closed. The final main and cleanup summaries
+were consumed once, with only safe source-bound fields retained.
+
+The previously observed Today query mismatch remains separate: `movements.name`
+does not exist; the query's movement-region/slug maps feed recovering-region
+warnings. This is not a matching failure and no general Today change is bundled
+into the frozen journey. Owner usability and production delivery remain open.
+Protected deployment9d42be34 and159-record storage are unchanged by this test;
+both prior updater operations remain spent. Production, the private course and
+personal history were untouched.

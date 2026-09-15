@@ -239,3 +239,24 @@ history subsequently passed core34944116720 and storage34944116919 at `2bdffde7`
 including migration/down/up and cleanup. The newer coordinated edit has focused
 action/preparation tests and a disposable SQL fixture; its exact-source PostgreSQL
 acceptance is still pending. This is not hosted release readiness.
+
+### Integrated account acceptance - 2026-09-15
+
+After the separately approved0158 identity repair, the complete frozen seven-case
+journey passed atfd9c01f3 in35005360323/job104505373816. Exact core35004291663
+and storage35004291658 had passed first. The two viewport/account paths cover
+creation, Today/Plan discovery, matching and completed/stopped-early confirmation
+through reload, ordinary history and isolation, future edits while paused with
+fixed-date resume, and disconnection. No native result/workload was invented.
+
+The owner approved an integrated-only750-browser-request ceiling after two
+real-navigation corrections still exhausted500. The successful full journey used
+651 browser/40 client/14 admin requests. Main and independent cleanup verified
+both accounts/all15 tables absent, and every main process closed. The earlier
+matching failure did not recur in the final three executions; no application
+fix or general reliability guarantee is inferred from that observation.
+
+The application ran on GitHub loopback against protected159-record storage.
+Existing protected deployment9d42be34, production, the private course and personal
+history were unchanged. Owner usability, protected-hostname/physical-device
+behavior and production delivery remain separate gates.

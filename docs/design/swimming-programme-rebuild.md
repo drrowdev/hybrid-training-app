@@ -940,5 +940,21 @@ repair/down/restore before the full save/lifecycle/isolation suite.
 Read-only34978569711 and database-only repair34979248193 subsequently passed.
 All158 prior ledger records were preserved and only0158 appended, reaching159.
 Deployment9d42be34, flags, Auth and user rows were unchanged. Both the deployment
-updater and database repair are spent and cannot be replayed. Complete native
-journey and owner usability acceptance remain outstanding.
+updater and database repair are spent and cannot be replayed.
+
+The complete seven-case native journey passed atfd9c01f3 in35005360323
+(job104505373816), following exact core35004291663/storage35004291658.
+Both accounts created programmes through the normal picker, found their swims
+in Today/Plan, matched recordings, confirmed different outcomes through reload,
+and revisited ordinary history. Isolation/no-invented-native-row checks, future
+programme editing while paused, fixed-date resume and key revocation passed.
+Traffic was651 browser/40 client/14 admin requests within the approved bounds.
+Both accounts/all15 tables and independent cleanup passed; all main processes
+closed. This is GitHub-loopback acceptance against protected storage, not a new
+Vercel deployment, physical-device validation or owner usability acceptance.
+
+A separately observed Today query requests `movements.name` instead of
+`display_name`. That query supplies movement-region/slug maps for recovering-region
+warnings; it is not the recording-matching path. It remains a general Today
+follow-up, not silently included in this completed frozen acceptance scope.
+Production/private-course changes remain held.
