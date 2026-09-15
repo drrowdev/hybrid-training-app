@@ -177,6 +177,14 @@ export async function swimWorkoutViewFromRow(client: SupabaseClient, userId: str
   const plan = (await listSwimPlans(client)).find((row) => row.id === workout.plan_id && row.user_id === userId);
   if (!plan) return null;
   const row = (await loadSwimHistory(client, [workout]))[0]!;
+  let reschedule: SwimWorkoutView["reschedule"];
+  if (plan.status === "active" && workout.status === "scheduled" && !workout.session_id) {
+    const { today } = await swimToday(client, userId);
+    if (workout.scheduled_date > today) reschedule = {
+      revision: workout.revision, ...swimWorkoutDateRange(plan,
+        (await listSwimWorkouts(client, plan.id)).filter((entry) => entry.user_id === userId), workout, today),
+    };
+  }
   const poolEditing = await swimPoolEditingAvailable(client)
     ? swimPoolEditContext(plan, (await swimToday(client, userId)).today, workout) : undefined;
   const courseEditing = isPrivateSwimPlan(plan) && workout.definition.courseSource &&
@@ -194,6 +202,7 @@ export async function swimWorkoutViewFromRow(client: SupabaseClient, userId: str
     provisional: swimWorkoutDefinition(workout).provisional, deleted: row.deleted, sourceGone: row.sourceGone,
     ...(poolEditing ? { poolEditing } : {}),
     ...(courseEditing ? { courseEditing } : {}),
+    ...(reschedule ? { reschedule } : {}),
     ...(row.notes !== null ? { notes: row.notes } : {}),
     result: row.result && row.completedAt ? {
       lengths: row.result.lengths, timeMs: row.result.timeMs,

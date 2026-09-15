@@ -673,6 +673,12 @@ correction retain history. No date/distance or provider-reference inference.
   for acceptance, never catch-up. Started swims can finish after archive, with
   actual workload credited but no progression of a replacement plan. Session
   trash/undo retains the link; hard purge may clear it while retaining targets.
+  **Linked-programme extension (owner decision, 2026-09-15):** swimming attached
+  to a primary programme keeps its original calendar and end when paused or
+  resumed. Past unconfirmed swims remain unknown/incomplete; skipping is explicit.
+  There is no extension, compressed catch-up or independent continuation.
+  Ending the primary programme ends its linked swimming, retaining every target
+  and result. The standalone fresh-date resume rule does not apply to these links.
 - **DC-SW8 - Owned, atomic single logging [DEF].** Composite ownership links and
   RLS protect plans, workouts and sessions. Concurrent starts obtain one ordinary
   session. One serialized completion atomically writes the native result, its

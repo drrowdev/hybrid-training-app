@@ -4199,3 +4199,21 @@ the app schema was not a named ESM export from the database runner's context.
 The fixture now checks the actual PostgreSQL evidence validator in its existing
 service-role transaction instead. The calendar-date assertion remains explicit.
 Only closed loader diagnostics were retained from one in-memory public log read.
+
+## [2026-09-15] decision | Keep swimming within the primary programme
+
+Shared source4cad18c0 passed core34935940196 and storage34935940221, including
+the general browser job and cleanup. Public terminal metadata was consumed once;
+successful logs were not downloaded. This was shared-presentation acceptance,
+not a complete authenticated or hosted release.
+
+The owner rejected independent continuation after a pause. Linked swimming keeps
+its primary dates and end; missed/unconfirmed work stays incomplete or unknown,
+with explicit skip/undo. Standalone fresh-date resume stays separate.
+
+Development migration0157 adds revision-checked, replayable linked lifecycle
+changes and an atomic primary-end trigger. Shared controls reuse existing styling
+and date/pool/course editors. Focused action checks and synthetic375/1280 controls
+pass; exact-source real PostgreSQL acceptance remains pending. No hosted schema,
+configuration, deployment or real-account changes occurred. Broader activity
+history, programme editing and the authenticated full journey remain open.

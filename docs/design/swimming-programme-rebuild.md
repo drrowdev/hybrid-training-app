@@ -827,15 +827,24 @@ readiness check prevents older storage from ignoring the new inputs. That
 extension passed exact-source core34928353200 and PostgreSQL34928353211 at
 `50750d51`.
 
-The next development checkpoint projects linked swims through Today, the shared
+The shared development checkpoint projects linked swims through Today, the shared
 rail/calendar drawer and programme history. The original planned identity leads
 to the swimming prescription and imported recording, with bounded internal return
 navigation. A security-invoker view reads current matching evidence and the latest
 claim together; domain rules distinguish complete, stopped early and stale evidence.
 It creates no native result, measured duration or workload. Linked entries are
 excluded from the separate swimming list, including retained associations.
-The generic completion/editor controls and independent swim edits are not exposed
-for these links. This read-only projection still needs exact-source PostgreSQL
-acceptance; coordinated lifecycle operations remain unfinished.
+Native completion controls and independent date writes are not exposed for these
+links. Source4cad18c0 passed core34935940196 and storage34935940221.
+
+The owner confirmed on2026-09-15 that pausing swimming must keep the primary dates
+and end. No independent continuation, extension or catch-up is allowed. Unconfirmed
+past swims remain unknown/incomplete; skip/undo is explicit. Development0157 adds
+atomic paired date changes, fixed-calendar pause/resume and retained retry history.
+Ending the primary programme also finishes its linked swimming in the same
+transaction. Shared drawer/workout controls use the existing components and
+reviewed pool, course and date editors. This lifecycle checkpoint still requires
+exact-source PostgreSQL acceptance; broader activity history, programme editing
+and the authenticated full journey remain unfinished.
 The new path remains disabled until acceptance and the lifecycle gaps are resolved.
 No physical-device or owner usability acceptance is claimed.

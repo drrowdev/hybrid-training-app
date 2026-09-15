@@ -59,7 +59,7 @@ export function requireGeneratedSwimPlan(plan: SwimPlanRow): StandalonePlanDefin
   return { ...definition, setup: { ...definition.setup, sessionBudgetMinutes: definition.setup.sessionBudgetMinutes } };
 }
 
-export function swimWorkoutDefinition(workout: SwimWorkoutRow): StandaloneWorkoutDefinition {
+export function swimWorkoutDefinition(workout: Pick<SwimWorkoutRow, "definition">): StandaloneWorkoutDefinition {
   const definition = workout.definition as StandaloneWorkoutDefinition;
   if (!Number.isInteger(definition.weekIndex) || !definition.slotId) throw new Error("This swim workout has an unsupported schedule.");
   return definition;

@@ -1100,6 +1100,13 @@
       "when": 1789416000000,
       "tag": "0156_atomic_swim_conditioning",
       "breakpoints": false
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1789459200000,
+      "tag": "0157_swim_conditioning_lifecycle",
+      "breakpoints": false
     }
   ]
 }

@@ -14,6 +14,8 @@ let ready: unknown;
 let readyStatus: number;
 let benchmarkReady: unknown;
 let benchmarkReadyStatus: number;
+let lifecycleReady: unknown;
+let lifecycleStatus: number;
 const reads: URL[] = [];
 const client = createClient("https://conditioning.test", "synthetic-test-key", {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -22,6 +24,7 @@ const client = createClient("https://conditioning.test", "synthetic-test-key", {
     reads.push(url);
     if (url.pathname.endsWith("swim_conditioning_ready")) return Response.json(ready, { status: readyStatus });
     if (url.pathname.endsWith("swim_conditioning_benchmarks_ready")) return Response.json(benchmarkReady, { status: benchmarkReadyStatus });
+    if (url.pathname.endsWith("swim_conditioning_lifecycle_ready")) return Response.json(lifecycleReady, { status: lifecycleStatus });
     const offset = Number(url.searchParams.get("offset"));
     return Response.json(url.pathname.endsWith("swim_conditioning_bindings") ? bindings.slice(offset, offset + 500) : [{
       user_id: userId, request_id: id(7000), block_id: null, program_instance_id: null, swim_plan_id: id(8001),
@@ -32,6 +35,7 @@ const client = createClient("https://conditioning.test", "synthetic-test-key", {
 beforeEach(() => {
   bindings = [binding(1)]; ready = true; readyStatus = 200;
   benchmarkReady = true; benchmarkReadyStatus = 200; reads.length = 0;
+  lifecycleReady = true; lifecycleStatus = 200;
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -69,4 +73,10 @@ it.each([
 ])("fails rather than returning malformed or foreign export data", async (row) => {
   bindings = [row];
   await expect(exportSwimConditioning(client, userId)).rejects.toThrow();
+});
+
+it("requires linked lifecycle for new saves without disabling retained reads", async () => {
+  lifecycleReady = { code: "PGRST202", message: "Missing function" }; lifecycleStatus = 404;
+  expect(await conditioningStorageAvailable(client, true)).toBe(false);
+  expect(await conditioningStorageAvailable(client)).toBe(true);
 });

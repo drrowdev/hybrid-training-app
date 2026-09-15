@@ -6,12 +6,14 @@ import { conditioningStorageAvailable } from "./conditioning-storage";
 import { swimWorkoutDefinition } from "./model";
 import { workoutPresentation } from "./presentation";
 import type { ConditioningSwim } from "./conditioning-presentation";
+import { conditioningLifecycleAvailable } from "./conditioning-lifecycle";
 
 export type ConditioningSwimRow = Pick<SwimWorkoutRow,
   "id" | "user_id" | "plan_id" | "revision" | "status" | "session_id" | "scheduled_date" | "slot" | "definition"> & {
   planned_session_id: string | null;
   block_id: string | null;
   plan_status: string;
+  plan_revision?: number;
   block_status: string | null;
   block_deleted_at: string | null;
   visible_session_id: string | null;
@@ -25,10 +27,13 @@ export type ConditioningSwimRow = Pick<SwimWorkoutRow,
   recording_date: string | null;
 };
 
-export function conditioningSwimView(row: ConditioningSwimRow): ConditioningSwim {
+export function conditioningSwimView(row: ConditioningSwimRow, lifecycleAvailable = false): ConditioningSwim {
+  if (lifecycleAvailable && (!Number.isSafeInteger(row.plan_revision) || (row.plan_revision ?? 0) < 1)) {
+    throw new Error("The swimming controls could not be loaded.");
+  }
   const presentation = workoutPresentation(row.definition.issued);
   const source = row.definition.courseSource;
-  const definition = swimWorkoutDefinition({ ...row, created_at: "", updated_at: "" });
+  const definition = swimWorkoutDefinition(row);
   const state = swimTrainingState({
     planStatus: row.plan_status,
     parentActive: row.block_status === "active" && row.block_deleted_at === null,
@@ -52,6 +57,15 @@ export function conditioningSwimView(row: ConditioningSwimRow): ConditioningSwim
     title: source ? swimCourseWorkoutTitle(source.title, definition.slotId) : presentation.title,
     distance: presentation.total, pool: presentation.course,
     recordingDate: state.settled ? row.recording_date : null,
+    ...(lifecycleAvailable && row.plan_revision && row.block_status === "active" && !row.block_deleted_at
+      && (row.plan_status === "active" || row.plan_status === "paused") ? {
+        controls: {
+          planId: row.plan_id, planRevision: row.plan_revision, workoutRevision: row.revision,
+          planStatus: row.plan_status,
+          editable: row.session_id === null && !row.outcome_metadata?.outcome &&
+            (row.status === "scheduled" || row.status === "skipped"),
+        },
+      } : {}),
   };
 }
 
@@ -62,6 +76,7 @@ export async function loadConditioningSwims(
 ): Promise<Map<string, ConditioningSwim>> {
   const views = new Map<string, ConditioningSwim>();
   if (!plannedIds.length || !await conditioningStorageAvailable(client)) return views;
+  const lifecycleAvailable = await conditioningLifecycleAvailable(client);
   const ids = [...new Set(plannedIds)];
   for (let offset = 0; offset < ids.length; offset += 100) {
     const batch = ids.slice(offset, offset + 100);
@@ -75,7 +90,7 @@ export async function loadConditioningSwims(
     for (const row of data) {
       const id = row[by];
       if (!id || views.has(id)) throw new Error("A swimming session was linked more than once.");
-      views.set(id, conditioningSwimView(row));
+      views.set(id, conditioningSwimView(row, lifecycleAvailable));
     }
   }
   return views;

@@ -94,7 +94,8 @@ SET search_path = pg_catalog AS $$ SELECT true $$;
 CREATE VIEW public.swim_conditioning_sessions WITH (security_invoker = true) AS
 SELECT link.user_id, link.planned_session_id, link.block_id,
   w.id, w.plan_id, w.revision, w.status, w.session_id, w.scheduled_date, w.slot, w.definition,
-  sp.status AS plan_status, b.status AS block_status, b.deleted_at AS block_deleted_at,
+  sp.status AS plan_status, sp.revision AS plan_revision,
+  b.status AS block_status, b.deleted_at AS block_deleted_at,
   logged.id AS visible_session_id, logged.completed_at AS native_completed_at,
   o.match_id AS outcome_match_id, o.metadata AS outcome_metadata,
   m.id AS current_match_id, m.import_id AS matched_import_id,

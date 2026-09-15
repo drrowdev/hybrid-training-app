@@ -74,13 +74,13 @@ try {
     GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
   `);
   const journal: { entries: { idx: number; tag: string; when: number; breakpoints: boolean }[] } = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"));
-  assert.equal(journal.entries.length, 157);
+  assert.equal(journal.entries.length, 158);
   assert.equal(journal.entries[153].tag, "0153_swim_import_matching");
   assert.equal(journal.entries[154].tag, "0154_swim_untimed_courses");
   assert.deepEqual(journal.entries.slice(150).map((entry) => entry.tag), [
     "0150_swim_import_storage", "0151_swim_pool_changes", "0152_swim_private_courses",
     "0153_swim_import_matching", "0154_swim_untimed_courses", "0155_swim_import_outcomes",
-    "0156_atomic_swim_conditioning",
+    "0156_atomic_swim_conditioning", "0157_swim_conditioning_lifecycle",
   ]);
   verifyMigrationDependencyParity();
   assert.throws(reviewMigrations, (error) => error instanceof ReviewStorageRefusal && error.code === "migration_source");
@@ -749,6 +749,12 @@ try {
   await revertConditioning();
   await database.begin((tx) => tx.unsafe(conditioningUp));
   stages.push(stage);
+  const lifecycleUp = readFileSync(new URL("../drizzle/0157_swim_conditioning_lifecycle.sql", import.meta.url), "utf8");
+  const lifecycleDown = readFileSync(new URL("../rollbacks/0157_swim_conditioning_lifecycle.down.sql", import.meta.url), "utf8");
+  const revertLifecycle = () => revertScript(lifecycleDown);
+  await database.begin((tx) => tx.unsafe(lifecycleUp));
+  await revertLifecycle();
+  await database.begin((tx) => tx.unsafe(lifecycleUp));
   await exerciseSwimConditioning(database, c, b, editedCourse.plan, {
     started_on: today,
     ends_on: new Date(Date.parse(`${today}T00:00:00Z`) + 13 * 86400000).toISOString().slice(0, 10),
@@ -756,6 +762,7 @@ try {
   }, (name) => { stage = name; });
   stages.push("conditioning-atomic-save-and-lifecycle");
   await denied(revertConditioning, "P0001");
+  await denied(revertLifecycle, "P0001");
 
   stage = "synthetic-cleanup-and-unused-down";
   await database`DELETE FROM auth.users WHERE id IN (${a}, ${b}, ${c}, ${d})`;
@@ -765,6 +772,7 @@ try {
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_workouts`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_conditioning_bindings`)[0]!.count, 0);
   assert.equal((await database`SELECT count(*)::int AS count FROM public.swim_conditioning_saves`)[0]!.count, 0);
+  await revertLifecycle();
   await revertConditioning();
   await revertOutcomes();
   await revertUntimed();

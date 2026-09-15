@@ -153,6 +153,27 @@ try {
             provisional: false, deleted: false, result: null,
           }} /></main>);
         };
+        window.lifecycleCalls = []; window.lifecycleMode = "success";
+        window.saveLifecycle = async (id, input) => {
+          window.lifecycleCalls.push({ id, input });
+          if (window.lifecycleMode === "delay") await new Promise(resolve => window.resolveLifecycle = resolve);
+          if (window.lifecycleMode === "error") return { error: "The programme changed. Reload and try again." };
+          return { ok: true };
+        };
+        window.showLifecycle = (planStatus = "active", status = "scheduled") => {
+          const id = "00000000-0000-4000-8000-000000000002";
+          const view = workoutPresentation(prepared.workouts[0].definition.issued);
+          const swim = { id, title: "Week 1 A", distance: view.total, pool: view.course, recordingDate: null,
+            status: planStatus === "paused" ? "paused" : status, completed: false, settled: status === "skipped",
+            actionable: planStatus === "active", controls: {
+              planId: "00000000-0000-4000-8000-000000000001", planRevision: 3, workoutRevision: 2,
+              planStatus, editable: true,
+            } };
+          root.render(<main className={styles.page}><h1>Week 1 A</h1><WorkoutScreen key={++key}
+            conditioning={swim} workout={{ ...view, id, title: swim.title, revision: 2,
+              sessionId: null, status, planStatus, date: "2026-09-17", provisional: false, deleted: false,
+              result: null }} /></main>);
+        };
         window.matchMode = "success"; window.matchCalls = []; window.findCalls = [];
         window.findWorkouts = async date => {
           window.findCalls.push(date);
@@ -271,7 +292,7 @@ try {
               ? "export const saveSwimImportOutcome = input => window.saveOutcome(input);"
             : args.path === "@/components/trash/DeleteSessionButton"
               ? "export const DeleteSessionButton = () => { throw new Error('Unexpected delete control'); };"
-            : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = () => { throw new Error('Unexpected save'); }; export const previewSwimPlan = createSwimPlan; export const proposeSwimWeek = createSwimPlan, proposeSwimBenchmark = createSwimPlan, decideSwimProposal = createSwimPlan, changeSwimPlanStatus = createSwimPlan, previewSwimResume = createSwimPlan, resumeSwimPlan = createSwimPlan, decideSwimBenchmark = createSwimPlan, applySwimWeekEdit = createSwimPlan, applySwimDateEdit = createSwimPlan, applySwimPoolEdit = createSwimPlan, previewSwimWeekEdit = createSwimPlan, previewSwimDateEdit = createSwimPlan, skipSwimWorkout = createSwimPlan;",
+            : "export const changeConditioningSwim = (id,input) => window.saveLifecycle(id,input); export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = () => { throw new Error('Unexpected save'); }; export const previewSwimPlan = createSwimPlan; export const proposeSwimWeek = createSwimPlan, proposeSwimBenchmark = createSwimPlan, decideSwimProposal = createSwimPlan, changeSwimPlanStatus = createSwimPlan, previewSwimResume = createSwimPlan, resumeSwimPlan = createSwimPlan, decideSwimBenchmark = createSwimPlan, applySwimWeekEdit = createSwimPlan, applySwimDateEdit = createSwimPlan, applySwimPoolEdit = createSwimPlan, previewSwimWeekEdit = createSwimPlan, previewSwimDateEdit = createSwimPlan, skipSwimWorkout = createSwimPlan;",
           loader: "js", resolveDir: root,
         }));
       },
@@ -316,6 +337,38 @@ try {
   stages.push(stage);
 
   for (const width of [375, 1280]) {
+    stage = `conditioning-fixed-calendar-controls-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => { window.lifecycleCalls = []; window.lifecycleMode = "delay"; window.showLifecycle(); });
+    await page.getByText("Swimming options", { exact: true }).click();
+    const pause = page.getByRole("button", { name: "Pause swimming", exact: true });
+    await pause.evaluate((button) => { button.click(); button.click(); });
+    await expect(pause).toBeDisabled();
+    assert.equal(await page.evaluate(() => window.lifecycleCalls.length), 1);
+    assert.equal(await page.evaluate(() => window.lifecycleCalls[0].input.command), "pause");
+    await page.evaluate(() => { window.lifecycleMode = "success"; window.resolveLifecycle(); });
+    await expect(pause).toBeDisabled();
+    await page.evaluate(() => window.showLifecycle("paused"));
+    await page.getByText("Swimming options", { exact: true }).click();
+    await page.getByRole("button", { name: "Resume swimming", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.lifecycleCalls.length)).toBe(2);
+    assert.deepEqual(await page.evaluate(() => Object.keys(window.lifecycleCalls[1].input).sort()),
+      ["command", "planId", "planRevision"]);
+    await page.evaluate(() => { window.lifecycleMode = "error"; window.showLifecycle(); });
+    await page.getByText("Skip swim", { exact: true }).first().click();
+    await page.getByRole("textbox", { name: "Reason", exact: true }).fill("Pool closed");
+    await page.getByRole("button", { name: "Skip swim", exact: true }).click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Reason", exact: true })).toHaveValue("Pool closed");
+    await page.evaluate(() => { window.lifecycleMode = "success"; });
+    await page.getByRole("button", { name: "Skip swim", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.lifecycleCalls.length)).toBe(4);
+    assert.equal(await page.evaluate(() => window.lifecycleCalls[2].id === window.lifecycleCalls[3].id), true);
+    await page.evaluate(() => window.showLifecycle("active", "skipped"));
+    await page.getByRole("button", { name: "Undo skip", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.lifecycleCalls.at(-1).input.command)).toBe("unskip");
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    stages.push(stage);
     stage = `shared-swim-rail-and-drawer-${width}`;
     await page.setViewportSize({ width, height: 900 });
     for (const outcome of [null, "completed", "stopped_early"]) {

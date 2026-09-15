@@ -21,7 +21,7 @@ const saveSchema = z.object({
 
 export async function conditioningStorageAvailable(client: SupabaseClient, includeBenchmarks = false): Promise<boolean> {
   const names = includeBenchmarks
-    ? ["swim_conditioning_ready", "swim_conditioning_benchmarks_ready"]
+    ? ["swim_conditioning_ready", "swim_conditioning_benchmarks_ready", "swim_conditioning_lifecycle_ready"]
     : ["swim_conditioning_ready"];
   for (const name of names) {
     const { data, error } = await client.rpc(name).abortSignal(AbortSignal.timeout(10_000));

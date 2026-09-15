@@ -7,7 +7,7 @@ import { actionablePlannedSessions, isTodayFullyLogged } from "@/lib/sessions/to
 import { isOverdue } from "@/lib/planner/overdue";
 
 const row = (): ConditioningSwimRow => ({
-  ...swimFixture().workouts[0]!, planned_session_id: "planned", block_id: "block", plan_status: "active",
+  ...swimFixture().workouts[0]!, planned_session_id: "planned", block_id: "block", plan_status: "active", plan_revision: 1,
   block_status: "active", block_deleted_at: null, visible_session_id: null, native_completed_at: null,
   outcome_match_id: "match", outcome_metadata: {
     outcome: "stopped_early", previousOutcomeId: null, workoutRevision: 1,
@@ -22,6 +22,14 @@ function clientFor(reply: (url: URL) => Response) {
   });
 }
 describe("shared conditioning projection", () => {
+  it("offers linked controls only on an installed active parent and protects claimed work", () => {
+    const fixture = { ...row(), plan_revision: 2 };
+    expect(conditioningSwimView(fixture)).not.toHaveProperty("controls");
+    expect(conditioningSwimView(fixture, true).controls).toMatchObject({ planRevision: 2, editable: false });
+    expect(conditioningSwimView({ ...fixture, outcome_metadata: null }, true).controls?.editable).toBe(true);
+    expect(conditioningSwimView({ ...fixture, block_status: "archived" }, true)).not.toHaveProperty("controls");
+    expect(conditioningSwimView({ ...fixture, plan_status: "paused" }, true).controls?.planStatus).toBe("paused");
+  });
   it("uses the same settled state in Today and overdue without a native completion", () => {
     const swim = conditioningSwimView(row());
     const planned = { swim, completedAt: null, completedSessionId: null, skippedAt: null, date: "2026-09-07" };

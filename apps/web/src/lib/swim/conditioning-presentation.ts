@@ -6,6 +6,10 @@ export type ConditioningSwim = ReturnType<typeof swimTrainingState> & {
   distance: string;
   pool: string;
   recordingDate: string | null;
+  controls?: {
+    planId: string; planRevision: number; workoutRevision: number;
+    planStatus: "active" | "paused"; editable: boolean;
+  };
 };
 export const SWIM_TRAINING_LABEL: Record<SwimTrainingStatus, string> = {
   scheduled: "Scheduled", started: "In progress", completed: "Completed",

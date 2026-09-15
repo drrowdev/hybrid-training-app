@@ -7,6 +7,7 @@ import { loadSwimHubView } from "@/lib/swim/queries";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SwimHub } from "@/components/swim/SwimHub";
 import styles from "@/components/swim/Swim.module.css";
+import { conditioningPlanLink } from "@/lib/swim/conditioning-lifecycle";
 
 export default async function SwimPage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
   const client = await createClient();
@@ -17,6 +18,9 @@ export default async function SwimPage({ searchParams }: { searchParams: Promise
   const query = await searchParams;
   const selected = (query.plan ? plans.find((plan) => plan.id === query.plan) : null) ??
     plans.find((plan) => plan.status === "active") ?? plans[0];
+  if (selected && await conditioningPlanLink(client, user.id, selected.id)) {
+    redirect(selected.status === "active" || selected.status === "paused" ? "/app/plan" : "/app/plan/history");
+  }
   const view = selected ? await loadSwimHubView(client, user.id, selected) : null;
   return (
     <main className={styles.page}>

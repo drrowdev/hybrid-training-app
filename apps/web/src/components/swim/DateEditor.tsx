@@ -6,8 +6,8 @@ import type { SwimDateEditPreview, SwimHubView } from "@/lib/swim/view-types";
 import styles from "./Swim.module.css";
 
 export function DateEditor({ plan, workout, busy, onApply }: {
-  plan: SwimHubView;
-  workout: SwimHubView["workouts"][number];
+  plan: Pick<SwimHubView, "id" | "revision" | "status">;
+  workout: Pick<SwimHubView["workouts"][number], "id" | "date" | "reschedule">;
   busy: boolean;
   onApply: (preview: SwimDateEditPreview) => void;
 }) {

@@ -113,7 +113,7 @@ describe("ADR0079 private swimming identity migration (DC-SW8/DC-SW9)", () => {
   it("registers the additive migration without statement breakpoints", () => {
     const directory = new URL("../../../../../../packages/db/drizzle/", import.meta.url);
     const journal = JSON.parse(readFileSync(new URL("meta/_journal.json", directory), "utf8"));
-    expect(journal.entries).toHaveLength(157);
+    expect(journal.entries).toHaveLength(158);
     expect(journal.entries[147]).toEqual({
       idx: 147, version: "7", when: 1788912000002,
       tag: "0147_swim_request_identity", breakpoints: false,
@@ -140,7 +140,10 @@ describe("ADR0079 private swimming identity migration (DC-SW8/DC-SW9)", () => {
     expect(journal.entries[156]).toEqual({
       idx: 156, version: "7", when: 1789416000000, tag: "0156_atomic_swim_conditioning", breakpoints: false,
     });
-    expect(readdirSync(directory).filter((name) => name.endsWith(".sql"))).toHaveLength(157);
+    expect(journal.entries[157]).toEqual({
+      idx: 157, version: "7", when: 1789459200000, tag: "0157_swim_conditioning_lifecycle", breakpoints: false,
+    });
+    expect(readdirSync(directory).filter((name) => name.endsWith(".sql"))).toHaveLength(158);
   });
 });
 

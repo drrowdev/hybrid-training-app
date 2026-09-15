@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import type postgres from "postgres";
+import { exerciseConditioningLifecycle } from "./swim-conditioning-lifecycle.ts";
 
 type SwimCreate = {
   started_on: string; ends_on: string; definition: unknown; state: unknown;
@@ -105,7 +106,7 @@ export async function exerciseSwimConditioning(
       has_table_privilege('conditioning_writer',${`public.${table}`},'UPDATE') AS full_update,
       has_column_privilege('conditioning_writer',${`public.${table}`},'revision','UPDATE') AS lock_column,
       has_column_privilege('conditioning_writer',${`public.${table}`},'definition','UPDATE') AS definition_update`)[0]!;
-    assert.deepEqual(privilege, { full_update: false, lock_column: true, definition_update: false });
+    assert.deepEqual(privilege, { full_update: false, lock_column: true, definition_update: table === "swim_workouts" });
   }
 
   mark("conditioning-existing-plan-and-replay");
@@ -197,6 +198,7 @@ export async function exerciseSwimConditioning(
     const created = (await deploy(fresh, randomUUID(), source, planned, freshInput))[0]!;
     assert.notEqual(created.swim_plan_id, existing.id);
     assert.equal((await as(fresh, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_conditioning_bindings`))[0]!.count, source.workouts.length);
+    await exerciseConditioningLifecycle(database, fresh, other, created.swim_plan_id, mark);
     mark("conditioning-current-recording-projection");
     const [work] = await as(fresh, (tx) => tx<{ id: string; revision: number; scheduled_date: string }[]>`
       SELECT id,revision,scheduled_date::text AS scheduled_date
@@ -234,6 +236,13 @@ export async function exerciseSwimConditioning(
     assert.equal(completedView.latest_import_id, imported.id);
     assert.equal(completedView.matched_workout_revision, completedView.revision);
     assert.equal(completedView.native_completed_at, null);
+    const [{ plan_revision: confirmedPlanRevision }] = await as(fresh, (tx) => tx`SELECT plan_revision
+      FROM public.swim_conditioning_sessions WHERE id=${work!.id}`);
+    await denied(() => as(fresh, (tx) => tx`SELECT public.swim_change_conditioning(
+      ${randomUUID()},${JSON.stringify({
+        command: "skip", planId: created.swim_plan_id, planRevision: confirmedPlanRevision,
+        workoutId: work!.id, workoutRevision: work!.revision, reason: "Cannot swim",
+      })}::text::jsonb)`), "40001");
     const partial = randomUUID();
     await as(fresh, (tx) => tx`SELECT public.swim_confirm_import_outcome(
       ${partial},${work!.id},${matchId},'stopped_early',${completed},${work!.revision})`);
@@ -250,6 +259,13 @@ export async function exerciseSwimConditioning(
     assert.equal((await readView()).outcome_metadata.outcome, null);
     assert.deepEqual(await primarySnapshot(fresh), beforeOutcomes);
     assert.equal((await as(fresh, (tx) => tx`SELECT count(*)::int AS count FROM public.sessions`))[0]!.count, 0);
+    mark("conditioning-end-with-primary");
+    await as(fresh, (tx) => tx`UPDATE public.training_blocks SET status='archived',ended_at=now(),archived_at=now()
+      WHERE id=${created.block_id}`);
+    assert.equal((await as(fresh, (tx) => tx`SELECT status FROM public.swim_plans
+      WHERE id=${created.swim_plan_id}`))[0]!.status, "finished");
+    assert.ok((await as(fresh, (tx) => tx`SELECT block_status,plan_status FROM public.swim_conditioning_sessions`))
+      .every((row) => row.block_status === "archived" && row.plan_status === "finished"));
   } finally {
     await database`DELETE FROM auth.users WHERE id=${fresh}`;
   }

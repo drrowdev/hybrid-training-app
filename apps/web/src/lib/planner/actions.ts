@@ -46,10 +46,11 @@ export async function endBlock(formData: FormData): Promise<void> {
       .eq("block_id", parsed.data.id),
   ]);
 
-  await supabase
+  const { error: endError } = await supabase
     .from("training_blocks")
     .update({ status: "archived", archived_at: nowIso, ended_at: nowIso })
     .eq("id", parsed.data.id);
+  if (endError) throw new Error("Could not end this programme. Try again.");
 
   const {
     data: { user },
@@ -90,6 +91,9 @@ export async function endBlock(formData: FormData): Promise<void> {
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
+  revalidatePath("/app/plan/history");
+  revalidatePath("/app/swim");
+  revalidatePath("/app/swim/[workoutId]", "page");
 }
 
 /**
@@ -241,10 +245,11 @@ export async function skipPlannedSession(formData: FormData): Promise<void> {
     .eq("id", parsed.data.id)
     .maybeSingle();
 
-  await supabase
+  const { error: skipError } = await supabase
     .from("planned_sessions")
     .update({ skipped_at: skippedAt })
     .eq("id", parsed.data.id);
+  if (skipError) throw new Error("Could not skip this workout. Open it and try again.");
 
   if (planned) {
     const block = (planned as unknown as {

@@ -35,6 +35,7 @@ export type SwimWorkoutView = {
   pool: { numerator: number; denominator: number; unit: "m" | "yd" };
   poolEditing?: SwimPoolEditContext;
   courseEditing?: Omit<SwimCourseEditInput, "reason">;
+  reschedule?: { revision: number; min: string; max: string };
   steps: { id: string; repeatIds: string[]; section: string; title: string; detail: string; rest: string; effort: string; pace?: string; guidance?: string; lengths?: number }[];
   result: null | {
     lengths: number; timeMs: number; rpe?: number; notes?: string; reason?: string; splits?: string; stroke: string;

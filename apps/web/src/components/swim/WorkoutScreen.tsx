@@ -13,6 +13,7 @@ import { createRequestGate } from "@/lib/swim/hub-request";
 import { SWIM_REFRESH_WARNING } from "@/lib/swim/action-feedback";
 import styles from "./Swim.module.css";
 import { SWIM_TRAINING_LABEL, type ConditioningSwim } from "@/lib/swim/conditioning-presentation";
+import { ConditioningSwimControls } from "./ConditioningSwimControls";
 
 export function WorkoutScreen({ workout: incomingWorkout, conditioning }: {
   workout: SwimWorkoutView; conditioning?: ConditioningSwim;
@@ -26,6 +27,7 @@ export function WorkoutScreen({ workout: incomingWorkout, conditioning }: {
   const [requestGate] = useState(createRequestGate);
   const [poolBusy, setPoolBusy] = useState(false);
   const [courseBusy, setCourseBusy] = useState(false);
+  const [lifecycleBusy, setLifecycleBusy] = useState(false);
   const [pending, startTransition] = useTransition();
 
   return (
@@ -35,8 +37,8 @@ export function WorkoutScreen({ workout: incomingWorkout, conditioning }: {
         <p className={styles.muted}>{workout.date}{workout.budgetMinutes !== null && ` · Up to ${workout.budgetMinutes} min`}{workout.provisional && !workout.sessionId ? " · Draft" : ""}</p>
         {workout.calibrationLabel && <p className={styles.muted}>{workout.calibrationLabel}</p>}
         {conditioning && conditioning.status !== "scheduled" && <p role="status">{SWIM_TRAINING_LABEL[conditioning.status]}</p>}
-        {!conditioning && workout.poolEditing && <PoolEditor key={`${workout.id}:${workout.revision}:${workout.poolEditing.revision}`}
-          context={workout.poolEditing} busy={pending || poolBusy || courseBusy} onApply={(preview) => {
+        {(!conditioning || conditioning.controls?.editable) && workout.poolEditing && <PoolEditor key={`${workout.id}:${workout.revision}:${workout.poolEditing.revision}`}
+          context={workout.poolEditing} busy={pending || poolBusy || courseBusy || lifecycleBusy} onApply={(preview) => {
             setError(null); setWarning(null);
             void requestGate(async () => {
               try {
@@ -52,7 +54,7 @@ export function WorkoutScreen({ workout: incomingWorkout, conditioning }: {
             }, setPoolBusy);
           }} />}
         {warning && <p role="status" className={styles.warning}>{warning}</p>}
-        {!workout.sessionId && workout.status === "scheduled" && workout.planStatus !== "active" && (
+        {!conditioning && !workout.sessionId && workout.status === "scheduled" && workout.planStatus !== "active" && (
           <p role="status" className={styles.muted}>{({ paused: "Plan paused", finished: "Plan finished", archived: "Plan archived" })[workout.planStatus]}</p>
         )}
         {workout.deleted && <Link href="/app/settings/trash" className={styles.secondary}>Restore from Trash</Link>}
@@ -72,8 +74,12 @@ export function WorkoutScreen({ workout: incomingWorkout, conditioning }: {
           ))}
         </ol>
       </section>
-      {!conditioning && workout.courseEditing && <CourseWorkoutEditor key={`${workout.id}:${workout.revision}:${workout.courseEditing.revision}`}
-        context={workout.courseEditing} busy={pending || poolBusy} onBusyChange={setCourseBusy} />}
+      {(!conditioning || conditioning.controls?.editable) && workout.courseEditing && <CourseWorkoutEditor key={`${workout.id}:${workout.revision}:${workout.courseEditing.revision}`}
+        context={workout.courseEditing} busy={pending || poolBusy || lifecycleBusy} onBusyChange={setCourseBusy} />}
+      {conditioning?.controls && <section className={styles.section}>
+        <ConditioningSwimControls key={`${conditioning.controls?.planRevision}:${conditioning.controls?.workoutRevision}`}
+          swim={conditioning} workout={workout} busy={poolBusy || courseBusy || pending} onBusyChange={setLifecycleBusy} />
+      </section>}
       {!workout.sourceGone && workout.result && <section className={styles.section}>
         <h2>Your swim</h2>
         {workout.result.distance && <p className={styles.distance}>{workout.result.distance}</p>}

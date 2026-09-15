@@ -69,8 +69,9 @@ these checks.
 The non-login, non-inheriting `conditioning_writer` has no RLS bypass or service
 role membership. Its bounded grants support the existing primary/swim functions
 and owner reads, not import credentials or general administrative access.
-Revision-column UPDATE grants on the two swim tables permit PostgreSQL row locks;
-the wrapper does not use them to change revisions or receive table-wide updates.
+Revision-column UPDATE grants on the two swim tables permit PostgreSQL row locks.
+Migration0157 adds only the status/state/date/definition/timestamp columns needed
+by coordinated lifecycle functions; it grants no table-wide swimming UPDATE.
 The writer can insert owned training-max rows and read movement ownership columns;
 it refuses missing or foreign private movements. Existing training-max RLS remains
 unchanged. The down migration removes these grants along with the unused wrapper.
@@ -86,6 +87,7 @@ and retain the schema rather than running the down migration.
 `SWIM_CONDITIONING_ENABLED=true` and installed storage are both required for new
 conditioning saves. New saves also require `swim_conditioning_benchmarks_ready()`,
 so an earlier0156 implementation cannot silently ignore submitted benchmarks.
+They also require `swim_conditioning_lifecycle_ready()`.
 Export and receipt recovery do not depend on that flag or the new readiness check.
 The current server path supports new foreign programmes only; edits, native
 programmes and inserted recovery weeks remain unavailable until their coordinated
@@ -103,9 +105,34 @@ including retained associations after primary purge.
 
 The existing drawer opens the swim prescription and retains Today/Plan/history
 return context through matched recordings. It does not offer native one-tap
-completion, prescription editing or independent swim edits for linked work.
-Coordinated lifecycle operations and the complete authenticated journey remain
-unfinished; this is not release readiness.
+completion or independent date writes for linked work.
+
+## Linked lifecycle
+
+The owner's 2026-09-15 decision keeps paused swimming within the primary programme:
+resume retains dates and end, with no independent continuation or catch-up.
+Unconfirmed past swims stay unknown; skips are explicit and can be undone.
+Migration0157 serializes linked changes using expected plan/workout revisions.
+Date changes update both identities in one transaction and reject occupied slots,
+past work and dates outside the retained programme. The existing reviewed,
+same-swim-week date flow remains the UI entry point. Imported outcome claims
+must be cleared before changing the corresponding work. Resume/date changes run
+the existing swimming safety function with its native restricted writer.
+
+The existing plan-state JSON retains request UUIDs, exact commands, prior dates
+and lifecycle history; no top-level column or new user-data table is needed.
+A guarded append records each change, including skipped-work reasons, and
+interrupted-response replay cannot repeat it or overwrite a later revision.
+Existing state-edit functions cannot remove or fabricate these receipts.
+An owner-scoped trigger finishes linked swimming in the same transaction when
+its primary programme is archived, including replacement by another programme.
+The unused-only down refuses links or retained lifecycle receipts.
+
+The shared drawer and workout page expose pause/resume, skip/undo and end controls.
+The workout page reuses reviewed date, pool and course editors. Linked hub URLs
+return to the primary Plan/history rather than offering standalone resumption.
+Broader activity history, programme-edit paths and authenticated journey acceptance
+remain unfinished; this is not release readiness.
 
 The existing disposable GitHub Postgres job exercises same-owner refusal,
 rollback after late failure, new/existing course saves, concurrent replay,
@@ -122,6 +149,8 @@ browser actions use synthetic fixtures and no server account; they do not
 establish authenticated transport, native-device usability or owner acceptance.
 The benchmark extension at `50750d51` passed core34928353200 and disposable
 storage34928353211. The subsequent shared presentation has focused state/read-model
-checks and synthetic375/1280 drawer coverage. Its extended unshipped0156 view still
-requires exact-source PostgreSQL acceptance, including invoker isolation, current
-recording/claim changes, retained purge history and cleanup.
+checks and synthetic375/1280 drawer coverage. Source `4cad18c0` passed
+core34935940196 and storage34935940221, including invoker isolation, recording
+corrections, retained purge history and cleanup. The later lifecycle work adds
+focused action and mobile/desktop control coverage plus a disposable SQL fixture;
+its exact-source PostgreSQL acceptance is still pending.
