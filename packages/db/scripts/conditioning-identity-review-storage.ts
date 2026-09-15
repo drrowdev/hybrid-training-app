@@ -50,7 +50,7 @@ async function inspect(tx: postgres.TransactionSql, count: 158 | 159) {
   )].map((match) => ({ signature: match[1], hash: match[count === 158 ? 2 : 3] }));
   if (targets.length !== 5) throw new ReviewStorageRefusal("migration_source");
   const routines = await tx`SELECT encode(sha256(convert_to(p.prosrc,'UTF8')),'hex')=e.hash AS valid
-    FROM jsonb_to_recordset(${JSON.stringify(targets)}::jsonb) AS e(signature text, hash text)
+    FROM jsonb_to_recordset(${JSON.stringify(targets)}::text::jsonb) AS e(signature text, hash text)
     LEFT JOIN pg_proc p ON p.oid=to_regprocedure(e.signature)`;
   if (routines.length !== 5 || routines.some((row) => row.valid !== true)) throw new ReviewStorageRefusal("capabilities");
   await verifyConditioningReviewStorage(tx);
