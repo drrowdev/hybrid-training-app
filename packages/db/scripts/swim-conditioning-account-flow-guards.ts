@@ -19,6 +19,10 @@ export const conditioningRequestDiagnosticSchema = z.object({
     z.string().regex(/^schema:(public|auth|pg_catalog)$/),
   ]).optional(),
 }).strict().refine((value) => (value.code === "42501") === (value.authorization !== undefined));
+export function verifyConditioningContextRequests(requests: readonly z.infer<typeof conditioningRequestDiagnosticSchema>[]) {
+  demand(requests.every((request) => request.operation !== "context" ||
+    (request.status >= 200 && request.status < 300 && request.code === "ok")), "context_read_failed");
+}
 export function conditioningSaveDiagnostic(alerts: readonly string[]) {
   if (!alerts.length) return "no_alert";
   const text = alerts.join("\n");
@@ -64,6 +68,20 @@ export function repairedConditioningAccountProfile(): RefreshProfile {
       "packages/db/scripts/__tests__/swim-conditioning-account-flow-observer.test.ts",
       "apps/web/src/components/plan/__tests__/PlanRedesign.swimming.test.tsx",
       "docs/adr/0086-atomic-swim-conditioning.md", "docs/design/swimming-programme-rebuild.md", "docs/knowledge/log.md",
+    ],
+  };
+}
+export function todayConditioningAccountProfile(): RefreshProfile {
+  return {
+    ...repairedConditioningAccountProfile(),
+    reference: { sha: "97518f6d4818b648e474f4bd544a7a293cd378b9", run: "35015324525", kind: "automatic_ci" },
+    paths: [
+      "packages/db/scripts/swim-conditioning-account-flow-guards.ts",
+      "packages/db/scripts/__tests__/swim-conditioning-account-flow-guards.test.ts",
+      "apps/web/scripts/swim-account-flow.ts",
+      "apps/web/scripts/swim-conditioning-account-flow.ts",
+      "docs/design/swimming-programme-rebuild.md",
+      "docs/knowledge/log.md",
     ],
   };
 }

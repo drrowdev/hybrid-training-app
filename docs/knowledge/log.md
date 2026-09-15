@@ -4575,3 +4575,18 @@ region/slug preservation, recovering versus fresh warnings, empty input and
 failed/invalid responses without raw error contents. This is a new application
 candidate: prior full swimming acceptance remains attributed tofd9c01f3, and
 the protected Vercel deployment remains9d42be34 until separately approved.
+
+## [2026-09-15] qualification | Bind protected acceptance to the Today correction
+
+Application97518f6d passed exact core35015324525/storage35015324459. The native
+runner now has a fresh profile pinned to that accepted application and core run.
+It retains the actual9d42be34 deployment receipt and read-only159 storage
+inspection; its permitted later changes are tooling/docs only. Historical
+profiles are preserved rather than expanded to admit the new application.
+
+All seven cases and approved request/time/cleanup limits remain unchanged.
+A final request check, after server shutdown and cleanup, rejects any observed
+context-read failure even if browser cases pass. This covers the original42703
+failure without relying on a visually successful fallback. The standalone runner
+does not enable this new callback. No deployment, flags, Auth or existing rows
+are changed by this qualification tooling.

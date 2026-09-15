@@ -4,7 +4,8 @@ import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { conditioningAccountProfile, checkConditioningAccountDispatch, conditioningAccountAbsenceQuery,
   conditioningAccountTables, conditioningSaveDiagnostic, CONDITIONING_ACCOUNT_REFERENCE,
-  repairedConditioningAccountProfile, CONDITIONING_DEPLOYED_RECEIPT } from "../swim-conditioning-account-flow-guards";
+  repairedConditioningAccountProfile, todayConditioningAccountProfile, verifyConditioningContextRequests,
+  CONDITIONING_DEPLOYED_RECEIPT } from "../swim-conditioning-account-flow-guards";
 import { accountIdentity, accountFlowContext } from "../swim-account-flow-guards";
 import { verifyRefreshCheckout, verifyRefreshSource } from "../refresh-swim-review";
 import { OVERRIDE_KEYS, REVIEW, type EnvironmentMetadata } from "../swim-review-config-plan";
@@ -57,9 +58,34 @@ describe("DC-SW3/SW5/SW8 integrated disposable-account boundary", () => {
     expect(repaired.previous.id).toBe(CONDITIONING_DEPLOYED_RECEIPT.id);
     expect(repaired.paths.every((path) => !path.startsWith("packages/db/drizzle/"))).toBe(true);
     const source = readFileSync(resolve(__dirname, "../../../../apps/web/scripts/swim-conditioning-account-flow.ts"), "utf8");
-    expect(source).toContain("repairedConditioningAccountProfile()");
     expect(source).toContain("ledger: (sql) => inspectIdentityReview(sql, 159)");
     expect(repaired.otherOperations).toEqual(profile.otherOperations);
+  });
+  it("pins the Today application reference without admitting more application or schema changes", () => {
+    const current = todayConditioningAccountProfile();
+    expect(current.reference).toEqual({
+      sha: "97518f6d4818b648e474f4bd544a7a293cd378b9", run: "35015324525", kind: "automatic_ci",
+    });
+    expect(current.previous).toEqual(repairedConditioningAccountProfile().previous);
+    expect(current.paths.some((path) => path.startsWith("apps/web/src/") || path.startsWith("packages/db/drizzle/"))).toBe(false);
+    const source = readFileSync(resolve(__dirname, "../../../../apps/web/scripts/swim-conditioning-account-flow.ts"), "utf8");
+    expect(source).toContain("todayConditioningAccountProfile()");
+    expect(source).toContain("validateRequests: verifyConditioningContextRequests");
+    const runner = readFileSync(resolve(__dirname, "../../../../apps/web/scripts/swim-account-flow.ts"), "utf8");
+    expect(runner).toContain("configuration.validateRequests?.(result.requestDiagnostics)");
+  });
+  it("rejects an observed context-read failure even when all browser cases pass", () => {
+    expect(() => verifyConditioningContextRequests([])).not.toThrow();
+    expect(() => verifyConditioningContextRequests([
+      { operation: "save", status: 200, code: "ok" },
+      { operation: "context", status: 200, code: "ok" },
+    ])).not.toThrow();
+    expect(() => verifyConditioningContextRequests([
+      { operation: "context", status: 400, code: "42703" },
+    ])).toThrow("context_read_failed");
+    expect(() => verifyConditioningContextRequests([
+      { operation: "context", status: 503, code: "unreadable" },
+    ])).toThrow("context_read_failed");
   });
   it("uses the declared action bound for browser assertions and excludes route announcements from save errors", () => {
     const browser = readFileSync(resolve(__dirname, "../../../../apps/web/scripts/swim-conditioning-account-flow-browser.ts"), "utf8");

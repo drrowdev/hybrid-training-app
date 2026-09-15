@@ -31,6 +31,7 @@ export type AccountFlowConfiguration = {
   ledger(sql: ReturnType<typeof connectReviewDatabase>): Promise<void>;
   flags: readonly ("SWIM_CONDITIONING_ENABLED" | "SWIM_IMPORT_OUTCOMES_ENABLED")[];
   flow: typeof nativeAccountFlow; checks: readonly string[];
+  validateRequests?(requests: readonly z.infer<typeof conditioningRequestDiagnosticSchema>[]): void;
 };
 const original: AccountFlowConfiguration = {
   profile: ACCOUNT_FLOW, scope: "swim-account-flow", marker: "SWIM_ACCOUNT_FLOW",
@@ -319,6 +320,18 @@ export async function runAccountFlow(env: NodeJS.ProcessEnv, mode: "source" | "r
         try { await cleanup(); result.stages.push({ stage: "cleanup", status: "passed", code: "passed" }); }
         catch { result.status = "failed"; result.stages.push({ stage: "cleanup", status: "failed", code: "cleanup_failed" }); }
       }
+    }
+  }
+  if (mode === "run" && result.status === "account_flow_pass" && configuration.validateRequests) {
+    // Include diagnostics delivered while the server was shutting down.
+    try {
+      demand(result.requestDiagnosticsValid, "diagnostic_invalid");
+      configuration.validateRequests?.(result.requestDiagnostics);
+      result.stages.push({ stage: "request_verification", status: "passed", code: "passed" });
+    } catch (error) {
+      result.status = "failed";
+      result.stages.push({ stage: "request_verification", status: "failed",
+        code: error instanceof AccountFlowRefusal ? error.code : "refused" });
     }
   }
   return result;
