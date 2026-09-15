@@ -4607,3 +4607,25 @@ through the real imports list. No sleeps, retry loop or application workaround
 is added. Finer fixed opening-action/page categories distinguish navigation from
 a missing recording link if it recurs; no URL, ID or text is retained. This repairs
 an incomplete fixture precondition, not proof of the prior failure's sole cause.
+
+## [2026-09-15] acceptance | Today correction and release preparation qualified
+
+Application97518f6d passed core35015324525/storage35015324459. Tooling e1475287
+passed core35019853704/storage35019853397, followed by native35020734525,
+job104557087344. All seven integrated cases passed. The final post-shutdown
+request gate passed with no observed context-read failures; replay/save/match
+requests all returned200. Traffic was658 browser/40 client/14 admin. Both accounts,
+all15 tables, independent cleanup and all main process closures passed. Main and
+cleanup summaries were consumed once and only safe source-bound fields retained.
+
+The release sequence now records the preserved155-entry source prefix, four
+pending production migrations with guarded downs, historical212-record production
+ledger preservation, fresh read-only preflight requirement, staged app/flag
+approval and rollback/roll-forward limits. These are preparation, not production
+authorization or a fresh claim about the live production database.
+
+The immediate next owner action is approval for a protected app-only update.
+Deployment9d42be34 and159-record protected storage remain unchanged; production,
+the private course and personal history were untouched. Both prior protected
+updaters and old production profiles remain spent. Owner usability follows the
+fresh protected update; production approval remains separate.

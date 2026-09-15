@@ -953,10 +953,10 @@ Both accounts/all15 tables and independent cleanup passed; all main processes
 closed. This is GitHub-loopback acceptance against protected storage, not a new
 Vercel deployment, physical-device validation or owner usability acceptance.
 
-A separately observed Today query requests `movements.name` instead of
+A separately observed Today query requested `movements.name` instead of
 `display_name`. That query supplies movement-region/slug maps for recovering-region
-warnings; it is not the recording-matching path. It remains a general Today
-follow-up, not silently included in this completed frozen acceptance scope.
+warnings; it is not the recording-matching path. The owner subsequently approved
+the separate correction and release preparation below.
 Production/private-course changes remain held.
 
 ### Remaining release sequence - 2026-09-15
@@ -1001,3 +1001,24 @@ downs refuse retained outcome/conditioning history.0158 down restores the known
 identity denial and is not an automatic recovery action. Any down or user-data
 migration requires separate explicit approval. Production rollout, private-course
 transfer, physical-device claims and backups remain outside current authorization.
+
+**Qualification complete; protected update awaits approval.** Application97518f6d
+passed core35015324525/storage35015324459. Test/tooling e1475287 passed
+core35019853704/storage35019853397 and the full seven-case account run35020734525
+(job104557087344). The final post-shutdown request gate passed with no observed
+context-read failures. All six observed replay/save/match requests returned200.
+Traffic was658 browser/40 client/14 admin, within750/100/70. Both accounts/all15
+tables and independent cleanup passed; all main processes closed.
+
+The earlier35017239963 attempt stopped while opening the second recording.
+The fixture now waits for the connection's visible completion before simulating
+external receipt and returns through the normal imports list. Its successful
+execution is not a guarantee that every earlier intermittent failure had that
+single cause. No retries or weaker assertions were added.
+
+The immediate owner action is approval for a fresh **protected app-only update**,
+with159 storage, all existing flags/Auth/protection and personal data retained.
+No production action is included. After a verified READY update, the owner
+usability task is to find the next swim, inspect its instructions and locate a
+saved result without coaching, using authorized test data. Creating/replacing
+the owner's existing plan or modifying personal history is not part of that task.
