@@ -28,6 +28,7 @@ vi.mock("@/lib/sessions/actions", () => ({ editCardio: vi.fn() }));
 vi.mock("@/components/session/EditCardioForm", () => ({ EditCardioForm: () => null }));
 vi.mock("../storage", () => ({ listSwimPlans: vi.fn() }));
 vi.mock("../queries", () => ({ loadSwimHubView: vi.fn(), loadSwimWorkoutView: vi.fn() }));
+vi.mock("../conditioning-view", () => ({ loadConditioningSwims: async () => new Map() }));
 vi.mock("@/components/swim/SwimHub", () => ({ SwimHub: () => null }));
 vi.mock("@/components/swim/WorkoutScreen", () => ({ WorkoutScreen: () => null }));
 

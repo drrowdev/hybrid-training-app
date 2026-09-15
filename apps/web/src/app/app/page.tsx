@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConditioningSwimSummary } from "@/components/swim/ConditioningSwimSummary";
 import { SwimCalendar } from "@/components/swim/SwimCalendar";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
@@ -558,12 +559,13 @@ export default async function TodayPage() {
       isCardio,
       isStrength: hasStrengthItems && !isRehab,
       isRehab,
-      done: p.completedAt != null,
-      inProgress: !!p.completedSessionId && p.completedAt == null,
-      skipped: !!p.skippedAt,
+      swim: p.swim,
+      done: p.swim?.completed ?? p.completedAt != null,
+      inProgress: p.swim ? p.swim.status === "started" : !!p.completedSessionId && p.completedAt == null,
+      skipped: p.swim ? p.swim.status === "skipped" : !!p.skippedAt,
       slot: p.slot,
       items,
-      estDurationMin: estimateSessionDurationBreakdown(items).displayMinutes,
+      estDurationMin: p.swim ? null : estimateSessionDurationBreakdown(items).displayMinutes,
       notes: p.notes,
       completedSessionId: p.completedSessionId,
     };
@@ -966,6 +968,8 @@ function TodaySessionCard({
     <ProgramRecommendationsBanner recommendations={programRecs} dismissAction={dismissProgramRecommendation} />
   );
   const actionableToday = actionablePlannedSessions(plannedToday);
+  const loggedToday = [...completedToday, ...plannedToday.flatMap((planned) =>
+    planned.swim?.completed && !planned.completedSessionId ? [{ id: planned.swim.id, title: planned.swim.title }] : [])];
   if (openSession) {
     return (
       <>
@@ -985,7 +989,7 @@ function TodaySessionCard({
     );
   }
 
-  if (isTodayFullyLogged({ completedTodayCount: completedToday.length, plannedToday })) {
+  if (isTodayFullyLogged({ completedTodayCount: loggedToday.length, plannedToday })) {
     // Every planned slot for today is actually completed (linked or logged).
     // NB: we check per-session completion, not a count comparison — an extra
     // standalone activity (e.g. an extra easy run logged on a day that
@@ -1003,10 +1007,10 @@ function TodaySessionCard({
             Today, so far
           </div>
           <h2 style={{ fontSize: 22, margin: 0 }}>
-            {completedToday.length === 1 ? "Session logged ✓" : `${completedToday.length} sessions logged ✓`}
+            {loggedToday.length === 1 ? "Session logged ✓" : `${loggedToday.length} sessions logged ✓`}
           </h2>
           <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
-            {completedToday[0]?.title ?? "Untitled session"}
+            {loggedToday[0]?.title ?? "Untitled session"}
           </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <Link href="/app/sessions/new" className="cp-btn">Add another session</Link>
@@ -1040,6 +1044,12 @@ function TodaySessionCard({
             <h2 style={{ fontSize: 22, margin: 0 }}>
               No remaining workouts
             </h2>
+            {plannedToday.flatMap((planned) => planned.swim ? [
+              <div key={planned.id}>
+                <h3>{planned.swim.title}</h3>
+                <ConditioningSwimSummary swim={planned.swim} origin="today" />
+              </div>,
+            ] : [])}
           </section>
         </>
       );
@@ -1194,7 +1204,7 @@ function TodaySessionCard({
   // minus now-in-user-timezone — falls back to "PM session next" when
   // we can't resolve a clock time.
   const completedAmSlot = isTwoADay
-    ? plannedToday.find((p) => p.slot === "am" && p.completedAt != null)
+    ? plannedToday.find((p) => p.slot === "am" && (p.swim?.completed ?? p.completedAt != null))
     : null;
   const openPmSlot = completedAmSlot
     ? actionableToday.find((p) => p.slot === "pm" && p.completedAt == null)
@@ -1277,6 +1287,14 @@ function PlannedSessionCard({
 }) {
   const slotLabel =
     planned.slot === "am" ? "Morning" : planned.slot === "pm" ? "Evening" : "Today's session";
+  if (planned.swim) return (
+    <section className="cp-card" data-testid={`today-card-${planned.id}`} data-hero="planned"
+      style={{ padding: 20, display: "grid", gap: 12 }}>
+      <span style={{ color: "var(--cp-text-muted)", fontSize: 12 }}>{slotLabel}</span>
+      <h2 style={{ margin: 0, fontSize: 22 }}>{planned.swim.title}</h2>
+      <ConditioningSwimSummary swim={planned.swim} origin="today" />
+    </section>
+  );
 
   // Glanceable hero metrics derive from the same movement grouping as the
   // compact preview, so role counts and section contents cannot drift apart.

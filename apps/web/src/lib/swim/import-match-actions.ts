@@ -73,5 +73,8 @@ export async function saveSwimImportMatch(input: unknown): Promise<MatchActionRe
   }
   revalidatePath("/app/settings/swimming");
   revalidatePath("/app/swim", "layout");
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/plan/history");
   return { ok: true, value: data };
 }

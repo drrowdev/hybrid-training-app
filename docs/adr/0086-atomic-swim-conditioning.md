@@ -93,8 +93,19 @@ paths are complete. The real wizard now mounts a conditional fifth step for
 eligible new open-conditioning programmes, with the existing pool/experience
 controls inline and one final action. Its date and source changes invalidate
 review; file selection and entered values survive Back and interrupted saves.
-Shared Today/calendar/history surfaces are not yet connected, so this checkpoint
-is not release readiness.
+Linked swims now use the primary identity in Today, the shared week rail/calendar
+and programme history. A security-invoker view joins the binding, current outcome,
+current match and latest recording in one database statement. The domain outcome
+rule remains the authority: stopped-early work is settled but not fully completed;
+changed or removed evidence requires review. Native session IDs, completion times,
+measurements and workload are not synthesized. Standalone lists exclude bindings,
+including retained associations after primary purge.
+
+The existing drawer opens the swim prescription and retains Today/Plan/history
+return context through matched recordings. It does not offer native one-tap
+completion, prescription editing or independent swim edits for linked work.
+Coordinated lifecycle operations and the complete authenticated journey remain
+unfinished; this is not release readiness.
 
 The existing disposable GitHub Postgres job exercises same-owner refusal,
 rollback after late failure, new/existing course saves, concurrent replay,
@@ -109,6 +120,8 @@ coverage at375/1280 for new/existing courses, review invalidation, file replacem
 unchanged retry, duplicate prevention and disabled-feature behavior. Those
 browser actions use synthetic fixtures and no server account; they do not
 establish authenticated transport, native-device usability or owner acceptance.
-The benchmark extension has separate read-only-context, action and synthetic
-wizard coverage; it still needs exact-source disposable PostgreSQL acceptance
-before being considered accepted.
+The benchmark extension at `50750d51` passed core34928353200 and disposable
+storage34928353211. The subsequent shared presentation has focused state/read-model
+checks and synthetic375/1280 drawer coverage. Its extended unshipped0156 view still
+requires exact-source PostgreSQL acceptance, including invoker isolation, current
+recording/claim changes, retained purge history and cleanup.

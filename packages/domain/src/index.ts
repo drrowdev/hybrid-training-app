@@ -29,3 +29,4 @@ export * from "./swim-conditioning";
 export * from "./swim-import-outcome";
 export * from "./rehab-reps";
 export * from "./types";
+export * from "./swim-training-state";

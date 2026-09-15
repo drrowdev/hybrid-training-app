@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type postgres from "postgres";
 
 type SwimCreate = {
@@ -139,6 +139,18 @@ export async function exerciseSwimConditioning(
   assert.equal(linked.length, source.workouts.length);
   assert.equal(new Set(linked.map((row) => row.planned_session_id)).size, source.workouts.length);
   assert.equal((await as(other, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_conditioning_bindings`))[0]!.count, 0);
+  mark("conditioning-owner-scoped-presentation");
+  const presentation = await as(owner, (tx) => tx`SELECT id,planned_session_id,block_status,outcome_match_id
+    FROM public.swim_conditioning_sessions ORDER BY id`);
+  assert.equal(presentation.length, linked.length);
+  assert.deepEqual(presentation.map((row) => row.id), linked.map((row) => row.swim_workout_id).sort());
+  assert.ok(presentation.every((row) => row.planned_session_id !== null && row.block_status === "active"));
+  assert.equal((await as(other, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_conditioning_sessions`))[0]!.count, 0);
+  await denied(() => as(null, (tx) => tx`SELECT * FROM public.swim_conditioning_sessions`), "42501");
+  assert.equal((await as(owner, (tx) => tx`SELECT
+    has_table_privilege(current_user,'public.swim_conditioning_sessions','INSERT') OR
+    has_table_privilege(current_user,'public.swim_conditioning_sessions','UPDATE') OR
+    has_table_privilege(current_user,'public.swim_conditioning_sessions','DELETE') AS writes`))[0]!.writes, false);
   await denied(() => deploy(owner, requestId, attach, planned, { ...requestInput, changed: true }), "22023");
   const existingSnapshot = await primarySnapshot(owner);
   await denied(() => deploy(owner, randomUUID()), "40001");
@@ -167,6 +179,9 @@ export async function exerciseSwimConditioning(
   const retained = await as(owner, (tx) => tx`SELECT planned_session_id,block_id,metadata FROM public.swim_conditioning_bindings`);
   assert.equal(retained.length, linked.length);
   assert.ok(retained.every((row) => row.planned_session_id === null && row.block_id === null));
+  const retainedView = await as(owner, (tx) => tx`SELECT planned_session_id,block_status FROM public.swim_conditioning_sessions`);
+  assert.equal(retainedView.length, linked.length);
+  assert.ok(retainedView.every((row) => row.planned_session_id === null && row.block_status === null));
   assert.deepEqual(retained.map((row) => JSON.stringify(row.metadata)).sort(), linked.map((row) => JSON.stringify(row.metadata)).sort());
   await denied(() => deploy(owner, requestId), "22023");
 
@@ -182,6 +197,54 @@ export async function exerciseSwimConditioning(
     const created = (await deploy(fresh, randomUUID(), source, planned, freshInput))[0]!;
     assert.notEqual(created.swim_plan_id, existing.id);
     assert.equal((await as(fresh, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_conditioning_bindings`))[0]!.count, source.workouts.length);
+    mark("conditioning-current-recording-projection");
+    const [work] = await as(fresh, (tx) => tx`SELECT id,revision,scheduled_date FROM public.swim_conditioning_sessions ORDER BY scheduled_date,id LIMIT 1`);
+    const tokenHash = createHash("sha256").update(randomUUID()).digest("hex");
+    await as(fresh, (tx) => tx`SELECT public.swim_import_connect(${tokenHash})`);
+    const evidence = {
+      version: 1, source: "local_dashboard", activityId: "20001", date: work!.scheduled_date,
+      environment: "pool", workoutReference: "42", distanceMetres: 300, recordedDurationMs: 300000,
+      durationKind: "unspecified", nativeCourse: null, detail: { status: "missing", fetchedAt: null, splits: [] },
+    };
+    const receive = (value = evidence) => database.begin(async (tx) => {
+      await tx.unsafe("SET LOCAL ROLE service_role");
+      return (await tx<{ receipt: { id: string } }[]>`SELECT public.swim_import_receive(
+        ${tokenHash},${JSON.stringify(value)}::text::jsonb) AS receipt`)[0]!.receipt;
+    });
+    const imported = await receive();
+    const matchId = randomUUID();
+    await as(fresh, (tx) => tx`SELECT public.swim_match_import(
+      ${matchId},${imported.id},${work!.id},null,${work!.revision})`);
+    const readView = async () => (await as(fresh, (tx) => tx`SELECT outcome_metadata,current_match_id,matched_import_id,
+      latest_import_id,matched_workout_revision,revision,recording_date,native_completed_at
+      FROM public.swim_conditioning_sessions WHERE id=${work!.id}`))[0]!;
+    const beforeOutcomes = await primarySnapshot(fresh);
+    const completed = randomUUID();
+    await as(fresh, (tx) => tx`SELECT public.swim_confirm_import_outcome(
+      ${completed},${work!.id},${matchId},'completed',null,${work!.revision})`);
+    const completedView = await readView();
+    assert.equal(completedView.outcome_metadata.outcome, "completed");
+    assert.equal(completedView.current_match_id, matchId);
+    assert.equal(completedView.matched_import_id, imported.id);
+    assert.equal(completedView.latest_import_id, imported.id);
+    assert.equal(completedView.matched_workout_revision, completedView.revision);
+    assert.equal(completedView.native_completed_at, null);
+    const partial = randomUUID();
+    await as(fresh, (tx) => tx`SELECT public.swim_confirm_import_outcome(
+      ${partial},${work!.id},${matchId},'stopped_early',${completed},${work!.revision})`);
+    assert.equal((await readView()).outcome_metadata.outcome, "stopped_early");
+    const corrected = await receive({ ...evidence, recordedDurationMs: 310000 });
+    const correctedView = await readView();
+    assert.equal(correctedView.matched_import_id, imported.id);
+    assert.equal(correctedView.latest_import_id, corrected.id);
+    await as(fresh, (tx) => tx`SELECT public.swim_match_import(
+      ${randomUUID()},${corrected.id},null,${matchId},null)`);
+    assert.equal((await readView()).current_match_id, null);
+    await as(fresh, (tx) => tx`SELECT public.swim_confirm_import_outcome(
+      ${randomUUID()},${work!.id},null,null,${partial},null)`);
+    assert.equal((await readView()).outcome_metadata.outcome, null);
+    assert.deepEqual(await primarySnapshot(fresh), beforeOutcomes);
+    assert.equal((await as(fresh, (tx) => tx`SELECT count(*)::int AS count FROM public.sessions`))[0]!.count, 0);
   } finally {
     await database`DELETE FROM auth.users WHERE id=${fresh}`;
   }

@@ -38,6 +38,7 @@ export async function saveSwimImportOutcome(input: unknown): Promise<MatchAction
   try {
     revalidatePath("/app/swim", "layout");
     revalidatePath("/app/plan");
+    revalidatePath("/app/plan/history");
     revalidatePath("/app/sessions");
     revalidatePath("/app");
   } catch {

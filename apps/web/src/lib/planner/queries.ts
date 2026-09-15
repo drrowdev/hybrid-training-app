@@ -70,6 +70,9 @@ export type ActiveBlock = {
   powerEmphasis: boolean;
 };
 
+import { loadConditioningSwims } from "@/lib/swim/conditioning-view";
+import type { ConditioningSwim } from "@/lib/swim/conditioning-presentation";
+
 export type PlannedDay = {
   id: string;
   blockId: string;
@@ -93,6 +96,7 @@ export type PlannedDay = {
   notes: string | null;
   /** Absolute calendar date this day falls on (derived from block start + week + day). */
   date: string;
+  swim?: ConditioningSwim;
 };
 
 /**
@@ -210,6 +214,7 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
     }
   }
 
+  const swims = user ? await loadConditioningSwims(supabase, user.id, data.map((d) => d.id)) : new Map<string, ConditioningSwim>();
   const days = data.map((d) => {
     const date = dayDate(startedOn, d.week_index, d.day_index);
     const base = applyAutoregVolumeScale(
@@ -232,7 +237,8 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
       dayIndex: d.day_index,
       slot: (d.slot as SessionSlot) ?? "single",
       plannedAt: d.planned_at ?? null,
-      title: d.title,
+      title: swims.get(d.id)?.title ?? d.title,
+      swim: swims.get(d.id),
       role: d.role,
       prescription,
       completedSessionId: linked.completedSessionId,
@@ -311,6 +317,7 @@ export async function getPlannedSessionById(
     (data.completed_session_id as string | null) ?? null,
     linkedSession,
   );
+  const swim = user ? (await loadConditioningSwims(supabase, user.id, [data.id])).get(data.id) : undefined;
   return {
     id: data.id,
     blockId: data.block_id,
@@ -318,7 +325,8 @@ export async function getPlannedSessionById(
     dayIndex: data.day_index,
     slot: (data.slot as SessionSlot) ?? "single",
     plannedAt: data.planned_at ?? null,
-    title: data.title,
+    title: swim?.title ?? data.title,
+    swim,
     role: data.role,
     prescription,
     completedSessionId: resolvedLink.completedSessionId,
@@ -361,7 +369,7 @@ export async function getUpcomingPlannedSessions(limit = 3): Promise<PlannedDay[
   ]);
   const today = todayYmd(tz);
   return all
-    .filter((d) => d.date > today && !d.completedSessionId && !d.skippedAt)
+    .filter((d) => d.date > today && (d.swim ? d.swim.actionable : !d.completedSessionId && !d.skippedAt))
     .slice(0, limit);
 }
 
@@ -530,6 +538,8 @@ export async function getAllBlocksWithCompletionStats(
     .range(offset, offset + limit - 1);
   if (!data) return [];
 
+  const swims = await loadConditioningSwims(supabase, user.id,
+    data.flatMap((block) => (block.planned_sessions ?? []).map((planned) => planned.id)));
   return Promise.all(
     data.map(async (d) => {
       const planned = (d.planned_sessions ?? []) as Array<{
@@ -547,6 +557,12 @@ export async function getAllBlocksWithCompletionStats(
       let loggedSessions = 0;
       let skippedSessions = 0;
       for (const p of planned) {
+        const swim = swims.get(p.id);
+        if (swim) {
+          if (swim.status === "completed" || swim.status === "stopped_early") loggedSessions++;
+          else if (swim.status === "skipped") skippedSessions++;
+          continue;
+        }
         const session = Array.isArray(p.sessions)
           ? p.sessions[0]
           : p.sessions;

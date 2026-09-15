@@ -90,6 +90,32 @@ CREATE FUNCTION public.swim_conditioning_ready()
 RETURNS boolean LANGUAGE sql STABLE SECURITY INVOKER
 SET search_path = pg_catalog AS $$ SELECT true $$;
 
+-- One statement observes the binding, current claim and current recording together.
+CREATE VIEW public.swim_conditioning_sessions WITH (security_invoker = true) AS
+SELECT link.user_id, link.planned_session_id, link.block_id,
+  w.id, w.plan_id, w.revision, w.status, w.session_id, w.scheduled_date, w.slot, w.definition,
+  sp.status AS plan_status, b.status AS block_status, b.deleted_at AS block_deleted_at,
+  logged.id AS visible_session_id, logged.completed_at AS native_completed_at,
+  o.match_id AS outcome_match_id, o.metadata AS outcome_metadata,
+  m.id AS current_match_id, m.import_id AS matched_import_id,
+  (m.metadata#>>'{workout,revision}')::integer AS matched_workout_revision,
+  latest.id AS latest_import_id, latest.evidence->>'date' AS recording_date
+FROM public.swim_conditioning_bindings link
+JOIN public.swim_workouts w ON w.id = link.swim_workout_id AND w.user_id = link.user_id
+JOIN public.swim_plans sp ON sp.id = w.plan_id AND sp.user_id = link.user_id
+LEFT JOIN public.planned_sessions p ON p.id = link.planned_session_id AND p.user_id = link.user_id
+LEFT JOIN public.training_blocks b ON b.id = p.block_id AND b.user_id = link.user_id
+LEFT JOIN public.sessions logged ON logged.id = w.session_id AND logged.user_id = link.user_id AND logged.deleted_at IS NULL
+LEFT JOIN public.swim_current_import_outcomes o ON o.workout_id = w.id AND o.user_id = link.user_id
+LEFT JOIN public.swim_current_import_matches m ON m.id = o.match_id AND m.workout_id = w.id AND m.user_id = link.user_id
+LEFT JOIN LATERAL (
+  SELECT i.id, i.evidence FROM public.swim_imports i
+  WHERE i.user_id = link.user_id AND i.activity_id = m.activity_id
+  ORDER BY i.revision DESC LIMIT 1
+) latest ON true;
+REVOKE ALL ON public.swim_conditioning_sessions FROM PUBLIC, anon, service_role;
+GRANT SELECT ON public.swim_conditioning_sessions TO authenticated;
+
 CREATE FUNCTION public.swim_conditioning_benchmarks_ready()
 RETURNS boolean LANGUAGE sql STABLE SECURITY INVOKER
 SET search_path = pg_catalog AS $$ SELECT true $$;

@@ -12,6 +12,7 @@ DROP TRIGGER swim_conditioning_primary_consistency ON public.planned_sessions;
 DROP TRIGGER swim_conditioning_workout_consistency ON public.swim_workouts;
 DROP TRIGGER swim_conditioning_block_consistency ON public.training_blocks;
 DROP FUNCTION public.check_swim_conditioning_binding();
+DROP VIEW public.swim_conditioning_sessions;
 DROP FUNCTION public.deploy_program_with_swimming(uuid,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb);
 DROP FUNCTION public.swim_conditioning_replay(uuid,jsonb);
 DROP FUNCTION public.swim_conditioning_ready();

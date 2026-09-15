@@ -1,4 +1,5 @@
 import type { PlannedSlot } from "@/lib/planner/slot";
+import type { ConditioningSwim } from "@/lib/swim/conditioning-presentation";
 
 /**
  * Pure predicate for the Today hero's "Session logged ✓ — rest and
@@ -19,19 +20,21 @@ export function isTodayFullyLogged(input: {
   plannedToday: ReadonlyArray<{
     completedAt: string | null;
     skippedAt?: string | null;
+    swim?: ConditioningSwim;
   }>;
 }): boolean {
   const hasCompletedPlannedSession = input.plannedToday.some(
-    (planned) => planned.completedAt != null,
+    (planned) => planned.swim?.completed ?? planned.completedAt != null,
   );
   return (
     input.completedTodayCount > 0 &&
+    !input.plannedToday.some((planned) => planned.swim?.status === "stopped_early") &&
     (input.plannedToday.length === 0 ||
       hasCompletedPlannedSession) &&
     input.plannedToday.every(
       (planned) =>
-        planned.completedAt != null ||
-        planned.skippedAt != null,
+        planned.swim ? planned.swim.settled :
+          planned.completedAt != null || planned.skippedAt != null,
     )
   );
 }
@@ -40,12 +43,13 @@ export function actionablePlannedSessions<
   T extends {
     completedAt: string | null;
     skippedAt: string | null;
+    swim?: ConditioningSwim;
   },
 >(plannedToday: readonly T[]): T[] {
   return plannedToday.filter(
     (planned) =>
-      planned.completedAt == null &&
-      planned.skippedAt == null,
+      planned.swim ? planned.swim.actionable :
+        planned.completedAt == null && planned.skippedAt == null,
   );
 }
 
@@ -69,6 +73,7 @@ export function orderPlannedSessionsForToday<
   T extends {
     completedAt: string | null;
     slot: PlannedSlot;
+    swim?: ConditioningSwim;
   },
 >(sessions: readonly T[], isTwoADay: boolean): T[] {
   const slotOrder = isTwoADay
@@ -76,7 +81,7 @@ export function orderPlannedSessionsForToday<
     : STANDALONE_SLOT_ORDER;
   return [...sessions].sort((a, b) => {
     const completionOrder =
-      Number(a.completedAt != null) - Number(b.completedAt != null);
+      Number(a.swim?.settled ?? a.completedAt != null) - Number(b.swim?.settled ?? b.completedAt != null);
     if (completionOrder !== 0) return completionOrder;
     return slotOrder[a.slot] - slotOrder[b.slot];
   });

@@ -4167,3 +4167,23 @@ RLS, legacy independent saves and export/replay availability are preserved.
 Focused context/action checks and synthetic375/1280 setup exercise the new path.
 Real PostgreSQL acceptance of the extension remains pending. Shared daily/history
 integration, coordinated lifecycle work and hosted rollout remain unfinished.
+
+## [2026-09-15] implementation | Connect linked swims to daily training
+
+Benchmark source50750d51 passed core34928353200 and storage34928353211. Public
+completion metadata was consumed without downloading raw logs.
+
+Linked swims now appear under their primary planned identity in Today, the shared
+week rail/calendar and programme history, rather than a second swimming schedule.
+The existing drawer opens the swim prescription and matching recordings while
+preserving the originating app page. Complete and stopped-early outcomes remain
+distinct; obsolete evidence requires review. No native measurements, completion
+records or workload are fabricated.
+
+The unshipped0156 extension adds a read-only security-invoker view for consistent
+claim/match/import reads. Its disposable SQL fixture covers owner isolation,
+corrections, retained associations and cleanup; exact-source execution is pending.
+Focused checks and synthetic mobile/desktop drawer actions cover the presentation.
+Coordinated lifecycle operations, broader activity-history integration and an
+isolated authenticated complete journey remain unfinished. Creation remains
+default-off. No hosted apply, deployment or real-account mutation occurred.

@@ -8,6 +8,9 @@
  * silently mis-count completions.
  */
 import { describe, it, expect, vi } from "vitest";
+vi.mock("@/lib/swim/conditioning-view", () => ({
+  loadConditioningSwims: async () => new Map(),
+}));
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => {

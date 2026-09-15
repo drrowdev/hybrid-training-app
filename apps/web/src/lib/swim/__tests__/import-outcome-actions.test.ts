@@ -37,7 +37,7 @@ describe("DC-SW4/SW5/SW8 explicit imported outcomes", () => {
       p_expected_outcome_id: null, p_expected_workout_revision: 3,
     });
     expect(vi.mocked(revalidatePath).mock.calls).toEqual([
-      ["/app/swim", "layout"], ["/app/plan"], ["/app/sessions"], ["/app"],
+      ["/app/swim", "layout"], ["/app/plan"], ["/app/plan/history"], ["/app/sessions"], ["/app"],
     ]);
   });
   it("requires authentication for both confirmation and removal", async () => {

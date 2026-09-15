@@ -82,10 +82,13 @@ import { setHyroxStationOverride } from "@/lib/hyrox/station-swap-actions";
 import { stationAlternativesFor } from "@hta/hyrox";
 import type { PrescriptionItem } from "@hta/db";
 import { isRehabItem } from "@hta/domain";
+import { SWIM_TRAINING_LABEL, type ConditioningSwim } from "@/lib/swim/conditioning-presentation";
+import { ConditioningSwimSummary } from "@/components/swim/ConditioningSwimSummary";
 
 export type PlanViewMode = "timeline" | "month" | "season";
 
 export type PlanSessionInput = {
+  swim?: ConditioningSwim;
   id: string;
   weekIndex: number;
   dayIndex: number;
@@ -206,6 +209,7 @@ export function sessionToOverdueCandidate(s: PlanSessionInput) {
     date: s.date,
     completedSessionId: s.done ? "linked" : null,
     skippedAt: s.skipped ? "skipped" : null,
+    swim: s.swim,
   };
 }
 
@@ -280,6 +284,7 @@ function weekLoadSummary(sessions: readonly PlanSessionInput[]): string {
 }
 
 function sessionDoseSummary(session: PlanSessionInput): string {
+  if (session.swim) return `Swimming · ${session.swim.distance} · ${session.swim.pool}`;
   if (session.isRehab) {
     const movements = new Set(
       session.items.map((item) => item.movementId).filter(Boolean),
@@ -472,7 +477,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
         for (const s of bucket) {
           total += 1;
           if (s.done) done += 1;
-          if (s.done || s.skipped) settled += 1;
+          if (s.done || s.skipped || s.swim?.settled) settled += 1;
         }
       }
       out.push({ done, settled, total });
@@ -681,7 +686,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
                 session.weekIndex <= phase.endWeekIndex,
             );
             const phaseSettled = phaseSessions.filter(
-              (session) => session.done || session.skipped,
+              (session) => session.done || session.skipped || session.swim?.settled,
             ).length;
             const isCurrentPhase =
               currentWeekIndex >= phase.startWeekIndex &&
@@ -882,7 +887,9 @@ export function PlanRedesign(props: PlanRedesignProps) {
                                           ),
                                           today,
                                         );
-                                        const status = session.done
+                                        const status = session.swim && session.swim.status !== "scheduled"
+                                          ? SWIM_TRAINING_LABEL[session.swim.status]
+                                          : session.done
                                           ? "Done"
                                           : session.skipped
                                             ? "Skipped"
@@ -918,7 +925,8 @@ export function PlanRedesign(props: PlanRedesignProps) {
                                             }`}
                                             draggable={
                                               !session.done &&
-                                              !session.skipped
+                                              !session.skipped &&
+                                              !session.swim
                                             }
                                             data-testid={`plan-pill-${session.id}`}
                                             onClick={() =>
@@ -2142,6 +2150,7 @@ function MonthAlternate({
                     className={`session-pill ${kind}${s.done ? " done" : ""}${muted ? " muted" : ""}${overdue ? " overdue" : ""}`}
                     role="button"
                     tabIndex={0}
+                    aria-label={s.swim ? `${s.title}, ${SWIM_TRAINING_LABEL[s.swim.status]}` : undefined}
                     onClick={() => onOpen(s.id)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
@@ -2156,6 +2165,9 @@ function MonthAlternate({
                       </span>
                     )}
                     {pillTitle(s)}
+                    {s.swim && s.swim.status !== "scheduled" && !s.done && (
+                      <small style={{ display: "block" }}>{SWIM_TRAINING_LABEL[s.swim.status]}</small>
+                    )}
                     {overdue && (
                       <span
                         className="overdue-pill mono"
@@ -2688,6 +2700,7 @@ export function SessionDrawer({
           </button>
         </header>
         <div className="drawer-body">
+          {session.swim ? <ConditioningSwimSummary swim={session.swim} origin={allowLogging ? "today" : "plan"} /> : <>
           <div
             className="drawer-actions"
             data-complete={session.done ? "true" : "false"}
@@ -2978,6 +2991,7 @@ export function SessionDrawer({
               flushNotes(notesValue);
             }}
           />
+          </>}
         </div>
 
         <style>{`

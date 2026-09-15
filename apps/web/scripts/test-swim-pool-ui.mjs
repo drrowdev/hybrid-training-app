@@ -29,6 +29,8 @@ try {
         import { workoutPresentation } from "./src/lib/swim/presentation";
         import { RecordingMatcher } from "./src/components/swim/RecordingMatcher";
         import { RecordingOutcome } from "./src/components/swim/RecordingOutcome";
+        import { ThisWeekRail } from "./src/components/plan/ThisWeekRail";
+        import { swimTrainingState } from "@hta/domain";
         import { syntheticCourse } from "./src/lib/swim/__tests__/course-fixtures";
         import { planPrivateSwimCourse } from "./src/lib/swim/course-planning";
         import styles from "./src/components/swim/Swim.module.css";
@@ -75,6 +77,27 @@ try {
               distance: "400 m", beforeLengths: 8, afterLengths: 16 }] } };
         };
         let key = 0;
+        window.showSharedSwim = (outcome = null) => {
+          const state = swimTrainingState({
+            planStatus: "active", parentActive: true, parentExists: true, workoutStatus: "scheduled",
+            nativeSessionId: null, nativeCompletedAt: null, nativeVisible: false,
+            evidence: outcome ? {
+              confirmation: { outcome, matchId: "match", workoutRevision: 1 }, matchId: "match",
+              matchedImportId: "recording", latestImportId: "recording", matchedWorkoutRevision: 1, workoutRevision: 1,
+            } : null,
+          });
+          const swim = { ...state, id: "00000000-0000-4000-8000-000000000002",
+            title: "Week 1 A", distance: "350 m", pool: "50 m pool", recordingDate: null };
+          const refuse = () => { throw new Error("Unexpected native workout mutation"); };
+          root.render(<main style={{ padding: 16 }}><ThisWeekRail key={++key} today="2026-09-14"
+            currentWeekIndex={0} weeks={2} logHrefBase="/app/sessions/start"
+            sessions={[{ id: "planned-swim", weekIndex: 0, dayIndex: 0, date: "2026-09-14",
+              title: swim.title, isCardio: true, isStrength: false, done: swim.completed, skipped: false,
+              slot: "single", items: [{ movementId: "", kind: "cardio_external" }],
+              estDurationMin: null, notes: null, swim }]}
+            moveAction={refuse} skipAction={refuse} unskipAction={refuse}
+            updateNotesAction={refuse} startSessionAction={refuse} markCardioDoneAction={refuse} /></main>);
+        };
         window.programCalls = []; window.programMode = "success";
         window.saveProgram = async input => {
           window.programCalls.push(input);
@@ -222,6 +245,12 @@ try {
     plugins: [{
       name: "synthetic-actions",
       setup(build) {
+        build.onResolve({ filter: /^@\/(?:components\/(?:plan\/(?:LinkActivityControl|CompletedSummaryCard)|movement-picker)|lib\/(?:sessions\/planned-movement-actions|hyrox\/station-swap-actions))$/ },
+          (args) => ({ path: args.path, namespace: "native-test" }));
+        build.onLoad({ filter: /.*/, namespace: "native-test" }, () => ({
+          contents: "const refuse = () => { throw new Error('Unexpected native workout control'); }; export const LinkActivityControl = refuse, CompletedSummaryCard = refuse, MovementPicker = refuse, removePlannedMovement = refuse, swapPlannedMovement = refuse, addPlannedMovement = refuse, setHyroxStationOverride = refuse;",
+          loader: "js",
+        }));
         build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions|import-outcome-actions)|@\/lib\/platform\/actions|@\/lib\/training-maxes\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "next/navigation"
@@ -287,6 +316,28 @@ try {
   stages.push(stage);
 
   for (const width of [375, 1280]) {
+    stage = `shared-swim-rail-and-drawer-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    for (const outcome of [null, "completed", "stopped_early"]) {
+      await page.evaluate((value) => window.showSharedSwim(value), outcome);
+      const row = page.getByTestId("plan-rail-0");
+      await expect(row).toHaveCount(1);
+      await row.click();
+      const drawer = page.getByRole("dialog");
+      await expect(drawer).toBeVisible();
+      await expect(drawer.getByRole("link", { name: "View swim", exact: true })).toHaveAttribute(
+        "href", "/app/swim/00000000-0000-4000-8000-000000000002?from=today");
+      await expect(drawer.getByText("350 m", { exact: true })).toBeVisible();
+      await expect(drawer.getByRole("button", { name: /mark done|skip|swap|edit/i })).toHaveCount(0);
+      if (outcome === "stopped_early") {
+        await expect(drawer.getByText("Stopped early", { exact: true })).toBeVisible();
+        await expect(row.locator('[aria-label="Done"]')).toHaveCount(0);
+      }
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+      await page.keyboard.press("Escape");
+      await expect(drawer).toHaveCount(0);
+    }
+    stages.push(stage);
     stage = `conditioning-wizard-new-course-${width}`;
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => { window.programMode = "success"; window.showWizard(true, false, true); });

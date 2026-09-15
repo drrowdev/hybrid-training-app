@@ -12,7 +12,16 @@ import { swimOutcomeForRecording } from "@hta/domain";
 import { z } from "zod";
 import styles from "@/components/swim/Swim.module.css";
 
-export default async function SwimRecordingPage({ params }: { params: Promise<{ importId: string }> }) {
+export default async function SwimRecordingPage({ params, searchParams }: {
+  params: Promise<{ importId: string }>; searchParams?: Promise<{ workout?: string; from?: string }>;
+}) {
+  const query = await searchParams;
+  const workoutId = z.string().uuid().safeParse(query?.workout);
+  const origin = query?.from === "today" || query?.from === "plan" || query?.from === "history" ? query.from : null;
+  const context = workoutId.success ? `?workout=${workoutId.data}${origin ? `&from=${origin}` : ""}` : "";
+  const back = workoutId.success
+    ? { href: `/app/swim/${workoutId.data}${origin ? `?from=${origin}` : ""}`, label: "Workout" }
+    : { href: "/app/settings/swimming", label: "Swimming imports" };
   const { data: { user } } = await getAuthUser();
   if (!user) redirect("/login");
   const client = await createClient();
@@ -53,15 +62,16 @@ export default async function SwimRecordingPage({ params }: { params: Promise<{ 
     }
   }
   return <main className={styles.page}>
-    <PageHeader title="Recorded swim" back={{ href: "/app/settings/swimming", label: "Swimming imports" }} />
+    <PageHeader title="Recorded swim" back={back} />
     <section className={styles.section}>
       <h2>{evidence.environment === "pool" ? "Pool swim" : "Open-water swim"}</h2>
       <time dateTime={evidence.date}>{evidence.date}</time>
       <p className={styles.distance}>{formatImportedSwimDistance(evidence.distanceMetres)}</p>
       <p>Recorded duration: {formatSwimTime(evidence.recordedDurationMs)}</p>
-      {!latest && <Link href={`/app/swim/recordings/${latestId}`}>View updated recording</Link>}
+      {!latest && <Link href={`/app/swim/recordings/${latestId}${context}`}>View updated recording</Link>}
     </section>
     {(evidence.environment === "pool" || matched) && <RecordingMatcher
+      origin={origin ?? undefined}
       key={`${recording.id}:${current?.id ?? "none"}`}
       importId={recording.id} expectedMatchId={current?.id ?? null}
       enabled={latest && evidence.environment === "pool" && process.env.SWIM_IMPORT_MATCHING_ENABLED === "true"}

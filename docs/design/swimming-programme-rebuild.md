@@ -818,12 +818,24 @@ CI34890112070 and disposable storage CI34890112131, including24 SQL stages.
 The mounted wizard's synthetic375/1280 browser journeys cover new/existing
 sources, draft recovery, unchanged retry and the flag-off path.
 
-Shared surfaces and the complete isolated authenticated journey remain
-outstanding. A follow-up to unshipped0156 moves the wizard's edited benchmarks
+The complete isolated authenticated journey remains outstanding.
+A follow-up to unshipped0156 moves the wizard's edited benchmarks
 into the same transaction. The context builder uses them without writing during
 engine preparation and whole-course fit validation; unchanged retry returns the
 original receipt without overwriting later benchmark changes. A separate
 readiness check prevents older storage from ignoring the new inputs. That
-extension requires its own exact-source PostgreSQL acceptance.
+extension passed exact-source core34928353200 and PostgreSQL34928353211 at
+`50750d51`.
+
+The next development checkpoint projects linked swims through Today, the shared
+rail/calendar drawer and programme history. The original planned identity leads
+to the swimming prescription and imported recording, with bounded internal return
+navigation. A security-invoker view reads current matching evidence and the latest
+claim together; domain rules distinguish complete, stopped early and stale evidence.
+It creates no native result, measured duration or workload. Linked entries are
+excluded from the separate swimming list, including retained associations.
+The generic completion/editor controls and independent swim edits are not exposed
+for these links. This read-only projection still needs exact-source PostgreSQL
+acceptance; coordinated lifecycle operations remain unfinished.
 The new path remains disabled until acceptance and the lifecycle gaps are resolved.
 No physical-device or owner usability acceptance is claimed.
