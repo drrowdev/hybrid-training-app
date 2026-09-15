@@ -229,17 +229,20 @@ export async function conditioningAccountFlow(
         await swimmingSettings(page);
         await page.getByRole("button", { name: "Create import key", exact: true }).click();
         keys.push(await page.getByLabel("Import key", { exact: true }).inputValue());
+        await expect(page.getByRole("button", { name: "Disconnect dashboard", exact: true })).toBeEnabled();
+        await navigate(page, "/app");
         const response = await receive(index);
         demand(response.status() === 201, "import_receive");
         const receipt = z.object({ id: z.string().uuid(), revision: z.literal(1), replayed: z.literal(false) }).parse(await response.json());
         recordings.push(receipt.id);
         report.journeyPhase = "match";
         try {
-          report.matchAction = "open";
-          await navigate(page, "/app/settings");
+          report.matchAction = "imports";
           await swimmingSettings(page);
+          report.matchAction = "recording_link";
           const recording = page.locator(`a[href="/app/swim/recordings/${receipt.id}"]`);
           await expect(recording).toHaveCount(1);
+          report.matchAction = "recording";
           await recording.click();
           await expect(page).toHaveURL(`${origin}/app/swim/recordings/${receipt.id}`);
           report.matchAction = "date";
@@ -255,6 +258,10 @@ export async function conditioningAccountFlow(
         } catch (error) {
           report.matchObserved = false;
           try {
+            const path = new URL(page.url()).pathname;
+            report.matchPage = path === "/app/settings/swimming" ? "imports" :
+              path === "/app/settings" ? "settings" :
+              path === `/app/swim/recordings/${receipt.id}` ? "recording" : "other";
             const date = page.getByLabel("Workout date", { exact: true });
             const choice = page.getByRole("combobox", { name: "Workout", exact: true });
             const save = page.getByRole("button", { name: "Match workout", exact: true });

@@ -101,6 +101,8 @@ describe("DC-SW3/SW5/SW8 integrated disposable-account boundary", () => {
     expect(browser).toContain('getByTestId("program-card-tactical-barbell")');
     expect(browser).toContain('a[href="/app/swim/recordings/${receipt.id}"]');
     expect(browser).toContain('await page.getByTestId("settings-hub-swimming").click()');
+    expect(browser).toContain('name: "Disconnect dashboard", exact: true })).toBeEnabled()');
+    expect(browser).toMatch(/await navigate\(page, "\/app"\);\s+const response = await receive\(index\)/);
     const standalone = readFileSync(resolve(__dirname, "../../../../apps/web/scripts/swim-account-flow-browser.ts"), "utf8");
     expect(standalone).toContain("++report.browserRequests > 500");
   });

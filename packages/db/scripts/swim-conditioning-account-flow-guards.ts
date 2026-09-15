@@ -79,6 +79,8 @@ export function todayConditioningAccountProfile(): RefreshProfile {
       "packages/db/scripts/swim-conditioning-account-flow-guards.ts",
       "packages/db/scripts/__tests__/swim-conditioning-account-flow-guards.test.ts",
       "apps/web/scripts/swim-account-flow.ts",
+      "apps/web/scripts/swim-account-flow-browser.ts",
+      "apps/web/scripts/swim-conditioning-account-flow-browser.ts",
       "apps/web/scripts/swim-conditioning-account-flow.ts",
       "docs/design/swimming-programme-rebuild.md",
       "docs/knowledge/log.md",

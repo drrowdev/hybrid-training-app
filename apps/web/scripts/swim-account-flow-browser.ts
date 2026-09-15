@@ -16,7 +16,8 @@ export type NativeReport = {
   journeyPhase?: "loadout" | "benchmarks" | "schedule" | "course" | "preview" | "save" | "save_result" |
     "today" | "calendar" | "receive" | "match" | "outcome" | "sessions" | "isolation" | "pause" | "edit" | "resume" | "disconnect";
   journeyAccount?: "a" | "b";
-  matchAction?: "open" | "date" | "search" | "select" | "save" | "result";
+  matchAction?: "open" | "imports" | "recording_link" | "recording" | "date" | "search" | "select" | "save" | "result";
+  matchPage?: "settings" | "imports" | "recording" | "other";
   matchObserved?: boolean;
   matchDateCorrect?: boolean;
   matchChoicePresent?: boolean;

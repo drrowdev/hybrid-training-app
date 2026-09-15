@@ -4590,3 +4590,20 @@ context-read failure even if browser cases pass. This covers the original42703
 failure without relying on a visually successful fallback. The standalone runner
 does not enable this new callback. No deployment, flags, Auth or existing rows
 are changed by this qualification tooling.
+
+## [2026-09-15] investigation | Settle the import connection before receiving a recording
+
+Native35017239963 at ea42f21d passed programme creation and Today/Plan with no
+context-read failures. It stopped before opening account B's recording, at345
+browser/6 client/14 admin requests. Account A matched successfully. Both accounts,
+all15 tables, independent cleanup and main process closure passed. The full
+new-application journey remains unaccepted; the old accepted milestone is retained.
+
+The connection component exposes the new key before its refresh transition ends.
+The runner had immediately sent an external import while that transition could
+still be pending. It now waits for the existing Disconnect dashboard action to
+be enabled and leaves the connection page before simulating receipt, then returns
+through the real imports list. No sleeps, retry loop or application workaround
+is added. Finer fixed opening-action/page categories distinguish navigation from
+a missing recording link if it recurs; no URL, ID or text is retained. This repairs
+an incomplete fixture precondition, not proof of the prior failure's sole cause.
