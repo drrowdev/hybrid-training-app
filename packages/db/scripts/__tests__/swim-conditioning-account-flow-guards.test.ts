@@ -69,7 +69,10 @@ describe("DC-SW3/SW5/SW8 integrated disposable-account boundary", () => {
     expect(browser).toContain("++report.browserRequests > 500");
     expect(browser).toContain("++report.clientRequests <= 100");
     expect(browser).toContain("await page.reload()");
-    expect(browser.match(/page\.goto\(/g)).toHaveLength(3);
+    expect(browser.match(/page\.goto\(/g)).toHaveLength(1);
+    expect(browser).toContain(`page.locator('a[href="/app/plan"]:visible').first().click()`);
+    expect(browser).toContain('getByTestId("program-card-tactical-barbell")');
+    expect(browser).toContain('a[href="/app/swim/recordings/${receipt.id}"]');
     expect(browser).toContain('await page.getByTestId("settings-hub-swimming").click()');
   });
   it("reduces save alerts to fixed categories without retaining their text", () => {

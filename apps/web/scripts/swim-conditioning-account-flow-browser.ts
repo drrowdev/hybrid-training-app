@@ -71,7 +71,10 @@ async function setDay(page: Page, day: number, kind: "Strength" | "Conditioning"
 async function createProgramme(page: Page, slot: "a" | "b", schedule: ReturnType<typeof conditioningFixtureSchedule>, report: NativeReport) {
   const { today, swimDays, strengthDays } = schedule;
   report.journeyAccount = slot; report.journeyPhase = "loadout";
-  await page.goto(`${origin}/app/program?program=tactical-barbell`);
+  await page.locator('a[href="/app/plan"]:visible').first().click();
+  await expect(page).toHaveURL(`${origin}/app/program`);
+  await page.getByTestId("program-card-tactical-barbell").click();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByText("Customize template", { exact: true }).click();
   await page.getByRole("textbox", { name: /^Program name/ }).fill(`Synthetic conditioning ${slot}`);
   await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -232,7 +235,12 @@ export async function conditioningAccountFlow(
         report.journeyPhase = "match";
         try {
           report.matchAction = "open";
-          await page.goto(`${origin}/app/swim/recordings/${receipt.id}?from=sessions`);
+          await navigate(page, "/app/settings");
+          await swimmingSettings(page);
+          const recording = page.locator(`a[href="/app/swim/recordings/${receipt.id}"]`);
+          await expect(recording).toHaveCount(1);
+          await recording.click();
+          await expect(page).toHaveURL(`${origin}/app/swim/recordings/${receipt.id}`);
           report.matchAction = "date";
           await page.getByLabel("Workout date", { exact: true }).fill(today);
           report.matchAction = "search";

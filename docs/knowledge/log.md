@@ -4502,3 +4502,20 @@ only, never field values, workout IDs, choices or alert text. The existing
 response-preserving observer also covers the named matching RPC and failed
 workout reads, retaining its16KiB/one-second/20-record bounds. No application,
 permissions, history or request-limit change is made without a proven cause.
+
+## [2026-09-15] acceptance | Both imported outcomes persist; history reaches the request bound
+
+858c1c5f passed core34991398151/storage34991398143. Native34992320955 passed
+both programme saves, both Today/Plan paths and both recording confirmations
+through reload. Both matching RPCs returned200. The earlier second-account
+matching failure did not recur; no application fix is claimed. The next case,
+history/account A, hit the actual500 HTTP-request bound (510 attempted). Both
+accounts/all15 tables and independent cleanup passed; all main processes closed.
+The complete seven-case journey remains failed.
+
+The runner now enters programme creation through Plan's new-user redirect
+and the existing programme card, and opens received recordings from Recent
+imports after returning through Settings. Only initial sign-in uses full-page
+navigation; both outcome reloads remain. This exercises visible navigation rather
+than bypassing it with deep links. Both accounts, every case and every request
+count/limit remain unchanged. Savings and complete acceptance require execution.
