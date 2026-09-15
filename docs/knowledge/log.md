@@ -4193,3 +4193,9 @@ rejected its evidence with22023 at0150:190. Only the closed public annotation wa
 read; no logs were downloaded. The fixture now selects the PostgreSQL calendar
 date as text instead of serializing the driver's Date value and verifies the
 actual closed import schema before sending it. Production validation is unchanged.
+
+Run34935555701 exposed a runner module-format mismatch before SQL execution:
+the app schema was not a named ESM export from the database runner's context.
+The fixture now checks the actual PostgreSQL evidence validator in its existing
+service-role transaction instead. The calendar-date assertion remains explicit.
+Only closed loader diagnostics were retained from one in-memory public log read.

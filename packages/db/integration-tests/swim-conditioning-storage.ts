@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import type postgres from "postgres";
-import { swimImportEvidenceSchema } from "../../../apps/web/src/lib/swim/import-evidence.ts";
 
 type SwimCreate = {
   started_on: string; ends_on: string; definition: unknown; state: unknown;
@@ -210,8 +209,10 @@ export async function exerciseSwimConditioning(
       durationKind: "unspecified", nativeCourse: null, detail: { status: "missing", fetchedAt: null, splits: [] },
     };
     const receive = (value = evidence) => database.begin(async (tx) => {
-      assert.equal(swimImportEvidenceSchema.safeParse(value).success, true);
+      assert.match(value.date, /^\d{4}-\d{2}-\d{2}$/);
       await tx.unsafe("SET LOCAL ROLE service_role");
+      assert.equal((await tx`SELECT public.swim_import_evidence_valid(
+        ${JSON.stringify(value)}::text::jsonb) AS valid`)[0]!.valid, true);
       return (await tx<{ receipt: { id: string } }[]>`SELECT public.swim_import_receive(
         ${tokenHash},${JSON.stringify(value)}::text::jsonb) AS receipt`)[0]!.receipt;
     });
