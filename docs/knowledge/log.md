@@ -4319,3 +4319,18 @@ disposable accounts and the actual accepted deployment/flag receipts. It exercis
 creation, Today/calendar, explicit imported outcomes, ordinary history, programme
 editing/pause and isolation, then verifies cascading cleanup. No authenticated
 integration or owner usability result is claimed before that run completes.
+
+## [2026-09-15] correction | Integrated account cleanup ownership query
+
+Tooling435e253a passed core34954229652 and storage34954229772. The first integrated
+run34955096988 stopped during the pre-account absence check; both main and
+independent cleanup verification failed. Zero accounts were attempted or created,
+and no browser/client requests occurred. This was not authenticated acceptance.
+
+The new runner incorrectly treated cardio_logs as directly user-owned; its owner
+is reached through sessions. Both the absence query and authenticated no-native-
+results check now use that existing relationship. No schema or ownership policy
+changed. The existing GitHub PostgreSQL job executes the actual absence query
+against the full schema with unrelated fixtures present before another account
+attempt. The failed run's safe summaries were consumed once; raw logs were not
+persisted. No existing private course/history or production changes occurred.

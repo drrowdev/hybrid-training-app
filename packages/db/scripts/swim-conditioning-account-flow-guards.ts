@@ -35,6 +35,7 @@ export function conditioningAccountProfile(value: ConditioningReviewReceipt): Re
       "packages/db/scripts/__tests__/swim-conditioning-account-flow-guards.test.ts",
       "packages/db/scripts/__tests__/swim-account-flow-guards.test.ts",
       "packages/db/scripts/__tests__/update-conditioning-swim-review.test.ts",
+      "packages/db/integration-tests/swim-pool-storage.mts",
       "apps/web/scripts/swim-account-flow.ts", "apps/web/scripts/swim-account-flow-browser.ts",
       "apps/web/scripts/swim-conditioning-account-flow.ts", "apps/web/scripts/swim-conditioning-account-flow-browser.ts",
       "apps/web/tsconfig.account-flow.json", "apps/web/tsconfig.json",
@@ -72,7 +73,9 @@ export function conditioningAccountAbsenceQuery(identity: AccountIdentity) {
   const original = accountAbsenceQuery(identity);
   return {
     query: `SELECT ${conditioningAccountTables.map((table) =>
-      `NOT EXISTS (SELECT 1 FROM public.${table} WHERE ${table === "profiles" ? "id" : "user_id"} = $1::uuid)`,
+      table === "cardio_logs"
+        ? "NOT EXISTS (SELECT 1 FROM public.cardio_logs c JOIN public.sessions s ON s.id = c.session_id WHERE s.user_id = $1::uuid)"
+        : `NOT EXISTS (SELECT 1 FROM public.${table} WHERE ${table === "profiles" ? "id" : "user_id"} = $1::uuid)`,
     ).join(" AND ")} AS empty`,
     parameters: original.parameters,
   };

@@ -234,7 +234,9 @@ export async function conditioningAccountFlow(
           demand(!foreign.error && foreign.data.length === 0, "foreign_read");
         }
         for (const table of ["sessions", "cardio_logs"]) {
-          const native = await clients[index]!.from(table).select("id").eq("user_id", accounts[index]!.identity.id).limit(1);
+          const native = await clients[index]!.from(table)
+            .select(table === "cardio_logs" ? "id, sessions!inner(user_id)" : "id")
+            .eq(table === "cardio_logs" ? "sessions.user_id" : "user_id", accounts[index]!.identity.id).limit(1);
           demand(!native.error && native.data.length === 0, "no_invented_native_results");
         }
       }

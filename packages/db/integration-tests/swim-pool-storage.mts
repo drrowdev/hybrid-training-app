@@ -17,6 +17,8 @@ import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scrip
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
 import { historicalSwimMigrations } from "./historical-swim-migrations.ts";
 import { exerciseSwimConditioning } from "./swim-conditioning-storage.ts";
+import { accountIdentity } from "../scripts/swim-account-flow-guards.ts";
+import { conditioningAccountAbsenceQuery } from "../scripts/swim-conditioning-account-flow-guards.ts";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { fileURLToPath } from "node:url";
 import {
@@ -782,6 +784,16 @@ try {
   await database.begin((tx) => tx.unsafe(lifecycleUp));
   await revertLifecycle();
   await database.begin((tx) => tx.unsafe(lifecycleUp));
+  stages.push(stage);
+  stage = "integrated-account-absence-schema";
+  const absentAccount = accountIdentity("34999999999", process.env.TESTED_SHA!, "a");
+  const absence = conditioningAccountAbsenceQuery(absentAccount);
+  const absentRows = await database.begin(async (tx) => {
+    await tx.unsafe("SET TRANSACTION READ ONLY");
+    return tx.unsafe(absence.query, absence.parameters);
+  });
+  assert.equal(absentRows.length, 1);
+  assert.equal(absentRows[0]!.empty, true);
   stages.push(stage);
   await exerciseSwimConditioning(database, c, b, editedCourse.plan, {
     started_on: today,

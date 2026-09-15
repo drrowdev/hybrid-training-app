@@ -110,9 +110,11 @@ describe("DC-SW3/SW5/SW8 integrated disposable-account boundary", () => {
     expect(query.query.match(/\$1::uuid/g)).toHaveLength(conditioningAccountTables.length);
     expect(query.query).not.toMatch(/INSERT|UPDATE|DELETE|TRUNCATE/);
     for (const table of ["swim_import_outcomes", "swim_conditioning_bindings", "swim_conditioning_saves",
-      "training_blocks", "program_instances", "planned_sessions", "training_maxes", "sessions", "cardio_logs"]) {
+      "training_blocks", "program_instances", "planned_sessions", "training_maxes", "sessions"]) {
       expect(query.query).toContain(`FROM public.${table} WHERE user_id = $1::uuid`);
     }
+    expect(query.query).toContain("FROM public.cardio_logs c JOIN public.sessions s ON s.id = c.session_id WHERE s.user_id = $1::uuid");
+    expect(query.query).not.toContain("cardio_logs WHERE user_id");
     expect(() => conditioningAccountAbsenceQuery({ ...identity, id: accountIdentity(env.GITHUB_RUN_ID!, sha, "b").id })).toThrow();
   });
   it("refuses the real executable outside GitHub before starting a server or creating accounts", () => {
