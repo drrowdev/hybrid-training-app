@@ -6,6 +6,8 @@ privately and imported by the owner. Account pairing, the cache-only reader,
 preview-first sender, immutable observations and explicit recording matches have
 development acceptance. Seven native checks passed with two disposable accounts,
 followed by verified cleanup, as recorded below.
+The shared programme/Today/history integration is now on the same protected
+site. Its integrated disposable-account check remains pending.
 Real swimming-data transfer and watch delivery remain unfinished and held.
 **Owner decision:** 2026-09-12.
 
@@ -886,3 +888,36 @@ automatic retry or destructive down is allowed. The existing PostgreSQL service
 fixture rehearses precommit rollback, preservation, replay refusal and unused
 downs on synthetic data only. Native disposable-account integration and owner
 usability are separate acceptance gates, not inferred from this update.
+
+Read-only34950941881 passed at9d42be34 with the expected155-entry ledger and no
+mutation attempts. Apply34952341296 then passed: the original155 records were
+retained,0155-0157 appended, both new Preview flags created and READY deployment
+`dpl_BiNzLA4dsCDBqe3TjT8D5zhcC28V` assigned to the same protected alias.
+The operation window was2026-09-15T09:29:50Z to09:32:28Z. Auth, access protection
+and isolation checks passed; storage closed without reconciliation. This profile
+is now spent. Production remains8d431198 and no existing course/history was edited.
+
+### Integrated disposable-account acceptance
+
+A separate default-off operation pins that deployment and both flag receipts.
+It reuses the existing GitHub-hosted Next/Auth runner, not a local database or
+the owner's account. It creates two marked synthetic accounts, limits the run
+to18 minutes, browser traffic to500 requests, client traffic to100 and admin
+traffic to70. Only loopback and the exact review Supabase origin are allowed;
+WebSockets and persisted browser media remain disabled.
+
+The seven integrated checks cover native sign-in, programme creation with an
+inline synthetic course, Today/shared-calendar navigation, completed and
+stopped-early import confirmations, ordinary history and isolation, future
+programme edits while paused followed by fixed-date resume, and import-key
+revocation. Mobile375x812 and desktop1280x900 are browser viewports, not physical
+devices. No native measurements or workload are invented.
+
+Main cleanup and independent `always()` cleanup verify removal of both fixture
+accounts and their swimming, conditioning, primary programme, benchmark, session
+and cardio rows. Cleanup retains immutable-source and ownership checks while
+allowing a moved live ref; it cannot turn a failed main journey into success.
+Output is a closed, source-bound summary with fixed phase codes, never user rows,
+raw errors, keys, recordings or screenshots. This checks the same application
+source against the protected database; it is not yet owner usability acceptance
+or a browser test through Vercel's protected hostname.

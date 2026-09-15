@@ -1,0 +1,302 @@
+import { isDeepStrictEqual } from "node:util";
+import { randomUUID } from "node:crypto";
+import { chromium, expect, type Page } from "@playwright/test";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
+import { syntheticCourse } from "../src/lib/swim/__tests__/course-fixtures";
+import { ACCOUNT_FLOW_ORIGIN as origin, ACCOUNT_FLOW_SUPABASE as supabaseUrl,
+  AccountFlowRefusal, demand } from "../../../packages/db/scripts/swim-account-flow-guards";
+import type { NativeAccount, NativeReport } from "./swim-account-flow-browser";
+
+export const conditioningChecks = ["native_sign_in", "programme_creation", "shared_next_swim",
+  "recording_confirmation", "history_and_isolation", "programme_edit_and_pause", "disconnect"] as const;
+const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
+const shortDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+const linkedSchema = z.object({
+  id: z.string().uuid(), plan_id: z.string().uuid(), planned_session_id: z.string().uuid(),
+  block_id: z.string().uuid(), scheduled_date: z.string(), revision: z.number().int().positive(),
+  plan_status: z.string(), status: z.string(), session_id: z.string().uuid().nullable(),
+  definition: z.record(z.unknown()),
+});
+type Linked = z.infer<typeof linkedSchema>;
+async function linked(client: SupabaseClient, account: NativeAccount): Promise<Linked[]> {
+  const result = await client.from("swim_conditioning_sessions")
+    .select("id,plan_id,planned_session_id,block_id,scheduled_date,revision,plan_status,status,session_id,definition")
+    .eq("user_id", account.identity.id).order("scheduled_date").limit(13);
+  demand(!result.error, "linked_read");
+  const rows = z.array(linkedSchema).length(12).parse(result.data);
+  demand(new Set(rows.map((row) => row.block_id)).size === 1 && new Set(rows.map((row) => row.plan_id)).size === 1 &&
+    new Set(rows.map((row) => row.planned_session_id)).size === 12, "linked_identity");
+  return rows;
+}
+async function layout(page: Page) {
+  demand(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "layout");
+}
+async function setDay(page: Page, day: number, kind: "Strength" | "Conditioning" | "Rest") {
+  const desired = page.getByRole("button", { name: new RegExp(`^${shortDays[day]}\\s*${kind}$`) });
+  const button = page.getByRole("button", { name: new RegExp(`^${shortDays[day]}\\s*(Strength|Conditioning|Rest|Rehab)$`) });
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (await desired.count() === 1) return;
+    await button.click();
+  }
+  await expect(desired).toBeVisible();
+}
+async function createProgramme(page: Page, slot: "a" | "b", monday: string, swimDays: readonly number[], report: NativeReport) {
+  report.journeyAccount = slot; report.journeyPhase = "loadout";
+  await page.goto(`${origin}/app/program?program=tactical-barbell`);
+  await page.getByText("Customize template", { exact: true }).click();
+  await page.getByRole("textbox", { name: /^Program name/ }).fill(`Synthetic conditioning ${slot}`);
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  report.journeyPhase = "benchmarks";
+  const benchmarks = page.getByRole("spinbutton", { name: /1-rep max$/ });
+  const count = await benchmarks.count();
+  demand(count > 0 && count <= 4, "benchmark_fields");
+  for (let index = 0; index < count; index++) await benchmarks.nth(index).fill("80");
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  report.journeyPhase = "schedule";
+  await page.getByLabel("Start date", { exact: true }).fill(monday);
+  const strength = days.map((_, index) => index).filter((day) => !swimDays.includes(day)).slice(0, 3);
+  for (let day = 0; day < 7; day++) {
+    await setDay(page, day, swimDays.includes(day) ? "Conditioning" : strength.includes(day) ? "Strength" : "Rest");
+  }
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  report.journeyPhase = "course";
+  await expect(page.getByRole("heading", { name: "Conditioning", exact: true })).toBeVisible();
+  for (const day of swimDays) await page.getByRole("combobox", { name: days[day], exact: true }).selectOption("swimming");
+  const fixture = syntheticCourse();
+  const course = { ...fixture, title: `Synthetic conditioning ${slot}`,
+    weeks: Array.from({ length: 6 }, (_, index) => ({
+      workouts: fixture.weeks[0]!.workouts.map((workout) => ({ ...workout, title: `Week ${index + 1}` })),
+    })),
+  };
+  await page.getByLabel("Prepared plan file", { exact: true }).setInputFiles({
+    name: "synthetic-conditioning.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(course)),
+  });
+  await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("regular");
+  await page.getByLabel("Comfortable non-stop lengths in the plan pool", { exact: true }).fill("4");
+  await page.getByRole("checkbox", { name: "Freestyle", exact: true }).check();
+  await expect(page.getByRole("button", { name: "Create program", exact: true })).toBeDisabled();
+  report.journeyPhase = "preview";
+  await page.getByRole("button", { name: "Review swims", exact: true }).click();
+  await page.getByRole("checkbox", { name: "I have reviewed the workouts, dates and pools", exact: true }).check();
+  await layout(page);
+  report.journeyPhase = "save";
+  await page.getByRole("button", { name: "Create program", exact: true }).click();
+  await expect(page).toHaveURL(`${origin}/app`);
+}
+export async function conditioningAccountFlow(
+  accounts: readonly [NativeAccount, NativeAccount], anonKey: string, report: NativeReport, guard: () => Promise<void>,
+) {
+  const now = new Date(), today = now.toISOString().slice(0, 10);
+  const todayDay = (now.getUTCDay() + 6) % 7;
+  const monday = new Date(Date.parse(`${today}T00:00:00Z`) - todayDay * 86400000).toISOString().slice(0, 10);
+  const swimDays = [todayDay, (todayDay + 2) % 7].sort((a, b) => a - b);
+  const browser = await chromium.launch();
+  let failure: unknown, blocked = false;
+  async function step(name: typeof conditioningChecks[number], action: () => Promise<void>) {
+    await guard();
+    try { await action(); demand(!blocked, "browser_network"); report.checks.push({ name, status: "passed" }); }
+    catch { report.checks.push({ name, status: "failed" }); throw new AccountFlowRefusal(name); }
+  }
+  try {
+    const contexts = await Promise.all([
+      browser.newContext({ viewport: { width: 375, height: 812 }, serviceWorkers: "block" }),
+      browser.newContext({ viewport: { width: 1280, height: 900 }, serviceWorkers: "block" }),
+    ]);
+    for (const context of contexts) {
+      context.setDefaultTimeout(20_000);
+      await context.route("**/*", async (route) => {
+        const url = new URL(route.request().url());
+        if (++report.browserRequests > 500 || ![origin, supabaseUrl].includes(url.origin)) {
+          report.networkBlock ??= report.browserRequests > 500 ? "http_limit" : "http_origin";
+          blocked = true; await route.abort(); return;
+        }
+        await route.continue();
+      });
+      await context.routeWebSocket(/.*/, (socket) => {
+        report.networkBlock ??= "websocket"; blocked = true; socket.close();
+      });
+    }
+    const pages = [await contexts[0]!.newPage(), await contexts[1]!.newPage()];
+    const clients = accounts.map(() => createClient(supabaseUrl, anonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: { fetch: async (input, init) => {
+        const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+        demand(url.origin === supabaseUrl && ++report.clientRequests <= 100, "client_transport");
+        return fetch(input, { ...init, redirect: "error", signal: AbortSignal.any([
+          AbortSignal.timeout(15_000), ...(init?.signal ? [init.signal] : []),
+        ]) });
+      } },
+    }));
+    await step("native_sign_in", async () => {
+      for (const [index, page] of pages.entries()) {
+        const account = accounts[index]!;
+        await page.goto(`${origin}/login?next=/app`);
+        await page.getByTestId("auth-email-input").fill(account.identity.email);
+        await page.getByTestId("auth-password-input").fill(account.password);
+        await page.getByTestId("auth-submit").click();
+        await expect(page).toHaveURL(`${origin}/app`);
+        const signed = await clients[index]!.auth.signInWithPassword({ email: account.identity.email, password: account.password });
+        demand(!signed.error && signed.data.user?.id === account.identity.id, "auth_identity");
+      }
+    });
+    await step("programme_creation", async () => {
+      for (const [index, page] of pages.entries()) {
+        await createProgramme(page, accounts[index]!.identity.marker.slot, monday, swimDays, report);
+      }
+    });
+    const before = await Promise.all(clients.map((client, index) => linked(client, accounts[index]!)));
+    const next = before.map((rows) => {
+      const row = rows.find((workout) => workout.scheduled_date === today);
+      demand(row, "today_fixture"); return row;
+    });
+    await step("shared_next_swim", async () => {
+      for (const [index, page] of pages.entries()) {
+        report.journeyAccount = accounts[index]!.identity.marker.slot; report.journeyPhase = "today";
+        await page.goto(`${origin}/app`);
+        const view = page.getByRole("link", { name: "View swim", exact: true });
+        await expect(view).toHaveAttribute("href", `/app/swim/${next[index]!.id}?from=today`);
+        await view.click();
+        await expect(page).toHaveURL(`${origin}/app/swim/${next[index]!.id}?from=today`);
+        await layout(page);
+        report.journeyPhase = "calendar";
+        await page.goto(`${origin}/app/plan`);
+        const rail = page.getByTestId(`plan-rail-${todayDay}`);
+        await rail.click();
+        const drawer = page.getByRole("dialog");
+        await expect(drawer.getByRole("link", { name: "View swim", exact: true }))
+          .toHaveAttribute("href", `/app/swim/${next[index]!.id}?from=plan`);
+        await expect(drawer.getByRole("button", { name: /mark done/i })).toHaveCount(0);
+        await page.keyboard.press("Escape");
+      }
+    });
+    const keys: string[] = [], recordings: string[] = [];
+    const receive = async (index: number) => {
+      demand(++report.clientRequests <= 100, "client_transport");
+      return pages[index]!.request.post(`${origin}/api/swim/import`, {
+        headers: { authorization: `Bearer ${keys[index]!}`, "content-type": "application/json" },
+        data: { version: 1, activity: { activity_id: "940000000001", date: today,
+          type: "lap_swimming", distance_m: 350, duration_s: 900 }, detail: null },
+        maxRedirects: 0, timeout: 15_000,
+      });
+    };
+    await step("recording_confirmation", async () => {
+      for (const [index, page] of pages.entries()) {
+        report.journeyAccount = accounts[index]!.identity.marker.slot; report.journeyPhase = "receive";
+        await page.goto(`${origin}/app/settings/swimming`);
+        await page.getByRole("button", { name: "Create import key", exact: true }).click();
+        keys.push(await page.getByLabel("Import key", { exact: true }).inputValue());
+        const response = await receive(index);
+        demand(response.status() === 201, "import_receive");
+        const receipt = z.object({ id: z.string().uuid(), revision: z.literal(1), replayed: z.literal(false) }).parse(await response.json());
+        recordings.push(receipt.id);
+        report.journeyPhase = "match";
+        await page.goto(`${origin}/app/swim/recordings/${receipt.id}?from=sessions`);
+        await page.getByLabel("Workout date", { exact: true }).fill(today);
+        await page.getByRole("button", { name: "Find workouts", exact: true }).click();
+        await page.getByRole("combobox", { name: "Workout", exact: true }).selectOption(next[index]!.id);
+        await page.getByRole("button", { name: "Match workout", exact: true }).click();
+        await expect(page.getByRole("button", { name: "Remove match", exact: true })).toBeVisible();
+        report.journeyPhase = "outcome";
+        await page.getByRole("radio", { name: index === 0 ? "Completed" : "Stopped early", exact: true }).check();
+        await page.getByRole("button", { name: "Confirm outcome", exact: true }).click();
+        await expect(page.getByRole("button", { name: "Change outcome", exact: true })).toBeVisible();
+        await page.reload();
+        await expect(page.getByRole("button", { name: "Change outcome", exact: true })).toBeVisible();
+        await layout(page);
+      }
+      demand(recordings.length === 2 && recordings[0] !== recordings[1], "import_identity");
+    });
+    await step("history_and_isolation", async () => {
+      for (const [index, page] of pages.entries()) {
+        report.journeyAccount = accounts[index]!.identity.marker.slot; report.journeyPhase = "sessions";
+        await page.goto(`${origin}/app/plan`);
+        const rail = page.getByTestId(`plan-rail-${todayDay}`);
+        if (index === 0) await expect(rail).toHaveClass(/\bdone\b/);
+        else {
+          await expect(rail).not.toHaveClass(/\bdone\b/);
+          await rail.click();
+          await expect(page.getByRole("dialog").getByText("Stopped early", { exact: true })).toBeVisible();
+          await page.keyboard.press("Escape");
+        }
+        await page.goto(`${origin}/app/sessions`);
+        const entry = page.locator(`a[href="/app/swim/${next[index]!.id}?from=sessions"]`);
+        await expect(entry).toHaveCount(1);
+        await expect(page.getByText(index === 0 ? "Completed" : "Stopped early", { exact: true }).first()).toBeVisible();
+        await entry.click();
+        await page.locator(`a[href="/app/swim/recordings/${recordings[index]}?workout=${next[index]!.id}&from=sessions"]`).click();
+        await expect(page.getByRole("button", { name: "Change outcome", exact: true })).toBeVisible();
+        report.journeyPhase = "isolation";
+        for (const table of ["swim_plans", "swim_workouts", "swim_import_outcomes", "swim_conditioning_bindings",
+          "swim_conditioning_saves", "training_blocks", "planned_sessions", "program_instances"]) {
+          const foreign = await clients[index]!.from(table).select("user_id")
+            .eq("user_id", accounts[1 - index]!.identity.id).limit(1);
+          demand(!foreign.error && foreign.data.length === 0, "foreign_read");
+        }
+        for (const table of ["sessions", "cardio_logs"]) {
+          const native = await clients[index]!.from(table).select("id").eq("user_id", accounts[index]!.identity.id).limit(1);
+          demand(!native.error && native.data.length === 0, "no_invented_native_results");
+        }
+      }
+      const foreign = await clients[1]!.rpc("swim_confirm_import_outcome", {
+        p_request_id: randomUUID(), p_workout_id: next[0]!.id, p_match_id: null, p_outcome: null,
+        p_expected_outcome_id: null, p_expected_workout_revision: null,
+      });
+      demand(foreign.error?.code === "42501", "foreign_mutation");
+    });
+    await step("programme_edit_and_pause", async () => {
+      report.journeyAccount = "a"; report.journeyPhase = "pause";
+      const page = pages[0]!, client = clients[0]!, first = next[0]!;
+      const unaffected = await linked(clients[1]!, accounts[1]);
+      await page.goto(`${origin}/app/swim/${first.id}?from=plan`);
+      await page.getByText("Swimming options", { exact: true }).click();
+      await page.getByRole("button", { name: "Pause swimming", exact: true }).click();
+      await expect.poll(async () => (await linked(client, accounts[0]))[0]!.plan_status).toBe("paused");
+      const frozen = await linked(client, accounts[0]);
+      report.journeyPhase = "edit";
+      await page.goto(`${origin}/app/plan`);
+      await page.getByRole("link", { name: "Edit program", exact: true }).click();
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      const oldDay = swimDays.find((day) => day !== todayDay)!;
+      const resting = days.map((_, day) => day).filter((day) => !swimDays.includes(day)).slice(3);
+      const destination = resting[0]!;
+      await setDay(page, oldDay, "Rest");
+      await setDay(page, destination, "Conditioning");
+      await page.getByRole("button", { name: "Save changes", exact: true }).click();
+      await expect(page).toHaveURL(new RegExp(`^${origin}/app/plan(?:\\?kept=today)?$`));
+      const moved = await linked(client, accounts[0]);
+      demand(moved.every((row) => row.plan_status === "paused") &&
+        moved.some((row) => row.scheduled_date !== frozen.find((old) => old.id === row.id)!.scheduled_date) &&
+        moved.every((row) => {
+          const old = frozen.find((entry) => entry.id === row.id);
+          return old && old.planned_session_id === row.planned_session_id && isDeepStrictEqual(old.definition, row.definition) &&
+            (old.scheduled_date > today || old.scheduled_date === row.scheduled_date);
+        }) && isDeepStrictEqual(await linked(clients[1]!, accounts[1]), unaffected), "paired_edit_history");
+      await page.goto(`${origin}/app/swim/${first.id}?from=plan`);
+      report.journeyPhase = "resume";
+      await page.getByText("Swimming options", { exact: true }).click();
+      await page.getByRole("button", { name: "Resume swimming", exact: true }).click();
+      await expect.poll(async () => (await linked(client, accounts[0]))[0]!.plan_status).toBe("active");
+      const resumed = await linked(client, accounts[0]);
+      demand(resumed.every((row) => row.scheduled_date === moved.find((old) => old.id === row.id)!.scheduled_date), "fixed_resume");
+      await page.goto(`${origin}/app/sessions`);
+      await expect(page.locator(`a[href="/app/swim/${first.id}?from=sessions"]`)).toHaveCount(1);
+      await layout(page);
+    });
+    await step("disconnect", async () => {
+      for (const [index, page] of pages.entries()) {
+        report.journeyAccount = accounts[index]!.identity.marker.slot; report.journeyPhase = "disconnect";
+        await page.goto(`${origin}/app/settings/swimming`);
+        await page.getByRole("button", { name: "Disconnect dashboard", exact: true }).click();
+        await expect(page.getByRole("button", { name: "Create import key", exact: true })).toBeVisible();
+        demand((await receive(index)).status() === 401, "revoked_key");
+      }
+    });
+  } catch (error) { failure = error; }
+  finally {
+    try { await browser.close(); report.browserClosed = true; }
+    catch { failure ??= new AccountFlowRefusal("browser_close"); }
+  }
+  if (failure) throw failure;
+}

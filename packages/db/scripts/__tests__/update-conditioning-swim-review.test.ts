@@ -106,7 +106,10 @@ describe("conditioning review exact-source and operation boundary", () => {
   it("gates every declared operation, serializes review updates and exposes credentials only after source checks", () => {
     const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
     const declared = [...workflow.split("\nconcurrency:")[0]!.matchAll(/^      ([a-z][a-z_]+):$/gm)].map((match) => match[1]);
-    expect(declared.sort()).toEqual(Object.keys(inputs()).sort());
+    expect(declared).toEqual(expect.arrayContaining(Object.keys(inputs())));
+    for (const key of declared.filter((name) => !(name! in inputs()))) {
+      expect(() => checkConditioningReviewDispatch({ ...inputs(), [key!]: "false" }, env)).toThrow();
+    }
     expect(declared.length).toBeLessThanOrEqual(25);
     const job = workflow.split("\n  update-conditioning-swim-review:\n")[1]!.split(/\n  [a-z][a-z0-9-]+:\n/)[0]!;
     for (const gate of ["needs: [ci, identity-guard]", "environment: swim-review",

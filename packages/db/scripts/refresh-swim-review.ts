@@ -33,9 +33,9 @@ export type GuardedSourceProfile = Readonly<{
   expectedMain?: string;
 }>;
 export type RefreshProfile = GuardedSourceProfile & Readonly<{
-  operation: "REFRESH_SWIM_REVIEW" | "REFRESH_SWIM_PLAN_REVIEW" | "REFRESH_SWIM_READONLY_REVIEW" | "UPGRADE_SWIM_REVIEW" | "UPDATE_UNTIMED_SWIM_REVIEW" | "TEST_SWIM_ACCOUNT_FLOW" | "UPDATE_CONDITIONING_SWIM_REVIEW";
-  job: "refresh-swim-review" | "refresh-swim-plan-review" | "refresh-swim-readonly-review" | "upgrade-swim-review" | "update-untimed-swim-review" | "test-swim-account-flow" | "update-conditioning-swim-review";
-  scope: "swim-review-refresh" | "swim-plan-review-refresh" | "swim-readonly-review-refresh" | "swim-existing-review-upgrade" | "swim-untimed-review-update" | "swim-account-flow" | "swim-conditioning-review-update";
+  operation: "REFRESH_SWIM_REVIEW" | "REFRESH_SWIM_PLAN_REVIEW" | "REFRESH_SWIM_READONLY_REVIEW" | "UPGRADE_SWIM_REVIEW" | "UPDATE_UNTIMED_SWIM_REVIEW" | "TEST_SWIM_ACCOUNT_FLOW" | "UPDATE_CONDITIONING_SWIM_REVIEW" | "TEST_SWIM_CONDITIONING_ACCOUNT_FLOW";
+  job: "refresh-swim-review" | "refresh-swim-plan-review" | "refresh-swim-readonly-review" | "upgrade-swim-review" | "update-untimed-swim-review" | "test-swim-account-flow" | "update-conditioning-swim-review" | "test-swim-conditioning-account-flow";
+  scope: "swim-review-refresh" | "swim-plan-review-refresh" | "swim-readonly-review-refresh" | "swim-existing-review-upgrade" | "swim-untimed-review-update" | "swim-account-flow" | "swim-conditioning-review-update" | "swim-conditioning-account-flow";
   previous: Readonly<{ run: string; sha: string; id: string; url: string; start: number; end: number }>;
   aliasUid?: string;
   receipt(project: EnvironmentMetadata[], shared: EnvironmentMetadata[]): void;

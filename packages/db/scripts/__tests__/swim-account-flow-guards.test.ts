@@ -192,7 +192,8 @@ describe("DC-SW3/SW5/SW8 bounded synthetic account flow", () => {
     expect(packageJson.scripts.typecheck).toBe("tsc --noEmit && tsc -p tsconfig.account-flow.json");
     expect(cli.compilerOptions.strict).toBe(true);
     expect(cli.compilerOptions.types).toEqual(["node"]);
-    expect(cli.files).toEqual(["scripts/swim-account-flow.ts", "scripts/swim-account-flow-browser.ts"]);
+    expect(cli.files).toEqual(["scripts/swim-account-flow.ts", "scripts/swim-account-flow-browser.ts",
+      "scripts/swim-conditioning-account-flow.ts", "scripts/swim-conditioning-account-flow-browser.ts"]);
     for (const path of cli.files) expect(app.exclude).toContain(path);
   });
 });

@@ -4299,3 +4299,23 @@ Partial writes require explicit reconciliation, never blind retry or a ledger
 reset. The existing GitHub PostgreSQL fixture adds synthetic preservation,
 precommit rollback, replay refusal and unused-down rehearsal. Hosted execution
 and authenticated integration are not yet accepted.
+
+## [2026-09-15] acceptance | Protected conditioning update
+
+Tooling9d42be34 passed core34950063605 and storage34950063695. The actual appender
+passed155-to158 preservation, rollback, replay refusal and unused-down rehearsal.
+Read-only34950941881 then verified the live155-record prefix, unchanged protected
+settings and no mutation attempts.
+
+Approved apply34952341296/job104327034894 completed successfully at the same
+source. It retained all155 prior ledger entries, appended0155-0157, created the two
+branch-Preview feature flags and assigned READY deployment
+dpl_BiNzLA4dsCDBqe3TjT8D5zhcC28V to the existing protected alias. Auth/protection
+and isolation checks passed; storage closed without reconciliation. The updater
+profile is spent. Existing private course/history and production were not edited.
+
+The integrated native-account runner is a separate bounded follow-up, using two
+disposable accounts and the actual accepted deployment/flag receipts. It exercises
+creation, Today/calendar, explicit imported outcomes, ordinary history, programme
+editing/pause and isolation, then verifies cascading cleanup. No authenticated
+integration or owner usability result is claimed before that run completes.

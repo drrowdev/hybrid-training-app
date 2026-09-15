@@ -37,8 +37,8 @@ export class AccountFlowRefusal extends Error {
 export function demand(value: unknown, code: string): asserts value {
   if (!value) throw new AccountFlowRefusal(code);
 }
-export function accountFlowContext(env: NodeJS.ProcessEnv, cleanup = false) {
-  const sha = refreshContext(env, ACCOUNT_FLOW);
+export function accountFlowContext(env: NodeJS.ProcessEnv, cleanup = false, profile: RefreshProfile = ACCOUNT_FLOW) {
+  const sha = refreshContext(env, profile);
   demand(/^\d{8,16}$/.test(env.GITHUB_RUN_ID ?? "") &&
     (cleanup ? /^[1-9]\d{0,2}$/.test(env.GITHUB_RUN_ATTEMPT ?? "") : env.GITHUB_RUN_ATTEMPT === "1"), "context");
   return { sha, run: env.GITHUB_RUN_ID! };
