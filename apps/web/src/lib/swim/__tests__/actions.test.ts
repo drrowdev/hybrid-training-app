@@ -19,7 +19,9 @@ import type { SwimPoolEditInput } from "../view-types";
 import { syntheticCourse } from "./course-fixtures";
 import { previewPrivateSwimCourse, importPrivateSwimCourse, previewPrivateSwimEdit, savePrivateSwimEdit } from "../course-actions";
 import * as courseCapability from "../course-capability";
+import * as conditioningLifecycle from "../conditioning-lifecycle";
 import { planPrivateSwimCourse } from "../course-planning";
+import { changeConditioningSwim } from "../actions";
 
 const mock = vi.hoisted(() => ({
   user: { id: "00000000-0000-4000-8000-000000000001" } as { id: string } | null,
@@ -122,6 +124,7 @@ function mockSavedEdit() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.spyOn(conditioningLifecycle, "conditioningPlanLink").mockResolvedValue(null);
   vi.spyOn(poolEditing, "swimPoolEditingAvailable").mockResolvedValue(false);
   vi.mocked(loadSwimStrengthContext).mockResolvedValue({ blockId: null, sessions: [] });
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
@@ -145,6 +148,65 @@ beforeEach(() => {
   });
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
+
+describe("DC-SW5/SW7/SW8 linked lifecycle", () => {
+  it("sends fixed-calendar pause/resume without a replacement schedule", async () => {
+    const save = vi.spyOn(conditioningLifecycle, "saveConditioningChange").mockResolvedValue();
+    for (const command of ["pause", "resume", "finish"] as const) {
+      const input = { command, planId, planRevision: 3 };
+      expect(await changeConditioningSwim(receiptId, input)).toEqual({ ok: true });
+      expect(save).toHaveBeenLastCalledWith(mock.client, receiptId, input);
+    }
+    expect(storage.resumeSwimPlan).not.toHaveBeenCalled();
+    expect(storage.setSwimPlanStatus).not.toHaveBeenCalled();
+    expect(revalidatePath).toHaveBeenCalledWith("/app/plan/history");
+  });
+  it("refuses standalone fresh-date resume for linked plans", async () => {
+    vi.mocked(conditioningLifecycle.conditioningPlanLink).mockResolvedValue({
+      block_id: sessionId, planned_session_id: receiptId,
+    });
+    expect(await previewSwimResume(planId, 1, "2026-09-20")).toMatchObject({ errorCode: "validation" });
+    expect(storage.resumeSwimPlan).not.toHaveBeenCalled();
+  });
+  it("moves the linked identities through one RPC after reviewing current inputs", async () => {
+    vi.mocked(conditioningLifecycle.conditioningPlanLink).mockResolvedValue({
+      block_id: sessionId, planned_session_id: receiptId,
+    });
+    vi.spyOn(conditioningLifecycle, "replayConditioningChange").mockResolvedValue(false);
+    const save = vi.spyOn(conditioningLifecycle, "saveConditioningChange").mockResolvedValue();
+    const preview = (await previewSwimDateEdit(dateEditInput())).preview!;
+    expect(preview).toBeDefined();
+    expect(await applySwimDateEdit(preview)).toEqual({ ok: true });
+    expect(save).toHaveBeenCalledWith(mock.client, preview.id, {
+      command: "move", planId, planRevision: 1, workoutId: preview.workoutId, workoutRevision: 1,
+      date: preview.date, reason: preview.reason, warnings: preview.warnings,
+    });
+    expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+  });
+  it("recovers an interrupted move before stale revision checks or a new write", async () => {
+    const preview = (await previewSwimDateEdit(dateEditInput())).preview!;
+    vi.mocked(conditioningLifecycle.conditioningPlanLink).mockResolvedValue({
+      block_id: sessionId, planned_session_id: receiptId,
+    });
+    vi.spyOn(conditioningLifecycle, "replayConditioningChange").mockResolvedValue(true);
+    const save = vi.spyOn(conditioningLifecycle, "saveConditioningChange").mockResolvedValue();
+    vi.mocked(storage.listSwimPlans).mockResolvedValue([{ ...swimFixture().plan, revision: 5 }]);
+    expect(await applySwimDateEdit(preview)).toEqual({ ok: true });
+    expect(save).not.toHaveBeenCalled();
+    expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+  });
+  it("rejects an unreviewed move and preserves explicit storage failures", async () => {
+    const save = vi.spyOn(conditioningLifecycle, "saveConditioningChange").mockRejectedValue(new Error("Could not save this change."));
+    expect(await changeConditioningSwim(receiptId, {
+      command: "move", planId, planRevision: 1, workoutId: swimFixture().workouts[2]!.id,
+      workoutRevision: 1, date: "2026-09-15", reason: "Pool closed", warnings: [],
+    })).toMatchObject({ errorCode: "validation" });
+    expect(save).not.toHaveBeenCalled();
+    expect(await changeConditioningSwim(receiptId, { command: "pause", planId, planRevision: 1 }))
+      .toMatchObject({ error: "Could not save this change." });
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+});
 
 describe("DC-SW5/SW8/SW9 private course actions", () => {
   function formForCourse() {

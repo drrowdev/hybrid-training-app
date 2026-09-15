@@ -8,6 +8,8 @@ import {
 } from "../scripts/swim-production-update-storage";
 import { productionHistoryFingerprint } from "../scripts/swim-production-reconciliation";
 import { POST_UPDATE_CATALOG_SQL, productionCompletionCatalog } from "../scripts/swim-production-post-update";
+import { verifyActivationStorage } from "../scripts/activate-swim-production";
+import { historicalSwimMigrations } from "./historical-swim-migrations";
 
 const progress = (): ProductionUpdateProgress => ({
   attemptedMigrations: 0, stagedMigrations: 0, commitAttempted: false, commitConfirmed: false,
@@ -29,7 +31,8 @@ export async function rehearseProductionSwimmingUpdate(database: postgres.Sql, s
   assert.deepEqual(database.options.host, ["127.0.0.1"]);
   assert.equal(database.options.database, "swim_pool_test");
   stage("production-updater-rehearsal-fixtures");
-  const migrations = productionSwimmingMigrations();
+  assert.throws(productionSwimmingMigrations, /migration_source/);
+  const migrations = historicalSwimMigrations();
   const original = Array.from(await database.unsafe(PRODUCTION_UPDATE_LEDGER_QUERY));
   assert.equal(original.length, 146);
   const originalFingerprint = productionHistoryFingerprint(original);
@@ -180,6 +183,11 @@ export async function rehearseProductionSwimmingUpdate(database: postgres.Sql, s
   assert.deepEqual(finalAcl.shared_acl_counts, [1, 1, 1, 0, 0, 1, 0]);
   assert.deepEqual(finalAcl.shared_privileges, [true, true, true, false]);
   assert.equal(finalAcl.shared_acl_options, true);
+  assert.deepEqual(await database`SELECT to_jsonb(p) AS profile FROM public.profiles p WHERE id=${user}`, userSnapshot);
+  stage("production-activation-readonly-storage");
+  await assert.rejects(database.begin("ISOLATION LEVEL REPEATABLE READ READ ONLY",
+    (tx) => verifyActivationStorage(tx, baseline)), /migration_source/);
+  await assert.rejects(database.begin((tx) => verifyActivationStorage(tx, baseline)), /activation_readonly/);
   assert.deepEqual(await database`SELECT to_jsonb(p) AS profile FROM public.profiles p WHERE id=${user}`, userSnapshot);
   await unusedDown();
   await database`DELETE FROM drizzle.__drizzle_migrations WHERE id>${originalLastId}`;

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ConditioningSwimSummary } from "@/components/swim/ConditioningSwimSummary";
 import { SwimCalendar } from "@/components/swim/SwimCalendar";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
@@ -54,7 +55,6 @@ import { computeRecoveryWindow } from "@/lib/planner/recovery";
 import { TaperBanner, type TaperBannerState } from "@/components/today/TaperBanner";
 import { RecoveryBanner, type RecoveryBannerState } from "@/components/today/RecoveryBanner";
 import { RaceCheckInCard } from "@/components/today/RaceCheckInCard";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { TmSuggestionBanner, type TmSuggestionView } from "@/components/today/TmSuggestionBanner";
 import {
   acceptTmSuggestion,
@@ -62,7 +62,6 @@ import {
 } from "@/lib/training-maxes/actions";
 import type { TmFormula } from "@hta/db";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
-import { addDaysToYmd } from "@/lib/dates";
 import {
   formatDate,
   formatEyebrowDate,
@@ -79,6 +78,7 @@ import {
 } from "@/lib/sessions/estimate-duration";
 import { ThisWeekRail } from "@/components/plan/ThisWeekRail";
 import { plannedSessionCta } from "@/lib/today/planned-session-cta";
+import { loadTodayMovementContext } from "@/lib/today/movement-context";
 import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
 import {
   actionablePlannedSessions,
@@ -89,6 +89,9 @@ import {
   groupByMovementThenKind,
   isSupplementalOnlySection,
 } from "@/lib/plan/prescription-grouping";
+import { loadSwimActivity } from "@/lib/swim/activity-history";
+import { mergeTrainingActivity } from "@/lib/swim/activity-presentation";
+import { RecentActivity } from "@/components/today/RecentActivity";
 
 export default async function TodayPage() {
   const supabase = await createClient();
@@ -107,7 +110,7 @@ export default async function TodayPage() {
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmRows, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent, error: recentError }, plannedToday, upcoming, freshness, activeBlock, tmRows, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs, swimActivity] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -137,7 +140,10 @@ export default async function TodayPage() {
     getQuickRepeatCandidates(supabase, userId, { limit: 3 }),
     getLimitationTodaySummary(),
     getPendingProgramRecommendations(supabase, userId),
+    loadSwimActivity(supabase, userId, 8),
   ]);
+  if (recentError) throw new Error("Recent activity could not be loaded.");
+  const recentActivity = mergeTrainingActivity(recent ?? [], swimActivity, profile?.timezone ?? "UTC", 8);
 
   const activeLimitations: ActiveLimitationSummary[] = (
     activeLimitationsRaw ?? []
@@ -250,28 +256,7 @@ export default async function TodayPage() {
 
     // Group D — region / slug maps for the planned movements today
     // (DC-V2 heavy-on-recovering soft warning).
-    (async (): Promise<{
-      movementRegionById: Map<string, { primaryRegion: string; name: string }>;
-      movementSlugById: Map<string, string | null>;
-    }> => {
-      const regionMap = new Map<string, { primaryRegion: string; name: string }>();
-      const slugMap = new Map<string, string | null>();
-      if (plannedMovementIds.length === 0) {
-        return { movementRegionById: regionMap, movementSlugById: slugMap };
-      }
-      const { data: movs } = await supabase
-        .from("movements")
-        .select("id, name, slug, primary_region")
-        .in("id", plannedMovementIds);
-      for (const m of movs ?? []) {
-        regionMap.set(m.id, {
-          primaryRegion: m.primary_region as string,
-          name: m.name as string,
-        });
-        slugMap.set(m.id, (m.slug as string | null) ?? null);
-      }
-      return { movementRegionById: regionMap, movementSlugById: slugMap };
-    })(),
+    loadTodayMovementContext(supabase, plannedMovementIds),
 
     // Group E — muscle-level freshness (PR feat/muscle-grid-16).
     getMuscleFreshness(supabase, userId, { tz: profile?.timezone ?? "UTC" }),
@@ -558,12 +543,13 @@ export default async function TodayPage() {
       isCardio,
       isStrength: hasStrengthItems && !isRehab,
       isRehab,
-      done: p.completedAt != null,
-      inProgress: !!p.completedSessionId && p.completedAt == null,
-      skipped: !!p.skippedAt,
+      swim: p.swim,
+      done: p.swim?.completed ?? p.completedAt != null,
+      inProgress: p.swim ? p.swim.status === "started" : !!p.completedSessionId && p.completedAt == null,
+      skipped: p.swim ? p.swim.status === "skipped" : !!p.skippedAt,
       slot: p.slot,
       items,
-      estDurationMin: estimateSessionDurationBreakdown(items).displayMinutes,
+      estDurationMin: p.swim ? null : estimateSessionDurationBreakdown(items).displayMinutes,
       notes: p.notes,
       completedSessionId: p.completedSessionId,
     };
@@ -765,171 +751,10 @@ export default async function TodayPage() {
               />
             </div>
 
-            <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
+            <RecentActivity sessions={recentActivity} todayIso={todayIso} />
           </aside>
         </div>
     </div>
-  );
-}
-
-/**
- * Recent activity grouped by Today / Yesterday / Earlier. Replaces the
- * original flat list — same row structure, just bucketed.
- */
-function ActivityPill({ label, mono }: { label: string; mono?: boolean }) {
-  return (
-    <span
-      className={mono ? "mono" : undefined}
-      style={{
-        fontSize: 11,
-        color: "var(--cp-text-muted)",
-        background: "var(--cp-surface-soft)",
-        border: "1px solid var(--cp-border)",
-        borderRadius: 7,
-        padding: "3px 8px",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
-function ActivitySection({
-  sessions,
-  todayIso,
-}: {
-  sessions: Array<{
-    id: string;
-    title: string | null;
-    performed_at: string;
-    completed_at: string | null;
-    session_rpe: number | null;
-    duration_min: number | null;
-  }>;
-  todayIso: string;
-}) {
-  if (sessions.length === 0) {
-    return (
-      <section className="cp-card" style={{ padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
-          <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
-        </div>
-        <EmptyState
-          variant="inline"
-          title="No sessions yet"
-        />
-      </section>
-    );
-  }
-
-  const yesterdayIso = addDaysToYmd(todayIso, -1);
-  const groups: Array<{ key: "today" | "yesterday" | "earlier"; label: string; items: typeof sessions }> = [
-    { key: "today", label: "Today", items: [] },
-    { key: "yesterday", label: "Yesterday", items: [] },
-    { key: "earlier", label: "Earlier", items: [] },
-  ];
-  for (const s of sessions) {
-    const ymd = s.performed_at.slice(0, 10);
-    if (ymd === todayIso) groups[0]!.items.push(s);
-    else if (ymd === yesterdayIso) groups[1]!.items.push(s);
-    else groups[2]!.items.push(s);
-  }
-
-  return (
-    <section style={{ display: "grid", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 4 }}>
-        <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
-        <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
-      </div>
-      {groups
-        .filter((g) => g.items.length > 0)
-        .map((g) => (
-          <div key={g.key} style={{ display: "grid", gap: 6 }}>
-            <div
-              style={{
-                fontSize: 11,
-                letterSpacing: "0.1em",
-                color: "var(--cp-text-muted)",
-                textTransform: "uppercase",
-                fontWeight: 600,
-                marginTop: 8,
-              }}
-            >
-              {g.label}
-            </div>
-            {g.items.map((s) => {
-              const complete = !!s.completed_at;
-              return (
-                <Link
-                  key={s.id}
-                  href={`/app/sessions/${s.id}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    background: "var(--cp-surface)",
-                    border: "1px solid var(--cp-border)",
-                    borderRadius: 11,
-                    padding: "11px 13px",
-                    textDecoration: "none",
-                    color: "inherit",
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    style={{
-                      flex: "0 0 auto",
-                      width: 28,
-                      height: 28,
-                      borderRadius: 8,
-                      display: "grid",
-                      placeItems: "center",
-                      fontSize: 13,
-                      background: complete
-                        ? "var(--cp-accent-soft)"
-                        : "color-mix(in srgb, var(--cp-warning) 16%, transparent)",
-                      color: complete ? "var(--cp-accent)" : "var(--cp-warning)",
-                    }}
-                  >
-                    {complete ? "✓" : "◷"}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 13.5,
-                        fontWeight: 600,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {s.title ?? "Untitled session"}
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        marginTop: 4,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {!complete && <ActivityPill label="in progress" />}
-                      {s.session_rpe != null && (
-                        <ActivityPill label={`Effort ${s.session_rpe}`} mono />
-                      )}
-                      {s.duration_min != null && (
-                        <ActivityPill label={`${s.duration_min} min`} mono />
-                      )}
-                    </div>
-                  </div>
-                  <span style={{ color: "var(--cp-text-muted)", fontSize: 16 }} aria-hidden>›</span>
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-    </section>
   );
 }
 
@@ -966,6 +791,8 @@ function TodaySessionCard({
     <ProgramRecommendationsBanner recommendations={programRecs} dismissAction={dismissProgramRecommendation} />
   );
   const actionableToday = actionablePlannedSessions(plannedToday);
+  const loggedToday = [...completedToday, ...plannedToday.flatMap((planned) =>
+    planned.swim?.completed && !planned.completedSessionId ? [{ id: planned.swim.id, title: planned.swim.title }] : [])];
   if (openSession) {
     return (
       <>
@@ -985,7 +812,7 @@ function TodaySessionCard({
     );
   }
 
-  if (isTodayFullyLogged({ completedTodayCount: completedToday.length, plannedToday })) {
+  if (isTodayFullyLogged({ completedTodayCount: loggedToday.length, plannedToday })) {
     // Every planned slot for today is actually completed (linked or logged).
     // NB: we check per-session completion, not a count comparison — an extra
     // standalone activity (e.g. an extra easy run logged on a day that
@@ -1003,10 +830,10 @@ function TodaySessionCard({
             Today, so far
           </div>
           <h2 style={{ fontSize: 22, margin: 0 }}>
-            {completedToday.length === 1 ? "Session logged ✓" : `${completedToday.length} sessions logged ✓`}
+            {loggedToday.length === 1 ? "Session logged ✓" : `${loggedToday.length} sessions logged ✓`}
           </h2>
           <p style={{ color: "var(--cp-text-muted)", margin: 0, fontSize: 14 }}>
-            {completedToday[0]?.title ?? "Untitled session"}
+            {loggedToday[0]?.title ?? "Untitled session"}
           </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <Link href="/app/sessions/new" className="cp-btn">Add another session</Link>
@@ -1040,6 +867,12 @@ function TodaySessionCard({
             <h2 style={{ fontSize: 22, margin: 0 }}>
               No remaining workouts
             </h2>
+            {plannedToday.flatMap((planned) => planned.swim ? [
+              <div key={planned.id}>
+                <h3>{planned.swim.title}</h3>
+                <ConditioningSwimSummary swim={planned.swim} origin="today" />
+              </div>,
+            ] : [])}
           </section>
         </>
       );
@@ -1194,7 +1027,7 @@ function TodaySessionCard({
   // minus now-in-user-timezone — falls back to "PM session next" when
   // we can't resolve a clock time.
   const completedAmSlot = isTwoADay
-    ? plannedToday.find((p) => p.slot === "am" && p.completedAt != null)
+    ? plannedToday.find((p) => p.slot === "am" && (p.swim?.completed ?? p.completedAt != null))
     : null;
   const openPmSlot = completedAmSlot
     ? actionableToday.find((p) => p.slot === "pm" && p.completedAt == null)
@@ -1277,6 +1110,14 @@ function PlannedSessionCard({
 }) {
   const slotLabel =
     planned.slot === "am" ? "Morning" : planned.slot === "pm" ? "Evening" : "Today's session";
+  if (planned.swim) return (
+    <section className="cp-card" data-testid={`today-card-${planned.id}`} data-hero="planned"
+      style={{ padding: 20, display: "grid", gap: 12 }}>
+      <span style={{ color: "var(--cp-text-muted)", fontSize: 12 }}>{slotLabel}</span>
+      <h2 style={{ margin: 0, fontSize: 22 }}>{planned.swim.title}</h2>
+      <ConditioningSwimSummary swim={planned.swim} origin="today" />
+    </section>
+  );
 
   // Glanceable hero metrics derive from the same movement grouping as the
   // compact preview, so role counts and section contents cannot drift apart.

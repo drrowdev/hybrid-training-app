@@ -578,6 +578,16 @@ engineering choices and calibration limits are separated in
 [`pool-swimming.md`](./pool-swimming.md). The original primary-program contracts
 remain in force.
 
+**Owner integration approval (2026-09-14):** Development may connect eligible
+primary conditioning sessions to swimming through the existing programme wizard,
+with one schedule and preserved issued history. The owner approved development-only
+ownership/migration/rollback work, not hosted changes. Recording stays outside
+GetSXC. After explicitly matching an imported recording, the user may separately
+confirm Completed or Stopped early; association alone still establishes neither.
+Imported measurements retain their original uncertainty: no inferred native pool,
+active duration, pace or physiological load. This integration is in development,
+not a claim that the released standalone flow already supports it.
+
 **Owner workflow update (2026-09-12):** Swimming is review/edit-only in getsxc;
 in-app workout start, progress capture and result entry/editing are removed.
 DC-SW7/SW8's existing atomic storage, queued legacy completions, ownership and
@@ -663,6 +673,17 @@ correction retain history. No date/distance or provider-reference inference.
   for acceptance, never catch-up. Started swims can finish after archive, with
   actual workload credited but no progression of a replacement plan. Session
   trash/undo retains the link; hard purge may clear it while retaining targets.
+  **Linked-programme extension (owner decision, 2026-09-15):** swimming attached
+  to a primary programme keeps its original calendar and end when paused or
+  resumed. Past unconfirmed swims remain unknown/incomplete; skipping is explicit.
+  There is no extension, compressed catch-up or independent continuation.
+  Ending the primary programme ends its linked swimming, retaining every target
+  and result. The standalone fresh-date resume rule does not apply to these links.
+  **Programme-edit decision (2026-09-15):** changing the primary training days
+  moves future unstarted, unclaimed swims with the programme, preserving both
+  identities and prescriptions. Past/today, started, claimed and skipped work
+  keeps its dates. This explicit edit is separate from fixed-calendar pause/resume.
+  The primary rewrite and swim moves either all save or all roll back.
 - **DC-SW8 - Owned, atomic single logging [DEF].** Composite ownership links and
   RLS protect plans, workouts and sessions. Concurrent starts obtain one ordinary
   session. One serialized completion atomically writes the native result, its

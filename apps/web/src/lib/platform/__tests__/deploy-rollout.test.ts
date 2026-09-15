@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { activateSeasonBlock, buildProgramInstanceWrite, revalidatePath, state } = vi.hoisted(() => ({
+const { activateSeasonBlock, buildProgramInstanceWrite, buildContext, revalidatePath, state, conditioning } = vi.hoisted(() => ({
   activateSeasonBlock: vi.fn(),
   buildProgramInstanceWrite: vi.fn(),
+  buildContext: vi.fn(),
   revalidatePath: vi.fn(),
+  conditioning: {
+    available: vi.fn(), replay: vi.fn(), prepare: vi.fn(), deploy: vi.fn(),
+  },
   state: {
     legacyError: null as { message: string } | null,
     rpcCalls: [] as string[],
+    maxWrites: [] as string[],
   },
 }));
 
@@ -28,10 +33,12 @@ function queryFor(table: string) {
   };
   const query = {
     insert: () => {
+      if (table === "training_maxes") state.maxWrites.push("insert");
       operation = "insert";
       return query;
     },
     update: () => {
+      if (table === "training_maxes") state.maxWrites.push("update");
       operation = "update";
       return query;
     },
@@ -73,10 +80,7 @@ vi.mock("@/lib/supabase/server", () => ({
   }),
 }));
 vi.mock("../context", () => ({
-  buildPlatformContext: async () => ({
-    ctx: { oneRepMaxes: {} },
-    resolveMovement: () => undefined,
-  }),
+  buildPlatformContext: buildContext,
   validateCustomMovementBindings: () => [],
 }));
 vi.mock("../program-instance", () => ({ buildProgramInstanceWrite }));
@@ -114,6 +118,13 @@ vi.mock("../registry", () => ({
 vi.mock("@/lib/programs/hybrid/engine", () => ({
   resolveHybridTmPercent: () => 85,
 }));
+vi.mock("@/lib/swim/program-conditioning", async (original) => ({
+  ...await original<typeof import("@/lib/swim/program-conditioning")>(),
+  programConditioningAvailable: conditioning.available,
+  readConditioningSave: conditioning.replay,
+  prepareConditioningSwim: conditioning.prepare,
+  deployProgramWithSwimming: conditioning.deploy,
+}));
 
 import { createProgramInstance } from "../actions";
 
@@ -121,9 +132,17 @@ describe("createProgramInstance app-first rollout", () => {
   beforeEach(() => {
     state.legacyError = null;
     state.rpcCalls.length = 0;
+    state.maxWrites.length = 0;
+    buildContext.mockReset().mockResolvedValue({ ctx: { oneRepMaxes: {} }, resolveMovement: () => undefined });
     activateSeasonBlock.mockReset();
     revalidatePath.mockReset();
     buildProgramInstanceWrite.mockReset();
+    conditioning.available.mockReset().mockResolvedValue(true);
+    conditioning.replay.mockReset().mockResolvedValue(null);
+    conditioning.prepare.mockReset().mockResolvedValue({
+      plan_id: "00000000-0000-4000-8000-000000000006", expected_revision: 1,
+    });
+    conditioning.deploy.mockReset();
     buildProgramInstanceWrite.mockReturnValue({
       weeks: 4,
       daysPerWeek: 3,
@@ -235,5 +254,81 @@ describe("createProgramInstance app-first rollout", () => {
     ).resolves.toEqual({ ok: false, error: "Legacy deployment failed" });
 
     expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  const coupledInput = {
+    programId: "tactical-barbell", setupValues: {}, weekdays: [0, 2, 4], startedOn: "2026-09-14",
+    conditioning: {
+      requestId: "00000000-0000-4000-8000-000000000005",
+      choices: [{ weekday: 2, activity: "swimming" }],
+      swim: { kind: "existing", planId: "00000000-0000-4000-8000-000000000006", revision: 1 },
+    },
+  } satisfies Parameters<typeof createProgramInstance>[0];
+
+  it("DC-SW8 recovers the original save before recomputation even after new creation is disabled", async () => {
+    conditioning.available.mockResolvedValue(false);
+    conditioning.replay.mockResolvedValue({
+      block_id: "00000000-0000-4000-8000-000000000007",
+      program_instance_id: "00000000-0000-4000-8000-000000000008",
+      swim_plan_id: coupledInput.conditioning.swim.planId, skipped: 2,
+    });
+    const result = await createProgramInstance(coupledInput);
+    expect(result).toMatchObject({ ok: true, skipped: 2 });
+    expect(conditioning.available).not.toHaveBeenCalled();
+    expect(buildProgramInstanceWrite).not.toHaveBeenCalled();
+    expect(conditioning.prepare).not.toHaveBeenCalled();
+    expect(conditioning.deploy).not.toHaveBeenCalled();
+    expect(state.rpcCalls).toEqual([]);
+  });
+
+  it("DC-SW8 refuses new coupled saves while unavailable without invoking primary deployment", async () => {
+    conditioning.available.mockResolvedValue(false);
+    expect((await createProgramInstance(coupledInput)).ok).toBe(false);
+    expect(buildProgramInstanceWrite).not.toHaveBeenCalled();
+    expect(state.rpcCalls).toEqual([]);
+  });
+
+  it("DC-SW8 never falls back to primary-only persistence after a coupled save fails", async () => {
+    const materialized = buildProgramInstanceWrite.getMockImplementation()!();
+    materialized.sessions[0] = {
+      ...materialized.sessions[0], dayIndex: 2, role: "cardio",
+      prescription: { items: [{ movementId: "", kind: "cardio_external" }] },
+    };
+    buildProgramInstanceWrite.mockReturnValue(materialized);
+    conditioning.deploy.mockRejectedValue(new Error("Coupled save unavailable"));
+    expect((await createProgramInstance(coupledInput)).ok).toBe(false);
+    expect(conditioning.prepare).toHaveBeenCalledOnce();
+    expect(conditioning.deploy).toHaveBeenCalledOnce();
+    expect(state.rpcCalls).toEqual([]);
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it("DC-SW8 prepares benchmark edits read-only and includes them in the same replayable save", async () => {
+    const materialized = buildProgramInstanceWrite.getMockImplementation()!();
+    materialized.sessions[0] = {
+      ...materialized.sessions[0], dayIndex: 2, role: "cardio",
+      prescription: { items: [{ movementId: "", kind: "cardio_external" }] },
+    };
+    buildProgramInstanceWrite.mockReturnValue(materialized);
+    const benchmarks = [{ movementId: "00000000-0000-4000-8000-000000000010", oneRmKg: 120 }];
+    const input = { ...coupledInput, conditioning: { ...coupledInput.conditioning, benchmarks } };
+    conditioning.deploy.mockRejectedValue(new Error("Synthetic late failure"));
+    expect((await createProgramInstance(input)).ok).toBe(false);
+    expect(buildContext.mock.calls[0]?.[2]).toMatchObject({ benchmarkEdits: benchmarks });
+    expect(conditioning.replay.mock.calls[0]?.[2]).toEqual(input);
+    expect(conditioning.deploy.mock.calls[0]?.[2]).toEqual(input);
+    expect(state.maxWrites).toEqual([]);
+    expect(state.rpcCalls).toEqual([]);
+
+    conditioning.replay.mockResolvedValue({
+      block_id: "00000000-0000-4000-8000-000000000007",
+      program_instance_id: "00000000-0000-4000-8000-000000000008",
+      swim_plan_id: coupledInput.conditioning.swim.planId, skipped: 0,
+    });
+    buildContext.mockClear();
+    expect((await createProgramInstance(input)).ok).toBe(true);
+    expect(buildContext).not.toHaveBeenCalled();
+    expect(state.maxWrites).toEqual([]);
+    expect(revalidatePath).toHaveBeenCalledWith("/app/settings/training-maxes");
   });
 });

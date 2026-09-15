@@ -171,7 +171,7 @@ describe("DC-SW3/SW5/SW8 bounded synthetic account flow", () => {
   });
   it("keeps the prior untimed job intact and puts credentials after source checks", () => {
     const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
-    const old = workflow.split("\n  update-untimed-swim-review:\n")[1]!;
+    const old = workflow.split("\n  update-untimed-swim-review:\n")[1]!.split(/\n  [a-z][a-z0-9-]+:\n/)[0]!;
     expect(createHash("sha256").update(old).digest("hex")).toBe("c6ea6485b4a5038d30803067f730e4a367f0d95ce23abc69b36c0b5c31eb00cf");
     const job = workflow.split("\n  test-swim-account-flow:\n")[1]!.split("\n  update-untimed-swim-review:\n")[0]!;
     for (const gate of ["needs: [ci, identity-guard]", "environment: swim-review", "group: swim-review-bootstrap",
@@ -192,7 +192,8 @@ describe("DC-SW3/SW5/SW8 bounded synthetic account flow", () => {
     expect(packageJson.scripts.typecheck).toBe("tsc --noEmit && tsc -p tsconfig.account-flow.json");
     expect(cli.compilerOptions.strict).toBe(true);
     expect(cli.compilerOptions.types).toEqual(["node"]);
-    expect(cli.files).toEqual(["scripts/swim-account-flow.ts", "scripts/swim-account-flow-browser.ts"]);
+    expect(cli.files).toEqual(["scripts/swim-account-flow.ts", "scripts/swim-account-flow-browser.ts",
+      "scripts/swim-conditioning-account-flow.ts", "scripts/swim-conditioning-account-flow-browser.ts"]);
     for (const path of cli.files) expect(app.exclude).toContain(path);
   });
 });

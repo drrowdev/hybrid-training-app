@@ -17,6 +17,7 @@
  * the three fields that define the overdue rule.
  */
 import { daysBetweenYmd } from "@/lib/dates";
+import type { ConditioningSwim } from "@/lib/swim/conditioning-presentation";
 
 /**
  * Minimal shape needed to evaluate overdue. Both PlannedDay and
@@ -27,6 +28,7 @@ import { daysBetweenYmd } from "@/lib/dates";
  * truth.
  */
 export type OverdueCandidate = {
+  swim?: ConditioningSwim;
   /** YYYY-MM-DD calendar date of the planned slot. */
   date: string;
   /** Linked completed session id, or null when the row is unlinked. */
@@ -43,6 +45,7 @@ export type OverdueCandidate = {
  * compare — YYYY-MM-DD is lexicographically sortable.
  */
 export function isOverdue(p: OverdueCandidate, todayYmd: string): boolean {
+  if (p.swim) return p.swim.actionable && p.date < todayYmd;
   if (p.completedSessionId !== null) return false;
   if (p.skippedAt !== null) return false;
   return p.date < todayYmd;

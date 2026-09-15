@@ -2,7 +2,7 @@
 
 **Purpose:** Catalog of all hand-off files for the hybrid training app project. Organized by role in the Karpathy personal-knowledge-base pattern (plan §6.10): raw sources are immutable; wiki pages are LLM-maintained; the schema governs ingest, citation, and lint workflows. This file is the seed of `docs/knowledge/index.md` in the eventual repo.
 
-**Last updated:** 2026-09-12
+**Last updated:** 2026-09-14
 
 ---
 
@@ -33,7 +33,10 @@ The maintained-by-AI layer. These pages are rewritten as new sources arrive; the
   reviewed future-week adjustments and same-week date moves. No live Garmin
   pilot is authorized.
   Existing standalone26 and isolated review refresh are accepted within their
-  scope. ADR 0079 / DC-SW1 through DC-SW9; combined cardio-slot use stays deferred.
+  scope. ADR 0079 / DC-SW1 through DC-SW9. On 2026-09-14 the owner approved
+  development of integrated conditioning slots and separate confirmation of
+  imported outcomes. Hosted changes, watch delivery and private transfer remain
+  gated; see the current [integration scope](../design/swimming-programme-rebuild.md#approved-conditioning-integration---2026-09-14).
 
 | File | One-line summary |
 |---|---|
@@ -106,6 +109,8 @@ edit.
 | [`0082-editable-swimming-pools.md`](../adr/0082-editable-swimming-pools.md) | **Development-only pool editing approved (2026-09-12).** 50 m setup default, reviewed programme/workout choices, exact repeat-distance preservation and course-specific pace. Function-only migration0151 preserves ownership and history; controls default off and used-down refuses history loss. No existing account migration or deployment. |
 | [`0083-private-swimming-courses.md`](../adr/0083-private-swimming-courses.md) | **Development-only private course import approved (2026-09-12).** Prepared-file review, explicit workout pools and totals, finite source-preserving schedules and manual edits. Function-only migration0152 retains ownership/history, rejects generic regeneration and refuses destructive down. No protected catalogue content or existing-account rollout. |
 | [`0084-explicit-swimming-recording-matches.md`](../adr/0084-explicit-swimming-recording-matches.md) | **Explicit recording matches approved (2026-09-12).** Owner-selected recording/workout association, correction and undo history, owned FKs/RLS, immutable prescription snapshots and default-off migration0153. No automatic matching, completion, pace or workload writes; isolated development only. |
+| [`0085-confirmed-imported-swim-outcomes.md`](../adr/0085-confirmed-imported-swim-outcomes.md) | **Development-only outcome confirmation (2026-09-14).** Separate Completed / Stopped early claims tied to immutable recording matches, owner isolation, retry/correction history and empty-only down. No inferred native measurements or load; integration and runtime acceptance pending. |
+| [`0086-atomic-swim-conditioning.md`](../adr/0086-atomic-swim-conditioning.md) | **Development-only single save (2026-09-14).** Owned primary-slot/swim links, transactional creation/attachment, stable retry receipts, retained purge history and flag-independent export. Wizard/shared surfaces and release acceptance remain outstanding. |
 | [`0075-offline-completion-receipt.md`](../adr/0075-offline-completion-receipt.md) | **Offline completion stores its durable receipt (2026-09-01).** `sessions.completion_outbox_entry_id` records the outbox UUID that completed a session in the same transaction, so a replay does not become a second completion event. Migration 0144. |
 | [`0074-bodyweight-external-set-load.md`](../adr/0074-bodyweight-external-set-load.md) | **Bodyweight external load is recorded per set (2026-09-01).** `set_logs.external_load_kg` stores the actual belt, vest, or assistance value separately from ordinary set weight so progress history can be reconstructed after edits or deletes. Nullable legacy values remain unknown rather than inferred. Migration 0144. |
 | [`0073-rehab-protocol-library.md`](../adr/0073-rehab-protocol-library.md) | **Rehab protocols become a user-owned library (2026-08-19).** Authoring moves from the program wizard to Settings. A protocol is a first-class `rehab_protocols` row attached via `program_rehab_bindings`, so it outlives its program and a Settings edit reaches the live plan. A binding table rather than a `libraryId` field in the strict customization blob, because this repo deploys app-first and the previous build would silently drop a stamped blob; the FK also makes "cannot delete a protocol in use" a database guarantee. Library owns content, program owns placement. Migration 0134. TB only. |

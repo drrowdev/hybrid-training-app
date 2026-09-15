@@ -52,6 +52,7 @@ export const swimImportMatches = pgTable("swim_import_matches", {
   }>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
+  ownedWorkoutId: unique("swim_import_matches_owned_workout_id_key").on(t.userId, t.workoutId, t.id),
   ownerRevision: unique("swim_import_matches_owner_revision_key").on(t.userId, t.activityId, t.revision),
   ownedImport: foreignKey({
     name: "swim_import_matches_owned_import_fk",
@@ -65,4 +66,41 @@ export const swimImportMatches = pgTable("swim_import_matches", {
   }),
   revisionCheck: check("swim_import_matches_revision_check", sql`${t.revision} > 0`),
   metadataCheck: check("swim_import_matches_metadata_check", sql`jsonb_typeof(${t.metadata}) = 'object'`),
+}));
+
+export const swimImportOutcomes = pgTable("swim_import_outcomes", {
+  id: uuid("id").primaryKey(),
+  userId: uuid("user_id").notNull(),
+  workoutId: uuid("workout_id").notNull(),
+  matchId: uuid("match_id"),
+  revision: integer("revision").notNull(),
+  metadata: jsonb("metadata").$type<{
+    outcome: "completed" | "stopped_early" | null;
+    previousOutcomeId: string | null;
+    workoutRevision: number | null;
+  }>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  ownerRevision: unique("swim_import_outcomes_owner_revision_key").on(t.userId, t.workoutId, t.revision),
+  ownedWorkout: foreignKey({
+    name: "swim_import_outcomes_owned_workout_fk",
+    columns: [t.userId, t.workoutId],
+    foreignColumns: [swimWorkouts.userId, swimWorkouts.id],
+  }),
+  ownedMatch: foreignKey({
+    name: "swim_import_outcomes_owned_match_fk",
+    columns: [t.userId, t.workoutId, t.matchId],
+    foreignColumns: [swimImportMatches.userId, swimImportMatches.workoutId, swimImportMatches.id],
+  }),
+  revisionCheck: check("swim_import_outcomes_revision_check", sql`${t.revision} > 0`),
+  metadataCheck: check("swim_import_outcomes_metadata_check", sql`
+    jsonb_typeof(${t.metadata}) = 'object'
+    AND ${t.metadata} ?& ARRAY['outcome', 'previousOutcomeId', 'workoutRevision']
+    AND ((
+      (${t.matchId} IS NULL AND ${t.metadata}->'outcome' = 'null'::jsonb AND ${t.metadata}->'workoutRevision' = 'null'::jsonb)
+      OR (${t.matchId} IS NOT NULL AND ${t.metadata}->>'outcome' IN ('completed', 'stopped_early')
+        AND jsonb_typeof(${t.metadata}->'workoutRevision') = 'number'
+        AND (${t.metadata}->>'workoutRevision')::numeric BETWEEN 1 AND 2147483647
+        AND trunc((${t.metadata}->>'workoutRevision')::numeric) = (${t.metadata}->>'workoutRevision')::numeric)
+    ) IS TRUE)`),
 }));

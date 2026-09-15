@@ -1,5 +1,6 @@
 "use server";
 
+import { activeProgramTmPercent } from "@/lib/training-maxes/active-program-basis";
 /**
  * createProgramInstance — deploy a platform program for the signed-in user.
  *
@@ -28,6 +29,12 @@ import { programSegments, type PlatformContext, type ProgramEngine } from "@hta/
 import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { isMissingRpc } from "@/lib/supabase/rpc-errors";
+import { programConditioningSchema, type ProgramConditioning } from "@/lib/swim/conditioning-input";
+import { prepareConditioningProgramEdit, readConditioningEditRows } from "@/lib/swim/conditioning-program-edit";
+import {
+  applyConditioningChoices, conditioningSaveError, deployProgramWithSwimming,
+  prepareConditioningSwim, programConditioningAvailable, readConditioningSave,
+} from "@/lib/swim/program-conditioning";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import type { HybridInstance } from "@/lib/programs/hybrid/engine";
 import { resolveHybridTmPercent } from "@/lib/programs/hybrid/engine";
@@ -525,6 +532,7 @@ const createProgramInstanceSchema = z
     weekdays: z.array(WEEKDAY).min(1).max(7),
     /** Optional open-cardio weekdays (0 = Mon … 6 = Sun) for strength-only programs. */
     cardioWeekdays: z.array(WEEKDAY).max(7).optional(),
+    conditioning: programConditioningSchema.optional(),
     /** Block start date, YYYY-MM-DD. */
     startedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startedOn must be YYYY-MM-DD"),
     /** Optional target race date (YYYY-MM-DD) — HYROX derives weeks-to-race + an A-event. */
@@ -617,7 +625,7 @@ export async function createProgramInstance(
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks: rawSessionLinks, rehabSchedule, editBlockId, seasonBlockId, rehabBindings, startWithRecoveryWeek } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, conditioning, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks: rawSessionLinks, rehabSchedule, editBlockId, seasonBlockId, rehabBindings, startWithRecoveryWeek } = parsed.data;
   const sessionLinks = normalizeSessionLinks(rawSessionLinks);
 
   if (rehabSchedule && programId !== "tactical-barbell") {
@@ -812,6 +820,31 @@ export async function createProgramInstance(
   // Same user-scoped client (RLS) for BOTH paths — never the service role.
   const supabase = await createClient();
 
+  if (conditioning) {
+    try {
+      if (conditioning.swim) {
+        const receipt = await readConditioningSave(supabase, conditioning.requestId, parsed.data);
+        if (receipt) {
+          const bindingError = await persistRehabBindings(supabase, user.id, receipt.program_instance_id, rehabBindings ?? []);
+          if (bindingError) return { ok: false, error: bindingError };
+          revalidatePath("/app");
+          revalidatePath("/app/plan");
+          revalidatePath("/app/stats");
+          if (conditioning.benchmarks?.length) revalidatePath("/app/settings/training-maxes");
+          return { ok: true, blockId: receipt.block_id, programInstanceId: receipt.program_instance_id, skipped: receipt.skipped };
+        }
+      }
+      if (!await programConditioningAvailable(supabase)) {
+        return { ok: false, error: "Conditioning setup is not available." };
+      }
+      if (editBlockId || isNativeProgram(programId) || startWithRecoveryWeek) {
+        return { ok: false, error: "Conditioning setup is not available for this programme change yet." };
+      }
+    } catch (error) {
+      return { ok: false, error: conditioningSaveError(error) };
+    }
+  }
+
   // Forward-only EDIT of an existing block (5/3/1 / TB). Keeps the block + its
   // active program instance, preserves past/today/touched rows, and regenerates
   // untouched upcoming workouts from the new wizard inputs.
@@ -900,6 +933,7 @@ export async function createProgramInstance(
     ...(rehabSchedule ? { rehabSchedule } : {}),
     ...(seasonBlockId ? { seasonBlockId } : {}),
     ...(startWithRecoveryWeek ? { startWithRecoveryWeek: true } : {}),
+    ...(conditioning ? { conditioning, requestInput: parsed.data } : {}),
   });
   // Recorded only AFTER the plan is written, so a failed deploy never leaves a
   // program claiming rehab it doesn't have.
@@ -1057,6 +1091,8 @@ interface DeployArgs {
   setupValues: Record<string, unknown>;
   weekdays: number[];
   cardioWeekdays?: number[];
+  conditioning?: ProgramConditioning;
+  requestInput?: Record<string, unknown>;
   startedOn: string;
   raceDate?: string;
   startWeekIndex?: number;
@@ -1252,7 +1288,7 @@ async function computeForeignWrite(
   supabase: SupabaseClient,
   user: User,
   engine: ProgramEngine,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks, rehabSchedule }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, conditioning, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks, rehabSchedule }: DeployArgs,
 ): Promise<{ instance: unknown; write: ProgramInstanceWrite }> {
   // HYROX: a supplied race date overrides the experience block length with the
   // whole weeks from start to race, so the program's end-taper lands on race week
@@ -1287,6 +1323,7 @@ async function computeForeignWrite(
     : [];
 
   const { ctx, resolveMovement } = await buildPlatformContext(supabase, user.id, {
+    ...(conditioning?.benchmarks ? { benchmarkEdits: conditioning.benchmarks } : {}),
     ...(roundingKg != null ? { roundingKg } : {}),
     ...(hyroxGender ? { gender: hyroxGender } : {}),
     ...(validatedCustomMovements.length > 0
@@ -1888,7 +1925,7 @@ async function deployProgramInstanceDuringMigration(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, seasonBlockId, twoADay, customization, sessionLinks, rehabSchedule, startWithRecoveryWeek }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, conditioning, requestInput, startedOn, raceDate, startWeekIndex, roundingKg, accessories, seasonBlockId, twoADay, customization, sessionLinks, rehabSchedule, startWithRecoveryWeek }: DeployArgs,
 ): Promise<CreateProgramInstanceResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -1896,12 +1933,14 @@ async function createForeignProgramInstance(
   // Shared strength state → engine setup → materialised plan + TM alignment.
   let write: ProgramInstanceWrite;
   let instance: unknown;
+  let swimming: Awaited<ReturnType<typeof prepareConditioningSwim>> | null = null;
   try {
     ({ instance, write } = await computeForeignWrite(supabase, user, engine, {
       programId,
       setupValues,
       weekdays,
       startedOn,
+      ...(conditioning ? { conditioning } : {}),
       ...(cardioWeekdays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
       ...(raceDate ? { raceDate } : {}),
       ...(startWeekIndex != null ? { startWeekIndex } : {}),
@@ -1912,8 +1951,14 @@ async function createForeignProgramInstance(
       ...(sessionLinks ? { sessionLinks } : {}),
       ...(rehabSchedule ? { rehabSchedule } : {}),
     }));
+    if (conditioning) {
+      write = applyConditioningChoices(write, conditioning);
+      if (conditioning.swim) {
+        swimming = await prepareConditioningSwim(supabase, user.id, startedOn, write, conditioning);
+      }
+    }
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Setup failed" };
+    return { ok: false, error: conditioning ? conditioningSaveError(e) : e instanceof Error ? e.message : "Setup failed" };
   }
 
   if (write.sessions.length === 0) {
@@ -1949,7 +1994,7 @@ async function createForeignProgramInstance(
       programId,
       programFamily: engine.meta.family,
       instance,
-      setupInput: programSetupAuditInput({
+      setupInput: { ...programSetupAuditInput({
         values: setupValues,
         weekdays,
         startedOn,
@@ -1957,14 +2002,17 @@ async function createForeignProgramInstance(
         ...(customization ? { customization } : {}),
         ...(sessionLinks ? { sessionLinks } : {}),
         ...(rehabSchedule ? { rehabSchedule } : {}),
-      }),
+      }), ...(conditioning ? { conditioning: {
+        choices: conditioning.choices, skipped: write.skipped.length,
+        ...(conditioning.benchmarks?.length ? {
+          benchmarkTmPercent: activeProgramTmPercent(engine.meta.family, instance),
+        } : {}),
+      } } : {}) },
       displayName: customization?.displayName ?? null,
       customizationVersion: customization?.version ?? null,
     },
   };
-  const atomicDeployment = await supabase.rpc(
-    "deploy_program_instance_atomically",
-    {
+  const atomicArgs = {
       p_block: {
         program_id: deploymentInput.block.programId,
         program_family: deploymentInput.block.programFamily,
@@ -1996,9 +2044,20 @@ async function createForeignProgramInstance(
         display_name: deploymentInput.programInstance.displayName,
         customization_version: deploymentInput.programInstance.customizationVersion,
       },
-    },
-  );
-  const legacyDeployment = isMissingRpc(atomicDeployment.error)
+    };
+  let atomicDeployment: { data: unknown; error: { code?: string; message: string } | null };
+  if (swimming) {
+    if (!conditioning || !requestInput) return { ok: false, error: "The programme save could not be prepared." };
+    try {
+      const saved = await deployProgramWithSwimming(supabase, conditioning.requestId, requestInput, atomicArgs, swimming);
+      atomicDeployment = { data: [saved], error: null };
+    } catch (error) {
+      return { ok: false, error: conditioningSaveError(error) };
+    }
+  } else {
+    atomicDeployment = await supabase.rpc("deploy_program_instance_atomically", atomicArgs);
+  }
+  const legacyDeployment = !swimming && isMissingRpc(atomicDeployment.error)
     ? await deployProgramInstanceDuringMigration(supabase, user, deploymentInput)
     : null;
   const deployment = legacyDeployment?.data ?? atomicDeployment.data;
@@ -2061,6 +2120,7 @@ async function createForeignProgramInstance(
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/stats");
+  if (conditioning?.benchmarks?.length) revalidatePath("/app/settings/training-maxes");
 
   return {
     ok: true,
@@ -2318,6 +2378,25 @@ async function updateForeignProgramInstance(
       ),
     ),
   ].sort((a, b) => a - b);
+  let swimEdit: ReturnType<typeof prepareConditioningProgramEdit> | undefined;
+  try {
+    const rows = await readConditioningEditRows(supabase, user.id, blockId);
+    if (rows.length || priorSetupInput.conditioning != null) {
+      if (rows.length && insertedRecoveryWeeks.length) {
+        return { ok: false, error: "Swimming programme edits with inserted recovery weeks are not available yet." };
+      }
+      if (rows.length && write.weeks !== block.weeks) {
+        return { ok: false, error: "Keep the programme length when changing its swimming schedule." };
+      }
+      swimEdit = prepareConditioningProgramEdit({
+        rows, primary: blockRows ?? [], write, conditioning: priorSetupInput.conditioning,
+        startedOn: blockStartedOn, today: todayYmd(tz),
+      });
+      write = swimEdit.write;
+    }
+  } catch (error) {
+    return { ok: false, error: conditioningSaveError(error) };
+  }
   const futureRows = (blockRows ?? []).filter(
     (row) => (row.week_index as number) >= currentWeekIndex,
   );
@@ -2415,7 +2494,7 @@ async function updateForeignProgramInstance(
       insertedRecoveryWeeks,
     ),
   }));
-  const sessionsForRewrite = shiftedSessions.map((session) =>
+  const sessionsForRewrite = shiftedSessions.filter((_, index) => !swimEdit?.claimedIndices.has(index)).map((session) =>
     session.role === "strength" &&
     touchedSeparateRehabDays.has(
       dayKey(session.weekIndex, session.dayIndex),
@@ -2445,7 +2524,14 @@ async function updateForeignProgramInstance(
     currentWeekIndex,
     currentDayIndex,
     writeWeeks: write.weeks + insertedRecoveryWeeks.length,
-    existingFuture,
+    existingFuture: existingFuture.map((row) => {
+      if (!swimEdit?.retainedIds.has(row.id)) return row;
+      const move = swimEdit.moves.find((entry) => entry.plannedSessionId === row.id);
+      const offset = move ? daysBetweenYmd(blockMonday, move.date) : null;
+      return { ...row, touched: true, ...(offset !== null ? {
+        weekIndex: Math.floor(offset / 7), dayIndex: offset % 7,
+      } : {}) };
+    }),
     newSessions: sessionsForRewrite.map((s) => ({
       weekIndex: s.weekIndex,
       dayIndex: s.dayIndex,
@@ -2707,8 +2793,9 @@ async function updateForeignProgramInstance(
       error: "Couldn't build a safe snapshot of upcoming workouts.",
     };
   }
+  const linkedEdit = (swimEdit?.expected.length ?? 0) > 0;
   const atomicRewrite = await supabase.rpc(
-    "update_program_instance_atomically",
+    linkedEdit ? "swim_update_conditioning_program" : "update_program_instance_atomically",
     {
       p_block_id: blockId,
       p_strength_updates: strengthPrescriptionUpdates,
@@ -2727,7 +2814,7 @@ async function updateForeignProgramInstance(
       p_tm_percents: write.tmPercents,
       p_program_instance: {
         instance,
-        setup_input: programSetupAuditInput({
+        setup_input: { ...programSetupAuditInput({
           values: args.setupValues,
           weekdays: args.weekdays,
           startedOn: blockStartedOn,
@@ -2735,12 +2822,23 @@ async function updateForeignProgramInstance(
           ...(customization ? { customization } : {}),
           ...(sessionLinks ? { sessionLinks } : {}),
           ...(rehabSchedule ? { rehabSchedule } : {}),
-        }),
+        }), ...(swimEdit ? { conditioning: swimEdit.conditioning } : {}) },
         display_name: customization?.displayName ?? null,
         customization_version: customization?.version ?? null,
       },
+      ...(linkedEdit ? {
+        p_expected_swims: swimEdit!.expected, p_moves: swimEdit!.moves, p_request_id: crypto.randomUUID(),
+      } : {}),
     },
   );
+  if (linkedEdit && atomicRewrite.error) {
+    const code = atomicRewrite.error.code;
+    return { ok: false, error: code === "40001"
+      ? "The programme or swimming changed. Reload before saving."
+      : code === "22023" || code === "23505" || code === "23514"
+        ? "The remaining swims do not fit this schedule. Review the conditioning days and programme length."
+        : "The programme and swimming could not be saved. Try again." };
+  }
   let updatedProgramInstanceId = atomicRewrite.data;
   let rewriteErr = atomicRewrite.error;
   if (isMissingRpc(rewriteErr)) {
@@ -2837,6 +2935,11 @@ async function updateForeignProgramInstance(
     };
   }
 
+  if (linkedEdit) {
+    revalidatePath("/app/swim", "layout");
+    revalidatePath("/app/plan/history");
+    revalidatePath("/app/sessions");
+  }
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/stats");

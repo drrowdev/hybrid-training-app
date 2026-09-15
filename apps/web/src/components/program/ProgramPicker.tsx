@@ -1,8 +1,7 @@
 "use client";
 
 /**
- * Program picker — the sage v3 four-step wizard (Program → Loadout →
- * Benchmarks → Schedule).
+ * Program picker — Program, Loadout, Benchmarks, Schedule and optional Conditioning.
  *
  * Lets a signed-in user deploy a platform program end-to-end: pick a program,
  * choose a template/loadout, confirm or edit their 1-rep maxes (which are
@@ -10,7 +9,7 @@
  * date, and deploy via `createProgramInstance`. Visual + content target is the
  * accepted mockup `program-wizard-v3-sage.html`.
  */
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BackLink } from "@/components/ui/BackLink";
@@ -44,9 +43,15 @@ import {
   type TbActivationCustomizationV3,
   type TbCustomization,
 } from "@/lib/platform/tb-customization";
-import { movementUsesTimedHold } from "@hta/domain";
+import { movementUsesTimedHold, validateConditioningChoices, type ConditioningChoice } from "@hta/domain";
 import styles from "./ProgramPicker.module.css";
 import { SessionLinkEditor, type LinkableMovement } from "./SessionLinkEditor";
+import { WizardProgress } from "./WizardProgress";
+import { ConditioningStep } from "./ConditioningStep";
+import {
+  ConditioningSwimmingOptions, initialConditioningSwimDraft, prepareConditioningSwimDraft,
+  type ConditioningPlanOption,
+} from "./ConditioningSwimmingOptions";
 import { LinkBadge, rowLinkClass } from "./LinkBadge";
 import {
   activationLinkableMovements,
@@ -1372,6 +1377,8 @@ export function ProgramPicker({
   prefillRaceDate,
   recoveryAdvised = false,
   swimHref = null,
+  conditioningEnabled = false,
+  conditioningPlans = [],
 }: {
   programs: PickerProgram[];
   anchoredKeys: string[];
@@ -1409,11 +1416,19 @@ export function ProgramPicker({
    */
   recoveryAdvised?: boolean;
   swimHref?: string | null;
+  conditioningEnabled?: boolean;
+  conditioningPlans?: ConditioningPlanOption[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const saving = useRef(false);
   const [result, setResult] = useState<CreateProgramInstanceResult | null>(null);
   const [modalInfo, setModalInfo] = useState<ProgInfo | null>(null);
+  const [conditioningChoices, setConditioningChoices] = useState<readonly ConditioningChoice[]>([]);
+  const [conditioningRequestId] = useState(() => crypto.randomUUID());
+  const [swimDraft, setSwimDraft] = useState(() => ({
+    ...initialConditioningSwimDraft(), selected: conditioningPlans[0]?.id ?? "course",
+  }));
 
   // Edit mode: re-enter the wizard for an active plan. Behaves like a locked
   // preselect — start on Loadout, program fixed, schedule/loadout prefilled from
@@ -1962,6 +1977,20 @@ export function ProgramPicker({
     () => week.flatMap((t, i) => (t === "cardio" ? [i] : [])),
     [week],
   );
+  const showConditioning = conditioningEnabled && !isEditing && supportsCardioDays && !fixedSchedule && !isActivation &&
+    (cardioWeekdays.length > 0 || conditioningChoices.length > 0);
+  const stepLabels = showConditioning ? [...STEP_LABELS, "Conditioning"] : STEP_LABELS;
+  const displayStep = Math.min(step, stepLabels.length - 1);
+  const swimWeekdays = useMemo(() => conditioningChoices
+    .filter((choice) => choice.activity === "swimming").map((choice) => choice.weekday), [conditioningChoices]);
+  const preparedSwimming = useMemo(() => prepareConditioningSwimDraft(
+    swimDraft, startedOn, swimWeekdays, conditioningPlans,
+  ), [swimDraft, startedOn, swimWeekdays, conditioningPlans]);
+  const conditioningReady = !showConditioning || (
+    validateConditioningChoices(cardioWeekdays, conditioningChoices).ok &&
+    (conditioningChoices.length === 0 || !startWithRecovery) &&
+    (swimWeekdays.length === 0 || preparedSwimming.input !== null)
+  );
   const rehabWeekdays = useMemo(
     () => week.flatMap((t, i) => (t === "rehab" ? [i] : [])),
     [week],
@@ -2185,6 +2214,7 @@ export function ProgramPicker({
 
   const canDeploy =
     !!selected?.enabled &&
+    conditioningReady &&
     (fixedSchedule || weekdays.length > 0) &&
     daysMatch &&
     benchmarksReady &&
@@ -2757,7 +2787,7 @@ export function ProgramPicker({
   }
 
   function deploy() {
-    if (!selected) return;
+    if (!selected || !canDeploy || saving.current) return;
     setResult(null);
     const setupValues: Record<string, unknown> = { ...values };
     if (isActivation) {
@@ -2956,7 +2986,7 @@ export function ProgramPicker({
             }
         : undefined;
 
-    // Lifts the user set or changed → persist as entered 1RMs before deploy. We
+    // Lifts the user set or changed → persist as entered 1RMs. We
     // only write touched rows so an untouched, pre-filled value is never re-saved
     // (this keeps programs that render off real TMs from gaining a tm_percent).
     const saves: { movementId: string; oneRmKg: number; label: string }[] = [];
@@ -2984,8 +3014,9 @@ export function ProgramPicker({
       }
     }
 
-    startTransition(async () => {
-      for (const s of saves) {
+    const saveDraft = async () => {
+      const coupledSwimming = showConditioning && swimWeekdays.length > 0;
+      for (const s of coupledSwimming ? [] : saves) {
         const fd = new FormData();
         fd.set("movementId", s.movementId);
         fd.set("oneRmKg", String(s.oneRmKg));
@@ -3025,6 +3056,13 @@ export function ProgramPicker({
         setupValues,
         weekdays,
         startedOn,
+        ...(showConditioning && conditioningChoices.length > 0 ? {
+          conditioning: {
+            requestId: conditioningRequestId, choices: [...conditioningChoices],
+            ...(coupledSwimming ? { benchmarks: saves.map(({ movementId, oneRmKg }) => ({ movementId, oneRmKg })) } : {}),
+            ...(swimWeekdays.length > 0 && preparedSwimming.input ? { swim: preparedSwimming.input } : {}),
+          },
+        } : {}),
         ...(supportsCardioDays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
         ...(selected.id === "hyrox" && raceDate ? { raceDate } : {}),
         ...(startWeekIndex > 0 ? { startWeekIndex } : {}),
@@ -3063,6 +3101,15 @@ export function ProgramPicker({
             : "/app",
         );
       }
+    };
+    saving.current = true;
+    startTransition(async () => {
+      try { await saveDraft(); }
+      catch {
+        setResult({ ok: false, error: showConditioning && swimWeekdays.length > 0
+          ? "The save was not confirmed. Retry without changing the details."
+          : "The save was not confirmed. Check Today before trying again." });
+      } finally { saving.current = false; }
     });
   }
 
@@ -3078,24 +3125,24 @@ export function ProgramPicker({
     );
   }
 
-  const canContinue = step !== 0 || !!selected;
+  const canContinue = (displayStep !== 0 || !!selected) && !pending;
 
   // In edit mode the program is locked, so the wizard floor is the Loadout step.
   const minStep = isEditing ? 1 : 0;
 
   function goBack() {
-    setStep((s) => Math.max(minStep, s - 1));
+    if (!pending) setStep(Math.max(minStep, displayStep - 1));
   }
   function goNext() {
     setStep((s) => {
-      const next = Math.min(3, s + 1);
+      const next = Math.min(stepLabels.length - 1, s + 1);
       setMaxStep((m) => Math.max(m, next));
       return next;
     });
   }
   /** Jump straight to an already-visited step via the progress rail. */
   function goToStep(i: number) {
-    if (i < minStep) return;
+    if (pending || i < minStep || i >= stepLabels.length) return;
     if (i <= maxStep && i !== step) setStep(i);
   }
 
@@ -5349,8 +5396,9 @@ export function ProgramPicker({
         <h2 className={styles.h1}>Set your schedule</h2>
 
         <div style={{ marginBottom: 18 }}>
-          <div className={styles.label}>Start date</div>
+          <label className={styles.label} htmlFor="program-start-date">Start date</label>
           <input
+            id="program-start-date"
             type="date"
             className={styles.datein}
             value={startedOn}
@@ -5650,12 +5698,12 @@ export function ProgramPicker({
           </div>
         ) : null}
 
-        {renderSummary()}
+        {!showConditioning && renderSummary()}
       </div>
     );
   }
 
-  const isFinalStep = step === 3;
+  const isFinalStep = displayStep === stepLabels.length - 1;
 
   return (
     <div className={styles.wizard}>
@@ -5666,8 +5714,6 @@ export function ProgramPicker({
           them to Today instead of into a loop. */}
       <BackLink href={isEditing ? "/app/plan" : "/app"} label={isEditing ? "Plan" : "Today"} />
       <h1 className={styles.pageTitle}>{isEditing ? "Edit your plan" : "Start a program"}</h1>
-      {isEditing && swimHref && <Link href={swimHref} className={styles.btn}>Swimming →</Link>}
-
       {isEditing && (
         <div
           className="cp-card"
@@ -5686,65 +5732,35 @@ export function ProgramPicker({
 
       <div className={styles.top}>
         <div className={styles.stepcount} style={{ marginLeft: "auto" }}>
-          STEP <b>{step + 1}</b> / 4
+          STEP <b>{displayStep + 1}</b> / {stepLabels.length}
         </div>
       </div>
 
-      <div className={styles.rail}>
-        {STEP_LABELS.map((label, i) => {
-          const navigable = i >= minStep && i <= maxStep && i !== step;
-          return (
-            <div
-              key={label}
-              role={navigable ? "button" : undefined}
-              tabIndex={navigable ? 0 : undefined}
-              aria-label={navigable ? `Go to ${label}` : undefined}
-              onClick={navigable ? () => goToStep(i) : undefined}
-              onKeyDown={
-                navigable
-                  ? (e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        goToStep(i);
-                      }
-                    }
-                  : undefined
-              }
-              className={`${styles.seg}${i === step ? ` ${styles.segActive}` : i < step ? ` ${styles.segDone}` : ""}${navigable ? ` ${styles.segNav}` : ""}`}
-            >
-              <i />
-            </div>
-          );
-        })}
-      </div>
-      <div className={styles.raillabels}>
-        {STEP_LABELS.map((label, i) => {
-          const navigable = i >= minStep && i <= maxStep && i !== step;
-          return navigable ? (
-            <button
-              key={label}
-              type="button"
-              onClick={() => goToStep(i)}
-              className={`${styles.rlBtn}${i === step ? ` ${styles.rlActive}` : ""}`}
-            >
-              {label}
-            </button>
-          ) : (
-            <span key={label} className={i === step ? styles.rlActive : undefined}>
-              {label}
-            </span>
-          );
-        })}
-      </div>
+      <WizardProgress labels={stepLabels} current={displayStep} first={minStep}
+        furthest={Math.min(maxStep, stepLabels.length - 1)} onSelect={goToStep} />
 
       {step === 0 && renderProgramStep()}
       {step === 1 && renderLoadoutStep()}
       {step === 2 && renderBenchmarksStep()}
-      {step === 3 && renderScheduleStep()}
+      {displayStep === 3 && renderScheduleStep()}
+      {displayStep === 4 && showConditioning && <div className={styles.step}>
+        <ConditioningStep weekdays={cardioWeekdays} choices={conditioningChoices}
+          onChange={setConditioningChoices} disabled={pending} swimmingOptions={
+            <ConditioningSwimmingOptions value={swimDraft} onChange={setSwimDraft}
+              prepared={preparedSwimming} plans={conditioningPlans} disabled={pending} />
+          } />
+        {startWithRecovery && conditioningChoices.length > 0 && <p role="alert" className={styles.sub}>
+          Choose plan defaults or start without a recovery week to change conditioning activities.
+        </p>}
+        {renderSummary()}
+      </div>}
+      {result && !result.ok && <p role="alert" style={{ fontSize: 13, color: "var(--cp-danger)" }}>
+        {result.error}
+      </p>}
 
       <div className={styles.nav}>
         {step > minStep ? (
-          <button type="button" className={`${styles.btn} ${styles.ghost}`} onClick={goBack}>
+          <button type="button" className={`${styles.btn} ${styles.ghost}`} onClick={goBack} disabled={pending}>
             Back
           </button>
         ) : (
@@ -5752,9 +5768,6 @@ export function ProgramPicker({
         )}
         {isFinalStep ? (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 14 }}>
-            {result && !result.ok && (
-              <span style={{ fontSize: 13, color: "var(--warn)" }}>{result.error}</span>
-            )}
             <button
               type="button"
               className={`${styles.btn} ${styles.deploy}`}
@@ -5766,8 +5779,8 @@ export function ProgramPicker({
                   ? "Saving…"
                   : "Save changes"
                 : pending
-                  ? "Deploying…"
-                  : "Deploy program"}
+                  ? "Creating…"
+                  : "Create program"}
             </button>
           </span>
         ) : (

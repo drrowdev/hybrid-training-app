@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import { chromium, expect } from "@playwright/test";
 
@@ -10,6 +11,7 @@ const { build } = viteRequire("esbuild");
 const root = fileURLToPath(new URL("..", import.meta.url));
 const stages = [];
 let browser, stage = "bundle", status = "failed", code = "unexpected";
+let failureLine;
 try {
   const output = await build({
     stdin: {
@@ -20,11 +22,17 @@ try {
         import { SetupForm } from "./src/components/swim/SetupForm";
         import { SwimImportConnection } from "./src/components/swim/SwimImportConnection";
         import { CourseImportForm } from "./src/components/swim/CourseImportForm";
+        import { ProgramPicker } from "./src/components/program/ProgramPicker";
         import { CourseWorkoutEditor } from "./src/components/swim/CourseWorkoutEditor";
         import { SwimHub } from "./src/components/swim/SwimHub";
         import { WorkoutScreen } from "./src/components/swim/WorkoutScreen";
         import { workoutPresentation } from "./src/lib/swim/presentation";
         import { RecordingMatcher } from "./src/components/swim/RecordingMatcher";
+        import { RecordingOutcome } from "./src/components/swim/RecordingOutcome";
+        import { ThisWeekRail } from "./src/components/plan/ThisWeekRail";
+        import { RecentActivity } from "./src/components/today/RecentActivity";
+        import { mergeTrainingActivity } from "./src/lib/swim/activity-presentation";
+        import { swimTrainingState } from "@hta/domain";
         import { syntheticCourse } from "./src/lib/swim/__tests__/course-fixtures";
         import { planPrivateSwimCourse } from "./src/lib/swim/course-planning";
         import styles from "./src/components/swim/Swim.module.css";
@@ -71,6 +79,68 @@ try {
               distance: "400 m", beforeLengths: 8, afterLengths: 16 }] } };
         };
         let key = 0;
+        window.showActivity = () => root.render(<main style={{ padding: 16 }}><RecentActivity todayIso="2026-09-14"
+          sessions={mergeTrainingActivity([{
+            id: "strength", title: "Strength", performed_at: "2026-09-14T01:00:00Z",
+            completed_at: "2026-09-14T02:00:00Z", session_rpe: 7, duration_min: 45,
+          }], [
+            { kind: "swim", id: "complete", title: "Week 1 A", date: "2026-09-14", status: "completed" },
+            { kind: "swim", id: "partial", title: "Week 1 B", date: "2026-09-13", status: "stopped_early" },
+            { kind: "swim", id: "stale", title: "Week 1 C", date: "2026-09-10", status: "needs_review" },
+          ], "America/Los_Angeles", 8)} /></main>);
+        window.showSharedSwim = (outcome = null) => {
+          const state = swimTrainingState({
+            planStatus: "active", parentActive: true, parentExists: true, workoutStatus: "scheduled",
+            nativeSessionId: null, nativeCompletedAt: null, nativeVisible: false,
+            evidence: outcome ? {
+              confirmation: { outcome, matchId: "match", workoutRevision: 1 }, matchId: "match",
+              matchedImportId: "recording", latestImportId: "recording", matchedWorkoutRevision: 1, workoutRevision: 1,
+            } : null,
+          });
+          const swim = { ...state, id: "00000000-0000-4000-8000-000000000002",
+            title: "Week 1 A", distance: "350 m", pool: "50 m pool", recordingDate: null };
+          const refuse = () => { throw new Error("Unexpected native workout mutation"); };
+          root.render(<main style={{ padding: 16 }}><ThisWeekRail key={++key} today="2026-09-14"
+            currentWeekIndex={0} weeks={2} logHrefBase="/app/sessions/start"
+            sessions={[{ id: "planned-swim", weekIndex: 0, dayIndex: 0, date: "2026-09-14",
+              title: swim.title, isCardio: true, isStrength: false, done: swim.completed, skipped: false,
+              slot: "single", items: [{ movementId: "", kind: "cardio_external" }],
+              estDurationMin: null, notes: null, swim }]}
+            moveAction={refuse} skipAction={refuse} unskipAction={refuse}
+            updateNotesAction={refuse} startSessionAction={refuse} markCardioDoneAction={refuse} /></main>);
+        };
+        window.programCalls = []; window.programMode = "success";
+        window.saveProgram = async input => {
+          window.programCalls.push(input);
+          if (window.programMode === "delay") await new Promise(resolve => window.resolveProgram = resolve);
+          if (window.programMode === "throw") throw new Error("Synthetic interrupted response");
+          if (window.programMode === "error") return { ok: false, error: "The program could not be saved." };
+          return { ok: true, blockId: "00000000-0000-4000-8000-000000000008",
+            programInstanceId: "00000000-0000-4000-8000-000000000009", skipped: 0 };
+        };
+        window.showWizard = (enabled = true, existing = false, benchmarks = false) => {
+          window.programCalls = []; window.destinations = [];
+          root.render(<ProgramPicker key={++key} initialProgramId="tactical-barbell"
+            programs={[{ id: "tactical-barbell", name: "Tactical Barbell", family: "tactical-barbell",
+              summary: "Synthetic strength programme", enabled: true, sessionsPerWeek: 3,
+              fields: [{ key: "templateId", label: "Template", type: "select",
+                options: [{ value: "operator", label: "Operator" }], defaultValue: "operator" }] }]}
+            tbTemplates={[{ id: "operator", name: "Operator", structure: "cluster",
+              clusterMin: 2, clusterMax: 3, allowsBodyweightFourth: true, sessionsPerWeek: 3,
+              defaultCluster: [{ movement: "squat" }, { movement: "bench" }, { movement: "deadlift" }] }]}
+            anchoredKeys={["squat", "bench", "deadlift"]} conditioningEnabled={enabled}
+            benchRoles={benchmarks ? [
+              { engineKey: "squat", role: "squat", currentSlug: "back-squat-high-bar", currentOneRmKg: 100,
+                variants: [{ slug: "back-squat-high-bar", label: "Back Squat", movementId: "00000000-0000-4000-8000-000000000021" }] },
+              { engineKey: "bench", role: "horizontal_press", currentSlug: "bench-press-flat", currentOneRmKg: 80,
+                variants: [{ slug: "bench-press-flat", label: "Bench Press", movementId: "00000000-0000-4000-8000-000000000022" }] },
+              { engineKey: "deadlift", role: "hinge", currentSlug: "deadlift-conventional", currentOneRmKg: 160,
+                variants: [{ slug: "deadlift-conventional", label: "Deadlift", movementId: "00000000-0000-4000-8000-000000000023" }] },
+            ] : []}
+            conditioningPlans={existing ? [{
+              id: "00000000-0000-4000-8000-000000000007", revision: 3, title: "Current swimming plan",
+            }] : []} />);
+        };
         window.showCourseHub = () => root.render(<main className={styles.page}><SwimHub key={++key}
           setupEnabled={false} plans={[]} plan={{
             id: "00000000-0000-4000-8000-000000000001", revision: 1, status: "active",
@@ -94,6 +164,27 @@ try {
             provisional: false, deleted: false, result: null,
           }} /></main>);
         };
+        window.lifecycleCalls = []; window.lifecycleMode = "success";
+        window.saveLifecycle = async (id, input) => {
+          window.lifecycleCalls.push({ id, input });
+          if (window.lifecycleMode === "delay") await new Promise(resolve => window.resolveLifecycle = resolve);
+          if (window.lifecycleMode === "error") return { error: "The programme changed. Reload and try again." };
+          return { ok: true };
+        };
+        window.showLifecycle = (planStatus = "active", status = "scheduled") => {
+          const id = "00000000-0000-4000-8000-000000000002";
+          const view = workoutPresentation(prepared.workouts[0].definition.issued);
+          const swim = { id, title: "Week 1 A", distance: view.total, pool: view.course, recordingDate: null,
+            status: planStatus === "paused" ? "paused" : status, completed: false, settled: status === "skipped",
+            actionable: planStatus === "active", controls: {
+              planId: "00000000-0000-4000-8000-000000000001", planRevision: 3, workoutRevision: 2,
+              planStatus, editable: true,
+            } };
+          root.render(<main className={styles.page}><h1>Week 1 A</h1><WorkoutScreen key={++key}
+            conditioning={swim} workout={{ ...view, id, title: swim.title, revision: 2,
+              sessionId: null, status, planStatus, date: "2026-09-17", provisional: false, deleted: false,
+              result: null }} /></main>);
+        };
         window.matchMode = "success"; window.matchCalls = []; window.findCalls = [];
         window.findWorkouts = async date => {
           window.findCalls.push(date);
@@ -114,6 +205,26 @@ try {
             current={matched ? { importId: "00000000-0000-4000-8000-000000000001",
               workoutId: "00000000-0000-4000-8000-000000000002", title: "Synthetic endurance workout", date: "2026-09-15" } : null} />
         </main>);
+        window.outcomeMode = "success"; window.outcomeCalls = [];
+        window.saveOutcome = async input => {
+          window.outcomeCalls.push(input);
+          if (window.outcomeMode === "delay") await new Promise(resolve => window.resolveOutcome = resolve);
+          if (window.outcomeMode === "throw") throw new Error("Synthetic unavailable action");
+          if (window.outcomeMode === "error" || window.outcomeMode === "stale")
+            return { ok: false, error: window.outcomeMode === "stale"
+              ? "The recording, match or workout changed. Reload before confirming."
+              : "The outcome could not be saved." };
+          return { ok: true, value: input.requestId,
+            ...(window.outcomeMode === "refresh-error" ? { warning: "Outcome saved. Reload the page to see the update." } : {}) };
+        };
+        window.showOutcome = (confirmed = false, enabled = true, needsReview = false) => root.render(
+          <main className={styles.page}><RecordingOutcome key={++key}
+            workoutId="00000000-0000-4000-8000-000000000002"
+            matchId="00000000-0000-4000-8000-000000000003" workoutRevision={3}
+            expectedOutcomeId={confirmed ? "00000000-0000-4000-8000-000000000004" : null}
+            current={confirmed && !needsReview ? "completed" : null}
+            enabled={enabled} canRemove={confirmed} needsReview={needsReview} otherMatch={false} /></main>
+        );
         window.showCourse = () => root.render(<main className={styles.page}><CourseImportForm key={++key} today="2026-09-14" /></main>);
         window.showCourseEdit = () => root.render(<main className={styles.page}><CourseWorkoutEditor key={++key} context={{
           planId: "00000000-0000-4000-8000-000000000001", revision: 1,
@@ -166,21 +277,33 @@ try {
     plugins: [{
       name: "synthetic-actions",
       setup(build) {
-        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions)|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^@\/(?:components\/(?:plan\/(?:LinkActivityControl|CompletedSummaryCard)|movement-picker)|lib\/(?:sessions\/planned-movement-actions|hyrox\/station-swap-actions))$/ },
+          (args) => ({ path: args.path, namespace: "native-test" }));
+        build.onLoad({ filter: /.*/, namespace: "native-test" }, () => ({
+          contents: "const refuse = () => { throw new Error('Unexpected native workout control'); }; export const LinkActivityControl = refuse, CompletedSummaryCard = refuse, MovementPicker = refuse, removePlannedMovement = refuse, swapPlannedMovement = refuse, addPlannedMovement = refuse, setHyroxStationOverride = refuse;",
+          loader: "js",
+        }));
+        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions|import-outcome-actions)|@\/lib\/platform\/actions|@\/lib\/training-maxes\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "next/navigation"
             ? "export const useRouter = () => ({ push(path) { window.destinations.push(path); }, refresh() {} });"
             : args.path === "next/link"
               ? "import { createElement } from 'react'; export default function Link(props) { return createElement('a', props); }"
+            : args.path === "@/lib/platform/actions"
+              ? "export const createProgramInstance = input => window.saveProgram(input); export const getProgramSegments = async () => ({ ok: true, segments: [] });"
+            : args.path === "@/lib/training-maxes/actions"
+              ? "export const upsertTrainingMax = async () => { throw new Error('Unexpected benchmark mutation'); };"
             : args.path === "@/lib/swim/course-actions"
               ? "export const previewPrivateSwimCourse = form => window.previewCourse(form); export const importPrivateSwimCourse = (form, id) => window.saveCourse(form, id); export const previewPrivateSwimEdit = input => window.previewCourseEdit(input); export const savePrivateSwimEdit = input => window.saveCourseEdit(input);"
             : args.path === "@/lib/swim/import-actions"
               ? "export const connectSwimDashboard = () => window.connectDashboard(); export const disconnectSwimDashboard = id => window.disconnectDashboard(id);"
             : args.path === "@/lib/swim/import-match-actions"
               ? "export const findSwimMatchWorkouts = date => window.findWorkouts(date); export const saveSwimImportMatch = input => window.saveMatch(input);"
+            : args.path === "@/lib/swim/import-outcome-actions"
+              ? "export const saveSwimImportOutcome = input => window.saveOutcome(input);"
             : args.path === "@/components/trash/DeleteSessionButton"
               ? "export const DeleteSessionButton = () => { throw new Error('Unexpected delete control'); };"
-            : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = () => { throw new Error('Unexpected save'); }; export const previewSwimPlan = createSwimPlan; export const proposeSwimWeek = createSwimPlan, proposeSwimBenchmark = createSwimPlan, decideSwimProposal = createSwimPlan, changeSwimPlanStatus = createSwimPlan, previewSwimResume = createSwimPlan, resumeSwimPlan = createSwimPlan, decideSwimBenchmark = createSwimPlan, applySwimWeekEdit = createSwimPlan, applySwimDateEdit = createSwimPlan, applySwimPoolEdit = createSwimPlan, previewSwimWeekEdit = createSwimPlan, previewSwimDateEdit = createSwimPlan, skipSwimWorkout = createSwimPlan;",
+            : "export const changeConditioningSwim = (id,input) => window.saveLifecycle(id,input); export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = () => { throw new Error('Unexpected save'); }; export const previewSwimPlan = createSwimPlan; export const proposeSwimWeek = createSwimPlan, proposeSwimBenchmark = createSwimPlan, decideSwimProposal = createSwimPlan, changeSwimPlanStatus = createSwimPlan, previewSwimResume = createSwimPlan, resumeSwimPlan = createSwimPlan, decideSwimBenchmark = createSwimPlan, applySwimWeekEdit = createSwimPlan, applySwimDateEdit = createSwimPlan, applySwimPoolEdit = createSwimPlan, previewSwimWeekEdit = createSwimPlan, previewSwimDateEdit = createSwimPlan, skipSwimWorkout = createSwimPlan;",
           loader: "js", resolveDir: root,
         }));
       },
@@ -190,6 +313,20 @@ try {
   const css = output.outputFiles.find((file) => file.path.endsWith(".css"))?.text;
   assert.ok(script && css);
   stages.push(stage);
+  if (process.argv.includes("--preview")) {
+    const server = createServer((request, response) => {
+      if (request.url !== "/") { response.writeHead(404).end(); return; }
+      response.writeHead(200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store",
+        "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'",
+      });
+      response.end(`<!doctype html><html data-theme="dark"><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>${css}</style></head><body><div id="root"></div><script>${script}</script><script>window.showWizard();</script></body></html>`);
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    console.log(`Synthetic preview: http://127.0.0.1:${server.address().port}/`);
+    await new Promise(() => {});
+  }
   stage = "browser";
   browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 375, height: 812 } });
@@ -211,6 +348,239 @@ try {
   stages.push(stage);
 
   for (const width of [375, 1280]) {
+    stage = `conditioning-shared-activity-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.showActivity());
+    await expect(page.getByRole("heading", { name: "Recent activity" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Week 1 A/ })).toHaveAttribute("href", "/app/swim/complete?from=today");
+    await expect(page.getByRole("link", { name: /Week 1 B/ })).toContainText("Stopped early");
+    await expect(page.getByRole("link", { name: /Week 1 C/ })).toContainText("Review recording");
+    await expect(page.getByText("Effort 7", { exact: true })).toHaveCount(1);
+    await expect(page.getByText("45 min", { exact: true })).toHaveCount(1);
+    for (const link of await page.getByRole("link", { name: /Week 1/ }).all()) {
+      const box = await link.boundingBox();
+      assert.ok(box && box.height >= 44);
+      await link.focus();
+      await expect(link).toBeFocused();
+    }
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+    stages.push(stage);
+    stage = `conditioning-fixed-calendar-controls-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => { window.lifecycleCalls = []; window.lifecycleMode = "delay"; window.showLifecycle(); });
+    await page.getByText("Swimming options", { exact: true }).click();
+    const pause = page.getByRole("button", { name: "Pause swimming", exact: true });
+    await pause.evaluate((button) => { button.click(); button.click(); });
+    await expect(pause).toBeDisabled();
+    assert.equal(await page.evaluate(() => window.lifecycleCalls.length), 1);
+    assert.equal(await page.evaluate(() => window.lifecycleCalls[0].input.command), "pause");
+    await page.evaluate(() => { window.lifecycleMode = "success"; window.resolveLifecycle(); });
+    await expect(pause).toBeDisabled();
+    await page.evaluate(() => window.showLifecycle("paused"));
+    await page.getByText("Swimming options", { exact: true }).click();
+    await page.getByRole("button", { name: "Resume swimming", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.lifecycleCalls.length)).toBe(2);
+    assert.deepEqual(await page.evaluate(() => Object.keys(window.lifecycleCalls[1].input).sort()),
+      ["command", "planId", "planRevision"]);
+    await page.evaluate(() => { window.lifecycleMode = "error"; window.showLifecycle(); });
+    await page.getByText("Skip swim", { exact: true }).first().click();
+    await page.getByRole("textbox", { name: "Reason", exact: true }).fill("Pool closed");
+    await page.getByRole("button", { name: "Skip swim", exact: true }).click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Reason", exact: true })).toHaveValue("Pool closed");
+    await page.evaluate(() => { window.lifecycleMode = "success"; });
+    await page.getByRole("button", { name: "Skip swim", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.lifecycleCalls.length)).toBe(4);
+    assert.equal(await page.evaluate(() => window.lifecycleCalls[2].id === window.lifecycleCalls[3].id), true);
+    await page.evaluate(() => window.showLifecycle("active", "skipped"));
+    await page.getByRole("button", { name: "Undo skip", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.lifecycleCalls.at(-1).input.command)).toBe("unskip");
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    stages.push(stage);
+    stage = `shared-swim-rail-and-drawer-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    for (const outcome of [null, "completed", "stopped_early"]) {
+      await page.evaluate((value) => window.showSharedSwim(value), outcome);
+      const row = page.getByTestId("plan-rail-0");
+      await expect(row).toHaveCount(1);
+      await row.click();
+      const drawer = page.getByRole("dialog");
+      await expect(drawer).toBeVisible();
+      await expect(drawer.getByRole("link", { name: "View swim", exact: true })).toHaveAttribute(
+        "href", "/app/swim/00000000-0000-4000-8000-000000000002?from=today");
+      await expect(drawer.getByText("350 m", { exact: true })).toBeVisible();
+      await expect(drawer.getByRole("button", { name: /mark done|skip|swap|edit/i })).toHaveCount(0);
+      if (outcome === "stopped_early") {
+        await expect(drawer.getByText("Stopped early", { exact: true })).toBeVisible();
+        await expect(row.locator('[aria-label="Done"]')).toHaveCount(0);
+      }
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+      await page.keyboard.press("Escape");
+      await expect(drawer).toHaveCount(0);
+    }
+    stages.push(stage);
+    stage = `conditioning-wizard-new-course-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => { window.programMode = "success"; window.showWizard(true, false, true); });
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("spinbutton", { name: "Squat 1-rep max", exact: true }).fill("120");
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByLabel("Start date", { exact: true }).fill("2026-09-14");
+    await page.getByRole("button", { name: /^Tue\s*Rest$/ }).click();
+    await page.getByRole("button", { name: /^Tue\s*Strength$/ }).click();
+    await page.getByRole("button", { name: /^Thu\s*Rest$/ }).click();
+    await page.getByRole("button", { name: /^Thu\s*Strength$/ }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Conditioning", exact: true })).toBeVisible();
+    await page.getByRole("combobox", { name: "Tuesday", exact: true }).selectOption("swimming");
+    await page.getByRole("combobox", { name: "Thursday", exact: true }).selectOption("swimming");
+    const fileName = `synthetic-course-${"review-".repeat(12)}draft.json`;
+    await page.locator('input[type="file"]').setInputFiles({
+      name: fileName, mimeType: "application/json",
+      buffer: Buffer.from(await page.evaluate(() => JSON.stringify(window.courseSource))),
+    });
+    await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("regular");
+    await page.getByLabel("Comfortable non-stop lengths in the plan pool", { exact: true }).fill("4");
+    await page.getByRole("checkbox", { name: "Freestyle", exact: true }).check();
+    await expect(page.getByRole("button", { name: "Create program", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Review swims", exact: true }).click();
+    await page.getByRole("checkbox", { name: "I have reviewed the workouts, dates and pools", exact: true }).check();
+    await expect(page.getByRole("button", { name: "Create program", exact: true })).toBeEnabled();
+    assert.equal(await page.locator('input[type="date"]').count(), 0);
+    assert.equal(await page.locator('input[name="timeBudgetMinutes"]').count(), 0);
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await page.getByLabel("Start date", { exact: true }).fill("2026-09-21");
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page.getByText(fileName, { exact: true })).toBeVisible();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await expect(page.getByLabel("Comfortable non-stop lengths in the plan pool", { exact: true })).toHaveValue("4");
+    await expect(page.getByRole("button", { name: "Create program", exact: true })).toBeDisabled();
+    await page.getByRole("button", { name: "Review swims", exact: true }).click();
+    await page.getByRole("checkbox", { name: "I have reviewed the workouts, dates and pools", exact: true }).check();
+    const replacementFile = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Change plan file", exact: true }).click();
+    await (await replacementFile).setFiles({
+      name: "synthetic-replacement.json", mimeType: "application/json",
+      buffer: Buffer.from(await page.evaluate(() => JSON.stringify({ ...window.courseSource, title: "Replacement course" }))),
+    });
+    await expect(page.getByText("synthetic-replacement.json", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create program", exact: true })).toBeDisabled();
+    await expect(page.getByLabel("Comfortable non-stop lengths in the plan pool", { exact: true })).toHaveValue("4");
+    await page.getByRole("button", { name: "Review swims", exact: true }).click();
+    await page.getByRole("checkbox", { name: "I have reviewed the workouts, dates and pools", exact: true }).check();
+    await page.evaluate(() => { window.programMode = "delay"; });
+    await page.getByRole("button", { name: "Create program", exact: true }).evaluate(button => { button.click(); button.click(); });
+    await expect(page.getByRole("combobox", { name: "Tuesday", exact: true })).toBeDisabled();
+    assert.equal(await page.evaluate(() => window.programCalls.length), 1);
+    await page.evaluate(() => { window.programMode = "throw"; window.resolveProgram(); });
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByLabel("Comfortable non-stop lengths in the plan pool", { exact: true })).toHaveValue("4");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.evaluate(() => { window.programMode = "success"; });
+    await page.getByRole("button", { name: "Create program", exact: true }).click();
+    const programCalls = await page.evaluate(() => window.programCalls);
+    assert.equal(programCalls.length, 2);
+    assert.deepEqual(programCalls[1], programCalls[0]);
+    assert.equal(programCalls[0].startedOn, "2026-09-21");
+    assert.deepEqual(programCalls[0].conditioning.choices, [
+      { weekday: 1, activity: "swimming" }, { weekday: 3, activity: "swimming" },
+    ]);
+    assert.equal(programCalls[0].conditioning.swim.kind, "course");
+    assert.equal(programCalls[0].conditioning.swim.reviewed, true);
+    assert.deepEqual(programCalls[0].conditioning.benchmarks, [
+      { movementId: "00000000-0000-4000-8000-000000000021", oneRmKg: 120 },
+    ]);
+    assert.equal(await page.evaluate(() => window.destinations.at(-1)), "/app");
+    stages.push(stage);
+
+    stage = `conditioning-wizard-existing-plan-${width}`;
+    await page.evaluate(() => window.showWizard(true, true));
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: /^Tue\s*Rest$/ }).click();
+    await page.getByRole("button", { name: /^Tue\s*Strength$/ }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("combobox", { name: "Tuesday", exact: true }).selectOption("swimming");
+    await page.getByRole("button", { name: "Create program", exact: true }).click();
+    assert.deepEqual(await page.evaluate(() => window.programCalls[0].conditioning.swim), {
+      kind: "existing", planId: "00000000-0000-4000-8000-000000000007", revision: 3,
+    });
+    stages.push(stage);
+
+    stage = `conditioning-wizard-disabled-${width}`;
+    await page.evaluate(() => window.showWizard(false));
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: /^Tue\s*Rest$/ }).click();
+    await page.getByRole("button", { name: /^Tue\s*Strength$/ }).click();
+    await expect(page.getByRole("button", { name: "Create program", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Create program", exact: true }).click();
+    assert.equal(await page.evaluate(() => window.programCalls[0].conditioning), undefined);
+    stages.push(stage);
+
+    stage = `explicit-recording-outcome-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => { window.outcomeCalls = []; window.outcomeMode = "delay"; window.showOutcome(); });
+    const completed = page.getByRole("radio", { name: "Completed", exact: true });
+    const stoppedEarly = page.getByRole("radio", { name: "Stopped early", exact: true });
+    const confirmOutcome = page.getByRole("button", { name: "Confirm outcome", exact: true });
+    await expect(completed).not.toBeChecked();
+    await expect(stoppedEarly).not.toBeChecked();
+    await expect(confirmOutcome).toBeDisabled();
+    await stoppedEarly.focus();
+    await page.keyboard.press("Space");
+    await expect(stoppedEarly).toBeChecked();
+    await confirmOutcome.evaluate(button => { button.click(); button.click(); });
+    await expect(stoppedEarly).toBeDisabled();
+    assert.equal(await page.evaluate(() => window.outcomeCalls.length), 1);
+    await page.evaluate(() => { window.outcomeMode = "error"; window.resolveOutcome(); });
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(stoppedEarly).toBeChecked();
+    await page.evaluate(() => { window.outcomeMode = "success"; });
+    await confirmOutcome.click();
+    await expect(confirmOutcome).toHaveCount(0);
+    await expect(page.getByText("Stopped early", { exact: true })).toBeVisible();
+    const outcomeCalls = await page.evaluate(() => window.outcomeCalls);
+    assert.equal(outcomeCalls.length, 2);
+    assert.equal(outcomeCalls[0].requestId, outcomeCalls[1].requestId);
+    assert.equal(outcomeCalls[0].outcome, "stopped_early");
+    assert.equal(outcomeCalls[0].workoutRevision, 3);
+    assert.deepEqual(Object.keys(outcomeCalls[0]).sort(),
+      ["expectedOutcomeId", "matchId", "outcome", "requestId", "workoutId", "workoutRevision"]);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+
+    await page.evaluate(() => { window.outcomeMode = "stale"; window.showOutcome(); });
+    await completed.check();
+    await confirmOutcome.click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(completed).toBeChecked();
+    await page.evaluate(() => { window.outcomeMode = "refresh-error"; });
+    await confirmOutcome.click();
+    await expect(page.getByRole("status")).toBeVisible();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(confirmOutcome).toHaveCount(0);
+    await expect(page.getByText("Completed", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Change outcome", exact: true }).click();
+    await stoppedEarly.check();
+    const preceding = await page.evaluate(() => window.outcomeCalls.at(-1));
+    await confirmOutcome.click();
+    const changed = await page.evaluate(() => window.outcomeCalls.at(-1));
+    assert.equal(changed.expectedOutcomeId, preceding.requestId);
+    assert.notEqual(changed.requestId, preceding.requestId);
+    await expect(page.getByText("Stopped early", { exact: true })).toBeVisible();
+
+    await page.evaluate(() => { window.outcomeCalls = []; window.outcomeMode = "success"; window.showOutcome(true, false, true); });
+    await expect(confirmOutcome).toHaveCount(0);
+    await expect(page.getByRole("radio")).toHaveCount(0);
+    await page.getByRole("button", { name: "Remove confirmation", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Remove confirmation", exact: true })).toHaveCount(0);
+    const removal = await page.evaluate(() => window.outcomeCalls[0]);
+    assert.equal(removal.matchId, null);
+    assert.equal(removal.outcome, null);
+    assert.equal(removal.workoutRevision, null);
+    assert.equal(removal.expectedOutcomeId, "00000000-0000-4000-8000-000000000004");
+    stages.push(stage);
+
     stage = `explicit-recording-match-${width}`;
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => { window.matchCalls = []; window.findCalls = []; window.matchMode = "delay"; window.showMatcher(); });
@@ -477,6 +847,8 @@ try {
   stages.push(stage);
   status = "passed";
 } catch (error) {
+  const location = error instanceof Error ? error.stack?.match(/test-swim-pool-ui\.mjs:(\d+):\d+/) : null;
+  if (location) failureLine = Number(location[1]);
   code = error?.code === "ERR_ASSERTION" ? "assertion"
     : /Executable doesn't exist/.test(error?.message ?? "") ? "missing-browser"
       : error?.name === "TimeoutError" ? "timeout" : "unexpected";
@@ -486,6 +858,7 @@ try {
     catch { if (status !== "failed") { stage = "browser-cleanup"; code = "cleanup"; } status = "failed"; }
   }
 }
-console.log(JSON.stringify({ scope: "swim-pool-ui-synthetic", status, stages, ...(status === "failed" ? { stage, code } : {}) }));
+console.log(JSON.stringify({ scope: "swim-pool-ui-synthetic", status, stages,
+  ...(status === "failed" ? { stage, code, ...(failureLine ? { failureLine } : {}) } : {}) }));
 if (status !== "passed" && process.env.GITHUB_ACTIONS === "true") console.log(`::error title=Swimming pool controls::${stage} [${code}]`);
 if (status !== "passed") process.exitCode = 1;

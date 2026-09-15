@@ -22,6 +22,8 @@ import { StatusBadge } from "@/components/blocks/StatusBadge";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { groupBlocksByMonth } from "@/lib/plan/history-grouping";
 import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
+import { loadConditioningSwims } from "@/lib/swim/conditioning-view";
+import { conditioningSwimHref, SWIM_TRAINING_LABEL, type ConditioningSwim } from "@/lib/swim/conditioning-presentation";
 import {
   hasTwoADaySlotPair,
   type PlannedSlot,
@@ -31,6 +33,7 @@ const PAGE_SIZE = 20;
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 type PlannedRow = {
+  swim?: ConditioningSwim;
   id: string;
   week_index: number;
   day_index: number;
@@ -62,21 +65,24 @@ export default async function PlanHistoryPage({
   const hasNext = blocks.length > PAGE_SIZE;
   const pageBlocks = blocks.slice(0, PAGE_SIZE);
 
-  // Pull all planned_sessions for the visible blocks in a single round
-  // trip. Cheaper than N+1 expand-on-click + plays nicely with the
-  // native <details> markup below.
   const blockIds = pageBlocks.map((b) => b.id);
   const sessionsByBlock = new Map<string, PlannedRow[]>();
   const customizedBlockIds = new Set<string>();
   if (blockIds.length > 0) {
-    const [{ data: planned }, { data: instances }] = await Promise.all([
-      supabase
-        .from("planned_sessions")
-        .select("id, block_id, week_index, day_index, slot, title, completed_session_id, skipped_at, sessions(deleted_at)")
-        .in("block_id", blockIds)
-        .order("week_index", { ascending: true })
-        .order("day_index", { ascending: true })
-        .order("slot", { ascending: true }),
+    const readPlanned = async () => {
+      const rows = [];
+      for (let offset = 0; ; offset += 500) {
+        const { data, error } = await supabase.from("planned_sessions")
+          .select("id, block_id, week_index, day_index, slot, title, completed_session_id, skipped_at, sessions(deleted_at)")
+          .eq("user_id", user.id).in("block_id", blockIds)
+          .order("week_index").order("day_index").order("slot").order("id").range(offset, offset + 499);
+        if (error || !data) throw new Error("Program history could not be loaded.");
+        rows.push(...data);
+        if (data.length < 500) return rows;
+      }
+    };
+    const [planned, { data: instances }] = await Promise.all([
+      readPlanned(),
       supabase
         .from("program_instances")
         .select("block_id, customization_version")
@@ -86,6 +92,7 @@ export default async function PlanHistoryPage({
     for (const instance of instances ?? []) {
       if (instance.block_id) customizedBlockIds.add(instance.block_id as string);
     }
+    const swims = await loadConditioningSwims(supabase, user.id, (planned ?? []).map((row) => row.id));
     for (const row of planned ?? []) {
       const blockId = (row as { block_id: string }).block_id;
       const list = sessionsByBlock.get(blockId) ?? [];
@@ -107,7 +114,8 @@ export default async function PlanHistoryPage({
         week_index: row.week_index,
         day_index: row.day_index,
         slot: row.slot ?? null,
-        title: row.title,
+        title: swims.get(row.id)?.title ?? row.title,
+        swim: swims.get(row.id),
         completed_session_id: linked.completedSessionId,
         skipped_at: row.skipped_at,
       });
@@ -339,7 +347,9 @@ function SessionRow({
         ? "PM"
         : null
     : null;
-  const status: "logged" | "skipped" | "pending" = session.completed_session_id
+  const status: "logged" | "skipped" | "pending" = session.swim
+    ? session.swim.completed ? "logged" : session.swim.status === "skipped" ? "skipped" : "pending"
+    : session.completed_session_id
     ? "logged"
     : session.skipped_at
       ? "skipped"
@@ -387,6 +397,15 @@ function SessionRow({
     </div>
   );
 
+  if (session.swim) return <li>
+    <Link href={conditioningSwimHref(session.swim.id, "history")} data-testid="block-history-session-link"
+      style={{ color: "inherit", textDecoration: "none", display: "block" }}>
+      {inner}
+      <span style={{ display: "block", padding: "0 10px 6px", fontSize: 12, color: "var(--cp-text-muted)" }}>
+        {session.swim.distance} · {SWIM_TRAINING_LABEL[session.swim.status]}
+      </span>
+    </Link>
+  </li>;
   if (status === "logged" && session.completed_session_id) {
     return (
       <li>

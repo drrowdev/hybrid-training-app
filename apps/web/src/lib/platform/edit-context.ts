@@ -30,6 +30,7 @@ import {
   type RehabSchedule,
 } from "./rehab-schedule";
 import { daysBetweenYmd, mondayOfYmd, todayYmd } from "@/lib/dates";
+import { savedConditioningSchema } from "@/lib/swim/conditioning-input";
 
 /** Foreign strength-only programs the edit flow supports (own cardio is wizard-added). */
 const EDITABLE_PROGRAM_IDS = new Set<string>(["wendler-531", "tactical-barbell"]);
@@ -41,7 +42,7 @@ export interface ProgramEditContext {
   setupValues: Record<string, unknown>;
   /** Strength weekdays (0 = Mon … 6 = Sun). */
   strengthWeekdays: number[];
-  /** Current OPEN cardio weekdays (0 = Mon … 6 = Sun), derived from cardio rows. */
+  /** Current OPEN cardio weekdays (0 = Mon … 6 = Sun). */
   cardioWeekdays: number[];
   /** Original block start (YYYY-MM-DD) — fixed; you can't move the past. */
   startedOn: string;
@@ -97,6 +98,7 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
     sessionLinks?: unknown;
     rehabSchedule?: unknown;
     startWeekIndex?: number;
+    conditioning?: unknown;
   };
   const setupValues = setupInput.values ?? {};
   const strengthWeekdays = (setupInput.weekdays ?? [])
@@ -105,17 +107,24 @@ export async function getBlockEditContext(blockId: string): Promise<ProgramEditC
 
   // OPEN cardio weekdays: distinct day_index of the block's `role = 'cardio'`
   // placeholder rows (one per week per cardio weekday).
-  const { data: cardioRows } = await supabase
-    .from("planned_sessions")
-    .select("day_index")
-    .eq("block_id", blockId)
-    .eq("user_id", user.id)
-    .eq("role", "cardio");
-  const cardioWeekdays = Array.from(
-    new Set((cardioRows ?? []).map((r) => r.day_index as number)),
-  )
-    .filter((d) => typeof d === "number" && d >= 0 && d <= 6)
-    .sort((a, b) => a - b);
+  let cardioWeekdays: number[];
+  if (setupInput.conditioning != null) {
+    const saved = savedConditioningSchema.safeParse(setupInput.conditioning);
+    if (!saved.success) throw new Error("The saved conditioning choices could not be loaded.");
+    cardioWeekdays = saved.data.choices.map((choice) => choice.weekday).sort((a, b) => a - b);
+  } else {
+    const { data: cardioRows } = await supabase
+      .from("planned_sessions")
+      .select("day_index")
+      .eq("block_id", blockId)
+      .eq("user_id", user.id)
+      .eq("role", "cardio");
+    cardioWeekdays = Array.from(
+      new Set((cardioRows ?? []).map((r) => r.day_index as number)),
+    )
+      .filter((d) => typeof d === "number" && d >= 0 && d <= 6)
+      .sort((a, b) => a - b);
+  }
 
   const customizationResult = tbCustomizationSchema.safeParse(
     setupInput.customization,

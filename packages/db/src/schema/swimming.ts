@@ -46,6 +46,11 @@ export type SwimPlanState = {
   poolCourse?: PoolCourse;
   lifecycle?: { from: SwimPlanStatus; to: SwimPlanStatus; recordedAt: string }[];
   pauseSnapshot?: { pausedAt: string; workoutIds: string[] };
+  conditioningChanges?: {
+    id: string; input: Record<string, unknown>; recordedAt: string;
+    previousDate: string | null; previousStatus: SwimPlanStatus;
+    ruleVersion: "conditioning-lifecycle-1";
+  }[];
 };
 export type SwimWorkoutDefinition = {
   version: 1;

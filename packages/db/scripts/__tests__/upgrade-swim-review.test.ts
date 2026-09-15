@@ -8,7 +8,9 @@ import {
   upgradeFlagTransport, upgradeReview, upgradeSnapshotTransport, upgradeSummary,
 } from "../upgrade-swim-review";
 import { isReviewOwnerPredicate, reviewMigrations, validateReviewLedger } from "../upgrade-swim-review-storage";
-import { refresh, verifyRefreshSource } from "../refresh-swim-review";
+import { refresh, verifyRefreshSource, type RefreshProfile } from "../refresh-swim-review";
+import { CONDITIONING_REVIEW, CONDITIONING_REVIEW_FLAGS, CONDITIONING_UPGRADE, conditioningReviewSummary } from "../update-conditioning-swim-review";
+import { UNTIMED_FLAG_RECEIPT } from "../update-untimed-swim-review";
 import {
   ACCEPTED_DEPLOYMENT, BASE_SHA, CONFIGURATION, DEPLOY_ROUTES, RECEIPT, deploymentRoute, updateRoute,
 } from "../deploy-swim-review";
@@ -31,8 +33,9 @@ const inputs = () => ({
   upgrade_swim_review: "true", review_upgrade_read_only: "false", expected_sha: sha,
   ...Object.fromEntries(UPGRADE_REVIEW.otherOperations.map((key) => [key.toLowerCase(), "false"])),
 });
-function harness() {
-  const previous = UPGRADE_REVIEW.previous;
+function harness(profile: RefreshProfile = UPGRADE_REVIEW, flags: readonly string[] = UPGRADE_FLAGS,
+  extra: EnvironmentMetadata[] = [], environment = env) {
+  const previous = profile.previous;
   const deployment = (id: string, url: string, source: string, time: number) => ({
     id, url, readyState: "READY", createdAt: time, projectId: REVIEW.projectId, ownerId: REVIEW.teamId, target: null,
     gitSource: { type: "github", ref: REVIEW.branch, sha: source },
@@ -46,7 +49,7 @@ function harness() {
       key === "POOL_SWIMMING_ENABLED" ? ACCEPTED_DEPLOYMENT.start + 1000 : CONFIGURATION.end - 1000,
   }));
   const state = {
-    now: previous.end + 60_000, project,
+    now: previous.end + 60_000, project: [...project, ...extra],
     protection: { id: REVIEW.projectId, accountId: REVIEW.teamId, name: REVIEW.projectName,
       rootDirectory: "apps/web", framework: "nextjs",
       link: { type: "github", org: "drrowdev", repo: "hybrid-training-app", productionBranch: "main" },
@@ -58,7 +61,7 @@ function harness() {
     settings: { external: { email: true, github: false } },
     old: deployment(previous.id, previous.url, previous.sha, previous.start + 1000),
     next: deployment("dpl_UpgradeSynthetic123", "hybrid-training-app-upgrade-synthetic.vercel.app", sha, previous.end + 60_000),
-    alias: { uid: UPGRADE_REVIEW.aliasUid!, alias: REVIEW.proposedAlias, projectId: REVIEW.projectId,
+    alias: { uid: profile.aliasUid!, alias: REVIEW.proposedAlias, projectId: REVIEW.projectId,
       deploymentId: previous.id, redirect: null },
   };
   const request = vi.fn(async (url: string, method = "GET", _body?: unknown): Promise<unknown> => {
@@ -89,7 +92,7 @@ function harness() {
   const deps: Parameters<typeof upgradeReview>[1] = {
     source, request, storage,
     createFlags: vi.fn(async () => {
-      const created = upgradeFlagBody().map((body, index) => metadata({
+      const created = upgradeFlagBody(flags).map((body, index) => metadata({
         ...body, id: `flag_${index}`, createdAt: state.now, updatedAt: state.now,
       }));
       state.project.push(...created);
@@ -99,12 +102,70 @@ function harness() {
     append: vi.fn(async (guard) => { for (let i = 0; i < 5; i++) await guard(); }),
     close: vi.fn(async () => {}),
     now: () => state.now,
-    deploy: vi.fn((profile) => refresh(env, {
+    deploy: vi.fn((profile) => refresh(environment, {
       source, request, storage, now: () => state.now, sleep: async (ms) => { state.now += ms; },
     }, profile)),
   };
   return { state, deps, request };
 }
+
+describe("approved conditioning protected-review update", () => {
+  const currentEnv = {
+    ...env, GITHUB_JOB: CONDITIONING_REVIEW.job, UPDATE_CONDITIONING_SWIM_REVIEW: "true",
+    ...Object.fromEntries(CONDITIONING_REVIEW.otherOperations.map((key) => [key, "false"])),
+  };
+  const create = () => harness(CONDITIONING_REVIEW, CONDITIONING_REVIEW_FLAGS,
+    Object.entries(UNTIMED_FLAG_RECEIPT).map(([key, id]) => ({
+      id, key, type: "encrypted", target: ["preview"], gitBranch: REVIEW.branch,
+      createdAt: Date.parse("2026-09-13T08:07:00Z"), updatedAt: Date.parse("2026-09-13T08:07:00Z"),
+    })), currentEnv);
+  it("appends155-to158 before creating exactly two preview-only flags and updating the same protected alias", async () => {
+    const h = create(), before = structuredClone(h.state.project);
+    const result = await upgradeReview(currentEnv, h.deps, CONDITIONING_UPGRADE);
+    expect(result).toMatchObject({
+      scope: "swim-conditioning-review-update", status: "upgrade_pass",
+      acceptedApplicationSha: CONDITIONING_REVIEW.reference.sha,
+      migrations: { before: 155, after: 158, attempted: true, committed: true, verified: true },
+      deployment: { status: "refresh_pass", ready: true, protectedUnchanged: true }, databaseClosed: true,
+    });
+    expect(h.deps.inspectLedger).toHaveBeenNthCalledWith(1, 155);
+    expect(h.deps.inspectLedger).toHaveBeenNthCalledWith(2, 158);
+    expect(h.deps.createFlags).toHaveBeenCalledTimes(1);
+    expect(h.deps.createFlags).toHaveBeenCalledWith(ROUTES.create, "POST", upgradeFlagBody(CONDITIONING_REVIEW_FLAGS));
+    expect(h.state.project.filter((row) => row.key !== "NEXT_PUBLIC_BUILD_SHA").slice(0, before.length - 1))
+      .toEqual(before.filter((row) => row.key !== "NEXT_PUBLIC_BUILD_SHA"));
+    expect(conditioningReviewSummary(result)).toContain("SWIM_CONDITIONING_REVIEW_SUMMARY");
+    expect(conditioningReviewSummary(result)).not.toContain(canary);
+  });
+  it("reads only, closes storage and never changes the existing deployment during preflight", async () => {
+    const h = create();
+    const result = await upgradeReview({ ...currentEnv, REVIEW_UPGRADE_READ_ONLY: "true" }, h.deps, CONDITIONING_UPGRADE);
+    expect(result).toMatchObject({ status: "inspection_pass", partial: false, databaseClosed: true });
+    expect(h.deps.append).not.toHaveBeenCalled();
+    expect(h.deps.createFlags).not.toHaveBeenCalled();
+    expect(h.deps.deploy).not.toHaveBeenCalled();
+    expect(h.state.alias.deploymentId).toBe(CONDITIONING_REVIEW.previous.id);
+  });
+  it.each(["ledger", "append", "createFlags", "deploy", "close"] as const)(
+    "reports %s failure without losing the prior failure or retrying writes", async (key) => {
+      const h = create(), target = key === "ledger" ? "inspectLedger" : key;
+      h.deps[target] = vi.fn(async () => { throw new Error(canary); });
+      const result = await upgradeReview(currentEnv, h.deps, CONDITIONING_UPGRADE);
+      expect(result.status).toBe("failed");
+      expect(result.manualReconciliation).toBe(key !== "ledger");
+      expect(conditioningReviewSummary(result)).not.toContain(canary);
+      if (key === "ledger" || key === "append") expect(h.deps.createFlags).not.toHaveBeenCalled();
+      if (key !== "deploy" && key !== "close") expect(h.deps.deploy).not.toHaveBeenCalled();
+    });
+  it("refuses an already present conditioning flag instead of enabling it twice", async () => {
+    const h = create();
+    h.state.project.push(metadata({ ...upgradeFlagBody(CONDITIONING_REVIEW_FLAGS)[0],
+      id: "unexpected", createdAt: h.state.now, updatedAt: h.state.now }));
+    const result = await upgradeReview(currentEnv, h.deps, CONDITIONING_UPGRADE);
+    expect(result.status).toBe("failed");
+    expect(h.deps.append).not.toHaveBeenCalled();
+  });
+});
 
 describe("approved existing-data review upgrade", () => {
   it("rejects mixed dispatches in actual prerequisite CI before any privileged job", () => {

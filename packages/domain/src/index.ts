@@ -25,5 +25,8 @@ export * from "./swim-schedule";
 export * from "./swim-guidance";
 export * from "./swim-pool-input";
 export * from "./swim-workout-progress";
+export * from "./swim-conditioning";
+export * from "./swim-import-outcome";
 export * from "./rehab-reps";
 export * from "./types";
+export * from "./swim-training-state";

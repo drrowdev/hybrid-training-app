@@ -4,6 +4,14 @@ import { SwimInputError } from "./input-error";
 
 const text = z.string().trim().min(1);
 const equipment = z.enum(["kickboard", "pull_buoy", "fins", "paddles", "snorkel"]);
+export const swimCoursePoolChoicesSchema = z.array(z.object({
+  weekIndex: z.number().int().min(0).max(15),
+  workoutIndex: z.number().int().min(0).max(6),
+  course: z.object({
+    numerator: z.number().int().min(1).max(1000000),
+    denominator: z.number().int().min(1).max(1000000), unit: z.literal("m"),
+  }).strict(),
+}).strict()).max(112);
 const item = z.object({
   repeats: z.number().int().min(1).max(2000),
   distanceMetres: z.number().int().min(1).max(100000),

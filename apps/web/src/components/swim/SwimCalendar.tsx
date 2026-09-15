@@ -4,6 +4,7 @@ import { getSwimNavigation } from "@/lib/swim/navigation";
 import { standaloneSwimCalendar, type StandaloneSwimCalendarItem } from "@/lib/swim/calendar";
 import { todayYmd } from "@/lib/dates";
 import styles from "./Swim.module.css";
+import { loadBoundSwimIds } from "@/lib/swim/conditioning-view";
 
 export async function SwimCalendar({ todayOnly = false }: { todayOnly?: boolean }) {
   const client = await createClient();
@@ -11,11 +12,12 @@ export async function SwimCalendar({ todayOnly = false }: { todayOnly?: boolean 
   if (!user) return null;
   const navigation = await getSwimNavigation(client, user.id);
   if (!navigation.hasPlans) return null;
-  const [{ data: plans, error: planError }, { data: workouts, error: workoutError }, { data: profile, error: profileError }] = await Promise.all([
+  const [{ data: plans, error: planError }, { data: workouts, error: workoutError }, { data: profile, error: profileError }, boundIds] = await Promise.all([
     client.from("swim_plans").select("id,status").eq("user_id", user.id),
     client.from("swim_workouts").select("id,plan_id,scheduled_date,slot,session_id,status")
       .eq("user_id", user.id).order("scheduled_date"),
     client.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+    loadBoundSwimIds(client, user.id),
   ]);
   if (planError || workoutError || profileError) throw new Error("Could not load the swim schedule.", { cause: planError ?? workoutError ?? profileError });
   const sessionIds = (workouts ?? []).flatMap((row) => row.session_id ? [row.session_id] : []);
@@ -25,7 +27,9 @@ export async function SwimCalendar({ todayOnly = false }: { todayOnly?: boolean 
   if (sessionError) throw new Error("Could not load the swim schedule.", { cause: sessionError });
   const visibleSessions = new Set(sessions?.map((row) => row.id));
   const today = todayYmd(profile?.timezone ?? "UTC");
-  const entries = standaloneSwimCalendar(plans ?? [], (workouts ?? []).map((row) => ({
+  const standalone = (workouts ?? []).filter((row) => !boundIds.has(row.id));
+  if (!standalone.length) return null;
+  const entries = standaloneSwimCalendar(plans ?? [], standalone.map((row) => ({
     ...row, deleted: !!row.session_id && !visibleSessions.has(row.session_id),
   })) as {
     id: string; plan_id: string; scheduled_date: string; slot: "single" | "am" | "pm";

@@ -37,9 +37,13 @@ import { SWIM_REFRESH_WARNING } from "./action-feedback";
 import { loadSwimStrengthContext } from "./strength-schedule";
 import { swimPoolEditingAvailable, swimProgrammePool } from "./pool-editing";
 import type { SwimPoolEditInput, SwimPoolEditPreview } from "./view-types";
+import {
+  conditioningPlanLink, conditioningChangeSchema, saveConditioningChange, replayConditioningChange,
+  type ConditioningChange,
+} from "./conditioning-lifecycle";
 
 function refreshSwims(sessionId?: string) {
-  for (const path of ["/app", "/app/plan", "/app/swim", "/app/stats", "/app/sessions"]) revalidatePath(path);
+  for (const path of ["/app", "/app/plan", "/app/plan/history", "/app/swim", "/app/stats", "/app/sessions"]) revalidatePath(path);
   revalidatePath("/app/swim/[workoutId]", "page");
   if (sessionId) revalidatePath(`/app/sessions/${sessionId}`);
 }
@@ -281,10 +285,25 @@ export async function skipSwimWorkout(workoutId: string, revision: number, reaso
     const { plan } = await ownedSwimPlan(client, user.id, workout.plan_id);
     if (plan.status !== "active") throw new SwimActionError("Only an active swim plan can skip workouts.", "validation");
     const why = z.string().trim().min(1).max(1000).parse(reason);
-    await storage.skipSwimWorkout(client, workoutId, z.number().int().positive().parse(revision), why);
+    if (await conditioningPlanLink(client, user.id, plan.id)) {
+      await saveConditioningChange(client, swimInputId({ workoutId, revision, reason: why }), {
+        command: "skip", planId: plan.id, planRevision: plan.revision, workoutId, workoutRevision: revision, reason: why,
+      });
+    } else await storage.skipSwimWorkout(client, workoutId, z.number().int().positive().parse(revision), why);
     refreshSwims();
     return { ok: true };
   } catch (error) { return swimActionFailure(error); }
+}
+
+export async function changeConditioningSwim(requestId: string, input: ConditioningChange): Promise<ActionResult & { warning?: string }> {
+  try {
+    const parsed = conditioningChangeSchema.parse(input);
+    // Date changes must pass the reviewed date flow, including current warnings.
+    if (parsed.command === "move") throw new SwimActionError("Preview the new date before saving.", "validation");
+    const { client } = await swimContext();
+    await saveConditioningChange(client, requestId, parsed);
+  } catch (error) { return swimActionFailure(error); }
+  return refreshSavedSwim();
 }
 
 export async function changeSwimPlanStatus(planId: string, revision: number, status: "paused" | "finished" | "archived"): Promise<ActionResult & { warning?: string; view?: SwimHubView }> {
@@ -294,6 +313,9 @@ export async function changeSwimPlanStatus(planId: string, revision: number, sta
     context = await swimContext();
     const { client, user } = context;
     await ownedSwimPlan(client, user.id, planId, revision);
+    if (await conditioningPlanLink(client, user.id, planId)) {
+      throw new SwimActionError("Use the swimming controls in your programme.", "validation");
+    }
     returnedPlan = await storage.setSwimPlanStatus(client, planId, revision, z.enum(["paused", "finished", "archived"]).parse(status));
   } catch (error) { return swimActionFailure(error); }
   return confirmedPlanView(context.client, context.user.id, returnedPlan);
@@ -574,9 +596,22 @@ export async function applySwimDateEdit(preview: SwimDateEditPreview): Promise<A
   let prepared: Awaited<ReturnType<typeof prepareSwimDateEdit>>;
   let returnedPlan: storage.SwimPlanRow;
   try {
+    const context = await swimContext();
+    const input = dateEditInput.parse(preview);
+    const linked = await conditioningPlanLink(context.client, context.user.id, input.planId);
+    const change: ConditioningChange = {
+      command: "move", planId: input.planId, planRevision: input.revision,
+      workoutId: input.workoutId, workoutRevision: input.workoutRevision, date: input.date, reason: input.reason,
+      warnings: z.array(z.string().max(160)).max(2).parse(preview.warnings),
+    };
+    if (linked && await replayConditioningChange(context.client, preview.id, change)) return refreshSavedSwim();
     prepared = await prepareSwimDateEdit(preview);
     if (JSON.stringify(prepared.preview) !== JSON.stringify(preview)) throw new SwimActionError("These dates changed. Preview them again.", "validation");
     const { client, plan, row, exactInputs } = prepared;
+    if (linked) {
+      await saveConditioningChange(client, preview.id, change);
+      return refreshSavedSwim();
+    }
     const record = decision("schedule", "overridden", exactInputs, preview.id, prepared.preview.reason);
     returnedPlan = (await storage.updateSwimPlan(client, {
       planId: plan.id, expectedRevision: plan.revision, definition: plan.definition,
@@ -685,6 +720,9 @@ export async function decideSwimBenchmark(planId: string, preview: SwimBenchmark
 export async function previewSwimResume(planId: string, revision: number, startDate: string): Promise<ActionResult & { preview?: SwimResumePreview }> {
   try {
     const { client, user } = await swimContext();
+    if (await conditioningPlanLink(client, user.id, planId)) {
+      throw new SwimActionError("Resume swimming from your programme.", "validation");
+    }
     const { plan, workouts } = await ownedSwimPlan(client, user.id, planId, revision);
     const { today } = await swimToday(client, user.id);
     if (plan.status !== "paused") throw new SwimActionError("Only a paused plan can be resumed.", "validation");

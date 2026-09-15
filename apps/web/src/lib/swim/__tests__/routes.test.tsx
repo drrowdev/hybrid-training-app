@@ -13,6 +13,9 @@ import { loadSwimHubView, loadSwimWorkoutView } from "../queries";
 import { swimFixture, userId, sessionId } from "./fixtures";
 import { workoutPresentation } from "../presentation";
 import type { SwimWorkoutView } from "../view-types";
+import { conditioningPlanLink } from "../conditioning-lifecycle";
+import { loadConditioningSwims } from "../conditioning-view";
+import { MatchedRecordings } from "@/components/swim/MatchedRecordings";
 
 vi.mock("next/navigation", () => ({
   redirect: (url: string) => { throw new Error(`redirect:${url}`); },
@@ -28,6 +31,8 @@ vi.mock("@/lib/sessions/actions", () => ({ editCardio: vi.fn() }));
 vi.mock("@/components/session/EditCardioForm", () => ({ EditCardioForm: () => null }));
 vi.mock("../storage", () => ({ listSwimPlans: vi.fn() }));
 vi.mock("../queries", () => ({ loadSwimHubView: vi.fn(), loadSwimWorkoutView: vi.fn() }));
+vi.mock("../conditioning-view", () => ({ loadConditioningSwims: vi.fn() }));
+vi.mock("../conditioning-lifecycle", () => ({ conditioningPlanLink: vi.fn() }));
 vi.mock("@/components/swim/SwimHub", () => ({ SwimHub: () => null }));
 vi.mock("@/components/swim/WorkoutScreen", () => ({ WorkoutScreen: () => null }));
 
@@ -40,6 +45,8 @@ function elements(node: unknown): ReactElement<Record<string, unknown>>[] {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(conditioningPlanLink).mockResolvedValue(null);
+  vi.mocked(loadConditioningSwims).mockResolvedValue(new Map());
   vi.mocked(getSwimCapability).mockResolvedValue({ storageAvailable: true, setupEnabled: false });
   vi.mocked(listSwimPlans).mockResolvedValue([swimFixture().plan]);
   vi.mocked(loadSwimHubView).mockResolvedValue({ id: "view" } as Awaited<ReturnType<typeof loadSwimHubView>>);
@@ -47,6 +54,13 @@ beforeEach(() => {
 });
 
 describe("ADR0079 reachable standalone routes", () => {
+  it("keeps linked swimming in the primary programme instead of standalone resumption", async () => {
+    vi.mocked(conditioningPlanLink).mockResolvedValue({ block_id: sessionId, planned_session_id: sessionId });
+    await expect(SwimPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("redirect:/app/plan");
+    expect(loadSwimHubView).not.toHaveBeenCalled();
+    vi.mocked(listSwimPlans).mockResolvedValue([{ ...swimFixture().plan, status: "finished" }]);
+    await expect(SwimPage({ searchParams: Promise.resolve({}) })).rejects.toThrow("redirect:/app/plan/history");
+  });
   it("loads the hub without a primary block or enabled setup", async () => {
     const page = await SwimPage({ searchParams: Promise.resolve({}) });
     expect(loadSwimHubView).toHaveBeenCalledWith({}, userId, swimFixture().plan);
@@ -92,6 +106,20 @@ describe("ADR0079 reachable standalone routes", () => {
     expect(screen.props).toEqual({ workout: { id: "workout", revision: 2, title: "Pool swim" } });
     expect(screen.key).toBe("workout:2");
     expect(elements(page).filter((element) => element.type === PageHeader)).toHaveLength(1);
+  });
+  it("DC-SW7 requests rescheduling only for linked controls and preserves the Sessions return", async () => {
+    vi.mocked(loadConditioningSwims).mockResolvedValue(new Map([["workout", {
+      id: "workout", title: "Swim A", distance: "500 m", pool: "25 m", recordingDate: null,
+      status: "scheduled", settled: false, completed: false, actionable: true,
+      controls: { planId: swimFixture().plan.id, planRevision: 1, workoutRevision: 1, planStatus: "active", editable: true },
+    }]]));
+    const page = await SwimWorkoutPage({
+      params: Promise.resolve({ workoutId: "workout" }), searchParams: Promise.resolve({ from: "sessions" }),
+    });
+    expect(loadSwimWorkoutView).toHaveBeenCalledWith({}, userId, "workout", true);
+    expect(elements(page).find((element) => element.type === MatchedRecordings)?.props.origin).toBe("sessions");
+    expect(elements(page).find((element) => element.type === PageHeader)?.props.back)
+      .toEqual({ href: "/app/sessions", label: "Sessions" });
   });
   it("never restores result editing on query entry, clear or re-entry", async () => {
     const row = swimFixture().history[0]!.workout;

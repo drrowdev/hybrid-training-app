@@ -7,7 +7,7 @@ import { SWIM_COURSE_VERSION, swimScheduleAdvice, formatPoolCourse, formatSwimDi
 import { compileSwimCourseWorkout } from "@hta/engine";
 import { addDaysToYmd } from "@/lib/dates";
 import type { ActionResult } from "@/lib/offline/outbox-core";
-import { parseSwimCourseFile, swimCourseWorkoutSchema } from "./course-file";
+import { parseSwimCourseFile, swimCourseWorkoutSchema, swimCoursePoolChoicesSchema } from "./course-file";
 import { planPrivateSwimCourse } from "./course-planning";
 import { privateSwimCourseAvailable } from "./course-capability";
 import { parseSetupForm } from "./forms";
@@ -21,15 +21,6 @@ import { SWIM_REFRESH_WARNING } from "./action-feedback";
 import { isPrivateSwimPlan, swimWorkoutDefinition } from "./model";
 import { workoutPresentation } from "./presentation";
 
-const choicesSchema = z.array(z.object({
-  weekIndex: z.number().int().min(0).max(15),
-  workoutIndex: z.number().int().min(0).max(6),
-  course: z.object({
-    numerator: z.number().int().min(1).max(1000000),
-    denominator: z.number().int().min(1).max(1000000), unit: z.literal("m"),
-  }).strict(),
-}).strict()).max(112);
-
 async function prepare(form: FormData) {
   const { client, user } = await swimContext(true);
   if (!await privateSwimCourseAvailable(client)) throw new SwimActionError("Plan imports are unavailable.", "validation");
@@ -41,7 +32,7 @@ async function prepare(form: FormData) {
   if (input.observation) throw new SwimActionError("Import the course without an assessment.", "validation");
   const { today } = await swimToday(client, user.id);
   if (input.startDate < today) throw new SwimActionError("Choose today or a future start date.", "validation");
-  const poolChoices = choicesSchema.parse(JSON.parse(z.string().parse(form.get("poolChoices") ?? "[]")));
+  const poolChoices = swimCoursePoolChoicesSchema.parse(JSON.parse(z.string().parse(form.get("poolChoices") ?? "[]")));
   const planned = planPrivateSwimCourse({ source, ...input, poolChoices });
   const strengthContext = await loadSwimStrengthContext(client, user.id);
   const advice = swimScheduleAdvice(strengthContext, input.startDate, source.weeks.length, input.weekdays);

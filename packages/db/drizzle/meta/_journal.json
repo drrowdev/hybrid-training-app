@@ -1086,6 +1086,34 @@
       "when": 1789304400000,
       "tag": "0154_swim_untimed_courses",
       "breakpoints": false
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1789408800000,
+      "tag": "0155_swim_import_outcomes",
+      "breakpoints": false
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1789416000000,
+      "tag": "0156_atomic_swim_conditioning",
+      "breakpoints": false
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1789459200000,
+      "tag": "0157_swim_conditioning_lifecycle",
+      "breakpoints": false
+    },
+    {
+      "idx": 158,
+      "version": "7",
+      "when": 1789488000000,
+      "tag": "0158_conditioning_request_identity",
+      "breakpoints": false
     }
   ]
 }

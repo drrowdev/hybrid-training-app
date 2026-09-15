@@ -11,6 +11,8 @@
   },
   "files": [
     "scripts/swim-account-flow.ts",
-    "scripts/swim-account-flow-browser.ts"
+    "scripts/swim-account-flow-browser.ts",
+    "scripts/swim-conditioning-account-flow.ts",
+    "scripts/swim-conditioning-account-flow-browser.ts"
   ]
 }

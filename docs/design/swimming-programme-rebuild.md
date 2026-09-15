@@ -6,6 +6,8 @@ privately and imported by the owner. Account pairing, the cache-only reader,
 preview-first sender, immutable observations and explicit recording matches have
 development acceptance. Seven native checks passed with two disposable accounts,
 followed by verified cleanup, as recorded below.
+The shared programme/Today/history integration is now on the same protected
+site. Its integrated disposable-account check remains pending.
 Real swimming-data transfer and watch delivery remain unfinished and held.
 **Owner decision:** 2026-09-12.
 
@@ -705,3 +707,318 @@ failures can expose only the existing closed SCID diagnostic, not raw errors.
 The disposable rehearsal retains canonical-path coverage and adds refusal
 without PUBLIC access, rollback of the redundant grant, and successful update
 with the original final permissions and 203-record history retained.
+
+### Production update completed - 2026-09-14
+
+Repair source `dab7624b` passed exact-source CI 34814413709 and the real-Postgres
+rehearsal 34814413726. PR813 was merged as `8d431198`, preserving the tested tree
+and approved authorship. The exact app source reached a successful Vercel
+Production deployment before the database attempt.
+
+The single authorized update, run34815744151/job103886961627, passed all five
+stages. The equivalent-ACL preparation was staged and verified; the transaction
+committed all nine unchanged migrations. All 203 original history records were
+retained, with nine appended for 212 total. Final permission, policy and capability
+checks passed, and the connection closed. No reconciliation is required.
+
+The existing read-only drift job was then refreshed against the changed database.
+Run34814905742 attempt2/job103887551022 verified all 155 canonical journal entries
+online. Only that job executed again; the successful source/browser/RPC results
+retained their original execution timestamps. The updater was not replayed.
+
+Swimming was still disabled at this checkpoint; the subsequent activation is
+recorded below. Private programme transfer remains separately held. Both the old
+203-record updater profile and the post-failure diagnostic pinned to `549110bc`
+are historical, spent profiles and must not be replayed.
+
+### Authorized production activation
+
+The owner subsequently approved enabling the reviewed swimming features for
+existing getsxc.app accounts. Private programme transfer remains separate.
+The activation runner is feature-branch tooling, not a new production app
+revision: it pins the deployed application to `8d431198` and checks that live main
+has not moved. Existing Production environment protections and secrets are used
+without changing access policies.
+
+After a read-only check of the 212-record history and final storage capabilities,
+the runner may create only the five swimming flags for production, with value
+`true`. These non-secret flags use plain values so they can be verified directly.
+Existing settings, preview bindings and the protected review alias must remain
+unchanged; fixture and build-SHA overrides stay absent. A fresh production build
+uses the pinned main source, not the activation runner's feature revision.
+
+The workflow has one non-cancelling production-operation slot, a ten-minute
+runtime, at most 60 bounded HTTP requests, one flag-creation attempt and one
+deployment attempt. Failures after a write require reconciliation, not replay.
+No migrations, application/Auth rows, account provisioning or private files are
+part of activation. The final receipt must verify the ready deployment and
+getsxc.app alias before claiming activation.
+
+### Production activation completed - 2026-09-14
+
+Tooling source `ef0a78ac` passed CI 34820629716 and SQL rehearsal 34820629649,
+including the read-only storage check and refusal of a read-write transaction.
+The single owner-approved activation, run34821521831/job103905224340, passed all
+eight stages. Its read-only verification accepted the unchanged 212-record
+history and final capabilities, then closed the database connection.
+
+The five approved production flags were created and verified. A fresh build of
+the existing main source `8d431198` reached READY as
+`dpl_5G7ZMAyyg9JzZAYgPJEwgAKnHcH4`, and getsxc.app was verified against that
+deployment. Other settings, protection and the protected review alias were
+preserved; fixtures and build-SHA overrides remained absent. The safe receipt
+was consumed once: 31 HTTP requests, no errors and no reconciliation required.
+The activation profile is now spent and must not be replayed.
+
+The public `/app/swim` entry reaches sign-in with its return path retained.
+This is reachability evidence, not owner-account visual acceptance. The private
+16-workout programme remains on the protected test site; no transfer, account
+provisioning or application/Auth-row access occurred during activation. PR814
+contains the operational tooling, not a new production app revision, and is
+not merged as part of this release.
+
+### Approved conditioning integration - 2026-09-14
+
+The owner approved implementing the reviewed built-in journey. The main
+programme's Schedule step supplies the eligible conditioning days; a conditional
+Conditioning step assigns activities and exposes swimming options without a
+second wizard, weekday selector or start date. One final save must persist the
+programme and swimming relationship together. Today, the calendar and history
+must refer to one workout, not parallel conditioning and swimming entries.
+
+The owner subsequently approved development-only database ownership checks and
+backward-compatible migration/down files. No hosted apply, production deployment
+or real-account mutation is authorized. Explicit slot identities, source
+prescriptions and prior results must survive edits, removal and lifecycle changes.
+Unsupported course fit must be shown before saving, never handled by truncating
+or repeating workouts.
+
+Recording remains outside GetSXC. The owner approved a separate Completed /
+Stopped early confirmation after matching an imported recording, not restored
+measurement entry. Existing imports do not establish native pool length or
+verified active time. Matching, outcome confirmation, recorded measurements and
+any shared workload projection must therefore remain distinct. No native result,
+pace or workload can be fabricated from missing evidence.
+
+Implementation includes pure eligibility/date/identity validation, controlled
+activity selection and a reusable wizard progress control. The main wizard now
+mounts a default-off fifth step for eligible new open-conditioning programmes.
+Existing course selection and source import use shared inline pool/experience
+controls, the primary dates and the same final save. Drafts survive Back;
+changed dates, files and pools require a fresh review. Imported-outcome
+confirmation has default-off UI, action, export and append-only storage code;
+its development checkpoint `4387d026` passed core CI34878088126 and disposable
+storage CI34878088068. Those SQL stages are not the frozen browser casebook.
+
+The default-off single programme/swim transaction includes the
+server-action connection, stable retry receipts and exported ownership links
+([ADR0086](../adr/0086-atomic-swim-conditioning.md)). Local slot deletion cannot
+detach a swim, while whole primary purge retains original association history.
+Native programmes and recovery-week insertion remain unavailable in this new
+path; the bounded programme edit is described below. Source `00fa09d3` passed core
+CI34890112070 and disposable storage CI34890112131, including24 SQL stages.
+The mounted wizard's synthetic375/1280 browser journeys cover new/existing
+sources, draft recovery, unchanged retry and the flag-off path.
+
+The complete isolated authenticated journey remains outstanding.
+A follow-up to unshipped0156 moves the wizard's edited benchmarks
+into the same transaction. The context builder uses them without writing during
+engine preparation and whole-course fit validation; unchanged retry returns the
+original receipt without overwriting later benchmark changes. A separate
+readiness check prevents older storage from ignoring the new inputs. That
+extension passed exact-source core34928353200 and PostgreSQL34928353211 at
+`50750d51`.
+
+The shared development checkpoint projects linked swims through Today, the shared
+rail/calendar drawer and programme history. The original planned identity leads
+to the swimming prescription and imported recording, with bounded internal return
+navigation. A security-invoker view reads current matching evidence and the latest
+claim together; domain rules distinguish complete, stopped early and stale evidence.
+It creates no native result, measured duration or workload. Linked entries are
+excluded from the separate swimming list, including retained associations.
+Native completion controls and independent date writes are not exposed for these
+links. Source4cad18c0 passed core34935940196 and storage34935940221.
+
+The owner confirmed on2026-09-15 that pausing swimming must keep the primary dates
+and end. No independent continuation, extension or catch-up is allowed. Unconfirmed
+past swims remain unknown/incomplete; skip/undo is explicit. Development0157 adds
+atomic paired date changes, fixed-calendar pause/resume and retained retry history.
+Ending the primary programme also finishes its linked swimming in the same
+transaction. Shared drawer/workout controls use the existing components and
+reviewed pool, course and date editors. Lifecycle and ordinary Sessions/Recent
+activity history passed exact-source core34944116720 and storage34944116919 at
+2bdffde7, including schema reversal/reinstallation and cleanup.
+
+The owner separately chose moving future unstarted swims with changed primary
+training days. The normal Edit plan path now prepares one paired rewrite,
+preserving linked identities, prescriptions and settled work. Paused plans remain
+paused. Weekday activities retain their order; frequency, programme length and
+single/am/pm placement stay fixed. A frozen swim cannot silently remove new
+strength work. Current saved choices reopen the editor without historic weekdays.
+Source410ea93c passed core34947730470 and storage34947730472, including paused
+multi-moves, stale snapshots, concurrent saves, occupied destinations, late
+transaction rollback, claimed-history protection and synthetic cleanup.
+The authenticated full journey and hosted delivery remain outstanding.
+No physical-device or owner usability acceptance is claimed.
+
+### Approved protected conditioning update - 2026-09-15
+
+The owner approved updating the protected test site and exercising the complete
+journey with disposable accounts. The existing private course and all existing
+history must remain untouched. Production, private-data transfer, watch work and
+backups remain outside this approval.
+
+The new default-off `update_conditioning_swim_review` operation pins application
+410ea93c and its successful core run. Only declared tooling/docs may differ.
+It requires an exact clean feature source, unchanged main, the current protected
+deployment/alias receipt, existing Auth/protection settings and all155 canonical
+ledger records. A fresh read-only preflight must pass before an apply dispatch.
+Historical update profiles remain spent and unchanged.
+
+One bounded transaction appends only0155-0157 and verifies the158-entry ledger,
+owner policies, restricted writer and authenticated capabilities. It cannot
+rewrite the existing ledger or modify owner rows. The updater may then create
+only `SWIM_CONDITIONING_ENABLED` and `SWIM_IMPORT_OUTCOMES_ENABLED`, both encrypted
+and scoped to the review branch's Preview environment. The existing guarded
+refresh changes its build SHA, creates one exact-source Preview and updates the
+same protected alias. All previous flags and unrelated settings are preserved.
+
+An attempted or partial write is reported as requiring reconciliation; no
+automatic retry or destructive down is allowed. The existing PostgreSQL service
+fixture rehearses precommit rollback, preservation, replay refusal and unused
+downs on synthetic data only. Native disposable-account integration and owner
+usability are separate acceptance gates, not inferred from this update.
+
+Read-only34950941881 passed at9d42be34 with the expected155-entry ledger and no
+mutation attempts. Apply34952341296 then passed: the original155 records were
+retained,0155-0157 appended, both new Preview flags created and READY deployment
+`dpl_BiNzLA4dsCDBqe3TjT8D5zhcC28V` assigned to the same protected alias.
+The operation window was2026-09-15T09:29:50Z to09:32:28Z. Auth, access protection
+and isolation checks passed; storage closed without reconciliation. This profile
+is now spent. Production remains8d431198 and no existing course/history was edited.
+
+### Integrated disposable-account acceptance
+
+A separate default-off operation pins that deployment and both flag receipts.
+It reuses the existing GitHub-hosted Next/Auth runner, not a local database or
+the owner's account. It creates two marked synthetic accounts, limits the run
+to18 minutes, browser traffic to750 requests, client traffic to100 and admin
+traffic to70. Only loopback and the exact review Supabase origin are allowed;
+WebSockets and persisted browser media remain disabled.
+
+The owner approved changing only the integrated browser limit from500 to750
+on2026-09-15. Native34992320955 and34996088187 reached history but exhausted500
+after both imported outcomes survived reload. Real navigation already replaced
+all full-page loads except initial sign-in and required outcome reloads. The
+seven cases, two accounts, other traffic/time limits and cleanup remain unchanged;
+the standalone runner retains500. This is authorization for remaining protected
+acceptance, not production or private-course changes.
+
+The seven integrated checks cover native sign-in, programme creation with an
+inline synthetic course, Today/shared-calendar navigation, completed and
+stopped-early import confirmations, ordinary history and isolation, future
+programme edits while paused followed by fixed-date resume, and import-key
+revocation. Mobile375x812 and desktop1280x900 are browser viewports, not physical
+devices. No native measurements or workload are invented.
+
+Main cleanup and independent `always()` cleanup verify removal of both fixture
+accounts and their swimming, conditioning, primary programme, benchmark, session
+and cardio rows. Cleanup retains immutable-source and ownership checks while
+allowing a moved live ref; it cannot turn a failed main journey into success.
+Output is a closed, source-bound summary with fixed phase codes, never user rows,
+raw errors, keys, recordings or screenshots. This checks the same application
+source against the protected database; it is not yet owner usability acceptance
+or a browser test through Vercel's protected hostname.
+
+Native34973187607 confirmed that the combined Save is denied access to schema
+`auth`. The earlier restricted identity helper was not used by the new combined
+writer. The owner approved a bounded protected-site repair. Additive0158 reuses
+that unchanged helper, preserves RLS and function attributes, and grants no
+managed-auth access. Its paired down preserves all history. The GitHub PostgreSQL
+fixture now reproduces this missing-schema-access condition and exercises
+repair/down/restore before the full save/lifecycle/isolation suite.
+Read-only34978569711 and database-only repair34979248193 subsequently passed.
+All158 prior ledger records were preserved and only0158 appended, reaching159.
+Deployment9d42be34, flags, Auth and user rows were unchanged. Both the deployment
+updater and database repair are spent and cannot be replayed.
+
+The complete seven-case native journey passed atfd9c01f3 in35005360323
+(job104505373816), following exact core35004291663/storage35004291658.
+Both accounts created programmes through the normal picker, found their swims
+in Today/Plan, matched recordings, confirmed different outcomes through reload,
+and revisited ordinary history. Isolation/no-invented-native-row checks, future
+programme editing while paused, fixed-date resume and key revocation passed.
+Traffic was651 browser/40 client/14 admin requests within the approved bounds.
+Both accounts/all15 tables and independent cleanup passed; all main processes
+closed. This is GitHub-loopback acceptance against protected storage, not a new
+Vercel deployment, physical-device validation or owner usability acceptance.
+
+A separately observed Today query requested `movements.name` instead of
+`display_name`. That query supplies movement-region/slug maps for recovering-region
+warnings; it is not the recording-matching path. The owner subsequently approved
+the separate correction and release preparation below.
+Production/private-course changes remain held.
+
+### Remaining release sequence - 2026-09-15
+
+The owner authorized the Today query correction and release preparation, not
+deployment. The correction restores movement labels/region/slug context without
+changing DC-V2 warning thresholds or training data. It needs a fresh accepted
+application reference and a complete protected-storage account run; the existing
+tooling-only reference must not be broadened to admit unqualified application code.
+
+1. Qualify the Today correction with focused checks, exact-source CI/storage,
+   and the same seven-case protected account journey. Require no observed
+   context-read failures. Preserve750 browser/100 client/70 admin limits and
+   both-account/all15-table cleanup.
+2. Obtain approval for a fresh protected app-only update. Pin the newly accepted
+   source and current deployment/alias receipts; inspect159 storage read-only.
+   Preserve all flags, Auth/protection, courses and history. Do not replay either
+   spent protected updater. Return the protected-site link and a short owner
+   usability task after the new deployment is READY and verified.
+3. Before production, refresh public main/PR/deployment metadata and obtain
+   approval for a new bounded read-only production preflight. Prior production
+   receipts are historical, not authority to execute their profiles again.
+   Inspect complete ledger membership/fingerprint and current schema/role/FK/RLS
+   readiness without raw row/error output. Stop on drift.
+4. The source comparison with main8d431198 preserves all155 journal entries
+   unchanged and adds only0155 outcomes,0156 atomic conditioning,0157 lifecycle,
+   and0158 identity. Each has a paired down. Historical production has212 ledger
+   records, not155; preserve that whole history, including approved legacy
+   exceptions. Only if fresh inspection confirms the expected baseline may a
+   new append-only plan target212 plus4 records. Never reset, normalize or
+   renumber applied history to match the source journal.
+5. Prepare and rehearse the exact production transaction and staged app/flag
+   rollout against that fresh baseline, then request explicit production approval.
+   Keep the two new integration flags disabled until their storage prerequisites
+   and exact application deployment are verified; retain the five existing
+   standalone flags. Reconcile/merge through required checks, then execute only
+   the approved new profile and verify the live alias.
+
+Before commit, a failed migration transaction rolls back. After commit, disable
+new integration and reconcile/roll forward; do not erase ledger/history.0155-0157
+downs refuse retained outcome/conditioning history.0158 down restores the known
+identity denial and is not an automatic recovery action. Any down or user-data
+migration requires separate explicit approval. Production rollout, private-course
+transfer, physical-device claims and backups remain outside current authorization.
+
+**Qualification complete; protected update awaits approval.** Application97518f6d
+passed core35015324525/storage35015324459. Test/tooling e1475287 passed
+core35019853704/storage35019853397 and the full seven-case account run35020734525
+(job104557087344). The final post-shutdown request gate passed with no observed
+context-read failures. All six observed replay/save/match requests returned200.
+Traffic was658 browser/40 client/14 admin, within750/100/70. Both accounts/all15
+tables and independent cleanup passed; all main processes closed.
+
+The earlier35017239963 attempt stopped while opening the second recording.
+The fixture now waits for the connection's visible completion before simulating
+external receipt and returns through the normal imports list. Its successful
+execution is not a guarantee that every earlier intermittent failure had that
+single cause. No retries or weaker assertions were added.
+
+The immediate owner action is approval for a fresh **protected app-only update**,
+with159 storage, all existing flags/Auth/protection and personal data retained.
+No production action is included. After a verified READY update, the owner
+usability task is to find the next swim, inspect its instructions and locate a
+saved result without coaching, using authorized test data. Creating/replacing
+the owner's existing plan or modifying personal history is not part of that task.

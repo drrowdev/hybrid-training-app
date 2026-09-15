@@ -1276,7 +1276,7 @@ describe("ProgramPicker rendering", () => {
     );
     // The wizard opens on the Program step with the Continue (not Deploy) CTA,
     // so the deploy CTA is absent until the user advances through the wizard.
-    expect(html).not.toContain("Deploy program");
+    expect(html).not.toContain("Create program");
     expect(html).toContain("Continue");
     // Program cards are present so the user can make a selection.
     expect(html).toContain('data-testid="program-card-wendler-531"');

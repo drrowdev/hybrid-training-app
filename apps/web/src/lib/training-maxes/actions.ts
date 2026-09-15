@@ -7,16 +7,12 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { roundToPlate } from "./queries";
 import { activeProgramTmPercent } from "./active-program-basis";
 import { syncTmSuggestionsForSession } from "./tm-suggestion-sync";
-
-const upsertSchema = z.object({
-  movementId: z.string().uuid(),
-  oneRmKg: z.coerce.number().positive().lte(1000),
-});
+import { trainingMaxInputSchema } from "./input";
 
 export type UpsertResult = { ok: true } | { ok: false; error: string };
 
 export async function upsertTrainingMax(formData: FormData): Promise<UpsertResult> {
-  const parsed = upsertSchema.safeParse({
+  const parsed = trainingMaxInputSchema.safeParse({
     movementId: formData.get("movementId"),
     oneRmKg: formData.get("oneRmKg"),
   });
@@ -319,4 +315,3 @@ export async function generateTmSuggestionsForSession(
   if (created.length > 0) revalidatePath("/app");
   return created;
 }
-

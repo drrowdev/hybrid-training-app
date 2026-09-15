@@ -1,4 +1,5 @@
 "use client";
+import { SWIM_TRAINING_LABEL } from "@/lib/swim/conditioning-presentation";
 
 /**
  * Shared "This week" rail card — the single source of truth for the
@@ -184,7 +185,9 @@ export function RailList({
                   </span>
                 )}
               </span>
-              {s.done ? (
+              {s.swim && s.swim.status !== "scheduled" && !s.done ? (
+                <span className="rail-kind">{SWIM_TRAINING_LABEL[s.swim.status]}</span>
+              ) : s.done ? (
                 <span className="rail-status done" aria-label="Done">✓</span>
               ) : s.skipped ? (
                 <span className="rail-status skip" aria-label="Skipped">⊘</span>
@@ -194,7 +197,7 @@ export function RailList({
                 </span>
               ) : (
                 <span className="rail-kind mono">
-                  {s.isRehab ? "Rehab" : s.isCardio ? "Cardio" : "Strength"}
+                  {s.swim ? "Swimming" : s.isRehab ? "Rehab" : s.isCardio ? "Cardio" : "Strength"}
                 </span>
               )}
             </button>

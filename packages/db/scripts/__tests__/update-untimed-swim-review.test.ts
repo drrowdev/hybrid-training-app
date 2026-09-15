@@ -13,6 +13,7 @@ import { refresh, verifyRefreshSource } from "../refresh-swim-review";
 import { ACCEPTED_DEPLOYMENT, BASE_SHA, CONFIGURATION, DEPLOY_ROUTES, deploymentRoute, RECEIPT, updateRoute } from "../deploy-swim-review";
 import { OVERRIDE_KEYS, REVIEW, type EnvironmentMetadata } from "../swim-review-config-plan";
 import { ROUTES } from "../configure-swim-review";
+import { historicalSwimMigrations } from "../../integration-tests/historical-swim-migrations";
 
 const sha = "b".repeat(40), canary = "SyntheticSensitiveCanary987654321";
 const env: NodeJS.ProcessEnv = {
@@ -153,7 +154,8 @@ describe("DC-SW3/SW5/SW8 protected untimed-course update", () => {
     expect(() => untimedReceipt([...state.project, state.project[0]!], [])).toThrow();
   });
   it("checks the full canonical154 prefix and155 result, not just the last ledger row", () => {
-    const migrations = untimedReviewMigrations();
+    const migrations = historicalSwimMigrations();
+    expect(() => untimedReviewMigrations()).toThrow("migration_source");
     const rows = migrations.map((entry, index) => ({ id: index + 10, hash: entry.hash, created_at: String(entry.folderMillis) }));
     expect(() => validateUntimedLedger(rows.slice(0, 154), migrations, 154)).not.toThrow();
     expect(() => validateUntimedLedger(rows, migrations, 155)).not.toThrow();
@@ -243,7 +245,7 @@ describe("DC-SW3/SW5/SW8 protected untimed-course update", () => {
     };
     const current = jobs(workflow);
     for (const [name, hash] of Object.entries(baseline)) expect(current.get(name), name).toBe(hash);
-    const job = workflow.split("\n  update-untimed-swim-review:\n")[1]!;
+    const job = workflow.split("\n  update-untimed-swim-review:\n")[1]!.split(/\n  [a-z][a-z0-9-]+:\n/)[0]!;
     for (const gate of ["needs: [ci, identity-guard]", "environment: swim-review", "group: swim-review-bootstrap",
       "cancel-in-progress: false", "persist-credentials: false", "inputs.expected_sha != '' && inputs.expected_sha == github.sha",
       ...profile.otherOperations.map((key) => `inputs.${key.toLowerCase()} == false`)]) expect(job).toContain(gate);
