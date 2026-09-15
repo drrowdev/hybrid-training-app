@@ -4469,3 +4469,21 @@ for changing the calendar or widening this execution's scope before it completes
 Both accounts/all15 tables were removed; independent cleanup and all main
 process closure passed. The main journey still failed, and its safe main/cleanup
 summaries were consumed once. No unchanged-head rerun is authorized.
+
+## [2026-09-15] correction | Keep the complete journey within its request bound
+
+0b0bc12c passed core34984595609/storage34984595479. Native34985552442 passed
+sign-in, both programme saves and the shared Today/Plan path. It completed the
+first account's confirmation/reload and reached the second account's matching
+screen before exceeding the unchanged500-browser-request bound (505 observed).
+Both accounts/all15 tables were removed; independent cleanup and all main
+process closure passed. The complete journey is still unaccepted.
+
+The runner had repeatedly loaded whole pages instead of using the app's links.
+It now uses visible in-app navigation, the existing swimming-settings card,
+Recent activity's Sessions link and the programme drawer. Initial sign-in,
+programme selection, new-recording deep links and required confirmation reloads
+remain. All seven cases, both accounts, server-owned identity checks,500/100
+request bounds, network restrictions and cleanup remain unchanged. No response
+is mocked or filtered out of the request counter. The next full execution must
+prove that these real user interactions fit the existing bound.
