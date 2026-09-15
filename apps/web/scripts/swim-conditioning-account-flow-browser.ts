@@ -7,7 +7,8 @@ import { syntheticCourse } from "../src/lib/swim/__tests__/course-fixtures";
 import { ACCOUNT_FLOW_ORIGIN as origin, ACCOUNT_FLOW_SUPABASE as supabaseUrl,
   AccountFlowRefusal, demand } from "../../../packages/db/scripts/swim-account-flow-guards";
 import type { NativeAccount, NativeReport } from "./swim-account-flow-browser";
-import { conditioningSaveDiagnostic, conditioningFixtureSchedule } from "../../../packages/db/scripts/swim-conditioning-account-flow-guards";
+import { conditioningSaveDiagnostic } from "../../../packages/db/scripts/swim-conditioning-account-flow-guards";
+import { conditioningFixtureSchedule } from "./swim-conditioning-account-flow-fixture";
 
 export const conditioningChecks = ["native_sign_in", "programme_creation", "shared_next_swim",
   "recording_confirmation", "history_and_isolation", "programme_edit_and_pause", "disconnect"] as const;

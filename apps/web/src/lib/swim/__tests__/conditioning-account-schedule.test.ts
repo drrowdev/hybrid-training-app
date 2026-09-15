@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { planSwimConditioningBindings, planSwimConditioningEdit } from "@hta/domain";
-import { conditioningFixtureSchedule } from "../../../../../../packages/db/scripts/swim-conditioning-account-flow-guards";
+import { conditioningFixtureSchedule } from "../../../../scripts/swim-conditioning-account-flow-fixture";
 import { planConditioningCourse } from "../conditioning-input";
 import { syntheticCourse } from "./course-fixtures";
 

@@ -19,20 +19,6 @@ export const conditioningRequestDiagnosticSchema = z.object({
     z.string().regex(/^schema:(public|auth|pg_catalog)$/),
   ]).optional(),
 }).strict().refine((value) => (value.code === "42501") === (value.authorization !== undefined));
-export function conditioningFixtureSchedule(today: string) {
-  z.string().date().parse(today);
-  const todayDay = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
-  // Two weekly swims need a later, still-future rest day for the same-week edit.
-  // Late-week fixtures use one swim; no course spills beyond the primary block.
-  const swimDays = todayDay <= 3 ? [todayDay, todayDay + 2] : [todayDay];
-  const remaining = Array.from({ length: 7 }, (_, day) => day).filter((day) => !swimDays.includes(day));
-  const strengthDays = remaining.slice(0, 3);
-  const restDays = remaining.slice(3);
-  const editFrom = swimDays.at(-1)!;
-  const editTo = swimDays.length === 2 ? restDays.find((day) => day > todayDay) : restDays[0];
-  demand(editTo !== undefined, "fixture_schedule");
-  return { today, todayDay, swimDays, strengthDays, editFrom, editTo, workoutCount: swimDays.length * 6 };
-}
 export function conditioningSaveDiagnostic(alerts: readonly string[]) {
   if (!alerts.length) return "no_alert";
   const text = alerts.join("\n");
@@ -76,6 +62,7 @@ export function conditioningAccountProfile(value: ConditioningReviewReceipt): Re
       "apps/web/scripts/swim-account-flow.ts", "apps/web/scripts/swim-account-flow-browser.ts",
       "apps/web/scripts/swim-conditioning-account-flow.ts", "apps/web/scripts/swim-conditioning-account-flow-browser.ts",
       "apps/web/scripts/swim-conditioning-account-flow-observer.mjs",
+      "apps/web/scripts/swim-conditioning-account-flow-fixture.ts",
       "packages/db/scripts/__tests__/swim-conditioning-account-flow-observer.test.ts",
       "apps/web/src/lib/swim/__tests__/conditioning-account-schedule.test.ts",
       "apps/web/tsconfig.account-flow.json", "apps/web/tsconfig.json",
