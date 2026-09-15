@@ -66,7 +66,8 @@ describe("DC-SW3/SW5/SW8 integrated disposable-account boundary", () => {
     expect(browser).toContain("baseExpect.configure({ timeout: 20_000 })");
     expect(browser).toContain("context.setDefaultTimeout(20_000)");
     expect(browser).toContain(`page.locator('p[role="alert"]')`);
-    expect(browser).toContain("++report.browserRequests > 500");
+    expect(browser).toContain("const MAX_BROWSER_REQUESTS = 750");
+    expect(browser).toContain("++report.browserRequests > MAX_BROWSER_REQUESTS");
     expect(browser).toContain("++report.clientRequests <= 100");
     expect(browser).toContain("await page.reload()");
     expect(browser.match(/page\.goto\(/g)).toHaveLength(1);
@@ -74,6 +75,8 @@ describe("DC-SW3/SW5/SW8 integrated disposable-account boundary", () => {
     expect(browser).toContain('getByTestId("program-card-tactical-barbell")');
     expect(browser).toContain('a[href="/app/swim/recordings/${receipt.id}"]');
     expect(browser).toContain('await page.getByTestId("settings-hub-swimming").click()');
+    const standalone = readFileSync(resolve(__dirname, "../../../../apps/web/scripts/swim-account-flow-browser.ts"), "utf8");
+    expect(standalone).toContain("++report.browserRequests > 500");
   });
   it("reduces save alerts to fixed categories without retaining their text", () => {
     expect(conditioningSaveDiagnostic([])).toBe("no_alert");

@@ -4519,3 +4519,20 @@ imports after returning through Settings. Only initial sign-in uses full-page
 navigation; both outcome reloads remain. This exercises visible navigation rather
 than bypassing it with deep links. Both accounts, every case and every request
 count/limit remain unchanged. Savings and complete acceptance require execution.
+
+## [2026-09-15] decision | Owner approves the integrated browser request budget
+
+5b14cbf6 passed core34995073154/storage34995073171. Native34996088187 passed
+the actual programme-picker and Recent imports paths, both Today/Plan journeys,
+and both recording confirmations through reload. Account A completed history
+navigation and ten owner-read/no-native-row checks. Account B history hit500
+requests (502 attempted/16 client/14 admin). Both accounts/all15 tables and
+independent cleanup passed; all main processes closed. Full seven-case acceptance,
+programme editing, pause/resume and disconnection remain unproven.
+
+After two navigation corrections still exhausted500 before the complete journey,
+the owner selected "Approve the750-request limit" for the remaining protected
+acceptance work. Only the integrated browser ceiling changes. Both accounts,
+all seven cases,100 client/70 admin requests, time/origin restrictions, required
+reloads and cleanup remain unchanged. The standalone ceiling remains500.
+No production operation, personal-data change or permission change was approved.

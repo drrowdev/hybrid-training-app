@@ -13,6 +13,7 @@ import { conditioningFixtureSchedule } from "./swim-conditioning-account-flow-fi
 export const conditioningChecks = ["native_sign_in", "programme_creation", "shared_next_swim",
   "recording_confirmation", "history_and_isolation", "programme_edit_and_pause", "disconnect"] as const;
 const expect = baseExpect.configure({ timeout: 20_000 });
+const MAX_BROWSER_REQUESTS = 750;
 const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 const shortDays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const linkedSchema = z.object({
@@ -148,8 +149,8 @@ export async function conditioningAccountFlow(
       context.setDefaultTimeout(20_000);
       await context.route("**/*", async (route) => {
         const url = new URL(route.request().url());
-        if (++report.browserRequests > 500 || ![origin, supabaseUrl].includes(url.origin)) {
-          report.networkBlock ??= report.browserRequests > 500 ? "http_limit" : "http_origin";
+        if (++report.browserRequests > MAX_BROWSER_REQUESTS || ![origin, supabaseUrl].includes(url.origin)) {
+          report.networkBlock ??= report.browserRequests > MAX_BROWSER_REQUESTS ? "http_limit" : "http_origin";
           blocked = true; await route.abort(); return;
         }
         await route.continue();

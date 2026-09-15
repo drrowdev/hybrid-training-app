@@ -902,9 +902,17 @@ is now spent. Production remains8d431198 and no existing course/history was edit
 A separate default-off operation pins that deployment and both flag receipts.
 It reuses the existing GitHub-hosted Next/Auth runner, not a local database or
 the owner's account. It creates two marked synthetic accounts, limits the run
-to18 minutes, browser traffic to500 requests, client traffic to100 and admin
+to18 minutes, browser traffic to750 requests, client traffic to100 and admin
 traffic to70. Only loopback and the exact review Supabase origin are allowed;
 WebSockets and persisted browser media remain disabled.
+
+The owner approved changing only the integrated browser limit from500 to750
+on2026-09-15. Native34992320955 and34996088187 reached history but exhausted500
+after both imported outcomes survived reload. Real navigation already replaced
+all full-page loads except initial sign-in and required outcome reloads. The
+seven cases, two accounts, other traffic/time limits and cleanup remain unchanged;
+the standalone runner retains500. This is authorization for remaining protected
+acceptance, not production or private-course changes.
 
 The seven integrated checks cover native sign-in, programme creation with an
 inline synthetic course, Today/shared-calendar navigation, completed and
@@ -929,6 +937,8 @@ that unchanged helper, preserves RLS and function attributes, and grants no
 managed-auth access. Its paired down preserves all history. The GitHub PostgreSQL
 fixture now reproduces this missing-schema-access condition and exercises
 repair/down/restore before the full save/lifecycle/isolation suite.
-The protected site remains at9d42be34/158 until a fresh guarded repair succeeds;
-the previous updater cannot be replayed. Native journey and owner usability
-acceptance are still outstanding.
+Read-only34978569711 and database-only repair34979248193 subsequently passed.
+All158 prior ledger records were preserved and only0158 appended, reaching159.
+Deployment9d42be34, flags, Auth and user rows were unchanged. Both the deployment
+updater and database repair are spent and cannot be replayed. Complete native
+journey and owner usability acceptance remain outstanding.
