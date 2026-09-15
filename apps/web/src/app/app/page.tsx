@@ -55,7 +55,6 @@ import { computeRecoveryWindow } from "@/lib/planner/recovery";
 import { TaperBanner, type TaperBannerState } from "@/components/today/TaperBanner";
 import { RecoveryBanner, type RecoveryBannerState } from "@/components/today/RecoveryBanner";
 import { RaceCheckInCard } from "@/components/today/RaceCheckInCard";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { TmSuggestionBanner, type TmSuggestionView } from "@/components/today/TmSuggestionBanner";
 import {
   acceptTmSuggestion,
@@ -63,7 +62,6 @@ import {
 } from "@/lib/training-maxes/actions";
 import type { TmFormula } from "@hta/db";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
-import { addDaysToYmd } from "@/lib/dates";
 import {
   formatDate,
   formatEyebrowDate,
@@ -90,6 +88,9 @@ import {
   groupByMovementThenKind,
   isSupplementalOnlySection,
 } from "@/lib/plan/prescription-grouping";
+import { loadSwimActivity } from "@/lib/swim/activity-history";
+import { mergeTrainingActivity } from "@/lib/swim/activity-presentation";
+import { RecentActivity } from "@/components/today/RecentActivity";
 
 export default async function TodayPage() {
   const supabase = await createClient();
@@ -108,7 +109,7 @@ export default async function TodayPage() {
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmRows, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent, error: recentError }, plannedToday, upcoming, freshness, activeBlock, tmRows, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs, swimActivity] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -138,7 +139,10 @@ export default async function TodayPage() {
     getQuickRepeatCandidates(supabase, userId, { limit: 3 }),
     getLimitationTodaySummary(),
     getPendingProgramRecommendations(supabase, userId),
+    loadSwimActivity(supabase, userId, 8),
   ]);
+  if (recentError) throw new Error("Recent activity could not be loaded.");
+  const recentActivity = mergeTrainingActivity(recent ?? [], swimActivity, profile?.timezone ?? "UTC", 8);
 
   const activeLimitations: ActiveLimitationSummary[] = (
     activeLimitationsRaw ?? []
@@ -767,171 +771,10 @@ export default async function TodayPage() {
               />
             </div>
 
-            <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
+            <RecentActivity sessions={recentActivity} todayIso={todayIso} />
           </aside>
         </div>
     </div>
-  );
-}
-
-/**
- * Recent activity grouped by Today / Yesterday / Earlier. Replaces the
- * original flat list — same row structure, just bucketed.
- */
-function ActivityPill({ label, mono }: { label: string; mono?: boolean }) {
-  return (
-    <span
-      className={mono ? "mono" : undefined}
-      style={{
-        fontSize: 11,
-        color: "var(--cp-text-muted)",
-        background: "var(--cp-surface-soft)",
-        border: "1px solid var(--cp-border)",
-        borderRadius: 7,
-        padding: "3px 8px",
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
-function ActivitySection({
-  sessions,
-  todayIso,
-}: {
-  sessions: Array<{
-    id: string;
-    title: string | null;
-    performed_at: string;
-    completed_at: string | null;
-    session_rpe: number | null;
-    duration_min: number | null;
-  }>;
-  todayIso: string;
-}) {
-  if (sessions.length === 0) {
-    return (
-      <section className="cp-card" style={{ padding: 20 }}>
-        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-          <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
-          <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
-        </div>
-        <EmptyState
-          variant="inline"
-          title="No sessions yet"
-        />
-      </section>
-    );
-  }
-
-  const yesterdayIso = addDaysToYmd(todayIso, -1);
-  const groups: Array<{ key: "today" | "yesterday" | "earlier"; label: string; items: typeof sessions }> = [
-    { key: "today", label: "Today", items: [] },
-    { key: "yesterday", label: "Yesterday", items: [] },
-    { key: "earlier", label: "Earlier", items: [] },
-  ];
-  for (const s of sessions) {
-    const ymd = s.performed_at.slice(0, 10);
-    if (ymd === todayIso) groups[0]!.items.push(s);
-    else if (ymd === yesterdayIso) groups[1]!.items.push(s);
-    else groups[2]!.items.push(s);
-  }
-
-  return (
-    <section style={{ display: "grid", gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 4 }}>
-        <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
-        <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
-      </div>
-      {groups
-        .filter((g) => g.items.length > 0)
-        .map((g) => (
-          <div key={g.key} style={{ display: "grid", gap: 6 }}>
-            <div
-              style={{
-                fontSize: 11,
-                letterSpacing: "0.1em",
-                color: "var(--cp-text-muted)",
-                textTransform: "uppercase",
-                fontWeight: 600,
-                marginTop: 8,
-              }}
-            >
-              {g.label}
-            </div>
-            {g.items.map((s) => {
-              const complete = !!s.completed_at;
-              return (
-                <Link
-                  key={s.id}
-                  href={`/app/sessions/${s.id}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    background: "var(--cp-surface)",
-                    border: "1px solid var(--cp-border)",
-                    borderRadius: 11,
-                    padding: "11px 13px",
-                    textDecoration: "none",
-                    color: "inherit",
-                  }}
-                >
-                  <span
-                    aria-hidden
-                    style={{
-                      flex: "0 0 auto",
-                      width: 28,
-                      height: 28,
-                      borderRadius: 8,
-                      display: "grid",
-                      placeItems: "center",
-                      fontSize: 13,
-                      background: complete
-                        ? "var(--cp-accent-soft)"
-                        : "color-mix(in srgb, var(--cp-warning) 16%, transparent)",
-                      color: complete ? "var(--cp-accent)" : "var(--cp-warning)",
-                    }}
-                  >
-                    {complete ? "✓" : "◷"}
-                  </span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 13.5,
-                        fontWeight: 600,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {s.title ?? "Untitled session"}
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        marginTop: 4,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      {!complete && <ActivityPill label="in progress" />}
-                      {s.session_rpe != null && (
-                        <ActivityPill label={`Effort ${s.session_rpe}`} mono />
-                      )}
-                      {s.duration_min != null && (
-                        <ActivityPill label={`${s.duration_min} min`} mono />
-                      )}
-                    </div>
-                  </div>
-                  <span style={{ color: "var(--cp-text-muted)", fontSize: 16 }} aria-hidden>›</span>
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-    </section>
   );
 }
 

@@ -60,6 +60,14 @@ export async function exerciseConditioningLifecycle(
   assert.equal(work.plan_revision, pause.planRevision + 1);
   assert.deepEqual(await originalDates(), dates);
   await denied(() => change({ ...pause, command: "finish" }, pauseId), "22023");
+  mark("conditioning-resume-safety");
+  const beforeSafetyRefusal = await snapshot();
+  await denied(() => change(input("resume")), "P0001");
+  assert.deepEqual(await snapshot(), beforeSafetyRefusal);
+  // This migration-only database has no catalogue seed. Keep fixture movements owner-scoped.
+  await database`INSERT INTO public.movements(id,user_id,slug,display_name,pattern,primary_region)
+    VALUES (${randomUUID()},${owner},'swim-easy','Synthetic easy swim','cardio','shoulder_scapular'),
+      (${randomUUID()},${owner},'swim-intervals','Synthetic interval swim','cardio','shoulder_scapular')`;
   await change(input("resume"));
   work = await read();
   assert.equal(work.plan_status, "active");

@@ -100,7 +100,8 @@ SELECT link.user_id, link.planned_session_id, link.block_id,
   o.match_id AS outcome_match_id, o.metadata AS outcome_metadata,
   m.id AS current_match_id, m.import_id AS matched_import_id,
   (m.metadata#>>'{workout,revision}')::integer AS matched_workout_revision,
-  latest.id AS latest_import_id, latest.evidence->>'date' AS recording_date
+  latest.id AS latest_import_id, latest.evidence->>'date' AS recording_date,
+  claimed_recording.evidence->>'date' AS claim_recording_date
 FROM public.swim_conditioning_bindings link
 JOIN public.swim_workouts w ON w.id = link.swim_workout_id AND w.user_id = link.user_id
 JOIN public.swim_plans sp ON sp.id = w.plan_id AND sp.user_id = link.user_id
@@ -108,6 +109,8 @@ LEFT JOIN public.planned_sessions p ON p.id = link.planned_session_id AND p.user
 LEFT JOIN public.training_blocks b ON b.id = p.block_id AND b.user_id = link.user_id
 LEFT JOIN public.sessions logged ON logged.id = w.session_id AND logged.user_id = link.user_id AND logged.deleted_at IS NULL
 LEFT JOIN public.swim_current_import_outcomes o ON o.workout_id = w.id AND o.user_id = link.user_id
+LEFT JOIN public.swim_import_matches claimed_match ON claimed_match.id = o.match_id AND claimed_match.user_id = link.user_id
+LEFT JOIN public.swim_imports claimed_recording ON claimed_recording.id = claimed_match.import_id AND claimed_recording.user_id = link.user_id
 LEFT JOIN public.swim_current_import_matches m ON m.id = o.match_id AND m.workout_id = w.id AND m.user_id = link.user_id
 LEFT JOIN LATERAL (
   SELECT i.id, i.evidence FROM public.swim_imports i
@@ -116,6 +119,12 @@ LEFT JOIN LATERAL (
 ) latest ON true;
 REVOKE ALL ON public.swim_conditioning_sessions FROM PUBLIC, anon, service_role;
 GRANT SELECT ON public.swim_conditioning_sessions TO authenticated;
+
+CREATE FUNCTION public.swim_conditioning_activity_ready()
+RETURNS boolean LANGUAGE sql STABLE SECURITY INVOKER
+SET search_path = pg_catalog AS $$ SELECT true $$;
+REVOKE ALL ON FUNCTION public.swim_conditioning_activity_ready() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.swim_conditioning_activity_ready() TO authenticated;
 
 CREATE FUNCTION public.swim_conditioning_benchmarks_ready()
 RETURNS boolean LANGUAGE sql STABLE SECURITY INVOKER

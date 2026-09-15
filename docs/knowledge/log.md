@@ -4234,3 +4234,27 @@ regressions and web/fixture types passed locally. Sessions return navigation is
 whitelisted through workout and recording detail; activity-list integration is
 still separate, uncommitted work. Exact-source GitHub SQL remains required.
 No hosted changes, private account writes or additional agents occurred.
+
+## [2026-09-15] implementation | Put confirmed swims in ordinary activity history
+
+Core34942908915 passed atcdb620c2. Pool34942909146 installed and reversed0157,
+then reached fixed-calendar resume and correctly refused the seedless fixture's
+missing swimming movements (closed P0001, migration147 line67). The fixture now
+asserts that refusal preserves state, supplies two owner-scoped synthetic catalogue
+rows, and requires successful resume. The production safety function is unchanged.
+
+Sessions and Today Recent activity now merge confirmed linked imports with native
+sessions, retaining completed/stopped-early/review-needed distinctions and the
+original recording day. Corrections and removed matches keep a review entry;
+explicitly cleared outcomes disappear. Native swims are not duplicated, and
+imports receive no invented timestamp, native measurements, workload or delete
+action. The existing Recent activity layout is reused as a separately exercised
+component. Presentation has no server dependencies.
+
+The25 history/route checks,31 synthetic375/1280 browser stages, web types and
+strict SQL-fixture types passed locally. The first browser attempt exposed a
+server dependency in the new presentation import; separating the pure display
+helpers corrected it. SQL assertions cover original recording dates through
+correction, unmatching and clear. Exact-source CI/SQL, coordinated programme-edit
+paths, authenticated end-to-end acceptance and owner usability remain pending.
+No hosted schema, deployment, private data or real-account changes occurred.

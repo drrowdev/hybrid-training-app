@@ -16,6 +16,7 @@ DROP VIEW public.swim_conditioning_sessions;
 DROP FUNCTION public.deploy_program_with_swimming(uuid,jsonb,jsonb,jsonb,jsonb,jsonb,jsonb);
 DROP FUNCTION public.swim_conditioning_replay(uuid,jsonb);
 DROP FUNCTION public.swim_conditioning_ready();
+DROP FUNCTION public.swim_conditioning_activity_ready();
 DROP FUNCTION public.swim_conditioning_benchmarks_ready();
 DROP TABLE public.swim_conditioning_saves;
 DROP TABLE public.swim_conditioning_bindings;

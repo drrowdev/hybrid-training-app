@@ -131,8 +131,17 @@ The unused-only down refuses links or retained lifecycle receipts.
 The shared drawer and workout page expose pause/resume, skip/undo and end controls.
 The workout page reuses reviewed date, pool and course editors. Linked hub URLs
 return to the primary Plan/history rather than offering standalone resumption.
-Broader activity history, programme-edit paths and authenticated journey acceptance
-remain unfinished; this is not release readiness.
+Confirmed linked imports now appear in Sessions and Today Recent activity.
+The view retains the original claim's recording date after correction/unmatching,
+so stale evidence remains visible for review rather than disappearing. An explicit
+clear removes the claim from activity history. Native session-linked swims are
+excluded from this additional list to prevent duplicates; only native sessions
+retain session deletion, effort and duration. Imported day-only dates never gain
+an invented timestamp or shift through the user's timezone. Readiness is separate
+from the setup flag and fails visibly for a broken installed view.
+
+Programme-edit paths and authenticated journey acceptance remain unfinished;
+this is not release readiness.
 
 The existing disposable GitHub Postgres job exercises same-owner refusal,
 rollback after late failure, new/existing course saves, concurrent replay,

@@ -30,6 +30,8 @@ try {
         import { RecordingMatcher } from "./src/components/swim/RecordingMatcher";
         import { RecordingOutcome } from "./src/components/swim/RecordingOutcome";
         import { ThisWeekRail } from "./src/components/plan/ThisWeekRail";
+        import { RecentActivity } from "./src/components/today/RecentActivity";
+        import { mergeTrainingActivity } from "./src/lib/swim/activity-presentation";
         import { swimTrainingState } from "@hta/domain";
         import { syntheticCourse } from "./src/lib/swim/__tests__/course-fixtures";
         import { planPrivateSwimCourse } from "./src/lib/swim/course-planning";
@@ -77,6 +79,15 @@ try {
               distance: "400 m", beforeLengths: 8, afterLengths: 16 }] } };
         };
         let key = 0;
+        window.showActivity = () => root.render(<main style={{ padding: 16 }}><RecentActivity todayIso="2026-09-14"
+          sessions={mergeTrainingActivity([{
+            id: "strength", title: "Strength", performed_at: "2026-09-14T01:00:00Z",
+            completed_at: "2026-09-14T02:00:00Z", session_rpe: 7, duration_min: 45,
+          }], [
+            { kind: "swim", id: "complete", title: "Week 1 A", date: "2026-09-14", status: "completed" },
+            { kind: "swim", id: "partial", title: "Week 1 B", date: "2026-09-13", status: "stopped_early" },
+            { kind: "swim", id: "stale", title: "Week 1 C", date: "2026-09-10", status: "needs_review" },
+          ], "America/Los_Angeles", 8)} /></main>);
         window.showSharedSwim = (outcome = null) => {
           const state = swimTrainingState({
             planStatus: "active", parentActive: true, parentExists: true, workoutStatus: "scheduled",
@@ -337,6 +348,23 @@ try {
   stages.push(stage);
 
   for (const width of [375, 1280]) {
+    stage = `conditioning-shared-activity-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.showActivity());
+    await expect(page.getByRole("heading", { name: "Recent activity" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Week 1 A/ })).toHaveAttribute("href", "/app/swim/complete?from=today");
+    await expect(page.getByRole("link", { name: /Week 1 B/ })).toContainText("Stopped early");
+    await expect(page.getByRole("link", { name: /Week 1 C/ })).toContainText("Review recording");
+    await expect(page.getByText("Effort 7", { exact: true })).toHaveCount(1);
+    await expect(page.getByText("45 min", { exact: true })).toHaveCount(1);
+    for (const link of await page.getByRole("link", { name: /Week 1/ }).all()) {
+      const box = await link.boundingBox();
+      assert.ok(box && box.height >= 44);
+      await link.focus();
+      await expect(link).toBeFocused();
+    }
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth), false);
+    stages.push(stage);
     stage = `conditioning-fixed-calendar-controls-${width}`;
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => { window.lifecycleCalls = []; window.lifecycleMode = "delay"; window.showLifecycle(); });

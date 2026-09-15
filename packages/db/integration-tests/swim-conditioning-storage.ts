@@ -223,7 +223,7 @@ export async function exerciseSwimConditioning(
     await as(fresh, (tx) => tx`SELECT public.swim_match_import(
       ${matchId},${imported.id},${work!.id},null,${work!.revision})`);
     const readView = async () => (await as(fresh, (tx) => tx`SELECT outcome_metadata,current_match_id,matched_import_id,
-      latest_import_id,matched_workout_revision,revision,recording_date,native_completed_at
+      latest_import_id,matched_workout_revision,revision,recording_date,claim_recording_date,native_completed_at
       FROM public.swim_conditioning_sessions WHERE id=${work!.id}`))[0]!;
     const beforeOutcomes = await primarySnapshot(fresh);
     const completed = randomUUID();
@@ -236,6 +236,7 @@ export async function exerciseSwimConditioning(
     assert.equal(completedView.latest_import_id, imported.id);
     assert.equal(completedView.matched_workout_revision, completedView.revision);
     assert.equal(completedView.native_completed_at, null);
+    assert.equal(completedView.claim_recording_date, evidence.date);
     const [{ plan_revision: confirmedPlanRevision }] = await as(fresh, (tx) => tx`SELECT plan_revision
       FROM public.swim_conditioning_sessions WHERE id=${work!.id}`);
     await denied(() => as(fresh, (tx) => tx`SELECT public.swim_change_conditioning(
@@ -247,16 +248,21 @@ export async function exerciseSwimConditioning(
     await as(fresh, (tx) => tx`SELECT public.swim_confirm_import_outcome(
       ${partial},${work!.id},${matchId},'stopped_early',${completed},${work!.revision})`);
     assert.equal((await readView()).outcome_metadata.outcome, "stopped_early");
-    const corrected = await receive({ ...evidence, recordedDurationMs: 310000 });
+    const correctedDate = new Date(Date.parse(`${evidence.date}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+    const corrected = await receive({ ...evidence, date: correctedDate, recordedDurationMs: 310000 });
     const correctedView = await readView();
     assert.equal(correctedView.matched_import_id, imported.id);
     assert.equal(correctedView.latest_import_id, corrected.id);
+    assert.equal(correctedView.recording_date, correctedDate);
+    assert.equal(correctedView.claim_recording_date, evidence.date);
     await as(fresh, (tx) => tx`SELECT public.swim_match_import(
       ${randomUUID()},${corrected.id},null,${matchId},null)`);
     assert.equal((await readView()).current_match_id, null);
+    assert.equal((await readView()).claim_recording_date, evidence.date);
     await as(fresh, (tx) => tx`SELECT public.swim_confirm_import_outcome(
       ${randomUUID()},${work!.id},null,null,${partial},null)`);
     assert.equal((await readView()).outcome_metadata.outcome, null);
+    assert.equal((await readView()).claim_recording_date, null);
     assert.deepEqual(await primarySnapshot(fresh), beforeOutcomes);
     assert.equal((await as(fresh, (tx) => tx`SELECT count(*)::int AS count FROM public.sessions`))[0]!.count, 0);
     mark("conditioning-end-with-primary");
