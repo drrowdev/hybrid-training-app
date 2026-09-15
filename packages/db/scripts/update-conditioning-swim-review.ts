@@ -29,6 +29,7 @@ export const CONDITIONING_REVIEW: RefreshProfile = {
     "packages/db/scripts/__tests__/update-conditioning-swim-review.test.ts",
     "packages/db/scripts/__tests__/upgrade-swim-review.test.ts",
     "packages/db/scripts/__tests__/update-untimed-swim-review.test.ts",
+    "packages/db/scripts/__tests__/swim-account-flow-guards.test.ts",
     "packages/db/scripts/upgrade-swim-review.ts", "packages/db/scripts/refresh-swim-review.ts",
     "packages/db/integration-tests/swim-pool-storage.mts",
     "docs/knowledge/log.md", "docs/design/swimming-programme-rebuild.md",
