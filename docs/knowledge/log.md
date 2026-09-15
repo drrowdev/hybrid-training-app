@@ -4559,3 +4559,19 @@ into the frozen journey. Owner usability and production delivery remain open.
 Protected deployment9d42be34 and159-record storage are unchanged by this test;
 both prior updater operations remain spent. Production, the private course and
 personal history were untouched.
+
+## [2026-09-15] fix | Restore Today movement context before release
+
+The owner approved fixing the separate Today loading error and preparing the
+remaining release steps, without deployment or personal-data changes. The
+movement-context query now requests `display_name`, not nonexistent `name`.
+It preserves the existing region/slug maps and the existing DC-V2 warning logic;
+no thresholds, prescriptions or override rules change. Failed or malformed
+reads now fail explicitly rather than silently presenting an empty context.
+
+The extracted read adapter is exercised through the real Supabase query builder
+with synthetic responses. Checks cover selected columns/IDs, display labels,
+region/slug preservation, recovering versus fresh warnings, empty input and
+failed/invalid responses without raw error contents. This is a new application
+candidate: prior full swimming acceptance remains attributed tofd9c01f3, and
+the protected Vercel deployment remains9d42be34 until separately approved.

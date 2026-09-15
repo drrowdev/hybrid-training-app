@@ -958,3 +958,46 @@ A separately observed Today query requests `movements.name` instead of
 warnings; it is not the recording-matching path. It remains a general Today
 follow-up, not silently included in this completed frozen acceptance scope.
 Production/private-course changes remain held.
+
+### Remaining release sequence - 2026-09-15
+
+The owner authorized the Today query correction and release preparation, not
+deployment. The correction restores movement labels/region/slug context without
+changing DC-V2 warning thresholds or training data. It needs a fresh accepted
+application reference and a complete protected-storage account run; the existing
+tooling-only reference must not be broadened to admit unqualified application code.
+
+1. Qualify the Today correction with focused checks, exact-source CI/storage,
+   and the same seven-case protected account journey. Require no observed
+   context-read failures. Preserve750 browser/100 client/70 admin limits and
+   both-account/all15-table cleanup.
+2. Obtain approval for a fresh protected app-only update. Pin the newly accepted
+   source and current deployment/alias receipts; inspect159 storage read-only.
+   Preserve all flags, Auth/protection, courses and history. Do not replay either
+   spent protected updater. Return the protected-site link and a short owner
+   usability task after the new deployment is READY and verified.
+3. Before production, refresh public main/PR/deployment metadata and obtain
+   approval for a new bounded read-only production preflight. Prior production
+   receipts are historical, not authority to execute their profiles again.
+   Inspect complete ledger membership/fingerprint and current schema/role/FK/RLS
+   readiness without raw row/error output. Stop on drift.
+4. The source comparison with main8d431198 preserves all155 journal entries
+   unchanged and adds only0155 outcomes,0156 atomic conditioning,0157 lifecycle,
+   and0158 identity. Each has a paired down. Historical production has212 ledger
+   records, not155; preserve that whole history, including approved legacy
+   exceptions. Only if fresh inspection confirms the expected baseline may a
+   new append-only plan target212 plus4 records. Never reset, normalize or
+   renumber applied history to match the source journal.
+5. Prepare and rehearse the exact production transaction and staged app/flag
+   rollout against that fresh baseline, then request explicit production approval.
+   Keep the two new integration flags disabled until their storage prerequisites
+   and exact application deployment are verified; retain the five existing
+   standalone flags. Reconcile/merge through required checks, then execute only
+   the approved new profile and verify the live alias.
+
+Before commit, a failed migration transaction rolls back. After commit, disable
+new integration and reconcile/roll forward; do not erase ledger/history.0155-0157
+downs refuse retained outcome/conditioning history.0158 down restores the known
+identity denial and is not an automatic recovery action. Any down or user-data
+migration requires separate explicit approval. Production rollout, private-course
+transfer, physical-device claims and backups remain outside current authorization.

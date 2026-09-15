@@ -78,6 +78,7 @@ import {
 } from "@/lib/sessions/estimate-duration";
 import { ThisWeekRail } from "@/components/plan/ThisWeekRail";
 import { plannedSessionCta } from "@/lib/today/planned-session-cta";
+import { loadTodayMovementContext } from "@/lib/today/movement-context";
 import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
 import {
   actionablePlannedSessions,
@@ -255,28 +256,7 @@ export default async function TodayPage() {
 
     // Group D — region / slug maps for the planned movements today
     // (DC-V2 heavy-on-recovering soft warning).
-    (async (): Promise<{
-      movementRegionById: Map<string, { primaryRegion: string; name: string }>;
-      movementSlugById: Map<string, string | null>;
-    }> => {
-      const regionMap = new Map<string, { primaryRegion: string; name: string }>();
-      const slugMap = new Map<string, string | null>();
-      if (plannedMovementIds.length === 0) {
-        return { movementRegionById: regionMap, movementSlugById: slugMap };
-      }
-      const { data: movs } = await supabase
-        .from("movements")
-        .select("id, name, slug, primary_region")
-        .in("id", plannedMovementIds);
-      for (const m of movs ?? []) {
-        regionMap.set(m.id, {
-          primaryRegion: m.primary_region as string,
-          name: m.name as string,
-        });
-        slugMap.set(m.id, (m.slug as string | null) ?? null);
-      }
-      return { movementRegionById: regionMap, movementSlugById: slugMap };
-    })(),
+    loadTodayMovementContext(supabase, plannedMovementIds),
 
     // Group E — muscle-level freshness (PR feat/muscle-grid-16).
     getMuscleFreshness(supabase, userId, { tz: profile?.timezone ?? "UTC" }),
