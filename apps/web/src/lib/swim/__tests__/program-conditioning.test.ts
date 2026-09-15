@@ -64,7 +64,7 @@ const client = createClient("https://conditioning.test", "synthetic-test-key", {
     const path = new URL(typeof url === "string" ? url : url instanceof URL ? url.href : url.url).pathname;
     paths.push(path);
     body = init?.body ? JSON.parse(String(init.body)) : null;
-    return Response.json(path.endsWith("swim_conditioning_ready") ? true : response, { status });
+    return Response.json(path.endsWith("_ready") ? true : response, { status });
   } },
 });
 beforeEach(() => {
@@ -110,7 +110,7 @@ describe("DC-SW3/SW5/SW8 single programme/swim save", () => {
     if (value.swim?.kind !== "course") throw new Error("Expected course fixture");
     value.swim.reviewed = false;
     await expect(prepareConditioningSwim(client, id(9), "2026-09-14", write(), value)).rejects.toThrow(SwimInputError);
-    expect(paths.every((path) => path.endsWith("swim_conditioning_ready"))).toBe(true);
+    expect(paths.every((path) => path.endsWith("_ready"))).toBe(true);
   });
 
   it("checks ownership, unchanged placement and current safety when attaching an existing plan", async () => {

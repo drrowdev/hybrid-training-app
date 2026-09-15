@@ -26,11 +26,19 @@ primary graph cannot masquerade as a successful new save. A failed coupled save
 never enters the legacy primary-only fallback.
 
 The transaction covers primary block, planned rows, programme instance, training
-max alignment, swimming creation/attachment, links and receipt. Existing optional
+max edits and alignment, swimming creation/attachment, links and receipt. Existing optional
 post-save rehabilitation/season behavior is not made transactional by this work.
-The wizard's earlier benchmark-value writes are also separate. Full slot-fit
-preflight and benchmark-save recovery must be resolved before enabling this path;
-the transaction is not a claim that every wizard side effect is atomic.
+For coupled swimming, the wizard submits edited benchmarks in the same original
+intent instead of calling the independent training-max action first. The shared
+context builder overlays validated edits in memory, so the actual engine and
+whole-course fit checks run before any benchmark or programme write.
+
+The unshipped0156 wrapper inserts or updates those owned benchmarks within the
+programme/swim transaction. Manual edits clear derived provenance; existing
+percentages survive until the normal alignment pass. New rows use the target
+programme's basis from the existing canonical helper. Replay runs before these
+writes, so an interrupted-response retry cannot overwrite a later benchmark edit.
+There is no existing-user backfill or new top-level column.
 
 ## Schema discipline and retention
 
@@ -63,6 +71,9 @@ role membership. Its bounded grants support the existing primary/swim functions
 and owner reads, not import credentials or general administrative access.
 Revision-column UPDATE grants on the two swim tables permit PostgreSQL row locks;
 the wrapper does not use them to change revisions or receive table-wide updates.
+The writer can insert owned training-max rows and read movement ownership columns;
+it refuses missing or foreign private movements. Existing training-max RLS remains
+unchanged. The down migration removes these grants along with the unused wrapper.
 Authenticated clients can read their own links/receipts and execute the wrapper,
 but cannot directly insert, update or delete those records.
 
@@ -73,7 +84,9 @@ and retain the schema rather than running the down migration.
 ## Availability and acceptance
 
 `SWIM_CONDITIONING_ENABLED=true` and installed storage are both required for new
-conditioning saves. Export and receipt recovery do not depend on that flag.
+conditioning saves. New saves also require `swim_conditioning_benchmarks_ready()`,
+so an earlier0156 implementation cannot silently ignore submitted benchmarks.
+Export and receipt recovery do not depend on that flag or the new readiness check.
 The current server path supports new foreign programmes only; edits, native
 programmes and inserted recovery weeks remain unavailable until their coordinated
 paths are complete. The real wizard now mounts a conditional fifth step for
@@ -96,3 +109,6 @@ coverage at375/1280 for new/existing courses, review invalidation, file replacem
 unchanged retry, duplicate prevention and disabled-feature behavior. Those
 browser actions use synthetic fixtures and no server account; they do not
 establish authenticated transport, native-device usability or owner acceptance.
+The benchmark extension has separate read-only-context, action and synthetic
+wizard coverage; it still needs exact-source disposable PostgreSQL acceptance
+before being considered accepted.

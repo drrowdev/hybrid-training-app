@@ -5,7 +5,8 @@ DO $$ BEGIN EXECUTE format('GRANT conditioning_writer TO %I', current_user); END
 GRANT EXECUTE ON FUNCTION auth.uid() TO conditioning_writer;
 GRANT SELECT, INSERT, UPDATE ON public.training_blocks, public.planned_sessions,
   public.program_instances TO conditioning_writer;
-GRANT SELECT, UPDATE ON public.training_maxes TO conditioning_writer;
+GRANT SELECT, INSERT, UPDATE ON public.training_maxes TO conditioning_writer;
+GRANT SELECT (id, user_id) ON public.movements TO conditioning_writer;
 GRANT SELECT (id, timezone) ON public.profiles TO conditioning_writer;
 GRANT SELECT ON public.swim_plans, public.swim_workouts,
   public.swim_import_outcomes TO conditioning_writer;
@@ -89,6 +90,12 @@ CREATE FUNCTION public.swim_conditioning_ready()
 RETURNS boolean LANGUAGE sql STABLE SECURITY INVOKER
 SET search_path = pg_catalog AS $$ SELECT true $$;
 
+CREATE FUNCTION public.swim_conditioning_benchmarks_ready()
+RETURNS boolean LANGUAGE sql STABLE SECURITY INVOKER
+SET search_path = pg_catalog AS $$ SELECT true $$;
+REVOKE ALL ON FUNCTION public.swim_conditioning_benchmarks_ready() FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.swim_conditioning_benchmarks_ready() TO authenticated;
+
 CREATE FUNCTION public.swim_conditioning_replay(p_request_id uuid, p_request_input jsonb)
 RETURNS TABLE(block_id uuid, program_instance_id uuid, swim_plan_id uuid, skipped integer)
 LANGUAGE plpgsql STABLE SECURITY INVOKER
@@ -134,6 +141,8 @@ DECLARE
   today date;
   monday date;
   linked integer := 0;
+  benchmarks jsonb;
+  benchmark jsonb;
 BEGIN
   IF u IS NULL THEN RAISE EXCEPTION 'CONDITIONING_UNAUTHORIZED' USING ERRCODE = '42501'; END IF;
   IF p_request_id IS NULL OR jsonb_typeof(p_request_input) IS DISTINCT FROM 'object'
@@ -161,6 +170,35 @@ BEGIN
   IF saved_skipped IS NULL OR saved_skipped < 0 THEN
     RAISE EXCEPTION 'CONDITIONING_INVALID_REQUEST' USING ERRCODE = '22023';
   END IF;
+  benchmarks := COALESCE(p_request_input#>'{conditioning,benchmarks}', '[]'::jsonb);
+  IF jsonb_typeof(benchmarks) IS DISTINCT FROM 'array' OR jsonb_array_length(benchmarks) > 64 THEN
+    RAISE EXCEPTION 'CONDITIONING_INVALID_BENCHMARKS' USING ERRCODE = '22023';
+  END IF;
+  IF (SELECT count(DISTINCT entry->>'movementId') FROM jsonb_array_elements(benchmarks) entry)
+     <> jsonb_array_length(benchmarks) THEN
+    RAISE EXCEPTION 'CONDITIONING_INVALID_BENCHMARKS' USING ERRCODE = '22023';
+  END IF;
+  FOR benchmark IN SELECT value FROM jsonb_array_elements(benchmarks) ORDER BY value->>'movementId'
+  LOOP
+    IF jsonb_typeof(benchmark) IS DISTINCT FROM 'object'
+       OR benchmark - ARRAY['movementId','oneRmKg'] <> '{}'::jsonb
+       OR (benchmark->>'movementId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$') IS NOT TRUE
+       OR jsonb_typeof(benchmark->'oneRmKg') IS DISTINCT FROM 'number'
+       OR (benchmark->>'oneRmKg')::numeric <= 0 OR (benchmark->>'oneRmKg')::numeric > 1000 THEN
+      RAISE EXCEPTION 'CONDITIONING_INVALID_BENCHMARKS' USING ERRCODE = '22023';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM public.movements
+      WHERE id = (benchmark->>'movementId')::uuid AND (user_id IS NULL OR user_id = u)) THEN
+      RAISE EXCEPTION 'CONDITIONING_UNAUTHORIZED' USING ERRCODE = '42501';
+    END IF;
+    INSERT INTO public.training_maxes(user_id, movement_id, one_rm_kg, tm_percent, source)
+      VALUES (u, (benchmark->>'movementId')::uuid, (benchmark->>'oneRmKg')::numeric,
+        (p_program_instance#>>'{setup_input,conditioning,benchmarkTmPercent}')::numeric, 'entered')
+      ON CONFLICT (user_id, movement_id) DO UPDATE SET
+        one_rm_kg = EXCLUDED.one_rm_kg, source = 'entered',
+        derived_from_session_id = NULL, derived_from_set_log_id = NULL,
+        derived_formula = NULL, derived_at = NULL;
+  END LOOP;
   SELECT d.block_id, d.program_instance_id INTO saved_block, saved_instance
     FROM public.deploy_program_instance_atomically(
       p_block, p_planned_sessions, p_tm_percents, p_program_instance

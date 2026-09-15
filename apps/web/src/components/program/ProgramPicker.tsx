@@ -2986,7 +2986,7 @@ export function ProgramPicker({
             }
         : undefined;
 
-    // Lifts the user set or changed → persist as entered 1RMs before deploy. We
+    // Lifts the user set or changed → persist as entered 1RMs. We
     // only write touched rows so an untouched, pre-filled value is never re-saved
     // (this keeps programs that render off real TMs from gaining a tm_percent).
     const saves: { movementId: string; oneRmKg: number; label: string }[] = [];
@@ -3015,7 +3015,8 @@ export function ProgramPicker({
     }
 
     const saveDraft = async () => {
-      for (const s of saves) {
+      const coupledSwimming = showConditioning && swimWeekdays.length > 0;
+      for (const s of coupledSwimming ? [] : saves) {
         const fd = new FormData();
         fd.set("movementId", s.movementId);
         fd.set("oneRmKg", String(s.oneRmKg));
@@ -3058,6 +3059,7 @@ export function ProgramPicker({
         ...(showConditioning && conditioningChoices.length > 0 ? {
           conditioning: {
             requestId: conditioningRequestId, choices: [...conditioningChoices],
+            ...(coupledSwimming ? { benchmarks: saves.map(({ movementId, oneRmKg }) => ({ movementId, oneRmKg })) } : {}),
             ...(swimWeekdays.length > 0 && preparedSwimming.input ? { swim: preparedSwimming.input } : {}),
           },
         } : {}),

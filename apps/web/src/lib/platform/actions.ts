@@ -1,5 +1,6 @@
 "use server";
 
+import { activeProgramTmPercent } from "@/lib/training-maxes/active-program-basis";
 /**
  * createProgramInstance — deploy a platform program for the signed-in user.
  *
@@ -825,6 +826,10 @@ export async function createProgramInstance(
         if (receipt) {
           const bindingError = await persistRehabBindings(supabase, user.id, receipt.program_instance_id, rehabBindings ?? []);
           if (bindingError) return { ok: false, error: bindingError };
+          revalidatePath("/app");
+          revalidatePath("/app/plan");
+          revalidatePath("/app/stats");
+          if (conditioning.benchmarks?.length) revalidatePath("/app/settings/training-maxes");
           return { ok: true, blockId: receipt.block_id, programInstanceId: receipt.program_instance_id, skipped: receipt.skipped };
         }
       }
@@ -1282,7 +1287,7 @@ async function computeForeignWrite(
   supabase: SupabaseClient,
   user: User,
   engine: ProgramEngine,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks, rehabSchedule }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, conditioning, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks, rehabSchedule }: DeployArgs,
 ): Promise<{ instance: unknown; write: ProgramInstanceWrite }> {
   // HYROX: a supplied race date overrides the experience block length with the
   // whole weeks from start to race, so the program's end-taper lands on race week
@@ -1317,6 +1322,7 @@ async function computeForeignWrite(
     : [];
 
   const { ctx, resolveMovement } = await buildPlatformContext(supabase, user.id, {
+    ...(conditioning?.benchmarks ? { benchmarkEdits: conditioning.benchmarks } : {}),
     ...(roundingKg != null ? { roundingKg } : {}),
     ...(hyroxGender ? { gender: hyroxGender } : {}),
     ...(validatedCustomMovements.length > 0
@@ -1933,6 +1939,7 @@ async function createForeignProgramInstance(
       setupValues,
       weekdays,
       startedOn,
+      ...(conditioning ? { conditioning } : {}),
       ...(cardioWeekdays && cardioWeekdays.length > 0 ? { cardioWeekdays } : {}),
       ...(raceDate ? { raceDate } : {}),
       ...(startWeekIndex != null ? { startWeekIndex } : {}),
@@ -1994,7 +2001,12 @@ async function createForeignProgramInstance(
         ...(customization ? { customization } : {}),
         ...(sessionLinks ? { sessionLinks } : {}),
         ...(rehabSchedule ? { rehabSchedule } : {}),
-      }), ...(conditioning ? { conditioning: { choices: conditioning.choices, skipped: write.skipped.length } } : {}) },
+      }), ...(conditioning ? { conditioning: {
+        choices: conditioning.choices, skipped: write.skipped.length,
+        ...(conditioning.benchmarks?.length ? {
+          benchmarkTmPercent: activeProgramTmPercent(engine.meta.family, instance),
+        } : {}),
+      } } : {}) },
       displayName: customization?.displayName ?? null,
       customizationVersion: customization?.version ?? null,
     },
@@ -2107,6 +2119,7 @@ async function createForeignProgramInstance(
   revalidatePath("/app");
   revalidatePath("/app/plan");
   revalidatePath("/app/stats");
+  if (conditioning?.benchmarks?.length) revalidatePath("/app/settings/training-maxes");
 
   return {
     ok: true,

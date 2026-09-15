@@ -40,17 +40,22 @@ export async function exerciseSwimConditioning(
   };
   const instance = {
     program_id: block.program_id, program_family: block.program_family, instance: { version: 1 },
-    setup_input: { conditioning: { choices, skipped: 2 } }, display_name: null, customization_version: null,
+    setup_input: { conditioning: { choices, skipped: 2, benchmarkTmPercent: 100 } }, display_name: null, customization_version: null,
   };
-  const requestInput = { programId: block.program_id, conditioning: { choices } };
   const attach = { plan_id: existing.id, expected_revision: existing.revision };
   const movementId = randomUUID();
+  const newMovementId = randomUUID();
+  const requestInput = { programId: block.program_id, conditioning: {
+    choices, benchmarks: [{ movementId, oneRmKg: 120 }, { movementId: newMovementId, oneRmKg: 50 }],
+  } };
   await database`INSERT INTO public.movements(id,user_id,slug,display_name,pattern,primary_region)
     VALUES (${movementId},${owner},'synthetic-conditioning-tm','Synthetic conditioning TM','squat',
+      (SELECT unnest(enum_range(NULL::public.region)) LIMIT 1)),
+      (${newMovementId},${owner},'synthetic-conditioning-new-tm','Synthetic new conditioning TM','squat',
       (SELECT unnest(enum_range(NULL::public.region)) LIMIT 1))`;
   await database`INSERT INTO public.training_maxes(user_id,movement_id,one_rm_kg,tm_percent)
     VALUES (${owner},${movementId},100,80)`;
-  const maxima = [{ movementId, tmPercent: 90 }];
+  const maxima = [{ movementId, tmPercent: 90 }, { movementId: newMovementId, tmPercent: 85 }];
   const deploy = (user: string | null, requestId: string, swim: unknown = attach,
     rows = planned, input: unknown = requestInput) => as(user, async (tx) => Array.from(await tx<Receipt[]>`
       SELECT * FROM public.deploy_program_with_swimming(
@@ -79,6 +84,12 @@ export async function exerciseSwimConditioning(
   await denied(() => deploy(owner, randomUUID(), { ...attach, expected_revision: existing.revision + 1 }), "40001");
   mark("conditioning-incomplete-fit-atomic-refusal");
   await denied(() => deploy(owner, randomUUID(), attach, planned.slice(1)), "22023");
+  await denied(() => deploy(owner, randomUUID(), attach, planned, {
+    ...requestInput, conditioning: { choices, benchmarks: [{ movementId, oneRmKg: 1001 }] },
+  }), "22023");
+  await denied(() => deploy(owner, randomUUID(), attach, planned, {
+    ...requestInput, conditioning: { choices, benchmarks: [{ movementId, oneRmKg: 120 }, { movementId, oneRmKg: 125 }] },
+  }), "22023");
   assert.deepEqual(await primarySnapshot(owner), before);
   mark("conditioning-bounded-writer-grants");
   await denied(() => as(owner, (tx) => tx`INSERT INTO public.swim_conditioning_saves(user_id,request_id)
@@ -107,6 +118,21 @@ export async function exerciseSwimConditioning(
   assert.equal(receipt.skipped, 2);
   assert.equal(Number((await database`SELECT tm_percent FROM public.training_maxes
     WHERE user_id=${owner} AND movement_id=${movementId}`)[0]!.tm_percent), 90);
+  const savedMaxima = await database`SELECT movement_id,one_rm_kg,tm_percent,source,derived_from_session_id,
+    derived_from_set_log_id,derived_formula,derived_at FROM public.training_maxes
+    WHERE user_id=${owner} AND movement_id IN (${movementId},${newMovementId})`;
+  assert.equal(savedMaxima.length, 2);
+  for (const row of savedMaxima) {
+    assert.equal(Number(row.one_rm_kg), row.movement_id === movementId ? 120 : 50);
+    assert.equal(Number(row.tm_percent), row.movement_id === movementId ? 90 : 85);
+    assert.equal(row.source, "entered");
+    assert.ok([row.derived_from_session_id,row.derived_from_set_log_id,row.derived_formula,row.derived_at]
+      .every((value) => value === null));
+  }
+  await database`UPDATE public.training_maxes SET one_rm_kg=145 WHERE user_id=${owner} AND movement_id=${movementId}`;
+  assert.deepEqual(await deploy(owner, requestId), first);
+  assert.equal(Number((await database`SELECT one_rm_kg FROM public.training_maxes
+    WHERE user_id=${owner} AND movement_id=${movementId}`)[0]!.one_rm_kg), 145);
   assert.equal((await database`SELECT status FROM public.training_blocks WHERE id=${old.block_id}`)[0]!.status, "archived");
   assert.equal((await as(owner, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_conditioning_saves`))[0]!.count, 1);
   const linked = await as(owner, (tx) => tx`SELECT planned_session_id,swim_workout_id,metadata FROM public.swim_conditioning_bindings`);
@@ -149,10 +175,11 @@ export async function exerciseSwimConditioning(
   await database`INSERT INTO auth.users(id) VALUES (${fresh})`;
   try {
     const freshBefore = await primarySnapshot(fresh);
-    await denied(() => deploy(fresh, randomUUID(), source, planned.slice(1)), "22023");
+    const freshInput = { ...requestInput, conditioning: { choices, benchmarks: [] } };
+    await denied(() => deploy(fresh, randomUUID(), source, planned.slice(1), freshInput), "22023");
     assert.deepEqual(await primarySnapshot(fresh), freshBefore);
     assert.equal((await as(fresh, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_plans`))[0]!.count, 0);
-    const created = (await deploy(fresh, randomUUID(), source))[0]!;
+    const created = (await deploy(fresh, randomUUID(), source, planned, freshInput))[0]!;
     assert.notEqual(created.swim_plan_id, existing.id);
     assert.equal((await as(fresh, (tx) => tx`SELECT count(*)::int AS count FROM public.swim_conditioning_bindings`))[0]!.count, source.workouts.length);
   } finally {

@@ -25,6 +25,7 @@ import {
   warmupSchemeToRamp,
 } from "@/lib/planner/warmups";
 import { DEFAULT_ROUNDING_KG } from "./rounding";
+import { trainingMaxEditsSchema, type TrainingMaxEdit } from "../training-maxes/input";
 
 export interface PlatformContextBundle {
   ctx: PlatformContext;
@@ -83,6 +84,7 @@ export async function buildPlatformContext(
     roundingKg?: number;
     gender?: "male" | "female";
     customMovements?: CustomMovementBinding[];
+    benchmarkEdits?: TrainingMaxEdit[];
   } = {},
 ): Promise<PlatformContextBundle> {
   const [
@@ -108,7 +110,25 @@ export async function buildPlatformContext(
   const oneRepMaxes: Record<string, number> = {};
   const resolved = new Map<string, ResolvedMovement>();
 
-  const tmRows = (data ?? []) as unknown as TmRow[];
+  let tmRows = (data ?? []) as unknown as TmRow[];
+  if (opts.benchmarkEdits?.length) {
+    const edits = trainingMaxEditsSchema.parse(opts.benchmarkEdits);
+    const { data: movements, error: movementError } = await supabase.from("movements")
+      .select("id, slug, display_name").in("id", edits.map((edit) => edit.movementId));
+    if (movementError) throw new Error("The benchmark exercises could not be loaded.");
+    const byId = new Map<string, MovementRow>(
+      (movements ?? []).map((movement) => [movement.id, movement]),
+    );
+    const changed = new Set(edits.map((edit) => edit.movementId));
+    tmRows = [
+      ...tmRows.filter((row) => !row.movement || !changed.has(row.movement.id)),
+      ...edits.map((edit) => {
+        const movement = byId.get(edit.movementId);
+        if (!movement) throw new Error("A benchmark exercise is no longer available.");
+        return { movement, one_rm_kg: edit.oneRmKg };
+      }),
+    ];
+  }
   for (const row of tmRows) {
     const mv = row.movement;
     if (!mv) continue;

@@ -52,7 +52,7 @@ function storageError(error: { code?: string; message?: string }): SwimInputErro
 
 export async function programConditioningAvailable(client: SupabaseClient): Promise<boolean> {
   if (process.env.SWIM_CONDITIONING_ENABLED !== "true") return false;
-  return conditioningStorageAvailable(client);
+  return conditioningStorageAvailable(client, true);
 }
 
 export async function readConditioningSave(

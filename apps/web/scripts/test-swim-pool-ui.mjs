@@ -84,7 +84,7 @@ try {
           return { ok: true, blockId: "00000000-0000-4000-8000-000000000008",
             programInstanceId: "00000000-0000-4000-8000-000000000009", skipped: 0 };
         };
-        window.showWizard = (enabled = true, existing = false) => {
+        window.showWizard = (enabled = true, existing = false, benchmarks = false) => {
           window.programCalls = []; window.destinations = [];
           root.render(<ProgramPicker key={++key} initialProgramId="tactical-barbell"
             programs={[{ id: "tactical-barbell", name: "Tactical Barbell", family: "tactical-barbell",
@@ -95,6 +95,14 @@ try {
               clusterMin: 2, clusterMax: 3, allowsBodyweightFourth: true, sessionsPerWeek: 3,
               defaultCluster: [{ movement: "squat" }, { movement: "bench" }, { movement: "deadlift" }] }]}
             anchoredKeys={["squat", "bench", "deadlift"]} conditioningEnabled={enabled}
+            benchRoles={benchmarks ? [
+              { engineKey: "squat", role: "squat", currentSlug: "back-squat-high-bar", currentOneRmKg: 100,
+                variants: [{ slug: "back-squat-high-bar", label: "Back Squat", movementId: "00000000-0000-4000-8000-000000000021" }] },
+              { engineKey: "bench", role: "horizontal_press", currentSlug: "bench-press-flat", currentOneRmKg: 80,
+                variants: [{ slug: "bench-press-flat", label: "Bench Press", movementId: "00000000-0000-4000-8000-000000000022" }] },
+              { engineKey: "deadlift", role: "hinge", currentSlug: "deadlift-conventional", currentOneRmKg: 160,
+                variants: [{ slug: "deadlift-conventional", label: "Deadlift", movementId: "00000000-0000-4000-8000-000000000023" }] },
+            ] : []}
             conditioningPlans={existing ? [{
               id: "00000000-0000-4000-8000-000000000007", revision: 3, title: "Current swimming plan",
             }] : []} />);
@@ -281,8 +289,9 @@ try {
   for (const width of [375, 1280]) {
     stage = `conditioning-wizard-new-course-${width}`;
     await page.setViewportSize({ width, height: 900 });
-    await page.evaluate(() => { window.programMode = "success"; window.showWizard(); });
+    await page.evaluate(() => { window.programMode = "success"; window.showWizard(true, false, true); });
     await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("spinbutton", { name: "Squat 1-rep max", exact: true }).fill("120");
     await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page.getByLabel("Start date", { exact: true }).fill("2026-09-14");
     await page.getByRole("button", { name: /^Tue\s*Rest$/ }).click();
@@ -346,6 +355,9 @@ try {
     ]);
     assert.equal(programCalls[0].conditioning.swim.kind, "course");
     assert.equal(programCalls[0].conditioning.swim.reviewed, true);
+    assert.deepEqual(programCalls[0].conditioning.benchmarks, [
+      { movementId: "00000000-0000-4000-8000-000000000021", oneRmKg: 120 },
+    ]);
     assert.equal(await page.evaluate(() => window.destinations.at(-1)), "/app");
     stages.push(stage);
 

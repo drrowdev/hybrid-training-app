@@ -12,6 +12,8 @@ const binding = (n: number) => ({
 let bindings: unknown[];
 let ready: unknown;
 let readyStatus: number;
+let benchmarkReady: unknown;
+let benchmarkReadyStatus: number;
 const reads: URL[] = [];
 const client = createClient("https://conditioning.test", "synthetic-test-key", {
   auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
@@ -19,6 +21,7 @@ const client = createClient("https://conditioning.test", "synthetic-test-key", {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
     reads.push(url);
     if (url.pathname.endsWith("swim_conditioning_ready")) return Response.json(ready, { status: readyStatus });
+    if (url.pathname.endsWith("swim_conditioning_benchmarks_ready")) return Response.json(benchmarkReady, { status: benchmarkReadyStatus });
     const offset = Number(url.searchParams.get("offset"));
     return Response.json(url.pathname.endsWith("swim_conditioning_bindings") ? bindings.slice(offset, offset + 500) : [{
       user_id: userId, request_id: id(7000), block_id: null, program_instance_id: null, swim_plan_id: id(8001),
@@ -26,7 +29,10 @@ const client = createClient("https://conditioning.test", "synthetic-test-key", {
     }]);
   } },
 });
-beforeEach(() => { bindings = [binding(1)]; ready = true; readyStatus = 200; reads.length = 0; });
+beforeEach(() => {
+  bindings = [binding(1)]; ready = true; readyStatus = 200;
+  benchmarkReady = true; benchmarkReadyStatus = 200; reads.length = 0;
+});
 afterEach(() => vi.unstubAllEnvs());
 
 it("exports every retained owner binding and receipt even while new setup is disabled", async () => {
@@ -47,6 +53,14 @@ it("distinguishes absent storage from a broken availability check", async () => 
   expect(await conditioningStorageAvailable(client)).toBe(false);
   ready = { code: "42501", message: "Denied" }; readyStatus = 403;
   await expect(conditioningStorageAvailable(client)).rejects.toThrow();
+});
+
+it("requires benchmark support for new saves without blocking existing history", async () => {
+  benchmarkReady = { code: "PGRST202", message: "Missing function" }; benchmarkReadyStatus = 404;
+  expect(await conditioningStorageAvailable(client, true)).toBe(false);
+  expect(await conditioningStorageAvailable(client)).toBe(true);
+  benchmarkReady = true; benchmarkReadyStatus = 200;
+  expect(await conditioningStorageAvailable(client, true)).toBe(true);
 });
 
 it.each([

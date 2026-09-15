@@ -19,10 +19,15 @@ const saveSchema = z.object({
   created_at: z.string(),
 }).strict();
 
-export async function conditioningStorageAvailable(client: SupabaseClient): Promise<boolean> {
-  const { data, error } = await client.rpc("swim_conditioning_ready").abortSignal(AbortSignal.timeout(10_000));
-  if (error && isMissingRpc(error)) return false;
-  if (error || data !== true) throw new Error("Programme conditioning availability could not be checked.");
+export async function conditioningStorageAvailable(client: SupabaseClient, includeBenchmarks = false): Promise<boolean> {
+  const names = includeBenchmarks
+    ? ["swim_conditioning_ready", "swim_conditioning_benchmarks_ready"]
+    : ["swim_conditioning_ready"];
+  for (const name of names) {
+    const { data, error } = await client.rpc(name).abortSignal(AbortSignal.timeout(10_000));
+    if (error && isMissingRpc(error)) return false;
+    if (error || data !== true) throw new Error("Programme conditioning availability could not be checked.");
+  }
   return true;
 }
 

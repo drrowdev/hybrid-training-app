@@ -4149,3 +4149,21 @@ These are not authenticated end-to-end or owner usability results. Shared
 Today/calendar/history, coordinated lifecycle changes and benchmark-write/slot-fit
 recovery remain release blockers. No hosted configuration, migration, deployment
 or real-account change occurred.
+
+## [2026-09-15] implementation | Include benchmarks in the swimming save
+
+Wizard source d949e990 passed core34895234553 and storage34895234538, including
+the shared-control browser runner. Public completion metadata was consumed; no
+raw logs were retrieved. This is not full integrated or owner acceptance.
+
+The next correction extends unshipped0156, not any hosted database. Coupled
+creation now includes entered benchmarks in the original request, prepares the
+engine from a read-only overlay and validates full swim-slot fit before writes.
+The database inserts or updates benchmarks in the programme/swim transaction;
+late failures roll everything back and replay cannot overwrite later max edits.
+New creation requires explicit benchmark-storage readiness. Existing benchmark
+RLS, legacy independent saves and export/replay availability are preserved.
+
+Focused context/action checks and synthetic375/1280 setup exercise the new path.
+Real PostgreSQL acceptance of the extension remains pending. Shared daily/history
+integration, coordinated lifecycle work and hosted rollout remain unfinished.

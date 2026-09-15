@@ -3,6 +3,7 @@ import { CONDITIONING_ACTIVITIES } from "@hta/domain";
 import { parseSwimCourseFile, swimCoursePoolChoicesSchema } from "./course-file";
 import { parseSetupForm } from "./forms";
 import { planPrivateSwimCourse } from "./course-planning";
+import { trainingMaxEditsSchema } from "../training-maxes/input";
 
 export const conditioningCourseSchema = z.object({
   kind: z.literal("course"),
@@ -19,6 +20,7 @@ export const conditioningCourseSchema = z.object({
 }).strict();
 export const programConditioningSchema = z.object({
   requestId: z.string().uuid(),
+  benchmarks: trainingMaxEditsSchema.optional(),
   choices: z.array(z.object({
     weekday: z.number().int().min(0).max(6),
     activity: z.enum(CONDITIONING_ACTIVITIES),
@@ -29,7 +31,9 @@ export const programConditioningSchema = z.object({
   ]).optional(),
 }).strict().refine((value) =>
   value.choices.some((choice) => choice.activity === "swimming") === (value.swim !== undefined),
-{ message: "Choose a swimming plan for the selected swim days." });
+{ message: "Choose a swimming plan for the selected swim days." })
+  .refine((value) => value.benchmarks === undefined || value.swim !== undefined,
+    { message: "Benchmarks in this save require a swimming plan." });
 
 export type ProgramConditioningInput = z.input<typeof programConditioningSchema>;
 export type ProgramConditioning = z.output<typeof programConditioningSchema>;

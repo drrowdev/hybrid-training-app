@@ -819,8 +819,11 @@ The mounted wizard's synthetic375/1280 browser journeys cover new/existing
 sources, draft recovery, unchanged retry and the flag-off path.
 
 Shared surfaces and the complete isolated authenticated journey remain
-outstanding. The wizard still saves edited benchmark values separately before
-the programme transaction; complete slot-fit preflight and safe recovery across
-those writes are release blockers, not covered by the atomic alignment claim.
-The new path remains disabled until these and the lifecycle gaps are resolved.
+outstanding. A follow-up to unshipped0156 moves the wizard's edited benchmarks
+into the same transaction. The context builder uses them without writing during
+engine preparation and whole-course fit validation; unchanged retry returns the
+original receipt without overwriting later benchmark changes. A separate
+readiness check prevents older storage from ignoring the new inputs. That
+extension requires its own exact-source PostgreSQL acceptance.
+The new path remains disabled until acceptance and the lifecycle gaps are resolved.
 No physical-device or owner usability acceptance is claimed.
