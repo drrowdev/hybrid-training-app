@@ -4217,3 +4217,20 @@ and date/pool/course editors. Focused action checks and synthetic375/1280 contro
 pass; exact-source real PostgreSQL acceptance remains pending. No hosted schema,
 configuration, deployment or real-account changes occurred. Broader activity
 history, programme editing and the authenticated full journey remain open.
+
+## [2026-09-15] repair | Correct linked lifecycle validation failures
+
+Source1e8d5ff5 failed core34941353203 and pool storage34941353107; import storage
+passed. The closed pool diagnostic was42601 during migration installation, not
+an accepted lifecycle result. Parenthesizing the CASE expression inside the
+PL/pgSQL IF removes its ambiguous THEN boundary. The existing disposable runner
+now distinguishes0157 installation and emits only a bounded numeric syntax
+position if another syntax error occurs, never raw SQL or error text.
+
+Standalone workout projection no longer loads rescheduling context unnecessarily;
+linked detail explicitly requests it. Updated route/refresh fixtures preserve
+standalone behavior and include programme-history invalidation. All338 focused
+regressions and web/fixture types passed locally. Sessions return navigation is
+whitelisted through workout and recording detail; activity-list integration is
+still separate, uncommitted work. Exact-source GitHub SQL remains required.
+No hosted changes, private account writes or additional agents occurred.

@@ -32,6 +32,7 @@ type PoolRequest = { state: SwimPlanState; workouts: (Omit<PoolRow, "revision"> 
 const stages: string[] = [];
 const knownFailures = new Map<string, { migration: number; line: number }>();
 let failureLocation: { migration: number; line: number } | undefined;
+let syntaxPosition: number | undefined;
 let stage = "guard", status = "failed", code = "unexpected";
 let sql: ReturnType<typeof postgres> | undefined;
 try {
@@ -749,12 +750,14 @@ try {
   await revertConditioning();
   await database.begin((tx) => tx.unsafe(conditioningUp));
   stages.push(stage);
+  stage = "conditioning-lifecycle-migration-up-and-down";
   const lifecycleUp = readFileSync(new URL("../drizzle/0157_swim_conditioning_lifecycle.sql", import.meta.url), "utf8");
   const lifecycleDown = readFileSync(new URL("../rollbacks/0157_swim_conditioning_lifecycle.down.sql", import.meta.url), "utf8");
   const revertLifecycle = () => revertScript(lifecycleDown);
   await database.begin((tx) => tx.unsafe(lifecycleUp));
   await revertLifecycle();
   await database.begin((tx) => tx.unsafe(lifecycleUp));
+  stages.push(stage);
   await exerciseSwimConditioning(database, c, b, editedCourse.plan, {
     started_on: today,
     ends_on: new Date(Date.parse(`${today}T00:00:00Z`) + 13 * 86400000).toISOString().slice(0, 10),
@@ -786,6 +789,8 @@ try {
   const known = ["42501", "23503", "23505", "23514", "22023", "P0001", "42601", "42703", "42883", "42P01", "42P07", "42704", "25P02", "57014", "55P03", "40P01", "40001"];
   code = typeof error === "object" && error !== null && "code" in error &&
     typeof error.code === "string" ? (known.includes(error.code) ? error.code : error.code === "ERR_ASSERTION" ? "assertion" : "unexpected") : "unexpected";
+  if (code === "42601" && typeof error === "object" && error !== null && "position" in error &&
+    typeof error.position === "string" && /^[0-9]{1,7}$/.test(error.position)) syntaxPosition = Number(error.position);
   if (error instanceof ReviewStorageRefusal || error instanceof ProductionInspectionRefusal) code = error.code;
 } finally {
   if (sql) {
@@ -795,9 +800,10 @@ try {
 }
 console.log(JSON.stringify({
   scope: "swim-pool-storage", sha: /^[0-9a-f]{40}$/.test(process.env.TESTED_SHA ?? "") ? process.env.TESTED_SHA : null,
-  status, stages, ...(status === "failed" ? { stage, code, ...(failureLocation ? { failureLocation } : {}) } : {}),
+  status, stages, ...(status === "failed" ? { stage, code, ...(failureLocation ? { failureLocation } : {}),
+    ...(syntaxPosition ? { syntaxPosition } : {}) } : {}),
 }));
 if (status !== "passed" && process.env.GITHUB_ACTIONS === "true") {
-  console.log(`::error title=Swimming pool storage::${stage} [${code}]${failureLocation ? ` at migration-${failureLocation.migration}:${failureLocation.line}` : ""}`);
+  console.log(`::error title=Swimming pool storage::${stage} [${code}]${failureLocation ? ` at migration-${failureLocation.migration}:${failureLocation.line}` : ""}${syntaxPosition ? ` at position-${syntaxPosition}` : ""}`);
 }
 if (status !== "passed") process.exitCode = 1;

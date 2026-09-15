@@ -11,13 +11,14 @@ import { loadSwimImportOutcome, swimImportOutcomesAvailable } from "@/lib/swim/i
 import { swimOutcomeForRecording } from "@hta/domain";
 import { z } from "zod";
 import styles from "@/components/swim/Swim.module.css";
+import { parseSwimOrigin } from "@/lib/swim/conditioning-presentation";
 
 export default async function SwimRecordingPage({ params, searchParams }: {
   params: Promise<{ importId: string }>; searchParams?: Promise<{ workout?: string; from?: string }>;
 }) {
   const query = await searchParams;
   const workoutId = z.string().uuid().safeParse(query?.workout);
-  const origin = query?.from === "today" || query?.from === "plan" || query?.from === "history" ? query.from : null;
+  const origin = parseSwimOrigin(query?.from);
   const context = workoutId.success ? `?workout=${workoutId.data}${origin ? `&from=${origin}` : ""}` : "";
   const back = workoutId.success
     ? { href: `/app/swim/${workoutId.data}${origin ? `?from=${origin}` : ""}`, label: "Workout" }

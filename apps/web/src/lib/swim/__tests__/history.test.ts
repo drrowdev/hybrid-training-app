@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { summarizeSwimWeek } from "@hta/domain";
 import { deriveSwimWeekCandidate, loadSwimHistory, loadSwimWorkoutView, settledSwimResult, swimWorkoutViewFromRow } from "../queries";
-import { getSwimWorkout, listSwimPlans } from "../storage";
+import { getSwimWorkout, listSwimPlans, listSwimWorkouts } from "../storage";
 import { workoutPresentation } from "../presentation";
 import { swimWorkoutDefinition } from "../model";
 import { swimFixture, sessionId, userId } from "./fixtures";
@@ -63,6 +63,27 @@ describe("ADR0079 authoritative swim history", () => {
       expect(getSwimWorkout).toHaveBeenCalledOnce();
       expect(getSwimWorkout).toHaveBeenCalledWith(client, row.id);
       expect(client.from).not.toHaveBeenCalled();
+    });
+
+    it("DC-SW7 loads calendar bounds only when the linked detail requests rescheduling", async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-09-06T12:00:00Z"));
+      try {
+        const { workouts, plan } = swimFixture();
+        const row = workouts[0]!;
+        vi.mocked(getSwimWorkout).mockResolvedValue(row);
+        vi.mocked(listSwimWorkouts).mockResolvedValue(workouts);
+        const client = { from: vi.fn(() => ({ select: () => ({ eq: () => ({
+          maybeSingle: async () => ({ data: { timezone: "UTC" }, error: null }),
+        }) }) })) };
+        const view = await loadSwimWorkoutView(client as never, userId, row.id, true);
+        expect(view?.reschedule).toMatchObject({ revision: row.revision });
+        expect(listSwimWorkouts).toHaveBeenCalledOnce();
+        expect(listSwimWorkouts).toHaveBeenCalledWith(client, plan.id);
+        expect(client.from).toHaveBeenCalledWith("profiles");
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it.each(["missing", "foreign"] as const)("retains %s workout handling before plan/history reads", async (kind) => {

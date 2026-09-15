@@ -312,10 +312,10 @@ export async function changeSwimPlanStatus(planId: string, revision: number, sta
   try {
     context = await swimContext();
     const { client, user } = context;
+    await ownedSwimPlan(client, user.id, planId, revision);
     if (await conditioningPlanLink(client, user.id, planId)) {
       throw new SwimActionError("Use the swimming controls in your programme.", "validation");
     }
-    await ownedSwimPlan(client, user.id, planId, revision);
     returnedPlan = await storage.setSwimPlanStatus(client, planId, revision, z.enum(["paused", "finished", "archived"]).parse(status));
   } catch (error) { return swimActionFailure(error); }
   return confirmedPlanView(context.client, context.user.id, returnedPlan);

@@ -149,7 +149,7 @@ BEGIN
       WHERE user_id = u AND workout_id = work.id ORDER BY revision DESC LIMIT 1;
     IF work.revision IS DISTINCT FROM (p_input->>'workoutRevision')::integer
       OR work.session_id IS NOT NULL OR COALESCE(latest_outcome <> 'null'::jsonb, false)
-      OR work.status IS DISTINCT FROM CASE WHEN command = 'unskip' THEN 'skipped' ELSE 'scheduled' END THEN
+      OR work.status IS DISTINCT FROM (CASE WHEN command = 'unskip' THEN 'skipped' ELSE 'scheduled' END) THEN
       RAISE EXCEPTION 'CONDITIONING_WORKOUT_CHANGED' USING ERRCODE = '40001';
     END IF;
     IF command = 'move' THEN

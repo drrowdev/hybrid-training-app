@@ -16,6 +16,7 @@ import { SWIM_SCHEDULE_VERSION } from "../model";
 import type { SwimHubView, SwimWorkoutView } from "../view-types";
 import { workoutPresentation } from "../presentation";
 import { swimFixture, userId, planId, sessionId, receiptId } from "./fixtures";
+import * as conditioningLifecycle from "../conditioning-lifecycle";
 
 const mock = vi.hoisted(() => ({
   user: { id: "00000000-0000-4000-8000-000000000001" } as { id: string } | null,
@@ -90,6 +91,7 @@ function editForm() {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.spyOn(conditioningLifecycle, "conditioningPlanLink").mockResolvedValue(null);
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-09-08T12:00:00Z"));
   vi.spyOn(queries, "loadSwimHubView").mockResolvedValue(confirmedView);
@@ -301,9 +303,9 @@ describe("DC-SW8/SW9 confirmed Edit view", () => {
     expect(storage.getSwimWorkout).toHaveBeenCalledWith(mock.client, returnedEditedWorkout.id);
     expect(storage.getSwimResult).toHaveBeenCalledOnce();
     expect(storage.getSwimResult).toHaveBeenCalledWith(mock.client, sessionId);
-    expect(revalidatePath).toHaveBeenCalledTimes(refreshFails ? 1 : 7);
+    expect(revalidatePath).toHaveBeenCalledTimes(refreshFails ? 1 : 8);
     if (!refreshFails) expect(vi.mocked(revalidatePath).mock.calls).toEqual([
-      ["/app"], ["/app/plan"], ["/app/swim"], ["/app/stats"], ["/app/sessions"],
+      ["/app"], ["/app/plan"], ["/app/plan/history"], ["/app/swim"], ["/app/stats"], ["/app/sessions"],
       ["/app/swim/[workoutId]", "page"], [`/app/sessions/${sessionId}`],
     ]);
     const calls = [storage.editSwimResult, recomputeAfterCompletedSessionMutation, revalidatePath, queries.swimWorkoutViewFromRow]
@@ -341,7 +343,7 @@ describe("DC-SW8/SW9 confirmed Edit view", () => {
     expect(queries.swimWorkoutViewFromRow).toHaveBeenCalledOnce();
     expect(vi.mocked(queries.swimWorkoutViewFromRow).mock.calls[0]![2]).toBe(returnedEditedWorkout);
     expect(mock.client.from.mock.calls.map(([table]) => table)).toEqual(["sessions", "cardio_logs"]);
-    expect(revalidatePath).toHaveBeenCalledTimes(refreshFails ? 1 : 7);
+    expect(revalidatePath).toHaveBeenCalledTimes(refreshFails ? 1 : 8);
   });
 
   it("awaits the single storage mutation and shared recompute before refresh or projection", async () => {
@@ -373,7 +375,7 @@ describe("DC-SW8/SW9 confirmed Edit view", () => {
     expect(storage.editSwimResult).toHaveBeenCalledOnce();
     expect(recomputeAfterCompletedSessionMutation).toHaveBeenCalledOnce();
     expect(queries.swimWorkoutViewFromRow).toHaveBeenCalledOnce();
-    expect(revalidatePath).toHaveBeenCalledTimes(7);
+    expect(revalidatePath).toHaveBeenCalledTimes(8);
   });
 
   it.each(["parse", "storage", "workout-read", "missing-workout", "session", "missing-result", "conditions"] as const)(
@@ -671,7 +673,8 @@ describe.each([
         expect(input.workouts.length).toBeGreaterThan(0);
         expect(input.workouts.every((row) => row.scheduled_date > "2026-09-12")).toBe(true);
       }
-      expect(revalidatePath).toHaveBeenCalledTimes(refreshFails ? 1 : 6);
+      expect(revalidatePath).toHaveBeenCalledTimes(refreshFails ? 1 : 7);
+      if (!refreshFails) expect(revalidatePath).toHaveBeenCalledWith("/app/plan/history");
       const calls = [storage.updateSwimPlan, revalidatePath, queries.loadSwimHubView]
         .map((fn) => vi.mocked(fn).mock.invocationCallOrder[0]!);
       expect(calls).toEqual([...calls].sort((a, b) => a - b));

@@ -167,18 +167,18 @@ export function deriveSwimWeekCandidate(plan: SwimPlanRow, history: SwimHistoryR
   return { id, proposal, sourceWeek: source.weekIndex, targetWeek: target.weekIndex, targetWorkoutIds, input, exactInputs, generated: generated.value };
 }
 
-export async function loadSwimWorkoutView(client: SupabaseClient, userId: string, workoutId: string): Promise<SwimWorkoutView | null> {
+export async function loadSwimWorkoutView(client: SupabaseClient, userId: string, workoutId: string, includeRescheduling = false): Promise<SwimWorkoutView | null> {
   const workout = await getSwimWorkout(client, workoutId);
-  return workout ? swimWorkoutViewFromRow(client, userId, workout) : null;
+  return workout ? swimWorkoutViewFromRow(client, userId, workout, includeRescheduling) : null;
 }
 
-export async function swimWorkoutViewFromRow(client: SupabaseClient, userId: string, workout: SwimWorkoutRow): Promise<SwimWorkoutView | null> {
+export async function swimWorkoutViewFromRow(client: SupabaseClient, userId: string, workout: SwimWorkoutRow, includeRescheduling = false): Promise<SwimWorkoutView | null> {
   if (workout.user_id !== userId) return null;
   const plan = (await listSwimPlans(client)).find((row) => row.id === workout.plan_id && row.user_id === userId);
   if (!plan) return null;
   const row = (await loadSwimHistory(client, [workout]))[0]!;
   let reschedule: SwimWorkoutView["reschedule"];
-  if (plan.status === "active" && workout.status === "scheduled" && !workout.session_id) {
+  if (includeRescheduling && plan.status === "active" && workout.status === "scheduled" && !workout.session_id) {
     const { today } = await swimToday(client, userId);
     if (workout.scheduled_date > today) reschedule = {
       revision: workout.revision, ...swimWorkoutDateRange(plan,
