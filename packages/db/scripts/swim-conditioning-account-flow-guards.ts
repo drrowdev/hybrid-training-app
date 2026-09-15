@@ -12,7 +12,27 @@ export const conditioningRequestDiagnosticSchema = z.object({
   operation: z.enum(["replay", "save", "context"]), status: z.number().int().min(100).max(599),
   code: z.union([z.enum(["ok", "other", "unreadable"]),
     z.string().regex(/^(?:[0-9][0-9A-Z][0-9A-Z]{3}|(?:P0|XX|HV|F0)[0-9A-Z]{3}|PGRST[0-9]{3})$/)]),
-}).strict();
+  authorization: z.union([
+    z.enum(["owner_check", "unknown"]),
+    z.string().regex(/^(?:table|rls):(profiles|movements|training_maxes|training_blocks|planned_sessions|program_instances|swim_plans|swim_workouts|swim_conditioning_saves|swim_conditioning_bindings|swim_import_outcomes)$/),
+    z.string().regex(/^function:(uid|swim_conditioning_replay|deploy_program_with_swimming|deploy_program_instance_atomically|swim_create_plan|swim_local_today|swim_validate_plan|swim_validate_plan_binding|swim_validate_workout|swim_validate_state_append|set_updated_at)$/),
+    z.string().regex(/^schema:(public|auth|pg_catalog)$/),
+  ]).optional(),
+}).strict().refine((value) => (value.code === "42501") === (value.authorization !== undefined));
+export function conditioningFixtureSchedule(today: string) {
+  z.string().date().parse(today);
+  const todayDay = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
+  // Two weekly swims need a later, still-future rest day for the same-week edit.
+  // Late-week fixtures use one swim; no course spills beyond the primary block.
+  const swimDays = todayDay <= 3 ? [todayDay, todayDay + 2] : [todayDay];
+  const remaining = Array.from({ length: 7 }, (_, day) => day).filter((day) => !swimDays.includes(day));
+  const strengthDays = remaining.slice(0, 3);
+  const restDays = remaining.slice(3);
+  const editFrom = swimDays.at(-1)!;
+  const editTo = swimDays.length === 2 ? restDays.find((day) => day > todayDay) : restDays[0];
+  demand(editTo !== undefined, "fixture_schedule");
+  return { today, todayDay, swimDays, strengthDays, editFrom, editTo, workoutCount: swimDays.length * 6 };
+}
 export function conditioningSaveDiagnostic(alerts: readonly string[]) {
   if (!alerts.length) return "no_alert";
   const text = alerts.join("\n");
@@ -57,6 +77,7 @@ export function conditioningAccountProfile(value: ConditioningReviewReceipt): Re
       "apps/web/scripts/swim-conditioning-account-flow.ts", "apps/web/scripts/swim-conditioning-account-flow-browser.ts",
       "apps/web/scripts/swim-conditioning-account-flow-observer.mjs",
       "packages/db/scripts/__tests__/swim-conditioning-account-flow-observer.test.ts",
+      "apps/web/src/lib/swim/__tests__/conditioning-account-schedule.test.ts",
       "apps/web/tsconfig.account-flow.json", "apps/web/tsconfig.json",
       "docs/design/swimming-programme-rebuild.md", "docs/knowledge/log.md",
     ],

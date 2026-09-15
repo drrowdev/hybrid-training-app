@@ -4378,3 +4378,20 @@ Both disposable accounts were removed; all15 checked tables, independent cleanup
 and browser/server/build/database closure passed. No source application or owner
 data changed. This does not yet establish why the earlier save showed a refusal
 or establish successful programme creation.
+
+## [2026-09-15] decision | Bounded protected-site authorization repair
+
+Native34965104309 at089181f5 confirmed replay200 followed by combined save403,
+SQLSTATE42501. Both disposable accounts and all15 checked tables were removed;
+independent cleanup and process closure passed. The owner approved the smallest
+proven protected-site authorization repair, with rollback and account-isolation
+checks. Production, personal plans and weaker isolation remain outside scope.
+
+Before any permission change, the existing bounded observer now distinguishes
+the explicit ownership refusal from exact, source-allowlisted privilege targets.
+Unknown names/messages remain redacted; raw messages are never emitted or saved.
+The synthetic programme starts today, not a past Monday. Its dates are checked
+against the real course compiler and binding/edit rules for all seven weekdays.
+Monday through Thursday exercise two swims/week; late-week fixtures use one so
+the course fits the primary block and a valid future edit remains possible.
+All seven browser checks and exact identity/cleanup assertions remain required.

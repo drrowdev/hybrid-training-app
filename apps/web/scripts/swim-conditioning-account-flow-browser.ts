@@ -7,7 +7,7 @@ import { syntheticCourse } from "../src/lib/swim/__tests__/course-fixtures";
 import { ACCOUNT_FLOW_ORIGIN as origin, ACCOUNT_FLOW_SUPABASE as supabaseUrl,
   AccountFlowRefusal, demand } from "../../../packages/db/scripts/swim-account-flow-guards";
 import type { NativeAccount, NativeReport } from "./swim-account-flow-browser";
-import { conditioningSaveDiagnostic } from "../../../packages/db/scripts/swim-conditioning-account-flow-guards";
+import { conditioningSaveDiagnostic, conditioningFixtureSchedule } from "../../../packages/db/scripts/swim-conditioning-account-flow-guards";
 
 export const conditioningChecks = ["native_sign_in", "programme_creation", "shared_next_swim",
   "recording_confirmation", "history_and_isolation", "programme_edit_and_pause", "disconnect"] as const;
@@ -21,14 +21,14 @@ const linkedSchema = z.object({
   definition: z.record(z.unknown()),
 });
 type Linked = z.infer<typeof linkedSchema>;
-async function linked(client: SupabaseClient, account: NativeAccount): Promise<Linked[]> {
+async function readLinked(client: SupabaseClient, account: NativeAccount, expectedCount: number): Promise<Linked[]> {
   const result = await client.from("swim_conditioning_sessions")
     .select("id,plan_id,planned_session_id,block_id,scheduled_date,revision,plan_status,status,session_id,definition")
     .eq("user_id", account.identity.id).order("scheduled_date").limit(13);
   demand(!result.error, "linked_read");
-  const rows = z.array(linkedSchema).length(12).parse(result.data);
+  const rows = z.array(linkedSchema).length(expectedCount).parse(result.data);
   demand(new Set(rows.map((row) => row.block_id)).size === 1 && new Set(rows.map((row) => row.plan_id)).size === 1 &&
-    new Set(rows.map((row) => row.planned_session_id)).size === 12, "linked_identity");
+    new Set(rows.map((row) => row.planned_session_id)).size === expectedCount, "linked_identity");
   return rows;
 }
 async function layout(page: Page) {
@@ -43,7 +43,8 @@ async function setDay(page: Page, day: number, kind: "Strength" | "Conditioning"
   }
   await expect(desired).toBeVisible();
 }
-async function createProgramme(page: Page, slot: "a" | "b", monday: string, swimDays: readonly number[], report: NativeReport) {
+async function createProgramme(page: Page, slot: "a" | "b", schedule: ReturnType<typeof conditioningFixtureSchedule>, report: NativeReport) {
+  const { today, swimDays, strengthDays } = schedule;
   report.journeyAccount = slot; report.journeyPhase = "loadout";
   await page.goto(`${origin}/app/program?program=tactical-barbell`);
   await page.getByText("Customize template", { exact: true }).click();
@@ -56,10 +57,9 @@ async function createProgramme(page: Page, slot: "a" | "b", monday: string, swim
   for (let index = 0; index < count; index++) await benchmarks.nth(index).fill("80");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   report.journeyPhase = "schedule";
-  await page.getByLabel("Start date", { exact: true }).fill(monday);
-  const strength = days.map((_, index) => index).filter((day) => !swimDays.includes(day)).slice(0, 3);
+  await page.getByLabel("Start date", { exact: true }).fill(today);
   for (let day = 0; day < 7; day++) {
-    await setDay(page, day, swimDays.includes(day) ? "Conditioning" : strength.includes(day) ? "Strength" : "Rest");
+    await setDay(page, day, swimDays.includes(day) ? "Conditioning" : strengthDays.includes(day) ? "Strength" : "Rest");
   }
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   report.journeyPhase = "course";
@@ -68,7 +68,7 @@ async function createProgramme(page: Page, slot: "a" | "b", monday: string, swim
   const fixture = syntheticCourse();
   const course = { ...fixture, title: `Synthetic conditioning ${slot}`,
     weeks: Array.from({ length: 6 }, (_, index) => ({
-      workouts: fixture.weeks[0]!.workouts.map((workout) => ({ ...workout, title: `Week ${index + 1}` })),
+      workouts: fixture.weeks[0]!.workouts.slice(0, swimDays.length).map((workout) => ({ ...workout, title: `Week ${index + 1}` })),
     })),
   };
   await page.getByLabel("Prepared plan file", { exact: true }).setInputFiles({
@@ -101,10 +101,9 @@ async function createProgramme(page: Page, slot: "a" | "b", monday: string, swim
 export async function conditioningAccountFlow(
   accounts: readonly [NativeAccount, NativeAccount], anonKey: string, report: NativeReport, guard: () => Promise<void>,
 ) {
-  const now = new Date(), today = now.toISOString().slice(0, 10);
-  const todayDay = (now.getUTCDay() + 6) % 7;
-  const monday = new Date(Date.parse(`${today}T00:00:00Z`) - todayDay * 86400000).toISOString().slice(0, 10);
-  const swimDays = [todayDay, (todayDay + 2) % 7].sort((a, b) => a - b);
+  const schedule = conditioningFixtureSchedule(new Date().toISOString().slice(0, 10));
+  const { today, todayDay } = schedule;
+  const linked = (client: SupabaseClient, account: NativeAccount) => readLinked(client, account, schedule.workoutCount);
   const browser = await chromium.launch();
   let failure: unknown, blocked = false;
   async function step(name: typeof conditioningChecks[number], action: () => Promise<void>) {
@@ -156,7 +155,7 @@ export async function conditioningAccountFlow(
     });
     await step("programme_creation", async () => {
       for (const [index, page] of pages.entries()) {
-        await createProgramme(page, accounts[index]!.identity.marker.slot, monday, swimDays, report);
+        await createProgramme(page, accounts[index]!.identity.marker.slot, schedule, report);
       }
     });
     const before = await Promise.all(clients.map((client, index) => linked(client, accounts[index]!)));
@@ -274,11 +273,8 @@ export async function conditioningAccountFlow(
       await page.getByRole("link", { name: "Edit program", exact: true }).click();
       await page.getByRole("button", { name: "Continue", exact: true }).click();
       await page.getByRole("button", { name: "Continue", exact: true }).click();
-      const oldDay = swimDays.find((day) => day !== todayDay)!;
-      const resting = days.map((_, day) => day).filter((day) => !swimDays.includes(day)).slice(3);
-      const destination = resting[0]!;
-      await setDay(page, oldDay, "Rest");
-      await setDay(page, destination, "Conditioning");
+      await setDay(page, schedule.editFrom, "Rest");
+      await setDay(page, schedule.editTo, "Conditioning");
       await page.getByRole("button", { name: "Save changes", exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`^${origin}/app/plan(?:\\?kept=today)?$`));
       const moved = await linked(client, accounts[0]);

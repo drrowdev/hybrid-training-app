@@ -21,6 +21,13 @@ describe("DC-SW8 bounded account-runner request observation", () => {
         ["/rest/v1/rpc/swim_conditioning_replay", 300, { code: "PGRST203", details: canary }],
         ["/rest/v1/rpc/deploy_program_with_swimming", 400, { code: canary, message: canary }],
         ["/rest/v1/rpc/deploy_program_with_swimming", 400, { code: "23503", details: canary.repeat(2000) }],
+        ["/rest/v1/rpc/deploy_program_with_swimming", 403, { code: "42501", message: "CONDITIONING_UNAUTHORIZED", details: canary }],
+        ["/rest/v1/rpc/deploy_program_with_swimming", 403, { code: "42501", message: "permission denied for function swim_create_plan" }],
+        ["/rest/v1/rpc/deploy_program_with_swimming", 403, { code: "42501", message: 'permission denied for table "movements"' }],
+        ["/rest/v1/rpc/deploy_program_with_swimming", 403, { code: "42501", message: 'new row violates row-level security policy for table "training_maxes"' }],
+        ["/rest/v1/rpc/deploy_program_with_swimming", 403, { code: "42501", message: "permission denied for schema auth" }],
+        ["/rest/v1/rpc/deploy_program_with_swimming", 403, { code: "42501", message: "permission denied for table " + canary }],
+        ["/rest/v1/rpc/deploy_program_with_swimming", 403, { code: "42501", message: "permission denied for table profiles " + canary }],
         ["/rest/v1/swim_workouts", 400, { code: "23503", details: canary }],
       ];
       for (const [path, expectedStatus, value] of cases) {
@@ -45,7 +52,7 @@ describe("DC-SW8 bounded account-runner request observation", () => {
       expect(line).toMatch(/^SWIM_CONDITIONING_REQUEST /);
       return conditioningRequestDiagnosticSchema.parse(JSON.parse(line.slice("SWIM_CONDITIONING_REQUEST ".length)));
     });
-    expect(records).toHaveLength(7);
+    expect(records).toHaveLength(14);
     expect(records).toEqual(expect.arrayContaining([
       { operation: "replay", status: 200, code: "ok" },
       { operation: "save", status: 400, code: "23503" },
@@ -54,9 +61,21 @@ describe("DC-SW8 bounded account-runner request observation", () => {
       { operation: "replay", status: 300, code: "PGRST203" },
       { operation: "save", status: 400, code: "other" },
       { operation: "save", status: 400, code: "unreadable" },
+      { operation: "save", status: 403, code: "42501", authorization: "owner_check" },
+      { operation: "save", status: 403, code: "42501", authorization: "function:swim_create_plan" },
+      { operation: "save", status: 403, code: "42501", authorization: "table:movements" },
+      { operation: "save", status: 403, code: "42501", authorization: "rls:training_maxes" },
+      { operation: "save", status: 403, code: "42501", authorization: "schema:auth" },
     ]));
+    expect(records.filter((record) => record.authorization === "unknown")).toHaveLength(2);
     expect(conditioningRequestDiagnosticSchema.safeParse({
       operation: "save", status: 400, code: "23503", message: "PrivateSyntheticCanary",
+    }).success).toBe(false);
+    for (const change of [
+      { code: "42501" }, { code: "23503", authorization: "owner_check" },
+      { code: "42501", authorization: "table:PrivateSyntheticCanary" },
+    ]) expect(conditioningRequestDiagnosticSchema.safeParse({
+      operation: "save", status: 403, ...change,
     }).success).toBe(false);
   });
 });
