@@ -1689,7 +1689,7 @@ jobs:
       !inputs.provision_swim_review_owner && !inputs.refresh_swim_review &&
       !inputs.refresh_swim_plan_review && !inputs.refresh_swim_readonly_review &&
       !inputs.upgrade_swim_review && !inputs.update_untimed_swim_review &&
-      !inputs.test_swim_account_flow && !inputs.inspect_swim_production &&
+      !inputs.test_swim_account_flow && !inputs.test_swim_conditioning_account_flow && !inputs.inspect_swim_production &&
       !inputs.update_swim_production && !inputs.accept_legacy_swim_history &&
       !inputs.activate_swim_production && inputs.production_readonly_scope == 'preflight'
     needs: [ci, identity-guard]
@@ -1721,6 +1721,7 @@ jobs:
       UPGRADE_SWIM_REVIEW: ${{ inputs.upgrade_swim_review }}
       UPDATE_UNTIMED_SWIM_REVIEW: ${{ inputs.update_untimed_swim_review }}
       TEST_SWIM_ACCOUNT_FLOW: ${{ inputs.test_swim_account_flow }}
+      TEST_SWIM_CONDITIONING_ACCOUNT_FLOW: ${{ inputs.test_swim_conditioning_account_flow }}
       INSPECT_SWIM_PRODUCTION: ${{ inputs.inspect_swim_production }}
       UPDATE_SWIM_PRODUCTION: ${{ inputs.update_swim_production }}
       ACCEPT_LEGACY_SWIM_HISTORY: ${{ inputs.accept_legacy_swim_history }}
@@ -1741,9 +1742,9 @@ jobs:
       - name: Check conditioning update and historical guards offline
         run: pnpm --filter @hta/db test
       - name: Typecheck conditioning update source
-        run: pnpm --filter @hta/db exec tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --strict scripts/update-conditioning-swim-review.ts
+        run: pnpm --filter @hta/db exec tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --strict scripts/repair-conditioning-swim-review.ts
       - name: Verify exact conditioning update source before credentials
-        run: pnpm --filter @hta/db exec tsx scripts/update-conditioning-swim-review.ts --check-source
+        run: pnpm --filter @hta/db exec tsx scripts/repair-conditioning-swim-review.ts --check-source
       - name: Update protected conditioning review once
         timeout-minutes: 20
         env:
@@ -1752,7 +1753,7 @@ jobs:
           SUPABASE_REVIEW_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_REVIEW_MANAGEMENT_TOKEN }}
           SWIM_REVIEW_SUPABASE_ANON_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_ANON_KEY }}
           SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SWIM_REVIEW_SUPABASE_SERVICE_ROLE_KEY }}
-        run: pnpm --filter @hta/db exec tsx scripts/update-conditioning-swim-review.ts
+        run: pnpm --filter @hta/db exec tsx scripts/repair-conditioning-swim-review.ts
 
   test-swim-conditioning-account-flow:
     if: >-

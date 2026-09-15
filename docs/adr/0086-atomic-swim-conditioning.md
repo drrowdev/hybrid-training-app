@@ -102,7 +102,23 @@ Disable integrated conditioning before any explicitly approved hosted rollback;
 restoring the prior bodies also restores the known Save failure. No automatic
 rollback or reuse of the spent protected updater is authorized.
 
-The empty-only down migration uses bounded locks and refuses retained records.
+The repair is database-only: the fresh `repair-conditioning-swim-review.ts`
+entrypoint reuses the existing guarded update job, but never its spent deployment
+operation. A read-only preflight pins the existing deployment, flags, Auth and
+158-entry ledger; it checks exact helper grants, role restrictions, routine
+bodies and existing owner policies. Apply locks and preserves that prefix,
+executes only0158, appends one record and rechecks159 before commit. Changed
+external metadata aborts the transaction. An uncertain write or post-commit
+failure requires reconciliation, not an automatic retry/down. No deployment,
+flag mutation or user-row access is provided by this operation.
+
+Real PostgreSQL34975277310 passed the restriction reproduction and full repaired
+suite. A separate disposable158-to159 rehearsal now covers the actual append
+helper, final-guard rollback, prior-ledger/policy/history preservation and replay
+refusal. Its synthetic ledger rewind is not available in the hosted operation.
+Hosted preflight/apply and the complete native journey remain acceptance gates.
+
+The original conditioning empty-only down uses bounded locks and refuses retained records.
 It never deletes history to make rollback pass. Once used, disable new creation
 and retain the schema rather than running the down migration.
 

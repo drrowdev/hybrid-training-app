@@ -17,7 +17,7 @@ import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scrip
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
 import { historicalSwimMigrations } from "./historical-swim-migrations.ts";
 import { exerciseSwimConditioning } from "./swim-conditioning-storage.ts";
-import { exerciseConditioningIdentity } from "./swim-conditioning-identity.ts";
+import { exerciseConditioningIdentity, exerciseConditioningIdentityAppend } from "./swim-conditioning-identity.ts";
 import { accountIdentity } from "../scripts/swim-account-flow-guards.ts";
 import { conditioningAccountAbsenceQuery } from "../scripts/swim-conditioning-account-flow-guards.ts";
 import { readMigrationFiles } from "drizzle-orm/migrator";
@@ -471,6 +471,13 @@ try {
   assert.deepEqual(await database`SELECT id,hash,created_at FROM drizzle.__drizzle_migrations ORDER BY id LIMIT 155`, originalLedger);
   assert.deepEqual(await legacySnapshot(), beforeUntimed);
   await assert.rejects(appendConditioningMigrations(database, conditioningMigrations, async () => {}));
+  stages.push(stage);
+  stage = "conditioning-identity-append-and-preservation";
+  await exerciseConditioningIdentityAppend(database, async () => {
+    assert.deepEqual(await legacySnapshot(), beforeUntimed);
+  });
+  stages.push(stage);
+  stage = "conditioning-review-rollback-and-preservation";
   await revertScript(lifecycleDown);
   await revertScript(conditioningDown);
   await revertOutcomes();

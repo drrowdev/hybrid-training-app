@@ -4411,3 +4411,21 @@ and grant without deleting history. The existing PostgreSQL job now reproduces
 missing auth-schema access before exercising repair, rollback and all existing
 save/lifecycle/isolation cases. Hosted repair and the complete native journey
 remain pending; the spent updater and production are untouched.
+
+## [2026-09-15] delivery | Guard the database-only conditioning identity repair
+
+Real PostgreSQL34975277310 passed the managed-auth restriction reproduction,
+0158/down/restore and existing two-owner save/lifecycle suite. Core caught two
+stale migration-catalog assertions;7824054b updates the exact159 source count and
+tail while retaining the frozen historical runtime. On Windows, the wider
+acceptance unit file also hits seven existing POSIX private-file-mode checks;
+those assertions remain unchanged for the Linux CI gate.
+
+The fresh repair entrypoint uses the existing protected update job without any
+deployment or flag-write path. Preflight checks the deployed receipt,158 ledger,
+helper grants, restricted role, exact routine bodies and existing owner policies.
+One transaction preserves158 records and appends only0158. The service fixture
+now rehearses this actual append path, final-guard rollback, unchanged policies
+and synthetic history, and duplicate refusal. Reporting/closure failures cannot
+emit a successful result; uncertain writes require reconciliation. This tooling
+does not constitute hosted repair or completed end-user acceptance.

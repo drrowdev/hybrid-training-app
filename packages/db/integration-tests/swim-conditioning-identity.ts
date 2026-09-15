@@ -1,6 +1,49 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type postgres from "postgres";
+import { appendIdentityReview, inspectIdentityReview } from "../scripts/conditioning-identity-review-storage";
+
+export async function exerciseConditioningIdentityAppend(database: postgres.Sql, preserve: () => Promise<void>) {
+  const snapshot = () => database`SELECT to_jsonb(p) AS metadata FROM pg_proc p
+    JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' ORDER BY p.oid`;
+  const policies = () => database`SELECT to_jsonb(p) AS metadata FROM pg_policy p ORDER BY p.oid`;
+  const ledger = () => database`SELECT id,hash,created_at FROM drizzle.__drizzle_migrations ORDER BY id`;
+  const before = await snapshot(), beforePolicies = await policies(), beforeLedger = await ledger();
+  await inspectIdentityReview(database, 158);
+  assert.deepEqual(await snapshot(), before);
+  assert.deepEqual(await ledger(), beforeLedger);
+  let guards = 0;
+  await assert.rejects(() => appendIdentityReview(database, async () => {
+    if (++guards === 2) throw new Error("synthetic_identity_guard");
+  }), /synthetic_identity_guard/);
+  assert.equal(guards, 2);
+  await inspectIdentityReview(database, 158);
+  assert.deepEqual(await snapshot(), before);
+  assert.deepEqual(await ledger(), beforeLedger);
+  await preserve();
+  await appendIdentityReview(database, async () => {});
+  await inspectIdentityReview(database, 159);
+  const afterLedger = await ledger(), after = await snapshot();
+  assert.deepEqual(Array.from(afterLedger).slice(0, 158), Array.from(beforeLedger));
+  assert.equal(afterLedger.length, 159);
+  assert.deepEqual(await policies(), beforePolicies);
+  await preserve();
+  await assert.rejects(() => appendIdentityReview(database, async () => {}));
+  assert.deepEqual(await ledger(), afterLedger);
+  assert.deepEqual(await snapshot(), after);
+  const down = readFileSync(new URL("../rollbacks/0158_conditioning_request_identity.down.sql", import.meta.url), "utf8")
+    .replace(/^BEGIN;\s*$/m, "").replace(/^COMMIT;\s*$/m, "");
+  await database.begin(async (tx) => {
+    await tx.unsafe(down);
+    // This ledger rewind is confined to the disposable service fixture.
+    await tx`DELETE FROM drizzle.__drizzle_migrations WHERE id=${afterLedger[158]!.id}`;
+  });
+  await inspectIdentityReview(database, 158);
+  assert.deepEqual(await snapshot(), before);
+  assert.deepEqual(await ledger(), beforeLedger);
+  assert.deepEqual(await policies(), beforePolicies);
+  await preserve();
+}
 
 export async function exerciseConditioningIdentity(
   database: postgres.Sql, owner: string, mark: (stage: string) => void,

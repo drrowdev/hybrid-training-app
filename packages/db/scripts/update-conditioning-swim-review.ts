@@ -46,8 +46,10 @@ export function checkConditioningReviewDispatch(inputs: Record<string, unknown> 
     typeof inputs.review_upgrade_read_only === "string" && ["true", "false"].includes(inputs.review_upgrade_read_only) &&
     inputs.production_readonly_scope === "preflight" &&
     CONDITIONING_REVIEW.otherOperations.every((key) => inputs[key.toLowerCase()] === "false") &&
+    (inputs.test_swim_conditioning_account_flow === undefined || inputs.test_swim_conditioning_account_flow === "false") &&
     Object.keys(inputs).every((key) => ["update_conditioning_swim_review", "review_upgrade_read_only",
-      "production_readonly_scope", "expected_sha", ...CONDITIONING_REVIEW.otherOperations.map((name) => name.toLowerCase())].includes(key)) &&
+      "production_readonly_scope", "expected_sha", "test_swim_conditioning_account_flow",
+      ...CONDITIONING_REVIEW.otherOperations.map((name) => name.toLowerCase())].includes(key)) &&
     env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
     env.GITHUB_REPOSITORY === REVIEW.repository && env.GITHUB_REF_TYPE === "branch" &&
     env.GITHUB_REF === `refs/heads/${REVIEW.branch}` && inputs.expected_sha === env.GITHUB_SHA &&

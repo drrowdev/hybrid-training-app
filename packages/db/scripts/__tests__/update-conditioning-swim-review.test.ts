@@ -27,6 +27,7 @@ const env: NodeJS.ProcessEnv = {
 const inputs = () => ({
   update_conditioning_swim_review: "true", review_upgrade_read_only: "false",
   production_readonly_scope: "preflight", expected_sha: sha,
+  test_swim_conditioning_account_flow: "false",
   ...Object.fromEntries(CONDITIONING_REVIEW.otherOperations.map((key) => [key.toLowerCase(), "false"])),
 });
 describe("conditioning review exact-source and operation boundary", () => {
@@ -40,6 +41,7 @@ describe("conditioning review exact-source and operation boundary", () => {
     expect(checkConditioningReviewDispatch(undefined, env)).toBe(false);
     expect(() => checkConditioningReviewDispatch({ ...inputs(), production_readonly_scope: "post_update" }, env)).toThrow();
     expect(() => checkConditioningReviewDispatch({ ...inputs(), unexpected: "false" }, env)).toThrow();
+    expect(() => checkConditioningReviewDispatch({ ...inputs(), test_swim_conditioning_account_flow: "true" }, env)).toThrow();
   });
   it.each(CONDITIONING_REVIEW.otherOperations)("refuses missing, enabled or malformed %s", (key) => {
     for (const value of [undefined, "true", true]) {

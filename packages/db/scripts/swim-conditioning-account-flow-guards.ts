@@ -43,6 +43,13 @@ const updateReceipt = z.object({
   }).strict(),
 }).strict();
 export type ConditioningReviewReceipt = z.infer<typeof updateReceipt>;
+export const CONDITIONING_DEPLOYED_RECEIPT: ConditioningReviewReceipt = {
+  run: "34952341296", sha: "9d42be34302fd194e8fca0224db9fea88226fd8e",
+  id: "dpl_BiNzLA4dsCDBqe3TjT8D5zhcC28V",
+  url: "hybrid-training-app-gs6wfpekz-drrowdevs-projects.vercel.app",
+  start: Date.parse("2026-09-15T09:29:50Z"), end: Date.parse("2026-09-15T09:32:28Z"),
+  flags: { SWIM_CONDITIONING_ENABLED: "Yswvr3T3SVhNG3sC", SWIM_IMPORT_OUTCOMES_ENABLED: "oSElR8kMKssKapHu" },
+};
 export function conditioningAccountProfile(value: ConditioningReviewReceipt): RefreshProfile {
   const receipt = updateReceipt.parse(value), ids = Object.values(receipt.flags);
   demand(receipt.end >= receipt.start && receipt.end - receipt.start <= 20 * 60_000 && new Set(ids).size === 2, "review_receipt");
