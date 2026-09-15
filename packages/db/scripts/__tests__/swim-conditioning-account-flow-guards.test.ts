@@ -3,7 +3,8 @@ import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { conditioningAccountProfile, checkConditioningAccountDispatch, conditioningAccountAbsenceQuery,
-  conditioningAccountTables, conditioningSaveDiagnostic, CONDITIONING_ACCOUNT_REFERENCE } from "../swim-conditioning-account-flow-guards";
+  conditioningAccountTables, conditioningSaveDiagnostic, CONDITIONING_ACCOUNT_REFERENCE,
+  repairedConditioningAccountProfile, CONDITIONING_DEPLOYED_RECEIPT } from "../swim-conditioning-account-flow-guards";
 import { accountIdentity, accountFlowContext } from "../swim-account-flow-guards";
 import { verifyRefreshCheckout, verifyRefreshSource } from "../refresh-swim-review";
 import { OVERRIDE_KEYS, REVIEW, type EnvironmentMetadata } from "../swim-review-config-plan";
@@ -47,6 +48,19 @@ function installed(): EnvironmentMetadata[] {
   ];
 }
 describe("DC-SW3/SW5/SW8 integrated disposable-account boundary", () => {
+  it("pins the repaired accepted source separately from the unchanged deployment and refuses further schema changes", () => {
+    const repaired = repairedConditioningAccountProfile();
+    expect(repaired.reference).toEqual({
+      sha: "42154e140b58a609573bccf2169eaff7b59aebdf", run: "34977730272", kind: "automatic_ci",
+    });
+    expect(repaired.previous.sha).toBe(CONDITIONING_DEPLOYED_RECEIPT.sha);
+    expect(repaired.previous.id).toBe(CONDITIONING_DEPLOYED_RECEIPT.id);
+    expect(repaired.paths.every((path) => !path.startsWith("packages/db/drizzle/"))).toBe(true);
+    const source = readFileSync(resolve(__dirname, "../../../../apps/web/scripts/swim-conditioning-account-flow.ts"), "utf8");
+    expect(source).toContain("repairedConditioningAccountProfile()");
+    expect(source).toContain("ledger: (sql) => inspectIdentityReview(sql, 159)");
+    expect(repaired.otherOperations).toEqual(profile.otherOperations);
+  });
   it("uses the declared action bound for browser assertions and excludes route announcements from save errors", () => {
     const browser = readFileSync(resolve(__dirname, "../../../../apps/web/scripts/swim-conditioning-account-flow-browser.ts"), "utf8");
     expect(browser).toContain("baseExpect.configure({ timeout: 20_000 })");

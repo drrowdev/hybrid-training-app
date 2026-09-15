@@ -116,7 +116,13 @@ Real PostgreSQL34975277310 passed the restriction reproduction and full repaired
 suite. A separate disposable158-to159 rehearsal now covers the actual append
 helper, final-guard rollback, prior-ledger/policy/history preservation and replay
 refusal. Its synthetic ledger rewind is not available in the hosted operation.
-Hosted preflight/apply and the complete native journey remain acceptance gates.
+At42154e14, core34977730272 and storage34977730169 passed. Protected read-only
+preflight34978569711 and database-only apply34979248193 both passed:158 prior
+records retained,0158 appended,159 verified, database closed, no reconciliation.
+Deployment9d42be34, flags, Auth and existing accounts/history were unchanged.
+This repair operation is now spent. The native runner is rebound to the repaired
+accepted source and exact159 storage while retaining the actual9d42be34
+deployment receipt. The complete native journey remains an acceptance gate.
 
 The original conditioning empty-only down uses bounded locks and refuses retained records.
 It never deletes history to make rollback pass. Once used, disable new creation

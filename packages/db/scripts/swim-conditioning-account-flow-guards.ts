@@ -50,6 +50,18 @@ export const CONDITIONING_DEPLOYED_RECEIPT: ConditioningReviewReceipt = {
   start: Date.parse("2026-09-15T09:29:50Z"), end: Date.parse("2026-09-15T09:32:28Z"),
   flags: { SWIM_CONDITIONING_ENABLED: "Yswvr3T3SVhNG3sC", SWIM_IMPORT_OUTCOMES_ENABLED: "oSElR8kMKssKapHu" },
 };
+export function repairedConditioningAccountProfile(): RefreshProfile {
+  return {
+    ...conditioningAccountProfile(CONDITIONING_DEPLOYED_RECEIPT),
+    reference: { sha: "42154e140b58a609573bccf2169eaff7b59aebdf", run: "34977730272", kind: "automatic_ci" },
+    paths: [
+      "packages/db/scripts/swim-conditioning-account-flow-guards.ts",
+      "packages/db/scripts/__tests__/swim-conditioning-account-flow-guards.test.ts",
+      "apps/web/scripts/swim-conditioning-account-flow.ts",
+      "docs/adr/0086-atomic-swim-conditioning.md", "docs/design/swimming-programme-rebuild.md", "docs/knowledge/log.md",
+    ],
+  };
+}
 export function conditioningAccountProfile(value: ConditioningReviewReceipt): RefreshProfile {
   const receipt = updateReceipt.parse(value), ids = Object.values(receipt.flags);
   demand(receipt.end >= receipt.start && receipt.end - receipt.start <= 20 * 60_000 && new Set(ids).size === 2, "review_receipt");

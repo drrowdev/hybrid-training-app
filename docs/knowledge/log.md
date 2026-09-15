@@ -4429,3 +4429,24 @@ now rehearses this actual append path, final-guard rollback, unchanged policies
 and synthetic history, and duplicate refusal. Reporting/closure failures cannot
 emit a successful result; uncertain writes require reconciliation. This tooling
 does not constitute hosted repair or completed end-user acceptance.
+
+## [2026-09-15] delivery | Apply the protected conditioning identity repair
+
+The actual append rehearsal caught PostgreSQL22023 before any hosted use.
+42154e14 fixes driver double-encoding with the existing `::text::jsonb` convention
+and passed core34977730272/storage34977730169, including the full transaction,
+rollback/replay, policy/history preservation and restricted two-owner suite.
+
+Read-only preflight34978569711/job104413906419 passed without attempting writes.
+After fresh exact-source/ref/no-conflict checks, authorized database-only
+apply34979248193/job104416795942 preserved158 records and appended0158 to159.
+Source, snapshot, ledger, migrations and completion passed; commit, verification
+and database closure were confirmed without reconciliation. Each safe summary
+was consumed once. Deployment9d42be34, alias, flags, Auth and user data were not
+changed. Production and the private course remain untouched; both old deployment
+and new database-repair operations are spent.
+
+The integrated native runner now uses accepted42154e14 and verifies repaired159
+storage, retaining the actual9d42be34 deployment receipt and all existing account,
+request and cleanup bounds. End-to-end and owner-usability acceptance are still
+pending; this entry records repair delivery, not a successful user journey.
