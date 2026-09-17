@@ -21,6 +21,7 @@
 import Link from "next/link";
 import { Fragment } from "react";
 import type { PrescriptionItem } from "@hta/db";
+import { countDistinctRehabMovements } from "@hta/domain";
 import {
   collapseIdenticalSetItems,
   groupByMovementThenKind,
@@ -90,6 +91,7 @@ export function SessionPreviewBody({
   variant?: SessionPreviewVariant;
 }) {
   const sections = groupByMovementThenKind(session.items);
+  const rehabItems = sections.rehab.flatMap((row) => row.items);
   // Count every exercise the session prescribes — main lifts AND
   // accessories/tendon/hinge — not just the main-lift sections. Counting
   // only `movements` undersold a strength day ("2 movements" for a session
@@ -99,7 +101,7 @@ export function SessionPreviewBody({
   const exerciseCount =
     sections.movements.length +
     sections.accessories.length +
-    sections.rehab.length +
+    countDistinctRehabMovements(rehabItems) +
     sections.tendon.length +
     sections.hingeCompensations.length;
   const hasAnything =
@@ -142,7 +144,6 @@ export function SessionPreviewBody({
       sections.accessories.length > 0 ||
       sections.hingeCompensations.length > 0 ||
       sections.tendon.length > 0);
-  const rehabItems = sections.rehab.flatMap((row) => row.items);
   const rehabMinutes = estimateSessionMinutes(rehabItems);
   const rehabProtocol = rehabItems
     .map((item) => item.meta?.rehabProtocolName)

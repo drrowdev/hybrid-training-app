@@ -5,12 +5,11 @@ import {
   partitionRehabItems,
   prependRehabItems,
   unresolvedRehabItemIndices,
+  type RehabAwareItem,
 } from "./rehab-section";
 
-type Item = {
-  movementId: string;
+type Item = RehabAwareItem & {
   kind: string;
-  meta?: Record<string, unknown>;
 };
 
 const main: Item = { movementId: "squat", kind: "main" };
@@ -43,6 +42,32 @@ describe("embedded rehab sections", () => {
 
   it("counts rehab movements independently from their prescribed sets", () => {
     expect(countDistinctRehabMovements([rehabA, rehabA, rehabB, main])).toBe(2);
+  });
+
+  it("DC-J1 / DC-S2: counts dynamic and isometric variants separately without changing their sets", () => {
+    const dynamic = { ...rehabA, reps: 8, repRange: { min: 8, max: 10 } };
+    const hold = { ...rehabA, holdSec: { min: 20, max: 20 } };
+    const items = [dynamic, dynamic, dynamic, hold, hold, hold, rehabB, rehabB, rehabB];
+    expect(countDistinctRehabMovements(items)).toBe(3);
+    expect(unresolvedRehabItemIndices(items, new Set())).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  it("keeps matched left/right prescriptions together for either work type", () => {
+    for (const target of [{ reps: 10 }, { holdSec: { min: 20, max: 20 } }]) {
+      expect(countDistinctRehabMovements([
+        { ...rehabA, ...target, meta: { rehab: true, side: "left" } },
+        { ...rehabA, ...target, meta: { rehab: true, side: "right" } },
+      ])).toBe(1);
+    }
+  });
+
+  it("distinguishes a combined rep-and-hold prescription without counting a rep range twice", () => {
+    expect(countDistinctRehabMovements([
+      { ...rehabA, reps: 10 },
+      { ...rehabA, repRange: { min: 8, max: 10 } },
+      { ...rehabA, holdSec: { min: 20, max: 20 } },
+      { ...rehabA, reps: 10, holdSec: { min: 5, max: 5 } },
+    ])).toBe(3);
   });
 
   it("requires every rehab item to be logged or explicitly skipped", () => {

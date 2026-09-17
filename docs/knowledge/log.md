@@ -4077,3 +4077,15 @@ swimming fixture; manifest-coverage assertions now compare exact tracked SQL
 paths with journal entries rather than freezing the total. The existing
 disposable Postgres run additionally applies catalog migration 0155 twice and
 compares the resulting single movement and instructions with the seed.
+
+## [2026-09-17] fix | Count dynamic and isometric rehab variants separately
+
+The Adductor rehab library summary counted two movements for three prescriptions
+because the dynamic and isometric Copenhagen entries share a catalog ID.
+The domain count now distinguishes repetitions, timed holds, and combined work,
+while still combining set copies and matching left/right variants. Settings,
+the program picker, session summaries, previews and embedded-section counts use
+that same rule. Regression coverage preserves all nine loggable sets and both
+Copenhagen targets (DC-J1 / DC-S2). No protocol data, circuit membership, logging
+identity, or saved history is rewritten.
+The owner explicitly approved publishing this correction to production.

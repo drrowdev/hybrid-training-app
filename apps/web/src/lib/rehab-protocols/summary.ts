@@ -8,6 +8,7 @@
  * conversion `materialize.ts` performs when it writes rehab into a plan.
  */
 import type { PrescriptionItem } from "@hta/db";
+import { countDistinctRehabMovements } from "@hta/domain";
 import { estimateSessionMinutes } from "@/lib/sessions/estimate-duration";
 import type { RehabProtocolItem } from "./queries";
 
@@ -40,12 +41,11 @@ export type ProtocolSummary = {
 export function summariseProtocol(
   items: readonly RehabProtocolItem[],
 ): ProtocolSummary {
+  const prescriptionItems = toPrescriptionItems(items);
   return {
-    // Distinct movements, not rows: a protocol addresses left and right as two
-    // rows of the same movement, and "4 movements" should not count that twice.
-    movementCount: new Set(items.map((item) => item.movementId)).size,
+    movementCount: countDistinctRehabMovements(prescriptionItems),
     setCount: items.reduce((total, item) => total + item.sets, 0),
-    minutes: estimateSessionMinutes(toPrescriptionItems(items)),
+    minutes: estimateSessionMinutes(prescriptionItems),
   };
 }
 

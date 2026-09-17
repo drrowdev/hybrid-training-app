@@ -10,6 +10,7 @@
  */
 
 import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
+import { countDistinctRehabMovements, isRehabItem } from "@hta/domain";
 import type { AccessoryProfile } from "./accessory-roles";
 import { accessoryIntensity } from "./accessory-intensity";
 import { cleanPrescriptionNotes } from "./clean-prescription-notes";
@@ -2325,6 +2326,10 @@ export function summarisePrescription(items: PrescriptionItem[]): string {
 
   const tendon = items.filter((i) => i.kind === "tendon");
   if (tendon.length > 0 && tendon.length === items.length) {
+    if (tendon.every(isRehabItem)) {
+      const count = countDistinctRehabMovements(tendon);
+      return `Rehab · ${count} movement${count === 1 ? "" : "s"}`;
+    }
     const sets = tendon.length;
     const reps = tendon[0]?.reps;
     const sameReps =
