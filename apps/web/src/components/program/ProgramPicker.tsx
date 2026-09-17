@@ -3679,7 +3679,7 @@ export function ProgramPicker({
                     </p>
                   ) : null}
                   <div className={styles.doseFoot}>
-                    {draft.doseOverride ? (
+                    {draft.role === "supplemental" && draft.doseOverride ? (
                       <button
                         type="button"
                         className={styles.doseReset}
