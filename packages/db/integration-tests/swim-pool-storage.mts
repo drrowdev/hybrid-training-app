@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { readMigrationFiles } from "drizzle-orm/migrator";
+import { SEED_MOVEMENTS } from "../seeds/movements.ts";
+import { MOVEMENT_INSTRUCTIONS } from "../seeds/movement-instructions.ts";
 import { generateSwimPlan, changeSwimWorkoutPool } from "../../engine/src/swimming.ts";
 import { poolCourse, estimateCriticalSwimSpeed, type SwimWorkout } from "../../domain/src/swimming.ts";
 import { compileSwimCourseWorkout, editableSwimCourseWorkout } from "../../engine/src/swim-course.ts";
@@ -70,22 +74,26 @@ try {
     GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
   `);
   const journal: { entries: { idx: number; tag: string; when: number; breakpoints: boolean }[] } = JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8"));
-  assert.equal(journal.entries.length, 155);
+  const acceptedEntries = journal.entries.slice(0, 155);
+  assert.equal(acceptedEntries.length, 155);
   assert.equal(journal.entries[153].tag, "0153_swim_import_matching");
   assert.equal(journal.entries[154].tag, "0154_swim_untimed_courses");
-  assert.deepEqual(journal.entries.slice(150).map((entry) => entry.tag), [
+  assert.deepEqual(acceptedEntries.slice(150).map((entry) => entry.tag), [
     "0150_swim_import_storage", "0151_swim_pool_changes", "0152_swim_private_courses",
     "0153_swim_import_matching", "0154_swim_untimed_courses",
   ]);
   verifyMigrationDependencyParity();
   assert.throws(reviewMigrations, (error) => error instanceof ReviewStorageRefusal && error.code === "migration_source");
-  const migrations = untimedReviewMigrations();
+  assert.throws(untimedReviewMigrations, (error) => error instanceof ReviewStorageRefusal && error.code === "migration_source");
+  const migrations = readMigrationFiles({
+    migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
+  }).slice(0, 155);
   assert.equal(migrations.length, 155);
   // Rehearse the historical 150-to-154 operation without widening its hosted source guard.
   const canonical = migrations.slice(0, 154);
   await database.unsafe(`CREATE SCHEMA drizzle;
     CREATE TABLE drizzle.__drizzle_migrations(id serial PRIMARY KEY,hash text NOT NULL,created_at bigint)`);
-  for (const [index, migration] of journal.entries.entries()) {
+  for (const [index, migration] of acceptedEntries.entries()) {
     assert.equal(migration.idx, index);
     assert.equal(migration.when, migrations[index]!.folderMillis);
     if (index > 0) assert.ok(migration.when > journal.entries[index - 1]!.when);
@@ -677,6 +685,29 @@ try {
   await revertMatches();
   await revertCourse();
   await revert();
+  stages.push(stage);
+
+  stage = "kettlebell-hip-flexor-catalog";
+  const slug = "hip-flexor-raise-kettlebell";
+  const seed = SEED_MOVEMENTS.find((movement) => movement.slug === slug)!;
+  const instructions = MOVEMENT_INSTRUCTIONS.find((movement) => movement.slug === slug)!;
+  const catalogUp = readFileSync(new URL("../drizzle/0155_seed_kettlebell_hip_flexor_raise.sql", import.meta.url), "utf8");
+  await database.begin(async (tx) => {
+    await tx.unsafe(catalogUp);
+    const [first] = await tx`SELECT id FROM public.movements WHERE user_id IS NULL AND slug=${slug}`;
+    await tx.unsafe(catalogUp);
+    const rows = await tx`SELECT m.id, m.display_name, m.equipment, m.bilateral, m.primary_muscles,
+      m.functional_roles, m.bulletproof_roles, i.summary, i.setup, i.steps, i.cues, i.common_mistakes
+      FROM public.movements m JOIN public.movement_instructions i ON i.movement_id=m.id
+      WHERE m.user_id IS NULL AND m.slug=${slug}`;
+    assert.equal(rows.length, 1);
+    assert.deepEqual({ ...rows[0] }, {
+      id: first!.id, display_name: seed.displayName, equipment: seed.equipment, bilateral: seed.bilateral,
+      primary_muscles: seed.primaryMuscles, functional_roles: seed.functionalRoles, bulletproof_roles: seed.bulletproofRoles,
+      summary: instructions.summary, setup: instructions.setup, steps: instructions.steps,
+      cues: instructions.cues, common_mistakes: instructions.commonMistakes,
+    });
+  });
   stages.push(stage);
   status = "passed";
 } catch (error) {

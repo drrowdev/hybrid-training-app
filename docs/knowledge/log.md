@@ -4041,3 +4041,39 @@ any unsupported state. New rehearsal cases cover missing PUBLIC refusal,
 grant rollback and final permission/history retention. Preparation progress and
 closed SCID diagnostics are explicit; no raw error is emitted. Source validation
 and real-Postgres rehearsal remain required before the authorized new attempt.
+
+## [2026-09-17] refine | Kettlebell hip-flexor raise and hip catalog gaps
+
+Added Hip Flexor Raise (kettlebell), the supported standing knee-raise variant,
+to the shared movement seed with original setup, steps and safety cues.
+Migration 0155 carries the same catalog entry and instructions to existing
+installations; no user history, schema, permissions or program defaults change.
+The entry follows standing banded hip flexion's existing taxonomy exception:
+`adductor_groin` is the closest available region (DC-A6), with no false
+quad/adductor muscle credit (DC-T1) or tendon/hip-stabilizer role (DC-O4).
+The current seed already covers banded four-way hip work, banded clamshells,
+monster walks, side-lying abduction, fire hydrants, single-leg bridges,
+hip thrusts, Copenhagen planks, lunges, step-ups and single-leg RDLs.
+Notable missing entries remain bodyweight bilateral glute bridges, side-lying
+hip adduction, adductor squeezes, hip hikes/lateral step-downs, and dedicated
+hip internal-rotation work such as reverse clamshells. The
+[AAOS hip conditioning program](https://orthoinfo.aaos.org/en/recovery/hip-conditioning-program/)
+provides a clinical-library cross-check for side-lying adduction and reverse
+clamshells, not a blanket rehab prescription. These further additions were
+audited only, not implemented. No live catalog update was performed.
+
+## [2026-09-17] authorization | Publish the kettlebell hip-flexor raise
+
+The owner requested production delivery of the catalog addition. The previous
+production drift check (run 34814905742) confirms all 155 pre-existing journal
+entries are present; the guarded swimming update completed in run 34815744151.
+Appending migration 0155 exposed tests that loaded the entire evolving journal
+through one-shot swimming updaters fixed to 155 entries. Those tests now use
+the immutable historical prefix for ledger assertions and explicitly assert
+that the unchanged source loaders refuse the expanded journal, following the
+existing upgrade-review test pattern. No production safety guard is relaxed.
+The corresponding disposable integration runners also retain the 155-entry
+swimming fixture; manifest-coverage assertions now compare exact tracked SQL
+paths with journal entries rather than freezing the total. The existing
+disposable Postgres run additionally applies catalog migration 0155 twice and
+compares the resulting single movement and instructions with the seed.

@@ -367,6 +367,28 @@ describe("requirementFromEquipmentTag — DB equipment column mapping", () => {
 });
 
 describe("resolveRequiredEquipment — DB tag precedence over slug", () => {
+  it("requires kettlebells for the catalog hip-flexor raise", () => {
+    const movement = SEED_MOVEMENTS.find(
+      (candidate) => candidate.slug === "hip-flexor-raise-kettlebell",
+    );
+    expect(movement).toBeDefined();
+    const requirement = resolveRequiredEquipment(movement!);
+    expect(requirement).toEqual({ kind: "kettlebells" });
+    expect(isEquipmentAvailable(requirement, CUSTOM_EMPTY_PRESET)).toBe(false);
+    expect(
+      isEquipmentAvailable(requirement, {
+        ...CUSTOM_EMPTY_PRESET,
+        dumbbells: { minKg: 8, maxKg: 8, stepKg: 1 },
+      }),
+    ).toBe(false);
+    expect(
+      isEquipmentAvailable(requirement, {
+        ...CUSTOM_EMPTY_PRESET,
+        kettlebells: [8],
+      }),
+    ).toBe(true);
+  });
+
   it("uses the DB equipment tag when it implies a machine the slug misses", () => {
     // rear-delt-fly-machine would fall through to bodyweight_or_generic
     // on the slug heuristic alone; the DB tag pins it as machine-only.

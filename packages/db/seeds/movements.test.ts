@@ -419,6 +419,44 @@ describe("movement catalog seed", () => {
     );
   });
 
+  it("seeds a unilateral kettlebell hip-flexor raise without false muscle or rehab-role attribution (DC-A6, DC-T1, DC-O4)", () => {
+    const movement = SEED.find(
+      (candidate) => candidate.slug === "hip-flexor-raise-kettlebell",
+    );
+    expect(movement).toMatchObject({
+      userId: null,
+      pattern: "isolation",
+      equipment: "kettlebell",
+      primaryRegion: "adductor_groin",
+      secondaryRegions: [],
+      primaryMuscles: [],
+      secondaryMuscles: [],
+      bilateral: false,
+      bodyWeightLoaded: false,
+      isCompound: false,
+      isSupported: true,
+      stability: "supported",
+      axialLoad: "low",
+      interferenceCost: "low",
+      highStrainTendon: false,
+      bulletproofRoles: [],
+      functionalRoles: [],
+      metadata: { direction: "flexion", emphasis: "hip-flexor-strength" },
+    });
+    expect(requiresPrimaryMuscle(movement!)).toBe(false);
+    expect(
+      requiresPrimaryMuscle({ slug: "unclassified-isolation", pattern: "isolation" }),
+    ).toBe(true);
+
+    const instructions = MOVEMENT_INSTRUCTIONS.find(
+      (candidate) => candidate.slug === movement!.slug,
+    );
+    expect(instructions?.setup).toBeTruthy();
+    expect(instructions?.steps.length).toBeGreaterThanOrEqual(3);
+    expect(instructions?.cues.length).toBeGreaterThanOrEqual(2);
+    expect(instructions?.commonMistakes?.length).toBeGreaterThanOrEqual(1);
+  });
+
   it("seeds all four standing banded hip directions with instructions", () => {
     const expected = [
       {

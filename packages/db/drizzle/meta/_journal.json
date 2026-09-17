@@ -1086,6 +1086,13 @@
       "when": 1789304400000,
       "tag": "0154_swim_untimed_courses",
       "breakpoints": false
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1789640100000,
+      "tag": "0155_seed_kettlebell_hip_flexor_raise",
+      "breakpoints": false
     }
   ]
 }

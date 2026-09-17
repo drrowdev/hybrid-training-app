@@ -16,7 +16,8 @@ import { deriveAccessoryRoles } from "./derive-roles";
 const PRIMARY_MUSCLE_TAXONOMY_EXCEPTIONS = new Set([
   // The current enum has no hip-flexor category. A false quad/adductor tag
   // would corrupt volume and limitation logic, so region + protocol metadata
-  // carry this movement until the taxonomy gains an exact muscle.
+  // carry these movements until the taxonomy gains an exact muscle.
+  "hip-flexor-raise-kettlebell",
   "standing-banded-hip-flexion",
 ]);
 
