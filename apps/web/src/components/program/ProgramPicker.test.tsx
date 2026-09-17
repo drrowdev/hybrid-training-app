@@ -34,6 +34,7 @@ import {
   toggleMultiSelect,
   type PickerProgram,
   type PickerTbTemplate,
+  type PickerLibraryProtocol,
 } from "./ProgramPicker";
 import { pruneLinksAcrossSeries } from "./session-link-editing";
 import { attachProtocols, pruneRehabLinks } from "@/lib/rehab-protocols/attachment";
@@ -686,7 +687,7 @@ describe("ProgramPicker rendering", () => {
     expect(html).not.toContain("Hanging Knee Raise");
   });
 
-  const REHAB_LIBRARY = [
+  const REHAB_LIBRARY: PickerLibraryProtocol[] = [
     {
       id: "bbbbbbbb-0000-4000-8000-000000000001",
       name: "TB Zulu rehab",
@@ -696,7 +697,24 @@ describe("ProgramPicker rendering", () => {
           movementId: "cccccccc-0000-4000-8000-000000000001",
           movementName: "Copenhagen Plank",
           sets: 3,
+          reps: 8,
+          repRange: { min: 8, max: 10 },
+          side: "both",
+          instructions: "Dynamic",
+        },
+        {
+          movementId: "cccccccc-0000-4000-8000-000000000001",
+          movementName: "Copenhagen Plank",
+          sets: 3,
           holdSeconds: 30,
+          instructions: "Isometric",
+        },
+        {
+          movementId: "cccccccc-0000-4000-8000-000000000003",
+          movementName: "Hip Flexor Raise (kettlebell)",
+          sets: 3,
+          reps: 10,
+          targetWeightKg: 8,
         },
       ],
       links: [],
@@ -800,6 +818,25 @@ describe("ProgramPicker rendering", () => {
     expect(html).toContain('data-testid="tb-rehab-slot-1"');
     expect(html).toContain('data-testid="tb-rehab-remove-slot-1"');
     expect(html).toContain('data-testid="tb-rehab-slot-2"');
+    const firstCardRehab = html.slice(
+      html.indexOf('data-testid="tb-rehab-slot-1"'),
+      html.indexOf('data-testid="tb-add-exercise-slot-1"'),
+    );
+    expect(firstCardRehab.match(/Copenhagen Plank/g)).toHaveLength(2);
+    expect(firstCardRehab).toContain("3 × 8-10 · Both sides");
+    expect(firstCardRehab).toContain("3 × 30s hold");
+    expect(firstCardRehab).toContain("Dynamic");
+    expect(firstCardRehab).toContain("Isometric");
+    expect(firstCardRehab).toContain("Hip Flexor Raise (kettlebell)");
+    expect(firstCardRehab).toContain("3 × 10 · 8 kg");
+    expect(firstCardRehab).not.toContain("Prone Y");
+    const secondCardRehab = html.slice(
+      html.indexOf('data-testid="tb-rehab-slot-2"'),
+      html.indexOf('data-testid="tb-add-exercise-slot-2"'),
+    );
+    expect(secondCardRehab).toContain("Prone Y");
+    expect(secondCardRehab).toContain("2 × 12");
+    expect(secondCardRehab).not.toContain("Copenhagen Plank");
     // Neither session offers to add rehab it already has.
     expect(html).not.toContain('data-testid="tb-add-rehab-slot-1"');
   });
