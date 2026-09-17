@@ -4089,3 +4089,15 @@ that same rule. Regression coverage preserves all nine loggable sets and both
 Copenhagen targets (DC-J1 / DC-S2). No protocol data, circuit membership, logging
 identity, or saved history is rewritten.
 The owner explicitly approved publishing this correction to production.
+
+## [2026-09-17] fix | Show rehab exercises in program-edit session cards
+
+Weekly program session cards now display every assigned protocol item beneath
+its name, including sets, rep ranges, hold time, load, side and any instructions.
+Dynamic and isometric entries sharing a catalog movement remain separate rows
+in their authored order. The existing Change and Remove controls still operate
+on the protocol attachment; editing its content remains in the Settings library
+(ADR 0073). No change to prescriptions, assignments, links or stored data.
+The owner approved production publication. A synthetic Chromium edit flow
+verified all three entries at desktop, 390 px and 320 px widths, plus changing,
+removing and re-adding a protocol without affecting the other session.

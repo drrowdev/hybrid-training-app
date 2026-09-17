@@ -48,6 +48,7 @@ import { movementUsesTimedHold } from "@hta/domain";
 import styles from "./ProgramPicker.module.css";
 import { SessionLinkEditor, type LinkableMovement } from "./SessionLinkEditor";
 import { LinkBadge, rowLinkClass } from "./LinkBadge";
+import { RehabProtocolItems } from "./RehabProtocolItems";
 import {
   activationLinkableMovements,
   pruneLinksAcrossSeries,
@@ -3780,7 +3781,10 @@ export function ProgramPicker({
                       <div className={styles.seriesSection}>Rehab</div>
                     ) : null}
                     <div className={styles.seriesExercises}>
-                      <div data-testid={`tb-rehab-${entry.key}`}>
+                      <div
+                        className={styles.rehabSessionHeader}
+                        data-testid={`tb-rehab-${entry.key}`}
+                      >
                         <span>
                           <b>{rehabOnSeries.name}</b>
                         </span>
@@ -3811,6 +3815,7 @@ export function ProgramPicker({
                         </span>
                       </div>
                     </div>
+                    <RehabProtocolItems items={rehabOnSeries.items} />
                   </div>
                 ) : null}
                 {drafts.length < TB_SESSION_MOVEMENT_MAX ? (
