@@ -4101,3 +4101,12 @@ on the protocol attachment; editing its content remains in the Settings library
 The owner approved production publication. A synthetic Chromium edit flow
 verified all three entries at desktop, 390 px and 320 px widths, plus changing,
 removing and re-adding a protocol without affecting the other session.
+
+## [2026-09-17] fix | Remove Reset from accessory dose editing
+
+Accessory sets/reps and timed-hold editors now offer only Cancel and Save.
+The owner explicitly chose to keep the starting dose suggestion; saved values,
+validation and program-defined supplemental Reset behavior are unchanged.
+The owner approved production publication. Synthetic browser checks confirm
+Cancel preserves the saved dose and Save retains new values on reopening for
+both rep-based and timed-hold accessories.
