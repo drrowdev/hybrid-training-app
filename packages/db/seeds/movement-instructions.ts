@@ -1092,6 +1092,27 @@ export const MOVEMENT_INSTRUCTIONS: MovementInstructionSeed[] = [
     cues: ["Control the stretch at the open position.", "Squeeze fully closed."],
   },
   {
+    slug: "hip-flexor-raise-kettlebell",
+    summary: "Standing knee raise with a kettlebell on the foot to strengthen the hip flexors.",
+    setup:
+      "Stand beside a stable support with a light kettlebell in front of the working foot. Wear a closed shoe that fits securely through the handle.",
+    steps: [
+      "Hold the support and slide the working foot through the handle while the kettlebell rests on the floor.",
+      "Pull the toes up to keep the handle secure across the top of the foot.",
+      "Raise the knee toward hip height without leaning back or swinging the weight.",
+      "Pause, then lower the kettlebell slowly to the floor.",
+      "Complete the repetitions, then switch sides.",
+    ],
+    cues: [
+      "Keep the pelvis level and torso upright.",
+      "Keep the toes up; stop if the handle slips or the hip hurts.",
+    ],
+    commonMistakes: [
+      "Swinging the kettlebell or leaning back to lift it higher.",
+      "Pointing the toes down and letting the handle slide.",
+    ],
+  },
+  {
     slug: "standing-banded-hip-flexion",
     summary:
       "Standing band-resisted leg drive forward to train hip flexion as one direction of the four-way hip protocol.",

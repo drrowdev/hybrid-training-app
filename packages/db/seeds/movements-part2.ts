@@ -335,6 +335,21 @@ const CORE: NewMovement[] = [
 // candidates (endurance_anchor requires 2 of each per week). Tagged
 // automatically by `deriveAccessoryRoles` (slug + region rules).
 const PREHAB: NewMovement[] = [
+  m("hip-flexor-raise-kettlebell", "Hip Flexor Raise (kettlebell)", {
+    equipment: "kettlebell",
+    // Match banded hip flexion's anterior-hip region without inventing a
+    // primary muscle: the current taxonomy has no hip-flexor category.
+    primaryRegion: "adductor_groin",
+    primaryMuscles: [],
+    secondaryMuscles: [],
+    bilateral: false,
+    stability: "supported",
+    isSupported: true,
+    metadata: {
+      direction: "flexion",
+      emphasis: "hip-flexor-strength",
+    },
+  }),
   m("standing-banded-hip-flexion", "Standing Banded Hip Flexion", {
     equipment: "band",
     // Closest required region for this anterior-hip movement and conservative
