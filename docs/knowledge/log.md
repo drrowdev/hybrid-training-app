@@ -4072,3 +4072,8 @@ through one-shot swimming updaters fixed to 155 entries. Those tests now use
 the immutable historical prefix for ledger assertions and explicitly assert
 that the unchanged source loaders refuse the expanded journal, following the
 existing upgrade-review test pattern. No production safety guard is relaxed.
+The corresponding disposable integration runners also retain the 155-entry
+swimming fixture; manifest-coverage assertions now compare exact tracked SQL
+paths with journal entries rather than freezing the total. The existing
+disposable Postgres run additionally applies catalog migration 0155 twice and
+compares the resulting single movement and instructions with the seed.

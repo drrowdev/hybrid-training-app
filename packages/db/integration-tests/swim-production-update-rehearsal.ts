@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import type postgres from "postgres";
 import {
   appendProductionSwimming, productionSwimmingMigrations, validateProductionSwimAppend, verifyProductionSwimBefore,
@@ -29,7 +31,10 @@ export async function rehearseProductionSwimmingUpdate(database: postgres.Sql, s
   assert.deepEqual(database.options.host, ["127.0.0.1"]);
   assert.equal(database.options.database, "swim_pool_test");
   stage("production-updater-rehearsal-fixtures");
-  const migrations = productionSwimmingMigrations();
+  assert.throws(productionSwimmingMigrations, /migration_source/);
+  const migrations = readMigrationFiles({
+    migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)),
+  }).slice(0, 155);
   const original = Array.from(await database.unsafe(PRODUCTION_UPDATE_LEDGER_QUERY));
   assert.equal(original.length, 146);
   const originalFingerprint = productionHistoryFingerprint(original);
