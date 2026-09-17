@@ -81,7 +81,7 @@ import {
 import { setHyroxStationOverride } from "@/lib/hyrox/station-swap-actions";
 import { stationAlternativesFor } from "@hta/hyrox";
 import type { PrescriptionItem } from "@hta/db";
-import { isRehabItem } from "@hta/domain";
+import { countDistinctRehabMovements, isRehabItem } from "@hta/domain";
 
 export type PlanViewMode = "timeline" | "month" | "season";
 
@@ -2535,7 +2535,9 @@ export function SessionDrawer({
     sections.accessories.length +
     sections.hingeCompensations.length +
     sections.tendon.length;
-  const rehabMovementCount = sections.rehab.length;
+  const rehabMovementCount = countDistinctRehabMovements(
+    sections.rehab.flatMap((row) => row.items),
+  );
   const rehabProtocolName = sections.rehab
     .flatMap((row) => row.items)
     .map((item) => item.meta?.rehabProtocolName)

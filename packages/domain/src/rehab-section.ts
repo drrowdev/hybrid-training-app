@@ -1,5 +1,8 @@
 export type RehabAwareItem = {
   movementId: string;
+  reps?: number;
+  repRange?: { min: number; max: number };
+  holdSec?: { min: number; max: number };
   meta?: Record<string, unknown>;
 };
 
@@ -47,7 +50,16 @@ export function countDistinctRehabMovements<T extends RehabAwareItem>(
   items: readonly T[],
 ): number {
   return new Set(
-    items.filter(isRehabItem).map((item) => item.movementId),
+    items.filter(isRehabItem).map((item) => {
+      // A dynamic exercise and an isometric hold can share a catalog ID.
+      // Set copies and left/right sides still belong to the same variant.
+      const work = item.holdSec == null
+        ? "reps"
+        : item.reps != null || item.repRange != null
+          ? "reps-and-hold"
+          : "hold";
+      return JSON.stringify([item.movementId, work]);
+    }),
   ).size;
 }
 
