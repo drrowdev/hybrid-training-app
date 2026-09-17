@@ -4061,3 +4061,14 @@ hip internal-rotation work such as reverse clamshells. The
 provides a clinical-library cross-check for side-lying adduction and reverse
 clamshells, not a blanket rehab prescription. These further additions were
 audited only, not implemented. No live catalog update was performed.
+
+## [2026-09-17] authorization | Publish the kettlebell hip-flexor raise
+
+The owner requested production delivery of the catalog addition. The previous
+production drift check (run 34814905742) confirms all 155 pre-existing journal
+entries are present; the guarded swimming update completed in run 34815744151.
+Appending migration 0155 exposed tests that loaded the entire evolving journal
+through one-shot swimming updaters fixed to 155 entries. Those tests now use
+the immutable historical prefix for ledger assertions and explicitly assert
+that the unchanged source loaders refuse the expanded journal, following the
+existing upgrade-review test pattern. No production safety guard is relaxed.

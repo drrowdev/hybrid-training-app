@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import { describe, expect, it } from "vitest";
 import {
   PRODUCTION_UPDATE, productionUpdateContext, productionUpdateDispatch, productionVercelDeploymentIds,
@@ -29,7 +30,9 @@ const inputs = () => ({
   production_readonly_scope: "preflight", review_upgrade_read_only: "true",
   ...Object.fromEntries(PRODUCTION_UPDATE.otherOperations.map((key) => [key.toLowerCase(), "false"])),
 });
-const migrations = productionSwimmingMigrations();
+// Exercise the approved historical batch without admitting later migrations
+// through the one-shot updater's unchanged source guard.
+const migrations = readMigrationFiles({ migrationsFolder: resolve(__dirname, "../../drizzle") }).slice(0, 155);
 const rows = () => [
   ...migrations.slice(0, 146).map((entry, index) => ({ id: index + 1, hash: entry.hash, created_at: String(entry.folderMillis) })),
   ...Array.from({ length: 57 }, (_, index) => ({ id: index + 147, hash: `synthetic-legacy-${index}`, created_at: "1" })),
@@ -39,6 +42,10 @@ const appended = () => [...rows(), ...migrations.slice(146).map((entry, index) =
   ({ id: 1000 + index, hash: entry.hash, created_at: String(entry.folderMillis) }))];
 
 describe("DC-SW3/SW5/SW8 history-preserving production updater", () => {
+  it("refuses the one-shot source loader after the catalog migration is appended", () => {
+    expect(productionSwimmingMigrations).toThrow("migration_source");
+    expect(() => validateProductionMigrationSource(migrations)).not.toThrow();
+  });
   it("validates selected dispatches in prerequisite CI without connecting", () => {
     if (process.env.GITHUB_EVENT_NAME !== "workflow_dispatch") return;
     const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH!, "utf8")) as { inputs?: Record<string, unknown> };

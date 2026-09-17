@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { readMigrationFiles } from "drizzle-orm/migrator";
 import {
   checkUntimedDispatch, UNTIMED_FLAG_RECEIPT, UNTIMED_REVIEW as profile,
   untimedReceipt, untimedUpdateSummary, updateUntimedReview,
@@ -153,7 +154,8 @@ describe("DC-SW3/SW5/SW8 protected untimed-course update", () => {
     expect(() => untimedReceipt([...state.project, state.project[0]!], [])).toThrow();
   });
   it("checks the full canonical154 prefix and155 result, not just the last ledger row", () => {
-    const migrations = untimedReviewMigrations();
+    expect(untimedReviewMigrations).toThrow("migration_source");
+    const migrations = readMigrationFiles({ migrationsFolder: resolve(__dirname, "../../drizzle") }).slice(0, 155);
     const rows = migrations.map((entry, index) => ({ id: index + 10, hash: entry.hash, created_at: String(entry.folderMillis) }));
     expect(() => validateUntimedLedger(rows.slice(0, 154), migrations, 154)).not.toThrow();
     expect(() => validateUntimedLedger(rows, migrations, 155)).not.toThrow();
