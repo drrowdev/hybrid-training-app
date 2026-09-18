@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { countDistinctRehabMovements } from "@hta/domain";
 import { SwimCalendar } from "@/components/swim/SwimCalendar";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
@@ -1293,7 +1294,9 @@ function PlannedSessionCard({
     grouped.accessories.length +
     grouped.hingeCompensations.length +
     grouped.tendon.length;
-  const rehabMovementCount = grouped.rehab.length;
+  const rehabMovementCount = countDistinctRehabMovements(
+    grouped.rehab.flatMap((row) => row.items),
+  );
   const movementSummary =
     planned.role === "rehab" && rehabMovementCount > 0
       ? `${rehabMovementCount} rehab movement${

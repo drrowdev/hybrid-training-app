@@ -1,5 +1,5 @@
 /**
- * Regression: a prescription value must never break across visual lines.
+ * Regression: short prescription doses stay together, long instructions wrap.
  *
  * Reported from a phone — the rehab card on Today rendered
  * "Supported Wrist Radial Deviation (DB)" with its "3 × 15" split into
@@ -9,8 +9,8 @@
  * against the real component at 360px: 4 of 8 rows broke (rehab, main lifts
  * and accessories all affected); 0 after the fix.
  *
- * A value CAN wrap between its " · "-separated chunks ("4 sets · top 85% × 3")
- * — each chunk is an independent fact. It must never wrap inside one.
+ * Short chunks remain independent facts; long user-authored instructions must
+ * be allowed to wrap so they cannot squeeze a name or widen the viewport.
  */
 import React from "react";
 import { describe, it, expect } from "vitest";
@@ -51,9 +51,8 @@ const mainLift = (movementName: string) =>
     sets: 1,
   }) as unknown as PrescriptionItem;
 
-/** Every chunk the browser must keep on one line, per value cell. */
-function nowrapChunks(html: string): string[] {
-  return [...html.matchAll(/<span style="white-space:nowrap">([^<]*)<\/span>/g)].map(
+function valueChunks(html: string): string[] {
+  return [...html.matchAll(/<span data-prescription-chunk="true"[^>]*>([^<]*)<\/span>/g)].map(
     (m) => m[1]!,
   );
 }
@@ -80,7 +79,7 @@ describe("splitPrescriptionChunks", () => {
   });
 });
 
-describe("prescription values are unbreakable on narrow screens", () => {
+describe("prescription values reflow on narrow screens", () => {
   it("keeps a rehab row's sets × reps on one line", () => {
     const html = renderToStaticMarkup(
       <SessionPreviewBody
@@ -92,7 +91,7 @@ describe("prescription values are unbreakable on narrow screens", () => {
         ])}
       />,
     );
-    expect(nowrapChunks(html)).toContain("3 × 15");
+    expect(valueChunks(html)).toContain("3 × 15");
   });
 
   it("keeps each part of a condensed strength summary on one line", () => {
@@ -105,7 +104,7 @@ describe("prescription values are unbreakable on narrow screens", () => {
         ])}
       />,
     );
-    const chunks = nowrapChunks(html);
+    const chunks = valueChunks(html);
     expect(chunks).toContain("2 sets");
     expect(chunks).toContain("top 85% × 3");
   });
@@ -124,21 +123,23 @@ describe("prescription values are unbreakable on narrow screens", () => {
         ])}
       />,
     );
-    const chunks = nowrapChunks(html);
+    const chunks = valueChunks(html);
     expect(chunks).toContain("3 × 30s hold");
     expect(chunks).toContain("each side");
   });
 
-  it("lets the movement name absorb the shrinking instead of the value", () => {
+  it("keeps long instructions and the full movement name available for wrapping", () => {
+    const notes = "Isometric. Side plank lower leg. Keep the pelvis level and breathe throughout the hold.";
     const html = renderToStaticMarkup(
       <SessionPreviewBody
         variant="compact"
-        session={session([rehab("Supported Wrist Radial Deviation (DB)")])}
+        session={session([rehab("Copenhagen Plank", {
+          reps: undefined, holdSec: { min: 20, max: 20 }, notes,
+        })])}
       />,
     );
-    // `min-width: 0` is what allows the name cell to shrink below its
-    // min-content width so the value keeps its intrinsic size.
-    expect(html).toMatch(/<span style="min-width:0;overflow-wrap:anywhere/);
+    expect(html).toMatch(/data-testid="prescription-name"[^>]*>Copenhagen Plank</);
+    expect(valueChunks(html)).toEqual(["3 × 20s hold", notes]);
   });
 
   it("keeps per-set lines on the full Preview page unbreakable too", () => {
@@ -149,6 +150,6 @@ describe("prescription values are unbreakable on narrow screens", () => {
         ])}
       />,
     );
-    expect(nowrapChunks(html)).toContain("85% TM × 3");
+    expect(valueChunks(html)).toContain("85% TM × 3");
   });
 });

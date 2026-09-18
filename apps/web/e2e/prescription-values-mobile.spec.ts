@@ -3,9 +3,8 @@
  *
  * Reported from a phone — the rehab card on Today showed a long movement name
  * next to "3 × 15" and wrapped the value into "3 ×" / "15" on separate lines.
- * The unit test guards the DOM contract (one nowrap span per " · " chunk);
- * this measures what the contract is FOR, by asking the browser how many line
- * boxes each chunk actually occupies at a phone width.
+ * Short doses stay together; long instructions must wrap without shrinking
+ * movement names or widening the document and displacing fixed navigation.
  */
 import { test, expect } from "./fixtures/seed";
 import { signInAs } from "./fixtures/auth";
@@ -97,5 +96,70 @@ test.describe("@mobile Today prescription values", () => {
     await expect(
       page.getByTestId("prescription-value").first(),
     ).toContainText("3 × 15");
+  });
+
+  test("keeps Copenhagen instructions readable and navigation pinned while scrolling", async ({
+    page, context, freshUser, seedConfig, admin, baseURL,
+  }) => {
+    await markOnboarded(admin, freshUser.userId);
+    await seedStrengthTms(admin, freshUser.userId);
+    const seed = await seedActiveBlock(admin, freshUser.userId);
+    const { data: planned, error: plannedError } = await admin
+      .from("planned_sessions")
+      .select("prescription")
+      .eq("id", seed.todayPlannedId)
+      .single();
+    expect(plannedError).toBeNull();
+    const prescription = planned!.prescription as { items: Array<Record<string, unknown>> };
+    const rehab = { kind: "tendon", sets: 3, meta: { rehab: true, rehabProtocolName: "Adductor rehab" } };
+    prescription.items = [
+      { ...rehab, movementId: "copenhagen", movementName: "Copenhagen Plank", reps: 8,
+        repRange: { min: 8, max: 10 }, notes: "Dynamic. Raise the hips with control." },
+      { ...rehab, movementId: "copenhagen", movementName: "Copenhagen Plank",
+        holdSec: { min: 20, max: 20 },
+        notes: "Isometric. Side plank lower leg. Keep the pelvis level and breathe throughout the hold." },
+      { ...rehab, movementId: "hip-flexor", movementName: "Hip Flexor Raise (kettlebell)", reps: 10 },
+      ...prescription.items,
+    ];
+    const { error } = await admin.from("planned_sessions")
+      .update({ prescription }).eq("id", seed.todayPlannedId);
+    expect(error).toBeNull();
+    await signInAs(context, freshUser, seedConfig, baseURL ?? "http://localhost:3000");
+    await page.goto("/app");
+    await expect(page.getByTestId("embedded-rehab-badge")).toHaveText("Includes rehab · 3 movements");
+    const rehabCard = page.getByTestId("session-preview-section-rehab");
+    await expect(rehabCard).toBeVisible();
+    await expect(rehabCard).toContainText("Keep the pelvis level and breathe throughout the hold.");
+
+    for (const width of [320, 375, 390]) {
+      await page.setViewportSize({ width, height: 812 });
+      const name = rehabCard.getByTestId("prescription-name").filter({ hasText: "Copenhagen Plank" });
+      const box = await name.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.width).toBeGreaterThanOrEqual(120);
+      expect(box!.height).toBeLessThanOrEqual(48);
+      expect(await page.evaluate(() =>
+        document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )).toBeLessThanOrEqual(1);
+      const brokenDoses = await rehabCard.locator("[data-prescription-chunk]").evaluateAll(chunks =>
+        chunks.filter(chunk => /^\d+\s*×/.test(chunk.textContent ?? "")).filter(chunk => {
+          const range = document.createRange();
+          range.selectNodeContents(chunk);
+          return range.getClientRects().length > 1;
+        }).map(chunk => chunk.textContent),
+      );
+      expect(brokenDoses).toEqual([]);
+
+      for (const y of [0, 400, 1000, 3000, 200]) {
+        await page.evaluate(y => window.scrollTo(0, y), y);
+        await expect.poll(() => page.getByTestId("bottom-tabbar").evaluate(nav => {
+          const bottom = nav.getBoundingClientRect().bottom;
+          const viewportBottom = window.visualViewport
+            ? window.visualViewport.height + window.visualViewport.offsetTop
+            : window.innerHeight;
+          return Math.abs(bottom - viewportBottom);
+        })).toBeLessThanOrEqual(2);
+      }
+    }
   });
 });
