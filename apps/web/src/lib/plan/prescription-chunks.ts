@@ -3,11 +3,10 @@
  *
  * `formatPrescriptionItem` joins independent facts with " · " ("3 × 15s hold ·
  * each side"), and the row renderers join multiple items the same way. Every
- * chunk is a single indivisible fact — "3 × 15" must never be read as "3 ×" on
- * one line and "15" on the next.
+ * chunk is an independent fact — short doses such as "3 × 15" should stay
+ * together, while long user-authored instructions may wrap within the card.
  *
- * Renderers pair this with a nowrap span per chunk, so a narrow row can only
- * break BETWEEN facts.
+ * Renderers choose the wrapping behavior for their available width.
  */
 export function splitPrescriptionChunks(value: string): string[] {
   return value

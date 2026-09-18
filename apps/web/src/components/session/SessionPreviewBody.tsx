@@ -361,6 +361,7 @@ export function SessionPreviewBody({
 /* -------------------------------------------------------------------- */
 
 const cardStyle: React.CSSProperties = {
+  minWidth: 0,
   padding: 16,
   borderRadius: 12,
   background: "var(--cp-surface)",
@@ -387,12 +388,8 @@ const movementHeadingStyle: React.CSSProperties = {
 /**
  * The right-hand value of a prescription row ("3 × 15", "4 sets · top 85% × 3").
  *
- * Each " · "-separated chunk is its own `nowrap` span, so a narrow row can only
- * break BETWEEN chunks. Without this the value is just text inside a flex item
- * that shrinks to whatever the movement name leaves behind, and a long name
- * (e.g. "Supported Wrist Radial Deviation (DB)") wrapped the value mid-value.
- * Callers pair this with `prescriptionNameStyle` so the NAME absorbs the
- * shrinking instead.
+ * Short doses stay together as inline blocks. Long instructions can wrap within
+ * the available width instead of widening the page or squeezing the name.
  */
 function PrescriptionValue({
   value,
@@ -403,13 +400,26 @@ function PrescriptionValue({
 }) {
   const chunks = splitPrescriptionChunks(value);
   return (
-    <span className="mono" data-testid="prescription-value" style={style}>
+    <span
+      className="mono"
+      data-testid="prescription-value"
+      style={{ ...style, minWidth: 0, maxWidth: "100%" }}
+    >
       {chunks.length === 0
         ? "—"
         : chunks.map((chunk, i) => (
             <Fragment key={i}>
               {i > 0 ? " · " : ""}
-              <span style={{ whiteSpace: "nowrap" }}>{chunk}</span>
+              <span
+                data-prescription-chunk
+                style={{
+                  display: "inline-block",
+                  maxWidth: "100%",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                {chunk}
+              </span>
             </Fragment>
           ))}
     </span>
@@ -417,11 +427,11 @@ function PrescriptionValue({
 }
 
 /**
- * Movement-name cell of a prescription row. `minWidth: 0` lets it shrink past
- * its min-content width so the value keeps its intrinsic size, and
- * `overflowWrap` is the safety valve for a name with no break opportunity.
+ * Reserve a readable name column; a wrapping row puts the dose underneath when
+ * both cells cannot fit. Long unbroken names still stay inside the card.
  */
 const prescriptionNameStyle: React.CSSProperties = {
+  flex: "1 1 12rem",
   minWidth: 0,
   overflowWrap: "anywhere",
 };
@@ -576,14 +586,16 @@ function CondensedStrengthRow({
       data-testid={`session-preview-movement-${sec.rowKey}`}
       style={{
         display: "flex",
+        flexWrap: "wrap",
         justifyContent: "space-between",
         alignItems: "baseline",
-        gap: 12,
+        gap: "4px 12px",
         padding: "8px 0",
         borderBottom: "1px solid var(--cp-border)",
       }}
     >
       <span
+        data-testid="prescription-name"
         style={{
           ...prescriptionNameStyle,
           fontSize: 14,
@@ -742,14 +754,16 @@ function AccessoryRow({
       data-testid={withinSuperset ? "superset-accessory-row" : undefined}
       style={{
         display: "flex",
+        flexWrap: "wrap",
         justifyContent: "space-between",
         alignItems: "baseline",
-        gap: 12,
+        gap: "4px 12px",
         padding: "8px 0",
         borderBottom: withinSuperset ? "none" : "1px solid var(--cp-border)",
       }}
     >
       <span
+        data-testid="prescription-name"
         style={{
           ...prescriptionNameStyle,
           fontSize: 14,

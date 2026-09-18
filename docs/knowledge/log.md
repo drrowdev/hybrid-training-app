@@ -4110,3 +4110,19 @@ validation and program-defined supplemental Reset behavior are unchanged.
 The owner approved production publication. Synthetic browser checks confirm
 Cancel preserves the saved dose and Save retains new values on reopening for
 both rep-based and timed-hold accessories.
+
+## [2026-09-18] fix | Keep Today rehab content inside the mobile viewport
+
+Long Copenhagen instructions were rendered as unbreakable prescription chunks
+beside a shrinkable movement name. In a synthetic 390 px phone view this widened
+the document to 544 px and narrowed the name to 9 px; mobile Chromium's fixed
+navigation was then positioned outside the visual viewport. Preview rows now
+wrap below a readable name, preserve short dose chunks, and allow long
+instructions to wrap within the card instead of hiding overflow. Chromium and
+WebKit checks at 320/390/768/1280 px keep document width within the viewport;
+mobile navigation stays at the bottom across repeated scroll positions.
+Native installed-iOS behavior still requires device confirmation. The Today
+rehab badge also now uses the existing domain variant count, correcting the
+remaining two-versus-three discrepancy for dynamic/isometric Copenhagen work.
+No navigation offsets, zoom restrictions, prescriptions or user data changed.
+The owner approved publishing the responsive fix to production.
