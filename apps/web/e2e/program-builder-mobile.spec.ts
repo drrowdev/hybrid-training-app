@@ -265,6 +265,7 @@ test.describe("Modular program builder", () => {
     await page.getByLabel("Prepared plan file").setInputFiles({
       name: "synthetic-course.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(source)),
     });
+    await expect(page.getByRole("heading", { name: source.title, exact: true })).toBeVisible();
     const sunday = new Date(`${today()}T00:00:00Z`).getUTCDay();
     stage("m4-08");
     for (const day of [(sunday + 1) % 7, (sunday + 3) % 7]) await page.locator(`input[name="weekdays"][value="${day}"]`).check();

@@ -69,6 +69,7 @@ export type MovementCardListProps = {
   lastSetHints?: Record<string, LastSetHint>;
   addStrengthSet: typeof addStrengthSetAction;
   updateStrengthSet: typeof updateStrengthSetInlineAction;
+  onSetDeleted?: (setId: string) => void;
   fillFromPlan: typeof fillSessionFromPlanAction;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
@@ -144,6 +145,7 @@ export function MovementCardList({
   lastSetHints = {},
   addStrengthSet,
   updateStrengthSet,
+  onSetDeleted,
   fillFromPlan,
   hapticsEnabled,
   timerSoundEnabled,
@@ -587,6 +589,7 @@ export function MovementCardList({
           onReorderMovements={reorderEnabled ? persistOrder : undefined}
           addStrengthSet={addStrengthSet}
           updateStrengthSet={updateStrengthSet}
+          onSetDeleted={onSetDeleted}
           hapticsEnabled={hapticsEnabled}
           timerSoundEnabled={timerSoundEnabled}
           restTimerEnabled={restTimerEnabled}

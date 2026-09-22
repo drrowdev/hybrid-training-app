@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   MAX_SWIM_COURSE_BYTES, SWIM_WEEKDAYS, parsePoolLengthInput, swimCourseWorkoutKey, swimCourseWorkoutTitle,
@@ -23,6 +23,7 @@ export function CourseImportForm({ today, schedule = [] }: { today: string; sche
   const [pending, startTransition] = useTransition();
   const busy = useRef(false);
   const fileRevision = useRef(0);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [reading, setReading] = useState(false);
   const [startDate, setStartDate] = useState(today);
   const requestId = useRef<string | null>(null);
@@ -31,7 +32,7 @@ export function CourseImportForm({ today, schedule = [] }: { today: string; sche
   const endDate = Number.isFinite(horizon.getTime()) ? horizon.toISOString().slice(0, 10) : startDate;
   const commitments = schedule.filter((entry) => entry.date >= startDate && entry.date < endDate);
 
-  async function chooseFile(file?: File) {
+  const chooseFile = useCallback(async (file?: File) => {
     const revision = ++fileRevision.current;
     setSource(null);
     setPreview(null);
@@ -45,7 +46,13 @@ export function CourseImportForm({ today, schedule = [] }: { today: string; sche
     } catch {
       if (revision === fileRevision.current) setError("Choose a prepared JSON plan file smaller than 256 KB.");
     } finally { if (revision === fileRevision.current) setReading(false); }
-  }
+  }, []);
+
+  useEffect(() => {
+    // Recover selections made before hydration attached the change handler.
+    const file = fileInput.current?.files?.[0];
+    if (file && fileRevision.current === 0) void chooseFile(file);
+  }, [chooseFile]);
 
   function submit(form: FormData) {
     if (!source || busy.current || reading || savedId) return;
@@ -106,7 +113,7 @@ export function CourseImportForm({ today, schedule = [] }: { today: string; sche
       onChange={() => { setPreview(null); setError(null); }}>
       <section className={styles.section}>
         <label className={styles.field}>Prepared plan file
-          <input name="file" type="file" accept=".json,application/json"
+          <input ref={fileInput} name="file" type="file" accept=".json,application/json"
             onChange={(event) => { void chooseFile(event.target.files?.[0]); }} />
         </label>
         {source && <div className={styles.previewHeading}>

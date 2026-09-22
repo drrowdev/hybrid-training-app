@@ -36,6 +36,7 @@ const Context = createContext<SessionLoggingState | null>(null);
 
 export function SessionLoggingStateProvider({
   initialHasStrengthSets,
+  initialLoggedStrengthClientIds = [],
   initialLoggedCardioItemIndices = [],
   initialUnloggedStrengthCount,
   initialUnloggedRehabIndices = [],
@@ -43,6 +44,7 @@ export function SessionLoggingStateProvider({
   children,
 }: {
   initialHasStrengthSets: boolean;
+  initialLoggedStrengthClientIds?: readonly string[];
   initialLoggedCardioItemIndices?: number[];
   initialUnloggedStrengthCount: number;
   initialUnloggedRehabIndices?: number[];
@@ -54,6 +56,20 @@ export function SessionLoggingStateProvider({
   >(() => new Map());
   const [completionQueued, setCompletionQueued] = useState(false);
   const [cardioLogs, setCardioLogs] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const pendingStrengthLogs = useMemo(() => {
+    const acknowledged = new Set(initialLoggedStrengthClientIds);
+    const pending = new Map([...optimisticLogs].filter(([id]) => !acknowledged.has(id)));
+    return pending.size === optimisticLogs.size ? optimisticLogs : pending;
+  }, [initialLoggedStrengthClientIds, optimisticLogs]);
+  const pendingCardioLogs = useMemo(() => {
+    const acknowledged = new Set(initialLoggedCardioItemIndices);
+    const pending = new Map([...cardioLogs].filter(([, index]) => !acknowledged.has(index)));
+    return pending.size === cardioLogs.size ? cardioLogs : pending;
+  }, [initialLoggedCardioItemIndices, cardioLogs]);
+  // Acknowledge observed writes without remounting the live logger or forgetting
+  // writes that a delayed snapshot predates. Later deletion must not revive them.
+  if (pendingStrengthLogs !== optimisticLogs) setOptimisticLogs(pendingStrengthLogs);
+  if (pendingCardioLogs !== cardioLogs) setCardioLogs(pendingCardioLogs);
   const registerCardioLog = useCallback((clientId: string, prescriptionItemIndex: number) => {
     setCardioLogs((current) => current.has(clientId) ? current : new Map(current).set(clientId, prescriptionItemIndex));
   }, []);
@@ -95,7 +111,7 @@ export function SessionLoggingStateProvider({
     let requiredPending = 0;
     const rehabIndices = new Set(initialUnloggedRehabIndices);
     const requiredIndices = new Set(initialUnloggedRequiredIndices);
-    for (const prescriptionItemIndex of new Set(optimisticLogs.values())) {
+    for (const prescriptionItemIndex of new Set(pendingStrengthLogs.values())) {
       if (prescriptionItemIndex != null) prescribedPending += 1;
       if (
         prescriptionItemIndex != null &&
@@ -110,12 +126,12 @@ export function SessionLoggingStateProvider({
         requiredPending += 1;
       }
     }
-    const loggedCardioItemIndices = new Set([...initialLoggedCardioItemIndices, ...cardioLogs.values()]);
+    const loggedCardioItemIndices = new Set([...initialLoggedCardioItemIndices, ...pendingCardioLogs.values()]);
     for (const index of loggedCardioItemIndices) {
       if (requiredIndices.has(index)) requiredPending += 1;
     }
     return {
-      hasStrengthSets: initialHasStrengthSets || optimisticLogs.size > 0,
+      hasStrengthSets: initialHasStrengthSets || pendingStrengthLogs.size > 0,
       hasCardioLogs: loggedCardioItemIndices.size > 0,
       loggedCardioItemIndices, registerCardioLog, rollbackCardioLog,
       remainingPlannedSets: Math.max(
@@ -138,11 +154,11 @@ export function SessionLoggingStateProvider({
   }, [
     initialHasStrengthSets,
     initialLoggedCardioItemIndices,
-    cardioLogs, registerCardioLog, rollbackCardioLog,
+    pendingCardioLogs, registerCardioLog, rollbackCardioLog,
     initialUnloggedStrengthCount,
     initialUnloggedRehabIndices,
     initialUnloggedRequiredIndices,
-    optimisticLogs,
+    pendingStrengthLogs,
     registerStrengthLog,
     rollbackStrengthLog,
     completionQueued,

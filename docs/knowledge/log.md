@@ -4374,3 +4374,34 @@ rows, identities, URLs or raw error text are exposed. Eleven focused
 membership/projection checks and web type-check passed. M4 has no speculative
 behavior change. Assertions, deadlines, migration bytes and qualification
 requirements remain unchanged; a fresh exact-head native execution is required.
+
+## [2026-09-22] refine | Preserve live logs across delayed cardio snapshots
+
+Native35794957319 on5a513da6 again passed all prebrowser gates and four of
+six cases. Its bounded evidence identified M3's exact order as `[1,1,3,2]`
+and localized M4 to the post-upload setup checkpoint. The earlier covered-
+cursor guard had not repaired this runtime failure.
+
+The complete isolated logger reproduced that exact duplicate sequence:
+a zero-strength-row cardio snapshot arrived after the first accepted write
+left IndexedDB but before the logger finished its count read. The provider's
+row-count key remounted the logger and discarded its live overlay. The
+provider now retains session identity and retires registrations only when
+the server acknowledges them. Snapshot reconciliation retains accepted rows
+absent from a delayed snapshot; successful Undo explicitly retires its row.
+Observed server rows subsequently hand edit/deletion ownership back to the
+server. Regressions cover the exact interleaving, a still-later snapshot,
+Undo before acknowledgment, and deletion after acknowledgment, including
+remaining-work counters.
+
+The coordinator's bounded M4 repair was integrated unchanged: a prepared
+file selected before hydration is recovered through the existing size- and
+revision-guarded reader. Its actual SSR/hydration fixture also covers later
+replacement and clearing. The native case waits for the parsed source
+heading before interacting with generated setup controls.
+
+All51 combined isolated browser stages pass at375/1280, including the
+formerly failing sequence now producing `[1,3,2,4]`;124 focused session
+tests and web type-check pass. No schema, timeout, frozen-case count,
+assertion or runtime guard was relaxed. Native qualification remains
+outstanding until the integrated exact head executes successfully.

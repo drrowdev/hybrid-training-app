@@ -80,6 +80,7 @@ export type FocusLoggedSet = {
 };
 
 export type FocusViewProps = {
+  onSetDeleted?: (setId: string) => void;
   sessionId: string;
   group: MovementGroup;
   tmKg: number | undefined;
@@ -284,6 +285,7 @@ export function MovementFocusView({
   equipmentTag,
   initialCursor = null,
   onSaved,
+  onSetDeleted,
   bwGateStateByFamily,
   bodyweightCapable = false,
   focusStrip = false,
@@ -613,6 +615,7 @@ export function MovementFocusView({
       fd.set("id", undo.setId);
       fd.set("sessionId", sessionId);
       await deleteSet(fd);
+      onSetDeleted?.(undo.setId);
       // Let the slot be logged again — the re-entrancy guard would otherwise
       // treat the retry as a duplicate and silently drop it.
       firedIndicesRef.current.delete(undo.itemIndex);

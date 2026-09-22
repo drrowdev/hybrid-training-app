@@ -978,8 +978,9 @@ export default async function SessionDetailPage({
   return (
     <UnitsProvider units={userUnits}>
     <SessionLoggingStateProvider
-      key={`${sets.length}:${cardio?.length ?? 0}`}
+      key={id}
       initialHasStrengthSets={sets.length > 0}
+      initialLoggedStrengthClientIds={sets.flatMap((set) => set.client_log_id ? [set.client_log_id] : [])}
       initialLoggedCardioItemIndices={isAuthoredSession ? loggedCardioItemIndices : []}
       initialUnloggedStrengthCount={unloggedStrengthCount}
       initialUnloggedRehabIndices={unloggedRehabIndices}

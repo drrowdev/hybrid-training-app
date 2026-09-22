@@ -33,7 +33,6 @@ import {
   mergeOptimisticSets,
   optimisticLogFromFormData,
   planLogSetOutcome,
-  serverHasPendingLog,
   type OptimisticLog,
 } from "@/lib/sessions/optimistic-log";
 import {
@@ -209,23 +208,24 @@ export function SessionWorkArea({
   const registerCardioLog = loggingState?.registerCardioLog;
   const rollbackCardioLog = loggingState?.rollbackCardioLog;
 
-  // Reconcile: whenever a fresh server snapshot lands (any revalidating action —
-  // finish / delete / edit / fill / swap — or a reload changes the `sets` prop),
-  // drop every CONFIRMED overlay entry. That snapshot already reflects all
-  // persisted writes, so the server becomes authoritative for them (and a set
-  // deleted via the edit page is then correctly absent). In-flight entries (write
-  // not yet resolved) are kept until their own write settles.
+  // A delayed refresh may predate an accepted write. Keep its overlay until the
+  // server actually includes it; explicit undo handles deletion before that.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reconcile the optimistic overlay against a fresh server snapshot; functional updater no-ops when nothing changed
     setPendingLogs((prev) => {
       if (prev.length === 0) return prev;
-      const next = dropConfirmed(
-        prev.filter((log) => !serverHasPendingLog(sets, log)),
-      );
+      const next = dropConfirmed(prev, sets);
       return next.length === prev.length ? prev : next;
     });
     setBwTutOverrides((prev) => (Object.keys(prev).length === 0 ? prev : {}));
   }, [sets]);
+
+  const discardDeletedSet = useCallback((setId: string) => {
+    for (const log of pendingLogs) {
+      if (log.serverId === setId) rollbackStrengthLog?.(log.clientKey);
+    }
+    setPendingLogs((current) => dropConfirmed(current, [], new Set([setId])));
+  }, [pendingLogs, rollbackStrengthLog]);
 
   const logSet = useCallback(
     async (fd: FormData): Promise<AddStrengthSetResult> => {
@@ -493,6 +493,7 @@ export function SessionWorkArea({
         lastSetHints={lastSetHints}
         addStrengthSet={logSet}
         updateStrengthSet={updateStrengthSet}
+        onSetDeleted={discardDeletedSet}
         fillFromPlan={fillFromPlan}
         hapticsEnabled={hapticsEnabled}
         timerSoundEnabled={timerSoundEnabled}

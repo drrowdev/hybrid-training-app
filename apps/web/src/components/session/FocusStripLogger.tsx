@@ -73,6 +73,7 @@ export type FocusStripLoggerProps = {
   onReorderMovements?: (movementIds: string[]) => void;
   addStrengthSet: typeof addStrengthSet;
   updateStrengthSet: typeof updateStrengthSetInline;
+  onSetDeleted?: (setId: string) => void;
   hapticsEnabled: boolean;
   timerSoundEnabled: boolean;
   restTimerEnabled: boolean;
@@ -197,6 +198,7 @@ export function FocusStripLogger({
   onReorderMovements,
   addStrengthSet,
   updateStrengthSet,
+  onSetDeleted,
   hapticsEnabled,
   timerSoundEnabled,
   restTimerEnabled,
@@ -729,6 +731,7 @@ export function FocusStripLogger({
                 circuitSuppressesRest(activeOriginal, activeCircuit, itemIndex)
               }
               onExitEdit={() => advance()}
+              onSetDeleted={onSetDeleted}
               focusStrip
               resumeReady={resumeReady}
               dockAccessory={

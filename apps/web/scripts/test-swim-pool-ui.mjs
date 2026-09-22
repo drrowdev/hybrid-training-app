@@ -15,7 +15,8 @@ try {
     stdin: {
       contents: `
         import React, { useState } from "react";
-        import { createRoot } from "react-dom/client";
+        import { createRoot, hydrateRoot } from "react-dom/client";
+        import { renderToString } from "react-dom/server.browser";
         import { PoolEditor } from "./src/components/swim/PoolEditor";
         import { SetupForm } from "./src/components/swim/SetupForm";
         import { SwimImportConnection } from "./src/components/swim/SwimImportConnection";
@@ -33,7 +34,7 @@ try {
         import { DeloadWeekCard } from "./src/components/plan/DeloadWeekCard";
         import { FocusStripLogger } from "./src/components/session/FocusStripLogger";
         import { SessionWorkArea } from "./src/components/session/SessionWorkArea";
-        import { SessionLoggingStateProvider } from "./src/components/session/SessionLoggingState";
+        import { SessionLoggingStateProvider, useSessionLoggingState } from "./src/components/session/SessionLoggingState";
         import { compileAuthoredWorkout } from "@hta/domain";
         import { groupPrescriptionByMovement } from "./src/lib/sessions/movement-grouping";
         import { optimisticLogFromFormData, mergeOptimisticSets } from "./src/lib/sessions/optimistic-log";
@@ -135,10 +136,17 @@ try {
           })),
         };
         const fullCircuitPrescription = compileAuthoredWorkout(fullCircuitWorkout, fullCircuitCatalog);
+        function FullLoggingProbe() {
+          const state = useSessionLoggingState();
+          return <output data-testid="full-remaining" data-planned={state.remainingPlannedSets}
+            data-strength={String(state.hasStrengthSets)}>{state.remainingRequiredSets}</output>;
+        }
         window.showFullCircuit = (deferFirstSave = false) => {
           const sessionId = crypto.randomUUID();
           const fixtureKey = ++key, serverSets = [], serverCardio = [];
+          let snapshotNumber = 0;
           window.circuitWrites = [];
+          window.beforeOutboxCount = null;
           const unexpected = async () => { throw new Error("Unexpected session mutation"); };
           window.logFullStrength = async form => {
             window.circuitWrites.push(Number(form.get("prescriptionItemIndex")));
@@ -154,22 +162,40 @@ try {
             serverCardio.push({ id: crypto.randomUUID(), blockIndex: 1, durationSec: 120 });
             return { ok: true };
           };
-          window.refreshFullCircuit = () => root.render(<main key={fixtureKey}>
-            <SessionLoggingStateProvider key={serverSets.length + ":" + serverCardio.length}
-            initialHasStrengthSets={serverSets.length > 0} initialLoggedCardioItemIndices={serverCardio.map(log => log.blockIndex - 1)}
-            initialUnloggedStrengthCount={4 - serverSets.length}
-            initialUnloggedRequiredIndices={[0,1,2,3,4].filter(index => !serverSets.some(set => set.prescription_item_index === index)
-              && !serverCardio.some(log => log.blockIndex === index + 1))}>
+          window.deleteFullSet = async form => {
+            const index = serverSets.findIndex(set => set.id === form.get("id"));
+            if (index < 0) throw new Error("Synthetic set missing");
+            serverSets.splice(index, 1);
+          };
+          window.refreshFullCircuit = (snapshot = { sets: [...serverSets], cardio: [...serverCardio] }) =>
+            root.render(<main key={fixtureKey} data-testid="full-work-area" data-snapshot={++snapshotNumber}>
+            <SessionLoggingStateProvider key={sessionId}
+            initialHasStrengthSets={snapshot.sets.length > 0} initialLoggedCardioItemIndices={snapshot.cardio.map(log => log.blockIndex - 1)}
+            initialLoggedStrengthClientIds={snapshot.sets.flatMap(set => set.client_log_id ? [set.client_log_id] : [])}
+            initialUnloggedStrengthCount={4 - snapshot.sets.length}
+            initialUnloggedRequiredIndices={[0,1,2,3,4].filter(index => !snapshot.sets.some(set => set.prescription_item_index === index)
+              && !snapshot.cardio.some(log => log.blockIndex === index + 1))}>
+            <FullLoggingProbe />
             <SessionWorkArea sessionId={sessionId} isComplete={false} performedAt="2026-09-14T12:00:00Z"
-              sets={[...serverSets]} tmBySlug={{}} oneRmBySlug={{}} lastSetHints={{}} priorBests={{}}
+              sets={snapshot.sets} tmBySlug={{}} oneRmBySlug={{}} lastSetHints={{}} priorBests={{}}
               plannedSessionId="00000000-0000-4000-8000-000000000029" prescription={fullCircuitPrescription}
-              loggedItemIndices={serverSets.map(set => set.prescription_item_index)}
-              loggedSetIdByItemIndex={Object.fromEntries(serverSets.map(set => [set.prescription_item_index, set.id]))} swapAction={unexpected}
+              loggedItemIndices={snapshot.sets.map(set => set.prescription_item_index)}
+              loggedSetIdByItemIndex={Object.fromEntries(snapshot.sets.map(set => [set.prescription_item_index, set.id]))} swapAction={unexpected}
               fillFromPlan={unexpected} updateStrengthSet={unexpected}
               hapticsEnabled={false} timerSoundEnabled={false} restTimerEnabled={false}
               addStrengthSet={window.logFullStrength}
-              authoredCardio={{ units: "metric", logs: [...serverCardio], action: window.logFullCardio }} />
+              authoredCardio={{ units: "metric", logs: snapshot.cardio, action: window.logFullCardio }} />
           </SessionLoggingStateProvider></main>);
+          window.captureStaleCardioSnapshot = (pauseAfterCleanup = true) => {
+            const snapshot = { sets: [...serverSets], cardio: [...serverCardio] };
+            window.refreshStaleFullCircuit = () => window.refreshFullCircuit(snapshot);
+            if (!pauseAfterCleanup) return;
+            window.beforeOutboxCount = async () => {
+              window.beforeOutboxCount = null;
+              window.refreshFullCircuit(snapshot);
+              await new Promise(resolve => window.resolveFullCount = resolve);
+            };
+          };
           window.refreshFullCircuit();
         };
         window.homeCalls = [];
@@ -263,6 +289,23 @@ try {
               workoutId: "00000000-0000-4000-8000-000000000002", title: "Synthetic endurance workout", date: "2026-09-15" } : null} />
         </main>);
         window.showCourse = () => root.render(<main className={styles.page}><CourseImportForm key={++key} today="2026-09-14" /></main>);
+        let courseHydrationRoot;
+        window.showServerCourse = () => {
+          document.getElementById("root").hidden = true;
+          const container = document.createElement("main");
+          container.id = "server-course";
+          container.className = styles.page;
+          container.innerHTML = renderToString(<CourseImportForm today="2026-09-14" />);
+          document.body.appendChild(container);
+        };
+        window.hydrateCourse = () => {
+          courseHydrationRoot = hydrateRoot(document.getElementById("server-course"), <CourseImportForm today="2026-09-14" />);
+        };
+        window.removeServerCourse = () => {
+          courseHydrationRoot.unmount();
+          document.getElementById("server-course").remove();
+          document.getElementById("root").hidden = false;
+        };
         window.showCourseEdit = () => root.render(<main className={styles.page}><CourseWorkoutEditor key={++key} context={{
           planId: "00000000-0000-4000-8000-000000000001", revision: 1,
           workoutId: "00000000-0000-4000-8000-000000000002", workoutRevision: 1,
@@ -385,16 +428,25 @@ try {
         build.onResolve({ filter: /^@\/lib\/(?:sessions\/(?:actions|swap-actions|session-movement-actions|reorder-actions)|movements\/instructions)$/ },
           args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/planner\/actions$/ }, args => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^@\/lib\/offline\/outbox$/ }, args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions)|@\/lib\/programs\/authored\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "@/lib/sessions/actions"
-            ? "export const deleteSet = () => { throw new Error('Unexpected session mutation'); }; export const permanentlyDeleteSession = deleteSet, restoreSession = deleteSet, addCardioBlock = deleteSet, completeSessionResult = deleteSet; export const addStrengthSet = form => window.logFullStrength(form), logCardioSession = form => window.logFullCardio(form);"
+            ? "const unexpected = () => { throw new Error('Unexpected session mutation'); }; export const deleteSet = form => window.deleteFullSet(form); export const permanentlyDeleteSession = unexpected, restoreSession = unexpected, addCardioBlock = unexpected, completeSessionResult = unexpected; export const addStrengthSet = form => window.logFullStrength(form), logCardioSession = form => window.logFullCardio(form);"
             : args.path === "@/lib/sessions/session-movement-actions"
               ? "export const removeSessionMovementAction = () => { throw new Error('Unexpected removal'); };"
             : args.path === "@/lib/sessions/reorder-actions"
               ? "export const reorderSessionAccessories = () => { throw new Error('Unexpected reorder'); };"
             : args.path === "@/lib/planner/actions"
               ? "export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); };"
+            : args.path === "@/lib/offline/outbox"
+              ? `import { countForSession as count } from "./src/lib/offline/outbox";
+                export * from "./src/lib/offline/outbox";
+                export async function countForSession(id) {
+                  const result = await count(id);
+                  await window.beforeOutboxCount?.();
+                  return result;
+                }`
             : args.path === "@/lib/sessions/swap-actions"
               ? "export const swapActiveMovement = () => { throw new Error('Unexpected swap'); };"
             : args.path === "@/lib/movements/instructions"
@@ -487,6 +539,55 @@ try {
       await expect.poll(() => page.evaluate(() => window.circuitWrites.length)).toBe(index + 1);
     }
     assert.deepEqual(await page.evaluate(() => window.circuitWrites), [1,3,2,4]);
+    stages.push(stage);
+
+    stage = `authored-full-stale-cardio-refresh-${width}`;
+    await page.evaluate(() => window.showFullCircuit());
+    await page.getByTestId("cardio-log-submit").click();
+    await expect(fullLogSet).toBeEnabled();
+    await page.evaluate(() => window.captureStaleCardioSnapshot());
+    await fullLogSet.click();
+    await expect(page.getByTestId("full-work-area")).toHaveAttribute("data-snapshot", "2");
+    await page.evaluate(() => window.resolveFullCount());
+    for (let index = 1; index < 4; index++) {
+      await fullLogSet.click();
+      await expect.poll(() => page.evaluate(() => window.circuitWrites.length)).toBe(index + 1);
+    }
+    const staleIndices = await page.evaluate(() => window.circuitWrites);
+    assert.deepEqual(staleIndices, [1,3,2,4]);
+    await expect(page.getByTestId("full-remaining")).toHaveText("0");
+    stages.push(stage);
+
+    stage = `authored-accepted-write-stale-snapshot-and-undo-${width}`;
+    await page.evaluate(() => window.showFullCircuit());
+    await page.getByTestId("cardio-log-submit").click();
+    await expect(fullLogSet).toBeEnabled();
+    await page.evaluate(() => window.captureStaleCardioSnapshot(false));
+    await fullLogSet.click();
+    const undo = page.getByTestId("session-dock-undo-button");
+    await expect(undo).toBeVisible();
+    await page.evaluate(() => window.refreshStaleFullCircuit());
+    await expect(page.getByTestId("full-remaining")).toHaveText("3");
+    await expect(page.getByTestId("full-remaining")).toHaveAttribute("data-planned", "3");
+    await undo.click();
+    await expect(page.getByTestId("full-remaining")).toHaveText("4");
+    await expect(page.getByTestId("full-remaining")).toHaveAttribute("data-strength", "false");
+    await page.evaluate(() => window.refreshFullCircuit());
+    await expect(page.getByTestId("full-remaining")).toHaveText("4");
+    stages.push(stage);
+
+    stage = `authored-observed-write-and-deletion-${width}`;
+    await page.evaluate(() => window.showFullCircuit());
+    await page.getByTestId("cardio-log-submit").click();
+    await fullLogSet.click();
+    await expect(undo).toBeVisible();
+    await page.evaluate(() => window.refreshFullCircuit());
+    await expect(page.getByTestId("full-remaining")).toHaveText("3");
+    await expect(page.getByTestId("full-remaining")).toHaveAttribute("data-planned", "3");
+    await undo.click();
+    await page.evaluate(() => window.refreshFullCircuit());
+    await expect(page.getByTestId("full-remaining")).toHaveText("4");
+    await expect(page.getByTestId("full-remaining")).toHaveAttribute("data-strength", "false");
     stages.push(stage);
 
     stage = `recovery-shared-review-${width}`;
@@ -749,6 +850,27 @@ try {
     await expect(page.getByRole("button", { name: "Remove match", exact: true })).toBeEnabled();
     assert.equal(await page.evaluate(() => window.matchCalls[0].workoutId), null);
     assert.equal(await page.evaluate(() => window.matchCalls[0].workoutRevision), null);
+    stages.push(stage);
+
+    stage = `private-course-prehydration-file-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.showServerCourse());
+    const hydrationFile = page.locator("#server-course").getByLabel("Prepared plan file", { exact: true });
+    const hydrationSource = await page.evaluate(() => JSON.stringify(window.courseSource));
+    await hydrationFile.setInputFiles({ name: "synthetic.json", mimeType: "application/json", buffer: Buffer.from(hydrationSource) });
+    assert.equal(await hydrationFile.evaluate((input) => input.files.length), 1);
+    await page.evaluate(() => window.hydrateCourse());
+    stage = `private-course-prehydration-recovery-${width}`;
+    await expect(page.locator("#server-course").getByRole("heading", { name: "Synthetic private course", exact: true })).toBeVisible();
+    await page.locator('#server-course input[name="weekdays"][value="3"]').check();
+    await expect(page.locator('#server-course input[name="weekdays"][value="3"]')).toBeChecked();
+    const replacementSource = JSON.parse(hydrationSource);
+    replacementSource.title = "Replacement synthetic course";
+    await hydrationFile.setInputFiles({ name: "replacement.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(replacementSource)) });
+    await expect(page.locator("#server-course").getByRole("heading", { name: replacementSource.title, exact: true })).toBeVisible();
+    await hydrationFile.setInputFiles([]);
+    await expect(page.locator('#server-course input[name="weekdays"]')).toHaveCount(0);
+    await page.evaluate(() => window.removeServerCourse());
     stages.push(stage);
 
     stage = `private-course-review-${width}`;
