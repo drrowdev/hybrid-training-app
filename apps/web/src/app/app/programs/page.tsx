@@ -1,4 +1,6 @@
 import Link from "next/link";
+import type { Prescription } from "@hta/db";
+import { authoredWorkoutActivities } from "@hta/domain";
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { todayYmd } from "@/lib/dates";
@@ -26,10 +28,20 @@ export default async function ProgramsPage({ searchParams }: { searchParams: Pro
   ]);
   if (profile.error) throw new Error("Could not load your training settings.");
   const swimHref = swimEntryHref(swimming);
-  const ownsFocused = active && (!focused || active.programFamily === focused.id ||
+  let matchingWorkoutIds: Set<string> | null = null;
+  if (active?.programId === "authored" && focused && focused.id !== "hybrid") {
+    const workouts = await client.from("planned_sessions").select("id,prescription")
+      .eq("user_id", user.id).eq("block_id", active.id).returns<{ id: string; prescription: Prescription }[]>();
+    if (workouts.error) throw new Error("Could not load your workouts.");
+    const activity = focused.id;
+    matchingWorkoutIds = new Set((workouts.data ?? []).filter((row) => row.prescription.meta?.authoredWorkout &&
+      authoredWorkoutActivities(row.prescription.meta.authoredWorkout).includes(activity)).map((row) => row.id));
+  }
+  const ownsFocused = active && (!focused || (matchingWorkoutIds ? matchingWorkoutIds.size > 0 : active.programFamily === focused.id) ||
     (focused.id === "strength" && ["531", "tactical-barbell"].includes(active.programFamily ?? "")) ||
     (focused.id === "hybrid" && ["hybrid", "hyrox", "tactical-barbell-green"].includes(active.programFamily ?? "")));
-  const entries = focused ? snapshot?.entries.filter((entry) => entry.source === "primary" && entry.programId === active?.id && ownsFocused) : snapshot?.entries;
+  const entries = focused ? snapshot?.entries.filter((entry) => entry.source === "primary" && entry.programId === active?.id && ownsFocused &&
+    (!matchingWorkoutIds || matchingWorkoutIds.has(entry.id) || entry.state === "rest")) : snapshot?.entries;
   return <div className={styles.builder}>
     <header className={styles.header}><div><div className={styles.eyebrow}>Training</div><h1>{focused?.name ?? "Programs"}</h1></div>
       <div className={styles.actions}><Link className={styles.button} href="/app/plan/history">Program history</Link><Link className={`${styles.button} ${styles.primary}`} href={`/app/program/build${focused ? `?activity=${focused.id}` : ""}`}>New program</Link></div></header>

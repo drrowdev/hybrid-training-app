@@ -4140,3 +4140,16 @@ unused-only refusing down. Local domain/type/action evidence is source-only;
 real Postgres and six-case native browser qualification remain release gates.
 The first implementation publication is a draft; the coordinator exclusively
 owns environment qualification, merge and deployment.
+
+## [2026-09-22] refine | Modular qualification and guarded storage append
+
+Draft #820 adds six exact disposable browser acceptance cases for library-backed
+strength, typed running, executable mixed repeats, independent swimming, stale
+review/replay and two-user isolation. Source compilation is not browser evidence.
+The initial storage runs stopped at an incorrect Docker server-address assertion;
+the guard now checks the configured loopback client and exact fixture database.
+The coordinator's separate modular production updater requires qualified source,
+the exact app-first merge/deployment and unchanged 213-entry ledger before its
+single0156 append to214. Its rollback/commit-ambiguity rehearsal runs only after
+the disposable modular schedule fixture has been cleaned and unused0156 restored.
+Real SQL, native browser and live release decisions remain with the coordinator.

@@ -536,7 +536,7 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
   const invalid = { status: "unavailable", reason: "invalid-output" };
   const missing = { status: "unavailable", reason: "missing-or-ambiguous-catalog" };
   const unsafe = '<private> https://private.invalid/?key=synthetic-only\nprivate-role';
-  const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
   it("uses only the fixed, exact-signature, null-safe catalog query in a bounded read-only transaction", () => {
     const migration = readFileSync(new URL(
@@ -673,9 +673,11 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       "exec", networkId, "psql", "-XqAt", "-U", "postgres", "-d", "postgres",
       "-v", "ON_ERROR_STOP=1", "-c", AUTH_PRIVILEGES_SQL,
     ], { capture: true, allowFailure: true, timeout: 10_000 }]]);
-    expect(source).toMatch(/manifest\.catalog = [^\n]+;\s+requireUnchanged\(\);\s+}\);\s+const authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+manifest\.authPrivileges = authPrivileges;\s+const authBoundary = checkAuthBoundary\(authPrivileges, 148\);\s+manifest\.authBoundary = authBoundary;/);
+    expect(source).toMatch(/manifest\.catalog = [^\n]+;\s+requireUnchanged\(\);\s+}\);\s+const modularProof = createModularRoundTripProof\(\);/);
+    expect(source).toMatch(/if \(modular\) \{\s+manifest\.modularSchemaProof = modularProof;\s+await stage\("unused modular schema down before historical identity proof", \(\) => modularDdl\("down"\)\);\s+}\s+const authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+manifest\.authPrivileges = authPrivileges;\s+const authBoundary = checkAuthBoundary\(authPrivileges, 148\);\s+manifest\.authBoundary = authBoundary;/);
     expect(source).toContain('await enforceIdentityProofAfterRpc(authBoundary, identityProof, () => stage("complete authenticated RPC file and positive ledger"');
     expect(source).toContain("requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);\n      requireIdentityHelperRpcCases(ledger);\n    }), reporting);");
+    expect(source).toContain('}), reporting);\n    if (modular) await stage("exact modular schema restoration", () => modularDdl("up"));\n    await stage("movement reference down-up and necessity proof"');
     expect(source.match(/await observeAuthPrivileges\(/g)).toHaveLength(1);
     expect(source).toContain("Math.min(options.timeout ?? 60_000, deadline - Date.now())");
     expect(source).toContain('stdio: ["ignore", stdout.stdio, fd]');

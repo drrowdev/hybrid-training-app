@@ -99,6 +99,15 @@ export function authoredMovementIds(definition: AuthoredProgramDefinition): stri
   )))];
 }
 
+export function authoredWorkoutActivities(workout: AuthoredWorkout): ("strength" | "running")[] {
+  const activities = new Set<"strength" | "running">();
+  for (const part of workout.parts) {
+    if (part.kind !== "cardio") activities.add("strength");
+    else if (part.modality === "run") activities.add("running");
+  }
+  return [...activities];
+}
+
 export function formatAuthoredInterval(interval: AuthoredInterval): string {
   const target = interval.target.kind === "distance"
     ? `${interval.target.metres} m`

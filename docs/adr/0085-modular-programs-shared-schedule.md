@@ -94,6 +94,15 @@ The native modular browser profile requires its exact six mobile cases with
 no skipped, duplicated, missing or retried cases. No private course or protected
 account is an acceptance fixture.
 
+The coordinator-owned modular updater is a separate, disabled-by-default manual
+operation. It accepts only the verified 213-entry production history plus the
+single0156 append (214 total), preserving the complete existing ledger under an
+exclusive transaction lock. Its release candidate must pass storage and native
+qualification; the deployed app must be the exact two-parent main/candidate merge
+with the qualified candidate tree and READY live alias. Application deployment
+precedes this storage append. No automatic down migration follows use or an
+ambiguous commit, and no user settings/data are rewritten by this operation.
+
 ## Remaining release gates
 
 The first source publication is a draft, not a release claim. Existing template

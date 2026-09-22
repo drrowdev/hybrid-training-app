@@ -168,7 +168,7 @@ describe("DC-K4/DC-SW5 manual future-week review", () => {
       const confirm = elements(flow.tree()).find((entry) => entry.type === "button" && entry.props.type === "button")!;
       if (typeof confirm.props.onClick !== "function") throw new Error("Missing confirmation");
       confirm.props.onClick();
-      expect(flow.onApply).toHaveBeenCalledWith(flow.preview);
+      expect(flow.onApply).toHaveBeenCalledWith(flow.preview, false);
       flow.edit();
       expect(elements(flow.tree()).filter((entry) => entry.type === "button")).toHaveLength(1);
     });

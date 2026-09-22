@@ -13,6 +13,7 @@ import { assertSwimSafety } from "../safety";
 import { requireSwimStorage } from "../capability";
 import { SWIM_REFRESH_WARNING } from "../action-feedback";
 import { SWIM_SCHEDULE_VERSION } from "../model";
+import { loadTrainingSchedule } from "@/lib/schedule/storage";
 import type { SwimHubView, SwimWorkoutView } from "../view-types";
 import { workoutPresentation } from "../presentation";
 import { swimFixture, userId, planId, sessionId, receiptId } from "./fixtures";
@@ -27,6 +28,11 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("../capability", () => ({ requireSwimStorage: vi.fn() }));
+vi.mock("@/lib/schedule/storage", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/schedule/storage")>(),
+  loadTrainingSchedule: vi.fn(),
+  scheduleReplay: vi.fn(async () => null),
+}));
 vi.mock("../safety", async (importOriginal) => ({
   ...await importOriginal<typeof import("../safety")>(), assertSwimSafety: vi.fn(),
 }));
@@ -92,6 +98,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-09-08T12:00:00Z"));
+  vi.mocked(loadTrainingSchedule).mockResolvedValue({ revision: "a".repeat(32), entries: [] });
   vi.spyOn(queries, "loadSwimHubView").mockResolvedValue(confirmedView);
   vi.spyOn(queries, "swimWorkoutViewFromRow").mockImplementation(async (_client, _userId, row) =>
     row === returnedEditedWorkout ? confirmedEditedView : confirmedWorkoutView);

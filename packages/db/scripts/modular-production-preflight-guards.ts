@@ -17,7 +17,7 @@ export const MODULAR_DISABLED_OPERATIONS = [
   "inspect_swim_review_deployment", "provision_swim_review_owner", "refresh_swim_review",
   "refresh_swim_plan_review", "refresh_swim_readonly_review", "upgrade_swim_review",
   "update_untimed_swim_review", "test_swim_account_flow", "update_swim_production",
-  "accept_legacy_swim_history",
+  "accept_legacy_swim_history", "update_modular_production",
 ] as const;
 
 export function modularPreflightDispatch(inputs: Record<string, unknown> | undefined, env: NodeJS.ProcessEnv) {

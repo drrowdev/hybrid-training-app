@@ -17,6 +17,7 @@ import { verifyMigrationDependencyParity } from "../scripts/migrate-with-evidenc
 import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations } from "../scripts/untimed-swim-review-storage.ts";
 import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehearsal.ts";
 import { rehearseModularSchedule } from "./modular-schedule-rehearsal.ts";
+import { rehearseModularProductionUpdate } from "./modular-production-update-rehearsal.ts";
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
 import {
@@ -713,6 +714,8 @@ try {
   stages.push(stage);
   stage = "modular-schedule-rehearsal";
   stages.push(...await rehearseModularSchedule(database, true));
+  await rehearseModularProductionUpdate(database, (name) => { stage = name; });
+  stages.push(stage);
   status = "passed";
 } catch (error) {
   if (error instanceof assert.AssertionError) {

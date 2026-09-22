@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authoredExecutionParts, authoredPartComplete, authoredProgramDates, compileAuthoredWorkout, type AuthoredProgramDefinition, type AuthoredWorkout } from "./authored-program";
+import { authoredExecutionParts, authoredPartComplete, authoredProgramDates, authoredWorkoutActivities, compileAuthoredWorkout, type AuthoredProgramDefinition, type AuthoredWorkout } from "./authored-program";
 import { trainingScheduleAdvice } from "./training-schedule";
 
 const lift = { id: "squat", slug: "back-squat", displayName: "Back squat", pattern: "squat" };
@@ -18,6 +18,11 @@ const workout: AuthoredWorkout = {
 };
 
 describe("DC-K4/DC-R3 authored programs", () => {
+  it("DC-K4: activity filters project mixed work without splitting its identity", () => {
+    expect(authoredWorkoutActivities(workout)).toEqual(["strength", "running"]);
+    expect(workout.id).toBe("a");
+    expect(authoredWorkoutActivities({ ...workout, parts: [workout.parts[1]!] })).toEqual(["running"]);
+  });
   it("keeps mixed work in one executable prescription with actual library identities", () => {
     const result = compileAuthoredWorkout(workout, [lift, run]);
     expect(result.items).toHaveLength(4);

@@ -14,9 +14,11 @@ const hash = (value: unknown) => createHash("sha256").update(json(value)).digest
 /** Disposable CI only. Call after historical down/up checks, never on hosted storage. */
 export async function rehearseModularSchedule(database: postgres.Sql, restoreHistoricalBaseline = false): Promise<string[]> {
   assert.equal(process.env.GITHUB_ACTIONS, "true");
-  const [{ databaseName, address }] = await database`SELECT current_database() AS "databaseName", host(inet_server_addr()) AS address`;
+  assert.deepEqual(database.options.host, ["127.0.0.1"]);
+  assert.deepEqual(database.options.port, [5432]);
+  assert.equal(database.options.database, "swim_pool_test");
+  const [{ databaseName }] = await database`SELECT current_database() AS "databaseName"`;
   assert.equal(databaseName, "swim_pool_test");
-  assert.ok(address === "127.0.0.1" || address === "::1");
   const stages: string[] = [];
   if (restoreHistoricalBaseline) {
     assert.equal((await database`SELECT count(*)::int AS n FROM public.swim_plans`)[0]!.n, 0);
