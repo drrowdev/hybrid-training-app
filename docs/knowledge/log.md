@@ -4216,3 +4216,21 @@ diagnostic-only path now collects bounded SQLSTATE and exact canonical statement
 position across157 migrations. It always stops as nonqualifying, even if the
 diagnostic migration succeeds. Restore the normal CLI switch before acceptance
 or merge; no applied SQL, runtime budgets or security boundaries were changed.
+
+## [2026-09-22] blocked | Fresh-install migration search path
+
+Nonqualifying diagnostic35766287253 identified SQLSTATE42704 at canonical
+migration155, statement0, before0156 or any RPC/browser case. Shutdown and
+cleanup were verified. Source confirms0149's top-level `SET LOCAL search_path =
+pg_catalog` survives across Drizzle0.44.7's single pending-migration transaction;
+0155 line16 then references unqualified `muscle[]`, defined as `public.muscle`
+by0002. The successful per-migration SQL rehearsal commits between files and
+therefore does not reproduce that leaked search path.
+
+The normal CLI switch and assertions are restored. No applied migration/hash,
+ledger, schema permission or migration transaction semantics were changed.
+Fresh-install migration isolation requires a separately reviewed correction
+that preserves ledger hashes and explicitly decides transaction atomicity;
+per-file commits are not implicitly approved. Qualification must cover normal
+fresh installation, incremental migration and rollback. Native RPC and all six browser cases remain
+unexecuted; this draft is not release-qualified.

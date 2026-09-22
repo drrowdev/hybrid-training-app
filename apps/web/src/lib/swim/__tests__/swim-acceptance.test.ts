@@ -31,9 +31,9 @@ const networkId = "c".repeat(64);
 const project = "pr802-123-1";
 describe("DC-SW8 ordinary candidate runner route", () => {
   const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8").replaceAll("\r\n", "\n");
-  it("retains normal Drizzle behind the temporary nonqualifying diagnostic", () => {
+  it("removes the obsolete bypass and leaves normal Drizzle enabled", () => {
     expect(source).not.toMatch(/ROLLBACK_PROBE_ONLY|swim-fk-rollback-probes|finishRollbackOnly|requireBrowserRoute/);
-    expect(source).toContain("const MIGRATION_DIAGNOSTIC_ONLY = true;");
+    expect(source).toContain("const MIGRATION_DIAGNOSTIC_ONLY = false;");
     expect(source).toContain('from "./swim-movement-reference-roundtrip"');
     expect(source).toContain('"apps/web/e2e-rpc/setup.ts", "apps/web/scripts"');
     expect(source).toContain('["--filter", "@hta/db", "db:migrate"]');
@@ -437,7 +437,7 @@ describe("migration diagnostics (DC-SW8; synthetic logs only)", () => {
     const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
     const branch = source.slice(source.indexOf("if (MIGRATION_DIAGNOSTIC_ONLY)"),
       source.indexOf('const { result, log } = await command("pnpm", ["--filter", "@hta/db", "db:migrate"]'));
-    expect(source).toContain("const MIGRATION_DIAGNOSTIC_ONLY = true;");
+    expect(source).toContain("const MIGRATION_DIAGNOSTIC_ONLY = false;");
     expect(source).toContain('import type { MigrationEvidenceCommand } from "../../../packages/db/scripts/migrate-with-evidence";');
     expect(source).toContain('const migrationEvidenceCommand: MigrationEvidenceCommand = "db:migrate:evidence";');
     expect(branch.match(/await command\(/g)).toHaveLength(1);
