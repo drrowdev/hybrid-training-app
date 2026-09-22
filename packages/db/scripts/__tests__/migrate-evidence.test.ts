@@ -275,6 +275,29 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
     }
   });
 
+  it.each([148, 157])("attributes the final statement within a bounded %i-migration source", (count) => {
+    const migrations = Array.from({ length: count }, (_, index) => ({ sql: [`canonical-${index}`] }));
+    const error = new DrizzleQueryError(`canonical-${count - 1}`, [], native());
+    expect(projectMigrationError(error, () => migrations).position).toEqual({
+      status: "matched", migrationIndex: count - 1, statementIndex: 0,
+    });
+    expect(projectMigrationError(error, () => [
+      ...migrations, ...Array.from({ length: 158 - count }, () => ({ sql: ["outside-bound"] })),
+    ]).position).toEqual({ status: "unmatched" });
+  });
+
+  posixIt("accepts index156 evidence and rejects index157 without emitting SQL", () => fixture((path) => {
+    const writer = openMigrationEvidence(path);
+    writer.terminal({ event: "terminal", status: "failure", phase: "migrate",
+      error: projectMigrationError(native()).error,
+      position: { status: "matched", migrationIndex: 156, statementIndex: 0 } });
+    expect(readMigrationEvidence(path)).toMatchObject({
+      status: "complete", terminal: { position: { migrationIndex: 156, statementIndex: 0 } },
+    });
+    writeFileSync(path, readFileSync(path, "utf8").replace('"migrationIndex":156', '"migrationIndex":157'));
+    expect(readMigrationEvidence(path)).toEqual({ status: "incomplete" });
+  }));
+
   posixIt("writes one exclusive private bounded file and requires a durable terminal", () => fixture((path) => {
     const writer = openMigrationEvidence(path);
     expect(readMigrationEvidence(path)).toEqual({ status: "incomplete" });

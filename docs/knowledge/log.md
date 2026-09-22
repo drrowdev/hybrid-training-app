@@ -4206,3 +4206,13 @@ and both native browser/account runners. Font declarations, framework version,
 timeouts, environment guards and acceptance requirements are unchanged.
 The complete local placeholder-only production build and25 account-flow guards
 passed; the existing Linux native build budget remains to be qualified.
+
+## [2026-09-22] diagnose | Nonqualifying native migration evidence
+
+First native reference35762742003 failed during normal migrations before RPC
+or browser execution; cleanup was verified. All12 guarded routine fingerprints
+match canonical source, with no demonstrated SQL defect. A temporary existing
+diagnostic-only path now collects bounded SQLSTATE and exact canonical statement
+position across157 migrations. It always stops as nonqualifying, even if the
+diagnostic migration succeeds. Restore the normal CLI switch before acceptance
+or merge; no applied SQL, runtime budgets or security boundaries were changed.
