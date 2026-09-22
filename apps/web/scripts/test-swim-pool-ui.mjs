@@ -25,6 +25,7 @@ try {
         import { WorkoutScreen } from "./src/components/swim/WorkoutScreen";
         import { workoutPresentation } from "./src/lib/swim/presentation";
         import { RecordingMatcher } from "./src/components/swim/RecordingMatcher";
+        import { ProgramBuilder } from "./src/components/program/ProgramBuilder";
         import { syntheticCourse } from "./src/lib/swim/__tests__/course-fixtures";
         import { planPrivateSwimCourse } from "./src/lib/swim/course-planning";
         import styles from "./src/components/swim/Swim.module.css";
@@ -73,6 +74,32 @@ try {
               distance: "400 m", beforeLengths: 8, afterLengths: 16 }] } };
         };
         let key = 0;
+        window.programCalls = []; window.programMode = "success";
+        window.previewProgram = async input => {
+          window.programCalls.push({ action: "preview", input });
+          return { ok: true, preview: { id: "synthetic-review", revision: "a".repeat(32),
+            dates: [{ date: "2026-09-14", title: "Run", itemCount: 1 }], overlaps: [], plannedRest: [],
+            replaces: null, replacesBlockId: null, preserved: 0 } };
+        };
+        window.saveProgram = async (...args) => {
+          window.programCalls.push({ action: "save", args });
+          return window.programMode === "stale" ? { ok: false, error: "Your program or schedule changed. Review it again." }
+            : { ok: true, blockId: "00000000-0000-4000-8000-000000000004" };
+        };
+        window.showProgramEdit = () => {
+          const workoutId = "00000000-0000-4000-8000-000000000001";
+          const movementId = "00000000-0000-4000-8000-000000000002";
+          root.render(<main><ProgramBuilder key={++key} today="2026-09-14" commitments={[]}
+            editBlockId="00000000-0000-4000-8000-000000000004" workoutId={workoutId}
+            plannedSessionId="00000000-0000-4000-8000-000000000005" initialStartDate="2026-09-14"
+            catalog={[{ id: movementId, slug: "run-easy-z2", displayName: "Easy run", pattern: "cardio", modality: "run" }]}
+            initial={{ version: 1, activity: "running", name: "Running fixture", weeks: 2, workouts: [{
+              id: workoutId, name: "Run", weekday: 0, parts: [{ id: "00000000-0000-4000-8000-000000000003",
+                kind: "cardio", movementId, modality: "run", intensity: "z2", repeats: 2, notes: "",
+                intervals: [{ id: "00000000-0000-4000-8000-000000000006", label: "Run", effort: "easy",
+                  target: { kind: "time", seconds: 60 } }] }],
+            }] }} /></main>);
+        };
         window.showCourseHub = () => root.render(<main className={styles.page}><SwimHub key={++key}
           setupEnabled={false} plans={[]} plan={{
             id: "00000000-0000-4000-8000-000000000001", revision: 1, status: "active",
@@ -168,7 +195,7 @@ try {
     plugins: [{
       name: "synthetic-actions",
       setup(build) {
-        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions)|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions)|@\/lib\/programs\/authored\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "next/navigation"
             ? "export const useRouter = () => ({ push(path) { window.destinations.push(path); }, refresh() {} });"
@@ -180,6 +207,8 @@ try {
               ? "export const connectSwimDashboard = () => window.connectDashboard(); export const disconnectSwimDashboard = id => window.disconnectDashboard(id);"
             : args.path === "@/lib/swim/import-match-actions"
               ? "export const findSwimMatchWorkouts = date => window.findWorkouts(date); export const saveSwimImportMatch = input => window.saveMatch(input);"
+            : args.path === "@/lib/programs/authored/actions"
+              ? "export const previewAuthoredProgram = input => window.previewProgram(input); export const saveAuthoredProgram = (...args) => window.saveProgram(...args);"
             : args.path === "@/components/trash/DeleteSessionButton"
               ? "export const DeleteSessionButton = () => { throw new Error('Unexpected delete control'); };"
             : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = () => { throw new Error('Unexpected save'); }; export const previewSwimPlan = createSwimPlan; export const proposeSwimWeek = createSwimPlan, proposeSwimBenchmark = createSwimPlan, decideSwimProposal = createSwimPlan, changeSwimPlanStatus = createSwimPlan, previewSwimResume = createSwimPlan, resumeSwimPlan = createSwimPlan, decideSwimBenchmark = createSwimPlan, applySwimWeekEdit = createSwimPlan, applySwimDateEdit = createSwimPlan, applySwimPoolEdit = createSwimPlan, previewSwimWeekEdit = createSwimPlan, previewSwimDateEdit = createSwimPlan, skipSwimWorkout = createSwimPlan;",
@@ -213,6 +242,33 @@ try {
   stages.push(stage);
 
   for (const width of [375, 1280]) {
+    stage = `authored-scoped-edit-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => { window.programCalls = []; window.programMode = "success"; window.showProgramEdit(); });
+    await page.getByLabel("Repeat sequence", { exact: true }).fill("3");
+    await page.getByRole("combobox", { name: "Apply changes to", exact: true }).selectOption("future");
+    await page.getByRole("button", { name: "Review changes", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Save changes", exact: true })).toBeVisible();
+    const previewInput = await page.evaluate(() => window.programCalls[0].input);
+    assert.equal(previewInput.scope, "future");
+    assert.equal(previewInput.definition.workouts[0].parts[0].repeats, 3);
+    await page.evaluate(() => {
+      window.programMode = "stale";
+      const announcer = document.createElement("next-route-announcer");
+      announcer.attachShadow({ mode: "open" }).innerHTML = '<div role="alert" aria-live="assertive">Running fixture</div>';
+      document.body.append(announcer);
+    });
+    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    await expect(page.getByRole("alert")).toHaveCount(2);
+    await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+    await page.evaluate(() => document.querySelector("next-route-announcer").remove());
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(page.getByLabel("Repeat sequence", { exact: true })).toHaveValue("3");
+    assert.equal(await page.getByRole("combobox", { name: "Apply changes to", exact: true }).inputValue(), "future");
+    assert.equal(await page.getByRole("link", { name: "Cancel", exact: true }).getAttribute("href"), "/app/plan");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    stages.push(stage);
+
     stage = `explicit-recording-match-${width}`;
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => { window.matchCalls = []; window.findCalls = []; window.matchMode = "delay"; window.showMatcher(); });

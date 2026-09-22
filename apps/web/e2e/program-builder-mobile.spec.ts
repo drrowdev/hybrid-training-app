@@ -164,7 +164,7 @@ test.describe("Modular program builder", () => {
     } });
     await page.goto(`/app/program/build?edit=${rows[0]!.block_id}&workout=${rows[0]!.id}`);
     await page.getByLabel("Repeat sequence", { exact: true }).fill("3");
-    await page.getByLabel("Apply changes to", { exact: true }).selectOption("future");
+    await page.getByRole("combobox", { name: "Apply changes to", exact: true }).selectOption("future");
     await page.getByRole("button", { name: "Review changes", exact: true }).click();
     await save(page);
     const edited = await planned(actor);
@@ -198,7 +198,7 @@ test.describe("Modular program builder", () => {
       await expect(page.locator(`a[href="/app/sessions/start/${row.id}"]`)).toBeVisible();
     }
     const sessionId = await start(page, row.id);
-    await expect(page.getByTestId("authored-workout-parts").getByRole("button")).toHaveCount(2);
+    await expect(page.getByRole("navigation", { name: "Workout parts", exact: true }).getByRole("button")).toHaveCount(2);
     await page.getByTestId("cardio-log-submit").click();
     await expect(page.getByTestId("movement-focus-log-button")).toBeVisible();
     for (let index = 0; index < 4; index++) {
@@ -220,13 +220,13 @@ test.describe("Modular program builder", () => {
     await lift(page, movement(catalog, "bench-press-flat")); await review(page); await save(page);
     const primary = await planned(actor);
     await page.goto("/app/swim/import");
-    const fixture = syntheticCourse(), source = { ...fixture, weeks: [fixture.weeks[0]!] };
+    const source = syntheticCourse();
     await page.getByLabel("Prepared plan file").setInputFiles({
       name: "synthetic-course.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(source)),
     });
     const sunday = new Date(`${today()}T00:00:00Z`).getUTCDay();
     for (const day of [(sunday + 1) % 7, (sunday + 3) % 7]) await page.locator(`input[name="weekdays"][value="${day}"]`).check();
-    await page.getByLabel("Experience", { exact: true }).selectOption("trained");
+    await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("trained");
     await page.getByLabel("Comfortable non-stop lengths in the plan pool").fill("40");
     await page.getByLabel("Freestyle", { exact: true }).check();
     await page.getByRole("button", { name: "Review plan", exact: true }).click();
@@ -234,7 +234,7 @@ test.describe("Modular program builder", () => {
     await page.getByRole("button", { name: "Import plan", exact: true }).click();
     await expect(page).toHaveURL(/\/app\/swim\?plan=/);
     const swims = await actor.from("swim_workouts").select("id,scheduled_date").order("scheduled_date");
-    expect(swims.error).toBeNull(); expect(swims.data).toHaveLength(2);
+    expect(swims.error).toBeNull(); expect(swims.data).toHaveLength(3);
     await page.getByText("Move swim", { exact: true }).first().click();
     const editor = page.locator("details").filter({ has: page.getByLabel("Swim date") }).first();
     await editor.getByLabel("Swim date").fill(today());
@@ -244,7 +244,7 @@ test.describe("Modular program builder", () => {
     await editor.getByLabel("Keep both workouts on this date").check();
     await editor.getByRole("button", { name: "Save date", exact: true }).click();
     await expect.poll(async () => (await actor.from("swim_workouts").select("scheduled_date").eq("id", swims.data![0]!.id).single()).data?.scheduled_date).toBe(today());
-    expect((await actor.from("swim_workouts").select("id")).data).toHaveLength(2);
+    expect((await actor.from("swim_workouts").select("id")).data).toHaveLength(3);
     await page.getByRole("button", { name: "Finish plan", exact: true }).click();
     await expect.poll(async () => (await actor.from("swim_plans").select("status").single()).data?.status).toBe("finished");
     expect((await planned(actor)).map((row) => [row.id, row.week_index, row.day_index])).toEqual(primary.map((row) => [row.id, row.week_index, row.day_index]));
@@ -258,7 +258,7 @@ test.describe("Modular program builder", () => {
       performed_at: `${addDaysToYmd(today(), 1)}T12:00:00Z` });
     expect(other.error).toBeNull();
     await page.getByRole("button", { name: "Start program", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText("changed");
+    await expect(page.getByRole("main").getByRole("alert")).toContainText("changed");
     expect((await actor.from("training_blocks").select("id")).data).toHaveLength(0);
     await page.getByRole("button", { name: "Back", exact: true }).click(); await review(page);
     const posted = page.waitForRequest((request) => request.method() === "POST" && !!request.headers()["next-action"]);

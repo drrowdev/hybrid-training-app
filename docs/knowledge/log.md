@@ -4263,3 +4263,23 @@ deployment. Separately, the coordinator defers new DC-O2 timing behavior and
 specification reconciliation for this UI scope: owner clarification was
 unavailable, not an explicit choice. Existing limitation/high-strain-power
 safety checks remain mandatory; no new threshold or DC-O2 compliance is claimed.
+
+## [2026-09-22] refine | First complete modular native execution
+
+Revision70d97db8 passed ordinary core/storage, including all five new atomic
+runner proofs. Normal native35774782880 then passed all157 migrations, unchanged
+Auth identity,36 historical RPC cases, modular catalog/CHECK down-up and FK
+proofs. All six browser cases executed once; strength creation/logging and
+two-user isolation passed. Both cleanup checks passed. Four browser cases
+stopped at selectors or an invalid synthetic course, not migration startup.
+
+The bounded repair targets the edit scope by its combobox role, counts only
+named workout-part navigation buttons, uses the complete valid two-week course
+instead of an unsupported one-week truncation, and scopes the stale-save alert
+to the application main region rather than Next's separate route announcer.
+The existing isolated browser harness reproduces the edit selector and verifies
+scope/repeat retention and stale-error behavior at375/1280px. Native assertions,
+six-case coverage, guards and timeouts remain intact. A touched course test
+normalizes read-only CRLF/LF text comparisons; no SQL file or hash changed.
+The corrected native run remains required; the first execution is not release
+qualification.

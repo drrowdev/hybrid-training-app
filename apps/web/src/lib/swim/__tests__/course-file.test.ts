@@ -21,6 +21,11 @@ describe("DC-SW1/SW3/SW4/SW5 private course file", () => {
     const source = syntheticCourse();
     expect(parseSwimCourseFile(JSON.stringify(source))).toEqual(source);
   });
+  it("rejects a one-week truncation and retains every swim in the complete fixture", () => {
+    const source = syntheticCourse();
+    expect(() => parseSwimCourseFile(JSON.stringify({ ...source, weeks: source.weeks.slice(0, 1) }))).toThrow();
+    expect(parseSwimCourseFile(JSON.stringify(source)).weeks.flatMap((week) => week.workouts)).toHaveLength(3);
+  });
   it.each(["", "not-json", "{}"])("rejects invalid files without echoing their contents", (text) => {
     expect(() => parseSwimCourseFile(text)).toThrow();
   });
@@ -74,8 +79,8 @@ describe("DC-SW1/SW3/SW4/SW5 private course file", () => {
   });
   it("restores the exact previous pool validator and refuses data-destroying rollback", () => {
     const root = new URL("../../../../../../packages/db/", import.meta.url);
-    const prior = readFileSync(new URL("drizzle/0151_swim_pool_changes.sql", root), "utf8");
-    const down = readFileSync(new URL("rollbacks/0152_swim_private_courses.down.sql", root), "utf8");
+    const prior = readFileSync(new URL("drizzle/0151_swim_pool_changes.sql", root), "utf8").replaceAll("\r\n", "\n");
+    const down = readFileSync(new URL("rollbacks/0152_swim_private_courses.down.sql", root), "utf8").replaceAll("\r\n", "\n");
     const pattern = /CREATE OR REPLACE FUNCTION public\.swim_validate_plan_binding\([\s\S]*?END \$\$;/;
     expect(down.match(pattern)?.[0]).toBe(prior.match(pattern)?.[0]);
     expect(down).toMatch(/BEGIN;[\s\S]*IF EXISTS[\s\S]*RAISE EXCEPTION[\s\S]*COMMIT;/);
