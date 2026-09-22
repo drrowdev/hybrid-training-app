@@ -849,6 +849,12 @@ export default async function SessionDetailPage({
   const hasStrengthPrescription = strengthItemCount > 0;
   const isPureCardio = hasCardio && !hasStrengthPrescription;
   const isAuthoredSession = (plannedPrescription?.items ?? []).some((item) => typeof item.meta?.authoredPartId === "string");
+  const loggedCardioItemIndices = (cardio ?? []).filter((log) => log.block_index > 0).map((log) => log.block_index - 1);
+  if (isAuthoredSession) {
+    (plannedPrescription?.items ?? []).forEach((item, index) => {
+      if (item.kind.startsWith("cardio_") && !loggedCardioItemIndices.includes(index)) unloggedRequiredIndices.push(index);
+    });
+  }
   const isHybridSession = hasCardio && hasStrengthPrescription;
   const showCardioLogForm =
     (cardioPrescriptionItems.length > 0 || hasQuickCardio) &&
@@ -972,8 +978,9 @@ export default async function SessionDetailPage({
   return (
     <UnitsProvider units={userUnits}>
     <SessionLoggingStateProvider
-      key={sets.length}
+      key={`${sets.length}:${cardio?.length ?? 0}`}
       initialHasStrengthSets={sets.length > 0}
+      initialLoggedCardioItemIndices={isAuthoredSession ? loggedCardioItemIndices : []}
       initialUnloggedStrengthCount={unloggedStrengthCount}
       initialUnloggedRehabIndices={unloggedRehabIndices}
       initialUnloggedRequiredIndices={unloggedRequiredIndices}
@@ -1068,6 +1075,7 @@ export default async function SessionDetailPage({
                     sessionId={id}
                     disabled={sets.length === 0 && !(isAuthoredSession && hasLoggedCardioRow)}
                     hybrid={hasCardio && hasStrengthPrescription}
+                    authored={isAuthoredSession}
                     testId="finish-stickybar"
                   />
                 )}
@@ -1766,6 +1774,7 @@ export default async function SessionDetailPage({
             disabled={!canFinish}
             subtitle={subtitle}
             hybrid={isHybrid}
+            authored={isAuthoredSession}
             testId="finish-stickybar"
           />
         );

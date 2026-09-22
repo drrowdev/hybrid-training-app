@@ -50,6 +50,38 @@ describe("Finish placement", () => {
 });
 
 describe("FinishSessionBar — hybrid clarifier", () => {
+  it("DC-K4: authored cardio arms finish while unchanged strength sessions retain their gate", () => {
+    const render = (authored: boolean) => renderToStaticMarkup(
+      <SessionLoggingStateProvider initialHasStrengthSets={false} initialUnloggedStrengthCount={0}
+        initialLoggedCardioItemIndices={[2]}>
+        <FinishSessionBar sessionId="s" variant="bottom" disabled authored={authored} />
+      </SessionLoggingStateProvider>,
+    );
+    expect(render(true)).toContain('data-armed="true"');
+    expect(render(false)).toContain('data-armed="false"');
+  });
+
+  it("DC-K4: unfinished authored cardio keeps partial finish in the menu", () => {
+    const render = (node: React.ReactNode) => renderToStaticMarkup(
+      <SessionLoggingStateProvider initialHasStrengthSets initialUnloggedStrengthCount={0}
+        initialUnloggedRequiredIndices={[3]}>
+        {node}
+      </SessionLoggingStateProvider>,
+    );
+    expect(render(<FinishSessionBottomSlot sessionId="s" disabled={false} authored />)).toBe("");
+    expect(render(<FinishSessionMenuSlot sessionId="s" disabled={false} authored />)).toContain('data-armed="true"');
+  });
+
+  it("DC-K4: authored cardio cannot bypass unacknowledged rehab", () => {
+    const html = renderToStaticMarkup(
+      <SessionLoggingStateProvider initialHasStrengthSets={false} initialUnloggedStrengthCount={1}
+        initialLoggedCardioItemIndices={[0]} initialUnloggedRehabIndices={[1]}>
+        <FinishSessionBar sessionId="s" variant="bottom" disabled authored />
+      </SessionLoggingStateProvider>,
+    );
+    expect(html).toContain('data-armed="false"');
+  });
+
   it("renders the generic 'Log at least 1 set to finish' for pure strength (no hybrid prop)", () => {
     const html = renderToStaticMarkup(
       <FinishSessionBar sessionId="s" variant="bottom" disabled />,

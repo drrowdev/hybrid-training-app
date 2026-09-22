@@ -18,6 +18,7 @@ import {
   cardioOutboxHydrationState,
   hasQueuedCardioSession,
 } from "../CardioLogForm";
+import type { OutboxEntry } from "@/lib/offline/outbox-core";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: () => undefined, push: () => undefined }),
@@ -28,6 +29,15 @@ const noopAction = (async () => ({ ok: true as const })) as unknown as Parameter
 >[0]["action"];
 
 describe("CardioLogForm", () => {
+  it("DC-K4: queued authored cardio restores only its original prescription part", () => {
+    const entry: OutboxEntry = { id: "queued-cardio", op: "cardio_session", sessionId: "session",
+      seq: 1, payload: { prescriptionItemIndex: "2" }, createdAt: 1, attempts: 0 };
+    expect(cardioOutboxHydrationState([entry], 2).queued).toBe(true);
+    expect(cardioOutboxHydrationState([entry], 3).queued).toBe(false);
+    expect(cardioOutboxHydrationState([{ ...entry, payload: {} }], 0).queued).toBe(false);
+    expect(cardioOutboxHydrationState([{ ...entry, status: "dead_lettered" }], 2).queued).toBe(false);
+  });
+
   it("restores a queued cardio session instead of allowing a new client id", () => {
     expect(
       hasQueuedCardioSession([

@@ -11,6 +11,10 @@ import {
 
 type SessionLoggingState = {
   hasStrengthSets: boolean;
+  hasCardioLogs: boolean;
+  loggedCardioItemIndices: ReadonlySet<number>;
+  registerCardioLog: (clientId: string, prescriptionItemIndex: number) => void;
+  rollbackCardioLog: (clientId: string) => void;
   remainingPlannedSets: number;
   remainingRehabSets: number;
   /**
@@ -32,12 +36,14 @@ const Context = createContext<SessionLoggingState | null>(null);
 
 export function SessionLoggingStateProvider({
   initialHasStrengthSets,
+  initialLoggedCardioItemIndices = [],
   initialUnloggedStrengthCount,
   initialUnloggedRehabIndices = [],
   initialUnloggedRequiredIndices = [],
   children,
 }: {
   initialHasStrengthSets: boolean;
+  initialLoggedCardioItemIndices?: number[];
   initialUnloggedStrengthCount: number;
   initialUnloggedRehabIndices?: number[];
   initialUnloggedRequiredIndices?: number[];
@@ -47,6 +53,16 @@ export function SessionLoggingStateProvider({
     ReadonlyMap<string, number | null>
   >(() => new Map());
   const [completionQueued, setCompletionQueued] = useState(false);
+  const [cardioLogs, setCardioLogs] = useState<ReadonlyMap<string, number>>(() => new Map());
+  const registerCardioLog = useCallback((clientId: string, prescriptionItemIndex: number) => {
+    setCardioLogs((current) => current.has(clientId) ? current : new Map(current).set(clientId, prescriptionItemIndex));
+  }, []);
+  const rollbackCardioLog = useCallback((clientId: string) => {
+    setCardioLogs((current) => {
+      if (!current.has(clientId)) return current;
+      const next = new Map(current); next.delete(clientId); return next;
+    });
+  }, []);
 
   const registerStrengthLog = useCallback(
     (clientId: string, prescriptionItemIndex: number | null) => {
@@ -79,7 +95,7 @@ export function SessionLoggingStateProvider({
     let requiredPending = 0;
     const rehabIndices = new Set(initialUnloggedRehabIndices);
     const requiredIndices = new Set(initialUnloggedRequiredIndices);
-    for (const prescriptionItemIndex of optimisticLogs.values()) {
+    for (const prescriptionItemIndex of new Set(optimisticLogs.values())) {
       if (prescriptionItemIndex != null) prescribedPending += 1;
       if (
         prescriptionItemIndex != null &&
@@ -94,8 +110,14 @@ export function SessionLoggingStateProvider({
         requiredPending += 1;
       }
     }
+    const loggedCardioItemIndices = new Set([...initialLoggedCardioItemIndices, ...cardioLogs.values()]);
+    for (const index of loggedCardioItemIndices) {
+      if (requiredIndices.has(index)) requiredPending += 1;
+    }
     return {
       hasStrengthSets: initialHasStrengthSets || optimisticLogs.size > 0,
+      hasCardioLogs: loggedCardioItemIndices.size > 0,
+      loggedCardioItemIndices, registerCardioLog, rollbackCardioLog,
       remainingPlannedSets: Math.max(
         0,
         initialUnloggedStrengthCount - prescribedPending,
@@ -115,6 +137,8 @@ export function SessionLoggingStateProvider({
     };
   }, [
     initialHasStrengthSets,
+    initialLoggedCardioItemIndices,
+    cardioLogs, registerCardioLog, rollbackCardioLog,
     initialUnloggedStrengthCount,
     initialUnloggedRehabIndices,
     initialUnloggedRequiredIndices,

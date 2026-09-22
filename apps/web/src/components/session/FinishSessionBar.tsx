@@ -46,6 +46,7 @@ type FinishSlotProps = {
   disabled: boolean;
   subtitle?: string | null;
   hybrid?: boolean;
+  authored?: boolean;
   testId?: string;
 };
 
@@ -75,6 +76,7 @@ export function FinishSessionBar({
   disabled,
   subtitle,
   hybrid,
+  authored,
   testId = "finish-stickybar",
 }: {
   sessionId: string;
@@ -98,6 +100,7 @@ export function FinishSessionBar({
    * Finish button in that flow).
    */
   hybrid?: boolean;
+  authored?: boolean;
   testId?: string;
 }) {
   const loggingState = useSessionLoggingState();
@@ -105,8 +108,8 @@ export function FinishSessionBar({
   const remainingRehabSets = loggingState?.remainingRehabSets ?? 0;
   const rehabBlocked = remainingRehabSets > 0;
   const effectiveDisabled =
-    rehabBlocked || (disabled && !loggingState?.hasStrengthSets);
-  const disabledLabel = hybrid
+    rehabBlocked || (disabled && !loggingState?.hasStrengthSets && !(authored && loggingState?.hasCardioLogs));
+  const disabledLabel = authored ? "Log an exercise to finish" : hybrid
     ? "Log at least 1 strength set to finish"
     : "Log at least 1 set to finish";
   const label = rehabBlocked
@@ -119,6 +122,10 @@ export function FinishSessionBar({
       ? `${remainingRehabSets} rehab set${
           remainingRehabSets === 1 ? "" : "s"
         } remain. Log or explicitly skip them before finishing.`
+      : authored && !effectiveDisabled
+      ? (loggingState?.remainingRequiredSets ?? 0) > 0
+        ? `${loggingState!.remainingRequiredSets} planned items remain. Finish with logged work only.`
+        : null
       : disabled && loggingState?.hasStrengthSets
       ? loggingState.remainingPlannedSets > 0
         ? `${loggingState.remainingPlannedSets} planned sets aren't logged. Finish with logged sets only. · Finish anyway`
@@ -332,6 +339,9 @@ export function FinishSessionBar({
         >
           {finishing ? "Finishing…" : "Finish session"}
         </button>
+        {authored && effectiveSubtitle && <div style={{ padding: "0 10px 6px", fontSize: 12, color: "var(--cp-text-muted)" }}>
+          {effectiveSubtitle}
+        </div>}
         {finishError && (
           <div
             role="alert"

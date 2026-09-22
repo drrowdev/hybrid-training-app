@@ -28,6 +28,7 @@ import { runDurableAction } from "@/lib/offline/durable-action";
 import { formDataToPayload } from "@/lib/offline/outbox-core";
 import { listForSession as listOutboxForSession } from "@/lib/offline/outbox";
 import type { OutboxEntry } from "@/lib/offline/outbox-core";
+import { useSessionLoggingState } from "./SessionLoggingState";
 
 type LogAction = typeof logCardioSessionAction;
 
@@ -70,6 +71,7 @@ export function hasQueuedCardioSession(
 
 export function cardioOutboxHydrationState(
   entries: readonly OutboxEntry[] | null,
+  prescriptionItemIndex?: number,
 ): {
   hydrated: true;
   queued: boolean;
@@ -77,7 +79,9 @@ export function cardioOutboxHydrationState(
 } {
   return {
     hydrated: true,
-    queued: entries != null && hasQueuedCardioSession(entries),
+    queued: entries != null && hasQueuedCardioSession(prescriptionItemIndex === undefined ? entries
+      : entries.filter((entry) => /^\d+$/.test(String(entry.payload.prescriptionItemIndex ?? "")) &&
+        Number(entry.payload.prescriptionItemIndex) === prescriptionItemIndex)),
     durabilityWarning: entries == null,
   };
 }
@@ -94,6 +98,7 @@ export function CardioLogForm({
   prescriptionItemIndex,
 }: CardioLogFormProps) {
   const router = useRouter();
+  const loggingState = useSessionLoggingState();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [savedOffline, setSavedOffline] = useState(false);
@@ -105,8 +110,7 @@ export function CardioLogForm({
     void listOutboxForSession(sessionId)
       .then((entries) => {
         if (!active) return;
-        const hydration = cardioOutboxHydrationState(prescriptionItemIndex === undefined ? entries
-          : entries.filter((entry) => Number(entry.payload.prescriptionItemIndex) === prescriptionItemIndex));
+        const hydration = cardioOutboxHydrationState(entries, prescriptionItemIndex);
         setSavedOffline(hydration.queued);
         setDurabilityWarning(hydration.durabilityWarning);
         setOutboxHydrated(hydration.hydrated);
@@ -190,6 +194,7 @@ export function CardioLogForm({
       );
       if (durable.status === "queued") {
         setSavedOffline(true);
+        if (prescriptionItemIndex !== undefined) loggingState?.registerCardioLog(clientLogId, prescriptionItemIndex);
         return;
       }
       if (durable.status === "failed") {
@@ -200,6 +205,7 @@ export function CardioLogForm({
         );
         return;
       }
+      if (prescriptionItemIndex !== undefined) loggingState?.registerCardioLog(clientLogId, prescriptionItemIndex);
       router.refresh();
     });
   };

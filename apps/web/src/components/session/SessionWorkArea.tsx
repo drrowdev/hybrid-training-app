@@ -206,6 +206,8 @@ export function SessionWorkArea({
   const registerStrengthLog = loggingState?.registerStrengthLog;
   const rollbackStrengthLog = loggingState?.rollbackStrengthLog;
   const registerCompletionQueued = loggingState?.registerCompletionQueued;
+  const registerCardioLog = loggingState?.registerCardioLog;
+  const rollbackCardioLog = loggingState?.rollbackCardioLog;
 
   // Reconcile: whenever a fresh server snapshot lands (any revalidating action —
   // finish / delete / edit / fill / swap — or a reload changes the `sets` prop),
@@ -346,6 +348,12 @@ export function SessionWorkArea({
       setOutboxFailed(entries.filter((e) => e.attempts > 0 && e.lastError).length);
       setOutboxDropped(deadLettered.length);
       registerCompletionQueued?.(entries.some((entry) => entry.op === "complete"));
+      for (const entry of entries) {
+        if (entry.op === "cardio_session" && /^\d+$/.test(String(entry.payload.prescriptionItemIndex ?? ""))) {
+          registerCardioLog?.(entry.id, Number(entry.payload.prescriptionItemIndex));
+        }
+      }
+      for (const entry of deadLettered) rollbackCardioLog?.(entry.id);
       const seeded = hydrateQueuedSetLogs(entries);
       for (const log of seeded) {
         registerStrengthLog?.(log.clientKey, log.prescriptionItemIndex);
@@ -373,6 +381,7 @@ export function SessionWorkArea({
             entries.filter((e) => e.attempts > 0 && e.lastError).length,
           );
           setOutboxDropped(deadLettered.length);
+          for (const entry of deadLettered) rollbackCardioLog?.(entry.id);
           registerCompletionQueued?.(
             entries.some((entry) => entry.op === "complete"),
           );
@@ -384,7 +393,7 @@ export function SessionWorkArea({
       cancelled = true;
       stop();
     };
-  }, [registerCompletionQueued, registerStrengthLog, router, sessionId]);
+  }, [registerCompletionQueued, registerStrengthLog, registerCardioLog, rollbackCardioLog, router, sessionId]);
 
   const mergedSets = useMemo(
     () => mergeOptimisticSets(sets, pendingLogs),
@@ -437,6 +446,7 @@ export function SessionWorkArea({
   const parts = authoredExecutionParts(prescription?.items ?? []);
   const [selectedPartId, selectPart] = useState<string | null>(null);
   const cardioIndices = new Set(authoredCardio?.logs.map((log) => log.blockIndex));
+  for (const index of loggingState?.loggedCardioItemIndices ?? []) cardioIndices.add(index + 1);
   const activePart = parts.find((part) => part.id === selectedPartId)
     ?? parts.find((part) => !authoredPartComplete(part, loggedSet, cardioIndices)) ?? parts[0];
   const cardioIndex = activePart?.kind === "cardio" ? activePart.itemIndices[0] : undefined;
