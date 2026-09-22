@@ -20,6 +20,7 @@ import { rehearseModularSchedule } from "./modular-schedule-rehearsal.ts";
 import { rehearseModularProductionUpdate } from "./modular-production-update-rehearsal.ts";
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
+import { MigrationRunnerRehearsalError, rehearseMigrationRunner } from "./migration-runner-rehearsal.ts";
 import {
   historicalMigrationHashes, productionHistoryInventory, productionSchemaInventory,
   SCHEMA_TABLE_SQL, SCHEMA_FUNCTION_SQL, SCHEMA_SHARED_SQL, SWIM_SCHEMA_TABLES, SWIM_SCHEMA_FUNCTIONS,
@@ -35,6 +36,7 @@ const stages: string[] = [];
 const knownFailures = new Map<string, { migration: number; line: number }>();
 let failureLocation: { migration: number; line: number } | undefined;
 let modularAssertionLine: number | undefined;
+let migrationRunnerDiagnostic: MigrationRunnerRehearsalError["diagnostic"] | undefined;
 let stage = "guard", status = "failed", code = "unexpected";
 let sql: ReturnType<typeof postgres> | undefined;
 try {
@@ -60,6 +62,9 @@ try {
     WHERE n.nspname IN ('public','auth') AND c.relkind IN ('r','v','m','S')`;
   assert.equal(count, 0);
   stages.push(stage);
+
+  stage = "migration-runner-rehearsal";
+  stages.push(...await rehearseMigrationRunner(database, (name) => { stage = name; }));
 
   stage = "synthetic-auth-and-base-schema";
   await database.unsafe(`
@@ -718,6 +723,7 @@ try {
   stages.push(stage);
   status = "passed";
 } catch (error) {
+  if (error instanceof MigrationRunnerRehearsalError) migrationRunnerDiagnostic = error.diagnostic;
   if (error instanceof assert.AssertionError) {
     const location = error.stack?.match(/modular-schedule-rehearsal\.ts:(\d+):\d+/);
     if (location) modularAssertionLine = Number(location[1]);
@@ -727,6 +733,9 @@ try {
   code = typeof error === "object" && error !== null && "code" in error &&
     typeof error.code === "string" ? (known.includes(error.code) ? error.code : error.code === "ERR_ASSERTION" ? "assertion" : "unexpected") : "unexpected";
   if (error instanceof ReviewStorageRefusal || error instanceof ProductionInspectionRefusal) code = error.code;
+  if (error instanceof MigrationRunnerRehearsalError) {
+    code = error.cleanupFailed ? "migration-runner-cleanup" : error.diagnostic.sqlstate ?? "migration-runner-assertion";
+  }
 } finally {
   if (sql) {
     try { await sql.end({ timeout: 5 }); }
@@ -736,7 +745,8 @@ try {
 console.log(JSON.stringify({
   scope: "swim-pool-storage", sha: /^[0-9a-f]{40}$/.test(process.env.TESTED_SHA ?? "") ? process.env.TESTED_SHA : null,
   status, stages, ...(status === "failed" ? { stage, code, ...(failureLocation ? { failureLocation } : {}),
-    ...(modularAssertionLine ? { modularAssertionLine } : {}) } : {}),
+    ...(modularAssertionLine ? { modularAssertionLine } : {}),
+    ...(migrationRunnerDiagnostic ? { migrationRunnerDiagnostic } : {}) } : {}),
 }));
 if (status !== "passed" && process.env.GITHUB_ACTIONS === "true") {
   console.log(`::error title=Swimming pool storage::${stage} [${code}]${failureLocation ? ` at migration-${failureLocation.migration}:${failureLocation.line}` : ""}`);

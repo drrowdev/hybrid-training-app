@@ -4234,3 +4234,32 @@ that preserves ledger hashes and explicitly decides transaction atomicity;
 per-file commits are not implicitly approved. Qualification must cover normal
 fresh installation, incremental migration and rollback. Native RPC and all six browser cases remain
 unexecuted; this draft is not release-qualified.
+
+## [2026-09-22] fix | Atomic canonical migration-file boundaries
+
+Renewed owner authorization explicitly retains one outer transaction across all
+pending migrations. The normal command now shares the evidence entry's checked
+configuration, driver and cleanup lifecycle. Exported Drizzle dialect/session
+APIs retain the existing ledger algorithm; separate in-memory `SET LOCAL
+search_path = public` statements bracket each file without changing canonical
+SQL bytes, hashes, timestamps, existing ledger records or role/RLS grants.
+Implicit catalog lookup remains first while unqualified DDL targets `public`.
+Only search path is reset between files; other local settings keep their
+existing transaction semantics.
+
+The existing guarded PostgreSQL pool job gains sequential, fixed-name disposable
+database fixtures: reproduce42704 at155:0 with the stock runner, normal full157
+installation/replay, and prefix-ledger incremental/real precommit rollback with
+public DDL and settings/role restoration. Cleanup owns only resources absent
+from the captured initial inventory and must restore that inventory. Local
+unit/type checks are not SQL acceptance. Real CI, normal native RPC and the
+frozen six browser cases remain required before release qualification; the
+diagnostic-only switch stays false.
+
+Coordinator preflight35771915697 subsequently verified the renewed intended
+production credential, READY main d10 and the preserved213-entry ledger with
+only0156 pending. It made no writes and does not qualify this runner or authorize
+deployment. Separately, the coordinator defers new DC-O2 timing behavior and
+specification reconciliation for this UI scope: owner clarification was
+unavailable, not an explicit choice. Existing limitation/high-strain-power
+safety checks remain mandatory; no new threshold or DC-O2 compliance is claimed.

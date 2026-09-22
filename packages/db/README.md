@@ -40,6 +40,21 @@ and skip the migration entirely. ADR required for any new top-level column.
 
 ### Normal path
 
+`db:migrate` and `db:migrate:evidence` share the same migration runner. It uses
+Drizzle's pending-file selection and ledger writes, with **one transaction for
+all pending files**, not one commit per file. Separate `SET LOCAL search_path =
+public` statements establish the application namespace before and after each
+file. PostgreSQL still searches `pg_catalog` implicitly first; unqualified DDL
+creates application objects in `public`. File-local search-path changes cannot
+leak into the next migration, and session settings restore on commit or rollback.
+Other migration-local settings retain their existing transaction semantics.
+
+The boundary statements are not appended to files or hashed. Canonical SQL,
+hashes, journal timestamps and existing ledger rows remain unchanged. Failures
+stop the batch and emit bounded metadata rather than raw queries; the evidence
+entry additionally records its durable terminal/shutdown outcome. Neither entry
+changes deployment authorization or substitutes for live migration qualification.
+
 1. Edit the Drizzle schema under `src/schema/`.
 2. Run `pnpm --filter @hta/db db:generate` — produces the next-numbered SQL
    file in `drizzle/` and appends to `meta/_journal.json`.
@@ -92,9 +107,9 @@ integration at all. It logs a warning in the job summary when used.
 ### Out-of-band path (Supabase dashboard) — discouraged
 
 Sometimes — usually for emergency hotfixes — a migration is run by hand
-in the Supabase SQL editor instead of through `drizzle-kit migrate`.
+in the Supabase SQL editor instead of through `db:migrate`.
 When that happens, `drizzle.__drizzle_migrations` doesn't get the row
-that `drizzle-kit migrate` would have written, and the next normal
+that the shared runner would have written, and the next normal
 migrate run will try to re-apply the SQL from scratch.
 
 To re-sync the tracking table:
@@ -119,7 +134,7 @@ To re-sync the tracking table:
    ```
    The script uses `WHERE NOT EXISTS (… WHERE hash = …)` so it's safe
    to re-run; it only inserts rows for migrations not already tracked.
-5. Confirm `drizzle-kit migrate` reports "nothing to apply" against the
+5. Confirm `db:migrate` succeeds without adding ledger rows against the
    freshly-synced DB before merging anything that depends on the new
    migration.
 
@@ -149,6 +164,15 @@ pnpm --filter @hta/db typecheck      # tsc --noEmit
 The DB integration tests (`integration-tests/*.mjs`) require a live
 Postgres + `DATABASE_URL`; they're run separately in CI against a
 disposable Supabase project, not on every `pnpm test`.
+
+The existing GitHub pool-storage job additionally rehearses the normal runner
+in fixed, disposable database fixtures before its swimming fixture setup. It
+reproduces the original0149-to0155 search-path failure, invokes the actual normal
+command for all157 migrations and replay, and checks incremental ledger
+preservation, public unqualified DDL, real precommit refusal after an earlier
+successful pending migration, and session settings/role restoration. Fixture
+cleanup must restore the original database and role inventories. These SQL
+proofs are CI-only and do not authorize access to a user database.
 
 
 ## One-shot ops scripts
