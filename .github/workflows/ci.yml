@@ -1374,7 +1374,7 @@ jobs:
       inputs.expected_sha != '' && inputs.expected_sha == github.sha
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    environment: swim-review
+    environment: Production
     permissions:
       contents: read
     concurrency:

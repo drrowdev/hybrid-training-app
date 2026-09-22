@@ -138,13 +138,14 @@ describe("DC-SW8 modular release preflight preserves production history without 
   it("keeps credentials after source guards and reuses the production migration lock", () => {
     const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
     const job = workflow.split("\n  inspect-modular-production:\n")[1]!.split("\n  inspect-swim-production:\n")[0]!;
-    for (const guard of ["needs: [ci, identity-guard]", "persist-credentials: false",
+    for (const guard of ["needs: [ci, identity-guard]", "persist-credentials: false", "environment: Production",
       "group: production-database-migrations", "cancel-in-progress: false",
       ...MODULAR_DISABLED_OPERATIONS.map((key) => `inputs.${key} == false`)]) expect(job).toContain(guard);
     const [before, operation] = job.split("      - name: Inspect modular production metadata without writes\n");
     expect(before).toContain("--check-source"); expect(before).not.toContain("secrets.");
     expect(operation!.match(/secrets\.\w+/g)).toHaveLength(2);
     expect(job).not.toContain("db:migrate"); expect(job).not.toContain("upload-artifact");
+    expect(job).not.toContain("environment: swim-review");
     const script = readFileSync(resolve(__dirname, "../modular-production-preflight.ts"), "utf8");
     expect(script).toContain("default_transaction_read_only: true");
     expect(script).toContain('tx.unsafe("SET TRANSACTION READ ONLY")');
