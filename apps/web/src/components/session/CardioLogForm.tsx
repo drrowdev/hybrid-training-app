@@ -32,6 +32,7 @@ import type { OutboxEntry } from "@/lib/offline/outbox-core";
 type LogAction = typeof logCardioSessionAction;
 
 export type CardioLogFormProps = {
+  prescriptionItemIndex?: number;
   sessionId: string;
   /** Prescribed duration in minutes — pre-fills the input. */
   prescribedDurationMin: number | null;
@@ -90,6 +91,7 @@ export function CardioLogForm({
   action,
   initialDurationMin,
   initialDistanceKm,
+  prescriptionItemIndex,
 }: CardioLogFormProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -103,7 +105,8 @@ export function CardioLogForm({
     void listOutboxForSession(sessionId)
       .then((entries) => {
         if (!active) return;
-        const hydration = cardioOutboxHydrationState(entries);
+        const hydration = cardioOutboxHydrationState(prescriptionItemIndex === undefined ? entries
+          : entries.filter((entry) => Number(entry.payload.prescriptionItemIndex) === prescriptionItemIndex));
         setSavedOffline(hydration.queued);
         setDurabilityWarning(hydration.durabilityWarning);
         setOutboxHydrated(hydration.hydrated);
@@ -120,7 +123,7 @@ export function CardioLogForm({
     return () => {
       active = false;
     };
-  }, [sessionId]);
+  }, [sessionId, prescriptionItemIndex]);
 
   const durationDefault =
     initialDurationMin != null
@@ -157,6 +160,7 @@ export function CardioLogForm({
 
     const fd = new FormData();
     fd.set("sessionId", sessionId);
+    if (prescriptionItemIndex !== undefined) fd.set("prescriptionItemIndex", String(prescriptionItemIndex));
     fd.set("completed", completed ? "true" : "false");
     fd.set("actualDurationMin", duration);
     fd.set("modality", modality);
@@ -207,7 +211,7 @@ export function CardioLogForm({
         className="cp-card"
         style={{ padding: 14, color: "var(--cp-text)" }}
       >
-        Saved on this device — finishes when you reconnect
+        {prescriptionItemIndex === undefined ? "Saved on this device — finishes when you reconnect" : "Saved on this device"}
       </div>
     );
   }
@@ -247,7 +251,7 @@ export function CardioLogForm({
         {/* Fix 5 — completion defaults to "yes". The skip path is the
             edge case (most cardio gets done), so the big yes/no radio
             block becomes a tiny inline link. */}
-        <button
+        {prescriptionItemIndex === undefined && <button
           type="button"
           onClick={() => setCompleted((c) => !c)}
           data-testid="cardio-log-toggle-skip"
@@ -264,7 +268,7 @@ export function CardioLogForm({
           }}
         >
           {completed ? "Skip instead" : "Undo skip"}
-        </button>
+        </button>}
         {/* Keep the radio inputs for form-state introspection and
             existing data-testids. They're visually hidden but still
             in the DOM so tests + accessibility tools can read state. */}
@@ -328,7 +332,8 @@ export function CardioLogForm({
           <input
             type="number"
             inputMode="numeric"
-            min={1}
+            min={prescriptionItemIndex === undefined ? 1 : 1 / 60}
+            step={prescriptionItemIndex === undefined ? 1 : "any"}
             max={600}
             required
             value={duration}
@@ -448,7 +453,7 @@ export function CardioLogForm({
         {pending
           ? "Saving…"
           : completed
-            ? "Finish workout →"
+            ? prescriptionItemIndex === undefined ? "Finish workout →" : "Save cardio"
             : "Save skip →"}
       </button>
     </form>

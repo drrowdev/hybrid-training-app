@@ -106,8 +106,8 @@ const TABS: Tab[] = [
     match: (p) => p === "/app" || p.startsWith("/app/sessions"),
   },
   {
-    href: "/app/plan",
-    label: "Plan",
+    href: "/app/programs",
+    label: "Programs",
     testid: "bottomtab-plan",
     icon: <IconPlan />,
     match: (p) =>

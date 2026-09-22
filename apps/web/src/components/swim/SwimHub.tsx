@@ -32,6 +32,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
   const [requestGate] = useState(createRequestGate);
   const [requestBusy, setRequestBusy] = useState(false);
   const [preview, setPreview] = useState<SwimResumePreview | null>(null);
+  const [acceptOverlap, setAcceptOverlap] = useState(false);
   const [benchmark, setBenchmark] = useState<SwimBenchmarkPreview | null>(null);
 
   function run(action: () => Promise<ActionResult & { warning?: string; refreshWarning?: string; view?: SwimHubView }>) {
@@ -113,7 +114,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
               <span>{workout.total}<small>{workout.course && `${workout.course} · `}{workout.status}</small></span>
             </Link>
             {workout.reschedule && <DateEditor key={`${plan.revision}:${workout.reschedule.revision}`}
-              plan={plan} workout={workout} busy={requestBusy} onApply={(changes) => run(() => applySwimDateEdit(changes))} />}
+              plan={plan} workout={workout} busy={requestBusy} onApply={(changes, accepted) => run(() => applySwimDateEdit(changes, accepted))} />}
             {workout.poolEditing && <PoolEditor key={`pool:${plan.revision}:${workout.poolEditing.workout?.revision}`}
               context={workout.poolEditing} busy={requestBusy} onApply={(changes) => run(() => applySwimPoolEdit(changes))} />}
           </li>)}
@@ -184,7 +185,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
             try {
               const result = await previewSwimResume(plan.id, plan.revision, String(form.get("startDate")));
               if (result.error) setError(result.error);
-              else if (result.preview) setPreview(result.preview);
+              else if (result.preview) { setAcceptOverlap(false); setPreview(result.preview); }
             } catch { setError("Could not preview new dates. Try again."); }
           }, setRequestBusy);
         }}>
@@ -194,7 +195,12 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
         {preview && <div className={styles.form}>
           <h3>New swim dates</h3>
           <ul className={styles.list}>{preview.dates.map((item) => <li key={item.id} className={styles.row}>{item.date}</li>)}</ul>
-          <button className={styles.button} disabled={requestBusy} onClick={() => run(() => resumeSwimPlan(preview))}>Accept dates and resume</button>
+          {!!preview.overlaps?.length && <><ul className={styles.list}>{preview.overlaps.map((entry) =>
+            <li key={`${entry.source}:${entry.id}`} className={styles.row}><span>{entry.date}</span><span>{entry.title}</span></li>)}</ul>
+            <label className={styles.choice}><input type="checkbox" checked={acceptOverlap} disabled={requestBusy}
+              onChange={(event) => setAcceptOverlap(event.target.checked)} />Keep both workouts on these dates</label></>}
+          <button className={styles.button} disabled={requestBusy || (!!preview.overlaps?.length && !acceptOverlap)}
+            onClick={() => run(() => resumeSwimPlan(preview, acceptOverlap))}>Accept dates and resume</button>
         </div>}
         <div className={styles.actions}>
           {plan.status === "active" && <button className={styles.secondary} disabled={requestBusy} onClick={() => run(() => changeSwimPlanStatus(plan.id, plan.revision, "paused"))}>Pause</button>}

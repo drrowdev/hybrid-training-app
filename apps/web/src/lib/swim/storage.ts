@@ -6,6 +6,7 @@ import type {
   SwimActualResult,
 } from "@hta/db";
 import { requireSwimSetup } from "./capability";
+import { commitTrainingSchedule, type ScheduleReview } from "@/lib/schedule/storage";
 
 export type SwimPlanStatus = "active" | "paused" | "finished" | "archived";
 export type SwimWorkoutStatus = "scheduled" | "started" | "completed" | "skipped";
@@ -33,10 +34,14 @@ export type SwimWorkoutInput = {
 export type CreateSwimPlanInput = {
   startedOn: string; endsOn: string; definition: SwimPlanDefinition;
   state: SwimPlanState; workouts: SwimWorkoutInput[];
+  scheduleReview?: ScheduleReview;
+  scheduleInput?: unknown;
 };
 export type UpdateSwimPlanInput = {
   planId: string; expectedRevision: number; definition: SwimPlanDefinition; state: SwimPlanState;
   workouts: (SwimWorkoutInput & { id: string; expected_revision: number })[];
+  scheduleReview?: ScheduleReview;
+  scheduleInput?: unknown;
 };
 export type CompleteSwimWorkoutInput = {
   workoutId: string; expectedRevision: number; result: SwimActualResult;
@@ -48,6 +53,14 @@ async function rpc<T>(client: SupabaseClient, name: string, args: Record<string,
   const { data, error } = await client.rpc(name, args);
   if (error) throw new Error(`Swimming: ${error.message}`, { cause: error });
   if (data === null || data === undefined) throw new Error(`Swimming: ${name} returned no data.`);
+  return data as T;
+}
+
+async function scheduledRpc<T>(client: SupabaseClient, operation: string, args: Record<string, unknown>,
+  review: ScheduleReview, input: unknown): Promise<T> {
+  const { data, error } = await commitTrainingSchedule(client, operation, args, review, input);
+  if (error) throw new Error(error.message, { cause: error });
+  if (data === null || data === undefined) throw new Error("Swimming save was not confirmed.");
   return data as T;
 }
 
@@ -86,10 +99,13 @@ export async function getSwimResult(client: SupabaseClient, sessionId: string): 
 
 export async function createSwimPlan(client: SupabaseClient, input: CreateSwimPlanInput): Promise<SwimPlanWithWorkouts> {
   await requireSwimSetup(client);
-  return rpc(client, "swim_create_plan", {
+  const args = {
     p_started_on: input.startedOn, p_ends_on: input.endsOn,
     p_definition: input.definition, p_state: input.state, p_workouts: input.workouts,
-  });
+  };
+  return input.scheduleReview
+    ? scheduledRpc(client, "swim-create", args, input.scheduleReview, input.scheduleInput)
+    : rpc(client, "swim_create_plan", args);
 }
 
 export function startSwimWorkout(client: SupabaseClient, workoutId: string, expectedRevision: number): Promise<SwimWorkoutRow> {
@@ -97,10 +113,13 @@ export function startSwimWorkout(client: SupabaseClient, workoutId: string, expe
 }
 
 export function updateSwimPlan(client: SupabaseClient, input: UpdateSwimPlanInput): Promise<SwimPlanWithWorkouts> {
-  return rpc(client, "swim_update_plan", {
+  const args = {
     p_plan_id: input.planId, p_expected_revision: input.expectedRevision,
     p_definition: input.definition, p_state: input.state, p_workouts: input.workouts,
-  });
+  };
+  return input.scheduleReview
+    ? scheduledRpc(client, "swim-update", args, input.scheduleReview, input.scheduleInput)
+    : rpc(client, "swim_update_plan", args);
 }
 
 export function setSwimPlanStatus(client: SupabaseClient, planId: string, expectedRevision: number, status: SwimPlanStatus): Promise<SwimPlanRow> {
@@ -112,10 +131,13 @@ export function skipSwimWorkout(client: SupabaseClient, workoutId: string, expec
 }
 
 export function resumeSwimPlan(client: SupabaseClient, input: UpdateSwimPlanInput): Promise<SwimPlanWithWorkouts> {
-  return rpc(client, "swim_resume_plan", {
+  const args = {
     p_plan_id: input.planId, p_expected_revision: input.expectedRevision,
     p_definition: input.definition, p_state: input.state, p_workouts: input.workouts,
-  });
+  };
+  return input.scheduleReview
+    ? scheduledRpc(client, "swim-resume", args, input.scheduleReview, input.scheduleInput)
+    : rpc(client, "swim_resume_plan", args);
 }
 
 export function completeSwimWorkout(client: SupabaseClient, input: CompleteSwimWorkoutInput): Promise<SwimCompletion> {

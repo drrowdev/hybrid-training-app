@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
-import { SWIM_COURSE_VERSION, swimScheduleAdvice, formatPoolCourse, formatSwimDistance, swimCourseWorkoutTitle } from "@hta/domain";
+import { SWIM_COURSE_VERSION, trainingScheduleAdvice, swimScheduleAdvice, formatPoolCourse, formatSwimDistance, swimCourseWorkoutTitle } from "@hta/domain";
 import { compileSwimCourseWorkout } from "@hta/engine";
 import { addDaysToYmd } from "@/lib/dates";
 import type { ActionResult } from "@/lib/offline/outbox-core";
@@ -20,6 +20,7 @@ import type { SwimCourseImportPreview, SwimCourseEditInput, SwimCourseEditPrevie
 import { SWIM_REFRESH_WARNING } from "./action-feedback";
 import { isPrivateSwimPlan, swimWorkoutDefinition } from "./model";
 import { workoutPresentation } from "./presentation";
+import { loadTrainingSchedule, scheduleReplay } from "@/lib/schedule/storage";
 
 const choicesSchema = z.array(z.object({
   weekIndex: z.number().int().min(0).max(15),
@@ -32,6 +33,7 @@ const choicesSchema = z.array(z.object({
 
 async function prepare(form: FormData) {
   const { client, user } = await swimContext(true);
+  const schedule = await loadTrainingSchedule(client);
   if (!await privateSwimCourseAvailable(client)) throw new SwimActionError("Plan imports are unavailable.", "validation");
   const source = parseSwimCourseFile(z.string().parse(form.get("courseFile")));
   const fields = new FormData();
@@ -46,13 +48,15 @@ async function prepare(form: FormData) {
   const strengthContext = await loadSwimStrengthContext(client, user.id);
   const advice = swimScheduleAdvice(strengthContext, input.startDate, source.weeks.length, input.weekdays);
   const conflicts = advice.conflicts.map((day) => day.label);
+  const sharedAdvice = trainingScheduleAdvice(schedule.entries, planned.workouts.map((workout) => workout.scheduled_date));
   await checkSwimWorkouts(client, user.id, planned.workouts.map((row) => row.definition.issued));
   const id = swimInputId({
     userId: user.id, definition: planned.definition, workouts: planned.workouts,
-    totals: planned.totals, today, strengthContext, confirmationKey: advice.confirmationKey,
+    totals: planned.totals, today, strengthContext, confirmationKey: advice.confirmationKey, scheduleRevision: schedule.revision,
   });
   const preview: SwimCourseImportPreview = {
     id, title: source.title, plan: planned.preview, totals: planned.totals, strengthDays: conflicts,
+    scheduleRevision: schedule.revision, overlaps: sharedAdvice.overlaps,
   };
   return { client, user, planned, preview, input };
 }
@@ -148,12 +152,18 @@ export async function importPrivateSwimCourse(
   form: FormData, expectedPreview: string,
 ): Promise<ActionResult & { planId?: string; warning?: string }> {
   try {
+    const requestId = z.string().uuid().parse(form.get("requestId"));
+    const requestInput = [...form.entries()].filter(([key]) =>
+      !["requestId", "reviewed", "acceptSetTotals", "acceptOverlap"].includes(key)).sort(([a], [b]) => a.localeCompare(b));
+    const context = await swimContext(true);
+    const replay = await scheduleReplay(context.client, requestId, "swim-create", requestInput);
+    if (replay) return { ok: true, planId: z.object({ plan: z.object({ id: z.string().uuid() }) }).parse(replay).plan.id };
     const prepared = await prepare(form);
     const { client, planned, preview, input } = prepared;
     if (preview.id !== expectedPreview) throw new SwimActionError("The plan changed. Review it again.", "validation");
     if (form.get("reviewed") !== "on" ||
         (preview.totals.length > 0 && form.get("acceptSetTotals") !== "on") ||
-        (preview.strengthDays.length > 0 && form.get("acceptOverlap") !== "on")) {
+        ((preview.overlaps?.length ?? 0) > 0 && form.get("acceptOverlap") !== "on")) {
       throw new SwimActionError("Confirm the plan and the highlighted changes before importing.", "validation");
     }
     const plans = (await listSwimPlans(client)).filter((plan) => plan.user_id === prepared.user.id);
@@ -165,6 +175,8 @@ export async function importPrivateSwimCourse(
       throw new SwimActionError("Finish or archive your current swimming plan before importing another.", "validation");
     }
     const result = await createSwimPlan(client, {
+      scheduleReview: { revision: preview.scheduleRevision!, requestId, acceptOverlap: form.get("acceptOverlap") === "on" },
+      scheduleInput: requestInput,
       startedOn: input.startDate,
       endsOn: addDaysToYmd(input.startDate, planned.definition.schedule.weeks * 7 - 1),
       definition: planned.definition, workouts: planned.workouts,

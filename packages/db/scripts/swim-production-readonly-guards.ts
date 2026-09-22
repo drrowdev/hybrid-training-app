@@ -54,6 +54,7 @@ export function productionContext(env: NodeJS.ProcessEnv) {
   return sha;
 }
 export function productionDispatch(inputs: Record<string, unknown> | undefined, env: NodeJS.ProcessEnv) {
+  if (inputs?.production_readonly_scope === "modular_preflight") return false;
   if (inputs?.inspect_swim_production === undefined || inputs.inspect_swim_production === "false") return false;
   const profile = productionProfile(env);
   requireInspection(inputs.inspect_swim_production === "true" && inputs.review_upgrade_read_only === "true" &&

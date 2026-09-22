@@ -69,8 +69,12 @@ export function restSecondsForKind(kind: PrescriptionItemKind | RestableSetKind)
  */
 export function restSecondsForSet(
   kind: PrescriptionItemKind | RestableSetKind,
-  opts: { restTimerEnabled: boolean },
+  opts: { restTimerEnabled: boolean; prescribedRestSeconds?: unknown },
 ): number {
   if (!opts.restTimerEnabled) return 0;
+  if (typeof opts.prescribedRestSeconds === "number" && Number.isFinite(opts.prescribedRestSeconds) &&
+      opts.prescribedRestSeconds >= 0 && opts.prescribedRestSeconds <= 1800) {
+    return opts.prescribedRestSeconds;
+  }
   return restSecondsForKind(kind);
 }

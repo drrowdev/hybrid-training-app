@@ -965,7 +965,7 @@ export function MovementFocusView({
       // would keep ticking and get persisted into the resume snapshot.
       const secs = restSecondsForSet(
         SET_KIND_TO_LOG[activeItem.kind] ?? "main",
-        { restTimerEnabled },
+        { restTimerEnabled, prescribedRestSeconds: activeItem.meta?.restSeconds },
       );
       setRestSeconds(secs);
       restDeadlineRef.current = secs > 0 ? Date.now() + secs * 1000 : null;

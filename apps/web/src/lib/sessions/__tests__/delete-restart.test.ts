@@ -113,6 +113,7 @@ vi.mock("@/lib/planner/queries", () => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
+    rpc: async () => ({ data: null, error: { code: "PGRST202", message: "Could not find start_planned_session_atomically" } }),
     from: (table: string) => {
       let operation: "select" | "update" | "insert" | "delete" = "select";
       let patch: Record<string, unknown> = {};

@@ -52,6 +52,11 @@ import { OfflineSyncBadge } from "./OfflineSyncBadge";
 import { useSessionLoggingState } from "./SessionLoggingState";
 import type { PlateInventoryItem } from "./plate-math";
 import type { ResolvedFreestyleMovement } from "@/lib/sessions/freestyle-resolver";
+import { authoredExecutionParts, authoredPartComplete } from "@hta/domain";
+import { CardioLogForm } from "./CardioLogForm";
+import { CardioPlanView } from "./CardioPlanView";
+import type { logCardioSession } from "@/lib/sessions/actions";
+import Link from "next/link";
 
 type AddStrengthSetAction = typeof addStrengthSetAction;
 type FillSessionFromPlanAction = typeof fillSessionFromPlanAction;
@@ -96,7 +101,13 @@ export function SessionWorkArea({
   bodyweightKg,
   accessoryMetaById,
   customAccessoryOrder,
+  authoredCardio,
 }: {
+  authoredCardio?: {
+    units: "metric" | "imperial";
+    action: typeof logCardioSession;
+    logs: { id: string; blockIndex: number; durationSec: number }[];
+  };
   sessionId: string;
   isComplete: boolean;
   performedAt: string;
@@ -423,6 +434,15 @@ export function SessionWorkArea({
     return out;
   }, [bwGateStateByFamily, bwTutOverrides]);
 
+  const parts = authoredExecutionParts(prescription?.items ?? []);
+  const [selectedPartId, selectPart] = useState<string | null>(null);
+  const cardioIndices = new Set(authoredCardio?.logs.map((log) => log.blockIndex));
+  const activePart = parts.find((part) => part.id === selectedPartId)
+    ?? parts.find((part) => !authoredPartComplete(part, loggedSet, cardioIndices)) ?? parts[0];
+  const cardioIndex = activePart?.kind === "cardio" ? activePart.itemIndices[0] : undefined;
+  const cardioItem = cardioIndex === undefined ? undefined : prescription?.items[cardioIndex];
+  const cardioLog = cardioIndex === undefined ? undefined : authoredCardio?.logs.find((log) => log.blockIndex === cardioIndex + 1);
+
   return (
     <>
       <OfflineSyncBadge
@@ -430,7 +450,26 @@ export function SessionWorkArea({
         failedCount={outboxFailed}
         droppedCount={outboxDropped}
       />
-      <MovementCardList
+      {!isComplete && parts.length > 0 && <section className="cp-card" style={{ padding: 16, display: "grid", gap: 12 }} data-testid="authored-workout-parts">
+        <nav aria-label="Workout parts" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+          {parts.map((part, index) => <button key={part.id} className="cp-btn" type="button"
+            style={{ flexShrink: 0, borderColor: activePart?.id === part.id ? "var(--cp-accent)" : undefined }}
+            aria-pressed={activePart?.id === part.id} onClick={() => selectPart(part.id)}>
+            {index + 1}. {part.title}{authoredPartComplete(part, loggedSet, cardioIndices) ? " · Done" : ""}
+          </button>)}
+        </nav>
+        {cardioItem && authoredCardio && <div style={{ display: "grid", gap: 12 }}>
+          {cardioItem.cardioPlan && <CardioPlanView plan={cardioItem.cardioPlan} />}
+          {cardioLog ? <div style={{ display: "flex", gap: 12, justifyContent: "space-between" }}><span>{cardioLog.durationSec / 60} min logged</span>
+            <Link href={`/app/sessions/${sessionId}/cardio/${cardioLog.id}/edit`}>Edit</Link></div>
+            : <CardioLogForm key={activePart?.id} sessionId={sessionId} prescriptionItemIndex={cardioIndex}
+              prescribedDurationMin={cardioItem.durationMin ?? null} movementId={cardioItem.movementId}
+              modality={typeof cardioItem.meta?.modality === "string" ? cardioItem.meta.modality : "other"}
+              units={authoredCardio.units} action={authoredCardio.action} />}
+        </div>}
+      </section>}
+      {(isComplete || activePart?.kind !== "cardio") && <MovementCardList
+        visiblePartId={isComplete ? undefined : activePart?.id}
         sessionId={sessionId}
         isComplete={isComplete}
         prescription={prescription}
@@ -460,7 +499,7 @@ export function SessionWorkArea({
         bodyweightKg={bodyweightKg}
         accessoryMetaById={accessoryMetaById}
         customAccessoryOrder={customAccessoryOrder}
-      />
+      />}
     </>
   );
 }

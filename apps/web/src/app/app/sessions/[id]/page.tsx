@@ -848,6 +848,7 @@ export default async function SessionDetailPage({
   const hasCardio = allCardioPrescriptionItems.length > 0 || hasQuickCardio;
   const hasStrengthPrescription = strengthItemCount > 0;
   const isPureCardio = hasCardio && !hasStrengthPrescription;
+  const isAuthoredSession = (plannedPrescription?.items ?? []).some((item) => typeof item.meta?.authoredPartId === "string");
   const isHybridSession = hasCardio && hasStrengthPrescription;
   const showCardioLogForm =
     (cardioPrescriptionItems.length > 0 || hasQuickCardio) &&
@@ -1062,10 +1063,10 @@ export default async function SessionDetailPage({
                   padding: 4,
                 }}
               >
-                {!isComplete && !isPureCardio && !hyroxView && (
+                {!isComplete && (!isPureCardio || isAuthoredSession) && !hyroxView && (
                   <FinishSessionMenuSlot
                     sessionId={id}
-                    disabled={sets.length === 0}
+                    disabled={sets.length === 0 && !(isAuthoredSession && hasLoggedCardioRow)}
                     hybrid={hasCardio && hasStrengthPrescription}
                     testId="finish-stickybar"
                   />
@@ -1438,6 +1439,8 @@ export default async function SessionDetailPage({
 
       {!hyroxView && !hyroxSummary && (
         <SessionWorkArea
+        authoredCardio={isAuthoredSession ? { units: userUnits, action: logCardioSession,
+          logs: (cardio ?? []).map((log) => ({ id: log.id, blockIndex: log.block_index, durationSec: log.duration_sec })) } : undefined}
         sessionId={id}
         isComplete={isComplete}
         performedAt={session.performed_at as string}
@@ -1490,6 +1493,7 @@ export default async function SessionDetailPage({
           plannedPrescription?.items
             ?.map((it, itemIndex) => ({ it, itemIndex }))
             .filter(({ it }) => it.kind.startsWith("cardio_")) ?? [];
+        if (isAuthoredSession && !isComplete) return null;
         const loggedMovementIds = new Set(
           (cardio ?? [])
             .map((c) => {
@@ -1732,7 +1736,7 @@ export default async function SessionDetailPage({
         />
       )}
 
-      {!isComplete && !isPureCardio && !hyroxView && (() => {
+      {!isComplete && (!isPureCardio || isAuthoredSession) && !hyroxView && (() => {
         // feat/logging-works — relaxed finish gate. The user can finish
         // the session as soon as ≥1 set has been logged; partial
         // sessions are explicitly allowed (call-outs flagged the strict
@@ -1743,7 +1747,7 @@ export default async function SessionDetailPage({
         // For pure-cardio sessions the cardio log form above owns the
         // "Finish workout →" CTA, so we skip the strength-flavoured
         // bottom bar entirely.
-        const canFinish = sets.length > 0;
+        const canFinish = sets.length > 0 || (isAuthoredSession && hasLoggedCardioRow);
         const partial = canFinish && unloggedStrengthCount > 0;
         // Hybrid = both cardio and strength prescribed. In that case
         // the disabled-state copy needs to clarify it's a strength

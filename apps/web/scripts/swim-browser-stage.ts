@@ -8,6 +8,7 @@ import {
   projectBrowserFailure, readSwimBrowserReport, sealSwimBrowserReport, requireNoEnvFiles, requireFreePort,
   requirePrivateBrowserPaths, waitForBrowserReady, type BrowserReportTicket,
 } from "./swim-browser-acceptance";
+import { MODULAR_BROWSER_CASES } from "./modular-browser-profile";
 
 type CommandResult = { result: ProcessResult };
 export type BrowserCommand = (executable: string, args: string[], options: {
@@ -70,9 +71,11 @@ export async function runSwimBrowserStage(options: {
   command: BrowserCommand; root: string; runDirectory: string; deadline: number;
   target: Parameters<typeof buildBrowserEnv>[0]; cacheEnv: Readonly<Record<string, string | undefined>>;
   signal: AbortSignal; manifest: Record<string, unknown>; reporting: AcceptanceReporting;
+  modular?: boolean;
 }) {
   const { command, root, runDirectory, signal, manifest, reporting } = options;
   const web = join(root, "apps/web");
+  const cases = options.modular ? MODULAR_BROWSER_CASES : SWIM_BROWSER_CASES;
   const paths = { runDirectory, reportPath: join(runDirectory, "browser.json"),
     outputDir: join(runDirectory, "browser-output") };
   let failed = false;
@@ -124,7 +127,7 @@ export async function runSwimBrowserStage(options: {
     browserBudget(options.deadline - Date.now());
     checkLive();
     const cache = requireSwimBrowserCache(options.cacheEnv, root, runDirectory);
-    const env = buildBrowserEnv(options.target, paths);
+    const env = buildBrowserEnv(options.target, paths, options.modular);
     requireSwimBrowserInstallation(cache, web);
     const installed = createRequire(join(web, "package.json"));
     const next = installed.resolve("next/dist/bin/next");
@@ -171,7 +174,8 @@ export async function runSwimBrowserStage(options: {
       let reportError: unknown;
       try {
         sealSwimBrowserReport(ticket!);
-        manifest.browserLedger = readSwimBrowserReport(ticket!);
+        manifest.browserLedger = options.modular
+          ? readSwimBrowserReport(ticket!, cases) : readSwimBrowserReport(ticket!);
       } catch (error) {
         reportFailed = true;
         reportError = error;
@@ -217,5 +221,5 @@ export async function runSwimBrowserStage(options: {
     }
     throw primary;
   }
-  manifest.browser = { success: true, cases: SWIM_BROWSER_CASES.length };
+  manifest.browser = { success: true, cases: cases.length };
 }

@@ -19,6 +19,13 @@ describe("restSecondsForKind", () => {
 });
 
 describe("restSecondsForSet — the lifter's opt-out", () => {
+  it("DC-K4 honours prescribed rest, including zero, without overriding the timer opt-out", () => {
+    expect(restSecondsForSet("main", { restTimerEnabled: true, prescribedRestSeconds: 45 })).toBe(45);
+    expect(restSecondsForSet("main", { restTimerEnabled: true, prescribedRestSeconds: 0 })).toBe(0);
+    expect(restSecondsForSet("main", { restTimerEnabled: false, prescribedRestSeconds: 45 })).toBe(0);
+    expect(restSecondsForSet("main", { restTimerEnabled: true, prescribedRestSeconds: -1 })).toBe(180);
+    expect(restSecondsForSet("main", { restTimerEnabled: true, prescribedRestSeconds: NaN })).toBe(180);
+  });
   it("keeps the per-kind default when the timer is on", () => {
     expect(restSecondsForSet("main", { restTimerEnabled: true })).toBe(180);
     expect(restSecondsForSet("accessory", { restTimerEnabled: true })).toBe(90);

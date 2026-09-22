@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PoolCourse, SwimCourse } from "@hta/domain";
+import type { PoolCourse, SwimCourse, TrainingCommitment } from "@hta/domain";
 import type { SwimCourseEditInput } from "./course-view";
 
 export type SwimPoolEditContext = {
@@ -94,6 +94,8 @@ export type SwimDateEditInput = {
 };
 export type SwimDateEditPreview = SwimDateEditInput & {
   id: string; previousDate: string; warnings: string[];
+  scheduleRevision?: string;
+  overlaps?: TrainingCommitment[];
 };
 
 const completionPool = z.object({ numerator: z.number().int().positive(), denominator: z.number().int().positive(), unit: z.enum(["m", "yd"]) });
@@ -171,4 +173,6 @@ export function nextEditMode(current: number | null, edit: boolean, revision: nu
 export type SwimResumePreview = {
     planId: string; revision: number; startDate: string;
     dates: { id: string; revision: number; date: string }[];
+    scheduleRevision?: string;
+    overlaps?: TrainingCommitment[];
   };

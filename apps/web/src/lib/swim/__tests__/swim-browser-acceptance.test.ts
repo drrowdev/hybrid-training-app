@@ -25,6 +25,7 @@ import {
   requireNoEnvFiles, requirePrivateBrowserPaths, sealSwimBrowserReport, SWIM_BROWSER_CASES, validateSwimBrowserReport, waitForBrowserReady,
   type BrowserPaths,
 } from "../../../../scripts/swim-browser-acceptance";
+import { MODULAR_BROWSER_CASES, type BrowserCase } from "../../../../scripts/modular-browser-profile";
 import { acceptanceAssert, processFailure, safeFailureCause } from "../../../../scripts/swim-acceptance-errors";
 import * as reporting from "../../../../scripts/swim-acceptance-reporting";
 import {
@@ -77,14 +78,14 @@ function prepareReport(location: BrowserPaths) {
 }
 
 // Matches the pinned JSONReport types and JSONReporter file-suite serialization.
-function report(location = paths) {
+function report(location = paths, cases: readonly BrowserCase[] = SWIM_BROWSER_CASES) {
   const posix = (path: string) => path.split(sep).join("/");
-  const suites = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))].map((file) => ({
+  const suites = [...new Set(cases.map(({ file }) => file))].map((file) => ({
     title: basename(file), file: basename(file), line: 0, column: 0, specs: [],
     suites: [{
-      title: String(SWIM_BROWSER_CASES.find((item) => item.file === file)!.describe),
+      title: String(cases.find((item) => item.file === file)!.describe),
       file: basename(file), line: 1, column: 1,
-      specs: SWIM_BROWSER_CASES.filter((item) => item.file === file).map((item, index): JSONReportSpec => ({
+      specs: cases.filter((item) => item.file === file).map((item, index): JSONReportSpec => ({
         title: item.title, file: basename(file), line: index + 2, column: 1, id: `${file}-${index}`,
         ok: true, tags: [], tests: [{
           timeout: 30_000, annotations: [], expectedStatus: "passed",
@@ -105,12 +106,39 @@ function report(location = paths) {
       projects: [{
         id: "mobile-chromium", name: "mobile-chromium", testDir: posix(join(webRoot, "e2e")),
         outputDir: posix(location.outputDir), repeatEach: 1, retries: 0, timeout: 30_000, metadata: {},
-        testMatch: [...new Set(SWIM_BROWSER_CASES.map(({ file }) => posix(join(webRoot, file))))], testIgnore: [],
+        testMatch: [...new Set(cases.map(({ file }) => posix(join(webRoot, file))))], testIgnore: [],
       }] satisfies JSONReport["config"]["projects"],
     },
-    suites, errors: [], stats: { expected: SWIM_BROWSER_CASES.length, unexpected: 0, flaky: 0, skipped: 0 },
+    suites, errors: [], stats: { expected: cases.length, unexpected: 0, flaky: 0, skipped: 0 },
   };
 }
+
+describe("DC-SW8 modular acceptance report membership", () => {
+  it("accepts only the complete declared modular cohort without changing the historical cohort", () => {
+    const fixture = report(paths, MODULAR_BROWSER_CASES);
+    expect(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES))
+      .toMatchObject({ success: true, counts: { expected: 6, unexpected: 0, flaky: 0, skipped: 0 },
+        cases: MODULAR_BROWSER_CASES.map((item) => ({ ...item, status: "passed", attempts: 1 })) });
+    expect(() => validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot)).toThrow();
+    expect(() => validateSwimBrowserReport(JSON.stringify(report()), paths, webRoot, MODULAR_BROWSER_CASES)).toThrow();
+    expect(() => validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, [])).toThrow();
+  });
+
+  it.each(["missing", "duplicate", "extra", "skipped", "retry", "failure", "wrong-title"])
+  ("refuses a modular %s instead of accepting a partial journey", (mode) => {
+    const fixture = report(paths, MODULAR_BROWSER_CASES);
+    const specs = fixture.suites[0]!.suites[0]!.specs;
+    const first = specs[0]!, test = first.tests[0]!, result = test.results[0]!;
+    if (mode === "missing") specs.pop();
+    if (mode === "duplicate") specs[1] = structuredClone(first);
+    if (mode === "extra") specs.push(structuredClone(first));
+    if (mode === "skipped") { test.status = "skipped"; result.status = "skipped"; }
+    if (mode === "retry") test.results.push({ ...result, retry: 1 });
+    if (mode === "failure") { first.ok = false; test.status = "unexpected"; result.status = "failed"; }
+    if (mode === "wrong-title") first.title = "An unrelated case";
+    expect(() => validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES)).toThrow();
+  });
+});
 
 function rejectedReport(fixture: unknown) {
   let caught: unknown;

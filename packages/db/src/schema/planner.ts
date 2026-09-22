@@ -22,7 +22,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
-import type { EmbeddedRehabSection } from "@hta/domain";
+import type { AuthoredWorkout, EmbeddedRehabSection } from "@hta/domain";
 import { sessions, sessionSlot } from "./sessions";
 
 export const trainingBlockStatus = pgEnum("training_block_status", [
@@ -459,6 +459,7 @@ export type Prescription = {
    * every other session.
    */
   meta?: {
+    authoredWorkout?: AuthoredWorkout;
     /**
      * The user moved this workout to a different calendar slot. Forward plan
      * rewrites preserve it instead of restoring the program's original day.

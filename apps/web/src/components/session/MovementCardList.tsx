@@ -48,6 +48,7 @@ import {
 import { FocusStripLogger } from "./FocusStripLogger";
 
 export type MovementCardListProps = {
+  visiblePartId?: string;
   sessionId: string;
   isComplete: boolean;
   prescription: Prescription | null;
@@ -159,6 +160,7 @@ export function MovementCardList({
   bodyweightKg,
   accessoryMetaById,
   customAccessoryOrder,
+  visiblePartId,
 }: MovementCardListProps) {
   const bodyweightIdSet = useMemo(
     () => new Set(bodyweightMovementIds ?? []),
@@ -399,7 +401,7 @@ export function MovementCardList({
   // First prescribed card with no logged sets across the whole session
   // shows the session-level "Same as planned" button.
   const showFillOnFirst =
-    !isComplete && sets.length === 0 && rehabGroups.length === 0;
+    !isComplete && sets.length === 0 && rehabGroups.length === 0 && visiblePartId === undefined;
 
   // Build a single ordered render list so the "first card" check for
   // the session-level fill button stays correct across both sections.
@@ -421,7 +423,7 @@ export function MovementCardList({
   );
 
   const focusGroups = useMemo(
-    () => [
+    () => visiblePartId !== undefined ? groups.filter((group) => group.items[0]?.meta?.authoredPartId === visiblePartId) : [
       ...rehabGroups,
       ...mainGroups,
       ...supplementalGroups,
@@ -429,6 +431,8 @@ export function MovementCardList({
       ...otherGroups,
     ],
     [
+      visiblePartId,
+      groups,
       rehabGroups,
       mainGroups,
       supplementalGroups,
@@ -440,7 +444,7 @@ export function MovementCardList({
   // Move an accessory card up/down. Recomputes the full movementId order from
   // the current (possibly smart/custom) accessory order, swaps the neighbour,
   // applies it optimistically, and persists in the background. Display-only.
-  const reorderEnabled = !isComplete && accessoryGroups.length > 1;
+  const reorderEnabled = !isComplete && accessoryGroups.length > 1 && visiblePartId === undefined;
   const persistOrder = useCallback(
     (ids: string[]) => {
       setLocalOrder(ids);

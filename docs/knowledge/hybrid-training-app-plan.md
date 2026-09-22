@@ -3,6 +3,15 @@
 **Status:** Planning. No code yet.
 **Date drafted:** 2026-05-19
 
+**Owner-approved modular update (2026-09-22):** The current application retains
+one active primary Strength, Running or complete mixed Hybrid program plus an
+independent standalone swimming program. Home combines their real dates;
+activity navigation reuses workout identity. Library-backed authored programs
+complement, rather than replace or simplify, existing template progression.
+See [ADR 0085](../adr/0085-modular-programs-shared-schedule.md) for storage,
+transaction boundaries, app-first rollout and outstanding release gates. This
+supersedes the unmerged linked-swimming/strength-only-first-release proposal.
+
 ---
 
 ## 1. Purpose of this document

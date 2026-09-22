@@ -2,7 +2,7 @@
 
 **Purpose:** Catalog of all hand-off files for the hybrid training app project. Organized by role in the Karpathy personal-knowledge-base pattern (plan §6.10): raw sources are immutable; wiki pages are LLM-maintained; the schema governs ingest, citation, and lint workflows. This file is the seed of `docs/knowledge/index.md` in the eventual repo.
 
-**Last updated:** 2026-09-12
+**Last updated:** 2026-09-22
 
 ---
 
@@ -22,6 +22,11 @@ The three research files. Never edited; new sources appended here when ingested.
 ## Wiki (LLM-maintained)
 
 The maintained-by-AI layer. These pages are rewritten as new sources arrive; they cite raw sources via the index. The eventual home is `docs/knowledge/` in the repo.
+
+- [ADR 0085: Modular programs and a shared training calendar](../adr/0085-modular-programs-shared-schedule.md)
+  records the superseding independent-program architecture, executable authored
+  mixed workouts, exact-date consent, atomic freshness/replay, unused rollback
+  refusal and app-first release gates. Implementation remains under qualification.
 
 - [`pool-swimming.md`](./pool-swimming.md) - Original standalone prescriptions,
   exact course measurements, optional assessment, versioned adaptation, retained

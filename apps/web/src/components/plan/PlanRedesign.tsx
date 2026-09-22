@@ -1,4 +1,5 @@
 "use client";
+import { previewPlannedMove, type PlannedMovePreview } from "@/lib/planner/actions";
 
 /**
  * /app/plan redesign — program review and schedule adjustment:
@@ -2315,6 +2316,8 @@ export function SessionDrawer({
   // open so the user can retry without losing context.
   const [swapError, setSwapError] = useState<string | null>(null);
   const [swapPending, setSwapPending] = useState(false);
+  const [swapReview, setSwapReview] = useState<PlannedMovePreview | null>(null);
+  const [acceptSwapOverlap, setAcceptSwapOverlap] = useState(false);
   // One-tap cardio completion (see `markCardioDoneAction`). Kept separate from
   // the swap error so a failed finish doesn't clear a swap message.
   const [cardioDoneError, setCardioDoneError] = useState<string | null>(null);
@@ -2593,6 +2596,19 @@ export function SessionDrawer({
     fd.set("dayIndex", String(newDay));
     setSwapPending(true);
     setSwapError(null);
+    let reviewed = swapReview;
+    if (!reviewed) {
+      try {
+        reviewed = await previewPlannedMove({ id: session.id, weekIndex: newWeek, dayIndex: newDay });
+        if (reviewed.overlaps.length) {
+          setSwapReview(reviewed); setAcceptSwapOverlap(false); setSwapPending(false); return;
+        }
+      } catch (error) {
+        setSwapError(error instanceof Error ? error.message : "Could not check these dates. Try again.");
+        setSwapPending(false); return;
+      }
+    }
+    fd.set("scheduleReview", JSON.stringify({ revision: reviewed.revision, requestId: reviewed.requestId, acceptOverlap: acceptSwapOverlap }));
     const result = await runSwapMove(moveAction, fd);
     setSwapPending(false);
     if (result.ok) {
@@ -2854,17 +2870,22 @@ export function SessionDrawer({
                 type="date"
                 name="date"
                 defaultValue={session.date}
+                onChange={() => { setSwapReview(null); setAcceptSwapOverlap(false); }}
                 data-testid="plan-drawer-swap-date"
               />
               <button
                 type="submit"
                 className="cp-btn primary"
                 data-testid="plan-drawer-swap-submit"
-                disabled={swapPending}
+                disabled={swapPending || (!!swapReview?.overlaps.length && !acceptSwapOverlap)}
                 aria-busy={swapPending}
               >
                 {swapPending ? "Moving…" : "Move"}
               </button>
+              {swapReview && swapReview.overlaps.length > 0 && <div style={{ display: "grid", gap: 8, gridColumn: "1 / -1" }}>
+                {swapReview.overlaps.map((entry) => <p key={`${entry.source}:${entry.id}`}>{entry.date} · {entry.title}</p>)}
+                <label><input type="checkbox" checked={acceptSwapOverlap} onChange={(event) => setAcceptSwapOverlap(event.target.checked)} /> Keep both workouts on these dates</label>
+              </div>}
               {swapError && (
                 <p
                   className="swap-form-error"

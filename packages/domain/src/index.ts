@@ -27,3 +27,5 @@ export * from "./swim-pool-input";
 export * from "./swim-workout-progress";
 export * from "./rehab-reps";
 export * from "./types";
+export * from "./authored-program";
+export * from "./training-schedule";

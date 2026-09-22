@@ -915,6 +915,7 @@ export async function markExternalCardioComplete(
  * `packages/db/src/schema/cardio-logs.ts`. No migration needed.
  */
 const logCardioSessionSchema = z.object({
+  prescriptionItemIndex: z.coerce.number().int().min(0).max(500).optional(),
   sessionId: z.string().uuid(),
   // FormData string → boolean. `z.coerce.boolean()` would treat the
   // string "false" as truthy (`Boolean("false") === true`), so we
@@ -927,7 +928,7 @@ const logCardioSessionSchema = z.object({
       const s = v.trim().toLowerCase();
       return !(s === "false" || s === "0" || s === "no" || s === "");
     }),
-  actualDurationMin: z.coerce.number().int().min(1).max(600),
+  actualDurationMin: z.coerce.number().min(1 / 60).max(600),
   avgRpe: z.coerce.number().min(0).max(10).optional().nullable(),
   notes: z.string().trim().max(400).optional().nullable(),
   avgHrBpm: z.coerce.number().int().min(30).max(240).optional().nullable(),
@@ -941,12 +942,17 @@ const logCardioSessionSchema = z.object({
   movementId: z.string().uuid().optional().nullable(),
   modality: z.string().trim().min(1).max(40).default("other"),
   clientLogId: z.string().uuid().optional().nullable(),
-}).strict();
+}).strict().superRefine((input, ctx) => {
+  if (input.prescriptionItemIndex === undefined && !Number.isInteger(input.actualDurationMin)) {
+    ctx.addIssue({ code: "custom", path: ["actualDurationMin"], message: "Enter a whole number of minutes." });
+  }
+});
 
 export async function logCardioSession(
   formData: FormData,
 ): Promise<{ ok?: true; error?: string; errorCode?: ActionErrorCode }> {
   const parsed = logCardioSessionSchema.safeParse({
+    prescriptionItemIndex: formData.get("prescriptionItemIndex") ?? undefined,
     sessionId: formData.get("sessionId"),
     completed: formData.get("completed") ?? "true",
     actualDurationMin: formData.get("actualDurationMin"),
@@ -975,7 +981,7 @@ export async function logCardioSession(
   // surfacing a clean error message is friendlier than a generic 401.
   const { data: session, error: sErr } = await supabase
     .from("sessions")
-    .select("id, user_id, completed_at")
+    .select("id, user_id, completed_at, prescription")
     .eq("id", parsed.data.sessionId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -983,6 +989,22 @@ export async function logCardioSession(
   if (!session) return { error: "Session not found.", errorCode: "not_found" };
   if (session.user_id !== user.id) {
     return { error: "Not your session.", errorCode: "forbidden" };
+  }
+  const partIndex = parsed.data.prescriptionItemIndex;
+  if (partIndex !== undefined) {
+    let prescription = session.prescription as Prescription | null;
+    if (!prescription) {
+      const linked = await supabase.from("planned_sessions").select("prescription")
+        .eq("completed_session_id", parsed.data.sessionId).eq("user_id", user.id).maybeSingle();
+      if (linked.error) return { error: "Could not read this workout. Try again.", errorCode: "transient" };
+      prescription = linked.data?.prescription as Prescription | null;
+    }
+    const item = prescription?.items?.[partIndex];
+    if (!item?.kind.startsWith("cardio_") || typeof item.meta?.authoredPartId !== "string" ||
+        item.movementId !== parsed.data.movementId || item.meta.modality !== parsed.data.modality) {
+      return { error: "This cardio part changed. Reload the workout.", errorCode: "validation" };
+    }
+    if (session.completed_at) return { error: "Edit the saved result to correct a completed workout.", errorCode: "validation" };
   }
 
   // review-208 #2 + review-211 #2 — for hybrid sessions, logging the
@@ -1018,9 +1040,9 @@ export async function logCardioSession(
       {
         session_id: parsed.data.sessionId,
         movement_id: parsed.data.movementId ?? null,
-        block_index: 0,
+        block_index: partIndex === undefined ? 0 : partIndex + 1,
         modality: parsed.data.modality,
-        duration_sec: parsed.data.actualDurationMin * 60,
+        duration_sec: Math.round(parsed.data.actualDurationMin * 60),
         distance_km: parsed.data.distanceKm ?? null,
         avg_hr_bpm: parsed.data.avgHrBpm ?? null,
         rpe: parsed.data.avgRpe ?? null,
@@ -1042,7 +1064,7 @@ export async function logCardioSession(
   // cardio completed AND (b) there's no unlogged strength work that
   // would otherwise be silently dropped. Hybrid sessions with strength
   // pending stay in_progress — the strength finish bar takes over.
-  if (parsed.data.completed && !hasUnloggedStrength) {
+  if (partIndex === undefined && parsed.data.completed && !hasUnloggedStrength) {
     const wasAlreadyCompleted = session.completed_at != null;
     const canonicalDurationMin = Math.max(
       1,

@@ -4126,3 +4126,17 @@ rehab badge also now uses the existing domain variant count, correcting the
 remaining two-versus-three discrepancy for dynamic/isometric Copenhagen work.
 No navigation offsets, zoom restrictions, prescriptions or user data changed.
 The owner approved publishing the responsive fix to production.
+
+## [2026-09-22] decision | Independent modular programs and shared schedule
+
+Owner approved Strength, Running and complete mixed Hybrid authoring alongside
+standalone prepared-course swimming, superseding the unmerged linked-swimming
+draft and its strength-only first-release restriction. ADR 0085 retains the
+main0144 primary indexes and independent swimming tables, adds no top-level
+state or user-data conversion, and specifies exact-date consent, shared
+transactions, immutable started/history snapshots and durable save receipts.
+Main155 is unchanged; the new156 has exact prior-function guards and an
+unused-only refusing down. Local domain/type/action evidence is source-only;
+real Postgres and six-case native browser qualification remain release gates.
+The first implementation publication is a draft; the coordinator exclusively
+owns environment qualification, merge and deployment.

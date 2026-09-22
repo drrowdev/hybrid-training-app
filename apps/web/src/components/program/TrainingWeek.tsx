@@ -1,0 +1,30 @@
+import Link from "next/link";
+import type { TrainingCommitment } from "@hta/domain";
+import { addDaysToYmd, mondayOfYmd } from "@/lib/dates";
+import styles from "./ProgramBuilder.module.css";
+
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+export function TrainingWeek({ entries, today, heading = "This week", authoredBlockId }: {
+  entries: TrainingCommitment[]; today: string; heading?: string; authoredBlockId?: string;
+}) {
+  const monday = mondayOfYmd(today);
+  return <section className={styles.panel} aria-label={heading}>
+    <div className={styles.row}><h2>{heading}</h2><Link className={styles.button} href="/app/plan">Full schedule</Link></div>
+    <div className={styles.week}>{DAYS.map((day, index) => {
+      const date = addDaysToYmd(monday, index);
+      const workouts = entries.filter((entry) => entry.date === date && entry.state !== "rest");
+      const rest = entries.some((entry) => entry.date === date && entry.state === "rest");
+      return <div key={date} className={styles.day}>
+        <div><strong>{day}</strong><time className={styles.muted} dateTime={date}>{date.slice(8)}</time></div>
+        <div className={styles.week}>{workouts.length === 0 ? <span className={styles.muted}>{rest ? "Planned rest" : "No workout scheduled"}</span>
+          : workouts.map((entry) => <div key={`${entry.source}:${entry.id}`}><Link className={styles.row}
+            style={{ textDecoration: "none", color: "var(--cp-text)", padding: "8px 0" }}
+            href={entry.source === "swim" ? `/app/swim/${entry.id}` : entry.source === "session" ? `/app/sessions/${entry.id}` : `/app/sessions/start/${entry.id}`}>
+            <strong>{entry.title}</strong><span className={styles.muted}>{entry.state === "started" ? "Resume" : entry.state === "completed" ? "Completed" : entry.state === "paused" ? "Paused" : entry.source === "swim" ? "View swim" : "Start workout"}</span>
+          </Link>{authoredBlockId && entry.source === "primary" && entry.programId === authoredBlockId && entry.state === "scheduled" && entry.date >= today &&
+            <Link className={styles.button} aria-label={`Edit ${entry.title}`} href={`/app/program/build?edit=${authoredBlockId}&workout=${entry.id}`}>Edit workout</Link>}</div>)}</div>
+      </div>;
+    })}</div>
+  </section>;
+}

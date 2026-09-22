@@ -4,6 +4,7 @@ import { completeSwimWorkoutResult, createSwimPlan, previewSwimPlan, startSwimWo
 import { revalidatePath } from "next/cache";
 import { SWIM_ASSESSMENT_VERSION, swimScheduleAdvice, type SwimWorkout } from "@hta/domain";
 import { loadSwimStrengthContext } from "../strength-schedule";
+import { loadTrainingSchedule } from "@/lib/schedule/storage";
 import * as queries from "../queries";
 import * as storage from "../storage";
 import type { SwimDateEditInput, SwimHubView, SwimWeekEditInput } from "../view-types";
@@ -31,6 +32,11 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("../strength-schedule", () => ({ loadSwimStrengthContext: vi.fn() }));
+vi.mock("@/lib/schedule/storage", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/schedule/storage")>(),
+  loadTrainingSchedule: vi.fn(),
+  scheduleReplay: vi.fn(async () => null),
+}));
 vi.mock("../capability", () => ({ requireSwimSetup: vi.fn(), requireSwimStorage: vi.fn() }));
 vi.mock("../safety", async (importOriginal) => ({
   ...await importOriginal<typeof import("../safety")>(), assertSwimSafety: vi.fn(),
@@ -122,6 +128,7 @@ function mockSavedEdit() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(loadTrainingSchedule).mockResolvedValue({ revision: "a".repeat(32), entries: [] });
   vi.spyOn(poolEditing, "swimPoolEditingAvailable").mockResolvedValue(false);
   vi.mocked(loadSwimStrengthContext).mockResolvedValue({ blockId: null, sessions: [] });
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
@@ -155,6 +162,7 @@ describe("DC-SW5/SW8/SW9 private course actions", () => {
     form.set("pool", "50m");
     form.set("goal", "endurance");
     form.set("courseFile", JSON.stringify(syntheticCourse()));
+    form.set("requestId", receiptId);
     form.append("weekdays", "4");
     return form;
   }
@@ -419,6 +427,10 @@ describe("ADR0079 server actions", () => {
     vi.mocked(storage.listSwimWorkouts).mockResolvedValue(workouts.map((row, index) => index === 3 ? other : row));
     const strengthContext = { blockId: "primary", sessions: [{ id: "strength", date: "2026-09-15" }] };
     vi.mocked(loadSwimStrengthContext).mockResolvedValue(strengthContext);
+    vi.mocked(loadTrainingSchedule).mockResolvedValue({ revision: "a".repeat(32), entries: [
+      { id: "strength", source: "primary", programId: "primary", date: "2026-09-15", title: "Strength", state: "scheduled" },
+      { id: other.id, source: "swim", programId: planId, date: "2026-09-15", title: "Swimming", state: "scheduled" },
+    ] });
     const response = await previewSwimDateEdit(dateEditInput());
     expect(response.error).toBeUndefined();
     expect(response.preview).toMatchObject({ previousDate: "2026-09-14", date: "2026-09-15" });
@@ -426,7 +438,9 @@ describe("ADR0079 server actions", () => {
     expect(storage.updateSwimPlan).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
     const view = mockSavedPlan();
-    expect(await applySwimDateEdit(response.preview!)).toEqual({ ok: true, view });
+    expect(await applySwimDateEdit(response.preview!)).toHaveProperty("error");
+    expect(storage.updateSwimPlan).not.toHaveBeenCalled();
+    expect(await applySwimDateEdit(response.preview!, true)).toEqual({ ok: true, view });
     const saved = vi.mocked(storage.updateSwimPlan).mock.calls[0]![1];
     expect(saved.definition).toEqual(plan.definition);
     expect(saved.workouts).toEqual([{
@@ -437,7 +451,7 @@ describe("ADR0079 server actions", () => {
       id: response.preview!.id, kind: "schedule", decision: "overridden",
       inputSnapshot: { operation: "reschedule", previousDate: "2026-09-14", strengthContext, warnings: response.preview!.warnings },
     });
-    expect(assertSwimSafety).toHaveBeenCalledTimes(2);
+    expect(assertSwimSafety).toHaveBeenCalledTimes(3);
   });
   it.each(["2026-09-14", "2026-09-21", "2026-09-13", "2026-02-30", "not-a-date"])(
     "DC-SW3/DC-SW5 rejects unchanged or out-of-week date %s", async (date) => {

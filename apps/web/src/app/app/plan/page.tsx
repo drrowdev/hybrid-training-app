@@ -215,7 +215,7 @@ export default async function PlanPage({
   // foreign programs (5/3/1, Tactical Barbell) — the ones whose cardio days are
   // user-added in the wizard. Other programs own their own calendar/cardio.
   const canEditPlan =
-    block.programId === "wendler-531" || block.programId === "tactical-barbell";
+    block.programId === "wendler-531" || block.programId === "tactical-barbell" || block.programId === "authored";
 
   const [all, { data: profile }, { data: programInstance }] =
     await Promise.all([
@@ -454,7 +454,7 @@ export default async function PlanPage({
           <PlanProgramActions
             blockId={block.id}
             canEdit={canEditPlan}
-            editHref={`/app/program?edit=${block.id}`}
+            editHref={block.programId === "authored" ? `/app/program/build?edit=${block.id}` : `/app/program?edit=${block.id}`}
             startNewHref="/app/plan?new=1"
             endAction={endBlock}
             recoveryControl={

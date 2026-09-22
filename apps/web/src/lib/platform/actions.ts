@@ -77,7 +77,6 @@ import {
   resolveTbAccessoryMuscles,
   type TbAccessoryInjector,
 } from "./tb-accessories";
-import { discardAbandonedInProgressSessions } from "@/lib/planner/archive-prior-blocks";
 import { activateSeasonBlock } from "@/lib/seasons/activation";
 import { getDeloadWeekPreview } from "@/lib/planner/deload-week-preview";
 import {
@@ -2018,9 +2017,8 @@ async function createForeignProgramInstance(
   }
   const blockId = deployed.block_id;
 
-  // Clear any half-opened, zero-logged session from the program we just
-  // replaced so Today doesn't surface a stale "Resume today's workout".
-  await discardAbandonedInProgressSessions(supabase, user.id).catch(() => {});
+  // Unfinished sessions may contain queued offline work. Program replacement
+  // archives the old plan but never discards these sessions.
 
   // ADR 0051 — when deep-linked from a Season roadmap, advance the roadmap:
   // flip the prior active season block to done + this planned one to active,
@@ -3025,7 +3023,6 @@ async function createNativeProgramInstance(
 
   // Clear any half-opened, zero-logged session from the program we just
   // replaced so Today doesn't surface a stale "Resume today's workout".
-  await discardAbandonedInProgressSessions(supabase, user.id).catch(() => {});
 
   // ADR 0051 — Season roadmap deep-link: advance the roadmap to this block.
   // Best-effort; a failure must not undo a valid deploy.

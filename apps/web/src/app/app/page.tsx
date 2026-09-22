@@ -79,6 +79,7 @@ import {
   estimateSessionDurationBreakdown,
 } from "@/lib/sessions/estimate-duration";
 import { ThisWeekRail } from "@/components/plan/ThisWeekRail";
+import { SharedTrainingWeek } from "@/components/program/SharedTrainingWeek";
 import { plannedSessionCta } from "@/lib/today/planned-session-cta";
 import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
 import {
@@ -260,14 +261,15 @@ export default async function TodayPage() {
       if (plannedMovementIds.length === 0) {
         return { movementRegionById: regionMap, movementSlugById: slugMap };
       }
-      const { data: movs } = await supabase
+      const { data: movs, error: movementError } = await supabase
         .from("movements")
-        .select("id, name, slug, primary_region")
+        .select("id, display_name, slug, primary_region")
         .in("id", plannedMovementIds);
+      if (movementError) throw new Error("Could not check today's exercises. Try again.");
       for (const m of movs ?? []) {
         regionMap.set(m.id, {
           primaryRegion: m.primary_region as string,
-          name: m.name as string,
+          name: m.display_name as string,
         });
         slugMap.set(m.id, (m.slug as string | null) ?? null);
       }
@@ -750,6 +752,7 @@ export default async function TodayPage() {
             aria-label="At a glance"
             style={{ display: "grid", gap: 14, minWidth: 0 }}
           >
+            <SharedTrainingWeek today={todayIso} />
             <div data-testid="today-week-strip">
               <ThisWeekRail
                 sessions={weekRailSessions}

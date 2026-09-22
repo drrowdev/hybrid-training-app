@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
   estimateCriticalSwimSpeed, poolCourseEquals, normalizePoolCourse, SWIM_POOL_CHANGE_VERSION,
-  swimScheduleAdvice, type SwimStrengthContext,
+  swimScheduleAdvice, trainingScheduleAdvice, type SwimStrengthContext,
   SWIM_ASSESSMENT_VERSION, type SwimError,
 } from "@hta/domain";
 import {
@@ -37,6 +37,7 @@ import { SWIM_REFRESH_WARNING } from "./action-feedback";
 import { loadSwimStrengthContext } from "./strength-schedule";
 import { swimPoolEditingAvailable, swimProgrammePool } from "./pool-editing";
 import type { SwimPoolEditInput, SwimPoolEditPreview } from "./view-types";
+import { loadTrainingSchedule, scheduleReplay, scheduleRequestId, scheduleReviewSchema } from "@/lib/schedule/storage";
 
 function refreshSwims(sessionId?: string) {
   for (const path of ["/app", "/app/plan", "/app/swim", "/app/stats", "/app/sessions"]) revalidatePath(path);
@@ -535,6 +536,7 @@ async function prepareSwimDateEdit(raw: SwimDateEditInput) {
   const input = dateEditInput.parse(raw);
   parseSwimDate(input.date);
   const { client, user } = await swimContext();
+  const schedule = await loadTrainingSchedule(client);
   const { plan, workouts } = await ownedSwimPlan(client, user.id, input.planId, input.revision);
   if (plan.status !== "active") throw new SwimActionError("Resume this plan before moving a swim.", "validation");
   const row = workouts.find((workout) => workout.id === input.workoutId);
@@ -550,18 +552,19 @@ async function prepareSwimDateEdit(raw: SwimDateEditInput) {
   if (input.date === row.scheduled_date) throw new SwimActionError("Choose a different date.", "validation");
   const strengthContext = await loadSwimStrengthContext(client, user.id);
   const otherSwims = workouts.filter((other) => other.id !== row.id && other.scheduled_date === input.date && other.status !== "skipped");
+  const overlaps = trainingScheduleAdvice(schedule.entries.filter((entry) => entry.id !== row.id), [input.date]).overlaps;
   const warnings = [
-    ...(strengthContext.sessions.some((session) => session.date === input.date) ? ["Strength training is scheduled on this day."] : []),
-    ...(otherSwims.length ? ["Another swim is scheduled on this day."] : []),
+    ...overlaps.map((entry) => `${entry.title} is scheduled on ${entry.date}.`),
   ];
   await checkWorkouts(client, user.id, [row.definition.issued]);
   const exactInputs = {
     operation: "reschedule", request: input, previousDate: row.scheduled_date,
     weekIndex: swimWorkoutDefinition(row).weekIndex, range, issued: row.definition.issued,
     strengthContext, otherSwims: otherSwims.map((other) => ({ id: other.id, revision: other.revision, status: other.status })),
-    warnings,
+    warnings, scheduleRevision: schedule.revision,
   };
-  const preview: SwimDateEditPreview = { ...input, id: swimInputId(exactInputs), previousDate: row.scheduled_date, warnings };
+  const preview: SwimDateEditPreview = { ...input, id: swimInputId(exactInputs), previousDate: row.scheduled_date, warnings,
+    scheduleRevision: schedule.revision, overlaps };
   return { client, user, plan, row, exactInputs, preview };
 }
 
@@ -570,15 +573,24 @@ export async function previewSwimDateEdit(input: SwimDateEditInput): Promise<Act
   catch (error) { return swimActionFailure(error); }
 }
 
-export async function applySwimDateEdit(preview: SwimDateEditPreview): Promise<ActionResult & { warning?: string; view?: SwimHubView }> {
+export async function applySwimDateEdit(preview: SwimDateEditPreview, acceptOverlap = false): Promise<ActionResult & { warning?: string; view?: SwimHubView }> {
   let prepared: Awaited<ReturnType<typeof prepareSwimDateEdit>>;
   let returnedPlan: storage.SwimPlanRow;
   try {
+    const context = await swimContext();
+    const requestId = scheduleRequestId({ operation: "swim-date", preview });
+    if (await scheduleReplay(context.client, requestId, "swim-update", preview)) {
+      const { plan } = await ownedSwimPlan(context.client, context.user.id, preview.planId);
+      return confirmedPlanView(context.client, context.user.id, plan);
+    }
     prepared = await prepareSwimDateEdit(preview);
     if (JSON.stringify(prepared.preview) !== JSON.stringify(preview)) throw new SwimActionError("These dates changed. Preview them again.", "validation");
     const { client, plan, row, exactInputs } = prepared;
+    if (prepared.preview.overlaps?.length && !acceptOverlap) throw new SwimActionError("Accept both workouts on this date before saving.", "validation");
     const record = decision("schedule", "overridden", exactInputs, preview.id, prepared.preview.reason);
     returnedPlan = (await storage.updateSwimPlan(client, {
+      scheduleReview: scheduleReviewSchema.parse({ revision: preview.scheduleRevision, requestId, acceptOverlap }),
+      scheduleInput: preview,
       planId: plan.id, expectedRevision: plan.revision, definition: plan.definition,
       state: { ...plan.state, decisions: [...plan.state.decisions, record] },
       workouts: [{
@@ -685,6 +697,7 @@ export async function decideSwimBenchmark(planId: string, preview: SwimBenchmark
 export async function previewSwimResume(planId: string, revision: number, startDate: string): Promise<ActionResult & { preview?: SwimResumePreview }> {
   try {
     const { client, user } = await swimContext();
+    const schedule = await loadTrainingSchedule(client);
     const { plan, workouts } = await ownedSwimPlan(client, user.id, planId, revision);
     const { today } = await swimToday(client, user.id);
     if (plan.status !== "paused") throw new SwimActionError("Only a paused plan can be resumed.", "validation");
@@ -708,17 +721,25 @@ export async function previewSwimResume(planId: string, revision: number, startD
       used.set(week, index + 1);
       return { id: row.id, revision: row.revision, date: slot.dateISO };
     });
-    return { ok: true, preview: { planId, revision, startDate, dates } };
+    const overlaps = trainingScheduleAdvice(schedule.entries, dates.map((entry) => entry.date), { source: "swim", programId: planId }).overlaps;
+    return { ok: true, preview: { planId, revision, startDate, dates, scheduleRevision: schedule.revision, overlaps } };
   } catch (error) { return swimActionFailure(error); }
 }
 
-export async function resumeSwimPlan(preview: SwimResumePreview): Promise<ActionResult & { warning?: string; view?: SwimHubView }> {
+export async function resumeSwimPlan(preview: SwimResumePreview, acceptOverlap = false): Promise<ActionResult & { warning?: string; view?: SwimHubView }> {
   let context: Awaited<ReturnType<typeof swimContext>>;
   let returnedPlan: storage.SwimPlanRow;
   try {
+    context = await swimContext();
+    const requestId = scheduleRequestId({ operation: "swim-resume", preview });
+    if (await scheduleReplay(context.client, requestId, "swim-resume", preview)) {
+      const { plan } = await ownedSwimPlan(context.client, context.user.id, preview.planId);
+      return confirmedPlanView(context.client, context.user.id, plan);
+    }
     const fresh = await previewSwimResume(preview.planId, preview.revision, preview.startDate);
     if (fresh.error) return fresh;
     if (JSON.stringify(fresh.preview) !== JSON.stringify(preview)) throw new SwimActionError("These dates changed. Preview them again.", "validation");
+    if (fresh.preview?.overlaps?.length && !acceptOverlap) throw new SwimActionError("Accept the overlapping workouts before resuming.", "validation");
     context = await swimContext();
     const { client, user } = context;
     const { plan, workouts } = await ownedSwimPlan(client, user.id, preview.planId, preview.revision);
@@ -729,6 +750,8 @@ export async function resumeSwimPlan(preview: SwimResumePreview): Promise<Action
     await checkWorkouts(client, user.id, updates.map((row) => row.definition.issued));
     const record = decision("schedule", "accepted", { preview });
     const resumed = await storage.resumeSwimPlan(client, {
+      scheduleReview: scheduleReviewSchema.parse({ revision: preview.scheduleRevision, requestId, acceptOverlap }),
+      scheduleInput: preview,
       planId: plan.id, expectedRevision: preview.revision, definition: plan.definition,
       state: { ...plan.state, decisions: [...plan.state.decisions, record] }, workouts: updates,
     });

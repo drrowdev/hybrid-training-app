@@ -183,7 +183,8 @@ export function movementIdentityKey(item: AttributableItem): string {
     original == null || original === item.movementId
       ? item.movementId
       : `swap:${original}>${item.movementId}`;
-  return isRehabItem({ meta: item.meta ?? undefined }) ? `rehab:${identity}` : identity;
+  const scoped = typeof item.meta?.authoredMovementId === "string" ? `authored:${item.meta.authoredMovementId}:${identity}` : identity;
+  return isRehabItem({ meta: item.meta ?? undefined }) ? `rehab:${scoped}` : scoped;
 }
 
 function hasValidIndexLink(
