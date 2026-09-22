@@ -103,6 +103,13 @@ with the qualified candidate tree and READY live alias. Application deployment
 precedes this storage append. No automatic down migration follows use or an
 ambiguous commit, and no user settings/data are rewritten by this operation.
 
+The original validated training-day CHECK is preserved for every existing
+program. Only an `authored` block may additionally have exactly one training day.
+Migration0156 guards the exact original definition before this extension; its
+unused down guards the installed definition and refuses any one-day block,
+including hidden history, before restoring the original CHECK. Existing rows
+are never rewritten, and the profile's two-to-seven-day preference is unchanged.
+
 ## Remaining release gates
 
 The first source publication is a draft, not a release claim. Existing template

@@ -713,7 +713,7 @@ try {
   });
   stages.push(stage);
   stage = "modular-schedule-rehearsal";
-  stages.push(...await rehearseModularSchedule(database, true));
+  stages.push(...await rehearseModularSchedule(database, true, (name) => { stage = name; }));
   await rehearseModularProductionUpdate(database, (name) => { stage = name; });
   stages.push(stage);
   status = "passed";

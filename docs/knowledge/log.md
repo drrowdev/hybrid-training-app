@@ -4153,3 +4153,15 @@ the exact app-first merge/deployment and unchanged 213-entry ledger before its
 single0156 append to214. Its rollback/commit-ambiguity rehearsal runs only after
 the disposable modular schedule fixture has been cleaned and unused0156 restored.
 Real SQL, native browser and live release decisions remain with the coordinator.
+
+## [2026-09-22] refine | Authored one-day schedules retain truthful metadata
+
+Disposable SQL qualification reached the original0011 two-day minimum and
+rejected the new one-day custom-program fixture. The coordinator approved a
+bounded0156 CHECK extension: exactly one day only for `program_id = authored`,
+with the existing NULL/two-to-seven rules unchanged. Up and unused down guard
+exact validated definitions; down refuses even hidden one-day history. No rows
+are converted. SQL cases cover accepted/rejected boundaries and down refusal;
+native and updater catalog evidence now includes CHECK definitions/validation.
+Native-only browser cases are explicitly excluded from ordinary CI, while the
+selected modular profile retains its strict disposable fixture guards.

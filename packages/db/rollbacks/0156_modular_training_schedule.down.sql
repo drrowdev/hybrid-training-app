@@ -2,10 +2,26 @@ BEGIN;
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM public.engine_override_events WHERE context->>'kind' = 'training-schedule-v1')
-    OR EXISTS (SELECT 1 FROM public.program_instances WHERE program_id = 'authored') THEN
+    OR EXISTS (SELECT 1 FROM public.program_instances WHERE program_id = 'authored')
+    OR EXISTS (SELECT 1 FROM public.training_blocks WHERE days_per_week = 1) THEN
     RAISE EXCEPTION 'Modular scheduling has been used. Retain its receipts and deploy a forward repair; rollback refused.';
   END IF;
 END $$;
+DO $$
+DECLARE definition text; validated boolean;
+BEGIN
+  SELECT pg_get_constraintdef(oid), convalidated INTO definition, validated
+  FROM pg_constraint WHERE conrelid = 'public.training_blocks'::regclass
+    AND conname = 'training_blocks_days_per_week_check' AND contype = 'c';
+  IF definition IS DISTINCT FROM 'CHECK (((days_per_week IS NULL) OR ((days_per_week >= 2) AND (days_per_week <= 7)) OR ((days_per_week = 1) AND (NOT (program_id IS DISTINCT FROM ''authored''::text)))))'
+    OR validated IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'The modular training-day constraint changed; rollback refused.';
+  END IF;
+END $$;
+ALTER TABLE public.training_blocks DROP CONSTRAINT training_blocks_days_per_week_check;
+ALTER TABLE public.training_blocks ADD CONSTRAINT training_blocks_days_per_week_check
+  CHECK (days_per_week IS NULL OR days_per_week BETWEEN 2 AND 7);
+
 DO $$
 DECLARE
   entry record; routine oid; body text; restored text; definition text; original_attributes jsonb;

@@ -24,10 +24,14 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
   const migrations = modularUpdateMigrations();
   const original = productionHistoryRows(Array.from(await database.unsafe(MODULAR_LEDGER_SQL)));
   const catalog = async () => {
-    const rows = await database.unsafe(`SELECT encode(sha256(convert_to(
-      string_agg(pg_get_functiondef(p.oid)||p.proowner::text||COALESCE(p.proacl::text,''),E'\\n' ORDER BY p.oid::regprocedure::text),
-      'UTF8')),'hex') AS fingerprint
-      FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prokind='f'`);
+    const rows = await database.unsafe(`SELECT encode(sha256(convert_to(jsonb_build_array(
+      (SELECT string_agg(pg_get_functiondef(p.oid)||p.proowner::text||COALESCE(p.proacl::text,''),E'\\n' ORDER BY p.oid::regprocedure::text)
+       FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prokind='f'),
+      (SELECT jsonb_agg(jsonb_build_array(c.oid::regclass::text,k.conname,pg_get_constraintdef(k.oid,false),k.convalidated,k.connoinherit)
+        ORDER BY c.oid::regclass::text,k.conname)
+       FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+       WHERE n.nspname='public' AND k.contype='c')
+    )::text,'UTF8')),'hex') AS fingerprint`);
     return rows[0]!.fingerprint;
   };
   const originalCatalog = await catalog();

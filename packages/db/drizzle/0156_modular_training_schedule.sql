@@ -1,7 +1,23 @@
--- ADR 0085. Additive functions/triggers only; no existing rows or policies change.
+-- ADR 0085. No existing rows or policies change.
 -- One transaction, including installation. Existing swim function ownership stays intact.
 -- Exact 0147 RPC bodies are still the main-0155 baseline; later swimming
 -- migrations replace their validators, not these entrypoints.
+DO $$
+DECLARE definition text; validated boolean;
+BEGIN
+  SELECT pg_get_constraintdef(oid), convalidated INTO definition, validated
+  FROM pg_constraint WHERE conrelid = 'public.training_blocks'::regclass
+    AND conname = 'training_blocks_days_per_week_check' AND contype = 'c';
+  IF definition IS DISTINCT FROM 'CHECK (((days_per_week IS NULL) OR ((days_per_week >= 2) AND (days_per_week <= 7))))'
+    OR validated IS DISTINCT FROM true THEN
+    RAISE EXCEPTION 'Modular scheduling requires the exact validated training-day constraint.';
+  END IF;
+END $$;
+ALTER TABLE public.training_blocks DROP CONSTRAINT training_blocks_days_per_week_check;
+ALTER TABLE public.training_blocks ADD CONSTRAINT training_blocks_days_per_week_check
+  CHECK (days_per_week IS NULL OR days_per_week BETWEEN 2 AND 7
+    OR (days_per_week = 1 AND program_id IS NOT DISTINCT FROM 'authored'));
+
 DO $$
 DECLARE
   entry record; routine oid; body text; definition text; original_attributes jsonb;

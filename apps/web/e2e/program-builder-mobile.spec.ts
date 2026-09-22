@@ -130,6 +130,7 @@ async function loggedSets(actor: SupabaseClient, sessionId: string) {
 }
 
 test.describe("Modular program builder", () => {
+  test.skip(process.env.SXC_ACCEPTANCE_PROFILE !== "modular", "Requires the disposable modular acceptance profile.");
   test.use({ viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true });
 
   test("M1 DC-K4: strength creation retains library identities through reload and logging", async ({ page, actor, catalog }) => {

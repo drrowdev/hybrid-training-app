@@ -16,6 +16,12 @@ function setup() {
 }
 
 describe("DC-SW8 modular native schema round trip retains role and routine definitions", () => {
+  it("DC-K4: fingerprints table CHECK definitions and validation as well as routines", () => {
+    expect(MODULAR_CATALOG_SQL).toContain("pg_get_constraintdef(k.oid, false), k.convalidated, k.connoinherit");
+    expect(MODULAR_CATALOG_SQL).toContain("WHERE n.nspname='public' AND k.contype='c'");
+    expect(MODULAR_CATALOG_SQL).toContain("jsonb_agg(jsonb_build_array(kind,key,value) ORDER BY kind,key)");
+  });
+
   it("brackets historical identity proofs with one unused down and exact catalogue restoration", async () => {
     const options = setup();
     await modularSchemaRoundTrip({ ...options, phase: "down" });
@@ -42,7 +48,7 @@ describe("DC-SW8 modular native schema round trip retains role and routine defin
     expect(options.command).toHaveBeenCalledTimes(calls);
   });
 
-  it("rejects successful processes that restore different owners, grants, bodies or triggers", async () => {
+  it("rejects successful processes that restore different owners, grants, bodies, triggers or CHECKs", async () => {
     const options = setup();
     await modularSchemaRoundTrip({ ...options, phase: "down" });
     options.command.mockImplementation(async (_executable, args) => ({

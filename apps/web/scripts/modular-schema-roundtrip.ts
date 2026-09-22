@@ -24,6 +24,11 @@ WITH entries AS (
     jsonb_build_array(pg_get_triggerdef(t.oid, false), t.tgenabled)
   FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE n.nspname='public' AND NOT t.tgisinternal
+  UNION ALL
+  SELECT 'check', c.oid::regclass::text || ':' || k.conname,
+    jsonb_build_array(pg_get_constraintdef(k.oid, false), k.convalidated, k.connoinherit)
+  FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='public' AND k.contype='c'
 )
 SELECT jsonb_build_object(
   'functions', count(*) FILTER (WHERE kind='function'),

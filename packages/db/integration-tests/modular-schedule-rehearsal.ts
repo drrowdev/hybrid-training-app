@@ -12,7 +12,10 @@ const json = (value: unknown) => JSON.stringify(value);
 const hash = (value: unknown) => createHash("sha256").update(json(value)).digest("hex");
 
 /** Disposable CI only. Call after historical down/up checks, never on hosted storage. */
-export async function rehearseModularSchedule(database: postgres.Sql, restoreHistoricalBaseline = false): Promise<string[]> {
+export async function rehearseModularSchedule(
+  database: postgres.Sql, restoreHistoricalBaseline = false, stage: (name: string) => void = () => {},
+): Promise<string[]> {
+  stage("modular-disposable-endpoint-guard");
   assert.equal(process.env.GITHUB_ACTIONS, "true");
   assert.deepEqual(database.options.host, ["127.0.0.1"]);
   assert.deepEqual(database.options.port, [5432]);
@@ -21,6 +24,7 @@ export async function rehearseModularSchedule(database: postgres.Sql, restoreHis
   assert.equal(databaseName, "swim_pool_test");
   const stages: string[] = [];
   if (restoreHistoricalBaseline) {
+    stage("modular-historical-baseline-restoration");
     assert.equal((await database`SELECT count(*)::int AS n FROM public.swim_plans`)[0]!.n, 0);
     for (const name of ["0151_swim_pool_changes", "0152_swim_private_courses", "0153_swim_import_matching", "0154_swim_untimed_courses"]) {
       await database.begin((tx) => tx.unsafe(readFileSync(new URL(`../drizzle/${name}.sql`, import.meta.url), "utf8")));
@@ -36,6 +40,7 @@ export async function rehearseModularSchedule(database: postgres.Sql, restoreHis
         'insert_deload_week','insert_set_logs_with_bw_progress') ORDER BY p.oid`;
   const baseline = await inventory();
   assert.equal(baseline.length, 12);
+  stage("modular-unused-down-up-and-permissions");
   await database.begin((tx) => tx.unsafe(up));
   assert.deepEqual(await inventory(), baseline);
   const revert = async () => {
@@ -63,14 +68,38 @@ export async function rehearseModularSchedule(database: postgres.Sql, restoreHis
   const snapshotIn = async (tx: postgres.TransactionSql) =>
     (await tx<{ value: Snapshot }[]>`SELECT public.training_schedule_snapshot() AS value`)[0]!.value;
   const snapshot = (user: string) => asUser(user, snapshotIn);
-  const commitIn = async <T>(tx: postgres.TransactionSql, operation: string, args: unknown, revision: string, requestId = randomUUID(), accept = false, input = args): Promise<T> =>
-    (await tx<{ value: T }[]>`SELECT public.training_schedule_commit(${operation},${json(args)}::text::jsonb,${revision},
+  const commitIn = async <T>(tx: postgres.TransactionSql, operation: string, args: unknown, revision: string, requestId = randomUUID(), accept = false, input = args): Promise<T> => {
+    stage(`modular-${operation}`);
+    return (await tx<{ value: T }[]>`SELECT public.training_schedule_commit(${operation},${json(args)}::text::jsonb,${revision},
       ${requestId}::uuid,${hash(input)},${accept}) AS value`)[0]!.value;
+  };
   const commit = <T>(user: string, operation: string, args: unknown, revision: string, requestId = randomUUID(), accept = false, input = args) =>
     asUser(user, (tx) => commitIn<T>(tx, operation, args, revision, requestId, accept, input));
   const a = randomUUID(), b = randomUUID();
+  stage("modular-synthetic-users");
   await database`INSERT INTO auth.users(id) VALUES (${a}),(${b})`;
   try {
+    stage("modular-authored-training-day-boundaries");
+    for (const program of ["authored", "hybrid", null]) {
+      for (const days of [-1, 0, 8, ...(program === "authored" ? [] : [1])]) {
+        await denied(() => asUser(b, async (tx) => tx`
+          INSERT INTO public.training_blocks(user_id,program_id,started_on,weeks,days_per_week)
+          VALUES (${b}::uuid,${program},current_date,1,${days})`), "23514");
+      }
+      for (const days of [null, 2, 7, ...(program === "authored" ? [1] : [])]) {
+        await asUser(b, async (tx) => {
+          const [row] = await tx`INSERT INTO public.training_blocks(user_id,program_id,started_on,weeks,days_per_week)
+            VALUES (${b}::uuid,${program},current_date,1,${days}) RETURNING id,days_per_week`;
+          assert.equal(row!.days_per_week, days);
+          await tx`DELETE FROM public.training_blocks WHERE id=${row!.id}`;
+        });
+      }
+    }
+    const [hidden] = await database`INSERT INTO public.training_blocks(user_id,program_id,started_on,weeks,days_per_week,status,deleted_at)
+      VALUES (${b}::uuid,'authored',current_date,1,1,'archived',now()) RETURNING id`;
+    await denied(revert, "P0001");
+    await database`DELETE FROM public.training_blocks WHERE id=${hidden!.id}`;
+    stages.push("modular-authored-one-day-boundaries-and-hidden-history-down-refusal");
     const [calendar] = await database<{ today: string; tomorrow: string; weekday: number }[]>`
       SELECT to_char(current_date,'YYYY-MM-DD') AS today, to_char(current_date+1,'YYYY-MM-DD') AS tomorrow,
         extract(isodow FROM current_date)::int-1 AS weekday`;
@@ -202,6 +231,7 @@ export async function rehearseModularSchedule(database: postgres.Sql, restoreHis
     const contendWithSession = async (name: string, legacy: (tx: postgres.TransactionSql) => Promise<unknown>,
       touchLockedRow: (tx: postgres.TransactionSql) => Promise<unknown> = async (tx) =>
         tx`SELECT public.start_planned_session_atomically(${upcoming.id}::uuid,now())`) => {
+      stage(name);
       const locked = barrier(), release = barrier();
       const holder = asUser(a, async (tx) => {
         await snapshotIn(tx);
@@ -261,6 +291,7 @@ export async function rehearseModularSchedule(database: postgres.Sql, restoreHis
   } finally {
     await database`DELETE FROM auth.users WHERE id IN (${a},${b})`;
   }
+  stage("modular-cleaned-unused-schema-restoration");
   await revert();
   assert.deepEqual(await inventory(), baseline);
   await database.begin((tx) => tx.unsafe(up));
