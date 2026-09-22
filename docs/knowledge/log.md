@@ -4324,3 +4324,24 @@ The wider Windows web run passed7207 tests and failed142 across eight unchanged
 Unix-permission/raw-LF fixture files (plus80 skips). Observed failures include
 CRLF hashes/text matching, private-mode refusal and symlink EPERM. No permissions,
 assertions or timeouts were relaxed; exact-source Linux CI remains required.
+
+## [2026-09-22] fix | Final recovery-lock inventory assertion
+
+Storage35788008223 at e8a40182 failed at the final restored-catalogue lock count:
+the existing four session-prefixed routines became five when direct recovery
+removal joined the guarded list. This assertion executes after the scenario
+try/finally, so reaching it cannot mask an earlier scenario or cleanup failure.
+The correction verifies the exact five routine names as well as their count;
+a source regression compares that expectation with both up/down guard lists.
+All earlier assertions and the eight swimming routines remain unchanged.
+Migration0156 bytes/hash and application source are unchanged. The coordinator
+confirmed all three proposal-only outcome compatibility stages passed; full
+storage/native qualification still requires the corrected exact head.
+The same head's Linux core also failed the accepted-B-source hash guard: an
+updated legacy swimming browser fixture is a guarded input despite the guard
+test itself being unchanged. The wider Windows result therefore cannot be
+classified wholly as a pre-existing platform limitation. That source repair
+now pins the exact updated prefix and reverses only three added preview clicks
+and two preview-only entries before checking the unchanged original accepted
+hash. All original assertions and actual pinned SDK decoding remain required;
+only the read's CRLF representation is normalized to canonical LF.

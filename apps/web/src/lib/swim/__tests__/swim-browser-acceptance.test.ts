@@ -848,11 +848,22 @@ describe("DC-SW7/DC-SW8/DC-SW9 A4 bounded reconnect observations", () => {
 });
 
 describe("browser environment and static config", () => {
-  it("B9 DC-SW5/DC-SW7/DC-SW8: preserves the accepted B source and decodes actual pinned decision arguments without diagnostics", async () => {
-    const source = readFileSync(join(webRoot, "e2e/swimming-decisions-offline-mobile.spec.ts"), "utf8");
+  it("B9 DC-SW5/DC-SW7/DC-SW8: preserves accepted B assertions through setup review and decodes actual pinned decision arguments without diagnostics", async () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-decisions-offline-mobile.spec.ts"), "utf8").replaceAll("\r\n", "\n");
     const boundary = source.indexOf('\n  test("B9 ');
     expect(boundary).toBeGreaterThan(0);
-    expect(createHash("sha256").update(source.slice(source.indexOf("const test ="), boundary).trimEnd()).digest("hex"))
+    const prefix = source.slice(source.indexOf("const test ="), boundary).trimEnd();
+    expect(createHash("sha256").update(prefix).digest("hex"))
+      .toBe("dcfc34c28518dc746ce0d0c45dd2d0c095f5f3529059cfec6f7dff4bbd9b9c9f");
+    // Only the three required previews and two preview-only refusal/guidance entries differ.
+    const reviewBeforeCreate = /^    await (page|form)\.getByRole\("button", \{ name: "Preview plan", exact: true \}\)\.click\(\);\n(?=    await \1\.getByRole\("button", \{ name: "Create swim plan", exact: true \}\)\.click\(\);)/gm;
+    expect([...prefix.matchAll(reviewBeforeCreate)]).toHaveLength(3);
+    const withoutAddedPreviews = prefix.replace(reviewBeforeCreate, "");
+    const previewOnly = '    await form.getByRole("button", { name: "Preview plan", exact: true }).click();';
+    expect(withoutAddedPreviews.split(previewOnly)).toHaveLength(3);
+    const acceptedPrefix = withoutAddedPreviews.replaceAll(previewOnly,
+      '    await form.getByRole("button", { name: "Create swim plan", exact: true }).click();');
+    expect(createHash("sha256").update(acceptedPrefix).digest("hex"))
       .toBe("f819e41cc16c6cccc29a2e96068dc31589fd92e14166d3f445a9e615b9c57da1");
     const b9 = source.slice(boundary);
     expect(b9.match(/\btest\("/g)).toHaveLength(1);

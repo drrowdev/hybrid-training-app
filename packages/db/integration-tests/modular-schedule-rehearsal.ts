@@ -10,6 +10,10 @@ type Created = { block_id: string; program_instance_id: string };
 type Swim = { plan: { id: string; revision: number }; workouts: { id: string; revision: number }[] };
 const json = (value: unknown) => JSON.stringify(value);
 const hash = (value: unknown) => createHash("sha256").update(json(value)).digest("hex");
+const MODULAR_SESSION_LOCK_ROUTINES = [
+  "complete_training_session_with_transition", "insert_deload_week", "insert_set_logs_with_bw_progress",
+  "remove_deload_week", "replace_hyrox_session_actuals",
+] as const;
 
 /** Disposable CI only. Call after historical down/up checks, never on hosted storage. */
 export async function rehearseModularSchedule(
@@ -455,9 +459,11 @@ export async function rehearseModularSchedule(
   const [patched] = await database`SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname='public' AND p.prosrc LIKE '%-- ADR0085 common lock before swimming locks.%'`;
   assert.equal(patched!.n, 8);
-  const [sessionPatched] = await database`SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  const [sessionPatched] = await database`SELECT count(*)::int AS n, array_agg(p.proname::text ORDER BY p.proname) AS names
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
     WHERE n.nspname='public' AND p.prosrc LIKE '%-- ADR0085 common lock before session locks.%'`;
-  assert.equal(sessionPatched!.n, 4);
+  assert.equal(sessionPatched!.n, MODULAR_SESSION_LOCK_ROUTINES.length);
+  assert.deepEqual(sessionPatched!.names, MODULAR_SESSION_LOCK_ROUTINES);
   stages.push("modular-synthetic-cleanup-unused-down-and-final-lock-baseline");
   return stages;
 }

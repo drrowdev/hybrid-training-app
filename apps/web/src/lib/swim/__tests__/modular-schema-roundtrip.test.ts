@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   createModularRoundTripProof, modularSchemaRoundTrip, MODULAR_CATALOG_SQL, MODULAR_SCHEMA_FILES,
 } from "../../../../scripts/modular-schema-roundtrip";
@@ -16,6 +18,26 @@ function setup() {
 }
 
 describe("DC-SW8 modular native schema round trip retains role and routine definitions", () => {
+  it("DC-K4: final recovery/session lock inventory matches both migration guard lists", () => {
+    const dbRoot = resolve(__dirname, "..", "..", "..", "..", "..", "..", "packages", "db");
+    const rehearsal = readFileSync(resolve(dbRoot, "integration-tests", "modular-schedule-rehearsal.ts"), "utf8");
+    const inventory = rehearsal.match(/const MODULAR_SESSION_LOCK_ROUTINES = \[([\s\S]*?)\] as const;/)?.[1];
+    if (!inventory) throw new Error("Missing final lock inventory");
+    const expected = [...inventory.matchAll(/"([a-z_]+)"/g)].map((match) => match[1]!);
+    for (const [directory, file] of [
+      ["drizzle", "0156_modular_training_schedule.sql"],
+      ["rollbacks", "0156_modular_training_schedule.down.sql"],
+    ] as const) {
+      const source = readFileSync(resolve(dbRoot, directory, file), "utf8");
+      const names = [...source.matchAll(/\('public\.([a-z_]+)\([^']*\)', '[a-f0-9]{32}', '(?:auth\.uid\(\)|public\.swim_request_user_id\(\))'\)/g)]
+        .map((match) => match[1]!).filter((name) => !name.startsWith("swim_")).sort();
+      expect(names).toEqual(expected);
+    }
+    expect(expected).toContain("remove_deload_week");
+    expect(rehearsal).toContain("assert.equal(sessionPatched!.n, MODULAR_SESSION_LOCK_ROUTINES.length)");
+    expect(rehearsal).toContain("assert.deepEqual(sessionPatched!.names, MODULAR_SESSION_LOCK_ROUTINES)");
+  });
+
   it("DC-K4: fingerprints table CHECK definitions and validation as well as routines", () => {
     expect(MODULAR_CATALOG_SQL).toContain("pg_get_constraintdef(k.oid, false), k.convalidated, k.connoinherit");
     expect(MODULAR_CATALOG_SQL).toContain("WHERE n.nspname='public' AND k.contype='c'");
