@@ -221,6 +221,7 @@ test.describe("ADR0079 mobile swimming assessment decisions and native history",
     await page.getByLabel("Minutes per swim", { exact: true }).fill("30");
     await page.getByLabel("Weeks", { exact: true }).fill("2");
     for (const day of ["Mon", "Thu"]) await expect(page.getByRole("checkbox", { name: day, exact: true })).toBeChecked();
+    await page.getByRole("button", { name: "Preview plan", exact: true }).click();
     await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
     await expect(page).toHaveURL(/\/app\/swim\?plan=[^&]+$/);
     const planURL = page.url();

@@ -78,7 +78,6 @@ import {
 import {
   estimateSessionDurationBreakdown,
 } from "@/lib/sessions/estimate-duration";
-import { ThisWeekRail } from "@/components/plan/ThisWeekRail";
 import { SharedTrainingWeek } from "@/components/program/SharedTrainingWeek";
 import { plannedSessionCta } from "@/lib/today/planned-session-cta";
 import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
@@ -752,22 +751,19 @@ export default async function TodayPage() {
             aria-label="At a glance"
             style={{ display: "grid", gap: 14, minWidth: 0 }}
           >
-            <SharedTrainingWeek today={todayIso} />
-            <div data-testid="today-week-strip">
-              <ThisWeekRail
-                sessions={weekRailSessions}
-                today={todayIso}
-                currentWeekIndex={computedWeekIndex ?? -1}
-                weeks={activeBlock?.weeks ?? 1}
-                logHrefBase="/app/sessions/start"
-                moveAction={movePlannedSession}
-                skipAction={skipPlannedSession}
-                unskipAction={unskipPlannedSession}
-                updateNotesAction={updatePlannedSessionNotes}
-                startSessionAction={startSessionFromPlan}
-                markCardioDoneAction={markExternalCardioComplete}
-              />
-            </div>
+            <SharedTrainingWeek today={todayIso} primaryWeek={{
+              sessions: weekRailSessions,
+              today: todayIso,
+              currentWeekIndex: computedWeekIndex ?? -1,
+              weeks: activeBlock?.weeks ?? 1,
+              logHrefBase: "/app/sessions/start",
+              moveAction: movePlannedSession,
+              skipAction: skipPlannedSession,
+              unskipAction: unskipPlannedSession,
+              updateNotesAction: updatePlannedSessionNotes,
+              startSessionAction: startSessionFromPlan,
+              markCardioDoneAction: markExternalCardioComplete,
+            }} />
 
             <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
           </aside>

@@ -72,6 +72,12 @@ export type SwimPlanPreview = {
   }[];
 };
 
+export type SwimSetupPreview = SwimPlanPreview & {
+  id: string;
+  scheduleRevision: string;
+  overlaps: TrainingCommitment[];
+};
+
 export type SwimWeekEditInput = {
   planId: string;
   revision: number;

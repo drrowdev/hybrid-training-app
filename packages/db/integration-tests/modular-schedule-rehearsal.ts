@@ -37,9 +37,9 @@ export async function rehearseModularSchedule(
       AND p.proname IN ('swim_create_plan','swim_start_workout','swim_set_plan_status','swim_skip_workout',
         'swim_update_plan','swim_resume_plan','swim_complete_workout','swim_edit_result',
         'complete_training_session_with_transition','replace_hyrox_session_actuals',
-        'insert_deload_week','insert_set_logs_with_bw_progress') ORDER BY p.oid`;
+        'insert_deload_week','remove_deload_week','insert_set_logs_with_bw_progress') ORDER BY p.oid`;
   const baseline = await inventory();
-  assert.equal(baseline.length, 12);
+  assert.equal(baseline.length, 13);
   stage("modular-unused-down-up-and-permissions");
   await database.begin((tx) => tx.unsafe(up));
   assert.deepEqual(await inventory(), baseline);
@@ -308,6 +308,75 @@ export async function rehearseModularSchedule(
     assert.equal(retained!.deleted_at, null);
     assert.deepEqual(retained!.prescription, savedSession!.prescription);
     stages.push("modular-DC-K4-atomic-start-history-skip-undo-and-DC-SW7-independent-end-trash-restore");
+
+    stage("modular-reviewed-recovery-calendar");
+    await commit(a, "swim-status", { p_plan_id: independent.plan.id, p_expected_revision: independent.plan.revision, p_status: "finished" },
+      (await snapshot(a)).revision);
+    const recoveryBlock = await commit<Created>(a, "primary-create", {
+      ...primary, p_planned_sessions: [primary.p_planned_sessions[0], { ...primary.p_planned_sessions[0], week_index: 1 }],
+    }, (await snapshot(a)).revision, randomUUID(), true);
+    const [recoveryDates] = await database<{ first: string; second: string; end: string }[]>`
+      SELECT to_char(current_date+7,'YYYY-MM-DD') AS first, to_char(current_date+14,'YYYY-MM-DD') AS second,
+        to_char(current_date+21,'YYYY-MM-DD') AS end`;
+    const recoverySwim = await commit<Swim>(a, "swim-create", {
+      ...swimArgs, p_ends_on: recoveryDates!.end,
+      p_workouts: [recoveryDates!.first, recoveryDates!.second].map((date) => ({ ...swimArgs.p_workouts[0], scheduled_date: date })),
+    }, (await snapshot(a)).revision, randomUUID(), true);
+    const insertion = { blockId: recoveryBlock.block_id, afterWeek: 0,
+      sessions: [{ day_index: (calendar.weekday + 1) % 7, title: "Synthetic reviewed recovery", prescription }] };
+    const beforeInsert = await snapshot(a);
+    const rejectedInsert = randomUUID();
+    await denied(() => commit(a, "primary-insert-deload", insertion, beforeInsert.revision, rejectedInsert), "22023");
+    assert.equal((await snapshot(a)).revision, beforeInsert.revision);
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.engine_override_events WHERE id=${rejectedInsert}::uuid`)[0]!.n, 0);
+    await denied(async () => commit(b, "primary-insert-deload", { ...insertion, p_user_id: a }, (await snapshot(b)).revision), "P0001");
+    const insertId = randomUUID();
+    const inserted = await commit(a, "primary-insert-deload", insertion, beforeInsert.revision, insertId, true);
+    assert.deepEqual(inserted, { deloadWeekIndex: 1, sessions: 1 });
+    assert.deepEqual(await commit(a, "primary-insert-deload", insertion, beforeInsert.revision, insertId, true), inserted);
+    await denied(() => commit(a, "primary-insert-deload", insertion, beforeInsert.revision, randomUUID(), true), "40001");
+    await denied(() => commit(a, "primary-insert-deload", { ...insertion, afterWeek: 1 }, beforeInsert.revision, insertId, true), "22023");
+    const beforeRemove = await snapshot(a), removal = { blockId: recoveryBlock.block_id, weekIndex: 1 };
+    await denied(() => commit(a, "primary-remove-deload", removal, beforeRemove.revision), "22023");
+    assert.equal((await snapshot(a)).revision, beforeRemove.revision);
+    await denied(async () => commit(b, "primary-remove-deload", { ...removal, p_user_id: a }, (await snapshot(b)).revision), "P0001");
+    const removeId = randomUUID();
+    const removed = await commit(a, "primary-remove-deload", removal, beforeRemove.revision, removeId, true);
+    assert.deepEqual(removed, { blockId: recoveryBlock.block_id });
+    assert.deepEqual(await commit(a, "primary-remove-deload", removal, beforeRemove.revision, removeId, true), removed);
+    assert.deepEqual((await snapshot(a)).entries, beforeInsert.entries);
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.engine_override_events WHERE id IN (${insertId}::uuid,${removeId}::uuid)`)[0]!.n, 2);
+    assert.equal((await database`SELECT weeks FROM public.training_blocks WHERE id=${recoveryBlock.block_id}::uuid`)[0]!.weeks, 2);
+    stages.push("modular-DC-K4-recovery-insert-remove-overlap-replay-ownership-and-rollback");
+
+    await commit(a, "primary-insert-deload", insertion, (await snapshot(a)).revision, randomUUID(), true);
+    const [recoveryRow] = await database`SELECT id FROM public.planned_sessions
+      WHERE block_id=${recoveryBlock.block_id}::uuid AND week_index=1 AND role='deload'`;
+    assert.ok(recoveryRow);
+    const startLocked = barrier(), releaseStart = barrier();
+    const startRecovery = asUser(a, async (tx) => {
+      await snapshotIn(tx);
+      startLocked.release();
+      await releaseStart.promise;
+      return (await tx<{ id: string }[]>`SELECT public.start_planned_session_atomically(${recoveryRow.id}::uuid,now()) AS id`)[0]!.id;
+    });
+    await startLocked.promise;
+    const removeAfterStart = denied(() => asUser(a, async (tx) => {
+      await tx`SELECT set_config('application_name','modular-remove-history-waiter',true)`;
+      return tx`SELECT public.remove_deload_week(${recoveryBlock.block_id}::uuid,${a}::uuid,1)`;
+    }), "P0001");
+    try { await waitForSharedLock("modular-remove-history-waiter"); }
+    finally { releaseStart.release(); }
+    const [recoverySession] = await Promise.all([startRecovery, removeAfterStart]);
+    assert.equal((await database`SELECT completed_session_id FROM public.planned_sessions WHERE id=${recoveryRow.id}::uuid`)[0]!.completed_session_id, recoverySession);
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.sessions WHERE id=${recoverySession}::uuid`)[0]!.n, 1);
+    assert.equal((await database`SELECT weeks FROM public.training_blocks WHERE id=${recoveryBlock.block_id}::uuid`)[0]!.weeks, 3);
+    await denied(async () => commit(a, "primary-remove-deload", removal, (await snapshot(a)).revision, randomUUID(), true), "P0001");
+    assert.deepEqual((await snapshot(a)).entries.filter((entry) => entry.programId === recoverySwim.plan.id),
+      beforeInsert.entries.filter((entry) => entry.programId === recoverySwim.plan.id));
+    await denied(revert, "P0001");
+    assert.deepEqual(await inventory(), baseline);
+    stages.push("modular-legacy-recovery-removal-waits-before-new-history-check-and-retains-history");
 
     stage("modular-template-graph-maxes-rehab-and-recovery");
     const previousTemplate = await commit<Created>(b, "primary-create", primary, (await snapshot(b)).revision);

@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { todayYmd, ymdToUtc, daysBetweenYmd } from "@/lib/dates";
+import { todayYmd, ymdToUtc, daysBetweenYmd, ymdInTimezone } from "@/lib/dates";
 import { getUserTimezone, dayDate } from "./queries";
-import { commitUnreviewedScheduleChange, commitTrainingSchedule, loadTrainingSchedule, scheduleRequestId, scheduleReviewSchema, isMissingScheduleFunction } from "@/lib/schedule/storage";
-import { trainingScheduleAdvice, type TrainingCommitment } from "@hta/domain";
+import { commitUnreviewedScheduleChange, commitTrainingSchedule, loadTrainingSchedule, scheduleRequestId, scheduleReviewSchema, isMissingScheduleFunction, type ScheduleReview, type SchedulePreview } from "@/lib/schedule/storage";
+import { trainingScheduleAdvice } from "@hta/domain";
 
 export type CreateBlockResult =
   | { ok: true }
@@ -73,6 +73,7 @@ export async function deleteBlock(
 /** Restore a soft-deleted block — flips `deleted_at` back to NULL. */
 export async function restoreBlock(
   id: string,
+  review?: ScheduleReview,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!id) return { ok: false, error: "Missing block id." };
   const supabase = await createClient();
@@ -81,7 +82,9 @@ export async function restoreBlock(
   } = await getAuthUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
-  const { error } = await commitUnreviewedScheduleChange(supabase, "primary-restore", { id });
+  const { error } = review
+    ? await commitTrainingSchedule(supabase, "primary-restore", { id }, scheduleReviewSchema.parse(review), { id })
+    : await commitUnreviewedScheduleChange(supabase, "primary-restore", { id });
   if (error) return { ok: false, error: error.message };
 
   revalidatePath("/app");
@@ -178,7 +181,54 @@ const moveSchema = z.object({
   dayIndex: z.number().int().min(0).max(6),
 });
 
-export type PlannedMovePreview = { revision: string; requestId: string; overlaps: TrainingCommitment[]; dates: string[] };
+export type PlannedMovePreview = SchedulePreview;
+
+const restoreInputSchema = z.object({ kind: z.enum(["block", "workout"]), id: z.string().uuid() }).strict();
+
+export async function previewTrainingRestore(input: z.infer<typeof restoreInputSchema>): Promise<PlannedMovePreview> {
+  const parsed = restoreInputSchema.parse(input);
+  const supabase = await createClient();
+  const { data: { user } } = await getAuthUser();
+  if (!user) throw new Error("Not signed in.");
+  const snapshot = await loadTrainingSchedule(supabase);
+  const selected = parsed.kind === "workout" ? await supabase.from("planned_sessions")
+    .select("block_id,completed_session_id").eq("id", parsed.id).maybeSingle() : null;
+  if (selected?.error) throw new Error("Could not read the workout. Try again.");
+  if (parsed.kind === "workout" && !selected?.data) throw new Error("Workout not found.");
+  if (selected?.data?.completed_session_id) throw new Error("Started workouts cannot be restored.");
+  const blockId = parsed.kind === "block" ? parsed.id : selected!.data!.block_id;
+  const block = await supabase.from("training_blocks").select("id,started_on,status,deleted_at").eq("id", blockId).maybeSingle();
+  if (block.error) throw new Error("Could not read the program. Try again.");
+  if (!block.data) throw new Error("Program not found.");
+  if (parsed.kind === "workout" && (block.data.status !== "active" || block.data.deleted_at)) {
+    throw new Error("Only workouts in an active program can be restored.");
+  }
+  const planned = await supabase.from("planned_sessions")
+    .select("id,week_index,day_index,role,completed_session_id,skipped_at").eq("block_id", blockId);
+  if (planned.error || !planned.data) throw new Error("Could not read the program's workouts. Try again.");
+  const linkedIds = new Set<string>(planned.data.flatMap((row) => row.completed_session_id ? [row.completed_session_id] : []));
+  const existingDates = new Set(snapshot.entries.filter((entry) =>
+    entry.state !== "rest" && entry.state !== "paused" &&
+    ((entry.source === "primary" && entry.programId === blockId) || (entry.source === "session" && linkedIds.has(entry.id))),
+  ).map((entry) => entry.date));
+  const candidates = block.data.status === "active" ? planned.data.filter((row) =>
+    (parsed.kind === "workout" ? row.id === parsed.id : !row.skipped_at) &&
+    (row.role !== "rest" || row.completed_session_id),
+  ) : [];
+  const completedIds = candidates.flatMap((row) => row.completed_session_id ? [row.completed_session_id] : []);
+  const performedDates = new Map<string, string>();
+  if (completedIds.length) {
+    const sessions = await supabase.from("sessions").select("id,performed_at").in("id", completedIds);
+    if (sessions.error || !sessions.data) throw new Error("Could not read the logged workout dates. Try again.");
+    const timezone = await getUserTimezone(user.id);
+    for (const session of sessions.data) performedDates.set(session.id, ymdInTimezone(new Date(session.performed_at), timezone));
+  }
+  const dates = [...new Set(candidates.map((row) =>
+    performedDates.get(row.completed_session_id ?? "") ?? dayDate(block.data!.started_on, row.week_index, row.day_index),
+  ))].filter((date) => !existingDates.has(date)).sort();
+  const advice = trainingScheduleAdvice(snapshot.entries, dates, { source: "primary", programId: blockId });
+  return { revision: snapshot.revision, requestId: scheduleRequestId({ parsed, revision: snapshot.revision }), dates, overlaps: advice.overlaps };
+}
 
 export async function previewPlannedMove(input: z.infer<typeof moveSchema>): Promise<PlannedMovePreview> {
   const parsed = moveSchema.parse(input);
@@ -227,7 +277,10 @@ export async function unskipPlannedSession(formData: FormData): Promise<void> {
   const parsed = unskipSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid workout.");
   const supabase = await createClient();
-  const { error } = await commitUnreviewedScheduleChange(supabase, "primary-unskip", { id: parsed.data.id });
+  const review = formData.has("scheduleReview") ? scheduleReviewSchema.parse(JSON.parse(String(formData.get("scheduleReview")))) : null;
+  const { error } = review
+    ? await commitTrainingSchedule(supabase, "primary-unskip", parsed.data, review, parsed.data)
+    : await commitUnreviewedScheduleChange(supabase, "primary-unskip", parsed.data);
   if (error) throw new Error(error.message);
   revalidatePath("/app");
   revalidatePath("/app/plan");

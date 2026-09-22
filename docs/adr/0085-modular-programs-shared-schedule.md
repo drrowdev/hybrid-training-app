@@ -50,9 +50,9 @@ common lock before their swimming-specific and row locks. The migration
 requires their exact normalized main0147 body fingerprints and preserves their
 OIDs, owner, security mode, search path and ACL. It does not widen access to
 `swim_request_user_id()`.
-Shared completion, mixed-station actuals, recovery-week insertion and batched
+Shared completion, mixed-station actuals, recovery-week insertion/removal and batched
 bodyweight logging also acquire this lock before their row/bodyweight locks.
-Their exact main0148/main0144/main0136 bodies and unchanged attributes are
+Their exact main0148/main0144/main0136/main0106 bodies and unchanged attributes are
 verified on installation and unused rollback.
 
 Preview captures a revision before dependent reads. Save checks that revision
@@ -67,6 +67,18 @@ Request UUID, operation, semantic input hash, accepted overlaps and result are
 stored in existing `engine_override_events.context`. Exact retries return the
 receipt before stale-preview checks. Reusing an ID for different input fails.
 No cross-program lifecycle cascade is introduced.
+
+Generated swimming setup, Trash recovery, skipped-workout restoration and
+recovery-week insertion/removal use this same review and receipt boundary.
+Recovery reviews include every shifted week, retain actual history dates, and
+exclude already-occupied primary dates from renewed overlap consent. The old
+direct recovery-removal RPC takes the common lock before checking linked history,
+not only when its first DELETE reaches a statement trigger.
+
+Home presents one shared week. Primary previews retain the existing drawer,
+actions and hash links; the legacy rail is visible only while the new snapshot
+RPC is absent. Circuit logging waits for durable station acceptance before
+exposing the next round; solo optimistic logging remains unchanged.
 
 ## Rollout and refusal
 
@@ -122,10 +134,10 @@ unreviewed callers; the new review UI cannot silently fall back.
 
 ## Remaining release gates
 
-The first source publication is a draft, not a release claim. Existing template
-wizard shared review/replay integration, remaining schedule-writer coverage,
-the six-case authenticated browser journey, real SQL execution and release
-environment qualification must be completed before merge/deploy approval.
+The source publication is a draft, not a release claim. The latest integrated
+schedule writers require exact-source real SQL and native qualification. The
+six-case authenticated browser journey and release environment qualification
+must be completed before merge/deploy approval.
 Imported swimming outcomes and provider/watch integrations must not be implied
 by the authored builder or by matching an imported recording.
 

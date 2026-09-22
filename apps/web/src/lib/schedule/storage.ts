@@ -19,6 +19,12 @@ export interface ScheduleReview {
   acceptOverlap: boolean;
   replaceBlockId?: string;
 }
+export interface SchedulePreview {
+  revision: string;
+  requestId: string;
+  overlaps: TrainingCommitment[];
+  dates: string[];
+}
 export const scheduleReviewSchema = z.object({
   revision: z.string().regex(/^[a-f0-9]{32}$/),
   requestId: z.string().uuid(),

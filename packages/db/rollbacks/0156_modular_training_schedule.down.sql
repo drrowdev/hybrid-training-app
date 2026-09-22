@@ -58,6 +58,7 @@ BEGIN
     ('public.complete_training_session_with_transition(uuid,text,uuid)', '444479bb1e70d5e1a3c1f818e070cd6d', 'public.swim_request_user_id()'),
     ('public.replace_hyrox_session_actuals(uuid,jsonb,jsonb,integer,numeric,text)', 'fea474bf2569b8ec097665b26f54501d', 'auth.uid()'),
     ('public.insert_deload_week(uuid,uuid,integer,jsonb)', 'e71f9b8d5ebdd344ba0d0cf73a993127', 'auth.uid()'),
+    ('public.remove_deload_week(uuid,uuid,integer)', '463b95361af4ef3648fa7720e4efc2ba', 'auth.uid()'),
     ('public.insert_set_logs_with_bw_progress(jsonb)', 'b51bcc889062c892efacb2b43fa557e4', 'auth.uid()')
   ) AS baseline(signature, fingerprint, identity_expression) LOOP
     routine := to_regprocedure(entry.signature);

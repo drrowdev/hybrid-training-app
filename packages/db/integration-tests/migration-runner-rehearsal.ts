@@ -11,6 +11,7 @@ import postgres from "postgres";
 import { z } from "zod";
 import { migrateCanonical } from "../scripts/migration-runner.ts";
 import { projectMigrationError } from "../scripts/migrate-evidence.ts";
+import { rehearseSwimOutcomeCompatibility } from "./swim-outcome-compatibility-rehearsal.ts";
 
 const execute = promisify(execFile);
 const databases = ["swim_migration_runner_fresh", "swim_migration_runner_incremental"] as const;
@@ -154,6 +155,8 @@ export async function rehearseMigrationRunner(
         await normalCommand(url);
         assert.deepEqual(await ledger(client), rows);
         stages.push("migration-runner-normal-full-157-and-replay");
+        stages.push(...await rehearseSwimOutcomeCompatibility(client, migrations, config, stage));
+        assert.deepEqual(await settings(client), before);
       } else {
         stage("migration-runner-existing-ledger-prefix");
         await client.unsafe("SET ROLE postgres");

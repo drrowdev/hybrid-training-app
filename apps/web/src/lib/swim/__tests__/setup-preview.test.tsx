@@ -37,12 +37,11 @@ function preview() {
     weeks: standaloneWeekRequests("2026-09-07", 3, [1, 4]),
   });
   if (!generated.ok) throw new Error(generated.error.message);
-  return planPreviewPresentation(generated.value);
+  return { ...planPreviewPresentation(generated.value), id: planId, scheduleRevision: "a".repeat(32), overlaps: [] };
 }
 
 type FormHandlers = {
   onSubmit: (event: { preventDefault(): void; currentTarget: undefined; nativeEvent?: { submitter: { getAttribute(name: string): string | null } | null } }) => void;
-  onChange: () => void;
 };
 function form() {
   harness.cursor = 0;
@@ -60,6 +59,11 @@ function submit(mode: "preview" | "create") {
 function elements(node: React.ReactNode): React.ReactElement<Record<string, unknown>>[] {
   if (!React.isValidElement<{ children?: React.ReactNode }>(node)) return [];
   return [node, ...React.Children.toArray(node.props.children).flatMap(elements)];
+}
+function editSetup() {
+  const change = elements(form()).find((element) => element.type === "fieldset" && element.props.onChange)?.props.onChange;
+  if (typeof change !== "function") throw new Error("Missing setup edit handler");
+  change();
 }
 
 beforeEach(() => {
@@ -95,7 +99,7 @@ describe("DC-SW3 read-only setup review", () => {
     const changePool = elements(form()).find((element) => element.props.name === "pool")!.props.onChange;
     if (typeof changePool !== "function") throw new Error("Missing pool control");
     changePool({ target: { value: "custom" } });
-    form().props.onChange();
+    editSetup();
     expect(html()).not.toContain('aria-labelledby="swim-plan-preview-title"');
     await submit("preview");
     expect(html()).toContain('aria-labelledby="swim-plan-preview-title"');
@@ -109,7 +113,7 @@ describe("DC-SW3 read-only setup review", () => {
     let reject!: (error: Error) => void;
     vi.mocked(previewSwimPlan).mockReturnValueOnce(new Promise((done, failed) => { resolve = done; reject = failed; }));
     const pending = submit("preview");
-    form().props.onChange();
+    editSetup();
     if (outcome === "rejected") reject(new Error("Unavailable"));
     else resolve(outcome === "success" ? { ok: true, preview: preview() } : { error: "Try a different setup." });
     await pending;
@@ -117,25 +121,39 @@ describe("DC-SW3 read-only setup review", () => {
     expect(html()).not.toContain('role="alert"');
     expect(createSwimPlan).not.toHaveBeenCalled();
   });
-  it("does not let an older preview replace a more recent request", async () => {
+  it("does not send a duplicate preview while one is pending", async () => {
     let resolve!: (reply: Awaited<ReturnType<typeof previewSwimPlan>>) => void;
     vi.mocked(previewSwimPlan).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
     const older = submit("preview");
-    await submit("preview");
-    resolve({ error: "Older request failed." });
+    void submit("preview");
+    expect(previewSwimPlan).toHaveBeenCalledOnce();
+    resolve({ ok: true, preview: preview() });
     await older;
     expect(html()).toContain('aria-labelledby="swim-plan-preview-title"');
     expect(html()).not.toContain('role="alert"');
   });
-  it("retains direct creation and creation after preview as the only save actions", async () => {
+  it("requires a preview before creation and prevents another save after acceptance", async () => {
     await submit("create");
-    expect(createSwimPlan).toHaveBeenCalledOnce();
+    expect(createSwimPlan).not.toHaveBeenCalled();
     expect(previewSwimPlan).not.toHaveBeenCalled();
-    expect(harness.push).toHaveBeenCalledWith(`/app/swim?plan=${planId}`);
     await submit("preview");
-    expect(createSwimPlan).toHaveBeenCalledOnce();
     await submit("create");
-    expect(createSwimPlan).toHaveBeenCalledTimes(2);
+    expect(createSwimPlan).toHaveBeenCalledOnce();
+    expect(harness.push).toHaveBeenCalledWith(`/app/swim?plan=${planId}`);
+    await submit("create");
+    expect(createSwimPlan).toHaveBeenCalledOnce();
+  });
+  it("retains the reviewed plan and request identity after a failed save", async () => {
+    await submit("preview");
+    vi.mocked(createSwimPlan).mockResolvedValueOnce({ error: "Could not save." });
+    await submit("create");
+    expect(html()).toContain('role="alert"');
+    expect(html()).toContain('aria-labelledby="swim-plan-preview-title"');
+    await submit("create");
+    const requests = vi.mocked(createSwimPlan).mock.calls.map(([data]) => data.get("requestId"));
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toMatch(/^[a-f0-9-]{36}$/);
+    expect(requests[0]).toBe(requests[1]);
   });
   it("surfaces validation, learning guidance and transport failures without a success preview", async () => {
     vi.mocked(previewSwimPlan).mockResolvedValueOnce({ error: "Adjust the schedule.", options: ["Choose another day."] });
@@ -151,13 +169,13 @@ describe("DC-SW3 read-only setup review", () => {
     expect(html()).toContain('role="alert"');
     expect(createSwimPlan).not.toHaveBeenCalled();
   });
-  it("disables both submit controls while preparing a preview", async () => {
+  it("disables setup and preview controls while preparing, without offering an unreviewed save", async () => {
     const pending = submit("preview");
     harness.pending = true;
     const buttons = elements(form()).filter((element) => element.type === "button");
-    expect(buttons).toHaveLength(2);
+    expect(buttons).toHaveLength(1);
     expect(buttons.every((button) => button.props.disabled === true)).toBe(true);
-    expect(buttons.find((button) => button.props.value !== "preview")!.props.children).toBe("Create swim plan");
+    expect(elements(form()).find((element) => element.type === "fieldset" && element.props.onChange)!.props.disabled).toBe(true);
     await pending;
   });
 });

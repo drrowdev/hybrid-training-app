@@ -302,6 +302,9 @@ export function MovementFocusView({
   void priorBest;
   const totalSlots = group.itemIndices.length;
   const groupKey = movementGroupKey(group);
+  const [pendingCircuitSlots, setPendingCircuitSlots] = useState<ReadonlyMap<string, number>>(new Map());
+  const pendingCircuitSlot = pendingCircuitSlots.get(groupKey);
+  const submitting = pendingCircuitSlot != null;
   const autoCursor = useMemo(
     () => autoCursorForGroup(group, loggedItemIndices),
     [group, loggedItemIndices],
@@ -355,7 +358,7 @@ export function MovementFocusView({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- isSlotLogged is derived from props read here
   }, [groupKey, initialCursor]);
   const manualCursor = pinnedCursorForGroup(manualPin, groupKey);
-  const cursor = effectiveCursor(autoCursor, manualCursor, totalSlots);
+  const cursor = pendingCircuitSlot ?? effectiveCursor(autoCursor, manualCursor, totalSlots);
 
   const activeItem = group.items[cursor];
   const activeItemIndex = group.itemIndices[cursor]!;
@@ -552,10 +555,6 @@ export function MovementFocusView({
     initialLoggedSet?.rpe ?? null,
   );
   const [error, setError] = useState<string | null>(null);
-  // Logging is now optimistic (the parent overlays the set instantly), so there
-  // is no blocking "submitting" window — the CTA never shows a "Logging…" spin.
-  // Kept as a const-false so the existing label / disabled reads still compile.
-  const submitting = false;
   // Re-entrancy guard: a fast double-tap could fire two writes for the same
   // slot before the optimistic overlay re-renders and advances the cursor.
   // Track which prescription indices we've already fired this session so a
@@ -744,8 +743,9 @@ export function MovementFocusView({
 
   // Snap weight/reps to the target whenever the active slot changes.
   // Also reset RPE + close the skip menu so each set starts clean.
+  // Pending circuit coverage must not reset the draft or clear a rejected save.
   const cursorKey = `${group.groupKey ?? group.movementId}:${cursor}:${
-    isActiveLogged ? "done" : "open"
+    isActiveLogged && !submitting ? "done" : "open"
   }`;
   const lastCursorKey = useRef(cursorKey);
   useEffect(() => {
@@ -794,7 +794,7 @@ export function MovementFocusView({
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!activeItem) return;
+    if (!activeItem || submitting) return;
     const updatingExisting =
       isActiveLogged && loggedSetId != null && updateStrengthSet != null;
     if (!updatingExisting && firedIndicesRef.current.has(activeItemIndex)) return;
@@ -994,6 +994,12 @@ export function MovementFocusView({
     // unaffected), it just doesn't yank the lifter back to wherever this
     // stale write thinks they should go next.
     const submittedGroupKey = groupKey;
+    // Circuit rotation waits for durable acceptance; don't expose the next
+    // round of this station while its optimistic overlay is already visible.
+    const awaitsCircuitRotation = activeItem.circuit != null && onSaved != null;
+    if (awaitsCircuitRotation) {
+      setPendingCircuitSlots((previous) => new Map(previous).set(groupKey, cursor));
+    }
     void addStrengthSet(fd)
       .then((result) => {
         if (result?.error) {
@@ -1020,6 +1026,15 @@ export function MovementFocusView({
         firedIndicesRef.current.delete(activeItemIndex);
         setError("Couldn't save that set — check your connection and retry.");
         setUndo(null);
+      })
+      .finally(() => {
+        if (awaitsCircuitRotation) {
+          setPendingCircuitSlots((previous) => {
+            const next = new Map(previous);
+            next.delete(submittedGroupKey);
+            return next;
+          });
+        }
       });
   };
 

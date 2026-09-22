@@ -1,4 +1,6 @@
 "use client";
+
+import { ScheduleRestoreButton } from "@/components/program/ScheduleRestoreButton";
 import { previewPlannedMove, type PlannedMovePreview } from "@/lib/planner/actions";
 
 /**
@@ -2788,17 +2790,13 @@ export function SessionDrawer({
                   )
                 )}
                 {session.skipped ? (
-                  <form action={unskipAction}>
-                    <input type="hidden" name="id" value={session.id} />
-                    <button
-                      type="submit"
-                      className="cp-btn ghost"
-                      data-testid="plan-drawer-unskip"
-                      style={{ width: "100%" }}
-                    >
-                      Un-skip
-                    </button>
-                  </form>
+                  <ScheduleRestoreButton key={session.id} kind="workout" id={session.id} label="Un-skip" testId="plan-drawer-unskip"
+                    onRestore={async (review) => {
+                      const form = new FormData();
+                      form.set("id", session.id); form.set("scheduleReview", JSON.stringify(review));
+                      await unskipAction(form);
+                      (onMutated ?? router.refresh)();
+                    }} />
                 ) : (
                   <form action={skipAction}>
                     <input type="hidden" name="id" value={session.id} />

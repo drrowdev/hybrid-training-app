@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { swimFixture, userId, planId, sessionId, receiptId } from "./fixtures";
 import { completeSwimWorkoutResult, createSwimPlan, previewSwimPlan, startSwimWorkout, editSwimResult, decideSwimProposal, previewSwimResume, resumeSwimPlan, proposeSwimBenchmark, decideSwimBenchmark, skipSwimWorkout, previewSwimWeekEdit, applySwimWeekEdit, previewSwimDateEdit, applySwimDateEdit } from "../actions";
 import { revalidatePath } from "next/cache";
-import { SWIM_ASSESSMENT_VERSION, swimScheduleAdvice, type SwimWorkout } from "@hta/domain";
+import { SWIM_ASSESSMENT_VERSION, type SwimWorkout, type TrainingCommitment } from "@hta/domain";
 import { loadSwimStrengthContext } from "../strength-schedule";
-import { loadTrainingSchedule } from "@/lib/schedule/storage";
+import { loadTrainingSchedule, scheduleReplay } from "@/lib/schedule/storage";
 import * as queries from "../queries";
 import * as storage from "../storage";
 import type { SwimDateEditInput, SwimHubView, SwimWeekEditInput } from "../view-types";
@@ -63,7 +63,7 @@ function setupForm() {
   const form = new FormData();
   for (const [key, value] of Object.entries({
     goal: "base", experience: "beginner", pool: "25yd", comfortableLengths: "4", timeBudgetMinutes: "30",
-    weeks: "3", startDate: "2026-09-07", weekdays: "1", strokes: "freestyle",
+    weeks: "3", startDate: "2026-09-07", weekdays: "1", strokes: "freestyle", requestId: receiptId,
   })) form.set(key, value);
   return form;
 }
@@ -129,6 +129,7 @@ function mockSavedEdit() {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(loadTrainingSchedule).mockResolvedValue({ revision: "a".repeat(32), entries: [] });
+  vi.mocked(scheduleReplay).mockReset().mockResolvedValue(null);
   vi.spyOn(poolEditing, "swimPoolEditingAvailable").mockResolvedValue(false);
   vi.mocked(loadSwimStrengthContext).mockResolvedValue({ blockId: null, sessions: [] });
   vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
@@ -594,6 +595,7 @@ describe("ADR0079 server actions", () => {
     expect(revalidatePath).not.toHaveBeenCalled();
     expect(assertSwimSafety).toHaveBeenCalledOnce();
 
+    form.set("previewId", response.preview!.id);
     expect(await createSwimPlan(form)).toEqual({ ok: true, planId });
     const saved = vi.mocked(storage.createSwimPlan).mock.calls[0]![1];
     const previewWorkouts = response.preview!.weeks.flatMap((week) => week.workouts);
@@ -641,7 +643,9 @@ describe("ADR0079 server actions", () => {
   });
   it("DC-SW9 rechecks current safety at save even after a successful preview", async () => {
     const form = setupForm();
-    expect(await previewSwimPlan(form)).toHaveProperty("preview");
+    const response = await previewSwimPlan(form);
+    expect(response).toHaveProperty("preview");
+    form.set("previewId", response.preview!.id);
     vi.mocked(assertSwimSafety).mockRejectedValueOnce(new Error("Review an active limitation."));
     expect(await createSwimPlan(form)).toHaveProperty("error");
     expect(assertSwimSafety).toHaveBeenCalledTimes(2);
@@ -656,15 +660,21 @@ describe("ADR0079 server actions", () => {
     expect(assertSwimSafety).not.toHaveBeenCalled();
     expect(storage.createSwimPlan).not.toHaveBeenCalled();
   });
-  it("DC-K4 returns current strength context for preview and rechecks it when saving", async () => {
+  it("DC-K4 reviews all scheduled activity and rejects a stale calendar before saving", async () => {
     const form = setupForm();
-    expect(await previewSwimPlan(form)).toHaveProperty("preview");
-    const context = { blockId: "primary", sessions: [{ id: "strength", date: "2026-09-07" }] };
-    vi.mocked(loadSwimStrengthContext).mockResolvedValue(context);
-    expect(await previewSwimPlan(form)).toMatchObject({ errorCode: "validation", strengthContext: context });
-    expect(await createSwimPlan(form)).toMatchObject({ errorCode: "validation", strengthContext: context });
-    form.set("strengthOverlap", swimScheduleAdvice(context, "2026-09-07", 3, [1]).confirmationKey);
-    expect(await previewSwimPlan(form)).toHaveProperty("preview");
+    const first = await previewSwimPlan(form);
+    form.set("previewId", first.preview!.id);
+    const entries: TrainingCommitment[] = [
+      { id: "rehab", source: "primary", programId: "hybrid", date: "2026-09-07", title: "Rehab", state: "scheduled" },
+      { id: "run", source: "session", programId: null, date: "2026-09-14", title: "Running", state: "started" },
+      { id: "rest", source: "primary", programId: "hybrid", date: "2026-09-21", title: "Rest", state: "rest" },
+      { id: "later", source: "swim", programId: "swim", date: "2026-10-05", title: "Swimming", state: "scheduled" },
+    ];
+    vi.mocked(loadTrainingSchedule).mockResolvedValue({ revision: "b".repeat(32), entries });
+    const current = await previewSwimPlan(form);
+    expect(current.preview!.overlaps.map((entry) => entry.id)).toEqual(["rehab", "run"]);
+    expect(current.preview!.id).not.toBe(first.preview!.id);
+    expect(await createSwimPlan(form)).toMatchObject({ errorCode: "validation" });
     expect(storage.createSwimPlan).not.toHaveBeenCalled();
   });
   it.each([createSwimPlan, previewSwimPlan])("DC-SW2/DC-SW3 retains validation and learning guidance in %s", async (action) => {
@@ -680,29 +690,42 @@ describe("ADR0079 server actions", () => {
     expect(await action(form)).toHaveProperty("guidance");
     expect(storage.createSwimPlan).not.toHaveBeenCalled();
   });
-  it("DC-K4 rechecks overlap on submit, rejects a tampered or stale acknowledgement, and audits current context", async () => {
-    const context = { blockId: "primary", sessions: [{ id: "strength", date: "2026-09-07" }] };
-    vi.mocked(loadSwimStrengthContext).mockResolvedValue(context);
+  it("DC-K4 requires explicit reviewed overlap and audits the shared calendar context", async () => {
+    const entries: TrainingCommitment[] = [
+      { id: "run", source: "primary", programId: "hybrid", date: "2026-09-07", title: "Running", state: "scheduled" },
+    ];
+    vi.mocked(loadTrainingSchedule).mockResolvedValue({ revision: "a".repeat(32), entries });
     const form = setupForm();
     form.set("strengthOverlap", "on");
-    expect(await createSwimPlan(form)).toMatchObject({ errorCode: "validation", strengthContext: context });
+    expect(await createSwimPlan(form)).toMatchObject({ errorCode: "validation" });
     expect(storage.createSwimPlan).not.toHaveBeenCalled();
-    form.set("strengthOverlap", swimScheduleAdvice(context, "2026-09-07", 3, [1]).confirmationKey);
-    const changed = { ...context, blockId: "replacement" };
-    vi.mocked(loadSwimStrengthContext).mockResolvedValue(changed);
-    expect(await createSwimPlan(form)).toMatchObject({ errorCode: "validation", strengthContext: changed });
+    const preview = await previewSwimPlan(form);
+    form.set("previewId", preview.preview!.id);
+    expect(await createSwimPlan(form)).toMatchObject({ errorCode: "validation" });
     expect(storage.createSwimPlan).not.toHaveBeenCalled();
-    form.set("strengthOverlap", swimScheduleAdvice(changed, "2026-09-07", 3, [1]).confirmationKey);
+    form.set("acceptOverlap", "on");
     expect(await createSwimPlan(form)).toEqual({ ok: true, planId });
     const saved = vi.mocked(storage.createSwimPlan).mock.calls[0]![1];
     expect(saved.state.decisions).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: "schedule", decision: "overridden", inputSnapshot: expect.objectContaining({ strengthContext: changed, weekdays: [1] }) }),
+      expect.objectContaining({ kind: "schedule", decision: "overridden", inputSnapshot: expect.objectContaining({ overlaps: entries, weekdays: [1] }) }),
     ]));
+    expect(saved.scheduleReview).toEqual({ revision: "a".repeat(32), requestId: receiptId, acceptOverlap: true });
     expect(assertSwimSafety).toHaveBeenCalled();
     expect(saved.definition).toMatchObject({ schedule: { weekdays: [1] } });
   });
-  it("DC-K4 fails closed when strength schedule cannot be read", async () => {
-    vi.mocked(loadSwimStrengthContext).mockRejectedValue(new Error("Unavailable"));
+  it("DC-K4 replays an accepted generated setup before rereading a changed schedule", async () => {
+    const form = setupForm();
+    const preview = await previewSwimPlan(form);
+    form.set("previewId", preview.preview!.id);
+    vi.mocked(scheduleReplay).mockResolvedValueOnce({ plan: { id: planId } });
+    vi.mocked(loadTrainingSchedule).mockRejectedValue(new Error("Unavailable"));
+    expect(await createSwimPlan(form)).toEqual({ ok: true, planId });
+    expect(scheduleReplay).toHaveBeenCalledWith(mock.client, receiptId, "swim-create",
+      expect.objectContaining({ previewId: preview.preview!.id }));
+    expect(storage.createSwimPlan).not.toHaveBeenCalled();
+  });
+  it("DC-K4 fails closed when the shared schedule cannot be read", async () => {
+    vi.mocked(loadTrainingSchedule).mockRejectedValue(new Error("Unavailable"));
     expect(await createSwimPlan(setupForm())).toHaveProperty("error");
     expect(storage.createSwimPlan).not.toHaveBeenCalled();
   });
@@ -775,12 +798,15 @@ describe("ADR0079 server actions", () => {
     expect(storage.createSwimPlan).not.toHaveBeenCalled();
   });
   it("generates and saves every issued week only after the current safety check", async () => {
-    expect(await createSwimPlan(setupForm())).toEqual({ ok: true, planId });
+    const form = setupForm();
+    const preview = await previewSwimPlan(form);
+    form.set("previewId", preview.preview!.id);
+    expect(await createSwimPlan(form)).toEqual({ ok: true, planId });
     const input = vi.mocked(storage.createSwimPlan).mock.calls[0]![1];
     expect(input.workouts).toHaveLength(3);
     expect(input.workouts[0]!.definition.original).toEqual(input.workouts[0]!.definition.issued);
     expect(input.state.acceptedCalibration).toBeNull();
-    expect(assertSwimSafety).toHaveBeenCalledOnce();
+    expect(assertSwimSafety).toHaveBeenCalledTimes(2);
     expect(assertSwimSafety).toHaveBeenCalledWith(mock.client, userId, expect.objectContaining({
       movementIds: ["00000000-0000-4000-8000-000000000008"],
     }));

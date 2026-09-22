@@ -2,9 +2,9 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { DEFAULT_SWIM_POOL, MAX_POOL_LENGTHS, MAX_SESSION_BUDGET_MINUTES, SWIM_WEEKDAYS, swimScheduleAdvice, type SwimStrengthContext } from "@hta/domain";
+import { DEFAULT_SWIM_POOL, MAX_POOL_LENGTHS, MAX_SESSION_BUDGET_MINUTES, SWIM_WEEKDAYS, swimScheduleAdvice, type TrainingCommitment } from "@hta/domain";
 import { createSwimPlan, previewSwimPlan } from "@/lib/swim/actions";
-import type { SwimPlanPreview } from "@/lib/swim/view-types";
+import type { SwimSetupPreview } from "@/lib/swim/view-types";
 import { PlanPreview } from "./PlanPreview";
 import styles from "./Swim.module.css";
 
@@ -35,27 +35,38 @@ export function StrokeSelect({ name, defaultValue = "freestyle" }: { name: strin
   </select>;
 }
 
-export function SetupForm({ today, strengthContext: initialContext = { blockId: null, sessions: [] } }: { today: string; strengthContext?: SwimStrengthContext }) {
+export function SetupForm({ today, schedule = [] }: { today: string; schedule?: TrainingCommitment[] }) {
   const router = useRouter();
   const [pool, setPool] = useState(`${DEFAULT_SWIM_POOL.numerator}m`);
   const [error, setError] = useState<string | null>(null);
   const [options, setOptions] = useState<string[]>([]);
   const [guidance, setGuidance] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [strengthContext, setStrengthContext] = useState(initialContext);
   const [startDate, setStartDate] = useState(today);
   const [weeks, setWeeks] = useState(6);
-  const [days, setDays] = useState(() => swimScheduleAdvice(initialContext, today, 6).defaults);
-  const [confirmedContext, setConfirmedContext] = useState<string | null>(null);
-  const [preview, setPreview] = useState<SwimPlanPreview | null>(null);
+  const [days, setDays] = useState(() => swimScheduleAdvice({ blockId: null, sessions: schedule }, today, 6).defaults);
+  const [preview, setPreview] = useState<SwimSetupPreview | null>(null);
+  const [acceptOverlap, setAcceptOverlap] = useState(false);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const request = useRef(0);
+  const requestId = useRef<string | null>(null);
+  const busy = useRef(false);
   const [operation, setOperation] = useState<"preview" | "create" | null>(null);
-  const advice = swimScheduleAdvice(strengthContext, startDate, weeks, days);
+  const end = Date.parse(`${startDate}T00:00:00Z`) + weeks * 7 * 86_400_000;
+  const commitments = schedule.filter((entry) => entry.date >= startDate && Date.parse(`${entry.date}T00:00:00Z`) < end);
 
   function submit(form: FormData, mode: "preview" | "create") {
+    if (busy.current || savedId) return;
+    if (mode === "create") {
+      if (!preview || !requestId.current) { setError("Preview the plan before saving."); return; }
+      form.set("requestId", requestId.current);
+      form.set("previewId", preview.id);
+    }
+    busy.current = true;
     const revision = ++request.current;
     setOperation(mode);
-    setPreview(null);
+    if (mode === "preview") { setPreview(null); setAcceptOverlap(false); }
     setError(null);
     setOptions([]);
     setGuidance(null);
@@ -64,24 +75,22 @@ export function SetupForm({ today, strengthContext: initialContext = { blockId: 
         const result = await (mode === "preview" ? previewSwimPlan(form) : createSwimPlan(form));
         if (mode === "preview" && revision !== request.current) return;
         if (result.error) {
-          if (result.strengthContext) {
-            setStrengthContext(result.strengthContext);
-            setConfirmedContext(null);
-          }
           setError(result.error);
           setOptions(result.options ?? []);
         }
         else if (result.guidance) setGuidance(result.guidance);
-        else if (result.preview) setPreview(result.preview);
+        else if (result.preview) { requestId.current = crypto.randomUUID(); setPreview(result.preview); }
         else if (result.planId) {
-          router.push(`/app/swim?plan=${result.planId}`);
-          router.refresh();
+          setSavedId(result.planId);
+          if (result.warning) setWarning(result.warning);
+          else { router.push(`/app/swim?plan=${result.planId}`); router.refresh(); }
         }
       } catch {
         if (mode !== "preview" || revision === request.current) {
           setError(mode === "preview" ? "Could not preview your swim plan. Try again." : "Could not save your swim plan. Try again.");
         }
       } finally {
+        busy.current = false;
         if (revision === request.current) setOperation(null);
       }
     });
@@ -92,7 +101,9 @@ export function SetupForm({ today, strengthContext: initialContext = { blockId: 
       event.preventDefault();
       const submitter = (event.nativeEvent as SubmitEvent | undefined)?.submitter;
       submit(new FormData(event.currentTarget), submitter?.getAttribute("value") === "preview" ? "preview" : "create");
-    }} onChange={() => { request.current++; setPreview(null); }} className={styles.form}>
+    }} className={styles.form}>
+      <fieldset className={styles.formFields} disabled={pending || !!savedId}
+        onChange={() => { request.current++; setPreview(null); requestId.current = null; setAcceptOverlap(false); setError(null); }}>
       <section className={styles.section}>
         <h2>Training</h2>
         <label className={styles.field}>Goal
@@ -136,22 +147,25 @@ export function SetupForm({ today, strengthContext: initialContext = { blockId: 
       <section className={styles.section}>
         <h2>Schedule</h2>
         <fieldset className={styles.choices}><legend>Swim days</legend>
-          {SWIM_WEEKDAYS.map(({ value, label }) => (
+          {SWIM_WEEKDAYS.map(({ value, label }) => {
+            const dates = commitments.filter((entry) => new Date(`${entry.date}T00:00:00Z`).getUTCDay() === value);
+            const work = dates.filter((entry) => entry.state !== "rest" && entry.state !== "paused");
+            return (
             <label key={value} className={styles.choice}><input type="checkbox" name="weekdays" value={value} checked={days.includes(value)}
-              onChange={(event) => { setDays(event.target.checked ? [...days, value] : days.filter((day) => day !== value)); setConfirmedContext(null); }} />{label.slice(0, 3)}</label>
-          ))}
+              onChange={(event) => setDays(event.target.checked ? [...days, value] : days.filter((day) => day !== value))} />
+              <span>{label.slice(0, 3)}{work.length ? <small className={styles.muted}> · {work.length} scheduled</small>
+                : dates.some((entry) => entry.state === "rest") ? <small className={styles.muted}> · Planned rest</small> : null}</span></label>
+          ); })}
         </fieldset>
-        {advice.occupied.length > 0 && <p>Strength days: {advice.occupied.map((day) => day.label).join(", ")}</p>}
-        {advice.conflicts.length > 0 && <label className={styles.choice}>
-          <input type="checkbox" name="strengthOverlap" value={advice.confirmationKey}
-            checked={confirmedContext === advice.confirmationKey} onChange={(event) => setConfirmedContext(event.target.checked ? advice.confirmationKey : null)} />
-          Swim on strength days: {advice.conflicts.map((day) => day.label).join(", ")}
-        </label>}
+        {!!commitments.length && <details className={styles.details}><summary>Scheduled training</summary>
+          <ul className={styles.list}>{commitments.map((entry) =>
+            <li key={`${entry.source}:${entry.id}`} className={styles.row}><span>{entry.date}</span><span>{entry.title}</span></li>)}</ul>
+        </details>}
         <div className={styles.columns}>
           <label className={styles.field}>Minutes per swim<input name="timeBudgetMinutes" type="number" min="10" max={MAX_SESSION_BUDGET_MINUTES} step="1" required defaultValue="30" /></label>
-          <label className={styles.field}>Weeks<input name="weeks" type="number" min="2" max="16" step="1" required value={weeks} onChange={(event) => { setWeeks(Number(event.target.value)); setConfirmedContext(null); }} /></label>
+          <label className={styles.field}>Weeks<input name="weeks" type="number" min="2" max="16" step="1" required value={weeks} onChange={(event) => setWeeks(Number(event.target.value))} /></label>
         </div>
-        <label className={styles.field}>Start date<input name="startDate" type="date" min={today} required value={startDate} onChange={(event) => { setStartDate(event.target.value); setConfirmedContext(null); }} /></label>
+        <label className={styles.field}>Start date<input name="startDate" type="date" min={today} required value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
       </section>
       <section className={styles.section}>
         <h2>Targets</h2>
@@ -164,20 +178,31 @@ export function SetupForm({ today, strengthContext: initialContext = { blockId: 
         </details>
         <BenchmarkFields />
       </section>
+      </fieldset>
+      {preview && <PlanPreview plan={preview} />}
+      {!!preview?.overlaps.length && <section className={styles.section}>
+        <ul className={styles.list}>{preview.overlaps.map((entry) =>
+          <li key={`${entry.source}:${entry.id}`} className={styles.row}><span>{entry.date}</span><span>{entry.title}</span></li>)}</ul>
+        <label className={styles.choice}><input name="acceptOverlap" type="checkbox" checked={acceptOverlap}
+          onChange={(event) => setAcceptOverlap(event.target.checked)} disabled={pending || !!savedId} />
+          Keep both workouts on these dates
+        </label>
+      </section>}
       {error && <div role="alert">
         <p className={styles.error}>{error}</p>
         {options.length > 0 && <ul>{options.map((option) => <li key={option}>{option}</li>)}</ul>}
       </div>}
       {guidance && <p role="status" className={styles.status}>{guidance}</p>}
+      {warning && <p role="status" className={styles.warning}>{warning}</p>}
+      {savedId && <a className={styles.button} href={`/app/swim?plan=${savedId}`}>Open swimming plan</a>}
       <div className={styles.actions}>
-        <button type="submit" name="intent" value="preview" className={styles.secondary} disabled={pending}>
+        <button type="submit" name="intent" value="preview" className={styles.secondary} disabled={pending || !!savedId}>
           {pending && operation === "preview" ? "Preparing…" : "Preview plan"}
         </button>
-        <button type="submit" className={styles.button} disabled={pending}>
+        {preview && <button type="submit" className={styles.button} disabled={pending || !!savedId || (!!preview.overlaps.length && !acceptOverlap)}>
           {pending && operation === "create" ? "Saving…" : "Create swim plan"}
-        </button>
+        </button>}
       </div>
-      {preview && <PlanPreview plan={preview} />}
     </form>
   );
 }

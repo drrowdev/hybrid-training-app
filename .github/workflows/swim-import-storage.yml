@@ -14,6 +14,8 @@ on:
       - "packages/db/rollbacks/0154_swim_untimed_courses.down.sql"
       - "packages/db/integration-tests/swim-pool-storage.mts"
       - "packages/db/integration-tests/migration-runner-rehearsal.ts"
+      - "packages/db/integration-tests/swim-outcome-compatibility-rehearsal.ts"
+      - "packages/db/integration-tests/fixtures/swim-import-outcomes.proposed*.sql"
       - "packages/db/scripts/migrat*.ts"
       - "packages/db/scripts/__tests__/migrat*.test.ts"
       - "packages/db/package.json"

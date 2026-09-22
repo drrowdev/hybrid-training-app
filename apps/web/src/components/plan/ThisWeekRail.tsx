@@ -351,6 +351,7 @@ export type ThisWeekRailProps = {
   weeks: number;
   logHrefBase: string;
   heading?: string;
+  showRail?: boolean;
   moveAction: (formData: FormData) => Promise<void> | void;
   skipAction: (formData: FormData) => Promise<void> | void;
   unskipAction: (formData: FormData) => Promise<void> | void;
@@ -383,6 +384,7 @@ export function ThisWeekRail({
   weeks,
   logHrefBase,
   heading,
+  showRail = true,
   moveAction,
   skipAction,
   unskipAction,
@@ -435,7 +437,7 @@ export function ThisWeekRail({
 
   return (
     <>
-      <RailList rail={rail} today={today} onOpen={openDrawer} heading={heading} />
+      {showRail && <RailList rail={rail} today={today} onOpen={openDrawer} heading={heading} />}
       {openSession && (
         <SessionDrawer
           session={openSession}

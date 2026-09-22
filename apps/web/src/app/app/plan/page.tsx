@@ -38,7 +38,7 @@ import { VolumeAutoregCard } from "@/components/plan/VolumeAutoregCard";
 import { getDeloadSkipOffer } from "@/lib/planner/deload-skip-offer";
 import { acceptDeloadSkip } from "@/lib/planner/deload-skip-actions";
 import { DeloadSkipCard } from "@/components/plan/DeloadSkipCard";
-import { getDeloadWeekPreview, getDeloadWeekFatigueSignal } from "@/lib/planner/deload-week-preview";
+import { getDeloadWeekFatigueSignal } from "@/lib/planner/deload-week-preview";
 import {
   insertDeloadWeekAction,
   previewDeloadWeekAction,
@@ -354,7 +354,7 @@ export default async function PlanPage({
     getLimitationResponseOffer(),
     getDeloadSkipOffer(),
     getEarlyDeloadRecommendation(),
-    getDeloadWeekPreview(supabase, user.id, { timezone }),
+    previewDeloadWeekAction(),
     getDeloadWeekFatigueSignal(),
   ]);
 
@@ -365,11 +365,7 @@ export default async function PlanPage({
   // or when the plan no longer contains the sessions it named.
   const anchoredPreview =
     typeof sp.boundary === "string" && deloadRecId
-      ? await getDeloadWeekPreview(supabase, user.id, {
-          timezone,
-          boundaryKey: sp.boundary,
-          recommendationId: deloadRecId,
-        })
+      ? await previewDeloadWeekAction(undefined, sp.boundary, deloadRecId)
       : null;
 
   // Recovery-week entry. The QUIET control is always available (program

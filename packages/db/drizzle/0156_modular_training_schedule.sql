@@ -55,6 +55,7 @@ BEGIN
     ('public.complete_training_session_with_transition(uuid,text,uuid)', '444479bb1e70d5e1a3c1f818e070cd6d', 'public.swim_request_user_id()'),
     ('public.replace_hyrox_session_actuals(uuid,jsonb,jsonb,integer,numeric,text)', 'fea474bf2569b8ec097665b26f54501d', 'auth.uid()'),
     ('public.insert_deload_week(uuid,uuid,integer,jsonb)', 'e71f9b8d5ebdd344ba0d0cf73a993127', 'auth.uid()'),
+    ('public.remove_deload_week(uuid,uuid,integer)', '463b95361af4ef3648fa7720e4efc2ba', 'auth.uid()'),
     ('public.insert_set_logs_with_bw_progress(jsonb)', 'b51bcc889062c892efacb2b43fa557e4', 'auth.uid()')
   ) AS baseline(signature, fingerprint, identity_expression) LOOP
     routine := to_regprocedure(entry.signature);
@@ -277,6 +278,13 @@ BEGIN
           WHERE b.id = p.block_id AND b.user_id = u AND b.status = 'active' AND b.deleted_at IS NULL);
       IF NOT FOUND THEN RAISE EXCEPTION 'Only unstarted workouts in an active program can be restored.'; END IF;
       result := jsonb_build_object('id', p_args->>'id');
+    WHEN 'primary-insert-deload' THEN
+      new_week := public.insert_deload_week((p_args->>'blockId')::uuid, u,
+        (p_args->>'afterWeek')::integer, p_args->'sessions');
+      result := jsonb_build_object('deloadWeekIndex', new_week, 'sessions', jsonb_array_length(p_args->'sessions'));
+    WHEN 'primary-remove-deload' THEN
+      PERFORM public.remove_deload_week((p_args->>'blockId')::uuid, u, (p_args->>'weekIndex')::integer);
+      result := jsonb_build_object('blockId', p_args->>'blockId');
     WHEN 'primary-skip' THEN
       UPDATE public.planned_sessions SET skipped_at = now()
         WHERE id = (p_args->>'id')::uuid AND user_id = u AND completed_session_id IS NULL

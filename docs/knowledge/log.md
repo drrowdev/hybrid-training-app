@@ -4283,3 +4283,44 @@ six-case coverage, guards and timeouts remain intact. A touched course test
 normalizes read-only CRLF/LF text comparisons; no SQL file or hash changed.
 The corrected native run remains required; the first execution is not release
 qualification.
+
+## [2026-09-22] repair | Native circuit order and complete schedule review
+
+Native35779582076 at e67da4d2 passed normal157 installation,36 historical RPCs,
+Auth/FK and unused down/up checks. All six browser cases executed: M1/M2/M5/M6
+passed; M3/M4 failed without timeout. Both cleanup checks passed. The coordinator
+consumed runtime evidence once; these failures were not rerun unchanged.
+
+The actual mixed logger reproduced M3's optimistic-coverage race: the same
+station advanced before durable acceptance rotated the circuit. Circuit-only
+pending slots now preserve order, failed-save drafts and retries; solo logging
+remains optimistic. M4 now moves the last, second-week swim to the primary's
+second occurrence, not today. Actual course materialization verifies the valid
+range and absence of another swim on the target for all seven start weekdays.
+
+Home now renders one shared week while retaining its primary drawer/actions and
+missing-RPC fallback. Generated swimming setup, Trash recovery, unskip and
+recovery-week insertion/removal review the shared calendar, require explicit
+overlap consent and retain stable retry receipts. Recovery review includes
+all shifted dates, preserves actual history occupancy and surfaces failed
+prescription/calendar reads. The approved unshipped0156 extension delegates to
+existing recovery RPCs and locks direct removal before its history check; its
+matching down restores the exact0106 body. Main0000-0155 and their ledger remain
+unchanged.
+
+Added real-SQL recovery overlap/replay/ownership/rollback and concurrent
+remove-versus-start proofs to the existing disposable rehearsal. The
+coordinator's noncanonical imported-outcome fixtures additionally probe a
+proposed append/replay/down-up against normal157 with retained catalog
+boundaries. That proposal is not an activated feature, canonical migration,
+production-updater expansion, native outcome journey, or used-history down
+proof. Its actual SQL execution remains pending.
+
+Local recovery/restore units, strict web/pool-runner types and39 isolated
+375/1280 browser stages passed. Exact-source SQL/native acceptance, DC-O2's
+unresolved prose interpretation, imported outcomes and production qualification
+remain separate gates; no deployment or complete six-case pass is claimed.
+The wider Windows web run passed7207 tests and failed142 across eight unchanged
+Unix-permission/raw-LF fixture files (plus80 skips). Observed failures include
+CRLF hashes/text matching, private-mode refusal and symlink EPERM. No permissions,
+assertions or timeouts were relaxed; exact-source Linux CI remains required.

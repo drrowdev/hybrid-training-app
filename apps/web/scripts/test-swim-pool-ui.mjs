@@ -14,7 +14,7 @@ try {
   const output = await build({
     stdin: {
       contents: `
-        import React from "react";
+        import React, { useState } from "react";
         import { createRoot } from "react-dom/client";
         import { PoolEditor } from "./src/components/swim/PoolEditor";
         import { SetupForm } from "./src/components/swim/SetupForm";
@@ -26,6 +26,14 @@ try {
         import { workoutPresentation } from "./src/lib/swim/presentation";
         import { RecordingMatcher } from "./src/components/swim/RecordingMatcher";
         import { ProgramBuilder } from "./src/components/program/ProgramBuilder";
+        import { TrainingWeek } from "./src/components/program/TrainingWeek";
+        import { ThisWeekRail } from "./src/components/plan/ThisWeekRail";
+        import { ScheduleRestoreButton } from "./src/components/program/ScheduleRestoreButton";
+        import { TrashItemRow } from "./src/components/trash/TrashItemRow";
+        import { DeloadWeekCard } from "./src/components/plan/DeloadWeekCard";
+        import { FocusStripLogger } from "./src/components/session/FocusStripLogger";
+        import { compileAuthoredWorkout } from "@hta/domain";
+        import { groupPrescriptionByMovement } from "./src/lib/sessions/movement-grouping";
         import { syntheticCourse } from "./src/lib/swim/__tests__/course-fixtures";
         import { planPrivateSwimCourse } from "./src/lib/swim/course-planning";
         import styles from "./src/components/swim/Swim.module.css";
@@ -74,6 +82,64 @@ try {
               distance: "400 m", beforeLengths: 8, afterLengths: 16 }] } };
         };
         let key = 0;
+        const circuitWorkout = { id: "fixture-workout", name: "Mixed", weekday: 0, parts: [
+          { id: "fixture-run", kind: "cardio", movementId: "run", modality: "run", intensity: "z2",
+            repeats: 2, notes: "", intervals: [{ id: "fixture-interval", label: "Run", effort: "easy", target: { kind: "time", seconds: 60 } }] },
+          { id: "fixture-circuit", kind: "circuit", name: "Circuit", rounds: 2,
+            movements: ["a", "b"].map(id => ({ id: "station-" + id, movementId: id, role: "main",
+              sets: 1, dose: { kind: "reps", reps: 5 }, weightKg: 20, restSeconds: 0, notes: "" })) },
+        ] };
+        const circuitCatalog = [
+          { id: "run", slug: "run-easy-z2", displayName: "Run", pattern: "cardio", modality: "run" },
+          { id: "a", slug: "station-a", displayName: "Station A", pattern: "squat" },
+          { id: "b", slug: "station-b", displayName: "Station B", pattern: "push" },
+        ];
+        const circuitGroups = groupPrescriptionByMovement(compileAuthoredWorkout(circuitWorkout, circuitCatalog));
+        function CircuitFixture({ solo }) {
+          const [covered, setCovered] = useState(new Set());
+          const save = async form => {
+            const index = Number(form.get("prescriptionItemIndex"));
+            window.circuitWrites.push(index);
+            setCovered(previous => new Set([...previous, index]));
+            const outcome = await new Promise(resolve => { window.circuitPending.push(resolve); });
+            if (outcome?.error) setCovered(previous => new Set([...previous].filter(value => value !== index)));
+            return outcome ?? { ok: true };
+          };
+          const groups = solo ? circuitGroups.slice(0, 1).map(group => ({
+            ...group, items: group.items.map(({ circuit, ...item }) => item),
+          })) : circuitGroups;
+          return <main><FocusStripLogger sessionId={"circuit-" + key} groups={groups}
+            setsByMovement={new Map()} tmBySlug={{}} oneRmBySlug={{}} loggedItemIndices={covered}
+            skippedItemIndices={new Set()} loggedSetIdByItemIndex={{}} priorBests={{}}
+            addStrengthSet={save} updateStrengthSet={async () => { throw new Error("Unexpected update"); }}
+            hapticsEnabled={false} timerSoundEnabled={false} restTimerEnabled={false} /></main>;
+        }
+        window.showCircuit = (solo = false) => {
+          window.circuitWrites = []; window.circuitPending = [];
+          window.settleCircuitSave = outcome => window.circuitPending.shift()(outcome);
+          root.render(<CircuitFixture key={++key} solo={solo} />);
+        };
+        window.homeCalls = [];
+        window.showHomeWeek = () => {
+          history.replaceState(null, "", "/");
+          const session = {
+            id: "primary-home", weekIndex: 0, dayIndex: 0, date: "2026-09-14", title: "Strength A",
+            isCardio: false, isStrength: true, isRehab: false, done: false, inProgress: false,
+            skipped: false, slot: "single", items: [], estDurationMin: 30, notes: null, completedSessionId: null,
+          };
+          root.render(<main key={++key} style={{ maxWidth: 380, padding: 12 }}>
+            <TrainingWeek today="2026-09-14" primaryPreviewIds={[session.id]} entries={[
+              { id: session.id, source: "primary", programId: "home-block", date: session.date, title: session.title, state: "scheduled" },
+              { id: "swim-home", source: "swim", programId: "home-swim-plan", date: session.date, title: "Swim A", state: "scheduled" },
+            ]} />
+            <ThisWeekRail sessions={[session]} today="2026-09-14" currentWeekIndex={0} weeks={2}
+              logHrefBase="/app/sessions/start" showRail={false}
+              moveAction={() => window.homeCalls.push("move")} skipAction={() => window.homeCalls.push("skip")}
+              unskipAction={() => window.homeCalls.push("unskip")}
+              updateNotesAction={async (id, notes) => { window.homeCalls.push(["notes", id, notes]); return { ok: true }; }}
+              startSessionAction={() => window.homeCalls.push("start")} />
+          </main>);
+        };
         window.programCalls = []; window.programMode = "success";
         window.previewProgram = async input => {
           window.programCalls.push({ action: "preview", input });
@@ -177,7 +243,72 @@ try {
           <main className={styles.page}><SwimImportConnection key={++key}
             enabled={enabled} connection={active ? window.connection : null} /></main>
         );
-        window.showSetup = () => root.render(<main className={styles.page}><SetupForm key={++key} today="2026-09-14" /></main>);
+        const setupSchedule = [
+          { id: "one-off-run", source: "session", programId: null, date: "2026-09-14", title: "Run", state: "scheduled" },
+          { id: "planned-rest", source: "primary", programId: "primary", date: "2026-09-17", title: "Rest", state: "rest" },
+        ];
+        window.previewSetup = async () => ({ ok: true, preview: {
+          ...prepared.preview, id: "generated-preview", scheduleRevision: "a".repeat(32), overlaps: [setupSchedule[0]],
+        } });
+        window.saveSetup = async form => {
+          window.setupCalls.push(Object.fromEntries(form.entries()));
+          return window.setupMode === "error" ? { error: "Could not save." }
+            : { ok: true, planId: "generated-plan", warning: "Refresh the plan." };
+        };
+        window.showSetup = () => {
+          window.setupCalls = []; window.setupMode = "error";
+          root.render(<main className={styles.page}><SetupForm key={++key} today="2026-09-14" schedule={setupSchedule} /></main>);
+        };
+        window.previewRestore = async input => {
+          window.restorePreviews.push(input);
+          return { revision: "a".repeat(32), requestId: "00000000-0000-4000-8000-000000000011",
+            dates: ["2026-09-14"], overlaps: window.restoreOverlap ? [{
+              id: "swim-restore", source: "swim", programId: "swim-plan", date: "2026-09-14",
+              title: "Swimming", state: "scheduled",
+            }] : [] };
+        };
+        window.commitRestore = async review => {
+          window.restoreSaves.push(review);
+          if (window.restoreMode === "error") throw new Error("Could not restore.");
+        };
+        window.restoreBlock = async (_id, review) => {
+          try { await window.commitRestore(review); return { ok: true }; }
+          catch (error) { return { ok: false, error: error.message }; }
+        };
+        window.showRestore = (kind, overlap = true) => {
+          window.restorePreviews = []; window.restoreSaves = []; window.restoreOverlap = overlap; window.restoreMode = "error";
+          root.render(<main className={styles.page} key={++key}>{kind === "block"
+            ? <ul style={{ margin: 0, padding: 0 }}><TrashItemRow kind="block" id="00000000-0000-4000-8000-000000000012"
+                title="Strength and running" subtitle="Started 2026-09-14" confirmToken="Strength and running" deletedAt="2026-09-14" /></ul>
+            : <ScheduleRestoreButton kind="workout" id="00000000-0000-4000-8000-000000000013" label="Un-skip"
+                testId="plan-drawer-unskip" onRestore={window.commitRestore} />}</main>);
+        };
+        const recoveryPreview = (percent = 60) => ({
+          blockId: "00000000-0000-4000-8000-000000000014", afterWeek: 0, deloadWeekIndex: 1,
+          percent, eventWarning: false, restOnly: false, outsideRecommended: false,
+          sessions: [{ dayIndex: 1, slot: "single", title: "Recovery", sessionModality: "strength",
+            prescription: { items: [{ kind: "main", movementId: "squat", movementName: "Squat", reps: 5, percentTm: percent }] } }],
+          review: { id: String(percent).padStart(64, "0"), revision: "a".repeat(32),
+            requestId: "00000000-0000-4000-8000-" + String(percent).padStart(12, "0"),
+            dates: ["2026-09-28"], overlaps: [{ id: "recovery-swim", source: "swim", programId: "swim-plan",
+              date: "2026-09-28", title: "Swimming", state: "scheduled" }] },
+        });
+        window.showRecovery = (recommendation = false) => {
+          window.recoverySaves = []; window.recoveryPreviews = []; window.recoveryMode = "error"; window.recoveryPreviewMode = "success";
+          root.render(<main className={styles.page}><DeloadWeekCard key={++key} preview={recoveryPreview()} autoOpen variant="quiet"
+            previewAction={async percent => {
+              window.recoveryPreviews.push(percent);
+              if (window.recoveryPreviewMode === "error") throw new Error("Unavailable review");
+              return recoveryPreview(percent);
+            }}
+            insertAction={async (...args) => {
+              window.recoverySaves.push(args);
+              return window.recoveryMode === "error" ? { ok: false, error: "Could not save." }
+                : { ok: true, deloadWeekIndex: 1, sessions: 1 };
+            }}
+            resolveRecommendationId={recommendation ? "00000000-0000-4000-8000-000000000015" : undefined}
+            resolveAction={async () => { throw new Error("Unavailable follow-up"); }} /></main>);
+        };
         window.showEditor = () => root.render(<main className={styles.page}><section className={styles.section}>
           <h2>Swimming</h2><PoolEditor key={++key} busy={false} context={{
             planId: "00000000-0000-4000-8000-000000000001", revision: 1, defaultCourse: long,
@@ -195,12 +326,45 @@ try {
     plugins: [{
       name: "synthetic-actions",
       setup(build) {
+        build.onResolve({ filter: /^(?:\.\/PlanRedesign|@\/components\/plan\/PlanRedesign)$/ }, args =>
+          args.importer.replaceAll("\\", "/").endsWith("/components/plan/ThisWeekRail.tsx")
+            ? { path: "home-drawer", namespace: "test" } : undefined);
+        build.onResolve({ filter: /^@\/lib\/(?:sessions\/(?:actions|swap-actions)|movements\/instructions)$/ },
+          args => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^@\/lib\/planner\/actions$/ }, args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions)|@\/lib\/programs\/authored\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
-          contents: args.path === "next/navigation"
+          contents: args.path === "@/lib/sessions/actions"
+            ? "export const deleteSet = () => { throw new Error('Unexpected delete'); }; export const permanentlyDeleteSession = deleteSet, restoreSession = deleteSet;"
+            : args.path === "@/lib/planner/actions"
+              ? "export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); };"
+            : args.path === "@/lib/sessions/swap-actions"
+              ? "export const swapActiveMovement = () => { throw new Error('Unexpected swap'); };"
+            : args.path === "@/lib/movements/instructions"
+              ? "export const getMovementInstructions = async () => null;"
+            : args.path === "home-drawer"
+            ? `import { createElement as h } from "react";
+              export const sessionToOverdueCandidate = () => { throw new Error("Unexpected duplicate primary week"); };
+              export function SessionDrawer({ session, onClose, moveAction, skipAction, unskipAction, updateNotesAction, startSessionAction }) {
+                return h("div", { role: "dialog", "aria-label": session.title },
+                  h("button", { type: "button", onClick: () => moveAction(new FormData()) }, "Move"),
+                  h("button", { type: "button", onClick: () => skipAction(new FormData()) }, "Skip"),
+                  h("button", { type: "button", onClick: () => unskipAction(new FormData()) }, "Undo skip"),
+                  h("button", { type: "button", onClick: () => updateNotesAction(session.id, "updated") }, "Save notes"),
+                  h("button", { type: "button", onClick: () => startSessionAction(new FormData()) }, "Start"),
+                  h("button", { type: "button", onClick: onClose }, "Close"));
+              }`
+            : args.path === "next/navigation"
             ? "export const useRouter = () => ({ push(path) { window.destinations.push(path); }, refresh() {} });"
             : args.path === "next/link"
-              ? "import { createElement } from 'react'; export default function Link(props) { return createElement('a', props); }"
+              ? `import { createElement } from "react"; export default function Link({ href, onClick, ...props }) {
+                  return createElement("a", { ...props, href, onClick(event) {
+                    onClick?.(event);
+                    if (typeof href === "string" && href.startsWith("#") && !event.defaultPrevented) {
+                      event.preventDefault(); history.pushState(null, "", href);
+                    }
+                  } });
+                }`
             : args.path === "@/lib/swim/course-actions"
               ? "export const previewPrivateSwimCourse = form => window.previewCourse(form); export const importPrivateSwimCourse = (form, id) => window.saveCourse(form, id); export const previewPrivateSwimEdit = input => window.previewCourseEdit(input); export const savePrivateSwimEdit = input => window.saveCourseEdit(input);"
             : args.path === "@/lib/swim/import-actions"
@@ -211,7 +375,7 @@ try {
               ? "export const previewAuthoredProgram = input => window.previewProgram(input); export const saveAuthoredProgram = (...args) => window.saveProgram(...args);"
             : args.path === "@/components/trash/DeleteSessionButton"
               ? "export const DeleteSessionButton = () => { throw new Error('Unexpected delete control'); };"
-            : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = () => { throw new Error('Unexpected save'); }; export const previewSwimPlan = createSwimPlan; export const proposeSwimWeek = createSwimPlan, proposeSwimBenchmark = createSwimPlan, decideSwimProposal = createSwimPlan, changeSwimPlanStatus = createSwimPlan, previewSwimResume = createSwimPlan, resumeSwimPlan = createSwimPlan, decideSwimBenchmark = createSwimPlan, applySwimWeekEdit = createSwimPlan, applySwimDateEdit = createSwimPlan, applySwimPoolEdit = createSwimPlan, previewSwimWeekEdit = createSwimPlan, previewSwimDateEdit = createSwimPlan, skipSwimWorkout = createSwimPlan;",
+            : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = form => window.saveSetup(form); export const previewSwimPlan = form => window.previewSetup(form); const unexpected = () => { throw new Error('Unexpected action'); }; export const proposeSwimWeek = unexpected, proposeSwimBenchmark = unexpected, decideSwimProposal = unexpected, changeSwimPlanStatus = unexpected, previewSwimResume = unexpected, resumeSwimPlan = unexpected, decideSwimBenchmark = unexpected, applySwimWeekEdit = unexpected, applySwimDateEdit = unexpected, applySwimPoolEdit = unexpected, previewSwimWeekEdit = unexpected, previewSwimDateEdit = unexpected, skipSwimWorkout = unexpected;",
           loader: "js", resolveDir: root,
         }));
       },
@@ -242,6 +406,200 @@ try {
   stages.push(stage);
 
   for (const width of [375, 1280]) {
+    stage = `recovery-shared-review-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.showRecovery());
+    const addRecovery = page.getByTestId("deload-week-accept");
+    await expect(addRecovery).toBeDisabled();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await expect(page.getByTestId("deload-week-cancel")).toBeEnabled();
+    await page.getByTestId("deload-week-cancel").click();
+    await expect(page.getByTestId("deload-week-modal")).toHaveCount(0);
+    assert.equal(await page.evaluate(() => window.recoverySaves.length), 0);
+    await page.getByTestId("deload-week-review").click();
+    const recoveryConsent = page.getByLabel("Keep both workouts on these dates", { exact: true });
+    await recoveryConsent.check();
+    await expect(addRecovery).toBeEnabled();
+    const percent = page.getByRole("slider", { name: "Working weight", exact: true });
+    await percent.focus(); await percent.press("ArrowRight");
+    await expect.poll(() => page.evaluate(() => window.recoveryPreviews)).toEqual([61]);
+    await expect(recoveryConsent).not.toBeChecked();
+    await expect(addRecovery).toBeDisabled();
+    await page.evaluate(() => { window.recoveryPreviewMode = "error"; });
+    await percent.focus(); await percent.press("ArrowRight");
+    await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+    await expect(addRecovery).toBeDisabled();
+    await expect(page.getByTestId("deload-week-cancel")).toBeEnabled();
+    await page.evaluate(() => { window.recoveryPreviewMode = "success"; });
+    await page.getByRole("button", { name: "Review again", exact: true }).click();
+    await recoveryConsent.check();
+    await addRecovery.click();
+    await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+    await expect(addRecovery).toBeEnabled();
+    await page.evaluate(() => { window.recoveryMode = "success"; });
+    await addRecovery.click();
+    await expect(page.getByTestId("deload-week-done")).toBeVisible();
+    const recoveryCalls = await page.evaluate(() => window.recoverySaves);
+    assert.equal(recoveryCalls.length, 2);
+    assert.deepEqual(recoveryCalls[0], recoveryCalls[1]);
+    assert.equal(recoveryCalls[0][0], 62);
+    assert.equal(recoveryCalls[0][3].previewId, "62".padStart(64, "0"));
+    assert.equal(recoveryCalls[0][3].acceptOverlap, true);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    stages.push(stage);
+
+    stage = `recovery-committed-followup-error-${width}`;
+    await page.evaluate(() => { window.showRecovery(true); window.recoveryMode = "success"; });
+    await recoveryConsent.check(); await addRecovery.click();
+    await expect(page.getByTestId("deload-week-done")).toBeVisible();
+    await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+    await expect(addRecovery).toHaveCount(0);
+    assert.equal(await page.evaluate(() => window.recoverySaves.length), 1);
+    stages.push(stage);
+
+    for (const kind of ["workout", "block"]) {
+      stage = `restore-${kind}-overlap-${width}`;
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(kind => window.showRestore(kind), kind);
+      const restore = page.getByTestId(kind === "block" ? "recover-button" : "plan-drawer-unskip");
+      await restore.click();
+      await expect(restore).toBeDisabled();
+      assert.equal(await page.evaluate(() => window.restoreSaves.length), 0);
+      await page.getByLabel("Keep both workouts on these dates", { exact: true }).check();
+      await restore.click();
+      await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+      await expect(restore).toBeEnabled();
+      await page.evaluate(() => { window.restoreMode = "success"; });
+      await restore.click();
+      await expect.poll(() => page.evaluate(() => window.restoreSaves.length)).toBe(2);
+      const restored = await page.evaluate(() => ({ saves: window.restoreSaves, previews: window.restorePreviews }));
+      assert.deepEqual(restored.saves[0], restored.saves[1]);
+      assert.equal(restored.saves[0].acceptOverlap, true);
+      assert.equal(restored.previews.length, 1);
+      assert.equal(restored.previews[0].kind, kind);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+      stages.push(stage);
+    }
+    stage = `restore-without-overlap-${width}`;
+    await page.evaluate(() => window.showRestore("workout", false));
+    await page.getByTestId("plan-drawer-unskip").click();
+    await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+    assert.equal(await page.getByRole("checkbox").count(), 0);
+    await page.evaluate(() => { window.restoreMode = "success"; });
+    await page.getByTestId("plan-drawer-unskip").click();
+    await expect.poll(() => page.evaluate(() => window.restoreSaves.length)).toBe(2);
+    const retry = await page.evaluate(() => window.restoreSaves);
+    assert.deepEqual(retry[0], retry[1]);
+    assert.equal(retry[0].acceptOverlap, false);
+    stages.push(stage);
+
+    stage = `generated-swim-shared-review-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.showSetup());
+    await expect(page.getByRole("button", { name: "Preview plan", exact: true })).toBeVisible();
+    const monday = page.locator('input[name="weekdays"][value="1"]');
+    const thursday = page.locator('input[name="weekdays"][value="4"]');
+    await expect(monday).not.toBeChecked();
+    await expect(thursday).not.toBeChecked();
+    await monday.check();
+    await expect(page.getByRole("button", { name: "Create swim plan", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Preview plan", exact: true }).click();
+    const createSetup = page.getByRole("button", { name: "Create swim plan", exact: true });
+    await expect(createSetup).toBeDisabled();
+    await page.getByLabel("Keep both workouts on these dates", { exact: true }).check();
+    await expect(createSetup).toBeEnabled();
+    await page.getByLabel("Weeks", { exact: true }).fill("3");
+    await expect(createSetup).toHaveCount(0);
+    await page.getByRole("button", { name: "Preview plan", exact: true }).click();
+    await expect(createSetup).toBeDisabled();
+    await page.getByLabel("Keep both workouts on these dates", { exact: true }).check();
+    await createSetup.click();
+    await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+    await expect(createSetup).toBeEnabled();
+    await page.evaluate(() => { window.setupMode = "success"; });
+    await createSetup.click();
+    await expect(page.getByRole("link", { name: "Open swimming plan", exact: true })).toBeVisible();
+    await expect(createSetup).toBeDisabled();
+    const setupCalls = await page.evaluate(() => window.setupCalls);
+    assert.equal(setupCalls.length, 2);
+    assert.equal(setupCalls[0].requestId, setupCalls[1].requestId);
+    assert.equal(setupCalls[0].previewId, "generated-preview");
+    assert.equal(setupCalls[0].acceptOverlap, "on");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    stages.push(stage);
+
+    stage = `authored-circuit-delayed-save-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.showCircuit());
+    const logCircuitSet = page.getByTestId("movement-focus-log-button");
+    await expect(page.getByRole("heading", { name: "Station A", exact: true })).toBeVisible();
+    for (let index = 0; index < 4; index++) {
+      await logCircuitSet.click();
+      await expect.poll(() => page.evaluate(() => window.circuitWrites.length)).toBe(index + 1);
+      await expect(logCircuitSet).toBeDisabled();
+      await page.evaluate(() => window.settleCircuitSave());
+      if (index < 3) await expect(page.getByRole("heading", { name: index % 2 ? "Station A" : "Station B", exact: true })).toBeVisible();
+    }
+    assert.deepEqual(await page.evaluate(() => window.circuitWrites), [1, 3, 2, 4]);
+    stages.push(stage);
+
+    stage = `authored-circuit-rejected-save-${width}`;
+    await page.evaluate(() => window.showCircuit());
+    await expect(page.getByRole("heading", { name: "Station A", exact: true })).toBeVisible();
+    await page.getByRole("textbox", { name: "Weight (kg)", exact: true }).fill("22");
+    await logCircuitSet.click();
+    await expect(logCircuitSet).toBeDisabled();
+    assert.deepEqual(await page.evaluate(() => window.circuitWrites), [1]);
+    await page.evaluate(() => window.settleCircuitSave({ error: "Synthetic rejected set" }));
+    await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Station A", exact: true })).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "Weight (kg)", exact: true })).toHaveValue("22");
+    await logCircuitSet.click();
+    await expect(logCircuitSet).toBeDisabled();
+    assert.deepEqual(await page.evaluate(() => window.circuitWrites), [1, 1]);
+    await page.evaluate(() => window.settleCircuitSave());
+    await expect(page.getByRole("heading", { name: "Station B", exact: true })).toBeVisible();
+    stages.push(stage);
+
+    stage = `solo-optimistic-save-${width}`;
+    await page.evaluate(() => window.showCircuit(true));
+    await expect(page.getByRole("heading", { name: "Station A", exact: true })).toBeVisible();
+    await logCircuitSet.click();
+    await expect.poll(() => page.evaluate(() => window.circuitWrites.length)).toBe(1);
+    await expect(logCircuitSet).toBeEnabled();
+    await logCircuitSet.click();
+    assert.deepEqual(await page.evaluate(() => window.circuitWrites), [1, 2]);
+    await page.evaluate(() => { window.settleCircuitSave(); window.settleCircuitSave(); });
+    stages.push(stage);
+
+    stage = `shared-home-week-preview-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => { window.homeCalls = []; window.showHomeWeek(); });
+    await expect(page.getByRole("heading", { name: "This week", exact: true })).toHaveCount(1);
+    await expect(page.getByTestId("plan-this-week")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Swim A View swim", exact: true })).toHaveAttribute("href", "/app/swim/swim-home");
+    const preview = page.getByRole("link", { name: "Strength A Preview", exact: true });
+    await preview.click();
+    const drawer = page.getByRole("dialog", { name: "Strength A", exact: true });
+    await expect(drawer).toBeVisible();
+    for (const name of ["Move", "Skip", "Undo skip", "Save notes", "Start"]) {
+      await drawer.getByRole("button", { name, exact: true }).click();
+    }
+    assert.deepEqual(await page.evaluate(() => window.homeCalls), [
+      "move", "skip", "unskip", ["notes", "primary-home", "updated"], "start",
+    ]);
+    await drawer.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(drawer).toHaveCount(0);
+    assert.equal(await page.evaluate(() => window.location.hash), "");
+    assert.equal(await page.evaluate(() => document.body.style.overflow), "");
+    await preview.click();
+    await expect(drawer).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(drawer).toHaveCount(0);
+    assert.equal(await page.evaluate(() => document.body.style.overflow), "");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true);
+    stages.push(stage);
+
     stage = `authored-scoped-edit-${width}`;
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => { window.programCalls = []; window.programMode = "success"; window.showProgramEdit(); });

@@ -32,6 +32,7 @@ test.describe("ADR0079 standalone swimming", () => {
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
     await page.getByLabel("Recent comfortable continuous lengths").fill("4");
     await page.getByLabel("Weeks", { exact: true }).fill("4");
+    await page.getByRole("button", { name: "Preview plan", exact: true }).click();
     await page.getByRole("button", { name: "Create swim plan" }).click();
     await expect(page).toHaveURL(/\/app\/swim\?plan=/);
 
@@ -81,11 +82,12 @@ test.describe("ADR0079 standalone swimming", () => {
     await page.getByLabel("400 time").fill("8:30");
     await page.getByLabel("Swum on", { exact: true }).fill(await page.getByLabel("Start date", { exact: true }).inputValue());
     await page.getByRole("checkbox", { name: /Verified times/ }).check();
-    await page.getByRole("button", { name: "Create swim plan" }).click();
+    await page.getByRole("button", { name: "Preview plan", exact: true }).click();
     await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toBeVisible();
     await expect(page.getByLabel("Custom pool length", { exact: true })).toHaveValue("33.33");
     await expect(page.getByLabel("200 time")).toHaveValue("4:00");
     await page.getByLabel("Custom pool length", { exact: true }).fill("33 1/3");
+    await page.getByRole("button", { name: "Preview plan", exact: true }).click();
     await page.getByRole("button", { name: "Create swim plan" }).click();
     await expect(page).toHaveURL(/\/app\/swim\?plan=/);
 

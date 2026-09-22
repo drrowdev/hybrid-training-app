@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
   estimateCriticalSwimSpeed, poolCourseEquals, normalizePoolCourse, SWIM_POOL_CHANGE_VERSION,
-  swimScheduleAdvice, trainingScheduleAdvice, type SwimStrengthContext,
+  trainingScheduleAdvice,
   SWIM_ASSESSMENT_VERSION, type SwimError,
 } from "@hta/domain";
 import {
@@ -29,7 +29,7 @@ import {
 import {
   swimToday, loadSwimHistory, deriveSwimWeekCandidate, persistedSwimPlan, swimInputId, loadSwimHubView, swimWorkoutViewFromRow, swimWeekDose,
 } from "./queries";
-import { confirmedSwimCompletionView, type SwimCompletion, type SwimHubView, type SwimPlanPreview, type SwimResumePreview, type SwimWorkoutView, type SwimWeekEditInput, type SwimWeekEditPreview, type SwimDateEditInput, type SwimDateEditPreview } from "./view-types";
+import { confirmedSwimCompletionView, type SwimCompletion, type SwimHubView, type SwimSetupPreview, type SwimResumePreview, type SwimWorkoutView, type SwimWeekEditInput, type SwimWeekEditPreview, type SwimDateEditInput, type SwimDateEditPreview } from "./view-types";
 import { planPreviewPresentation } from "./presentation";
 import { formatPoolCourse, formatSwimDistance } from "@hta/domain";
 import { formatSwimTime } from "./time";
@@ -104,28 +104,19 @@ function setupConflict(error: SwimError): ActionResult & { options: string[] } {
 
 type SwimSetupResponse = ActionResult & {
   planId?: string;
-  preview?: SwimPlanPreview;
+  preview?: SwimSetupPreview;
   guidance?: string;
   options?: string[];
-  strengthContext?: SwimStrengthContext;
+  warning?: string;
 };
 
 async function prepareSwimPlan(form: FormData) {
   const { client, user } = await swimContext(true);
+  const schedule = await loadTrainingSchedule(client);
   const input = parseSetupForm(form);
   const { today } = await swimToday(client, user.id);
   if (input.startDate < today) throw new SwimActionError("Choose today or a future start date.", "validation");
   if (input.observation && input.observation.observedOn > today) throw new SwimActionError("Choose the date you swam the assessment.", "validation");
-  const strengthContext = await loadSwimStrengthContext(client, user.id);
-  const scheduleAdvice = swimScheduleAdvice(strengthContext, input.startDate, input.weeks, input.weekdays);
-  const overlapConfirmed = scheduleAdvice.conflicts.length > 0 && form.get("strengthOverlap") === scheduleAdvice.confirmationKey;
-  if (scheduleAdvice.conflicts.length && !overlapConfirmed) return {
-    ok: false as const,
-    response: {
-      error: `Strength training is scheduled on ${scheduleAdvice.conflicts.map((day) => day.label).join(", ")}. Choose other days or confirm swimming on those days.`,
-      errorCode: "validation" as const, strengthContext,
-    },
-  };
   const calibration = input.observation ? estimateCriticalSwimSpeed(input.observation) : null;
   if (calibration && !calibration.ok) throw new SwimActionError(calibration.error.message, "validation");
   const generated = generateSwimPlan({
@@ -147,43 +138,60 @@ async function prepareSwimPlan(form: FormData) {
     return [{ scheduled_date: slot.dateISO, slot: "single" as const, definition }];
   }));
   await checkWorkouts(client, user.id, workouts.map((row) => row.definition.issued));
-  return { ok: true as const, client, input, strengthContext, scheduleAdvice, overlapConfirmed, generated: generated.value, workouts };
+  const advice = trainingScheduleAdvice(schedule.entries, workouts.map((row) => row.scheduled_date));
+  const preview: SwimSetupPreview = {
+    ...planPreviewPresentation(generated.value),
+    id: swimInputId({ userId: user.id, input, generated: generated.value, today, scheduleRevision: schedule.revision }),
+    scheduleRevision: schedule.revision, overlaps: advice.overlaps,
+  };
+  return { ok: true as const, client, input, preview, generated: generated.value, workouts };
 }
 
 export async function previewSwimPlan(form: FormData): Promise<SwimSetupResponse> {
   try {
     const prepared = await prepareSwimPlan(form);
     if (!prepared.ok) return prepared.response;
-    return { ok: true, preview: planPreviewPresentation(prepared.generated) };
+    return { ok: true, preview: prepared.preview };
   } catch (error) { return swimActionFailure(error); }
 }
 
 export async function createSwimPlan(form: FormData): Promise<SwimSetupResponse> {
   try {
+    const requestId = z.string().uuid().parse(form.get("requestId"));
+    const requestInput = { input: parseSetupForm(form), previewId: String(form.get("previewId") ?? "") };
+    const context = await swimContext(true);
+    const replay = await scheduleReplay(context.client, requestId, "swim-create", requestInput);
+    if (replay) return { ok: true, planId: z.object({ plan: z.object({ id: z.string().uuid() }) }).parse(replay).plan.id };
     const prepared = await prepareSwimPlan(form);
     if (!prepared.ok) return prepared.response;
-    const { client, input, strengthContext, scheduleAdvice, overlapConfirmed, generated, workouts } = prepared;
+    const { client, input, preview, generated, workouts } = prepared;
+    if (requestInput.previewId !== preview.id) throw new SwimActionError("The plan changed. Preview it again before saving.", "validation");
+    const overlapConfirmed = form.get("acceptOverlap") === "on";
+    if (preview.overlaps.length && !overlapConfirmed) {
+      throw new SwimActionError("Confirm both workouts on the overlapping dates before saving.", "validation");
+    }
     const definition: StandalonePlanDefinition = {
       version: 1, setup: input.setup, generatorVersion: SWIM_GENERATOR_VERSION,
       schedule: { startDate: input.startDate, weeks: input.weeks, weekdays: input.weekdays },
       initialDose: generated.dose,
     };
     const created = await storage.createSwimPlan(client, {
+      scheduleReview: { revision: preview.scheduleRevision, requestId, acceptOverlap: overlapConfirmed },
+      scheduleInput: requestInput,
       startedOn: input.startDate, endsOn: addDaysToYmd(input.startDate, input.weeks * 7 - 1), definition,
       state: {
         version: 1, observations: input.observation ? [input.observation] : [],
         acceptedCalibration: generated.calibration,
         decisions: [
-          decision("setup", "accepted", { ...input, strengthContext, versions: generated.versions }),
-          ...(overlapConfirmed ? [decision("schedule", "overridden", {
-            strengthContext, startDate: input.startDate, weeks: input.weeks, weekdays: input.weekdays,
-            conflicts: scheduleAdvice.conflicts, confirmationKey: scheduleAdvice.confirmationKey,
-          }, undefined, "Confirmed swimming on strength-training days.")] : []),
+          decision("setup", "accepted", { ...input, versions: generated.versions }),
+          ...(preview.overlaps.length ? [decision("schedule", "overridden", {
+            overlaps: preview.overlaps, startDate: input.startDate, weeks: input.weeks, weekdays: input.weekdays,
+            scheduleRevision: preview.scheduleRevision,
+          }, undefined, "Confirmed workouts on the same dates.")] : []),
         ],
       }, workouts,
     });
-    refreshSwims();
-    return { ok: true, planId: created.plan.id };
+    return { ...refreshSavedSwim(), planId: created.plan.id };
   } catch (error) { return swimActionFailure(error); }
 }
 
