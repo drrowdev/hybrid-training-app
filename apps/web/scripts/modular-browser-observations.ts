@@ -1,0 +1,45 @@
+export const MODULAR_STAGE_CODES = Object.freeze({
+  m3: Object.freeze([
+    "m3-01", "m3-02", "m3-03", "m3-04", "m3-05", "m3-06", "m3-07", "m3-08",
+    "m3-09", "m3-10", "m3-11", "m3-12", "m3-13", "m3-14", "m3-15", "m3-16",
+  ] as const),
+  m4: Object.freeze([
+    "m4-01", "m4-02", "m4-03", "m4-04", "m4-05", "m4-06", "m4-07", "m4-08",
+    "m4-09", "m4-10", "m4-11", "m4-12", "m4-13", "m4-14", "m4-15", "m4-16",
+    "m4-17", "m4-18", "m4-19", "m4-20", "m4-21", "m4-22", "m4-23", "m4-24",
+  ] as const),
+});
+type StageCode = (typeof MODULAR_STAGE_CODES)[keyof typeof MODULAR_STAGE_CODES][number];
+type SetIndices = [number, number, number, number] | "invalid" | "unavailable";
+export type ModularObservation = { stage: StageCode | "unavailable"; loggedIndices: SetIndices };
+
+export function readModularAnnotations(value: unknown): ModularObservation {
+  const unavailable: ModularObservation = { stage: "unavailable", loggedIndices: "unavailable" };
+  if (!Array.isArray(value) || value.length > 128) return unavailable;
+  const stages: unknown[] = [], indices: unknown[] = [];
+  for (const annotation of value) {
+    if (!annotation || typeof annotation !== "object" || Array.isArray(annotation)) continue;
+    if (annotation.type === "modular-stage") stages.push(annotation.description);
+    if (annotation.type === "modular-set-indices") indices.push(annotation.description);
+  }
+  const stage = stages.length === 1
+    ? [...MODULAR_STAGE_CODES.m3, ...MODULAR_STAGE_CODES.m4].find((code) => code === stages[0])
+    : undefined;
+  if (!stage) return unavailable;
+  let loggedIndices: SetIndices = "unavailable";
+  if (stage.startsWith("m3-") && indices.length === 1) {
+    if (indices[0] === "invalid") loggedIndices = "invalid";
+    else if (typeof indices[0] === "string" && indices[0].length === 9) {
+      const match = /^\[([0-4]),([0-4]),([0-4]),([0-4])\]$/.exec(indices[0]);
+      if (match) loggedIndices = [Number(match[1]), Number(match[2]), Number(match[3]), Number(match[4])];
+    }
+  }
+  return { stage, loggedIndices };
+}
+
+export function projectModularObservation(caseIndex: number, value: ModularObservation): ModularObservation {
+  const prefix = caseIndex === 2 ? "m3-" : caseIndex === 3 ? "m4-" : null;
+  return prefix && value.stage.startsWith(prefix)
+    ? { stage: value.stage, loggedIndices: caseIndex === 2 ? value.loggedIndices : "unavailable" }
+    : { stage: "unavailable", loggedIndices: "unavailable" };
+}

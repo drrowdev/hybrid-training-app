@@ -670,7 +670,9 @@ export function MovementFocusView({
       setRestSeconds(restLeft);
       setRestToken((t) => t + 1);
     }
-    if (saved.cursor != null && saved.activeKey === groupKey) {
+    const savedItemIndex = saved.cursor == null ? undefined : group.itemIndices[saved.cursor];
+    if (saved.cursor != null && saved.activeKey === groupKey &&
+      savedItemIndex != null && !loggedItemIndices.has(savedItemIndex)) {
       setManualPin({ key: groupKey, slot: saved.cursor });
       if (draftAppliesTo(saved, groupKey, saved.cursor) && saved.draft) {
         const d = saved.draft;

@@ -32,8 +32,11 @@ try {
         import { TrashItemRow } from "./src/components/trash/TrashItemRow";
         import { DeloadWeekCard } from "./src/components/plan/DeloadWeekCard";
         import { FocusStripLogger } from "./src/components/session/FocusStripLogger";
+        import { SessionWorkArea } from "./src/components/session/SessionWorkArea";
+        import { SessionLoggingStateProvider } from "./src/components/session/SessionLoggingState";
         import { compileAuthoredWorkout } from "@hta/domain";
         import { groupPrescriptionByMovement } from "./src/lib/sessions/movement-grouping";
+        import { optimisticLogFromFormData, mergeOptimisticSets } from "./src/lib/sessions/optimistic-log";
         import { syntheticCourse } from "./src/lib/swim/__tests__/course-fixtures";
         import { planPrivateSwimCourse } from "./src/lib/swim/course-planning";
         import styles from "./src/components/swim/Swim.module.css";
@@ -118,6 +121,56 @@ try {
           window.circuitWrites = []; window.circuitPending = [];
           window.settleCircuitSave = outcome => window.circuitPending.shift()(outcome);
           root.render(<CircuitFixture key={++key} solo={solo} />);
+        };
+        const fullCircuitCatalog = circuitCatalog.map((movement, index) => ({
+          ...movement, id: "00000000-0000-4000-8000-" + String(index + 21).padStart(12, "0"),
+        }));
+        const fullCircuitWorkout = { ...circuitWorkout, id: "00000000-0000-4000-8000-000000000024",
+          parts: circuitWorkout.parts.map((part, index) => ({ ...part,
+            id: "00000000-0000-4000-8000-" + String(index + 25).padStart(12, "0"),
+            ...(part.kind === "cardio" ? { movementId: fullCircuitCatalog[0].id }
+              : { movements: part.movements.map((movement, position) => ({ ...movement,
+                  id: "00000000-0000-4000-8000-" + String(position + 27).padStart(12, "0"),
+                  movementId: fullCircuitCatalog[position + 1].id })) }),
+          })),
+        };
+        const fullCircuitPrescription = compileAuthoredWorkout(fullCircuitWorkout, fullCircuitCatalog);
+        window.showFullCircuit = (deferFirstSave = false) => {
+          const sessionId = crypto.randomUUID();
+          const fixtureKey = ++key, serverSets = [], serverCardio = [];
+          window.circuitWrites = [];
+          const unexpected = async () => { throw new Error("Unexpected session mutation"); };
+          window.logFullStrength = async form => {
+            window.circuitWrites.push(Number(form.get("prescriptionItemIndex")));
+            const id = crypto.randomUUID();
+            const log = optimisticLogFromFormData(form, String(form.get("clientLogId")));
+            serverSets.push(...mergeOptimisticSets([], [{ ...log, serverId: id }]));
+            if (deferFirstSave && window.circuitWrites.length === 1) {
+              await new Promise(resolve => window.resolveFullStrength = resolve);
+            }
+            return { ok: true, set: { id } };
+          };
+          window.logFullCardio = async () => {
+            serverCardio.push({ id: crypto.randomUUID(), blockIndex: 1, durationSec: 120 });
+            return { ok: true };
+          };
+          window.refreshFullCircuit = () => root.render(<main key={fixtureKey}>
+            <SessionLoggingStateProvider key={serverSets.length + ":" + serverCardio.length}
+            initialHasStrengthSets={serverSets.length > 0} initialLoggedCardioItemIndices={serverCardio.map(log => log.blockIndex - 1)}
+            initialUnloggedStrengthCount={4 - serverSets.length}
+            initialUnloggedRequiredIndices={[0,1,2,3,4].filter(index => !serverSets.some(set => set.prescription_item_index === index)
+              && !serverCardio.some(log => log.blockIndex === index + 1))}>
+            <SessionWorkArea sessionId={sessionId} isComplete={false} performedAt="2026-09-14T12:00:00Z"
+              sets={[...serverSets]} tmBySlug={{}} oneRmBySlug={{}} lastSetHints={{}} priorBests={{}}
+              plannedSessionId="00000000-0000-4000-8000-000000000029" prescription={fullCircuitPrescription}
+              loggedItemIndices={serverSets.map(set => set.prescription_item_index)}
+              loggedSetIdByItemIndex={Object.fromEntries(serverSets.map(set => [set.prescription_item_index, set.id]))} swapAction={unexpected}
+              fillFromPlan={unexpected} updateStrengthSet={unexpected}
+              hapticsEnabled={false} timerSoundEnabled={false} restTimerEnabled={false}
+              addStrengthSet={window.logFullStrength}
+              authoredCardio={{ units: "metric", logs: [...serverCardio], action: window.logFullCardio }} />
+          </SessionLoggingStateProvider></main>);
+          window.refreshFullCircuit();
         };
         window.homeCalls = [];
         window.showHomeWeek = () => {
@@ -329,13 +382,17 @@ try {
         build.onResolve({ filter: /^(?:\.\/PlanRedesign|@\/components\/plan\/PlanRedesign)$/ }, args =>
           args.importer.replaceAll("\\", "/").endsWith("/components/plan/ThisWeekRail.tsx")
             ? { path: "home-drawer", namespace: "test" } : undefined);
-        build.onResolve({ filter: /^@\/lib\/(?:sessions\/(?:actions|swap-actions)|movements\/instructions)$/ },
+        build.onResolve({ filter: /^@\/lib\/(?:sessions\/(?:actions|swap-actions|session-movement-actions|reorder-actions)|movements\/instructions)$/ },
           args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/planner\/actions$/ }, args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions)|@\/lib\/programs\/authored\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "@/lib/sessions/actions"
-            ? "export const deleteSet = () => { throw new Error('Unexpected delete'); }; export const permanentlyDeleteSession = deleteSet, restoreSession = deleteSet;"
+            ? "export const deleteSet = () => { throw new Error('Unexpected session mutation'); }; export const permanentlyDeleteSession = deleteSet, restoreSession = deleteSet, addCardioBlock = deleteSet, completeSessionResult = deleteSet; export const addStrengthSet = form => window.logFullStrength(form), logCardioSession = form => window.logFullCardio(form);"
+            : args.path === "@/lib/sessions/session-movement-actions"
+              ? "export const removeSessionMovementAction = () => { throw new Error('Unexpected removal'); };"
+            : args.path === "@/lib/sessions/reorder-actions"
+              ? "export const reorderSessionAccessories = () => { throw new Error('Unexpected reorder'); };"
             : args.path === "@/lib/planner/actions"
               ? "export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); };"
             : args.path === "@/lib/sessions/swap-actions"
@@ -355,7 +412,7 @@ try {
                   h("button", { type: "button", onClick: onClose }, "Close"));
               }`
             : args.path === "next/navigation"
-            ? "export const useRouter = () => ({ push(path) { window.destinations.push(path); }, refresh() {} });"
+            ? "const router = { push(path) { window.destinations.push(path); }, refresh() {} }; export const useRouter = () => router;"
             : args.path === "next/link"
               ? `import { createElement } from "react"; export default function Link({ href, onClick, ...props }) {
                   return createElement("a", { ...props, href, onClick(event) {
@@ -375,7 +432,7 @@ try {
               ? "export const previewAuthoredProgram = input => window.previewProgram(input); export const saveAuthoredProgram = (...args) => window.saveProgram(...args);"
             : args.path === "@/components/trash/DeleteSessionButton"
               ? "export const DeleteSessionButton = () => { throw new Error('Unexpected delete control'); };"
-            : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = form => window.saveSetup(form); export const previewSwimPlan = form => window.previewSetup(form); const unexpected = () => { throw new Error('Unexpected action'); }; export const proposeSwimWeek = unexpected, proposeSwimBenchmark = unexpected, decideSwimProposal = unexpected, changeSwimPlanStatus = unexpected, previewSwimResume = unexpected, resumeSwimPlan = unexpected, decideSwimBenchmark = unexpected, applySwimWeekEdit = unexpected, applySwimDateEdit = unexpected, applySwimPoolEdit = unexpected, previewSwimWeekEdit = unexpected, previewSwimDateEdit = unexpected, skipSwimWorkout = unexpected;",
+            : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = form => window.saveSetup(form); export const previewSwimPlan = form => window.previewSetup(form); const unexpected = () => { throw new Error('Unexpected action'); }; export const proposeSwimWeek = unexpected, proposeSwimBenchmark = unexpected, decideSwimProposal = unexpected, changeSwimPlanStatus = unexpected, previewSwimResume = unexpected, resumeSwimPlan = unexpected, decideSwimBenchmark = unexpected, applySwimWeekEdit = unexpected, applySwimDateEdit = unexpected, applySwimPoolEdit = unexpected, previewSwimWeekEdit = unexpected, previewSwimDateEdit = unexpected, skipSwimWorkout = unexpected, completeSwimWorkoutResult = unexpected;",
           loader: "js", resolveDir: root,
         }));
       },
@@ -406,6 +463,32 @@ try {
   stages.push(stage);
 
   for (const width of [375, 1280]) {
+    stage = `authored-full-work-area-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.showFullCircuit());
+    await page.getByTestId("cardio-log-submit").click();
+    const fullLogSet = page.getByTestId("movement-focus-log-button");
+    for (let index = 0; index < 4; index++) {
+      await fullLogSet.click();
+      await expect.poll(() => page.evaluate(() => window.circuitWrites.length)).toBe(index + 1);
+    }
+    assert.deepEqual(await page.evaluate(() => window.circuitWrites), [1,3,2,4]);
+    stages.push(stage);
+
+    stage = `authored-full-refresh-during-save-${width}`;
+    await page.evaluate(() => window.showFullCircuit(true));
+    await page.getByTestId("cardio-log-submit").click();
+    await fullLogSet.click();
+    await expect.poll(() => page.evaluate(() => window.circuitWrites.length)).toBe(1);
+    await page.evaluate(() => window.refreshFullCircuit());
+    await page.evaluate(() => window.resolveFullStrength());
+    for (let index = 1; index < 4; index++) {
+      await fullLogSet.click();
+      await expect.poll(() => page.evaluate(() => window.circuitWrites.length)).toBe(index + 1);
+    }
+    assert.deepEqual(await page.evaluate(() => window.circuitWrites), [1,3,2,4]);
+    stages.push(stage);
+
     stage = `recovery-shared-review-${width}`;
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => window.showRecovery());

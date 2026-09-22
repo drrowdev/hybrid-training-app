@@ -4345,3 +4345,32 @@ now pins the exact updated prefix and reverses only three added preview clicks
 and two preview-only entries before checking the unchanged original accepted
 hash. All original assertions and actual pinned SDK decoding remain required;
 only the read's CRLF representation is normalized to canonical LF.
+
+## [2026-09-22] refine | Resume coverage after mixed-session refresh
+
+Exact e8225122 passed core35790374170 and storage35790374202, including
+the recovery scheduling and restoration proofs. Native35791399018 passed
+normal157 migrations,36 historical RPC cases and all prebrowser checks,
+then passed M1/M2/M5/M6 only. M3 failed its final logged-item order; M4
+timed out without an attributable awaited operation. Both native cleanup
+checks passed. This remains a failed qualification, not release acceptance.
+
+A deterministic isolated reproduction now exercises the actual
+SessionWorkArea, movement grouping, logging provider and IndexedDB durable
+path. A server snapshot arriving after a strength row commits but before
+its response remounts the provider and could restore a now-covered cursor;
+the next Log then updated the old row instead of advancing. Resume selection
+and draft restoration now reject covered slots while retaining unlogged
+drafts and rest deadlines. The full path and this refresh interleaving pass
+at375/1280, alongside the existing delayed/rejected circuit and solo cases.
+Local evidence totals43 browser stages and85 focused session tests. It does
+not establish that this was the unavailable native M3 actual-order mismatch.
+
+The unchanged six native cases now carry one current, closed checkpoint
+annotation for M3/M4. The final M3 order is projected only as exactly four
+integers0..4 or a fixed invalid marker. Parent-owned failure projection
+rejects malformed, duplicate, wrong-case and oversized annotations; no
+rows, identities, URLs or raw error text are exposed. Eleven focused
+membership/projection checks and web type-check passed. M4 has no speculative
+behavior change. Assertions, deadlines, migration bytes and qualification
+requirements remain unchanged; a fresh exact-head native execution is required.

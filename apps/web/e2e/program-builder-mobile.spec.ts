@@ -8,6 +8,7 @@ import { markOnboarded } from "./fixtures/seed-blocks";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { syntheticCourse } from "../src/lib/swim/__tests__/course-fixtures";
 import { addDaysToYmd } from "../src/lib/dates";
+import type { MODULAR_STAGE_CODES } from "../scripts/modular-browser-observations";
 
 type Movement = { id: string; slug: string; display_name: string };
 type Planned = { id: string; block_id: string; week_index: number; day_index: number;
@@ -68,6 +69,16 @@ const test = seededTest.extend<{ actor: SupabaseClient; catalog: Movement[] }>({
   },
   /* eslint-enable react-hooks/rules-of-hooks */
 });
+
+function diagnosticAnnotation(type: "modular-stage" | "modular-set-indices", description: string) {
+  const annotations = test.info().annotations;
+  const existing = annotations.find((annotation) => annotation.type === type);
+  if (existing) existing.description = description;
+  else annotations.push({ type, description });
+}
+function stage(code: (typeof MODULAR_STAGE_CODES)["m3" | "m4"][number]) {
+  diagnosticAnnotation("modular-stage", code);
+}
 
 function movement(catalog: Movement[], slug: string) {
   const selected = catalog.find((row) => row.slug === slug);
@@ -178,10 +189,14 @@ test.describe("Modular program builder", () => {
 
   test("M3 DC-K4: hybrid repeats and activity views retain one workout identity", async ({ page, actor, catalog }) => {
     const running = movement(catalog, "run-easy-z2"), first = movement(catalog, "goblet-squat"), second = movement(catalog, "bench-press-flat");
+    stage("m3-01");
     await begin(page, "hybrid", "Mixed acceptance");
+    stage("m3-02");
     await run(page, running, "hybrid");
+    stage("m3-03");
     await page.getByRole("button", { name: "Add circuit", exact: true }).click();
     const circuit = page.locator("article").last();
+    stage("m3-04");
     await circuit.getByLabel("Rounds", { exact: true }).fill("2");
     await circuit.getByLabel("Search library", { exact: true }).first().fill(first.display_name);
     await circuit.getByRole("button", { name: first.display_name, exact: true }).first().click();
@@ -189,66 +204,109 @@ test.describe("Modular program builder", () => {
     await circuit.getByRole("button", { name: second.display_name, exact: true }).click();
     for (const input of await circuit.getByLabel("Load (kg)", { exact: true }).all()) await input.fill("20");
     for (const input of await circuit.getByLabel("Rest (seconds)", { exact: true }).all()) await input.fill("0");
-    await review(page); await save(page);
+    stage("m3-05");
+    await review(page);
+    stage("m3-06");
+    await save(page);
+    stage("m3-07");
     const rows = await planned(actor), row = rows[0]!;
     expect(row.prescription.items).toHaveLength(5);
     expect(row.prescription.items.slice(1).map((item) => item.circuit?.round)).toEqual([0, 1, 0, 1]);
+    stage("m3-08");
     for (const activity of ["strength", "running"]) {
       await page.goto(`/app/programs?activity=${activity}`);
       await expect(page.locator(`a[href="/app/sessions/start/${row.id}"]`)).toBeVisible();
     }
+    stage("m3-09");
     const sessionId = await start(page, row.id);
     await expect(page.getByRole("navigation", { name: "Workout parts", exact: true }).getByRole("button")).toHaveCount(2);
+    stage("m3-10");
     await page.getByTestId("cardio-log-submit").click();
+    stage("m3-11");
     await expect(page.getByTestId("movement-focus-log-button")).toBeVisible();
+    stage("m3-12");
     for (let index = 0; index < 4; index++) {
       await page.getByTestId("movement-focus-log-button").click();
       await expect.poll(async () => (await loggedSets(actor, sessionId)).length).toBe(index + 1);
     }
-    expect((await loggedSets(actor, sessionId)).map((entry) => entry.prescription_item_index)).toEqual([1, 3, 2, 4]);
+    stage("m3-13");
+    const indices = (await loggedSets(actor, sessionId)).map((entry) => entry.prescription_item_index);
+    diagnosticAnnotation("modular-set-indices", indices.length === 4 && indices.every(
+      (index: unknown) => typeof index === "number" && Number.isInteger(index) && index >= 0 && index <= 4,
+    ) ? JSON.stringify(indices) : "invalid");
+    expect(indices).toEqual([1, 3, 2, 4]);
+    stage("m3-14");
     const cardio = await actor.from("cardio_logs").select("block_index,movement_id,duration_sec").eq("session_id", sessionId);
     expect(cardio.error).toBeNull();
     expect(cardio.data).toEqual([{ block_index: 1, movement_id: running.id, duration_sec: 120 }]);
+    stage("m3-15");
     await page.reload();
     expect((await planned(actor))[0]!.completed_session_id).toBe(sessionId);
     expect(await loggedSets(actor, sessionId)).toHaveLength(4);
+    stage("m3-16");
     await expect(page.getByTestId("finish-stickybar")).toHaveAttribute("data-armed", "true");
   });
 
   test("M4 DC-SW7: swimming coexists with reviewed primary commitments and independent lifecycle", async ({ page, actor, catalog }) => {
+    stage("m4-01");
     await begin(page, "strength", "Independent strength");
-    await lift(page, movement(catalog, "bench-press-flat")); await review(page); await save(page);
+    stage("m4-02");
+    await lift(page, movement(catalog, "bench-press-flat"));
+    stage("m4-03");
+    await review(page);
+    stage("m4-04");
+    await save(page);
+    stage("m4-05");
     const primary = await planned(actor);
+    stage("m4-06");
     await page.goto("/app/swim/import");
     const source = syntheticCourse();
+    stage("m4-07");
     await page.getByLabel("Prepared plan file").setInputFiles({
       name: "synthetic-course.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(source)),
     });
     const sunday = new Date(`${today()}T00:00:00Z`).getUTCDay();
+    stage("m4-08");
     for (const day of [(sunday + 1) % 7, (sunday + 3) % 7]) await page.locator(`input[name="weekdays"][value="${day}"]`).check();
     await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("trained");
     await page.getByLabel("Comfortable non-stop lengths in the plan pool").fill("40");
     await page.getByLabel("Freestyle", { exact: true }).check();
+    stage("m4-09");
     await page.getByRole("button", { name: "Review plan", exact: true }).click();
+    stage("m4-10");
     await page.getByLabel("I have reviewed the workouts, dates and pools").check();
+    stage("m4-11");
     await page.getByRole("button", { name: "Import plan", exact: true }).click();
+    stage("m4-12");
     await expect(page).toHaveURL(/\/app\/swim\?plan=/);
+    stage("m4-13");
     const swims = await actor.from("swim_workouts").select("id,scheduled_date").order("scheduled_date");
     expect(swims.error).toBeNull(); expect(swims.data).toHaveLength(3);
     const sharedDate = addDaysToYmd(today(), 7);
     expect(swims.data!.some((row) => row.scheduled_date === sharedDate)).toBe(false);
+    stage("m4-14");
     await page.getByText("Move swim", { exact: true }).last().click();
     const editor = page.locator("details").filter({ has: page.getByLabel("Swim date") }).last();
+    stage("m4-15");
     await editor.getByLabel("Swim date").fill(sharedDate);
     await editor.getByLabel("Reason", { exact: true }).fill("Reviewed two-workout day");
+    stage("m4-16");
     await editor.getByRole("button", { name: "Preview date", exact: true }).click();
+    stage("m4-17");
     await expect(editor.getByRole("button", { name: "Save date", exact: true })).toBeDisabled();
+    stage("m4-18");
     await editor.getByLabel("Keep both workouts on this date").check();
+    stage("m4-19");
     await editor.getByRole("button", { name: "Save date", exact: true }).click();
+    stage("m4-20");
     await expect.poll(async () => (await actor.from("swim_workouts").select("scheduled_date").eq("id", swims.data!.at(-1)!.id).single()).data?.scheduled_date).toBe(sharedDate);
+    stage("m4-21");
     expect((await actor.from("swim_workouts").select("id")).data).toHaveLength(3);
+    stage("m4-22");
     await page.getByRole("button", { name: "Finish plan", exact: true }).click();
+    stage("m4-23");
     await expect.poll(async () => (await actor.from("swim_plans").select("status").single()).data?.status).toBe("finished");
+    stage("m4-24");
     expect((await planned(actor)).map((row) => [row.id, row.week_index, row.day_index])).toEqual(primary.map((row) => [row.id, row.week_index, row.day_index]));
     expect((await actor.from("training_blocks").select("status").single()).data?.status).toBe("active");
   });

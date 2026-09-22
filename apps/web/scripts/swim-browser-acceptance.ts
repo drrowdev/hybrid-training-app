@@ -11,6 +11,7 @@ import { isDedicatedSwimEnvironment } from "../e2e/fixtures/swim-environment";
 import { acceptanceAssert as assert } from "./swim-acceptance-errors";
 import { projectAlertObservations, readAlertAnnotations, type AlertObservation } from "./swim-alert-membership";
 import { MODULAR_BROWSER_CASES, type BrowserCase } from "./modular-browser-profile";
+import { projectModularObservation, readModularAnnotations, type ModularObservation } from "./modular-browser-observations";
 
 export const SWIM_BROWSER_CASES = Object.freeze([
   Object.freeze({
@@ -181,6 +182,7 @@ const failureLedgers = new WeakMap<object, {
     expectedStatus: z.infer<typeof resultStatusSchema>; attempts: number; durationMs: number;
     attributedSources: AttributedSource[];
     failureDetails?: ReturnType<typeof projectStackAttribution>;
+    modularObservation?: ModularObservation;
     alertObservations: AlertObservation[];
   }>;
   counts: { expected: number; unexpected: number; flaky: number; skipped: number };
@@ -459,9 +461,12 @@ const resultSchema = z.object({
   })),
   errorLocation: locationSchema.optional(),
   errors: z.array(errorAttributionSchema),
-  annotations: z.unknown().transform(readAlertAnnotations),
-}).transform(({ errors, error, ...result }) => ({
-  ...result, error: error.present, errors: errors.length, errorLocations: errors.map((error) => error.location),
+  annotations: z.unknown().transform((value) => ({
+    alerts: readAlertAnnotations(value), modular: readModularAnnotations(value),
+  })),
+}).transform(({ errors, error, annotations, ...result }) => ({
+  ...result, annotations: annotations.alerts, modularAnnotations: annotations.modular,
+  error: error.present, errors: errors.length, errorLocations: errors.map((error) => error.location),
   stacks: [...new Set([error.stack, ...errors.slice(0, 8).map((item) => item.stack)]
     .filter((stack): stack is string => stack !== undefined))],
 }));
@@ -618,6 +623,9 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
             attributedSources: attributedSources(test.results, webRoot),
             ...(test.results.at(-1)!.status !== "passed" ? {
               failureDetails: projectStackAttribution(test.results.at(-1)!.stacks, webRoot),
+              ...(cases === MODULAR_BROWSER_CASES && (index === 2 || index === 3) ? {
+                modularObservation: projectModularObservation(index, test.results.at(-1)!.modularAnnotations),
+              } : {}),
             } : {}),
             alertObservations: cases === SWIM_BROWSER_CASES
               ? projectAlertObservations(index, test.results.at(-1)!.annotations) : [] };

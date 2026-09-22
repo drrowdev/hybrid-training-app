@@ -26,6 +26,7 @@ import {
   type BrowserPaths,
 } from "../../../../scripts/swim-browser-acceptance";
 import { MODULAR_BROWSER_CASES, type BrowserCase } from "../../../../scripts/modular-browser-profile";
+import { MODULAR_STAGE_CODES, projectModularObservation, readModularAnnotations } from "../../../../scripts/modular-browser-observations";
 import { acceptanceAssert, processFailure, safeFailureCause } from "../../../../scripts/swim-acceptance-errors";
 import * as reporting from "../../../../scripts/swim-acceptance-reporting";
 import {
@@ -114,6 +115,63 @@ function report(location = paths, cases: readonly BrowserCase[] = SWIM_BROWSER_C
 }
 
 describe("DC-SW8 modular acceptance report membership", () => {
+  it("projects only current-case failure checkpoints and bounded synthetic indices", () => {
+    const fixture = report(paths, MODULAR_BROWSER_CASES);
+    for (const index of [2, 3]) {
+      const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
+      test.results[0]!.status = "timedOut";
+      test.results[0]!.annotations = [
+        { type: "modular-stage", description: index === 2 ? "m3-08" : "m4-12" },
+        { type: "modular-set-indices", description: "[1,3,2,4]" },
+        { type: "private-type", description: "private-value" },
+      ];
+    }
+    let caught: unknown;
+    try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
+    catch (error) { caught = error; }
+    const result = projectBrowserFailure(caught);
+    expect(result.success).toBe(false);
+    expect(result.cases?.[2]?.modularObservation).toEqual({ stage: "m3-08", loggedIndices: [1, 3, 2, 4] });
+    expect(result.cases?.[3]?.modularObservation).toEqual({ stage: "m4-12", loggedIndices: "unavailable" });
+    expect(result.cases?.[0]).not.toHaveProperty("modularObservation");
+    expect(JSON.stringify(result)).not.toContain("private-");
+    fixture.suites[0]!.suites[0]!.specs.forEach((spec) => { spec.tests[0]!.results[0]!.status = "passed"; });
+    expect(JSON.stringify(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES)))
+      .not.toContain("modularObservation");
+  });
+
+  it("accepts the closed checkpoint codebook only for its own case", () => {
+    for (const [kind, codes] of Object.entries(MODULAR_STAGE_CODES)) {
+      for (const code of codes) {
+        const observation = readModularAnnotations([{ type: "modular-stage", description: code }]);
+        expect(projectModularObservation(kind === "m3" ? 2 : 3, observation).stage).toBe(code);
+        for (const index of [0, 1, 4, 5, kind === "m3" ? 3 : 2]) {
+          expect(projectModularObservation(index, observation)).toEqual({
+            stage: "unavailable", loggedIndices: "unavailable",
+          });
+        }
+      }
+    }
+  });
+
+  it("rejects malformed, duplicate, oversized and unbounded diagnostic annotations", () => {
+    const stage = { type: "modular-stage", description: "m3-01" };
+    for (const value of [null, {}, "private-value", [stage, stage], Array(129).fill(stage),
+      [{ ...stage, description: "m3-17" }], [{ ...stage, description: "private-value" }],
+      [{ ...stage, description: 3 }], [{ ...stage, description: "m4-25" }]]) {
+      expect(readModularAnnotations(value)).toEqual({ stage: "unavailable", loggedIndices: "unavailable" });
+    }
+    for (const value of ["[1,2,3]", "[1,2,3,4,0]", "[1,2,3,5]", "[-1,2,3,4]", "[1, 2,3,4]",
+      "[1,2,3,4]\n", "[1,2,3,4]private-value", "[1,2,3,null]", "[1,2,3,4.0]", [1, 2, 3, 4], null]) {
+      expect(readModularAnnotations([stage, { type: "modular-set-indices", description: value }]))
+        .toEqual({ stage: "m3-01", loggedIndices: "unavailable" });
+    }
+    const indices = { type: "modular-set-indices", description: "[0,1,2,4]" };
+    expect(readModularAnnotations([stage, indices, indices]).loggedIndices).toBe("unavailable");
+    expect(readModularAnnotations([stage, indices]).loggedIndices).toEqual([0, 1, 2, 4]);
+    expect(readModularAnnotations([stage, { ...indices, description: "invalid" }]).loggedIndices).toBe("invalid");
+  });
+
   it("accepts only the complete declared modular cohort without changing the historical cohort", () => {
     const fixture = report(paths, MODULAR_BROWSER_CASES);
     expect(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES))

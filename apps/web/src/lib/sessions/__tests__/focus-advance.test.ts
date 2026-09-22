@@ -220,4 +220,12 @@ describe("resolveInitialActiveKey (defect #3)", () => {
   it("resuming the already-first-open movement is a no-op", () => {
     expect(resolveInitialActiveKey(groups, "a", "a")).toBe("a");
   });
+
+  it("DC-K4: a refreshed committed set cannot restore the covered cursor before circuit rotation", () => {
+    expect(resolveInitialActiveKey(groups, "b", "a", 0, new Set([0]))).toBe("b");
+  });
+
+  it("retains a later movement's unlogged draft despite other covered slots", () => {
+    expect(resolveInitialActiveKey(groups, "a", "b", 1, new Set([3]))).toBe("b");
+  });
 });

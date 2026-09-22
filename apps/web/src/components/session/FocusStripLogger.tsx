@@ -254,7 +254,7 @@ export function FocusStripLogger({
     if (resumeAppliedRef.current) return;
     resumeAppliedRef.current = true;
     const saved = readResume(sessionId);
-    const resolved = resolveInitialActiveKey(groups, firstOpenId, saved?.activeKey);
+    const resolved = resolveInitialActiveKey(groups, firstOpenId, saved?.activeKey, saved?.cursor, loggedItemIndices);
     if (resolved !== firstOpenId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot, client-only application of resume state; see the comment above `activeId`
       setActiveId(resolved);
