@@ -117,6 +117,13 @@ export async function rehearseModularSchedule(
       p_program_instance: { program_id: "authored", program_family: "hybrid", display_name: "Synthetic hybrid", customization_version: 1, instance: { version: 1 }, setup_input: {} },
     };
     const initial = await snapshot(a), requestId = randomUUID();
+    await denied(() => commit(a, "primary-create", {
+      ...primary, p_training_max_drafts: [{ movementId: movement.id, oneRmKg: 0 }],
+    }, initial.revision), "22023");
+    await denied(() => commit(a, "primary-create", {
+      ...primary, p_training_max_drafts: [{ movementId: randomUUID(), oneRmKg: 120 }],
+    }, initial.revision), "22023");
+    assert.equal((await snapshot(a)).revision, initial.revision);
     const first = await commit<Created>(a, "primary-create", primary, initial.revision, requestId);
     assert.deepEqual(await commit<Created>(a, "primary-create", primary, initial.revision, requestId), first);
     await denied(() => commit(a, "primary-create", { ...primary, changed: true }, initial.revision, requestId), "22023");
@@ -150,12 +157,25 @@ export async function rehearseModularSchedule(
     await denied(() => commit(a, "swim-create", swimArgs, own.revision), "22023");
     assert.equal((await snapshot(a)).revision, own.revision);
     let swim = await commit<Swim>(a, "swim-create", swimArgs, own.revision, randomUUID(), true);
-    const replacement = { ...primary, p_replace_block_id: first.block_id };
+    const replacement = { ...primary, p_replace_block_id: first.block_id,
+      p_training_max_drafts: [{ movementId: movement.id, oneRmKg: 120 }], p_rehab_bindings: [], p_skipped: 0 };
     const together = await snapshot(a);
     await denied(() => commit(a, "primary-create", replacement, together.revision), "22023");
     assert.equal((await snapshot(a)).revision, together.revision);
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.training_maxes WHERE user_id=${a}::uuid`)[0]!.n, 0);
     const replaced = await commit<Created>(a, "primary-create", replacement, together.revision, randomUUID(), true);
+    const [enteredMax] = await database`SELECT one_rm_kg::float AS value,source FROM public.training_maxes
+      WHERE user_id=${a}::uuid AND movement_id=${movement.id}::uuid`;
+    assert.deepEqual(enteredMax, { value: 120, source: "entered" });
     assert.ok((await snapshot(a)).entries.some((entry) => entry.programId === swim.plan.id));
+    const edited = await commit<Created & { skipped: number; todayLeftAsIs: boolean }>(a, "primary-update", {
+      p_block_id: replaced.block_id, p_strength_updates: [], p_deletions: [], p_insertions: [],
+      p_block_metadata: { weeks: 2, days_per_week: 1, day_index_overrides: primary.p_block.day_index_overrides,
+        cardio_source: "internal", notes: "Synthetic edited hybrid" },
+      p_tm_percents: [], p_program_instance: primary.p_program_instance, p_rehab_bindings: [],
+      p_skipped: 0, p_today_left_as_is: false,
+    }, (await snapshot(a)).revision);
+    assert.deepEqual(edited, { ...replaced, skipped: 0, todayLeftAsIs: false });
     stages.push("modular-DC-SW7-bidirectional-explicit-overlap-and-independent-replacement");
 
     const barrier = () => {
@@ -260,11 +280,11 @@ export async function rehearseModularSchedule(
     const logged = [{ session_id: started[0], movement_id: movement.id, set_index: 1, reps: 5,
       prescription_item_index: 0, client_log_id: randomUUID() }];
     await contendWithSession("modular-bw-batch-waiter", async (tx) =>
-      tx`SELECT * FROM public.insert_set_logs_with_bw_progress(${json(logged)}::jsonb)`, async (tx) =>
+      tx`SELECT * FROM public.insert_set_logs_with_bw_progress(${json(logged)}::text::jsonb)`, async (tx) =>
       tx`SELECT pg_advisory_xact_lock(hashtextextended(${"bw-progress:" + a + ":push_h"},0))`);
     await contendWithSession("modular-recovery-waiter", async (tx) =>
       tx`SELECT public.insert_deload_week(${replaced.block_id}::uuid,${a}::uuid,0,
-        ${json([{ day_index: calendar.weekday, title: "Synthetic recovery", prescription }])}::jsonb)`, async (tx) =>
+        ${json([{ day_index: calendar.weekday, title: "Synthetic recovery", prescription }])}::text::jsonb)`, async (tx) =>
       tx`SELECT id FROM public.training_blocks WHERE id=${replaced.block_id}::uuid FOR UPDATE`);
     const [loggedCounts] = await database`SELECT
       (SELECT count(*)::int FROM public.set_logs WHERE session_id=${started[0]}::uuid) AS sets,

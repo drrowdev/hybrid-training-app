@@ -147,6 +147,7 @@ export function resolveDeclaredExperience(
  * already-parsed `dayIndexOverrides` payload.
  */
 export type BuildBlockAssemblyContextInput = {
+  trainingMaxDrafts?: import("@/lib/platform/context").TrainingMaxDraft[];
   archetypeId: ArchetypeId;
   startedOn: string;
   daysPerWeek: number;
@@ -332,7 +333,10 @@ export async function buildBlockAssemblyContext(
 
   if (tmErr) return { ok: false, error: `TM lookup failed: ${tmErr.message}` };
 
-  const tmByMovementId = new Map((tms ?? []).map((r) => [r.movement_id, r.updated_at]));
+  const tmByMovementId = new Set([
+    ...(tms ?? []).map((row) => row.movement_id),
+    ...(input.trainingMaxDrafts ?? []).map((draft) => draft.movementId),
+  ]);
 
   /**
    * Bodyweight-only / no-TM path. When the user has no training maxes

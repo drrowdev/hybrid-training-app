@@ -162,7 +162,7 @@ async function prepare(raw: AuthoredSaveInput) {
     newSessions: rows.map((row) => ({ weekIndex: row.week_index, dayIndex: row.day_index, slot: row.slot, role: row.role, programRef: row.ref })),
   });
   const proposed = input.editBlockId ? rewrite.insertIndices.map((index) => rows[index]!) : rows;
-  const excluded = active ? { source: "primary" as const, programId: active.id } : undefined;
+  const excluded = active ? { source: "primary" as const, programId: active.id, retainExistingOverlaps: !!input.editBlockId } : undefined;
   const advice = trainingScheduleAdvice(snapshot.entries, proposed.map((row) => row.date), excluded);
   const preview: AuthoredPreview = {
     id: scheduleInputHash({ input, rows, snapshot: snapshot.revision }),

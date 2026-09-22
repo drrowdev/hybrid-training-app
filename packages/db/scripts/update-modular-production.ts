@@ -56,6 +56,12 @@ export function modularQualifiedJobs(raw: unknown, run: number, sha: string, req
   }), "qualification_jobs");
 }
 
+export function requireModularProductionBindings(settings: ReturnType<typeof productionSettings>) {
+  requireInspection(settings.valuesRead === false && settings.flags.length === 7 &&
+    new Set(settings.flags.map((flag) => flag.key)).size === 7 && settings.flags.every((flag) =>
+    flag.configured === !["ENABLE_E2E_FIXTURES", "NEXT_PUBLIC_BUILD_SHA"].includes(flag.key)), "production_bindings");
+}
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 export async function updateModularProduction(env: NodeJS.ProcessEnv, sourceOnly = false) {
   const result = {
@@ -142,7 +148,9 @@ export async function updateModularProduction(env: NodeJS.ProcessEnv, sourceOnly
     const alias = productionAlias(await request(PRODUCTION_ROUTES.alias));
     requireInspection(deploymentId === undefined || alias.deploymentId === deploymentId, "alias_changed");
     deploymentId = alias.deploymentId;
-    return { settings: productionSettings(project, projectEnv, sharedEnv),
+    const settings = productionSettings(project, projectEnv, sharedEnv);
+    requireModularProductionBindings(settings);
+    return { settings,
       deployment: productionDeployment(await request(productionDeploymentRoute(deploymentId)), deploymentId, env.EXPECTED_SHA!) };
   };
   try {

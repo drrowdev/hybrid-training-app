@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import {
   isModularAcceptance, isModularBrowserProfile, MODULAR_BROWSER_CASES, MODULAR_MIGRATION_TOTAL,
 } from "../../../../scripts/modular-browser-profile";
@@ -19,6 +20,15 @@ const context = {
 };
 
 describe("DC-SW8 modular browser profile retains the isolated runtime boundaries", () => {
+  it("needs no hosted credentials or protected review environment", () => {
+    const workflow = readFileSync(resolve(__dirname, "../../../../../../.github/workflows/ci.yml"), "utf8")
+      .replaceAll("\r\n", "\n");
+    const job = workflow.split("\n  swim-acceptance:\n")[1]!.split("\n  prod-migrate:\n")[0]!;
+    expect(job).toContain("SXC_ACCEPTANCE_PROFILE:");
+    expect(job).not.toContain("environment:");
+    expect(job).not.toContain("secrets.");
+  });
+
   it("preserves the historical cohort and declares exactly six new cases", () => {
     expect(SWIM_BROWSER_CASES).toHaveLength(26);
     expect(MODULAR_BROWSER_CASES).toHaveLength(6);

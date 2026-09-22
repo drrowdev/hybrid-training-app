@@ -3,10 +3,8 @@
 /**
  * createProgramInstance — deploy a platform program for the signed-in user.
  *
- * This is the write path that replaces the archetype `createBlock` for platform
- * programs. It is intentionally NOT wired to any UI yet (the program picker
- * lands in a later PR); shipping it standalone keeps the change reviewable and
- * means no platform block can be created in prod until the picker is wired.
+ * Existing templates retain their engine materialization. The picker reviews
+ * those exact dates before the shared scheduling transaction writes the graph.
  *
  * Flow (all under the signed-in user's RLS — never the service role):
  *   buildPlatformContext  → engine.setup → buildProgramInstanceWrite
@@ -35,7 +33,14 @@ import {
   buildPlatformContext,
   validateCustomMovementBindings,
 } from "./context";
-import type { CustomMovementBinding } from "./context";
+import type { CustomMovementBinding, TrainingMaxDraft } from "./context";
+import {
+  commitReviewedProgram, programReviewContext, programSchedulePreview,
+  type ProgramReviewContext, type ProgramSchedulePreview,
+} from "./program-review";
+import { scheduleReplay, scheduleReviewSchema, ScheduleUnavailableError } from "@/lib/schedule/storage";
+import { buildDeloadWeek } from "@/lib/planner/deload-week";
+import { recoveryPercentScale, recoveryWeekPolicyFor } from "@/lib/planner/recovery-week-policy";
 import { getProgramEngine, getNativeProgramEngine, isNativeProgram } from "./registry";
 import { buildProgramInstanceWrite, type ProgramInstanceWrite } from "./program-instance";
 import { buildAssistancePlanner, type AssistancePlanner } from "./assistance-resolver";
@@ -517,6 +522,10 @@ function wholeWeeksBetween(startIso: string, endIso: string): number {
 
 const createProgramInstanceSchema = z
   .object({
+    trainingMaxDrafts: z.array(z.object({
+      movementId: z.string().uuid(), oneRmKg: z.number().positive().max(1000),
+    }).strict()).max(32).optional(),
+    review: scheduleReviewSchema.extend({ previewId: z.string().regex(/^[a-f0-9]{64}$/) }).optional(),
     programId: z.string().min(1),
     /** Engine setup values (template, cycle structure, …) — engine-specific. */
     setupValues: z.record(z.unknown()).default({}),
@@ -609,14 +618,42 @@ export type CreateProgramInstanceResult =
     }
   | { ok: false; error: string };
 
+export type PreviewProgramInstanceResult =
+  | { ok: true; preview: ProgramSchedulePreview }
+  | { ok: false; error: string };
+
+type ProgramExecutionResult = CreateProgramInstanceResult | PreviewProgramInstanceResult;
+
 export async function createProgramInstance(
   input: CreateProgramInstanceInput,
 ): Promise<CreateProgramInstanceResult> {
+  try {
+    const result = await runProgramInstance(input, false);
+    if (result.ok && "preview" in result) return { ok: false, error: "Review the program before saving." };
+    return result;
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not save your program." };
+  }
+}
+
+export async function previewProgramInstance(input: CreateProgramInstanceInput): Promise<PreviewProgramInstanceResult> {
+  try {
+    const result = await runProgramInstance(input, true);
+    if (result.ok && !("preview" in result)) return { ok: false, error: "Could not preview your program." };
+    return result;
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not preview your program." };
+  }
+}
+
+async function runProgramInstance(
+  input: CreateProgramInstanceInput, previewOnly: boolean,
+): Promise<ProgramExecutionResult> {
   const parsed = createProgramInstanceSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks: rawSessionLinks, rehabSchedule, editBlockId, seasonBlockId, rehabBindings, startWithRecoveryWeek } = parsed.data;
+  const { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks: rawSessionLinks, rehabSchedule, editBlockId, seasonBlockId, rehabBindings, startWithRecoveryWeek, trainingMaxDrafts, review } = parsed.data;
   const sessionLinks = normalizeSessionLinks(rawSessionLinks);
 
   if (rehabSchedule && programId !== "tactical-barbell") {
@@ -810,6 +847,20 @@ export async function createProgramInstance(
 
   // Same user-scoped client (RLS) for BOTH paths — never the service role.
   const supabase = await createClient();
+  const { review: _review, ...requestInput } = parsed.data;
+  if (!previewOnly && review) {
+    const replay = await scheduleReplay(supabase, review.requestId, editBlockId ? "primary-update" : "primary-create", requestInput);
+    if (replay !== null) {
+      const saved = z.object({
+        block_id: z.string().uuid(), program_instance_id: z.string().uuid(), skipped: z.number(),
+        todayLeftAsIs: z.boolean().nullish(),
+      }).parse(replay);
+      return { ok: true, blockId: saved.block_id, programInstanceId: saved.program_instance_id,
+        skipped: saved.skipped, ...(saved.todayLeftAsIs != null ? { todayLeftAsIs: saved.todayLeftAsIs } : {}) };
+    }
+  }
+  const flow = await programReviewContext(supabase, user.id, requestInput, previewOnly, review);
+  if (!flow && trainingMaxDrafts?.length) throw new ScheduleUnavailableError();
 
   // Forward-only EDIT of an existing block (5/3/1 / TB). Keeps the block + its
   // active program instance, preserves past/today/touched rows, and regenerates
@@ -826,15 +877,17 @@ export async function createProgramInstance(
       ...(cardioForProgram.length > 0 ? { cardioWeekdays: cardioForProgram } : {}),
       ...(roundingKg != null ? { roundingKg } : {}),
       ...(accessories ? { accessories } : {}),
+      ...(twoADay != null ? { twoADay } : {}),
       ...(customization ? { customization } : {}),
       ...(sessionLinks ? { sessionLinks } : {}),
       ...(rehabSchedule ? { rehabSchedule } : {}),
+      flow, trainingMaxDrafts, rehabBindings,
     });
     // Editing is the path that ATTACHES rehab to a program the user already
     // has, so bindings have to be written here too. Skipping it left the
     // program with no binding, which silently stopped every later Settings
     // edit from syncing into it.
-    if (edited.ok) {
+    if (edited.ok && !("preview" in edited) && !flow) {
       const bindingError = await persistRehabBindings(
         supabase,
         user.id,
@@ -878,8 +931,9 @@ export async function createProgramInstance(
       ...(customization ? { customization } : {}),
       ...(sessionLinks ? { sessionLinks } : {}),
       ...(seasonBlockId ? { seasonBlockId } : {}),
+      flow, trainingMaxDrafts, startWithRecoveryWeek, rehabBindings,
     });
-    if (nativeResult.ok && startWithRecoveryWeek) {
+    if (nativeResult.ok && !("preview" in nativeResult) && startWithRecoveryWeek && !flow) {
       await leadBlockWithRecoveryWeek(supabase, user.id);
     }
     return nativeResult;
@@ -899,10 +953,11 @@ export async function createProgramInstance(
     ...(rehabSchedule ? { rehabSchedule } : {}),
     ...(seasonBlockId ? { seasonBlockId } : {}),
     ...(startWithRecoveryWeek ? { startWithRecoveryWeek: true } : {}),
+    flow, trainingMaxDrafts, rehabBindings,
   });
   // Recorded only AFTER the plan is written, so a failed deploy never leaves a
   // program claiming rehab it doesn't have.
-  if (result.ok) {
+  if (result.ok && !("preview" in result) && !flow) {
     const bindingError = await persistRehabBindings(
       supabase,
       user.id,
@@ -1052,6 +1107,9 @@ export async function getProgramSegments(
 
 /** Parsed, validated deploy input shared by both write paths. */
 interface DeployArgs {
+  flow?: ProgramReviewContext;
+  trainingMaxDrafts?: TrainingMaxDraft[];
+  rehabBindings?: { localProtocolId: string; rehabProtocolId: string }[];
   programId: string;
   setupValues: Record<string, unknown>;
   weekdays: number[];
@@ -1251,7 +1309,7 @@ async function computeForeignWrite(
   supabase: SupabaseClient,
   user: User,
   engine: ProgramEngine,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks, rehabSchedule }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks, rehabSchedule, trainingMaxDrafts }: DeployArgs,
 ): Promise<{ instance: unknown; write: ProgramInstanceWrite }> {
   // HYROX: a supplied race date overrides the experience block length with the
   // whole weeks from start to race, so the program's end-taper lands on race week
@@ -1286,6 +1344,7 @@ async function computeForeignWrite(
     : [];
 
   const { ctx, resolveMovement } = await buildPlatformContext(supabase, user.id, {
+    trainingMaxDrafts,
     ...(roundingKg != null ? { roundingKg } : {}),
     ...(hyroxGender ? { gender: hyroxGender } : {}),
     ...(validatedCustomMovements.length > 0
@@ -1648,6 +1707,70 @@ type LegacyDeploymentResult = {
   error: { message: string } | null;
 };
 
+function prependRecovery(input: LegacyProgramDeployment): LegacyProgramDeployment {
+  const policy = recoveryWeekPolicyFor(input.block.programId);
+  const recovery = buildDeloadWeek(input.plannedSessions.filter((row) => row.weekIndex === 0)
+    .map((row) => ({ ...row, sessionModality: row.sessionModality ?? null })), policy,
+    recoveryPercentScale(policy, input.programInstance.instance));
+  if (!recovery.length) throw new Error("This program has no workouts for a leading recovery week.");
+  return {
+    ...input, block: { ...input.block, weeks: input.block.weeks + 1 },
+    plannedSessions: [
+      ...recovery.map((row) => ({
+        ...row, weekIndex: 0, role: "deload",
+        prescription: { ...row.prescription, insertedRecoveryWeek: true },
+        effectiveStressLoad: null,
+      })),
+      ...input.plannedSessions.map((row) => ({ ...row, weekIndex: row.weekIndex + 1 })),
+    ],
+  };
+}
+
+async function deployPreparedProgram(
+  supabase: SupabaseClient, user: User, original: LegacyProgramDeployment,
+  options: Pick<DeployArgs, "flow" | "trainingMaxDrafts" | "startWithRecoveryWeek" | "rehabBindings">,
+  skipped: number,
+): Promise<LegacyDeploymentResult | { preview: ProgramSchedulePreview }> {
+  const { flow } = options;
+  const input = flow && options.startWithRecoveryWeek ? prependRecovery(original) : original;
+  const args = {
+    p_block: {
+      program_id: input.block.programId, program_family: input.block.programFamily,
+      started_on: input.block.startedOn, weeks: input.block.weeks, days_per_week: input.block.daysPerWeek,
+      day_index_overrides: input.block.dayIndexOverrides, cardio_source: input.block.cardioSource,
+      allows_two_a_days: input.block.allowsTwoADays, accessory_volume: input.block.accessoryVolume, notes: input.block.notes,
+    },
+    p_planned_sessions: input.plannedSessions.map((row) => ({
+      week_index: row.weekIndex, day_index: row.dayIndex, slot: row.slot, title: row.title,
+      role: row.role, prescription: row.prescription, session_modality: row.sessionModality,
+      effective_stress_load: row.effectiveStressLoad,
+    })),
+    p_tm_percents: input.tmPercents,
+    p_program_instance: {
+      program_id: input.programInstance.programId, program_family: input.programInstance.programFamily,
+      instance: input.programInstance.instance, setup_input: input.programInstance.setupInput,
+      display_name: input.programInstance.displayName, customization_version: input.programInstance.customizationVersion,
+    },
+    ...(flow ? {
+      p_training_max_drafts: options.trainingMaxDrafts ?? [],
+      p_rehab_bindings: options.rehabBindings ?? [],
+      p_accept_recovery: options.startWithRecoveryWeek ?? false, p_skipped: skipped,
+    } : {}),
+  };
+  if (flow) {
+    const preview = programSchedulePreview(flow, args, input.block.startedOn, args.p_planned_sessions);
+    if (flow.previewOnly) return { preview };
+    const result = await commitReviewedProgram(supabase, flow, preview, "primary-create", args);
+    return { error: result.error, data: result.error ? null : [
+      z.object({ block_id: z.string().uuid(), program_instance_id: z.string().uuid() }).parse(result.data),
+    ] };
+  }
+  const result = await supabase.rpc("deploy_program_instance_atomically", args);
+  return isMissingRpc(result.error)
+    ? deployProgramInstanceDuringMigration(supabase, user, input)
+    : result;
+}
+
 /**
  * Keeps the immediately preceding app version functional during the short
  * app-first rollout before migration 0144 has installed its RPC.
@@ -1887,8 +2010,8 @@ async function deployProgramInstanceDuringMigration(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, seasonBlockId, twoADay, customization, sessionLinks, rehabSchedule, startWithRecoveryWeek }: DeployArgs,
-): Promise<CreateProgramInstanceResult> {
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, seasonBlockId, twoADay, customization, sessionLinks, rehabSchedule, startWithRecoveryWeek, flow, trainingMaxDrafts, rehabBindings }: DeployArgs,
+): Promise<ProgramExecutionResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
 
@@ -1897,6 +2020,7 @@ async function createForeignProgramInstance(
   let instance: unknown;
   try {
     ({ instance, write } = await computeForeignWrite(supabase, user, engine, {
+      trainingMaxDrafts,
       programId,
       setupValues,
       weekdays,
@@ -1961,49 +2085,12 @@ async function createForeignProgramInstance(
       customizationVersion: customization?.version ?? null,
     },
   };
-  const atomicDeployment = await supabase.rpc(
-    "deploy_program_instance_atomically",
-    {
-      p_block: {
-        program_id: deploymentInput.block.programId,
-        program_family: deploymentInput.block.programFamily,
-        started_on: deploymentInput.block.startedOn,
-        weeks: deploymentInput.block.weeks,
-        days_per_week: deploymentInput.block.daysPerWeek,
-        day_index_overrides: deploymentInput.block.dayIndexOverrides,
-        cardio_source: deploymentInput.block.cardioSource,
-        allows_two_a_days: deploymentInput.block.allowsTwoADays,
-        accessory_volume: deploymentInput.block.accessoryVolume,
-        notes: deploymentInput.block.notes,
-      },
-      p_planned_sessions: deploymentInput.plannedSessions.map((session) => ({
-        week_index: session.weekIndex,
-        day_index: session.dayIndex,
-        slot: session.slot,
-        title: session.title,
-        role: session.role,
-        prescription: session.prescription,
-        session_modality: session.sessionModality,
-        effective_stress_load: session.effectiveStressLoad,
-      })),
-      p_tm_percents: deploymentInput.tmPercents,
-      p_program_instance: {
-        program_id: deploymentInput.programInstance.programId,
-        program_family: deploymentInput.programInstance.programFamily,
-        instance: deploymentInput.programInstance.instance,
-        setup_input: deploymentInput.programInstance.setupInput,
-        display_name: deploymentInput.programInstance.displayName,
-        customization_version: deploymentInput.programInstance.customizationVersion,
-      },
-    },
-  );
-  const legacyDeployment = isMissingRpc(atomicDeployment.error)
-    ? await deployProgramInstanceDuringMigration(supabase, user, deploymentInput)
-    : null;
-  const deployment = legacyDeployment?.data ?? atomicDeployment.data;
-  const deploymentError = legacyDeployment
-    ? legacyDeployment.error
-    : atomicDeployment.error;
+  const deployedResult = await deployPreparedProgram(supabase, user, deploymentInput, {
+    flow, trainingMaxDrafts, rehabBindings, startWithRecoveryWeek,
+  }, write.skipped.length);
+  if ("preview" in deployedResult) return { ok: true, preview: deployedResult.preview };
+  const deployment = deployedResult.data;
+  const deploymentError = deployedResult.error;
   const deployed = (
     deployment as
       | Array<{ block_id: string; program_instance_id: string }>
@@ -2052,7 +2139,7 @@ async function createForeignProgramInstance(
   // TB3 advises a deload between blocks. When the peak week that raised the
   // advice was the end of the previous plan, the recovery week can only land at
   // the front of this one.
-  if (startWithRecoveryWeek) {
+  if (startWithRecoveryWeek && !flow) {
     await leadBlockWithRecoveryWeek(supabase, user.id);
   }
 
@@ -2128,7 +2215,7 @@ async function updateForeignProgramInstance(
   user: User,
   blockId: string,
   args: DeployArgs,
-): Promise<CreateProgramInstanceResult> {
+): Promise<ProgramExecutionResult> {
   const { programId, customization, sessionLinks, rehabSchedule } = args;
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -2705,9 +2792,7 @@ async function updateForeignProgramInstance(
       error: "Couldn't build a safe snapshot of upcoming workouts.",
     };
   }
-  const atomicRewrite = await supabase.rpc(
-    "update_program_instance_atomically",
-    {
+  const rewriteArgs = {
       p_block_id: blockId,
       p_strength_updates: strengthPrescriptionUpdates,
       p_deletions: deletionSnapshots,
@@ -2737,11 +2822,23 @@ async function updateForeignProgramInstance(
         display_name: customization?.displayName ?? null,
         customization_version: customization?.version ?? null,
       },
-    },
-  );
-  let updatedProgramInstanceId = atomicRewrite.data;
+      ...(args.flow ? {
+        p_training_max_drafts: args.trainingMaxDrafts ?? [],
+        p_rehab_bindings: args.rehabBindings ?? [], p_skipped: write.skipped.length,
+        p_today_left_as_is: todayLeftAsIs,
+      } : {}),
+  };
+  const preview = args.flow
+    ? programSchedulePreview(args.flow, rewriteArgs, blockStartedOn, newRows, blockId) : null;
+  if (args.flow?.previewOnly && preview) return { ok: true, preview };
+  const atomicRewrite = args.flow && preview
+    ? await commitReviewedProgram(supabase, args.flow, preview, "primary-update", rewriteArgs)
+    : await supabase.rpc("update_program_instance_atomically", rewriteArgs);
+  let updatedProgramInstanceId = args.flow && !atomicRewrite.error
+    ? z.object({ program_instance_id: z.string().uuid() }).parse(atomicRewrite.data).program_instance_id
+    : atomicRewrite.data;
   let rewriteErr = atomicRewrite.error;
-  if (isMissingRpc(rewriteErr)) {
+  if (!args.flow && isMissingRpc(rewriteErr)) {
     const { error: legacyRewriteError } = await supabase.rpc(
       "rewrite_planned_sessions_atomically",
       {
@@ -2867,8 +2964,8 @@ async function updateForeignProgramInstance(
 async function createNativeProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, startedOn, startWeekIndex, roundingKg, twoADay, seasonBlockId }: DeployArgs,
-): Promise<CreateProgramInstanceResult> {
+  { programId, setupValues, weekdays, startedOn, startWeekIndex, roundingKg, twoADay, seasonBlockId, flow, trainingMaxDrafts, rehabBindings, startWithRecoveryWeek }: DeployArgs,
+): Promise<ProgramExecutionResult> {
   const engine = getNativeProgramEngine(programId)!;
 
   // Setup → instance. `setupHybrid` reads `values.startedOn` + `values.daysPerWeek`,
@@ -2892,6 +2989,7 @@ async function createNativeProgramInstance(
   let instance: HybridInstance;
   try {
     const { ctx } = await buildPlatformContext(supabase, user.id, {
+      trainingMaxDrafts,
       ...(roundingKg != null ? { roundingKg } : {}),
     });
     instance = engine.setup({ values }, ctx) as HybridInstance;
@@ -2916,6 +3014,7 @@ async function createNativeProgramInstance(
     user.id,
     materializationBlockId,
     twoADay ?? false,
+    trainingMaxDrafts,
   );
   if (!mat.ok) {
     return { ok: false, error: mat.error };
@@ -2965,49 +3064,12 @@ async function createNativeProgramInstance(
       customizationVersion: null,
     },
   };
-  const atomicDeployment = await supabase.rpc(
-    "deploy_program_instance_atomically",
-    {
-      p_block: {
-        program_id: deploymentInput.block.programId,
-        program_family: deploymentInput.block.programFamily,
-        started_on: deploymentInput.block.startedOn,
-        weeks: deploymentInput.block.weeks,
-        days_per_week: deploymentInput.block.daysPerWeek,
-        day_index_overrides: deploymentInput.block.dayIndexOverrides,
-        cardio_source: deploymentInput.block.cardioSource,
-        allows_two_a_days: deploymentInput.block.allowsTwoADays,
-        accessory_volume: deploymentInput.block.accessoryVolume,
-        notes: deploymentInput.block.notes,
-      },
-      p_planned_sessions: deploymentInput.plannedSessions.map((session) => ({
-        week_index: session.weekIndex,
-        day_index: session.dayIndex,
-        slot: session.slot,
-        title: session.title,
-        role: session.role,
-        prescription: session.prescription,
-        session_modality: session.sessionModality,
-        effective_stress_load: session.effectiveStressLoad,
-      })),
-      p_tm_percents: deploymentInput.tmPercents,
-      p_program_instance: {
-        program_id: deploymentInput.programInstance.programId,
-        program_family: deploymentInput.programInstance.programFamily,
-        instance: deploymentInput.programInstance.instance,
-        setup_input: deploymentInput.programInstance.setupInput,
-        display_name: deploymentInput.programInstance.displayName,
-        customization_version: deploymentInput.programInstance.customizationVersion,
-      },
-    },
-  );
-  const legacyDeployment = isMissingRpc(atomicDeployment.error)
-    ? await deployProgramInstanceDuringMigration(supabase, user, deploymentInput)
-    : null;
-  const deployment = legacyDeployment?.data ?? atomicDeployment.data;
-  const deploymentError = legacyDeployment
-    ? legacyDeployment.error
-    : atomicDeployment.error;
+  const deployedResult = await deployPreparedProgram(supabase, user, deploymentInput, {
+    flow, trainingMaxDrafts, rehabBindings, startWithRecoveryWeek,
+  }, 0);
+  if ("preview" in deployedResult) return { ok: true, preview: deployedResult.preview };
+  const deployment = deployedResult.data;
+  const deploymentError = deployedResult.error;
   const deployed = (
     deployment as
       | Array<{ block_id: string; program_instance_id: string }>

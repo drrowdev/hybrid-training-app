@@ -76,6 +76,18 @@ describe("DC-K4/DC-R3 authored programs", () => {
 });
 
 describe("DC-K4/DC-SW7 independent schedule advice", () => {
+  it("retains already accepted overlap for in-place edits but reviews new dates and replacement", () => {
+    const entries = [
+      { id: "a", source: "primary" as const, programId: "p", date: "2026-09-23", title: "Strength", state: "scheduled" as const },
+      { id: "b", source: "swim" as const, programId: "s", date: "2026-09-23", title: "Swim", state: "scheduled" as const },
+      { id: "c", source: "swim" as const, programId: "s", date: "2026-09-24", title: "Swim", state: "scheduled" as const },
+    ];
+    const dates = ["2026-09-23", "2026-09-24"];
+    expect(trainingScheduleAdvice(entries, dates, { source: "primary", programId: "p", retainExistingOverlaps: true })
+      .overlaps.map((entry) => entry.id)).toEqual(["c"]);
+    expect(trainingScheduleAdvice(entries, dates, { source: "primary", programId: "p" })
+      .overlaps.map((entry) => entry.id)).toEqual(["b", "c"]);
+  });
   it("uses exact dates, excludes only the replaced program and distinguishes planned rest", () => {
     expect(trainingScheduleAdvice([
       { id: "a", source: "primary", programId: "p", date: "2026-09-23", title: "Strength", state: "scheduled" },

@@ -4165,3 +4165,17 @@ are converted. SQL cases cover accepted/rejected boundaries and down refusal;
 native and updater catalog evidence now includes CHECK definitions/validation.
 Native-only browser cases are explicitly excluded from ordinary CI, while the
 selected modular profile retains its strict disposable fixture guards.
+
+## [2026-09-22] refine | Template review shares the modular save boundary
+
+Existing template engines now prepare their complete graph for date review
+without saving wizard training-max drafts. Primary replacement and overlap need
+separate acceptance. The accepted shared transaction includes the entered maxes,
+rehab bindings and optional policy-derived leading recovery week; retries return
+the same saved program. Forward edits retain the existing started/history rules.
+Focused source checks cover preview/no writes, draft overlays, replay, stale
+dates, replacement, recovery dates and native-engine parity. Real SQL qualification
+also checks entered-max rollback on refused overlap; native acceptance remains
+pending. The preceding SQL run reached BW contention, exposing two double-encoded
+JSON fixture parameters; those now use the same text-to-JSONB boundary as the
+working shared-commit fixture.

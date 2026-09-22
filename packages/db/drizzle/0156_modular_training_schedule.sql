@@ -208,6 +208,19 @@ BEGIN
   IF p_expected_revision IS DISTINCT FROM before_snapshot->>'revision' THEN
     RAISE EXCEPTION 'Your schedule changed. Review the dates again.' USING ERRCODE = '40001';
   END IF;
+  IF p_operation IN ('primary-create', 'primary-update') THEN
+    FOR entry IN SELECT value FROM jsonb_array_elements(COALESCE(p_args->'p_training_max_drafts', '[]'::jsonb)) LOOP
+      IF (entry->>'oneRmKg')::numeric IS NULL OR (entry->>'oneRmKg')::numeric <= 0 OR (entry->>'oneRmKg')::numeric > 1000
+        OR NOT EXISTS (SELECT 1 FROM public.movements m WHERE m.id = (entry->>'movementId')::uuid
+          AND (m.user_id IS NULL OR m.user_id = u)) THEN
+        RAISE EXCEPTION 'Choose an available exercise and a valid training max.' USING ERRCODE = '22023';
+      END IF;
+      INSERT INTO public.training_maxes(user_id,movement_id,one_rm_kg,source)
+        VALUES (u,(entry->>'movementId')::uuid,(entry->>'oneRmKg')::numeric,'entered')
+      ON CONFLICT (user_id,movement_id) DO UPDATE SET one_rm_kg = EXCLUDED.one_rm_kg, source = 'entered',
+        derived_from_session_id = NULL, derived_from_set_log_id = NULL, derived_formula = NULL, derived_at = NULL;
+    END LOOP;
+  END IF;
   CASE p_operation
     WHEN 'primary-create' THEN
       IF EXISTS (SELECT 1 FROM public.training_blocks b WHERE b.user_id = u AND b.status = 'active' AND b.deleted_at IS NULL
@@ -217,11 +230,12 @@ BEGIN
       SELECT to_jsonb(created) INTO result FROM public.deploy_program_instance_atomically(
         p_args->'p_block', p_args->'p_planned_sessions', p_args->'p_tm_percents', p_args->'p_program_instance'
       ) created;
+      result := result || jsonb_build_object('skipped', COALESCE((p_args->>'p_skipped')::integer, 0));
     WHEN 'primary-update' THEN
-      result := to_jsonb(public.update_program_instance_atomically(
+      result := jsonb_build_object('block_id', p_args->>'p_block_id', 'program_instance_id', public.update_program_instance_atomically(
         (p_args->>'p_block_id')::uuid, p_args->'p_strength_updates', p_args->'p_deletions',
         p_args->'p_insertions', p_args->'p_block_metadata', p_args->'p_tm_percents', p_args->'p_program_instance'
-      ));
+      ), 'skipped', COALESCE((p_args->>'p_skipped')::integer, 0), 'todayLeftAsIs', p_args->'p_today_left_as_is');
     WHEN 'swim-create' THEN
       result := public.swim_create_plan((p_args->>'p_started_on')::date, (p_args->>'p_ends_on')::date,
         p_args->'p_definition', p_args->'p_state', p_args->'p_workouts');
@@ -314,6 +328,17 @@ BEGIN
       result := jsonb_build_object('updated', jsonb_array_length(p_args->'updates'));
     ELSE RAISE EXCEPTION 'Unsupported schedule change.' USING ERRCODE = '22023';
   END CASE;
+  IF p_operation IN ('primary-create','primary-update') AND p_args ? 'p_rehab_bindings' THEN
+    DELETE FROM public.program_rehab_bindings
+      WHERE program_instance_id = (result->>'program_instance_id')::uuid AND user_id = u;
+    INSERT INTO public.program_rehab_bindings(program_instance_id,local_protocol_id,rehab_protocol_id,user_id)
+      SELECT (result->>'program_instance_id')::uuid, binding->>'localProtocolId', (binding->>'rehabProtocolId')::uuid, u
+      FROM jsonb_array_elements(p_args->'p_rehab_bindings') binding;
+  END IF;
+  IF p_operation = 'primary-create' AND p_args->>'p_accept_recovery' = 'true' THEN
+    UPDATE public.program_recommendations SET status = 'accepted', resolved_at = now()
+      WHERE user_id = u AND kind = 'deload' AND status = 'pending';
+  END IF;
   after_snapshot := public.training_schedule_snapshot();
   -- Compare date/source/program pairs, not regenerated row IDs. An unchanged
   -- accepted two-workout day does not need fresh consent after a notes edit.

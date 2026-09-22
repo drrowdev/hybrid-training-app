@@ -1,10 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
+import { createClient } from "@supabase/supabase-js";
 import {
   buildPlatformContext,
   validateCustomMovementBindings,
 } from "../context";
 
 describe("buildPlatformContext", () => {
+  it("DC-K4 overlays explicit training-max drafts without writing shared strength state", async () => {
+    const movement = { id: "00000000-0000-4000-8000-000000000001", slug: "bench-press-flat", display_name: "Bench Press" };
+    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(init?.method ?? "GET").toBe("GET");
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      const value = url.pathname.endsWith("/profiles") ? { warmup_scheme: null }
+        : url.pathname.endsWith("/training_maxes") ? [{ one_rm_kg: 100, movement }] : [movement];
+      return new Response(JSON.stringify(value), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const client = createClient("https://example.invalid", "synthetic", {
+      auth: { persistSession: false, autoRefreshToken: false }, global: { fetch },
+    });
+    const { ctx } = await buildPlatformContext(client, "owner", {
+      trainingMaxDrafts: [{ movementId: movement.id, oneRmKg: 120 }],
+    });
+    expect(ctx.oneRepMaxes.bench).toBe(120);
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
   it("uses authoritative catalog metadata and rejects stale custom ids", () => {
     expect(
       validateCustomMovementBindings(

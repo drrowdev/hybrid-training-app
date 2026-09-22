@@ -110,6 +110,16 @@ unused down guards the installed definition and refuses any one-day block,
 including hidden history, before restoring the original CHECK. Existing rows
 are never rewritten, and the profile's two-to-seven-day preference is unchanged.
 
+Template setup and forward editing reuse the existing engine materialization
+for their read-only date review. Entered maxes remain drafts in the context
+builders until the accepted transaction; that transaction writes the maxes,
+program graph and rehab bindings together. An optional leading recovery week
+uses the existing program recovery policy and is included in both the reviewed
+dates and saved graph, rather than inserted afterward. Explicit replacement,
+overlap acceptance and replay receipts cover templates as well as custom
+programs. The exact missing-RPC app-first fallback remains only for existing
+unreviewed callers; the new review UI cannot silently fall back.
+
 ## Remaining release gates
 
 The first source publication is a draft, not a release claim. Existing template

@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { modularUpdateDispatch, modularMergeCandidate, modularQualifiedRun, modularQualifiedJobs } from "../update-modular-production";
+import { modularUpdateDispatch, modularMergeCandidate, modularQualifiedRun, modularQualifiedJobs, requireModularProductionBindings } from "../update-modular-production";
+import { productionSettings } from "../swim-production-readonly-guards";
 import { MODULAR_PREFLIGHT, MODULAR_DISABLED_OPERATIONS } from "../modular-production-preflight-guards";
 import { modularUpdateInventory } from "../modular-production-update-storage";
 import { productionHistoryFingerprint } from "../swim-production-reconciliation";
@@ -53,6 +54,22 @@ describe("DC-K4/DC-SW8 modular production update preserves qualified source and 
     expect(() => modularQualifiedJobs({ jobs: [job] }, run.id, candidate, ["required"])).not.toThrow();
     for (const jobs of [[], [job, job], [{ ...job, conclusion: "skipped" }], [{ ...job, run_id: 1 }]]) {
       expect(() => modularQualifiedJobs({ jobs }, run.id, candidate, ["required"])).toThrow();
+    }
+  });
+  it("requires existing swim bindings and refuses fixture or build-identity overrides", () => {
+    type Settings = ReturnType<typeof productionSettings>;
+    const settings: Settings = {
+      protection: { sso: null, password: null, trustedIps: null }, valuesRead: false,
+      flags: (["POOL_SWIMMING_ENABLED", "SWIM_POOL_EDITING_ENABLED", "SWIM_PRIVATE_COURSE_ENABLED",
+        "SWIM_IMPORT_ENABLED", "SWIM_IMPORT_MATCHING_ENABLED", "ENABLE_E2E_FIXTURES", "NEXT_PUBLIC_BUILD_SHA"] as const)
+        .map((key, index) => ({ key, configured: index < 5 })),
+    };
+    expect(() => requireModularProductionBindings(settings)).not.toThrow();
+    expect(() => requireModularProductionBindings({ ...settings, flags: [] })).toThrow();
+    expect(() => requireModularProductionBindings({ ...settings, flags: Array(7).fill(settings.flags[0]!) })).toThrow();
+    for (let index = 0; index < settings.flags.length; index += 1) {
+      const changed = structuredClone(settings); changed.flags[index]!.configured = !changed.flags[index]!.configured;
+      expect(() => requireModularProductionBindings(changed)).toThrow();
     }
   });
   it("recognizes only unchanged legacy history and an exact source156 append", () => {

@@ -254,6 +254,7 @@ export async function materializeHybridNative(
   userId: string,
   blockId: string,
   allowsTwoADaysOverride?: boolean,
+  trainingMaxDrafts?: import("@/lib/platform/context").TrainingMaxDraft[],
 ): Promise<NativeMaterializeResult> {
   // A new block has not been inserted while its program graph is being built
   // for the atomic deploy RPC, so that path supplies the chosen value directly.
@@ -272,6 +273,7 @@ export async function materializeHybridNative(
   const built = await buildBlockAssemblyContext(supabase, userId, {
     ...toContextInput(instance),
     allowsTwoADays,
+    trainingMaxDrafts,
   });
   if (!built.ok) return { ok: false, error: built.error };
   const rows = assembleBlockSessions(built.ctx, blockId, userId);
