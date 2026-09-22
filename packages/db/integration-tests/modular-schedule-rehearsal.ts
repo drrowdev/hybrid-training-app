@@ -308,7 +308,74 @@ export async function rehearseModularSchedule(
     assert.equal(retained!.deleted_at, null);
     assert.deepEqual(retained!.prescription, savedSession!.prescription);
     stages.push("modular-DC-K4-atomic-start-history-skip-undo-and-DC-SW7-independent-end-trash-restore");
+
+    stage("modular-template-graph-maxes-rehab-and-recovery");
+    const previousTemplate = await commit<Created>(b, "primary-create", primary, (await snapshot(b)).revision);
+    await commit<Swim>(b, "swim-create", swimArgs, (await snapshot(b)).revision, randomUUID(), true);
+    const protocolId = randomUUID(), foreignProtocolId = randomUUID(), recommendationId = randomUUID();
+    const protocol = { version: 1, items: [{ movementId: movement.id, sets: 1, reps: 5 }], links: [] };
+    await database`INSERT INTO public.rehab_protocols(id,user_id,name,definition)
+      VALUES (${protocolId}::uuid,${b}::uuid,'Synthetic owned rehab',${json(protocol)}::text::jsonb),
+        (${foreignProtocolId}::uuid,${a}::uuid,'Synthetic other rehab',${json(protocol)}::text::jsonb)`;
+    await database`INSERT INTO public.program_recommendations(id,user_id,block_id,program_instance_id,kind,title,detail)
+      VALUES (${recommendationId}::uuid,${b}::uuid,${previousTemplate.block_id}::uuid,
+        ${previousTemplate.program_instance_id}::uuid,'deload','Synthetic recovery','Synthetic only')`;
+    const template = {
+      ...primary, p_replace_block_id: previousTemplate.block_id,
+      p_block: { ...primary.p_block, program_id: "tactical-barbell", program_family: "strength", days_per_week: 2,
+        day_index_overrides: { days: [calendar.weekday, (calendar.weekday + 2) % 7].sort(), twoADay: false } },
+      p_program_instance: { ...primary.p_program_instance, program_id: "tactical-barbell", program_family: "strength" },
+      p_planned_sessions: [0, 1].flatMap((week_index) => [calendar.weekday, (calendar.weekday + 2) % 7].map((day_index) => ({
+        ...primary.p_planned_sessions[0]!, week_index, day_index,
+        role: week_index === 0 ? "deload" : "strength",
+        prescription: week_index === 0 ? { ...prescription, insertedRecoveryWeek: true } : prescription,
+      }))),
+      p_training_max_drafts: [{ movementId: movement.id, oneRmKg: 155 }],
+      p_tm_percents: [{ movementId: movement.id, tmPercent: 85 }],
+      p_rehab_bindings: [{ localProtocolId: "protocol-1", rehabProtocolId: protocolId }],
+      p_accept_recovery: true, p_skipped: 0,
+    };
+    const templateRevision = (await snapshot(b)).revision;
+    const unchangedTemplate = async () => {
+      assert.equal((await snapshot(b)).revision, templateRevision);
+      assert.equal((await database`SELECT count(*)::int AS n FROM public.training_maxes WHERE user_id=${b}::uuid`)[0]!.n, 0);
+      assert.equal((await database`SELECT count(*)::int AS n FROM public.program_rehab_bindings WHERE user_id=${b}::uuid`)[0]!.n, 0);
+      const [recommendation] = await database`SELECT status,resolved_at FROM public.program_recommendations WHERE id=${recommendationId}::uuid`;
+      assert.deepEqual(recommendation, { status: "pending", resolved_at: null });
+    };
+    await denied(() => commit(b, "primary-create", template, templateRevision), "22023");
+    await unchangedTemplate();
+    await denied(() => commit(b, "primary-create", template, "f".repeat(32), randomUUID(), true), "40001");
+    await unchangedTemplate();
+    await denied(() => commit(b, "primary-create", { ...template,
+      p_rehab_bindings: [{ localProtocolId: "protocol-1", rehabProtocolId: foreignProtocolId }],
+    }, templateRevision, randomUUID(), true), "42501");
+    await unchangedTemplate();
+    const templateRequest = randomUUID();
+    const acceptedTemplate = await commit<Created>(b, "primary-create", template, templateRevision, templateRequest, true);
+    assert.deepEqual(await commit<Created>(b, "primary-create", template, templateRevision, templateRequest, true), acceptedTemplate);
+    const [templateMax] = await database`SELECT one_rm_kg::float AS value,tm_percent::float AS percent,source
+      FROM public.training_maxes WHERE user_id=${b}::uuid AND movement_id=${movement.id}::uuid`;
+    assert.deepEqual(templateMax, { value: 155, percent: 85, source: "entered" });
+    const templateRows = await database`SELECT week_index,role,prescription->>'insertedRecoveryWeek' AS recovery
+      FROM public.planned_sessions WHERE block_id=${acceptedTemplate.block_id}::uuid ORDER BY week_index,day_index`;
+    assert.deepEqual(Array.from(templateRows), [
+      { week_index: 0, role: "deload", recovery: "true" }, { week_index: 0, role: "deload", recovery: "true" },
+      { week_index: 1, role: "strength", recovery: null }, { week_index: 1, role: "strength", recovery: null },
+    ]);
+    const bindings = await database`SELECT program_instance_id,local_protocol_id,rehab_protocol_id,user_id
+      FROM public.program_rehab_bindings WHERE user_id=${b}::uuid`;
+    assert.deepEqual(Array.from(bindings), [{ program_instance_id: acceptedTemplate.program_instance_id,
+      local_protocol_id: "protocol-1", rehab_protocol_id: protocolId, user_id: b }]);
+    const [acceptedRecommendation] = await database`SELECT status,resolved_at FROM public.program_recommendations WHERE id=${recommendationId}::uuid`;
+    assert.equal(acceptedRecommendation!.status, "accepted");
+    assert.ok(acceptedRecommendation!.resolved_at);
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.training_blocks WHERE user_id=${b}::uuid`)[0]!.n, 2);
+    assert.equal((await database`SELECT one_rm_kg::float AS value FROM public.training_maxes
+      WHERE user_id=${a}::uuid AND movement_id=${movement.id}::uuid`)[0]!.value, 120);
+    stages.push("modular-template-atomic-maxes-rehab-recovery-replay-and-refusal-rollback");
   } finally {
+    await database`DELETE FROM public.program_rehab_bindings WHERE user_id IN (${a}::uuid,${b}::uuid)`;
     await database`DELETE FROM auth.users WHERE id IN (${a},${b})`;
   }
   stage("modular-cleaned-unused-schema-restoration");

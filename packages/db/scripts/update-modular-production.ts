@@ -56,6 +56,30 @@ export function modularQualifiedJobs(raw: unknown, run: number, sha: string, req
   }), "qualification_jobs");
 }
 
+export async function modularQualifiedNativeRun(raw: unknown, sha: string, jobs: (run: number) => Promise<unknown>) {
+  const parsed = z.object({ workflow_runs: z.array(z.object({
+    id: z.number().int().positive(), workflow_id: z.literal(279507729), head_sha: z.literal(sha),
+    head_branch: z.literal(MODULAR_PREFLIGHT.branch), status: z.literal("completed"),
+  }).passthrough()).min(1).max(10) }).safeParse(raw);
+  requireInspection(parsed.success, "qualification_run");
+  for (const candidate of parsed.data.workflow_runs) {
+    const result = await jobs(candidate.id);
+    const jobList = z.object({ jobs: z.array(z.object({
+      run_id: z.literal(candidate.id), head_sha: z.literal(sha), name: z.string(),
+      conclusion: z.string().nullable(),
+    }).passthrough()).max(100) }).safeParse(result);
+    requireInspection(jobList.success, "qualification_jobs");
+    const native = jobList.data.jobs.filter((job) => job.name === "disposable swim RPC and browser acceptance");
+    requireInspection(native.length <= 1, "qualification_jobs");
+    if (native.length === 0 || native[0]!.conclusion === "skipped") continue;
+    const id = modularQualifiedRun({ workflow_runs: [candidate] }, 279507729, sha);
+    modularQualifiedJobs(result, id, sha,
+      ["author identity guard", "lint + typecheck + test + build", "disposable swim RPC and browser acceptance"]);
+    return id;
+  }
+  requireInspection(false, "qualification_run");
+}
+
 export function requireModularProductionBindings(settings: ReturnType<typeof productionSettings>) {
   requireInspection(settings.valuesRead === false && settings.flags.length === 7 &&
     new Set(settings.flags.map((flag) => flag.key)).size === 7 && settings.flags.every((flag) =>
@@ -164,9 +188,9 @@ export async function updateModularProduction(env: NodeJS.ProcessEnv, sourceOnly
     });
     await step("qualification", async () => {
       const sha = result.candidateSha!;
-      const native = modularQualifiedRun(await github(`actions/workflows/279507729/runs?head_sha=${sha}&event=workflow_dispatch&per_page=10`), 279507729, sha);
-      modularQualifiedJobs(await github(`actions/runs/${native}/jobs?per_page=100`), native, sha,
-        ["author identity guard", "lint + typecheck + test + build", "disposable swim RPC and browser acceptance"]);
+      const native = await modularQualifiedNativeRun(
+        await github(`actions/workflows/279507729/runs?head_sha=${sha}&event=workflow_dispatch&per_page=10`), sha,
+        (run) => github(`actions/runs/${run}/jobs?per_page=100`));
       const storage = modularQualifiedRun(await github(`actions/workflows/356499149/runs?head_sha=${sha}&per_page=10`), 356499149, sha);
       modularQualifiedJobs(await github(`actions/runs/${storage}/jobs?per_page=100`), storage, sha, ["storage", "pool-storage"]);
       result.qualification = { native, storage };

@@ -170,7 +170,9 @@ describe("0144 atomic user workflows migration", () => {
   });
 
   it("routes every affected caller through the atomic database boundary", () => {
-    expect(platformActions.match(/deploy_program_instance_atomically/g)).toHaveLength(2);
+    expect(platformActions.match(/deploy_program_instance_atomically/g)).toHaveLength(1);
+    expect(platformActions.match(/await deployPreparedProgram\(/g)).toHaveLength(2);
+    expect(platformActions).toContain('commitReviewedProgram(supabase, flow, preview, "primary-create", args)');
     expect(platformActions).toContain("update_program_instance_atomically");
     expect(seasonActions).toContain("create_training_season_atomically");
     expect(hyroxCompletion).toContain("replace_hyrox_session_actuals");
@@ -189,13 +191,13 @@ describe("0144 atomic user workflows migration", () => {
     expect(settingsActions).toContain('rpc("log_bodyweight_atomically"');
     expect(wellnessActions).toContain("isMissingRpc(error)");
     expect(settingsActions).toContain("isMissingRpc(error)");
-    expect(platformActions).toContain("isMissingRpc(atomicDeployment.error)");
+    expect(platformActions).toContain("isMissingRpc(result.error)");
     expect(platformActions).toMatch(
       /deployProgramInstanceDuringMigration[\s\S]*atomic_user_workflows_ready[\s\S]*workflowsReady === true[\s\S]*temporarily unavailable/,
     );
     expect(
       platformActions.match(/deployProgramInstanceDuringMigration/g),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
     expect(platformActions).toMatch(
       /blockError\?\.code === "23505"[\s\S]*temporarily unavailable/,
     );

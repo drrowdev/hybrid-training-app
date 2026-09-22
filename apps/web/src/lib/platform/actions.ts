@@ -847,7 +847,8 @@ async function runProgramInstance(
 
   // Same user-scoped client (RLS) for BOTH paths — never the service role.
   const supabase = await createClient();
-  const { review: _review, ...requestInput } = parsed.data;
+  const requestInput = { ...parsed.data };
+  delete requestInput.review;
   if (!previewOnly && review) {
     const replay = await scheduleReplay(supabase, review.requestId, editBlockId ? "primary-update" : "primary-create", requestInput);
     if (replay !== null) {

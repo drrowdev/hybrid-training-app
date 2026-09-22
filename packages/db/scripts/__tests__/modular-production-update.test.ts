@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { modularUpdateDispatch, modularMergeCandidate, modularQualifiedRun, modularQualifiedJobs, requireModularProductionBindings } from "../update-modular-production";
+import { modularUpdateDispatch, modularMergeCandidate, modularQualifiedRun, modularQualifiedJobs, modularQualifiedNativeRun, requireModularProductionBindings } from "../update-modular-production";
 import { productionSettings } from "../swim-production-readonly-guards";
 import { MODULAR_PREFLIGHT, MODULAR_DISABLED_OPERATIONS } from "../modular-production-preflight-guards";
 import { modularUpdateInventory } from "../modular-production-update-storage";
@@ -71,6 +71,29 @@ describe("DC-K4/DC-SW8 modular production update preserves qualified source and 
       const changed = structuredClone(settings); changed.flags[index]!.configured = !changed.flags[index]!.configured;
       expect(() => requireModularProductionBindings(changed)).toThrow();
     }
+  });
+  it.each(["success", "failure"])("ignores a newer %s read-only run whose native job was skipped", async (conclusion) => {
+    const native = { id: 35326000000, workflow_id: 279507729, head_sha: candidate,
+      head_branch: MODULAR_PREFLIGHT.branch, status: "completed", conclusion: "success", run_attempt: 1 };
+    const inspection = { ...native, id: native.id + 1, conclusion };
+    const jobs = async (run: number) => ({ jobs: [
+      "author identity guard", "lint + typecheck + test + build", "disposable swim RPC and browser acceptance",
+    ].map((name) => ({ run_id: run, head_sha: candidate, name, status: "completed",
+      conclusion: run === inspection.id && name.startsWith("disposable") ? "skipped" : "success" })) });
+    expect(await modularQualifiedNativeRun({ workflow_runs: [inspection, native] }, candidate, jobs)).toBe(native.id);
+    await expect(modularQualifiedNativeRun({ workflow_runs: [inspection] }, candidate, jobs)).rejects.toThrow("qualification_run");
+  });
+  it("never falls back past a failed native execution to an older success", async () => {
+    const failed = { id: 35326000001, workflow_id: 279507729, head_sha: candidate,
+      head_branch: MODULAR_PREFLIGHT.branch, status: "completed", conclusion: "failure", run_attempt: 1 };
+    const requested: number[] = [];
+    await expect(modularQualifiedNativeRun({ workflow_runs: [failed, { ...failed, id: failed.id - 1, conclusion: "success" }] },
+      candidate, async (run) => {
+        requested.push(run);
+        return { jobs: [{ run_id: run, head_sha: candidate, name: "disposable swim RPC and browser acceptance",
+          status: "completed", conclusion: "failure" }] };
+      })).rejects.toThrow("qualification_run");
+    expect(requested).toEqual([failed.id]);
   });
   it("recognizes only unchanged legacy history and an exact source156 append", () => {
     const migrations = Array.from({ length: 157 }, (_, index) => ({

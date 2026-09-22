@@ -4179,3 +4179,20 @@ also checks entered-max rollback on refused overlap; native acceptance remains
 pending. The preceding SQL run reached BW contention, exposing two double-encoded
 JSON fixture parameters; those now use the same text-to-JSONB boundary as the
 working shared-commit fixture.
+
+## [2026-09-22] refine | Modular SQL acceptance and existing safety parity
+
+Revision af7f832d passed the real disposable SQL rehearsal, including exact
+unused down/up, one-day boundaries, independent lifecycle, overlap/replay,
+opposite-order contention and the guarded updater's final catalog restoration.
+Its remaining CI failures were stale source-count and overlap-control fixtures;
+the corrected isolated swimming surface reference passes at375 and1280px.
+The next rehearsal adds assertions that template-shaped maxes, recovery rows,
+rehab bindings and recommendation acceptance persist together and remain
+unchanged after stale/overlap/cross-user-binding refusal.
+
+Authored selection now shares the existing high-strain power/tendinopathy gate
+with both planner power pickers. No new refractory policy was invented:
+DC-O2's48-hour prose and30-hour-allowed/24-hour-advisory examples require owner
+clarification. This work does not claim DC-O2 compliance. Production remains
+blocked by the coordinator's read-only Vercel403, before any database read.

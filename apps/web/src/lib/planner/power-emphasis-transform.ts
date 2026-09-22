@@ -30,6 +30,7 @@
  */
 import type { PrescriptionItem } from "@hta/db";
 import type { DeclaredExperience } from "@hta/engine";
+import { highStrainPowerBlocked } from "@hta/domain";
 import type { ArchetypeId, StrengthRole } from "./archetypes";
 import type { CatalogMovement } from "./accessory-picker";
 import { filterForExperienceTier, movementValueNorm, ROTATION_BASE, ACCESSORY_VALUE_BONUS } from "./accessory-picker";
@@ -203,7 +204,7 @@ export function pickPotentiationMovement({
     if (blockedMovementIds?.has(m.id)) return false;
     if (loadsBlockedRegion(m, blockedRegions)) return false;
     if (loadsBlockedMuscleHere(m, blockedMuscles, allowedMovementIds)) return false;
-    if (tendinopathyActive && m.highStrainTendon) return false;
+    if (highStrainPowerBlocked({ highStrainTendon: m.highStrainTendon, power: hasPowerRole, tendinopathyActive })) return false;
     return true;
   });
   if (safe.length === 0) return null;

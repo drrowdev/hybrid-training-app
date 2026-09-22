@@ -47,7 +47,9 @@ try {
           if (window.courseMode === "delay") await new Promise(resolve => window.resolveCourse = resolve);
           if (window.courseMode === "error") return { error: "Review the selected pool.", errorCode: "validation" };
           return { ok: true, preview: { id: "synthetic-course", title: window.courseSource.title, plan: prepared.preview,
-            totals: [{ key: "course-0-0", week: 1, workout: 1, reported: 999, calculated: 350 }], strengthDays: ["Monday"] } };
+            totals: [{ key: "course-0-0", week: 1, workout: 1, reported: 999, calculated: 350 }],
+            revision: "a".repeat(32), overlaps: [{ id: "synthetic-primary", source: "primary", programId: "synthetic-program",
+              date: "2026-09-14", title: "Strength", state: "scheduled" }] } };
         };
         window.saveCourse = async (form, id) => {
           window.courseCalls.push("save");
@@ -286,7 +288,7 @@ try {
     await importPlan.click();
     assert.deepEqual(await page.evaluate(() => window.courseCalls), ["preview"]);
     await page.getByRole("checkbox", { name: "Use the distances from the listed sets", exact: true }).check();
-    await page.getByRole("checkbox", { name: "Swim on strength days: Monday", exact: true }).check();
+    await page.getByRole("checkbox", { name: "Keep both workouts on these dates", exact: true }).check();
     await page.getByRole("checkbox", { name: "I have reviewed the workouts, dates and pools", exact: true }).check();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     await page.evaluate(() => { window.courseMode = "error"; });
@@ -299,7 +301,7 @@ try {
     await page.getByRole("button", { name: "Review plan", exact: true }).click();
     await importPlan.waitFor();
     await page.getByRole("checkbox", { name: "Use the distances from the listed sets", exact: true }).check();
-    await page.getByRole("checkbox", { name: "Swim on strength days: Monday", exact: true }).check();
+    await page.getByRole("checkbox", { name: "Keep both workouts on these dates", exact: true }).check();
     await page.getByRole("checkbox", { name: "I have reviewed the workouts, dates and pools", exact: true }).check();
     await importPlan.click();
     await page.getByRole("link", { name: "Open swimming plan", exact: true }).waitFor();
