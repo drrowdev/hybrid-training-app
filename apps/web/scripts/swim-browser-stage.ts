@@ -133,7 +133,7 @@ export async function runSwimBrowserStage(options: {
     const next = installed.resolve("next/dist/bin/next");
     requirePrivateBrowserPaths(paths, web);
     requireNoEnvFiles(root);
-    await command(process.execPath, [next, "build"], { cwd: web, env, timeout: BROWSER_LIMITS.build });
+    await command(process.execPath, [next, "build", "--webpack"], { cwd: web, env, timeout: BROWSER_LIMITS.build });
     checkLive();
     requireNoEnvFiles(root);
     requirePrivateBrowserPaths(paths, web);

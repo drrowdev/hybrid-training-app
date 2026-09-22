@@ -195,4 +195,12 @@ describe("DC-SW3/SW5/SW8 bounded synthetic account flow", () => {
     expect(cli.files).toEqual(["scripts/swim-account-flow.ts", "scripts/swim-account-flow-browser.ts"]);
     for (const path of cli.files) expect(app.exclude).toContain(path);
   });
+  it("uses the same supported production bundler in CI and both native build paths", () => {
+    const web = resolve(__dirname, "../../../../apps/web");
+    const app = JSON.parse(readFileSync(resolve(web, "package.json"), "utf8"));
+    expect(app.scripts.build).toBe("next build --webpack");
+    for (const script of ["swim-account-flow.ts", "swim-browser-stage.ts"]) {
+      expect(readFileSync(resolve(web, "scripts", script), "utf8")).toContain('[next, "build", "--webpack"]');
+    }
+  });
 });

@@ -137,6 +137,7 @@ describe("DC-SW1/DC-SW8 browser runner lifecycle (synthetic command completions 
     const [build, start, browser] = h.command.mock.calls;
     expect(build![0]).toBe(process.execPath);
     expect(build![1][0]).toMatch(/next\/dist\/bin\/next$/);
+    expect(build![1]).toEqual([build![1][0], "build", "--webpack"]);
     expect(start![0]).toBe(process.execPath);
     expect(start![1]).toEqual([build![1][0], "start", "--hostname", "127.0.0.1", "--port", "3210"]);
     expect(start![2]).toMatchObject({ timeout: 410_000, allowFailure: true });

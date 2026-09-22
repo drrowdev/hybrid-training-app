@@ -4196,3 +4196,13 @@ with both planner power pickers. No new refractory policy was invented:
 DC-O2's48-hour prose and30-hour-allowed/24-hour-advisory examples require owner
 clarification. This work does not claim DC-O2 compliance. Production remains
 blocked by the coordinator's read-only Vercel403, before any database read.
+
+## [2026-09-22] fix | Consistent supported production bundler
+
+Core run35759722605 repeated Next16.2.6 Turbopack's generated Google-font query
+failure previously seen in run35751112854. Production builds now use Next's
+supported `--webpack` mode through the existing application package command
+and both native browser/account runners. Font declarations, framework version,
+timeouts, environment guards and acceptance requirements are unchanged.
+The complete local placeholder-only production build and25 account-flow guards
+passed; the existing Linux native build budget remains to be qualified.
