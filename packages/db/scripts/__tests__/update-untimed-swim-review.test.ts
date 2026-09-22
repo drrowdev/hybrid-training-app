@@ -218,15 +218,15 @@ describe("DC-SW3/SW5/SW8 protected untimed-course update", () => {
     expect(child.stdout).not.toContain(canary);
     expect(child.stderr).toBe("");
   });
-  it("preserves every prior job byte-for-byte and gates the new job before five credentials", () => {
+  it("pins prior jobs and the modular selector, and gates the update before five credentials", () => {
     const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
-    // Accepted 73ef5be9 job bodies, available even in shallow CI checkouts.
+    // Prior bodies plus the explicit modular acceptance selector; shallow-checkout safe.
     const baseline = {
       "identity-guard": "35779b9424f98e571769068bcf1bbff818aff147c51eb178bd83438bc267e479",
       ci: "4724e763613720c466c5d4fc2f38986dc49d564f33b9b8c838e89a0a66636944",
       e2e: "e914376e6fd30d96f046e1b42ac3a369122dd55d4c338f8bdf48de43d7cb1614",
       "rpc-smoke": "b75d4c6c69f7ac4ae8380d117c4776352d21d358df5db6e56fceb7e6782438e3",
-      "swim-acceptance": "4f3465894a0dba2965dd008b46afdfb9e1ca8d744d12c9d429d86b93a9e63163",
+      "swim-acceptance": "0bd16b671a0d2e40f04ead2c0687001902486b21f9f1ad1d3877fbca99ee4a1b",
       "prod-migrate": "4c3643cb734fcaeb1f70d97b5f12590f84684fb7625f7d6b3fe3eb15e6272a06",
       "prod-drift": "fe7c0ca259846a82aa0612ef08135411618c75c22bad3bb9f23cf3e6cf6e4f12",
       "prepare-swim-review": "ef39894054b135464e2743bf958d6f98776935347a6f227e36fa34040fd1d715",

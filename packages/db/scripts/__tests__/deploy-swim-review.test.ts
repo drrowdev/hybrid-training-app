@@ -386,7 +386,7 @@ describe("bounded fixed-route transport and saved workflow", () => {
     } finally { vi.useRealTimers(); }
   });
   it("appends exactly one guarded job with offline/source checks before five secrets", () => {
-    const workflow = readFileSync(resolve(import.meta.dirname, "../../../../.github/workflows/ci.yml"), "utf8");
+    const workflow = readFileSync(resolve(import.meta.dirname, "../../../../.github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
     const job = workflow.split("\n  deploy-swim-review:\n")[1]!.split("\n  refresh-swim-review:\n")[0]!;
     expect(workflow.match(/\n  deploy-swim-review:/g)).toHaveLength(1);
     for (const text of ["needs: [ci, identity-guard]", "timeout-minutes: 25", "timeout-minutes: 18",
@@ -444,7 +444,7 @@ describe("native one-shot owner provisioning", () => {
     }
   });
   it("binds owner secrets only to its conditional step after install/offline/source checks", () => {
-    const workflow = readFileSync(resolve(import.meta.dirname, "../../../../.github/workflows/ci.yml"), "utf8");
+    const workflow = readFileSync(resolve(import.meta.dirname, "../../../../.github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
     const [before, after] = workflow.split("      - name: Provision isolated owner once");
     const owner = after!.split(/\n  [a-z][a-z0-9-]+:\n/)[0]!;
     expect(before).not.toContain("secrets.SWIM_REVIEW_OWNER_");

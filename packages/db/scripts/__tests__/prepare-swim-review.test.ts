@@ -691,16 +691,16 @@ describe("canonical seed subprocess boundary (fake process only)", () => {
 });
 
 describe("saved workflow and raw-stream boundaries", () => {
-  const workflow = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8")
+  const workflow = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n")
     .split("\n  configure-swim-review:\n")[0]!.trimEnd() + "\n";
   const job = workflow.split("\n  prepare-swim-review:\n")[1]!.split("\n  prod-migrate:")[0]!;
   const source = readFileSync(resolve(root, "packages/db/scripts/prepare-swim-review.ts"), "utf8");
-  it("preserves every existing job byte-for-byte", () => {
-    // Accepted APPLICATION_SHA jobs digest; also works in CI's shallow checkout.
+  it("pins existing jobs with the explicit modular acceptance selector", () => {
+    // Prior bodies plus the selector; also works in CI's shallow checkout.
     const existing = workflow.slice(workflow.indexOf("\njobs:")).replace(
       "\n  prepare-swim-review:\n" + job, "");
     expect(createHash("sha256").update(existing).digest("hex")).toBe(
-      "f12b596a4038dae77b798b60c8b2f2ebd2486110bde61bf6b952d49e7aca6bc9");
+      "7bc1d91c4d4bcc9d24876af42c1e450b520629f324c037fec2bf5eaa83b6a1d4");
   });
   it("requires explicit manual exact-head context and independent noncancelling serialization", () => {
     for (const gate of ["needs: [ci, identity-guard]", "github.event_name == 'workflow_dispatch'",
