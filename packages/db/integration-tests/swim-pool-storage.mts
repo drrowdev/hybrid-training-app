@@ -33,6 +33,7 @@ type PoolRequest = { state: SwimPlanState; workouts: (Omit<PoolRow, "revision"> 
 const stages: string[] = [];
 const knownFailures = new Map<string, { migration: number; line: number }>();
 let failureLocation: { migration: number; line: number } | undefined;
+let modularAssertionLine: number | undefined;
 let stage = "guard", status = "failed", code = "unexpected";
 let sql: ReturnType<typeof postgres> | undefined;
 try {
@@ -714,6 +715,10 @@ try {
   stages.push(...await rehearseModularSchedule(database, true));
   status = "passed";
 } catch (error) {
+  if (error instanceof assert.AssertionError) {
+    const location = error.stack?.match(/modular-schedule-rehearsal\.ts:(\d+):\d+/);
+    if (location) modularAssertionLine = Number(location[1]);
+  }
   if (error instanceof Error) failureLocation = knownFailures.get(error.message);
   const known = ["42501", "23503", "23505", "23514", "22023", "P0001", "42601", "42703", "42883", "42P01", "42P07", "42704", "25P02", "57014", "55P03", "40P01", "40001"];
   code = typeof error === "object" && error !== null && "code" in error &&
@@ -727,7 +732,8 @@ try {
 }
 console.log(JSON.stringify({
   scope: "swim-pool-storage", sha: /^[0-9a-f]{40}$/.test(process.env.TESTED_SHA ?? "") ? process.env.TESTED_SHA : null,
-  status, stages, ...(status === "failed" ? { stage, code, ...(failureLocation ? { failureLocation } : {}) } : {}),
+  status, stages, ...(status === "failed" ? { stage, code, ...(failureLocation ? { failureLocation } : {}),
+    ...(modularAssertionLine ? { modularAssertionLine } : {}) } : {}),
 }));
 if (status !== "passed" && process.env.GITHUB_ACTIONS === "true") {
   console.log(`::error title=Swimming pool storage::${stage} [${code}]${failureLocation ? ` at migration-${failureLocation.migration}:${failureLocation.line}` : ""}`);
