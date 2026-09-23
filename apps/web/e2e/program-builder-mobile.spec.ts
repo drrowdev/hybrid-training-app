@@ -277,7 +277,10 @@ async function review(page: Page, timeout?: number) {
   await expect(page.getByRole("button", { name: "Start program", exact: true })).toBeVisible({ timeout });
 }
 async function save(page: Page, actor: SupabaseClient, kind: "strength" | "running" | "hybrid", timeout?: number) {
-  await page.getByRole("button", { name: /^(Start program|Save changes)$/ }).click();
+  const submit = page.getByRole("button", { name: /^(Start program|Save changes)$/ });
+  await expect(submit).toBeVisible({ timeout });
+  expect(await submit.isEnabled(), "Program save is disabled; accept the required overlap or replacement consent before saving.").toBe(true);
+  await submit.click();
   await expect(page).toHaveURL(/\/app\/plan\?block=[0-9a-f-]{36}$/, { timeout });
   const saved = await actor.from("training_blocks").select("id").eq("program_kind", kind)
     .eq("status", "active").is("deleted_at", null).single();
@@ -832,6 +835,17 @@ test.describe("Modular program builder", () => {
       finally { observation.dispose(); await history.close(); }
       clearNativeUiObservation();
       stage("m8-07"); await review(page, test.info().timeout);
+      expect((await scheduleEntries(actor)).filter((entry) => entry.id === legacy.sessionId)).toMatchObject([{
+        id: legacy.sessionId, source: "session", programId: null, date: today(),
+        state: "completed", title: "Older strength workout",
+      }]);
+      const overlap = page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true });
+      await expect(overlap).toBeVisible();
+      await expect(overlap.locator("../..").locator("time")).toHaveText([today()]);
+      await expect(overlap.locator("../..").locator("span")).toHaveText(["Older strength workout"]);
+      await expect(overlap).not.toBeChecked();
+      await expect(page.getByRole("button", { name: "Start program", exact: true })).toBeDisabled();
+      await overlap.check();
       const strengthId = await save(page, actor, "strength", test.info().timeout);
       stage("m8-08");
       expect((await planned(actor)).filter((row) => row.block_id === strengthId)).toHaveLength(2);

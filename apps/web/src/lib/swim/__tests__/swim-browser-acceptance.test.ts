@@ -421,11 +421,13 @@ describe("DC-SW8 modular acceptance report membership", () => {
     const savedId = "00000000-0000-4000-8000-000000000001";
     const query = { select: vi.fn(() => query), eq: vi.fn(() => query), is: vi.fn(() => query),
       single: vi.fn(async () => ({ error: null, data: { id: savedId } })) };
-    const page = { getByRole: vi.fn(() => ({ click: vi.fn(async () => {}) })) };
+    const submit = { click: vi.fn(async () => {}), isEnabled: vi.fn(async () => true) };
+    const page = { getByRole: vi.fn(() => submit) };
     const helpers = runInNewContext(transpileModule(`${helper}\n({review, save});`, {
       compilerOptions: { target: ScriptTarget.ES2022 },
     }).outputText, {
-      expect: (value: unknown) => value === null ? expect(value) : { toBeVisible: visible, toHaveURL: url },
+      expect: (value: unknown, message?: string) => value === null || typeof value === "boolean"
+        ? expect(value, message) : { toBeVisible: visible, toHaveURL: url },
       z: { string: () => ({ uuid: () => ({ parse: (value: string) => value }) }) },
     }) as {
       review(page: unknown, timeout?: number): Promise<void>;
@@ -445,7 +447,71 @@ describe("DC-SW8 modular acceptance report membership", () => {
     url.mockRejectedValueOnce(failure);
     await expect(helpers.save(page, { from: () => query }, "strength", timeout)).rejects.toBe(failure);
     expect(query.single).toHaveBeenCalledTimes(1);
+    submit.isEnabled.mockResolvedValueOnce(false);
+    await expect(helpers.save(page, { from: () => query }, "strength", timeout)).rejects.toThrow(
+      "Program save is disabled; accept the required overlap or replacement consent before saving.",
+    );
+    expect(submit.click).toHaveBeenCalledTimes(3);
+    expect(url).toHaveBeenCalledTimes(3);
+    expect(query.single).toHaveBeenCalledTimes(1);
   });
+
+  it.each(["completed", "scheduled", "wrong-date", "wrong-session"] as const)(
+    "M8 DC-K4: verifies today's completed legacy commitment before explicit overlap consent (%s)", async (state) => {
+      const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
+      const step = source.slice(source.indexOf('stage("m8-07")'), source.indexOf('stage("m8-08")'));
+      const day = "2026-09-24", sessionId = "00000000-0000-4000-8000-000000000002";
+      let checked = false;
+      const events: string[] = [];
+      const time = {}, title = {}, submit = {};
+      const notice = { locator: (selector: string) => selector === "time" ? time : title };
+      const overlap = { locator: () => notice, check: async () => { checked = true; events.push("consent"); } };
+      const page = { getByRole: (role: string, options: { name: string; exact: boolean }) => {
+        expect(options).toEqual({ name: role === "checkbox" ? "Keep both workouts on these dates." : "Start program", exact: true });
+        return role === "checkbox" ? overlap : submit;
+      } };
+      const save = vi.fn(async (_page: unknown, _actor: unknown, kind: string, timeout: number) => {
+        expect(checked).toBe(true);
+        expect([kind, timeout]).toEqual(["strength", 30_000]);
+        events.push("save");
+        return "saved-program";
+      });
+      const result = runInNewContext(transpileModule(`(async () => { ${step}\nreturn strengthId; })();`, {
+        compilerOptions: { target: ScriptTarget.ES2022 },
+      }).outputText, {
+        stage: () => {}, today: () => day, test: { info: () => ({ timeout: 30_000 }) },
+        page, actor: {}, legacy: { sessionId }, save,
+        review: async () => { events.push("review"); },
+        scheduleEntries: async () => [{
+          id: state === "wrong-session" ? "another-session" : sessionId,
+          source: "session", programId: null, date: state === "wrong-date" ? "2026-09-23" : day,
+          state: state === "scheduled" ? "scheduled" : "completed", title: "Older strength workout",
+        }],
+        expect: (value: unknown) => {
+          if (value === overlap) return {
+            toBeVisible: async () => { events.push("overlap"); },
+            not: { toBeChecked: async () => { expect(checked).toBe(false); events.push("unchecked"); } },
+          };
+          if (value === time || value === title) return {
+            toHaveText: async (text: string[]) => {
+              expect(text).toEqual(value === time ? [day] : ["Older strength workout"]);
+              events.push(value === time ? "date" : "title");
+            },
+          };
+          if (value === submit) return { toBeDisabled: async () => { expect(checked).toBe(false); events.push("disabled"); } };
+          return expect(value);
+        },
+      }) as Promise<string>;
+      if (state === "completed") {
+        await expect(result).resolves.toBe("saved-program");
+        expect(events).toEqual(["review", "overlap", "date", "title", "unchecked", "disabled", "consent", "save"]);
+      } else {
+        await expect(result).rejects.toThrow();
+        expect(checked).toBe(false);
+        expect(save).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it("keeps extended UI waits inside the existing case deadline and clears only completed M8 observations", () => {
     const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");

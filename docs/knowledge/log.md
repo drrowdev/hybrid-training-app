@@ -5213,3 +5213,42 @@ window on slow reads is real user-visible latency, not a persistence failure.
 Any future improvement must preserve rejection handling, server-canonical
 reconciliation, undo/restore and multi-tab behavior rather than masking errors
 with unconfirmed optimistic state.
+
+## [2026-09-24] fix | Consent for retained completed legacy workouts
+
+Coordinator-consumed native run 35925938650 at `17c1d7bf` passed 17 of 18
+browser cases; M11 and M13 now pass. M8 reaches retained-draft review/save
+but times out at its unchanged 30-second deadline.
+
+The historical fixture starts its legacy session without `p_performed_at`,
+so its completed workout is dated today. Ending the legacy program retains
+that session as a completed schedule commitment. The new typed draft also
+starts today, correctly requiring explicit same-day overlap consent under
+DC-K4. M8 omitted that consent and waited on the disabled Start button;
+it had not submitted the typed save.
+
+The unchanged production build reproduced this with loopback storage
+modeling the retained completed-session commitment: consent visible and
+unchecked, Start disabled, no typed block. Checking consent enabled Start
+and saved the exact new Plan without reload. At 400 ms per read, the
+browser-only journey reached refusal at 7,288 ms, Plan controls at 15,735,
+archive at 17,819, retained history at 21,714, review at 23,555 and saved Plan
+at 27,345. These are controlled local timings, not native phase measurements,
+and exclude native auth and direct graph checks. The earlier timing probe
+returned an empty schedule snapshot and therefore missed this blocker.
+
+The coordinator approved a driver-only correction: assert the exact legacy
+session's completed commitment and today's matching overlap, explicitly
+accept it, and preserve the existing draft/history/save assertions. Shared
+save now checks the rendered button's enabled state before clicking, failing
+immediately with a fixed diagnostic when required consent is missing.
+No application behavior, fixture dates, case split, limit, diagnostic schema,
+or acceptance inventory changed.
+
+Executing the corrected M8 step and shared save helper directly against the
+same production build completed the delayed browser journey in 23,829 ms.
+The missing-consent guard failed in 22 ms without creating a typed block;
+the real step then verified the commitment, accepted consent, saved the
+owned two-workout program and retained the legacy session. Executable driver
+regressions also reject the wrong session, wrong date and non-completed
+commitment before consent or save.
