@@ -23,7 +23,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { isMissingRpc } from "@/lib/supabase/rpc-errors";
-import { maybeCompleteBlock } from "@/lib/planner/completion";
+import { reconcileCompletedProgram } from "@/lib/platform/completion";
 import { recomputeAfterCompletedSessionMutation } from "@/lib/sessions/post-completion-recompute";
 import type { Prescription } from "@hta/db";
 import {
@@ -206,11 +206,10 @@ export async function completeHyroxSession(
     .select("program_id, instance")
     .eq("user_id", user.id)
     .eq("block_id", blockId)
-    .eq("status", "active")
     .is("deleted_at", null)
     .maybeSingle();
   if (!pi || pi.program_id !== "hyrox") {
-    return { error: "Not an active HYROX block." };
+    return { error: "This HYROX program is unavailable." };
   }
   const hyroxSessionId = hyroxSessionIdForRef(pi.instance as HyroxInstance, programRef);
   if (!hyroxSessionId) {
@@ -304,11 +303,10 @@ export async function completeHyroxSession(
     console.error("post-completion recompute (hyrox) failed:", e);
   }
   try {
-    await maybeCompleteBlock(supabase, blockId);
-    const { applyProgramProgression } = await import("@/lib/platform/progression");
-    await applyProgramProgression({ supabase, userId: user.id, sessionId, blockId });
+    await reconcileCompletedProgram(supabase, user.id, sessionId);
   } catch (e) {
     console.error("hyrox progression failed:", e);
+    return { error: "Workout saved. Retry to update program progress." };
   }
 
   revalidatePath("/app");

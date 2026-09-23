@@ -193,6 +193,16 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     ${json(legacyArgs.p_block)}::text::jsonb,${json(legacyArgs.p_planned_sessions)}::text::jsonb,'[]'::jsonb,
     ${json(legacyArgs.p_program_instance)}::text::jsonb)`)[0]!);
   const legacyBefore = await database`SELECT to_jsonb(b) AS row FROM public.training_blocks b WHERE id=${legacy.block_id}::uuid`;
+  const legacyCompletedUser = await user();
+  const legacyCompleted = await asUser(legacyCompletedUser, async (tx) => (await tx<Created[]>`SELECT * FROM public.deploy_program_instance_atomically(
+    ${json(legacyArgs.p_block)}::text::jsonb,${json(legacyArgs.p_planned_sessions)}::text::jsonb,'[]'::jsonb,
+    ${json(legacyArgs.p_program_instance)}::text::jsonb)`)[0]!);
+  const legacyCompletedSession = await asUser(legacyCompletedUser, async (tx) => {
+    const [planned] = await tx`SELECT id FROM public.planned_sessions WHERE block_id=${legacyCompleted.block_id}::uuid`;
+    const [started] = await tx`SELECT public.start_planned_session_atomically(${planned!.id}::uuid) AS id`;
+    await tx`UPDATE public.sessions SET completed_at=now() WHERE id=${started!.id}::uuid`;
+    return started!.id;
+  });
   await database.begin((tx) => tx.unsafe(up));
     stage("ownership-no-backfill-legacy-and-old-writer-refusal");
     const legacyAfter = await database`SELECT to_jsonb(b)-'program_kind' AS row FROM public.training_blocks b WHERE id=${legacy.block_id}::uuid`;
@@ -201,6 +211,11 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     await denied(() => asUser(a, (tx) => tx`SELECT * FROM public.deploy_program_instance_atomically('{}','[]','[]','{}')`), "55000");
     await commit(legacyUser, "primary-end", { id: legacy.block_id });
     await commit(legacyUser, "primary-create", args("running"), true);
+    assert.equal((await asUser(legacyCompletedUser, (tx) => tx`SELECT public.complete_program_if_settled(
+      ${legacyCompleted.block_id}::uuid) AS done`))[0]!.done, true);
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.engine_override_events
+      WHERE user_id=${legacyCompletedUser}::uuid AND context->>'kind'='program-progression-v1'
+        AND context->>'sessionId'=${legacyCompletedSession}`)[0]!.n, 0);
     stages.push("ownership-no-backfill-legacy-and-old-writer-refusal");
 
     const setup = { goal: "endurance" as const, experience: "recreational" as const, course: poolCourse(25, 1, "m"),
@@ -308,6 +323,60 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     await commit(a, "primary-end", { id: hybrid.block_id });
     assert.equal((await database`SELECT status FROM public.swim_plans WHERE id=${swim.plan.id}::uuid`)[0]!.status, "active");
     assert.equal((await database`SELECT status FROM public.training_blocks WHERE id=${running.block_id}::uuid`)[0]!.status, "active");
+
+    const queuedOwner = await user();
+    const queuedArgs = args("strength");
+    queuedArgs.p_block.allows_two_a_days = true;
+    queuedArgs.p_planned_sessions = ["am", "pm"].map((slot) => ({ ...queuedArgs.p_planned_sessions[0]!, slot }));
+    const queued = await commit<Created>(queuedOwner, "primary-create", queuedArgs, true);
+    const independentRun = await commit<Created>(queuedOwner, "primary-create", args("running"), true);
+    const completedIds = await asUser(queuedOwner, async (tx) => {
+      const planned = await tx`SELECT id FROM public.planned_sessions WHERE block_id=${queued.block_id}::uuid ORDER BY slot`;
+      const ids: string[] = [];
+      for (const row of planned) {
+        const [started] = await tx`SELECT public.start_planned_session_atomically(${row.id}::uuid) AS id`;
+        await tx`UPDATE public.sessions SET completed_at=now() WHERE id=${started!.id}::uuid`;
+        ids.push(started!.id);
+      }
+      return ids;
+    });
+    assert.equal(completedIds.length, 2);
+    const settleQueued = () => asUser(queuedOwner, async (tx) =>
+      (await tx`SELECT public.complete_program_if_settled(${queued.block_id}::uuid) AS done`)[0]!.done);
+    const progressQueued = (sessionId: string, expected: unknown, next: unknown) => asUser(queuedOwner, async (tx) =>
+      (await tx`SELECT public.commit_program_progression(${queued.block_id}::uuid,${queued.program_instance_id}::uuid,
+        ${sessionId}::uuid,${json(expected)}::text::jsonb,${json(next)}::text::jsonb,'[]') AS value`)[0]!.value);
+    assert.equal(await settleQueued(), false);
+    const once = { ...originalInstance, logged: 1 }, twice = { ...originalInstance, logged: 2 };
+    assert.equal(await progressQueued(completedIds[0]!, originalInstance, once), "applied");
+    assert.equal(await settleQueued(), false);
+    assert.equal((await database`SELECT status FROM public.program_instances WHERE id=${queued.program_instance_id}::uuid`)[0]!.status, "active");
+    assert.equal(await progressQueued(completedIds[1]!, once, twice), "applied");
+    assert.equal(await progressQueued(completedIds[1]!, once, twice), "replayed");
+    assert.equal(await settleQueued(), true);
+    assert.equal(await settleQueued(), false);
+    assert.deepEqual((await database`SELECT instance FROM public.program_instances WHERE id=${queued.program_instance_id}::uuid`)[0]!.instance, twice);
+    const pending = await commit<Created>(queuedOwner, "primary-create", args("strength"), true);
+    const pendingSession = await asUser(queuedOwner, async (tx) => {
+      const [planned] = await tx`SELECT id FROM public.planned_sessions WHERE block_id=${pending.block_id}::uuid`;
+      const [started] = await tx`SELECT public.start_planned_session_atomically(${planned!.id}::uuid) AS id`;
+      await tx`UPDATE public.sessions SET completed_at=now() WHERE id=${started!.id}::uuid`;
+      assert.equal((await tx`SELECT public.complete_program_if_settled(${pending.block_id}::uuid) AS done`)[0]!.done, false);
+      return started!.id;
+    });
+    await asUser(queuedOwner, (tx) => tx`INSERT INTO public.engine_override_events(id,user_id,event_type,context)
+      VALUES(md5('program-progression:'||${queuedOwner}::text||':'||${pending.program_instance_id}::text||':'||${pendingSession}::text)::uuid,
+        ${queuedOwner}::uuid,'custom',${json({ kind: "program-progression-v1", blockId: pending.block_id,
+          instanceId: randomUUID(), sessionId: pendingSession })}::text::jsonb)`);
+    assert.equal((await asUser(queuedOwner, (tx) => tx`SELECT public.complete_program_if_settled(${pending.block_id}::uuid) AS done`))[0]!.done, false);
+    await denied(() => asUser(queuedOwner, (tx) => tx`SELECT public.commit_program_progression(
+      ${pending.block_id}::uuid,${pending.program_instance_id}::uuid,${pendingSession}::uuid,
+      ${json(originalInstance)}::text::jsonb,${json(originalInstance)}::text::jsonb,'[]')`), "22023");
+    await commit(queuedOwner, "primary-end", { id: pending.block_id });
+    const afterPending = await commit<Created>(queuedOwner, "primary-create", args("strength"), true);
+    assert.equal((await database`SELECT status FROM public.training_blocks WHERE id=${pending.block_id}::uuid`)[0]!.status, "archived");
+    assert.equal((await database`SELECT status FROM public.training_blocks WHERE id=${independentRun.block_id}::uuid`)[0]!.status, "active");
+    assert.deepEqual((await database`SELECT instance FROM public.program_instances WHERE id=${afterPending.program_instance_id}::uuid`)[0]!.instance, originalInstance);
     stages.push("ownership-independent-end-trash-restore-completion-and-late-progress");
 
     stage("ownership-swim-rehab-owned-attachment-issued-dose-replay-and-restore");

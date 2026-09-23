@@ -4786,3 +4786,43 @@ mobile input-geometry contract are preserved; real-font captures were inspected.
 There are no schema, RLS, native-runner or production-updater changes. Normal 159
 remains the boundary. Analytics/season/recommendation lifecycle and the corrected
 multi-program native acceptance path remain unfinished; no release is approved.
+
+## [2026-09-23] implementation | Preserve queued progression before program completion
+
+The coordinator accepted `f3478beb`: core `35859270611` and storage
+`35859270598` passed, with 62 SQL and 67 synthetic UI stages. The subsequent
+completion audit found that 0158's new PI archival could discard another
+completed workout's still-pending progression. Main did not archive that PI.
+The coordinator approved repairing the unshipped 0158 and its unused down,
+not introducing another migration; normal 159 remains the boundary.
+
+Typed automatic completion now requires each relevant workout's own validated
+progression receipt under the common lock. Unclassified, pre-0158 completed
+history bypasses this gate. The existing explicit End action remains available
+with pending progression. Both replay and settlement check receipt kind, block,
+instance and session. No tables, columns, policies or grants changed.
+
+All completion entrypoints now reconcile the original program before settling
+it. Authored/native/ref-less workouts record unchanged progression. A reproduced
+Green conditioning regression no longer drops end-phase advice merely because
+there are no strength sets. Structured HYROX completion can retain a started
+workout under its original archived program; it does not target a replacement.
+Saved-workout failures remain retryable through the existing completion/cardio
+outbox, with truthful saved-and-waiting copy. HYROX retains its existing manual
+retry control rather than implying an unsupported automatic queue.
+
+The existing ownership SQL stages add receipt-less pre-migration history,
+two already-completed workouts with independent receipts, replay, refusal of
+a mismatched receipt and explicit ending while progression is pending without
+changing the other Running program. These await disposable SQL execution.
+No SQL stage name changes. Local qualification passed 1,094 coupled web tests,
+web/account-flow and DB types, plus the existing offline rollback/source guard
+suite. All 69 synthetic UI stages passed: the previous 67 are preserved and
+`program-completion-retry-375` / `program-completion-retry-1280` exercise all
+three Finish placements and cardio with actual IndexedDB outbox replay.
+Real-font controls were inspected at both widths. The fixture uses the app's
+content gutter, and saved notices wrap on mobile.
+
+Historical migrations, native cases and production updater remain unchanged.
+Analytics/season/recommendation readers and corrected-model native acceptance
+remain unfinished. No production, merge or deployment authorization is implied.

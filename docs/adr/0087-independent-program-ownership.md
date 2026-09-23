@@ -44,6 +44,14 @@ overlap preview. Exact replay returns the original result before freshness check
 Ending, restoring, completing or changing one program does not change another.
 Started workouts are not completed workouts.
 
+Typed programs settle only after each completed, non-skipped workout has its
+own instance/session progression receipt. No-op progression also records a
+receipt; receipt-less unclassified history is not subject to this new gate.
+Saving a workout precedes progression, but a failed progression attempt keeps
+the existing completion outbox entry retryable rather than reporting the
+workout unsaved. Explicit End still frees that type's slot while progression
+is pending. Receipts validate the kind, block, instance and session together.
+
 ## Loads and recovery
 
 Measured 1RM remains account-owned. Working percentages and engine working maxes

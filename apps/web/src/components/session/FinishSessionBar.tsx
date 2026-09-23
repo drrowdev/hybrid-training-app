@@ -137,6 +137,7 @@ export function FinishSessionBar({
   // enqueue a durable `complete` op (after the queued sets) and confirm in place;
   // the outbox flusher on the session page replays it on reconnect.
   const [savedOffline, setSavedOffline] = useState(false);
+  const [progressMessage, setProgressMessage] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const completionStored = savedOffline || completionQueued;
@@ -218,6 +219,7 @@ export function FinishSessionBar({
           completeSessionResult(sessionId, null, completionEntryId),
       );
       if (durable.status === "queued") {
+        setProgressMessage(durable.result?.workoutSaved ? durable.result.error ?? null : null);
         setSavedOffline(true);
         registerCompletionQueued?.(true);
         setFinishing(false);
@@ -312,7 +314,7 @@ export function FinishSessionBar({
           data-testid="finish-saved-offline"
           style={{ display: "block", padding: "8px 10px", fontSize: 13 }}
         >
-          Saved offline — finishes when you reconnect
+          {progressMessage ?? "Saved offline — finishes when you reconnect"}
         </span>
       );
     }
@@ -378,9 +380,9 @@ export function FinishSessionBar({
         <span
           data-testid="finish-saved-offline"
           className="cp-btn"
-          style={{ padding: "8px 14px", fontSize: 12, opacity: 0.8 }}
+          style={{ padding: "8px 14px", fontSize: 12, opacity: 0.8, whiteSpace: "normal", maxWidth: "100%" }}
         >
-          Saved offline — finishes when you reconnect
+          {progressMessage ?? "Saved offline — finishes when you reconnect"}
         </span>
       );
     }
@@ -442,9 +444,9 @@ export function FinishSessionBar({
         <span
           data-testid="finish-saved-offline"
           className="cp-btn big"
-          style={{ flex: 1, textAlign: "center", opacity: 0.8 }}
+          style={{ flex: 1, textAlign: "center", opacity: 0.8, whiteSpace: "normal", minWidth: 0 }}
         >
-          Saved offline — finishes when you reconnect
+          {progressMessage ?? "Saved offline — finishes when you reconnect"}
         </span>
       ) : (
         <form

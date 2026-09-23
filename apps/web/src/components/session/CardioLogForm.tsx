@@ -102,6 +102,7 @@ export function CardioLogForm({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [savedOffline, setSavedOffline] = useState(false);
+  const [progressMessage, setProgressMessage] = useState<string | null>(null);
   const [outboxHydrated, setOutboxHydrated] = useState(false);
   const [durabilityWarning, setDurabilityWarning] = useState(false);
 
@@ -193,6 +194,7 @@ export function CardioLogForm({
         () => action(fd),
       );
       if (durable.status === "queued") {
+        setProgressMessage(durable.result?.workoutSaved ? durable.result.error ?? null : null);
         setSavedOffline(true);
         if (prescriptionItemIndex !== undefined) loggingState?.registerCardioLog(clientLogId, prescriptionItemIndex);
         return;
@@ -217,7 +219,7 @@ export function CardioLogForm({
         className="cp-card"
         style={{ padding: 14, color: "var(--cp-text)" }}
       >
-        {prescriptionItemIndex === undefined ? "Saved on this device — finishes when you reconnect" : "Saved on this device"}
+        {progressMessage ?? (prescriptionItemIndex === undefined ? "Saved on this device — finishes when you reconnect" : "Saved on this device")}
       </div>
     );
   }

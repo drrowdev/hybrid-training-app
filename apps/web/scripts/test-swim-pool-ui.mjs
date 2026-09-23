@@ -41,6 +41,10 @@ try {
         import { DeloadWeekCard } from "./src/components/plan/DeloadWeekCard";
         import { FocusStripLogger } from "./src/components/session/FocusStripLogger";
         import { SessionWorkArea } from "./src/components/session/SessionWorkArea";
+        import { FinishSessionBar } from "./src/components/session/FinishSessionBar";
+        import { CardioLogForm } from "./src/components/session/CardioLogForm";
+        import { flushOutbox } from "./src/lib/offline/flusher";
+        import { listPending } from "./src/lib/offline/outbox";
         import { TmSection } from "./src/components/training-maxes/TmSection";
         import { SessionLoggingStateProvider, useSessionLoggingState } from "./src/components/session/SessionLoggingState";
         import { compileAuthoredWorkout } from "@hta/domain";
@@ -649,6 +653,25 @@ try {
             workout: { id: "00000000-0000-4000-8000-000000000002", revision: 1, course: long },
           }} onApply={preview => window.applied.push(preview)} />
         </section></main>);
+        window.pendingCompletionEntries = listPending;
+        window.retryCompletion = flushOutbox;
+        window.showCompletionRetry = (variant) => {
+          const sessionId = "00000000-0000-4000-8000-000000000093";
+          window.completionMode = "progress-error"; window.completionCalls = [];
+          window.completeWorkout = async (...args) => {
+            window.completionCalls.push(args);
+            return window.completionMode === "progress-error"
+              ? { error: "Workout saved. Program progress is waiting to sync.", errorCode: "transient", workoutSaved: true }
+              : { ok: true };
+          };
+          window.logFullCardio = async form => window.completeWorkout(Object.fromEntries(form));
+          root.render(<main className={styles.page} key={++key} style={{ paddingInline: 16 }}>
+            {variant === "cardio"
+              ? <CardioLogForm sessionId={sessionId} prescribedDurationMin={20} movementId={null} modality="run" units="metric"
+                  action={window.logFullCardio} />
+              : <FinishSessionBar sessionId={sessionId} variant={variant} disabled={false} />}
+          </main>);
+        };
       `,
       loader: "tsx", resolveDir: root,
     },
@@ -670,7 +693,7 @@ try {
         build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions|import-outcome-actions|rehab-actions)|@\/lib\/programs\/authored\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "@/lib/sessions/actions"
-            ? "const unexpected = () => { throw new Error('Unexpected session mutation'); }; export const deleteSet = form => window.deleteFullSet(form); export const permanentlyDeleteSession = unexpected, restoreSession = unexpected, addCardioBlock = unexpected, completeSessionResult = unexpected; export const addStrengthSet = form => window.logFullStrength(form), logCardioSession = form => window.logFullCardio(form);"
+            ? "const unexpected = () => { throw new Error('Unexpected session mutation'); }; export const deleteSet = form => window.deleteFullSet(form); export const permanentlyDeleteSession = unexpected, restoreSession = unexpected, addCardioBlock = unexpected; export const completeSessionResult = (...args) => { if (!window.completeWorkout) return unexpected(); return window.completeWorkout(...args); }; export const addStrengthSet = form => window.logFullStrength(form), logCardioSession = form => window.logFullCardio(form);"
             : args.path === "@/lib/sessions/session-movement-actions"
               ? "export const removeSessionMovementAction = () => { throw new Error('Unexpected removal'); };"
             : args.path === "@/lib/sessions/reorder-actions"
@@ -1641,6 +1664,36 @@ try {
     await expect(page.getByTestId("tm-suggestion-legacy-advice")).toBeVisible();
     await expect(page.getByRole("button", { name: "Accept", exact: true })).toBeEnabled();
     assert.equal(await page.evaluate(() => window.tmChoiceCalls), 1);
+    stages.push(stage);
+  }
+  assert.deepEqual(failures, []);
+  for (const width of [375, 1280]) {
+    stage = `program-completion-retry-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    for (const variant of ["bottom", "banner", "menu", "cardio"]) {
+      assert.deepEqual(await page.evaluate(() => window.pendingCompletionEntries()), []);
+      await page.evaluate(variant => window.showCompletionRetry(variant), variant);
+      const form = page.locator("form");
+      const submit = form.locator('button[type="submit"]');
+      await expect(submit).toBeVisible();
+      await submit.click();
+      const notice = page.getByTestId(variant === "cardio" ? "cardio-saved-offline" : "finish-saved-offline");
+      await expect(notice).toContainText(/workout saved/i);
+      await expect(notice).not.toContainText(/saved offline|saved on this device/i);
+      const pending = await page.evaluate(() => window.pendingCompletionEntries());
+      assert.equal(pending.length, 1);
+      assert.equal(pending[0].sessionId, "00000000-0000-4000-8000-000000000093");
+      assert.equal(pending[0].op, variant === "cardio" ? "cardio_session" : "complete");
+      assert.equal(await page.evaluate(() => window.completionCalls.length), 1);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await page.evaluate(() => { window.completionMode = "success"; });
+      const flushed = await page.evaluate(() => window.retryCompletion());
+      assert.equal(flushed.flushed, 1);
+      assert.equal(flushed.remaining, 0);
+      const calls = await page.evaluate(() => window.completionCalls);
+      assert.equal(calls.length, 2);
+      assert.deepEqual(calls[1], calls[0]);
+    }
     stages.push(stage);
   }
   assert.deepEqual(failures, []);

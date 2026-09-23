@@ -15,8 +15,8 @@ BEGIN
     ('guard_program_prescription()','79a4796d81aa589658934d384431c75f'),
     ('independent_programs_ready()','f7754db18b4915afa6efd55215665840'),
     ('independent_program_schedule_commit(text,jsonb,text,uuid,text,boolean)','4534153f8590cbee7ea847fdf20c686f'),
-    ('complete_program_if_settled(uuid)','11cb37bbb20812a5103ff64ae80021ef'),
-    ('commit_program_progression(uuid,uuid,uuid,jsonb,jsonb,jsonb)','0e64f7804b978648c385bfaddc5d783a'),
+    ('complete_program_if_settled(uuid)','996fb16023d56e0d29a0e96963ada556'),
+    ('commit_program_progression(uuid,uuid,uuid,jsonb,jsonb,jsonb)','7d4d6b811d1f78996349e92b26bdb639'),
     ('set_swim_rehab_bindings(uuid,uuid[],text,uuid)','2329636561cb53b0160e3bd24bf5a737'),
     ('guard_swim_rehab_session()','643414add07d5638fe29d9d6c106cb90'),
     ('start_swim_rehab_session(uuid,uuid,text,jsonb,uuid)','465b37b8aba6a5ed966ac3d0df205f92')

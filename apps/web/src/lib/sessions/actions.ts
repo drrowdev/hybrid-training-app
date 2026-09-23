@@ -8,7 +8,7 @@ import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { type WeightUnit, toKg } from "@/lib/stats/units";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
-import { maybeCompleteBlock } from "@/lib/planner/completion";
+import { reconcileCompletedProgram, PROGRAM_PROGRESS_RETRY_MESSAGE } from "@/lib/platform/completion";
 import { expandPrescriptionSetItems } from "@/lib/planner/expand-prescription-sets";
 import { getUserTimezone, dayDate } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
@@ -964,7 +964,7 @@ const logCardioSessionSchema = z.object({
 
 export async function logCardioSession(
   formData: FormData,
-): Promise<{ ok?: true; error?: string; errorCode?: ActionErrorCode }> {
+): Promise<{ ok?: true; error?: string; errorCode?: ActionErrorCode; workoutSaved?: true }> {
   const parsed = logCardioSessionSchema.safeParse({
     prescriptionItemIndex: formData.get("prescriptionItemIndex") ?? undefined,
     sessionId: formData.get("sessionId"),
@@ -1110,18 +1110,12 @@ export async function logCardioSession(
       } catch (e) {
         console.error("post-completion recompute (cardio) failed:", e);
       }
-      try {
-        const { data: linked } = await supabase
-          .from("planned_sessions")
-          .select("block_id")
-          .eq("completed_session_id", parsed.data.sessionId)
-          .maybeSingle();
-        if (linked?.block_id) {
-          await maybeCompleteBlock(supabase, linked.block_id as string);
-        }
-      } catch (e) {
-        console.error("maybeCompleteBlock (cardio) failed:", e);
-      }
+    }
+    try {
+      await reconcileCompletedProgram(supabase, user.id, parsed.data.sessionId);
+    } catch (e) {
+      console.error("program completion (cardio) failed:", e);
+      return { error: PROGRAM_PROGRESS_RETRY_MESSAGE, errorCode: "transient", workoutSaved: true };
     }
   }
 
@@ -1613,15 +1607,15 @@ export async function completeSession(formData: FormData): Promise<void> {
  * Redirect-free core of session completion, shared by the form action
  * (`completeSession`, which redirects to the summary) and the offline outbox
  * flusher (which replays it in the background on reconnect and must NOT
- * navigate). Returns a plain result; all the heavy recompute / side-effects are
- * best-effort and never block the completed_at stamp. Replays return success
- * without changing completion state or replaying once-only side effects.
+ * navigate). Completion is saved first. Required program reconciliation can
+ * return a retryable result; heavy account recompute remains deferred. Replays
+ * preserve completion state and do not repeat once-only side effects.
  */
 export async function completeSessionResult(
   sessionId: string,
   notes: string | null,
   completionEntryId: string | null = null,
-): Promise<{ ok?: true; error?: string; errorCode?: ActionErrorCode }> {
+): Promise<{ ok?: true; error?: string; errorCode?: ActionErrorCode; workoutSaved?: true }> {
   const idCheck = z.string().uuid().safeParse(sessionId);
   if (!idCheck.success) {
     return { error: "Invalid session id", errorCode: "validation" };
@@ -1705,26 +1699,6 @@ export async function completeSessionResult(
         console.error("post-completion recompute (completion) failed:", e);
       }),
       (async () => {
-        const { data: linked } = await supabase
-          .from("planned_sessions")
-          .select("block_id")
-          .eq("completed_session_id", sessionId)
-          .maybeSingle();
-        if (!linked?.block_id) return;
-        const { applyProgramProgression } = await import(
-          "@/lib/platform/progression"
-        );
-        await applyProgramProgression({
-          supabase,
-          userId,
-          sessionId,
-          blockId: linked.block_id as string,
-        });
-        await maybeCompleteBlock(supabase, linked.block_id as string);
-      })().catch((e) => {
-        console.error("block completion/progression failed:", e);
-      }),
-      (async () => {
         const { generateTmSuggestionsForSession } = await import(
           "@/lib/training-maxes/actions"
         );
@@ -1760,6 +1734,13 @@ export async function completeSessionResult(
     revalidatePath("/app");
     revalidatePath("/app/stats");
   });
+
+  try {
+    await reconcileCompletedProgram(supabase, userId, sessionId);
+  } catch (e) {
+    console.error("program completion failed:", e);
+    return { error: PROGRAM_PROGRESS_RETRY_MESSAGE, errorCode: "transient", workoutSaved: true };
+  }
 
   revalidatePath("/app");
   revalidatePath("/app/plan");

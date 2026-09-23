@@ -503,6 +503,20 @@ BEGIN
       WHERE p.block_id=p_block_id AND p.user_id=u AND p.skipped_at IS NULL AND p.role<>'rest'
         AND (s.id IS NULL OR s.completed_at IS NULL OR s.deleted_at IS NOT NULL)
   ) THEN RETURN false; END IF;
+  IF EXISTS(
+    SELECT 1 FROM public.training_blocks b
+      JOIN public.program_instances i ON i.block_id=b.id AND i.user_id=b.user_id
+      JOIN public.planned_sessions p ON p.block_id=b.id AND p.user_id=b.user_id
+    WHERE b.id=p_block_id AND b.user_id=u AND b.program_kind IS NOT NULL
+      AND i.status='active' AND i.deleted_at IS NULL AND p.skipped_at IS NULL AND p.role<>'rest'
+      AND NOT EXISTS(
+        SELECT 1 FROM public.engine_override_events e
+        WHERE e.id=md5('program-progression:'||u::text||':'||i.id::text||':'||p.completed_session_id::text)::uuid
+          AND e.user_id=u AND e.context->>'kind'='program-progression-v1'
+          AND e.context->>'blockId'=b.id::text AND e.context->>'instanceId'=i.id::text
+          AND e.context->>'sessionId'=p.completed_session_id::text
+      )
+  ) THEN RETURN false; END IF;
   UPDATE public.training_blocks SET status='completed',completed_at=now(),ended_at=now(),updated_at=now()
     WHERE id=p_block_id AND user_id=u AND status='active' AND deleted_at IS NULL;
   IF NOT FOUND THEN RETURN false; END IF;
@@ -523,7 +537,8 @@ BEGIN
   receipt_id:=md5('program-progression:'||u::text||':'||p_instance_id::text||':'||p_session_id::text)::uuid;
   SELECT context INTO receipt FROM public.engine_override_events WHERE id=receipt_id AND user_id=u;
   IF FOUND THEN
-    IF receipt->>'kind' IS DISTINCT FROM 'program-progression-v1' OR receipt->>'blockId' IS DISTINCT FROM p_block_id::text THEN
+    IF receipt->>'kind' IS DISTINCT FROM 'program-progression-v1' OR receipt->>'blockId' IS DISTINCT FROM p_block_id::text
+      OR receipt->>'instanceId' IS DISTINCT FROM p_instance_id::text OR receipt->>'sessionId' IS DISTINCT FROM p_session_id::text THEN
       RAISE EXCEPTION 'Progression receipt does not match this program.' USING ERRCODE='22023';
     END IF;
     RETURN 'replayed';

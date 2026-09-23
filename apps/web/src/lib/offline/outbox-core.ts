@@ -29,6 +29,7 @@ export type ActionResult = {
   ok?: true;
   error?: string;
   errorCode?: ActionErrorCode;
+  workoutSaved?: true;
 };
 
 export type OutboxEntry = {

@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import { wendler531Engine } from "@hta/wendler";
 import { tacticalBarbellEngine } from "@hta/tacticalbarbell";
+import { greenProtocolEngine } from "@hta/green";
 import { applyProgramProgression } from "../progression";
 
 const ctx = { oneRepMaxes: { squat: 165, bench: 118, deadlift: 212, press: 71 }, roundingKg: 2.5 };
@@ -130,6 +131,45 @@ describe("DC-R5 scoped atomic progression", () => {
       kind: "tm-bump", occurrenceKey: "s1:squat",
     })]));
     expect(calls[0]).toMatchObject({ p_block_id: "b1", p_instance_id: "pi1" });
+    expect(rec).toEqual({ inserts: [], updates: [] });
+  });
+
+  it("keeps end-phase advice for a completed conditioning workout with no strength sets", async () => {
+    const instance = greenProtocolEngine.setup({ values: { phaseId: "capacity" } }, ctx);
+    const last = greenProtocolEngine.timeline(instance).at(-1)!;
+    const rec: Recorded = { inserts: [], updates: [] };
+    const calls: Record<string, unknown>[] = [];
+    const supabase = fakeSupabase({
+      program_instances: { single: { id: "pi1", program_id: "green-protocol", instance } },
+      planned_sessions: { single: { prescription: { items: [], programRef: last.ref } } },
+      set_logs: { list: [] },
+    }, rec, async (_name, args) => {
+      calls.push(args);
+      return { data: "applied", error: null };
+    });
+    await applyProgramProgression({ supabase, userId: "u1", sessionId: "s1", blockId: "b1" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.p_recommendations).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "next-block", data: expect.objectContaining({ nextPhaseId: "velocity" }),
+    })]));
+    expect(rec).toEqual({ inserts: [], updates: [] });
+  });
+
+  it.each(["authored", "hybrid", "hyrox"])("records unchanged progression for a completed %s workout without an engine ref", async (programId) => {
+    const instance = { version: 1 };
+    const rec: Recorded = { inserts: [], updates: [] };
+    const calls: Record<string, unknown>[] = [];
+    await applyProgramProgression({
+      supabase: fakeSupabase({
+        program_instances: { single: { id: "pi1", program_id: programId, instance } },
+        planned_sessions: { single: { prescription: { items: [] } } },
+      }, rec, async (_name, args) => { calls.push(args); return { data: "applied", error: null }; }),
+      userId: "u1", sessionId: "s1", blockId: "b1",
+    });
+    expect(calls).toEqual([expect.objectContaining({
+      p_block_id: "b1", p_instance_id: "pi1", p_session_id: "s1",
+      p_expected_instance: instance, p_next_instance: instance, p_recommendations: [],
+    })]);
     expect(rec).toEqual({ inserts: [], updates: [] });
   });
 });
