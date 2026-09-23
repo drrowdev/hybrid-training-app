@@ -5,9 +5,8 @@
  *
  * Self-contained: rendered additively at the top of Today, mirroring the
  * existing OverdueNotice / RegionSpikeBanner pattern. Informational — each
- * recommendation has a "Got it" dismiss. Actual TM changes still flow through
- * the separate AMRAP→TM-bump banner; these are nudges (retest your maxes,
- * start your next block, 7th-week verdict, …).
+ * recommendation has a dismiss action. Load advice links to the owning
+ * program's supported controls rather than changing account measurements.
  */
 import { useState, useTransition } from "react";
 import Link from "next/link";
@@ -26,6 +25,13 @@ type DismissAction = (id: string) => Promise<{ ok: true } | { ok: false; error: 
 function advanceTarget(
   r: PendingProgramRecommendation,
 ): { href: string; label: string; keepUntilDone?: boolean } | null {
+  if (r.reviewHref) {
+    return {
+      href: r.reviewHref,
+      label: r.reviewHref.startsWith("/app/program?edit=") ? "Review loads" : "Open program",
+      keepUntilDone: true,
+    };
+  }
   if (r.kind === "deload") {
     if (!r.blockId) return null;
     const params = new URLSearchParams({ deload: "1", rec: r.id, block: r.blockId });

@@ -3,6 +3,7 @@
  * helper (not a server action) — invoked from the Today server component.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getBlockEditContext } from "./edit-context";
 
 export interface PendingProgramRecommendation {
   id: string;
@@ -12,6 +13,7 @@ export interface PendingProgramRecommendation {
   blockId: string | null;
   data?: Record<string, unknown> | null;
   occurrenceKey?: string | null;
+  reviewHref?: string;
 }
 
 export async function getPendingProgramRecommendations(
@@ -30,7 +32,7 @@ export async function getPendingProgramRecommendations(
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error("Could not read your program recommendations. Try again.");
-  return (data ?? []).map((r) => ({
+  return Promise.all((data ?? []).map(async (r) => ({
     id: r.id as string,
     kind: r.kind as string,
     title: r.title as string,
@@ -38,5 +40,10 @@ export async function getPendingProgramRecommendations(
     blockId: (r.block_id as string | null) ?? null,
     data: (r.data as Record<string, unknown> | null) ?? null,
     occurrenceKey: (r.occurrence_key as string | null) ?? null,
-  }));
+    ...(["tm-bump", "tm-test", "tm-reset"].includes(r.kind) ? {
+      reviewHref: await getBlockEditContext(r.block_id)
+        ? `/app/program?edit=${encodeURIComponent(r.block_id)}`
+        : `/app/plan?block=${encodeURIComponent(r.block_id)}`,
+    } : {}),
+  })));
 }

@@ -27,6 +27,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { selectablePrograms, getProgramEngine, getNativeProgramEngine } from "@/lib/platform/registry";
 import { buildPlatformContext } from "@/lib/platform/context";
 import { getBlockEditContext } from "@/lib/platform/edit-context";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { getActiveSeason } from "@/lib/seasons/queries";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { STRENGTH_ROLE_CANDIDATES, type StrengthRole } from "@/lib/planner/archetypes";
@@ -139,6 +140,12 @@ export default async function ProgramPickerPage({
     data: { user },
   } = await getAuthUser();
   if (!user) redirect("/login");
+
+  const sp = await searchParams;
+  const editContext = sp.edit ? await getBlockEditContext(sp.edit) : null;
+  if (sp.edit && !editContext) {
+    return <EmptyState title="This program isn't available to edit." action={{ label: "View programs", href: "/app/programs" }} />;
+  }
 
   const { anchoredKeys } = await buildPlatformContext(supabase, user.id);
 
@@ -295,15 +302,9 @@ export default async function ProgramPickerPage({
   // Optional deep-link preselect (e.g. the Today "Set up Velocity →" guided
   // advance). Only honour a program whose deploy path is enabled; the phase is
   // passed through as the program's loadout value (Green Protocol's phaseId).
-  const sp = await searchParams;
   const initialProgramId =
     sp.program && ENABLED_PROGRAM_IDS.has(sp.program) ? sp.program : undefined;
   const initialLoadoutValue = initialProgramId && sp.phase ? sp.phase : undefined;
-
-  // Edit mode (?edit=<blockId>): re-enter the wizard for the user's active
-  // strength-only plan (5/3/1 / TB), prefilled with its current loadout +
-  // schedule + cardio days. Null when the block isn't editable → fresh wizard.
-  const editContext = sp.edit ? await getBlockEditContext(sp.edit) : null;
 
   // Season roadmap deep-link (ADR 0051): carries the planned season_block to
   // activate on deploy. Threaded straight through — the deploy action

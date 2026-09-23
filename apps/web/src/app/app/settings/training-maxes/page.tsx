@@ -3,7 +3,6 @@ import { isSystemLoadMovementSlug } from "@hta/domain";
 import {
   upsertTrainingMax,
   deleteTrainingMax,
-  moveTrainingMaxVariant,
   lockTrainingMaxAsEntered,
 } from "@/lib/training-maxes/actions";
 import { getTmSourceSet, getTrainingMaxContext, type TmSourceSet } from "@/lib/training-maxes/queries";
@@ -71,23 +70,19 @@ export default async function TrainingMaxesPage() {
     .is("user_id", null);
   const candidateBySlug = new Map((candidateMovements ?? []).map((m) => [m.slug, m]));
 
-  const requiredGroups: RoleGroupInput[] = await Promise.all(
-    requiredRoles.map(async (role) => {
+  const requiredGroups: RoleGroupInput[] =
+    requiredRoles.map((role) => {
       const candidates = STRENGTH_ROLE_CANDIDATES[role]
         .map((slug) => candidateBySlug.get(slug))
         .filter((m): m is { id: string; slug: string; display_name: string; pattern: string } => !!m)
         .map((m) => ({ id: m.id, slug: m.slug, display_name: m.display_name }));
-      const setRow = ctx.rows.find((r) => STRENGTH_ROLE_CANDIDATES[role].includes(r.movementSlug));
-      const setRowSourceSet = setRow ? await getTmSourceSet(setRow) : null;
       return {
         role,
         label: STRENGTH_ROLE_LABELS[role],
         candidates,
-        setRow,
-        setRowSourceSet,
+        rows: ctx.rows.filter((r) => STRENGTH_ROLE_CANDIDATES[role].includes(r.movementSlug)),
       };
-    }),
-  );
+    });
 
   const requiredSlugSet = new Set(requiredGroups.flatMap((g) => g.candidates.map((c) => c.slug)));
   const otherRows = ctx.rows.filter((r) => !requiredSlugSet.has(r.movementSlug));
@@ -164,10 +159,8 @@ export default async function TrainingMaxesPage() {
         otherRows={otherRows}
         otherRowSourceSets={otherRowSourceSets}
         pickerGroups={pickerGroups}
-        hasActiveBlock={archetypes.length > 0}
         bodyweightKg={bodyweightKg}
         upsertAction={upsertTrainingMax}
-        moveAction={moveTrainingMaxVariant}
         deleteAction={deleteTrainingMax}
         lockAction={lockTrainingMaxAsEntered}
       />

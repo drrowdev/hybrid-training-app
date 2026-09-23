@@ -6,6 +6,7 @@
  * `after()` cannot mint a cookie-based one.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadBlockProgramKinds } from "@/lib/programs/ownership";
 import { roundToPlate } from "@/lib/planner/archetypes";
 import {
   evaluateTmSuggestion,
@@ -57,13 +58,17 @@ export async function syncTmSuggestionsForSession(
   userId: string,
   sessionId: string,
 ): Promise<string[]> {
-  const { data: session } = await supabase
+  const { data: session, error: sessionError } = await supabase
     .from("sessions")
-    .select("id, user_id, completed_at")
+    .select("id, user_id, completed_at, block_id")
     .eq("id", sessionId)
     .eq("user_id", userId)
     .maybeSingle();
+  if (sessionError) throw new Error("Could not read the completed workout.", { cause: sessionError });
   if (!session || session.user_id !== userId || !session.completed_at) {
+    return [];
+  }
+  if (session.block_id && (await loadBlockProgramKinds(supabase, userId, [session.block_id])).get(session.block_id) != null) {
     return [];
   }
 

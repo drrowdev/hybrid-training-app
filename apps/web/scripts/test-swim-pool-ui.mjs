@@ -33,6 +33,7 @@ try {
         import { ProgramBuilder } from "./src/components/program/ProgramBuilder";
         import { ProgramsOverview } from "./src/components/program/ProgramsOverview";
         import { ProgramRecommendationsBanner } from "./src/components/today/ProgramRecommendationsBanner";
+        import { TmSuggestionBanner } from "./src/components/today/TmSuggestionBanner";
         import { TrainingWeek } from "./src/components/program/TrainingWeek";
         import { ThisWeekRail } from "./src/components/plan/ThisWeekRail";
         import { ScheduleRestoreButton } from "./src/components/program/ScheduleRestoreButton";
@@ -40,6 +41,7 @@ try {
         import { DeloadWeekCard } from "./src/components/plan/DeloadWeekCard";
         import { FocusStripLogger } from "./src/components/session/FocusStripLogger";
         import { SessionWorkArea } from "./src/components/session/SessionWorkArea";
+        import { TmSection } from "./src/components/training-maxes/TmSection";
         import { SessionLoggingStateProvider, useSessionLoggingState } from "./src/components/session/SessionLoggingState";
         import { compileAuthoredWorkout } from "@hta/domain";
         import { groupPrescriptionByMovement } from "./src/lib/sessions/movement-grouping";
@@ -518,6 +520,61 @@ try {
           window.ownedSessionId = crypto.randomUUID();
           window.ownedLoadLogs = []; window.ownedSwapCalls = [];
           root.render(<OwnedLoadFixture key={++key} basis={basis} />);
+        };
+        const maxCandidates = [
+          { id: "00000000-0000-4000-8000-000000000081", slug: "back-squat", display_name: "Back Squat" },
+          { id: "00000000-0000-4000-8000-000000000082", slug: "front-squat", display_name: "Front Squat" },
+          { id: "00000000-0000-4000-8000-000000000083", slug: "goblet-squat", display_name: "Goblet Squat" },
+        ];
+        function SharedMaxFixture() {
+          const [rows, setRows] = useState(maxCandidates.slice(0, 2).map((movement, index) => ({
+            id: "measurement-" + index, movementId: movement.id, movementName: movement.display_name,
+            movementSlug: movement.slug, oneRmKg: index ? 80 : 100, tmPercentOverride: null, effectivePercent: 90,
+            tmKg: index ? 72 : 90, source: "entered", updatedAt: "2026-09-14T12:00:00Z",
+            systemLoad: false, derivedFromSessionId: null, derivedFromSetLogId: null, derivedFormula: null, derivedAt: null,
+          })));
+          window.sharedMaxRows = rows;
+          const save = async form => {
+            const input = Object.fromEntries(form.entries());
+            window.sharedMaxCalls.push(input);
+            if (window.sharedMaxMode === "error") return { ok: false, error: "Save refused" };
+            const movement = maxCandidates.find(candidate => candidate.id === input.movementId);
+            if (!movement) throw new Error("Unknown measurement");
+            setRows(previous => {
+              const existing = previous.find(row => row.movementId === movement.id);
+              return existing
+                ? previous.map(row => row === existing ? { ...row, oneRmKg: Number(input.oneRmKg) } : row)
+                : [...previous, { ...previous[0], id: movement.id, movementId: movement.id,
+                    movementName: movement.display_name, movementSlug: movement.slug, oneRmKg: Number(input.oneRmKg) }];
+            });
+            return { ok: true };
+          };
+          const unexpected = async () => { throw new Error("Unexpected measurement mutation"); };
+          return <main className={styles.page}><TmSection units="metric"
+            requiredGroups={[{ role: "squat", label: "Squat", candidates: maxCandidates, rows }]}
+            otherRows={[]} pickerGroups={[]} upsertAction={save} deleteAction={unexpected} lockAction={unexpected} /></main>;
+        }
+        window.showSharedMaxes = () => {
+          window.sharedMaxCalls = []; window.sharedMaxMode = "success";
+          root.render(<SharedMaxFixture key={++key} />);
+        };
+        window.showOwnedLoadAdvice = editable => {
+          window.loadAdviceCalls = [];
+          const blockId = "00000000-0000-4000-8000-000000000084";
+          root.render(<main className={styles.page}><ProgramRecommendationsBanner key={++key}
+            programNames={{ [blockId]: "Strength A" }}
+            recommendations={[{ id: "owned-load-advice", kind: "tm-bump", blockId,
+              title: "Review working loads", detail: "Consider the load for your next cycle.",
+              reviewHref: (editable ? "/app/program?edit=" : "/app/plan?block=") + blockId }]}
+            dismissAction={async id => { window.loadAdviceCalls.push(id); return { ok: true }; }} /></main>);
+        };
+        window.showTmChoiceFailure = () => {
+          window.tmChoiceCalls = 0;
+          root.render(<main className={styles.page}><TmSuggestionBanner key={++key}
+            suggestions={[{ id: "legacy-advice", movementName: "Back Squat", currentTmKg: 90, suggestedTmKg: 100,
+              formula: null, setWeightKg: 100, setReps: 3, sessionPerformedAt: "2026-09-14T12:00:00Z" }]}
+            acceptAction={async () => { window.tmChoiceCalls++; return { ok: false, error: "Open the workout's program to review its loads." }; }}
+            dismissAction={async () => { throw new Error("Unexpected dismissal"); }} /></main>);
         };
         const setupSchedule = [
           { id: "one-off-run", source: "session", programId: null, date: "2026-09-14", title: "Run", state: "scheduled" },
@@ -1529,6 +1586,63 @@ try {
   }
   await page.evaluate(() => { delete window.swapOwnedMovement; });
   await page.unroute("**/api/movements/swap-candidates**");
+  assert.deepEqual(failures, []);
+  for (const width of [375, 1280]) {
+    stage = `shared-measurement-and-owned-advice-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.showSharedMaxes());
+    const variant = page.getByRole("combobox", { name: "Squat variant", exact: true });
+    const maxInput = page.getByRole("spinbutton", { name: "Squat 1RM", exact: true });
+    await expect(maxInput).toHaveValue("100");
+    await variant.selectOption({ label: "Front Squat" });
+    await expect(maxInput).toHaveValue("80");
+    await variant.selectOption({ label: "Goblet Squat" });
+    await expect(maxInput).toHaveValue("");
+    await variant.selectOption({ label: "Back Squat" });
+    await expect(maxInput).toHaveValue("100");
+    assert.deepEqual(await page.evaluate(() => window.sharedMaxCalls), []);
+    await maxInput.fill("110");
+    await maxInput.press("Tab");
+    await expect.poll(() => page.evaluate(() => window.sharedMaxRows[0].oneRmKg)).toBe(110);
+    await variant.selectOption({ label: "Front Squat" });
+    await page.evaluate(() => { window.sharedMaxMode = "error"; });
+    await maxInput.fill("85");
+    await maxInput.press("Tab");
+    await expect(page.getByRole("alert")).toBeVisible();
+    await variant.selectOption({ label: "Back Squat" });
+    await expect(maxInput).toHaveValue("110");
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await variant.selectOption({ label: "Front Squat" });
+    await expect(maxInput).toHaveValue("85");
+    await expect(page.getByRole("alert")).toBeVisible();
+    assert.deepEqual(await page.evaluate(() => window.sharedMaxRows.map(row => row.oneRmKg)), [110, 80]);
+    await page.evaluate(() => { window.sharedMaxMode = "success"; });
+    await maxInput.focus();
+    await maxInput.press("Tab");
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.sharedMaxRows[1].oneRmKg)).toBe(85);
+    await variant.selectOption({ label: "Goblet Squat" });
+    await maxInput.fill("70");
+    await maxInput.press("Tab");
+    await expect.poll(() => page.evaluate(() => window.sharedMaxRows.map(row => row.oneRmKg))).toEqual([110, 85, 70]);
+    assert.equal(await page.evaluate(() => window.sharedMaxCalls.length), 4);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    for (const editable of [true, false]) {
+      await page.evaluate(editable => window.showOwnedLoadAdvice(editable), editable);
+      await expect(page.getByText(/Strength A/)).toBeVisible();
+      const review = page.getByRole("link", { name: editable ? "Review loads" : "Open program", exact: true });
+      await expect(review).toHaveAttribute("href", `${editable ? "/app/program?edit=" : "/app/plan?block="}00000000-0000-4000-8000-000000000084`);
+      await expect(page.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
+      assert.deepEqual(await page.evaluate(() => window.loadAdviceCalls), []);
+    }
+    await page.evaluate(() => window.showTmChoiceFailure());
+    await page.getByRole("button", { name: "Accept", exact: true }).click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.getByTestId("tm-suggestion-legacy-advice")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Accept", exact: true })).toBeEnabled();
+    assert.equal(await page.evaluate(() => window.tmChoiceCalls), 1);
+    stages.push(stage);
+  }
   assert.deepEqual(failures, []);
   status = "passed";
 } catch (error) {

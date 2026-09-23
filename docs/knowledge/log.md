@@ -4752,3 +4752,37 @@ the observed limitation predates independent programs, and no cross-program
 overwrite was demonstrated. Keep the approved migration boundary at 0158
 (normal 159); do not add 0159 or widen rollback/updater authority for this item.
 Reconsider if a concrete cross-program write sequence is demonstrated.
+
+## [2026-09-23] implementation | Shared measurements and owned load advice
+
+The coordinator accepted `1b66276e`: core `35855072623` and storage `35855072621`
+passed, with 62 unchanged SQL stages and 65 synthetic UI stages. The next
+increment separates account measurement editing from program load advice.
+
+Editing a measured 1RM preserves its existing legacy percentage; a typed program
+cannot seed that account field. The old unclassified-program compatibility path
+uses its exact block's instance, never a singleton lookup across active programs.
+The variant selector edits each movement's own measurement. Its former
+move/overwrite/delete action is removed. Selecting another lift makes no write,
+and failed drafts remain available when switching back. Errors are visible.
+
+Typed-program sessions no longer generate or accept legacy account-level TM
+changes, and such pending rows are excluded from the legacy Home banner without
+deleting their history. Existing engine TM-bump advice is recorded under the
+owning program, with distinct workout/lift occurrences. Its named recommendation
+links to the existing supported edit flow, or to that exact program when editing
+is unavailable; it never invents an apply-bump action. Unclassified and standalone
+legacy sources retain their existing conversion. Unreadable owners fail closed.
+An unavailable explicit edit link no longer falls through to program creation.
+
+Local qualification passed web/account-flow types, 103 selected tests and all
+67 synthetic UI stages. The preserved 65 stages are followed by
+`shared-measurement-and-owned-advice-375` and
+`shared-measurement-and-owned-advice-1280`. These cover distinct variant values,
+non-destructive selection, rejected-save recovery, retained drafts, exact program
+links and visible recommendation errors. Existing accessible 1RM labels and the
+mobile input-geometry contract are preserved; real-font captures were inspected.
+
+There are no schema, RLS, native-runner or production-updater changes. Normal 159
+remains the boundary. Analytics/season/recommendation lifecycle and the corrected
+multi-program native acceptance path remain unfinished; no release is approved.

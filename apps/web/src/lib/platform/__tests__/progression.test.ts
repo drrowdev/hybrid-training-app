@@ -65,7 +65,11 @@ function fakeSupabase(canned: Canned, rec: Recorded, commit?: (name: string, arg
     b.maybeSingle = async () => ({ data: canned[table]?.single ?? (table === "training_blocks" ? { status: "active", program_kind: null } : null), error: null });
     // Thenable: `await from().select().eq()...` resolves to a list (or write result).
     b.then = (resolve: (v: unknown) => void) => {
-      if (mode === "select") resolve({ data: canned[table]?.list ?? [], error: null });
+      if (mode === "select") resolve({
+        data: canned[table]?.list ?? (table === "training_blocks"
+          ? [Object.assign({ id: "b1", program_kind: null }, canned[table]?.single)] : []),
+        error: null,
+      });
       else resolve({ error: null });
     };
     return b;
@@ -108,6 +112,24 @@ describe("DC-R5 scoped atomic progression", () => {
   it("refuses missing atomic storage for a typed program", async () => {
     const rec: Recorded = { inserts: [], updates: [] };
     await expect(applyProgramProgression({ supabase: fakeSupabase(fixture(), rec), userId: "u1", sessionId: "s1", blockId: "b1" })).rejects.toThrow();
+    expect(rec).toEqual({ inserts: [], updates: [] });
+  });
+  it("DC-R6 persists a typed program's TM advice without an account measurement write", async () => {
+    const canned = fixture();
+    canned.set_logs = { list: [{ weight_kg: 140, reps: 5, rpe: 8, notes: null,
+      prescription_item_index: 0, movement: { slug: "back-squat-high-bar" } }] };
+    const rec: Recorded = { inserts: [], updates: [] };
+    const calls: Record<string, unknown>[] = [];
+    const supabase = fakeSupabase(canned, rec, async (name, args) => {
+      expect(name).toBe("commit_program_progression");
+      calls.push(args);
+      return { data: "applied", error: null };
+    });
+    await applyProgramProgression({ supabase, userId: "u1", sessionId: "s1", blockId: "b1" });
+    expect(calls[0]?.p_recommendations).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "tm-bump", occurrenceKey: "s1:squat",
+    })]));
+    expect(calls[0]).toMatchObject({ p_block_id: "b1", p_instance_id: "pi1" });
     expect(rec).toEqual({ inserts: [], updates: [] });
   });
 });

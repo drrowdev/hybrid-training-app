@@ -12,8 +12,8 @@
  *   3. calls `engine.onSessionLogged(instance, log, ctx)`,
  *   4. persists the (possibly advanced) instance back to `program_instances`, and
  *   5. inserts the returned recommendations into `program_recommendations`
- *      (dedup per block+kind) — EXCEPT plain `tm-bump`s, which the existing
- *      generic AMRAP→`tm_suggestions` banner already surfaces.
+ *      (dedup per block+kind). Legacy `tm-bump`s retain the generic
+ *      AMRAP→`tm_suggestions` banner; typed programs keep their own advice.
  *
  * User-scoped client only. The caller reports deferred failures; the atomic
  * path refuses late completions and retries an instance changed by another log.
@@ -25,11 +25,11 @@ import { getProgramEngine } from "./registry";
 import { buildPlatformContext } from "./context";
 import { engineKeyForSlug } from "./movement-keys";
 import { isMissingScheduleFunction } from "@/lib/schedule/storage";
+import { loadBlockProgramKinds } from "@/lib/programs/ownership";
 
 type Db = Pick<SupabaseClient, "from" | "rpc">;
 
-// tm-bump duplicates the generic AMRAP→tm_suggestions banner; the rest are the
-// program-owned nudges that have no other home.
+// Legacy tm-bumps retain their existing account-level workflow.
 const SURFACED_KINDS = new Set<ProgramRecommendation["kind"]>([
   "tm-test",
   "tm-reset",
@@ -125,7 +125,13 @@ async function applyProgressionAttempt(args: ProgressionArgs): Promise<"stale" |
     log,
     ctx,
   );
-  const toSurface = recommendations.filter((r) => SURFACED_KINDS.has(r.kind));
+  const typedBump = recommendations.some((r) => r.kind === "tm-bump") &&
+    (await loadBlockProgramKinds(supabase, userId, [blockId])).get(blockId) != null;
+  const toSurface = recommendations
+    .filter((r) => SURFACED_KINDS.has(r.kind) || (typedBump && r.kind === "tm-bump"))
+    .map((r, index) => typedBump && r.kind === "tm-bump" ? {
+      ...r, occurrenceKey: r.occurrenceKey ?? `${sessionId}:${r.data?.movement ?? index}`,
+    } : r);
   const committed = await supabase.rpc("commit_program_progression", {
     p_block_id: blockId, p_instance_id: pi.id, p_session_id: sessionId,
     p_expected_instance: pi.instance, p_next_instance: nextInstance, p_recommendations: toSurface,

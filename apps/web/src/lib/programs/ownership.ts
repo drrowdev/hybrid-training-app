@@ -36,6 +36,22 @@ export async function loadOwnedActivePrograms(client: SupabaseClient, userId: st
   return programs;
 }
 
+export async function loadBlockProgramKinds(
+  client: Pick<SupabaseClient, "from">, userId: string, blockIds: readonly string[],
+): Promise<ReadonlyMap<string, BlockProgramKind | null>> {
+  const ids = Array.from(new Set(blockIds));
+  if (ids.length === 0) return new Map();
+  // Legacy installations have no discriminator column; select(*) keeps those reads supported.
+  const result = await client.from("training_blocks").select("*").eq("user_id", userId).in("id", ids);
+  if (result.error) throw new Error("Could not read the workout's program. Try again.");
+  const rows = z.array(z.object({
+    id: z.string(), program_kind: z.enum(["strength", "running", "hybrid"]).nullable().optional(),
+  })).parse(result.data);
+  const kinds = new Map(rows.map((row) => [row.id, row.program_kind ?? null]));
+  if (ids.some((id) => !kinds.has(id))) throw new Error("The workout's program is unavailable.");
+  return kinds;
+}
+
 export function selectProgramTarget(
   programs: readonly OwnedActiveProgram[], kind: BlockProgramKind, editBlockId?: string,
 ): OwnedActiveProgram | null {

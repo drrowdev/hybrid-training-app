@@ -65,6 +65,7 @@ import {
 } from "@/lib/training-maxes/actions";
 import type { TmFormula } from "@hta/db";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
+import { loadBlockProgramKinds } from "@/lib/programs/ownership";
 import { addDaysToYmd } from "@/lib/dates";
 import {
   formatDate,
@@ -180,13 +181,14 @@ export default async function TodayPage() {
     // session / movement rows. The inner Promise.all stays inside
     // the IIFE because it depends on the suggestion list.
     (async (): Promise<TmSuggestionView[]> => {
-      const { data: pendingSuggestionsRaw } = await supabase
+      const { data: pendingSuggestionsRaw, error: suggestionsError } = await supabase
         .from("tm_suggestions")
         .select(
           "id, movement_id, current_tm_kg, suggested_tm_kg, derived_formula, derived_from_set_log_id, derived_from_session_id, created_at",
         )
-        .eq("status", "pending")
+        .eq("user_id", userId).eq("status", "pending")
         .order("created_at", { ascending: false });
+      if (suggestionsError) throw new Error("Could not read strength suggestions. Try again.");
       if (!pendingSuggestionsRaw || pendingSuggestionsRaw.length === 0) return [];
       const movIds = Array.from(new Set(pendingSuggestionsRaw.map((s) => s.movement_id)));
       const setIds = Array.from(
@@ -203,15 +205,20 @@ export default async function TodayPage() {
             .filter((id): id is string => !!id),
         ),
       );
-      const [{ data: movRows }, { data: setRows }, { data: sessRows }] = await Promise.all([
+      const [{ data: movRows }, { data: setRows }, { data: sessRows, error: sessionsError }] = await Promise.all([
         supabase.from("movements").select("id, display_name").in("id", movIds),
         setIds.length > 0
           ? supabase.from("set_logs").select("id, weight_kg, reps").in("id", setIds)
           : Promise.resolve({ data: [] as { id: string; weight_kg: unknown; reps: unknown }[] }),
         sessIds.length > 0
-          ? supabase.from("sessions").select("id, performed_at").in("id", sessIds)
-          : Promise.resolve({ data: [] as { id: string; performed_at: string }[] }),
+          ? supabase.from("sessions").select("id, performed_at, block_id").eq("user_id", userId).in("id", sessIds)
+          : Promise.resolve({ data: [] as { id: string; performed_at: string; block_id: string | null }[], error: null }),
       ]);
+      if (sessionsError) throw new Error("Could not read the source workouts. Try again.");
+      const blockIds = (sessRows ?? []).flatMap((session) => session.block_id ? [session.block_id] : []);
+      const kinds = await loadBlockProgramKinds(supabase, userId, blockIds);
+      const typedSessions = new Set((sessRows ?? [])
+        .filter((session) => session.block_id && kinds.get(session.block_id) != null).map((session) => session.id));
       const movName = new Map((movRows ?? []).map((m) => [m.id, m.display_name as string]));
       const setMap = new Map(
         (setRows ?? []).map((s) => [
@@ -223,7 +230,7 @@ export default async function TodayPage() {
         ]),
       );
       const sessMap = new Map((sessRows ?? []).map((s) => [s.id as string, s.performed_at as string]));
-      return pendingSuggestionsRaw.map((s) => {
+      return pendingSuggestionsRaw.filter((s) => !typedSessions.has(s.derived_from_session_id)).map((s) => {
         const set = s.derived_from_set_log_id ? setMap.get(s.derived_from_set_log_id) : undefined;
         const formulaRaw = s.derived_formula as string | null;
         const formula: TmFormula | null =
@@ -747,7 +754,7 @@ export default async function TodayPage() {
               nextUpcoming={upcoming[0] ?? null}
               formatProfile={formatProfile}
               programRecs={programRecs}
-              programNames={activeBlocks.length > 1 ? Object.fromEntries(activeBlocks.map((block) => [block.id, archetypeDisplayName(block.archetype, block.notes)])) : {}}
+              programNames={Object.fromEntries(activeBlocks.map((block) => [block.id, archetypeDisplayName(block.archetype, block.notes)]))}
             />
 
             <QuickWorkoutCard
