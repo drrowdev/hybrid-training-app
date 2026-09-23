@@ -25,13 +25,13 @@
  *     no such block exists, the section renders solo with a note.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
+import { resolveLinkedSessionRelation, type LinkedSessionRelation } from "@/lib/sessions/linked-session-state";
 import { addDaysToYmd, isoWeekdayYmd } from "@/lib/dates";
 import { archetypeDisplayName } from "@/lib/planner/queries";
 import { bestEstimateOneRm } from "@/lib/engine/one-rm";
 import { detectPrs, type HistoricalSet, type PrHit } from "@/lib/engine/pr";
 import type { StrengthRole } from "@/lib/planner/archetypes";
-import { rollupFidelity, type FidelityRollup } from "@hta/domain";
+import { isPlannedRest, rollupFidelity, type FidelityRollup } from "@hta/domain";
 
 // ──────────────────────────────────────────────────────────────────────
 // Pure types
@@ -315,11 +315,9 @@ type RawPlannedRow = {
   role: string | null;
   prescription: { items?: Array<Record<string, unknown>> } | null;
   completed_session_id: string | null;
+  completed_at: string | null;
   skipped_at: string | null;
-  sessions:
-    | { deleted_at: string | null }
-    | Array<{ deleted_at: string | null }>
-    | null;
+  sessions: LinkedSessionRelation;
 };
 
 type RawSetRow = {
@@ -337,7 +335,7 @@ async function fetchBlockMeta(
   blockId: string,
   userId: string,
 ): Promise<BlockMeta | null> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("training_blocks")
     .select(
       "id, archetype, program_family, status, started_on, ended_at, weeks, days_per_week, power_emphasis, notes",
@@ -346,6 +344,7 @@ async function fetchBlockMeta(
     .eq("user_id", userId)
     .is("deleted_at", null)
     .maybeSingle();
+  if (error) throw new Error(error.message);
   if (!data) return null;
   return {
     id: data.id,
@@ -369,31 +368,21 @@ async function fetchPlannedRows(
   supabase: SupabaseClient,
   blockId: string,
 ): Promise<RawPlannedRow[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("planned_sessions")
     .select(
-      "id, week_index, day_index, title, role, prescription, completed_session_id, skipped_at, sessions(deleted_at)",
+      "id, week_index, day_index, title, role, prescription, completed_session_id, skipped_at, sessions(deleted_at, completed_at)",
     )
     .eq("block_id", blockId)
     .order("week_index", { ascending: true })
     .order("day_index", { ascending: true });
-  return ((data ?? []) as RawPlannedRow[]).map((row) => {
-    const session = Array.isArray(row.sessions)
-      ? row.sessions[0]
-      : row.sessions;
-    const linked = resolveLinkedSession(
-      row.completed_session_id,
-      session && row.completed_session_id
-        ? {
-            id: row.completed_session_id,
-            completedAt: null,
-            deletedAt: session.deleted_at,
-          }
-        : null,
-    );
+  if (error) throw new Error(error.message);
+  return ((data ?? []) as RawPlannedRow[]).filter((row) => !isPlannedRest(row)).map((row) => {
+    const linked = resolveLinkedSessionRelation(row.completed_session_id, row.sessions);
     return {
       ...row,
       completed_session_id: linked.completedSessionId,
+      completed_at: linked.completedAt,
     };
   });
 }
@@ -564,7 +553,7 @@ export async function getBlockAdherence(
       weekIndex: p.week_index,
       dayIndex: p.day_index,
       title: p.title,
-      completedSessionId: p.completed_session_id,
+      completedSessionId: p.completed_at ? p.completed_session_id : null,
       skippedAt: p.skipped_at,
     })),
   });
@@ -1196,7 +1185,7 @@ export async function getBlockSummary(
             weekIndex: p.week_index,
             dayIndex: p.day_index,
             title: p.title,
-            completedSessionId: p.completed_session_id,
+            completedSessionId: p.completed_at ? p.completed_session_id : null,
             skippedAt: p.skipped_at,
           })),
         }),
@@ -1292,48 +1281,37 @@ export async function getBlockIndex(
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _today: string,
 ): Promise<BlockIndexRow[]> {
-  const { data: blocks } = await supabase
+  const { data: blocks, error } = await supabase
     .from("training_blocks")
     .select(
-      "id, archetype, started_on, status, weeks, days_per_week, notes, ended_at, planned_sessions(id, completed_session_id, skipped_at, week_index, day_index, sessions(deleted_at))",
+      "id, archetype, started_on, status, weeks, days_per_week, notes, ended_at, planned_sessions(id, role, prescription, completed_session_id, skipped_at, week_index, day_index, sessions(deleted_at, completed_at))",
     )
     .eq("user_id", userId)
     .is("deleted_at", null)
     .order("started_on", { ascending: false })
     .limit(50);
+  if (error) throw new Error(error.message);
   if (!blocks) return [];
 
   return Promise.all(
     blocks.map(async (b) => {
       const planned = (b.planned_sessions ?? []) as Array<{
         id: string;
+        role: string | null;
+        prescription: unknown;
         completed_session_id: string | null;
         skipped_at: string | null;
         week_index: number;
         day_index: number;
-        sessions:
-          | { deleted_at: string | null }
-          | Array<{ deleted_at: string | null }>
-          | null;
+        sessions: LinkedSessionRelation;
       }>;
-      const totalSessions = planned.length;
+      const workouts = planned.filter((row) => !isPlannedRest(row));
+      const totalSessions = workouts.length;
       let loggedSessions = 0;
       let skippedSessions = 0;
-      for (const p of planned) {
-        const session = Array.isArray(p.sessions)
-          ? p.sessions[0]
-          : p.sessions;
-        const linked = resolveLinkedSession(
-          p.completed_session_id,
-          session && p.completed_session_id
-            ? {
-                id: p.completed_session_id,
-                completedAt: null,
-                deletedAt: session.deleted_at,
-              }
-            : null,
-        );
-        if (linked.completedSessionId) loggedSessions++;
+      for (const p of workouts) {
+        const linked = resolveLinkedSessionRelation(p.completed_session_id, p.sessions);
+        if (linked.completedAt) loggedSessions++;
         else if (p.skipped_at) skippedSessions++;
       }
       const summary = await summariseBlockForComparison(supabase, b.id, userId);

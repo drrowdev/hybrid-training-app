@@ -26,7 +26,7 @@ import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getSwimNavigation } from "@/lib/swim/navigation";
 import { getUserTimezone } from "@/lib/planner/queries";
-import { getActiveBlockProgress } from "@/lib/stats/active-block-progress";
+import { getActiveBlocksProgress } from "@/lib/stats/active-block-progress";
 import { getAdherenceForWindow } from "@/lib/stats/adherence";
 import { getPrsForRange } from "@/lib/stats/prs-range";
 import { getFreshnessMini } from "@/lib/stats/freshness-mini";
@@ -37,7 +37,6 @@ import { getStrengthProgress } from "@/lib/stats/strength-progress";
 import { getEnduranceProgress } from "@/lib/stats/endurance-progress";
 import { getProgressVerdict } from "@/lib/stats/progress-verdict";
 import { getWeeklyRhythm } from "@/lib/stats/weekly-rhythm";
-import { getStreak } from "@/lib/stats/streak";
 import { type WeightUnit } from "@/lib/stats/units";
 import { type ProfileForFormat } from "@/lib/format/datetime";
 import { parseRange, rangeWindowDays, type Range } from "@/lib/stats/range";
@@ -87,11 +86,10 @@ export default async function StatsOverviewPage({
     : null;
 
   const [
-    block,
+    blocks,
     freshness,
     bodyweight,
     readiness,
-    streak,
     rhythm,
     adherence30d,
     adherence90d,
@@ -110,11 +108,10 @@ export default async function StatsOverviewPage({
     enduranceAll,
     swimNavigation,
   ] = await Promise.all([
-    getActiveBlockProgress(supabase, user.id, tz),
+    getActiveBlocksProgress(supabase, user.id, tz),
     getFreshnessMini(supabase, user.id),
     getBodyweightTrend(supabase, user.id, tz),
     getReadiness(supabase, user.id, tz),
-    getStreak(supabase, user.id, tz),
     getWeeklyRhythm(supabase, user.id, tz),
     getAdherenceForWindow(supabase, user.id, tz, rangeWindowDays("30d")),
     getAdherenceForWindow(supabase, user.id, tz, rangeWindowDays("90d")),
@@ -162,9 +159,9 @@ export default async function StatsOverviewPage({
   };
 
   const strengthRelevant =
-    Boolean(block?.planStrength) || volumeAll.totalKg > 0 || strengthAll.perLift.length > 0;
+    blocks.some((block) => block.planStrength) || volumeAll.totalKg > 0 || strengthAll.perLift.length > 0;
   const cardioRelevant =
-    Boolean(block?.planCardio) || enduranceAll.direction !== "no-run-data";
+    blocks.some((block) => block.planCardio) || enduranceAll.direction !== "no-run-data";
 
   return (
     <div style={{ display: "grid", gap: 18 }}>
@@ -175,9 +172,9 @@ export default async function StatsOverviewPage({
       <StatsCommandCenter
         initialRange={range}
         byRange={byRange}
-        block={block}
+        blocks={blocks}
+        hasSwimming={swimNavigation.hasPlans}
         readiness={readiness}
-        streak={streak}
         rhythm={rhythm}
         freshness={freshness}
         bodyweight={bodyweight}
@@ -186,7 +183,7 @@ export default async function StatsOverviewPage({
         relevance={{ strength: strengthRelevant, cardio: cardioRelevant }}
       />
 
-      <DeepDiveLinks showEngine={Boolean(block?.usesAdaptiveEngine)} showSwimming={swimNavigation.hasPlans} />
+      <DeepDiveLinks showEngine={blocks.some((block) => block.usesAdaptiveEngine)} showSwimming={swimNavigation.hasPlans} />
     </div>
   );
 }

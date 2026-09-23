@@ -5,7 +5,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { cache } from "react";
 import { z } from "zod";
 import type { Prescription, SessionSlot } from "@hta/db";
-import type { BlockProgramKind } from "@hta/domain";
+import { isPlannedRest, type BlockProgramKind } from "@hta/domain";
 import { assertActiveProgramKinds, independentProgramsAvailable } from "@/lib/programs/ownership";
 import {
   addDaysToYmd,
@@ -539,30 +539,33 @@ export async function getAllBlocksWithCompletionStats(
     data: { user },
   } = await getAuthUser();
   if (!user) return [];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("training_blocks")
     .select(
-      "id, archetype, program_id, program_family, started_on, updated_at, ended_at, weeks, days_per_week, status, day_index_overrides, notes, planned_sessions(id, completed_session_id, skipped_at, week_index, day_index, sessions(deleted_at))",
+      "id, archetype, program_id, program_family, started_on, updated_at, ended_at, weeks, days_per_week, status, day_index_overrides, notes, planned_sessions(id, role, prescription, completed_session_id, skipped_at, week_index, day_index, sessions(deleted_at, completed_at))",
     )
     .eq("user_id", user.id)
     .is("deleted_at", null)
     .order("started_on", { ascending: false })
     .range(offset, offset + limit - 1);
+  if (error) throw new Error(error.message);
   if (!data) return [];
 
   return Promise.all(
     data.map(async (d) => {
-      const planned = (d.planned_sessions ?? []) as Array<{
+      const planned = ((d.planned_sessions ?? []) as Array<{
         id: string;
+        role: string | null;
+        prescription: unknown;
         completed_session_id: string | null;
         skipped_at: string | null;
         week_index: number;
         day_index: number;
         sessions:
-          | { deleted_at: string | null }
-          | Array<{ deleted_at: string | null }>
+          | { deleted_at: string | null; completed_at: string | null }
+          | Array<{ deleted_at: string | null; completed_at: string | null }>
           | null;
-      }>;
+      }>).filter((row) => !isPlannedRest(row));
       const totalSessions = planned.length;
       let loggedSessions = 0;
       let skippedSessions = 0;
@@ -575,12 +578,12 @@ export async function getAllBlocksWithCompletionStats(
           session && p.completed_session_id
             ? {
                 id: p.completed_session_id,
-                completedAt: null,
+                completedAt: session.completed_at,
                 deletedAt: session.deleted_at,
               }
             : null,
         );
-        if (linked.completedSessionId) loggedSessions++;
+        if (linked.completedAt) loggedSessions++;
         else if (p.skipped_at) skippedSessions++;
       }
       const stored = d.days_per_week ?? null;

@@ -4826,3 +4826,37 @@ content gutter, and saved notices wrap on mobile.
 Historical migrations, native cases and production updater remain unchanged.
 Analytics/season/recommendation readers and corrected-model native acceptance
 remain unfinished. No production, merge or deployment authorization is implied.
+
+## [2026-09-23] implementation | Keep analytics progress with each program
+
+The coordinator accepted `ba55c887`: core `35862759905` and storage
+`35862759944` passed, including 62 unchanged SQL stages and all 69 synthetic
+UI stages. The subsequent reader audit confirmed that main's single-newest
+program selection and started-as-completed counters were pre-existing; both
+conflict with the accepted independent-program and completion contracts.
+
+Stats now shows every active non-swimming program, with its own completed
+workouts, weekly target, streak and exact analytics link. A program's streak
+uses its linked completed sessions, not another program's or standalone work.
+The native adaptive decision trace selects the actual adaptive program rather
+than the newest active program and refuses ambiguous ownership. Its empty day
+does not claim that the account has a recovery day.
+
+Overview/detail adherence, active progress, program analytics, program history
+and the weekly planned count exclude explicit rest. Only a visible session's
+completion timestamp earns completion credit; starting, deleting or losing a
+session link does not. Actual logged-set/PR and account workload calculations
+are unchanged, including in-progress logged work. Swimming links to its existing
+sport-specific progress rather than inventing ordinary sessions or streaks from
+recording matches.
+
+Local web/account-flow types, the coupled analytics/history tests and the
+domain rest contract passed. All 71 synthetic UI stages passed: the prior 69
+remain in order, followed by `owned-program-progress-375` and
+`owned-program-progress-1280`. These exercise the actual progress component,
+distinct program counts/links, Swimming navigation, minimum 44px link targets
+and no horizontal overflow. Real-font captures were inspected at both widths.
+
+There are no schema, RLS, migration, native or updater changes; normal 159 and
+the 62-stage SQL inventory remain unchanged. Recommendation/season lifecycle
+and corrected-model native acceptance remain in progress, not release-ready.

@@ -7,6 +7,13 @@ export interface TrainingCommitment {
   state: "scheduled" | "started" | "completed" | "rest" | "paused";
 }
 
+export function isPlannedRest(row: { role?: string | null; prescription?: unknown }): boolean {
+  return row.role === "rest" || (
+    row.prescription !== null && typeof row.prescription === "object" &&
+    "kind" in row.prescription && row.prescription.kind === "rest"
+  );
+}
+
 export function trainingScheduleAdvice(
   commitments: readonly TrainingCommitment[],
   proposedDates: readonly string[],

@@ -1,6 +1,6 @@
 /**
  * Streak — consecutive ISO weeks where the user hit their session
- * target. The "target" is read off the active training block's
+ * target. Each program's target is read off its own active training block's
  * `days_per_week`, which is the field the block config exposes for
  * weekly frequency (see `active-block-progress.ts` and the schema's
  * `training_blocks.days_per_week`).
@@ -24,15 +24,10 @@
  * week missed target". `hasActiveBlock = false` short-circuits to all
  * zeros.
  *
- * Read-only / no engine inputs (mirrors `readiness.ts`).
+ * `active-block-progress.ts` supplies only that program's completed workouts.
+ * Other programs and standalone sessions cannot meet its target.
  */
-import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-  addDaysToYmd,
-  mondayOfYmd,
-  todayYmd,
-  ymdInTimezone,
-} from "@/lib/dates";
+import { addDaysToYmd } from "@/lib/dates";
 
 export type Streak = {
   /** Consecutive completed weeks meeting target, walking back from last week. */
@@ -79,99 +74,4 @@ export function computeStreak(
     else break;
   }
   return { currentStreakWeeks: streak, thisWeekCompleted };
-}
-
-type BlockRow = {
-  id: string;
-  started_on: string;
-  weeks: number;
-  days_per_week: number | null;
-  planned_sessions?: { week_index: number }[];
-};
-type SessionPerformedRow = { performed_at: string };
-
-/**
- * Read-side wrapper. One round trip for the active block (with planned
- * count for fallback), one for completed sessions in the last ~13 weeks.
- *
- * Read path only — user-scoped Supabase client.
- */
-export async function getStreak(
-  supabase: SupabaseClient,
-  userId: string,
-  tz: string,
-): Promise<Streak> {
-  const today = todayYmd(tz);
-  const currentMonday = mondayOfYmd(today);
-
-  // 1. Active block + its planned counts (for fallback when
-  //    days_per_week is null on legacy blocks).
-  const { data: blockData } = await supabase
-    .from("training_blocks")
-    .select("id, started_on, weeks, days_per_week, planned_sessions(week_index)")
-    .eq("user_id", userId)
-    .eq("status", "active")
-    .is("deleted_at", null)
-    .order("started_on", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const block = (blockData ?? null) as BlockRow | null;
-  if (!block) {
-    return {
-      currentStreakWeeks: 0,
-      weeklyTarget: 0,
-      thisWeekCompleted: 0,
-      thisWeekTarget: 0,
-      hasActiveBlock: false,
-    };
-  }
-
-  let weeklyTarget = block.days_per_week ?? 0;
-  if (!weeklyTarget) {
-    // Fallback: distinct day_index per week across the block's planned
-    // rows. A user with 12 planned sessions across 4 weeks averages 3
-    // sessions per week.
-    const planned = block.planned_sessions ?? [];
-    if (planned.length > 0 && block.weeks > 0) {
-      weeklyTarget = Math.max(1, Math.ceil(planned.length / block.weeks));
-    }
-  }
-
-  // 2. Completed sessions across the last ~53 weeks — wide enough to feed
-  //    the full 52-week streak walk in `computeStreak` (a shorter window
-  //    would silently cap the streak at the lookback horizon with no "+"
-  //    indicator). Payload is `performed_at` only, so a year of rows is cheap.
-  const lookbackIso = new Date(
-    Date.now() - 53 * 7 * 86_400_000,
-  ).toISOString();
-  const { data: sessionRows } = await supabase
-    .from("sessions")
-    .select("performed_at")
-    .eq("user_id", userId)
-    .is("deleted_at", null)
-    .not("completed_at", "is", null)
-    .gte("performed_at", lookbackIso);
-
-  const completedByWeek = new Map<string, number>();
-  for (const r of (sessionRows ?? []) as SessionPerformedRow[]) {
-    if (!r.performed_at) continue;
-    const ymd = ymdInTimezone(new Date(r.performed_at), tz);
-    const monday = mondayOfYmd(ymd);
-    completedByWeek.set(monday, (completedByWeek.get(monday) ?? 0) + 1);
-  }
-
-  const { currentStreakWeeks, thisWeekCompleted } = computeStreak(
-    completedByWeek,
-    currentMonday,
-    weeklyTarget,
-  );
-
-  return {
-    currentStreakWeeks,
-    weeklyTarget,
-    thisWeekCompleted,
-    thisWeekTarget: weeklyTarget,
-    hasActiveBlock: true,
-  };
 }

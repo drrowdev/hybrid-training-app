@@ -33,6 +33,7 @@ try {
         import { ProgramBuilder } from "./src/components/program/ProgramBuilder";
         import { ProgramsOverview } from "./src/components/program/ProgramsOverview";
         import { ProgramRecommendationsBanner } from "./src/components/today/ProgramRecommendationsBanner";
+        import { ProgramProgress } from "./src/components/stats/ProgramProgress";
         import { TmSuggestionBanner } from "./src/components/today/TmSuggestionBanner";
         import { TrainingWeek } from "./src/components/program/TrainingWeek";
         import { ThisWeekRail } from "./src/components/plan/ThisWeekRail";
@@ -655,6 +656,19 @@ try {
         </section></main>);
         window.pendingCompletionEntries = listPending;
         window.retryCompletion = flushOutbox;
+        window.showProgramProgress = () => {
+          const blocks = [
+            { blockId: "strength-progress", archetypeName: "Strength", logged: 1, scheduledToDate: 2, skipped: 0, weeklyTarget: 2, thisWeekCompleted: 1 },
+            { blockId: "running-progress", archetypeName: "Running", logged: 2, scheduledToDate: 2, skipped: 0, weeklyTarget: 2, thisWeekCompleted: 2 },
+            { blockId: "hybrid-progress", archetypeName: "Hybrid", logged: 0, scheduledToDate: 1, skipped: 1, weeklyTarget: 3, thisWeekCompleted: 0 },
+          ].map(row => ({ ...row, weeks: 4, currentWeek: 2, daysPerWeek: row.weeklyTarget, totalScheduled: 8,
+            planStrength: row.archetypeName !== "Running", planCardio: row.archetypeName !== "Strength", usesAdaptiveEngine: false,
+            streak: { currentStreakWeeks: 0, weeklyTarget: row.weeklyTarget, thisWeekCompleted: row.thisWeekCompleted,
+              thisWeekTarget: row.weeklyTarget, hasActiveBlock: true } }));
+          root.render(<main key={++key} style={{ padding: 16, maxWidth: 960 }}>
+            <section className="cp-card"><ProgramProgress blocks={blocks} hasSwimming /></section>
+          </main>);
+        };
         window.showCompletionRetry = (variant) => {
           const sessionId = "00000000-0000-4000-8000-000000000093";
           window.completionMode = "progress-error"; window.completionCalls = [];
@@ -1694,6 +1708,25 @@ try {
       assert.equal(calls.length, 2);
       assert.deepEqual(calls[1], calls[0]);
     }
+    stages.push(stage);
+  }
+  assert.deepEqual(failures, []);
+  for (const width of [375, 1280]) {
+    stage = `owned-program-progress-${width}`;
+    await page.setViewportSize({ width, height: 1000 });
+    await page.evaluate(() => window.showProgramProgress());
+    await expect(page.getByTestId("stats-card-active-block")).toHaveCount(3);
+    for (const [id, completed, target] of [["strength-progress", 1, 2], ["running-progress", 2, 2], ["hybrid-progress", 0, 3]]) {
+      const progress = page.locator(`[data-block-id="${id}"]`);
+      await expect(progress).toContainText(`This week · ${completed} of ${target} done`);
+      await expect(progress.getByTestId("stats-active-block-cta")).toHaveAttribute("href", `/app/stats/blocks/${id}`);
+      const targetBox = await progress.getByTestId("stats-active-block-cta").boundingBox();
+      assert.ok(targetBox && targetBox.height >= 44);
+    }
+    await expect(page.locator('[data-block-id="strength-progress"]').getByTestId("stats-active-block-completion")).toContainText("1 of 2");
+    await expect(page.locator('[data-block-id="running-progress"]').getByTestId("stats-active-block-completion")).toContainText("2 of 2");
+    await expect(page.getByRole("link", { name: /swimming progress/i })).toHaveAttribute("href", "/app/swim");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     stages.push(stage);
   }
   assert.deepEqual(failures, []);
