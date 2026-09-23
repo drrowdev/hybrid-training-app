@@ -1,12 +1,45 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
 import type postgres from "postgres";
+import { z } from "zod";
 import {
   appendModularProduction, modularUpdateMigrations, modularUpdateInventory, MODULAR_LEDGER_SQL,
 } from "../scripts/modular-production-update-storage";
 import { productionHistoryFingerprint, productionHistoryRows } from "../scripts/swim-production-reconciliation";
 import type { ProductionUpdateProgress } from "../scripts/swim-production-update-storage";
+
+export function modularRehearsalMigrations(rawJournal: unknown, source: readonly MigrationMeta[]) {
+  const journal = z.object({
+    version: z.literal("7"), dialect: z.literal("postgresql"),
+    entries: z.array(z.object({
+      idx: z.number().int().nonnegative(), version: z.literal("7"),
+      tag: z.string().regex(/^\d{4}_[a-z0-9_]+$/),
+      when: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), breakpoints: z.boolean(),
+    }).strict()).length(158),
+  }).strict().parse(rawJournal);
+  assert.equal(source.length, 158);
+  assert.equal(new Set(source.map(({ hash }) => hash)).size, 158);
+  journal.entries.forEach((entry, index) => {
+    const migration = source[index]!;
+    assert.equal(entry.idx, index);
+    assert.equal(Number(entry.tag.slice(0, 4)), index);
+    assert.equal(entry.when, migration.folderMillis);
+    assert.equal(entry.breakpoints, migration.bps);
+    assert.ok(index === 0 || entry.when > journal.entries[index - 1]!.when);
+    assert.ok(migration.sql.length > 0);
+    assert.equal(createHash("sha256").update(migration.sql.join("--> statement-breakpoint")).digest("hex"), migration.hash);
+  });
+  assert.equal(journal.entries[156]!.tag, "0156_modular_training_schedule");
+  assert.equal(journal.entries[157]!.tag, "0157_standalone_swim_import_outcomes");
+  for (const index of [156, 157]) {
+    assert.equal(source[index]!.bps, false);
+    assert.equal(source[index]!.sql.length, 1);
+  }
+  return source.slice(0, 157).map((entry, index) => ({ ...entry, tag: journal.entries[index]!.tag }));
+}
 
 export async function rehearseModularProductionUpdate(database: postgres.Sql, stage: (name: string) => void) {
   stage("modular-production-update-rehearsal-guard");
@@ -21,7 +54,13 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
   assert.equal(url.pathname, "/swim_pool_test");
   assert.deepEqual(database.options.host, ["127.0.0.1"]);
   assert.equal(database.options.database, "swim_pool_test");
-  const migrations = modularUpdateMigrations();
+  const migrations = modularRehearsalMigrations(
+    JSON.parse(readFileSync(new URL("../drizzle/meta/_journal.json", import.meta.url), "utf8")),
+    readMigrationFiles({ migrationsFolder: fileURLToPath(new URL("../drizzle", import.meta.url)) }),
+  );
+  assert.throws(modularUpdateMigrations, (error: unknown) => error instanceof z.ZodError &&
+    error.issues.some((issue) => issue.code === "too_big" && issue.maximum === 157 &&
+      issue.path.length === 1 && issue.path[0] === "entries"));
   const original = productionHistoryRows(Array.from(await database.unsafe(MODULAR_LEDGER_SQL)));
   const catalog = async () => {
     const rows = await database.unsafe(`SELECT encode(sha256(convert_to(jsonb_build_array(

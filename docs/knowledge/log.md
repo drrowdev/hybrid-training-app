@@ -4479,3 +4479,27 @@ Windows-only POSIX permission/symlink and checkout line-ending assertions are
 not substituted for the full Linux CI gate. Actual0157 SQL and nativeM7 remain
 pending on the new published head. The0156-only hosted updater is unchanged
 and refuses158-entry source; hosted DDL/activation require separate approval.
+
+## [2026-09-23] refine | Retain the closed updater's historical rehearsal
+
+Exact bed35d63 passed core35806715893, including identity, full Linux
+lint/types/unit/build and ordinary Playwright. Storage35806715870 passed
+48preceding stages, including normal fresh158/replay, six functional-outcome
+stages, incremental157-to158 precommit rollback/append/replay/down-up,
+inventory restoration and modular/concurrency/template checks. It then
+failed only at the modular production-updater rehearsal guard: that fixture
+called the real updater's intentionally157-only source loader.
+
+The fixture now validates the entire exact158 journal/source before selecting
+the historical157 prefix, inside its existing GitHub/loopback boundary.
+Validation checks indices, tag prefixes, the exact0156/0157 endpoints,
+timestamps, breakpoints, distinct hashes and reconstructed SQL hashes.
+Unexpected future inventories fail. The real production loader must still
+reject the current158 journal; its source, inventory and append code are
+unchanged. All existing baseline refusal, precommit rollback, postcommit
+retention, replay refusal and catalog/ledger restoration operations remain.
+
+Thirty-three focused checks and strict SQL-harness type-check passed locally.
+Storage workflow path filters now include this fixture and its regression
+tests; no job, runtime guard or timeout changed. The repaired exact-head
+storage and native-seven qualifications remain pending.
