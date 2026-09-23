@@ -7,6 +7,7 @@ import {
   commitTrainingSchedule, loadAvailableTrainingSchedule, scheduleInputHash,
   ScheduleUnavailableError, type ScheduleReview, type ScheduleSnapshot,
 } from "@/lib/schedule/storage";
+import type { ProgramRecommendationOrigin } from "./recommendation-origin";
 
 export interface ProgramSchedulePreview {
   id: string;
@@ -23,6 +24,7 @@ export interface ProgramReviewContext {
   input: unknown;
   review?: ScheduleReview & { previewId: string };
   active: OwnedActiveProgram[];
+  recommendation?: ProgramRecommendationOrigin;
 }
 
 export async function programReviewContext(

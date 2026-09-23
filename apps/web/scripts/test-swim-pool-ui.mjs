@@ -31,6 +31,7 @@ try {
         import { RecordingMatcher } from "./src/components/swim/RecordingMatcher";
         import { RecordingOutcome } from "./src/components/swim/RecordingOutcome";
         import { ProgramBuilder } from "./src/components/program/ProgramBuilder";
+        import { ProgramPicker } from "./src/components/program/ProgramPicker";
         import { ProgramsOverview } from "./src/components/program/ProgramsOverview";
         import { ProgramRecommendationsBanner } from "./src/components/today/ProgramRecommendationsBanner";
         import { ProgramProgress } from "./src/components/stats/ProgramProgress";
@@ -581,6 +582,45 @@ try {
             acceptAction={async () => { window.tmChoiceCalls++; return { ok: false, error: "Open the workout's program to review its loads." }; }}
             dismissAction={async () => { throw new Error("Unexpected dismissal"); }} /></main>);
         };
+        function ContinuationFixture({ kind }) {
+          const [open, setOpen] = useState(false);
+          const [accepted, setAccepted] = useState(false);
+          const recommendationId = "00000000-0000-4000-8000-000000000094";
+          const recommendation = { recommendationId, programId: "green-protocol", kind,
+            ...(kind === "next-block" ? { phaseId: "velocity" } : { recoveryWarning: "Recovery was recommended after the last phase." }) };
+          window.continuationPreview = async input => {
+            window.continuationPreviews.push(input);
+            return { ok: true, preview: { id: "e".repeat(64), revision: "a".repeat(32),
+              dates: [{ date: input.startedOn, title: "Next workout" }], overlaps: [], plannedRest: [], replaces: null } };
+          };
+          window.continuationSave = async input => {
+            window.continuationSaves.push(input);
+            if (window.continuationMode === "error") return { ok: false, error: "Could not save your program. Try again." };
+            window.continuationStatus = "accepted"; setAccepted(true);
+            return { ok: true, blockId: "next-program", programInstanceId: "next-instance", skipped: 0 };
+          };
+          return <main onClick={event => {
+            const href = event.target.closest("a")?.getAttribute("href");
+            if (href?.startsWith("/app/program?")) { event.preventDefault(); setOpen(true); }
+            else if (href === "/app") { event.preventDefault(); setOpen(false); }
+          }}>
+            {open ? <ProgramPicker anchoredKeys={["squat"]} initialProgramId="green-protocol"
+              initialLoadoutValue={recommendation.phaseId} recommendation={recommendation}
+              programs={[{ id: "green-protocol", name: "Green Protocol", family: "tactical-barbell-green", summary: "",
+                enabled: true, fixedSchedule: true, fields: [{ key: "phaseId", label: "Phase", type: "select",
+                  defaultValue: "capacity", options: [{ value: "capacity", label: "Capacity" }, { value: "velocity", label: "Velocity" }] }] }]} />
+              : <ProgramRecommendationsBanner recommendations={accepted ? [] : [{
+                id: recommendationId, blockId: "previous-program", programName: "Completed Hybrid", programStatus: "completed",
+                sourceProgramId: "green-protocol", kind, title: "Next phase", detail: "Review the next phase.",
+                data: kind === "next-block" ? { programId: "green-protocol", nextPhaseId: "velocity", nextPhaseName: "Velocity" } : null,
+              }]} dismissAction={async id => { window.continuationDismissals.push(id); return { ok: true }; }} />}
+          </main>;
+        }
+        window.showContinuation = kind => {
+          window.continuationPreviews = []; window.continuationSaves = []; window.continuationDismissals = [];
+          window.continuationStatus = "pending"; window.continuationMode = "error";
+          root.render(<ContinuationFixture key={++key} kind={kind} />);
+        };
         const setupSchedule = [
           { id: "one-off-run", source: "session", programId: null, date: "2026-09-14", title: "Run", state: "scheduled" },
           { id: "planned-rest", source: "primary", programId: "primary", date: "2026-09-17", title: "Rest", state: "rest" },
@@ -703,6 +743,7 @@ try {
         build.onResolve({ filter: /^@\/lib\/(?:sessions\/(?:actions|swap-actions|session-movement-actions|reorder-actions)|movements\/instructions)$/ },
           args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/planner\/actions$/ }, args => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^@\/lib\/platform\/actions$/ }, args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/offline\/outbox$/ }, args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions|import-outcome-actions|rehab-actions)|@\/lib\/programs\/authored\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
@@ -714,6 +755,8 @@ try {
               ? "export const reorderSessionAccessories = () => { throw new Error('Unexpected reorder'); };"
             : args.path === "@/lib/planner/actions"
               ? "export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); };"
+            : args.path === "@/lib/platform/actions"
+              ? "export const getProgramSegments = async () => ({ ok: true, segments: [] }); export const previewProgramInstance = input => window.continuationPreview(input); export const createProgramInstance = input => window.continuationSave(input);"
             : args.path === "@/lib/offline/outbox"
               ? `import { countForSession as count } from "./src/lib/offline/outbox";
                 export * from "./src/lib/offline/outbox";
@@ -1342,7 +1385,7 @@ try {
     await expect(page.getByText("Weekend hybrid", { exact: false })).toBeVisible();
     const recommendation = page.getByRole("link", { name: /^Take a recovery week/ });
     await expect(recommendation).toHaveAttribute("href", /[?&]block=00000000-0000-4000-8000-000000000103(?:&|$)/);
-    await page.getByRole("button", { name: "Not yet", exact: true }).click();
+    await page.getByRole("button", { name: "Dismiss", exact: true }).click();
     await expect(page.getByRole("alert")).toBeVisible();
     await expect(recommendation).toBeVisible();
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -1726,6 +1769,74 @@ try {
     await expect(page.locator('[data-block-id="strength-progress"]').getByTestId("stats-active-block-completion")).toContainText("1 of 2");
     await expect(page.locator('[data-block-id="running-progress"]').getByTestId("stats-active-block-completion")).toContainText("2 of 2");
     await expect(page.getByRole("link", { name: /swimming progress/i })).toHaveAttribute("href", "/app/swim");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    stages.push(stage);
+  }
+  assert.deepEqual(failures, []);
+  for (const width of [375, 1280]) {
+    stage = `owned-recommendation-continuation-${width}`;
+    await page.setViewportSize({ width, height: 1000 });
+    await page.evaluate(() => window.showContinuation("next-block"));
+    const advance = page.getByRole("link", { name: /Set up Velocity/ });
+    await expect(advance).toHaveAttribute("href", /recommendation=00000000-0000-4000-8000-000000000094/);
+    await advance.click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Review dates", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Review program dates" })).toBeVisible();
+    assert.equal((await page.evaluate(() => window.continuationPreviews[0])).sourceRecommendationId, "00000000-0000-4000-8000-000000000094");
+    await page.locator('a[href="/app"]').click();
+    await expect(advance).toBeVisible();
+    assert.deepEqual(await page.evaluate(() => window.continuationSaves), []);
+    assert.deepEqual(await page.evaluate(() => window.continuationDismissals), []);
+    await advance.click();
+    await page.getByTestId("loadout-opt-capacity").click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Review dates", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Review program dates" })).toBeVisible();
+    assert.equal((await page.evaluate(() => window.continuationPreviews.at(-1))).sourceRecommendationId, undefined);
+    await page.locator('a[href="/app"]').click();
+    await advance.click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Review dates", exact: true }).click();
+    const save = page.getByRole("button", { name: "Save program", exact: true });
+    await save.click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(save).toBeEnabled();
+    assert.equal(await page.evaluate(() => window.continuationStatus), "pending");
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.evaluate(() => { window.continuationMode = "success"; });
+    await save.click();
+    await expect.poll(() => page.evaluate(() => window.continuationStatus)).toBe("accepted");
+    const saves = await page.evaluate(() => window.continuationSaves);
+    assert.equal(saves.length, 2);
+    assert.deepEqual(saves[0], saves[1]);
+    assert.equal(saves[1].sourceRecommendationId, "00000000-0000-4000-8000-000000000094");
+    assert.deepEqual(await page.evaluate(() => window.continuationDismissals), []);
+    await page.locator('a[href="/app"]').click();
+    await expect(advance).toHaveCount(0);
+    await page.evaluate(() => window.showContinuation("deload"));
+    await page.getByRole("link", { name: "Plan a recovery week" }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    const recovery = page.getByRole("checkbox", { name: "Start with a recovery week" });
+    await expect(recovery).toBeChecked();
+    const recoveryTarget = await recovery.locator("..").boundingBox();
+    assert.ok(recoveryTarget && recoveryTarget.height >= 44);
+    await recovery.uncheck();
+    await expect(page.getByRole("status")).toBeVisible();
+    await page.getByRole("button", { name: "Review dates", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Review program dates" })).toBeVisible();
+    const declined = await page.evaluate(() => window.continuationPreviews.at(-1));
+    assert.equal(declined.sourceRecommendationId, "00000000-0000-4000-8000-000000000094");
+    assert.equal(declined.startWithRecoveryWeek, undefined);
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await recovery.check();
+    await page.getByRole("button", { name: "Review dates", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Review program dates" })).toBeVisible();
+    assert.equal((await page.evaluate(() => window.continuationPreviews.at(-1))).startWithRecoveryWeek, true);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     stages.push(stage);
   }

@@ -66,6 +66,15 @@ targets, progression and accepted recommendations belong to the addressed
 program. The optional existing season roadmap does not acquire extra tracks or
 advance merely because a different program starts.
 
+Final recommendations remain visible for their completed source program.
+Opening or abandoning setup does not resolve advice. A guided continuation
+carries the exact recommendation, block, instance, kind and phase through preview
+and commits its acceptance inside the same schedule transaction as the new
+program. Changed, dismissed or foreign advice is refused; exact replay returns
+the original result without accepting it again. Recovery acceptance names one
+occurrence rather than consuming unrelated pending advice. Declining the
+recommended recovery week warns and records that choice without accepting it.
+
 ## Shared rehabilitation
 
 `rehab_protocols` remains the account library. Non-swim programs retain

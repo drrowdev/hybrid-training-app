@@ -9,7 +9,9 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: mock.client,
   getAuthUser: async () => ({ data: { user: { id: "00000000-0000-4000-8000-000000000001" } } }),
 }));
-vi.mock("@/lib/planner/queries", () => ({ getActiveBlocks: vi.fn() }));
+vi.mock("@/lib/planner/queries", async (original) => ({
+  ...await original<typeof import("@/lib/planner/queries")>(), getActiveBlocks: vi.fn(),
+}));
 vi.mock("@/lib/platform/edit-context", () => ({ getBlockEditContext: mock.edit }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: () => { throw new Error("Unexpected redirect"); } }));
@@ -51,7 +53,8 @@ beforeEach(() => {
         expect(url.searchParams.get("id")).toBe(`in.(${block})`);
         return failBlockRead
           ? Response.json({ code: "42501", message: "Read refused" }, { status: 403 })
-          : Response.json([{ id: block, ...(kind === undefined ? {} : { program_kind: kind }) }]);
+          : Response.json([{ id: block, archetype: null, notes: "My strength program", status: "active",
+            program_id: "tactical-barbell", ...(kind === undefined ? {} : { program_kind: kind }) }]);
       }
       if (table === "tm_suggestions") return Response.json([{
         id: suggestion, user_id: owner, movement_id: movement, current_tm_kg: 90, suggested_tm_kg: 110,

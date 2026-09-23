@@ -24,22 +24,26 @@ type DismissAction = (id: string) => Promise<{ ok: true } | { ok: false; error: 
  */
 function advanceTarget(
   r: PendingProgramRecommendation,
-): { href: string; label: string; keepUntilDone?: boolean } | null {
+): { href: string; label: string } | null {
   if (r.reviewHref) {
     return {
       href: r.reviewHref,
       label: r.reviewHref.startsWith("/app/program?edit=") ? "Review loads" : "Open program",
-      keepUntilDone: true,
     };
   }
   if (r.kind === "deload") {
     if (!r.blockId) return null;
+    if (r.programStatus === "completed") {
+      return r.sourceProgramId ? {
+        href: `/app/program?program=${encodeURIComponent(r.sourceProgramId)}&recommendation=${encodeURIComponent(r.id)}`,
+        label: "Plan a recovery week",
+      } : { href: `/app/stats/blocks/${encodeURIComponent(r.blockId)}`, label: "Open program" };
+    }
     const params = new URLSearchParams({ deload: "1", rec: r.id, block: r.blockId });
     if (r.occurrenceKey) params.set("boundary", r.occurrenceKey);
     return {
       href: `/app/plan?${params.toString()}`,
       label: "Take a recovery week \u2192",
-      keepUntilDone: true,
     };
   }
   const d = r.data;
@@ -49,7 +53,7 @@ function advanceTarget(
   const nextPhaseName = typeof d.nextPhaseName === "string" ? d.nextPhaseName : null;
   if (!programId || !nextPhaseId) return null;
   return {
-    href: `/app/program?program=${encodeURIComponent(programId)}&phase=${encodeURIComponent(nextPhaseId)}`,
+    href: `/app/program?program=${encodeURIComponent(programId)}&phase=${encodeURIComponent(nextPhaseId)}&recommendation=${encodeURIComponent(r.id)}`,
     label: nextPhaseName ? `Set up ${nextPhaseName} \u2192` : "Set up next phase \u2192",
   };
 }
@@ -94,7 +98,7 @@ export function ProgramRecommendationsBanner({
       {error && <p role="alert">{error}</p>}
       {visible.map((r) => {
         const advance = advanceTarget(r);
-        const programName = r.blockId ? programNames[r.blockId] : null;
+        const programName = (r.blockId ? programNames[r.blockId] : null) ?? r.programName;
         return (
         <div
           key={r.id}
@@ -119,9 +123,6 @@ export function ProgramRecommendationsBanner({
             {advance && (
               <Link
                 href={advance.href}
-                onClick={() => {
-                  if (!advance.keepUntilDone) dismiss(r.id);
-                }}
                 style={{
                   padding: "6px 12px",
                   minHeight: 44,
@@ -155,7 +156,7 @@ export function ProgramRecommendationsBanner({
                 fontWeight: 500,
               }}
             >
-              {advance ? "Not yet" : "Got it"}
+              Dismiss
             </button>
           </div>
         </div>

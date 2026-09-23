@@ -4860,3 +4860,39 @@ and no horizontal overflow. Real-font captures were inspected at both widths.
 There are no schema, RLS, migration, native or updater changes; normal 159 and
 the 62-stage SQL inventory remain unchanged. Recommendation/season lifecycle
 and corrected-model native acceptance remain in progress, not release-ready.
+
+## [2026-09-23] implementation | Preserve exact recommendation ownership through setup
+
+The coordinator accepted `53a0a8a1`: core `35866266100` and storage
+`35866266183` passed with the unchanged 62 SQL stages and all 71 synthetic UI
+stages. Pending final advice now remains visible after its source program
+completes. Completed load advice links to that program's analytics instead of
+an unavailable active Plan. Opening or abandoning the next phase does not
+dismiss its recommendation; an explicit Dismiss action remains available.
+
+Setup carries the owned recommendation, block, instance, kind and phase into
+the actual preview. Recovery advice is no longer borrowed from any pending
+account program. An explicit recovery continuation starts with the recommended
+week selected; declining it surfaces the original advice and records the choice.
+Changing the selected program or next phase stops treating the draft as that
+recommendation.
+
+The existing, unapplied 0158 schedule transaction validates the exact owned
+source under its shared lock, refuses stale or mismatched advice, and accepts
+only that recommendation when the new graph saves. Failure rolls back both;
+replay returns the original graph and cannot substitute another origin. The
+unused-down routine fingerprint was updated. No new migration entry, table,
+column, RLS policy, ACL or RPC was added; normal 159 remains.
+
+Local action, reader, picker and exact-origin regressions passed, along with
+web/account-flow types and changed-source lint. All 73 synthetic UI stages
+passed: the prior 71 retain their order, followed by
+`owned-recommendation-continuation-375` and
+`owned-recommendation-continuation-1280`. Real picker navigation, abandonment,
+changed phase, failed-save input retention, same-request retry and recovery
+override are exercised. Real-font layouts were inspected at both widths.
+The existing disposable lifecycle stage now also covers completed-source advice,
+failed-save rollback, exact once-only replay, foreign/stale/wrong-kind refusal,
+declined recovery and independent Running/Swimming preservation. Actual SQL
+execution of this amendment awaits the next coordinator-owned automatic gate.
+Season linkage and corrected-model native acceptance remain unfinished.

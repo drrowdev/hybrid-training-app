@@ -377,6 +377,88 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     assert.equal((await database`SELECT status FROM public.training_blocks WHERE id=${pending.block_id}::uuid`)[0]!.status, "archived");
     assert.equal((await database`SELECT status FROM public.training_blocks WHERE id=${independentRun.block_id}::uuid`)[0]!.status, "active");
     assert.deepEqual((await database`SELECT instance FROM public.program_instances WHERE id=${afterPending.program_instance_id}::uuid`)[0]!.instance, originalInstance);
+
+    const adviceOwner = await user();
+    const adviceProgram = await commit<Created>(adviceOwner, "primary-create", args("hybrid"));
+    const adviceRun = await commit<Created>(adviceOwner, "primary-create", args("running"), true);
+    const adviceSwim = await commit<Swim>(adviceOwner, "swim-create", swimArgs, true);
+    await asUser(adviceOwner, async (tx) => {
+      const [planned] = await tx`SELECT id FROM public.planned_sessions WHERE block_id=${adviceProgram.block_id}::uuid`;
+      const [started] = await tx`SELECT public.start_planned_session_atomically(${planned!.id}::uuid) AS id`;
+      await tx`UPDATE public.sessions SET completed_at=now() WHERE id=${started!.id}::uuid`;
+      const recommendations = [
+        { kind: "next-block", occurrenceKey: "final", title: "Next phase", detail: "Review the next phase.",
+          data: { programId: "authored", nextPhaseId: "synthetic-next-phase" } },
+        ...["final", "earlier"].map((occurrenceKey) => ({
+          kind: "deload", occurrenceKey, title: "Recovery week", detail: "Review a recovery week.", data: null,
+        })),
+      ];
+      assert.equal((await tx`SELECT public.commit_program_progression(${adviceProgram.block_id}::uuid,
+        ${adviceProgram.program_instance_id}::uuid,${started!.id}::uuid,${json(args("hybrid").p_program_instance.instance)}::text::jsonb,
+        ${json(args("hybrid").p_program_instance.instance)}::text::jsonb,${json(recommendations)}::text::jsonb) AS result`)[0]!.result, "applied");
+      assert.equal((await tx`SELECT public.complete_program_if_settled(${adviceProgram.block_id}::uuid) AS done`)[0]!.done, true);
+    });
+    const adviceRows = () => asUser(adviceOwner, (tx) => tx`SELECT to_jsonb(r) AS value FROM public.program_recommendations r
+      WHERE user_id=${adviceOwner}::uuid AND block_id=${adviceProgram.block_id}::uuid ORDER BY kind,occurrence_key`);
+    const pendingAdvice = await adviceRows();
+    assert.equal(pendingAdvice.length, 3);
+    assert.ok(pendingAdvice.every((row) => row.value.status === "pending"));
+    const nextAdvice = pendingAdvice.find((row) => row.value.kind === "next-block")!.value;
+    const recoveryAdvice = pendingAdvice.find((row) => row.value.kind === "deload" && row.value.occurrence_key === "final")!.value;
+    const adviceSnapshot = (row: Record<string, unknown>) => ({
+      id: row.id, block_id: row.block_id, program_instance_id: row.program_instance_id,
+      kind: row.kind, data: row.data, occurrence_key: row.occurrence_key, program_kind: "hybrid",
+    });
+    const continuation = { ...args("hybrid"), p_recommendation: adviceSnapshot(nextAdvice),
+      p_program_instance: { ...args("hybrid").p_program_instance, setup_input: { values: { phaseId: "synthetic-next-phase" } } } };
+    const abandonedReview = await snapshot(adviceOwner);
+    assert.deepEqual(Array.from(await adviceRows()), Array.from(pendingAdvice));
+    await denied(() => commit(b, "primary-create", continuation, true), "40001");
+    await denied(() => commit(adviceOwner, "primary-create", { ...continuation,
+      p_recommendation: { ...continuation.p_recommendation, occurrence_key: "changed" } }, true), "40001");
+    await denied(() => commit(adviceOwner, "primary-create", { ...continuation,
+      p_program_instance: { ...continuation.p_program_instance, setup_input: { values: { phaseId: "another-phase" } } } }, true), "22023");
+    await denied(() => commit(adviceOwner, "primary-create", { ...args("strength"),
+      p_recommendation: continuation.p_recommendation }, true), "22023");
+    const failedRequest = randomUUID();
+    await denied(() => commit(adviceOwner, "primary-create", continuation, false, abandonedReview.revision, failedRequest), "22023");
+    assert.equal((await snapshot(adviceOwner)).revision, abandonedReview.revision);
+    assert.deepEqual(Array.from(await adviceRows()), Array.from(pendingAdvice));
+    assert.equal((await asUser(adviceOwner, (tx) => tx`SELECT count(*)::int AS n FROM public.engine_override_events
+      WHERE id=${failedRequest}::uuid`))[0]!.n, 0);
+    const nextRequest = randomUUID();
+    const continued = await commit<Created>(adviceOwner, "primary-create", continuation, true, abandonedReview.revision, nextRequest);
+    const acceptedAdvice = await adviceRows();
+    assert.equal(acceptedAdvice.find((row) => row.value.id === nextAdvice.id)!.value.status, "accepted");
+    assert.equal(acceptedAdvice.filter((row) => row.value.status === "pending").length, 2);
+    assert.deepEqual(await commit(adviceOwner, "primary-create", continuation, true, abandonedReview.revision, nextRequest), continued);
+    assert.deepEqual(Array.from(await adviceRows()), Array.from(acceptedAdvice));
+    await denied(() => commit(adviceOwner, "primary-create", { ...continuation,
+      p_recommendation: adviceSnapshot(recoveryAdvice) }, true, abandonedReview.revision, nextRequest, continuation), "22023");
+    await denied(() => commit(adviceOwner, "primary-create", { ...continuation, p_replace_block_id: continued.block_id }, true), "40001");
+    const decliningRecovery = { ...args("hybrid"), p_recommendation: adviceSnapshot(recoveryAdvice),
+      p_accept_recovery: false, p_replace_block_id: continued.block_id };
+    const declinedRequest = randomUUID();
+    const declined = await commit<Created>(adviceOwner, "primary-create", decliningRecovery, true, undefined, declinedRequest);
+    assert.equal((await adviceRows()).find((row) => row.value.id === recoveryAdvice.id)!.value.status, "pending");
+    assert.equal((await asUser(adviceOwner, (tx) => tx`SELECT context->>'recommendationAccepted' AS accepted
+      FROM public.engine_override_events WHERE id=${declinedRequest}::uuid`))[0]!.accepted, "false");
+    await denied(() => commit(adviceOwner, "primary-create", { ...decliningRecovery,
+      p_replace_block_id: declined.block_id, p_accept_recovery: true }, true), "22023");
+    const recoveryArgs = { ...decliningRecovery, p_replace_block_id: declined.block_id, p_accept_recovery: true,
+      p_block: { ...args("hybrid").p_block, weeks: 2 },
+      p_planned_sessions: [
+        { ...args("hybrid").p_planned_sessions[0]!, role: "deload", prescription: { items: [liftItem], insertedRecoveryWeek: true } },
+        { ...args("hybrid").p_planned_sessions[0]!, week_index: 1 },
+      ] };
+    const recoveryRevision = (await snapshot(adviceOwner)).revision, recoveryRequest = randomUUID();
+    const recovered = await commit<Created>(adviceOwner, "primary-create", recoveryArgs, true, recoveryRevision, recoveryRequest);
+    assert.deepEqual(await commit(adviceOwner, "primary-create", recoveryArgs, true, recoveryRevision, recoveryRequest), recovered);
+    const finalAdvice = await adviceRows();
+    assert.equal(finalAdvice.find((row) => row.value.id === recoveryAdvice.id)!.value.status, "accepted");
+    assert.equal(finalAdvice.find((row) => row.value.occurrence_key === "earlier")!.value.status, "pending");
+    assert.equal((await asUser(adviceOwner, (tx) => tx`SELECT status FROM public.training_blocks WHERE id=${adviceRun.block_id}::uuid`))[0]!.status, "active");
+    assert.equal((await asUser(adviceOwner, (tx) => tx`SELECT status FROM public.swim_plans WHERE id=${adviceSwim.plan.id}::uuid`))[0]!.status, "active");
     stages.push("ownership-independent-end-trash-restore-completion-and-late-progress");
 
     stage("ownership-swim-rehab-owned-attachment-issued-dose-replay-and-restore");

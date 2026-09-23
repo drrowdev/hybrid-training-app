@@ -270,4 +270,36 @@ describe("DC-R5 authoritative independent program reads", () => {
     expect(recommendations.map((recommendation) => recommendation.id)).toEqual([id(92)]);
     expect(await getPendingProgramRecommendations(await mocks.client(), "owner", [])).toEqual([]);
   });
+
+  it("retains final advice after completion without reviving deleted, replaced or foreign programs", async () => {
+    tables.training_blocks = [
+      { ...block(1, "hybrid"), status: "completed", notes: "My completed program", program_id: "green-protocol" },
+      { ...block(2, "running"), status: "archived" },
+      { ...block(3, "strength"), status: "completed", deleted_at: "2026-09-22T00:00:00Z" },
+      { ...block(4, "hybrid"), status: "completed", user_id: "other" },
+    ];
+    tables.program_recommendations = [1, 2, 3, 4].map((value) => ({
+      id: id(90 + value), user_id: "owner", status: "pending", kind: "next-block", block_id: id(value),
+      title: "Next phase", detail: "Review your next phase.", occurrence_key: "", data: {
+        programId: "green-protocol", nextPhaseId: "velocity", nextPhaseName: "Velocity",
+      },
+    }));
+    const client = await mocks.client();
+    const recommendations = await getPendingProgramRecommendations(client, "owner");
+    expect(recommendations.map((row) => row.id)).toEqual([id(91)]);
+    expect(recommendations[0]).toMatchObject({ programStatus: "completed", programName: "My completed program" });
+    const html = renderToStaticMarkup(<ProgramRecommendationsBanner recommendations={recommendations}
+      dismissAction={async () => ({ ok: true })} />);
+    expect(html).toContain(`recommendation=${id(91)}`);
+    expect(html).toContain("My completed program");
+    tables.program_recommendations![0]!.kind = "deload";
+    const recovery = renderToStaticMarkup(<ProgramRecommendationsBanner
+      recommendations={await getPendingProgramRecommendations(client, "owner")} dismissAction={async () => ({ ok: true })} />);
+    expect(recovery).toContain(`/app/program?program=green-protocol&amp;recommendation=${id(91)}`);
+    expect(recovery).not.toContain("/app/plan?");
+    tables.program_recommendations![0]!.kind = "tm-bump";
+    expect((await getPendingProgramRecommendations(client, "owner"))[0]?.reviewHref).toBe(`/app/stats/blocks/${id(1)}`);
+    failedTable = "training_blocks";
+    await expect(getPendingProgramRecommendations(client, "owner")).rejects.toThrow();
+  });
 });

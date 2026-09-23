@@ -41,6 +41,7 @@ import {
   type ProgramReviewContext, type ProgramSchedulePreview,
 } from "./program-review";
 import { scheduleReplay, scheduleReviewSchema, ScheduleUnavailableError } from "@/lib/schedule/storage";
+import { loadProgramRecommendationOrigin, matchesRecommendationSetup } from "./recommendation-origin";
 import { buildDeloadWeek } from "@/lib/planner/deload-week";
 import { recoveryPercentScale, recoveryWeekPolicyFor } from "@/lib/planner/recovery-week-policy";
 import { getProgramEngine, getNativeProgramEngine, isNativeProgram } from "./registry";
@@ -578,6 +579,7 @@ const createProgramInstanceSchema = z
     /** When present, the wizard was deep-linked from a Season roadmap (ADR 0051):
      *  activate this planned season_block + link it to the new block on deploy. */
     seasonBlockId: z.string().uuid().optional(),
+    sourceRecommendationId: z.string().uuid().optional(),
     /**
      * Lead the new block with a recovery week. Offered after a peak week, where
      * the program advises deloading between blocks and there is no room left in
@@ -863,6 +865,13 @@ async function runProgramInstance(
     }
   }
   const flow = await programReviewContext(supabase, user.id, requestInput, previewOnly, review);
+  if (parsed.data.sourceRecommendationId) {
+    const origin = await loadProgramRecommendationOrigin(supabase, user.id, parsed.data.sourceRecommendationId);
+    if (editBlockId || !matchesRecommendationSetup(origin, programId, setupValues)) {
+      throw new Error("This setup no longer matches the selected recommendation.");
+    }
+    flow.recommendation = origin;
+  }
   if (!flow && trainingMaxDrafts?.length) throw new ScheduleUnavailableError();
 
   // Forward-only EDIT of an existing block (5/3/1 / TB). Keeps the block + its
@@ -1740,6 +1749,9 @@ async function deployPreparedProgram(
   const programKind = !STRENGTH_ONLY_PROGRAM_IDS.has(input.block.programId) ||
     input.plannedSessions.some((row) => row.prescription.items.some((item) => item.kind.startsWith("cardio_")))
     ? "hybrid" : "strength";
+  if (flow?.recommendation?.snapshot.program_kind && flow.recommendation.snapshot.program_kind !== programKind) {
+    throw new Error("Keep the recommended program type or start a separate setup.");
+  }
   const bases = new Map(input.tmPercents.map((seed) => [seed.movementId, seed.programLoadBasis]));
   const args = {
     p_block: {
@@ -1764,6 +1776,7 @@ async function deployPreparedProgram(
       p_training_max_drafts: options.trainingMaxDrafts ?? [],
       p_rehab_bindings: options.rehabBindings ?? [],
       p_accept_recovery: options.startWithRecoveryWeek ?? false, p_skipped: skipped,
+      ...(flow.recommendation ? { p_recommendation: flow.recommendation.snapshot } : {}),
     } : {}),
   };
   if (flow) {

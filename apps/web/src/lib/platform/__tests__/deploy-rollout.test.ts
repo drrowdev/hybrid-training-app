@@ -15,6 +15,9 @@ const { activateSeasonBlock, buildProgramInstanceWrite, revalidatePath, state } 
     active: null as { id: string; notes: string; started_on: string; program_id: string; program_kind: "strength" | "running" | "hybrid" | null } | null,
     receipt: null as { context: Record<string, unknown> } | null,
     lastCommit: null as Record<string, unknown> | null,
+    recommendation: null as Record<string, unknown> | null,
+    recommendationBlock: null as Record<string, unknown> | null,
+    recommendationInstance: null as Record<string, unknown> | null,
   },
 }));
 
@@ -23,7 +26,11 @@ const seasonBlockId = "00000000-0000-4000-8000-000000000002";
 
 function queryFor(table: string) {
   let operation = "read";
+  const filters: Record<string, unknown> = {};
   const result = () => {
+    if (operation === "read" && table === "program_recommendations") return { data: state.recommendation, error: null };
+    if (operation === "read" && table === "training_blocks" && filters.id) return { data: state.recommendationBlock, error: null };
+    if (operation === "read" && table === "program_instances") return { data: state.recommendationInstance, error: null };
     if (operation === "read" && table === "training_blocks") return { data: state.active ? [state.active] : [], error: null };
     if (operation === "read" && table === "engine_override_events") return { data: state.receipt, error: null };
     if (table === "training_blocks" && operation === "insert") {
@@ -53,7 +60,7 @@ function queryFor(table: string) {
       return query;
     },
     select: () => query,
-    eq: () => query,
+    eq: (key: string, value: unknown) => { filters[key] = value; return query; },
     is: () => query,
     neq: () => query,
     in: () => query,
@@ -156,6 +163,9 @@ describe("createProgramInstance app-first rollout", () => {
     state.active = null;
     state.receipt = null;
     state.lastCommit = null;
+    state.recommendation = null;
+    state.recommendationBlock = null;
+    state.recommendationInstance = null;
     activateSeasonBlock.mockReset();
     revalidatePath.mockReset();
     buildProgramInstanceWrite.mockReset();
@@ -345,5 +355,66 @@ describe("createProgramInstance app-first rollout", () => {
       ],
     } });
     expect(state.rpcCalls).not.toContain("insert_deload_week");
+  });
+
+  function continuation() {
+    state.modular = true;
+    state.recommendationBlock = {
+      id: "00000000-0000-4000-8000-000000000010", status: "completed", program_kind: "strength", deleted_at: null,
+    };
+    state.recommendationInstance = {
+      id: "00000000-0000-4000-8000-000000000011", block_id: state.recommendationBlock.id,
+      status: "archived", program_id: "tactical-barbell", deleted_at: null,
+    };
+    state.recommendation = {
+      id: "00000000-0000-4000-8000-000000000012", block_id: state.recommendationBlock.id,
+      program_instance_id: state.recommendationInstance.id, status: "pending", kind: "next-block",
+      occurrence_key: "final", detail: "Review the next phase.",
+      data: { programId: "tactical-barbell", nextPhaseId: "synthetic-next-phase" },
+    };
+    return { programId: "tactical-barbell", setupValues: { phaseId: "synthetic-next-phase" },
+      weekdays: [0, 2, 4], startedOn: "2026-09-07", sourceRecommendationId: String(state.recommendation.id) };
+  }
+
+  it("DC-R5 keeps abandoned or failed continuation advice pending and commits its exact origin with setup", async () => {
+    const input = continuation();
+    const preview = await previewProgramInstance(input);
+    if (!preview.ok) throw new Error(preview.error);
+    expect(state.recommendation?.status).toBe("pending");
+    expect(state.lastCommit).toBeNull();
+    expect(state.writes).toEqual([]);
+    const review = { previewId: preview.preview.id, revision: preview.preview.revision,
+      requestId: "00000000-0000-4000-8000-000000000013", acceptOverlap: false };
+    state.recommendation!.occurrence_key = "changed";
+    expect(await createProgramInstance({ ...input, review })).toMatchObject({ ok: false });
+    expect(state.lastCommit).toBeNull();
+    expect(state.recommendation?.status).toBe("pending");
+    state.recommendation!.occurrence_key = "final";
+    const saved = await createProgramInstance({ ...input, review });
+    expect(saved.ok).toBe(true);
+    expect(state.lastCommit).toMatchObject({ p_args: { p_recommendation: {
+      id: input.sourceRecommendationId, block_id: state.recommendationBlock!.id,
+      program_instance_id: state.recommendationInstance!.id, kind: "next-block", occurrence_key: "final",
+      program_kind: "strength", data: state.recommendation!.data,
+    }, p_program_instance: { setup_input: { values: input.setupValues } } } });
+    state.receipt = { context: { kind: "training-schedule-v1", operation: "primary-create",
+      inputHash: state.lastCommit!.p_input_hash, result: {
+        block_id: "00000000-0000-4000-8000-000000000003", program_instance_id: "00000000-0000-4000-8000-000000000004", skipped: 0,
+      } } };
+    state.recommendation!.status = "accepted";
+    expect(await createProgramInstance({ ...input, review })).toEqual(saved);
+    expect(state.rpcCalls.filter((name) => name === "independent_program_schedule_commit")).toHaveLength(1);
+    expect(state.writes).toEqual([]);
+  });
+
+  it("DC-R5 refuses dismissed advice or another program/phase without saving or consuming it", async () => {
+    const input = continuation();
+    expect(await previewProgramInstance({ ...input, programId: "wendler-531" })).toMatchObject({ ok: false });
+    expect(await previewProgramInstance({ ...input, setupValues: { phaseId: "another-phase" } })).toMatchObject({ ok: false });
+    expect(await previewProgramInstance({ ...input, editBlockId: String(state.recommendationBlock!.id) })).toMatchObject({ ok: false });
+    state.recommendation!.status = "dismissed";
+    expect(await previewProgramInstance(input)).toMatchObject({ ok: false });
+    expect(state.lastCommit).toBeNull();
+    expect(state.writes).toEqual([]);
   });
 });

@@ -27,6 +27,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { selectablePrograms, getProgramEngine, getNativeProgramEngine } from "@/lib/platform/registry";
 import { buildPlatformContext } from "@/lib/platform/context";
 import { getBlockEditContext } from "@/lib/platform/edit-context";
+import { loadProgramRecommendationOrigin, type ProgramRecommendationSetup } from "@/lib/platform/recommendation-origin";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { getActiveSeason } from "@/lib/seasons/queries";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
@@ -133,7 +134,7 @@ function defaultSessionsPerWeek(engine: ProgramEngine): number | undefined {
 export default async function ProgramPickerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ program?: string; phase?: string; edit?: string; seasonBlockId?: string }>;
+  searchParams: Promise<{ program?: string; phase?: string; edit?: string; seasonBlockId?: string; recommendation?: string }>;
 }) {
   const supabase = await createClient();
   const {
@@ -145,6 +146,22 @@ export default async function ProgramPickerPage({
   const editContext = sp.edit ? await getBlockEditContext(sp.edit) : null;
   if (sp.edit && !editContext) {
     return <EmptyState title="This program isn't available to edit." action={{ label: "View programs", href: "/app/programs" }} />;
+  }
+  let recommendation: ProgramRecommendationSetup | undefined;
+  if (sp.recommendation) {
+    try {
+      const origin = await loadProgramRecommendationOrigin(supabase, user.id, sp.recommendation);
+      if (editContext || !ENABLED_PROGRAM_IDS.has(origin.programId)) {
+        throw new Error("This recommendation can't start a new program.");
+      }
+      recommendation = {
+        recommendationId: origin.recommendationId, programId: origin.programId,
+        kind: origin.kind, phaseId: origin.phaseId, recoveryWarning: origin.recoveryWarning,
+      };
+    } catch (error) {
+      return <EmptyState title={error instanceof Error ? error.message : "Could not load this recommendation."}
+        action={{ label: "View programs", href: "/app/programs" }} />;
+    }
   }
 
   const { anchoredKeys } = await buildPlatformContext(supabase, user.id);
@@ -303,8 +320,8 @@ export default async function ProgramPickerPage({
   // advance). Only honour a program whose deploy path is enabled; the phase is
   // passed through as the program's loadout value (Green Protocol's phaseId).
   const initialProgramId =
-    sp.program && ENABLED_PROGRAM_IDS.has(sp.program) ? sp.program : undefined;
-  const initialLoadoutValue = initialProgramId && sp.phase ? sp.phase : undefined;
+    recommendation?.programId ?? (sp.program && ENABLED_PROGRAM_IDS.has(sp.program) ? sp.program : undefined);
+  const initialLoadoutValue = recommendation?.phaseId ?? (initialProgramId && sp.phase ? sp.phase : undefined);
 
   // Season roadmap deep-link (ADR 0051): carries the planned season_block to
   // activate on deploy. Threaded straight through — the deploy action
@@ -312,21 +329,6 @@ export default async function ProgramPickerPage({
   // stale/foreign id is a safe no-op. Ignored in edit mode (not an activation).
   const seasonBlockId =
     !editContext && sp.seasonBlockId ? sp.seasonBlockId : undefined;
-
-  // Post-peak recovery (TB3): the program advised a deload and the lifter came
-  // here instead of taking one, so offer to lead the new block with it.
-  let recoveryAdvised = false;
-  if (!editContext) {
-    const { data: advised } = await supabase
-      .from("program_recommendations")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("kind", "deload")
-      .eq("status", "pending")
-      .limit(1)
-      .maybeSingle();
-    recoveryAdvised = !!advised;
-  }
 
   // ADR 0060 — a HYROX block deployed for a season's PEAK slot must still taper to
   // the event. With the new race/no-race split, a blank race date means "no taper",
@@ -423,7 +425,7 @@ export default async function ProgramPickerPage({
         {...(initialLoadoutValue ? { initialLoadoutValue } : {})}
         {...(editContext ? { editContext } : {})}
         {...(seasonBlockId ? { seasonBlockId } : {})}
-        {...(recoveryAdvised ? { recoveryAdvised: true } : {})}
+        {...(recommendation ? { recommendation } : {})}
         {...(prefillRaceDate ? { prefillRaceDate } : {})}
       />
     </div>

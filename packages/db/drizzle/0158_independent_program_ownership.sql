@@ -356,6 +356,8 @@ DECLARE
   u uuid:=auth.uid(); before_snapshot jsonb; after_snapshot jsonb; receipt jsonb; result jsonb;
   replacement uuid; block_id uuid; instance_id uuid; kind text; target public.training_blocks%ROWTYPE;
   entry jsonb; overlap_pairs jsonb; block_args jsonb; instance_args jsonb;
+  advice public.program_recommendations%ROWTYPE; advice_block public.training_blocks%ROWTYPE;
+  advice_instance public.program_instances%ROWTYPE; advice_snapshot jsonb; accept_advice boolean:=false;
 BEGIN
   IF u IS NULL THEN RAISE EXCEPTION 'Not signed in.' USING ERRCODE='42501'; END IF;
   IF p_request_id IS NULL OR p_input_hash IS NULL OR p_input_hash !~ '^[a-f0-9]{64}$' THEN
@@ -370,7 +372,9 @@ BEGIN
     END IF;
     IF receipt ? 'programOwnershipVersion' AND p_operation='primary-create' AND
       (receipt->>'replacedBlockId' IS DISTINCT FROM p_args->>'p_replace_block_id'
-       OR receipt->>'programKind' IS DISTINCT FROM p_args#>>'{p_block,program_kind}') THEN
+       OR receipt->>'programKind' IS DISTINCT FROM p_args#>>'{p_block,program_kind}'
+       OR COALESCE(receipt->'recommendation','null'::jsonb) IS DISTINCT FROM COALESCE(p_args->'p_recommendation','null'::jsonb)
+       OR COALESCE(receipt->>'recoveryRequested','false') IS DISTINCT FROM COALESCE(p_args->>'p_accept_recovery','false')) THEN
       RAISE EXCEPTION 'This save request belongs to a different program target.' USING ERRCODE='22023';
     END IF;
     RETURN receipt->'result';
@@ -429,6 +433,50 @@ BEGIN
   IF COALESCE(p_args->'p_tm_percents','[]'::jsonb)<>'[]'::jsonb THEN
     RAISE EXCEPTION 'Program load settings must belong to this program.' USING ERRCODE='22023';
   END IF;
+  IF p_args->'p_recommendation' IS NOT NULL AND p_args->'p_recommendation'<>'null'::jsonb THEN
+    SELECT * INTO advice FROM public.program_recommendations
+      WHERE id=(p_args#>>'{p_recommendation,id}')::uuid AND user_id=u FOR UPDATE;
+    IF NOT FOUND OR advice.status<>'pending' OR advice.kind NOT IN ('next-block','deload') THEN
+      RAISE EXCEPTION 'This recommendation is no longer available.' USING ERRCODE='40001';
+    END IF;
+    SELECT * INTO advice_block FROM public.training_blocks
+      WHERE id=advice.block_id AND user_id=u FOR UPDATE;
+    IF NOT FOUND OR advice_block.status NOT IN ('active','completed') OR advice_block.deleted_at IS NOT NULL
+      OR (advice_block.program_kind IS NOT NULL AND advice_block.program_kind<>kind) THEN
+      RAISE EXCEPTION 'This recommendation belongs to a different or unavailable program.' USING ERRCODE='22023';
+    END IF;
+    SELECT * INTO advice_instance FROM public.program_instances
+      WHERE id=advice.program_instance_id AND program_instances.block_id=advice.block_id AND user_id=u FOR UPDATE;
+    IF NOT FOUND OR advice_instance.deleted_at IS NOT NULL OR advice_instance.status NOT IN ('active','archived')
+      OR (advice_block.status='active' AND advice_instance.status<>'active') THEN
+      RAISE EXCEPTION 'This recommendation belongs to an unavailable program.' USING ERRCODE='22023';
+    END IF;
+    advice_snapshot:=jsonb_build_object('id',advice.id,'block_id',advice.block_id,
+      'program_instance_id',advice.program_instance_id,'kind',advice.kind,'data',advice.data,
+      'occurrence_key',advice.occurrence_key,'program_kind',advice_block.program_kind);
+    IF advice_snapshot IS DISTINCT FROM p_args->'p_recommendation' THEN
+      RAISE EXCEPTION 'This recommendation changed. Review your setup again.' USING ERRCODE='40001';
+    END IF;
+    IF advice.kind='next-block' THEN
+      IF NULLIF(advice.data->>'programId','') IS NULL OR NULLIF(advice.data->>'nextPhaseId','') IS NULL
+        OR block_args->>'program_id' IS DISTINCT FROM advice.data->>'programId'
+        OR instance_args->>'program_id' IS DISTINCT FROM advice.data->>'programId'
+        OR instance_args#>>'{setup_input,values,phaseId}' IS DISTINCT FROM advice.data->>'nextPhaseId' THEN
+        RAISE EXCEPTION 'This setup no longer matches the selected recommendation.' USING ERRCODE='22023';
+      END IF;
+      accept_advice:=true;
+    ELSE
+      IF block_args->>'program_id' IS DISTINCT FROM advice_instance.program_id
+        OR instance_args->>'program_id' IS DISTINCT FROM advice_instance.program_id THEN
+        RAISE EXCEPTION 'This recovery recommendation belongs to a different program.' USING ERRCODE='22023';
+      END IF;
+      accept_advice:=COALESCE(p_args->>'p_accept_recovery'='true',false);
+      IF accept_advice AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(p_args->'p_planned_sessions') p
+        WHERE p->>'week_index'='0' AND p->>'role'='deload' AND p#>>'{prescription,insertedRecoveryWeek}'='true') THEN
+        RAISE EXCEPTION 'Review the recommended recovery week before saving.' USING ERRCODE='22023';
+      END IF;
+    END IF;
+  END IF;
   FOR entry IN SELECT value FROM jsonb_array_elements(COALESCE(p_args->'p_training_max_drafts','[]'::jsonb)) LOOP
     IF (entry->>'oneRmKg')::numeric IS NULL OR (entry->>'oneRmKg')::numeric<=0 OR (entry->>'oneRmKg')::numeric>1000
       OR NOT EXISTS(SELECT 1 FROM public.movements WHERE id=(entry->>'movementId')::uuid AND (user_id IS NULL OR user_id=u)) THEN
@@ -461,10 +509,9 @@ BEGIN
     SELECT block_id,u,p.week_index,p.day_index,p.slot,p.title,p.role,p.prescription,p.session_modality,p.effective_stress_load
       FROM jsonb_to_recordset(p_args->'p_planned_sessions') p(week_index smallint,day_index smallint,slot public.session_slot,
         title text,role text,prescription jsonb,session_modality text,effective_stress_load numeric);
-  IF p_args->>'p_accept_recovery'='true' AND replacement IS NOT NULL THEN
+  IF accept_advice THEN
     UPDATE public.program_recommendations SET status='accepted',resolved_at=now()
-      WHERE program_recommendations.user_id=u AND program_recommendations.block_id=replacement
-        AND program_recommendations.kind='deload' AND program_recommendations.status='pending';
+      WHERE id=advice.id AND user_id=u;
   END IF;
   after_snapshot:=public.training_schedule_snapshot();
   WITH before_pairs AS (
@@ -486,6 +533,8 @@ BEGIN
   INSERT INTO public.engine_override_events(id,user_id,event_type,context) VALUES(p_request_id,u,'custom',
     jsonb_build_object('kind','training-schedule-v1','programOwnershipVersion',1,'programKind',kind,
       'replacedBlockId',replacement,'operation',p_operation,'inputHash',p_input_hash,'revision',p_expected_revision,
+      'recommendation',advice_snapshot,'recommendationAccepted',accept_advice,
+      'recoveryRequested',COALESCE(p_args->>'p_accept_recovery','false'),
       'acceptedOverlap',p_accept_overlap,'overlaps',overlap_pairs,'result',result));
   RETURN result;
 END $$;

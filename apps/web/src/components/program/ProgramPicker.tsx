@@ -33,6 +33,7 @@ import {
   tbAccessoryPlanForTemplate,
 } from "@/lib/platform/tb-accessories-config";
 import type { ProgramSchedulePreview } from "@/lib/platform/program-review";
+import { matchesRecommendationSetup, type ProgramRecommendationSetup } from "@/lib/platform/recommendation-origin";
 import {
   DEFAULT_CUSTOM_TB_NAME,
   LEGACY_REHAB_PROTOCOL_ID,
@@ -1373,7 +1374,7 @@ export function ProgramPicker({
   editContext,
   seasonBlockId,
   prefillRaceDate,
-  recoveryAdvised = false,
+  recommendation,
   swimHref = null,
 }: {
   programs: PickerProgram[];
@@ -1406,11 +1407,7 @@ export function ProgramPicker({
    * user can still clear it.
    */
   prefillRaceDate?: string;
-  /**
-   * The lifter's program has advised a recovery week they haven't taken. Offers
-   * to run it as week 1 of this block.
-   */
-  recoveryAdvised?: boolean;
+  recommendation?: ProgramRecommendationSetup;
   swimHref?: string | null;
 }) {
   const router = useRouter();
@@ -1460,11 +1457,14 @@ export function ProgramPicker({
   const selected = programs.find((p) => p.id === selectedId) ?? null;
 
   const [values, setValues] = useState<Record<string, unknown>>(preselectValues);
+  const setupRecommendation = !isEditing && recommendation && matchesRecommendationSetup(recommendation, selectedId, values)
+    ? recommendation : undefined;
+  const recoveryAdvised = setupRecommendation?.kind === "deload";
   const [startedOn, setStartedOn] = useState<string>(
     isEditing && editContext ? editContext.startedOn : upcomingMondayYmd(todayYmd()),
   );
   const [raceDate, setRaceDate] = useState<string>(prefillRaceDate ?? "");
-  const [startWithRecovery, setStartWithRecovery] = useState<boolean>(false);
+  const [startWithRecovery, setStartWithRecovery] = useState(recommendation?.kind === "deload");
   /** The exercise picked from the library, waiting for its work type. */
   const [pendingAdd, setPendingAdd] = useState<{
     seriesKey: string;
@@ -3059,7 +3059,8 @@ export function ProgramPicker({
         ...(rehabSchedule ? { rehabSchedule } : {}),
         ...(isEditing && editContext ? { editBlockId: editContext.blockId } : {}),
         ...(!isEditing && seasonBlockId ? { seasonBlockId } : {}),
-        ...(!isEditing && startWithRecovery ? { startWithRecoveryWeek: true } : {}),
+        ...(setupRecommendation ? { sourceRecommendationId: setupRecommendation.recommendationId } : {}),
+        ...(recoveryAdvised && startWithRecovery ? { startWithRecoveryWeek: true } : {}),
         ...(isTb && deployedProtocols.length > 0
           ? {
               rehabBindings: deployedProtocols.map((protocol) => ({
@@ -5400,20 +5401,21 @@ export function ProgramPicker({
 
         {!isEditing && recoveryAdvised ? (
           <div style={{ marginBottom: 18 }}>
-            <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+            <label style={{ display: "flex", gap: 10, alignItems: "center", minHeight: 44, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={startWithRecovery}
                 onChange={(e) => setStartWithRecovery(e.target.checked)}
-                style={{ marginTop: 3 }}
+                style={{ margin: 0, width: 18, height: 18, minHeight: 18, flexShrink: 0 }}
               />
               <span>
                 <span className={styles.label} style={{ marginBottom: 2, display: "block" }}>
                   Start with a recovery week
                 </span>
-                <span className={styles.note}>Week 1 runs light, then the program starts.</span>
               </span>
             </label>
+            {!startWithRecovery && setupRecommendation?.recoveryWarning
+              ? <p role="status" className={styles.note}>{setupRecommendation.recoveryWarning}</p> : null}
           </div>
         ) : null}
 
@@ -5801,7 +5803,7 @@ export function ProgramPicker({
         {isFinalStep ? (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 14 }}>
             {result && !result.ok && (
-              <span style={{ fontSize: 13, color: "var(--warn)" }}>{result.error}</span>
+              <span role="alert" style={{ fontSize: 13, color: "var(--warn)" }}>{result.error}</span>
             )}
             <button
               type="button"

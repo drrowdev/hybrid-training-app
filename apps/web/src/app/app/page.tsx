@@ -141,7 +141,7 @@ export default async function TodayPage() {
       .limit(20),
     getQuickRepeatCandidates(supabase, userId, { limit: 3 }),
     getLimitationTodaySummary(),
-    activePrograms.then((programs) => getPendingProgramRecommendations(supabase, userId, programs.map((program) => program.id))),
+    getPendingProgramRecommendations(supabase, userId),
     loadSwimActivity(supabase, userId, 8),
   ]);
   if (recentError || !recent) throw new Error("Your training history could not be loaded.");
