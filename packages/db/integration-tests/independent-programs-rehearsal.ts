@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { movements } from "../src/schema/movements.ts";
+import { SEED_MOVEMENTS } from "../seeds/movements.ts";
 import { generateSwimPlan } from "../../engine/src/swimming.ts";
 import { poolCourse } from "../../domain/src/swimming.ts";
 
@@ -51,6 +54,37 @@ export async function assertOwnershipRefusal(work: () => Promise<unknown>, expec
     throw new IndependentProgramsAssertion({ kind: "refusal", expected, actual });
   }
   throw new IndependentProgramsAssertion({ kind: "refusal", expected, actual: "resolved" });
+}
+
+export function independentRunningSeed() {
+  const seed = SEED_MOVEMENTS.find((movement) => movement.slug === "run-easy-z2");
+  assert.ok(seed);
+  assert.equal(seed.userId, null);
+  assert.equal(seed.pattern, "cardio");
+  assert.equal(seed.metadata?.modality, "running");
+  return seed;
+}
+
+export async function withIndependentRunningFixture(database: postgres.Sql, work: (id: string) => Promise<void>) {
+  const seed = independentRunningSeed();
+  let insertedId: string | undefined;
+  try {
+    const existing = await database`SELECT id,pattern,metadata FROM public.movements
+      WHERE user_id IS NULL AND slug=${seed.slug}`;
+    assert.ok(existing.length <= 1);
+    let run = existing[0];
+    if (!run) {
+      insertedId = randomUUID();
+      await drizzle(database).insert(movements).values({ ...seed, id: insertedId });
+      [run] = await database`SELECT id,pattern,metadata FROM public.movements WHERE id=${insertedId}::uuid`;
+    }
+    assert.ok(run);
+    assert.equal(run.pattern, seed.pattern);
+    assert.equal(run.metadata?.modality, seed.metadata?.modality);
+    await work(run.id);
+  } finally {
+    if (insertedId) await database`DELETE FROM public.movements WHERE id=${insertedId}::uuid AND user_id IS NULL`;
+  }
 }
 
 /** Only the existing loopback GitHub fixture may execute this storage contract. */
@@ -119,19 +153,21 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
   stages.push("ownership-unused-down-up-and-catalog-restoration");
 
   const users: string[] = [];
+  let operationsCompleted = false;
   const user = async () => {
     const id = randomUUID(); await database`INSERT INTO auth.users(id) VALUES (${id})`; users.push(id); return id;
   };
+  stage("ownership-catalog-fixture");
+  await withIndependentRunningFixture(database, async (runningId) => {
+  try {
   const legacyUser = await user(), a = await user(), b = await user();
   const [calendar] = await database<{ today: string; weekday: number }[]>`SELECT to_char(current_date,'YYYY-MM-DD') AS today,
     extract(isodow FROM current_date)::int-1 AS weekday`;
   assert.ok(calendar);
   const [lift] = await database`SELECT id FROM public.movements WHERE user_id IS NULL AND pattern<>'cardio' ORDER BY id LIMIT 1`;
-  const [run] = await database`SELECT id FROM public.movements WHERE user_id IS NULL AND pattern='cardio'
-    AND metadata->>'modality' IN ('run','running') ORDER BY id LIMIT 1`;
-  assert.ok(lift); assert.ok(run);
+  assert.ok(lift);
   const liftItem = { kind: "main", movementId: lift.id, sets: 1, reps: 5, targetWeightKg: 10 };
-  const runItem = { kind: "cardio_z2", movementId: run.id, durationMin: 20, meta: { modality: "run" } };
+  const runItem = { kind: "cardio_z2", movementId: runningId, durationMin: 20, meta: { modality: "run" } };
   const args = (kind: Kind, items: unknown[] = kind === "running" ? [runItem] : [liftItem]) => ({
     p_block: { program_kind: kind, program_id: "authored", program_family: kind, started_on: calendar.today, weeks: 1,
       days_per_week: 1, day_index_overrides: { days: [calendar.weekday] }, cardio_source: "internal",
@@ -149,8 +185,6 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     ${json(legacyArgs.p_program_instance)}::text::jsonb)`)[0]!);
   const legacyBefore = await database`SELECT to_jsonb(b) AS row FROM public.training_blocks b WHERE id=${legacy.block_id}::uuid`;
   await database.begin((tx) => tx.unsafe(up));
-  let operationsCompleted = false;
-  try {
     stage("ownership-no-backfill-legacy-and-old-writer-refusal");
     const legacyAfter = await database`SELECT to_jsonb(b)-'program_kind' AS row FROM public.training_blocks b WHERE id=${legacy.block_id}::uuid`;
     assert.deepEqual(Array.from(legacyAfter), Array.from(legacyBefore));
@@ -361,9 +395,12 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
   } finally {
     if (operationsCompleted) stage("ownership-synthetic-account-cleanup");
     await database`DELETE FROM public.program_rehab_bindings WHERE user_id=ANY(${users}::uuid[])`;
-    await database`DELETE FROM public.swim_plan_rehab_bindings WHERE user_id=ANY(${users}::uuid[])`;
+    if ((await database`SELECT to_regclass('public.swim_plan_rehab_bindings') IS NOT NULL AS present`)[0]!.present) {
+      await database`DELETE FROM public.swim_plan_rehab_bindings WHERE user_id=ANY(${users}::uuid[])`;
+    }
     await database`DELETE FROM auth.users WHERE id=ANY(${users}::uuid[])`;
   }
+  });
   assert.equal((await database`SELECT count(*)::int AS n FROM auth.users`)[0]!.n, 0);
   await revert();
   assertOwnershipCatalog(await catalog(), baseline);

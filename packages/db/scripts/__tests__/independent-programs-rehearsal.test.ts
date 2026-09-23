@@ -2,17 +2,80 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Socket } from "node:net";
 import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertOwnershipCatalog, assertOwnershipRefusal, IndependentProgramsAssertion, rehearseIndependentPrograms,
-  type OwnershipCatalog,
+  independentRunningSeed, withIndependentRunningFixture, type OwnershipCatalog,
 } from "../../integration-tests/independent-programs-rehearsal";
+import { SEED_MOVEMENTS } from "../../seeds/movements";
 
+vi.mock("drizzle-orm/postgres-js", () => ({ drizzle: vi.fn() }));
 const up = readFileSync(new URL("../../drizzle/0158_independent_program_ownership.sql", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 const down = readFileSync(new URL("../../rollbacks/0158_independent_program_ownership.down.sql", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("DC-R5 independent ownership storage boundary", () => {
+  it("uses the canonical running seed rather than assuming schema migrations populated the catalog", () => {
+    const seed = independentRunningSeed();
+    expect(seed).toBe(SEED_MOVEMENTS.find((movement) => movement.slug === "run-easy-z2"));
+    expect(seed).toMatchObject({ userId: null, pattern: "cardio", metadata: { modality: "running" } });
+  });
+  function runningFixture(present = false, failVerification = false) {
+    const seed = independentRunningSeed();
+    const original = { id: "00000000-0000-4000-8000-000000000001", pattern: seed.pattern,
+      metadata: { ...seed.metadata, retained: "existing metadata" } };
+    let rows = present ? [original] : [];
+    const calls: string[] = [];
+    const database = vi.fn(async (parts: TemplateStringsArray, ...params: unknown[]) => {
+      const sql = parts.join("?");
+      if (sql.startsWith("DELETE")) {
+        calls.push("delete");
+        expect(sql).toContain("WHERE id=?::uuid AND user_id IS NULL");
+        expect(params).toEqual([rows[0]?.id]);
+        rows = [];
+        return [];
+      }
+      calls.push("select");
+      if (sql.includes("WHERE id=") && failVerification) return [];
+      return rows;
+    });
+    const values = vi.fn(async (value: ReturnType<typeof independentRunningSeed> & { id: string }) => {
+      calls.push("insert");
+      expect(value).toEqual({ ...seed, id: expect.any(String) });
+      rows = [{ id: value.id, pattern: value.pattern, metadata: { ...value.metadata, retained: "" } }];
+    });
+    vi.mocked(drizzle).mockReturnValue({ insert: () => ({ values }) } as unknown as ReturnType<typeof drizzle>);
+    return { database: database as unknown as postgres.Sql, values, calls, original, rows: () => rows };
+  }
+  it("seeds a missing canonical run and removes only that inserted row after dependent fixtures", async () => {
+    const fixture = runningFixture();
+    await withIndependentRunningFixture(fixture.database, async (id) => {
+      expect(fixture.rows()[0]?.id).toBe(id);
+      fixture.calls.push("dependent-fixtures-cleaned");
+    });
+    expect(fixture.calls).toEqual(["select", "insert", "select", "dependent-fixtures-cleaned", "delete"]);
+    expect(fixture.rows()).toEqual([]);
+  });
+  it("reuses and preserves a present canonical run without inserting or deleting", async () => {
+    const fixture = runningFixture(true);
+    await withIndependentRunningFixture(fixture.database, async (id) => { expect(id).toBe(fixture.original.id); });
+    expect(fixture.values).not.toHaveBeenCalled();
+    expect(fixture.calls).toEqual(["select"]);
+    expect(fixture.rows()).toEqual([fixture.original]);
+  });
+  it("cleans an inserted row when setup verification fails before dependent fixtures start", async () => {
+    const fixture = runningFixture(false, true), work = vi.fn();
+    await expect(withIndependentRunningFixture(fixture.database, work)).rejects.toMatchObject({ code: "ERR_ASSERTION" });
+    expect(work).not.toHaveBeenCalled();
+    expect(fixture.calls).toEqual(["select", "insert", "select", "delete"]);
+    expect(fixture.rows()).toEqual([]);
+  });
+  it("cleans an inserted row after a dependent fixture fails", async () => {
+    const fixture = runningFixture(), failure = new Error("fixture failed");
+    await expect(withIndependentRunningFixture(fixture.database, async () => { throw failure; })).rejects.toBe(failure);
+    expect(fixture.calls).toEqual(["select", "insert", "select", "delete"]);
+  });
   const catalog: OwnershipCatalog = {
     value: "whole-catalog", functions: "function-body", indexes: "index-body",
     triggers: "trigger-body", constraints: "constraint-body", policies: "policy-body",
