@@ -398,7 +398,11 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     const receiptStartRevision = (await snapshot(receiptOwner)).revision;
     await asUser(receiptOwner, (tx) => tx`SELECT public.start_swim_rehab_session(${receiptSwim.workouts[0]!.id}::uuid,
       ${receiptProtocol}::uuid,${receiptStartRevision},${json(receiptPrescription)}::text::jsonb,${randomUUID()}::uuid)`);
-    await asUser(receiptOwner, (tx) => tx`DELETE FROM public.swim_plans WHERE id=${receiptSwim.plan.id}::uuid`);
+    await denied(() => asUser(receiptOwner, (tx) => tx`DELETE FROM public.swim_plans WHERE id=${receiptSwim.plan.id}::uuid`), "42501");
+    // Synthetic purge by the fixture controller, not an application-user delete path.
+    const purgedPlans = await database`DELETE FROM public.swim_plans
+      WHERE id=${receiptSwim.plan.id}::uuid AND user_id=${receiptOwner}::uuid RETURNING id`;
+    assert.deepEqual(Array.from(purgedPlans), [{ id: receiptSwim.plan.id }]);
     await asUser(receiptOwner, (tx) => tx`DELETE FROM public.sessions WHERE user_id=${receiptOwner}::uuid`);
     await asUser(receiptOwner, (tx) => tx`DELETE FROM public.rehab_protocols WHERE id=${receiptProtocol}::uuid`);
     await database`DELETE FROM public.engine_override_events WHERE user_id=${receiptOwner}::uuid
@@ -407,9 +411,17 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     await database`DELETE FROM public.program_rehab_bindings WHERE user_id=ANY(${users.filter((id) => id !== receiptOwner)}::uuid[])`;
     await database`DELETE FROM auth.users WHERE id=ANY(${users.filter((id) => id !== receiptOwner)}::uuid[])`;
     assert.equal((await database`SELECT count(*)::int AS n FROM public.training_blocks WHERE program_kind IS NOT NULL`)[0]!.n, 0);
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.program_instances`)[0]!.n, 0);
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.planned_sessions`)[0]!.n, 0);
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.swim_plans`)[0]!.n, 0);
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.swim_workouts`)[0]!.n, 0);
     assert.equal((await database`SELECT count(*)::int AS n FROM public.swim_plan_rehab_bindings`)[0]!.n, 0);
     assert.equal((await database`SELECT count(*)::int AS n FROM public.sessions`)[0]!.n, 0);
     assert.equal((await database`SELECT count(*)::int AS n FROM public.engine_override_events`)[0]!.n, 2);
+    assert.deepEqual(Array.from(await database`SELECT context->>'kind' AS kind,count(*)::int AS n
+      FROM public.engine_override_events GROUP BY context->>'kind' ORDER BY kind`), [
+      { kind: "swim-rehab-request-v1", n: 1 }, { kind: "swim-rehab-start-v1", n: 1 },
+    ]);
     await denied(revert, "P0001");
     stages.push("ownership-start-receipts-alone-refuse-unused-down");
     operationsCompleted = true;

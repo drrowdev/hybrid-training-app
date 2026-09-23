@@ -16,6 +16,14 @@ const down = readFileSync(new URL("../../rollbacks/0158_independent_program_owne
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("DC-R5 independent ownership storage boundary", () => {
+  it("keeps authenticated swim-plan hard deletion forbidden while scoping synthetic purge to its owner", () => {
+    const historical = readFileSync(new URL("../../drizzle/0146_standalone_pool_swimming.sql", import.meta.url), "utf8");
+    expect(historical).toContain("GRANT SELECT ON public.swim_plans, public.swim_workouts TO authenticated;");
+    const fixture = readFileSync(new URL("../../integration-tests/independent-programs-rehearsal.ts", import.meta.url), "utf8");
+    expect(fixture).toContain('await denied(() => asUser(receiptOwner, (tx) => tx`DELETE FROM public.swim_plans WHERE id=${receiptSwim.plan.id}::uuid`), "42501")');
+    expect(fixture).toContain("WHERE id=${receiptSwim.plan.id}::uuid AND user_id=${receiptOwner}::uuid RETURNING id");
+    expect(fixture).toContain("assert.deepEqual(Array.from(purgedPlans), [{ id: receiptSwim.plan.id }])");
+  });
   it("probes each rehab owned FK without colliding with the existing foreign attachment", () => {
     const owned = { planId: "own-plan", protocolId: "own-protocol" };
     const foreign = { planId: "foreign-plan", protocolId: "foreign-protocol" };
