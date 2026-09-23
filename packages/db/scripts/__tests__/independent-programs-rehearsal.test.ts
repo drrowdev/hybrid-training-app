@@ -6,7 +6,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertOwnershipCatalog, assertOwnershipRefusal, IndependentProgramsAssertion, rehearseIndependentPrograms,
-  independentRunningSeed, withIndependentRunningFixture, type OwnershipCatalog,
+  independentRunningSeed, independentRehabOwnershipProbes, withIndependentRunningFixture, type OwnershipCatalog,
 } from "../../integration-tests/independent-programs-rehearsal";
 import { SEED_MOVEMENTS } from "../../seeds/movements";
 
@@ -16,6 +16,19 @@ const down = readFileSync(new URL("../../rollbacks/0158_independent_program_owne
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("DC-R5 independent ownership storage boundary", () => {
+  it("probes each rehab owned FK without colliding with the existing foreign attachment", () => {
+    const owned = { planId: "own-plan", protocolId: "own-protocol" };
+    const foreign = { planId: "foreign-plan", protocolId: "foreign-protocol" };
+    const probes = independentRehabOwnershipProbes(owned, foreign);
+    expect(probes).toEqual([
+      { planId: foreign.planId, protocolId: owned.protocolId },
+      { planId: owned.planId, protocolId: foreign.protocolId },
+    ]);
+    expect(new Set([foreign, ...probes].map((binding) => `${binding.planId}:${binding.protocolId}`)).size).toBe(3);
+    for (const probe of probes) {
+      expect(Number(probe.planId === owned.planId) + Number(probe.protocolId === owned.protocolId)).toBe(1);
+    }
+  });
   it("uses the canonical running seed rather than assuming schema migrations populated the catalog", () => {
     const seed = independentRunningSeed();
     expect(seed).toBe(SEED_MOVEMENTS.find((movement) => movement.slug === "run-easy-z2"));

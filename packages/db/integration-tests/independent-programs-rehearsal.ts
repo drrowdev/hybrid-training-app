@@ -87,6 +87,15 @@ export async function withIndependentRunningFixture(database: postgres.Sql, work
   }
 }
 
+export function independentRehabOwnershipProbes(
+  owned: { planId: string; protocolId: string }, foreign: { planId: string; protocolId: string },
+) {
+  return [
+    { planId: foreign.planId, protocolId: owned.protocolId },
+    { planId: owned.planId, protocolId: foreign.protocolId },
+  ];
+}
+
 /** Only the existing loopback GitHub fixture may execute this storage contract. */
 export async function rehearseIndependentPrograms(database: postgres.Sql, stage: (name: string) => void) {
   assert.equal(process.env.GITHUB_ACTIONS, "true");
@@ -313,8 +322,20 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     await attach(a, [protocolId], attachmentRevision, attachmentRequest);
     await attach(a, [protocolId], attachmentRevision, attachmentRequest);
     assert.equal((await asUser(b, (tx) => tx`SELECT * FROM public.swim_plan_rehab_bindings`)).length, 0);
-    await denied(() => asUser(b, (tx) => tx`INSERT INTO public.swim_plan_rehab_bindings(plan_id,local_protocol_id,rehab_protocol_id,user_id)
-      VALUES(${swim.plan.id}::uuid,${protocolId},${protocolId}::uuid,${b}::uuid)`), "23503");
+    const otherSwim = await commit<Swim>(b, "swim-create", swimArgs), otherProtocolId = randomUUID();
+    await asUser(b, (tx) => tx`INSERT INTO public.rehab_protocols(id,user_id,name,definition)
+      VALUES(${otherProtocolId}::uuid,${b}::uuid,'Other protocol',
+        ${json({ items: [{ movementId: lift.id, movementName: "Fixture exercise", sets: 1, reps: 8 }], links: [] })}::text::jsonb)`);
+    const originalBindings = await asUser(a, (tx) => tx`SELECT to_jsonb(r) AS row FROM public.swim_plan_rehab_bindings r`);
+    for (const probe of independentRehabOwnershipProbes(
+      { planId: otherSwim.plan.id, protocolId: otherProtocolId }, { planId: swim.plan.id, protocolId },
+    )) {
+      await denied(() => asUser(b, (tx) => tx`INSERT INTO public.swim_plan_rehab_bindings(plan_id,local_protocol_id,rehab_protocol_id,user_id)
+        VALUES(${probe.planId}::uuid,${randomUUID()},${probe.protocolId}::uuid,${b}::uuid)`), "23503");
+    }
+    assert.equal((await asUser(b, (tx) => tx`SELECT * FROM public.swim_plan_rehab_bindings`)).length, 0);
+    assert.deepEqual(Array.from(await asUser(a, (tx) => tx`SELECT to_jsonb(r) AS row FROM public.swim_plan_rehab_bindings r`)),
+      Array.from(originalBindings));
     await denied(() => asUser(a, (tx) => tx`DELETE FROM public.rehab_protocols WHERE id=${protocolId}::uuid`), "23503");
     const workout = swim.workouts[0]!;
     const beforeSwim = await database`SELECT to_jsonb(w) AS row FROM public.swim_workouts w WHERE id=${workout.id}::uuid`;
