@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { authoredProgramDates, resolveTargetLoadKg } from "@hta/domain";
 import { tacticalBarbellEngine } from "@hta/tacticalbarbell";
 import { greenProtocolEngine, getGreenPhase } from "@hta/green";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { runInNewContext } from "node:vm";
+import { ScriptTarget, transpileModule } from "typescript";
+import type { Prescription } from "@hta/db";
+import { groupPrescriptionByMovement } from "../../sessions/movement-grouping";
 import { authoredProgramInput, nativeProgramDefinition, nativeTemplateInput } from "../../../../e2e/fixtures/modular-programs";
 
 const liftId = "00000000-0000-4000-8000-000000000001", runId = "00000000-0000-4000-8000-000000000002";
@@ -75,5 +81,32 @@ describe("DC-K4 native ownership preparation uses canonical prescription and cal
     expect(result.recommendations).toEqual(expect.arrayContaining([expect.objectContaining({
       kind: "next-block", data: { programId: "green-protocol", nextPhaseId: "velocity", nextPhaseName: "Velocity" },
     })]));
+  });
+
+  it("selects M12's Bench group by identity in Green's real Squat-first setup and retains the 65 kg oracle", () => {
+    const ctx = { oneRepMaxes: { bench: 110, squat: 100, deadlift: 150, press: 60 }, roundingKg: 2.5 };
+    const keys = ["bench", "squat", "deadlift", "press"];
+    const input = nativeTemplateInput({
+      engine: greenProtocolEngine, ctx, startedOn: "2026-09-21", weekdays: [0, 2, 4], kind: "hybrid",
+      resolveMovement: (key) => ({
+        movementId: `00000000-0000-4000-8000-${String(keys.indexOf(key) + 1).padStart(12, "0")}`,
+        slug: key, displayName: key,
+      }),
+      values: { phaseId: "hybrid", blocks: 1, useTrainingMax: true, tmPercent: 0.85 },
+    });
+    const source = readFileSync(resolve(__dirname, "../../../../e2e/program-builder-mobile.spec.ts"), "utf8");
+    const helper = source.slice(source.indexOf("const firstBench ="), source.indexOf("const selectBench ="));
+    const firstBench = runInNewContext(transpileModule(`${helper}\nfirstBench;`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, { expect, groupPrescriptionByMovement, bench: { movementId: liftId }, original: [] }) as
+      (blockId: string, rows: { block_id: string; prescription: Prescription }[]) =>
+        { index: number; slot: number; groupKey: string; item: Prescription["items"][number]; row: { prescription: Prescription } };
+    const target = firstBench("hybrid", input.p_planned_sessions.map((row) => ({ ...row, block_id: "hybrid" })));
+    expect(target.row.prescription.items[0]?.movementId).not.toBe(liftId);
+    expect(target.groupKey).toBe(liftId);
+    expect(target.index).toBeGreaterThan(target.slot);
+    expect(target.item).toMatchObject({ movementId: liftId, kind: "main", percentTm: 70,
+      meta: { programLoadBasis: { kind: "one-rm", percent: 85, roundingKg: 2.5 } } });
+    expect(resolveTargetLoadKg(target.item, { oneRmKg: 110, tmKg: 106.7, roundKg: (kg) => Math.round(kg / 2.5) * 2.5 })).toBe(65);
   });
 });

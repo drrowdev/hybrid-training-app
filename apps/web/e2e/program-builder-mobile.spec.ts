@@ -192,8 +192,11 @@ function observeNativeUi(
           const control = visible(document.querySelector('[data-testid="end-block-confirm"]')) ? "dialog" :
             visible(document.querySelector('[data-testid="program-actions-menu"]')) ? "menu" :
               visible(document.querySelector('[data-testid="program-actions-more"]')) ? "more" : "absent";
+          const errorPage = !!document.querySelector("#__next_error__") ||
+            [...document.querySelectorAll("h1,h2")].some((heading) =>
+              visible(heading) && /^Application error:/i.test(heading.textContent?.trim() ?? ""));
           const pageState = navigationStatus === 404 ? "not-found" :
-            navigationStatus >= 500 || document.title.startsWith("Application error") ? "error" :
+            navigationStatus >= 500 || document.title.startsWith("Application error") || errorPage ? "error" :
               location.pathname.startsWith("/login") || location.pathname.startsWith("/auth") ? "auth" :
                 location.pathname === "/app/plan" ? "plan" : "other";
           return { case: "m8", page: pageState, control, request: "unavailable", record: "unavailable" };
@@ -328,6 +331,11 @@ async function createRehabInLibrary(page: Page, selected: Movement, name: string
   await page.getByTestId("rehab-protocol-save").click();
   await observation?.capture();
   await expect(page.getByTestId("rehab-protocol-new")).toBeVisible();
+  if (observation) {
+    const annotations = test.info().annotations;
+    const index = annotations.findIndex((annotation) => annotation.type === "native-ui-failure");
+    if (index >= 0) annotations.splice(index, 1);
+  }
   } catch (error) { await observation?.recordFailure(); throw error; }
   finally { observation?.dispose(); }
 }
@@ -1052,15 +1060,19 @@ test.describe("Modular program builder", () => {
       const original = await planned(actor);
       const firstBench = (blockId: string, rows = original) => {
         const row = rows.find((candidate) => candidate.block_id === blockId &&
-          candidate.prescription.items[0]?.movementId === bench.movementId &&
           candidate.prescription.items.some((item) => item.movementId === bench.movementId && item.kind === "main"));
         expect(row).toBeDefined();
         const index = row!.prescription.items.findIndex((item) => item.movementId === bench.movementId && item.kind === "main");
-        const group = groupPrescriptionByMovement(row!.prescription)[0]!;
+        const group = groupPrescriptionByMovement(row!.prescription).find((entry) => entry.itemIndices.includes(index))!;
         expect(group.movementId).toBe(bench.movementId);
         const slot = group.itemIndices.indexOf(index);
         expect(slot).toBeGreaterThanOrEqual(0);
-        return { row: row!, index, slot, item: row!.prescription.items[index]! };
+        return { row: row!, index, slot, groupKey: group.groupKey ?? group.movementId, item: row!.prescription.items[index]! };
+      };
+      const selectBench = async (target: ReturnType<typeof firstBench>) => {
+        await page.getByTestId("movement-navigator-open").click();
+        await page.getByTestId(`movement-navigator-item-${target.groupKey}`).click();
+        await page.getByTestId(`movement-dot-${target.slot}`).click();
       };
       const strengthTarget = firstBench(strength.block_id);
       expect(strengthTarget.item.meta?.programLoadBasis).toMatchObject({ kind: "one-rm", percent: 90 });
@@ -1081,7 +1093,7 @@ test.describe("Modular program builder", () => {
         .eq("user_id", freshUser.userId).order("id");
       expect(afterMeasurement.error).toBeNull(); expect(afterMeasurement.data).toEqual(instances.data);
       stage("m12-03"); const strengthSession = await start(page, strengthTarget.row.id);
-      await page.getByTestId(`movement-dot-${strengthTarget.slot}`).click();
+      await selectBench(strengthTarget);
       // 110 kg 1RM -> 90% rounded to 100 kg -> the fixture's 75% set is 75 kg.
       expect(strengthTarget.item.percentTm).toBe(75);
       await expect(page.getByLabel("Weight (kg)", { exact: true })).toHaveValue("75");
@@ -1125,7 +1137,8 @@ test.describe("Modular program builder", () => {
       expect(Number(sharedMax.data!.one_rm_kg)).toBe(110); expect(Number(sharedMax.data!.tm_percent)).toBe(97);
       const loads: number[] = [], sessions: string[] = [];
       stage("m12-07");
-      for (const [position, { row, index, slot, item }] of [strengthTarget, hybridTarget].entries()) {
+      for (const [position, target] of [strengthTarget, hybridTarget].entries()) {
+        const { row, index, item } = target;
         // Hybrid: 110 * .85 -> 92.5 kg working max; 70% -> 65 kg on 2.5 kg plates.
         expect(item.percentTm).toBe(position === 0 ? 75 : 70);
         const expected = position === 0 ? 75 : 65;
@@ -1133,7 +1146,7 @@ test.describe("Modular program builder", () => {
         const sessionId = position === 0 ? strengthSession : await start(page, row.id);
         if (position === 0) { await page.goto(`/app/sessions/${sessionId}`); await page.reload(); }
         sessions.push(sessionId);
-        await page.getByTestId(`movement-dot-${slot}`).click();
+        await selectBench(target);
         await expect(page.getByLabel("Weight (kg)", { exact: true })).toHaveValue(String(expected));
         await page.getByTestId("movement-focus-log-button").click();
         await expect.poll(async () => (await loggedSets(actor, sessionId)).length).toBe(1);
@@ -1173,15 +1186,15 @@ test.describe("Modular program builder", () => {
       const runRow = (await planned(actor)).find((row) => row.block_id === graphs[1]!.block_id)!;
       const editRunning = `/app/program/build?edit=${graphs[1]!.block_id}&workout=${runRow.id}`;
       stage("m13-03"); await page.goto(editRunning);
-      await page.getByLabel("Apply changes to", { exact: true }).selectOption("future");
+      await page.getByRole("combobox", { name: "Apply changes to", exact: true }).selectOption("future");
       await page.getByRole("button", { name: "Add rehab", exact: true }).click();
-      await page.getByLabel("Rehab protocol", { exact: true }).selectOption(protocolId);
+      await page.getByRole("combobox", { name: "Rehab protocol", exact: true }).selectOption(protocolId);
       await page.getByRole("button", { name: "Review changes", exact: true }).click();
       await expect(page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true })).toHaveCount(0);
       await save(page, actor, "running");
       stage("m13-04"); await page.goto(editRunning);
       await page.reload();
-      await expect(page.getByLabel("Rehab protocol", { exact: true })).toHaveValue(protocolId);
+      await expect(page.getByRole("combobox", { name: "Rehab protocol", exact: true })).toHaveValue(protocolId);
       await expect(page.getByRole("button", { name: "Add exercise", exact: true })).toHaveCount(0);
       const original = await planned(actor);
       const bindings = await actor.from("program_rehab_bindings").select("program_instance_id,rehab_protocol_id")

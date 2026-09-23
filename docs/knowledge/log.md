@@ -5073,3 +5073,46 @@ from the CRLF checkout, while the same unchanged HEAD blob contains it. The
 modular/strict-ledger selection passes independently. No source-normalization
 workaround or assertion weakening is included; exact Linux core remains the
 full-suite gate.
+
+## [2026-09-23] refine | Native movement identity and accessible controls
+
+Coordinator-consumed native run 35907013451 at `de670b0f` passed 14 of 18
+browser cases. All pre-browser stages, 36 RPCs, ownership restoration,
+historical graph preservation and owner cleanup passed. M8, M11, M12 and M13
+remain unaccepted; no unchanged-head rerun was requested.
+
+M12 failed inside its Bench lookup, after the unavailable-edit check had
+passed. Its old fixture put Bench first, but real Green setup uses the default
+Squat-first cluster. The native driver now finds the main Bench item by
+movement identity, selects its actual logger group and then its within-group
+set. The independent 75/65 kg assertions, persisted load bases, shared
+measurement isolation and unavailable Green edit route remain mandatory.
+A regression executes the actual driver lookup against default Green output.
+
+M13's Running edit timeout was reproduced against a local production
+`next build`/`next start`, with synthetic loopback HTTP storage and a 375 px
+viewport. The exact `getByLabel` selector matches zero because the nested
+select options enter Playwright's label text; the exact accessible combobox
+selector matches one. Using that selector, as the existing future-edit case
+already does, completes the real preview/save actions and reaches Plan.
+The earlier `pending` diagnostic came from the successful library creation,
+not the Running edit. Successful library observations are now removed rather
+than attributed to later failures.
+
+M8 and M11 remain unresolved, not presumed fixed or accepted. Local production
+probes render More for an active null-kind legacy program with a past window,
+and remove the exact deleted row while preserving two other history rows.
+Native M8 already addresses the legacy block explicitly in its URL; native
+M11 already selects its row by block ID, not a repeated display name.
+No speculative application changes are included. M8's existing `page:error`
+classification now also recognizes the streamed Next error boundary and
+default application-error heading. An injected synthetic read failure
+confirmed that the production error boundary has an empty title and
+`__next_error__`, which the former title-only check missed.
+
+The coordinator approved this driver/diagnostic-only increment. Existing
+diagnostic fields/enums, case titles/order, all assertions, 30/300-second
+bounds and the 62 SQL + 75 synthetic UI inventories are unchanged. The local
+production probe used no real database or provider and was stopped and moved
+out of the repository. Native acceptance still belongs to the coordinator;
+local synthetic results do not establish that M8 or M11 works with real data.

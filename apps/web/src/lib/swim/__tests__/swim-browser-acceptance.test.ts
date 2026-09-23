@@ -342,6 +342,69 @@ describe("DC-SW8 modular acceptance report membership", () => {
     for (const event of ["request", "response", "requestfailed"]) expect(events.listenerCount(event)).toBe(0);
   });
 
+  it.each(["boundary", "heading", "hidden-heading", "normal"] as const)(
+    "classifies M8's streamed %s without exporting page text", async (mode) => {
+      const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
+      const helper = source.slice(source.indexOf("function observeNativeUi("), source.indexOf("function movement("));
+      const events = new EventEmitter(), annotations: string[] = [];
+      const heading = { textContent: "Application error: private server detail", getClientRects: () => mode === "hidden-heading" ? [] : [{}] };
+      const createObserver = runInNewContext(transpileModule(`${helper}\nobserveNativeUi;`, {
+        compilerOptions: { target: ScriptTarget.ES2022 },
+      }).outputText, {
+        unavailableNativeUi, nativeUiFailureSchema, URL,
+        document: {
+          title: "SxC",
+          querySelector: (selector: string) => selector === "#__next_error__" && mode === "boundary" ? {} : null,
+          querySelectorAll: () => mode === "normal" ? [] : [heading],
+        },
+        location: { pathname: "/app/plan" },
+        diagnosticAnnotation: (_type: string, description: string) => annotations.push(description),
+      }) as (page: unknown, caseId: string, target: string, read: () => Promise<string>) => {
+        capture(): Promise<void>; dispose(): void;
+      };
+      const observer = createObserver({
+        on: events.on.bind(events), off: events.off.bind(events),
+        evaluate: async (callback: (args: unknown) => unknown, args: unknown) => callback(args),
+      }, "m8", "", async () => "active");
+      await observer.capture();
+      expect(JSON.parse(annotations.at(-1)!)).toMatchObject({
+        case: "m8", page: ["boundary", "heading"].includes(mode) ? "error" : "plan", control: "absent",
+      });
+      expect(annotations.join("")).not.toContain("private");
+      observer.dispose();
+    },
+  );
+
+  it.each([false, true])("retains only failed library observations, not stale M13 success (failure=%s)", async (failed) => {
+    const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
+    const helper = source.slice(source.indexOf("async function createRehabInLibrary("), source.indexOf("async function draftPair("));
+    const annotations = [{ type: "modular-stage", description: "m13-01" }, { type: "native-ui-failure", description: "pending" }];
+    const observation = { capture: vi.fn(), recordFailure: vi.fn(), dispose: vi.fn() };
+    const failure = new Error("synthetic failure");
+    const createLibrary = runInNewContext(transpileModule(`${helper}\ncreateRehabInLibrary;`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      observeNativeUi: () => observation, test: { info: () => ({ annotations }) },
+      expect: () => ({ toBeVisible: async () => { if (failed) throw failure; } }),
+    }) as (page: unknown, movement: unknown, name: string, actor: unknown) => Promise<void>;
+    const locator = { click: async () => {}, fill: async () => {},
+      getByRole: () => locator, filter: () => locator };
+    const result = createLibrary({
+      goto: async () => {}, getByRole: () => locator, getByTestId: () => locator,
+      getByLabel: () => locator, getByText: () => locator,
+    }, { display_name: "Exercise" }, "Protocol", {});
+    if (failed) {
+      await expect(result).rejects.toBe(failure);
+      expect(annotations).toHaveLength(2);
+      expect(observation.recordFailure).toHaveBeenCalledOnce();
+    } else {
+      await result;
+      expect(annotations).toEqual([{ type: "modular-stage", description: "m13-01" }]);
+      expect(observation.recordFailure).not.toHaveBeenCalled();
+    }
+    expect(observation.dispose).toHaveBeenCalledOnce();
+  });
+
   it("rejects malformed, duplicate, oversized and unbounded diagnostic annotations", () => {
     const stage = { type: "modular-stage", description: "m3-01" };
     for (const value of [null, {}, "private-value", [stage, stage], Array(129).fill(stage),
