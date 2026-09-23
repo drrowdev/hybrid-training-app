@@ -92,7 +92,7 @@ describe("self-hosted application fonts", () => {
       })) },
     ]);
     const src = resolve(app, "..");
-    const remote = readdirSync(src, { recursive: true })
+    const remote = readdirSync(src, { recursive: true, encoding: "utf8" })
       .filter((file) => /\.(?:ts|tsx)$/.test(file) && !file.includes("__tests__") && !file.includes(".test."))
       .filter((file) => readFileSync(resolve(src, file), "utf8").includes("next/font/google"));
     expect(remote).toEqual([]);
