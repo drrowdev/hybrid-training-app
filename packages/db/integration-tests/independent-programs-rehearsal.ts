@@ -96,6 +96,23 @@ export function independentRehabOwnershipProbes(
   ];
 }
 
+export function independentProgramFixture(
+  kind: Kind, calendar: { today: string; weekday: number }, items: unknown[], programId = "authored",
+) {
+  const days = programId === "authored" ? [calendar.weekday] : [calendar.weekday, (calendar.weekday + 1) % 7];
+  return {
+    p_block: { program_kind: kind, program_id: programId, program_family: kind, started_on: calendar.today, weeks: 1,
+      days_per_week: days.length, day_index_overrides: { days }, cardio_source: "internal",
+      allows_two_a_days: false, accessory_volume: "medium", notes: `Synthetic ${kind}` },
+    p_program_instance: { program_id: programId, program_family: kind, display_name: `Synthetic ${kind}`,
+      customization_version: 1, instance: { version: 1, activity: kind }, setup_input: {} },
+    p_planned_sessions: days.map((day_index) => ({ week_index: 0, day_index, slot: "single", title: `Synthetic ${kind}`,
+      role: kind === "running" ? "cardio" : "strength", session_modality: kind === "running" ? "cardio" : "strength",
+      effective_stress_load: 1, prescription: { items } })),
+    p_tm_percents: [], p_rehab_bindings: [],
+  };
+}
+
 /** Only the existing loopback GitHub fixture may execute this storage contract. */
 export async function rehearseIndependentPrograms(database: postgres.Sql, stage: (name: string) => void) {
   assert.equal(process.env.GITHUB_ACTIONS, "true");
@@ -184,17 +201,8 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
   assert.ok(lift);
   const liftItem = { kind: "main", movementId: lift.id, sets: 1, reps: 5, targetWeightKg: 10 };
   const runItem = { kind: "cardio_z2", movementId: runningId, durationMin: 20, meta: { modality: "run" } };
-  const args = (kind: Kind, items: unknown[] = kind === "running" ? [runItem] : [liftItem]) => ({
-    p_block: { program_kind: kind, program_id: "authored", program_family: kind, started_on: calendar.today, weeks: 1,
-      days_per_week: 1, day_index_overrides: { days: [calendar.weekday] }, cardio_source: "internal",
-      allows_two_a_days: false, accessory_volume: "medium", notes: `Synthetic ${kind}` },
-    p_program_instance: { program_id: "authored", program_family: kind, display_name: `Synthetic ${kind}`,
-      customization_version: 1, instance: { version: 1, activity: kind }, setup_input: {} },
-    p_planned_sessions: [{ week_index: 0, day_index: calendar.weekday, slot: "single", title: `Synthetic ${kind}`,
-      role: kind === "running" ? "cardio" : "strength", session_modality: kind === "running" ? "cardio" : "strength",
-      effective_stress_load: 1, prescription: { items } }],
-    p_tm_percents: [], p_rehab_bindings: [],
-  });
+  const args = (kind: Kind, items: unknown[] = kind === "running" ? [runItem] : [liftItem], programId = "authored") =>
+    independentProgramFixture(kind, calendar, items, programId);
   const legacyArgs = args("strength");
   const legacy = await asUser(legacyUser, async (tx) => (await tx<Created[]>`SELECT * FROM public.deploy_program_instance_atomically(
     ${json(legacyArgs.p_block)}::text::jsonb,${json(legacyArgs.p_planned_sessions)}::text::jsonb,'[]'::jsonb,
@@ -490,8 +498,9 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
         planned_weeks: s.planned_weeks, status: s.status, block_id: s.block_id })),
     });
     const plannedSeason = await seasonRows();
-    const hybridSetup = { ...args("hybrid"), p_block: { ...args("hybrid").p_block, program_id: "hybrid" },
-      p_program_instance: { ...args("hybrid").p_program_instance, program_id: "hybrid",
+    const hybridBase = args("hybrid", [liftItem], "hybrid");
+    const hybridSetup = { ...hybridBase,
+      p_program_instance: { ...hybridBase.p_program_instance,
         setup_input: { values: { seasonBias: "strength" } } }, p_season_origin: await seasonOrigin() };
     await denied(() => commit(seasonOwner, "primary-create", hybridSetup, true), "22023");
     await denied(() => commit(b, "primary-create", hybridSetup, true), "40001");
@@ -534,10 +543,9 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     await denied(async () => commit(seasonOwner, "primary-create", { ...hybridSetup, p_season_origin: await seasonOrigin(lastSlot) },
       true, linkedRevision, seasonRequest, hybridSetup), "22023");
     await denied(() => commit(seasonOwner, "primary-create", { ...hybridSetup, p_replace_block_id: linked.block_id }, true), "40001");
-    const phaseBase = args("hybrid");
+    const phaseBase = args("hybrid", [liftItem], "green-protocol");
     const phase = { ...phaseBase, p_replace_block_id: linked.block_id, p_season_origin: await seasonOrigin(lastSlot),
-      p_block: { ...phaseBase.p_block, program_id: "green-protocol" },
-      p_program_instance: { ...phaseBase.p_program_instance, program_id: "green-protocol",
+      p_program_instance: { ...phaseBase.p_program_instance,
         setup_input: { values: { phaseId: "velocity" } } } };
     await denied(() => commit(seasonOwner, "primary-create", { ...phase,
       p_program_instance: { ...phase.p_program_instance, setup_input: { values: { templateId: "velocity" } } } }, true), "22023");

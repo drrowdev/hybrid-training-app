@@ -4952,3 +4952,25 @@ Eight unchanged source/runner-guard families failed on Windows CRLF, POSIX
 permissions/identity and symlink assumptions, with dependent synthetic waits.
 Their sources match accepted `6b64370`, whose full Linux core passed. No guard
 or assertion was relaxed; the new exact Linux core must establish acceptance.
+
+## [2026-09-23] refine | Roadmap fixture retains template training-day constraints
+
+The coordinator consumed storage `35878155690` at `b188dc71` once. Normal
+159 migration execution and the 49 historical stages passed; ownership
+qualification stopped at the roadmap overlap-refusal assertion with SQLSTATE
+23514 instead of 22023. Exact core `35878155811` passed, including the full
+Linux web suite and ordinary Playwright.
+
+The synthetic roadmap fixture changed an authored program's ID to a template
+ID but retained its one-day schedule. The existing 0156 CHECK permits one day
+only for authored programs, so both the Hybrid start and later phase fixture
+were invalid before overlap validation. The shared fixture constructor now
+issues two distinct workout days, matching block day overrides and instance
+identity, for template fixtures. Authored fixtures retain their original
+one-day shape. All existing refusal, rollback, replay and lifecycle assertions
+remain unchanged; no application, migration, constraint or error code changed.
+
+Deterministic coverage exercises all seven weekdays for authored, Hybrid and
+phase-template payloads (47 ownership source/fixture tests total). DB types
+and whole up/down SQL/PLpgSQL grammar checks pass. Actual ownership SQL and
+synthetic UI acceptance still require the next exact automatic storage gate.

@@ -6,7 +6,7 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertOwnershipCatalog, assertOwnershipRefusal, IndependentProgramsAssertion, rehearseIndependentPrograms,
-  independentRunningSeed, independentRehabOwnershipProbes, withIndependentRunningFixture, type OwnershipCatalog,
+  independentRunningSeed, independentRehabOwnershipProbes, independentProgramFixture, withIndependentRunningFixture, type OwnershipCatalog,
 } from "../../integration-tests/independent-programs-rehearsal";
 import { SEED_MOVEMENTS } from "../../seeds/movements";
 
@@ -16,6 +16,24 @@ const down = readFileSync(new URL("../../rollbacks/0158_independent_program_owne
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("DC-R5 independent ownership storage boundary", () => {
+  it.each(["authored", "hybrid", "green-protocol"].flatMap((programId) =>
+    Array.from({ length: 7 }, (_, weekday) => ({ programId, weekday })),
+  ))("builds an executable $programId season fixture on weekday $weekday", ({ programId, weekday }) => {
+    const items = [{ kind: "main", movementId: "00000000-0000-4000-8000-000000000001",
+      sets: 1, reps: 5, targetWeightKg: 10 }];
+    const fixture = independentProgramFixture("hybrid", { today: "2026-09-23", weekday }, items, programId);
+    const days = programId === "authored" ? [weekday] : [weekday, (weekday + 1) % 7];
+    expect(fixture.p_block).toMatchObject({ program_id: programId, days_per_week: days.length,
+      day_index_overrides: { days } });
+    expect(fixture.p_program_instance.program_id).toBe(programId);
+    expect(fixture.p_planned_sessions.map((session) => session.day_index)).toEqual(days);
+    expect(new Set(days).size).toBe(days.length);
+    expect(days.every((day) => day >= 0 && day <= 6)).toBe(true);
+    for (const session of fixture.p_planned_sessions) {
+      expect(session).toMatchObject({ week_index: 0, role: "strength", session_modality: "strength",
+        prescription: { items } });
+    }
+  });
   it("restores both season lock triggers exactly and binds roadmap identity to save and replay", () => {
     for (const table of ["training_seasons", "season_blocks"]) {
       expect(up).toContain(`CREATE TRIGGER ${table}_schedule_lock BEFORE INSERT OR UPDATE OR DELETE ON public.${table}`);
