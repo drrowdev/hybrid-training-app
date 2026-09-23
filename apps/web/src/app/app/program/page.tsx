@@ -12,7 +12,7 @@
  * today); the rest are shown as "coming soon".
  */
 import { redirect } from "next/navigation";
-import { Archivo, Oswald, Saira_Stencil_One, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import type { PlatformContext, ProgramEngine, PlannedSessionSpec } from "@hta/program-core";
 import {
   ACTIVATION_PHASE_KEYS,
@@ -57,10 +57,35 @@ import { getSwimNavigation, swimEntryHref } from "@/lib/swim/navigation";
 
 // Sage program-wizard type scale — scoped to this route via CSS variables on
 // the wrapper below (see ProgramPicker.module.css). Not loaded app-wide.
-const archivo = Archivo({ subsets: ["latin"], display: "swap", weight: ["400", "500", "600", "700"], variable: "--font-archivo" });
-const oswald = Oswald({ subsets: ["latin"], display: "swap", weight: ["400", "500", "600", "700"], variable: "--font-oswald" });
-const saira = Saira_Stencil_One({ subsets: ["latin"], display: "swap", weight: "400", variable: "--font-saira" });
-const jetbrains = JetBrains_Mono({ subsets: ["latin"], display: "swap", weight: ["500", "700"], variable: "--font-mono-wizard" });
+const archivo = localFont({
+  src: [
+    { path: "../../fonts/Archivo.woff2", weight: "400", style: "normal" },
+    { path: "../../fonts/Archivo.woff2", weight: "500", style: "normal" },
+    { path: "../../fonts/Archivo.woff2", weight: "600", style: "normal" },
+    { path: "../../fonts/Archivo.woff2", weight: "700", style: "normal" },
+  ],
+  display: "swap", variable: "--font-archivo",
+});
+const oswald = localFont({
+  src: [
+    { path: "../../fonts/Oswald.woff2", weight: "400", style: "normal" },
+    { path: "../../fonts/Oswald.woff2", weight: "500", style: "normal" },
+    { path: "../../fonts/Oswald.woff2", weight: "600", style: "normal" },
+    { path: "../../fonts/Oswald.woff2", weight: "700", style: "normal" },
+  ],
+  display: "swap", variable: "--font-oswald",
+});
+const saira = localFont({
+  src: "../../fonts/SairaStencilOne.woff2", weight: "400", style: "normal",
+  display: "swap", variable: "--font-saira",
+});
+const jetbrains = localFont({
+  src: [
+    { path: "../../fonts/JetBrainsMono.woff2", weight: "500", style: "normal" },
+    { path: "../../fonts/JetBrainsMono.woff2", weight: "700", style: "normal" },
+  ],
+  display: "swap", variable: "--font-mono-wizard",
+});
 
 // Programs whose deploy path is validated end-to-end. Others render disabled.
 const ENABLED_PROGRAM_IDS = new Set<string>([

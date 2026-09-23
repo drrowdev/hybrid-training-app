@@ -4405,3 +4405,36 @@ formerly failing sequence now producing `[1,3,2,4]`;124 focused session
 tests and web type-check pass. No schema, timeout, frozen-case count,
 assertion or runtime guard was relaxed. Native qualification remains
 outstanding until the integrated exact head executes successfully.
+
+## [2026-09-23] refine | Remove build-time font-provider dependency
+
+Exact bf0ee648 passed ordinary core35797732499 and storage35797732909,
+but manual35798410365 failed its prerequisite Webpack build with a
+next/font error; native execution was skipped. The coordinator retained
+no narrower font failure subtype. This is not a new M3/M4 runtime result.
+
+Installed Next16 source confirms that Google font declarations fetch both
+provider CSS and font bytes during compilation. Both production declaration
+sites now use next/font/local: the root's four families and the program
+wizard's existing Archivo plus three reused families. All five match the
+previously cached font versions; normal styles, exact exposed weights,
+variation axes/defaults and all eight CSS variables remain intact.
+
+Pinned google/fonts revision
+e44c4b011a820c2cbe2fd2cfa8052037d7edb571 supplies the original fonts and
+SIL OFL1.1 notices. None of the five copyright headers declares a Reserved
+Font Name. Lossless WOFF2 conversion retained complete character maps and
+glyph ordering, with no subsetting; every previously cached Unicode code
+point remains covered. Sources, source/asset hashes and conversion versions
+are recorded in the font manifest. Complete copyright/license notices ship
+publicly under /fonts/. The missing compression dependency was installed
+only in this session's artifacts and removed after conversion.
+
+Eight focused checks verify fonts, glyph coverage, axes, licenses, all
+production declaration sites and an isolated controlled provider failure:
+the actual Google loader fails with HTTPS blocked, while every actual local
+declaration loads without network. The complete supported Webpack build
+passed with the exact public CI placeholder URL/key, including type-check
+and37 static pages. Final emitted CSS contains only the five complete local
+font assets and all original variables. No Next version, environment,
+workflow, timeout, font design or qualification requirement changed.

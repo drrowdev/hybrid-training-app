@@ -1,37 +1,46 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, JetBrains_Mono, Oswald, Saira_Stencil_One } from "next/font/google";
+import localFont from "next/font/local";
 import { ServiceWorkerRegister } from "@/components/shell/ServiceWorkerRegister";
 import { SplashScreenController } from "@/components/shell/SplashScreenController";
 import { APPLE_SPLASH_SCREENS } from "@/lib/pwa/splash-screens";
 import "./globals.css";
 
-const geist = Geist({
-  subsets: ["latin"],
+const geist = localFont({
+  src: "./fonts/Geist.woff2",
+  weight: "100 900",
+  style: "normal",
   display: "swap",
   variable: "--font-sans",
 });
 
 // Mono face — JetBrains Mono app-wide (matches the program wizard's mono
 // labels) for every --cp-font-mono kicker, stat label and code-ish numeral.
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
+const jetbrainsMono = localFont({
+  src: "./fonts/JetBrainsMono.woff2",
+  weight: "100 800",
+  style: "normal",
   display: "swap",
   variable: "--font-mono",
 });
 
 // Display face — Oswald condensed, used uppercase for page/section headings
 // (the wizard's signature). Exposed app-wide as --cp-font-display.
-const oswald = Oswald({
-  subsets: ["latin"],
+const oswald = localFont({
+  src: [
+    { path: "./fonts/Oswald.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/Oswald.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/Oswald.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/Oswald.woff2", weight: "700", style: "normal" },
+  ],
   display: "swap",
-  weight: ["400", "500", "600", "700"],
   variable: "--font-display",
 });
 
 // Stencil face — Saira Stencil One, for big "instrument-panel" numerals and
 // program glyphs. Exposed app-wide as --cp-font-stencil.
-const sairaStencil = Saira_Stencil_One({
-  subsets: ["latin"],
+const sairaStencil = localFont({
+  src: "./fonts/SairaStencilOne.woff2",
+  style: "normal",
   display: "swap",
   weight: "400",
   variable: "--font-stencil",
