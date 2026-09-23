@@ -34,6 +34,7 @@ import {
   resolvePrescriptionSetWork,
   resolvePrescribedSnapshot,
   resolveTargetLoadKg,
+  resolveLoadReference,
   isRehabItem,
 } from "@hta/domain";
 import { SET_KIND_TO_LOG as SHARED_SET_KIND_TO_LOG } from "@/lib/sessions/set-kind";
@@ -487,21 +488,20 @@ export function MovementFocusView({
     activeItem != null &&
     targetWeightForItem(activeItem) == null &&
     targetWeight > 0;
+  const loadReference = resolveLoadReference(activeItem, { tmKg, oneRmKg });
   const warmupFloorWarning = useMemo(() => {
     if (activeItem?.kind !== "warmup") return null;
-    const rawKg =
-      activeItem.percentTm != null && tmKg
-        ? (tmKg * activeItem.percentTm) / 100
-        : activeItem.targetWeightKg != null && activeItem.targetWeightKg > 0
-          ? activeItem.targetWeightKg
-          : null;
+    const rawKg = resolveTargetLoadKg(activeItem, {
+      tmKg, oneRmKg, bodyweightKg,
+      isSystemLoad: isSystemLoad ?? activeItem.systemLoad === true,
+    });
     if (rawKg == null || barWeightKg == null || rawKg >= barWeightKg) {
       return null;
     }
     // `formatWeight` already appends the unit label — appending
     // `unitLabel` again rendered "Raised to the 20 kg kg bar minimum".
     return `Raised to the ${formatWeight(barWeightKg, units)} bar minimum`;
-  }, [activeItem, barWeightKg, tmKg, units]);
+  }, [activeItem, barWeightKg, bodyweightKg, isSystemLoad, oneRmKg, tmKg, units]);
   const targetWork = useMemo(
     () => resolvePrescriptionSetWork(activeItem),
     [activeItem],
@@ -513,7 +513,7 @@ export function MovementFocusView({
   // hides the weight column because no TM anchors a load).
   // Legacy items that don't carry these fields stay on the default
   // weight + reps grid.
-  const isBwItem = !!activeItem?.bw && tmKg == null;
+  const isBwItem = !!activeItem?.bw && loadReference.kg == null;
   const isBwHold =
     isBwItem && activeItem?.bw?.prescriptionType === "isometric_hold";
   const itemKind: "carry" | "isometric" | "bw_reps" | "default" = activeItem?.distanceM
@@ -1435,7 +1435,7 @@ export function MovementFocusView({
                 fontSize: 10,
               }}
             >
-              {activeItem.percentTm}% {tmKg != null && oneRmKg != null && Math.abs(tmKg - oneRmKg) < 0.001 ? "1RM" : "TM"}
+              {activeItem.percentTm}% {loadReference.basis}
             </span>
           )}
           {activeItem.percentTm != null && activeItem.targetRir && (
@@ -1662,7 +1662,7 @@ export function MovementFocusView({
         if (barWeightKg == null) return null;
         // Additional safety: if the movement has no training max set,
         // it isn't a tracked main lift and shouldn't claim a bar.
-        if (tmKg == null) return null;
+        if (loadReference.kg == null) return null;
         const inv = plateInventory ?? [];
         if (inv.length === 0) {
           return (

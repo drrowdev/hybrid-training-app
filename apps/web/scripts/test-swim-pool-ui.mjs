@@ -43,6 +43,7 @@ try {
         import { SessionLoggingStateProvider, useSessionLoggingState } from "./src/components/session/SessionLoggingState";
         import { compileAuthoredWorkout } from "@hta/domain";
         import { groupPrescriptionByMovement } from "./src/lib/sessions/movement-grouping";
+        import { getMovementSwapLoadContext, swapMovementInPrescription, SWAP_PROGRAM_LOAD_REQUIRED_WARNING } from "./src/lib/sessions/prescription-mutations";
         import { optimisticLogFromFormData, mergeOptimisticSets } from "./src/lib/sessions/optimistic-log";
         import { syntheticCourse } from "./src/lib/swim/__tests__/course-fixtures";
         import { planPrivateSwimCourse } from "./src/lib/swim/course-planning";
@@ -463,6 +464,61 @@ try {
           window.rehabLogs = [];
           root.render(<RehabLoggingFixture key={++key} />);
         };
+        const ownedMovementId = "00000000-0000-4000-8000-000000000091";
+        const replacementMovement = {
+          id: "00000000-0000-4000-8000-000000000092", slug: "floor-press", displayName: "Floor Press",
+        };
+        function OwnedLoadFixture({ basis }) {
+          const [sets, setSets] = useState([]);
+          const [refreshed, setRefreshed] = useState(false);
+          const [prescription, setPrescription] = useState({ items: [{
+            movementId: ownedMovementId, movementSlug: "bench-press", movementName: "Bench Press",
+            kind: "main", sets: 1, reps: 5, percentTm: 80, meta: { programLoadBasis: basis },
+          }] });
+          window.acknowledgeOwnedSwap = () => {
+            setPrescription(window.ownedSavedPrescription);
+            setRefreshed(true);
+          };
+          const unexpected = async () => { throw new Error("Unexpected owned-load mutation"); };
+          const save = async form => {
+            window.ownedLoadLogs.push(Object.fromEntries(form.entries()));
+            const id = crypto.randomUUID();
+            const log = optimisticLogFromFormData(form, String(form.get("clientLogId")));
+            setSets(previous => [...previous, ...mergeOptimisticSets([], [{ ...log, serverId: id }])]);
+            return { ok: true, set: { id } };
+          };
+          window.logFullStrength = save;
+          window.swapOwnedMovement = async form => {
+            window.ownedSwapCalls.push(Object.fromEntries(form.entries()));
+            const context = getMovementSwapLoadContext(prescription, ownedMovementId, replacementMovement.id, true);
+            const saved = swapMovementInPrescription(prescription, ownedMovementId, replacementMovement, undefined, undefined, {
+              warmupScheme: { setCount: 0, percentLadder: [], repLadder: [] },
+              replacementHasTrainingMax: context.replacementHasTrainingMax, preserveItemIndices: true,
+            });
+            window.ownedSavedPrescription = saved;
+            return { ok: true, newMovement: replacementMovement, prescription: saved,
+              loadContext: { oneRmKg: 100, tmKg: 90, isSystemLoad: false, bodyweightCapable: false },
+              warning: context.requiresManualLoad ? SWAP_PROGRAM_LOAD_REQUIRED_WARNING : undefined };
+          };
+          return <main className={styles.page} data-testid="owned-load-fixture" data-refreshed={refreshed}><SessionLoggingStateProvider
+            initialHasStrengthSets={sets.length > 0} initialLoggedStrengthClientIds={sets.map(set => set.client_log_id)}
+            initialUnloggedStrengthCount={1 - sets.length} initialUnloggedRequiredIndices={sets.length ? [] : [0]}>
+            <SessionWorkArea sessionId={window.ownedSessionId} plannedSessionId="owned-planned" isComplete={false}
+              performedAt="2026-09-14T12:00:00Z" sets={sets} prescription={prescription}
+              tmBySlug={{ "bench-press": 180, ...(refreshed ? { "floor-press": 90 } : {}) }}
+              oneRmBySlug={{ "bench-press": 200, ...(refreshed ? { "floor-press": 100 } : {}) }}
+              lastSetHints={{ [ownedMovementId]: { weightKg: 137.5, reps: 5 } }} priorBests={{}}
+              loggedItemIndices={sets.map(set => set.prescription_item_index)}
+              loggedSetIdByItemIndex={Object.fromEntries(sets.map(set => [set.prescription_item_index, set.id]))}
+              swapAction={unexpected} fillFromPlan={unexpected} updateStrengthSet={unexpected}
+              hapticsEnabled={false} timerSoundEnabled={false} restTimerEnabled={false} addStrengthSet={save} />
+          </SessionLoggingStateProvider></main>;
+        }
+        window.showOwnedLoad = basis => {
+          window.ownedSessionId = crypto.randomUUID();
+          window.ownedLoadLogs = []; window.ownedSwapCalls = [];
+          root.render(<OwnedLoadFixture key={++key} basis={basis} />);
+        };
         const setupSchedule = [
           { id: "one-off-run", source: "session", programId: null, date: "2026-09-14", title: "Run", state: "scheduled" },
           { id: "planned-rest", source: "primary", programId: "primary", date: "2026-09-17", title: "Rest", state: "rest" },
@@ -573,7 +629,7 @@ try {
                   return result;
                 }`
             : args.path === "@/lib/sessions/swap-actions"
-              ? "export const swapActiveMovement = () => { throw new Error('Unexpected swap'); };"
+              ? "export const swapActiveMovement = form => { if (!window.swapOwnedMovement) throw new Error('Unexpected swap'); return window.swapOwnedMovement(form); };"
             : args.path === "@/lib/movements/instructions"
               ? "export const getMovementInstructions = async () => null;"
             : args.path === "home-drawer"
@@ -1418,6 +1474,62 @@ try {
   assert.equal(await page.getByRole("alert").count(), 0);
   assert.deepEqual(failures, []);
   stages.push(stage);
+  await page.route("**/api/movements/swap-candidates**", route => route.fulfill({ json: { movements: [{
+    id: "00000000-0000-4000-8000-000000000092", slug: "floor-press", display_name: "Floor Press",
+    equipment: "barbell", recommended: true,
+  }] } }));
+  for (const width of [375, 1280]) {
+    stage = `program-owned-load-and-swap-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    for (const [basis, weight, label] of [
+      [{ version: 1, kind: "one-rm", percent: 100, roundingKg: 2.5 }, 160, "1RM"],
+      [{ version: 1, kind: "working-max", kg: 75 }, 60, "TM"],
+    ]) {
+      await page.evaluate(basis => window.showOwnedLoad(basis), basis);
+      await expect(page.getByRole("textbox", { name: "Weight (kg)", exact: true })).toHaveValue(String(weight));
+      await expect(page.getByTestId("movement-focus-card").getByText(`80% ${label}`, { exact: true })).toBeVisible();
+      await page.getByTestId("movement-focus-log-button").click();
+      await expect.poll(() => page.evaluate(() => window.ownedLoadLogs.length)).toBe(1);
+      const [log] = await page.evaluate(() => window.ownedLoadLogs);
+      assert.equal(Number(log.weightKg), weight);
+      assert.equal(Number(log.targetWeightKg), weight);
+      assert.equal(log.movementId, "00000000-0000-4000-8000-000000000091");
+    }
+    for (const manual of [false, true]) {
+      await page.evaluate(basis => window.showOwnedLoad(basis), manual
+        ? { version: 1, kind: "working-max", kg: 100 }
+        : { version: 1, kind: "one-rm", percent: 90, roundingKg: 2.5 });
+      await page.getByTestId("focus-strip-swap").click();
+      await page.getByRole("button", { name: /Floor Press/ }).click();
+      if (manual) {
+        await expect(page.getByTestId("swap-modal-warning")).toBeVisible();
+        await page.getByTestId("swap-modal-close").click();
+      }
+      await expect(page.getByRole("heading", { name: "Floor Press", exact: true })).toBeVisible();
+      const weight = page.getByRole("textbox", { name: "Weight (kg)", exact: true });
+      await expect(weight).toHaveValue(manual ? "0" : "72.5");
+      await expect(page.getByTestId("load-from-history")).toHaveCount(0);
+      if (manual) {
+        await expect(page.getByTestId("movement-focus-card").getByText(/80%/)).toHaveCount(0);
+      }
+      await weight.fill(manual ? "30" : "75");
+      await page.evaluate(() => window.acknowledgeOwnedSwap());
+      await expect(page.getByTestId("owned-load-fixture")).toHaveAttribute("data-refreshed", "true");
+      await expect(weight).toHaveValue(manual ? "30" : "75");
+      await page.getByTestId("movement-focus-log-button").click();
+      await expect.poll(() => page.evaluate(() => window.ownedLoadLogs.length)).toBe(1);
+      const [log] = await page.evaluate(() => window.ownedLoadLogs);
+      assert.equal(log.movementId, "00000000-0000-4000-8000-000000000092");
+      assert.equal(Number(log.weightKg), manual ? 30 : 75);
+      assert.equal(log.targetWeightKg, manual ? undefined : "72.5");
+      assert.equal(await page.evaluate(() => window.ownedSwapCalls.length), 1);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    }
+    stages.push(stage);
+  }
+  await page.evaluate(() => { delete window.swapOwnedMovement; });
+  await page.unroute("**/api/movements/swap-candidates**");
+  assert.deepEqual(failures, []);
   status = "passed";
 } catch (error) {
   code = error?.code === "ERR_ASSERTION" ? "assertion"

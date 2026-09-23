@@ -21,6 +21,8 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import type { Prescription } from "@hta/db";
+import { isSystemLoadMovementSlug, resolveProgramWorkingMax } from "@hta/domain";
+import { DEFAULT_ROUNDING_KG } from "@/lib/platform/rounding";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 import {
@@ -34,9 +36,11 @@ import {
 import {
   SWAP_NO_TRAINING_MAX_WARNING,
   SWAP_NO_WARMUP_ANCHOR_WARNING,
+  SWAP_PROGRAM_LOAD_REQUIRED_WARNING,
   SWAP_REHAB_LOAD_CARRIED_WARNING,
   SWAP_WARMUPS_NOT_REBUILT_WARNING,
   getSwapWarmupAnchor,
+  getMovementSwapLoadContext,
   swapCarriesAbsoluteLoad,
   swapMovementInPrescription,
 } from "./prescription-mutations";
@@ -58,6 +62,13 @@ export type SwapActiveResult = {
   error?: string;
   /** Returned so the client can repaint the active movement instantly. */
   newMovement?: { id: string; slug: string; displayName: string };
+  prescription?: Prescription;
+  loadContext?: {
+    oneRmKg: number | null;
+    tmKg: number | null;
+    isSystemLoad: boolean;
+    bodyweightCapable: boolean;
+  };
   /**
    * Non-blocking warning for a replacement with no load anchor. The swap is
    * still persisted, but stale absolute loads are removed and the user must
@@ -79,6 +90,8 @@ async function loadSwapPrescriptionContext(
        */
       warmupPreference: WarmupPreference;
       replacementHasTrainingMax: boolean;
+      oneRmKg: number | null;
+      tmKg: number | null;
     }
   | { error: string }
 > {
@@ -86,19 +99,30 @@ async function loadSwapPrescriptionContext(
     await Promise.all([
       supabase
         .from("training_maxes")
-        .select("one_rm_kg, bw_node_id")
+        .select("one_rm_kg, bw_node_id, tm_percent")
         .eq("user_id", userId)
         .eq("movement_id", movementId)
         .maybeSingle(),
       supabase
         .from("profiles")
-        .select("warmup_scheme")
+        .select("warmup_scheme, tm_percent_default")
         .eq("id", userId)
         .maybeSingle(),
     ]);
   if (tmError) return { error: tmError.message };
   if (profileError) return { error: profileError.message };
   const oneRm = Number((tm as { one_rm_kg?: number | string | null } | null)?.one_rm_kg);
+  const oneRmKg = Number.isFinite(oneRm) && oneRm > 0 ? oneRm : null;
+  let tmKg: number | null = null;
+  try {
+    if (oneRmKg != null) tmKg = resolveProgramWorkingMax({
+      version: 1, kind: "one-rm",
+      percent: Number(tm?.tm_percent ?? profile?.tm_percent_default ?? 90),
+      roundingKg: DEFAULT_ROUNDING_KG,
+    }, oneRmKg);
+  } catch {
+    return { error: "Could not read the replacement movement's load settings." };
+  }
   return {
     warmupPreference: resolveWarmupPreference(
       (profile as { warmup_scheme?: unknown } | null)?.warmup_scheme,
@@ -106,6 +130,8 @@ async function loadSwapPrescriptionContext(
     // Bodyweight-node rows do not provide a kg anchor for a loaded warm-up
     // ladder, so they intentionally take the explicit no-anchor fallback.
     replacementHasTrainingMax: Number.isFinite(oneRm) && oneRm > 0,
+    oneRmKg,
+    tmKg,
   };
 }
 
@@ -142,7 +168,7 @@ export async function swapActiveMovement(
         .maybeSingle(),
       supabase
         .from("movements")
-        .select("id, slug, display_name")
+        .select("id, slug, display_name, body_weight_loaded")
         .eq("id", parsed.data.newMovementId)
         .maybeSingle(),
     ]);
@@ -237,6 +263,17 @@ export async function swapActiveMovement(
   const sourcePrescription = planned?.prescription
     ? (planned.prescription as Prescription)
     : sessionRx;
+  let requiresManualLoad = false;
+  if (sourcePrescription) {
+    try {
+      const context = getMovementSwapLoadContext(sourcePrescription, parsed.data.originalMovementId,
+        parsed.data.newMovementId, swapContext.replacementHasTrainingMax, { rehab: parsed.data.rehab });
+      requiresManualLoad = context.requiresManualLoad;
+      rebuildContext.replacementHasTrainingMax = isRehabSwap || context.replacementHasTrainingMax;
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Could not read this workout's load settings." };
+    }
+  }
   const warmupAnchor = sourcePrescription
     ? getSwapWarmupAnchor(
         sourcePrescription,
@@ -244,7 +281,7 @@ export async function swapActiveMovement(
         { rehab: parsed.data.rehab },
       )
     : null;
-  const warnings: string[] = [];
+  const warnings: string[] = requiresManualLoad ? [SWAP_PROGRAM_LOAD_REQUIRED_WARNING] : [];
   if (sourcePrescription && warmupAnchor) {
     if (isRehabSwap) {
       // Rehab loads are hand-entered, not %TM-derived, so the swap carries
@@ -259,9 +296,9 @@ export async function swapActiveMovement(
         warnings.push(SWAP_REHAB_LOAD_CARRIED_WARNING);
       }
     } else if (warmupAnchor.hasMain || warmupAnchor.warmupSlotCount > 0) {
-      if (!swapContext.replacementHasTrainingMax) {
+      if (!requiresManualLoad && !rebuildContext.replacementHasTrainingMax) {
         warnings.push(SWAP_NO_TRAINING_MAX_WARNING);
-      } else if (warmupAnchor.topWorkingPercent == null) {
+      } else if (!requiresManualLoad && warmupAnchor.topWorkingPercent == null) {
         warnings.push(SWAP_NO_WARMUP_ANCHOR_WARNING);
       }
       // Mid-workout the rebuild only rewrites warm-up slots that already
@@ -289,6 +326,7 @@ export async function swapActiveMovement(
   // rather than report `ok: true` while the swap only partially landed (the
   // audit row is written AFTER, and only once, so a failure never claims a
   // swap that never happened).
+  let updatedPrescription: Prescription | undefined;
   if (planned?.prescription) {
     const updated = swapMovementInPrescription(
       planned.prescription as Prescription,
@@ -304,6 +342,7 @@ export async function swapActiveMovement(
       .eq("id", planned.id as string)
       .eq("user_id", user.id);
     if (updateError) return { error: updateError.message };
+    updatedPrescription = updated;
   } else if (sessionRx) {
     const updated = swapMovementInPrescription(
       sessionRx,
@@ -320,6 +359,7 @@ export async function swapActiveMovement(
       .eq("user_id", user.id)
       .is("deleted_at", null);
     if (updateError) return { error: updateError.message };
+    updatedPrescription = updated;
   } else {
     // Quick/freestyle workout: `session_movements` IS the persistence layer
     // for "which movements are in this session" (the page unions it with the
@@ -385,6 +425,12 @@ export async function swapActiveMovement(
   return {
     ok: true,
     newMovement,
+    loadContext: {
+      oneRmKg: swapContext.oneRmKg, tmKg: swapContext.tmKg,
+      isSystemLoad: isSystemLoadMovementSlug(newMovement.slug),
+      bodyweightCapable: next.body_weight_loaded === true,
+    },
     warning: loadWarning,
+    ...(updatedPrescription ? { prescription: updatedPrescription } : {}),
   };
 }

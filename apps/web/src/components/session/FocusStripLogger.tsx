@@ -18,7 +18,8 @@ import type { LastSetHint, LoggedSet } from "./SessionLogClient";
 import type { FocusLoggedSet } from "./MovementFocusView";
 import { MovementFocusView } from "./MovementFocusView";
 import { LastSetHintRow } from "./MovementCard";
-import { SwapMovementModal } from "./SwapMovementModal";
+import { SwapMovementModal, type ConfirmedMovementSwap } from "./SwapMovementModal";
+import { withConfirmedMovementSwap } from "@/lib/sessions/movement-grouping";
 import {
   MovementNavigatorSheet,
   buildNavigatorEntries,
@@ -103,7 +104,7 @@ export type FocusStripLoggerProps = {
   equipmentByMovementId?: ReadonlyMap<string, string | null>;
 };
 
-type SwapTarget = { id: string; slug: string; displayName: string };
+type SwapTarget = ConfirmedMovementSwap;
 
 export function reconcileConfirmedSwaps(
   previous: Readonly<Record<string, SwapTarget>>,
@@ -320,12 +321,7 @@ export function FocusStripLogger({
   const activeOriginalKey = movementGroupKey(activeOriginal);
   const activeSwap = swapped[activeOriginalKey];
   const activeGroup = activeSwap
-    ? {
-        ...activeOriginal,
-        movementId: activeSwap.id,
-        movementSlug: activeSwap.slug,
-        movementName: activeSwap.displayName,
-      }
+    ? withConfirmedMovementSwap(activeOriginal, activeSwap)
     : activeOriginal;
   const activeLoggedSets = focusLoggedSets.filter((set) =>
     groupOwnsLoggedSet(attribution, attributionInputForGroup(activeOriginal), {
@@ -462,10 +458,14 @@ export function FocusStripLogger({
         : role === "accessory"
           ? "Accessory"
           : "Movement";
-  const tmKg = activeGroup.movementSlug
+  const tmKg = activeSwap?.loadContext
+    ? activeSwap.loadContext.tmKg ?? undefined
+    : activeGroup.movementSlug
     ? tmBySlug[activeGroup.movementSlug]
     : undefined;
-  const oneRmKg = activeGroup.movementSlug
+  const oneRmKg = activeSwap?.loadContext
+    ? activeSwap.loadContext.oneRmKg ?? undefined
+    : activeGroup.movementSlug
     ? oneRmBySlug[activeGroup.movementSlug]
     : undefined;
   const targetSummary = summariseGroupForHeader(
@@ -689,7 +689,7 @@ export function FocusStripLogger({
            )}
            {role === "accessory" && (
              <LastSetHintRow
-               hint={lastSetHints[activeOriginal.movementId]}
+               hint={lastSetHints[activeGroup.movementId]}
                label={activeGroup.movementName}
              />
            )}
@@ -699,15 +699,15 @@ export function FocusStripLogger({
               tmKg={tmKg}
               bodyweightKg={bodyweightKg ?? undefined}
               isSystemLoad={
-                systemLoadMovementIds?.has(activeGroup.movementId) ?? false
+                activeSwap?.loadContext?.isSystemLoad ?? systemLoadMovementIds?.has(activeGroup.movementId) ?? false
               }
               oneRmKg={oneRmKg}
               loggedItemIndices={loggedItemIndices}
               skippedItemIndices={skippedItemIndices}
               loggedSetIdByItemIndex={loggedSetIdByItemIndex}
               loggedSets={activeLoggedSets}
-              priorBest={priorBests[activeOriginal.movementId]}
-              lastSetHint={lastSetHints[activeOriginal.movementId] ?? null}
+              priorBest={priorBests[activeGroup.movementId]}
+              lastSetHint={lastSetHints[activeGroup.movementId] ?? null}
               addStrengthSet={addStrengthSet}
               updateStrengthSet={updateStrengthSet}
               hapticsEnabled={hapticsEnabled}
@@ -720,12 +720,10 @@ export function FocusStripLogger({
               preferStandardLbPlates={preferStandardLbPlates}
               bwGateStateByFamily={bwGateStateByFamily}
               bodyweightCapable={
-                bodyweightMovementIds?.has(activeOriginal.movementId) ?? false
+                activeSwap?.loadContext?.bodyweightCapable ?? bodyweightMovementIds?.has(activeGroup.movementId) ?? false
               }
               equipmentTag={
-                equipmentByMovementId?.get(activeGroup.movementId) ??
-                equipmentByMovementId?.get(activeOriginal.movementId) ??
-                null
+                equipmentByMovementId?.get(activeGroup.movementId) ?? null
               }
               suppressRestForItemIndex={(itemIndex) =>
                 circuitSuppressesRest(activeOriginal, activeCircuit, itemIndex)

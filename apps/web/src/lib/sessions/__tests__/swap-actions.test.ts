@@ -219,6 +219,78 @@ describe("swapActiveMovement", () => {
     sessionUpdateError = null;
   });
 
+  it.each(["planned", "session"])("DC-R6 warns and returns the saved manual-load prescription for a %s swap", async (source) => {
+    const { swapActiveMovement } = await import("../swap-actions");
+    const prescription = { items: [
+      { movementId: ORIGINAL_ID, kind: "warmup", sets: 1, reps: 5, percentTm: 40,
+        meta: { programLoadBasis: { version: 1, kind: "working-max", kg: 100 } } },
+      { movementId: ORIGINAL_ID, kind: "main", sets: 1, reps: 5, percentTm: 80, targetWeightKg: 80,
+        meta: { programLoadBasis: { version: 1, kind: "working-max", kg: 100 } } },
+    ] };
+    if (source === "planned") plannedPrescription = prescription;
+    else sessionPrescription = prescription;
+    replacementOneRmKg = 200;
+    const form = new FormData();
+    form.set("sessionId", SESSION_ID);
+    form.set("originalMovementId", ORIGINAL_ID);
+    form.set("newMovementId", NEW_ID);
+    form.set("reason", "equipment");
+    const result = await swapActiveMovement(form);
+    expect(result.ok).toBe(true);
+    expect(result.warning).toBeTruthy();
+    expect(result.loadContext).toEqual({ oneRmKg: 200, tmKg: 180, isSystemLoad: false, bodyweightCapable: false });
+    expect(result.prescription).toEqual((source === "planned" ? plannedUpdates : sessionUpdates)[0]?.prescription);
+    expect(result.prescription?.items).toHaveLength(2);
+    for (const item of result.prescription?.items ?? []) {
+      expect(item.movementId).toBe(NEW_ID);
+      expect(item.percentTm).toBeUndefined();
+      expect(item.targetWeightKg).toBeUndefined();
+      expect(item.meta?.programLoadBasis).toBeUndefined();
+    }
+    expect(overrideInserts[0]?.context).toMatchObject({ loadWarning: result.warning });
+    expect(prescription.items[1]?.percentTm).toBe(80);
+  });
+
+  it("DC-R6 uses an already-issued replacement max without requiring an account max", async () => {
+    const { swapActiveMovement } = await import("../swap-actions");
+    plannedPrescription = { items: [
+      { movementId: ORIGINAL_ID, kind: "warmup", sets: 1, reps: 5, percentTm: 40,
+        meta: { programLoadBasis: { version: 1, kind: "working-max", kg: 100 } } },
+      { movementId: ORIGINAL_ID, kind: "main", sets: 1, reps: 5, percentTm: 80,
+        meta: { programLoadBasis: { version: 1, kind: "working-max", kg: 100 } } },
+      { movementId: NEW_ID, kind: "main", sets: 1, reps: 5, percentTm: 75,
+        meta: { programLoadBasis: { version: 1, kind: "working-max", kg: 80 } } },
+    ] };
+    const form = new FormData();
+    form.set("sessionId", SESSION_ID);
+    form.set("originalMovementId", ORIGINAL_ID);
+    form.set("newMovementId", NEW_ID);
+    form.set("reason", "equipment");
+    const result = await swapActiveMovement(form);
+    expect(result.ok).toBe(true);
+    expect(result.warning).toBeUndefined();
+    expect(result.loadContext).toEqual({ oneRmKg: null, tmKg: null, isSystemLoad: false, bodyweightCapable: false });
+    expect(result.prescription?.items).toHaveLength(3);
+    expect(result.prescription?.items[0]?.percentTm).toBeDefined();
+    expect(result.prescription?.items[0]?.meta?.programLoadBasis).toMatchObject({ kind: "working-max", kg: 80 });
+    expect(result.prescription?.items[2]).toEqual(plannedPrescription.items[2]);
+  });
+
+  it("DC-R6 refuses unreadable owned load settings before any swap or audit write", async () => {
+    const { swapActiveMovement } = await import("../swap-actions");
+    plannedPrescription = { items: [{ movementId: ORIGINAL_ID, kind: "main", sets: 1, reps: 5,
+      percentTm: 80, meta: { programLoadBasis: { version: 2, kind: "working-max", kg: 100 } } }] };
+    const form = new FormData();
+    form.set("sessionId", SESSION_ID);
+    form.set("originalMovementId", ORIGINAL_ID);
+    form.set("newMovementId", NEW_ID);
+    form.set("reason", "equipment");
+    expect((await swapActiveMovement(form)).error).toBeTruthy();
+    expect(plannedUpdates).toEqual([]);
+    expect(sessionUpdates).toEqual([]);
+    expect(overrideInserts).toEqual([]);
+  });
+
   it("writes an override-audit row with movement_swap context", async () => {
     const { swapActiveMovement } = await import("../swap-actions");
     const fd = new FormData();

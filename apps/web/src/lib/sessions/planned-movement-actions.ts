@@ -27,7 +27,9 @@ import {
 import {
   SWAP_NO_TRAINING_MAX_WARNING,
   SWAP_NO_WARMUP_ANCHOR_WARNING,
+  SWAP_PROGRAM_LOAD_REQUIRED_WARNING,
   getSwapWarmupAnchor,
+  getMovementSwapLoadContext,
   removeMovementFromPrescription,
   swapMovementInPrescription,
   addMovementToPrescription,
@@ -90,7 +92,7 @@ async function persistPlannedPrescription(
   if (!data) {
     return {
       error: requireUnstarted
-        ? "Movements can't be removed after a workout has started."
+        ? "This workout has started. Reload it before editing."
         : "Planned session not found.",
     };
   }
@@ -214,7 +216,14 @@ export async function swapPlannedMovement(formData: FormData): Promise<PlannedEd
   const oneRm = Number(
     (replacementTm as { one_rm_kg?: number | string | null } | null)?.one_rm_kg,
   );
-  const replacementHasTrainingMax = Number.isFinite(oneRm) && oneRm > 0;
+  let loadContext: ReturnType<typeof getMovementSwapLoadContext>;
+  try {
+    loadContext = getMovementSwapLoadContext(loaded.prescription, parsed.data.movementId,
+      parsed.data.newMovementId, Number.isFinite(oneRm) && oneRm > 0, { rehab: parsed.data.rehab });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Could not read this workout's load settings." };
+  }
+  const { replacementHasTrainingMax } = loadContext;
   const isRehabSwap = parsed.data.rehab === true;
   const warmupAnchor = getSwapWarmupAnchor(
     loaded.prescription,
@@ -222,7 +231,9 @@ export async function swapPlannedMovement(formData: FormData): Promise<PlannedEd
     { rehab: parsed.data.rehab },
   );
   const warning =
-    isRehabSwap || !warmupAnchor.hasMain
+    loadContext.requiresManualLoad
+      ? SWAP_PROGRAM_LOAD_REQUIRED_WARNING
+      : isRehabSwap || !warmupAnchor.hasMain
       ? undefined
       : !replacementHasTrainingMax
         ? SWAP_NO_TRAINING_MAX_WARNING
@@ -266,8 +277,9 @@ export async function swapPlannedMovement(formData: FormData): Promise<PlannedEd
     parsed.data.plannedSessionId,
     next,
     loaded.completedSessionId,
+    loaded.completedSessionId == null,
   );
-  return warning ? { ...persisted, warning } : persisted;
+  return persisted.ok && warning ? { ...persisted, warning } : persisted;
 }
 
 const addMovementSchema = z.object({

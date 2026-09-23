@@ -67,6 +67,20 @@ function num(v: number | null | undefined): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
 
+export function resolveLoadReference(
+  item: Pick<TargetLoadInput, "meta"> | null | undefined,
+  ctx: Pick<TargetLoadContext, "tmKg" | "oneRmKg"> & { basis?: "TM" | "1RM" } = {},
+): { kg: number | null; basis: "TM" | "1RM" } {
+  const program = readProgramLoadBasis(item?.meta?.programLoadBasis);
+  const value = program ? resolveProgramWorkingMax(program, ctx.oneRmKg) : num(ctx.tmKg);
+  const kg = value != null && value > 0 ? value : null;
+  const oneRmKg = num(ctx.oneRmKg);
+  const basis = program
+    ? program.kind === "one-rm" && program.percent === 100 ? "1RM" : "TM"
+    : ctx.basis ?? (kg != null && oneRmKg != null && Math.abs(kg - oneRmKg) < 0.001 ? "1RM" : "TM");
+  return { kg, basis };
+}
+
 /**
  * Resolve the prescribed load, or null when the prescription doesn't determine
  * one.
@@ -84,8 +98,7 @@ export function resolveTargetLoadKg(
   const round = ctx.roundKg ?? ((kg: number) => kg);
 
   const percentTm = num(item.percentTm);
-  const basis = readProgramLoadBasis(item.meta?.programLoadBasis);
-  const tmKg = basis ? num(resolveProgramWorkingMax(basis, ctx.oneRmKg)) : num(ctx.tmKg);
+  const tmKg = resolveLoadReference(item, ctx).kg;
   if (percentTm != null && tmKg != null && tmKg > 0) {
     const rawKg = (tmKg * percentTm) / 100;
     if (!ctx.isSystemLoad) return round(rawKg);

@@ -17,7 +17,7 @@
  * result for every unanchored movement.
  */
 import { resolvePrescriptionSetWork } from "./prescription-set-work";
-import { resolveTargetLoadKg } from "./target-load";
+import { resolveLoadReference, resolveTargetLoadKg } from "./target-load";
 
 /** The subset of a prescription item this resolver reads. */
 export type PrescribedSnapshotInput = {
@@ -148,7 +148,9 @@ export function resolvePrescribedSnapshot(
   if (percentTm != null) {
     prescribed.percentTm = percentTm;
     // Basis is only meaningful alongside a percentage.
-    if (ctx.basis) prescribed.basis = ctx.basis;
+    if (item.meta?.programLoadBasis != null || ctx.basis) {
+      prescribed.basis = resolveLoadReference(item, ctx).basis;
+    }
   }
   if (item.movementSlug) prescribed.movementSlug = item.movementSlug;
   const setKind = ctx.setKind ?? item.kind;

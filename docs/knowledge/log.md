@@ -4708,3 +4708,47 @@ new 375/1280 independent-program overview stages.
 No schema, rollback, RLS or grant changes are part of this increment. Remaining
 load-basis consumers, analytics/season ownership and complete new-model native
 acceptance are still in progress. This is not release or production approval.
+
+## [2026-09-23] implementation | Owned loading through movement swaps
+
+The release coordinator accepted `516a931b` with core `35846850154` and storage
+`35846850137`: 62 SQL and 63 synthetic UI stages passed. That evidence covers
+the independent-reader increment, not these later loading changes.
+
+DC-R6 loading now has one domain reference resolver for numeric targets and
+TM/1RM labels. Logged prescribed snapshots, logger summaries, plate eligibility
+and warm-up floor warnings use the issued program basis. A fixed working max
+does not require or borrow an account measurement. A different replacement
+movement cannot inherit that fixed max: an already-issued replacement basis
+is reused, or its load becomes manual with an explicit warning.
+
+Whole-movement and item swaps preserve the issued basis on rebuilt warm-ups,
+stable started-workout indices and chained movement attribution. Accepted swaps
+return the saved prescription and replacement measurement/capability context.
+The logger adopts the returned canonical group identity before another set can
+inherit the prior movement's weight; later refresh preserves an entered load.
+An unstarted planned swap refuses a concurrent start with an actionable error,
+leaving the picker open instead of reindexing a workout that has begun.
+
+Local qualification: web/account-flow types, 49 domain tests, 180 related web
+tests and all 65 synthetic UI stages passed. The preserved 63 stages are followed
+by `program-owned-load-and-swap-375` and `program-owned-load-and-swap-1280`.
+Those stages exercise different bases for the same movement, saved targets,
+the real swap modal, stale-refresh rendering, manual loading and retained user
+input after acknowledgement. Real-font screenshots were inspected at both
+widths. No schema, RLS, native runner or updater changes are included.
+
+## [2026-09-23] backlog | Concurrent edits to the same prescription
+
+Two stale edits can still overwrite the same prescription row in
+`swapActiveMovement`, `swapPrescriptionItem`, `swapPlannedMovement`,
+`removePlannedMovement` and `addPlannedMovement`. The first action can update
+either `sessions` or `planned_sessions`; the others update `planned_sessions`.
+These direct writes have no expected-prescription comparison. This is separate
+from the guarded schedule writers and the concurrent-start guard above.
+
+The release coordinator deferred a new compare-and-save RPC/receipt migration:
+the observed limitation predates independent programs, and no cross-program
+overwrite was demonstrated. Keep the approved migration boundary at 0158
+(normal 159); do not add 0159 or widen rollback/updater authority for this item.
+Reconsider if a concrete cross-program write sequence is demonstrated.

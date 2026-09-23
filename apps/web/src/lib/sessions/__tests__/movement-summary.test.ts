@@ -84,6 +84,14 @@ describe("bucketForGroup", () => {
 });
 
 describe("summariseGroupForHeader — not started", () => {
+  it("DC-R6 labels the issued program basis rather than a different account default", () => {
+    const oneRm = { movementId: "sq", kind: "main" as const, sets: 1, reps: 5, percentTm: 80,
+      meta: { programLoadBasis: { version: 1, kind: "one-rm", percent: 100, roundingKg: null } } };
+    const working = { ...oneRm, meta: { programLoadBasis: { version: 1, kind: "working-max", kg: 100 } } };
+    expect(summariseGroupForHeader(groupOf([oneRm]), [], 85, "TM")).toBe("1×5 @ 80% 1RM");
+    expect(summariseGroupForHeader(groupOf([working]), [], 100, "1RM")).toBe("1×5 @ 80% TM");
+  });
+
   it("main lift with varying %TM and uniform reps", () => {
     const g = groupOf([
       { movementId: "sq", kind: "main", sets: 1, reps: 5, percentTm: 65 },

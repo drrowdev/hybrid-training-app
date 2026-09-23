@@ -11,6 +11,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { MovementGroup } from "@/lib/sessions/movement-grouping";
+import type { ProgramLoadBasis } from "@hta/domain";
 import {
   COMMERCIAL_GYM_PRESET,
   HOME_GYM_PRESET,
@@ -49,18 +50,22 @@ function warmupGroup(movementSlug: string, percentTm: number): MovementGroup {
 function render(options: {
   movementSlug: string;
   percentTm: number;
-  tmKg: number;
+  tmKg?: number;
+  oneRmKg?: number;
+  programLoadBasis?: ProgramLoadBasis;
   barbellKg: number;
   trapBarKg: number | null;
   safetyBarKg?: number | null;
   plates: readonly number[];
 }) {
+  const group = warmupGroup(options.movementSlug, options.percentTm);
+  if (options.programLoadBasis) group.items[0]!.meta = { programLoadBasis: options.programLoadBasis };
   return renderToStaticMarkup(
     <MovementFocusView
       sessionId="session"
-      group={warmupGroup(options.movementSlug, options.percentTm)}
+      group={group}
       tmKg={options.tmKg}
-      oneRmKg={options.tmKg}
+      oneRmKg={options.oneRmKg ?? options.tmKg}
       loggedItemIndices={new Set()}
       skippedItemIndices={new Set()}
       loggedSetIdByItemIndex={{}}
@@ -80,6 +85,35 @@ function render(options: {
 }
 
 describe("MovementFocusView warm-up bar floor", () => {
+  it.each([
+    { basis: { version: 1, kind: "one-rm", percent: 100, roundingKg: null } as const, tmKg: 90, label: "1RM", weight: 50 },
+    { basis: { version: 1, kind: "one-rm", percent: 80, roundingKg: null } as const, tmKg: 100, label: "TM", weight: 40 },
+    { basis: { version: 1, kind: "working-max", kg: 100 } as const, tmKg: 100, label: "TM", weight: 50 },
+  ])("DC-R6 displays the issued $label basis instead of the account default", ({ basis, tmKg, label, weight }) => {
+    const html = render({ movementSlug: "barbell_back_squat", percentTm: 50, tmKg,
+      oneRmKg: 100, programLoadBasis: basis, barbellKg: 20, trapBarKg: null, plates: [1.25, 2.5, 5, 10] });
+    expect(html).toContain(`value="${weight}"`);
+    expect(html).toContain(`50% ${label}`);
+  });
+
+  it.each([
+    { kg: 40, accountTm: 100, warning: true },
+    { kg: 100, accountTm: 40, warning: false },
+  ])("DC-K4 uses the program's $kg kg max for its bar-floor warning", ({ kg, accountTm, warning }) => {
+    const html = render({ movementSlug: "barbell_back_squat", percentTm: 30, tmKg: accountTm,
+      programLoadBasis: { version: 1, kind: "working-max", kg },
+      barbellKg: 20, trapBarKg: null, plates: [1.25, 2.5, 5, 10] });
+    expect(html.includes('data-testid="warmup-load-floor-warning"')).toBe(warning);
+  });
+
+  it("DC-R6 keeps a valid issued working max usable without an account max", () => {
+    const html = render({ movementSlug: "barbell_back_squat", percentTm: 50,
+      programLoadBasis: { version: 1, kind: "working-max", kg: 110 },
+      barbellKg: 20, trapBarKg: null, plates: [1.25, 2.5, 5, 10] });
+    expect(html).toContain('value="55"');
+    expect(html).toContain("cp-plate-wrap");
+  });
+
   it("does not invent a trap bar the user does not own (home gym: trapBarKg null)", () => {
     // DC-K4: the engine may raise a warm-up to the empty bar, but it must not
     // claim a 25 kg minimum for a bar absent from the user's inventory — and

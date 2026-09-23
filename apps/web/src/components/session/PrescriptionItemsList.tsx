@@ -29,7 +29,7 @@
 
 import { useState, useEffect, useRef, useTransition } from "react";
 import type { Prescription, PrescriptionItem } from "@hta/db";
-import { isSwapped, originalMovementName } from "@/lib/sessions/prescription-mutations";
+import { applyPrescriptionSwap, isSwapped, originalMovementName } from "@/lib/sessions/prescription-mutations";
 import type { swapPrescriptionItem } from "@/lib/sessions/actions";
 
 type SwapAction = typeof swapPrescriptionItem;
@@ -84,6 +84,7 @@ export function PrescriptionItemsList({
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const [errorByIndex, setErrorByIndex] = useState<Record<number, string>>({});
   const [reasonByIndex, setReasonByIndex] = useState<Record<number, string>>({});
+  const [warning, setWarning] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   if (!prescription.items || prescription.items.length === 0) return null;
@@ -97,36 +98,18 @@ export function PrescriptionItemsList({
   const onPick = async (index: number, cand: Candidate) => {
     const prev = prescription;
     const reason = (reasonByIndex[index] ?? "").trim();
-    // Optimistic patch.
-    const optimistic: Prescription = {
-      items: prev.items.map((it, i) =>
-        i === index
-          ? {
-              ...it,
-              movementId: cand.id,
-              movementSlug: cand.slug,
-              movementName: cand.display_name,
-              meta: {
-                ...(it.meta ?? {}),
-                swappedFrom:
-                  (it.meta?.swappedFrom as { movementId: string; movementName: string } | undefined) ?? {
-                    movementId: it.movementId,
-                    movementName: it.movementName ?? it.movementSlug ?? "previous",
-                  },
-                swappedAt: new Date().toISOString(),
-              },
-            }
-          : it,
-      ),
-    };
+    let optimistic: Prescription;
+    try {
+      optimistic = applyPrescriptionSwap(prev, { itemIndex: index,
+        newMovement: { id: cand.id, slug: cand.slug, displayName: cand.display_name } });
+    } catch (error) {
+      setErrorByIndex((errors) => ({ ...errors, [index]: error instanceof Error ? error.message : "Could not swap this movement." }));
+      return;
+    }
+    setWarning(null);
     setPrescription(optimistic);
     setOpenIndex(null);
     setErrorByIndex((m) => {
-      const next = { ...m };
-      delete next[index];
-      return next;
-    });
-    setReasonByIndex((m) => {
       const next = { ...m };
       delete next[index];
       return next;
@@ -138,14 +121,21 @@ export function PrescriptionItemsList({
       fd.set("itemIndex", String(index));
       fd.set("newMovementId", cand.id);
       if (reason.length > 0) fd.set("reason", reason.slice(0, 280));
-      const result = await swapAction(fd);
-      if (result?.error) {
-        // Rollback.
+      try {
+        const result = await swapAction(fd);
+        if (result?.error || !result?.prescription) throw new Error(result?.error ?? "Swap failed.");
+        setPrescription(result.prescription);
+        if (result.warning) setWarning(`${cand.display_name}: ${result.warning}`);
+        setReasonByIndex((reasons) => {
+          const next = { ...reasons };
+          delete next[index];
+          return next;
+        });
+      } catch (error) {
         setPrescription(prev);
-        setErrorByIndex((m) => ({ ...m, [index]: result.error ?? "Swap failed." }));
-        return;
+        setErrorByIndex((errors) => ({ ...errors, [index]: error instanceof Error ? error.message : "Could not swap this movement." }));
+        setOpenIndex(index);
       }
-      if (result?.prescription) setPrescription(result.prescription);
     });
   };
 
@@ -227,6 +217,7 @@ export function PrescriptionItemsList({
           </div>
         )}
       </div>
+      {warning && <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--cp-warning)" }}>{warning}</p>}
       <PrescriptionItemsCarousel
         items={prescription.items}
         openIndex={openIndex}

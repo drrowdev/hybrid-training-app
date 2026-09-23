@@ -1,9 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { readProgramLoadBasis, resolveProgramWorkingMax, type ProgramLoadBasis } from "./program-load-basis";
-import { resolveTargetLoadKg } from "./target-load";
+import { resolveLoadReference, resolveTargetLoadKg } from "./target-load";
 import { resolvePrescribedSnapshot } from "./prescribed-snapshot";
 
 describe("DC-R6 program-owned loading basis", () => {
+  it("uses the issued basis for reference labels and saved snapshots despite conflicting account defaults", () => {
+    const oneRm = { percentTm: 80, meta: { programLoadBasis: {
+      version: 1, kind: "one-rm", percent: 100, roundingKg: null,
+    } } };
+    const working = { percentTm: 80, meta: { programLoadBasis: {
+      version: 1, kind: "working-max", kg: 100,
+    } } };
+    expect(resolveLoadReference(oneRm, { tmKg: 85, oneRmKg: 100 })).toEqual({ kg: 100, basis: "1RM" });
+    expect(resolveLoadReference(working, { tmKg: 100, oneRmKg: 100 })).toEqual({ kg: 100, basis: "TM" });
+    expect(resolveLoadReference(working)).toEqual({ kg: 100, basis: "TM" });
+    expect(resolvePrescribedSnapshot(oneRm, { oneRmKg: 100, basis: "TM" }).prescribed?.basis).toBe("1RM");
+    expect(resolvePrescribedSnapshot(working, { oneRmKg: 100, basis: "1RM" }).prescribed?.basis).toBe("TM");
+    expect(resolveLoadReference({}, { tmKg: 85, oneRmKg: 100 })).toEqual({ kg: 85, basis: "TM" });
+    expect(resolveLoadReference({}, { tmKg: 100, oneRmKg: 100 })).toEqual({ kg: 100, basis: "1RM" });
+    expect(resolvePrescribedSnapshot({ percentTm: 80 }, { tmKg: 100 }).prescribed?.basis).toBeUndefined();
+  });
+
   it("keeps two programs' working percentages independent for the same shared measurement", () => {
     const strength: ProgramLoadBasis = { version: 1, kind: "one-rm", percent: 90, roundingKg: 2.5 };
     const hybrid: ProgramLoadBasis = { version: 1, kind: "one-rm", percent: 85, roundingKg: 2.5 };

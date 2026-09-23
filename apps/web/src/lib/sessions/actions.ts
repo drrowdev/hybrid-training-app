@@ -45,7 +45,7 @@ import { DEFAULT_ROUNDING_KG } from "@/lib/platform/rounding";
 import { loggedSetKindForItemKind } from "./set-kind";
 import { recomputeAfterCompletedSessionMutation } from "./post-completion-recompute";
 import { resolveBarWeightKg } from "./bar-kind";
-import { applyPrescriptionSwap } from "./prescription-mutations";
+import { applyPrescriptionSwap, SWAP_PROGRAM_LOAD_REQUIRED_WARNING } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 import {
@@ -2357,7 +2357,7 @@ const swapItemSchema = z.object({
  */
 export async function swapPrescriptionItem(
   formData: FormData,
-): Promise<{ ok?: true; error?: string; prescription?: Prescription }> {
+): Promise<{ ok?: true; error?: string; prescription?: Prescription; warning?: string }> {
   const parsed = swapItemSchema.safeParse({
     plannedSessionId: formData.get("plannedSessionId"),
     itemIndex: formData.get("itemIndex"),
@@ -2413,6 +2413,8 @@ export async function swapPrescriptionItem(
   } catch (e) {
     return { error: (e as Error).message };
   }
+  const warning = originalItem?.percentTm != null && originalItem.meta?.programLoadBasis != null &&
+    nextPrescription.items[parsed.data.itemIndex]?.percentTm == null ? SWAP_PROGRAM_LOAD_REQUIRED_WARNING : undefined;
 
   const { error: uErr } = await supabase
     .from("planned_sessions")
@@ -2452,6 +2454,7 @@ export async function swapPrescriptionItem(
       weekIndex,
       dayIndex,
       weekday,
+      ...(warning ? { loadWarning: warning } : {}),
     },
   });
 
@@ -2466,7 +2469,7 @@ export async function swapPrescriptionItem(
     revalidatePath(`/app/sessions/${linked.completed_session_id}`);
   }
 
-  return { ok: true, prescription: nextPrescription };
+  return { ok: true, prescription: nextPrescription, ...(warning ? { warning } : {}) };
 }
 
 /* ─────────────────────────────────────────────────────────────────────

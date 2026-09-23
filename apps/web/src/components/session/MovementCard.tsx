@@ -25,10 +25,12 @@ import {
   type MovementGroup,
 } from "@/lib/sessions/movement-grouping";
 import { summariseGroupForHeader } from "@/lib/sessions/movement-summary";
+import { resolveLoadReference } from "@hta/domain";
 import { buildMovementRecap } from "@/lib/sessions/movement-recap";
 import { cleanPrescriptionNotes } from "@/lib/planner/clean-prescription-notes";
 import { MovementFocusView, type FocusLoggedSet } from "./MovementFocusView";
-import { SwapMovementModal } from "./SwapMovementModal";
+import { SwapMovementModal, type ConfirmedMovementSwap } from "./SwapMovementModal";
+import { withConfirmedMovementSwap } from "@/lib/sessions/movement-grouping";
 import { MovementHowToButton } from "./MovementHowToButton";
 import { DisclosureArrow } from "./DisclosureArrow";
 import { MetricHelp } from "@/components/ui/MetricHelp";
@@ -128,16 +130,16 @@ export function MovementCard({
   sessionId,
   group: groupProp,
   readOnly = false,
-  tmKg,
-  isSystemLoad,
+  tmKg: originalTmKg,
+  isSystemLoad: originalIsSystemLoad,
   bodyweightKg,
-  oneRmKg,
+  oneRmKg: originalOneRmKg,
   loggedItemIndices,
   skippedItemIndices,
   loggedSetIdByItemIndex,
   loggedSets,
-  priorBest,
-  lastSetHint,
+  priorBest: originalPriorBest,
+  lastSetHint: originalLastSetHint,
   addStrengthSet,
   fillFromPlan,
   showFillFromPlan,
@@ -151,8 +153,8 @@ export function MovementCard({
   preferStandardLbPlates,
   persistKeyPrefix,
   bwGateStateByFamily,
-  bodyweightCapable,
-  equipmentTag,
+  bodyweightCapable: originalBodyweightCapable,
+  equipmentTag: originalEquipmentTag,
   dragHandle,
 }: MovementCardProps) {
   const units = useUnits();
@@ -163,19 +165,26 @@ export function MovementCard({
   // persisted server-side, so we also refresh to pick up the new movement's
   // server-derived state (notably whether a weight is required).
   const [swappedMovement, setSwappedMovement] = useState<
-    { id: string; slug: string; displayName: string } | null
+    ConfirmedMovementSwap | null
   >(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- release the receipt when the refreshed group acknowledges it
+    setSwappedMovement((previous) => previous?.id === groupProp.movementId ? null : previous);
+  }, [groupProp.movementId]);
+  const pendingSwap = swappedMovement?.id !== groupProp.movementId ? swappedMovement : null;
+  const tmKg = pendingSwap ? pendingSwap.loadContext?.tmKg ?? undefined : originalTmKg;
+  const oneRmKg = pendingSwap ? pendingSwap.loadContext?.oneRmKg ?? undefined : originalOneRmKg;
+  const isSystemLoad = pendingSwap ? pendingSwap.loadContext?.isSystemLoad : originalIsSystemLoad;
+  const bodyweightCapable = pendingSwap ? pendingSwap.loadContext?.bodyweightCapable : originalBodyweightCapable;
+  const priorBest = pendingSwap ? undefined : originalPriorBest;
+  const lastSetHint = pendingSwap ? undefined : originalLastSetHint;
+  const equipmentTag = pendingSwap ? null : originalEquipmentTag;
   const group = useMemo<MovementGroup>(
     () =>
-      swappedMovement
-        ? {
-            ...groupProp,
-            movementId: swappedMovement.id,
-            movementName: swappedMovement.displayName,
-            movementSlug: swappedMovement.slug,
-          }
+      pendingSwap
+        ? withConfirmedMovementSwap(groupProp, pendingSwap)
         : groupProp,
-    [groupProp, swappedMovement],
+    [groupProp, pendingSwap],
   );
   const cardState = deriveCardState(group, loggedItemIndices);
   const complete = isMovementComplete(group, loggedItemIndices);
@@ -328,15 +337,17 @@ export function MovementCard({
 
   // One-line summary for the collapsed header chip. Hidden on narrow
   // viewports via the `cp-mc-summary` class (see globals.css).
+  const referenceItem = group.items.find((item) => item.percentTm != null);
+  const loadReference = resolveLoadReference(referenceItem, { tmKg, oneRmKg });
   const headerSummary = useMemo(
     () =>
       summariseGroupForHeader(
         group,
         loggedSets,
-        tmKg,
-        oneRmKg != null && tmKg != null && Math.abs(tmKg - oneRmKg) < 0.001 ? "1RM" : "TM",
+        loadReference.kg ?? undefined,
+        loadReference.basis,
       ),
-    [group, loggedSets, tmKg, oneRmKg],
+    [group, loggedSets, loadReference.kg, loadReference.basis],
   );
 
   // Per-movement "why" for accessory cards — the engine's own deterministic
@@ -435,7 +446,7 @@ export function MovementCard({
             />
           )}
         </span>
-        {tmKg != null && (
+        {referenceItem && loadReference.kg != null && (
           <span style={{ display: "inline-flex", alignItems: "center" }}>
             <span
               style={{
@@ -448,7 +459,7 @@ export function MovementCard({
                 border: "1px solid var(--cp-border)",
               }}
             >
-              {oneRmKg != null && Math.abs(tmKg - oneRmKg) < 0.001 ? "1RM" : "TM"} {formatWeight(tmKg, units)}
+              {loadReference.basis} {formatWeight(loadReference.kg, units)}
             </span>
           </span>
         )}

@@ -13,6 +13,7 @@
  */
 
 import type { PrescriptionItem } from "@hta/db";
+import { resolveLoadReference } from "@hta/domain";
 import type { MovementGroup } from "./movement-grouping";
 import type { FocusLoggedSet } from "@/components/session/MovementFocusView";
 
@@ -97,6 +98,9 @@ function summarisePlanned(items: PrescriptionItem[], tmLabel: "TM" | "1RM" = "TM
 }
 
 function summariseStrengthBlock(items: PrescriptionItem[], tmLabel: "TM" | "1RM" = "TM"): string {
+  const labels = items.map((item) => resolveLoadReference(item, { basis: tmLabel }).basis);
+  const sameBasis = labels.every((label) => label === labels[0]);
+  const basis = labels[0] ?? tmLabel;
   const reps = items.map((it) =>
     it.repRange ? `${it.repRange.min}–${it.repRange.max}` : String(it.reps ?? 0),
   );
@@ -107,6 +111,9 @@ function summariseStrengthBlock(items: PrescriptionItem[], tmLabel: "TM" | "1RM"
   // "5·5·5 @ 65/85%" and silently mis-assign the intensities.
   const pctsComplete = pcts.length === items.length;
   const samePct = pctsComplete && pcts.every((p) => p === pcts[0]);
+  const percentages = sameBasis
+    ? `${pcts.join("/")}% ${basis}`
+    : pcts.map((pct, index) => `${pct}% ${labels[index]}`).join("/");
   const setRange = items[0]?.setRange;
   const setLabel = setRange
     ? `${setRange.min}–${setRange.max}`
@@ -116,18 +123,18 @@ function summariseStrengthBlock(items: PrescriptionItem[], tmLabel: "TM" | "1RM"
   // carries no percentage at all (bodyweight work like a pull-up). Requiring a
   // percentage here sent every unloaded movement to the per-item branch below,
   // which repeated its rep range once per set — "8–10·8–10·8–10·8–10·8–10".
-  if (sameReps && (samePct || pcts.length === 0)) {
+  if (sameReps && ((samePct && sameBasis) || pcts.length === 0)) {
     const head = `${setLabel}×${reps[0]}`;
-    return pcts.length > 0 ? `${head} @ ${pcts[0]}% ${tmLabel}` : head;
+    return pcts.length > 0 ? `${head} @ ${pcts[0]}% ${basis}` : head;
   }
   // Same reps, varying intensity: `5·5·5 @ 65/75/85% TM`.
   if (sameReps) {
     const head = items.map(() => reps[0]).join("·");
-    return pctsComplete ? `${head} @ ${pcts.join("/")}% ${tmLabel}` : head;
+    return pctsComplete ? `${head} @ ${percentages}` : head;
   }
   // Varying reps: list each rep count.
   const head = reps.join("/");
-  if (pctsComplete) return `${head} @ ${pcts.join("/")}% ${tmLabel}`;
+  if (pctsComplete) return `${head} @ ${percentages}`;
   return head;
 }
 
