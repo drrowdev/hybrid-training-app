@@ -4577,3 +4577,32 @@ AST comparison preserves all original six bodies and order from qualified5446db.
 No application, SQL, updater, assertion removal, timeout or runtime-boundary
 change was made. Exact-head public gates and full native-seven qualification
 remain pending; hosted DDL and outcome activation remain unauthorized.
+
+## [2026-09-23] refine | Validate M7 ownership and export against canonical columns
+
+Exactf91a75c4 passed core35813065307 and storage35813065300, including49 SQL
+and57 synthetic UI stages. Coordinator-consumed native35813753158 passed
+normal158, all twelve pre-browser stages,36authenticated RPC cases and the
+original six browser cases. M7 additionally passed retained removal, review
+and cleared-history views, scheduled-state restoration, three immutable
+receipts and unchanged workouts. Its final no-fabrication loop then queried
+`cardio_logs.user_id`, a nonexistent column; `set_logs` has the same mismatch.
+Both tables instead inherit ownership through their required session FK and
+RLS policy in0003. The API export assertions had not yet executed.
+
+The fixture now uses the established `sessions!inner(user_id)` join and
+`sessions.user_id` filter for both child tables, still through the authenticated
+actor. All five no-fabrication queries and their error/empty assertions remain.
+The exact native query builders and export parser are exercised by a synthetic
+transport contract against live Drizzle column definitions. It reproduces both
+invalid filters, validates the corrected ownership queries, and executes the
+real export route with all25 table queries checked for selected/filter/order
+columns. The parser preserves the three receipts and original recording date;
+all five native-work export arrays must also be empty.
+
+Thirty focused checks, full web/account-flow types, touched-file lint and
+seven-case collection passed. Original-six AST bodies/order remain identical
+to qualified5446db. No application, SQL, schema/RLS, privileged client,
+updater, timeout, media or runtime-boundary change was made. This is local
+schema/transport evidence; exact-head public and native-seven qualification
+remain outstanding, with no additional hosted DDL or activation authorization.

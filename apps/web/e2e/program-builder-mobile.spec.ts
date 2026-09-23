@@ -12,6 +12,7 @@ import { addDaysToYmd } from "../src/lib/dates";
 import type { MODULAR_STAGE_CODES } from "../scripts/modular-browser-observations";
 import { importOutcomeColumns, importOutcomeSchema } from "../src/lib/swim/import-outcomes";
 import { matchColumns, matchSchema } from "../src/lib/swim/import-matching";
+import { standaloneOutcomeExportSchema, standaloneOutcomeNativeQueries } from "./fixtures/standalone-outcomes";
 
 type Movement = { id: string; slug: string; display_name: string };
 type Planned = { id: string; block_id: string; week_index: number; day_index: number;
@@ -521,20 +522,18 @@ test.describe("Modular program builder", () => {
     expect(removed[2]).toMatchObject({ match_id: null,
       metadata: { outcome: null, previousOutcomeId: corrected[1]!.id, workoutRevision: null } });
     expect(await workouts()).toEqual(original);
-    for (const table of ["sessions", "cardio_logs", "set_logs", "training_blocks", "planned_sessions"]) {
-      const result = await actor.from(table).select("id").eq("user_id", freshUser.userId);
-      expect(result.error).toBeNull(); expect(result.data).toEqual([]);
+    for (const [table, query] of Object.entries(standaloneOutcomeNativeQueries(actor, freshUser.userId))) {
+      const result = await query;
+      expect(result.error, table).toBeNull(); expect(result.data, table).toEqual([]);
     }
     const exported = await page.request.get("/api/me/export");
     expect(exported.status()).toBe(200);
-    const history = z.object({
-      swimming_import_outcomes_available: z.literal(true), swim_import_outcomes: z.array(importOutcomeSchema),
-      swim_imports: z.array(z.object({ id: z.string().uuid(), evidence: z.object({ date: z.string() }) })),
-      sessions: z.array(z.unknown()), cardio_logs: z.array(z.unknown()),
-    }).parse(await exported.json());
+    const history = standaloneOutcomeExportSchema.parse(await exported.json());
     expect(history.swim_import_outcomes.sort((a, b) => a.revision - b.revision)).toEqual(removed);
     expect(history.swim_imports).toEqual([{ id: receipt.id, evidence: { date: recordedDate } }]);
-    expect(history.sessions).toEqual([]); expect(history.cardio_logs).toEqual([]);
+    for (const table of ["sessions", "cardio_logs", "set_logs", "training_blocks", "planned_sessions"] as const) {
+      expect(history[table], table).toEqual([]);
+    }
   });
 
 });
