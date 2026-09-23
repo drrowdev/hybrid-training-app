@@ -168,7 +168,7 @@ FOR EACH ROW EXECUTE FUNCTION public.sync_program_instance_lifecycle();
 REVOKE ALL ON FUNCTION public.sync_program_instance_lifecycle() FROM PUBLIC,anon;
 
 CREATE FUNCTION public.check_program_parent_consistency()
-RETURNS trigger LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS $$
+RETURNS trigger LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE block_id uuid; parent public.training_blocks%ROWTYPE; instance_count integer;
 BEGIN
   IF TG_TABLE_NAME='training_blocks' THEN block_id:=COALESCE(NEW.id,OLD.id);
@@ -187,7 +187,8 @@ CREATE CONSTRAINT TRIGGER training_blocks_parent_consistency AFTER INSERT OR UPD
 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.check_program_parent_consistency();
 CREATE CONSTRAINT TRIGGER program_instances_parent_consistency AFTER INSERT OR UPDATE OR DELETE ON public.program_instances
 DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION public.check_program_parent_consistency();
-REVOKE ALL ON FUNCTION public.check_program_parent_consistency() FROM PUBLIC,anon;
+-- Deferred checks also run after GoTrue's restricted Auth deletion cascade.
+REVOKE ALL ON FUNCTION public.check_program_parent_consistency() FROM PUBLIC,anon,authenticated;
 
 ALTER TABLE public.rehab_protocols ADD CONSTRAINT rehab_protocols_user_id_id_key UNIQUE(user_id,id);
 CREATE TABLE public.swim_plan_rehab_bindings (

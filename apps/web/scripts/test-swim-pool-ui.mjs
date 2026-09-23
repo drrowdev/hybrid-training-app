@@ -40,6 +40,7 @@ try {
         import { ThisWeekRail } from "./src/components/plan/ThisWeekRail";
         import { ScheduleRestoreButton } from "./src/components/program/ScheduleRestoreButton";
         import { TrashItemRow } from "./src/components/trash/TrashItemRow";
+        import { DeleteBlockMenu } from "./src/components/trash/DeleteBlockMenu";
         import { DeloadWeekCard } from "./src/components/plan/DeloadWeekCard";
         import { FocusStripLogger } from "./src/components/session/FocusStripLogger";
         import { SessionWorkArea } from "./src/components/session/SessionWorkArea";
@@ -50,6 +51,7 @@ try {
         import { TmSection } from "./src/components/training-maxes/TmSection";
         import { SessionLoggingStateProvider, useSessionLoggingState } from "./src/components/session/SessionLoggingState";
         import { compileAuthoredWorkout } from "@hta/domain";
+        import { greenProtocolEngine } from "@hta/green";
         import { groupPrescriptionByMovement } from "./src/lib/sessions/movement-grouping";
         import { getMovementSwapLoadContext, swapMovementInPrescription, SWAP_PROGRAM_LOAD_REQUIRED_WARNING } from "./src/lib/sessions/prescription-mutations";
         import { optimisticLogFromFormData, mergeOptimisticSets } from "./src/lib/sessions/optimistic-log";
@@ -582,6 +584,46 @@ try {
             acceptAction={async () => { window.tmChoiceCalls++; return { ok: false, error: "Open the workout's program to review its loads." }; }}
             dismissAction={async () => { throw new Error("Unexpected dismissal"); }} /></main>);
         };
+        window.showHybridLoadSetup = (editing, saved = false) => {
+          window.hybridLoadPreviews = []; window.hybridLoadSaves = [];
+          window.continuationPreview = async input => {
+            window.hybridLoadPreviews.push(input);
+            return { ok: true, preview: { id: "e".repeat(64), revision: "a".repeat(32),
+              dates: [{ date: input.startedOn, title: "Strength" }], overlaps: [], plannedRest: [], replaces: null } };
+          };
+          window.continuationSave = async input => {
+            window.hybridLoadSaves.push(input);
+            return { ok: true, blockId: "hybrid", programInstanceId: "hybrid-instance", skipped: 0 };
+          };
+          root.render(<ProgramPicker key={++key} anchoredKeys={["bench"]} initialProgramId="green-protocol"
+            initialLoadoutValue="hybrid" programs={[{ ...greenProtocolEngine.meta, enabled: true, fixedSchedule: true,
+              fields: greenProtocolEngine.describeSetup().fields }]}
+            {...(editing ? { editContext: { blockId: "hybrid", programId: "green-protocol",
+              setupValues: { phaseId: "hybrid", blocks: 1, useTrainingMax: saved, tmPercent: saved ? .85 : .9 },
+              strengthWeekdays: [0,2,4], cardioWeekdays: [], startedOn: "2026-09-28", accessoriesEnabled: false } } : {})} />);
+        };
+        function DeleteHistoryFixture() {
+          const [deleted, setDeleted] = useState(false);
+          window.deleteHistoryProgram = async form => {
+            window.historyDeletionCalls.push(form.get("id"));
+            setDeleted(true);
+            return { ok: true, blockId: form.get("id") };
+          };
+          return deleted ? <p>Empty history</p> : <details data-testid="block-history-row"
+            style={{ border: "1px solid var(--cp-border)", borderRadius: 12, overflow: "hidden" }}>
+            <summary style={{ display: "grid", gap: 4, padding: "14px 18px", cursor: "pointer", listStyle: "none" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                Hybrid <span style={{ marginLeft: "auto" }}><DeleteBlockMenu blockId="hybrid" archetypeName="Hybrid" /></span>
+              </div>
+              <div>2 d/wk · 4w · started 2026-09-28</div>
+            </summary>
+            <p>Workouts</p>
+          </details>;
+        }
+        window.showDeleteHistory = () => {
+          window.historyDeletionCalls = [];
+          root.render(<DeleteHistoryFixture key={++key} />);
+        };
         function ContinuationFixture({ kind }) {
           const [open, setOpen] = useState(false);
           const [accepted, setAccepted] = useState(false);
@@ -779,7 +821,7 @@ try {
             : args.path === "@/lib/sessions/reorder-actions"
               ? "export const reorderSessionAccessories = () => { throw new Error('Unexpected reorder'); };"
             : args.path === "@/lib/planner/actions"
-              ? "export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); };"
+              ? "export const deleteBlock = form => window.deleteHistoryProgram(form); export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); };"
             : args.path === "@/lib/platform/actions"
               ? "export const getProgramSegments = async () => ({ ok: true, segments: [] }); export const previewProgramInstance = input => window.continuationPreview(input); export const createProgramInstance = input => window.continuationSave(input);"
             : args.path === "@/lib/offline/outbox"
@@ -807,7 +849,7 @@ try {
                   h("button", { type: "button", onClick: onClose }, "Close"));
               }`
             : args.path === "next/navigation"
-            ? "const router = { push(path) { window.destinations.push(path); }, refresh() {} }; export const useRouter = () => router;"
+            ? "const router = { push(path) { window.destinations.push(path); }, refresh() {} }; export const useRouter = () => router; export const usePathname = () => '/app/plan/history';"
             : args.path === "next/link"
               ? `import { createElement } from "react"; export default function Link({ href, onClick, ...props }) {
                   return createElement("a", { ...props, href, onClick(event) {
@@ -1746,6 +1788,32 @@ try {
     await expect(page.getByTestId("tm-suggestion-legacy-advice")).toBeVisible();
     await expect(page.getByRole("button", { name: "Accept", exact: true })).toBeEnabled();
     assert.equal(await page.evaluate(() => window.tmChoiceCalls), 1);
+    for (const editing of [false, true]) {
+      await page.evaluate(editing => window.showHybridLoadSetup(editing), editing);
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await page.getByRole("button", { name: "Training Max", exact: true }).click();
+      await page.getByRole("button", { name: "85%", exact: true }).click();
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await page.getByRole("button", { name: "Review dates", exact: true }).click();
+      await page.getByRole("button", { name: editing ? "Save changes" : "Save program", exact: true }).click();
+      await expect.poll(() => page.evaluate(() => window.hybridLoadSaves.length)).toBe(1);
+      const saved = await page.evaluate(() => window.hybridLoadSaves[0]);
+      assert.equal(saved.setupValues.useTrainingMax, true);
+      assert.equal(saved.setupValues.tmPercent, .85);
+      assert.equal(saved.editBlockId, editing ? "hybrid" : undefined);
+    }
+    await page.evaluate(() => window.showHybridLoadSetup(true, true));
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page.getByRole("button", { name: "85%", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "1RM", exact: true }).click();
+    await expect(page.getByRole("button", { name: "85%", exact: true })).toHaveCount(0);
+    await page.evaluate(() => window.showDeleteHistory());
+    const historyRow = page.getByTestId("block-history-row");
+    await historyRow.getByTestId("block-actions-trigger").click();
+    await historyRow.getByTestId("delete-block-menu-item").click();
+    await expect(historyRow).toHaveCount(0);
+    assert.deepEqual(await page.evaluate(() => window.historyDeletionCalls), ["hybrid"]);
     stages.push(stage);
   }
   assert.deepEqual(failures, []);

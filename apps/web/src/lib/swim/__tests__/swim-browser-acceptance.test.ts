@@ -26,7 +26,10 @@ import {
   type BrowserPaths,
 } from "../../../../scripts/swim-browser-acceptance";
 import { MODULAR_BROWSER_CASES, type BrowserCase } from "../../../../scripts/modular-browser-profile";
-import { MODULAR_STAGE_CODES, projectModularObservation, readModularAnnotations } from "../../../../scripts/modular-browser-observations";
+import {
+  MODULAR_STAGE_CODES, projectModularObservation, readModularAnnotations, readModularFailurePhase,
+  classifyHistoryDeleteFailure, readHistoryDeleteFailure,
+} from "../../../../scripts/modular-browser-observations";
 import { acceptanceAssert, processFailure, safeFailureCause } from "../../../../scripts/swim-acceptance-errors";
 import * as reporting from "../../../../scripts/swim-acceptance-reporting";
 import {
@@ -141,16 +144,86 @@ describe("DC-SW8 modular acceptance report membership", () => {
   });
 
   it("accepts the closed checkpoint codebook only for its own case", () => {
+    const indices: Record<string, number> = { m3: 2, m4: 3, m8: 7, m12: 11, m13: 12 };
     for (const [kind, codes] of Object.entries(MODULAR_STAGE_CODES)) {
       for (const code of codes) {
         const observation = readModularAnnotations([{ type: "modular-stage", description: code }]);
-        expect(projectModularObservation(kind === "m3" ? 2 : 3, observation).stage).toBe(code);
-        for (const index of [0, 1, 4, 5, kind === "m3" ? 3 : 2]) {
+        expect(projectModularObservation(indices[kind]!, observation).stage).toBe(code);
+        for (const index of Array.from({ length: 18 }, (_, index) => index).filter((index) => index !== indices[kind])) {
           expect(projectModularObservation(index, observation)).toEqual({
             stage: "unavailable", loggedIndices: "unavailable",
           });
         }
       }
+    }
+  });
+
+  it("retains timeout checkpoints without callers and distinguishes test from teardown without exposing errors", () => {
+    const fixture = report(paths, MODULAR_BROWSER_CASES);
+    for (const [index, stage, phase] of [[7, "m8-04", "test"], [11, "m12-05", "test-and-teardown"], [12, "m13-03", "teardown"]] as const) {
+      const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
+      test.status = "unexpected";
+      test.results[0]!.status = "timedOut";
+      test.results[0]!.annotations = [
+        { type: "modular-stage", description: stage }, { type: "modular-failure-phase", description: phase },
+      ];
+    }
+    fixture.stats = { expected: 15, unexpected: 3, flaky: 0, skipped: 0 };
+    let caught: unknown;
+    try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
+    catch (error) { caught = error; }
+    const projected = projectBrowserFailure(caught);
+    expect(projected.code).toBe("browser-failed");
+    for (const [index, stage, phase] of [[7, "m8-04", "test"], [11, "m12-05", "test-and-teardown"], [12, "m13-03", "teardown"]] as const) {
+      expect(projected.cases?.[index]).toMatchObject({
+        failurePhase: phase, failureDetails: { callers: "unavailable" },
+        modularObservation: { stage, loggedIndices: "unavailable" },
+      });
+    }
+    expect(projected.cases?.[0]).not.toHaveProperty("failurePhase");
+    const valid = { type: "modular-failure-phase", description: "test" };
+    for (const input of [null, [valid, valid], Array(129).fill(valid),
+      [{ ...valid, description: "private-value" }], [{ ...valid, description: ["test"] }]]) {
+      expect(readModularFailurePhase(input)).toBe("unavailable");
+    }
+  });
+
+  it("projects only M11's failed deletion category and never the underlying error", () => {
+    const samples = [
+      ["Your schedule changed. Review the dates again.", "stale"],
+      ["Review and accept the overlapping workouts before saving.", "overlap"],
+      ["Program lifecycle must match its plan.", "lifecycle"],
+      ["A typed program needs exactly one matching active instance.", "lifecycle"],
+      ["permission denied for table private-name", "permission"],
+      ['new row violates row-level security policy for table "private-name"', "permission"],
+      ["Not signed in.", "permission"], ["private-value", "unknown"], ["", "unavailable"],
+    ] as const;
+    for (const [text, classification] of samples) {
+      expect(classifyHistoryDeleteFailure(text)).toBe(classification);
+      const fixture = report(paths, MODULAR_BROWSER_CASES);
+      for (const index of [0, 10]) {
+        const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
+        test.status = "unexpected"; test.results[0]!.status = "failed";
+        test.results[0]!.annotations = [{ type: "history-delete-failure", description: classification }];
+      }
+      fixture.stats = { expected: 16, unexpected: 2, flaky: 0, skipped: 0 };
+      let caught: unknown;
+      try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
+      catch (error) { caught = error; }
+      const projected = projectBrowserFailure(caught);
+      expect(projected.cases?.[10]?.historyDeleteFailure).toBe(classification);
+      expect(projected.cases?.[0]).not.toHaveProperty("historyDeleteFailure");
+      expect(JSON.stringify(projected)).not.toContain("private-");
+      fixture.suites[0]!.suites[0]!.specs.forEach((spec) => {
+        spec.tests[0]!.status = "expected"; spec.tests[0]!.results[0]!.status = "passed";
+      });
+      fixture.stats = { expected: 18, unexpected: 0, flaky: 0, skipped: 0 };
+      expect(JSON.stringify(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES)))
+        .not.toMatch(/historyDeleteFailure|failurePhase/);
+    }
+    const valid = { type: "history-delete-failure", description: "stale" };
+    for (const value of [null, {}, [valid, valid], Array(129).fill(valid), [{ ...valid, description: "private-value" }]]) {
+      expect(readHistoryDeleteFailure(value)).toBe("unavailable");
     }
   });
 

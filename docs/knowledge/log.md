@@ -4974,3 +4974,60 @@ Deterministic coverage exercises all seven weekdays for authored, Hybrid and
 phase-template payloads (47 ownership source/fixture tests total). DB types
 and whole up/down SQL/PLpgSQL grammar checks pass. Actual ownership SQL and
 synthetic UI acceptance still require the next exact automatic storage gate.
+
+## [2026-09-23] refine | Native independent-program qualification and Auth erasure repair
+
+Feature head `0a80e344` passed core `35880429070` and storage
+`35880429072`. The separate native-source increment `9b6567eb` passed core
+`35892769669` and storage `35892769552` with the unchanged 62 SQL and 75 UI
+stage inventories. Its 18 independently owned native journeys retain the
+30-second case and 300-second global limits. The owner-approved M3 adaptation
+keeps a mixed workout in Hybrid and shared views, never focused Strength or
+Running; the shared authored-save helper now asserts the exact
+`/app/plan?block=<saved id>` destination. Other original M1-M7 assertions remain.
+Explicit residual native gaps are non-Strength same-type replacement controls
+(covered by shared controls and all-type SQL contracts), and read-failure
+recovery (covered by synthetic UI error/recovery cases).
+
+The coordinator consumed native `35893913296` once: all 14 pre-browser stages
+passed, including normal159, 36 RPCs, exact down/up catalogs and unchanged
+legacy graph. Browser results were one pass and 17 failures, about 202 seconds
+total without global timeout. The dominant shared callers were Auth-admin
+account erasure assertions, not save-route assertions. The new deferred
+parent-consistency trigger read application tables as GoTrue's restricted
+caller. It now runs read-only as its migration owner with a pinned search path
+and no PUBLIC, anon or authenticated EXECUTE grant. No application-table
+grants, RLS policies or foreign-key guarantees were weakened. Unused-down
+checks pin the changed security/ACL contract. Existing storage stages now
+exercise restricted Auth-role deletion, old-invoker refusal, populated typed
+and legacy graphs, bindings, issued rehab, logs, receipts, advice and roadmap
+state, and unchanged peer data. Actual PostgreSQL and GoTrue acceptance still
+belong to the next exact remote gates; local grammar parsing is not that proof.
+
+M12 also exposed a real picker omission: Green already supports program-local
+`useTrainingMax`/`tmPercent`, but its phase picker hid the generic settings and
+its benchmark screen omitted the existing load-basis control. That same
+control and copy now appear for schemas advertising this capability; no
+defaults or coefficients change. Real-component browser coverage exercises
+Hybrid setup, edit and hydrated controls at 375/1280 pixels. M12 and M13 now
+assert no new overlap consent for unchanged dates rather than waiting for
+nonexistent checkboxes. Their persistence, identity and independent kilogram
+assertions remain. All 75 synthetic stage names/order remain unchanged.
+
+M8's timeout and M11's native history-deletion failure remain unproven.
+The real history menu submits under the native details/summary styling in
+synthetic browsers; this does not establish the live backend outcome.
+Failure-only evidence now distinguishes test/setup and teardown failures,
+adds bounded M8/M12/M13 checkpoints, and classifies M11 deletion errors into
+closed categories without exporting message text. Timed-out cases without
+callers retain the safe ledger; the secondary browser-report failure is the
+expected rejection of a non-passing cohort, not a reason to relax its gates.
+
+Local checks include 49 ownership contracts, 371 strict ledger/diagnostic
+cases, 36 modular fixture/profile cases, all 75 synthetic UI stages, native
+18-case collection, touched lint and web/account-flow/DB types. Complete
+0158 up/down SQL and PL/pgSQL parsing passed again (70/47 statements).
+An optional broader runner-lifecycle selection was stopped after reproducing
+the previously established Windows-only private-path waits; its test and
+runner sources are unchanged from Linux-green `9b6567eb`. No local pass is
+claimed for that selection; the next exact Linux core remains authoritative.

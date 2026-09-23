@@ -11,7 +11,7 @@ import { markOnboarded } from "./fixtures/seed-blocks";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { syntheticCourse } from "../src/lib/swim/__tests__/course-fixtures";
 import { addDaysToYmd } from "../src/lib/dates";
-import type { MODULAR_STAGE_CODES } from "../scripts/modular-browser-observations";
+import { classifyHistoryDeleteFailure, type MODULAR_STAGE_CODES } from "../scripts/modular-browser-observations";
 import { importOutcomeColumns, importOutcomeSchema } from "../src/lib/swim/import-outcomes";
 import { matchColumns, matchSchema } from "../src/lib/swim/import-matching";
 import { standaloneOutcomeExportSchema, standaloneOutcomeNativeQueries } from "./fixtures/standalone-outcomes";
@@ -50,13 +50,13 @@ const test = seededTest.extend<{ actor: SupabaseClient; catalog: Movement[] }>({
     if (!created.data.user) throw new Error("Synthetic user missing.");
     const userId = created.data.user.id;
     try { await use({ email, password, userId }); }
-    finally {
+    finally { await nativeTeardown(async () => {
       const removed = await admin.auth.admin.deleteUser(userId);
       expect(removed.error).toBeNull();
       const remaining = await admin.auth.admin.getUserById(userId);
       expect(remaining.data.user).toBeNull();
       expect(remaining.error?.status).toBe(404);
-    }
+    }); }
   },
   actor: async ({ admin, freshUser, seedConfig, context, baseURL }, use) => {
     await markOnboarded(admin, freshUser.userId);
@@ -93,7 +93,7 @@ const ownedTest = test.extend({
     try {
       expect((await owner.auth.signInWithPassword({ email, password })).error).toBeNull();
       await use({ email, password, userId });
-    } finally {
+    } finally { await nativeTeardown(async () => {
       expect((await admin.auth.admin.deleteUser(userId)).error).toBeNull();
       const remaining = await admin.auth.admin.getUserById(userId);
       expect(remaining.data.user).toBeNull(); expect(remaining.error?.status).toBe(404);
@@ -103,7 +103,7 @@ const ownedTest = test.extend({
         const result = await owner.from(table).select("user_id").eq("user_id", userId);
         expect(result.error, table).toBeNull(); expect(result.data, table).toEqual([]);
       }
-    }
+    }); }
   },
   actor: async ({ freshUser, seedConfig, context, baseURL }, use) => {
     const client = createClient(seedConfig.supabaseUrl, seedConfig.anonKey, {
@@ -124,19 +124,32 @@ const legacyTest = ownedTest.extend<{ legacy: ModularLegacyFixture }>({
   legacy: async ({}, use) => { await use(readModularLegacyFixture()); },
   freshUser: async ({ legacy }, use) => {
     // The runner owns this pre-migration account and verifies cleanup after the browser.
-    await use({ email: legacy.email, password: legacy.password, userId: legacy.userId });
+    try { await use({ email: legacy.email, password: legacy.password, userId: legacy.userId }); }
+    finally { if (test.info().status !== "passed") failurePhase("test"); }
   },
   /* eslint-enable react-hooks/rules-of-hooks */
 });
 
-function diagnosticAnnotation(type: "modular-stage" | "modular-set-indices", description: string) {
+function diagnosticAnnotation(type: "modular-stage" | "modular-set-indices" | "modular-failure-phase" | "history-delete-failure", description: string) {
   const annotations = test.info().annotations;
   const existing = annotations.find((annotation) => annotation.type === type);
   if (existing) existing.description = description;
   else annotations.push({ type, description });
 }
-function stage(code: (typeof MODULAR_STAGE_CODES)["m3" | "m4"][number]) {
+function stage(code: (typeof MODULAR_STAGE_CODES)[keyof typeof MODULAR_STAGE_CODES][number]) {
   diagnosticAnnotation("modular-stage", code);
+}
+
+function failurePhase(phase: "test" | "teardown") {
+  const previous = test.info().annotations.find((annotation) => annotation.type === "modular-failure-phase")?.description;
+  diagnosticAnnotation("modular-failure-phase", previous && previous !== phase ? "test-and-teardown" : phase);
+}
+
+async function nativeTeardown(work: () => Promise<void>) {
+  if (test.info().status !== "passed" &&
+    !test.info().annotations.some((annotation) => annotation.type === "modular-failure-phase")) failurePhase("test");
+  try { await work(); }
+  catch (error) { failurePhase("teardown"); throw error; }
 }
 
 function movement(catalog: Movement[], slug: string) {
@@ -500,12 +513,13 @@ test.describe("Modular program builder", () => {
       expect(denied.error).not.toBeNull();
       expect((await actor.from("planned_sessions").select("skipped_at").eq("id", firstRows[0]!.id).single()).data?.skipped_at).toBeNull();
       expect((await planned(second)).map((row) => row.id)).toEqual(secondRows.map((row) => row.id));
-    } finally {
+    } catch (error) { failurePhase("test"); throw error; }
+    finally { await nativeTeardown(async () => {
       await context.close();
       expect((await admin.auth.admin.deleteUser(secondId)).error).toBeNull();
       const remaining = await admin.auth.admin.getUserById(secondId);
       expect(remaining.data.user).toBeNull(); expect(remaining.error?.status).toBe(404);
-    }
+    }); }
   });
 
   test("M7 DC-SW5: explicit imported outcomes stay consistent across training views and retained history", async ({ page, actor, freshUser }) => {
@@ -675,32 +689,35 @@ test.describe("Modular program builder", () => {
 
   legacyTest("M8 DC-K4: legacy refusal preserves drafts and history until the owner explicitly ends it",
     async ({ page, actor, catalog, legacy, context }) => {
+      stage("m8-01");
       const before = await legacyGraphSnapshot(actor, legacy.userId);
       expect(before.sha256).toBe(legacy.beforeSha256);
       const older = await actor.from("training_blocks").select("id,program_kind,status").eq("id", legacy.blockId).single();
       expect(older.error).toBeNull();
       expect(older.data).toEqual({ id: legacy.blockId, program_kind: null, status: "active" });
-      await draftPair(page, catalog, "strength", "Strength week", [0, 3]);
+      stage("m8-02"); await draftPair(page, catalog, "strength", "Strength week", [0, 3]);
       await page.getByRole("button", { name: "Review program", exact: true }).click();
       await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
       await expect(page.getByLabel("Workout name", { exact: true })).toHaveValue("Strength week B");
       expect((await actor.from("training_blocks").select("id").not("program_kind", "is", null)).data).toEqual([]);
       const history = await context.newPage();
       try {
+        stage("m8-03");
         await history.goto(`/app/plan?block=${legacy.blockId}`);
         await history.getByTestId("program-actions-more").click();
         await history.getByTestId("program-actions-end").click();
-        await history.getByTestId("end-block-confirm").click();
+        stage("m8-04"); await history.getByTestId("end-block-confirm").click();
         await expect.poll(async () => (await actor.from("training_blocks").select("status").eq("id", legacy.blockId).single()).data?.status)
           .toBe("archived");
-        const after = await legacyGraphSnapshot(actor, legacy.userId);
+        stage("m8-05"); const after = await legacyGraphSnapshot(actor, legacy.userId);
         for (const table of ["planned_sessions", "sessions", "set_logs"]) expect(after.rows[table]).toEqual(before.rows[table]);
-        await history.goto(`/app/sessions/${legacy.sessionId}`);
+        stage("m8-06"); await history.goto(`/app/sessions/${legacy.sessionId}`);
         await expect(history.getByTestId("session-title")).toContainText("Older strength workout");
         expect(await loggedSets(actor, legacy.sessionId)).toHaveLength(1);
       } finally { await history.close(); }
-      await review(page);
+      stage("m8-07"); await review(page);
       const strengthId = await save(page, actor, "strength");
+      stage("m8-08");
       expect((await planned(actor)).filter((row) => row.block_id === strengthId)).toHaveLength(2);
       const retained = await actor.from("sessions").select("id").eq("user_id", legacy.userId);
       expect(retained.error).toBeNull(); expect(retained.data).toEqual([{ id: legacy.sessionId }]);
@@ -842,7 +859,12 @@ test.describe("Modular program builder", () => {
       const hybridHistory = page.locator(`[data-testid="block-history-row"][data-block-id="${hybridId}"]`);
       await hybridHistory.getByTestId("block-actions-trigger").click();
       await hybridHistory.getByTestId("delete-block-menu-item").click();
-      await expect(hybridHistory).toHaveCount(0);
+      try { await expect(hybridHistory).toHaveCount(0); }
+      catch (error) {
+        const errors = await hybridHistory.getByTestId("block-actions-menu").locator("p").allTextContents();
+        diagnosticAnnotation("history-delete-failure", classifyHistoryDeleteFailure(errors.length === 1 ? errors[0]! : null));
+        throw error;
+      }
       const deleted = await actor.from("program_instances").select("status,deleted_at").eq("block_id", hybridId).single();
       expect(deleted.error).toBeNull();
       expect(deleted.data).toEqual({ status: "archived", deleted_at: expect.any(String) });
@@ -899,6 +921,7 @@ test.describe("Modular program builder", () => {
 
   ownedTest("M12 DC-K4: shared measurements and a Hybrid load edit preserve Strength targets",
     async ({ page, actor, freshUser }) => {
+      stage("m12-01");
       const { ctx, resolveMovement } = await prepareNativeMeasurements(actor);
       const bench = resolveMovement("bench")!;
       const startedOn = addDaysToYmd(today(), (7 - weekday()) % 7);
@@ -933,7 +956,7 @@ test.describe("Modular program builder", () => {
       const instances = await actor.from("program_instances").select("id,instance,setup_input")
         .eq("user_id", freshUser.userId).order("id");
       expect(instances.error).toBeNull();
-      await page.goto("/app/settings/training-maxes");
+      stage("m12-02"); await page.goto("/app/settings/training-maxes");
       await page.getByLabel("Horizontal press (bench) 1RM", { exact: true }).fill("110");
       await page.getByLabel("Horizontal press (bench) 1RM", { exact: true }).blur();
       await expect.poll(async () => {
@@ -946,22 +969,22 @@ test.describe("Modular program builder", () => {
       const afterMeasurement = await actor.from("program_instances").select("id,instance,setup_input")
         .eq("user_id", freshUser.userId).order("id");
       expect(afterMeasurement.error).toBeNull(); expect(afterMeasurement.data).toEqual(instances.data);
-      const strengthSession = await start(page, targets[0]!.row.id);
+      stage("m12-03"); const strengthSession = await start(page, targets[0]!.row.id);
       await page.getByTestId(`movement-dot-${targets[0]!.slot}`).click();
       // 110 kg 1RM -> 90% rounded to 100 kg -> the fixture's 75% set is 75 kg.
       expect(targets[0]!.item.percentTm).toBe(75);
       await expect(page.getByLabel("Weight (kg)", { exact: true })).toHaveValue("75");
       const beforeEdit = await planned(actor);
-      await page.goto(`/app/program?edit=${hybrid.block_id}`);
+      stage("m12-04"); await page.goto(`/app/program?edit=${hybrid.block_id}`);
       await page.getByRole("button", { name: "Continue", exact: true }).click();
       await page.getByRole("button", { name: "Training Max", exact: true }).click();
       await page.getByRole("button", { name: "85%", exact: true }).click();
       await page.getByRole("button", { name: "Continue", exact: true }).click();
-      await page.getByRole("button", { name: "Review dates", exact: true }).click();
-      await page.getByRole("checkbox", { name: "Train on these occupied days", exact: true }).check();
+      stage("m12-05"); await page.getByRole("button", { name: "Review dates", exact: true }).click();
+      await expect(page.getByRole("checkbox", { name: "Train on these occupied days", exact: true })).toHaveCount(0);
       await page.getByRole("button", { name: "Save changes", exact: true }).click();
       await expect(page).toHaveURL(/\/app\/plan(?:\?kept=today)?$/);
-      await page.goto(`/app/plan?block=${hybrid.block_id}`);
+      stage("m12-06"); await page.goto(`/app/plan?block=${hybrid.block_id}`);
       await page.reload();
       const changedRows = await planned(actor);
       expect(changedRows.filter((row) => row.block_id === strength.block_id))
@@ -980,6 +1003,7 @@ test.describe("Modular program builder", () => {
       expect(sharedMax.error).toBeNull();
       expect(Number(sharedMax.data!.one_rm_kg)).toBe(110); expect(Number(sharedMax.data!.tm_percent)).toBe(97);
       const loads: number[] = [], sessions: string[] = [];
+      stage("m12-07");
       for (const [position, { row, index, slot, item }] of [targets[0]!, editedHybrid].entries()) {
         // Hybrid: 110 * .85 -> 92.5 kg working max; 70% -> 65 kg on 2.5 kg plates.
         expect(item.percentTm).toBe(position === 0 ? 75 : 70);
@@ -1005,20 +1029,21 @@ test.describe("Modular program builder", () => {
       }
       expect(loads[0]).not.toBe(loads[1]);
       expect(new Set(sessions).size).toBe(2);
-      const remaining = await actor.from("program_instances").select("id,instance,setup_input")
+      stage("m12-08"); const remaining = await actor.from("program_instances").select("id,instance,setup_input")
         .eq("user_id", freshUser.userId).order("id");
       expect(remaining.error).toBeNull(); expect(remaining.data).toEqual(afterEdit.data);
     });
 
   ownedTest("M13 DC-R5/DC-SW7: shared rehab attaches through Running and Swimming and logs without a swim result",
     async ({ page, actor, catalog, freshUser }) => {
+      stage("m13-01");
       const selected = movement(catalog, "bench-press-flat"), running = movement(catalog, "run-easy-z2");
       await createRehabInLibrary(page, selected, "Shared rehab");
       const library = await actor.from("rehab_protocols").select("id,revision,definition")
         .eq("user_id", freshUser.userId).single();
       expect(library.error).toBeNull();
       const protocolId = z.string().uuid().parse(library.data?.id);
-      const graphs: Awaited<ReturnType<typeof prepareNativeProgram>>[] = [];
+      stage("m13-02"); const graphs: Awaited<ReturnType<typeof prepareNativeProgram>>[] = [];
       for (const kind of ["strength", "running", "hybrid"] as const) {
         graphs.push(await prepareNativeProgram(actor, { ...nativeProgramDefinition(kind, `${kind} rehab`, weekday(),
           selected.id, running.id, kind === "running" ? undefined : protocolId), weeks: 2 }, today()));
@@ -1026,14 +1051,14 @@ test.describe("Modular program builder", () => {
       const swimming = await prepareNativeCourse(actor, today());
       const runRow = (await planned(actor)).find((row) => row.block_id === graphs[1]!.block_id)!;
       const editRunning = `/app/program/build?edit=${graphs[1]!.block_id}&workout=${runRow.id}`;
-      await page.goto(editRunning);
+      stage("m13-03"); await page.goto(editRunning);
       await page.getByLabel("Apply changes to", { exact: true }).selectOption("future");
       await page.getByRole("button", { name: "Add rehab", exact: true }).click();
       await page.getByLabel("Rehab protocol", { exact: true }).selectOption(protocolId);
       await page.getByRole("button", { name: "Review changes", exact: true }).click();
-      await page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true }).check();
+      await expect(page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true })).toHaveCount(0);
       await save(page, actor, "running");
-      await page.goto(editRunning);
+      stage("m13-04"); await page.goto(editRunning);
       await page.reload();
       await expect(page.getByLabel("Rehab protocol", { exact: true })).toHaveValue(protocolId);
       await expect(page.getByRole("button", { name: "Add exercise", exact: true })).toHaveCount(0);
@@ -1049,7 +1074,7 @@ test.describe("Modular program builder", () => {
           .toMatchObject([{ movementId: selected.id, reps: 5, targetWeightKg: 20,
             meta: { rehabProtocolId: protocolId, rehabProtocolRevision: library.data!.revision } }]);
       }
-      await page.goto(`/app/swim?plan=${swimming.plan.id}`);
+      stage("m13-05"); await page.goto(`/app/swim?plan=${swimming.plan.id}`);
       const rehab = page.getByRole("region", { name: "Rehab", exact: true });
       await rehab.getByRole("checkbox", { name: "Shared rehab", exact: true }).check();
       await rehab.getByRole("button", { name: "Save changes", exact: true }).click();
@@ -1065,7 +1090,7 @@ test.describe("Modular program builder", () => {
         return result.data!;
       };
       const swims = await courseRows(), first = swims[0]!;
-      await page.goto(`/app/swim/${first.id}`);
+      stage("m13-06"); await page.goto(`/app/swim/${first.id}`);
       const posted = page.waitForRequest((request) => request.method() === "POST" && !!request.headers()["next-action"]);
       await page.getByRole("button", { name: "Start Shared rehab", exact: true }).click();
       await expect(page).toHaveURL(/\/app\/sessions\/[0-9a-f-]{36}$/);
@@ -1073,7 +1098,7 @@ test.describe("Modular program builder", () => {
       const request = await posted;
       const replay = await page.request.post(request.url(), { headers: request.headers(), data: request.postDataBuffer()! });
       expect(replay.ok()).toBe(true); expect(await replay.text()).toContain(sessionId);
-      await page.getByTestId("movement-focus-log-button").click();
+      stage("m13-07"); await page.getByTestId("movement-focus-log-button").click();
       await expect.poll(async () => (await loggedSets(actor, sessionId)).length).toBe(1);
       await page.getByRole("button", { name: /^Finish session/ }).click();
       await expect.poll(async () => {
@@ -1089,7 +1114,7 @@ test.describe("Modular program builder", () => {
       expect(await courseRows()).toEqual(swims);
       const nativeResults = await actor.from("cardio_logs").select("id").eq("session_id", sessionId);
       expect(nativeResults.error).toBeNull(); expect(nativeResults.data).toEqual([]);
-      await page.goto(`/app/swim/${first.id}`);
+      stage("m13-08"); await page.goto(`/app/swim/${first.id}`);
       await expect(page.getByRole("link", { name: "View rehab", exact: true })).toHaveAttribute("href", `/app/sessions/${sessionId}`);
       await page.goto("/app/sessions");
       await expect(page.locator(`a[href="/app/sessions/${sessionId}"]`)).toHaveCount(1);

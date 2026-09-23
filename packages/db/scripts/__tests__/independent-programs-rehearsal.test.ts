@@ -6,7 +6,8 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertOwnershipCatalog, assertOwnershipRefusal, IndependentProgramsAssertion, rehearseIndependentPrograms,
-  independentRunningSeed, independentRehabOwnershipProbes, independentProgramFixture, withIndependentRunningFixture, type OwnershipCatalog,
+  independentRunningSeed, independentRehabOwnershipProbes, independentProgramFixture, withIndependentRunningFixture,
+  eraseIndependentAccountAsAuthAdmin, type OwnershipCatalog,
 } from "../../integration-tests/independent-programs-rehearsal";
 import { SEED_MOVEMENTS } from "../../seeds/movements";
 
@@ -16,6 +17,41 @@ const down = readFileSync(new URL("../../rollbacks/0158_independent_program_owne
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("DC-R5 independent ownership storage boundary", () => {
+  it("DC-SW8: uses a pinned, read-only definer for deferred cascade checks without granting Auth application access", () => {
+    const routine = up.split("CREATE FUNCTION public.check_program_parent_consistency()")[1]!.split("CREATE CONSTRAINT TRIGGER")[0]!;
+    expect(routine).toContain("SECURITY DEFINER SET search_path=pg_catalog,public");
+    expect(routine).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|EXECUTE)\b/);
+    expect(routine).toContain("IF NOT FOUND OR parent.program_kind IS NULL THEN RETURN NULL;");
+    expect(up.match(/SECURITY DEFINER/g)).toHaveLength(1);
+    expect(up).toContain("REVOKE ALL ON FUNCTION public.check_program_parent_consistency() FROM PUBLIC,anon,authenticated;");
+    expect(up).not.toContain("TO supabase_auth_admin");
+    expect(down).toContain("prosecdef=(entry.signature='check_program_parent_consistency()')");
+    expect(down).toContain("a.grantee=(SELECT oid FROM pg_roles WHERE rolname='authenticated')");
+  });
+  it("DC-SW8: erases through a restricted Auth owner and forces deferred checks before restoring fixture ownership", async () => {
+    const calls: string[] = [], userId = "00000000-0000-4000-8000-000000000001";
+    const tx = Object.assign(vi.fn(async (parts: TemplateStringsArray, ...values: unknown[]) => {
+      const sql = parts.join("?");
+      calls.push(sql);
+      if (sql.includes("public_access")) return [{ actor: "supabase_auth_admin", session_actor: "supabase_auth_admin", request_user: null, public_access: false }];
+      if (sql.includes("session_actor")) return [{ actor: "postgres", session_actor: "postgres" }];
+      if (sql.includes("AS owner")) return [{ owner: "postgres" }];
+      expect(sql).toContain("DELETE FROM auth.users WHERE id=?::uuid RETURNING id");
+      expect(values).toEqual([userId]);
+      return [{ id: userId }];
+    }), { unsafe: vi.fn(async (sql: string) => { calls.push(sql); }) });
+    const begin = vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx));
+    await eraseIndependentAccountAsAuthAdmin({ begin } as unknown as postgres.Sql, userId);
+    expect(begin).toHaveBeenCalledTimes(1);
+    expect(calls.join("\n")).not.toMatch(/GRANT.*public\.|DISABLE TRIGGER/);
+    const auth = calls.indexOf("SET LOCAL SESSION AUTHORIZATION supabase_auth_admin");
+    const deletion = calls.findIndex((sql) => sql.startsWith("DELETE FROM auth.users"));
+    const forced = calls.indexOf("SET CONSTRAINTS ALL IMMEDIATE");
+    const reset = calls.indexOf("RESET SESSION AUTHORIZATION");
+    expect(auth).toBeGreaterThan(0); expect(deletion).toBeGreaterThan(auth);
+    expect(forced).toBeGreaterThan(deletion); expect(reset).toBeGreaterThan(forced);
+    expect(calls.at(-1)).toBe("DROP ROLE supabase_auth_admin");
+  });
   it.each(["authored", "hybrid", "green-protocol"].flatMap((programId) =>
     Array.from({ length: 7 }, (_, weekday) => ({ programId, weekday })),
   ))("builds an executable $programId season fixture on weekday $weekday", ({ programId, weekday }) => {

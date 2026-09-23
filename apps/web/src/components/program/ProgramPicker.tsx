@@ -4520,7 +4520,7 @@ export function ProgramPicker({
               ))}
             </div>
           </div>
-        ) : isCluster ? (
+        ) : isCluster || selected.fields.some((field) => field.key === "useTrainingMax") ? (
           <div className={styles.basisRow}>
             <span className={styles.basisLabel}>Load off</span>
             <div className={styles.toggle}>

@@ -113,6 +113,30 @@ export function independentProgramFixture(
   };
 }
 
+export async function eraseIndependentAccountAsAuthAdmin(database: postgres.Sql, userId: string) {
+  return database.begin(async (tx) => {
+    assert.deepEqual(Array.from(await tx`SELECT current_user AS actor,session_user AS session_actor`),
+      [{ actor: "postgres", session_actor: "postgres" }]);
+    assert.equal((await tx`SELECT pg_get_userbyid(relowner) AS owner FROM pg_class WHERE oid='auth.users'::regclass`)[0]!.owner, "postgres");
+    // The SQL-only fixture lacks GoTrue. Recreate its restricted Auth-table owner,
+    // never grant it application-table access, and roll back the role on failure.
+    await tx.unsafe("CREATE ROLE supabase_auth_admin NOLOGIN NOINHERIT NOBYPASSRLS");
+    await tx.unsafe("GRANT USAGE ON SCHEMA auth TO supabase_auth_admin");
+    await tx.unsafe("ALTER TABLE auth.users OWNER TO supabase_auth_admin");
+    await tx.unsafe("SET LOCAL SESSION AUTHORIZATION supabase_auth_admin");
+    assert.deepEqual(Array.from(await tx`SELECT current_user AS actor,session_user AS session_actor,
+      auth.uid() AS request_user,has_table_privilege(current_user,'public.training_blocks','SELECT') AS public_access`),
+    [{ actor: "supabase_auth_admin", session_actor: "supabase_auth_admin", request_user: null, public_access: false }]);
+    const deleted = await tx`DELETE FROM auth.users WHERE id=${userId}::uuid RETURNING id`;
+    assert.deepEqual(Array.from(deleted), [{ id: userId }]);
+    await tx.unsafe("SET CONSTRAINTS ALL IMMEDIATE");
+    await tx.unsafe("RESET SESSION AUTHORIZATION");
+    await tx.unsafe("ALTER TABLE auth.users OWNER TO postgres");
+    await tx.unsafe("REVOKE USAGE ON SCHEMA auth FROM supabase_auth_admin");
+    await tx.unsafe("DROP ROLE supabase_auth_admin");
+  });
+}
+
 /** Only the existing loopback GitHub fixture may execute this storage contract. */
 export async function rehearseIndependentPrograms(database: postgres.Sql, stage: (name: string) => void) {
   assert.equal(process.env.GITHUB_ACTIONS, "true");
@@ -179,6 +203,13 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
   await denied(revert, "P0001");
   assert.equal((await database`SELECT public.independent_programs_ready() AS value`)[0]!.value, false);
   await database.unsafe(readyDefinition);
+  await database.unsafe("ALTER FUNCTION public.check_program_parent_consistency() SECURITY INVOKER");
+  await denied(revert, "P0001");
+  await database.unsafe("ALTER FUNCTION public.check_program_parent_consistency() SECURITY DEFINER");
+  await database.unsafe("GRANT EXECUTE ON FUNCTION public.check_program_parent_consistency() TO authenticated");
+  await denied(revert, "P0001");
+  await database.unsafe("REVOKE ALL ON FUNCTION public.check_program_parent_consistency() FROM authenticated");
+  assertOwnershipCatalog(await catalog(), installedCatalog);
   stages.push("ownership-changed-routine-refuses-unused-down");
   stage("ownership-unused-down-up-and-catalog-restoration");
   await revert();
@@ -643,7 +674,64 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     stages.push("ownership-issued-rehab-and-receipts-refuse-down-after-detach");
     stage("ownership-account-erasure-with-attached-rehab");
     await attach(a, [protocolId]);
-    await database`DELETE FROM auth.users WHERE id=${a}::uuid`;
+    // Prove necessity against the old security mode before expanding the graph.
+    await database.unsafe("ALTER FUNCTION public.check_program_parent_consistency() SECURITY INVOKER");
+    try { await denied(() => eraseIndependentAccountAsAuthAdmin(database, a), "42501"); }
+    finally { await database.unsafe("ALTER FUNCTION public.check_program_parent_consistency() SECURITY DEFINER"); }
+    const issuedProtocolId = randomUUID();
+    await asUser(a, (tx) => tx`INSERT INTO public.rehab_protocols(id,user_id,name,definition)
+      SELECT ${issuedProtocolId}::uuid,user_id,'Issued erasure protocol',definition
+      FROM public.rehab_protocols WHERE id=${protocolId}::uuid AND user_id=${a}::uuid`);
+    await attach(a, [protocolId, issuedProtocolId]);
+    const issuedPrescription = { ...prescription,
+      items: prescription.items.map((item) => ({ ...item, meta: { ...item.meta, rehabProtocolId: issuedProtocolId } })),
+      meta: { swimRehab: { ...prescription.meta.swimRehab, protocolId: issuedProtocolId } } };
+    const issuedRevision = (await snapshot(a)).revision;
+    const issuedSession = (await asUser(a, (tx) => tx`SELECT public.start_swim_rehab_session(${workout.id}::uuid,
+      ${issuedProtocolId}::uuid,${issuedRevision},${json(issuedPrescription)}::text::jsonb,${randomUUID()}::uuid) AS id`))[0]!.id;
+    await asUser(a, (tx) => tx`INSERT INTO public.set_logs(session_id,movement_id,set_index,reps,weight_kg)
+      VALUES(${issuedSession}::uuid,${lift.id}::uuid,1,8,2)`);
+    assert.deepEqual(Array.from(await asUser(a, (tx) => tx`SELECT DISTINCT b.program_kind AS kind
+      FROM public.program_rehab_bindings r JOIN public.program_instances i ON i.id=r.program_instance_id
+      JOIN public.training_blocks b ON b.id=i.block_id
+      WHERE r.user_id=${a}::uuid AND r.rehab_protocol_id=${protocolId}::uuid ORDER BY kind`)),
+    [{ kind: "hybrid" }, { kind: "running" }, { kind: "strength" }]);
+    await asUser(a, (tx) => tx`INSERT INTO public.set_logs(session_id,movement_id,set_index,reps,weight_kg)
+      VALUES(${session}::uuid,${lift.id}::uuid,1,5,10)`);
+    await asUser(a, (tx) => tx`INSERT INTO public.cardio_logs(session_id,movement_id,modality,duration_sec)
+      VALUES(${session}::uuid,${runningId}::uuid,'run',60)`);
+    const peers = await database`SELECT jsonb_build_array(
+      (SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM public.training_blocks b WHERE user_id=${b}::uuid),
+      (SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM public.swim_plans p WHERE user_id=${b}::uuid),
+      (SELECT jsonb_agg(to_jsonb(w) ORDER BY id) FROM public.swim_workouts w WHERE user_id=${b}::uuid),
+      (SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM public.rehab_protocols r WHERE user_id=${b}::uuid)) AS value`;
+    const erased = [a, legacyUser, legacyCompletedUser, seasonOwner, adviceOwner];
+    const ownedTables = ["training_blocks", "program_instances", "planned_sessions", "sessions", "training_maxes",
+      "program_recommendations", "rehab_protocols", "program_rehab_bindings", "swim_plan_rehab_bindings",
+      "swim_plans", "swim_workouts", "training_seasons", "season_blocks", "engine_override_events"];
+    for (const table of ownedTables) {
+      assert.ok((await database`SELECT count(*)::int AS n FROM ${database(table)} WHERE user_id=ANY(${erased}::uuid[])`)[0]!.n > 0,
+        `Erasure fixture must populate ${table}`);
+    }
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.sessions
+      WHERE user_id=${a}::uuid AND id=${issuedSession}::uuid AND prescription#>>'{meta,swimRehab,protocolId}'=${issuedProtocolId}`)[0]!.n, 1);
+    const sessionIds = (await database`SELECT id FROM public.sessions WHERE user_id=ANY(${erased}::uuid[])`).map((row) => row.id);
+    for (const table of ["set_logs", "cardio_logs"]) {
+      assert.ok((await database`SELECT count(*)::int AS n FROM ${database(table)} WHERE session_id=ANY(${sessionIds}::uuid[])`)[0]!.n > 0,
+        `Erasure fixture must populate ${table}`);
+    }
+    for (const owner of erased) await eraseIndependentAccountAsAuthAdmin(database, owner);
+    for (const table of ownedTables) {
+      assert.equal((await database`SELECT count(*)::int AS n FROM ${database(table)} WHERE user_id=ANY(${erased}::uuid[])`)[0]!.n, 0);
+    }
+    for (const table of ["set_logs", "cardio_logs"]) {
+      assert.equal((await database`SELECT count(*)::int AS n FROM ${database(table)} WHERE session_id=ANY(${sessionIds}::uuid[])`)[0]!.n, 0);
+    }
+    assert.deepEqual(Array.from(await database`SELECT jsonb_build_array(
+      (SELECT jsonb_agg(to_jsonb(b) ORDER BY id) FROM public.training_blocks b WHERE user_id=${b}::uuid),
+      (SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM public.swim_plans p WHERE user_id=${b}::uuid),
+      (SELECT jsonb_agg(to_jsonb(w) ORDER BY id) FROM public.swim_workouts w WHERE user_id=${b}::uuid),
+      (SELECT jsonb_agg(to_jsonb(r) ORDER BY id) FROM public.rehab_protocols r WHERE user_id=${b}::uuid)) AS value`), Array.from(peers));
     assert.equal((await database`SELECT count(*)::int AS n FROM public.swim_plan_rehab_bindings WHERE user_id=${a}::uuid`)[0]!.n, 0);
     assert.equal((await database`SELECT count(*)::int AS n FROM public.engine_override_events WHERE user_id=${a}::uuid`)[0]!.n, 0);
     stages.push("ownership-account-erasure-with-attached-rehab");

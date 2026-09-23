@@ -25,11 +25,14 @@ BEGIN
     routine:=to_regprocedure('public.'||entry.signature);
     IF NOT EXISTS(SELECT 1 FROM pg_proc WHERE oid=routine
       AND md5(replace(prosrc,E'\r\n',E'\n'))=entry.fingerprint
-      AND NOT prosecdef AND NOT proleakproof AND NOT proisstrict AND proparallel='u'
+      AND prosecdef=(entry.signature='check_program_parent_consistency()')
+      AND NOT proleakproof AND NOT proisstrict AND proparallel='u'
       AND proowner=(SELECT oid FROM pg_roles WHERE rolname=current_user)
       AND proconfig=ARRAY['search_path=pg_catalog, public'])
       OR EXISTS(SELECT 1 FROM pg_proc p CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
-        WHERE p.oid=routine AND (a.grantee=0 OR a.grantee=(SELECT oid FROM pg_roles WHERE rolname='anon'))) THEN
+        WHERE p.oid=routine AND (a.grantee=0 OR a.grantee=(SELECT oid FROM pg_roles WHERE rolname='anon')
+          OR (entry.signature='check_program_parent_consistency()'
+            AND a.grantee=(SELECT oid FROM pg_roles WHERE rolname='authenticated')))) THEN
       RAISE EXCEPTION 'An independent-program routine changed; rollback refused: %',entry.signature;
     END IF;
   END LOOP;
