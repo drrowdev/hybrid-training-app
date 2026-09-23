@@ -61,4 +61,20 @@ describe("DC-K4/DC-SW7 shared schedule readiness and review", () => {
       revision: "a".repeat(32), requestId: scheduleRequestId("end"), acceptOverlap: false,
     }, { id: "old" })).resolves.toMatchObject({ data: { id: "old" } });
   });
+  it.each([
+    { data: true, error: null },
+    { data: false, error: null },
+    { data: null, error: { code: "42501", message: "Permission denied" } },
+  ])("refuses a legacy write when ownership readiness is not explicitly absent", async (capability) => {
+    const { db, rpc } = client(null);
+    rpc.mockImplementation(async (routine?: string) => routine === "independent_programs_ready" ? capability : {
+      data: null, error: { code: "PGRST202", message: `Could not find ${routine}` },
+    });
+    await expect(commitTrainingSchedule(db, "primary-end", { id: "owned" }, {
+      revision: "a".repeat(32), requestId: scheduleRequestId("end"), acceptOverlap: false,
+    }, { id: "owned" })).rejects.toBeInstanceOf(ScheduleUnavailableError);
+    expect(rpc.mock.calls.map(([routine]) => routine)).toEqual([
+      "independent_program_schedule_commit", "independent_programs_ready",
+    ]);
+  });
 });

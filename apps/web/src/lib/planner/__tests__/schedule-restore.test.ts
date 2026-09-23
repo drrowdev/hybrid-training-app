@@ -55,7 +55,7 @@ describe("DC-K4 restored schedule review", () => {
     expect(preview.overlaps).toEqual([swim]);
     expect(mock.rpc).toHaveBeenCalledTimes(1);
     await restoreBlock(mock.block.id, { revision: preview.revision, requestId: preview.requestId, acceptOverlap: true });
-    expect(mock.rpc).toHaveBeenLastCalledWith("training_schedule_commit", expect.objectContaining({
+    expect(mock.rpc).toHaveBeenLastCalledWith("independent_program_schedule_commit", expect.objectContaining({
       p_operation: "primary-restore", p_args: { id: mock.block.id }, p_expected_revision: preview.revision,
       p_request_id: preview.requestId, p_accept_overlap: true,
     }));
@@ -69,7 +69,7 @@ describe("DC-K4 restored schedule review", () => {
     const form = new FormData(); form.set("id", workoutId);
     form.set("scheduleReview", JSON.stringify({ revision: preview.revision, requestId: preview.requestId, acceptOverlap: true }));
     await unskipPlannedSession(form);
-    expect(mock.rpc).toHaveBeenLastCalledWith("training_schedule_commit", expect.objectContaining({
+    expect(mock.rpc).toHaveBeenLastCalledWith("independent_program_schedule_commit", expect.objectContaining({
       p_operation: "primary-unskip", p_args: { id: workoutId }, p_request_id: preview.requestId, p_accept_overlap: true,
     }));
   });

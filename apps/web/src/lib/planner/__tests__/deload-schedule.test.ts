@@ -59,7 +59,7 @@ beforeEach(() => {
     if (name === "training_schedule_snapshot") return mock.missingSchedule
       ? { data: null, error: { code: "PGRST202", message: "training_schedule_snapshot unavailable" } }
       : { data: { revision: mock.revision, entries: mock.entries }, error: null };
-    if (name !== "training_schedule_commit" || !args) throw new Error(`Unexpected RPC ${name}`);
+    if (name !== "independent_program_schedule_commit" || !args) throw new Error(`Unexpected RPC ${name}`);
     const result = args.p_operation === "primary-insert-deload"
       ? { deloadWeekIndex: 1, sessions: 1 } : { blockId: mock.block.id };
     if (!mock.commitError) mock.receipt = { context: {
@@ -108,7 +108,7 @@ describe("DC-K4 recovery-week shared schedule review", () => {
     expect(mock.rpc.mock.calls.every(([name]) => name === "training_schedule_snapshot")).toBe(true);
     expect(await insertDeloadWeekAction(undefined, undefined, undefined, review(preview, true)))
       .toEqual({ ok: true, deloadWeekIndex: 1, sessions: 1 });
-    expect(mock.rpc).toHaveBeenLastCalledWith("training_schedule_commit", expect.objectContaining({
+    expect(mock.rpc).toHaveBeenLastCalledWith("independent_program_schedule_commit", expect.objectContaining({
       p_operation: "primary-insert-deload", p_expected_revision: preview.review.revision,
       p_request_id: preview.review.requestId, p_accept_overlap: true,
       p_args: { blockId: mock.block.id, afterWeek: 0, sessions: [{
@@ -138,7 +138,7 @@ describe("DC-K4 recovery-week shared schedule review", () => {
     expect(await insertDeloadWeekAction(undefined, undefined, undefined, accepted)).toEqual({ ok: false, error: "Could not save." });
     mock.commitError = null;
     await insertDeloadWeekAction(undefined, undefined, undefined, accepted);
-    const commits = mock.rpc.mock.calls.filter(([name]) => name === "training_schedule_commit");
+    const commits = mock.rpc.mock.calls.filter(([name]) => name === "independent_program_schedule_commit");
     expect(commits).toHaveLength(2); expect(commits[0]).toEqual(commits[1]);
   });
   it("previews and atomically removes a recovery week with shifted-week consent and replay", async () => {
@@ -152,7 +152,7 @@ describe("DC-K4 recovery-week shared schedule review", () => {
     expect(await removeDeloadWeekAction({ weekIndex: 1 }, accepted)).toMatchObject({ ok: false });
     accepted.acceptOverlap = true;
     expect(await removeDeloadWeekAction({ weekIndex: 1 }, accepted)).toEqual({ ok: true });
-    expect(mock.rpc).toHaveBeenLastCalledWith("training_schedule_commit", expect.objectContaining({
+    expect(mock.rpc).toHaveBeenLastCalledWith("independent_program_schedule_commit", expect.objectContaining({
       p_operation: "primary-remove-deload", p_args: { blockId: mock.block.id, weekIndex: 1 }, p_accept_overlap: true,
     }));
     mock.rpc.mockClear(); mock.rows = [];

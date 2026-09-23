@@ -19,9 +19,25 @@ describe("DC-K4/DC-SW7 ending only the selected primary program", () => {
     const form = new FormData(); form.set("id", id); form.set("reason", "Switching to a deload block");
     await endBlock(form);
     expect(rpc).toHaveBeenCalledTimes(2);
-    expect(rpc).toHaveBeenLastCalledWith("training_schedule_commit", expect.objectContaining({
+    expect(rpc).toHaveBeenLastCalledWith("independent_program_schedule_commit", expect.objectContaining({
       p_operation: "primary-end", p_args: { id, reason: "Switching to a deload block" },
       p_expected_revision: "a".repeat(32), p_accept_overlap: false,
+    }));
+    expect(revalidatePath).toHaveBeenCalledWith("/app");
+  });
+  it("retains explicit legacy ending only when both independent-program routines are absent", async () => {
+    rpc.mockImplementation(async (name: string) => {
+      if (name === "training_schedule_snapshot") return { data: { revision: "a".repeat(32), entries: [] }, error: null };
+      if (name === "training_schedule_commit") return { data: { id }, error: null };
+      return { data: null, error: { code: "PGRST202", message: `Could not find ${name}` } };
+    });
+    const form = new FormData(); form.set("id", id);
+    await endBlock(form);
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual([
+      "training_schedule_snapshot", "independent_program_schedule_commit", "independent_programs_ready", "training_schedule_commit",
+    ]);
+    expect(rpc).toHaveBeenLastCalledWith("training_schedule_commit", expect.objectContaining({
+      p_operation: "primary-end", p_args: { id },
     }));
     expect(revalidatePath).toHaveBeenCalledWith("/app");
   });

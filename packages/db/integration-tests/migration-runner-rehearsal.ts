@@ -3,14 +3,14 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
+import { promisify, types } from "node:util";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { readMigrationFiles, type MigrationMeta } from "drizzle-orm/migrator";
 import postgres from "postgres";
 import { z } from "zod";
 import { migrateCanonical } from "../scripts/migration-runner.ts";
-import { projectMigrationError } from "../scripts/migrate-evidence.ts";
+import { MAX_MIGRATIONS, projectMigrationError } from "../scripts/migrate-evidence.ts";
 import { rehearseSwimOutcomeCompatibility } from "./swim-outcome-compatibility-rehearsal.ts";
 
 const execute = promisify(execFile);
@@ -24,16 +24,53 @@ const normalFailureSchema = z.object({
     error: z.object({ sqlstate: z.string().regex(/^[0-9A-Z]{5}$/).nullable() }),
     position: z.union([
       z.object({ status: z.literal("unmatched") }),
-      z.object({ status: z.literal("matched"), migrationIndex: z.number().int().min(0).max(157),
+      z.object({ status: z.literal("matched"), migrationIndex: z.number().int().min(0).max(MAX_MIGRATIONS - 1),
         statementIndex: z.number().int().min(0).max(9999) }),
     ]),
   }),
 });
 
+type CommandDiagnostic = {
+  exitCode: number | null;
+  signal: "SIGTERM" | "SIGKILL" | "SIGINT" | null;
+  record: "parsed" | "missing" | "invalid";
+};
+type RunnerDiagnostic = {
+  sqlstate: string | null;
+  position: { status: "unmatched" } | { status: "matched"; migrationIndex: number; statementIndex: number };
+  command?: CommandDiagnostic;
+};
+
+export function projectNormalCommandFailure(error: unknown, completed = false): RunnerDiagnostic {
+  const field = (key: string): unknown => error !== null && typeof error === "object" && !types.isProxy(error)
+    ? Object.getOwnPropertyDescriptor(error, key)?.value : undefined;
+  const exit = field("code"), signal = field("signal"), stderr = field("stderr");
+  const command: CommandDiagnostic = {
+    exitCode: completed ? 0 : typeof exit === "number" && Number.isInteger(exit) && exit >= 0 && exit <= 255 ? exit : null,
+    signal: signal === "SIGTERM" || signal === "SIGKILL" || signal === "SIGINT" ? signal : null,
+    record: "missing",
+  };
+  if (typeof stderr === "string" && Buffer.byteLength(stderr) <= 128 * 1024) {
+    let matched: RunnerDiagnostic | undefined;
+    for (const line of stderr.split(/\r?\n/)) {
+      let value: unknown;
+      try { value = JSON.parse(line); } catch { continue; }
+      if (typeof value !== "object" || value === null || !("scope" in value) || value.scope !== "db-migrate") continue;
+      const parsed = normalFailureSchema.safeParse(value);
+      if (!parsed.success || matched) {
+        command.record = "invalid";
+        return { sqlstate: null, position: { status: "unmatched" }, command };
+      }
+      matched = { sqlstate: parsed.data.diagnostic.error.sqlstate, position: parsed.data.diagnostic.position };
+    }
+    if (matched) return { ...matched, command: { ...command, record: "parsed" } };
+  }
+  return { sqlstate: null, position: { status: "unmatched" }, command };
+}
+
 export class MigrationRunnerRehearsalError extends Error {
   constructor(
-    readonly diagnostic: { sqlstate: string | null; position: { status: "unmatched" } |
-      { status: "matched"; migrationIndex: number; statementIndex: number } },
+    readonly diagnostic: RunnerDiagnostic,
     cause: unknown,
     readonly cleanupFailed = false,
   ) {
@@ -75,27 +112,19 @@ async function normalCommand(url: string) {
   assert.equal(existsSync(new URL("../.env.local", import.meta.url)), false);
   const env = Object.fromEntries(["PATH", "HOME", "PNPM_HOME", "TMPDIR", "TEMP", "TMP"].flatMap((key) =>
     process.env[key] ? [[key, process.env[key]!]] : []));
+  let completed = false;
   try {
     const result = await execute("pnpm", ["run", "db:migrate"], {
       cwd: packageDirectory, env: { ...env, DATABASE_URL: url, PGSSLMODE: "disable" },
       timeout: 120_000, maxBuffer: 128 * 1024,
     });
+    completed = true;
     assert.ok(result.stdout.split(/\r?\n/).some((line) => {
       try { const value = JSON.parse(line); return value.scope === "db-migrate" && value.status === "passed"; }
       catch { return false; }
     }), "Normal migration success record missing");
   } catch (error) {
-    if (error instanceof Error && "stderr" in error && typeof error.stderr === "string") {
-      for (const line of error.stderr.split(/\r?\n/)) {
-        let value: unknown;
-        try { value = JSON.parse(line); } catch { continue; }
-        const parsed = normalFailureSchema.safeParse(value);
-        if (parsed.success) throw new MigrationRunnerRehearsalError({
-          sqlstate: parsed.data.diagnostic.error.sqlstate, position: parsed.data.diagnostic.position,
-        }, error);
-      }
-    }
-    throw error;
+    throw new MigrationRunnerRehearsalError(projectNormalCommandFailure(error, completed), error);
   }
 }
 

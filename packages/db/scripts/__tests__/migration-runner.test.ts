@@ -6,7 +6,42 @@ import postgres from "postgres";
 import { describe, expect, it, vi } from "vitest";
 import { migrateCanonical, migrationFileBoundaries } from "../migration-runner";
 import { projectMigrationError } from "../migrate-evidence";
-import { rehearseMigrationRunner } from "../../integration-tests/migration-runner-rehearsal";
+import { projectNormalCommandFailure, rehearseMigrationRunner } from "../../integration-tests/migration-runner-rehearsal";
+
+describe("normal command failure projection", () => {
+  const record = (migrationIndex: number) => JSON.stringify({
+    scope: "db-migrate", status: "failed",
+    diagnostic: { error: { sqlstate: "42601", message: "SYNTHETIC_PRIVATE" },
+      position: { status: "matched", migrationIndex, statementIndex: 0 } },
+    private: "SYNTHETIC_PRIVATE",
+  });
+  it("retains0158 attribution through the normal159 command envelope", () => {
+    expect(projectNormalCommandFailure({ code: 1, stderr: `pnpm noise\n${record(158)}\n` })).toEqual({
+      sqlstate: "42601", position: { status: "matched", migrationIndex: 158, statementIndex: 0 },
+      command: { exitCode: 1, signal: null, record: "parsed" },
+    });
+  });
+  it.each([record(159), `${record(158)}\n${record(158)}`])("refuses invalid or ambiguous attribution", (stderr) => {
+    expect(projectNormalCommandFailure({ code: 1, stderr })).toEqual({
+      sqlstate: null, position: { status: "unmatched" },
+      command: { exitCode: 1, signal: null, record: "invalid" },
+    });
+  });
+  it("distinguishes a killed command from an exit-zero missing-success assertion", () => {
+    expect(projectNormalCommandFailure({ signal: "SIGTERM", stderr: "SYNTHETIC_PRIVATE" })).toEqual({
+      sqlstate: null, position: { status: "unmatched" },
+      command: { exitCode: null, signal: "SIGTERM", record: "missing" },
+    });
+    expect(projectNormalCommandFailure(new Error("SYNTHETIC_PRIVATE"), true).command)
+      .toEqual({ exitCode: 0, signal: null, record: "missing" });
+  });
+  it("never emits raw exception fields or reads diagnostic getters", () => {
+    const getter = vi.fn(() => { throw new Error("SYNTHETIC_PRIVATE"); });
+    const error = Object.defineProperty({ code: "SYNTHETIC_PRIVATE" }, "stderr", { get: getter });
+    expect(JSON.stringify(projectNormalCommandFailure(error))).not.toContain("SYNTHETIC_PRIVATE");
+    expect(getter).not.toHaveBeenCalled();
+  });
+});
 
 describe("canonical migration file boundaries", () => {
   it("preserves all159 canonical metadata and statement bytes without changing source", () => {

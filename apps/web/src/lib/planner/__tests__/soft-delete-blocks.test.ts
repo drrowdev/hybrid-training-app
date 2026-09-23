@@ -18,14 +18,14 @@ describe("DC-K4/DC-SW7 independent program trash and undo", () => {
   it("requests soft deletion without turning it into program end", async () => {
     const form = new FormData(); form.set("id", id);
     expect(await deleteBlock(form)).toEqual({ ok: true, blockId: id });
-    expect(rpc).toHaveBeenLastCalledWith("training_schedule_commit", expect.objectContaining({
+    expect(rpc).toHaveBeenLastCalledWith("independent_program_schedule_commit", expect.objectContaining({
       p_operation: "primary-delete", p_args: { id }, p_expected_revision: "a".repeat(32),
     }));
     expect(revalidatePath).toHaveBeenCalledWith("/app/settings/trash");
   });
   it("restores through the same atomic boundary without implicit overlap consent", async () => {
     expect(await restoreBlock(id)).toEqual({ ok: true });
-    expect(rpc).toHaveBeenLastCalledWith("training_schedule_commit", expect.objectContaining({
+    expect(rpc).toHaveBeenLastCalledWith("independent_program_schedule_commit", expect.objectContaining({
       p_operation: "primary-restore", p_args: { id }, p_accept_overlap: false,
     }));
   });
