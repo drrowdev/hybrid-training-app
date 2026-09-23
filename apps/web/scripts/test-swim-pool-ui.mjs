@@ -878,16 +878,24 @@ try {
     stages.push(stage);
 
     stage = `explicit-recording-outcome-${width}`;
-    await page.evaluate(() => { window.outcomeCalls = []; window.outcomeMode = "success"; window.showOutcome(); });
+    await page.evaluate(() => { window.outcomeCalls = []; window.outcomeMode = "delay"; window.showOutcome(); });
     const outcomeRegion = page.getByRole("region", { name: "Week 1 A: steady swimming", exact: true });
     const confirmOutcome = outcomeRegion.getByRole("button", { name: "Confirm outcome", exact: true });
     await expect(confirmOutcome).toBeDisabled();
     await outcomeRegion.getByRole("radio", { name: "Completed", exact: true }).check();
     await confirmOutcome.click();
+    await expect(confirmOutcome).toBeDisabled();
+    await expect(outcomeRegion.getByText("Completed", { exact: true })).toBeVisible();
+    await expect(outcomeRegion.locator('p[aria-live="polite"]')).toHaveCount(0);
+    await page.evaluate(() => window.resolveOutcome());
     await expect(outcomeRegion.locator('p[aria-live="polite"]')).toHaveText("Completed");
     await outcomeRegion.getByRole("button", { name: "Change outcome", exact: true }).click();
     await outcomeRegion.getByRole("radio", { name: "Stopped early", exact: true }).check();
     await confirmOutcome.click();
+    await expect(confirmOutcome).toBeDisabled();
+    await expect(outcomeRegion.getByText("Stopped early", { exact: true })).toBeVisible();
+    await expect(outcomeRegion.locator('p[aria-live="polite"]')).toHaveText("Completed");
+    await page.evaluate(() => window.resolveOutcome());
     await expect(outcomeRegion.locator('p[aria-live="polite"]')).toHaveText("Stopped early");
     const savedOutcomes = await page.evaluate(() => window.outcomeCalls);
     assert.equal(savedOutcomes.length, 2);

@@ -440,7 +440,7 @@ test.describe("Modular program builder", () => {
     await region.getByRole("radio", { name: "Completed", exact: true }).check();
     const posted = page.waitForRequest((request) => request.method() === "POST" && !!request.headers()["next-action"]);
     await region.getByRole("button", { name: "Confirm outcome", exact: true }).click();
-    await expect(region.getByText("Completed", { exact: true })).toBeVisible();
+    await expect(region.locator('p[aria-live="polite"]')).toHaveText("Completed");
     const accepted = await outcomes();
     expect(accepted).toHaveLength(1);
     expect(accepted[0]).toMatchObject({ workout_id: first.id, match_id: match.id,
@@ -495,7 +495,7 @@ test.describe("Modular program builder", () => {
     await region.getByRole("button", { name: "Change outcome", exact: true }).click();
     await region.getByRole("radio", { name: "Stopped early", exact: true }).check();
     await region.getByRole("button", { name: "Confirm outcome", exact: true }).click();
-    await expect(region.getByText("Stopped early", { exact: true })).toBeVisible();
+    await expect(region.locator('p[aria-live="polite"]')).toHaveText("Stopped early");
     const corrected = await outcomes();
     expect(corrected).toHaveLength(2);
     expect(corrected[1]).toMatchObject({ match_id: match.id,

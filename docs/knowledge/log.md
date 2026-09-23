@@ -4525,3 +4525,27 @@ remain unchecked and Add disabled after completion. All57 stages pass at
 375/1280. No application/native case/SQL, assertion, timeout or runtime guard
 changed. Exact-head public gates and native-seven execution remain pending;
 unavailable owner confirmation is not hosted migration/activation approval.
+
+## [2026-09-23] refine | Wait for persisted outcome UI in native M7
+
+Exact182c0703 passed core35808613524 and storage35808613556, including
+all49 SQL and57 Linux synthetic UI stages. Native35809272387 then passed
+the normal158 migrations, twelve pre-browser stages,36authenticated RPC
+cases and the original six browser cases. Only M7 failed, at the first
+one-receipt `accepted` length assertion after a text-based wait, without
+a timeout or retry.
+
+Both M7 confirmation waits selected text also present in the radio options.
+A controlled pending-save reproduction proved the old Completed predicate
+already succeeded while no saved-result paragraph existed. Explicitly
+releasing the save and waiting for the component's existing live receipt
+paragraph passed at375/1280. The same distinction applies to correction.
+
+M7 now waits for that unique saved outcome before its authoritative read;
+all receipt-count, exact-replay, history, export and original-six assertions
+remain. The existing synthetic outcome stage holds both initial and correction
+saves, proves radio labels are visible while pending, and verifies the saved
+result changes only after completion. All57 synthetic stages,43focused guards,
+web/account-flow types and exact seven-case collection passed. No application,
+SQL, updater, timeout, media or runtime-boundary change was made. The repaired
+head still needs exact-head public and native-seven qualification.
