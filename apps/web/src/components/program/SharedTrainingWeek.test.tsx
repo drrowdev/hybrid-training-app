@@ -4,13 +4,18 @@ import type { ScheduleSnapshot } from "@/lib/schedule/storage";
 import type { ThisWeekRailProps } from "@/components/plan/ThisWeekRail";
 import { SharedTrainingWeek } from "./SharedTrainingWeek";
 import { TrainingWeek } from "./TrainingWeek";
+import type { StandaloneSwimState } from "@/lib/swim/standalone-state";
 
 const mocks = vi.hoisted(() => ({
   load: vi.fn<() => Promise<ScheduleSnapshot | null>>(),
   active: vi.fn(async () => ({ id: "block-a", programId: "authored" })),
+  swim: vi.fn<() => Promise<Map<string, StandaloneSwimState>>>(async () => new Map()),
 }));
 
-vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn(async () => ({})) }));
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: vi.fn(async () => ({})), getAuthUser: vi.fn(async () => ({ data: { user: { id: "owner" } } })),
+}));
+vi.mock("@/lib/swim/standalone-state", () => ({ loadStandaloneSwimStates: mocks.swim }));
 vi.mock("@/lib/schedule/storage", () => ({ loadAvailableTrainingSchedule: mocks.load }));
 vi.mock("@/lib/planner/queries", () => ({ getActiveBlock: mocks.active }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
@@ -46,7 +51,7 @@ describe("SharedTrainingWeek", () => {
     expect(html.match(/>Strength A</g)).toHaveLength(1);
     expect(html.match(/>Swim A</g)).toHaveLength(1);
     expect(html).toContain('href="#session=primary-a"');
-    expect(html).toContain('href="/app/swim/swim-a"');
+    expect(html).toContain('href="/app/swim/swim-a?from=today"');
     expect(html).toContain('data-testid="today-week-strip"');
     expect(html).not.toContain('data-testid="plan-this-week"');
   });
@@ -88,4 +93,14 @@ describe("SharedTrainingWeek", () => {
     mocks.load.mockResolvedValue(null);
     expect(await SharedTrainingWeek({ today: primaryWeek.today })).toBeNull();
   });
+  it.each(["completed", "stopped_early", "needs_review", "scheduled"] as const)(
+    "DC-SW5 shares the %s label without changing schedule occupancy or primary actions", (status) => {
+      const html = renderToStaticMarkup(<TrainingWeek entries={snapshot.entries} today={primaryWeek.today}
+        swimStatuses={{ "swim-a": status }} />);
+      expect(html).toContain(`>${({ completed: "Completed", stopped_early: "Stopped early", needs_review: "Review recording", scheduled: "Scheduled" })[status]}</span>`);
+      expect(html).toContain('href="/app/swim/swim-a?from=today"');
+      expect(html).toContain('href="/app/sessions/start/primary-a"');
+      expect(snapshot.entries[1]!.state).toBe("scheduled");
+    },
+  );
 });

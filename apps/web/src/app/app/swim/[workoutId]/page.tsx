@@ -5,26 +5,29 @@ import { loadSwimWorkoutView } from "@/lib/swim/queries";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { WorkoutScreen } from "@/components/swim/WorkoutScreen";
 import { MatchedRecordings } from "@/components/swim/MatchedRecordings";
+import { parseSwimOrigin, swimReturnDestination } from "@/lib/swim/return-context";
 import styles from "@/components/swim/Swim.module.css";
 
-export default async function SwimWorkoutPage({ params }: {
-  params: Promise<{ workoutId: string }>; searchParams: Promise<{ edit?: string }>;
+export default async function SwimWorkoutPage({ params, searchParams }: {
+  params: Promise<{ workoutId: string }>; searchParams: Promise<{ edit?: string; from?: string }>;
 }) {
   const client = await createClient();
   const { data: { user } } = await getAuthUser();
   if (!user) redirect("/login");
+  const origin = parseSwimOrigin((await searchParams).from);
+  const back = swimReturnDestination(origin);
   const capability = await getSwimCapability(client);
   if (!capability.storageAvailable) return (
-    <main className={styles.page}><PageHeader title="Swimming" back={{ href: "/app/swim", label: "Swimming" }} /><p role="status">Swimming is currently unavailable.</p></main>
+    <main className={styles.page}><PageHeader title="Swimming" back={back} /><p role="status">Swimming is currently unavailable.</p></main>
   );
   const { workoutId } = await params;
   const view = await loadSwimWorkoutView(client, user.id, workoutId);
   if (!view) notFound();
   return (
     <main className={styles.page}>
-      <PageHeader title={view.title} back={{ href: "/app/swim", label: "Swimming" }} />
+      <PageHeader title={view.title} back={back} />
       <WorkoutScreen key={`${view.id}:${view.revision}`} workout={view} />
-      <MatchedRecordings client={client} userId={user.id} workoutId={view.id} revision={view.revision} />
+      <MatchedRecordings client={client} userId={user.id} workoutId={view.id} revision={view.revision} origin={origin} />
     </main>
   );
 }

@@ -1,5 +1,16 @@
 # Native pool swimming
 
+## Explicit imported outcomes - 2026-09-23
+
+[ADR0086](../adr/0086-standalone-swim-import-outcomes.md) adds owner-confirmed
+Completed / Stopped early outcomes for standalone workouts, independently of
+native measurements and primary programs. Original recording dates and claims
+survive corrections, rematches and plan end. Shared status drives Swimming,
+Home, calendar, next selection and activity history; export retains all receipts.
+New confirmation is default-off; historical reads and removal remain available.
+Migration0157 is source-only pending real SQL/native qualification and separate
+hosted approval. The0156-only production updater remains closed.
+
 ## Editable programme and workout pools - 2026-09-12
 
 The owner approved a 50 m initial default with individual 25 m workout choices,

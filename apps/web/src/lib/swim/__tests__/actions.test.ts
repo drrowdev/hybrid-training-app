@@ -31,6 +31,7 @@ vi.mock("@/lib/supabase/server", () => ({
   getAuthUser: async () => ({ data: { user: mock.user } }),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("../standalone-state", () => ({ loadStandaloneSwimStates: async () => new Map() }));
 vi.mock("../strength-schedule", () => ({ loadSwimStrengthContext: vi.fn() }));
 vi.mock("@/lib/schedule/storage", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/schedule/storage")>(),
@@ -861,7 +862,7 @@ describe("ADR0079 server actions", () => {
     expect(await editSwimResult(actualForm())).toEqual({
       ok: true, view: {
         ...workoutPresentation(workout.definition.issued),
-        id: workout.id, revision: 2, sessionId, status: "completed", planStatus: "active",
+        id: workout.id, revision: 2, sessionId, status: "completed", trainingStatus: "completed", planStatus: "active",
         date: workout.scheduled_date, provisional: false, deleted: false, sourceGone: false, notes: "Easy",
         result: {
           lengths: 12, timeMs: 900123, rpe: 6, notes: "Easy", splits: "",

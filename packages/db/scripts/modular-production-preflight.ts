@@ -8,14 +8,14 @@ import { z } from "zod";
 import {
   PRODUCTION, PRODUCTION_ROUTES, ProductionInspectionRefusal, requireInspection,
   productionDatabaseUrl, productionRequestAllowed, productionAlias, productionDeployment,
-  productionDeploymentRoute, productionSettings,
+  productionDeploymentRoute,
 } from "./swim-production-readonly-guards";
 import {
   productionSchemaInventory, SCHEMA_TABLE_SQL, SCHEMA_FUNCTION_SQL, SCHEMA_SHARED_SQL,
   SWIM_SCHEMA_TABLES, SWIM_SCHEMA_FUNCTIONS,
 } from "./swim-production-reconciliation";
 import {
-  MODULAR_PREFLIGHT, modularPreflightContext, modularMigrationInventory, type ModularMigration,
+  MODULAR_PREFLIGHT, modularPreflightContext, modularMigrationInventory, modularProductionSettings, type ModularMigration,
 } from "./modular-production-preflight-guards";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -35,7 +35,7 @@ export async function inspectModularProduction(env: NodeJS.ProcessEnv, sourceOnl
     status: "failed", stages: [] as Stage[], httpRequests: 0, httpStatus: null as number | null,
     databaseReadAttempted: false, databaseClosed: false, writesAttempted: false,
     deployment: null as ReturnType<typeof productionDeployment> | null,
-    settings: null as ReturnType<typeof productionSettings> | null,
+    settings: null as ReturnType<typeof modularProductionSettings> | null,
     inventory: null as ReturnType<typeof modularMigrationInventory> | null,
     schema: null as ReturnType<typeof productionSchemaInventory> | null,
   };
@@ -121,7 +121,7 @@ export async function inspectModularProduction(env: NodeJS.ProcessEnv, sourceOnl
     const alias = productionAlias(await request(PRODUCTION_ROUTES.alias));
     requireInspection(deploymentId === undefined || deploymentId === alias.deploymentId, "alias_changed");
     deploymentId = alias.deploymentId;
-    return { settings: productionSettings(project, projectEnv, sharedEnv),
+    return { settings: modularProductionSettings(project, projectEnv, sharedEnv),
       deployment: productionDeployment(await request(productionDeploymentRoute(deploymentId)), deploymentId, MODULAR_PREFLIGHT.main) };
   };
   try {

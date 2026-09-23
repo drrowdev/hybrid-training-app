@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import type { Locator, Page } from "@playwright/test";
 import type { Prescription } from "@hta/db";
 import { test as seededTest, expect } from "./fixtures/seed";
@@ -9,6 +10,8 @@ import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { syntheticCourse } from "../src/lib/swim/__tests__/course-fixtures";
 import { addDaysToYmd } from "../src/lib/dates";
 import type { MODULAR_STAGE_CODES } from "../scripts/modular-browser-observations";
+import { importOutcomeColumns, importOutcomeSchema } from "../src/lib/swim/import-outcomes";
+import { matchColumns, matchSchema } from "../src/lib/swim/import-matching";
 
 type Movement = { id: string; slug: string; display_name: string };
 type Planned = { id: string; block_id: string; week_index: number; day_index: number;
@@ -366,4 +369,169 @@ test.describe("Modular program builder", () => {
       expect(remaining.data.user).toBeNull(); expect(remaining.error?.status).toBe(404);
     }
   });
+
+  test("M7 DC-SW5: explicit imported outcomes stay consistent across training views and retained history", async ({ page, actor, freshUser }) => {
+    expect((await actor.from("profiles").update({ date_format: "iso" }).eq("id", freshUser.userId)).error).toBeNull();
+    await page.goto("/app/swim/import");
+    const source = syntheticCourse(), scheduledDate = today(), recordedDate = addDaysToYmd(scheduledDate, -1);
+    await page.getByLabel("Prepared plan file").setInputFiles({
+      name: "synthetic-course.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(source)),
+    });
+    await expect(page.getByRole("heading", { name: source.title, exact: true })).toBeVisible();
+    await page.getByLabel("Start date", { exact: true }).fill(scheduledDate);
+    const sunday = new Date(`${scheduledDate}T00:00:00Z`).getUTCDay();
+    for (const day of [sunday, (sunday + 2) % 7]) await page.locator(`input[name="weekdays"][value="${day}"]`).check();
+    await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("trained");
+    await page.getByLabel("Comfortable non-stop lengths in the plan pool").fill("40");
+    await page.getByLabel("Freestyle", { exact: true }).check();
+    await page.getByRole("button", { name: "Review plan", exact: true }).click();
+    await page.getByLabel("I have reviewed the workouts, dates and pools").check();
+    await page.getByRole("button", { name: "Import plan", exact: true }).click();
+    await expect(page).toHaveURL(/\/app\/swim\?plan=/);
+
+    const workouts = async () => {
+      const result = await actor.from("swim_workouts")
+        .select("id,plan_id,scheduled_date,revision,status,session_id,definition")
+        .eq("user_id", freshUser.userId).order("scheduled_date");
+      expect(result.error).toBeNull();
+      return z.array(z.object({
+        id: z.string().uuid(), plan_id: z.string().uuid(), scheduled_date: z.string(),
+        revision: z.number().int().positive(), status: z.string(), session_id: z.string().uuid().nullable(),
+        definition: z.unknown(),
+      })).length(3).parse(result.data);
+    };
+    const original = await workouts(), first = original[0]!;
+    expect(first.scheduled_date).toBe(scheduledDate);
+    const outcomes = async () => {
+      const result = await actor.from("swim_import_outcomes").select(importOutcomeColumns)
+        .eq("user_id", freshUser.userId).eq("workout_id", first.id).order("revision");
+      expect(result.error).toBeNull();
+      return z.array(importOutcomeSchema).parse(result.data);
+    };
+    await page.goto("/app/settings/swimming");
+    await page.getByRole("button", { name: "Create import key", exact: true }).click();
+    const keyInput = page.getByLabel("Import key", { exact: true });
+    await expect(keyInput).toBeVisible();
+    const importKey = await keyInput.inputValue();
+    const imported = await page.request.post("/api/swim/import", {
+      headers: { authorization: `Bearer ${importKey}`, "content-type": "application/json" }, maxRedirects: 0,
+      data: { version: 1, activity: {
+        activity_id: "930000000007", date: recordedDate, type: "lap_swimming", distance_m: 350, duration_s: 900,
+      }, detail: null },
+    });
+    expect(imported.status()).toBe(201);
+    const receipt = z.object({ id: z.string().uuid(), revision: z.literal(1), replayed: z.literal(false) })
+      .strict().parse(await imported.json());
+    const recordingHref = `/app/swim/recordings/${receipt.id}?workout=${first.id}&from=sessions`;
+    await page.goto(recordingHref);
+    await page.getByLabel("Workout date", { exact: true }).fill(scheduledDate);
+    await page.getByRole("button", { name: "Find workouts", exact: true }).click();
+    await page.getByRole("combobox", { name: "Workout", exact: true }).selectOption(first.id);
+    await page.getByRole("button", { name: "Match workout", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Remove match", exact: true })).toBeVisible();
+    const matched = await actor.from("swim_current_import_matches").select(matchColumns)
+      .eq("user_id", freshUser.userId).eq("import_id", receipt.id).single();
+    expect(matched.error).toBeNull();
+    const match = matchSchema.parse(matched.data);
+    expect(match.workout_id).toBe(first.id);
+    expect(await outcomes()).toEqual([]);
+    const region = page.getByRole("region", { name: match.metadata.workout!.title, exact: true });
+    await expect(region.getByRole("button", { name: "Confirm outcome", exact: true })).toBeDisabled();
+    await region.getByRole("radio", { name: "Completed", exact: true }).check();
+    const posted = page.waitForRequest((request) => request.method() === "POST" && !!request.headers()["next-action"]);
+    await region.getByRole("button", { name: "Confirm outcome", exact: true }).click();
+    await expect(region.getByText("Completed", { exact: true })).toBeVisible();
+    const accepted = await outcomes();
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]).toMatchObject({ workout_id: first.id, match_id: match.id,
+      metadata: { outcome: "completed", previousOutcomeId: null, workoutRevision: first.revision } });
+    const request = await posted;
+    const replay = await page.request.post(request.url(), { headers: request.headers(), data: request.postDataBuffer()! });
+    expect(replay.ok()).toBe(true);
+    expect(await replay.text()).toContain(accepted[0]!.id);
+    expect(await outcomes()).toEqual(accepted);
+
+    const sharedStatus = async (label: string) => {
+      for (const path of ["/app", "/app/plan", `/app/swim?plan=${first.plan_id}`]) {
+        await page.goto(path);
+        const hub = path.startsWith("/app/swim");
+        const scope = hub ? page.getByRole("list", { name: "Swims", exact: true })
+          : page.getByRole("region", { name: "Swimming schedule", exact: true });
+        const link = scope.locator(`a[href^="/app/swim/${first.id}"]`);
+        await expect(link).toBeVisible();
+        await expect(link).toContainText(label);
+        if (path === "/app" && label !== "Scheduled") {
+          const recent = page.getByRole("region", { name: "Recent activity", exact: true })
+            .locator(`a[href="/app/swim/recordings/${receipt.id}?workout=${first.id}&from=today"]`);
+          await expect(recent).toContainText(label);
+          await expect(recent).toContainText(recordedDate);
+          await expect(recent).not.toContainText(scheduledDate);
+        }
+        if (hub) {
+          const nextId = label === "Scheduled" ? first.id : original[1]!.id;
+          await expect(page.getByRole("link", { name: /^Next swim\b/ }))
+            .toHaveAttribute("href", new RegExp(`^/app/swim/${nextId}(?:\\?|$)`));
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+      }
+    };
+    const openHistory = async (label: string) => {
+      await page.goto("/app/sessions");
+      const link = page.locator(`a[href="${recordingHref}"]`);
+      await expect(link).toHaveCount(1);
+      await expect(link).toContainText(label);
+      await expect(link).toContainText(recordedDate);
+      await expect(link).not.toContainText(scheduledDate);
+      await link.click();
+      await expect(page.getByTestId("page-header").locator('a[href="/app/sessions"]')).toBeVisible();
+    };
+    await sharedStatus("Completed");
+    await openHistory("Completed");
+    await region.getByRole("link", { name: match.metadata.workout!.title, exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/app/swim/${first.id}\\?from=sessions$`));
+    await page.getByTestId("page-header").locator('a[href="/app/sessions"]').click();
+    await expect(page).toHaveURL(/\/app\/sessions$/);
+    await page.locator(`a[href="${recordingHref}"]`).click();
+    await region.getByRole("button", { name: "Change outcome", exact: true }).click();
+    await region.getByRole("radio", { name: "Stopped early", exact: true }).check();
+    await region.getByRole("button", { name: "Confirm outcome", exact: true }).click();
+    await expect(region.getByText("Stopped early", { exact: true })).toBeVisible();
+    const corrected = await outcomes();
+    expect(corrected).toHaveLength(2);
+    expect(corrected[1]).toMatchObject({ match_id: match.id,
+      metadata: { outcome: "stopped_early", previousOutcomeId: accepted[0]!.id, workoutRevision: first.revision } });
+    await sharedStatus("Stopped early");
+    await openHistory("Stopped early");
+    await page.getByRole("button", { name: "Remove match", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Remove match", exact: true })).toHaveCount(0);
+    await expect(region.getByRole("button", { name: "Remove confirmation", exact: true })).toBeVisible();
+    await expect(region.getByRole("button", { name: "Confirm outcome", exact: true })).toHaveCount(0);
+    await sharedStatus("Review recording");
+    await openHistory("Review recording");
+    await region.getByRole("button", { name: "Remove confirmation", exact: true }).click();
+    await expect(region).toHaveCount(0);
+    await sharedStatus("Scheduled");
+    await page.goto("/app/sessions");
+    await expect(page.locator(`a[href="${recordingHref}"]`)).toHaveCount(0);
+    const removed = await outcomes();
+    expect(removed).toHaveLength(3);
+    expect(removed[2]).toMatchObject({ match_id: null,
+      metadata: { outcome: null, previousOutcomeId: corrected[1]!.id, workoutRevision: null } });
+    expect(await workouts()).toEqual(original);
+    for (const table of ["sessions", "cardio_logs", "set_logs", "training_blocks", "planned_sessions"]) {
+      const result = await actor.from(table).select("id").eq("user_id", freshUser.userId);
+      expect(result.error).toBeNull(); expect(result.data).toEqual([]);
+    }
+    const exported = await page.request.get("/api/me/export");
+    expect(exported.status()).toBe(200);
+    const history = z.object({
+      swimming_import_outcomes_available: z.literal(true), swim_import_outcomes: z.array(importOutcomeSchema),
+      swim_imports: z.array(z.object({ id: z.string().uuid(), evidence: z.object({ date: z.string() }) })),
+      sessions: z.array(z.unknown()), cardio_logs: z.array(z.unknown()),
+    }).parse(await exported.json());
+    expect(history.swim_import_outcomes.sort((a, b) => a.revision - b.revision)).toEqual(removed);
+    expect(history.swim_imports).toEqual([{ id: receipt.id, evidence: { date: recordedDate } }]);
+    expect(history.sessions).toEqual([]); expect(history.cardio_logs).toEqual([]);
+  });
+
 });

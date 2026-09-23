@@ -316,26 +316,26 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
     }
   });
 
-  it.each([148, 157])("attributes the final statement within a bounded %i-migration source", (count) => {
+  it.each([148, 157, 158])("attributes the final statement within a bounded %i-migration source", (count) => {
     const migrations = Array.from({ length: count }, (_, index) => ({ sql: [`canonical-${index}`] }));
     const error = new DrizzleQueryError(`canonical-${count - 1}`, [], native());
     expect(projectMigrationError(error, () => migrations).position).toEqual({
       status: "matched", migrationIndex: count - 1, statementIndex: 0,
     });
     expect(projectMigrationError(error, () => [
-      ...migrations, ...Array.from({ length: 158 - count }, () => ({ sql: ["outside-bound"] })),
+      ...migrations, ...Array.from({ length: 159 - count }, () => ({ sql: ["outside-bound"] })),
     ]).position).toEqual({ status: "unmatched" });
   });
 
-  posixIt("accepts index156 evidence and rejects index157 without emitting SQL", () => fixture((path) => {
+  posixIt("accepts index157 evidence and rejects index158 without emitting SQL", () => fixture((path) => {
     const writer = openMigrationEvidence(path);
     writer.terminal({ event: "terminal", status: "failure", phase: "migrate",
       error: projectMigrationError(native()).error,
-      position: { status: "matched", migrationIndex: 156, statementIndex: 0 } });
+      position: { status: "matched", migrationIndex: 157, statementIndex: 0 } });
     expect(readMigrationEvidence(path)).toMatchObject({
-      status: "complete", terminal: { position: { migrationIndex: 156, statementIndex: 0 } },
+      status: "complete", terminal: { position: { migrationIndex: 157, statementIndex: 0 } },
     });
-    writeFileSync(path, readFileSync(path, "utf8").replace('"migrationIndex":156', '"migrationIndex":157'));
+    writeFileSync(path, readFileSync(path, "utf8").replace('"migrationIndex":157', '"migrationIndex":158'));
     expect(readMigrationEvidence(path)).toEqual({ status: "incomplete" });
   }));
 

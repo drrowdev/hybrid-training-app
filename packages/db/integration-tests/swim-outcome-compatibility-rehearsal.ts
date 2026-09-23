@@ -5,11 +5,11 @@ import type { MigrationConfig, MigrationMeta } from "drizzle-orm/migrator";
 import type postgres from "postgres";
 import { migrateCanonical } from "../scripts/migration-runner.ts";
 import { projectMigrationError } from "../scripts/migrate-evidence.ts";
+import { rehearseStandaloneSwimOutcomes } from "./swim-standalone-outcomes-rehearsal.ts";
 
-// The two SQL fixtures are a proposal, not entries in the canonical journal.
-const up = readFileSync(new URL("./fixtures/swim-import-outcomes.proposed.sql", import.meta.url), "utf8");
-const down = readFileSync(new URL("./fixtures/swim-import-outcomes.proposed.down.sql", import.meta.url), "utf8");
-const outcomeNames = ["swim_import_outcomes", "swim_current_import_outcomes"];
+const up = readFileSync(new URL("../drizzle/0157_standalone_swim_import_outcomes.sql", import.meta.url), "utf8").replaceAll("\r\n", "\n");
+const down = readFileSync(new URL("../rollbacks/0157_standalone_swim_import_outcomes.down.sql", import.meta.url), "utf8");
+const outcomeNames = ["swim_import_outcomes", "swim_current_import_outcomes", "swim_import_outcome_activity"];
 const functionNames = ["swim_confirm_import_outcome", "swim_import_outcomes_ready"];
 const ledger = (sql: postgres.Sql) => sql`SELECT id,hash,created_at::text AS created_at
   FROM drizzle.__drizzle_migrations ORDER BY created_at,id`;
@@ -70,22 +70,27 @@ async function assertProposedBoundary(sql: postgres.Sql, stage: (name: string) =
   const ownerPredicate = "((SELECTauth.uid()ASuid)=user_id)";
   assert.equal(String(policies[0]!.using_expression).replace(/\s+/g, ""), ownerPredicate);
   assert.equal(String(policies[0]!.check_expression).replace(/\s+/g, ""), ownerPredicate);
-  assert.deepEqual((await sql`SELECT reloptions FROM pg_class
-    WHERE oid='public.swim_current_import_outcomes'::regclass`)[0]!.reloptions, ["security_invoker=true"]);
+  assert.deepEqual(Array.from(await sql`SELECT relname,reloptions FROM pg_class
+    WHERE oid IN ('public.swim_current_import_outcomes'::regclass,'public.swim_import_outcome_activity'::regclass)
+    ORDER BY relname`, (row) => ({ ...row })), [
+    { relname: "swim_current_import_outcomes", reloptions: ["security_invoker=true"] },
+    { relname: "swim_import_outcome_activity", reloptions: ["security_invoker=true"] },
+  ]);
   stage("outcome-proposal-role-grants");
   const grants = await sql`SELECT rolname,
     has_table_privilege(oid,'public.swim_import_outcomes','SELECT') AS read,
     has_table_privilege(oid,'public.swim_import_outcomes','INSERT') AS insert,
     has_table_privilege(oid,'public.swim_import_outcomes','UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS other_write,
     has_table_privilege(oid,'public.swim_current_import_outcomes','SELECT') AS read_view,
+    has_table_privilege(oid,'public.swim_import_outcome_activity','SELECT') AS read_activity,
     has_function_privilege(oid,'public.swim_confirm_import_outcome(uuid,uuid,uuid,text,uuid,integer)','EXECUTE') AS confirm,
     has_function_privilege(oid,'public.swim_import_outcomes_ready()','EXECUTE') AS ready
     FROM pg_roles WHERE rolname IN ('anon','authenticated','service_role','swim_writer') ORDER BY rolname`;
   assert.deepEqual(Array.from(grants, (row) => ({ ...row })), [
-    { rolname: "anon", read: false, insert: false, other_write: false, read_view: false, confirm: false, ready: false },
-    { rolname: "authenticated", read: true, insert: false, other_write: false, read_view: true, confirm: true, ready: true },
-    { rolname: "service_role", read: false, insert: false, other_write: false, read_view: false, confirm: false, ready: false },
-    { rolname: "swim_writer", read: true, insert: true, other_write: false, read_view: false, confirm: true, ready: false },
+    { rolname: "anon", read: false, insert: false, other_write: false, read_view: false, read_activity: false, confirm: false, ready: false },
+    { rolname: "authenticated", read: true, insert: false, other_write: false, read_view: true, read_activity: true, confirm: true, ready: true },
+    { rolname: "service_role", read: false, insert: false, other_write: false, read_view: false, read_activity: false, confirm: false, ready: false },
+    { rolname: "swim_writer", read: true, insert: true, other_write: false, read_view: false, read_activity: false, confirm: true, ready: false },
   ]);
   stage("outcome-proposal-function-identity");
   const [routine] = await sql`SELECT pg_get_userbyid(proowner) AS owner,prosecdef,proconfig
@@ -93,6 +98,12 @@ async function assertProposedBoundary(sql: postgres.Sql, stage: (name: string) =
   assert.deepEqual({ ...routine }, {
     owner: "swim_writer", prosecdef: true, proconfig: ["search_path=pg_catalog, public", "row_security=on"],
   });
+  const [ordering] = await sql`SELECT strpos(body,'program-deploy:') > 0
+      AND strpos(body,'program-deploy:') < strpos(body,'swim-import:') AS common_before_import,
+    strpos(body,'swim-import:') < strpos(body,'FOR SHARE') AS import_before_row
+    FROM (SELECT pg_get_functiondef(
+      'public.swim_confirm_import_outcome(uuid,uuid,uuid,text,uuid,integer)'::regprocedure) AS body) routine`;
+  assert.deepEqual({ ...ordering }, { common_before_import: true, import_before_row: true });
   stage("outcome-proposal-owned-foreign-keys");
   const foreignKeys = await sql`SELECT conname,convalidated,condeferrable,condeferred
     FROM pg_constraint WHERE conrelid='public.swim_import_outcomes'::regclass AND contype='f' ORDER BY conname`;
@@ -111,42 +122,44 @@ export async function rehearseSwimOutcomeCompatibility(
   assert.equal(process.platform, "linux");
   assert.deepEqual(sql.options.host, ["127.0.0.1"]);
   assert.deepEqual(sql.options.port, [5432]);
-  assert.equal(sql.options.database, "swim_migration_runner_fresh");
+  assert.ok(["swim_migration_runner_fresh", "swim_migration_runner_incremental"].includes(sql.options.database));
   assert.equal(sql.options.max, 1);
-  assert.equal((await sql`SELECT current_database() AS name`)[0]!.name, "swim_migration_runner_fresh");
+  assert.equal((await sql`SELECT current_database() AS name`)[0]!.name, sql.options.database);
   assert.equal((await sql`SELECT current_user AS actor`)[0]!.actor, "postgres");
   assert.equal((await sql`SELECT count(*)::int AS n FROM auth.users`)[0]!.n, 0);
-  assert.equal(migrations.length, 157);
-  await assertAbsent(sql);
+  assert.equal(migrations.length, 158);
+  const fresh = sql.options.database === "swim_migration_runner_fresh";
   const before = await ledger(sql);
-  assert.equal(before.length, 157);
+  assert.equal(before.length, fresh ? 158 : 157);
   assert.deepEqual(before.map(({ hash, created_at }) => ({ hash, created_at })),
-    migrations.map((migration) => ({ hash: migration.hash, created_at: String(migration.folderMillis) })));
+    migrations.slice(0, before.length).map((migration) => ({ hash: migration.hash, created_at: String(migration.folderMillis) })));
   const retained = await retainedCatalog(sql);
   const hash = createHash("sha256").update(up).digest("hex");
-  const proposed: MigrationMeta = {
-    sql: ["SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='15s'", up],
-    hash, folderMillis: migrations[156]!.folderMillis + 1, bps: false,
-  };
-  const candidate = [...migrations, proposed];
+  const proposed = migrations[157]!;
+  assert.equal(proposed.hash, hash);
+  assert.ok(proposed.folderMillis > migrations[156]!.folderMillis);
+  const candidate = [...migrations];
   const refusalSql = "DO $$ BEGIN RAISE EXCEPTION 'Proposed append rollback' USING ERRCODE='P9003'; END $$;";
-  stage("outcome-proposal-precommit-rollback");
-  await assert.rejects(migrateCanonical(sql, [...candidate, {
-    sql: ["SET LOCAL log_min_error_statement='panic'; SET LOCAL log_min_messages='panic'", refusalSql],
-    hash: createHash("sha256").update(refusalSql).digest("hex"),
-    folderMillis: proposed.folderMillis + 1, bps: false,
-  }], config), (error: unknown) => {
-    assert.equal(projectMigrationError(error, () => migrations).error.sqlstate, "P9003");
-    return true;
-  });
-  assert.deepEqual(await ledger(sql), before);
-  await assertAbsent(sql);
-  assert.equal(await retainedCatalog(sql), retained);
-  stage("outcome-proposal-main-compatible-append-and-replay");
-  await migrateCanonical(sql, candidate, config);
+  if (!fresh) {
+    await assertAbsent(sql);
+    stage("outcome-proposal-precommit-rollback");
+    await assert.rejects(migrateCanonical(sql, [...candidate, {
+      sql: ["SET LOCAL log_min_error_statement='panic'; SET LOCAL log_min_messages='panic'", refusalSql],
+      hash: createHash("sha256").update(refusalSql).digest("hex"),
+      folderMillis: proposed.folderMillis + 1, bps: false,
+    }], config), (error: unknown) => {
+      assert.equal(projectMigrationError(error, () => migrations).error.sqlstate, "P9003");
+      return true;
+    });
+    assert.deepEqual(await ledger(sql), before);
+    await assertAbsent(sql);
+    assert.equal(await retainedCatalog(sql), retained);
+    stage("outcome-proposal-main-compatible-append-and-replay");
+    await migrateCanonical(sql, candidate, config);
+  }
   const appended = await ledger(sql);
   assert.equal(appended.length, 158);
-  assert.deepEqual(appended.slice(0, 157), Array.from(before));
+  assert.deepEqual(appended.slice(0, before.length), Array.from(before));
   assert.equal(appended[157]!.hash, hash);
   assert.equal(appended[157]!.created_at, String(proposed.folderMillis));
   assert.equal(await retainedCatalog(sql), retained);
@@ -154,6 +167,7 @@ export async function rehearseSwimOutcomeCompatibility(
   stage("outcome-proposal-replay");
   await migrateCanonical(sql, candidate, config);
   assert.deepEqual(await ledger(sql), appended);
+  const operationStages = fresh ? await rehearseStandaloneSwimOutcomes(sql, down, stage) : [];
   stage("outcome-proposal-unused-down-up-retention");
   assert.match(down, /^BEGIN;\r?\n/);
   assert.match(down, /\r?\nCOMMIT;\r?\n?$/);
@@ -170,6 +184,7 @@ export async function rehearseSwimOutcomeCompatibility(
   stage("outcome-proposal-final-retention");
   assert.deepEqual(await ledger(sql), appended);
   assert.equal(await retainedCatalog(sql), retained);
-  return ["outcome-proposal-atomic-rollback", "outcome-proposal-main-compatible-append-and-replay",
-    "outcome-proposal-unused-down-up-retention"];
+  return [...(fresh ? ["outcome-canonical-fresh-158"] :
+    ["outcome-proposal-atomic-rollback", "outcome-proposal-main-compatible-append-and-replay"]),
+    ...operationStages, "outcome-proposal-unused-down-up-retention"];
 }

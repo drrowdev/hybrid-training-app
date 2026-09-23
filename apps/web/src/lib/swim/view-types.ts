@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PoolCourse, SwimCourse, TrainingCommitment } from "@hta/domain";
+import type { PoolCourse, SwimCourse, TrainingCommitment, StandaloneSwimTrainingStatus } from "@hta/domain";
 import type { SwimCourseEditInput } from "./course-view";
 
 export type SwimPoolEditContext = {
@@ -21,6 +21,7 @@ export type SwimWorkoutView = {
   revision: number;
   sessionId: string | null;
   status: "scheduled" | "started" | "completed" | "skipped";
+  trainingStatus?: StandaloneSwimTrainingStatus;
   planStatus: "active" | "paused" | "finished" | "archived";
   date: string;
   title: string;
@@ -142,6 +143,7 @@ export type SwimHubView = {
     poolEditing?: SwimPoolEditContext;
     assessmentPool?: string;
     assessment?: { label: string; pace: string };
+    nextWorkoutId?: string;
     workouts: {
       id: string; date: string; title: string; total: string; status: string; week: number; provisional: boolean;
       reschedule?: { revision: number; min: string; max: string };

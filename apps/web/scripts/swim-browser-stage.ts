@@ -4,7 +4,7 @@ import { isAbsolute, join, relative, sep } from "node:path";
 import { requirePrivateLocation, requireProcess, type ProcessResult } from "./swim-acceptance-guards";
 import { acceptanceAssert as assert, type AcceptanceReporting } from "./swim-acceptance-reporting";
 import {
-  BROWSER_LIMITS, SWIM_BROWSER_CASES, browserBudget, buildBrowserEnv, prepareSwimBrowserReport,
+  BROWSER_LIMITS, SWIM_BROWSER_CASES, browserBudget, buildBrowserEnv, buildBrowserServerEnv, prepareSwimBrowserReport,
   projectBrowserFailure, readSwimBrowserReport, sealSwimBrowserReport, requireNoEnvFiles, requireFreePort,
   requirePrivateBrowserPaths, waitForBrowserReady, type BrowserReportTicket,
 } from "./swim-browser-acceptance";
@@ -140,7 +140,7 @@ export async function runSwimBrowserStage(options: {
     await requireFreePort();
     checkLive();
     server = settle(command(process.execPath, [next, "start", "--hostname", "127.0.0.1", "--port", "3210"], {
-      cwd: web, env: { ...env, SUPABASE_SERVICE_ROLE_KEY: env.E2E_SUPABASE_SERVICE_ROLE_KEY },
+      cwd: web, env: buildBrowserServerEnv(env),
       timeout: BROWSER_LIMITS.serverLifetime, allowFailure: true,
       onSpawn: (stop) => { stopServer = stop; },
       onTerminal: () => { earlyClose = !stopRequested; exited(); },

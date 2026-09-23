@@ -225,6 +225,13 @@ export function requireBrowserEnvironment(env: Env) {
     env.NEXT_PUBLIC_SUPABASE_URL === env.E2E_SUPABASE_URL &&
     !!env.E2E_SUPABASE_ANON_KEY && env.NEXT_PUBLIC_SUPABASE_ANON_KEY === env.E2E_SUPABASE_ANON_KEY &&
     isDedicatedSwimEnvironment(env), "browser-environment");
+  requireCondition(env.SXC_ACCEPTANCE_PROFILE === undefined || env.SXC_ACCEPTANCE_PROFILE === "modular", "browser-environment");
+  requireCondition(env.SXC_ACCEPTANCE_PROFILE === "modular"
+    ? env.SWIM_IMPORT_OUTCOMES_ENABLED === "true"
+    : env.SWIM_IMPORT_OUTCOMES_ENABLED === undefined, "browser-environment");
+  requireCondition(env.SUPABASE_SERVICE_ROLE_KEY === undefined &&
+    Object.entries(env).every(([key, value]) => !key.startsWith("NEXT_PUBLIC_") || value !== env.E2E_SUPABASE_SERVICE_ROLE_KEY),
+  "browser-environment");
   const reportPath = env.HTA_SWIM_BROWSER_REPORT ?? "";
   return requireBrowserPaths({
     runDirectory: dirname(reportPath), reportPath, outputDir: env.HTA_SWIM_BROWSER_OUTPUT_DIR ?? "",
@@ -247,11 +254,17 @@ export function buildBrowserEnv(
     ...(modular ? {
       SXC_ACCEPTANCE_PROFILE: "modular", SWIM_POOL_EDITING_ENABLED: "true", SWIM_PRIVATE_COURSE_ENABLED: "true",
       SWIM_IMPORT_ENABLED: "true", SWIM_IMPORT_MATCHING_ENABLED: "true",
+      SWIM_IMPORT_OUTCOMES_ENABLED: "true",
     } : {}),
     HTA_SWIM_BROWSER_REPORT: paths.reportPath, HTA_SWIM_BROWSER_OUTPUT_DIR: paths.outputDir,
   };
   requireBrowserEnvironment(env);
   return env;
+}
+
+export function buildBrowserServerEnv(env: Readonly<Record<string, string>>) {
+  requireBrowserEnvironment(env);
+  return { ...env, SUPABASE_SERVICE_ROLE_KEY: env.E2E_SUPABASE_SERVICE_ROLE_KEY! };
 }
 
 export function requireNoEnvFiles(repoRoot: string) {

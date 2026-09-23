@@ -27,6 +27,7 @@ vi.mock("@/lib/supabase/server", () => ({
   getAuthUser: async () => ({ data: { user: mock.user } }),
 }));
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("../standalone-state", () => ({ loadStandaloneSwimStates: async () => new Map() }));
 vi.mock("../capability", () => ({ requireSwimStorage: vi.fn() }));
 vi.mock("@/lib/schedule/storage", async (importOriginal) => ({
   ...await importOriginal<typeof import("@/lib/schedule/storage")>(),
@@ -53,7 +54,7 @@ const returnedWorkout: storage.SwimWorkoutRow = {
 };
 const confirmedWorkoutView: SwimWorkoutView = {
   ...workoutPresentation(returnedWorkout.definition.issued),
-  id: returnedWorkout.id, revision: returnedWorkout.revision, status: "started", sessionId,
+  id: returnedWorkout.id, revision: returnedWorkout.revision, status: "started", trainingStatus: "started", sessionId,
   planStatus: "active", date: returnedWorkout.scheduled_date,
   provisional: false, deleted: false, sourceGone: false, result: null,
 };
@@ -61,7 +62,7 @@ const returnedEditedWorkout: storage.SwimWorkoutRow = {
   ...swimFixture().history[0]!.workout, revision: 4, updated_at: "2026-09-08T12:00:00Z",
 };
 const confirmedEditedView: SwimWorkoutView = {
-  ...confirmedWorkoutView, revision: returnedEditedWorkout.revision, status: "completed",
+  ...confirmedWorkoutView, revision: returnedEditedWorkout.revision, status: "completed", trainingStatus: "completed",
   notes: "Edited swim",
   result: {
     lengths: 14, timeMs: 840456, rpe: 7, notes: "Edited swim", splits: "",
@@ -239,7 +240,7 @@ describe("DC-SW8/DC-SW9 confirmed completion view", () => {
       receiptId, workoutId: returned.id, sessionId, userId,
       ...(refreshFails ? { warning: SWIM_REFRESH_WARNING } : {}),
       view: {
-        ...confirmedWorkoutView, revision: 3, status: "completed", notes: "Easy",
+        ...confirmedWorkoutView, revision: 3, status: "completed", trainingStatus: "completed", notes: "Easy",
         result: {
           lengths: 12, timeMs: 900123, rpe: 6, notes: "Easy", splits: "", stroke: "freestyle",
           strokes: ["freestyle"], equipment: [], course: "25 yd", distance: "300 yd",
@@ -542,7 +543,7 @@ describe.each(["paused", "finished", "archived", "resume"] as const)("DC-SW7 con
     });
     expect(result.view?.workouts).toHaveLength(committedWorkouts.length);
     expect(result.view?.workouts.every((row) => row.date === "2026-10-15" &&
-      row.status === (operation === "resume" ? "Scheduled" : "Unscheduled"))).toBe(true);
+      row.status === (operation === "resume" ? "Scheduled" : operation === "paused" ? "Paused" : "Plan ended"))).toBe(true);
     expect(JSON.stringify(result)).not.toMatch(/user_id|definition|created_at|updated_at|pauseSnapshot/);
     expect(storage.listSwimPlans).toHaveBeenCalledTimes(planReads);
     expect(storage.listSwimWorkouts).toHaveBeenCalledTimes(planReads + 1);

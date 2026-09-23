@@ -26,6 +26,7 @@ try {
         import { WorkoutScreen } from "./src/components/swim/WorkoutScreen";
         import { workoutPresentation } from "./src/lib/swim/presentation";
         import { RecordingMatcher } from "./src/components/swim/RecordingMatcher";
+        import { RecordingOutcome } from "./src/components/swim/RecordingOutcome";
         import { ProgramBuilder } from "./src/components/program/ProgramBuilder";
         import { TrainingWeek } from "./src/components/program/TrainingWeek";
         import { ThisWeekRail } from "./src/components/plan/ThisWeekRail";
@@ -282,6 +283,20 @@ try {
           window.matchCalls.push(input);
           return window.matchMode === "error" ? { ok: false, error: "The match could not be saved." } : { ok: true, value: input.requestId };
         };
+        window.outcomeCalls = []; window.outcomeMode = "success";
+        window.saveOutcome = async input => {
+          window.outcomeCalls.push(input);
+          if (window.outcomeMode === "delay") await new Promise(resolve => window.resolveOutcome = resolve);
+          return window.outcomeMode === "error" ? { ok: false, error: "The outcome could not be saved." }
+            : { ok: true, value: input.requestId };
+        };
+        window.showOutcome = (retained = false) => root.render(<main className={styles.page}>
+          <RecordingOutcome key={++key} workoutId="00000000-0000-4000-8000-000000000002"
+            workoutTitle="Week 1 A: steady swimming" origin="sessions"
+            matchId={retained ? null : "00000000-0000-4000-8000-000000000003"} workoutRevision={3}
+            expectedOutcomeId={retained ? "00000000-0000-4000-8000-000000000004" : null}
+            current={null} enabled={!retained} canRemove={retained} needsReview={retained} otherMatch={false} />
+        </main>);
         window.showMatcher = (matched = false, enabled = true) => root.render(<main className={styles.page}>
           <RecordingMatcher key={++key} importId="00000000-0000-4000-8000-000000000001" enabled={enabled}
             expectedMatchId={matched ? "00000000-0000-4000-8000-000000000003" : null}
@@ -429,7 +444,7 @@ try {
           args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/planner\/actions$/ }, args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/offline\/outbox$/ }, args => ({ path: args.path, namespace: "test" }));
-        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions)|@\/lib\/programs\/authored\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions|import-outcome-actions)|@\/lib\/programs\/authored\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "@/lib/sessions/actions"
             ? "const unexpected = () => { throw new Error('Unexpected session mutation'); }; export const deleteSet = form => window.deleteFullSet(form); export const permanentlyDeleteSession = unexpected, restoreSession = unexpected, addCardioBlock = unexpected, completeSessionResult = unexpected; export const addStrengthSet = form => window.logFullStrength(form), logCardioSession = form => window.logFullCardio(form);"
@@ -480,6 +495,8 @@ try {
               ? "export const connectSwimDashboard = () => window.connectDashboard(); export const disconnectSwimDashboard = id => window.disconnectDashboard(id);"
             : args.path === "@/lib/swim/import-match-actions"
               ? "export const findSwimMatchWorkouts = date => window.findWorkouts(date); export const saveSwimImportMatch = input => window.saveMatch(input);"
+            : args.path === "@/lib/swim/import-outcome-actions"
+              ? "export const saveSwimImportOutcome = input => window.saveOutcome(input);"
             : args.path === "@/lib/programs/authored/actions"
               ? "export const previewAuthoredProgram = input => window.previewProgram(input); export const saveAuthoredProgram = (...args) => window.saveProgram(...args);"
             : args.path === "@/components/trash/DeleteSessionButton"
@@ -761,7 +778,8 @@ try {
     await page.evaluate(() => { window.homeCalls = []; window.showHomeWeek(); });
     await expect(page.getByRole("heading", { name: "This week", exact: true })).toHaveCount(1);
     await expect(page.getByTestId("plan-this-week")).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Swim A View swim", exact: true })).toHaveAttribute("href", "/app/swim/swim-home");
+    await expect(page.getByRole("link", { name: "Swim A Scheduled", exact: true }))
+      .toHaveAttribute("href", "/app/swim/swim-home?from=today");
     const preview = page.getByRole("link", { name: "Strength A Preview", exact: true });
     await preview.click();
     const drawer = page.getByRole("dialog", { name: "Strength A", exact: true });
@@ -850,6 +868,66 @@ try {
     await expect(page.getByRole("button", { name: "Remove match", exact: true })).toBeEnabled();
     assert.equal(await page.evaluate(() => window.matchCalls[0].workoutId), null);
     assert.equal(await page.evaluate(() => window.matchCalls[0].workoutRevision), null);
+    stages.push(stage);
+
+    stage = `explicit-recording-outcome-${width}`;
+    await page.evaluate(() => { window.outcomeCalls = []; window.outcomeMode = "success"; window.showOutcome(); });
+    const outcomeRegion = page.getByRole("region", { name: "Week 1 A: steady swimming", exact: true });
+    const confirmOutcome = outcomeRegion.getByRole("button", { name: "Confirm outcome", exact: true });
+    await expect(confirmOutcome).toBeDisabled();
+    await outcomeRegion.getByRole("radio", { name: "Completed", exact: true }).check();
+    await confirmOutcome.click();
+    await expect(outcomeRegion.locator('p[aria-live="polite"]')).toHaveText("Completed");
+    await outcomeRegion.getByRole("button", { name: "Change outcome", exact: true }).click();
+    await outcomeRegion.getByRole("radio", { name: "Stopped early", exact: true }).check();
+    await confirmOutcome.click();
+    await expect(outcomeRegion.locator('p[aria-live="polite"]')).toHaveText("Stopped early");
+    const savedOutcomes = await page.evaluate(() => window.outcomeCalls);
+    assert.equal(savedOutcomes.length, 2);
+    assert.equal(savedOutcomes[0].outcome, "completed");
+    assert.equal(savedOutcomes[1].outcome, "stopped_early");
+    assert.equal(savedOutcomes[1].expectedOutcomeId, savedOutcomes[0].requestId);
+    assert.equal(savedOutcomes[1].workoutId, "00000000-0000-4000-8000-000000000002");
+    assert.equal(savedOutcomes[1].matchId, "00000000-0000-4000-8000-000000000003");
+    assert.equal(savedOutcomes[1].workoutRevision, 3);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    stages.push(stage);
+
+    stage = `recording-outcome-failure-replay-${width}`;
+    await page.evaluate(() => { window.outcomeCalls = []; window.outcomeMode = "error"; window.showOutcome(); });
+    await outcomeRegion.getByRole("radio", { name: "Stopped early", exact: true }).check();
+    await confirmOutcome.click();
+    await outcomeRegion.getByRole("alert").waitFor();
+    await expect(outcomeRegion.getByRole("radio", { name: "Stopped early", exact: true })).toBeChecked();
+    await page.evaluate(() => { window.outcomeMode = "success"; });
+    await confirmOutcome.click();
+    await expect(outcomeRegion.locator('p[aria-live="polite"]')).toHaveText("Stopped early");
+    const replayedOutcomes = await page.evaluate(() => window.outcomeCalls);
+    assert.equal(replayedOutcomes.length, 2);
+    assert.equal(replayedOutcomes[0].requestId, replayedOutcomes[1].requestId);
+    stages.push(stage);
+
+    stage = `retained-recording-confirmation-removal-${width}`;
+    await page.evaluate(() => { window.outcomeCalls = []; window.outcomeMode = "delay"; window.showOutcome(true); });
+    await outcomeRegion.waitFor();
+    await expect(outcomeRegion.getByRole("link", { name: "Week 1 A: steady swimming", exact: true }))
+      .toHaveAttribute("href", "/app/swim/00000000-0000-4000-8000-000000000002?from=sessions");
+    assert.equal(await outcomeRegion.getByRole("radio").count(), 0);
+    assert.equal(await confirmOutcome.count(), 0);
+    const removeOutcome = outcomeRegion.getByRole("button", { name: "Remove confirmation", exact: true });
+    await removeOutcome.click();
+    await expect(removeOutcome).toBeDisabled();
+    await removeOutcome.evaluate((button) => button.click());
+    const removals = await page.evaluate(() => window.outcomeCalls);
+    assert.equal(removals.length, 1);
+    assert.equal(removals[0].workoutId, "00000000-0000-4000-8000-000000000002");
+    assert.equal(removals[0].expectedOutcomeId, "00000000-0000-4000-8000-000000000004");
+    assert.equal(removals[0].outcome, null);
+    assert.equal(removals[0].matchId, null);
+    assert.equal(removals[0].workoutRevision, null);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.evaluate(() => { window.resolveOutcome(); window.resolveOutcome = undefined; });
+    await expect(outcomeRegion).toHaveCount(0);
     stages.push(stage);
 
     stage = `private-course-prehydration-file-${width}`;

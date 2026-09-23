@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { getSwimNavigation } from "@/lib/swim/navigation";
-import { standaloneSwimCalendar, type StandaloneSwimCalendarItem } from "@/lib/swim/calendar";
+import { standaloneSwimCalendar } from "@/lib/swim/calendar";
+import { loadStandaloneSwimStates } from "@/lib/swim/standalone-state";
+import { SWIM_TRAINING_LABEL } from "@/lib/swim/activity-presentation";
+import { swimWorkoutHref } from "@/lib/swim/return-context";
 import { todayYmd } from "@/lib/dates";
 import styles from "./Swim.module.css";
 
@@ -18,6 +21,7 @@ export async function SwimCalendar({ todayOnly = false }: { todayOnly?: boolean 
     client.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
   ]);
   if (planError || workoutError || profileError) throw new Error("Could not load the swim schedule.", { cause: planError ?? workoutError ?? profileError });
+  const states = await loadStandaloneSwimStates(client, user.id, (workouts ?? []).map((row) => row.id));
   const sessionIds = (workouts ?? []).flatMap((row) => row.session_id ? [row.session_id] : []);
   const { data: sessions, error: sessionError } = sessionIds.length
     ? await client.from("sessions").select("id").in("id", sessionIds).is("deleted_at", null)
@@ -29,9 +33,9 @@ export async function SwimCalendar({ todayOnly = false }: { todayOnly?: boolean 
     ...row, deleted: !!row.session_id && !visibleSessions.has(row.session_id),
   })) as {
     id: string; plan_id: string; scheduled_date: string; slot: "single" | "am" | "pm";
-    session_id: string | null; status: StandaloneSwimCalendarItem["status"];
+    session_id: string | null; status: "scheduled" | "started" | "completed" | "skipped";
     deleted: boolean;
-  }[]).filter((item) => todayOnly
+  }[], states).filter((item) => todayOnly
     ? item.date === today || item.status === "started"
     : item.date >= today || item.status === "started");
   return (
@@ -39,9 +43,9 @@ export async function SwimCalendar({ todayOnly = false }: { todayOnly?: boolean 
       <div className={styles.actions}><h2>Swimming</h2><Link href="/app/swim" className={styles.secondary}>All swims</Link></div>
       {entries.length > 0 && <ul className={styles.list}>
         {entries.slice(0, todayOnly ? 4 : 12).map((entry) => (
-          <li key={entry.id}><Link className={styles.row} href={entry.href}>
+          <li key={entry.id}><Link className={styles.row} href={swimWorkoutHref(entry.id, todayOnly ? "today" : "plan")}>
             <span><strong>Pool swim</strong><small>{entry.date}{entry.slot !== "single" ? ` · ${entry.slot.toUpperCase()}` : ""}</small></span>
-            <span>{entry.status === "completed" ? "Completed" : "View →"}</span>
+            <span>{SWIM_TRAINING_LABEL[entry.status]}</span>
           </Link></li>
         ))}
       </ul>}

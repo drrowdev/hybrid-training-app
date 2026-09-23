@@ -1,7 +1,7 @@
 import { acceptanceAssert as assert } from "./swim-acceptance-errors";
 
 export type BrowserCase = Readonly<{ file: string; describe: string; title: string }>;
-export const MODULAR_MIGRATION_TOTAL = 157;
+export const MODULAR_MIGRATION_TOTAL = 158;
 export const MODULAR_BROWSER_CASES: readonly BrowserCase[] = Object.freeze([
   "M1 DC-K4: strength creation retains library identities through reload and logging",
   "M2 DC-K4: running setup and future edits retain typed prescriptions",
@@ -9,6 +9,7 @@ export const MODULAR_BROWSER_CASES: readonly BrowserCase[] = Object.freeze([
   "M4 DC-SW7: swimming coexists with reviewed primary commitments and independent lifecycle",
   "M5 DC-K4: stale schedule review and retried saves preserve one accepted program",
   "M6 DC-SW8: two users cannot read or change each other's programs",
+  "M7 DC-SW5: explicit imported outcomes stay consistent across training views and retained history",
 ].map((title) => Object.freeze({
   file: "e2e/program-builder-mobile.spec.ts", describe: "Modular program builder", title,
 })));

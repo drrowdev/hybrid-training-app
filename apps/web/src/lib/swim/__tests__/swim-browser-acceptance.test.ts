@@ -175,7 +175,7 @@ describe("DC-SW8 modular acceptance report membership", () => {
   it("accepts only the complete declared modular cohort without changing the historical cohort", () => {
     const fixture = report(paths, MODULAR_BROWSER_CASES);
     expect(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES))
-      .toMatchObject({ success: true, counts: { expected: 6, unexpected: 0, flaky: 0, skipped: 0 },
+      .toMatchObject({ success: true, counts: { expected: 7, unexpected: 0, flaky: 0, skipped: 0 },
         cases: MODULAR_BROWSER_CASES.map((item) => ({ ...item, status: "passed", attempts: 1 })) });
     expect(() => validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot)).toThrow();
     expect(() => validateSwimBrowserReport(JSON.stringify(report()), paths, webRoot, MODULAR_BROWSER_CASES)).toThrow();

@@ -4,11 +4,13 @@ import { deriveSwimWeekCandidate, loadSwimHistory, loadSwimWorkoutView, settledS
 import { getSwimWorkout, listSwimPlans } from "../storage";
 import { workoutPresentation } from "../presentation";
 import { swimWorkoutDefinition } from "../model";
+import { loadStandaloneSwimStates } from "../standalone-state";
 import { swimFixture, sessionId, userId } from "./fixtures";
 
 vi.mock("../storage", () => ({
   getSwimWorkout: vi.fn(), listSwimPlans: vi.fn(), listSwimWorkouts: vi.fn(),
 }));
+vi.mock("../standalone-state", () => ({ loadStandaloneSwimStates: vi.fn() }));
 
 function historyClient(result: unknown, sessionNotes: string | null = "Latest session note") {
   return {
@@ -44,6 +46,7 @@ describe("ADR0079 authoritative swim history", () => {
   describe("DC-SW5/SW7 canonical workout row projection", () => {
     beforeEach(() => {
       vi.resetAllMocks();
+      vi.mocked(loadStandaloneSwimStates).mockResolvedValue(new Map());
       vi.mocked(listSwimPlans).mockResolvedValue([swimFixture().plan]);
     });
 
@@ -55,7 +58,7 @@ describe("ADR0079 authoritative swim history", () => {
       expect(getSwimWorkout).not.toHaveBeenCalled();
       expect(view).toEqual({
         ...workoutPresentation(row.definition.issued),
-        id: row.id, revision: row.revision, sessionId: null, status: "scheduled",
+        id: row.id, revision: row.revision, sessionId: null, status: "scheduled", trainingStatus: "scheduled",
         planStatus: "active", date: row.scheduled_date, provisional: swimWorkoutDefinition(row).provisional,
         deleted: false, sourceGone: false, result: null,
       });
@@ -120,6 +123,7 @@ describe("ADR0079 authoritative swim history", () => {
         expect(view).toEqual({
           ...workoutPresentation(row.definition.issued),
           id: row.id, revision: 7, sessionId: row.session_id, status: row.status,
+          trainingStatus: ["deleted", "sourceGone", "purged"].includes(state) ? "unavailable" : state === "started" ? "started" : "completed",
           planStatus: "archived", date: row.scheduled_date, provisional: swimWorkoutDefinition(row).provisional,
           deleted: state === "deleted", sourceGone: state === "sourceGone" || state === "purged",
           ...(state === "purged" ? {} : { notes: state === "sourceGone" ? "Earlier cardio note" : "Latest session note" }),

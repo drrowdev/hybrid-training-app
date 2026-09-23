@@ -61,6 +61,10 @@ covered table is dropped or an excluded (secret/derived) table leaks in.
   "swimming_import_schema_available": true,
   "swim_connections": [],
   "swim_imports": [],
+  "swimming_import_matching_available": true,
+  "swim_import_matches": [],
+  "swimming_import_outcomes_available": true,
+  "swim_import_outcomes": [],
   "wellness": [],
   "limitations": [],
   "limitation_events": [],
@@ -103,6 +107,8 @@ user's, never the global catalog.
 | `swim_workouts`              | `swim_workouts`              | Dated pool workouts, original and issued targets, revisions and ordinary-session links. |
 | `swim_connections`           | `swim_connections`           | Connection ID, creation and revocation dates; never plaintext keys or hashes. |
 | `swim_imports`               | `swim_imports`               | Every retained observation revision: receipt/activity IDs, revision, evidence and arrival time. Not planned-workout completion. |
+| `swim_import_matches`        | `swim_import_matches`        | Every explicit recording-to-workout match revision, including removed matches. |
+| `swim_import_outcomes`       | `swim_import_outcomes`       | Every explicit completed/stopped-early claim, correction and removal, with its original match and workout revision. |
 | `wellness`                   | `wellness`                   | Daily log rows — body weight (live), plus retained legacy wellness check-in fields (fatigue/soreness/motivation/notes) kept for history (see ADR 0018). |
 | `limitations`                | `limitations`                | Active/historical injury or training limitations.                         |
 | `limitation_events`          | `limitation_events`          | Event log of limitation changes.                                          |
@@ -137,6 +143,22 @@ All revisions are included, not just the latest correction. Connection hashes
 and internal content hashes are excluded through explicit column projections.
 Observation timing retains its reported quality and unknown native course;
 it is not converted into a verified result, an assessment or shared workload.
+
+### Imported swimming outcomes
+
+`swimming_import_outcomes_available` is false before the additive outcome
+storage is installed, and `swim_import_outcomes` is then empty. Installed
+history remains exportable when new confirmations are disabled. An unreadable
+capability or ledger fails the export rather than returning partial history.
+
+All outcome revisions are included. Each row links to a workout and, for a
+claim, the original `swim_import_matches` row. That match identifies the
+recording revision; later corrections or rematches do not replace it.
+`metadata.outcome` is `completed`, `stopped_early`, or `null` for a removal.
+`metadata.previousOutcomeId` links the preceding receipt, and
+`metadata.workoutRevision` records the reviewed revision or is `null` on removal.
+These claims do not create native session measurements or change planned dates.
+The recomputable `swim_import_outcome_activity` view is not exported separately.
 
 ### Prescribed vs actual on `set_logs` (ADR 0070)
 

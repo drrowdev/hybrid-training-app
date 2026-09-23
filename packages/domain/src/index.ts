@@ -30,3 +30,5 @@ export * from "./types";
 export * from "./authored-program";
 export * from "./training-schedule";
 export * from "./movement-safety";
+export * from "./swim-import-outcome";
+export * from "./swim-standalone-training-state";

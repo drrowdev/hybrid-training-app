@@ -102,7 +102,7 @@ The disposable storage rehearsal covers down/up, privileges, replay/staleness,
 bidirectional overlaps, opposite-order concurrent legacy swim/primary writes,
 concurrent starts, shared-completion/actuals lock order, history retention and
 independent lifecycle.
-The native modular browser profile requires its exact six mobile cases with
+The original native modular browser profile requires its exact six mobile cases with
 no skipped, duplicated, missing or retried cases. No private course or protected
 account is an acceptance fixture.
 
@@ -136,10 +136,12 @@ unreviewed callers; the new review UI cannot silently fall back.
 
 The source publication is a draft, not a release claim. The latest integrated
 schedule writers require exact-source real SQL and native qualification. The
-six-case authenticated browser journey and release environment qualification
-must be completed before merge/deploy approval.
-Imported swimming outcomes and provider/watch integrations must not be implied
-by the authored builder or by matching an imported recording.
+six-case authenticated browser journey passed at5446db2/run35802903845.
+[ADR0086](0086-standalone-swim-import-outcomes.md) extends that unchanged cohort
+with one imported-outcome journey; the new158-entry source and release
+environment qualification remain separate gates before merge/deploy approval.
+Explicit imported outcomes are not inferred by matching a recording.
+Provider/watch integrations remain outside this implementation.
 
 Related contracts: [DC-K4](../knowledge/hybrid-training-design-constraints.md#k-engineering--data-hygiene),
 [DC-SW7/DC-SW8](../knowledge/hybrid-training-design-constraints.md#sw-native-pool-swimming-adr-0079-2026-09-05).

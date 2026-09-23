@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { requireInspection } from "./swim-production-readonly-guards";
+import { productionSettings, requireInspection } from "./swim-production-readonly-guards";
+import { environmentList } from "./configure-swim-review";
 import { productionHistoryFingerprint, productionHistoryRows, PRODUCTION_SWIM_BASELINE } from "./swim-production-reconciliation";
 import { REVIEW } from "./swim-review-config-plan";
 
@@ -41,6 +42,20 @@ export function modularPreflightContext(inputs: Record<string, unknown>, env: No
     env.EXPECTED_SHA === inputs.expected_sha && env.GITHUB_JOB === MODULAR_PREFLIGHT.job &&
     env.GITHUB_RUN_ATTEMPT === "1" && /^\d{8,16}$/.test(env.GITHUB_RUN_ID ?? ""), "context");
   return String(inputs.expected_sha);
+}
+
+export function modularProductionSettings(project: unknown, projectEnv: unknown, sharedEnv: unknown) {
+  const settings = productionSettings(project, projectEnv, sharedEnv);
+  const key = "SWIM_IMPORT_OUTCOMES_ENABLED";
+  const row = [...environmentList(projectEnv, false), ...environmentList(sharedEnv, true)]
+    .find((entry) => entry.key === key && entry.target.includes("production"));
+  return {
+    ...settings,
+    outcomeFlag: {
+      key, configured: row !== undefined,
+      ...(row ? { id: row.id, type: row.type, updatedAt: row.updatedAt } : {}),
+    },
+  };
 }
 
 const migration = z.object({

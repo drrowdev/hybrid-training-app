@@ -71,6 +71,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
           busy={requestBusy} onApply={(change) => run(() => applySwimPoolEdit(change))} />}
         {plan.assessment && <p className={styles.muted}>{plan.assessment.label} · {plan.assessment.pace}</p>}
         <p className={styles.status}>{({ active: "Active", paused: "Paused", finished: "Finished", archived: "Archived" })[plan.status]}</p>
+        {plan.nextWorkoutId && <Link className={styles.button} href={`/app/swim/${plan.nextWorkoutId}`}>Next swim</Link>}
         {plan.status === "active" && !plan.imported && <button className={styles.secondary} disabled={requestBusy} onClick={() => run(() => proposeSwimWeek(plan.id, plan.revision))}>Review next week</button>}
       </section>
       {warnings.map((warning, index) => <p key={index} role="status" className={styles.warning}>{warning}</p>)}
@@ -107,7 +108,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
       ))}
       <section className={styles.section}>
         <h2>Swims</h2>
-        <ul className={styles.list}>
+        <ul className={styles.list} aria-label="Swims">
           {plan.workouts.map((workout) => <li key={workout.id} className={styles.scheduledRow}>
             <Link href={`/app/swim/${workout.id}`} className={styles.row}>
               <span><strong>{workout.title}</strong><small>{workout.date}{!plan.imported && ` · Week ${workout.week}`}{workout.provisional && workout.status === "Scheduled" ? " · Draft" : ""}</small></span>

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { countDistinctRehabMovements } from "@hta/domain";
 import { SwimCalendar } from "@/components/swim/SwimCalendar";
+import { loadSwimActivity } from "@/lib/swim/activity-history";
+import { formatActivityDate, mergeTrainingActivity, trainingActivityHref, SWIM_TRAINING_LABEL, type TrainingActivity } from "@/lib/swim/activity-presentation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   archetypeDisplayName,
@@ -108,7 +110,7 @@ export default async function TodayPage() {
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmRows, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent, error: recentError }, plannedToday, upcoming, freshness, activeBlock, tmRows, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs, swimActivity] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -138,7 +140,10 @@ export default async function TodayPage() {
     getQuickRepeatCandidates(supabase, userId, { limit: 3 }),
     getLimitationTodaySummary(),
     getPendingProgramRecommendations(supabase, userId),
+    loadSwimActivity(supabase, userId, 8),
   ]);
+  if (recentError || !recent) throw new Error("Your training history could not be loaded.");
+  const recentActivity = mergeTrainingActivity(recent, swimActivity, profile?.timezone ?? "UTC", 8);
 
   const activeLimitations: ActiveLimitationSummary[] = (
     activeLimitationsRaw ?? []
@@ -765,7 +770,7 @@ export default async function TodayPage() {
               markCardioDoneAction: markExternalCardioComplete,
             }} />
 
-            <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
+            <ActivitySection activities={recentActivity} todayIso={todayIso} profile={formatProfile} />
           </aside>
         </div>
     </div>
@@ -795,20 +800,15 @@ function ActivityPill({ label, mono }: { label: string; mono?: boolean }) {
 }
 
 function ActivitySection({
-  sessions,
+  activities,
   todayIso,
+  profile,
 }: {
-  sessions: Array<{
-    id: string;
-    title: string | null;
-    performed_at: string;
-    completed_at: string | null;
-    session_rpe: number | null;
-    duration_min: number | null;
-  }>;
+  activities: TrainingActivity[];
   todayIso: string;
+  profile: ProfileForFormat;
 }) {
-  if (sessions.length === 0) {
+  if (activities.length === 0) {
     return (
       <section className="cp-card" style={{ padding: 20 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
@@ -824,20 +824,20 @@ function ActivitySection({
   }
 
   const yesterdayIso = addDaysToYmd(todayIso, -1);
-  const groups: Array<{ key: "today" | "yesterday" | "earlier"; label: string; items: typeof sessions }> = [
+  const groups: Array<{ key: "today" | "yesterday" | "earlier"; label: string; items: typeof activities }> = [
     { key: "today", label: "Today", items: [] },
     { key: "yesterday", label: "Yesterday", items: [] },
     { key: "earlier", label: "Earlier", items: [] },
   ];
-  for (const s of sessions) {
-    const ymd = s.performed_at.slice(0, 10);
+  for (const s of activities) {
+    const ymd = s.date;
     if (ymd === todayIso) groups[0]!.items.push(s);
     else if (ymd === yesterdayIso) groups[1]!.items.push(s);
     else groups[2]!.items.push(s);
   }
 
   return (
-    <section style={{ display: "grid", gap: 8 }}>
+    <section aria-label="Recent activity" style={{ display: "grid", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 4 }}>
         <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
         <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
@@ -859,11 +859,11 @@ function ActivitySection({
               {g.label}
             </div>
             {g.items.map((s) => {
-              const complete = !!s.completed_at;
+              const complete = s.status === "completed";
               return (
                 <Link
-                  key={s.id}
-                  href={`/app/sessions/${s.id}`}
+                  key={`${s.kind}:${s.id}`}
+                  href={trainingActivityHref(s, "today")}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -914,13 +914,14 @@ function ActivitySection({
                         flexWrap: "wrap",
                       }}
                     >
-                      {!complete && <ActivityPill label="in progress" />}
-                      {s.session_rpe != null && (
-                        <ActivityPill label={`Effort ${s.session_rpe}`} mono />
-                      )}
-                      {s.duration_min != null && (
-                        <ActivityPill label={`${s.duration_min} min`} mono />
-                      )}
+                      {s.kind === "swim" ? <>
+                        <ActivityPill label={SWIM_TRAINING_LABEL[s.status]} />
+                        <ActivityPill label={formatActivityDate(s, profile)} mono />
+                      </> : <>
+                        {!complete && <ActivityPill label="in progress" />}
+                        {s.session.session_rpe != null && <ActivityPill label={`Effort ${s.session.session_rpe}`} mono />}
+                        {s.session.duration_min != null && <ActivityPill label={`${s.session.duration_min} min`} mono />}
+                      </>}
                     </div>
                   </div>
                   <span style={{ color: "var(--cp-text-muted)", fontSize: 16 }} aria-hidden>›</span>

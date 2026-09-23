@@ -1,5 +1,4 @@
--- Historical standalone schema from PR #814, tested as a main-compatible proposal.
--- Not a canonical migration or permission to change production.
+-- DC-SW5/SW6/SW7/SW8: standalone claims, separate from measurements and primary programs.
 ALTER TABLE public.swim_import_matches ADD CONSTRAINT swim_import_matches_owned_workout_id_key
   UNIQUE (user_id, workout_id, id);
 
@@ -69,6 +68,8 @@ BEGIN
        OR p_match_id IS NULL OR p_expected_workout_revision IS NULL OR p_expected_workout_revision < 1)) THEN
     RAISE EXCEPTION 'SWIM_OUTCOME_INVALID_REQUEST' USING ERRCODE = '22023';
   END IF;
+  -- Schedule changes precede recording locks in the shared owner ordering.
+  PERFORM pg_advisory_xact_lock(hashtextextended('program-deploy:' || u::text, 0));
   -- Receiver corrections, rematches and confirmations share one owner ordering.
   PERFORM pg_advisory_xact_lock(hashtextextended('swim-import:' || u::text, 0));
   SELECT * INTO w FROM public.swim_workouts WHERE id = p_workout_id AND user_id = u FOR SHARE;
@@ -123,3 +124,33 @@ REVOKE ALL ON FUNCTION public.swim_import_outcomes_ready(),
   public.swim_confirm_import_outcome(uuid,uuid,uuid,text,uuid,integer) FROM PUBLIC, anon, authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.swim_import_outcomes_ready(),
   public.swim_confirm_import_outcome(uuid,uuid,uuid,text,uuid,integer) TO authenticated;
+
+CREATE VIEW public.swim_import_outcome_activity WITH (security_invoker = true) AS
+SELECT w.user_id, w.id, w.plan_id, w.revision, w.status, w.session_id,
+  w.scheduled_date, w.slot, w.definition, sp.status AS plan_status,
+  logged.id AS visible_session_id, logged.completed_at AS native_completed_at,
+  o.id AS outcome_id, o.match_id AS outcome_match_id, o.metadata AS outcome_metadata,
+  m.id AS current_match_id, m.import_id AS matched_import_id,
+  (m.metadata#>>'{workout,revision}')::integer AS matched_workout_revision,
+  latest.id AS latest_import_id, latest.evidence->>'date' AS recording_date,
+  claimed_recording.id AS claim_import_id,
+  claimed_recording.evidence->>'date' AS claim_recording_date
+FROM public.swim_workouts w
+JOIN public.swim_plans sp ON sp.id = w.plan_id AND sp.user_id = w.user_id
+LEFT JOIN public.sessions logged
+  ON logged.id = w.session_id AND logged.user_id = w.user_id AND logged.deleted_at IS NULL
+LEFT JOIN public.swim_current_import_outcomes o
+  ON o.workout_id = w.id AND o.user_id = w.user_id
+LEFT JOIN public.swim_import_matches claimed_match
+  ON claimed_match.id = o.match_id AND claimed_match.workout_id = w.id AND claimed_match.user_id = w.user_id
+LEFT JOIN public.swim_imports claimed_recording
+  ON claimed_recording.id = claimed_match.import_id AND claimed_recording.user_id = w.user_id
+LEFT JOIN public.swim_current_import_matches m
+  ON m.id = o.match_id AND m.workout_id = w.id AND m.user_id = w.user_id
+LEFT JOIN LATERAL (
+  SELECT i.id, i.evidence FROM public.swim_imports i
+  WHERE i.user_id = w.user_id AND i.activity_id = m.activity_id
+  ORDER BY i.revision DESC LIMIT 1
+) latest ON true;
+REVOKE ALL ON public.swim_import_outcome_activity FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT ON public.swim_import_outcome_activity TO authenticated;

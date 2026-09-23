@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import {
   isModularAcceptance, isModularBrowserProfile, MODULAR_BROWSER_CASES, MODULAR_MIGRATION_TOTAL,
 } from "../../../../scripts/modular-browser-profile";
-import { buildBrowserEnv, SWIM_BROWSER_CASES } from "../../../../scripts/swim-browser-acceptance";
+import { buildBrowserEnv, buildBrowserServerEnv, requireBrowserEnvironment, SWIM_BROWSER_CASES } from "../../../../scripts/swim-browser-acceptance";
 import { requireManualContext } from "../../../../scripts/swim-acceptance-guards";
 
 const sha = "c".repeat(40);
@@ -29,13 +29,14 @@ describe("DC-SW8 modular browser profile retains the isolated runtime boundaries
     expect(job).not.toContain("secrets.");
   });
 
-  it("preserves the historical cohort and declares exactly six new cases", () => {
+  it("preserves the historical cohort and appends one imported-outcome journey to the frozen six", () => {
     expect(SWIM_BROWSER_CASES).toHaveLength(26);
-    expect(MODULAR_BROWSER_CASES).toHaveLength(6);
-    expect(new Set(MODULAR_BROWSER_CASES.map(({ title }) => title)).size).toBe(6);
+    expect(MODULAR_BROWSER_CASES).toHaveLength(7);
+    expect(new Set(MODULAR_BROWSER_CASES.map(({ title }) => title)).size).toBe(7);
+    expect(MODULAR_BROWSER_CASES.map(({ title }) => title.split(" ")[0])).toEqual(["M1", "M2", "M3", "M4", "M5", "M6", "M7"]);
     expect(new Set(MODULAR_BROWSER_CASES.map(({ file }) => file))).toEqual(new Set(["e2e/program-builder-mobile.spec.ts"]));
     expect(Object.isFrozen(MODULAR_BROWSER_CASES) && MODULAR_BROWSER_CASES.every(Object.isFrozen)).toBe(true);
-    expect(MODULAR_MIGRATION_TOTAL).toBe(157);
+    expect(MODULAR_MIGRATION_TOTAL).toBe(158);
   });
 
   it("requires the exact modular branch and a fresh first attempt", () => {
@@ -64,11 +65,31 @@ describe("DC-SW8 modular browser profile retains the isolated runtime boundaries
       anonKey: `sb_publishable_${"a".repeat(24)}`, serviceRoleKey: `sb_secret_${"b".repeat(24)}` };
     expect(buildBrowserEnv(target, paths).SXC_ACCEPTANCE_PROFILE).toBeUndefined();
     expect(buildBrowserEnv(target, paths).SWIM_PRIVATE_COURSE_ENABLED).toBeUndefined();
+    expect(buildBrowserEnv(target, paths).SWIM_IMPORT_OUTCOMES_ENABLED).toBeUndefined();
+    expect(buildBrowserEnv(target, paths).SUPABASE_SERVICE_ROLE_KEY).toBeUndefined();
     expect(buildBrowserEnv(target, paths, true)).toMatchObject({
       SXC_ACCEPTANCE_PROFILE: "modular", SWIM_PRIVATE_COURSE_ENABLED: "true", SWIM_POOL_EDITING_ENABLED: "true",
       SWIM_IMPORT_ENABLED: "true", SWIM_IMPORT_MATCHING_ENABLED: "true",
+      SWIM_IMPORT_OUTCOMES_ENABLED: "true",
     });
     expect(() => buildBrowserEnv({ ...target, url: "https://example.invalid" }, paths, true)).toThrow();
     expect(() => buildBrowserEnv({ ...target, projectRef: "production" }, paths, true)).toThrow();
+    const env = buildBrowserEnv(target, paths, true);
+    expect(env.SUPABASE_SERVICE_ROLE_KEY).toBeUndefined();
+    const server = buildBrowserServerEnv(env);
+    expect(server.SUPABASE_SERVICE_ROLE_KEY).toBe(env.E2E_SUPABASE_SERVICE_ROLE_KEY);
+    expect(server.SUPABASE_SERVICE_ROLE_KEY).toBe(target.serviceRoleKey);
+    expect(buildBrowserServerEnv(buildBrowserEnv(target, paths)).SUPABASE_SERVICE_ROLE_KEY).toBe(target.serviceRoleKey);
+    expect(env.SUPABASE_SERVICE_ROLE_KEY).toBeUndefined();
+    expect(Object.keys(env).filter((key) => key.startsWith("NEXT_PUBLIC_")).sort())
+      .toEqual(["NEXT_PUBLIC_SUPABASE_ANON_KEY", "NEXT_PUBLIC_SUPABASE_URL"]);
+    for (const change of [
+      { SUPABASE_SERVICE_ROLE_KEY: "ambient-value" },
+      { SWIM_IMPORT_OUTCOMES_ENABLED: "false" },
+      { NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY: target.serviceRoleKey },
+      { SXC_ACCEPTANCE_PROFILE: undefined },
+    ]) expect(() => requireBrowserEnvironment({ ...env, ...change })).toThrow();
+    expect(() => buildBrowserServerEnv({ ...env, E2E_SUPABASE_URL: "https://example.invalid" })).toThrow();
+    expect(() => buildBrowserServerEnv({ ...env, SUPABASE_SERVICE_ROLE_KEY: "ambient-value" })).toThrow();
   });
 });

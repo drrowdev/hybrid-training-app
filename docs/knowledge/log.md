@@ -4438,3 +4438,44 @@ passed with the exact public CI placeholder URL/key, including type-check
 and37 static pages. Final emitted CSS contains only the five complete local
 font assets and all original variables. No Next version, environment,
 workflow, timeout, font design or qualification requirement changed.
+
+## [2026-09-23] refine | Standalone swimming outcomes after frozen-six acceptance
+
+The coordinator qualified5446db2 through core35802177125, storage35802177118
+and native35802903845/job106998276915. Native passed13stages, the normal157
+migrations,36authenticated RPC cases and all6browser cases on their first
+attempt, without skips/flakes. This closes the previously observed M3/M4
+failures on that exact revision, not on later source.
+
+[ADR0086](../adr/0086-standalone-swim-import-outcomes.md) implements explicit
+Completed / Stopped early confirmation, correction and removal for standalone
+imported swims. The original receipt and recording date survive rematches;
+stale claims require review. Domain-derived status now reaches Swimming,
+workout detail, next selection, Home shared week/recent activity, Plan calendar
+and shared history. No native sessions, measurements or primary programs are
+fabricated. Export retains every receipt while creation is off.
+
+The approved standalone SQL is canonical0157 with an independent empty-only
+down and a Drizzle mirror. Existing0000-0156 SQL and journal prefix remain
+unchanged. The normal runner still wraps all pending files in one transaction.
+Storage CI now requires normal fresh158, incremental157-to158, precommit
+rollback and functional ownership/correction/rematch/removal/account-cascade
+proofs. The seventh native case is appended without changing the original six
+bodies, assertions or budgets. It also checks original recording dates in Home
+recent activity and history, exact replay, retained export and no native rows.
+
+The existing server-only disposable service-key binding is preserved; it is
+not added to build/browser environments. Only the disposable modular runtime
+enables outcome creation. The transferred read-only production preflight now
+projects outcome-binding metadata separately from its unchanged seven-flag
+contract, using already-fetched metadata lists and no value/decrypt reads.
+Earlier preflight results did not establish this binding's absence.
+
+Local evidence:533focused web checks,11closed-cohort checks,71read-only
+preflight checks, full web/schema/account-flow/SQL-harness type checks and
+57actual synthetic browser stages at375/1280 passed. The supported Webpack
+build passed with the exact nonfunctional public CI placeholders. Broad
+Windows-only POSIX permission/symlink and checkout line-ending assertions are
+not substituted for the full Linux CI gate. Actual0157 SQL and nativeM7 remain
+pending on the new published head. The0156-only hosted updater is unchanged
+and refuses158-entry source; hosted DDL/activation require separate approval.

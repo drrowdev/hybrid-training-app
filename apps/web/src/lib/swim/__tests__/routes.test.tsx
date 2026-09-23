@@ -6,6 +6,7 @@ import EditCardioPage from "@/app/app/sessions/[id]/cardio/[cardioId]/edit/page"
 import { SwimHub } from "@/components/swim/SwimHub";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { WorkoutScreen } from "@/components/swim/WorkoutScreen";
+import { MatchedRecordings } from "@/components/swim/MatchedRecordings";
 import { getSwimCapability } from "../capability";
 import { findSwimWorkoutForSession } from "../navigation";
 import { listSwimPlans } from "../storage";
@@ -113,6 +114,25 @@ describe("ADR0079 reachable standalone routes", () => {
     }
     expect(loadSwimWorkoutView).toHaveBeenCalledTimes(3);
     expect(loadSwimWorkoutView).toHaveBeenCalledWith({}, userId, workout.id);
+  });
+  it.each([
+    ["today", "/app"], ["plan", "/app/plan"], ["history", "/app/plan/history"],
+    ["sessions", "/app/sessions"], [undefined, "/app/swim"], ["https://elsewhere.invalid", "/app/swim"],
+  ])("preserves only known return contexts on workout and recording links (%s)", async (from, href) => {
+    const page = await SwimWorkoutPage({
+      params: Promise.resolve({ workoutId: "workout" }), searchParams: Promise.resolve({ from }),
+    });
+    expect(elements(page).find((element) => element.type === PageHeader)?.props.back).toMatchObject({ href });
+    expect(elements(page).find((element) => element.type === MatchedRecordings)?.props.origin)
+      .toBe(href === "/app/swim" ? undefined : from);
+  });
+  it("keeps the return destination available when swimming storage is unavailable", async () => {
+    vi.mocked(getSwimCapability).mockResolvedValue({ storageAvailable: false, setupEnabled: false });
+    const page = await SwimWorkoutPage({
+      params: Promise.resolve({ workoutId: "workout" }), searchParams: Promise.resolve({ from: "sessions" }),
+    });
+    expect(elements(page).find((element) => element.type === PageHeader)?.props.back).toMatchObject({ href: "/app/sessions" });
+    expect(loadSwimWorkoutView).not.toHaveBeenCalled();
   });
   it("does not fall back to a generic editor for missing structured work", async () => {
     vi.mocked(loadSwimWorkoutView).mockResolvedValue(null);
