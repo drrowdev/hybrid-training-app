@@ -3,13 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { getCeilingUtilization } from "@/lib/stats/ceiling-queries";
+import { getVolumeAutoregOffer } from "@/lib/planner/autoreg-offer";
 import {
   applyPrescriptionUpdates,
   getActiveBlockRemainingSessions,
 } from "@/lib/planner/remaining-sessions";
 import {
-  autoregScaleForBand,
   hasDiscretionaryVolume,
 } from "@/lib/planner/autoreg-volume";
 import { getUserTimezone } from "@/lib/planner/queries";
@@ -25,7 +24,7 @@ export type AcceptAutoregResult =
  * the field restores the full prescription, and the trim is computed at
  * read time by `applyAutoregVolumeScale`.
  */
-export async function acceptVolumeAutoregResult(): Promise<AcceptAutoregResult> {
+export async function acceptVolumeAutoregResult(blockId?: string): Promise<AcceptAutoregResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -33,18 +32,16 @@ export async function acceptVolumeAutoregResult(): Promise<AcceptAutoregResult> 
   if (!user) redirect("/login");
 
   const timezone = await getUserTimezone(user.id);
-  const util = await getCeilingUtilization(supabase, user.id, timezone);
-  if (!util) return { ok: false, error: "No active block" };
-
-  const scale = autoregScaleForBand(util.strength.band);
-  if (scale === null) {
-    return { ok: false, error: "Strength volume is not over budget" };
-  }
+  const offer = await getVolumeAutoregOffer(blockId);
+  if (!offer) return { ok: false, error: "This volume adjustment is no longer available." };
+  const scale = offer.scale;
 
   const active = await getActiveBlockRemainingSessions(
     supabase,
     user.id,
     timezone,
+    new Date(),
+    offer.blockId,
   );
   if (!active) return { ok: false, error: "No active block" };
 

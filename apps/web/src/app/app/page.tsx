@@ -6,14 +6,14 @@ import { formatActivityDate, mergeTrainingActivity, trainingActivityHref, SWIM_T
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   archetypeDisplayName,
-  getActiveBlock,
-  getPlannedDays,
+  getActiveBlocks,
+  getActivePlannedDays,
   getRecentBlocks,
   getTodayPlannedSessions,
   getUpcomingPlannedSessions,
   type PlannedDay,
 } from "@/lib/planner/queries";
-import { todayYmd } from "@/lib/dates";
+import { currentBlockWeekIndexAt, todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay } from "@/lib/planner/time-of-day";
 import { hasTwoADaySlotPair } from "@/lib/planner/slot";
 import { getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
@@ -109,8 +109,9 @@ export default async function TodayPage() {
     .maybeSingle();
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
+  const activePrograms = getActiveBlocks();
 
-  const [{ data: todaySessions }, { data: recent, error: recentError }, plannedToday, upcoming, freshness, activeBlock, tmRows, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs, swimActivity] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent, error: recentError }, plannedToday, upcoming, freshness, activeBlocks, tmRows, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs, swimActivity] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -128,7 +129,7 @@ export default async function TodayPage() {
     getTodayPlannedSessions(),
     getUpcomingPlannedSessions(5),
     getRegionFreshness(supabase, userId),
-    getActiveBlock(),
+    activePrograms,
     listTrainingMaxes(),
     supabase
       .from("limitations")
@@ -139,7 +140,7 @@ export default async function TodayPage() {
       .limit(20),
     getQuickRepeatCandidates(supabase, userId, { limit: 3 }),
     getLimitationTodaySummary(),
-    getPendingProgramRecommendations(supabase, userId),
+    activePrograms.then((programs) => getPendingProgramRecommendations(supabase, userId, programs.map((program) => program.id))),
     loadSwimActivity(supabase, userId, 8),
   ]);
   if (recentError || !recent) throw new Error("Your training history could not be loaded.");
@@ -154,6 +155,7 @@ export default async function TodayPage() {
     startedAt: r.started_at as string,
   }));
 
+  const activeBlock = activeBlocks.length === 1 ? activeBlocks[0] : null;
   const archetypeName = activeBlock
     ? archetypeDisplayName(activeBlock.archetype, activeBlock.notes)
     : null;
@@ -519,11 +521,14 @@ export default async function TodayPage() {
   // has an active Season with a next planned block, the final-week nudge advances
   // the roadmap (activate the next block) instead of the recomputed ADR-0010
   // guess. Only computed in the final week, gated on the opt-in flag.
+  const endingBlockIds = new Set(activeBlocks.filter((block) =>
+    currentBlockWeekIndexAt(block.startedOn, block.weeks, timezone, new Date()) >= block.weeks - 1,
+  ).map((block) => block.id));
   const seasonNext =
-    inFinalWeek && profile?.season_planning_enabled === true
+    endingBlockIds.size > 0 && profile?.season_planning_enabled === true
       ? await (async () => {
           const season = await getActiveSeason();
-          if (!season) return null;
+          if (!season || !season.blocks.some((entry) => entry.status === "active" && entry.blockId && endingBlockIds.has(entry.blockId))) return null;
           const next = nextPlannedBlock(season.blocks);
           if (!next) return null;
           const programName =
@@ -544,9 +549,7 @@ export default async function TodayPage() {
   // "you have N overdue" link above the day's primary card so the user
   // can review them on /app/plan — we never auto-open a past planned
   // session in the today flow.
-  const plannedDaysAll = activeBlock
-    ? await getPlannedDays(activeBlock.id, activeBlock.startedOn)
-    : [];
+  const plannedDaysAll = await getActivePlannedDays();
   // "This week" rail sessions — built in the same PlanSessionInput shape
   // the /app/plan page uses so the Today rail reuses the shared rail +
   // drawer (single source of truth; see components/plan/ThisWeekRail).
@@ -649,6 +652,12 @@ export default async function TodayPage() {
           >
             Today
           </h1>
+          {activeBlocks.length > 1 && <nav aria-label="Programs" style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 12 }}>
+            {activeBlocks.map((block) => <Link key={block.id} href={`/app/plan?block=${block.id}`}>
+              {archetypeDisplayName(block.archetype, block.notes)}
+            </Link>)}
+            <Link href="/app/programs">All programs</Link>
+          </nav>}
         </header>
 
         {/* Two-column on wide screens: primary actions in the main
@@ -738,6 +747,7 @@ export default async function TodayPage() {
               nextUpcoming={upcoming[0] ?? null}
               formatProfile={formatProfile}
               programRecs={programRecs}
+              programNames={activeBlocks.length > 1 ? Object.fromEntries(activeBlocks.map((block) => [block.id, archetypeDisplayName(block.archetype, block.notes)])) : {}}
             />
 
             <QuickWorkoutCard
@@ -760,7 +770,7 @@ export default async function TodayPage() {
               sessions: weekRailSessions,
               today: todayIso,
               currentWeekIndex: computedWeekIndex ?? -1,
-              weeks: activeBlock?.weeks ?? 1,
+              weeks: Math.max(1, ...activeBlocks.map((block) => block.weeks)),
               logHrefBase: "/app/sessions/start",
               moveAction: movePlannedSession,
               skipAction: skipPlannedSession,
@@ -947,6 +957,7 @@ function TodaySessionCard({
   nextUpcoming,
   formatProfile,
   programRecs,
+  programNames,
 }: {
   openSession: { id: string; title: string | null } | null;
   completedToday: { id: string; title: string | null }[];
@@ -960,11 +971,12 @@ function TodaySessionCard({
   nextUpcoming: PlannedDay | null;
   formatProfile: ProfileForFormat;
   programRecs: PendingProgramRecommendation[];
+  programNames: Readonly<Record<string, string>>;
 }) {
   // Platform programs: program-owned nudges (retest maxes, next block, 7th-week
   // verdict). Informational; dismiss-only. No-op for archetype blocks.
   const programRecsBanner = (
-    <ProgramRecommendationsBanner recommendations={programRecs} dismissAction={dismissProgramRecommendation} />
+    <ProgramRecommendationsBanner recommendations={programRecs} programNames={programNames} dismissAction={dismissProgramRecommendation} />
   );
   const actionableToday = actionablePlannedSessions(plannedToday);
   if (openSession) {

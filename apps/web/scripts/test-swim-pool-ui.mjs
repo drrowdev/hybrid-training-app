@@ -31,6 +31,8 @@ try {
         import { RecordingMatcher } from "./src/components/swim/RecordingMatcher";
         import { RecordingOutcome } from "./src/components/swim/RecordingOutcome";
         import { ProgramBuilder } from "./src/components/program/ProgramBuilder";
+        import { ProgramsOverview } from "./src/components/program/ProgramsOverview";
+        import { ProgramRecommendationsBanner } from "./src/components/today/ProgramRecommendationsBanner";
         import { TrainingWeek } from "./src/components/program/TrainingWeek";
         import { ThisWeekRail } from "./src/components/plan/ThisWeekRail";
         import { ScheduleRestoreButton } from "./src/components/program/ScheduleRestoreButton";
@@ -224,6 +226,34 @@ try {
           </main>);
         };
         window.programCalls = []; window.programMode = "success";
+        window.showProgramsOverview = (activity, includeHybrid = false) => {
+          const identity = value => "00000000-0000-4000-8000-" + String(value).padStart(12, "0");
+          window.destinations = [];
+          const programs = [
+            { id: identity(101), kind: "strength", name: "Strength", startedOn: "2026-09-21", weeks: 4, editable: true },
+            { id: identity(102), kind: "running", name: "Running", startedOn: "2026-09-21", weeks: 6, editable: true },
+            ...(includeHybrid ? [{ id: identity(103), kind: "hybrid", name: "Running-and-stations-with-strength-and-rehab", startedOn: "2026-09-21", weeks: 8, editable: true }] : []),
+          ];
+          const entries = [
+            { id: identity(201), source: "primary", programId: identity(101), date: "2026-09-21", title: "Upper A" },
+            { id: identity(202), source: "primary", programId: identity(101), date: "2026-09-24", title: "Upper B" },
+            { id: identity(203), source: "primary", programId: identity(102), date: "2026-09-22", title: "Easy run" },
+            { id: identity(204), source: "primary", programId: identity(102), date: "2026-09-25", title: "Intervals" },
+            { id: identity(205), source: "swim", programId: identity(104), date: "2026-09-23", title: "Swim A" },
+            { id: identity(206), source: "swim", programId: identity(104), date: "2026-09-26", title: "Swim B" },
+            ...(includeHybrid ? [{ id: identity(207), source: "primary", programId: identity(103), date: "2026-09-26", title: "Run and stations" }] : []),
+          ].map(entry => ({ ...entry, state: "scheduled" }));
+          root.render(<main key={++key} style={{ padding: 12 }}><ProgramsOverview programs={programs}
+            activity={activity} today="2026-09-21" entries={entries} swimHref="/app/swim" hasSwimPlans /></main>);
+        };
+        window.showOwnedRecommendation = () => {
+          root.render(<main key={++key} style={{ padding: 12, maxWidth: 680 }}><ProgramRecommendationsBanner
+            programNames={{ "00000000-0000-4000-8000-000000000103": "Weekend hybrid" }}
+            recommendations={[{ id: "00000000-0000-4000-8000-000000000301", kind: "deload",
+              blockId: "00000000-0000-4000-8000-000000000103", occurrenceKey: "recovery-boundary",
+              title: "Recovery week", detail: "Review the next week of this program." }]}
+            dismissAction={async () => ({ ok: false, error: "Could not dismiss this recommendation. Try again." })} /></main>);
+        };
         window.previewProgram = async input => {
           window.programCalls.push({ action: "preview", input });
           return { ok: true, preview: { id: "synthetic-review", revision: "a".repeat(32),
@@ -1130,6 +1160,42 @@ try {
     await save.click();
     await page.getByRole("button", { name: "Refresh workout", exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.courseCalls), ["edit-preview", "edit-preview", "edit-save"]);
+    stages.push(stage);
+  }
+
+  for (const width of [375, 1280]) {
+    stage = `independent-programs-overview-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.showProgramsOverview());
+    const programs = page.getByRole("region", { name: "Programs", exact: true });
+    await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(3);
+    const week = page.getByRole("region", { name: "This week", exact: true });
+    await expect(week.locator('a[href^="/app/sessions/start/"],a[href^="/app/swim/"]')).toHaveCount(6);
+    await expect(week.getByRole("link", { name: /^Edit / })).toHaveCount(4);
+    await expect(programs.getByRole("link", { name: "Open program", exact: true }).first())
+      .toHaveAttribute("href", "/app/plan?block=00000000-0000-4000-8000-000000000101");
+    await expect(week.getByRole("link", { name: "Edit Easy run", exact: true })).toHaveAttribute("href",
+      "/app/program/build?edit=00000000-0000-4000-8000-000000000102&workout=00000000-0000-4000-8000-000000000203");
+    await page.evaluate(() => window.showProgramsOverview(undefined, true));
+    await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(4);
+    await expect(week.locator('a[href^="/app/sessions/start/"],a[href^="/app/swim/"]')).toHaveCount(7);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.evaluate(() => window.showProgramsOverview("running", true));
+    await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(1);
+    await expect(programs.getByRole("link", { name: "Open program", exact: true }))
+      .toHaveAttribute("href", "/app/plan?block=00000000-0000-4000-8000-000000000102");
+    await expect(week.locator('a[href^="/app/sessions/start/"]')).toHaveCount(2);
+    await expect(week.getByRole("link", { name: /^Run and stations/ })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "New program", exact: true })).toHaveAttribute("href", "/app/program/build?activity=running");
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.evaluate(() => window.showOwnedRecommendation());
+    await expect(page.getByText("Weekend hybrid", { exact: false })).toBeVisible();
+    const recommendation = page.getByRole("link", { name: /^Take a recovery week/ });
+    await expect(recommendation).toHaveAttribute("href", /[?&]block=00000000-0000-4000-8000-000000000103(?:&|$)/);
+    await page.getByRole("button", { name: "Not yet", exact: true }).click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(recommendation).toBeVisible();
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     stages.push(stage);
   }
 

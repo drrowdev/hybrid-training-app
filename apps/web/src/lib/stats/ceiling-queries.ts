@@ -15,14 +15,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Prescription } from "@hta/db";
 import { ARCHETYPES, type ArchetypeId } from "@/lib/planner/archetypes";
-import { archetypeDisplayName } from "@/lib/planner/queries";
-import { currentBlockWeekIndexAt } from "@/lib/dates";
+import { archetypeDisplayName, dayDate } from "@/lib/planner/queries";
+import { currentBlockWeekIndexAt, ymdInTimezone } from "@/lib/dates";
 
 export type CeilingBand = "under" | "on-budget" | "at-line" | "over" | "way-over";
 
 export type CeilingUtilization = {
   archetypeName: string;
-  weekIndex: number;
+  weekIndex: number | null;
   weekLabel: string;
   strength: { actual: number; prescribed: number; pct: number; band: CeilingBand; bandLabel: string };
   cardio: { actual: number; prescribed: number; pct: number; band: CeilingBand; bandLabel: string };
@@ -116,12 +116,13 @@ async function prescribedCountsFromPlannedSessions(
   counts: { strengthSets: number; cardioSessions: number };
   isDeload: boolean;
 } | null> {
-  const { data: rows } = await supabase
+  const { data: rows, error } = await supabase
     .from("planned_sessions")
     .select("prescription, role")
     .eq("user_id", userId)
     .eq("block_id", blockId)
     .eq("week_index", weekIndex);
+  if (error) throw new Error("Could not read the program's weekly targets. Try again.");
   if (!rows || rows.length === 0) return null;
   return tallyPlannedWeek(
     rows as Array<{ prescription: Prescription | null; role?: string | null }>,
@@ -134,60 +135,68 @@ export async function getCeilingUtilization(
   timezone: string,
   now = new Date(),
 ): Promise<CeilingUtilization | null> {
-  // Active block determines week index + prescribed-volume source.
-  const { data: block } = await supabase
+  const { data: blocks, error: blocksError } = await supabase
     .from("training_blocks")
     .select("id, archetype, started_on, weeks, notes, program_family")
     .eq("user_id", userId)
     .eq("status", "active")
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (!block) return null;
+    .is("deleted_at", null);
+  if (blocksError || !blocks) throw new Error("Could not read your programs. Try again.");
+  const today = ymdInTimezone(now, timezone);
+  const currentBlocks = blocks.filter((block) => dayDate(block.started_on, 0, 0) <= today);
+  if (currentBlocks.length === 0) return null;
 
-  const weekIndex = currentBlockWeekIndexAt(
-    block.started_on,
-    block.weeks,
-    timezone,
-    now,
-  );
-
-  // Prescribed counts + labels: archetype config for legacy archetype blocks
-  // (byte-identical), else read from the materialised planned_sessions for
-  // platform programs (archetype NULL).
-  const archetype = ARCHETYPES[block.archetype as Exclude<ArchetypeId, "custom">];
-  let prescribed: { strengthSets: number; cardioSessions: number } | null;
-  let archetypeName: string;
-  let weekLabel: string;
-  if (archetype) {
-    prescribed = prescribedCountsForWeek(block.archetype, weekIndex);
-    const weekProfile =
-      archetype.weekProfiles[weekIndex] ??
-      archetype.weekProfiles[archetype.weekProfiles.length - 1];
-    archetypeName = archetype.name;
-    weekLabel = weekProfile?.intensityLabel ?? `Week ${weekIndex + 1}`;
-  } else {
-    const wk = await prescribedCountsFromPlannedSessions(
-      supabase,
-      userId,
-      block.id,
-      weekIndex,
+  const targets = await Promise.all(currentBlocks.map(async (block) => {
+    const weekIndex = currentBlockWeekIndexAt(
+      block.started_on,
+      block.weeks,
+      timezone,
+      now,
     );
-    prescribed = wk?.counts ?? null;
-    archetypeName = archetypeDisplayName(block.archetype, block.notes);
-    weekLabel = wk?.isDeload ? "Deload" : `Week ${weekIndex + 1}`;
-  }
-  if (!prescribed) return null;
+
+    const archetype = ARCHETYPES[block.archetype as Exclude<ArchetypeId, "custom">];
+    let prescribed: { strengthSets: number; cardioSessions: number } | null;
+    let archetypeName: string;
+    let weekLabel: string;
+    if (archetype) {
+      prescribed = prescribedCountsForWeek(block.archetype, weekIndex);
+      const weekProfile =
+        archetype.weekProfiles[weekIndex] ??
+        archetype.weekProfiles[archetype.weekProfiles.length - 1];
+      archetypeName = archetype.name;
+      weekLabel = weekProfile?.intensityLabel ?? `Week ${weekIndex + 1}`;
+    } else {
+      const wk = await prescribedCountsFromPlannedSessions(
+        supabase,
+        userId,
+        block.id,
+        weekIndex,
+      );
+      prescribed = wk?.counts ?? null;
+      archetypeName = archetypeDisplayName(block.archetype, block.notes);
+      weekLabel = wk?.isDeload ? "Deload" : `Week ${weekIndex + 1}`;
+    }
+    return prescribed ? { prescribed, archetypeName, weekIndex, weekLabel } : null;
+  }));
+  if (targets.some((target) => target === null)) return null;
+  const knownTargets = targets.filter((target) => target !== null);
+  const prescribed = knownTargets.reduce((sum, target) => ({
+    strengthSets: sum.strengthSets + target.prescribed.strengthSets,
+    cardioSessions: sum.cardioSessions + target.prescribed.cardioSessions,
+  }), { strengthSets: 0, cardioSessions: 0 });
+  const single = knownTargets.length === 1 ? knownTargets[0] : null;
 
   // Week window: last 7 days (rolling) instead of strict calendar week —
   // matches the rolling-week pattern used elsewhere (region freshness,
   // muscle volume).
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000).toISOString();
-  const { data: sessions } = await supabase
+  const { data: sessions, error: sessionsError } = await supabase
     .from("sessions")
     .select("id")
     .eq("user_id", userId)
     .gte("performed_at", sevenDaysAgo)
     .is("deleted_at", null);
+  if (sessionsError || !sessions) throw new Error("Could not read your recent training. Try again.");
   const sessionIds = (sessions ?? []).map((s) => s.id);
 
   let actualStrength = 0;
@@ -206,6 +215,7 @@ export async function getCeilingUtilization(
         .select("id", { count: "exact", head: true })
         .in("session_id", sessionIds),
     ]);
+    if (setCount.error || cardioCount.error) throw new Error("Could not read your recent training. Try again.");
     actualStrength = setCount.count ?? 0;
     actualCardio = cardioCount.count ?? 0;
   }
@@ -216,9 +226,9 @@ export async function getCeilingUtilization(
   const cBand = bandFor(cardioPct);
 
   return {
-    archetypeName,
-    weekIndex,
-    weekLabel,
+    archetypeName: single?.archetypeName ?? "All programs",
+    weekIndex: single?.weekIndex ?? null,
+    weekLabel: single?.weekLabel ?? "This week",
     strength: {
       actual: actualStrength,
       prescribed: prescribed.strengthSets,

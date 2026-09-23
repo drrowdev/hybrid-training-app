@@ -27,7 +27,8 @@ function advanceTarget(
   r: PendingProgramRecommendation,
 ): { href: string; label: string; keepUntilDone?: boolean } | null {
   if (r.kind === "deload") {
-    const params = new URLSearchParams({ deload: "1", rec: r.id });
+    if (!r.blockId) return null;
+    const params = new URLSearchParams({ deload: "1", rec: r.id, block: r.blockId });
     if (r.occurrenceKey) params.set("boundary", r.occurrenceKey);
     return {
       href: `/app/plan?${params.toString()}`,
@@ -50,47 +51,65 @@ function advanceTarget(
 export function ProgramRecommendationsBanner({
   recommendations,
   dismissAction,
+  programNames = {},
 }: {
   recommendations: PendingProgramRecommendation[];
   dismissAction: DismissAction;
+  programNames?: Readonly<Record<string, string>>;
 }) {
   const [hidden, setHidden] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   const visible = recommendations.filter((r) => !hidden.has(r.id));
-  if (visible.length === 0) return null;
+  if (visible.length === 0 && !error) return null;
 
   function dismiss(id: string) {
+    setError(null);
     setHidden((prev) => new Set(prev).add(id));
     startTransition(async () => {
-      await dismissAction(id);
+      try {
+        const result = await dismissAction(id);
+        if (result.ok) return;
+        setError(result.error);
+      } catch {
+        setError("Could not dismiss this recommendation. Try again.");
+      }
+      setHidden((previous) => {
+        const next = new Set(previous);
+        next.delete(id);
+        return next;
+      });
     });
   }
 
   return (
     <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+      {error && <p role="alert">{error}</p>}
       {visible.map((r) => {
         const advance = advanceTarget(r);
+        const programName = r.blockId ? programNames[r.blockId] : null;
         return (
         <div
           key={r.id}
           style={{
             display: "flex",
+            flexWrap: "wrap",
             alignItems: "flex-start",
             gap: 12,
             padding: "12px 14px",
             borderRadius: 10,
-            border: "1px solid var(--cp-accent-dim, rgba(120,170,255,0.35))",
-            background: "var(--cp-accent-soft, rgba(120,170,255,0.10))",
+            border: "1px solid var(--cp-border)",
+            background: "var(--cp-accent-soft)",
           }}
         >
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{r.title}</div>
-            <div style={{ fontSize: 12.5, color: "var(--cp-text-muted, #999)", marginTop: 3, lineHeight: 1.45 }}>
+          <div style={{ flex: "1 1 200px", minWidth: 0, overflowWrap: "anywhere" }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>{programName ? `${programName} · ${r.title}` : r.title}</div>
+            <div style={{ fontSize: 12.5, color: "var(--cp-text-muted)", marginTop: 3, lineHeight: 1.45 }}>
               {r.detail}
             </div>
           </div>
-          <div style={{ flex: "none", display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {advance && (
               <Link
                 href={advance.href}
@@ -99,14 +118,16 @@ export function ProgramRecommendationsBanner({
                 }}
                 style={{
                   padding: "6px 12px",
+                  minHeight: 44,
+                  display: "inline-flex",
+                  alignItems: "center",
                   borderRadius: 7,
                   textDecoration: "none",
-                  background: "var(--cp-accent, #78aaff)",
-                  border: "1px solid var(--cp-accent, #78aaff)",
-                  color: "var(--cp-on-accent, #0b0b0b)",
+                  background: "var(--cp-accent)",
+                  border: "1px solid var(--cp-accent)",
+                  color: "var(--cp-accent-fg)",
                   fontSize: 12,
                   fontWeight: 600,
-                  whiteSpace: "nowrap",
                 }}
               >
                 {advance.label}
@@ -118,10 +139,11 @@ export function ProgramRecommendationsBanner({
               disabled={pending}
               style={{
                 padding: "6px 12px",
+                minHeight: 44,
                 borderRadius: 7,
                 cursor: pending ? "default" : "pointer",
                 background: "transparent",
-                border: "1px solid var(--cp-border, rgba(255,255,255,0.18))",
+                border: "1px solid var(--cp-border)",
                 color: "inherit",
                 fontSize: 12,
                 fontWeight: 500,

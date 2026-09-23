@@ -4675,3 +4675,36 @@ result links, alongside route, ownership, safety and export checks. The complete
 four-program navigation, remaining scoped readers and new-model native
 acceptance are still pending. This is an integrated application increment, not
 release or production approval.
+
+## [2026-09-23] implementation | Independent program navigation and scoped recovery
+
+The release coordinator accepted `e6458e24` with exact core `35840944276` and
+storage `35840944499`: all 62 SQL and 61 synthetic UI stages passed. That
+qualification covers the Swimming rehab/export increment, not this later source.
+
+Home, Programs and Plan now read all active non-swimming programs by their
+stored kind. An explicit Plan link selects its exact block; an absent owner
+never falls back to another program. With several active programs, bare Plan
+shows a chooser and their combined week. Programs preserves native Swimming
+navigation and the owner's three-independent-program week, with optional Hybrid.
+Legacy rows remain unclassified, and inconsistent active-kind sets fail closed.
+
+Recovery-week previews, receipts, removal, deload choices, volume adaptation and
+limitation responses carry the selected program. Recovery replay cannot retarget
+another block. Actual workload remains account-wide while the existing weekly
+targets are summed across programs whose first scheduled week has begun; there
+is no invented shared program week. This does not add native imported-swimming measurements to legacy
+cardio-log totals. Settings consider all active programs, and recovery
+recommendations name and link to their owning Plan when several programs are
+active. Retired owners are excluded before applying the recommendation display
+limit. Failed dismissal restores the nudge and reports the error.
+
+Local coverage exercises the actual query transport and selected/combined Plan
+routes, all six non-swimming creation orders, stale owners, legacy refusal,
+shared-week identity and scoped recovery replay. All 76 focused tests and
+63 synthetic UI stages passed, including the preserved 61 stages and the two
+new 375/1280 independent-program overview stages.
+
+No schema, rollback, RLS or grant changes are part of this increment. Remaining
+load-basis consumers, analytics/season ownership and complete new-model native
+acceptance are still in progress. This is not release or production approval.

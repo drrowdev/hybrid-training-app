@@ -131,6 +131,7 @@ export function LimitationResponseCard({
   applyAction: (
     selectedKeys: string[],
     choices: Record<string, string>,
+    blockId?: string,
   ) => Promise<ApplyLimitationResult>;
 }) {
   const router = useRouter();
@@ -184,7 +185,7 @@ export function LimitationResponseCard({
     const keys = [...checked];
     const chosen = { ...choices };
     startTransition(async () => {
-      const res = await applyAction(keys, chosen);
+      const res = await applyAction(keys, chosen, offer.blockId);
       if (!res.ok) {
         setError(res.error);
         return;

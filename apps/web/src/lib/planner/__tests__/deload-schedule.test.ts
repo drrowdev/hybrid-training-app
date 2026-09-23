@@ -141,6 +141,29 @@ describe("DC-K4 recovery-week shared schedule review", () => {
     const commits = mock.rpc.mock.calls.filter(([name]) => name === "independent_program_schedule_commit");
     expect(commits).toHaveLength(2); expect(commits[0]).toEqual(commits[1]);
   });
+  it("DC-R5 binds insertion and its replay to the selected program", async () => {
+    const preview = (await previewDeloadWeekAction(undefined, undefined, undefined, mock.block.id))!;
+    const accepted = review(preview, true);
+    expect(await insertDeloadWeekAction(undefined, undefined, undefined, accepted, mock.block.id)).toMatchObject({ ok: true });
+    mock.rpc.mockClear();
+    expect(await insertDeloadWeekAction(undefined, undefined, undefined, accepted, mock.block.id)).toMatchObject({ ok: true });
+    expect(await insertDeloadWeekAction(undefined, undefined, undefined, accepted, mock.user!.id)).toMatchObject({ ok: false });
+    expect(mock.rpc).not.toHaveBeenCalled();
+    mock.receipt = null;
+    await expect(previewDeloadWeekAction(undefined, undefined, undefined, mock.user!.id)).rejects.toThrow();
+  });
+  it("DC-R5 binds removal and its replay to the selected program", async () => {
+    mock.rows[1]!.role = "deload";
+    mock.entries = ownEntries();
+    const input = { weekIndex: 1, blockId: mock.block.id };
+    const preview = (await previewRemoveDeloadWeekAction(input))!;
+    const accepted = { previewId: preview.review.id, revision: preview.review.revision, requestId: preview.review.requestId, acceptOverlap: true };
+    expect(await removeDeloadWeekAction(input, accepted)).toEqual({ ok: true });
+    mock.rpc.mockClear();
+    expect(await removeDeloadWeekAction(input, accepted)).toEqual({ ok: true });
+    expect(await removeDeloadWeekAction({ ...input, blockId: mock.user!.id }, accepted)).toMatchObject({ ok: false });
+    expect(mock.rpc).not.toHaveBeenCalled();
+  });
   it("previews and atomically removes a recovery week with shifted-week consent and replay", async () => {
     mock.rows[1]!.role = "deload"; mock.rows[1]!.day_index = 1;
     mock.entries = [...ownEntries(), swim("2026-09-23")];

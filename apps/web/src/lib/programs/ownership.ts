@@ -20,15 +20,19 @@ const activeProgramSchema = z.object({
 });
 export type OwnedActiveProgram = z.infer<typeof activeProgramSchema>;
 
+export function assertActiveProgramKinds(programs: readonly { program_kind: BlockProgramKind | null }[]): void {
+  const kinds = programs.map((program) => program.program_kind);
+  if (new Set(kinds).size !== kinds.length || (programs.length > 1 && kinds.includes(null))) {
+    throw new Error("The active programs need to be reconciled before making changes.");
+  }
+}
+
 export async function loadOwnedActivePrograms(client: SupabaseClient, userId: string): Promise<OwnedActiveProgram[]> {
   const result = await client.from("training_blocks").select("id,notes,started_on,program_id,program_kind")
     .eq("user_id", userId).eq("status", "active").is("deleted_at", null);
   if (result.error) throw new Error("Could not read your programs. Try again.");
   const programs = z.array(activeProgramSchema).parse(result.data);
-  const kinds = programs.map((program) => program.program_kind);
-  if (new Set(kinds).size !== kinds.length || (programs.length > 1 && kinds.includes(null))) {
-    throw new Error("The active programs need to be reconciled before making changes.");
-  }
+  assertActiveProgramKinds(programs);
   return programs;
 }
 

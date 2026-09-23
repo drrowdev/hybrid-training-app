@@ -47,6 +47,7 @@ export type WarmupSettingsProps = {
     name: string;
     scheme: WarmupScheme;
   } | null;
+  activeProgramsWithOwnRamp?: readonly NonNullable<WarmupSettingsProps["activeProgramWithOwnRamp"]>[];
 };
 
 const PREVIEW_TOP_PERCENT = 85;
@@ -67,8 +68,11 @@ function normaliseLadders(scheme: WarmupScheme, nextSetCount: number): WarmupSch
 export function WarmupSettings({
   initial,
   activeProgramWithOwnRamp = null,
+  activeProgramsWithOwnRamp,
 }: WarmupSettingsProps) {
-  const programRampActive = activeProgramWithOwnRamp != null;
+  const activeRamps = activeProgramsWithOwnRamp ?? (activeProgramWithOwnRamp ? [activeProgramWithOwnRamp] : []);
+  const activeRamp = activeRamps.length === 1 ? activeRamps[0] : null;
+  const programRampActive = activeRamps.length > 0;
   const initialPreset = presetKeyForScheme(initial, { programRampActive });
   const [preset, setPreset] = useState<WarmupPresetKey>(initialPreset);
 
@@ -163,7 +167,7 @@ export function WarmupSettings({
   // active program's own ladder when one is running, otherwise the standard
   // one. An empty "no preference" panel would say nothing useful.
   const effectiveScheme =
-    scheme ?? activeProgramWithOwnRamp?.scheme ?? DEFAULT_WARMUP_SCHEME;
+    scheme ?? activeRamp?.scheme ?? DEFAULT_WARMUP_SCHEME;
   const preview = useMemo(
     () => generateWarmupItems("preview", PREVIEW_TOP_PERCENT, effectiveScheme),
     [effectiveScheme],
@@ -211,7 +215,7 @@ export function WarmupSettings({
           program that publishes its own warm-up is actually running: with no
           such program active nothing methodological is being displaced, so a
           warning would be noise. */}
-      {overridesProgram && activeProgramWithOwnRamp && (
+      {overridesProgram && activeRamps.length > 0 && (
         <p
           role="note"
           data-testid="warmup-program-override-warning"
@@ -226,7 +230,7 @@ export function WarmupSettings({
             background: "var(--cp-surface)",
           }}
         >
-          Your ladder replaces {activeProgramWithOwnRamp.name}&rsquo;s prescribed warm-up. Choose{" "}
+          Your ladder replaces the prescribed warm-up for {activeRamps.map((owner) => owner.name).join(", ")}. Choose{" "}
           <strong>{programWarmupOptionLabel()}</strong> to restore it.
         </p>
       )}
@@ -336,8 +340,8 @@ export function WarmupSettings({
             color: "var(--cp-text-muted)",
           }}
         >
-          {followsProgram && activeProgramWithOwnRamp
-            ? `${activeProgramWithOwnRamp.name}'s own warm-up`
+          {followsProgram && activeRamp
+            ? `${activeRamp.name}'s own warm-up`
             : `Preview: ${PREVIEW_TOP_PERCENT}% TM top set`}
         </span>
         {preview.length === 0 ? (
@@ -380,7 +384,7 @@ export function WarmupSettings({
             data-testid="warmup-preview-program-note"
             style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}
           >
-            {activeProgramWithOwnRamp
+            {activeRamp
               ? `Fixed percentages of your training max each week.`
               : `Standard ramp unless your program specifies one.`}
           </span>

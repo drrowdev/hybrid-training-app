@@ -408,7 +408,7 @@ export async function applyLimitationResponse(): Promise<void> {
   await applyLimitationResponseResult();
 }
 
-export async function applyLimitationResponseResult(): Promise<ApplyLimitationResult> {
+export async function applyLimitationResponseResult(blockId?: string): Promise<ApplyLimitationResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -420,6 +420,8 @@ export async function applyLimitationResponseResult(): Promise<ApplyLimitationRe
     supabase,
     user.id,
     timezone,
+    new Date(),
+    blockId,
   );
   if (!active || active.remaining.length === 0) {
     return { ok: true, swapped: 0, dropped: 0, sessions: 0 };
@@ -478,6 +480,7 @@ export async function applyLimitationResponseResult(): Promise<ApplyLimitationRe
 export async function applyLimitationResponseSelection(
   selectedKeys: string[],
   choices: Record<string, string> = {},
+  blockId?: string,
 ): Promise<ApplyLimitationResult> {
   const parsed = z
     .array(z.string().min(1).max(120))
@@ -505,6 +508,8 @@ export async function applyLimitationResponseSelection(
     supabase,
     user.id,
     timezone,
+    new Date(),
+    blockId,
   );
   if (!active || active.remaining.length === 0) {
     return { ok: true, swapped: 0, dropped: 0, sessions: 0 };

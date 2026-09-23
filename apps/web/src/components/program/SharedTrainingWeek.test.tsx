@@ -8,7 +8,7 @@ import type { StandaloneSwimState } from "@/lib/swim/standalone-state";
 
 const mocks = vi.hoisted(() => ({
   load: vi.fn<() => Promise<ScheduleSnapshot | null>>(),
-  active: vi.fn(async () => ({ id: "block-a", programId: "authored" })),
+  active: vi.fn(async () => [{ id: "block-a", programId: "authored", archetype: null, notes: "Strength" }]),
   swim: vi.fn<() => Promise<Map<string, StandaloneSwimState>>>(async () => new Map()),
 }));
 
@@ -17,7 +17,10 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 vi.mock("@/lib/swim/standalone-state", () => ({ loadStandaloneSwimStates: mocks.swim }));
 vi.mock("@/lib/schedule/storage", () => ({ loadAvailableTrainingSchedule: mocks.load }));
-vi.mock("@/lib/planner/queries", () => ({ getActiveBlock: mocks.active }));
+vi.mock("@/lib/planner/queries", () => ({
+  getActiveBlocks: mocks.active,
+  archetypeDisplayName: (_archetype: string | null, notes: string | null) => notes ?? "Program",
+}));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 const snapshot: ScheduleSnapshot = {
@@ -42,6 +45,7 @@ const primaryWeek: ThisWeekRailProps = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.load.mockResolvedValue(snapshot);
+  mocks.active.mockResolvedValue([{ id: "block-a", programId: "authored", archetype: null, notes: "Strength" }]);
 });
 
 describe("SharedTrainingWeek", () => {
@@ -63,6 +67,24 @@ describe("SharedTrainingWeek", () => {
     expect(html).toContain('data-testid="plan-this-week"');
     expect(html).toContain("Strength A");
     expect(html).not.toContain("Swim A");
+  });
+
+  it("DC-R5 keeps all three authored programs and Swimming in the same week with owned edit links", async () => {
+    mocks.active.mockResolvedValue([
+      { id: "block-a", programId: "authored", archetype: null, notes: "Strength" },
+      { id: "block-b", programId: "authored", archetype: null, notes: "Running" },
+      { id: "block-c", programId: "authored", archetype: null, notes: "Hybrid" },
+    ]);
+    mocks.load.mockResolvedValue({ ...snapshot, entries: [...snapshot.entries,
+      { ...snapshot.entries[0]!, id: "running-a", programId: "block-b", title: "Easy run" },
+      { ...snapshot.entries[0]!, id: "hybrid-a", programId: "block-c", title: "Mixed session" },
+    ] });
+    const html = renderToStaticMarkup(await SharedTrainingWeek({ today: primaryWeek.today }));
+    for (const [block, workout] of [["block-a", "primary-a"], ["block-b", "running-a"], ["block-c", "hybrid-a"]]) {
+      expect(html).toContain(`href="/app/program/build?edit=${block}&amp;workout=${workout}"`);
+      expect(html).toContain(`href="/app/sessions/start/${workout}"`);
+    }
+    expect(html).toContain('href="/app/swim/swim-a?from=today"');
   });
 
   it("leaves other callers' primary workout destinations unchanged", async () => {

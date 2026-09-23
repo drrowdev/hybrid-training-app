@@ -13,7 +13,7 @@ import {
   STRENGTH_ROLE_CANDIDATES,
   type StrengthRole,
 } from "@/lib/planner/archetypes";
-import { getActiveBlock } from "@/lib/planner/queries";
+import { getActiveBlocks } from "@/lib/planner/queries";
 import {
   hasLoadableMainLift,
   resolveEquipment,
@@ -46,12 +46,15 @@ export default async function TrainingMaxesPage() {
   const units: "metric" | "imperial" =
     profile?.units === "imperial" ? "imperial" : "metric";
 
-  const block = await getActiveBlock();
-  const archetype = block ? ARCHETYPES[block.archetype as keyof typeof ARCHETYPES] : undefined;
-  const requiredRoles: StrengthRole[] = archetype
+  const blocks = await getActiveBlocks();
+  const archetypes = blocks.flatMap((block) => {
+    const archetype = ARCHETYPES[block.archetype as keyof typeof ARCHETYPES];
+    return archetype ? [archetype] : [];
+  });
+  const requiredRoles: StrengthRole[] = archetypes.length
     ? Array.from(
         new Set(
-          archetype.days
+          archetypes.flatMap((archetype) => archetype.days)
             .filter((d) => d.kind === "strength")
             .map((d) => (d as { role: StrengthRole }).role),
         ),
@@ -161,7 +164,7 @@ export default async function TrainingMaxesPage() {
         otherRows={otherRows}
         otherRowSourceSets={otherRowSourceSets}
         pickerGroups={pickerGroups}
-        hasActiveBlock={!!archetype}
+        hasActiveBlock={archetypes.length > 0}
         bodyweightKg={bodyweightKg}
         upsertAction={upsertTrainingMax}
         moveAction={moveTrainingMaxVariant}

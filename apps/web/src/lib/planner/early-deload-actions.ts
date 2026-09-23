@@ -23,14 +23,14 @@ export type AcceptEarlyDeloadResult =
  * so the two features compose to "move the deload earlier" without ever
  * removing a safety deload. No generator re-run, no migration.
  */
-export async function acceptEarlyDeload(): Promise<AcceptEarlyDeloadResult> {
+export async function acceptEarlyDeload(blockId?: string): Promise<AcceptEarlyDeloadResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const reco = await getEarlyDeloadRecommendation();
+  const reco = await getEarlyDeloadRecommendation(blockId);
   if (!reco) return { ok: false, error: "Early deload is no longer recommended" };
 
   // The scheduled deload week's sessions are the deload template.

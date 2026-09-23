@@ -7,13 +7,17 @@ import styles from "./ProgramBuilder.module.css";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-export function TrainingWeek({ entries, today, heading = "This week", authoredBlockId, primaryPreviewIds = [], swimStatuses = {} }: {
+export function TrainingWeek({ entries, today, heading = "This week", authoredBlockId, authoredBlockIds = [], programLabels = {}, primaryPreviewIds = [], swimStatuses = {} }: {
   entries: TrainingCommitment[]; today: string; heading?: string; authoredBlockId?: string;
+  authoredBlockIds?: readonly string[];
+  programLabels?: Readonly<Record<string, string>>;
   primaryPreviewIds?: readonly string[];
   swimStatuses?: Readonly<Record<string, StandaloneSwimTrainingStatus>>;
 }) {
   const monday = mondayOfYmd(today);
   const previewIds = new Set(primaryPreviewIds);
+  const editableBlocks = new Set([...authoredBlockIds, ...(authoredBlockId ? [authoredBlockId] : [])]);
+  const showProgramLabels = Object.keys(programLabels).length > 0;
   return <section className={styles.panel} aria-label={heading}>
     <div className={styles.row}><h2>{heading}</h2><Link className={styles.button} href="/app/plan">Full schedule</Link></div>
     <div className={styles.week}>{DAYS.map((day, index) => {
@@ -30,11 +34,12 @@ export function TrainingWeek({ entries, today, heading = "This week", authoredBl
             const href = preview ? `#session=${entry.id}` : entry.source === "swim" ? swimWorkoutHref(entry.id, "today")
               : entry.source === "session" ? `/app/sessions/${entry.id}` : `/app/sessions/start/${entry.id}`;
             const swimStatus = entry.source === "swim" ? swimStatuses[entry.id] : undefined;
+            const programLabel = entry.source === "primary" && entry.programId !== null ? programLabels[entry.programId] : entry.source === "swim" && showProgramLabels ? "Swimming" : undefined;
             return <div key={`${entry.source}:${entry.id}`}><WorkoutLink className={styles.row}
               style={{ textDecoration: "none", color: "var(--cp-text)", padding: "8px 0" }} href={href}>
-              <strong>{entry.title}</strong><span className={styles.muted}>{swimStatus ? SWIM_TRAINING_LABEL[swimStatus] : entry.state === "started" ? "Resume" : entry.state === "completed" ? "Completed" : entry.state === "paused" ? "Paused" : preview ? "Preview" : entry.source === "swim" ? "Scheduled" : "Start workout"}</span>
-            </WorkoutLink>{authoredBlockId && entry.source === "primary" && entry.programId === authoredBlockId && entry.state === "scheduled" && entry.date >= today &&
-              <Link className={styles.button} aria-label={`Edit ${entry.title}`} href={`/app/program/build?edit=${authoredBlockId}&workout=${entry.id}`}>Edit workout</Link>}</div>;
+              <div><strong>{entry.title}</strong>{programLabel && <div className={styles.muted}>{programLabel}</div>}</div><span className={styles.muted}>{swimStatus ? SWIM_TRAINING_LABEL[swimStatus] : entry.state === "started" ? "Resume" : entry.state === "completed" ? "Completed" : entry.state === "paused" ? "Paused" : preview ? "Preview" : entry.source === "swim" ? "Scheduled" : "Start workout"}</span>
+            </WorkoutLink>{entry.source === "primary" && entry.programId !== null && editableBlocks.has(entry.programId) && entry.state === "scheduled" && entry.date >= today &&
+              <Link className={styles.button} aria-label={`Edit ${entry.title}`} href={`/app/program/build?edit=${entry.programId}&workout=${entry.id}`}>Edit workout</Link>}</div>;
           })}</div>
       </div>;
     })}</div>

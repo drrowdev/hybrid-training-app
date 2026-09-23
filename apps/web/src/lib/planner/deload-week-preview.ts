@@ -49,6 +49,7 @@ export type DeloadWeekPreview = {
 };
 
 export type DeloadPreviewOptions = {
+  blockId?: string;
   percent?: number;
   timezone?: string;
   now?: Date;
@@ -119,13 +120,14 @@ export async function getDeloadWeekPreview(
     now = new Date(),
   } = options;
   const timezone = options.timezone ?? (await getUserTimezone(userId));
-  const { data: block, error: blockError } = await supabase
+  let blockQuery = supabase
     .from("training_blocks")
     .select("id, started_on, weeks, program_id")
     .eq("user_id", userId)
     .eq("status", "active")
-    .is("deleted_at", null)
-    .maybeSingle();
+    .is("deleted_at", null);
+  if (options.blockId) blockQuery = blockQuery.eq("id", options.blockId);
+  const { data: block, error: blockError } = await blockQuery.maybeSingle();
   if (blockError) throw new Error("Could not read the active program. Try again.");
   if (!block) return null;
 
@@ -251,20 +253,22 @@ export async function getDeloadWeekPreview(
  *
  * Self-contained server read; returns false when there's no active block.
  */
-export async function getDeloadWeekFatigueSignal(): Promise<boolean> {
+export async function getDeloadWeekFatigueSignal(blockId?: string): Promise<boolean> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await getAuthUser();
   if (!user) return false;
 
-  const { data: block } = await supabase
+  let blockQuery = supabase
     .from("training_blocks")
     .select("id, archetype, started_on, weeks")
     .eq("user_id", user.id)
     .eq("status", "active")
-    .is("deleted_at", null)
-    .maybeSingle();
+    .is("deleted_at", null);
+  if (blockId) blockQuery = blockQuery.eq("id", blockId);
+  const { data: block, error } = await blockQuery.maybeSingle();
+  if (error) throw new Error("Could not read the selected program. Try again.");
   if (!block) return false;
 
   const tz = await getUserTimezone();

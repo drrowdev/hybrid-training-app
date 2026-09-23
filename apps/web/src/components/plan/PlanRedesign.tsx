@@ -116,6 +116,7 @@ export type PlanSessionInput = {
 };
 
 export type PlanRedesignProps = {
+  blockId?: string;
   archetypeName: string;
   /** Program family / methodology shown above the program name. */
   programFamilyName?: string;
@@ -351,6 +352,7 @@ function PlanFocusBadge({ muscles }: { muscles: readonly string[] }) {
 
 export function PlanRedesign(props: PlanRedesignProps) {
   const {
+    blockId,
     archetypeName,
     programFamilyName = "SxC",
     customized = false,
@@ -382,10 +384,11 @@ export function PlanRedesign(props: PlanRedesignProps) {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams();
     if (nextView !== "timeline") params.set("view", nextView);
+    if (blockId) params.set("block", blockId);
     const q = params.toString();
     const url = q ? `${window.location.pathname}?${q}` : window.location.pathname;
     window.history.replaceState(null, "", url + window.location.hash);
-  }, []);
+  }, [blockId]);
   const onViewChange = useCallback(
     (v: PlanViewMode) => {
       setView(v);

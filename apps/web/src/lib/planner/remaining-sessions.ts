@@ -50,14 +50,17 @@ export async function getActiveBlockRemainingSessions(
   userId: string,
   timezone: string,
   now = new Date(),
+  blockId?: string,
 ): Promise<ActiveBlockRemaining | null> {
-  const { data: block } = await supabase
+  let query = supabase
     .from("training_blocks")
     .select("id, archetype, started_on, weeks")
     .eq("user_id", userId)
     .eq("status", "active")
-    .is("deleted_at", null)
-    .maybeSingle();
+    .is("deleted_at", null);
+  if (blockId) query = query.eq("id", blockId);
+  const { data: block, error: blockError } = await query.maybeSingle();
+  if (blockError) throw new Error("Could not read the selected program. Try again.");
   if (!block) return null;
 
   const currentWeekIndex = currentBlockWeekIndexAt(
@@ -67,7 +70,7 @@ export async function getActiveBlockRemainingSessions(
     now,
   );
 
-  const { data: rows } = await supabase
+  const { data: rows, error: rowsError } = await supabase
     .from("planned_sessions")
     .select(
       "id, week_index, day_index, title, role, prescription, completed_session_id, sessions(deleted_at, completed_at)",
@@ -77,6 +80,7 @@ export async function getActiveBlockRemainingSessions(
     .is("skipped_at", null)
     .order("week_index", { ascending: true })
     .order("day_index", { ascending: true });
+  if (rowsError) throw new Error("Could not read the program's remaining workouts. Try again.");
 
   const remaining: RemainingSession[] = (
     (rows ?? []) as Array<{

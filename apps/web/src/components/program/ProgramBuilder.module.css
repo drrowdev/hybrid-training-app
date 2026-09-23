@@ -8,9 +8,11 @@
 .step[aria-current] { color: var(--cp-accent); border-color: var(--cp-accent); }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
 .card, .panel, .part { background: var(--cp-surface); border: 1px solid var(--cp-border); border-radius: 16px; padding: 20px; min-width: 0; }
-.card { text-align: left; color: var(--cp-text); display: grid; gap: 10px; cursor: pointer; text-decoration: none; }
+.card { text-align: left; color: var(--cp-text); display: grid; align-content: start; gap: 10px; cursor: pointer; text-decoration: none; }
 .card[aria-pressed=true] { border-color: var(--cp-accent); background: var(--cp-accent-soft); }
 .card strong { font-size: 19px; }
+.card h2 { margin: 0; font-size: 19px; overflow-wrap: anywhere; }
+section.card { cursor: default; }
 .panel { display: grid; gap: 16px; }
 .panel h2, .part h3 { margin: 0; font-size: 19px; }
 .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }

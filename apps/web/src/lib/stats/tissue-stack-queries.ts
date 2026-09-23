@@ -43,14 +43,17 @@ export async function getCurrentWeekTissueStackGaps(
   userId: string,
   timezone: string,
   now = new Date(),
+  blockId?: string,
 ): Promise<TissueStackGap[]> {
-  const { data: block } = await supabase
+  let query = supabase
     .from("training_blocks")
     .select("id, started_on, weeks, program_id, archetype")
     .eq("user_id", userId)
     .eq("status", "active")
-    .is("deleted_at", null)
-    .maybeSingle();
+    .is("deleted_at", null);
+  if (blockId) query = query.eq("id", blockId);
+  const { data: block, error } = await query.maybeSingle();
+  if (error) throw new Error("Could not read the selected program. Try again.");
   if (!block) return [];
 
   // Only the app's predefined archetype planner promises the DC-O4 durability

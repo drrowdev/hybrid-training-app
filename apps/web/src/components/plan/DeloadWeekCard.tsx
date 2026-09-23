@@ -65,12 +65,14 @@ export function DeloadWeekCard({
     boundaryKey?: string,
     recommendationId?: string,
     review?: DeloadScheduleReview,
+    blockId?: string,
   ) => Promise<InsertDeloadResult>;
   /** Rebuilds the preview when the lifter changes the working percentage. */
   previewAction: (
     percent?: number,
     boundaryKey?: string,
     recommendationId?: string,
+    blockId?: string,
   ) => Promise<ReviewedDeloadWeekPreview | null>;
   /** Open the preview modal on mount (e.g. deep-linked from the TB deload banner). */
   autoOpen?: boolean;
@@ -108,7 +110,7 @@ export function DeloadWeekCard({
     setError(null);
     startTransition(async () => {
       try {
-        const rebuilt = await previewAction(next, boundaryKey, resolveRecommendationId);
+        const rebuilt = await previewAction(next, boundaryKey, resolveRecommendationId, preview.blockId);
         if (!rebuilt) { setError("This recovery week is no longer available."); return; }
         setLive(rebuilt);
         setReviewReady(true);
@@ -130,6 +132,7 @@ export function DeloadWeekCard({
           boundaryKey,
           resolveRecommendationId,
           { previewId: live.review.id, revision: live.review.revision, requestId: live.review.requestId, acceptOverlap },
+          preview.blockId,
         );
         if (!res.ok) {
           setError(res.error);

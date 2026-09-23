@@ -2,7 +2,11 @@
  * Queries for the planner UI.
  */
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { cache } from "react";
+import { z } from "zod";
 import type { Prescription, SessionSlot } from "@hta/db";
+import type { BlockProgramKind } from "@hta/domain";
+import { assertActiveProgramKinds, independentProgramsAvailable } from "@/lib/programs/ownership";
 import {
   addDaysToYmd,
   isoWeekdayYmd,
@@ -52,7 +56,8 @@ export const ymdInTimezone = ymdInTimezoneImpl;
 
 export type ActiveBlock = {
   id: string;
-  archetype: string;
+  archetype: string | null;
+  programKind: BlockProgramKind | null;
   startedOn: string;
   weeks: number;
   status: "active" | "completed" | "archived";
@@ -140,31 +145,40 @@ export function dayDate(startedOn: string, weekIndex: number, dayIndex: number):
   return addDays(blockMonday, weekIndex * 7 + dayIndex);
 }
 
-export async function getActiveBlock(): Promise<ActiveBlock | null> {
+const activeBlockSchema = z.object({
+  id: z.string().uuid(), archetype: z.string().nullable(), started_on: z.string(),
+  weeks: z.number().int().positive(), status: z.literal("active"), notes: z.string().nullable(),
+  program_id: z.string().nullable(), program_family: z.string().nullable(),
+  program_kind: z.enum(["strength", "running", "hybrid"]).nullable().optional(),
+  focus_muscles: z.array(z.string()).nullable(), power_emphasis: z.boolean(),
+});
+
+export const getActiveBlocks = cache(async function getActiveBlocks(): Promise<ActiveBlock[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data: { user } } = await getAuthUser();
+  if (!user) return [];
+  const typed = await independentProgramsAvailable(supabase);
+  const { data, error } = await supabase
     .from("training_blocks")
-    .select("id, archetype, started_on, weeks, status, notes, program_id, program_family, focus_muscles, power_emphasis")
+    .select(`id, archetype, started_on, weeks, status, notes, program_id, program_family, focus_muscles, power_emphasis${typed ? ",program_kind" : ""}`)
+    .eq("user_id", user.id)
     .eq("status", "active")
     .is("deleted_at", null)
-    .order("started_on", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!data) return null;
-  return {
-    id: data.id,
-    archetype: data.archetype,
-    startedOn: data.started_on,
-    weeks: data.weeks,
-    status: data.status,
-    notes: data.notes ?? null,
-    programId: (data as { program_id?: string | null }).program_id ?? null,
-    programFamily: (data as { program_family?: string | null }).program_family ?? null,
-    focusMuscles: Array.isArray(data.focus_muscles)
-      ? (data.focus_muscles as string[])
-      : [],
-    powerEmphasis: Boolean(data.power_emphasis),
-  };
+    .order("started_on", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) throw new Error("Could not read your programs. Try again.");
+  const rows = z.array(activeBlockSchema).parse(data);
+  assertActiveProgramKinds(rows.map((row) => ({ program_kind: row.program_kind ?? null })));
+  return rows.map((row) => ({
+    id: row.id, archetype: row.archetype, programKind: row.program_kind ?? null,
+    startedOn: row.started_on, weeks: row.weeks, status: row.status, notes: row.notes,
+    programId: row.program_id, programFamily: row.program_family,
+    focusMuscles: row.focus_muscles ?? [], powerEmphasis: row.power_emphasis,
+  }));
+});
+
+export async function getActiveBlock(blockId: string): Promise<ActiveBlock | null> {
+  return (await getActiveBlocks()).find((block) => block.id === blockId) ?? null;
 }
 
 export async function getPlannedDays(blockId: string, startedOn: string): Promise<PlannedDay[]> {
@@ -172,17 +186,19 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
   const {
     data: { user },
   } = await getAuthUser();
-  const modRows = user ? await getActiveModificationRows(user.id) : [];
-  const { data } = await supabase
+  if (!user) return [];
+  const modRows = await getActiveModificationRows(user.id);
+  const { data, error } = await supabase
     .from("planned_sessions")
     .select(
       "id, block_id, week_index, day_index, slot, planned_at, title, role, prescription, completed_session_id, skipped_at, notes",
     )
+    .eq("user_id", user.id)
     .eq("block_id", blockId)
     .order("week_index", { ascending: true })
     .order("day_index", { ascending: true })
     .order("slot", { ascending: true });
-  if (!data) return [];
+  if (error || !data) throw new Error("Could not read your workouts. Try again.");
 
   // `completed_session_id` is set when a planned session is STARTED (see
   // startSessionDirect), so its presence only means "linked / in-progress".
@@ -197,10 +213,12 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
   );
   const linkedSessionById = new Map<string, LinkedSessionSnapshot>();
   if (linkedIds.length > 0) {
-    const { data: linkedSessions } = await supabase
+    const { data: linkedSessions, error: linkedError } = await supabase
       .from("sessions")
       .select("id, completed_at, deleted_at")
+      .eq("user_id", user.id)
       .in("id", linkedIds);
+    if (linkedError || !linkedSessions) throw new Error("Could not read your workout history. Try again.");
     for (const s of linkedSessions ?? []) {
       linkedSessionById.set(s.id as string, {
         id: s.id as string,
@@ -333,12 +351,16 @@ export async function getPlannedSessionById(
   };
 }
 
-/** Today's planned sessions (active block + matching date). Returns both AM and PM if present. */
+export const getActivePlannedDays = cache(async function getActivePlannedDays(): Promise<PlannedDay[]> {
+  const blocks = await getActiveBlocks();
+  const days = (await Promise.all(blocks.map((block) => getPlannedDays(block.id, block.startedOn)))).flat();
+  return days.sort((a, b) => a.date.localeCompare(b.date) || a.slot.localeCompare(b.slot) || a.id.localeCompare(b.id));
+});
+
+/** Today's planned sessions across every active program. */
 export async function getTodayPlannedSessions(): Promise<PlannedDay[]> {
-  const block = await getActiveBlock();
-  if (!block) return [];
   const [all, tz] = await Promise.all([
-    getPlannedDays(block.id, block.startedOn),
+    getActivePlannedDays(),
     getUserTimezone(),
   ]);
   const today = todayYmd(tz);
@@ -353,15 +375,13 @@ export async function getTodayPlannedSession(): Promise<PlannedDay | null> {
 
 /** Next N planned sessions after today (skipping rest days and the current day). */
 export async function getUpcomingPlannedSessions(limit = 3): Promise<PlannedDay[]> {
-  const block = await getActiveBlock();
-  if (!block) return [];
   const [all, tz] = await Promise.all([
-    getPlannedDays(block.id, block.startedOn),
+    getActivePlannedDays(),
     getUserTimezone(),
   ]);
   const today = todayYmd(tz);
   return all
-    .filter((d) => d.date > today && !d.completedSessionId && !d.skippedAt)
+    .filter((d) => d.date > today && d.role !== "rest" && !d.completedSessionId && !d.deletedCompletedSessionId && !d.skippedAt)
     .slice(0, limit);
 }
 
