@@ -5172,3 +5172,44 @@ still served the cached Plan and the offline document for an uncached route.
 All 75 synthetic UI stages and 52 focused worker, recovery, outbox-upgrade,
 queue and completion-replay tests passed. These probes used no real database
 or provider; the temporary server and in-repository probe were removed.
+
+## [2026-09-24] refine | Await authoritative post-action views
+
+Coordinator-consumed native run 35920356918 at `2c60dcaf` passed 15 of 18
+browser cases. M8 now passes the formerly blocked legacy End path and reaches
+typed-draft review/save. M11 and M13 fail their default five-second UI
+expectations after the owned rows have already been deleted/created.
+All pre-browser stages, 36 RPCs, ownership restoration and legacy cleanup
+remain accepted.
+
+Production probes against that exact application build measured mutation to
+rendered authoritative state using synthetic loopback storage. M11's exact
+deleted row disappeared in 1,186 ms without injected latency and 10,502 ms
+with six-second post-write reads; response headers arrived at 278/28 ms.
+M13's library appeared in 99/6,487 ms respectively, while response headers
+arrived at 15/13 ms. Both settled without reload. Library creation only uses
+server revalidation; history deletion also requests a client refresh. No
+lost refresh or stale overwrite was reproduced, so no application change is
+justified by this evidence.
+
+The retained legacy draft browser journey completed in 21,665 ms with
+400 ms per storage read: refusal 4,859; Plan controls 12,334; archived 13,548;
+retained session 16,552; typed review 18,110; saved Plan 21,665. This controlled
+measurement excludes native auth/fixture/graph checks and is not native
+acceptance. M8's previous dialog diagnostic belonged to the now-closed
+history tab, not the typed draft; it is cleared after that successful phase.
+
+The coordinator approved explicit post-action UI waits for M8/M11/M13 within
+the existing Playwright case deadline. Exact row disappearance, library
+control, saved program identity, URL and persisted-data assertions remain
+unchanged. No reload, extra retry, new case or split was added. The 30-second
+case and 300-second global limits still apply; other helper callers retain
+their existing assertion defaults. Diagnostic fields/enums and the
+62 SQL + 75 synthetic UI inventories are unchanged.
+
+UX backlog: apply confirmed mutation results to the history/library display
+while fresh server props arrive. The measured roughly 6-10 second stale-list
+window on slow reads is real user-visible latency, not a persistence failure.
+Any future improvement must preserve rejection handling, server-canonical
+reconciliation, undo/restore and multi-tab behavior rather than masking errors
+with unconfirmed optimistic state.

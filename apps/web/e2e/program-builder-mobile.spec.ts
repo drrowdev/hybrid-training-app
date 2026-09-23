@@ -272,18 +272,18 @@ async function run(page: Page, selected: Movement, activity = "running") {
   await part.getByLabel("Seconds", { exact: true }).fill("60");
   await part.getByLabel("Repeat sequence", { exact: true }).fill("2");
 }
-async function review(page: Page) {
+async function review(page: Page, timeout?: number) {
   await page.getByRole("button", { name: "Review program", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Start program", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start program", exact: true })).toBeVisible({ timeout });
 }
-async function save(page: Page, actor: SupabaseClient, kind: "strength" | "running" | "hybrid") {
+async function save(page: Page, actor: SupabaseClient, kind: "strength" | "running" | "hybrid", timeout?: number) {
   await page.getByRole("button", { name: /^(Start program|Save changes)$/ }).click();
-  await expect(page).toHaveURL(/\/app\/plan\?block=[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/app\/plan\?block=[0-9a-f-]{36}$/, { timeout });
   const saved = await actor.from("training_blocks").select("id").eq("program_kind", kind)
     .eq("status", "active").is("deleted_at", null).single();
   expect(saved.error).toBeNull();
   const id = z.string().uuid().parse(saved.data?.id);
-  await expect(page).toHaveURL(new RegExp(`/app/plan\\?block=${id}$`));
+  await expect(page).toHaveURL(new RegExp(`/app/plan\\?block=${id}$`), { timeout });
   return id;
 }
 async function planned(actor: SupabaseClient) {
@@ -313,7 +313,7 @@ async function loggedSets(actor: SupabaseClient, sessionId: string) {
   return result.data ?? [];
 }
 
-async function createRehabInLibrary(page: Page, selected: Movement, name: string, actor?: SupabaseClient) {
+async function createRehabInLibrary(page: Page, selected: Movement, name: string, actor?: SupabaseClient, timeout?: number) {
   const observation = actor ? observeNativeUi(page, "m13", "", async () => {
     const read = await actor.from("rehab_protocols").select("id").eq("name", name)
       .limit(1).abortSignal(AbortSignal.timeout(1000));
@@ -332,14 +332,16 @@ async function createRehabInLibrary(page: Page, selected: Movement, name: string
   await observation?.capture();
   await page.getByTestId("rehab-protocol-save").click();
   await observation?.capture();
-  await expect(page.getByTestId("rehab-protocol-new")).toBeVisible();
-  if (observation) {
-    const annotations = test.info().annotations;
-    const index = annotations.findIndex((annotation) => annotation.type === "native-ui-failure");
-    if (index >= 0) annotations.splice(index, 1);
-  }
+  await expect(page.getByTestId("rehab-protocol-new")).toBeVisible({ timeout });
+  if (observation) clearNativeUiObservation();
   } catch (error) { await observation?.recordFailure(); throw error; }
   finally { observation?.dispose(); }
+}
+
+function clearNativeUiObservation() {
+  const annotations = test.info().annotations;
+  const index = annotations.findIndex((annotation) => annotation.type === "native-ui-failure");
+  if (index >= 0) annotations.splice(index, 1);
 }
 
 async function draftPair(page: Page, catalog: Movement[], kind: "strength" | "running", name: string, offsets: [number, number]) {
@@ -828,8 +830,9 @@ test.describe("Modular program builder", () => {
         expect(await loggedSets(actor, legacy.sessionId)).toHaveLength(1);
       } catch (error) { await observation.recordFailure(); throw error; }
       finally { observation.dispose(); await history.close(); }
-      stage("m8-07"); await review(page);
-      const strengthId = await save(page, actor, "strength");
+      clearNativeUiObservation();
+      stage("m8-07"); await review(page, test.info().timeout);
+      const strengthId = await save(page, actor, "strength", test.info().timeout);
       stage("m8-08");
       expect((await planned(actor)).filter((row) => row.block_id === strengthId)).toHaveLength(2);
       const retained = await actor.from("sessions").select("id").eq("user_id", legacy.userId);
@@ -981,7 +984,7 @@ test.describe("Modular program builder", () => {
         await observation.capture();
         await hybridHistory.getByTestId("delete-block-menu-item").click();
         await observation.capture();
-        await expect(hybridHistory).toHaveCount(0);
+        await expect(hybridHistory).toHaveCount(0, { timeout: test.info().timeout });
       }
       catch (error) {
         await observation.recordFailure();
@@ -1174,7 +1177,7 @@ test.describe("Modular program builder", () => {
     async ({ page, actor, catalog, freshUser }) => {
       stage("m13-01");
       const selected = movement(catalog, "bench-press-flat"), running = movement(catalog, "run-easy-z2");
-      await createRehabInLibrary(page, selected, "Shared rehab", actor);
+      await createRehabInLibrary(page, selected, "Shared rehab", actor, test.info().timeout);
       const library = await actor.from("rehab_protocols").select("id,revision,definition")
         .eq("user_id", freshUser.userId).single();
       expect(library.error).toBeNull();
@@ -1193,7 +1196,7 @@ test.describe("Modular program builder", () => {
       await page.getByRole("combobox", { name: "Rehab protocol", exact: true }).selectOption(protocolId);
       await page.getByRole("button", { name: "Review changes", exact: true }).click();
       await expect(page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true })).toHaveCount(0);
-      await save(page, actor, "running");
+      await save(page, actor, "running", test.info().timeout);
       stage("m13-04"); await page.goto(editRunning);
       await page.reload();
       await expect(page.getByRole("combobox", { name: "Rehab protocol", exact: true })).toHaveValue(protocolId);

@@ -390,14 +390,17 @@ describe("DC-SW8 modular acceptance report membership", () => {
       compilerOptions: { target: ScriptTarget.ES2022 },
     }).outputText, {
       observeNativeUi: () => observation, test: { info: () => ({ annotations }) },
-      expect: () => ({ toBeVisible: async () => { if (failed) throw failure; } }),
-    }) as (page: unknown, movement: unknown, name: string, actor: unknown) => Promise<void>;
+      expect: () => ({ toBeVisible: async (options: { timeout: number }) => {
+        expect(options).toEqual({ timeout: 30_000 });
+        if (failed) throw failure;
+      } }),
+    }) as (page: unknown, movement: unknown, name: string, actor: unknown, timeout: number) => Promise<void>;
     const locator = { click: async () => {}, fill: async () => {},
       getByRole: () => locator, filter: () => locator };
     const result = createLibrary({
       goto: async () => {}, getByRole: () => locator, getByTestId: () => locator,
       getByLabel: () => locator, getByText: () => locator,
-    }, { display_name: "Exercise" }, "Protocol", {});
+    }, { display_name: "Exercise" }, "Protocol", {}, 30_000);
     if (failed) {
       await expect(result).rejects.toBe(failure);
       expect(annotations).toHaveLength(2);
@@ -408,6 +411,58 @@ describe("DC-SW8 modular acceptance report membership", () => {
       expect(observation.recordFailure).not.toHaveBeenCalled();
     }
     expect(observation.dispose).toHaveBeenCalledOnce();
+  });
+
+  it.each([undefined, 30_000])("waits for the same authoritative save URL with the selected assertion budget (%s)", async (timeout) => {
+    const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
+    const helper = source.slice(source.indexOf("async function review("), source.indexOf("async function planned("));
+    const visible = vi.fn(async () => {});
+    const url = vi.fn<(expected: RegExp, options: { timeout?: number }) => Promise<void>>(async () => {});
+    const savedId = "00000000-0000-4000-8000-000000000001";
+    const query = { select: vi.fn(() => query), eq: vi.fn(() => query), is: vi.fn(() => query),
+      single: vi.fn(async () => ({ error: null, data: { id: savedId } })) };
+    const page = { getByRole: vi.fn(() => ({ click: vi.fn(async () => {}) })) };
+    const helpers = runInNewContext(transpileModule(`${helper}\n({review, save});`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      expect: (value: unknown) => value === null ? expect(value) : { toBeVisible: visible, toHaveURL: url },
+      z: { string: () => ({ uuid: () => ({ parse: (value: string) => value }) }) },
+    }) as {
+      review(page: unknown, timeout?: number): Promise<void>;
+      save(page: unknown, actor: unknown, kind: string, timeout?: number): Promise<string>;
+    };
+    await helpers.review(page, timeout);
+    expect(visible).toHaveBeenCalledWith({ timeout });
+    expect(await helpers.save(page, { from: () => query }, "strength", timeout)).toBe(savedId);
+    expect(url).toHaveBeenCalledTimes(2);
+    for (const [, options] of url.mock.calls) expect(options).toEqual({ timeout });
+    expect(String(url.mock.calls[0]![0])).toBe(String(/\/app\/plan\?block=[0-9a-f-]{36}$/));
+    expect(String(url.mock.calls[1]![0])).toBe(String(new RegExp(`/app/plan\\?block=${savedId}$`)));
+    expect(query.eq).toHaveBeenCalledWith("program_kind", "strength");
+    expect(query.eq).toHaveBeenCalledWith("status", "active");
+    expect(query.is).toHaveBeenCalledWith("deleted_at", null);
+    const failure = new Error("save navigation did not settle");
+    url.mockRejectedValueOnce(failure);
+    await expect(helpers.save(page, { from: () => query }, "strength", timeout)).rejects.toBe(failure);
+    expect(query.single).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps extended UI waits inside the existing case deadline and clears only completed M8 observations", () => {
+    const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
+    const m8 = source.slice(source.indexOf('legacyTest("M8 '), source.indexOf('ownedTest("M9 '));
+    expect(m8).toContain('stage("m8-07"); await review(page, test.info().timeout);');
+    expect(m8).toContain('await save(page, actor, "strength", test.info().timeout)');
+    expect(m8.indexOf("clearNativeUiObservation();")).toBeGreaterThan(m8.indexOf("await history.close();"));
+    expect(m8.indexOf("clearNativeUiObservation();")).toBeLessThan(m8.indexOf('stage("m8-07")'));
+    expect(source).toContain("await expect(hybridHistory).toHaveCount(0, { timeout: test.info().timeout });");
+    expect(source).toContain('await createRehabInLibrary(page, selected, "Shared rehab", actor, test.info().timeout)');
+    expect(source).not.toMatch(/test\.setTimeout|test\.slow|waitForTimeout/);
+    const helper = source.slice(source.indexOf("function clearNativeUiObservation("), source.indexOf("async function draftPair("));
+    const annotations = [{ type: "modular-stage", description: "m8-07" }, { type: "native-ui-failure", description: "old-tab" }];
+    runInNewContext(transpileModule(`${helper}\nclearNativeUiObservation();`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, { test: { info: () => ({ annotations }) } });
+    expect(annotations).toEqual([{ type: "modular-stage", description: "m8-07" }]);
   });
 
   it("rejects malformed, duplicate, oversized and unbounded diagnostic annotations", () => {
