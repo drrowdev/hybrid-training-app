@@ -29,6 +29,7 @@ import { MODULAR_BROWSER_CASES, type BrowserCase } from "../../../../scripts/mod
 import {
   MODULAR_STAGE_CODES, projectModularObservation, readModularAnnotations, readModularFailurePhase,
   classifyHistoryDeleteFailure, readHistoryDeleteFailure,
+  nativeUiFailureSchema, readNativeUiFailure, unavailableNativeUi,
 } from "../../../../scripts/modular-browser-observations";
 import { acceptanceAssert, processFailure, safeFailureCause } from "../../../../scripts/swim-acceptance-errors";
 import * as reporting from "../../../../scripts/swim-acceptance-reporting";
@@ -225,6 +226,120 @@ describe("DC-SW8 modular acceptance report membership", () => {
     for (const value of [null, {}, [valid, valid], Array(129).fill(valid), [{ ...valid, description: "private-value" }]]) {
       expect(readHistoryDeleteFailure(value)).toBe("unavailable");
     }
+  });
+
+  it("projects exact failure-only native UI snapshots onto their own cases", () => {
+    const samples = [
+      { case: "m8", page: "plan", control: "more", request: "not-observed", record: "active" },
+      { case: "m11", control: "menu-closed", request: "http-success", record: "deleted" },
+      { case: "m13", control: "pending", request: "pending", record: "present" },
+    ] as const;
+    const indices = [7, 10, 12];
+    const fixture = report(paths, MODULAR_BROWSER_CASES);
+    for (const [position, sample] of samples.entries()) {
+      const index = indices[position]!;
+      const annotation = { type: "native-ui-failure", description: JSON.stringify(sample) };
+      expect(readNativeUiFailure([annotation], index)).toEqual(sample);
+      expect(readNativeUiFailure([annotation], 0)).toBeUndefined();
+      const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
+      test.status = "unexpected"; test.results[0]!.status = "failed";
+      test.results[0]!.annotations = [annotation];
+      for (const value of [null, {}, [annotation, annotation], Array(129).fill(annotation),
+        [{ ...annotation, description: "private-value" }],
+        [{ ...annotation, description: "x".repeat(513) }],
+        [{ ...annotation, description: JSON.stringify({ ...sample, control: "private-value" }) }],
+        [{ ...annotation, description: JSON.stringify({ ...sample, extra: "private-value" }) }],
+        [{ ...annotation, description: JSON.stringify(samples[(position + 1) % samples.length]) }]]) {
+        const projected = readNativeUiFailure(value, index);
+        expect(projected).toEqual(unavailableNativeUi(sample.case));
+        expect(nativeUiFailureSchema.safeParse(projected).success).toBe(true);
+        expect(JSON.stringify(projected)).not.toContain("private-value");
+      }
+    }
+    fixture.stats = { expected: 15, unexpected: 3, flaky: 0, skipped: 0 };
+    let caught: unknown;
+    try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
+    catch (error) { caught = error; }
+    const projected = projectBrowserFailure(caught);
+    for (const [position, sample] of samples.entries()) {
+      expect(projected.cases?.[indices[position]!]?.nativeUiFailure).toEqual(sample);
+    }
+    expect(projected.cases?.[0]).not.toHaveProperty("nativeUiFailure");
+    for (const index of indices) {
+      const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
+      test.status = "expected"; test.results[0]!.status = "passed";
+    }
+    fixture.stats = { expected: 18, unexpected: 0, flaky: 0, skipped: 0 };
+    expect(JSON.stringify(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES)))
+      .not.toContain("nativeUiFailure");
+    for (const index of indices) {
+      const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
+      test.status = "skipped"; test.results = [];
+    }
+    fixture.stats = { expected: 15, unexpected: 0, flaky: 0, skipped: 3 };
+    try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
+    catch (error) { caught = error; }
+    for (const index of indices) {
+      expect(projectBrowserFailure(caught).cases?.[index]).toMatchObject({ status: "not-run" });
+      expect(projectBrowserFailure(caught).cases?.[index]).not.toHaveProperty("nativeUiFailure");
+    }
+  });
+
+  it.each(["m8", "m11", "m13"] as const)("observes %s metadata without consuming response bodies or masking the original failure", async (caseId) => {
+    const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8").replace(/\r\n/g, "\n");
+    const helper = source.slice(source.indexOf("function observeNativeUi("), source.indexOf("function movement("));
+    expect(helper).not.toMatch(/\.text\(|\.json\(|postData|waitForTimeout|response\.finished/);
+    const events = new EventEmitter(), annotations: string[] = [];
+    const path = caseId === "m8" ? "/app/plan" : caseId === "m11" ? "/app/plan/history" : "/app/settings/rehab-protocols";
+    const frame = {};
+    let closed = false;
+    const snapshot = unavailableNativeUi(caseId);
+    const page = {
+      url: () => `http://127.0.0.1:3210${path}`, mainFrame: () => frame,
+      on: events.on.bind(events), off: events.off.bind(events),
+      evaluate: async () => { if (closed) throw new Error("private-page-closed"); return snapshot; },
+    };
+    const createObserver = runInNewContext(transpileModule(`${helper}\nobserveNativeUi;`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      unavailableNativeUi, nativeUiFailureSchema, URL,
+      diagnosticAnnotation: (type: string, description: string) => {
+        expect(type).toBe("native-ui-failure"); annotations.push(description);
+      },
+    }) as (page: unknown, caseId: string, target: string, read: () => Promise<string>) => {
+      capture(): Promise<void>; recordFailure(): Promise<void>; dispose(): void;
+    };
+    const read = vi.fn(async () => { throw new Error("private-read-error"); });
+    const observer = createObserver(page, caseId, "private-id", read);
+    const request = {
+      url: () => page.url(), method: () => "POST", headers: () => ({ "next-action": "private-action" }),
+      isNavigationRequest: () => false, frame: () => frame,
+    };
+    const last = () => nativeUiFailureSchema.parse(JSON.parse(annotations.at(-1)!));
+    expect(last().request).toBe("not-observed");
+    for (const unrelated of [
+      { ...request, url: () => `http://127.0.0.1:3211${path}` },
+      { ...request, url: () => "http://127.0.0.1:3210/unrelated" },
+      { ...request, method: () => "GET" }, { ...request, headers: () => ({}) },
+    ]) events.emit("request", unrelated);
+    expect(last().request).toBe("not-observed");
+    events.emit("request", request); expect(last().request).toBe("pending");
+    await observer.capture(); expect(last().request).toBe("pending");
+    events.emit("response", { request: () => request, ok: () => true });
+    expect(last().request).toBe("http-success");
+    events.emit("request", request);
+    events.emit("response", { request: () => request, ok: () => false });
+    expect(last().request).toBe("http-failure");
+    events.emit("request", request); events.emit("requestfailed", request);
+    expect(last().request).toBe("transport-failure");
+    closed = true;
+    await observer.recordFailure();
+    expect(last().request).toBe("transport-failure");
+    expect(last().record).toBe("unavailable");
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(annotations.join("")).not.toContain("private");
+    observer.dispose();
+    for (const event of ["request", "response", "requestfailed"]) expect(events.listenerCount(event)).toBe(0);
   });
 
   it("rejects malformed, duplicate, oversized and unbounded diagnostic annotations", () => {

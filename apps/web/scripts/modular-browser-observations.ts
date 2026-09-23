@@ -1,3 +1,50 @@
+import { z } from "zod";
+
+const nativeRequest = z.enum(["not-observed", "pending", "http-success", "http-failure", "transport-failure", "unavailable"]);
+export const nativeUiFailureSchema = z.discriminatedUnion("case", [
+  z.object({
+    case: z.literal("m8"),
+    page: z.enum(["plan", "auth", "not-found", "error", "other", "unavailable"]),
+    control: z.enum(["more", "menu", "dialog", "absent", "unavailable"]),
+    request: nativeRequest,
+    record: z.enum(["active", "archived", "completed", "deleted", "absent", "unavailable"]),
+  }).strict(),
+  z.object({
+    case: z.literal("m11"),
+    control: z.enum(["pending", "error", "menu-open", "menu-closed", "row-absent", "unavailable"]),
+    request: nativeRequest,
+    record: z.enum(["deleted", "retained", "absent", "unavailable"]),
+  }).strict(),
+  z.object({
+    case: z.literal("m13"),
+    control: z.enum(["pending", "error", "invalid", "editor", "library", "empty", "unavailable"]),
+    request: nativeRequest,
+    record: z.enum(["present", "absent", "unavailable"]),
+  }).strict(),
+]);
+export type NativeUiFailure = z.infer<typeof nativeUiFailureSchema>;
+
+export function unavailableNativeUi(caseId: NativeUiFailure["case"]): NativeUiFailure {
+  if (caseId === "m8") return { case: caseId, page: "unavailable", control: "unavailable", request: "unavailable", record: "unavailable" };
+  return { case: caseId, control: "unavailable", request: "unavailable", record: "unavailable" };
+}
+
+export function readNativeUiFailure(value: unknown, caseIndex: number): NativeUiFailure | undefined {
+  const caseId = caseIndex === 7 ? "m8" : caseIndex === 10 ? "m11" : caseIndex === 12 ? "m13" : null;
+  if (!caseId) return undefined;
+  const fallback = unavailableNativeUi(caseId);
+  if (!Array.isArray(value) || value.length > 128) return fallback;
+  const annotations = value.filter((item) => item && typeof item === "object" &&
+    !Array.isArray(item) && item.type === "native-ui-failure");
+  if (annotations.length !== 1) return fallback;
+  const serialized: unknown = annotations[0].description;
+  if (typeof serialized !== "string" || serialized.length > 512) return fallback;
+  try {
+    const parsed = nativeUiFailureSchema.safeParse(JSON.parse(serialized));
+    return parsed.success && parsed.data.case === caseId ? parsed.data : fallback;
+  } catch { return fallback; }
+}
+
 export const MODULAR_STAGE_CODES = Object.freeze({
   m3: Object.freeze([
     "m3-01", "m3-02", "m3-03", "m3-04", "m3-05", "m3-06", "m3-07", "m3-08",

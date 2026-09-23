@@ -14,7 +14,7 @@ export const MODULAR_BROWSER_CASES: readonly BrowserCase[] = Object.freeze([
   "M9 DC-K4/DC-SW7: three independent two-day programs share an explicitly accepted date",
   "M10 DC-K4/DC-SW7: fourth Hybrid and same-type replacement preserve peer edits",
   "M11 DC-K4/DC-SW7: trash restore and a shorter program ending preserve the longer calendars",
-  "M12 DC-K4: shared measurements and a Hybrid load edit preserve Strength targets",
+  "M12 DC-K4: shared measurements and Hybrid load setup preserve Strength targets",
   "M13 DC-R5/DC-SW7: shared rehab attaches through Running and Swimming and logs without a swim result",
   "M14 DC-R5/DC-SW7: Swimming pause moves only its dates and retains issued rehab",
   "M15 DC-K4/DC-SW8: app replacement preserves unfinished work and queued completion identities",

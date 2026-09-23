@@ -13,7 +13,7 @@ import { projectAlertObservations, readAlertAnnotations, type AlertObservation }
 import { MODULAR_BROWSER_CASES, type BrowserCase } from "./modular-browser-profile";
 import {
   projectModularObservation, readModularAnnotations, readModularFailurePhase, readHistoryDeleteFailure,
-  type ModularObservation, type ModularFailurePhase, type HistoryDeleteFailure,
+  readNativeUiFailure, type NativeUiFailure, type ModularObservation, type ModularFailurePhase, type HistoryDeleteFailure,
 } from "./modular-browser-observations";
 
 export const SWIM_BROWSER_CASES = Object.freeze([
@@ -188,6 +188,7 @@ const failureLedgers = new WeakMap<object, {
     modularObservation?: ModularObservation;
     failurePhase?: ModularFailurePhase;
     historyDeleteFailure?: HistoryDeleteFailure;
+    nativeUiFailure?: NativeUiFailure;
     alertObservations: AlertObservation[];
   }>;
   counts: { expected: number; unexpected: number; flaky: number; skipped: number };
@@ -482,10 +483,12 @@ const resultSchema = z.object({
   annotations: z.unknown().transform((value) => ({
     alerts: readAlertAnnotations(value), modular: readModularAnnotations(value), phase: readModularFailurePhase(value),
     historyDelete: readHistoryDeleteFailure(value),
+    nativeUi: [7, 10, 12].map((index) => readNativeUiFailure(value, index)),
   })),
 }).transform(({ errors, error, annotations, ...result }) => ({
   ...result, annotations: annotations.alerts, modularAnnotations: annotations.modular, failurePhase: annotations.phase,
   historyDeleteFailure: annotations.historyDelete,
+  nativeUiFailures: annotations.nativeUi,
   error: error.present, errors: errors.length, errorLocations: errors.map((error) => error.location),
   stacks: [...new Set([error.stack, ...errors.slice(0, 8).map((item) => item.stack)]
     .filter((stack): stack is string => stack !== undefined))],
@@ -647,6 +650,9 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
               failureDetails: projectStackAttribution(last.stacks, webRoot),
               ...(cases === MODULAR_BROWSER_CASES ? { failurePhase: last.failurePhase } : {}),
               ...(cases === MODULAR_BROWSER_CASES && index === 10 ? { historyDeleteFailure: last.historyDeleteFailure } : {}),
+              ...(cases === MODULAR_BROWSER_CASES && [7, 10, 12].includes(index) ? {
+                nativeUiFailure: last.nativeUiFailures[[7, 10, 12].indexOf(index)],
+              } : {}),
               ...(cases === MODULAR_BROWSER_CASES && [2, 3, 7, 11, 12].includes(index) ? {
                 modularObservation: projectModularObservation(index, last.modularAnnotations),
               } : {}),

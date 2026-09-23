@@ -5031,3 +5031,45 @@ An optional broader runner-lifecycle selection was stopped after reproducing
 the previously established Windows-only private-path waits; its test and
 runner sources are unchanged from Linux-green `9b6567eb`. No local pass is
 claimed for that selection; the next exact Linux core remains authoritative.
+
+## [2026-09-23] refine | Native setup scope and failure-state evidence
+
+Coordinator-consumed native run 35901416789 at `2d28e5ed` confirmed the
+restricted-role account-erasure repair: all owner teardowns and independent
+cleanup passed, including the historical owner. Fourteen pre-browser stages,
+36 RPCs and the unchanged legacy graph passed; browser results were 13 passed
+and five failed in about 180 seconds. No unchanged-head rerun was requested.
+
+M12's remaining timeout was an unsupported Green edit path, not a missing
+Training Max setup control. Its loader and save gate already refuse Green
+editing on main. The coordinator explicitly deferred **Green program editing**
+to backlog rather than adding a new forward-rewrite capability in this repair.
+M12 now selects Hybrid's own 85% Training Max through the real setup flow with
+Strength already present, accepts new-date overlaps, reloads both programs and
+retains the independent 75/65 kg logger and persisted-basis assertions. It also
+checks the existing unavailable-edit route and recovery link. Component
+coverage no longer injects a fictitious supported Green edit context.
+
+M16 observed `completed_at` before the finish flow's asynchronous follow-up
+issued its hard navigation. Starting another workout immediately could race
+that navigation. The native driver now waits for the completed-session
+destination before checking its receipt and opening Running.
+
+M8, M11 and M13 remain unresolved native failures, not accepted product
+behavior. Source tracing and actual-component probes do not reproduce a broken
+End control, delayed history-menu submission or library form submission at
+375/1280 pixels. M14 passed the same library helper that M13 failed. The approved
+`nativeUiFailure` evidence distinguishes bounded UI, server-action HTTP and
+owner-record states without exporting IDs, messages, DOM or response bodies.
+HTTP success is not application success. Snapshots retain the last observable
+state if timeout closes the page; failed diagnostic reads report unavailable.
+Original UI, deletion, persistence and cleanup assertions remain mandatory.
+The only case-title change is M12's setup wording; 18-case order, 30/300-second
+bounds, 15 schema/browser stages and 62 SQL + 75 synthetic UI inventories remain.
+
+The broad local browser-acceptance test selection also exposed 52 unchanged
+A3/A7 source-extraction failures on Windows: their literal LF marker is absent
+from the CRLF checkout, while the same unchanged HEAD blob contains it. The
+modular/strict-ledger selection passes independently. No source-normalization
+workaround or assertion weakening is included; exact Linux core remains the
+full-suite gate.

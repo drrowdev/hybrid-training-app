@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import type { Locator, Page } from "@playwright/test";
+import type { Locator, Page, Request, Response } from "@playwright/test";
 import type { Prescription } from "@hta/db";
 import { tacticalBarbellEngine } from "@hta/tacticalbarbell";
 import { greenProtocolEngine, getGreenPhase } from "@hta/green";
@@ -11,7 +11,8 @@ import { markOnboarded } from "./fixtures/seed-blocks";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { syntheticCourse } from "../src/lib/swim/__tests__/course-fixtures";
 import { addDaysToYmd } from "../src/lib/dates";
-import { classifyHistoryDeleteFailure, type MODULAR_STAGE_CODES } from "../scripts/modular-browser-observations";
+import { classifyHistoryDeleteFailure, nativeUiFailureSchema, unavailableNativeUi,
+  type NativeUiFailure, type MODULAR_STAGE_CODES } from "../scripts/modular-browser-observations";
 import { importOutcomeColumns, importOutcomeSchema } from "../src/lib/swim/import-outcomes";
 import { matchColumns, matchSchema } from "../src/lib/swim/import-matching";
 import { standaloneOutcomeExportSchema, standaloneOutcomeNativeQueries } from "./fixtures/standalone-outcomes";
@@ -130,7 +131,7 @@ const legacyTest = ownedTest.extend<{ legacy: ModularLegacyFixture }>({
   /* eslint-enable react-hooks/rules-of-hooks */
 });
 
-function diagnosticAnnotation(type: "modular-stage" | "modular-set-indices" | "modular-failure-phase" | "history-delete-failure", description: string) {
+function diagnosticAnnotation(type: "modular-stage" | "modular-set-indices" | "modular-failure-phase" | "history-delete-failure" | "native-ui-failure", description: string) {
   const annotations = test.info().annotations;
   const existing = annotations.find((annotation) => annotation.type === type);
   if (existing) existing.description = description;
@@ -150,6 +151,87 @@ async function nativeTeardown(work: () => Promise<void>) {
     !test.info().annotations.some((annotation) => annotation.type === "modular-failure-phase")) failurePhase("test");
   try { await work(); }
   catch (error) { failurePhase("teardown"); throw error; }
+}
+
+function observeNativeUi(
+  page: Page, caseId: NativeUiFailure["case"], target: string,
+  readRecord: () => Promise<NativeUiFailure["record"]>,
+) {
+  let state = unavailableNativeUi(caseId);
+  state.request = "not-observed";
+  let navigationStatus = 0;
+  const pending = new Set<Request>();
+  const publish = () => diagnosticAnnotation("native-ui-failure", JSON.stringify(state));
+  const action = (request: Request) => request.method() === "POST" &&
+    new URL(request.url()).origin === new URL(page.url()).origin &&
+    new URL(request.url()).pathname === (caseId === "m8" ? "/app/plan" :
+      caseId === "m11" ? "/app/plan/history" : "/app/settings/rehab-protocols") &&
+    !!request.headers()["next-action"];
+  const requested = (request: Request) => {
+    if (!action(request)) return;
+    pending.add(request); state.request = "pending"; publish();
+  };
+  const responded = (response: Response) => {
+    const request = response.request();
+    if (request.isNavigationRequest() && request.frame() === page.mainFrame()) navigationStatus = response.status();
+    if (!pending.delete(request)) return;
+    state.request = pending.size ? "pending" : response.ok() ? "http-success" : "http-failure";
+    publish();
+  };
+  const failed = (request: Request) => {
+    if (!pending.delete(request)) return;
+    state.request = pending.size ? "pending" : "transport-failure"; publish();
+  };
+  page.on("request", requested); page.on("response", responded); page.on("requestfailed", failed);
+  publish();
+  const capture = async () => {
+    try {
+      const ui = await page.evaluate(({ caseId, target, navigationStatus }): NativeUiFailure => {
+        const visible = (element: Element | null) => !!element?.getClientRects().length;
+        if (caseId === "m8") {
+          const control = visible(document.querySelector('[data-testid="end-block-confirm"]')) ? "dialog" :
+            visible(document.querySelector('[data-testid="program-actions-menu"]')) ? "menu" :
+              visible(document.querySelector('[data-testid="program-actions-more"]')) ? "more" : "absent";
+          const pageState = navigationStatus === 404 ? "not-found" :
+            navigationStatus >= 500 || document.title.startsWith("Application error") ? "error" :
+              location.pathname.startsWith("/login") || location.pathname.startsWith("/auth") ? "auth" :
+                location.pathname === "/app/plan" ? "plan" : "other";
+          return { case: "m8", page: pageState, control, request: "unavailable", record: "unavailable" };
+        }
+        if (caseId === "m11") {
+          const row = document.querySelector(`[data-testid="block-history-row"][data-block-id="${target}"]`);
+          const menu = row?.querySelector('[data-testid="block-actions-menu"]');
+          const submit = menu?.querySelector<HTMLButtonElement>('[data-testid="delete-block-menu-item"]');
+          const control = !row ? "row-absent" : submit?.disabled ? "pending" :
+            visible(menu?.querySelector("p") ?? null) ? "error" : visible(menu ?? null) ? "menu-open" : "menu-closed";
+          return { case: "m11", control, request: "unavailable", record: "unavailable" };
+        }
+        const submit = document.querySelector<HTMLButtonElement>('[data-testid="rehab-protocol-save"]');
+        const control = submit?.disabled ? "pending" :
+          visible(document.querySelector('[data-testid="rehab-protocol-error"],[aria-invalid="true"]')) ? "error" :
+            submit?.form?.querySelector(":invalid") ? "invalid" : submit ? "editor" :
+              visible(document.querySelector('[data-testid="rehab-protocol-new"]')) ? "library" : "empty";
+        return { case: "m13", control, request: "unavailable", record: "unavailable" };
+      }, { caseId, target, navigationStatus });
+      state = nativeUiFailureSchema.parse({ ...ui, request: state.request, record: state.record });
+      publish();
+    } catch {
+      // Timeout teardown can close the page; keep the last observable enum snapshot.
+      publish();
+    }
+  };
+  return {
+    capture,
+    async recordFailure() {
+      await capture();
+      try { state = nativeUiFailureSchema.parse({ ...state, record: await readRecord() }); }
+      catch { state.record = "unavailable"; }
+      publish();
+    },
+    dispose() {
+      page.off("request", requested); page.off("response", responded); page.off("requestfailed", failed);
+    },
+  };
 }
 
 function movement(catalog: Movement[], slug: string) {
@@ -226,7 +308,13 @@ async function loggedSets(actor: SupabaseClient, sessionId: string) {
   return result.data ?? [];
 }
 
-async function createRehabInLibrary(page: Page, selected: Movement, name: string) {
+async function createRehabInLibrary(page: Page, selected: Movement, name: string, actor?: SupabaseClient) {
+  const observation = actor ? observeNativeUi(page, "m13", "", async () => {
+    const read = await actor.from("rehab_protocols").select("id").eq("name", name)
+      .limit(1).abortSignal(AbortSignal.timeout(1000));
+    return read.error || !read.data ? "unavailable" : read.data.length ? "present" : "absent";
+  }) : null;
+  try {
   await page.goto("/app/settings/rehab-protocols");
   await page.getByRole("button", { name: "Create a protocol", exact: true }).click();
   await page.getByTestId("rehab-protocol-name").fill(name);
@@ -236,8 +324,12 @@ async function createRehabInLibrary(page: Page, selected: Movement, name: string
   await page.getByLabel("Sets", { exact: true }).fill("1");
   await page.getByLabel("Reps", { exact: true }).fill("5");
   await page.getByLabel("Load kg", { exact: true }).fill("20");
+  await observation?.capture();
   await page.getByTestId("rehab-protocol-save").click();
+  await observation?.capture();
   await expect(page.getByTestId("rehab-protocol-new")).toBeVisible();
+  } catch (error) { await observation?.recordFailure(); throw error; }
+  finally { observation?.dispose(); }
 }
 
 async function draftPair(page: Page, catalog: Movement[], kind: "strength" | "running", name: string, offsets: [number, number]) {
@@ -701,11 +793,21 @@ test.describe("Modular program builder", () => {
       await expect(page.getByLabel("Workout name", { exact: true })).toHaveValue("Strength week B");
       expect((await actor.from("training_blocks").select("id").not("program_kind", "is", null)).data).toEqual([]);
       const history = await context.newPage();
+      const observation = observeNativeUi(history, "m8", "", async () => {
+        const read = await actor.from("training_blocks").select("status,deleted_at").eq("id", legacy.blockId)
+          .abortSignal(AbortSignal.timeout(1000)).maybeSingle();
+        if (read.error) return "unavailable";
+        if (!read.data) return "absent";
+        return read.data.deleted_at ? "deleted" : z.enum(["active", "archived", "completed"]).parse(read.data.status);
+      });
       try {
         stage("m8-03");
         await history.goto(`/app/plan?block=${legacy.blockId}`);
+        await observation.capture();
         await history.getByTestId("program-actions-more").click();
+        await observation.capture();
         await history.getByTestId("program-actions-end").click();
+        await observation.capture();
         stage("m8-04"); await history.getByTestId("end-block-confirm").click();
         await expect.poll(async () => (await actor.from("training_blocks").select("status").eq("id", legacy.blockId).single()).data?.status)
           .toBe("archived");
@@ -714,7 +816,8 @@ test.describe("Modular program builder", () => {
         stage("m8-06"); await history.goto(`/app/sessions/${legacy.sessionId}`);
         await expect(history.getByTestId("session-title")).toContainText("Older strength workout");
         expect(await loggedSets(actor, legacy.sessionId)).toHaveLength(1);
-      } finally { await history.close(); }
+      } catch (error) { await observation.recordFailure(); throw error; }
+      finally { observation.dispose(); await history.close(); }
       stage("m8-07"); await review(page);
       const strengthId = await save(page, actor, "strength");
       stage("m8-08");
@@ -855,16 +958,30 @@ test.describe("Modular program builder", () => {
       };
       const beforeSwim = await swimSnapshot();
       const beforeEntries = await scheduleEntries(actor);
-      await page.goto("/app/plan/history");
       const hybridHistory = page.locator(`[data-testid="block-history-row"][data-block-id="${hybridId}"]`);
-      await hybridHistory.getByTestId("block-actions-trigger").click();
-      await hybridHistory.getByTestId("delete-block-menu-item").click();
-      try { await expect(hybridHistory).toHaveCount(0); }
+      const observation = observeNativeUi(page, "m11", hybridId, async () => {
+        const read = await actor.from("training_blocks").select("deleted_at").eq("id", hybridId)
+          .abortSignal(AbortSignal.timeout(1000)).maybeSingle();
+        return read.error ? "unavailable" : !read.data ? "absent" : read.data.deleted_at ? "deleted" : "retained";
+      });
+      try {
+        await page.goto("/app/plan/history");
+        await observation.capture();
+        await hybridHistory.getByTestId("block-actions-trigger").click();
+        await observation.capture();
+        await hybridHistory.getByTestId("delete-block-menu-item").click();
+        await observation.capture();
+        await expect(hybridHistory).toHaveCount(0);
+      }
       catch (error) {
-        const errors = await hybridHistory.getByTestId("block-actions-menu").locator("p").allTextContents();
-        diagnosticAnnotation("history-delete-failure", classifyHistoryDeleteFailure(errors.length === 1 ? errors[0]! : null));
+        await observation.recordFailure();
+        try {
+          const errors = await hybridHistory.getByTestId("block-actions-menu").locator("p").allTextContents();
+          diagnosticAnnotation("history-delete-failure", classifyHistoryDeleteFailure(errors.length === 1 ? errors[0]! : null));
+        } catch { diagnosticAnnotation("history-delete-failure", "unavailable"); }
         throw error;
       }
+      finally { observation.dispose(); }
       const deleted = await actor.from("program_instances").select("status,deleted_at").eq("block_id", hybridId).single();
       expect(deleted.error).toBeNull();
       expect(deleted.data).toEqual({ status: "archived", deleted_at: expect.any(String) });
@@ -919,7 +1036,7 @@ test.describe("Modular program builder", () => {
       }
     });
 
-  ownedTest("M12 DC-K4: shared measurements and a Hybrid load edit preserve Strength targets",
+  ownedTest("M12 DC-K4: shared measurements and Hybrid load setup preserve Strength targets",
     async ({ page, actor, freshUser }) => {
       stage("m12-01");
       const { ctx, resolveMovement } = await prepareNativeMeasurements(actor);
@@ -930,13 +1047,8 @@ test.describe("Modular program builder", () => {
         values: { templateId: "fighter", blocks: 1, cluster: ["bench", "squat"], useTemplateDefaults: false,
           useTrainingMax: true, tmPercent: 0.9 },
       });
-      const hybridInput = nativeTemplateInput({
-        engine: greenProtocolEngine, ctx, resolveMovement, kind: "hybrid", weekdays: [0, 2, 4], startedOn,
-        values: { phaseId: "hybrid", blocks: 1, cluster: ["bench", "squat", "deadlift"], useTrainingMax: false },
-      });
       const graphSchema = z.object({ block_id: z.string().uuid(), program_instance_id: z.string().uuid() });
       const strength = graphSchema.parse(await nativeScheduleCommit(actor, "primary-create", strengthInput));
-      const hybrid = graphSchema.parse(await nativeScheduleCommit(actor, "primary-create", hybridInput, true));
       const original = await planned(actor);
       const firstBench = (blockId: string, rows = original) => {
         const row = rows.find((candidate) => candidate.block_id === blockId &&
@@ -950,9 +1062,8 @@ test.describe("Modular program builder", () => {
         expect(slot).toBeGreaterThanOrEqual(0);
         return { row: row!, index, slot, item: row!.prescription.items[index]! };
       };
-      const targets = [firstBench(strength.block_id), firstBench(hybrid.block_id)];
-      expect(targets[0]!.item.meta?.programLoadBasis).toMatchObject({ kind: "one-rm", percent: 90 });
-      expect(targets[1]!.item.meta?.programLoadBasis).toMatchObject({ kind: "one-rm", percent: 100 });
+      const strengthTarget = firstBench(strength.block_id);
+      expect(strengthTarget.item.meta?.programLoadBasis).toMatchObject({ kind: "one-rm", percent: 90 });
       const instances = await actor.from("program_instances").select("id,instance,setup_input")
         .eq("user_id", freshUser.userId).order("id");
       expect(instances.error).toBeNull();
@@ -969,34 +1080,44 @@ test.describe("Modular program builder", () => {
       const afterMeasurement = await actor.from("program_instances").select("id,instance,setup_input")
         .eq("user_id", freshUser.userId).order("id");
       expect(afterMeasurement.error).toBeNull(); expect(afterMeasurement.data).toEqual(instances.data);
-      stage("m12-03"); const strengthSession = await start(page, targets[0]!.row.id);
-      await page.getByTestId(`movement-dot-${targets[0]!.slot}`).click();
+      stage("m12-03"); const strengthSession = await start(page, strengthTarget.row.id);
+      await page.getByTestId(`movement-dot-${strengthTarget.slot}`).click();
       // 110 kg 1RM -> 90% rounded to 100 kg -> the fixture's 75% set is 75 kg.
-      expect(targets[0]!.item.percentTm).toBe(75);
+      expect(strengthTarget.item.percentTm).toBe(75);
       await expect(page.getByLabel("Weight (kg)", { exact: true })).toHaveValue("75");
-      const beforeEdit = await planned(actor);
-      stage("m12-04"); await page.goto(`/app/program?edit=${hybrid.block_id}`);
+      const beforeSetup = await planned(actor);
+      stage("m12-04"); await page.goto("/app/program?program=green-protocol&phase=hybrid");
       await page.getByRole("button", { name: "Continue", exact: true }).click();
       await page.getByRole("button", { name: "Training Max", exact: true }).click();
       await page.getByRole("button", { name: "85%", exact: true }).click();
       await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await page.locator('input[type="date"]').fill(startedOn);
       stage("m12-05"); await page.getByRole("button", { name: "Review dates", exact: true }).click();
-      await expect(page.getByRole("checkbox", { name: "Train on these occupied days", exact: true })).toHaveCount(0);
-      await page.getByRole("button", { name: "Save changes", exact: true }).click();
-      await expect(page).toHaveURL(/\/app\/plan(?:\?kept=today)?$/);
+      const overlap = page.getByRole("checkbox", { name: "Train on these occupied days", exact: true });
+      await expect(overlap).not.toBeChecked();
+      await overlap.check();
+      await page.getByRole("button", { name: "Save program", exact: true }).click();
+      await expect(page).toHaveURL(/\/app$/);
+      const hybridRead = await actor.from("program_instances").select("id,block_id")
+        .eq("user_id", freshUser.userId).eq("program_id", "green-protocol").eq("status", "active").single();
+      expect(hybridRead.error).toBeNull();
+      const hybrid = graphSchema.parse({ block_id: hybridRead.data?.block_id, program_instance_id: hybridRead.data?.id });
       stage("m12-06"); await page.goto(`/app/plan?block=${hybrid.block_id}`);
       await page.reload();
+      await page.goto(`/app/program?edit=${hybrid.block_id}`);
+      await expect(page.getByRole("link", { name: "View programs", exact: true })).toHaveAttribute("href", "/app/programs");
+      await expect(page.getByRole("button", { name: "Continue", exact: true })).toHaveCount(0);
       const changedRows = await planned(actor);
       expect(changedRows.filter((row) => row.block_id === strength.block_id))
-        .toEqual(beforeEdit.filter((row) => row.block_id === strength.block_id));
-      const editedHybrid = firstBench(hybrid.block_id, changedRows);
-      expect(editedHybrid.item.meta?.programLoadBasis).toMatchObject({ kind: "one-rm", percent: 85, roundingKg: 2.5 });
-      const afterEdit = await actor.from("program_instances").select("id,instance,setup_input")
+        .toEqual(beforeSetup.filter((row) => row.block_id === strength.block_id));
+      const hybridTarget = firstBench(hybrid.block_id, changedRows);
+      expect(hybridTarget.item.meta?.programLoadBasis).toMatchObject({ kind: "one-rm", percent: 85, roundingKg: 2.5 });
+      const afterSetup = await actor.from("program_instances").select("id,instance,setup_input")
         .eq("user_id", freshUser.userId).order("id");
-      expect(afterEdit.error).toBeNull();
-      expect(afterEdit.data!.find((row) => row.id === strength.program_instance_id))
+      expect(afterSetup.error).toBeNull();
+      expect(afterSetup.data!.find((row) => row.id === strength.program_instance_id))
         .toEqual(instances.data!.find((row) => row.id === strength.program_instance_id));
-      expect(afterEdit.data!.find((row) => row.id === hybrid.program_instance_id)?.setup_input)
+      expect(afterSetup.data!.find((row) => row.id === hybrid.program_instance_id)?.setup_input)
         .toMatchObject({ values: { useTrainingMax: true, tmPercent: 0.85 } });
       const sharedMax = await actor.from("training_maxes").select("one_rm_kg,tm_percent")
         .eq("user_id", freshUser.userId).eq("movement_id", bench.movementId).single();
@@ -1004,7 +1125,7 @@ test.describe("Modular program builder", () => {
       expect(Number(sharedMax.data!.one_rm_kg)).toBe(110); expect(Number(sharedMax.data!.tm_percent)).toBe(97);
       const loads: number[] = [], sessions: string[] = [];
       stage("m12-07");
-      for (const [position, { row, index, slot, item }] of [targets[0]!, editedHybrid].entries()) {
+      for (const [position, { row, index, slot, item }] of [strengthTarget, hybridTarget].entries()) {
         // Hybrid: 110 * .85 -> 92.5 kg working max; 70% -> 65 kg on 2.5 kg plates.
         expect(item.percentTm).toBe(position === 0 ? 75 : 70);
         const expected = position === 0 ? 75 : 65;
@@ -1031,14 +1152,14 @@ test.describe("Modular program builder", () => {
       expect(new Set(sessions).size).toBe(2);
       stage("m12-08"); const remaining = await actor.from("program_instances").select("id,instance,setup_input")
         .eq("user_id", freshUser.userId).order("id");
-      expect(remaining.error).toBeNull(); expect(remaining.data).toEqual(afterEdit.data);
+      expect(remaining.error).toBeNull(); expect(remaining.data).toEqual(afterSetup.data);
     });
 
   ownedTest("M13 DC-R5/DC-SW7: shared rehab attaches through Running and Swimming and logs without a swim result",
     async ({ page, actor, catalog, freshUser }) => {
       stage("m13-01");
       const selected = movement(catalog, "bench-press-flat"), running = movement(catalog, "run-easy-z2");
-      await createRehabInLibrary(page, selected, "Shared rehab");
+      await createRehabInLibrary(page, selected, "Shared rehab", actor);
       const library = await actor.from("rehab_protocols").select("id,revision,definition")
         .eq("user_id", freshUser.userId).single();
       expect(library.error).toBeNull();
@@ -1303,6 +1424,7 @@ test.describe("Modular program builder", () => {
       const replacement = await prepareNativeProgram(actor,
         nativeProgramDefinition("strength", "Export replacement", weekday(), liftId, runId), today(), strength.block_id);
       await page.getByRole("button", { name: /^Finish session/ }).click();
+      await expect(page).toHaveURL(new RegExp(`/app/sessions/${oldSession}\\?completed=1$`));
       await expect.poll(async () => {
         const result = await actor.from("sessions").select("completion_outbox_entry_id,completed_at").eq("id", oldSession).single();
         expect(result.error).toBeNull(); return result.data?.completed_at ? result.data.completion_outbox_entry_id : null;

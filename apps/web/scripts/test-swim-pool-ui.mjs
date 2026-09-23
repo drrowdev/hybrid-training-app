@@ -41,6 +41,8 @@ try {
         import { ScheduleRestoreButton } from "./src/components/program/ScheduleRestoreButton";
         import { TrashItemRow } from "./src/components/trash/TrashItemRow";
         import { DeleteBlockMenu } from "./src/components/trash/DeleteBlockMenu";
+        import { PlanProgramActions } from "./src/components/plan/PlanProgramActions";
+        import { RehabProtocolsClient } from "./src/components/rehab-protocols/RehabProtocolsClient";
         import { DeloadWeekCard } from "./src/components/plan/DeloadWeekCard";
         import { FocusStripLogger } from "./src/components/session/FocusStripLogger";
         import { SessionWorkArea } from "./src/components/session/SessionWorkArea";
@@ -584,7 +586,7 @@ try {
             acceptAction={async () => { window.tmChoiceCalls++; return { ok: false, error: "Open the workout's program to review its loads." }; }}
             dismissAction={async () => { throw new Error("Unexpected dismissal"); }} /></main>);
         };
-        window.showHybridLoadSetup = (editing, saved = false) => {
+        window.showHybridLoadSetup = () => {
           window.hybridLoadPreviews = []; window.hybridLoadSaves = [];
           window.continuationPreview = async input => {
             window.hybridLoadPreviews.push(input);
@@ -597,15 +599,13 @@ try {
           };
           root.render(<ProgramPicker key={++key} anchoredKeys={["bench"]} initialProgramId="green-protocol"
             initialLoadoutValue="hybrid" programs={[{ ...greenProtocolEngine.meta, enabled: true, fixedSchedule: true,
-              fields: greenProtocolEngine.describeSetup().fields }]}
-            {...(editing ? { editContext: { blockId: "hybrid", programId: "green-protocol",
-              setupValues: { phaseId: "hybrid", blocks: 1, useTrainingMax: saved, tmPercent: saved ? .85 : .9 },
-              strengthWeekdays: [0,2,4], cardioWeekdays: [], startedOn: "2026-09-28", accessoriesEnabled: false } } : {})} />);
+              fields: greenProtocolEngine.describeSetup().fields }]} />);
         };
         function DeleteHistoryFixture() {
           const [deleted, setDeleted] = useState(false);
           window.deleteHistoryProgram = async form => {
             window.historyDeletionCalls.push(form.get("id"));
+            await new Promise(resolve => window.resolveHistoryDeletion = resolve);
             setDeleted(true);
             return { ok: true, blockId: form.get("id") };
           };
@@ -623,6 +623,30 @@ try {
         window.showDeleteHistory = () => {
           window.historyDeletionCalls = [];
           root.render(<DeleteHistoryFixture key={++key} />);
+        };
+        window.showProgramEnd = () => {
+          root.render(<PlanProgramActions key={++key} blockId="legacy" canEdit
+            editHref="/app/program?edit=legacy" startNewHref="/app/program"
+            endAction={async () => { window.endedProgram = true; }} />);
+        };
+        function RehabLibraryFixture() {
+          const [protocols, setProtocols] = useState([]);
+          return <RehabProtocolsClient protocols={protocols}
+            movements={[{ id: "00000000-0000-4000-8000-000000000090", name: "Bench press", pattern: "horizontal_push" }]}
+            createAction={async payload => {
+              window.rehabLibrarySaves.push(payload);
+              await new Promise(resolve => window.resolveRehabLibrarySave = resolve);
+              setProtocols([{ id: "saved-protocol", name: payload.name, ...payload.definition, revision: 1,
+                updatedAt: "2026-09-28", usedBy: [] }]);
+              return { ok: true, id: "saved-protocol", syncedPrograms: [] };
+            }}
+            updateAction={async () => { throw new Error("Unexpected protocol update"); }}
+            duplicateAction={async () => { throw new Error("Unexpected protocol duplicate"); }}
+            deleteAction={async () => { throw new Error("Unexpected protocol delete"); }} />;
+        }
+        window.showRehabLibrary = () => {
+          window.rehabLibrarySaves = [];
+          root.render(<RehabLibraryFixture key={++key} />);
         };
         function ContinuationFixture({ kind }) {
           const [open, setOpen] = useState(false);
@@ -1788,32 +1812,54 @@ try {
     await expect(page.getByTestId("tm-suggestion-legacy-advice")).toBeVisible();
     await expect(page.getByRole("button", { name: "Accept", exact: true })).toBeEnabled();
     assert.equal(await page.evaluate(() => window.tmChoiceCalls), 1);
-    for (const editing of [false, true]) {
-      await page.evaluate(editing => window.showHybridLoadSetup(editing), editing);
-      await page.getByRole("button", { name: "Continue", exact: true }).click();
-      await page.getByRole("button", { name: "Training Max", exact: true }).click();
-      await page.getByRole("button", { name: "85%", exact: true }).click();
-      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
-      await page.getByRole("button", { name: "Continue", exact: true }).click();
-      await page.getByRole("button", { name: "Review dates", exact: true }).click();
-      await page.getByRole("button", { name: editing ? "Save changes" : "Save program", exact: true }).click();
-      await expect.poll(() => page.evaluate(() => window.hybridLoadSaves.length)).toBe(1);
-      const saved = await page.evaluate(() => window.hybridLoadSaves[0]);
-      assert.equal(saved.setupValues.useTrainingMax, true);
-      assert.equal(saved.setupValues.tmPercent, .85);
-      assert.equal(saved.editBlockId, editing ? "hybrid" : undefined);
-    }
-    await page.evaluate(() => window.showHybridLoadSetup(true, true));
+    await page.evaluate(() => window.showHybridLoadSetup());
     await page.getByRole("button", { name: "Continue", exact: true }).click();
-    await expect(page.getByRole("button", { name: "85%", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Training Max", exact: true }).click();
+    await page.getByRole("button", { name: "85%", exact: true }).click();
     await page.getByRole("button", { name: "1RM", exact: true }).click();
     await expect(page.getByRole("button", { name: "85%", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Training Max", exact: true }).click();
+    await page.getByRole("button", { name: "85%", exact: true }).click();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Review dates", exact: true }).click();
+    await page.getByRole("button", { name: "Save program", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.hybridLoadSaves.length)).toBe(1);
+    const savedHybrid = await page.evaluate(() => window.hybridLoadSaves[0]);
+    assert.equal(savedHybrid.setupValues.useTrainingMax, true);
+    assert.equal(savedHybrid.setupValues.tmPercent, .85);
+    assert.equal(savedHybrid.editBlockId, undefined);
     await page.evaluate(() => window.showDeleteHistory());
     const historyRow = page.getByTestId("block-history-row");
     await historyRow.getByTestId("block-actions-trigger").click();
     await historyRow.getByTestId("delete-block-menu-item").click();
-    await expect(historyRow).toHaveCount(0);
+    await expect(historyRow.getByTestId("delete-block-menu-item")).toBeDisabled();
     assert.deepEqual(await page.evaluate(() => window.historyDeletionCalls), ["hybrid"]);
+    await page.evaluate(() => window.resolveHistoryDeletion());
+    await expect(historyRow).toHaveCount(0);
+    await page.evaluate(() => window.showProgramEnd());
+    await page.getByTestId("program-actions-more").click();
+    await page.getByTestId("program-actions-end").click();
+    await expect(page.getByTestId("end-block-confirm")).toBeVisible();
+    await page.evaluate(() => window.showRehabLibrary());
+    await page.getByRole("button", { name: "Create a protocol", exact: true }).click();
+    await page.getByTestId("rehab-protocol-name").fill("Shared rehab");
+    await page.getByTestId("rehab-protocol-search").fill("Bench");
+    await page.getByTestId("rehab-protocol-picker").getByRole("button")
+      .filter({ has: page.getByText("Bench press", { exact: true }) }).click();
+    await page.getByLabel("Sets", { exact: true }).fill("1");
+    await page.getByLabel("Reps", { exact: true }).fill("5");
+    await page.getByLabel("Load kg", { exact: true }).fill("20");
+    await page.getByTestId("rehab-protocol-save").click();
+    await expect(page.getByTestId("rehab-protocol-save")).toBeDisabled();
+    assert.deepEqual(await page.evaluate(() => window.rehabLibrarySaves), [{
+      name: "Shared rehab", definition: { items: [{
+        movementId: "00000000-0000-4000-8000-000000000090", movementName: "Bench press",
+        sets: 1, reps: 5, holdSeconds: undefined, side: "both", targetWeightKg: 20,
+      }], links: [] },
+    }]);
+    await page.evaluate(() => window.resolveRehabLibrarySave());
+    await expect(page.getByTestId("rehab-protocol-new")).toBeVisible();
     stages.push(stage);
   }
   assert.deepEqual(failures, []);
