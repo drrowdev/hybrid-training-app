@@ -3,15 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
-  authoredMovementIds, authoredRehabProtocolIds, authoredProgramDates, compileAuthoredWorkout, trainingScheduleAdvice, highStrainPowerBlocked,
+  authoredMovementIds, authoredRehabProtocolIds, authoredProgramDates, compileAuthoredWorkout, trainingScheduleAdvice,
   type AuthoredCatalogMovement, type AuthoredPrescriptionItem, type AuthoredProgramDefinition, type TrainingCommitment,
 } from "@hta/domain";
 import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { todayYmd, daysBetweenYmd, mondayOfYmd, addDaysToYmd } from "@/lib/dates";
-import { deriveLimitationsContext } from "@/lib/planner/limitations-context";
-import { loadsBlockedMuscle, loadsBlockedRegion } from "@/lib/planner/accessory-picker";
-import { POWER_FUNCTIONAL_ROLES } from "@/lib/planner/accessory-roles";
+import { assertCatalogMovementAllowed, deriveLimitationsContext } from "@/lib/planner/limitations-context";
 import { toCatalogMovement, CATALOG_SELECT, type DbMovement } from "@/lib/planner/picker-catalog";
 import { classifySessionModality, effectiveStressLoad, type ClassifierMovement } from "@/lib/planner/session-modality";
 import { prescriptionCarriesUserState } from "@/lib/sessions/prescription-mutations";
@@ -91,15 +89,7 @@ async function prepare(raw: AuthoredSaveInput) {
   }));
   const limits = deriveLimitationsContext(limitationsResult.data ?? []);
   for (const row of catalogResult.data ?? []) {
-    const movement = toCatalogMovement(row as DbMovement);
-    if (loadsBlockedRegion(movement, limits.blockedRegions) ||
-        loadsBlockedMuscle(movement, limits.blockedMuscles, limits.allowedMovementIds) ||
-        highStrainPowerBlocked({ highStrainTendon: movement.highStrainTendon,
-          power: movement.functionalRoles.some((role) => POWER_FUNCTIONAL_ROLES.some((powerRole) => powerRole === role)),
-          tendinopathyActive: limits.tendinopathyActive }) ||
-        (limits.blockedMovementIds.has(movement.id) && !limits.allowedMovementIds.has(movement.id))) {
-      throw new Error(`${movement.displayName} is blocked by an active limitation. Choose another exercise.`);
-    }
+    assertCatalogMovementAllowed(toCatalogMovement(row as DbMovement), limits);
   }
   const today = todayYmd(profileResult.data?.timezone ?? "UTC");
   const compileRehab = (protocolId: string, partId: string): AuthoredPrescriptionItem[] => {

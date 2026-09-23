@@ -35,6 +35,7 @@ import {
 } from "@/lib/platform/rehab-library";
 import { parseRehabProtocolInput } from "./schema";
 import { isMissingTable } from "./queries";
+import { loadSwimRehabUsage } from "@/lib/swim/rehab-attachments";
 
 export type ProtocolActionResult =
   | { ok: true; id: string; syncedPrograms: string[] }
@@ -141,6 +142,8 @@ export async function updateRehabProtocol(
   revalidatePath("/app/settings/rehab-protocols");
   revalidatePath("/app");
   revalidatePath("/app/plan");
+  revalidatePath("/app/swim");
+  revalidatePath("/app/swim/[workoutId]", "page");
   return { ok: true, id, syncedPrograms: synced.programs };
 }
 
@@ -203,25 +206,33 @@ export async function deleteRehabProtocol(
   if (error) {
     if (isMissingTable(error)) return { ok: false, error: MISSING_TABLE_MESSAGE };
     if (error.code === "23503") {
-      const { data: users } = await supabase
+      const { data: bindings, error: bindingError } = await supabase
         .from("program_rehab_bindings")
-        .select("program_instances!inner(display_name)")
+        .select("program_instance_id")
         .eq("rehab_protocol_id", id)
         .eq("user_id", user.id);
-      const names = (users ?? [])
-        .map((row) => {
-          const instance = (
-            Array.isArray(row.program_instances)
-              ? row.program_instances[0]
-              : row.program_instances
-          ) as { display_name?: string | null } | null;
-          return instance?.display_name ?? null;
-        })
-        .filter((name): name is string => !!name);
+      if (bindingError) return { ok: false, error: "Could not check this protocol's attachments. Try again." };
+      const names: string[] = [];
+      const instanceIds = [...new Set((bindings ?? []).map((binding) => binding.program_instance_id))];
+      if (instanceIds.length > 0) {
+        const { data: instances, error: instanceError } = await supabase.from("program_instances")
+          .select("display_name").eq("user_id", user.id).in("id", instanceIds);
+        if (instanceError) return { ok: false, error: "Could not read the programs using this protocol. Try again." };
+        for (const instance of instances ?? []) {
+          if (typeof instance.display_name === "string" && !names.includes(instance.display_name)) names.push(instance.display_name);
+        }
+      }
+      try {
+        for (const usage of await loadSwimRehabUsage(supabase, user.id, id)) {
+          if (!names.includes(usage.name)) names.push(usage.name);
+        }
+      } catch (cause) {
+        return { ok: false, error: cause instanceof Error ? cause.message : "Could not check this protocol's attachments. Try again." };
+      }
       const label = names.length > 0 ? names.join(", ") : "a program";
       return {
         ok: false,
-        error: `In use by ${label}. Remove it from the program before deleting.`,
+        error: `This protocol is still used by ${label}.`,
       };
     }
     return { ok: false, error: error.message };

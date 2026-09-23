@@ -313,7 +313,7 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     stage("ownership-swim-rehab-owned-attachment-issued-dose-replay-and-restore");
     const protocolId = randomUUID();
     await asUser(a, (tx) => tx`INSERT INTO public.rehab_protocols(id,user_id,name,definition)
-      VALUES(${protocolId}::uuid,${a}::uuid,'Shared protocol',${json({ items: [{ movementId: lift.id, movementName: "Fixture exercise", sets: 1, reps: 8 }], links: [] })}::text::jsonb)`);
+      VALUES(${protocolId}::uuid,${a}::uuid,'Shared protocol',${json({ items: [{ movementId: lift.id, movementName: "Fixture exercise", sets: 1, reps: 8, targetWeightKg: 2 }], links: [] })}::text::jsonb)`);
     const attach = async (owner: string, ids: string[], revision?: string, request = randomUUID()) => {
       const expected = revision ?? (await snapshot(owner)).revision;
       return asUser(owner, (tx) => tx`SELECT public.set_swim_rehab_bindings(${swim.plan.id}::uuid,${ids}::uuid[],${expected},${request}::uuid)`);
@@ -339,7 +339,7 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     await denied(() => asUser(a, (tx) => tx`DELETE FROM public.rehab_protocols WHERE id=${protocolId}::uuid`), "23503");
     const workout = swim.workouts[0]!;
     const beforeSwim = await database`SELECT to_jsonb(w) AS row FROM public.swim_workouts w WHERE id=${workout.id}::uuid`;
-    const prescription = { items: [{ kind: "tendon", movementId: lift.id, movementName: "Fixture exercise", sets: 1, reps: 8,
+    const prescription = { items: [{ kind: "tendon", movementId: lift.id, movementName: "Fixture exercise", sets: 1, reps: 8, targetWeightKg: 2,
       meta: { rehab: true, rehabProtocolId: protocolId, rehabProtocolRevision: 1, rehabItemIndex: 0, rehabSetIndex: 0 } }],
       meta: { swimRehab: { version: 1, planId: swim.plan.id, workoutId: workout.id, protocolId, protocolRevision: 1, scheduledDate: calendar.today } } };
     for (const kind of ["strength", "running", "hybrid"] as const) {
@@ -359,6 +359,16 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     const rehabSession = await start(prescription, startRequest, startedRevision);
     assert.equal(await start(prescription, startRequest, startedRevision), rehabSession);
     assert.equal(await start(), rehabSession);
+    const rehabSet = { session_id: rehabSession, movement_id: lift.id, set_kind: "tendon", weight_kg: 2, reps: 8,
+      prescription_item_index: 0, client_log_id: randomUUID(), target_weight_kg: 2, target_reps: 8 };
+    const logRehab = () => asUser(a, (tx) => tx`SELECT * FROM public.insert_set_log_with_bw_progress(${json(rehabSet)}::text::jsonb)`);
+    const loggedRehab = (await logRehab())[0]!;
+    assert.equal(loggedRehab.inserted, true);
+    assert.deepEqual(Array.from(await logRehab()), [{ id: loggedRehab.id, inserted: false }]);
+    const readRehabSets = () => asUser(a, (tx) => tx`SELECT weight_kg::float8 AS kg,target_weight_kg::float8 AS target,reps,target_reps
+      FROM public.set_logs WHERE session_id=${rehabSession}::uuid ORDER BY id`);
+    assert.deepEqual(Array.from(await readRehabSets()), [{ kg: 2, target: 2, reps: 8, target_reps: 8 }]);
+    assert.equal((await asUser(b, (tx) => tx`SELECT id FROM public.set_logs WHERE session_id=${rehabSession}::uuid`)).length, 0);
     assert.deepEqual(Array.from(await database`SELECT to_jsonb(w) AS row FROM public.swim_workouts w WHERE id=${workout.id}::uuid`), Array.from(beforeSwim));
     assert.equal((await database`SELECT count(*)::int AS n FROM public.cardio_logs WHERE session_id=${rehabSession}::uuid`)[0]!.n, 0);
     await asUser(a, (tx) => tx`UPDATE public.sessions SET deleted_at=now() WHERE id=${rehabSession}::uuid`);
@@ -367,6 +377,9 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     assert.equal(await start(), rehabSession);
     await attach(a, []);
     assert.equal(await start(), rehabSession);
+    assert.deepEqual(Array.from(await readRehabSets()), [{ kg: 2, target: 2, reps: 8, target_reps: 8 }]);
+    assert.deepEqual((await asUser(a, (tx) => tx`SELECT prescription FROM public.sessions WHERE id=${rehabSession}::uuid`))[0]!.prescription,
+      prescription);
     await denied(() => asUser(a, (tx) => tx`UPDATE public.sessions SET prescription='{"items":[]}' WHERE id=${rehabSession}::uuid`), "22023");
     await denied(revert, "P0001");
     stages.push("ownership-swim-rehab-owned-attachment-issued-dose-replay-and-restore");
@@ -387,7 +400,7 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     const receiptSwim = await commit<Swim>(receiptOwner, "swim-create", swimArgs);
     await asUser(receiptOwner, (tx) => tx`INSERT INTO public.rehab_protocols(id,user_id,name,definition)
       VALUES(${receiptProtocol}::uuid,${receiptOwner}::uuid,'Receipt protocol',
-        ${json({ items: [{ movementId: lift.id, movementName: "Fixture exercise", sets: 1, reps: 8 }], links: [] })}::text::jsonb)`);
+        ${json({ items: [{ movementId: lift.id, movementName: "Fixture exercise", sets: 1, reps: 8, targetWeightKg: 2 }], links: [] })}::text::jsonb)`);
     const receiptBindingRevision = (await snapshot(receiptOwner)).revision;
     await asUser(receiptOwner, (tx) => tx`SELECT public.set_swim_rehab_bindings(${receiptSwim.plan.id}::uuid,
       ${[receiptProtocol]}::uuid[],${receiptBindingRevision},${randomUUID()}::uuid)`);

@@ -63,7 +63,7 @@ beforeEach(() => {
   transport.mockImplementation(async (input, init) => {
     const url = new URL(String(input)); requests.push(url);
     if (url.pathname.startsWith("/rest/v1/rpc/")) {
-      expect(["swim_storage_ready", "swim_import_storage_ready", "swim_import_matching_ready", "swim_import_outcomes_ready"])
+      expect(["swim_storage_ready", "swim_import_storage_ready", "swim_import_matching_ready", "swim_import_outcomes_ready", "independent_programs_ready"])
         .toContain(url.pathname.split("/").at(-1));
       return Response.json(true);
     }
@@ -126,7 +126,11 @@ describe("DC-SW5/SW8 M7 storage and export schema contract", () => {
     for (const table of ["sessions", "cardio_logs", "set_logs", "training_blocks", "planned_sessions"] as const) {
       expect(history[table]).toEqual([]);
     }
-    expect(requests.filter((url) => !url.pathname.includes("/rpc/"))).toHaveLength(25);
+    expect(requests.filter((url) => !url.pathname.includes("/rpc/"))).toHaveLength(32);
+    for (const table of ["program_instances", "program_recommendations", "training_seasons", "season_blocks",
+      "rehab_protocols", "program_rehab_bindings", "swim_plan_rehab_bindings"]) {
+      expect(requests.find((url) => url.pathname.endsWith(`/${table}`))?.searchParams.get("user_id")).toBe(`eq.${user}`);
+    }
     for (const table of ["swim_import_matches", "swim_import_outcomes", "swim_imports"]) {
       expect(requests.find((url) => url.pathname.endsWith(`/${table}`))?.searchParams.get("user_id")).toBe(`eq.${user}`);
     }

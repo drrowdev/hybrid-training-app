@@ -24,6 +24,9 @@ try {
         import { CourseWorkoutEditor } from "./src/components/swim/CourseWorkoutEditor";
         import { SwimHub } from "./src/components/swim/SwimHub";
         import { WorkoutScreen } from "./src/components/swim/WorkoutScreen";
+        import { SwimRehabEditor } from "./src/components/swim/SwimRehabEditor";
+        import { SwimRehabWorkouts } from "./src/components/swim/SwimRehabWorkouts";
+        import { compileLibraryRehab } from "./src/lib/rehab-protocols/prescription";
         import { workoutPresentation } from "./src/lib/swim/presentation";
         import { RecordingMatcher } from "./src/components/swim/RecordingMatcher";
         import { RecordingOutcome } from "./src/components/swim/RecordingOutcome";
@@ -354,6 +357,82 @@ try {
           <main className={styles.page}><SwimImportConnection key={++key}
             enabled={enabled} connection={active ? window.connection : null} /></main>
         );
+        const rehabProtocol = {
+          id: "00000000-0000-4000-8000-000000000041", name: "Shoulder rehab", revision: 2,
+          items: [
+            { movementId: "00000000-0000-4000-8000-000000000042", movementName: "Shoulder rotation", sets: 2, reps: 8, targetWeightKg: 2, side: "left" },
+            { movementId: "00000000-0000-4000-8000-000000000043", movementName: "Scapular raise", sets: 2, reps: 10, targetWeightKg: 2, side: "both" },
+          ],
+          links: [{ id: "pair", name: "Shoulder pair", members: [
+            "00000000-0000-4000-8000-000000000042", "00000000-0000-4000-8000-000000000043",
+          ] }],
+        };
+        const rehabOrigin = {
+          version: 1, planId: "00000000-0000-4000-8000-000000000044",
+          workoutId: "00000000-0000-4000-8000-000000000045", scheduledDate: "2026-09-14",
+          protocolId: rehabProtocol.id, protocolRevision: rehabProtocol.revision, protocolName: rehabProtocol.name,
+        };
+        const rehabPrescription = {
+          items: compileLibraryRehab(rehabProtocol, "swim:" + rehabOrigin.workoutId), meta: { swimRehab: rehabOrigin },
+        };
+        let rehabSessionId;
+        window.rehabProtocol = rehabProtocol;
+        window.rehabLongName = "Shoulder-" + "rehab".repeat(20);
+        window.saveRehabAttachments = async input => {
+          window.rehabCalls.push(input);
+          if (window.rehabMode === "delay") return await new Promise(resolve => window.resolveRehab = resolve);
+          return { ok: true, protocolIds: input.protocolIds };
+        };
+        window.startRehab = async input => {
+          window.rehabCalls.push(input);
+          if (window.rehabMode === "delay") return await new Promise(resolve => window.resolveRehab = resolve);
+          return { ok: true, sessionId: rehabSessionId };
+        };
+        window.showRehabAttachments = () => {
+          window.rehabCalls = []; window.rehabMode = "delay";
+          root.render(<main className={styles.page}><SwimRehabEditor key={++key} context={{
+            planId: rehabOrigin.planId, revision: "a".repeat(32), editable: true, attachedIds: [],
+            protocols: [{ id: rehabProtocol.id, name: window.rehabLongName }],
+          }} /></main>);
+        };
+        window.showRehabWorkouts = (status = "available") => {
+          if (status === "available") rehabSessionId = crypto.randomUUID();
+          window.rehabSessionId = rehabSessionId;
+          window.rehabCalls = []; window.rehabMode = "delay"; window.destinations = [];
+          root.render(<main className={styles.page}><SwimRehabWorkouts key={++key} context={{
+            workoutId: rehabOrigin.workoutId, revision: "a".repeat(32), canStart: true,
+            entries: [{ protocolId: rehabProtocol.id, name: window.rehabLongName, status,
+              sessionId: ["started", "completed", "deleted"].includes(status) ? rehabSessionId : null }],
+          }} /></main>);
+        };
+        function RehabLoggingFixture() {
+          const [sets, setSets] = useState([]);
+          const unexpected = async () => { throw new Error("Unexpected rehab mutation"); };
+          const save = async form => {
+            window.rehabLogs.push(Object.fromEntries(form.entries()));
+            const id = crypto.randomUUID();
+            const log = optimisticLogFromFormData(form, String(form.get("clientLogId")));
+            setSets(previous => [...previous, ...mergeOptimisticSets([], [{ ...log, serverId: id }])]);
+            return { ok: true, set: { id } };
+          };
+          window.logFullStrength = save;
+          return <main className={styles.page}><SessionLoggingStateProvider
+            initialHasStrengthSets={sets.length > 0} initialLoggedStrengthClientIds={sets.map(set => set.client_log_id)}
+            initialUnloggedStrengthCount={4 - sets.length}
+            initialUnloggedRequiredIndices={[0,1,2,3].filter(index => !sets.some(set => set.prescription_item_index === index))}>
+            <FullLoggingProbe />
+            <SessionWorkArea sessionId={rehabSessionId} isComplete={false} performedAt="2026-09-14T12:00:00Z"
+              sets={sets} tmBySlug={{}} oneRmBySlug={{}} lastSetHints={{}} priorBests={{}} prescription={rehabPrescription}
+              loggedItemIndices={sets.map(set => set.prescription_item_index)}
+              loggedSetIdByItemIndex={Object.fromEntries(sets.map(set => [set.prescription_item_index, set.id]))}
+              swapAction={unexpected} fillFromPlan={unexpected} updateStrengthSet={unexpected}
+              hapticsEnabled={false} timerSoundEnabled={false} restTimerEnabled={false} addStrengthSet={save} />
+          </SessionLoggingStateProvider></main>;
+        }
+        window.showRehabLogger = () => {
+          window.rehabLogs = [];
+          root.render(<RehabLoggingFixture key={++key} />);
+        };
         const setupSchedule = [
           { id: "one-off-run", source: "session", programId: null, date: "2026-09-14", title: "Run", state: "scheduled" },
           { id: "planned-rest", source: "primary", programId: "primary", date: "2026-09-17", title: "Rest", state: "rest" },
@@ -445,7 +524,7 @@ try {
           args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/planner\/actions$/ }, args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/offline\/outbox$/ }, args => ({ path: args.path, namespace: "test" }));
-        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions|import-outcome-actions)|@\/lib\/programs\/authored\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions|import-outcome-actions|rehab-actions)|@\/lib\/programs\/authored\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
           contents: args.path === "@/lib/sessions/actions"
             ? "const unexpected = () => { throw new Error('Unexpected session mutation'); }; export const deleteSet = form => window.deleteFullSet(form); export const permanentlyDeleteSession = unexpected, restoreSession = unexpected, addCardioBlock = unexpected, completeSessionResult = unexpected; export const addStrengthSet = form => window.logFullStrength(form), logCardioSession = form => window.logFullCardio(form);"
@@ -498,6 +577,8 @@ try {
               ? "export const findSwimMatchWorkouts = date => window.findWorkouts(date); export const saveSwimImportMatch = input => window.saveMatch(input);"
             : args.path === "@/lib/swim/import-outcome-actions"
               ? "export const saveSwimImportOutcome = input => window.saveOutcome(input);"
+            : args.path === "@/lib/swim/rehab-actions"
+              ? "export const saveSwimRehabAttachments = input => window.saveRehabAttachments(input); export const startSwimRehab = input => window.startRehab(input);"
             : args.path === "@/lib/programs/authored/actions"
               ? "export const previewAuthoredProgram = input => window.previewProgram(input); export const saveAuthoredProgram = (...args) => window.saveProgram(...args);"
             : args.path === "@/components/trash/DeleteSessionButton"
@@ -1049,6 +1130,82 @@ try {
     await save.click();
     await page.getByRole("button", { name: "Refresh workout", exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.courseCalls), ["edit-preview", "edit-preview", "edit-save"]);
+    stages.push(stage);
+  }
+
+  for (const width of [375, 1280]) {
+    stage = `swim-rehab-library-attachments-${width}`;
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => window.showRehabAttachments());
+    const protocolChoice = page.getByRole("checkbox");
+    await protocolChoice.check();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(protocolChoice).not.toBeChecked();
+    assert.equal(await page.evaluate(() => window.rehabCalls.length), 0);
+    await protocolChoice.check();
+    const saveRehab = page.getByRole("button", { name: "Save changes", exact: true });
+    await saveRehab.evaluate(button => { button.click(); button.click(); });
+    await expect(protocolChoice).toBeDisabled();
+    assert.equal(await page.evaluate(() => window.rehabCalls.length), 1);
+    await page.evaluate(() => window.resolveRehab({ error: "Review your changed schedule.", errorCode: "validation" }));
+    await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+    await expect(protocolChoice).toBeChecked();
+    await expect(protocolChoice).toBeEnabled();
+    await page.evaluate(() => { window.rehabMode = "success"; });
+    await saveRehab.click();
+    await expect(saveRehab).toHaveCount(0);
+    const attachmentCalls = await page.evaluate(() => window.rehabCalls);
+    assert.equal(attachmentCalls.length, 2);
+    assert.deepEqual(attachmentCalls[0], attachmentCalls[1]);
+    assert.deepEqual(attachmentCalls[0].protocolIds, ["00000000-0000-4000-8000-000000000041"]);
+    assert.equal(attachmentCalls[0].planId, "00000000-0000-4000-8000-000000000044");
+    assert.equal(await page.getByRole("link", { name: "Rehab library", exact: true }).getAttribute("href"), "/app/settings/rehab-protocols");
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    stages.push(stage);
+
+    stage = `swim-rehab-start-and-logger-${width}`;
+    await page.evaluate(() => window.showRehabWorkouts());
+    const startRehab = page.getByRole("button", { name: /^Start Shoulder-/ });
+    await startRehab.evaluate(button => { button.click(); button.click(); });
+    await expect(startRehab).toBeDisabled();
+    assert.equal(await page.evaluate(() => window.rehabCalls.length), 1);
+    await page.evaluate(() => window.resolveRehab({ error: "Could not confirm the start.", errorCode: "transient" }));
+    await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+    await expect(startRehab).toBeEnabled();
+    await page.evaluate(() => { window.rehabMode = "success"; });
+    await startRehab.click();
+    const rehabSessionId = await page.evaluate(() => window.rehabSessionId);
+    await expect(page.getByRole("link", { name: "Continue rehab", exact: true })).toHaveAttribute("href", `/app/sessions/${rehabSessionId}`);
+    assert.deepEqual(await page.evaluate(() => window.destinations), [`/app/sessions/${rehabSessionId}`]);
+    const startCalls = await page.evaluate(() => window.rehabCalls);
+    assert.equal(startCalls.length, 2);
+    assert.deepEqual(startCalls[0], startCalls[1]);
+    assert.equal(startCalls[0].workoutId, "00000000-0000-4000-8000-000000000045");
+    assert.equal(startCalls[0].protocolId, "00000000-0000-4000-8000-000000000041");
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.evaluate(() => window.showRehabLogger());
+    await expect(page.getByTestId("full-remaining")).toHaveText("4");
+    for (let remaining = 3; remaining >= 0; remaining--) {
+      await expect(page.getByTestId("movement-focus-log-button")).toContainText(/2\s*kg/);
+      await page.getByTestId("movement-focus-log-button").click();
+      await expect(page.getByTestId("full-remaining")).toHaveText(String(remaining));
+    }
+    await expect.poll(() => page.evaluate(() => window.rehabLogs.length)).toBe(4);
+    const rehabLogs = await page.evaluate(() => window.rehabLogs);
+    assert.deepEqual(rehabLogs.map(log => Number(log.prescriptionItemIndex)), [0, 2, 1, 3]);
+    assert.deepEqual(rehabLogs.map(log => Number(log.reps)), [8, 10, 8, 10]);
+    assert.deepEqual(rehabLogs.map(log => Number(log.weightKg)), [2, 2, 2, 2]);
+    assert.deepEqual(rehabLogs.map(log => Number(log.targetWeightKg)), [2, 2, 2, 2]);
+    assert.ok(rehabLogs.every(log => log.setKind === "tendon" && log.sessionId === rehabSessionId));
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.evaluate(() => window.showRehabWorkouts("completed"));
+    await expect(page.getByRole("link", { name: "View rehab", exact: true })).toHaveAttribute("href", `/app/sessions/${rehabSessionId}`);
+    await page.evaluate(() => window.showRehabWorkouts("deleted"));
+    await expect(page.getByRole("link", { name: "Restore from Trash", exact: true })).toHaveAttribute("href", "/app/trash");
+    await page.evaluate(() => window.showRehabWorkouts("removed"));
+    await expect(page.getByRole("region", { name: "Rehab workouts", exact: true })).toBeVisible();
+    assert.equal(await page.getByRole("button").count(), 0);
+    assert.equal(await page.getByRole("link").count(), 0);
     stages.push(stage);
   }
 

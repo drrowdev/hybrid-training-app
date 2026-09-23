@@ -9,6 +9,7 @@
 import { describe, it, expect } from "vitest";
 import { addedLoadFromSystemLoad } from "./system-load";
 import { resolveTargetLoadKg } from "./target-load";
+import { resolvePrescribedSnapshot } from "./prescribed-snapshot";
 
 const toPlate = (kg: number) => Math.round(kg / 2.5) * 2.5;
 
@@ -91,6 +92,23 @@ describe("resolveTargetLoadKg", () => {
     expect(
       resolveTargetLoadKg({ targetWeightKg: 7 }, { roundKg: toPlate, roundAbsoluteKg: toPlate }),
     ).toBe(7.5);
+  });
+
+  it.each([0, 0.5, 2, 3])("DC-R5 preserves an issued rehab dose of %skg in logger and saved targets", (kg) => {
+    const item = { kind: "tendon", targetWeightKg: kg, reps: 8, meta: { rehab: true } };
+    expect(resolveTargetLoadKg(item, { tmKg: 100, roundKg: toPlate, roundAbsoluteKg: toPlate })).toBe(kg);
+    expect(resolveTargetLoadKg(item, { isSystemLoad: true, bodyweightKg: 80, roundAbsoluteKg: toPlate })).toBe(kg);
+    expect(resolvePrescribedSnapshot(item, { tmKg: 100, roundToPlate: toPlate })).toMatchObject({
+      targetWeightKg: kg, targetReps: 8,
+    });
+  });
+
+  it("DC-R5 does not change ordinary tendon or strength rounding based on role alone", () => {
+    for (const kind of ["tendon", "main", "accessory", "warmup"]) {
+      expect(resolveTargetLoadKg({ kind, targetWeightKg: 2 }, { roundAbsoluteKg: toPlate })).toBe(2.5);
+    }
+    expect(resolveTargetLoadKg({ kind: "tendon", targetWeightKg: 2, meta: { rehab: "true" } },
+      { roundAbsoluteKg: toPlate })).toBe(2.5);
   });
 
   it("returns null when nothing determines a load", () => {

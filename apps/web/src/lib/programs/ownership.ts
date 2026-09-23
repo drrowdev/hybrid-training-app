@@ -3,10 +3,15 @@ import { z } from "zod";
 import { isBlockProgramKind, type BlockProgramKind } from "@hta/domain";
 import { isMissingScheduleFunction, ScheduleUnavailableError } from "@/lib/schedule/storage";
 
-export async function requireIndependentPrograms(client: SupabaseClient): Promise<void> {
+export async function independentProgramsAvailable(client: SupabaseClient): Promise<boolean> {
   const result = await client.rpc("independent_programs_ready");
-  if (isMissingScheduleFunction(result.error, "independent_programs_ready")) throw new ScheduleUnavailableError();
+  if (isMissingScheduleFunction(result.error, "independent_programs_ready")) return false;
   if (result.error || result.data !== true) throw new Error("Could not check program setup. Try again.");
+  return true;
+}
+
+export async function requireIndependentPrograms(client: SupabaseClient): Promise<void> {
+  if (!await independentProgramsAvailable(client)) throw new ScheduleUnavailableError();
 }
 
 const activeProgramSchema = z.object({

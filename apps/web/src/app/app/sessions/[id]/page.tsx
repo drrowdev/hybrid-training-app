@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { findSwimWorkoutForSession } from "@/lib/swim/navigation";
+import { readSwimRehabOrigin } from "@/lib/swim/rehab-workouts";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import {
   addCardioBlock,
@@ -300,6 +301,7 @@ export default async function SessionDetailPage({
   const plannedPrescription =
     (planned?.prescription as Prescription | null) ??
     ((session as { prescription?: Prescription | null }).prescription ?? null);
+  const swimRehab = readSwimRehabOrigin(plannedPrescription);
 
   // ADR 0050 — HYROX structured sessions (run/erg/interval/circuit/compromised/
   // simulation) use a dedicated session-level completion form: confirm station
@@ -988,7 +990,7 @@ export default async function SessionDetailPage({
     >
     <div style={{ display: "grid", gap: 18 }}>
       <header>
-        <BackLink href="/app" label="Today" />
+        <BackLink href={swimRehab ? `/app/swim/${swimRehab.workoutId}` : "/app"} label={swimRehab ? "Swimming workout" : "Today"} />
         {/* Single crumb row — e.g. "29 MAY · ENDURANCE · WK 1". Replaces
             the older 2-row header that duplicated the date as both a
             chip eyebrow and a stand-alone metadata strip. */}
@@ -1730,7 +1732,7 @@ export default async function SessionDetailPage({
           prescription and no logged row until finish. Hybrid sessions
           still render it (you can add strength); quick/planned strength
           still render it (that IS the right empty state). */}
-      {!isComplete && !isPureCardio && (
+      {!isComplete && !isPureCardio && !swimRehab && (
         <AddToWorkout
           sessionId={id}
           cardioAction={addCardioBlock}

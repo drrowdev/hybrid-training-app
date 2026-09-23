@@ -4642,3 +4642,36 @@ Multi-program readers/navigation, Swimming rehab UI, complete export/history
 wiring and new native acceptance remain in progress. The earlier seven-case
 native evidence covers the superseded narrow model only. No hosted DDL, updater
 widening, activation, merge or deployment is authorized.
+
+## [2026-09-23] implementation | Shared-library Swimming rehab and owned-program export
+
+The ownership storage foundation is qualified at `72148360`: the release
+coordinator consumed the exact automatic core and storage runs, including all
+62 SQL stages and the original 57 synthetic UI stages. No migration, rollback,
+RLS or grant changes are included in this application increment.
+
+Swimming programs now attach protocols from the account library. A swimming
+workout opens a separate ordinary rehab session through the approved locked
+start RPC, retaining the issued dose, side, grouping, revision and swimming
+origin. Request replay and later reopening use the issued snapshot rather than
+recompiling an edited library protocol. Detachment, Trash and permanent removal
+do not offer a second start. Current exercise availability and account
+limitations are checked before a new start; unreadable safety inputs fail closed.
+
+The existing logger handles the rehab sets, links back to the swimming workout,
+and leaves native swimming measurements untouched. History distinguishes the
+rehab session from the swimming recording. Export includes program instances,
+recommendations, roadmaps, the shared protocol library and both attachment
+tables, while preserving issued sessions and start receipts.
+
+Visual review exposed the logger rounding a prescribed 2 kg rehab load to 2.5 kg.
+The shared load resolver now preserves explicit rehab weights, including 0 kg,
+for both the displayed load and saved prescribed target. Ordinary percentage
+and warm-up rounding remain unchanged.
+
+Local coverage includes the actual attachment and rehab logger controls at
+375 and 1280 pixels, error/retry identity, all four superset sets and retained
+result links, alongside route, ownership, safety and export checks. The complete
+four-program navigation, remaining scoped readers and new-model native
+acceptance are still pending. This is an integrated application increment, not
+release or production approval.

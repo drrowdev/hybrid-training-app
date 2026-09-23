@@ -471,6 +471,15 @@ export type Prescription = {
    */
   meta?: {
     authoredWorkout?: AuthoredWorkout;
+    swimRehab?: {
+      version: 1;
+      planId: string;
+      workoutId: string;
+      scheduledDate: string;
+      protocolId: string;
+      protocolRevision: number;
+      protocolName?: string;
+    };
     /**
      * The user moved this workout to a different calendar slot. Forward plan
      * rewrites preserve it instead of restoring the program's original day.

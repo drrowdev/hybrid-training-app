@@ -26,6 +26,10 @@ let outcomesAvailable = true;
 let outcomeCapabilityFails = false;
 let outcomeReadFails = false;
 let outcomeRows: unknown[] = [];
+let programsAvailable = true;
+let programCapabilityFails = false;
+let programReadFailure = "";
+let programRows: Record<string, unknown[]> = {};
 const filters: Array<{ table: string; column: string; value: unknown }> = [];
 const selectedColumns: Record<string, string> = {};
 
@@ -44,9 +48,10 @@ function makeBuilder(table: string) {
           error: null,
         }
       : {
-          data: table === "swim_import_outcomes" ? outcomeRows : [],
+          data: table === "swim_import_outcomes" ? outcomeRows : programRows[table] ?? [],
           error: (swimReadFails && table === "swim_workouts") || (importReadFails && table === "swim_imports") ||
-            (matchReadFails && table === "swim_import_matches") || (outcomeReadFails && table === "swim_import_outcomes")
+            (matchReadFails && table === "swim_import_matches") || (outcomeReadFails && table === "swim_import_outcomes") ||
+            table === programReadFailure
             ? { message: "read unavailable" }
             : null,
         };
@@ -88,6 +93,12 @@ vi.mock("@/lib/supabase/server", () => ({
 }));
 vi.mock("@/lib/swim/capability", () => ({
   swimSchemaAvailable: vi.fn(async () => swimmingAvailable),
+}));
+vi.mock("@/lib/programs/ownership", () => ({
+  independentProgramsAvailable: async () => {
+    if (programCapabilityFails) throw new Error("SYNTHETIC_PRIVATE");
+    return programsAvailable;
+  },
 }));
 vi.mock("@/lib/swim/import-storage", () => ({
   swimImportStorageAvailable: vi.fn(async () => importsAvailable),
@@ -139,6 +150,7 @@ beforeEach(() => {
   outcomeCapabilityFails = false;
   outcomeReadFails = false;
   outcomeRows = [];
+  programsAvailable = true; programCapabilityFails = false; programReadFailure = ""; programRows = {};
   filters.length = 0;
   currentUser = { id: "u1", email: "u1@example.test", created_at: "2026-01-01T00:00:00Z" };
 });
@@ -151,6 +163,13 @@ const REQUIRED_TABLES = [
   "tm_history",
   "training_blocks",
   "planned_sessions",
+  "program_instances",
+  "program_recommendations",
+  "training_seasons",
+  "season_blocks",
+  "rehab_protocols",
+  "program_rehab_bindings",
+  "swim_plan_rehab_bindings",
   "sessions",
   "session_movements",
   "set_logs",
@@ -180,6 +199,13 @@ const REQUIRED_SECTIONS = [
   "tm_history",
   "training_blocks",
   "planned_sessions",
+  "program_instances",
+  "program_recommendations",
+  "training_seasons",
+  "season_blocks",
+  "rehab_protocols",
+  "program_rehab_bindings",
+  "swim_plan_rehab_bindings",
   "sessions",
   "session_movements",
   "set_logs",
@@ -222,6 +248,49 @@ const FORBIDDEN_TABLES = [
 ];
 
 describe("GET /api/me/export", () => {
+  it("DC-R5/R6 retains each program, issued rehab and removed-attachment receipts without native swimming fabrication", async () => {
+    programRows = {
+      program_instances: [{ id: "strength", block_id: "block-strength", instance: { trainingMaxes: { squat: 90 } }, deleted_at: "2026-09-21" },
+        { id: "hybrid", block_id: "block-hybrid", instance: { trainingMaxes: { squat: 100 } }, deleted_at: null }],
+      rehab_protocols: [{ id: "shared", revision: 3, definition: { items: [{ movementId: "lift", sets: 2, reps: 8 }] } }],
+      program_rehab_bindings: [{ program_instance_id: "strength", rehab_protocol_id: "shared" }],
+      sessions: [{ id: "rehab", prescription: { meta: { swimRehab: { planId: "swimming", protocolId: "shared", protocolRevision: 2 } } } }],
+      engine_override_events: [{ context: { kind: "swim-rehab-start-v1", sessionId: "rehab" } }],
+    };
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    for (const [table, rows] of Object.entries(programRows)) expect(body[table]).toEqual(rows);
+    for (const table of ["program_instances", "program_recommendations", "training_seasons", "season_blocks",
+      "rehab_protocols", "program_rehab_bindings", "swim_plan_rehab_bindings"]) {
+      expect(filters).toContainEqual({ table, column: "user_id", value: currentUser!.id });
+      expect(filters.some((filter) => filter.table === table && ["status", "deleted_at"].includes(filter.column))).toBe(false);
+    }
+    expect(body.independent_programs_available).toBe(true);
+    expect(body.swim_plan_rehab_bindings).toEqual([]);
+    expect(body.cardio_logs).toEqual([]);
+  });
+  it("retains the existing program library export before independent storage is installed", async () => {
+    programsAvailable = false;
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.independent_programs_available).toBe(false);
+    expect(body.swim_plan_rehab_bindings).toEqual([]);
+    expect(fromCalls).not.toContain("swim_plan_rehab_bindings");
+    expect(fromCalls).toContain("rehab_protocols");
+    expect(fromCalls).toContain("program_instances");
+  });
+  it.each(["capability", "program_instances", "program_recommendations", "training_seasons", "season_blocks",
+    "rehab_protocols", "program_rehab_bindings", "swim_plan_rehab_bindings", "sessions", "engine_override_events"])(
+    "fails rather than exporting partial program history after a %s failure", async (failure) => {
+      programCapabilityFails = failure === "capability"; programReadFailure = failure;
+      const response = await GET();
+      expect(response.status).toBe(503);
+      const body = await response.json();
+      expect(body).not.toHaveProperty("program_instances");
+      expect(JSON.stringify(body)).not.toContain("SYNTHETIC_PRIVATE");
+    });
   it("DC-SW5/SW8 exports explicit outcome history and removals while new confirmations are disabled", async () => {
     vi.stubEnv("SWIM_IMPORT_OUTCOMES_ENABLED", "false");
     const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;

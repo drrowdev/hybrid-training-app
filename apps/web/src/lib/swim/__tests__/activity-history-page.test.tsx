@@ -36,7 +36,7 @@ const native = {
   completed_at: "2026-09-22T02:00:00Z", fatigue: null, soreness: null, session_rpe: 7, duration_min: 60,
 };
 const requests: URL[] = [];
-let nativeRows: typeof native[];
+let nativeRows: (typeof native & { swim_rehab?: unknown })[];
 let failedTable: string | null;
 
 beforeEach(() => {
@@ -92,6 +92,21 @@ describe("DC-SW3/SW7/SW8 independent swimming in shared History", () => {
     const html = renderToStaticMarkup(await SessionsListPage());
     expect(html.match(/<li /g)).toHaveLength(1);
     expect(html).toContain(`/app/sessions/${nativeId}`);
+  });
+  it("DC-R5 keeps attached rehab and the swim recording as separate results in the same program", async () => {
+    nativeRows = [{ ...native, title: "Shoulder rehab", swim_rehab: {
+      version: 1, planId: nativeId, workoutId: swim.id, scheduledDate: swim.scheduledDate,
+      protocolId: user, protocolRevision: 2, protocolName: "Shoulder rehab",
+    } }];
+    const html = renderToStaticMarkup(await SessionsListPage());
+    expect(html.match(/<li /g)).toHaveLength(2);
+    expect(html.match(/data-session-delete=/g)).toHaveLength(1);
+    expect(html).toContain(`/app/sessions/${nativeId}`);
+    expect(html).toContain(`/app/swim/recordings/${swim.importId}?workout=${swim.id}`);
+    expect(html).not.toContain(`/app/sessions/${swim.id}`);
+    expect(html).toContain("Swimming · Rehab");
+    expect(requests.find((url) => url.pathname.endsWith("/sessions"))?.searchParams.get("select"))
+      .toContain("swim_rehab:prescription->meta->swimRehab");
   });
   it("retains the existing empty-state action when both sources are empty", async () => {
     nativeRows = [];

@@ -4,6 +4,7 @@ import { swimSchemaAvailable } from "@/lib/swim/capability";
 import { connectionColumns, importColumns, swimImportStorageAvailable } from "@/lib/swim/import-storage";
 import { exportSwimImportMatches, swimImportMatchingAvailable, type SwimImportMatch } from "@/lib/swim/import-matching";
 import { exportSwimImportOutcomes, swimImportOutcomesAvailable, type SwimImportOutcome } from "@/lib/swim/import-outcomes";
+import { independentProgramsAvailable } from "@/lib/programs/ownership";
 
 /**
  * GDPR Article 15 / 20 — right to access + portability.
@@ -72,6 +73,11 @@ export async function GET() {
   }
 
   const swimmingAvailable = await swimSchemaAvailable(supabase);
+  let programsAvailable: boolean;
+  try { programsAvailable = await independentProgramsAvailable(supabase); }
+  catch {
+    return NextResponse.json({ error: "Program history could not be exported. Try again." }, { status: 503 });
+  }
   let swimImportsAvailable: boolean;
   let matchesAvailable: boolean;
   let swimMatches: SwimImportMatch[];
@@ -111,6 +117,13 @@ export async function GET() {
     swimWorkouts,
     swimConnections,
     swimImports,
+    programInstances,
+    programRecommendations,
+    trainingSeasons,
+    seasonBlocks,
+    rehabProtocols,
+    programRehabBindings,
+    swimRehabBindings,
   ] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle(),
     supabase.from("training_maxes").select(MOVEMENT_JOIN).order("created_at", { ascending: true }),
@@ -143,7 +156,22 @@ export async function GET() {
     swimImportsAvailable
       ? supabase.from("swim_imports").select(importColumns).eq("user_id", user.id).order("received_at", { ascending: true })
       : Promise.resolve({ data: [], error: null }),
+    supabase.from("program_instances").select("*").eq("user_id", user.id).order("created_at", { ascending: true }),
+    supabase.from("program_recommendations").select("*").eq("user_id", user.id).order("created_at", { ascending: true }),
+    supabase.from("training_seasons").select("*").eq("user_id", user.id).order("created_at", { ascending: true }),
+    supabase.from("season_blocks").select("*").eq("user_id", user.id).order("created_at", { ascending: true }),
+    supabase.from("rehab_protocols").select("*").eq("user_id", user.id).order("created_at", { ascending: true }),
+    supabase.from("program_rehab_bindings").select("*").eq("user_id", user.id),
+    programsAvailable
+      ? supabase.from("swim_plan_rehab_bindings").select("*").eq("user_id", user.id)
+      : Promise.resolve({ data: [], error: null }),
   ]);
+
+  if ([trainingBlocks, plannedSessions, programInstances, programRecommendations, trainingSeasons,
+    seasonBlocks, rehabProtocols, programRehabBindings, swimRehabBindings, engineOverrideEvents, sessions, setLogs]
+    .some((result) => result.error)) {
+    return NextResponse.json({ error: "Program history could not be exported. Try again." }, { status: 503 });
+  }
 
   if (
     swimPlans.error ||
@@ -173,6 +201,14 @@ export async function GET() {
     tm_history: tmHistory.data ?? [],
     training_blocks: trainingBlocks.data ?? [],
     planned_sessions: plannedSessions.data ?? [],
+    independent_programs_available: programsAvailable,
+    program_instances: programInstances.data ?? [],
+    program_recommendations: programRecommendations.data ?? [],
+    training_seasons: trainingSeasons.data ?? [],
+    season_blocks: seasonBlocks.data ?? [],
+    rehab_protocols: rehabProtocols.data ?? [],
+    program_rehab_bindings: programRehabBindings.data ?? [],
+    swim_plan_rehab_bindings: swimRehabBindings.data ?? [],
     sessions: sessions.data ?? [],
     session_movements: sessionMovements.data ?? [],
     set_logs: setLogs.data ?? [],

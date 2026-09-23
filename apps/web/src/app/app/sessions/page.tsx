@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { loadSwimActivity } from "@/lib/swim/activity-history";
 import { formatActivityDate, mergeTrainingActivity, trainingActivityHref, SWIM_TRAINING_LABEL } from "@/lib/swim/activity-presentation";
+import { readSwimRehabOrigin } from "@/lib/swim/rehab-workouts";
 
 export default async function SessionsListPage() {
   const supabase = await createClient();
@@ -23,7 +24,7 @@ export default async function SessionsListPage() {
     supabase
       .from("sessions")
       .select(
-        "id, title, performed_at, completed_at, fatigue, soreness, session_rpe, duration_min",
+        "id, title, performed_at, completed_at, fatigue, soreness, session_rpe, duration_min, swim_rehab:prescription->meta->swimRehab",
       )
       .eq("user_id", user.id)
       .is("deleted_at", null)
@@ -33,6 +34,8 @@ export default async function SessionsListPage() {
   ]);
   if (profileError || sessionsError || !sessions) throw new Error("Your training history could not be loaded.");
   const activities = mergeTrainingActivity(sessions, swims, profile?.timezone ?? "UTC", 100);
+  const rehabSessionIds = new Set(sessions.filter((session) =>
+    session.swim_rehab != null && readSwimRehabOrigin({ meta: { swimRehab: session.swim_rehab } })).map((session) => session.id));
 
   return (
     <div className="space-y-6">
@@ -81,6 +84,7 @@ export default async function SessionsListPage() {
                 </div>
                 <div className="text-xs text-foreground/60">
                   {activity.kind === "swim" ? SWIM_TRAINING_LABEL[activity.status] : <>
+                    {rehabSessionIds.has(activity.id) && "Swimming · Rehab · "}
                     {activity.session.completed_at ? "✓ complete" : "in progress"}
                     {activity.session.session_rpe ? ` · Effort ${activity.session.session_rpe}` : ""}
                     {activity.session.duration_min ? ` · ${activity.session.duration_min} min` : ""}

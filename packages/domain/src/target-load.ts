@@ -10,6 +10,7 @@
  */
 import { addedLoadFromSystemLoad } from "./system-load";
 import { readProgramLoadBasis, resolveProgramWorkingMax } from "./program-load-basis";
+import { isRehabItem } from "./rehab-section";
 
 export type TargetLoadInput = {
   /** Percentage of the working max (40 = 40%), when the item is %-anchored. */
@@ -94,6 +95,8 @@ export function resolveTargetLoadKg(
   }
 
   const absolute = num(item.targetWeightKg);
+  // Library rehab doses are explicit, including an unloaded 0 kg set.
+  if (isRehabItem(item) && absolute != null && absolute >= 0) return absolute;
   // A system-load engine already resolved its ramp to an ADDED load, so an
   // explicit 0 means "bodyweight" and is a prescription, not a missing value.
   if (absolute != null && (absolute > 0 || (ctx.isSystemLoad && absolute === 0))) {
