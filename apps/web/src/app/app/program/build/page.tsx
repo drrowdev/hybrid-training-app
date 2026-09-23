@@ -10,6 +10,8 @@ import Link from "next/link";
 import { todayYmd } from "@/lib/dates";
 import { getSwimNavigation } from "@/lib/swim/navigation";
 import { privateSwimCourseAvailable } from "@/lib/swim/course-capability";
+import { listRehabProtocols } from "@/lib/rehab-protocols/queries";
+import { formatProtocolSummary } from "@/lib/rehab-protocols/summary";
 
 const movementSchema = z.object({
   id: z.string(), slug: z.string(), display_name: z.string(), pattern: z.string(),
@@ -25,12 +27,13 @@ export default async function ProgramBuildPage({ searchParams }: {
   const client = await createClient();
   const params = await searchParams;
   const editBlockId = params.edit ? z.string().uuid().parse(params.edit) : undefined;
-  const [snapshot, profileResult, initial, navigation, courses] = await Promise.all([
+  const [snapshot, profileResult, initial, navigation, courses, rehabProtocols] = await Promise.all([
     loadAvailableTrainingSchedule(client),
     client.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
     editBlockId ? loadAuthoredProgram(editBlockId) : undefined,
     getSwimNavigation(client, user.id),
     privateSwimCourseAvailable(client),
+    listRehabProtocols(),
   ]);
   if (!snapshot) return <section><h1>New program</h1><p role="status">Program setup is temporarily unavailable. Try again shortly.</p><Link href="/app/programs">Back to programs</Link></section>;
   if (profileResult.error) throw new Error("Could not load your training settings.");
@@ -66,6 +69,7 @@ export default async function ProgramBuildPage({ searchParams }: {
   catalog.sort((a, b) => a.displayName.localeCompare(b.displayName));
   const activity: ProgramActivity = params.activity === "strength" || params.activity === "running" ? params.activity : "hybrid";
   return <ProgramBuilder catalog={catalog} today={todayYmd(profileResult.data?.timezone ?? "UTC")}
+    rehabProtocols={rehabProtocols.map((protocol) => ({ id: protocol.id, name: protocol.name, summary: formatProtocolSummary(protocol.items) }))}
     commitments={snapshot.entries} activity={activity} initial={initial} editBlockId={editBlockId} initialStartDate={initialStartDate}
     workoutId={workoutId} plannedSessionId={plannedSessionId}
     swimHref={navigation.setupEnabled && courses ? "/app/swim/import" : navigation.hasPlans ? "/app/swim" : null} />;

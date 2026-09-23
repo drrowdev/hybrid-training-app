@@ -4606,3 +4606,39 @@ to qualified5446db. No application, SQL, schema/RLS, privileged client,
 updater, timeout, media or runtime-boundary change was made. This is local
 schema/transport evidence; exact-head public and native-seven qualification
 remain outstanding, with no additional hosted DDL or activation authorization.
+
+## [2026-09-23] decision | Independent program storage and shared rehabilitation foundation
+
+The owner corrected the previous single-primary model: one active Strength,
+Running, Swimming and Hybrid program may coexist. Only Hybrid mixes ordinary
+modalities; shared account-library rehab may attach to each type. ADR0087 and
+DC-R5/DC-R6 record the approved forward-only ownership/load design and the
+separately approved Swimming attachment representation. Existing plans remain
+unclassified and unchanged; an active older non-swim program must be explicitly
+ended before typed activation.
+
+The first source increment adds0158/normal159, exact unused-down refusals,
+per-kind uniqueness, owned parent consistency, same-kind replacement and old
+archive-all RPC refusal. Parent foreign keys are replaced under their existing
+names rather than duplicated, preserving unambiguous PostgREST embeds. Typed
+percentage prescriptions carry their own basis while measured1RM stays shared.
+Completion waits for completed sessions; progression has an owned session,
+instance-CAS and replay boundary.
+
+Authored rehab uses real protocol IDs, library revisions, dose, side and grouping.
+Focused Running rejects ordinary strength/circuits even when labelled rehab.
+Swimming attachments and rehab starts use the approved narrow binding table,
+ordinary issued sessions and durable receipts, without changing swimming course
+definitions or native results. Detached or purged issued work still prevents
+unused rollback.
+
+Local focused domain, materializer, rehab, schedule and progression checks and
+web/account-flow/runner type checks cover source contracts. New CI-only disposable
+stages exercise creation orders, lifecycle, legacy and direct-writer refusals,
+owned loading, attachments, replay and erasure; their real SQL results are
+pending. Windows retains the existing POSIX-private-evidence test exclusions.
+This is an incremental storage qualification point, not new-model acceptance.
+Multi-program readers/navigation, Swimming rehab UI, complete export/history
+wiring and new native acceptance remain in progress. The earlier seven-case
+native evidence covers the superseded narrow model only. No hosted DDL, updater
+widening, activation, merge or deployment is authorized.

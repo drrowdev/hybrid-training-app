@@ -29,6 +29,8 @@ import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import type { HybridInstance } from "@/lib/programs/hybrid/engine";
 import { resolveHybridTmPercent } from "@/lib/programs/hybrid/engine";
+import { applyProgramLoadBases } from "@hta/domain";
+import { DEFAULT_ROUNDING_KG } from "./rounding";
 import {
   buildPlatformContext,
   validateCustomMovementBindings,
@@ -850,7 +852,7 @@ async function runProgramInstance(
   const requestInput = { ...parsed.data };
   delete requestInput.review;
   if (!previewOnly && review) {
-    const replay = await scheduleReplay(supabase, review.requestId, editBlockId ? "primary-update" : "primary-create", requestInput);
+    const replay = await scheduleReplay(supabase, review.requestId, editBlockId ? "primary-update" : "primary-create", requestInput, review.replaceBlockId);
     if (replay !== null) {
       const saved = z.object({
         block_id: z.string().uuid(), program_instance_id: z.string().uuid(), skipped: z.number(),
@@ -1596,6 +1598,7 @@ async function computeForeignWrite(
     resolveMovement,
     weekdays,
     startedOn,
+    programOwnedLoads: true,
     ...(assistance ? { assistance } : {}),
     ...(foreignAccessories ? { accessories: foreignAccessories } : {}),
     ...(startWeekIndex != null ? { startWeekIndex } : {}),
@@ -1734,8 +1737,13 @@ async function deployPreparedProgram(
 ): Promise<LegacyDeploymentResult | { preview: ProgramSchedulePreview }> {
   const { flow } = options;
   const input = flow && options.startWithRecoveryWeek ? prependRecovery(original) : original;
+  const programKind = !STRENGTH_ONLY_PROGRAM_IDS.has(input.block.programId) ||
+    input.plannedSessions.some((row) => row.prescription.items.some((item) => item.kind.startsWith("cardio_")))
+    ? "hybrid" : "strength";
+  const bases = new Map(input.tmPercents.map((seed) => [seed.movementId, seed.programLoadBasis]));
   const args = {
     p_block: {
+      program_kind: programKind,
       program_id: input.block.programId, program_family: input.block.programFamily,
       started_on: input.block.startedOn, weeks: input.block.weeks, days_per_week: input.block.daysPerWeek,
       day_index_overrides: input.block.dayIndexOverrides, cardio_source: input.block.cardioSource,
@@ -1743,10 +1751,10 @@ async function deployPreparedProgram(
     },
     p_planned_sessions: input.plannedSessions.map((row) => ({
       week_index: row.weekIndex, day_index: row.dayIndex, slot: row.slot, title: row.title,
-      role: row.role, prescription: row.prescription, session_modality: row.sessionModality,
+      role: row.role, prescription: { ...row.prescription, items: applyProgramLoadBases(row.prescription.items, bases) }, session_modality: row.sessionModality,
       effective_stress_load: row.effectiveStressLoad,
     })),
-    p_tm_percents: input.tmPercents,
+    p_tm_percents: [],
     p_program_instance: {
       program_id: input.programInstance.programId, program_family: input.programInstance.programFamily,
       instance: input.programInstance.instance, setup_input: input.programInstance.setupInput,
@@ -2795,6 +2803,9 @@ async function updateForeignProgramInstance(
   }
   const rewriteArgs = {
       p_block_id: blockId,
+      programKind: !STRENGTH_ONLY_PROGRAM_IDS.has(args.programId) ||
+        write.sessions.some((row) => row.prescription.items.some((item) => item.kind.startsWith("cardio_")))
+        ? "hybrid" : "strength",
       p_strength_updates: strengthPrescriptionUpdates,
       p_deletions: deletionSnapshots,
       p_insertions: newRows,
@@ -2808,7 +2819,7 @@ async function updateForeignProgramInstance(
             : "internal",
         notes: customization?.displayName ?? engine.meta.name,
       },
-      p_tm_percents: write.tmPercents,
+      p_tm_percents: args.flow?.active.find((program) => program.id === blockId)?.program_kind != null ? [] : write.tmPercents,
       p_program_instance: {
         instance,
         setup_input: programSetupAuditInput({
@@ -3050,6 +3061,7 @@ async function createNativeProgramInstance(
     tmPercents: mat.mainMovementIds.map((movementId) => ({
       movementId,
       tmPercent: hybridTmPercent,
+      programLoadBasis: { version: 1 as const, kind: "one-rm" as const, percent: hybridTmPercent, roundingKg: DEFAULT_ROUNDING_KG },
     })),
     programInstance: {
       programId,

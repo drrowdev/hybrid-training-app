@@ -24,6 +24,7 @@ export type PrescribedSnapshotInput = {
   kind?: string;
   percentTm?: number | null;
   targetWeightKg?: number | null;
+  meta?: Record<string, unknown>;
   /** The engine already subtracted bodyweight — see `TargetLoadInput`. */
   systemLoad?: boolean;
   reps?: number | null;
@@ -49,6 +50,7 @@ export type PrescribedSnapshotInput = {
 export type PrescribedSnapshotContext = {
   /** Resolved training max in kg for this movement, or null when unanchored. */
   tmKg?: number | null;
+  oneRmKg?: number | null;
   /** What `percentTm` is a percentage of. 5/3/1 → "TM"; TB / GP / HYROX → "1RM". */
   basis?: "TM" | "1RM";
   /**
@@ -116,6 +118,7 @@ export function resolvePrescribedSnapshot(
     { ...item, kind: item.kind ?? null },
     {
       tmKg: ctx.tmKg,
+      oneRmKg: ctx.oneRmKg,
       ...(ctx.isSystemLoad ? { isSystemLoad: true } : {}),
       bodyweightKg: ctx.bodyweightKg,
       roundKg: round,

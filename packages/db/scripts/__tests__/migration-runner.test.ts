@@ -9,11 +9,11 @@ import { projectMigrationError } from "../migrate-evidence";
 import { rehearseMigrationRunner } from "../../integration-tests/migration-runner-rehearsal";
 
 describe("canonical migration file boundaries", () => {
-  it("preserves all158 canonical metadata and statement bytes without changing source", () => {
+  it("preserves all159 canonical metadata and statement bytes without changing source", () => {
     const migrations = readMigrationFiles({ migrationsFolder: "./drizzle" });
     const original = structuredClone(migrations);
     const bounded = migrationFileBoundaries(migrations);
-    expect(bounded).toHaveLength(158);
+    expect(bounded).toHaveLength(159);
     bounded.forEach((migration, index) => {
       const source = original[index]!;
       expect(migration).toEqual({ ...source,

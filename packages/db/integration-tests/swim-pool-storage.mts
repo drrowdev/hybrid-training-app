@@ -18,6 +18,7 @@ import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations }
 import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehearsal.ts";
 import { rehearseModularSchedule } from "./modular-schedule-rehearsal.ts";
 import { rehearseModularProductionUpdate } from "./modular-production-update-rehearsal.ts";
+import { rehearseIndependentPrograms } from "./independent-programs-rehearsal.ts";
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
 import { MigrationRunnerRehearsalError, rehearseMigrationRunner } from "./migration-runner-rehearsal.ts";
@@ -36,6 +37,7 @@ const stages: string[] = [];
 const knownFailures = new Map<string, { migration: number; line: number }>();
 let failureLocation: { migration: number; line: number } | undefined;
 let modularAssertionLine: number | undefined;
+let ownershipAssertionLine: number | undefined;
 let migrationRunnerDiagnostic: MigrationRunnerRehearsalError["diagnostic"] | undefined;
 let stage = "guard", status = "failed", code = "unexpected";
 let sql: ReturnType<typeof postgres> | undefined;
@@ -721,15 +723,25 @@ try {
   stages.push(...await rehearseModularSchedule(database, true, (name) => { stage = name; }));
   await rehearseModularProductionUpdate(database, (name) => { stage = name; });
   stages.push(stage);
+  stage = "independent-programs-rehearsal";
+  const ownershipSource = readFileSync(new URL("../drizzle/0158_independent_program_ownership.sql", import.meta.url), "utf8");
+  for (const match of ownershipSource.matchAll(/\bRAISE EXCEPTION '((?:''|[^'])*)'/g)) {
+    knownFailures.set(match[1].replaceAll("''", "'"), {
+      migration: 158, line: ownershipSource.slice(0, match.index).split("\n").length,
+    });
+  }
+  stages.push(...await rehearseIndependentPrograms(database, (name) => { stage = name; }));
   status = "passed";
 } catch (error) {
   if (error instanceof MigrationRunnerRehearsalError) migrationRunnerDiagnostic = error.diagnostic;
   if (error instanceof assert.AssertionError) {
     const location = error.stack?.match(/modular-schedule-rehearsal\.ts:(\d+):\d+/);
     if (location) modularAssertionLine = Number(location[1]);
+    const ownershipLocation = error.stack?.match(/independent-programs-rehearsal\.ts:(\d+):\d+/);
+    if (ownershipLocation) ownershipAssertionLine = Number(ownershipLocation[1]);
   }
   if (error instanceof Error) failureLocation = knownFailures.get(error.message);
-  const known = ["42501", "23503", "23505", "23514", "22023", "P0001", "42601", "42703", "42883", "42P01", "42P07", "42704", "25P02", "57014", "55P03", "40P01", "40001"];
+  const known = ["42501", "23503", "23505", "23514", "22023", "P0001", "42601", "42702", "42703", "42883", "42P01", "42P07", "42704", "25P02", "55000", "57014", "55P03", "40P01", "40001"];
   code = typeof error === "object" && error !== null && "code" in error &&
     typeof error.code === "string" ? (known.includes(error.code) ? error.code : error.code === "ERR_ASSERTION" ? "assertion" : "unexpected") : "unexpected";
   if (error instanceof ReviewStorageRefusal || error instanceof ProductionInspectionRefusal) code = error.code;
@@ -746,6 +758,7 @@ console.log(JSON.stringify({
   scope: "swim-pool-storage", sha: /^[0-9a-f]{40}$/.test(process.env.TESTED_SHA ?? "") ? process.env.TESTED_SHA : null,
   status, stages, ...(status === "failed" ? { stage, code, ...(failureLocation ? { failureLocation } : {}),
     ...(modularAssertionLine ? { modularAssertionLine } : {}),
+    ...(ownershipAssertionLine ? { ownershipAssertionLine } : {}),
     ...(migrationRunnerDiagnostic ? { migrationRunnerDiagnostic } : {}) } : {}),
 }));
 if (status !== "passed" && process.env.GITHUB_ACTIONS === "true") {

@@ -388,6 +388,10 @@ If a row is added here, the corresponding code constant must carry the `// heuri
 
 - **DC-R4 — Block direction fixed; switching mid-block blocked (new §5.1 "switching mid-block is the most common self-sabotage")** [EV] — Once a block is started, its archetype and weekly volume targets are fixed for the block's duration. Mid-block archetype change is blocked at the API level; requires explicit override + consent + audit log entry. *Test:* attempting to change archetype on week 3 of a 6-week block returns an `override_required` response with the cited rationale. **Confidence: HIGH-MODERATE.**
 
+- **DC-R5 - Independent program ownership (owner decision, 2026-09-23; ADR 0087)** [DEF] - One active Strength, Running, Swimming and Hybrid program may coexist. Only Hybrid intentionally mixes ordinary modalities; an owned library rehab attachment is permitted in every type. Creation, explicit same-type replacement, editing, completion and restoration preserve other types and historical identities. Existing unclassified programs require explicit ending before new typed activation; no automatic classification or ending. *Test:* all creation orders preserve independent slots; duplicate or other-type replacements fail; merely starting the last workout does not complete a program.
+
+- **DC-R6 - Program-owned working load (owner decision, 2026-09-23; ADR 0087)** [DEF] - Measured strength and actual workload remain account-owned. Each program owns its working-max basis, progression and targets. Issued prescriptions and logged snapshots retain the appropriate basis; starting or editing another program cannot change it. *Test:* two programs using the same movement and measured 1RM retain different working percentages, and an engine-owned working max is not changed by another program's setup.
+
 ## S. Pre-mortem-derived guardrails (new in this revision)
 
 - **DC-S1 — Explicit override path with consent for conservative-default deviations (new §10 pre-mortem #1)** [EV] — When a user wants to override a literature-derived conservative default (e.g., DC-D1 separation thresholds, DC-N1 polarized distribution, DC-J2/O5 progression ramps), the engine surfaces the source + confidence label + the specific trade-off, and requires explicit acknowledgement. The override is recorded in the audit log. *Test:* overriding DC-D1 surfaces "Robineau 2016 HIGH: substantial mTORC1 recovery at 6h+" before applying the override. **Confidence: HIGH** (`new` peer-reviewed pre-mortem + plan §3 override-and-warn principle + v1's continuity bias).
@@ -670,10 +674,12 @@ correction retain history. No date/distance or provider-reference inference.
   for acceptance, never catch-up. Started swims can finish after archive, with
   actual workload credited but no progression of a replacement plan. Session
   trash/undo retains the link; hard purge may clear it while retaining targets.
-  **Modular extension (ADR 0085):** a complete mixed primary program and a
-  standalone swim plan coexist without shared end dates or lifecycle cascades.
-  Both setup directions review the shared date-aware calendar. Ending, moving,
-  replacing or restoring one program never silently moves or ends the other.
+  **Independent-program extension (ADR 0087):** Strength, Running, Swimming and
+  Hybrid coexist without shared end dates or lifecycle cascades. All setup
+  directions review the shared date-aware calendar. Ending, moving, replacing
+  or restoring one program never silently moves or ends another. Swimming rehab
+  attachments use the shared account library and separate ordinary rehab logs;
+  they do not alter source swimming prescriptions or fabricate native outcomes.
 - **DC-SW8 - Owned, atomic single logging [DEF].** Composite ownership links and
   RLS protect plans, workouts and sessions. Concurrent starts obtain one ordinary
   session. One serialized completion atomically writes the native result, its

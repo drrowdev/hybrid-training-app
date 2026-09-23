@@ -4,7 +4,7 @@ import { commitTrainingSchedule, isMissingScheduleFunction, loadAvailableTrainin
 
 const name = "training_schedule_snapshot";
 function client(data: unknown, error: { code: string; message: string } | null = null) {
-  const rpc = vi.fn(async () => ({ data, error }));
+  const rpc = vi.fn(async (_routine: string, _parameters?: Record<string, unknown>) => ({ data, error }));
   return { rpc, db: { rpc } as unknown as SupabaseClient };
 }
 
@@ -37,9 +37,28 @@ describe("DC-K4/DC-SW7 shared schedule readiness and review", () => {
       revision: "a".repeat(32), requestId, acceptOverlap: true, replaceBlockId: "old",
     }, input);
     expect(rpc).toHaveBeenCalledOnce();
-    expect(rpc).toHaveBeenCalledWith("training_schedule_commit", {
+    expect(rpc).toHaveBeenCalledWith("independent_program_schedule_commit", {
       p_operation: "primary-create", p_args: { p_block: {}, p_replace_block_id: "old" },
       p_expected_revision: "a".repeat(32), p_request_id: requestId, p_input_hash: scheduleInputHash(input), p_accept_overlap: true,
     });
+  });
+  it("DC-R5 never falls back to the legacy archive-all creator", async () => {
+    const { db, rpc } = client(null);
+    rpc.mockImplementation(async (routine?: string) => ({
+      data: null, error: { code: "PGRST202", message: `Could not find ${routine}` },
+    }));
+    await expect(commitTrainingSchedule(db, "primary-create", {}, {
+      revision: "a".repeat(32), requestId: scheduleRequestId("create"), acceptOverlap: false,
+    }, {})).rejects.toBeInstanceOf(ScheduleUnavailableError);
+    expect(rpc.mock.calls.map(([routine]) => routine)).not.toContain("training_schedule_commit");
+  });
+  it("retains legacy scoped operations only when both ownership RPCs are absent", async () => {
+    const { db, rpc } = client(null);
+    rpc.mockImplementation(async (routine?: string) => routine === "training_schedule_commit" ? { data: { id: "old" }, error: null } : {
+      data: null, error: { code: "PGRST202", message: `Could not find ${routine}` },
+    });
+    await expect(commitTrainingSchedule(db, "primary-end", { id: "old" }, {
+      revision: "a".repeat(32), requestId: scheduleRequestId("end"), acceptOverlap: false,
+    }, { id: "old" })).resolves.toMatchObject({ data: { id: "old" } });
   });
 });

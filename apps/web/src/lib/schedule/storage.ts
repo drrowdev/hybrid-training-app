@@ -56,13 +56,19 @@ export function scheduleRequestId(value: unknown): string {
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-8${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 
-export async function scheduleReplay(client: SupabaseClient, requestId: string, operation: string, input: unknown): Promise<unknown | null> {
+export async function scheduleReplay(client: SupabaseClient, requestId: string, operation: string, input: unknown, replaceBlockId?: string): Promise<unknown | null> {
   const { data, error } = await client.from("engine_override_events").select("context").eq("id", z.string().uuid().parse(requestId)).maybeSingle();
   if (error) throw new Error("Could not check this save. Try again.", { cause: error });
   if (!data) return null;
-  const receipt = z.object({ kind: z.literal("training-schedule-v1"), operation: z.string(), inputHash: z.string(), result: z.unknown() }).parse(data.context);
+  const receipt = z.object({ kind: z.literal("training-schedule-v1"), operation: z.string(), inputHash: z.string(), result: z.unknown(),
+    programOwnershipVersion: z.number().optional(), replacedBlockId: z.string().nullable().optional(),
+  }).parse(data.context);
   if (receipt.operation !== operation || receipt.inputHash !== scheduleInputHash(input)) {
     throw new Error("This save request was already used for a different change.");
+  }
+  if (operation === "primary-create" && receipt.programOwnershipVersion &&
+      (receipt.replacedBlockId ?? null) !== (replaceBlockId ?? null)) {
+    throw new Error("This save request belongs to a different program target.");
   }
   return receipt.result;
 }
@@ -83,11 +89,18 @@ export async function commitTrainingSchedule(
   review: ScheduleReview,
   input: unknown,
 ) {
-  return client.rpc("training_schedule_commit", {
+  const parameters = {
     p_operation: operation, p_args: { ...args, ...(review.replaceBlockId ? { p_replace_block_id: review.replaceBlockId } : {}) }, p_expected_revision: review.revision,
     p_request_id: review.requestId, p_input_hash: scheduleInputHash(input),
     p_accept_overlap: review.acceptOverlap,
-  });
+  };
+  const result = await client.rpc("independent_program_schedule_commit", parameters);
+  if (!isMissingScheduleFunction(result.error, "independent_program_schedule_commit")) return result;
+  const capability = await client.rpc("independent_programs_ready");
+  if (!isMissingScheduleFunction(capability.error, "independent_programs_ready") || operation === "primary-create") {
+    throw new ScheduleUnavailableError();
+  }
+  return client.rpc("training_schedule_commit", parameters);
 }
 
 /** Legacy controls may proceed without overlap; new conflicts always require review. */

@@ -9,6 +9,7 @@
  * §6.9) so they cannot disagree again.
  */
 import { addedLoadFromSystemLoad } from "./system-load";
+import { readProgramLoadBasis, resolveProgramWorkingMax } from "./program-load-basis";
 
 export type TargetLoadInput = {
   /** Percentage of the working max (40 = 40%), when the item is %-anchored. */
@@ -35,11 +36,14 @@ export type TargetLoadInput = {
    * Reading one as a bodyweight-inclusive total would silently zero it.
    */
   kind?: string | null;
+  meta?: Record<string, unknown>;
 };
 
 export type TargetLoadContext = {
   /** Resolved working max in kg for this movement, or null when unanchored. */
   tmKg?: number | null | undefined;
+  /** Account-owned measurement; a typed program supplies its own working basis. */
+  oneRmKg?: number | null | undefined;
   /**
    * True when this movement's max is a SYSTEM load — bodyweight plus belt
    * (weighted pull-ups / dips). A percentage of it is a total, so the load to
@@ -79,7 +83,8 @@ export function resolveTargetLoadKg(
   const round = ctx.roundKg ?? ((kg: number) => kg);
 
   const percentTm = num(item.percentTm);
-  const tmKg = num(ctx.tmKg);
+  const basis = readProgramLoadBasis(item.meta?.programLoadBasis);
+  const tmKg = basis ? num(resolveProgramWorkingMax(basis, ctx.oneRmKg)) : num(ctx.tmKg);
   if (percentTm != null && tmKg != null && tmKg > 0) {
     const rawKg = (tmKg * percentTm) / 100;
     if (!ctx.isSystemLoad) return round(rawKg);

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { trainingScheduleAdvice, type TrainingCommitment } from "@hta/domain";
 import { addDaysToYmd, mondayOfYmd } from "@/lib/dates";
+import { loadOwnedActivePrograms, requireBlockProgramKind, requireIndependentPrograms, selectProgramTarget, type OwnedActiveProgram } from "@/lib/programs/ownership";
 import {
   commitTrainingSchedule, loadAvailableTrainingSchedule, scheduleInputHash,
   ScheduleUnavailableError, type ScheduleReview, type ScheduleSnapshot,
@@ -21,22 +22,20 @@ export interface ProgramReviewContext {
   snapshot: ScheduleSnapshot;
   input: unknown;
   review?: ScheduleReview & { previewId: string };
-  active: { id: string; notes: string | null } | null;
+  active: OwnedActiveProgram[];
 }
 
 export async function programReviewContext(
   client: SupabaseClient, userId: string, input: unknown, previewOnly: boolean,
   review?: ProgramReviewContext["review"],
-): Promise<ProgramReviewContext | undefined> {
+): Promise<ProgramReviewContext> {
+  await requireIndependentPrograms(client);
   const snapshot = await loadAvailableTrainingSchedule(client);
   if (!snapshot) {
-    if (previewOnly || review) throw new ScheduleUnavailableError();
-    return undefined;
+    throw new ScheduleUnavailableError();
   }
-  const active = await client.from("training_blocks").select("id,notes")
-    .eq("user_id", userId).eq("status", "active").is("deleted_at", null).maybeSingle();
-  if (active.error) throw new Error("Could not load your current program. Try again.");
-  return { previewOnly, snapshot, input, review, active: active.data };
+  const active = await loadOwnedActivePrograms(client, userId);
+  return { previewOnly, snapshot, input, review, active };
 }
 
 export function programSchedulePreview(
@@ -48,15 +47,19 @@ export function programSchedulePreview(
     date: addDaysToYmd(mondayOfYmd(startedOn), row.week_index * 7 + row.day_index),
     title: row.title ?? "Workout",
   })).sort((a, b) => a.date.localeCompare(b.date));
-  const excluded = editBlockId ?? context.active?.id;
+  const blockArgs = args.p_block;
+  const kind = requireBlockProgramKind(editBlockId ? args.programKind
+    : typeof blockArgs === "object" && blockArgs !== null && "program_kind" in blockArgs ? blockArgs.program_kind : null);
+  const active = selectProgramTarget(context.active, kind, editBlockId);
+  const excluded = active?.id;
   const advice = trainingScheduleAdvice(context.snapshot.entries, dates.map((row) => row.date),
     excluded ? { source: "primary", programId: excluded, retainExistingOverlaps: !!editBlockId } : undefined);
   return {
     id: scheduleInputHash({ args, revision: context.snapshot.revision }),
     revision: context.snapshot.revision, dates,
     overlaps: advice.overlaps, plannedRest: advice.plannedRest,
-    replaces: !editBlockId && context.active
-      ? { id: context.active.id, name: context.active.notes ?? "Current program" } : null,
+    replaces: !editBlockId && active
+      ? { id: active.id, name: active.notes ?? "Current program" } : null,
   };
 }
 

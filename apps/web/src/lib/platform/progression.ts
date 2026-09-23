@@ -15,9 +15,8 @@
  *      (dedup per block+kind) — EXCEPT plain `tm-bump`s, which the existing
  *      generic AMRAP→`tm_suggestions` banner already surfaces.
  *
- * User-scoped Supabase client only (RLS-enforced). Never throws — the caller
- * wraps it but this also self-guards so a progression hiccup never blocks a
- * session completion.
+ * User-scoped client only. The caller reports deferred failures; the atomic
+ * path refuses late completions and retries an instance changed by another log.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { LoggedSession, LoggedSet, ProgramRecommendation } from "@hta/program-core";
@@ -25,8 +24,9 @@ import type { Prescription } from "@hta/db";
 import { getProgramEngine } from "./registry";
 import { buildPlatformContext } from "./context";
 import { engineKeyForSlug } from "./movement-keys";
+import { isMissingScheduleFunction } from "@/lib/schedule/storage";
 
-type Db = Pick<SupabaseClient, "from">;
+type Db = Pick<SupabaseClient, "from" | "rpc">;
 
 // tm-bump duplicates the generic AMRAP→tm_suggestions banner; the rest are the
 // program-owned nudges that have no other home.
@@ -38,17 +38,26 @@ const SURFACED_KINDS = new Set<ProgramRecommendation["kind"]>([
   "info",
 ]);
 
-export async function applyProgramProgression(args: {
+type ProgressionArgs = {
   supabase: Db;
   userId: string;
   sessionId: string;
   blockId: string;
   performedAt?: string;
-}): Promise<void> {
+};
+
+export async function applyProgramProgression(args: ProgressionArgs): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (await applyProgressionAttempt(args) !== "stale") return;
+  }
+  throw new Error("Program progression changed during completion. Retry saving the workout.");
+}
+
+async function applyProgressionAttempt(args: ProgressionArgs): Promise<"stale" | void> {
   const { supabase, userId, sessionId, blockId, performedAt } = args;
 
   // Active program instance for this block? If not, it's an archetype block.
-  const { data: pi } = await supabase
+  const { data: pi, error: instanceError } = await supabase
     .from("program_instances")
     .select("id, program_id, instance")
     .eq("user_id", userId)
@@ -56,26 +65,31 @@ export async function applyProgramProgression(args: {
     .eq("status", "active")
     .is("deleted_at", null)
     .maybeSingle();
+  if (instanceError) throw new Error("Could not read program progression.", { cause: instanceError });
   if (!pi) return;
 
   const engine = getProgramEngine(pi.program_id as string);
   if (!engine) return;
 
   // The engine ref lives on the completed planned session's prescription.
-  const { data: planned } = await supabase
+  const { data: planned, error: plannedError } = await supabase
     .from("planned_sessions")
     .select("prescription")
     .eq("completed_session_id", sessionId)
+    .eq("user_id", userId)
+    .eq("block_id", blockId)
     .maybeSingle();
+  if (plannedError) throw new Error("Could not read the completed workout.", { cause: plannedError });
   const programRef = (planned?.prescription as Prescription | null)?.programRef;
   if (!programRef) return;
 
   // Rebuild the logged sets, mapping movement → engine key.
-  const { data: rawSets } = await supabase
+  const { data: rawSets, error: setsError } = await supabase
     .from("set_logs")
     .select("weight_kg, reps, rpe, set_kind, notes, prescription_item_index, movement:movements(slug)")
     .eq("session_id", sessionId)
     .eq("skipped", false);
+  if (setsError) throw new Error("Could not read the workout sets.", { cause: setsError });
 
   const items = (planned?.prescription as Prescription | null)?.items ?? [];
   const sets: LoggedSet[] = [];
@@ -111,28 +125,44 @@ export async function applyProgramProgression(args: {
     log,
     ctx,
   );
+  const toSurface = recommendations.filter((r) => SURFACED_KINDS.has(r.kind));
+  const committed = await supabase.rpc("commit_program_progression", {
+    p_block_id: blockId, p_instance_id: pi.id, p_session_id: sessionId,
+    p_expected_instance: pi.instance, p_next_instance: nextInstance, p_recommendations: toSurface,
+  });
+  if (!isMissingScheduleFunction(committed.error, "commit_program_progression")) {
+    if (committed.error) throw new Error("Could not save program progression.", { cause: committed.error });
+    if (committed.data === "stale") return "stale";
+    if (!["applied", "replayed", "inactive"].includes(committed.data)) throw new Error("Program progression was not confirmed.");
+    return;
+  }
+  const block = await supabase.from("training_blocks").select("*").eq("id", blockId).eq("user_id", userId).maybeSingle();
+  if (block.error || !block.data || block.data.program_kind) throw new Error("Program progression is temporarily unavailable.");
+  if (block.data.status !== "active" || block.data.deleted_at) return;
 
   // Persist the advanced instance (no-op for stateless engines, but keeps the
   // contract honest for stateful ones).
-  await supabase
+  const updated = await supabase
     .from("program_instances")
     .update({ instance: nextInstance, updated_at: new Date().toISOString() })
     .eq("id", pi.id)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("status", "active").is("deleted_at", null);
+  if (updated.error) throw new Error("Could not save program progression.", { cause: updated.error });
 
-  const toSurface = recommendations.filter((r) => SURFACED_KINDS.has(r.kind));
   if (toSurface.length === 0) return;
 
   // Dedup by (kind, occurrence), not by kind: one `training_blocks` row holds
   // every engine block of an instance, so filtering on kind alone swallowed
   // block 2's "retest your maxes" behind block 1's. A pending row for the SAME
   // occurrence is still skipped, so re-completing a session doesn't stack nudges.
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("program_recommendations")
     .select("kind, occurrence_key")
     .eq("user_id", userId)
     .eq("block_id", blockId)
     .eq("status", "pending");
+  if (existingError) throw new Error("Could not read program recommendations.", { cause: existingError });
   const pending = new Set(
     (existing ?? []).map((e) => `${e.kind as string}\u0000${e.occurrence_key ?? ""}`),
   );

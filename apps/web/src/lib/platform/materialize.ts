@@ -58,6 +58,7 @@ import {
   type WeeklyRehabProtocol,
 } from "./rehab-schedule";
 import type { SessionLink } from "./session-links";
+import { rehabPrescriptionItems } from "@/lib/rehab-protocols/prescription";
 
 export interface MaterializeOptions {
   /**
@@ -614,44 +615,8 @@ export function materializeProgram<I>(
           : `rehab-w${weekIndex}-d${dayIndex}`;
         const prescription: Prescription = {
           programRef: ref,
-          items: assignment.items.map((item): PrescriptionItem => {
-            const sideCue =
-              item.side === "left"
-                ? "Left side"
-                : item.side === "right"
-                  ? "Right side"
-                  : "";
-            const instructions = [sideCue, item.instructions]
-              .filter(Boolean)
-              .join(" · ");
-            return {
-              movementId: item.movementId,
-              movementName: item.movementName,
-              kind: "tendon",
-              sets: item.sets,
-              ...(item.reps != null ? { reps: item.reps } : {}),
-              ...(item.repRange ? { repRange: item.repRange } : {}),
-              ...(item.holdSeconds != null
-                ? { holdSec: { min: item.holdSeconds, max: item.holdSeconds } }
-                : {}),
-              ...(item.targetWeightKg != null
-                ? { targetWeightKg: item.targetWeightKg }
-                : {}),
-              ...(instructions
-                ? {
-                    notes: instructions,
-                    intensityCue: instructions.slice(0, 80),
-                  }
-                : {}),
-              meta: {
-                rehab: true,
-                rehabProtocolId: assignment.protocolId,
-                rehabProtocolName: assignment.protocolName,
-                rehabSourceRef: ref,
-                rehabPlacement: "during_warmup",
-                ...(item.side ? { side: item.side } : {}),
-              },
-            };
+          items: rehabPrescriptionItems(assignment.items, {
+            protocolId: assignment.protocolId, protocolName: assignment.protocolName, sourceRef: ref,
           }),
         };
         // Links attach AFTER expansion: a station's depth is counted in sets,

@@ -32,6 +32,8 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  check,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -39,9 +41,11 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uuid,
 } from "drizzle-orm/pg-core";
 import { programInstances } from "./program-instances";
+import { swimPlans } from "./swimming";
 
 /**
  * One movement entry of a protocol. Mirrors the shape the wizard has always
@@ -54,6 +58,7 @@ export type RehabProtocolItem = {
   side?: "both" | "left" | "right";
   sets: number;
   reps?: number;
+  repRange?: { min: number; max: number };
   holdSeconds?: number;
   targetWeightKg?: number;
   instructions?: string;
@@ -106,6 +111,7 @@ export const rehabProtocols = pgTable(
   },
   (t) => ({
     userIdx: index("rehab_protocols_user_idx").on(t.userId),
+    ownedKey: unique("rehab_protocols_user_id_id_key").on(t.userId, t.id),
   }),
 );
 
@@ -149,3 +155,28 @@ export type RehabProtocolRow = typeof rehabProtocols.$inferSelect;
 export type NewRehabProtocolRow = typeof rehabProtocols.$inferInsert;
 export type ProgramRehabBindingRow = typeof programRehabBindings.$inferSelect;
 export type NewProgramRehabBindingRow = typeof programRehabBindings.$inferInsert;
+
+export const swimPlanRehabBindings = pgTable("swim_plan_rehab_bindings", {
+  planId: uuid("plan_id").notNull(),
+  localProtocolId: text("local_protocol_id").notNull(),
+  rehabProtocolId: uuid("rehab_protocol_id").notNull(),
+  userId: uuid("user_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  pk: primaryKey({ columns: [t.planId, t.localProtocolId] }),
+  uniqueProtocol: unique().on(t.planId, t.rehabProtocolId),
+  localIdCheck: check("swim_plan_rehab_bindings_local_protocol_id_check",
+    sql`${t.localProtocolId} ~ '^[a-z0-9][a-z0-9-]{0,63}$'`),
+  ownerIdx: index("swim_plan_rehab_bindings_owner_idx").on(t.userId),
+  protocolIdx: index("swim_plan_rehab_bindings_protocol_idx").on(t.rehabProtocolId),
+  ownedPlan: foreignKey({
+    name: "swim_plan_rehab_bindings_owned_plan_fk",
+    columns: [t.userId, t.planId],
+    foreignColumns: [swimPlans.userId, swimPlans.id],
+  }).onDelete("cascade"),
+  ownedProtocol: foreignKey({
+    name: "swim_plan_rehab_bindings_owned_protocol_fk",
+    columns: [t.userId, t.rehabProtocolId],
+    foreignColumns: [rehabProtocols.userId, rehabProtocols.id],
+  }).onDelete("restrict"),
+}));

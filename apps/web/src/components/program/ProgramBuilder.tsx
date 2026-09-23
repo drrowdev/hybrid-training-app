@@ -73,7 +73,20 @@ function MovementEditor({ movement, catalog, onChange, inCircuit }: {
   </div>;
 }
 
-function PartEditor({ part, catalog, onChange }: { part: AuthoredWorkoutPart; catalog: AuthoredCatalogMovement[]; onChange: (part: AuthoredWorkoutPart) => void }) {
+type RehabChoice = { id: string; name: string; summary: string };
+
+function PartEditor({ part, catalog, rehabProtocols, onChange }: {
+  part: AuthoredWorkoutPart; catalog: AuthoredCatalogMovement[]; rehabProtocols: RehabChoice[];
+  onChange: (part: AuthoredWorkoutPart) => void;
+}) {
+  if (part.kind === "rehab") return <div className={styles.panel}>
+    <label className={styles.field}>Rehab protocol<select className={styles.select} value={part.protocolId}
+      onChange={(event) => onChange({ ...part, protocolId: event.target.value })}>
+      <option value="">Choose a protocol</option>
+      {rehabProtocols.map((protocol) => <option key={protocol.id} value={protocol.id}>{protocol.name}</option>)}
+    </select></label>
+    {part.protocolId && <p className={styles.muted}>{rehabProtocols.find((protocol) => protocol.id === part.protocolId)?.summary}</p>}
+  </div>;
   if (part.kind === "movement") return <MovementEditor movement={part.movement} catalog={catalog} onChange={(movement) => onChange({ ...part, movement })} />;
   if (part.kind === "circuit") return <>
     <div className={styles.fields}>
@@ -119,8 +132,9 @@ function PartEditor({ part, catalog, onChange }: { part: AuthoredWorkoutPart; ca
   </>;
 }
 
-export function ProgramBuilder({ catalog, today, commitments, initial, editBlockId, initialStartDate, activity = "hybrid", swimHref, workoutId, plannedSessionId }: {
+export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitments, initial, editBlockId, initialStartDate, activity = "hybrid", swimHref, workoutId, plannedSessionId }: {
   catalog: AuthoredCatalogMovement[]; today: string; commitments: TrainingCommitment[];
+  rehabProtocols?: RehabChoice[];
   initial?: AuthoredProgramDefinition; editBlockId?: string; initialStartDate?: string; activity?: ProgramActivity; swimHref?: string | null;
   workoutId?: string; plannedSessionId?: string;
 }) {
@@ -149,6 +163,7 @@ export function ProgramBuilder({ catalog, today, commitments, initial, editBlock
   const addPart = (kind: AuthoredWorkoutPart["kind"]) => {
     if (!selected) return;
     const part: AuthoredWorkoutPart = kind === "movement" ? { id: newId(), kind, movement: newMovement() }
+      : kind === "rehab" ? { id: newId(), kind, protocolId: "" }
       : kind === "circuit" ? { id: newId(), kind, name: "Circuit", rounds: 3, movements: [newMovement(), newMovement()] }
         : { id: newId(), kind, movementId: "", modality: "run", intensity: "z2", repeats: 1, notes: "",
           intervals: [{ id: newId(), label: "Run", effort: "easy", target: { kind: "time", seconds: 1200 } }] };
@@ -173,7 +188,7 @@ export function ProgramBuilder({ catalog, today, commitments, initial, editBlock
           ...(acceptReplacement && preview.replacesBlockId ? { replaceBlockId: preview.replacesBlockId } : {}),
         });
         if (!result.ok) { setError(result.error); return; }
-        router.push("/app/plan"); router.refresh();
+        router.push(`/app/plan?block=${result.blockId}`); router.refresh();
       } catch { setError("Could not confirm the save. Retry to check the same request."); }
     });
   };
@@ -184,7 +199,7 @@ export function ProgramBuilder({ catalog, today, commitments, initial, editBlock
     !(entry.source === "primary" && entry.programId === editBlockId));
   return <div className={styles.builder}>
     <header className={styles.header}><div><div className={styles.eyebrow}>{workoutId ? "Edit workout" : editBlockId ? "Edit program" : "New program"}</div><h1>{workoutId ? selected?.name : definition.name || "Build your week"}</h1></div>
-      <Link className={styles.button} href={editBlockId ? "/app/plan" : "/app/programs"}>Cancel</Link></header>
+      <Link className={styles.button} href={editBlockId ? `/app/plan?block=${editBlockId}` : "/app/programs"}>Cancel</Link></header>
     <nav className={styles.steps} aria-label="Program setup">{STEPS.map((label, index) => workoutId && index < 3 ? null : <button type="button" key={label} className={styles.step}
       aria-current={step === index ? "step" : undefined} disabled={pending || index === 4 || (index === 3 && !selected) || (!!editBlockId && index === 0)}
       onClick={() => setStep(index)}>{index + 1}. {label}</button>)}</nav>
@@ -192,7 +207,7 @@ export function ProgramBuilder({ catalog, today, commitments, initial, editBlock
     {step === 0 && <section className={styles.cards}>
       {(Object.keys(ACTIVITY_LABELS) as ProgramActivity[]).map((value) => <button key={value} type="button" className={styles.card} aria-pressed={definition.activity === value}
         onClick={() => update({ ...definition, activity: value })}><strong>{ACTIVITY_LABELS[value]}</strong><span className={styles.muted}>
-          {value === "strength" ? "Lifts, accessories and rehab" : value === "running" ? "Runs, intervals and supporting work" : "Strength, running, machines and rehab"}</span></button>)}
+          {value === "strength" ? "Lifts, accessories and rehab" : value === "running" ? "Runs, intervals and rehab" : "Strength, running, machines and rehab"}</span></button>)}
       {swimHref && <Link className={styles.card} href={swimHref}><strong>Swimming</strong><span className={styles.muted}>Import a prepared course</span></Link>}
     </section>}
     {step === 1 && <section className={styles.panel}><h2>Program details</h2><div className={styles.fields}>
@@ -229,6 +244,7 @@ export function ProgramBuilder({ catalog, today, commitments, initial, editBlock
           const copy = structuredClone(selected);
           copy.id = newId(); copy.weekday = weekday; copy.name = `${selected.name} copy`;
           copy.parts = copy.parts.map((part) => part.kind === "movement" ? { ...part, id: newId(), movement: { ...part.movement, id: newId() } }
+            : part.kind === "rehab" ? { ...part, id: newId() }
             : part.kind === "circuit" ? { ...part, id: newId(), movements: part.movements.map((movement) => ({ ...movement, id: newId() })) }
               : { ...part, id: newId(), intervals: part.intervals.map((interval) => ({ ...interval, id: newId() })) });
           update({ ...definition, workouts: [...definition.workouts, copy] }); setSelectedId(copy.id);
@@ -236,16 +252,24 @@ export function ProgramBuilder({ catalog, today, commitments, initial, editBlock
         <button type="button" className={styles.button} onClick={() => setStep(2)}>Back to week</button>
       </div></div>
       {selected.parts.map((part, index) => <article className={styles.part} key={part.id}>
-        <div className={styles.partHeader}><h3>{index + 1}. {part.kind === "movement" ? "Exercise" : part.kind === "circuit" ? "Circuit" : "Cardio"}</h3><div className={styles.actions}>
+        <div className={styles.partHeader}><h3>{index + 1}. {part.kind === "movement" ? "Exercise" : part.kind === "circuit" ? "Circuit" : part.kind === "rehab" ? "Rehab" : "Cardio"}</h3><div className={styles.actions}>
           <button type="button" className={styles.iconButton} disabled={index === 0} aria-label={`Move part ${index + 1} up`} onClick={() => {
             const parts = [...selected.parts]; [parts[index - 1], parts[index]] = [parts[index]!, parts[index - 1]!]; setWorkout({ ...selected, parts });
           }}>Up</button>
           <button type="button" className={styles.button} onClick={() => setWorkout({ ...selected, parts: selected.parts.filter((entry) => entry.id !== part.id) })}>Remove</button>
         </div></div>
-        <PartEditor part={part} catalog={catalog} onChange={(next) => setWorkout({ ...selected, parts: selected.parts.map((entry) => entry.id === part.id ? next : entry) })} />
+        <PartEditor part={part} catalog={definition.activity === "running" ? catalog.filter((entry) => entry.modality === "run") : catalog}
+          rehabProtocols={rehabProtocols} onChange={(next) => setWorkout({ ...selected, parts: selected.parts.map((entry) => entry.id === part.id ? next : entry) })} />
       </article>)}
-      <div className={styles.actions}><button type="button" className={styles.button} onClick={() => addPart("movement")}>Add exercise</button>
+      <div className={styles.actions}>{definition.activity !== "running" && <>
+        <button type="button" className={styles.button} onClick={() => addPart("movement")}>Add exercise</button>
         <button type="button" className={styles.button} onClick={() => addPart("circuit")}>Add circuit</button>
+      </>}
+        <button type="button" className={styles.button} disabled={rehabProtocols.length === 0} onClick={() => addPart("rehab")}>Add rehab</button>
+        {rehabProtocols.length === 0 && <>
+          <Link className={styles.button} href="/app/settings/rehab-protocols" target="_blank" rel="noreferrer">Create a rehab protocol</Link>
+          <button type="button" className={styles.button} onClick={() => router.refresh()}>Refresh protocols</button>
+        </>}
         {definition.activity !== "strength" && <button type="button" className={styles.button} onClick={() => addPart("cardio")}>Add {definition.activity === "running" ? "run" : "cardio"}</button>}
       </div>
     </section>}
@@ -256,6 +280,7 @@ export function ProgramBuilder({ catalog, today, commitments, initial, editBlock
         {workout.parts.map((part) => <p key={part.id} className={styles.muted}>{part.kind === "cardio"
           ? `${catalog.find((entry) => entry.id === part.movementId)?.displayName} · ${part.repeats} rounds · ${part.intervals.map(formatAuthoredInterval).join(" / ")}`
           : part.kind === "circuit" ? `${part.name} · ${part.rounds} rounds · ${part.movements.map((movement) => catalog.find((entry) => entry.id === movement.movementId)?.displayName).join(", ")}`
+            : part.kind === "rehab" ? rehabProtocols.find((protocol) => protocol.id === part.protocolId)?.name
             : `${catalog.find((entry) => entry.id === part.movement.movementId)?.displayName} · ${part.movement.sets} sets`}</p>)}
       </details>)}
       {preview.replaces && <label className={styles.check}><input type="checkbox" checked={acceptReplacement} onChange={(event) => setAcceptReplacement(event.target.checked)} />End {preview.replaces} and start this program.</label>}

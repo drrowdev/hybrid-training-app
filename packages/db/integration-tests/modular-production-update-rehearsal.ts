@@ -18,10 +18,10 @@ export function modularRehearsalMigrations(rawJournal: unknown, source: readonly
       idx: z.number().int().nonnegative(), version: z.literal("7"),
       tag: z.string().regex(/^\d{4}_[a-z0-9_]+$/),
       when: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), breakpoints: z.boolean(),
-    }).strict()).length(158),
+    }).strict()).length(159),
   }).strict().parse(rawJournal);
-  assert.equal(source.length, 158);
-  assert.equal(new Set(source.map(({ hash }) => hash)).size, 158);
+  assert.equal(source.length, 159);
+  assert.equal(new Set(source.map(({ hash }) => hash)).size, 159);
   journal.entries.forEach((entry, index) => {
     const migration = source[index]!;
     assert.equal(entry.idx, index);
@@ -34,7 +34,8 @@ export function modularRehearsalMigrations(rawJournal: unknown, source: readonly
   });
   assert.equal(journal.entries[156]!.tag, "0156_modular_training_schedule");
   assert.equal(journal.entries[157]!.tag, "0157_standalone_swim_import_outcomes");
-  for (const index of [156, 157]) {
+  assert.equal(journal.entries[158]!.tag, "0158_independent_program_ownership");
+  for (const index of [156, 157, 158]) {
     assert.equal(source[index]!.bps, false);
     assert.equal(source[index]!.sql.length, 1);
   }

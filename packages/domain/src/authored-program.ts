@@ -1,4 +1,6 @@
-export type ProgramActivity = "strength" | "running" | "hybrid";
+import type { BlockProgramKind } from "./program-ownership";
+
+export type ProgramActivity = BlockProgramKind;
 
 export type MovementDose =
   | { kind: "reps"; reps: number }
@@ -25,6 +27,7 @@ export interface AuthoredInterval {
 
 export type AuthoredWorkoutPart =
   | { id: string; kind: "movement"; movement: AuthoredMovement }
+  | { id: string; kind: "rehab"; protocolId: string }
   | { id: string; kind: "circuit"; name: string; rounds: number; movements: AuthoredMovement[] }
   | {
       id: string;
@@ -67,6 +70,7 @@ export interface AuthoredPrescriptionItem {
   kind: "main" | "accessory" | "tendon" | "cardio_z2" | "cardio_vo2" | "cardio_threshold" | "cardio_alactic";
   sets?: number;
   reps?: number;
+  repRange?: { min: number; max: number };
   holdSec?: { min: number; max: number };
   distanceM?: { min: number; max: number };
   targetWeightKg?: number;
@@ -93,15 +97,21 @@ export interface AuthoredPrescriptionItem {
 
 export function authoredMovementIds(definition: AuthoredProgramDefinition): string[] {
   return [...new Set(definition.workouts.flatMap((workout) => workout.parts.flatMap((part) =>
-    part.kind === "movement" ? [part.movement.movementId]
+    part.kind === "rehab" ? [] : part.kind === "movement" ? [part.movement.movementId]
       : part.kind === "circuit" ? part.movements.map((movement) => movement.movementId)
         : [part.movementId],
   )))];
 }
 
+export function authoredRehabProtocolIds(definition: AuthoredProgramDefinition): string[] {
+  return [...new Set(definition.workouts.flatMap((workout) => workout.parts.flatMap((part) =>
+    part.kind === "rehab" ? [part.protocolId] : [])))];
+}
+
 export function authoredWorkoutActivities(workout: AuthoredWorkout): ("strength" | "running")[] {
   const activities = new Set<"strength" | "running">();
   for (const part of workout.parts) {
+    if (part.kind === "rehab") continue;
     if (part.kind !== "cardio") activities.add("strength");
     else if (part.modality === "run") activities.add("running");
   }
@@ -121,6 +131,7 @@ export function formatAuthoredInterval(interval: AuthoredInterval): string {
 export function compileAuthoredWorkout(
   workout: AuthoredWorkout,
   catalog: readonly AuthoredCatalogMovement[],
+  compileRehab?: (protocolId: string, partId: string) => AuthoredPrescriptionItem[],
 ): { items: AuthoredPrescriptionItem[]; meta: { authoredWorkout: AuthoredWorkout } } {
   const byId = new Map(catalog.map((movement) => [movement.id, movement]));
   const resolve = (id: string) => {
@@ -147,6 +158,10 @@ export function compileAuthoredWorkout(
     }));
   };
   const items = workout.parts.flatMap((part): AuthoredPrescriptionItem[] => {
+    if (part.kind === "rehab") {
+      if (!compileRehab) throw new Error("Choose an available rehab protocol from your library.");
+      return compileRehab(part.protocolId, part.id);
+    }
     if (part.kind === "movement") return compileMovement(part.movement, part.id);
     if (part.kind === "circuit") {
       return part.movements.flatMap((movement, position) => compileMovement(movement, part.id, {
@@ -202,7 +217,7 @@ export function authoredProgramDates(definition: AuthoredProgramDefinition, star
 export interface AuthoredExecutionPart {
   id: string;
   title: string;
-  kind: "movement" | "circuit" | "cardio";
+  kind: "movement" | "circuit" | "cardio" | "rehab";
   itemIndices: number[];
 }
 
@@ -216,9 +231,10 @@ export function authoredExecutionParts(items: readonly {
     if (typeof id !== "string") return;
     const part = parts.get(id);
     if (part) { part.itemIndices.push(index); return; }
+    const protocolName = item.meta?.rehabProtocolName;
     parts.set(id, {
-      id, title: item.circuit?.name ?? item.movementName ?? "Workout part",
-      kind: item.kind.startsWith("cardio_") ? "cardio" : item.circuit ? "circuit" : "movement",
+      id, title: typeof protocolName === "string" ? protocolName : item.circuit?.name ?? item.movementName ?? "Workout part",
+      kind: typeof protocolName === "string" ? "rehab" : item.kind.startsWith("cardio_") ? "cardio" : item.circuit ? "circuit" : "movement",
       itemIndices: [index],
     });
   });

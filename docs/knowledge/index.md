@@ -23,6 +23,11 @@ The three research files. Never edited; new sources appended here when ingested.
 
 The maintained-by-AI layer. These pages are rewritten as new sources arrive; they cite raw sources via the index. The eventual home is `docs/knowledge/` in the repo.
 
+- [ADR 0087: Independent program ownership](../adr/0087-independent-program-ownership.md)
+  records the owner-corrected four program slots, no-backfill legacy transition,
+  program-owned load settings, shared all-type rehab attachments and unused-down
+  refusal. Implementation and new-model acceptance remain in progress.
+
 - [ADR 0086: Explicit standalone swimming outcomes](../adr/0086-standalone-swim-import-outcomes.md)
   records independent confirmation/correction/removal, original recording
   history, shared status, default-off creation and separate hosted authorization.

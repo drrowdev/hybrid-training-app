@@ -127,10 +127,10 @@ export async function rehearseSwimOutcomeCompatibility(
   assert.equal((await sql`SELECT current_database() AS name`)[0]!.name, sql.options.database);
   assert.equal((await sql`SELECT current_user AS actor`)[0]!.actor, "postgres");
   assert.equal((await sql`SELECT count(*)::int AS n FROM auth.users`)[0]!.n, 0);
-  assert.equal(migrations.length, 158);
+  assert.equal(migrations.length, 159);
   const fresh = sql.options.database === "swim_migration_runner_fresh";
   const before = await ledger(sql);
-  assert.equal(before.length, fresh ? 158 : 157);
+  assert.equal(before.length, fresh ? 159 : 157);
   assert.deepEqual(before.map(({ hash, created_at }) => ({ hash, created_at })),
     migrations.slice(0, before.length).map((migration) => ({ hash: migration.hash, created_at: String(migration.folderMillis) })));
   const retained = await retainedCatalog(sql);
@@ -138,7 +138,7 @@ export async function rehearseSwimOutcomeCompatibility(
   const proposed = migrations[157]!;
   assert.equal(proposed.hash, hash);
   assert.ok(proposed.folderMillis > migrations[156]!.folderMillis);
-  const candidate = [...migrations];
+  const candidate = migrations.slice(0, fresh ? 159 : 158);
   const refusalSql = "DO $$ BEGIN RAISE EXCEPTION 'Proposed append rollback' USING ERRCODE='P9003'; END $$;";
   if (!fresh) {
     await assertAbsent(sql);
@@ -158,7 +158,7 @@ export async function rehearseSwimOutcomeCompatibility(
     await migrateCanonical(sql, candidate, config);
   }
   const appended = await ledger(sql);
-  assert.equal(appended.length, 158);
+  assert.equal(appended.length, fresh ? 159 : 158);
   assert.deepEqual(appended.slice(0, before.length), Array.from(before));
   assert.equal(appended[157]!.hash, hash);
   assert.equal(appended[157]!.created_at, String(proposed.folderMillis));
@@ -184,7 +184,7 @@ export async function rehearseSwimOutcomeCompatibility(
   stage("outcome-proposal-final-retention");
   assert.deepEqual(await ledger(sql), appended);
   assert.equal(await retainedCatalog(sql), retained);
-  return [...(fresh ? ["outcome-canonical-fresh-158"] :
+  return [...(fresh ? ["outcome-canonical-fresh-159"] :
     ["outcome-proposal-atomic-rollback", "outcome-proposal-main-compatible-append-and-replay"]),
     ...operationStages, "outcome-proposal-unused-down-up-retention"];
 }

@@ -6,7 +6,7 @@
  * `ProgramEngine` contract. Each program's serialisable, JSON-round-trippable
  * `Instance` (its config + timeline cursor + program-owned working state, e.g. a
  * 5/3/1 Training Max derived from the shared 1RM) is stored here, one ACTIVE row
- * per user. Switching programs archives the old row; the user's history and
+ * per active typed block. Replacing that program archives only its row; history and
  * strength state (`sessions`, `set_logs`, `training_maxes`) live elsewhere and
  * persist across switches.
  *
@@ -17,18 +17,20 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  foreignKey,
   index,
   jsonb,
   pgTable,
   smallint,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { trainingBlocks } from "./planner";
 
-/** Lifecycle of a program instance. One 'active' per user; 'archived' on switch. */
+/** Active state belongs to the linked block, whose kind owns the user slot. */
 export const PROGRAM_INSTANCE_STATUSES = ["active", "archived"] as const;
 export type ProgramInstanceStatus = (typeof PROGRAM_INSTANCE_STATUSES)[number];
 
@@ -53,9 +55,7 @@ export const programInstances = pgTable(
     /** The setup-wizard values used to seed the instance (for re-seed / audit). */
     setupInput: jsonb("setup_input"),
     /** The materialised training block this instance drives (Today/logging/stats). */
-    blockId: uuid("block_id").references(() => trainingBlocks.id, {
-      onDelete: "set null",
-    }),
+    blockId: uuid("block_id"),
     /** Lifecycle — see PROGRAM_INSTANCE_STATUSES. */
     status: text("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -69,6 +69,16 @@ export const programInstances = pgTable(
   },
   (t) => ({
     userStatusIdx: index("program_instances_user_status_idx").on(t.userId, t.status),
+    activeBlockKey: uniqueIndex("program_instances_one_active_per_block").on(t.userId, t.blockId)
+      .where(sql`${t.status} = 'active' AND ${t.deletedAt} IS NULL AND ${t.blockId} IS NOT NULL`),
+    activeOrphanKey: uniqueIndex("program_instances_one_active_orphan").on(t.userId)
+      .where(sql`${t.status} = 'active' AND ${t.deletedAt} IS NULL AND ${t.blockId} IS NULL`),
+    // Migration 0158 retains user_id when a purged parent clears block_id.
+    ownedBlock: foreignKey({
+      name: "program_instances_block_id_fkey",
+      columns: [t.userId, t.blockId],
+      foreignColumns: [trainingBlocks.userId, trainingBlocks.id],
+    }),
     customizationVersionCheck: check(
       "program_instances_customization_version_check",
       sql`${t.customizationVersion} IS NULL OR ${t.customizationVersion} > 0`,

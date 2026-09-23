@@ -28,12 +28,39 @@
 import type { WendlerInstance } from "@hta/wendler";
 import type { TbInstance, ZuluHtInstance } from "@hta/tacticalbarbell";
 import { greenStrengthBasis, type GreenInstance, type GreenStrengthBasis } from "@hta/green";
-import { isRepMaxEngineKey } from "@hta/domain";
+import { isRepMaxEngineKey, readProgramLoadBasis, type ProgramLoadBasis } from "@hta/domain";
 import { ENGINE_KEY_TO_ROLE } from "./movement-keys";
 import { DEFAULT_ROUNDING_KG } from "./rounding";
 
 /** A per-engine-key integer tm_percent (% of true 1RM) to write to training_maxes. */
 export type TmAlignment = Partial<Record<string, number>>;
+
+export function computeProgramLoadBases(
+  programFamily: string, instance: unknown, oneRepMaxes: Record<string, number>,
+  roundingKg: number = DEFAULT_ROUNDING_KG,
+): Partial<Record<string, ProgramLoadBasis>> {
+  const keys = new Set([...Object.keys(ENGINE_KEY_TO_ROLE), ...Object.keys(oneRepMaxes)]);
+  if (programFamily === "531") {
+    const state = instance as WendlerInstance;
+    return Object.fromEntries([...keys].flatMap((key) => {
+      const kg = state.trainingMaxes?.[key as keyof WendlerInstance["trainingMaxes"]];
+      return kg == null ? [] : [[key, readProgramLoadBasis({ version: 1, kind: "working-max", kg })!]];
+    }));
+  }
+  const basis = programFamily === "tactical-barbell-green"
+    ? greenStrengthBasis(instance as GreenInstance)
+    : programFamily === "tactical-barbell"
+      ? tbBasis(instance as Partial<TbInstance & ZuluHtInstance>)
+      : { kind: "one-rm" as const };
+  if (!basis) throw new Error("This program's strength load settings disagree. Review its setup before saving.");
+  const owned: ProgramLoadBasis = {
+    version: 1, kind: "one-rm",
+    percent: basis.kind === "training-max" ? basis.tmPercent * 100 : 100,
+    roundingKg: basis.kind === "training-max" ? roundingKg : null,
+  };
+  readProgramLoadBasis(owned);
+  return Object.fromEntries([...keys].filter((key) => !isRepMaxEngineKey(key)).map((key) => [key, owned]));
+}
 
 /** The default plate step, matching the engines' own `ctx.roundingKg` default. */
 

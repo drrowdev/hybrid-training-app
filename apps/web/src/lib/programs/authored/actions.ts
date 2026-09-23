@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import {
-  authoredMovementIds, authoredProgramDates, compileAuthoredWorkout, trainingScheduleAdvice, highStrainPowerBlocked,
-  type AuthoredCatalogMovement, type AuthoredProgramDefinition, type TrainingCommitment,
+  authoredMovementIds, authoredRehabProtocolIds, authoredProgramDates, compileAuthoredWorkout, trainingScheduleAdvice, highStrainPowerBlocked,
+  type AuthoredCatalogMovement, type AuthoredPrescriptionItem, type AuthoredProgramDefinition, type TrainingCommitment,
 } from "@hta/domain";
 import type { Prescription } from "@hta/db";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
@@ -18,6 +18,9 @@ import { prescriptionCarriesUserState } from "@/lib/sessions/prescription-mutati
 import { planForwardOnlyRewrite } from "@/lib/platform/forward-rewrite";
 import { commitTrainingSchedule, loadTrainingSchedule, scheduleInputHash, scheduleReviewSchema, type ScheduleReview } from "@/lib/schedule/storage";
 import { authoredProgramSchema, authoredSaveSchema, type AuthoredSaveInput } from "./schema";
+import { loadOwnedActivePrograms, requireIndependentPrograms, selectProgramTarget } from "@/lib/programs/ownership";
+import { loadOwnedRehabProtocols } from "@/lib/rehab-protocols/owned";
+import { compileLibraryRehab } from "@/lib/rehab-protocols/prescription";
 
 const catalogRowSchema = z.object({
   id: z.string(), slug: z.string(), display_name: z.string(), pattern: z.string(),
@@ -67,17 +70,19 @@ async function prepare(raw: AuthoredSaveInput) {
   const { data: { user } } = await getAuthUser();
   if (!user) throw new Error("Sign in to save a program.");
   const client = await createClient();
+  await requireIndependentPrograms(client);
   // Capture before any dependent read, then revalidate inside the write transaction.
   const snapshot = await loadTrainingSchedule(client);
+  const protocols = await loadOwnedRehabProtocols(client, user.id, authoredRehabProtocolIds(input.definition));
+  const movementIds = [...new Set([...authoredMovementIds(input.definition), ...protocols.flatMap((protocol) => protocol.items.map((item) => item.movementId))])];
   const [catalogResult, limitationsResult, profileResult, activeResult] = await Promise.all([
-    client.from("movements").select(`${CATALOG_SELECT},metadata`).in("id", authoredMovementIds(input.definition)),
+    client.from("movements").select(`${CATALOG_SELECT},metadata`).in("id", movementIds),
     client.from("limitations").select("region,kind,resolved_at,affected_muscles,affected_movement_ids,allowed_movement_ids")
       .eq("user_id", user.id).is("resolved_at", null),
     client.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
-    client.from("training_blocks").select("id,notes,started_on,program_id").eq("user_id", user.id)
-      .eq("status", "active").is("deleted_at", null).maybeSingle(),
+    loadOwnedActivePrograms(client, user.id),
   ]);
-  if (catalogResult.error || limitationsResult.error || profileResult.error || activeResult.error) {
+  if (catalogResult.error || limitationsResult.error || profileResult.error) {
     throw new Error("Could not check your program and exercises. Try again.");
   }
   const catalogRows = z.array(catalogRowSchema).parse(catalogResult.data);
@@ -97,7 +102,25 @@ async function prepare(raw: AuthoredSaveInput) {
     }
   }
   const today = todayYmd(profileResult.data?.timezone ?? "UTC");
-  const active = activeResult.data;
+  const compileRehab = (protocolId: string, partId: string): AuthoredPrescriptionItem[] => {
+    const protocol = protocols.find((entry) => entry.id === protocolId);
+    if (!protocol) throw new Error("Choose an available rehab protocol from your library.");
+    return compileLibraryRehab(protocol, `authored:${partId}`).map((item) => {
+      const movement = catalog.find((entry) => entry.id === item.movementId);
+      if (!movement || movement.pattern === "cardio") throw new Error("A rehab exercise is no longer available. Update the protocol.");
+      let circuit: AuthoredPrescriptionItem["circuit"];
+      if (item.circuit) {
+        if (item.circuit.round == null) throw new Error("Could not prepare the rehab superset.");
+        circuit = { ...item.circuit, round: item.circuit.round };
+      }
+      return { movementId: movement.id, movementSlug: movement.slug, movementName: movement.displayName, kind: "tendon", isAmrap: false,
+        sets: item.sets, reps: item.reps, repRange: item.repRange, holdSec: item.holdSec,
+        targetWeightKg: item.targetWeightKg, notes: item.notes, circuit,
+        meta: { ...item.meta, authoredPartId: partId, rehab: true },
+      };
+    });
+  };
+  const active = selectProgramTarget(activeResult, input.definition.activity, input.editBlockId);
   if (input.editBlockId && (active?.id !== input.editBlockId || active.program_id !== "authored")) {
     throw new Error("This program is no longer active.");
   }
@@ -105,7 +128,8 @@ async function prepare(raw: AuthoredSaveInput) {
   if (!input.editBlockId && input.startedOn < today) throw new Error("Choose today or a future start date.");
   const dated = authoredProgramDates(input.definition, input.startedOn);
   const rows = dated.map(({ date, workout, weekIndex, dayIndex, ref }) => {
-    const prescription: Prescription = { ...compileAuthoredWorkout(workout, catalog), programRef: ref };
+    const prescription: Prescription = { ...compileAuthoredWorkout(workout, catalog, compileRehab), programRef: ref };
+    if (prescription.items.length > 500) throw new Error("Keep each workout to 500 sets and cardio parts or fewer.");
     return {
       date, workoutId: workout.id, ref,
       week_index: weekIndex, day_index: dayIndex, slot: "single" as const,
@@ -140,7 +164,8 @@ async function prepare(raw: AuthoredSaveInput) {
     const eligible = input.scope === "workout" ? [selected] : existing.filter((row) =>
       row.prescription.programRef?.startsWith(`authored:${workout.id}:`) && dateOf(row) >= dateOf(selected) &&
       !row.completed_session_id && !row.skipped_at);
-    const compiled = compileAuthoredWorkout(workout, catalog);
+    const compiled = compileAuthoredWorkout(workout, catalog, compileRehab);
+    if (compiled.items.length > 500) throw new Error("Keep each workout to 500 sets and cardio parts or fewer.");
     scoped = {
       updates: eligible.map((row) => ({ id: row.id, title: workout.name, ...workoutClassification(compiled), prescription: {
         ...row.prescription, ...compiled, programRef: row.prescription.programRef,
@@ -201,8 +226,12 @@ export async function saveAuthoredProgram(
     const replay = await client.from("engine_override_events").select("context").eq("id", review.requestId).eq("user_id", user.id).maybeSingle();
     if (replay.error) throw new Error("Could not check this save. Try again.");
     if (replay.data) {
-      const context = z.object({ kind: z.literal("training-schedule-v1"), operation: z.string(), inputHash: z.string(), result: z.unknown() }).parse(replay.data.context);
+      const context = z.object({ kind: z.literal("training-schedule-v1"), operation: z.string(), inputHash: z.string(), result: z.unknown(),
+        programOwnershipVersion: z.number().optional(), replacedBlockId: z.string().nullable().optional(),
+      }).parse(replay.data.context);
       if (context.operation !== operation || context.inputHash !== inputHash) throw new Error("This save request was already used for a different change.");
+      if (operation === "primary-create" && context.programOwnershipVersion &&
+          (context.replacedBlockId ?? null) !== (review.replaceBlockId ?? null)) throw new Error("This save request belongs to a different program target.");
       const blockId = input.editBlockId ?? z.object({ block_id: z.string().uuid() }).parse(context.result).block_id;
       return { ok: true, blockId };
     }
@@ -213,7 +242,8 @@ export async function saveAuthoredProgram(
     if (preview.replacesBlockId && review.replaceBlockId !== preview.replacesBlockId) throw new Error("Confirm which program to replace.");
     if (scoped) {
       const result = await commitTrainingSchedule(client, operation, {
-        updates: scoped.updates, blockId: input.editBlockId, definition: scoped.definition,
+        updates: scoped.updates, blockId: input.editBlockId, definition: scoped.definition, programKind: input.definition.activity,
+        p_rehab_bindings: authoredRehabProtocolIds(input.definition).map((id) => ({ localProtocolId: id, rehabProtocolId: id })),
       }, review, input);
       if (result.error) throw new Error(result.error.message);
       revalidatePath("/app"); revalidatePath("/app/plan"); revalidatePath("/app/programs");
@@ -234,7 +264,7 @@ export async function saveAuthoredProgram(
     };
     const persistedRows = rows.map(({ date: _date, workoutId: _workoutId, ref: _ref, ...row }) => row);
     const args = input.editBlockId ? {
-      p_block_id: input.editBlockId, p_strength_updates: [],
+      p_block_id: input.editBlockId, programKind: input.definition.activity, p_strength_updates: [],
       p_deletions: existing.filter((row) => rewrite.deleteIds.includes(row.id)).map((row) => ({
         id: row.id, weekIndex: row.week_index, dayIndex: row.day_index, slot: row.slot,
         role: row.role, currentPrescription: row.prescription,
@@ -242,11 +272,13 @@ export async function saveAuthoredProgram(
       p_insertions: rewrite.insertIndices.map((index) => persistedRows[index]),
       p_block_metadata: metadata, p_tm_percents: [], p_program_instance: instance,
     } : {
-      p_block: { ...metadata, program_id: "authored", program_family: input.definition.activity, started_on: input.startedOn,
+      p_block: { ...metadata, program_kind: input.definition.activity, program_id: "authored", program_family: input.definition.activity, started_on: input.startedOn,
         allows_two_a_days: false, accessory_volume: "medium" },
       p_planned_sessions: persistedRows, p_tm_percents: [], p_program_instance: instance,
     };
-    const result = await commitTrainingSchedule(client, operation, args, review, input);
+    const result = await commitTrainingSchedule(client, operation, { ...args,
+      p_rehab_bindings: authoredRehabProtocolIds(input.definition).map((id) => ({ localProtocolId: id, rehabProtocolId: id })),
+    }, review, input);
     if (result.error) throw new Error(result.error.message);
     const blockId = input.editBlockId ?? z.object({ block_id: z.string().uuid() }).parse(result.data).block_id;
     revalidatePath("/app"); revalidatePath("/app/plan"); revalidatePath("/app/programs");

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AuthoredProgramDefinition } from "@hta/domain";
+import { programKindAllowsActivity } from "@hta/domain";
 
 const id = z.string().uuid();
 const dose = z.discriminatedUnion("kind", [
@@ -17,6 +18,7 @@ export const authoredMovementSchema = z.object({
 export const authoredWorkoutSchema = z.object({
   id, name: z.string().trim().min(1).max(100), weekday: z.number().int().min(0).max(6),
   parts: z.array(z.discriminatedUnion("kind", [
+    z.object({ id, kind: z.literal("rehab"), protocolId: id }).strict(),
     z.object({ id, kind: z.literal("movement"), movement: authoredMovementSchema }).strict(),
     z.object({
       id, kind: z.literal("circuit"), name: z.string().trim().min(1).max(100),
@@ -55,6 +57,7 @@ export const authoredProgramSchema = z.object({
     days.add(workout.weekday);
     for (const part of workout.parts) {
       ids.push(part.id);
+      if (part.kind === "rehab") continue;
       if (part.kind === "cardio") {
         const seconds = part.intervals.reduce((sum, interval) => sum + (interval.target.kind === "time" ? interval.target.seconds : 0), 0) * part.repeats;
         const metres = part.intervals.reduce((sum, interval) => sum + (interval.target.kind === "distance" ? interval.target.metres : 0), 0) * part.repeats;
@@ -63,6 +66,9 @@ export const authoredProgramSchema = z.object({
         if (definition.activity === "strength") ctx.addIssue({ code: "custom", message: "Choose Hybrid to include cardio in this program." });
         if (definition.activity === "running" && part.modality !== "run") ctx.addIssue({ code: "custom", message: "Choose Hybrid to include machine work." });
       } else {
+        if (!programKindAllowsActivity(definition.activity, "strength")) {
+          ctx.addIssue({ code: "custom", message: "Choose Hybrid to add strength exercises or circuits. Add rehab from your protocol library." });
+        }
         const movements = part.kind === "movement" ? [part.movement] : part.movements;
         ids.push(...movements.map((movement) => movement.id));
         if (part.kind === "circuit" && new Set(movements.map((movement) => movement.movementId)).size !== movements.length) {

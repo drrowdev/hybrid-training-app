@@ -16,6 +16,8 @@ on:
       - "packages/db/integration-tests/migration-runner-rehearsal.ts"
       - "packages/db/integration-tests/swim-outcome-compatibility-rehearsal.ts"
       - "packages/db/integration-tests/modular-production-update-rehearsal.ts"
+      - "packages/db/integration-tests/independent-programs-rehearsal.ts"
+      - "packages/db/rollbacks/0158_independent_program_ownership.down.sql"
       - "packages/db/scripts/__tests__/modular-production*.test.ts"
       - "packages/db/rollbacks/0157_standalone_swim_import_outcomes.down.sql"
       - "packages/db/integration-tests/swim-standalone-outcomes-rehearsal*"

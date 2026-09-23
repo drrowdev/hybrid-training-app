@@ -30,31 +30,39 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
+import { isMissingScheduleFunction, ScheduleUnavailableError } from "@/lib/schedule/storage";
 
 export async function maybeCompleteBlock(
   supabase: SupabaseClient,
   blockId: string,
 ): Promise<void> {
+  const atomic = await supabase.rpc("complete_program_if_settled", { p_block_id: blockId });
+  if (!atomic.error) return;
+  if (!isMissingScheduleFunction(atomic.error, "complete_program_if_settled")) {
+    throw new Error("Could not update program completion.", { cause: atomic.error });
+  }
   // 1. Fast guard: only flip 'active' blocks. 'archived' (manual end)
   //    and 'completed' (already flipped) must not be overwritten.
   const { data: block, error: bErr } = await supabase
     .from("training_blocks")
-    .select("id, status")
+    .select("*")
     .eq("id", blockId)
     .maybeSingle();
-  if (bErr || !block) return;
+  if (bErr) throw new Error("Could not read program completion.", { cause: bErr });
+  if (!block) return;
+  if (block.program_kind != null) throw new ScheduleUnavailableError();
   if (block.status !== "active") return;
 
   // 2. Any planned_session still untouched? A raw link only counts when its
   // linked session still exists and is not soft-deleted.
   const { data: planned, error: rErr } = await supabase
     .from("planned_sessions")
-    .select("id, completed_session_id, skipped_at, sessions(deleted_at)")
+    .select("id, role, completed_session_id, skipped_at, sessions(deleted_at,completed_at)")
     .eq("block_id", blockId);
-  if (rErr) return;
+  if (rErr) throw new Error("Could not read the program's completed workouts.", { cause: rErr });
   if (!planned || planned.length === 0) return;
   const hasRemaining = planned.some((row) => {
-    if (row.skipped_at != null) return false;
+    if (row.skipped_at != null || row.role === "rest") return false;
     const session = Array.isArray(row.sessions)
       ? row.sessions[0]
       : row.sessions;
@@ -64,11 +72,11 @@ export async function maybeCompleteBlock(
         session && row.completed_session_id
           ? {
               id: row.completed_session_id as string,
-              completedAt: null,
+              completedAt: (session.completed_at as string | null) ?? null,
               deletedAt: (session.deleted_at as string | null) ?? null,
             }
           : null,
-      ).completedSessionId == null
+      ).completedAt == null
     );
   });
   if (hasRemaining) return;
@@ -80,9 +88,10 @@ export async function maybeCompleteBlock(
   //    on a row that's already 'completed' is a no-op (zero rows
   //    matched), so completed_at/ended_at are written exactly once.
   const nowIso = new Date().toISOString();
-  await supabase
+  const updated = await supabase
     .from("training_blocks")
     .update({ status: "completed", completed_at: nowIso, ended_at: nowIso })
     .eq("id", blockId)
     .eq("status", "active");
+  if (updated.error) throw new Error("Could not update program completion.", { cause: updated.error });
 }

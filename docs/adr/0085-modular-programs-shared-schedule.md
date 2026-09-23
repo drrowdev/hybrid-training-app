@@ -3,6 +3,12 @@
 Date: 2026-09-22
 Status: Owner-approved architecture; implementation and release qualification in progress.
 
+The owner corrected program cardinality on 2026-09-23.
+[ADR 0087](0087-independent-program-ownership.md) supersedes the single-primary
+restriction below with one active program of each type. This document retains
+the earlier migration and qualification record; it is not the current
+cardinality or release-acceptance contract.
+
 ## Decision
 
 Keep one visible active primary program in the existing

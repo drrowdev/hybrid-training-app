@@ -118,7 +118,7 @@ export async function rehearseMigrationRunner(
   for (const name of databases) assert.ok(!original.databases.some((row) => row.datname === name));
   for (const name of fixtureRoles) assert.ok(!original.roles.some((row) => row.rolname === name));
   const migrations = readMigrationFiles(config);
-  assert.equal(migrations.length, 158);
+  assert.equal(migrations.length, 159);
   const stages: string[] = [];
   for (const name of databases) {
     let client: postgres.Sql | undefined;
@@ -146,7 +146,7 @@ export async function rehearseMigrationRunner(
         assert.equal((await client`SELECT to_regclass('public.movements') AS value`)[0]!.value, null);
         assert.deepEqual(await settings(client), before);
         stages.push("migration-runner-canonical-155-failure-reproduced-and-rolled-back");
-        stage("migration-runner-normal-command-full-158");
+        stage("migration-runner-normal-command-full-159");
         await normalCommand(url);
         const rows = await assertLedger(client, migrations);
         assert.equal((await client`SELECT count(*)::int AS n FROM public.movements
@@ -154,7 +154,7 @@ export async function rehearseMigrationRunner(
         assert.ok((await client`SELECT to_regprocedure('public.training_schedule_snapshot()') AS value`)[0]!.value);
         await normalCommand(url);
         assert.deepEqual(await ledger(client), rows);
-        stages.push("migration-runner-normal-full-158-and-replay");
+        stages.push("migration-runner-normal-full-159-and-replay");
         stages.push(...await rehearseSwimOutcomeCompatibility(client, migrations, config, stage));
         assert.deepEqual(await settings(client), before);
       } else {
@@ -204,10 +204,11 @@ export async function rehearseMigrationRunner(
         assert.equal((await client`SELECT to_regtype('public.migration_boundary_type') AS value`)[0]!.value, null);
         assert.deepEqual(await settings(client), before);
         stages.push("migration-runner-public-ddl-and-precommit-rollback-retains-prefix");
-        stage("migration-runner-incremental-157-to-158");
+        stage("migration-runner-incremental-157-to-159");
         await migrateCanonical(client, migrations.slice(0, 157), config);
         await assertLedger(client, migrations.slice(0, 157));
         stages.push(...await rehearseSwimOutcomeCompatibility(client, migrations, config, stage));
+        await migrateCanonical(client, migrations, config);
         const completed = await assertLedger(client, migrations);
         assert.deepEqual(completed.slice(0, 150), Array.from(prefix));
         assert.deepEqual(await settings(client), before);

@@ -187,6 +187,7 @@ export type AddStrengthSetResult = {
 async function resolveSetSnapshot(
   supabase: Awaited<ReturnType<typeof createClient>>,
   args: {
+    userId: string;
     sessionId: string;
     movementId: string;
     prescriptionItemIndex: number | null;
@@ -210,12 +211,20 @@ async function resolveSetSnapshot(
   if (idx == null) return empty;
 
   try {
-    const { data: planned } = await supabase
+    const { data: planned, error: plannedError } = await supabase
       .from("planned_sessions")
       .select("prescription")
       .eq("completed_session_id", args.sessionId)
+      .eq("user_id", args.userId)
       .maybeSingle();
-    const items = (planned?.prescription as Prescription | null)?.items ?? [];
+    if (plannedError) throw new Error("Could not read the planned prescription.");
+    let prescription = planned?.prescription as Prescription | null;
+    if (!prescription) {
+      const session = await supabase.from("sessions").select("prescription").eq("id", args.sessionId).eq("user_id", args.userId).maybeSingle();
+      if (session.error) throw new Error("Could not read the issued workout.");
+      prescription = session.data?.prescription as Prescription | null;
+    }
+    const items = prescription?.items ?? [];
     let item = items[idx];
     if (!item) return empty;
 
@@ -229,6 +238,7 @@ async function resolveSetSnapshot(
     // to be reinterpreted — without the bodyweight the server would expect the
     // uncorrected number and reject the corrected one the logger showed.
     let tmKg: number | null = null;
+    let oneRmKg: number | null = null;
     let bodyweightKg: number | null = null;
     let isSystemLoad = item.systemLoad === true;
     // A warm-up's kg is rounded against the lifter's bar and plates, not to a
@@ -264,6 +274,7 @@ async function resolveSetSnapshot(
       } | null;
       const oneRm = Number(tmRow?.one_rm_kg);
       if (Number.isFinite(oneRm) && oneRm > 0) {
+        oneRmKg = oneRm;
         const pct = Number(
           tmRow?.tm_percent ?? profileRes.data?.tm_percent_default ?? 90,
         );
@@ -309,6 +320,7 @@ async function resolveSetSnapshot(
 
     const expected = resolvePrescribedSnapshot(item, {
       tmKg,
+      oneRmKg,
       basis: item.intensityLabel?.includes("1RM") ? "1RM" : "TM",
       ...(isSystemLoad ? { isSystemLoad: true } : {}),
       bodyweightKg,
@@ -325,8 +337,9 @@ async function resolveSetSnapshot(
       prescribed: expected.prescribed,
       isBodyweight: item.bw != null,
     };
-  } catch {
+  } catch (error) {
     // Snapshot resolution is best-effort — never block the log.
+    console.error("Prescribed snapshot resolution failed", error);
     return empty;
   }
 }
@@ -392,6 +405,7 @@ export async function addStrengthSet(
   //
   // Wrapped so any failure here can NEVER block logging the actual set.
   const snapshot = await resolveSetSnapshot(supabase, {
+    userId: user.id,
     sessionId: parsed.data.sessionId,
     movementId: parsed.data.movementId,
     prescriptionItemIndex: parsed.data.prescriptionItemIndex ?? null,
@@ -1697,7 +1711,6 @@ export async function completeSessionResult(
           .eq("completed_session_id", sessionId)
           .maybeSingle();
         if (!linked?.block_id) return;
-        await maybeCompleteBlock(supabase, linked.block_id as string);
         const { applyProgramProgression } = await import(
           "@/lib/platform/progression"
         );
@@ -1707,6 +1720,7 @@ export async function completeSessionResult(
           sessionId,
           blockId: linked.block_id as string,
         });
+        await maybeCompleteBlock(supabase, linked.block_id as string);
       })().catch((e) => {
         console.error("block completion/progression failed:", e);
       }),
@@ -1990,6 +2004,7 @@ export async function fillSessionFromPlan(
   const defaultPct = Number(profileRes.data?.tm_percent_default ?? 90);
   const equipment = resolveEquipment(profileRes.data);
   const tmByMovementId = new Map<string, number>();
+  const oneRmByMovementId = new Map<string, number>();
   for (const row of (tmsRes.data ?? []) as Array<{
     movement_id: string;
     one_rm_kg: number | string | null;
@@ -1997,6 +2012,7 @@ export async function fillSessionFromPlan(
   }>) {
     const oneRm = Number(row.one_rm_kg);
     if (!Number.isFinite(oneRm) || oneRm <= 0) continue;
+    oneRmByMovementId.set(row.movement_id, oneRm);
     const pct = row.tm_percent == null ? defaultPct : Number(row.tm_percent);
     const tm = roundToPlate((oneRm * pct) / 100);
     if (Number.isFinite(tm) && tm > 0) tmByMovementId.set(row.movement_id, tm);
@@ -2075,6 +2091,7 @@ export async function fillSessionFromPlan(
       item.kind === "warmup" ? roundWarmupLoadKg(kg, warmupLoadOptions) : roundToPlate(kg);
     const weight = resolveTargetLoadKg(item, {
       tmKg: tm ?? null,
+      oneRmKg: oneRmByMovementId.get(item.movementId) ?? null,
       ...(systemLoad ? { isSystemLoad: true } : {}),
       bodyweightKg,
       roundKg,
@@ -2087,6 +2104,7 @@ export async function fillSessionFromPlan(
     // through the shared resolver (plan §6.9) so it matches the live logger.
     const snapshot = resolvePrescribedSnapshot(item, {
       tmKg: tm ?? null,
+      oneRmKg: oneRmByMovementId.get(item.movementId) ?? null,
       basis: item.intensityLabel?.includes("1RM") ? "1RM" : "TM",
       ...(systemLoad ? { isSystemLoad: true } : {}),
       bodyweightKg,

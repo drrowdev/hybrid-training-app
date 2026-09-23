@@ -436,13 +436,14 @@ export function MovementFocusView({
         item.kind === "warmup" ? roundWarmupLoadKg(kg, warmupLoadOptions) : roundToPlate(kg);
       return resolveTargetLoadKg(item, {
         tmKg: tmKg ?? null,
+        oneRmKg: oneRmKg ?? null,
         ...(systemLoad ? { isSystemLoad: true } : {}),
         bodyweightKg: bodyweightKg ?? null,
         roundKg,
         roundAbsoluteKg: roundKg,
       });
     },
-    [bodyweightKg, isSystemLoad, tmKg, warmupLoadOptions],
+    [bodyweightKg, isSystemLoad, oneRmKg, tmKg, warmupLoadOptions],
   );
 
   // Target weight / reps derived from the prescription + TM.

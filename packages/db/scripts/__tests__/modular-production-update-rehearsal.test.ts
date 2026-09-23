@@ -17,7 +17,7 @@ function source() {
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("DC-SW8 historical modular updater rehearsal stays separate from production", () => {
-  it("validates the complete158 source before returning the unchanged157 prefix", () => {
+  it("validates the complete159 source before returning the unchanged157 prefix", () => {
     const { journal, migrations } = source(), before = structuredClone(migrations);
     const prefix = modularRehearsalMigrations(journal, migrations);
     expect(prefix).toHaveLength(157);
@@ -26,7 +26,7 @@ describe("DC-SW8 historical modular updater rehearsal stays separate from produc
     expect(migrations).toEqual(before);
   });
 
-  it("keeps the actual production loader closed on the current158 journal", () => {
+  it("keeps the actual production loader closed on the current159 journal", () => {
     expect.assertions(2);
     try { modularUpdateMigrations(); }
     catch (error) {
@@ -38,18 +38,19 @@ describe("DC-SW8 historical modular updater rehearsal stays separate from produc
   });
 
   it.each(["missing-entry", "future-entry", "missing-source", "future-source", "index", "tag-prefix",
-    "modular-tag", "outcome-tag", "journal-time", "source-time", "breakpoint", "hash", "sql", "duplicate-hash"] as const)(
+    "modular-tag", "outcome-tag", "ownership-tag", "journal-time", "source-time", "breakpoint", "hash", "sql", "duplicate-hash"] as const)(
     "refuses %s instead of truncating an unvalidated source",
     (mode) => {
       const { journal, migrations } = source();
       if (mode === "missing-entry") journal.entries.pop();
-      if (mode === "future-entry") journal.entries.push({ ...journal.entries[157]!, idx: 158, tag: "0158_unapproved" });
+      if (mode === "future-entry") journal.entries.push({ ...journal.entries[158]!, idx: 159, tag: "0159_unapproved" });
       if (mode === "missing-source") migrations.pop();
       if (mode === "future-source") migrations.push(structuredClone(migrations[157]!));
       if (mode === "index") journal.entries[5]!.idx = 6;
       if (mode === "tag-prefix") journal.entries[5]!.tag = "0006_wrong";
       if (mode === "modular-tag") journal.entries[156]!.tag = "0156_unexpected";
       if (mode === "outcome-tag") journal.entries[157]!.tag = "0157_unexpected";
+      if (mode === "ownership-tag") journal.entries[158]!.tag = "0158_unexpected";
       if (mode === "journal-time") journal.entries[157]!.when++;
       if (mode === "source-time") migrations[156]!.folderMillis++;
       if (mode === "breakpoint") journal.entries[156]!.breakpoints = true;
