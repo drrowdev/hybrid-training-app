@@ -34,6 +34,7 @@ import { runSwimBrowserStage } from "./swim-browser-stage";
 import { SWIM_BROWSER_CASES } from "./swim-browser-acceptance";
 import { isModularAcceptance, MODULAR_BROWSER_CASES, MODULAR_MIGRATION_TOTAL } from "./modular-browser-profile";
 import { createModularRoundTripProof, modularSchemaRoundTrip } from "./modular-schema-roundtrip";
+import { createLegacyUpgradeProof, createModularLegacyPreparation } from "./modular-legacy-fixture";
 import { runMovementReferenceRoundTrip } from "./swim-movement-reference-roundtrip";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -63,6 +64,7 @@ async function main(cleanupOnly: boolean) {
   const active = new Map<number, () => void>();
   const secrets = new Set<string>();
   const manifest: Record<string, unknown> = { testedSha: process.env.EXPECTED_SHA, project };
+  let legacyPreparation: ReturnType<typeof createModularLegacyPreparation> | undefined;
   let state: Resources = { project, sha: process.env.EXPECTED_SHA!, createdAt: started,
     containers: [], volumes: [], processes: [], cleanup: "unconfirmed" };
   const save = () => {
@@ -500,8 +502,9 @@ async function main(cleanupOnly: boolean) {
       requireUnchanged();
     });
     const modularProof = createModularRoundTripProof();
-    const modularDdl = (phase: "down" | "up") => modularSchemaRoundTrip({
-      phase, command, dbId: target.dbId, proof: modularProof,
+    const ownershipProof = createModularRoundTripProof();
+    const modularDdl = (phase: "down" | "up", ownership = false) => modularSchemaRoundTrip({
+      phase, command, dbId: target.dbId, proof: ownership ? ownershipProof : modularProof, ownership,
       verifiedSql: (file) => {
         requireUnchanged();
         const bytes = readFileSync(join(root, file));
@@ -512,6 +515,8 @@ async function main(cleanupOnly: boolean) {
       },
     });
     if (modular) {
+      manifest.ownershipSchemaProof = ownershipProof;
+      await stage("unused ownership schema down before historical modular proof", () => modularDdl("down", true));
       manifest.modularSchemaProof = modularProof;
       await stage("unused modular schema down before historical identity proof", () => modularDdl("down"));
     }
@@ -572,6 +577,21 @@ async function main(cleanupOnly: boolean) {
       requireIdentityHelperRpcCases(ledger);
     }), reporting);
     if (modular) await stage("exact modular schema restoration", () => modularDdl("up"));
+    if (modular) {
+      const proof = createLegacyUpgradeProof();
+      manifest.legacyUpgradeProof = proof;
+      const legacy = createModularLegacyPreparation({
+        target: { url: target.rpcEnv.SMOKE_SUPABASE_URL, anonKey: target.rpcEnv.SMOKE_SUPABASE_ANON_KEY,
+          serviceRoleKey: target.rpcEnv.SMOKE_SUPABASE_SERVICE_ROLE_KEY, projectRef: target.rpcEnv.SWIM_TEST_PROJECT_REF },
+        runDirectory: directory, proof, secrets,
+      });
+      legacyPreparation = legacy;
+      await stage("exact ownership schema restoration and legacy preservation", async () => {
+        await legacy.prepare();
+        await modularDdl("up", true);
+        await legacy.verifyUpgrade();
+      });
+    }
     await stage("movement reference down-up and necessity proof", () => runMovementReferenceRoundTrip({
       command, dbId: target.dbId,
       verifiedSql: (file) => {
@@ -597,6 +617,13 @@ async function main(cleanupOnly: boolean) {
   } catch (error) {
     if (!reporting.failures.primary) reporting.recordFailure("acceptance", error);
   } finally {
+    if (legacyPreparation) {
+      try { await legacyPreparation.cleanup(); }
+      catch (error) {
+        reporting.recordFailure("legacy synthetic account cleanup", error, true);
+        if (!reporting.failures.primary) reporting.recordFailure("legacy synthetic account cleanup", error);
+      }
+    }
     if (!cleanupOnly && sourceFiles.length > 0) {
       try { requireUnchanged(); } catch (error) {
         reporting.recordFailure("source verification", error);

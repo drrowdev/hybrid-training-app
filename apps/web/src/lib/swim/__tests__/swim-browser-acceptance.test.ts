@@ -175,11 +175,49 @@ describe("DC-SW8 modular acceptance report membership", () => {
   it("accepts only the complete declared modular cohort without changing the historical cohort", () => {
     const fixture = report(paths, MODULAR_BROWSER_CASES);
     expect(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES))
-      .toMatchObject({ success: true, counts: { expected: 7, unexpected: 0, flaky: 0, skipped: 0 },
+      .toMatchObject({ success: true, counts: { expected: 18, unexpected: 0, flaky: 0, skipped: 0 },
         cases: MODULAR_BROWSER_CASES.map((item) => ({ ...item, status: "passed", attempts: 1 })) });
     expect(() => validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot)).toThrow();
     expect(() => validateSwimBrowserReport(JSON.stringify(report()), paths, webRoot, MODULAR_BROWSER_CASES)).toThrow();
     expect(() => validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, [])).toThrow();
+  });
+
+  it.each([{ cases: MODULAR_BROWSER_CASES }, { cases: SWIM_BROWSER_CASES }])("retains completed, interrupted and not-run cases as failure-only global-timeout evidence %#", ({ cases }) => {
+    const fixture = report(paths, cases);
+    const specs = fixture.suites.flatMap((suite) => suite.suites[0]!.specs);
+    specs.forEach((spec, index) => {
+      const test = spec.tests[0]!;
+      if (index < 2) test.results[0]!.duration = 12_000 + index;
+      else if (index === 2) {
+        spec.ok = false; test.status = "unexpected";
+        test.results[0]!.status = "interrupted"; test.results[0]!.duration = 29_100;
+      } else {
+        spec.ok = false; test.status = "skipped"; test.results = [];
+      }
+    });
+    fixture.stats = { expected: 2, unexpected: 1, flaky: 0, skipped: cases.length - 3 };
+    Object.assign(fixture, { errors: [{ message: "private-global-timeout", stack: "private-stack" }] });
+    let caught: unknown;
+    try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, cases); }
+    catch (error) { caught = error; }
+    expect(caught).toBeInstanceOf(Error);
+    const ledger = projectBrowserFailure(caught);
+    expect(ledger).toMatchObject({ success: false, code: "browser-failed", counts: fixture.stats });
+    expect(ledger.cases).toHaveLength(cases.length);
+    expect(ledger.cases?.map((entry) => entry.title)).toEqual(cases.map((entry) => entry.title));
+    expect(ledger.cases?.slice(0, 3)).toMatchObject([
+      { status: "passed", attempts: 1, durationMs: 12_000 },
+      { status: "passed", attempts: 1, durationMs: 12_001 },
+      { status: "interrupted", attempts: 1, durationMs: 29_100 },
+    ]);
+    for (const entry of ledger.cases!.slice(3)) {
+      expect(entry).toMatchObject({ status: "not-run", testStatus: "skipped", attempts: 0, durationMs: null });
+      expect(entry).not.toHaveProperty("failureDetails");
+    }
+    expect(JSON.stringify(ledger)).not.toContain("private-");
+    fixture.stats = { expected: cases.length, unexpected: 0, flaky: 0, skipped: 0 };
+    fixture.errors = [];
+    expect(() => validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, cases)).toThrow();
   });
 
   it.each(["missing", "duplicate", "extra", "skipped", "retry", "failure", "wrong-title"])
@@ -2412,7 +2450,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
         case "error": test.results[0]!.errors = [{ message: "private-error" }]; break;
       }
       const projection = rejectedReport(fixture);
-      expect(projection.code).toBe(["missing", "extra", "unexecuted", "duplicate", "identity"].includes(mode)
+      expect(projection.code).toBe(["missing", "extra", "duplicate", "identity"].includes(mode)
         ? "browser-report-schema" : "browser-failed");
       expect(JSON.stringify(projection)).not.toContain("private-");
     }
@@ -2522,7 +2560,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
     } catch (error) {
       const outcomeFailure = [
         "skipped", "flaky", "unexpected", "retry", "result", "ok", "error", "stats",
-        "global-error", "failed-result", "timed-out", "interrupted", "expected-failure",
+        "global-error", "failed-result", "timed-out", "interrupted", "expected-failure", "no-result",
         "stats-flaky", "stats-skipped", "stats-unexpected",
       ].includes(mode);
       const projection = projectBrowserFailure(error);

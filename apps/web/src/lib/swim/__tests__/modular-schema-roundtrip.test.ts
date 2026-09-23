@@ -3,21 +3,60 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   createModularRoundTripProof, modularSchemaRoundTrip, MODULAR_CATALOG_SQL, MODULAR_SCHEMA_FILES,
+  OWNERSHIP_CATALOG_SQL, OWNERSHIP_SCHEMA_FILES,
 } from "../../../../scripts/modular-schema-roundtrip";
 import type { ProcessResult } from "../../../../scripts/swim-acceptance-guards";
 
 const passed: ProcessResult = { code: 0, signal: null, timedOut: false };
 const catalogue = { functions: 200, triggers: 30, sha256: "a".repeat(64) };
-function setup() {
-  const command = vi.fn(async (_executable: string, args: string[], _options: unknown) => ({
-    text: args.at(-1) === MODULAR_CATALOG_SQL ? JSON.stringify(catalogue) : "", result: passed,
-  }));
+function setup(ownership = false) {
+  const sql = ownership ? OWNERSHIP_CATALOG_SQL : MODULAR_CATALOG_SQL;
+  const files = ownership ? OWNERSHIP_SCHEMA_FILES : MODULAR_SCHEMA_FILES;
+  const command = vi.fn(async (_executable: string, args: string[], options: unknown) => {
+    expect(options).toMatchObject({ capture: true, allowFailure: true });
+    return { text: args.at(-1) === sql ? JSON.stringify(catalogue) : "", result: passed };
+  });
   const proof = createModularRoundTripProof();
-  const verifiedSql = vi.fn((file: string) => file === MODULAR_SCHEMA_FILES.down ? "SYNTHETIC_DOWN" : "SYNTHETIC_UP");
-  return { command, dbId: "d".repeat(64), proof, verifiedSql };
+  const verifiedSql = vi.fn((file: string) => file === files.down ? "SYNTHETIC_DOWN" : "SYNTHETIC_UP");
+  return { command, dbId: "d".repeat(64), proof, verifiedSql, ownership };
 }
 
 describe("DC-SW8 modular native schema round trip retains role and routine definitions", () => {
+  it("keeps a separate ownership proof covering all constraints, indexes, policies, RLS and ACLs", async () => {
+    for (const entry of ["pg_get_functiondef", "aclexplode", "pg_get_triggerdef", "pg_get_constraintdef",
+      "k.convalidated", "k.condeferrable", "pg_get_indexdef", "i.indisvalid", "pg_policy",
+      "p.polpermissive", "p.polwithcheck", "c.relrowsecurity", "c.relforcerowsecurity", "c.relacl"]) {
+      expect(OWNERSHIP_CATALOG_SQL).toContain(entry);
+    }
+    expect(OWNERSHIP_CATALOG_SQL).not.toContain("k.contype='c'");
+    const options = setup(true);
+    await modularSchemaRoundTrip({ ...options, phase: "down" });
+    await modularSchemaRoundTrip({ ...options, phase: "up" });
+    expect(options.proof.restored).toBe(true);
+    expect(options.verifiedSql.mock.calls).toEqual([[OWNERSHIP_SCHEMA_FILES.down], [OWNERSHIP_SCHEMA_FILES.up]]);
+    expect(options.command.mock.calls.map(([, args]) => args.at(-1)))
+      .toEqual([OWNERSHIP_CATALOG_SQL, "SYNTHETIC_DOWN", "SYNTHETIC_UP", OWNERSHIP_CATALOG_SQL]);
+  });
+
+  it.each(["down", "up", "catalogue"] as const)("refuses failed ownership %s without a restored proof or retry", async (failure) => {
+    const options = setup(true);
+    if (failure !== "down") await modularSchemaRoundTrip({ ...options, phase: "down" });
+    const original = options.command.getMockImplementation()!;
+    options.command.mockImplementation(async (...args) => {
+      const result = await original(...args);
+      if (args[1].at(-1) === OWNERSHIP_CATALOG_SQL) {
+        return failure === "catalogue" ? { ...result, text: JSON.stringify({ ...catalogue, sha256: "b".repeat(64) }) } : result;
+      }
+      return failure === "catalogue" ? result : { ...result, result: { ...passed, code: 1 } };
+    });
+    const phase = failure === "down" ? "down" : "up";
+    await expect(modularSchemaRoundTrip({ ...options, phase })).rejects.toThrow();
+    expect(options.proof.restored).toBe(false);
+    const calls = options.command.mock.calls.length;
+    await expect(modularSchemaRoundTrip({ ...options, phase })).rejects.toThrow();
+    expect(options.command).toHaveBeenCalledTimes(calls);
+  });
+
   it("DC-K4: final recovery/session lock inventory matches both migration guard lists", () => {
     const dbRoot = resolve(__dirname, "..", "..", "..", "..", "..", "..", "packages", "db");
     const rehearsal = readFileSync(resolve(dbRoot, "integration-tests", "modular-schedule-rehearsal.ts"), "utf8");

@@ -178,8 +178,8 @@ type FailureCode = "browser-environment" | "browser-paths" | "browser-env-files"
 const failures = new WeakMap<object, FailureCode>();
 const failureLedgers = new WeakMap<object, {
   cases: Array<BrowserCase & {
-    status: z.infer<typeof resultStatusSchema>; testStatus: z.infer<typeof testStatusSchema>;
-    expectedStatus: z.infer<typeof resultStatusSchema>; attempts: number; durationMs: number;
+    status: z.infer<typeof resultStatusSchema> | "not-run"; testStatus: z.infer<typeof testStatusSchema>;
+    expectedStatus: z.infer<typeof resultStatusSchema>; attempts: number; durationMs: number | null;
     attributedSources: AttributedSource[];
     failureDetails?: ReturnType<typeof projectStackAttribution>;
     modularObservation?: ModularObservation;
@@ -543,7 +543,8 @@ const specSchema = z.object({
     timeout: z.literal(30_000),
     projectId: z.literal(PROJECT), projectName: z.literal(PROJECT),
     expectedStatus: resultStatusSchema, status: testStatusSchema,
-    results: z.array(resultSchema).min(1).max(100),
+    // An empty result list is failure evidence for a collected case that never started.
+    results: z.array(resultSchema).max(100),
   })).length(1),
 });
 const suiteSchema = z.object({
@@ -630,18 +631,19 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
         counts: { ...report.stats },
         cases: cases.map((item, index) => {
           const test = specs.get(index)!.tests[0]!;
+          const last = test.results.at(-1);
           // Like status, durationMs belongs to the final attempt, not the sum of retries.
-          return { ...item, status: test.results.at(-1)!.status, testStatus: test.status,
-            expectedStatus: test.expectedStatus, attempts: test.results.length, durationMs: test.results.at(-1)!.duration,
+          return { ...item, status: last?.status ?? "not-run", testStatus: test.status,
+            expectedStatus: test.expectedStatus, attempts: test.results.length, durationMs: last?.duration ?? null,
             attributedSources: attributedSources(test.results, webRoot),
-            ...(test.results.at(-1)!.status !== "passed" ? {
-              failureDetails: projectStackAttribution(test.results.at(-1)!.stacks, webRoot),
+            ...(last && last.status !== "passed" ? {
+              failureDetails: projectStackAttribution(last.stacks, webRoot),
               ...(cases === MODULAR_BROWSER_CASES && (index === 2 || index === 3) ? {
-                modularObservation: projectModularObservation(index, test.results.at(-1)!.modularAnnotations),
+                modularObservation: projectModularObservation(index, last.modularAnnotations),
               } : {}),
             } : {}),
-            alertObservations: cases === SWIM_BROWSER_CASES
-              ? projectAlertObservations(index, test.results.at(-1)!.annotations) : [] };
+            alertObservations: cases === SWIM_BROWSER_CASES && last
+              ? projectAlertObservations(index, last.annotations) : [] };
         }),
       });
       throw error;

@@ -29,14 +29,15 @@ describe("DC-SW8 modular browser profile retains the isolated runtime boundaries
     expect(job).not.toContain("secrets.");
   });
 
-  it("preserves the historical cohort and appends one imported-outcome journey to the frozen six", () => {
+  it("preserves the historical cohorts and declares each ownership journey exactly once", () => {
     expect(SWIM_BROWSER_CASES).toHaveLength(26);
-    expect(MODULAR_BROWSER_CASES).toHaveLength(7);
-    expect(new Set(MODULAR_BROWSER_CASES.map(({ title }) => title)).size).toBe(7);
-    expect(MODULAR_BROWSER_CASES.map(({ title }) => title.split(" ")[0])).toEqual(["M1", "M2", "M3", "M4", "M5", "M6", "M7"]);
+    expect(MODULAR_BROWSER_CASES).toHaveLength(18);
+    expect(new Set(MODULAR_BROWSER_CASES.map(({ title }) => title)).size).toBe(18);
+    expect(MODULAR_BROWSER_CASES.map(({ title }) => title.split(" ")[0]))
+      .toEqual(Array.from({ length: 18 }, (_, index) => `M${index + 1}`));
     expect(new Set(MODULAR_BROWSER_CASES.map(({ file }) => file))).toEqual(new Set(["e2e/program-builder-mobile.spec.ts"]));
     expect(Object.isFrozen(MODULAR_BROWSER_CASES) && MODULAR_BROWSER_CASES.every(Object.isFrozen)).toBe(true);
-    expect(MODULAR_MIGRATION_TOTAL).toBe(158);
+    expect(MODULAR_MIGRATION_TOTAL).toBe(159);
   });
 
   it("requires the exact modular branch and a fresh first attempt", () => {

@@ -6,8 +6,12 @@ export const MODULAR_SCHEMA_FILES = {
   down: "packages/db/rollbacks/0156_modular_training_schedule.down.sql",
   up: "packages/db/drizzle/0156_modular_training_schedule.sql",
 } as const;
+export const OWNERSHIP_SCHEMA_FILES = {
+  down: "packages/db/rollbacks/0158_independent_program_ownership.down.sql",
+  up: "packages/db/drizzle/0158_independent_program_ownership.sql",
+} as const;
 
-export const MODULAR_CATALOG_SQL = `
+const catalogStart = `
 BEGIN READ ONLY;
 SET LOCAL statement_timeout = '5s';
 SET LOCAL search_path = pg_catalog, public;
@@ -24,11 +28,8 @@ WITH entries AS (
     jsonb_build_array(pg_get_triggerdef(t.oid, false), t.tgenabled)
   FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace
   WHERE n.nspname='public' AND NOT t.tgisinternal
-  UNION ALL
-  SELECT 'check', c.oid::regclass::text || ':' || k.conname,
-    jsonb_build_array(pg_get_constraintdef(k.oid, false), k.convalidated, k.connoinherit)
-  FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
-  WHERE n.nspname='public' AND k.contype='c'
+`;
+const catalogEnd = `
 )
 SELECT jsonb_build_object(
   'functions', count(*) FILTER (WHERE kind='function'),
@@ -36,6 +37,39 @@ SELECT jsonb_build_object(
   'sha256', encode(sha256(convert_to(jsonb_agg(jsonb_build_array(kind,key,value) ORDER BY kind,key)::text,'UTF8')),'hex')
 ) FROM entries;
 ROLLBACK;`;
+
+export const MODULAR_CATALOG_SQL = `${catalogStart}
+  UNION ALL
+  SELECT 'check', c.oid::regclass::text || ':' || k.conname,
+    jsonb_build_array(pg_get_constraintdef(k.oid, false), k.convalidated, k.connoinherit)
+  FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='public' AND k.contype='c'
+${catalogEnd}`;
+
+export const OWNERSHIP_CATALOG_SQL = `${catalogStart}
+  UNION ALL
+  SELECT 'constraint', c.oid::regclass::text || ':' || k.conname,
+    jsonb_build_array(pg_get_constraintdef(k.oid, false), k.convalidated, k.connoinherit,
+      k.condeferrable, k.condeferred)
+  FROM pg_constraint k JOIN pg_class c ON c.oid=k.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='public'
+  UNION ALL
+  SELECT 'index', c.oid::regclass::text,
+    jsonb_build_array(pg_get_indexdef(i.indexrelid), i.indisvalid, i.indisready, i.indislive)
+  FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='public'
+  UNION ALL
+  SELECT 'policy', c.oid::regclass::text || ':' || p.polname,
+    jsonb_build_array(p.polcmd, p.polpermissive, p.polroles::text,
+      pg_get_expr(p.polqual,p.polrelid), pg_get_expr(p.polwithcheck,p.polrelid))
+  FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='public'
+  UNION ALL
+  SELECT 'table-security', c.oid::regclass::text,
+    jsonb_build_array(c.relrowsecurity, c.relforcerowsecurity, c.relowner::regrole::text, c.relacl::text)
+  FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+  WHERE n.nspname='public' AND c.relkind IN ('r','p')
+${catalogEnd}`;
 
 const catalogueSchema = z.object({
   functions: z.number().int().min(1).max(1024),
@@ -59,14 +93,18 @@ export const createModularRoundTripProof = (): ModularRoundTripProof => ({
 
 export async function modularSchemaRoundTrip(options: {
   phase: "down" | "up"; command: Command; dbId: string; proof: ModularRoundTripProof;
-  verifiedSql: (file: typeof MODULAR_SCHEMA_FILES[keyof typeof MODULAR_SCHEMA_FILES]) => string;
+  ownership?: boolean;
+  verifiedSql: (file: typeof MODULAR_SCHEMA_FILES[keyof typeof MODULAR_SCHEMA_FILES] |
+    typeof OWNERSHIP_SCHEMA_FILES[keyof typeof OWNERSHIP_SCHEMA_FILES]) => string;
 }) {
   const { phase, command, dbId, proof } = options;
+  const files = options.ownership ? OWNERSHIP_SCHEMA_FILES : MODULAR_SCHEMA_FILES;
+  const catalogueSql = options.ownership ? OWNERSHIP_CATALOG_SQL : MODULAR_CATALOG_SQL;
   assert(/^[a-f0-9]{64}$/.test(dbId), "Owned database container required");
   const args = (sql: string) => ["exec", "-e", "PGOPTIONS=-c statement_timeout=30s -c lock_timeout=5s", dbId,
     "psql", "-XqAt", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-c", sql];
   const snapshot = async () => {
-    const response = await command("docker", args(MODULAR_CATALOG_SQL),
+    const response = await command("docker", args(catalogueSql),
       { capture: true, allowFailure: true, timeout: 10_000 });
     requireProcess(response.result);
     assert(response.text.length <= 1024, "Modular catalogue output bound");
@@ -80,7 +118,7 @@ export async function modularSchemaRoundTrip(options: {
     assert(proof.down === "completed" && proof.up === "not-attempted" && proof.before !== null,
       "Modular restoration requires one completed unused down");
   }
-  const sql = options.verifiedSql(MODULAR_SCHEMA_FILES[phase]);
+  const sql = options.verifiedSql(files[phase]);
   assert(sql.length > 0 && Buffer.byteLength(sql, "utf8") <= 2 * 1024 * 1024, "Modular SQL source bound");
   proof[phase] = "running";
   try {
