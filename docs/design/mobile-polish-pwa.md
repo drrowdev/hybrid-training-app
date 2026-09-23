@@ -79,7 +79,7 @@ No schema changes. PWA is pure client.
   - `start_url: "/app"`
 - `next-pwa` or hand-rolled service worker:
   - Cache: app shell, /app routes, /api/movements/search, /api/me/export
-  - Strategy: network-first for `/app/*`, cache-first for assets, stale-while-revalidate for the movement catalog
+  - Strategy: network-first for `/app/*` document navigations, with cached/offline fallback only on network failure; network-only for Next.js RSC requests; cache-first for assets, stale-while-revalidate for the movement catalog
 - Install prompt banner:
   - Hooks `beforeinstallprompt`
   - Shows a small bottom-card "Install Hybrid for faster gym access" on third visit

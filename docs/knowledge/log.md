@@ -5116,3 +5116,59 @@ bounds and the 62 SQL + 75 synthetic UI inventories are unchanged. The local
 production probe used no real database or provider and was stopped and moved
 out of the repository. Native acceptance still belongs to the coordinator;
 local synthetic results do not establish that M8 or M11 works with real data.
+
+## [2026-09-23] fix | Slow navigation and streamed program controls
+
+Coordinator-consumed native run 35912653286 at `bdbc71c6` passed 15 of 18
+browser cases, including M12. All pre-browser stages, 36 RPCs, ownership
+restoration, historical graph preservation and account cleanup passed.
+Remaining failures were M8, M11 and M13.
+
+A local production build with a controlling service worker and synthetic
+loopback storage reproduced a product defect identified by the coordinator's
+independent critique. Delaying navigation response headers by 4.5 seconds
+caused the worker's 3-second deadline to return the offline document at the
+exact legacy Plan URL, with no More/End control. The same graph renders those
+controls without the delay. Delaying the history RSC refresh after a successful
+delete caused the worker to fail the request, even though the server remained
+reachable. Next then attempted a full navigation; a separate held-read probe
+left the exact deleted row stale after fresh server reads had completed.
+
+Worker version `hta-v3` removes the navigation deadline, preserves cached and
+branded offline fallback on genuine network failure, and bypasses cache and
+fallback entirely for Next.js RSC requests. Activation removes the old cache
+generation, including old Flight responses. Workout outbox, queue, replay,
+auth/RLS and storage contracts are unchanged. The offline document's visible
+copy is unchanged; only a nonvisible diagnostic marker was added.
+
+Plan's six optional offers and recovery preview now share one promise and
+stream through Suspense instead of blocking the core Plan and More/End.
+Recovery availability suspends only its own menu item, not lifecycle actions
+or an already-open End dialog. Existing recommendation anchoring, precedence
+and mutation-time revalidation remain intact. Preview errors are logged and
+shown as a plain status; framework redirect/control-flow errors still propagate.
+
+M13's Swimming attachment failure was a driver race: the exact "Save changes"
+button disappears by name when relabelled "Saving...", before persistence.
+The driver now follows that same button through both labels until removal,
+then requires the selected checkbox to be enabled before the unchanged exact
+binding assertion. The existing delayed attachment UI stage covers both
+failure and confirmed success; the existing program-control stage also checks
+End while recovery is pending and after it resolves, at 375 and 1280 pixels.
+
+Failure-only diagnostic fields and enums remain unchanged. M8 `page:plan`
+now requires the visible Plan root, with no offline marker; loading, offline
+and other documents map to the existing `other` value. Native assertions,
+case titles/order, 30/300-second limits and the 62 SQL + 75 synthetic UI stage
+inventories are unchanged. No migration or speculative history-menu patch
+is included. Real-data native acceptance remains with the coordinator.
+
+The corrected local production build passed the same 4.5-second navigation
+and RSC-header delays at 375 pixels. Plan and End rendered while the snapshot
+was still pending; the End dialog remained open after it settled. Injected
+preview failure retained More and displayed the status. The exact history
+row disappeared after the delayed refresh. A real loopback connection failure
+still served the cached Plan and the offline document for an uncached route.
+All 75 synthetic UI stages and 52 focused worker, recovery, outbox-upgrade,
+queue and completion-replay tests passed. These probes used no real database
+or provider; the temporary server and in-repository probe were removed.

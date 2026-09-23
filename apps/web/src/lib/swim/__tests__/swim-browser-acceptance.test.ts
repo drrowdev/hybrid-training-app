@@ -342,20 +342,24 @@ describe("DC-SW8 modular acceptance report membership", () => {
     for (const event of ["request", "response", "requestfailed"]) expect(events.listenerCount(event)).toBe(0);
   });
 
-  it.each(["boundary", "heading", "hidden-heading", "normal"] as const)(
+  it.each(["boundary", "heading", "hidden-heading", "normal", "offline", "loading", "hidden-plan"] as const)(
     "classifies M8's streamed %s without exporting page text", async (mode) => {
       const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
       const helper = source.slice(source.indexOf("function observeNativeUi("), source.indexOf("function movement("));
       const events = new EventEmitter(), annotations: string[] = [];
       const heading = { textContent: "Application error: private server detail", getClientRects: () => mode === "hidden-heading" ? [] : [{}] };
+      const plan = { getClientRects: () => mode === "hidden-plan" ? [] : [{}] };
       const createObserver = runInNewContext(transpileModule(`${helper}\nobserveNativeUi;`, {
         compilerOptions: { target: ScriptTarget.ES2022 },
       }).outputText, {
         unavailableNativeUi, nativeUiFailureSchema, URL,
         document: {
           title: "SxC",
-          querySelector: (selector: string) => selector === "#__next_error__" && mode === "boundary" ? {} : null,
-          querySelectorAll: () => mode === "normal" ? [] : [heading],
+          querySelector: (selector: string) =>
+            selector === "#__next_error__" && mode === "boundary" ? {} :
+              selector === '[data-testid="offline-document"]' && mode === "offline" ? plan :
+                selector === '[data-testid="plan-redesign"]' && mode !== "loading" ? plan : null,
+          querySelectorAll: () => ["heading", "hidden-heading"].includes(mode) ? [heading] : [],
         },
         location: { pathname: "/app/plan" },
         diagnosticAnnotation: (_type: string, description: string) => annotations.push(description),
@@ -368,7 +372,8 @@ describe("DC-SW8 modular acceptance report membership", () => {
       }, "m8", "", async () => "active");
       await observer.capture();
       expect(JSON.parse(annotations.at(-1)!)).toMatchObject({
-        case: "m8", page: ["boundary", "heading"].includes(mode) ? "error" : "plan", control: "absent",
+        case: "m8", page: ["boundary", "heading"].includes(mode) ? "error" :
+          ["offline", "loading", "hidden-plan"].includes(mode) ? "other" : "plan", control: "absent",
       });
       expect(annotations.join("")).not.toContain("private");
       observer.dispose();

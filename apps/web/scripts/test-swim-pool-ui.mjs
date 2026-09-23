@@ -625,8 +625,10 @@ try {
           root.render(<DeleteHistoryFixture key={++key} />);
         };
         window.showProgramEnd = () => {
+          const available = new Promise(resolve => window.resolveRecoveryAvailability = resolve);
           root.render(<PlanProgramActions key={++key} blockId="legacy" canEdit
             editHref="/app/program?edit=legacy" startNewHref="/app/program"
+            recoveryAvailable={available} recoveryControl={<button>Review recovery week</button>}
             endAction={async () => { window.endedProgram = true; }} />);
         };
         function RehabLibraryFixture() {
@@ -1496,14 +1498,21 @@ try {
     const saveRehab = page.getByRole("button", { name: "Save changes", exact: true });
     await saveRehab.evaluate(button => { button.click(); button.click(); });
     await expect(protocolChoice).toBeDisabled();
+    await expect(saveRehab).toHaveCount(0);
+    const savingOrSaveRehab = page.getByRole("button", { name: /^(Save changes|Saving…)$/ });
+    await expect(savingOrSaveRehab).toBeDisabled();
     assert.equal(await page.evaluate(() => window.rehabCalls.length), 1);
     await page.evaluate(() => window.resolveRehab({ error: "Review your changed schedule.", errorCode: "validation" }));
     await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
     await expect(protocolChoice).toBeChecked();
     await expect(protocolChoice).toBeEnabled();
-    await page.evaluate(() => { window.rehabMode = "success"; });
     await saveRehab.click();
-    await expect(saveRehab).toHaveCount(0);
+    await expect(savingOrSaveRehab).toBeDisabled();
+    await expect(protocolChoice).toBeDisabled();
+    await page.evaluate(() => window.resolveRehab({ ok: true, protocolIds: [window.rehabProtocol.id] }));
+    await expect(savingOrSaveRehab).toHaveCount(0);
+    await expect(protocolChoice).toBeChecked();
+    await expect(protocolChoice).toBeEnabled();
     const attachmentCalls = await page.evaluate(() => window.rehabCalls);
     assert.equal(attachmentCalls.length, 2);
     assert.deepEqual(attachmentCalls[0], attachmentCalls[1]);
@@ -1839,7 +1848,10 @@ try {
     await expect(historyRow).toHaveCount(0);
     await page.evaluate(() => window.showProgramEnd());
     await page.getByTestId("program-actions-more").click();
+    await expect(page.getByRole("menuitem", { name: "Add recovery week", exact: true })).toHaveCount(0);
     await page.getByTestId("program-actions-end").click();
+    await expect(page.getByTestId("end-block-confirm")).toBeVisible();
+    await page.evaluate(() => window.resolveRecoveryAvailability(true));
     await expect(page.getByTestId("end-block-confirm")).toBeVisible();
     await page.evaluate(() => window.showRehabLibrary());
     await page.getByRole("button", { name: "Create a protocol", exact: true }).click();

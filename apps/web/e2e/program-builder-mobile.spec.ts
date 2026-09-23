@@ -198,7 +198,9 @@ function observeNativeUi(
           const pageState = navigationStatus === 404 ? "not-found" :
             navigationStatus >= 500 || document.title.startsWith("Application error") || errorPage ? "error" :
               location.pathname.startsWith("/login") || location.pathname.startsWith("/auth") ? "auth" :
-                location.pathname === "/app/plan" ? "plan" : "other";
+                location.pathname === "/app/plan" &&
+                  !visible(document.querySelector('[data-testid="offline-document"]')) &&
+                  visible(document.querySelector('[data-testid="plan-redesign"]')) ? "plan" : "other";
           return { case: "m8", page: pageState, control, request: "unavailable", record: "unavailable" };
         }
         if (caseId === "m11") {
@@ -1210,9 +1212,13 @@ test.describe("Modular program builder", () => {
       }
       stage("m13-05"); await page.goto(`/app/swim?plan=${swimming.plan.id}`);
       const rehab = page.getByRole("region", { name: "Rehab", exact: true });
-      await rehab.getByRole("checkbox", { name: "Shared rehab", exact: true }).check();
-      await rehab.getByRole("button", { name: "Save changes", exact: true }).click();
-      await expect(rehab.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(0);
+      const attachedChoice = rehab.getByRole("checkbox", { name: "Shared rehab", exact: true });
+      await attachedChoice.check();
+      const saveAttachment = rehab.getByRole("button", { name: /^(Save changes|Saving…)$/ });
+      await saveAttachment.click();
+      await expect(saveAttachment).toHaveCount(0);
+      await expect(attachedChoice).toBeChecked();
+      await expect(attachedChoice).toBeEnabled();
       const attached = await actor.from("swim_plan_rehab_bindings").select("plan_id,rehab_protocol_id")
         .eq("user_id", freshUser.userId);
       expect(attached.error).toBeNull();

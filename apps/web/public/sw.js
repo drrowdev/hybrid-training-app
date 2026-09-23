@@ -2,11 +2,11 @@
 // Strategy:
 //  - App shell + Next.js chunks: stale-while-revalidate
 //  - /api/movements/search: stale-while-revalidate (movement catalog rarely changes)
-//  - /app/* navigations: network-first with a short timeout so the offline
-//    shell only shows when the network is truly down
+//  - /app/* navigations: network-first; cached/offline fallback on network failure
+//  - Next.js RSC requests: network only
 //  - Everything else: network only
 
-const VERSION = "hta-v2";
+const VERSION = "hta-v3";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 
@@ -47,9 +47,16 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // App routes: network-first with a 3s timeout fallback to cache.
-  if (url.pathname.startsWith("/app") || url.pathname === "/") {
-    event.respondWith(networkFirst(request, RUNTIME_CACHE, 3000));
+  // Flight responses are navigation state, not reusable documents.
+  if (
+    request.headers.get("RSC") === "1" ||
+    request.headers.has("Next-Router-State-Tree") ||
+    request.headers.get("Accept")?.includes("text/x-component") ||
+    url.searchParams.has("_rsc")
+  ) return;
+
+  if (request.mode === "navigate" && (url.pathname.startsWith("/app") || url.pathname === "/")) {
+    event.respondWith(networkFirst(request, RUNTIME_CACHE));
     return;
   }
 
@@ -72,15 +79,10 @@ self.addEventListener("fetch", (event) => {
   // Default: pass through.
 });
 
-async function networkFirst(request, cacheName, timeoutMs) {
+async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   try {
-    const fresh = await Promise.race([
-      fetch(request),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("timeout")), timeoutMs),
-      ),
-    ]);
+    const fresh = await fetch(request);
     if (fresh && fresh.ok) cache.put(request, fresh.clone());
     return fresh;
   } catch {
