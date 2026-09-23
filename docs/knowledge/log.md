@@ -4503,3 +4503,25 @@ Thirty-three focused checks and strict SQL-harness type-check passed locally.
 Storage workflow path filters now include this fixture and its regression
 tests; no job, runtime guard or timeout changed. The repaired exact-head
 storage and native-seven qualifications remain pending.
+
+## [2026-09-23] refine | Await recovery-preview readiness in the synthetic journey
+
+Exact f3bfee21 passed core35807494375 and all49 real-SQL stages in
+storage35807494377, including the repaired historical updater rehearsal.
+The strict SQL-harness type-check also passed. The later isolated UI step
+failed at `recovery-shared-review-375` with `unexpected`, established by its
+public safe annotation rather than rereading its consumed runtime log.
+
+A bounded local reproduction held the first recovery preview pending.
+The existing test observed the request starting, then sent its second
+keyboard input while the real slider was still disabled. Chromium ignored
+the key, so the expected second-request error never appeared. This reproduces
+the same stage/code; it does not establish an application defect.
+
+The synthetic fixture now deliberately holds that first preview. The test
+asserts its disabled state, explicitly releases it, and waits for the slider
+and consent control to become enabled before the second input. Consent must
+remain unchecked and Add disabled after completion. All57 stages pass at
+375/1280. No application/native case/SQL, assertion, timeout or runtime guard
+changed. Exact-head public gates and native-seven execution remain pending;
+unavailable owner confirmation is not hosted migration/activation approval.

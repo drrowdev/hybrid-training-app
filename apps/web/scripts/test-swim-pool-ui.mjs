@@ -409,6 +409,7 @@ try {
           root.render(<main className={styles.page}><DeloadWeekCard key={++key} preview={recoveryPreview()} autoOpen variant="quiet"
             previewAction={async percent => {
               window.recoveryPreviews.push(percent);
+              if (percent === 61) await new Promise(resolve => window.resolveRecoveryPreview = resolve);
               if (window.recoveryPreviewMode === "error") throw new Error("Unavailable review");
               return recoveryPreview(percent);
             }}
@@ -624,6 +625,12 @@ try {
     const percent = page.getByRole("slider", { name: "Working weight", exact: true });
     await percent.focus(); await percent.press("ArrowRight");
     await expect.poll(() => page.evaluate(() => window.recoveryPreviews)).toEqual([61]);
+    await expect(recoveryConsent).not.toBeChecked();
+    await expect(addRecovery).toBeDisabled();
+    await expect(percent).toBeDisabled();
+    await page.evaluate(() => window.resolveRecoveryPreview());
+    await expect(percent).toBeEnabled();
+    await expect(recoveryConsent).toBeEnabled();
     await expect(recoveryConsent).not.toBeChecked();
     await expect(addRecovery).toBeDisabled();
     await page.evaluate(() => { window.recoveryPreviewMode = "error"; });
