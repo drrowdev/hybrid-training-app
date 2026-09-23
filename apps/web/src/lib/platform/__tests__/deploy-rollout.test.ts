@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { activateSeasonBlock, buildProgramInstanceWrite, revalidatePath, state } = vi.hoisted(() => ({
-  activateSeasonBlock: vi.fn(),
+const { buildProgramInstanceWrite, revalidatePath, state } = vi.hoisted(() => ({
   buildProgramInstanceWrite: vi.fn(),
   revalidatePath: vi.fn(),
   state: {
@@ -18,6 +17,9 @@ const { activateSeasonBlock, buildProgramInstanceWrite, revalidatePath, state } 
     recommendation: null as Record<string, unknown> | null,
     recommendationBlock: null as Record<string, unknown> | null,
     recommendationInstance: null as Record<string, unknown> | null,
+    season: null as Record<string, unknown> | null,
+    seasonSlots: [] as Record<string, unknown>[],
+    seasonPredecessor: null as Record<string, unknown> | null,
   },
 }));
 
@@ -29,7 +31,13 @@ function queryFor(table: string) {
   const filters: Record<string, unknown> = {};
   const result = () => {
     if (operation === "read" && table === "program_recommendations") return { data: state.recommendation, error: null };
-    if (operation === "read" && table === "training_blocks" && filters.id) return { data: state.recommendationBlock, error: null };
+    if (operation === "read" && table === "training_blocks" && filters.id) return {
+      data: filters.id === state.seasonPredecessor?.id ? state.seasonPredecessor : state.recommendationBlock, error: null,
+    };
+    if (operation === "read" && table === "training_seasons") return { data: state.season, error: null };
+    if (operation === "read" && table === "season_blocks") return {
+      data: filters.id ? state.seasonSlots.find((slot) => slot.id === filters.id) ?? null : state.seasonSlots, error: null,
+    };
     if (operation === "read" && table === "program_instances") return { data: state.recommendationInstance, error: null };
     if (operation === "read" && table === "training_blocks") return { data: state.active ? [state.active] : [], error: null };
     if (operation === "read" && table === "engine_override_events") return { data: state.receipt, error: null };
@@ -62,6 +70,7 @@ function queryFor(table: string) {
     select: () => query,
     eq: (key: string, value: unknown) => { filters[key] = value; return query; },
     is: () => query,
+    order: () => query,
     neq: () => query,
     in: () => query,
     maybeSingle: async () => result(),
@@ -76,7 +85,7 @@ function queryFor(table: string) {
 
 vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect: vi.fn() }));
-vi.mock("@/lib/seasons/activation", () => ({ activateSeasonBlock }));
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/supabase/server", () => ({
   getAuthUser: async () => ({ data: { user }, error: null }),
   createClient: async () => ({
@@ -166,7 +175,7 @@ describe("createProgramInstance app-first rollout", () => {
     state.recommendation = null;
     state.recommendationBlock = null;
     state.recommendationInstance = null;
-    activateSeasonBlock.mockReset();
+    state.season = null; state.seasonSlots = []; state.seasonPredecessor = null;
     revalidatePath.mockReset();
     buildProgramInstanceWrite.mockReset();
     buildProgramInstanceWrite.mockReturnValue({
@@ -202,7 +211,6 @@ describe("createProgramInstance app-first rollout", () => {
     ).resolves.toMatchObject({ ok: false, error: expect.any(String) });
     expect(state.rpcCalls).toEqual(["independent_programs_ready"]);
     expect(state.writes).toEqual([]);
-    expect(activateSeasonBlock).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
@@ -234,7 +242,6 @@ describe("createProgramInstance app-first rollout", () => {
     ).resolves.toMatchObject({ ok: false, error: expect.any(String) });
     expect(state.rpcCalls).toEqual(["independent_programs_ready"]);
     expect(state.writes).toEqual([]);
-    expect(activateSeasonBlock).not.toHaveBeenCalled();
     expect(revalidatePath).not.toHaveBeenCalled();
   });
 
@@ -295,6 +302,72 @@ describe("createProgramInstance app-first rollout", () => {
     state.revision = "b".repeat(32);
     expect(await createProgramInstance({ ...input, review: { ...review, replaceBlockId: state.active.id } })).toMatchObject({ ok: false });
     expect(state.lastCommit).toBeNull();
+  });
+
+  it("DC-R5 binds roadmap goal, template and emphasis to the reviewed transaction and exact replay", async () => {
+    state.modular = true;
+    const seasonId = "00000000-0000-4000-8000-000000000030";
+    state.season = { id: seasonId, goal_type: "theme", target_date: null, target_event_id: null };
+    state.seasonSlots = [{ id: seasonBlockId, season_id: seasonId, position: 0, program_id: "tactical-barbell",
+      template_ref: "operator", emphasis: "base", intent_note: null, planned_weeks: 6, status: "planned", block_id: null }];
+    const input = { programId: "tactical-barbell", setupValues: { templateId: "operator" },
+      weekdays: [0, 2, 4], startedOn: "2026-09-07", seasonBlockId };
+    expect(await previewProgramInstance({ ...input, setupValues: { templateId: "fighter" } })).toMatchObject({ ok: false });
+    const preview = await previewProgramInstance(input);
+    if (!preview.ok) throw new Error(preview.error);
+    const review = { revision: preview.preview.revision, previewId: preview.preview.id,
+      requestId: "00000000-0000-4000-8000-000000000031", acceptOverlap: false };
+    for (const [row, field, changed] of [
+      [state.season, "target_date", "2027-02-01"], [state.seasonSlots[0]!, "emphasis", "strength_bias"],
+    ] as const) {
+      const original = row[field]; row[field] = changed;
+      expect(await createProgramInstance({ ...input, review })).toMatchObject({ ok: false });
+      expect(state.lastCommit).toBeNull();
+      row[field] = original;
+    }
+    const saved = await createProgramInstance({ ...input, review });
+    expect(saved.ok).toBe(true);
+    expect(state.lastCommit).toMatchObject({ p_args: { p_season_origin: {
+      id: seasonBlockId, season: state.season, blocks: [expect.objectContaining({ template_ref: "operator", status: "planned" })],
+    } } });
+    expect(state.writes).toEqual([]);
+    state.receipt = { context: { kind: "training-schedule-v1", operation: "primary-create",
+      inputHash: state.lastCommit!.p_input_hash,
+      result: { block_id: "00000000-0000-4000-8000-000000000003",
+        program_instance_id: "00000000-0000-4000-8000-000000000004", skipped: 0 } } };
+    state.seasonSlots[0]!.status = "active";
+    expect(await createProgramInstance({ ...input, review })).toEqual(saved);
+    expect(state.rpcCalls.filter((name) => name === "independent_program_schedule_commit")).toHaveLength(1);
+  });
+
+  it("DC-R5 refuses to advance a live other-kind predecessor but can retry unlinked with the same setup", async () => {
+    state.modular = true;
+    const seasonId = "00000000-0000-4000-8000-000000000030", predecessorId = "00000000-0000-4000-8000-000000000032";
+    state.season = { id: seasonId, goal_type: null, target_date: null, target_event_id: null };
+    state.seasonSlots = [
+      { id: "00000000-0000-4000-8000-000000000033", season_id: seasonId, position: 0, program_id: "hybrid",
+        template_ref: null, emphasis: "base", intent_note: null, planned_weeks: 6, status: "active", block_id: predecessorId },
+      { id: seasonBlockId, season_id: seasonId, position: 1, program_id: "tactical-barbell",
+        template_ref: null, emphasis: "base", intent_note: null, planned_weeks: 6, status: "planned", block_id: null },
+    ];
+    state.active = { id: predecessorId, notes: "Autumn hybrid", started_on: "2026-09-01",
+      program_id: "hybrid", program_kind: "hybrid" };
+    state.seasonPredecessor = { ...state.active, status: "active", deleted_at: null };
+    const input = { programId: "tactical-barbell", setupValues: {}, weekdays: [0, 2, 4], startedOn: "2026-09-07" };
+    expect(await previewProgramInstance({ ...input, seasonBlockId })).toMatchObject({
+      ok: false, error: expect.stringContaining("Autumn hybrid"),
+    });
+    expect(state.lastCommit).toBeNull();
+    const unlinked = await previewProgramInstance(input);
+    if (!unlinked.ok) throw new Error(unlinked.error);
+    expect(unlinked.preview.replaces).toBeNull();
+    expect(await createProgramInstance({ ...input, review: {
+      revision: unlinked.preview.revision, previewId: unlinked.preview.id,
+      requestId: "00000000-0000-4000-8000-000000000034", acceptOverlap: false,
+    } })).toMatchObject({ ok: true });
+    expect(state.lastCommit?.p_args).not.toHaveProperty("p_season_origin");
+    expect(state.writes).toEqual([]);
+    expect(state.seasonSlots.map((slot) => slot.status)).toEqual(["active", "planned"]);
   });
 
   it.each(["running", "hybrid"] as const)("DC-R5 creates Strength without replacing an existing %s program", async (kind) => {

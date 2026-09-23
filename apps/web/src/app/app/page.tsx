@@ -13,7 +13,7 @@ import {
   getUpcomingPlannedSessions,
   type PlannedDay,
 } from "@/lib/planner/queries";
-import { currentBlockWeekIndexAt, todayYmd } from "@/lib/dates";
+import { todayYmd } from "@/lib/dates";
 import { effectiveTimeOfDay } from "@/lib/planner/time-of-day";
 import { hasTwoADaySlotPair } from "@/lib/planner/slot";
 import { getRegionFreshness, type FreshnessConflict } from "@/lib/stats/region-freshness-queries";
@@ -40,8 +40,7 @@ import { getNextBlockNudge } from "@/lib/planner/next-block-suggestion-server";
 import { NextBlockSuggestionCard } from "@/components/planner/NextBlockSuggestionCard";
 import type { SuggestProgramId } from "@/lib/planner/next-block-suggestion";
 import { KNOWN_SUGGEST_PROGRAMS } from "@/lib/planner/next-block-suggestion";
-import { getActiveSeason } from "@/lib/seasons/queries";
-import { nextPlannedBlock } from "@/lib/seasons/season-logic";
+import { getSeasonContinuation } from "@/lib/seasons/queries";
 import { selectablePrograms } from "@/lib/platform/registry";
 import {
   ActiveLimitationsCard,
@@ -524,24 +523,17 @@ export default async function TodayPage() {
       })()
     : null;
 
-  // Season-aware override (ADR 0051 D2): when Season planning is on and the user
-  // has an active Season with a next planned block, the final-week nudge advances
-  // the roadmap (activate the next block) instead of the recomputed ADR-0010
-  // guess. Only computed in the final week, gated on the opt-in flag.
-  const endingBlockIds = new Set(activeBlocks.filter((block) =>
-    currentBlockWeekIndexAt(block.startedOn, block.weeks, timezone, new Date()) >= block.weeks - 1,
-  ).map((block) => block.id));
+  // Continue the roadmap's own program, including after it completes or ends.
   const seasonNext =
-    endingBlockIds.size > 0 && profile?.season_planning_enabled === true
+    profile?.season_planning_enabled === true
       ? await (async () => {
-          const season = await getActiveSeason();
-          if (!season || !season.blocks.some((entry) => entry.status === "active" && entry.blockId && endingBlockIds.has(entry.blockId))) return null;
-          const next = nextPlannedBlock(season.blocks);
-          if (!next) return null;
+          const continuation = await getSeasonContinuation(timezone);
+          if (!continuation) return null;
+          const next = continuation.block;
           const programName =
             selectablePrograms().find((p) => p.id === next.programId)?.name ??
-            next.programId;
-          return { seasonName: season.name, block: next, programName };
+            "Program";
+          return { ...continuation, programName };
         })()
       : null;
 
@@ -713,9 +705,9 @@ export default async function TodayPage() {
                       seasonNext.block.intentNote?.trim() ||
                       `It\u2019s the next block in your season \u201C${seasonNext.seasonName}\u201D.`,
                   },
-                  realization: endingNudge?.realization ?? null,
+                  realization: null,
                 }}
-                eyebrow={"Final week \u00b7 next in your season"}
+                eyebrow="Next in your season"
                 heading={`Next up: a ${seasonNext.programName} block`}
                 suggestionTail={""}
                 cta={{

@@ -16,6 +16,17 @@ const down = readFileSync(new URL("../../rollbacks/0158_independent_program_owne
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("DC-R5 independent ownership storage boundary", () => {
+  it("restores both season lock triggers exactly and binds roadmap identity to save and replay", () => {
+    for (const table of ["training_seasons", "season_blocks"]) {
+      expect(up).toContain(`CREATE TRIGGER ${table}_schedule_lock BEFORE INSERT OR UPDATE OR DELETE ON public.${table}`);
+      expect(down).toContain(`('${table}','${table}_schedule_lock','training_schedule_lock()',30,false)`);
+      expect(down).toContain(`DROP TRIGGER ${table}_schedule_lock ON public.${table};`);
+    }
+    expect(up).toContain("season_snapshot IS DISTINCT FROM p_args->'p_season_origin'");
+    expect(up).toContain("COALESCE(receipt->'seasonOrigin','null'::jsonb) IS DISTINCT FROM COALESCE(p_args->'p_season_origin','null'::jsonb)");
+    expect(up).toContain("predecessor.id IS DISTINCT FROM replacement");
+    expect(up).toContain("block_id=program_save.block_id");
+  });
   it("keeps authenticated swim-plan hard deletion forbidden while scoping synthetic purge to its owner", () => {
     const historical = readFileSync(new URL("../../drizzle/0146_standalone_pool_swimming.sql", import.meta.url), "utf8");
     expect(historical).toContain("GRANT SELECT ON public.swim_plans, public.swim_workouts TO authenticated;");

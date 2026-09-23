@@ -216,6 +216,10 @@ CREATE TRIGGER rehab_protocols_schedule_lock BEFORE INSERT OR UPDATE OR DELETE O
 FOR EACH STATEMENT EXECUTE FUNCTION public.training_schedule_lock();
 CREATE TRIGGER program_rehab_bindings_schedule_lock BEFORE INSERT OR UPDATE OR DELETE ON public.program_rehab_bindings
 FOR EACH STATEMENT EXECUTE FUNCTION public.training_schedule_lock();
+CREATE TRIGGER training_seasons_schedule_lock BEFORE INSERT OR UPDATE OR DELETE ON public.training_seasons
+FOR EACH STATEMENT EXECUTE FUNCTION public.training_schedule_lock();
+CREATE TRIGGER season_blocks_schedule_lock BEFORE INSERT OR UPDATE OR DELETE ON public.season_blocks
+FOR EACH STATEMENT EXECUTE FUNCTION public.training_schedule_lock();
 
 CREATE FUNCTION public.validate_owned_rehab_items(p_items jsonb,p_protocol_id uuid,p_revision integer)
 RETURNS void LANGUAGE plpgsql STABLE SECURITY INVOKER SET search_path=pg_catalog,public AS $$
@@ -352,12 +356,16 @@ CREATE FUNCTION public.independent_program_schedule_commit(
   p_operation text,p_args jsonb,p_expected_revision text,p_request_id uuid,p_input_hash text,p_accept_overlap boolean DEFAULT false
 )
 RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_catalog,public AS $$
+<<program_save>>
 DECLARE
   u uuid:=auth.uid(); before_snapshot jsonb; after_snapshot jsonb; receipt jsonb; result jsonb;
   replacement uuid; block_id uuid; instance_id uuid; kind text; target public.training_blocks%ROWTYPE;
   entry jsonb; overlap_pairs jsonb; block_args jsonb; instance_args jsonb;
   advice public.program_recommendations%ROWTYPE; advice_block public.training_blocks%ROWTYPE;
   advice_instance public.program_instances%ROWTYPE; advice_snapshot jsonb; accept_advice boolean:=false;
+  season public.training_seasons%ROWTYPE; season_slot public.season_blocks%ROWTYPE;
+  predecessor_slot public.season_blocks%ROWTYPE; predecessor public.training_blocks%ROWTYPE;
+  season_snapshot jsonb; template_field text;
 BEGIN
   IF u IS NULL THEN RAISE EXCEPTION 'Not signed in.' USING ERRCODE='42501'; END IF;
   IF p_request_id IS NULL OR p_input_hash IS NULL OR p_input_hash !~ '^[a-f0-9]{64}$' THEN
@@ -374,6 +382,7 @@ BEGIN
       (receipt->>'replacedBlockId' IS DISTINCT FROM p_args->>'p_replace_block_id'
        OR receipt->>'programKind' IS DISTINCT FROM p_args#>>'{p_block,program_kind}'
        OR COALESCE(receipt->'recommendation','null'::jsonb) IS DISTINCT FROM COALESCE(p_args->'p_recommendation','null'::jsonb)
+       OR COALESCE(receipt->'seasonOrigin','null'::jsonb) IS DISTINCT FROM COALESCE(p_args->'p_season_origin','null'::jsonb)
        OR COALESCE(receipt->>'recoveryRequested','false') IS DISTINCT FROM COALESCE(p_args->>'p_accept_recovery','false')) THEN
       RAISE EXCEPTION 'This save request belongs to a different program target.' USING ERRCODE='22023';
     END IF;
@@ -384,6 +393,9 @@ BEGIN
     RAISE EXCEPTION 'Your schedule changed. Review the dates again.' USING ERRCODE='40001';
   END IF;
   IF p_operation<>'primary-create' THEN
+    IF p_args->'p_season_origin' IS NOT NULL AND p_args->'p_season_origin'<>'null'::jsonb THEN
+      RAISE EXCEPTION 'A roadmap block must start a new program.' USING ERRCODE='22023';
+    END IF;
     IF p_operation IN ('primary-update','authored-workout') THEN
       block_id:=COALESCE((p_args->>'p_block_id')::uuid,(p_args->>'blockId')::uuid);
       SELECT * INTO target FROM public.training_blocks WHERE id=block_id AND user_id=u;
@@ -477,6 +489,62 @@ BEGIN
       END IF;
     END IF;
   END IF;
+  IF p_args->'p_season_origin' IS NOT NULL AND p_args->'p_season_origin'<>'null'::jsonb THEN
+    SELECT * INTO season_slot FROM public.season_blocks
+      WHERE id=(p_args#>>'{p_season_origin,id}')::uuid AND user_id=u FOR UPDATE;
+    IF NOT FOUND OR season_slot.status<>'planned' OR season_slot.block_id IS NOT NULL THEN
+      RAISE EXCEPTION 'This roadmap block is no longer available.' USING ERRCODE='40001';
+    END IF;
+    SELECT * INTO season FROM public.training_seasons
+      WHERE id=season_slot.season_id AND user_id=u FOR UPDATE;
+    IF NOT FOUND OR season.status<>'active' OR season.deleted_at IS NOT NULL THEN
+      RAISE EXCEPTION 'This season is no longer active.' USING ERRCODE='40001';
+    END IF;
+    IF EXISTS(SELECT 1 FROM public.season_blocks WHERE season_id=season.id AND user_id=u AND position<0)
+      OR (SELECT id FROM public.season_blocks WHERE season_id=season.id AND user_id=u AND status='planned'
+        ORDER BY position LIMIT 1) IS DISTINCT FROM season_slot.id
+      OR (SELECT count(*) FROM public.season_blocks WHERE season_id=season.id AND user_id=u AND status='active')>1 THEN
+      RAISE EXCEPTION 'Choose the next planned roadmap block or start without the roadmap.' USING ERRCODE='40001';
+    END IF;
+    SELECT jsonb_build_object('id',season_slot.id,
+      'season',jsonb_build_object('id',season.id,'goal_type',season.goal_type,
+        'target_date',season.target_date,'target_event_id',season.target_event_id),
+      'blocks',(SELECT jsonb_agg(jsonb_build_object('id',s.id,'position',s.position,
+        'program_id',s.program_id,'template_ref',s.template_ref,'emphasis',s.emphasis,
+        'intent_note',s.intent_note,'planned_weeks',s.planned_weeks,'status',s.status,'block_id',s.block_id)
+        ORDER BY s.position) FROM public.season_blocks s WHERE s.season_id=season.id AND s.user_id=u))
+      INTO season_snapshot;
+    IF season_snapshot IS DISTINCT FROM p_args->'p_season_origin' THEN
+      RAISE EXCEPTION 'The roadmap changed. Review your setup again.' USING ERRCODE='40001';
+    END IF;
+    template_field:=CASE season_slot.program_id
+      WHEN 'green-protocol' THEN 'phaseId' WHEN 'wendler-531' THEN 'templateId'
+      WHEN 'tactical-barbell' THEN 'templateId' ELSE NULL END;
+    IF block_args->>'program_id' IS DISTINCT FROM season_slot.program_id
+      OR instance_args->>'program_id' IS DISTINCT FROM season_slot.program_id
+      OR (season_slot.template_ref IS NOT NULL AND (template_field IS NULL
+        OR instance_args->'setup_input'->'values'->>template_field IS DISTINCT FROM season_slot.template_ref)) THEN
+      RAISE EXCEPTION 'Restore the roadmap''s program and template or start without the roadmap.' USING ERRCODE='22023';
+    END IF;
+    IF season_slot.program_id='hybrid' AND season_slot.emphasis IN ('strength_bias','endurance_bias')
+      AND instance_args#>>'{setup_input,values,seasonBias}' IS DISTINCT FROM
+        CASE season_slot.emphasis WHEN 'strength_bias' THEN 'strength' ELSE 'endurance' END THEN
+      RAISE EXCEPTION 'The roadmap emphasis changed. Review your setup again.' USING ERRCODE='40001';
+    END IF;
+    SELECT * INTO predecessor_slot FROM public.season_blocks
+      WHERE season_id=season.id AND user_id=u AND status='active' FOR UPDATE;
+    IF FOUND THEN
+      SELECT * INTO predecessor FROM public.training_blocks
+        WHERE id=predecessor_slot.block_id AND user_id=u FOR UPDATE;
+      IF NOT FOUND THEN
+        RAISE EXCEPTION 'The current roadmap program is unavailable. Start without the roadmap.' USING ERRCODE='40001';
+      END IF;
+      IF predecessor.status='active' AND predecessor.deleted_at IS NULL AND predecessor.id IS DISTINCT FROM replacement THEN
+        RAISE EXCEPTION 'End or complete % before advancing its roadmap.',COALESCE(NULLIF(btrim(predecessor.notes),''),'the current program')
+          USING ERRCODE='22023';
+      END IF;
+    END IF;
+  END IF;
   FOR entry IN SELECT value FROM jsonb_array_elements(COALESCE(p_args->'p_training_max_drafts','[]'::jsonb)) LOOP
     IF (entry->>'oneRmKg')::numeric IS NULL OR (entry->>'oneRmKg')::numeric<=0 OR (entry->>'oneRmKg')::numeric>1000
       OR NOT EXISTS(SELECT 1 FROM public.movements WHERE id=(entry->>'movementId')::uuid AND (user_id IS NULL OR user_id=u)) THEN
@@ -513,6 +581,12 @@ BEGIN
     UPDATE public.program_recommendations SET status='accepted',resolved_at=now()
       WHERE id=advice.id AND user_id=u;
   END IF;
+  IF season_snapshot IS NOT NULL THEN
+    UPDATE public.season_blocks SET status='done'
+      WHERE id=predecessor_slot.id AND user_id=u;
+    UPDATE public.season_blocks SET status='active',block_id=program_save.block_id
+      WHERE id=season_slot.id AND user_id=u;
+  END IF;
   after_snapshot:=public.training_schedule_snapshot();
   WITH before_pairs AS (
     SELECT a->>'date' AS date,a->>'occupancyKey' AS a,b->>'occupancyKey' AS b
@@ -533,7 +607,7 @@ BEGIN
   INSERT INTO public.engine_override_events(id,user_id,event_type,context) VALUES(p_request_id,u,'custom',
     jsonb_build_object('kind','training-schedule-v1','programOwnershipVersion',1,'programKind',kind,
       'replacedBlockId',replacement,'operation',p_operation,'inputHash',p_input_hash,'revision',p_expected_revision,
-      'recommendation',advice_snapshot,'recommendationAccepted',accept_advice,
+      'recommendation',advice_snapshot,'recommendationAccepted',accept_advice,'seasonOrigin',season_snapshot,
       'recoveryRequested',COALESCE(p_args->>'p_accept_recovery','false'),
       'acceptedOverlap',p_accept_overlap,'overlaps',overlap_pairs,'result',result));
   RETURN result;

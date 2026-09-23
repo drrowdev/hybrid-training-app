@@ -30,13 +30,7 @@ vi.mock("next/cache", () => ({
   revalidatePath: vi.fn(),
 }));
 
-// `activateSeasonBlock` imports the `server-only` marker package, which is a
-// Next.js build-time shim not resolvable under plain Vitest. It is only
-// reached deep in the deploy path (past every check under test), so a stub
-// is enough.
-vi.mock("@/lib/seasons/activation", () => ({
-  activateSeasonBlock: vi.fn(),
-}));
+vi.mock("server-only", () => ({}));
 
 vi.mock("@/lib/supabase/server", () => ({
   getAuthUser: vi.fn(async () => ({ data: { user: null }, error: null })),

@@ -29,7 +29,7 @@ import { buildPlatformContext } from "@/lib/platform/context";
 import { getBlockEditContext } from "@/lib/platform/edit-context";
 import { loadProgramRecommendationOrigin, type ProgramRecommendationSetup } from "@/lib/platform/recommendation-origin";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { getActiveSeason } from "@/lib/seasons/queries";
+import { loadSeasonProgramOrigin, type SeasonProgramOrigin } from "@/lib/seasons/activation";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { STRENGTH_ROLE_CANDIDATES, type StrengthRole } from "@/lib/planner/archetypes";
 import {
@@ -148,6 +148,19 @@ export default async function ProgramPickerPage({
     return <EmptyState title="This program isn't available to edit." action={{ label: "View programs", href: "/app/programs" }} />;
   }
   let recommendation: ProgramRecommendationSetup | undefined;
+  let seasonOrigin: SeasonProgramOrigin | undefined;
+  if (sp.seasonBlockId) {
+    try {
+      if (editContext) throw new Error("A roadmap block must start a new program.");
+      seasonOrigin = await loadSeasonProgramOrigin(supabase, user.id, sp.seasonBlockId);
+      if (!ENABLED_PROGRAM_IDS.has(seasonOrigin.target.program_id)) {
+        throw new Error("This roadmap program is unavailable.");
+      }
+    } catch (error) {
+      return <EmptyState title={error instanceof Error ? error.message : "Could not load this roadmap block."}
+        action={{ label: "View programs", href: "/app/programs" }} />;
+    }
+  }
   if (sp.recommendation) {
     try {
       const origin = await loadProgramRecommendationOrigin(supabase, user.id, sp.recommendation);
@@ -320,15 +333,13 @@ export default async function ProgramPickerPage({
   // advance). Only honour a program whose deploy path is enabled; the phase is
   // passed through as the program's loadout value (Green Protocol's phaseId).
   const initialProgramId =
-    recommendation?.programId ?? (sp.program && ENABLED_PROGRAM_IDS.has(sp.program) ? sp.program : undefined);
-  const initialLoadoutValue = recommendation?.phaseId ?? (initialProgramId && sp.phase ? sp.phase : undefined);
+    seasonOrigin?.target.program_id ?? recommendation?.programId ??
+    (sp.program && ENABLED_PROGRAM_IDS.has(sp.program) ? sp.program : undefined);
+  const initialLoadoutValue = seasonOrigin
+    ? seasonOrigin.target.template_ref ?? undefined
+    : recommendation?.phaseId ?? (initialProgramId && sp.phase ? sp.phase : undefined);
 
-  // Season roadmap deep-link (ADR 0051): carries the planned season_block to
-  // activate on deploy. Threaded straight through — the deploy action
-  // re-validates ownership + planned status before touching the roadmap, so a
-  // stale/foreign id is a safe no-op. Ignored in edit mode (not an activation).
-  const seasonBlockId =
-    !editContext && sp.seasonBlockId ? sp.seasonBlockId : undefined;
+  const seasonBlockId = seasonOrigin?.target.id;
 
   // ADR 0060 — a HYROX block deployed for a season's PEAK slot must still taper to
   // the event. With the new race/no-race split, a blank race date means "no taper",
@@ -336,12 +347,11 @@ export default async function ProgramPickerPage({
   // season's target event date. Non-peak season slots stay raceless (ongoing
   // maintenance — no spurious mid-season taper). The user can still clear it.
   let prefillRaceDate: string | undefined;
-  if (seasonBlockId && initialProgramId === "hyrox") {
-    const season = await getActiveSeason();
-    const block = season?.blocks.find((b) => b.id === seasonBlockId);
-    const isPeakSlot = block?.emphasis === "peak" || block?.emphasis === "realize";
-    if (isPeakSlot && season?.goal?.type === "event" && season.goal.targetDate) {
-      prefillRaceDate = season.goal.targetDate;
+  if (seasonOrigin && initialProgramId === "hyrox") {
+    const { target: block, snapshot: { season } } = seasonOrigin;
+    const isPeakSlot = block.emphasis === "peak" || block.emphasis === "realize";
+    if (isPeakSlot && season.goal_type === "event" && season.target_date) {
+      prefillRaceDate = season.target_date;
     }
   }
 

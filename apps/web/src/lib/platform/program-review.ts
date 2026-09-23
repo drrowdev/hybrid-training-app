@@ -8,6 +8,7 @@ import {
   ScheduleUnavailableError, type ScheduleReview, type ScheduleSnapshot,
 } from "@/lib/schedule/storage";
 import type { ProgramRecommendationOrigin } from "./recommendation-origin";
+import { assertSeasonProgramReplacement, type SeasonProgramOrigin } from "@/lib/seasons/activation";
 
 export interface ProgramSchedulePreview {
   id: string;
@@ -25,6 +26,7 @@ export interface ProgramReviewContext {
   review?: ScheduleReview & { previewId: string };
   active: OwnedActiveProgram[];
   recommendation?: ProgramRecommendationOrigin;
+  season?: SeasonProgramOrigin;
 }
 
 export async function programReviewContext(
@@ -53,6 +55,7 @@ export function programSchedulePreview(
   const kind = requireBlockProgramKind(editBlockId ? args.programKind
     : typeof blockArgs === "object" && blockArgs !== null && "program_kind" in blockArgs ? blockArgs.program_kind : null);
   const active = selectProgramTarget(context.active, kind, editBlockId);
+  if (context.season) assertSeasonProgramReplacement(context.season, active?.id);
   const excluded = active?.id;
   const advice = trainingScheduleAdvice(context.snapshot.entries, dates.map((row) => row.date),
     excluded ? { source: "primary", programId: excluded, retainExistingOverlaps: !!editBlockId } : undefined);

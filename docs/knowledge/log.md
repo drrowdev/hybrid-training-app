@@ -4896,3 +4896,35 @@ failed-save rollback, exact once-only replay, foreign/stale/wrong-kind refusal,
 declined recovery and independent Running/Swimming preservation. Actual SQL
 execution of this amendment awaits the next coordinator-owned automatic gate.
 Season linkage and corrected-model native acceptance remain unfinished.
+
+## [2026-09-23] refine | Atomic, program-scoped season continuation
+
+The coordinator accepted recommendation head `6b64370`: core `35870072486`
+and storage `35870072470`, including all 62 disposable SQL and 73 synthetic UI
+stages. This is historical increment evidence, not corrected-model native or
+production approval.
+
+Season setup now reads the exact owned roadmap slot, validates its program and
+template/phase, and binds its emphasis and goal to preview/save freshness.
+The existing unapplied 0158 transaction links the new program and advances only
+its explicit predecessor atomically. An unrelated active predecessor is named
+in the refusal; the user can deselect roadmap linkage without losing the draft.
+Starting an independent program leaves the roadmap untouched. Home continuation
+remains visible after the linked program completes or ends, not merely when
+another active program reaches its final week.
+
+Two approved statement-lock triggers serialize season and slot writes with
+program saves. Unused-down checks include both trigger definitions and the new
+routine fingerprint. No historical migration, journal entry, table, column,
+RLS policy, grant or RPC was added or changed. Normal 159 remains.
+
+Local exact-origin, action, reader and input-retention regressions passed with
+web/account-flow and disposable-fixture typechecks. All 75 synthetic UI stages
+passed, retaining the previous 73 in order and appending
+`owned-season-continuation-375/1280`. The existing disposable lifecycle stage
+now covers foreign/stale/wrong-template refusal, active predecessor isolation,
+failed-save rollback, exact replay, same-type replacement and independent
+Running/Swimming preservation; unused-down rehearsal probes both changed
+triggers and full catalog equality. Actual SQL execution of this amendment
+awaits its next coordinator-owned automatic gate. Corrected-model native
+acceptance remains unfinished; production authority is unchanged.

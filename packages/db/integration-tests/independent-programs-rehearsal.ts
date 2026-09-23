@@ -147,6 +147,13 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
   };
   stage("ownership-unused-down-up-and-catalog-restoration");
   await database.begin((tx) => tx.unsafe(up));
+  const installedCatalog = await catalog();
+  for (const table of ["training_seasons", "season_blocks"]) {
+    await database.unsafe(`ALTER TABLE public.${table} DISABLE TRIGGER ${table}_schedule_lock`);
+    await denied(revert, "P0001");
+    await database.unsafe(`ALTER TABLE public.${table} ENABLE TRIGGER ${table}_schedule_lock`);
+    assertOwnershipCatalog(await catalog(), installedCatalog);
+  }
   stage("ownership-changed-routine-refuses-unused-down");
   const readyDefinition = String((await database`SELECT pg_get_functiondef('public.independent_programs_ready()'::regprocedure) AS body`)[0]!.body);
   const changedDefinition = readyDefinition.replace("SELECT true", "SELECT false");
@@ -459,6 +466,93 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     assert.equal(finalAdvice.find((row) => row.value.occurrence_key === "earlier")!.value.status, "pending");
     assert.equal((await asUser(adviceOwner, (tx) => tx`SELECT status FROM public.training_blocks WHERE id=${adviceRun.block_id}::uuid`))[0]!.status, "active");
     assert.equal((await asUser(adviceOwner, (tx) => tx`SELECT status FROM public.swim_plans WHERE id=${adviceSwim.plan.id}::uuid`))[0]!.status, "active");
+
+    const seasonOwner = await user();
+    const seasonStrength = await commit<Created>(seasonOwner, "primary-create", args("strength"));
+    const seasonRun = await commit<Created>(seasonOwner, "primary-create", args("running"), true);
+    const seasonSwim = await commit<Swim>(seasonOwner, "swim-create", swimArgs, true);
+    const seasonId = randomUUID(), previousSlot = randomUUID(), nextSlot = randomUUID(), lastSlot = randomUUID();
+    await asUser(seasonOwner, async (tx) => {
+      await tx`INSERT INTO public.training_seasons(id,user_id,name,status,goal_type)
+        VALUES(${seasonId}::uuid,${seasonOwner}::uuid,'Synthetic roadmap','active','theme')`;
+      await tx`INSERT INTO public.season_blocks(id,season_id,user_id,position,program_id,template_ref,emphasis,status,block_id)
+        VALUES(${previousSlot}::uuid,${seasonId}::uuid,${seasonOwner}::uuid,0,'authored',NULL,'base','active',${seasonStrength.block_id}::uuid),
+          (${nextSlot}::uuid,${seasonId}::uuid,${seasonOwner}::uuid,1,'hybrid',NULL,'strength_bias','planned',NULL),
+          (${lastSlot}::uuid,${seasonId}::uuid,${seasonOwner}::uuid,2,'green-protocol','velocity','base','planned',NULL)`;
+    });
+    const seasonRows = () => asUser(seasonOwner, (tx) => tx`SELECT to_jsonb(s) AS value FROM public.season_blocks s
+      WHERE season_id=${seasonId}::uuid AND user_id=${seasonOwner}::uuid ORDER BY position`);
+    const seasonOrigin = async (id = nextSlot) => ({
+      id, season: (await asUser(seasonOwner, (tx) => tx`SELECT id,goal_type,
+        to_char(target_date,'YYYY-MM-DD') AS target_date,target_event_id FROM public.training_seasons WHERE id=${seasonId}::uuid`))[0]!,
+      blocks: (await seasonRows()).map(({ value: s }) => ({ id: s.id, position: s.position, program_id: s.program_id,
+        template_ref: s.template_ref, emphasis: s.emphasis, intent_note: s.intent_note,
+        planned_weeks: s.planned_weeks, status: s.status, block_id: s.block_id })),
+    });
+    const plannedSeason = await seasonRows();
+    const hybridSetup = { ...args("hybrid"), p_block: { ...args("hybrid").p_block, program_id: "hybrid" },
+      p_program_instance: { ...args("hybrid").p_program_instance, program_id: "hybrid",
+        setup_input: { values: { seasonBias: "strength" } } }, p_season_origin: await seasonOrigin() };
+    await denied(() => commit(seasonOwner, "primary-create", hybridSetup, true), "22023");
+    await denied(() => commit(b, "primary-create", hybridSetup, true), "40001");
+    assert.deepEqual(Array.from(await seasonRows()), Array.from(plannedSeason));
+    // An unrelated start does not advance the roadmap or touch its predecessor.
+    const separate = await commit<Created>(seasonOwner, "primary-create", args("hybrid"), true);
+    assert.deepEqual(Array.from(await seasonRows()), Array.from(plannedSeason));
+    assert.equal((await asUser(seasonOwner, (tx) => tx`SELECT status FROM public.training_blocks
+      WHERE id=${seasonStrength.block_id}::uuid`))[0]!.status, "active");
+    await commit(seasonOwner, "primary-end", { id: separate.block_id });
+    await commit(seasonOwner, "primary-end", { id: seasonStrength.block_id });
+    const seasonRevision = (await snapshot(seasonOwner)).revision;
+    await asUser(seasonOwner, (tx) => tx`UPDATE public.training_seasons SET target_date='2027-02-01' WHERE id=${seasonId}::uuid`);
+    await denied(() => commit(seasonOwner, "primary-create", hybridSetup, true, seasonRevision), "40001");
+    hybridSetup.p_season_origin = await seasonOrigin();
+    await asUser(seasonOwner, (tx) => tx`UPDATE public.season_blocks SET intent_note='Changed' WHERE id=${nextSlot}::uuid`);
+    await denied(() => commit(seasonOwner, "primary-create", hybridSetup, true), "40001");
+    hybridSetup.p_season_origin = await seasonOrigin();
+    await denied(() => commit(seasonOwner, "primary-create", { ...hybridSetup,
+      p_program_instance: { ...hybridSetup.p_program_instance, setup_input: { values: { seasonBias: "endurance" } } } }, true), "40001");
+    await denied(() => commit(seasonOwner, "primary-create", { ...hybridSetup,
+      p_block: { ...hybridSetup.p_block, program_id: "another-program" } }, true), "22023");
+    await denied(async () => commit(seasonOwner, "primary-create", { ...hybridSetup,
+      p_season_origin: await seasonOrigin(lastSlot) }, true), "40001");
+    const seasonBeforeFailure = await seasonRows(), failedSeasonRequest = randomUUID();
+    await denied(() => commit(seasonOwner, "primary-create", hybridSetup, false, undefined, failedSeasonRequest), "22023");
+    assert.deepEqual(Array.from(await seasonRows()), Array.from(seasonBeforeFailure));
+    assert.equal((await asUser(seasonOwner, (tx) => tx`SELECT count(*)::int AS n FROM public.engine_override_events
+      WHERE id=${failedSeasonRequest}::uuid`))[0]!.n, 0);
+    const linkedRevision = (await snapshot(seasonOwner)).revision, seasonRequest = randomUUID();
+    const linked = await commit<Created>(seasonOwner, "primary-create", hybridSetup, true, linkedRevision, seasonRequest);
+    const linkedRows = await seasonRows();
+    assert.equal(linkedRows[0]!.value.status, "done");
+    assert.equal(linkedRows[0]!.value.block_id, seasonStrength.block_id);
+    assert.equal(linkedRows[1]!.value.status, "active");
+    assert.equal(linkedRows[1]!.value.block_id, linked.block_id);
+    assert.equal(linkedRows[2]!.value.status, "planned");
+    assert.deepEqual(await commit(seasonOwner, "primary-create", hybridSetup, true, linkedRevision, seasonRequest), linked);
+    assert.deepEqual(Array.from(await seasonRows()), Array.from(linkedRows));
+    await denied(async () => commit(seasonOwner, "primary-create", { ...hybridSetup, p_season_origin: await seasonOrigin(lastSlot) },
+      true, linkedRevision, seasonRequest, hybridSetup), "22023");
+    await denied(() => commit(seasonOwner, "primary-create", { ...hybridSetup, p_replace_block_id: linked.block_id }, true), "40001");
+    const phaseBase = args("hybrid");
+    const phase = { ...phaseBase, p_replace_block_id: linked.block_id, p_season_origin: await seasonOrigin(lastSlot),
+      p_block: { ...phaseBase.p_block, program_id: "green-protocol" },
+      p_program_instance: { ...phaseBase.p_program_instance, program_id: "green-protocol",
+        setup_input: { values: { phaseId: "velocity" } } } };
+    await denied(() => commit(seasonOwner, "primary-create", { ...phase,
+      p_program_instance: { ...phase.p_program_instance, setup_input: { values: { templateId: "velocity" } } } }, true), "22023");
+    const finalSeasonProgram = await commit<Created>(seasonOwner, "primary-create", phase, true);
+    const finalSeasonRows = await seasonRows();
+    assert.equal(finalSeasonRows[1]!.value.status, "done");
+    assert.equal(finalSeasonRows[2]!.value.block_id, finalSeasonProgram.block_id);
+    assert.equal((await asUser(seasonOwner, (tx) => tx`SELECT status FROM public.training_blocks
+      WHERE id=${linked.block_id}::uuid`))[0]!.status, "archived");
+    assert.equal((await asUser(seasonOwner, (tx) => tx`SELECT status FROM public.training_blocks
+      WHERE id=${seasonRun.block_id}::uuid`))[0]!.status, "active");
+    assert.equal((await asUser(seasonOwner, (tx) => tx`SELECT status FROM public.swim_plans
+      WHERE id=${seasonSwim.plan.id}::uuid`))[0]!.status, "active");
+    assert.equal((await asUser(b, (tx) => tx`SELECT count(*)::int AS n FROM public.season_blocks
+      WHERE season_id=${seasonId}::uuid`))[0]!.n, 0);
     stages.push("ownership-independent-end-trash-restore-completion-and-late-progress");
 
     stage("ownership-swim-rehab-owned-attachment-issued-dose-replay-and-restore");

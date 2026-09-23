@@ -1,3 +1,9 @@
+export function programTemplateField(programId: string): "templateId" | "phaseId" | null {
+  if (programId === "green-protocol") return "phaseId";
+  if (programId === "wendler-531" || programId === "tactical-barbell") return "templateId";
+  return null;
+}
+
 export function programSetupAuditInput(args: {
   values: Record<string, unknown>;
   weekdays: number[];

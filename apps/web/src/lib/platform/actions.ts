@@ -85,7 +85,7 @@ import {
   resolveTbAccessoryMuscles,
   type TbAccessoryInjector,
 } from "./tb-accessories";
-import { activateSeasonBlock } from "@/lib/seasons/activation";
+import { assertSeasonProgramSetup, loadSeasonProgramOrigin } from "@/lib/seasons/activation";
 import { getDeloadWeekPreview } from "@/lib/planner/deload-week-preview";
 import {
   planForwardOnlyRewrite,
@@ -865,6 +865,11 @@ async function runProgramInstance(
     }
   }
   const flow = await programReviewContext(supabase, user.id, requestInput, previewOnly, review);
+  if (seasonBlockId) {
+    if (editBlockId) throw new Error("A roadmap block must start a new program.");
+    flow.season = await loadSeasonProgramOrigin(supabase, user.id, seasonBlockId);
+    assertSeasonProgramSetup(flow.season, programId, setupValues);
+  }
   if (parsed.data.sourceRecommendationId) {
     const origin = await loadProgramRecommendationOrigin(supabase, user.id, parsed.data.sourceRecommendationId);
     if (editBlockId || !matchesRecommendationSetup(origin, programId, setupValues)) {
@@ -917,14 +922,8 @@ async function runProgramInstance(
     // the wizard values so `setupHybrid` picks it up. Non-Season Hybrid deploys
     // (no seasonBlockId) inject nothing ⇒ byte-identical.
     let nativeSetupValues = setupValues;
-    if (seasonBlockId) {
-      const { data: sb } = await supabase
-        .from("season_blocks")
-        .select("emphasis")
-        .eq("id", seasonBlockId)
-        .eq("user_id", user.id)
-        .maybeSingle();
-      const emphasis = sb?.emphasis as string | undefined;
+    if (flow.season) {
+      const emphasis = flow.season.target.emphasis;
       const seasonBias =
         emphasis === "endurance_bias"
           ? "endurance"
@@ -942,7 +941,6 @@ async function runProgramInstance(
       ...(twoADay != null ? { twoADay } : {}),
       ...(customization ? { customization } : {}),
       ...(sessionLinks ? { sessionLinks } : {}),
-      ...(seasonBlockId ? { seasonBlockId } : {}),
       flow, trainingMaxDrafts, startWithRecoveryWeek, rehabBindings,
     });
     if (nativeResult.ok && !("preview" in nativeResult) && startWithRecoveryWeek && !flow) {
@@ -963,7 +961,6 @@ async function runProgramInstance(
     ...(customization ? { customization } : {}),
     ...(sessionLinks ? { sessionLinks } : {}),
     ...(rehabSchedule ? { rehabSchedule } : {}),
-    ...(seasonBlockId ? { seasonBlockId } : {}),
     ...(startWithRecoveryWeek ? { startWithRecoveryWeek: true } : {}),
     flow, trainingMaxDrafts, rehabBindings,
   });
@@ -1141,7 +1138,6 @@ interface DeployArgs {
   rehabSchedule?: RehabSchedule;
   /** When the wizard was deep-linked from a Season roadmap (ADR 0051) — the
    *  planned season_block to activate + link to the new training block on deploy. */
-  seasonBlockId?: string;
   /** Lead the new block with a recovery week (post-peak, TB3). */
   startWithRecoveryWeek?: boolean;
 }
@@ -1777,6 +1773,7 @@ async function deployPreparedProgram(
       p_rehab_bindings: options.rehabBindings ?? [],
       p_accept_recovery: options.startWithRecoveryWeek ?? false, p_skipped: skipped,
       ...(flow.recommendation ? { p_recommendation: flow.recommendation.snapshot } : {}),
+      ...(flow.season ? { p_season_origin: flow.season.snapshot } : {}),
     } : {}),
   };
   if (flow) {
@@ -2032,7 +2029,7 @@ async function deployProgramInstanceDuringMigration(
 async function createForeignProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, seasonBlockId, twoADay, customization, sessionLinks, rehabSchedule, startWithRecoveryWeek, flow, trainingMaxDrafts, rehabBindings }: DeployArgs,
+  { programId, setupValues, weekdays, cardioWeekdays, startedOn, raceDate, startWeekIndex, roundingKg, accessories, twoADay, customization, sessionLinks, rehabSchedule, startWithRecoveryWeek, flow, trainingMaxDrafts, rehabBindings }: DeployArgs,
 ): Promise<ProgramExecutionResult> {
   const engine = getProgramEngine(programId);
   if (!engine) return { ok: false, error: `Unknown program '${programId}'.` };
@@ -2128,17 +2125,6 @@ async function createForeignProgramInstance(
 
   // Unfinished sessions may contain queued offline work. Program replacement
   // archives the old plan but never discards these sessions.
-
-  // ADR 0051 — when deep-linked from a Season roadmap, advance the roadmap:
-  // flip the prior active season block to done + this planned one to active,
-  // linked to the new block. Best-effort: never undo a valid deploy.
-  if (seasonBlockId) {
-    try {
-      await activateSeasonBlock(supabase, user.id, seasonBlockId, blockId);
-    } catch (e) {
-      console.error("season-block activation failed:", e);
-    }
-  }
 
   // ADR 0050 step 10 — a HYROX race date becomes an A-priority event so the
   // existing event-taper (ADR 0008) + next-block nudge align to race day. The
@@ -2989,7 +2975,7 @@ async function updateForeignProgramInstance(
 async function createNativeProgramInstance(
   supabase: SupabaseClient,
   user: User,
-  { programId, setupValues, weekdays, startedOn, startWeekIndex, roundingKg, twoADay, seasonBlockId, flow, trainingMaxDrafts, rehabBindings, startWithRecoveryWeek }: DeployArgs,
+  { programId, setupValues, weekdays, startedOn, startWeekIndex, roundingKg, twoADay, flow, trainingMaxDrafts, rehabBindings, startWithRecoveryWeek }: DeployArgs,
 ): Promise<ProgramExecutionResult> {
   const engine = getNativeProgramEngine(programId)!;
 
@@ -3108,19 +3094,6 @@ async function createNativeProgramInstance(
     };
   }
   const blockId = deployed.block_id;
-
-  // Clear any half-opened, zero-logged session from the program we just
-  // replaced so Today doesn't surface a stale "Resume today's workout".
-
-  // ADR 0051 — Season roadmap deep-link: advance the roadmap to this block.
-  // Best-effort; a failure must not undo a valid deploy.
-  if (seasonBlockId) {
-    try {
-      await activateSeasonBlock(supabase, user.id, seasonBlockId, blockId);
-    } catch (e) {
-      console.error("season-block activation failed:", e);
-    }
-  }
 
   revalidatePath("/app");
   revalidatePath("/app/plan");

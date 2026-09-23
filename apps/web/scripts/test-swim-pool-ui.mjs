@@ -621,6 +621,31 @@ try {
           window.continuationStatus = "pending"; window.continuationMode = "error";
           root.render(<ContinuationFixture key={++key} kind={kind} />);
         };
+        function SeasonSetupFixture() {
+          window.continuationPreview = async input => {
+            window.seasonPreviews.push(input);
+            if (input.seasonBlockId && window.seasonMode === "blocked") {
+              return { ok: false, error: "End or complete Autumn strength before advancing its roadmap." };
+            }
+            return { ok: true, preview: { id: "e".repeat(64), revision: "a".repeat(32),
+              dates: [{ date: input.startedOn, title: "Next workout" }], overlaps: [], plannedRest: [], replaces: null } };
+          };
+          window.continuationSave = async input => {
+            window.seasonSaves.push(input);
+            if (window.seasonMode === "stale") return { ok: false, error: "The roadmap changed. Review your setup again." };
+            window.seasonSaved = true;
+            return { ok: true, blockId: "season-program", programInstanceId: "season-instance", skipped: 0 };
+          };
+          return <ProgramPicker anchoredKeys={["squat"]} initialProgramId="green-protocol"
+            initialLoadoutValue="velocity" seasonBlockId="00000000-0000-4000-8000-000000000095"
+            programs={[{ id: "green-protocol", name: "Green Protocol", family: "tactical-barbell-green", summary: "",
+              enabled: true, fixedSchedule: true, fields: [{ key: "phaseId", label: "Phase", type: "select",
+                defaultValue: "capacity", options: [{ value: "capacity", label: "Capacity" }, { value: "velocity", label: "Velocity" }] }] }]} />;
+        }
+        window.showSeasonSetup = mode => {
+          window.seasonPreviews = []; window.seasonSaves = []; window.seasonSaved = false; window.seasonMode = mode;
+          root.render(<SeasonSetupFixture key={++key} />);
+        };
         const setupSchedule = [
           { id: "one-off-run", source: "session", programId: null, date: "2026-09-14", title: "Run", state: "scheduled" },
           { id: "planned-rest", source: "primary", programId: "primary", date: "2026-09-17", title: "Rest", state: "rest" },
@@ -1837,6 +1862,67 @@ try {
     await page.getByRole("button", { name: "Review dates", exact: true }).click();
     await expect(page.getByRole("region", { name: "Review program dates" })).toBeVisible();
     assert.equal((await page.evaluate(() => window.continuationPreviews.at(-1))).startWithRecoveryWeek, true);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    stages.push(stage);
+  }
+  assert.deepEqual(failures, []);
+  for (const width of [375, 1280]) {
+    stage = `owned-season-continuation-${width}`;
+    await page.setViewportSize({ width, height: 1000 });
+    await page.evaluate(() => window.showSeasonSetup("blocked"));
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    const linked = page.getByRole("checkbox", { name: "Link to season roadmap" });
+    await expect(linked).toBeChecked();
+    const linkTarget = await linked.locator("..").boundingBox();
+    assert.ok(linkTarget && linkTarget.height >= 44);
+    const start = page.locator('input[type="date"]').first();
+    await start.fill("2027-02-08");
+    await page.getByRole("button", { name: "Review dates", exact: true }).click();
+    await expect(page.getByRole("alert")).toContainText("Autumn strength");
+    await expect(start).toHaveValue("2027-02-08");
+    assert.deepEqual(await page.evaluate(() => window.seasonSaves), []);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    await linked.uncheck();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await page.getByRole("button", { name: "Review dates", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Review program dates" })).toBeVisible();
+    const [blocked, unlinked] = await page.evaluate(() => window.seasonPreviews);
+    assert.equal(blocked.seasonBlockId, "00000000-0000-4000-8000-000000000095");
+    const { seasonBlockId: omitted, ...retained } = blocked;
+    assert.ok(omitted);
+    assert.deepEqual(unlinked, retained);
+    await page.getByRole("button", { name: "Save program", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.seasonSaved)).toBe(true);
+    const separate = await page.evaluate(() => window.seasonSaves[0]);
+    assert.equal(separate.seasonBlockId, undefined);
+    assert.equal(separate.startedOn, "2027-02-08");
+    assert.equal(separate.setupValues.phaseId, "velocity");
+
+    await page.evaluate(() => window.showSeasonSetup("ready"));
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await start.fill("2027-02-08");
+    await page.getByRole("button", { name: "Review dates", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Review program dates" })).toBeVisible();
+    await page.evaluate(() => { window.seasonMode = "stale"; });
+    await page.getByRole("button", { name: "Save program", exact: true }).click();
+    await expect(page.getByRole("alert")).toBeVisible();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(start).toHaveValue("2027-02-08");
+    await linked.uncheck();
+    await page.getByRole("button", { name: "Review dates", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Review program dates" })).toBeVisible();
+    await page.evaluate(() => { window.seasonMode = "ready"; });
+    await page.getByRole("button", { name: "Save program", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.seasonSaved)).toBe(true);
+    const saves = await page.evaluate(() => window.seasonSaves);
+    assert.equal(saves.length, 2);
+    assert.equal(saves[0].seasonBlockId, "00000000-0000-4000-8000-000000000095");
+    assert.equal(saves[1].seasonBlockId, undefined);
+    assert.notEqual(saves[0].review.requestId, saves[1].review.requestId);
+    assert.equal(saves[1].startedOn, saves[0].startedOn);
+    assert.deepEqual(saves[1].setupValues, saves[0].setupValues);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     stages.push(stage);
   }

@@ -1,7 +1,8 @@
 BEGIN;
 SET LOCAL search_path=public;
 LOCK TABLE public.training_blocks,public.program_instances,public.planned_sessions,public.sessions,
-  public.engine_override_events,public.rehab_protocols,public.program_rehab_bindings,public.swim_plan_rehab_bindings
+  public.engine_override_events,public.rehab_protocols,public.program_rehab_bindings,public.swim_plan_rehab_bindings,
+  public.training_seasons,public.season_blocks
   IN ACCESS EXCLUSIVE MODE;
 DO $$
 DECLARE entry record; routine oid;
@@ -14,7 +15,7 @@ BEGIN
     ('validate_owned_rehab_items(jsonb,uuid,integer)','e8c6d5b14524af1db05f244678727fc5'),
     ('guard_program_prescription()','79a4796d81aa589658934d384431c75f'),
     ('independent_programs_ready()','f7754db18b4915afa6efd55215665840'),
-    ('independent_program_schedule_commit(text,jsonb,text,uuid,text,boolean)','851648e324de44dcf96eb3246ac343db'),
+    ('independent_program_schedule_commit(text,jsonb,text,uuid,text,boolean)','9ae72d954b4fde78db1fb2a1bcdd7831'),
     ('complete_program_if_settled(uuid)','996fb16023d56e0d29a0e96963ada556'),
     ('commit_program_progression(uuid,uuid,uuid,jsonb,jsonb,jsonb)','7d4d6b811d1f78996349e92b26bdb639'),
     ('set_swim_rehab_bindings(uuid,uuid[],text,uuid)','2329636561cb53b0160e3bd24bf5a737'),
@@ -56,6 +57,8 @@ BEGIN
     ('sessions','sessions_swim_rehab_origin','guard_swim_rehab_session()',23,false),
     ('rehab_protocols','rehab_protocols_schedule_lock','training_schedule_lock()',30,false),
     ('program_rehab_bindings','program_rehab_bindings_schedule_lock','training_schedule_lock()',30,false),
+    ('training_seasons','training_seasons_schedule_lock','training_schedule_lock()',30,false),
+    ('season_blocks','season_blocks_schedule_lock','training_schedule_lock()',30,false),
     ('swim_plan_rehab_bindings','swim_plan_rehab_bindings_schedule_lock','training_schedule_lock()',30,false)
   ) expected(relation,name,routine,type,deferred) LOOP
     IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid=to_regclass('public.'||entry.relation)
@@ -153,6 +156,8 @@ DROP FUNCTION public.validate_owned_rehab_items(jsonb,uuid,integer);
 DROP TABLE public.swim_plan_rehab_bindings;
 DROP TRIGGER rehab_protocols_schedule_lock ON public.rehab_protocols;
 DROP TRIGGER program_rehab_bindings_schedule_lock ON public.program_rehab_bindings;
+DROP TRIGGER training_seasons_schedule_lock ON public.training_seasons;
+DROP TRIGGER season_blocks_schedule_lock ON public.season_blocks;
 ALTER TABLE public.rehab_protocols DROP CONSTRAINT rehab_protocols_user_id_id_key;
 DROP TRIGGER training_blocks_parent_consistency ON public.training_blocks;
 DROP TRIGGER program_instances_parent_consistency ON public.program_instances;

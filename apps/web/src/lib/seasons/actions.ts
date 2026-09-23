@@ -239,13 +239,16 @@ export async function updateSeasonBlock(input: unknown): Promise<SeasonActionRes
   if (Object.keys(patch).length === 0) return { ok: true };
 
   // Only PLANNED blocks are editable — never rewrite an active/done block.
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from("season_blocks")
     .update(patch)
     .eq("id", parsed.data.blockId)
     .eq("user_id", user.id)
-    .eq("status", "planned");
+    .eq("status", "planned")
+    .select("id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (!updated) return { ok: false, error: "This block is no longer available to edit. Refresh the roadmap." };
   revalidateSeason();
   return { ok: true };
 }
@@ -274,12 +277,16 @@ export async function removeSeasonBlock(input: unknown): Promise<SeasonActionRes
   if (row.status !== "planned") return { ok: false, error: "Only upcoming blocks can be removed." };
   const seasonId = row.season_id as string;
 
-  const { error: dErr } = await supabase
+  const { data: removed, error: dErr } = await supabase
     .from("season_blocks")
     .delete()
     .eq("id", parsed.data.blockId)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .eq("status", "planned")
+    .select("id")
+    .maybeSingle();
   if (dErr) return { ok: false, error: dErr.message };
+  if (!removed) return { ok: false, error: "This block is no longer available to remove. Refresh the roadmap." };
 
   await renumberSeason(supabase, user.id, seasonId);
   revalidateSeason();

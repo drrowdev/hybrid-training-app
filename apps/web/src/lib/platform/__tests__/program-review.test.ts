@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { commitReviewedProgram, programSchedulePreview, type ProgramReviewContext } from "../program-review";
 import { commitTrainingSchedule } from "@/lib/schedule/storage";
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/schedule/storage", async (original) => ({
   ...await original<typeof import("@/lib/schedule/storage")>(),
   commitTrainingSchedule: vi.fn(async () => ({ data: {}, error: null })),

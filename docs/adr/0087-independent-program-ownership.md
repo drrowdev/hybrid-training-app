@@ -66,6 +66,17 @@ targets, progression and accepted recommendations belong to the addressed
 program. The optional existing season roadmap does not acquire extra tracks or
 advance merely because a different program starts.
 
+Roadmap setup carries its exact owned active season, next planned slot,
+program/template, emphasis and goal snapshot through preview. The existing
+schedule transaction links the saved program and advances only the identified
+predecessor. That predecessor must already have ended/completed, or be the
+explicitly reviewed same-type replacement. Otherwise setup names the program
+that holds the step; the user can unlink the draft in place without losing its
+inputs. Unlinked starts never advance the roadmap. Shared statement locks cover
+season and slot writes, and failed saves roll back linkage together with the
+program. Replay retains the original origin. The unused down verifies and removes
+both added triggers and restores the complete prior catalog.
+
 Final recommendations remain visible for their completed source program.
 Opening or abandoning setup does not resolve advice. A guided continuation
 carries the exact recommendation, block, instance, kind and phase through preview

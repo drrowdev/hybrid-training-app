@@ -34,6 +34,7 @@ import {
 } from "@/lib/platform/tb-accessories-config";
 import type { ProgramSchedulePreview } from "@/lib/platform/program-review";
 import { matchesRecommendationSetup, type ProgramRecommendationSetup } from "@/lib/platform/recommendation-origin";
+import { programTemplateField as loadoutFieldKey } from "@/lib/platform/setup-audit";
 import {
   DEFAULT_CUSTOM_TB_NAME,
   LEGACY_REHAB_PROTOCOL_ID,
@@ -640,13 +641,6 @@ const PROGRAM_LABEL: Record<string, string> = {
   "green-protocol": "Green Protocol",
   hybrid: "Hybrid",
 };
-
-/** The setup field the loadout step writes into (templateId or GP phaseId). */
-function loadoutFieldKey(programId: string): "templateId" | "phaseId" | null {
-  if (programId === "green-protocol") return "phaseId";
-  if (programId === "wendler-531" || programId === TB_PROGRAM_ID) return "templateId";
-  return null;
-}
 
 const MOVEMENT_LABEL: Record<string, string> = {
   squat: "Squat",
@@ -1465,6 +1459,7 @@ export function ProgramPicker({
   );
   const [raceDate, setRaceDate] = useState<string>(prefillRaceDate ?? "");
   const [startWithRecovery, setStartWithRecovery] = useState(recommendation?.kind === "deload");
+  const [linkSeason, setLinkSeason] = useState(!!seasonBlockId);
   /** The exercise picked from the library, waiting for its work type. */
   const [pendingAdd, setPendingAdd] = useState<{
     seriesKey: string;
@@ -3058,7 +3053,7 @@ export function ProgramPicker({
         ...(customization ? { customization } : {}),
         ...(rehabSchedule ? { rehabSchedule } : {}),
         ...(isEditing && editContext ? { editBlockId: editContext.blockId } : {}),
-        ...(!isEditing && seasonBlockId ? { seasonBlockId } : {}),
+        ...(!isEditing && linkSeason && seasonBlockId ? { seasonBlockId } : {}),
         ...(setupRecommendation ? { sourceRecommendationId: setupRecommendation.recommendationId } : {}),
         ...(recoveryAdvised && startWithRecovery ? { startWithRecoveryWeek: true } : {}),
         ...(isTb && deployedProtocols.length > 0
@@ -5398,6 +5393,15 @@ export function ProgramPicker({
             </div>
           ) : null}
         </div>
+
+        {!isEditing && seasonBlockId ? (
+          <label style={{ display: "flex", gap: 10, alignItems: "center", minHeight: 44, marginBottom: 18, cursor: "pointer" }}>
+            <input type="checkbox" checked={linkSeason}
+              onChange={(event) => { setLinkSeason(event.target.checked); setReviewed(null); setResult(null); }}
+              style={{ margin: 0, width: 18, height: 18, minHeight: 18, flexShrink: 0 }} />
+            <span className={styles.label}>Link to season roadmap</span>
+          </label>
+        ) : null}
 
         {!isEditing && recoveryAdvised ? (
           <div style={{ marginBottom: 18 }}>
