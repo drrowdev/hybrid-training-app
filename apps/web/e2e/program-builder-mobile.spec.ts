@@ -435,7 +435,10 @@ test.describe("Modular program builder", () => {
     const match = matchSchema.parse(matched.data);
     expect(match.workout_id).toBe(first.id);
     expect(await outcomes()).toEqual([]);
-    const region = page.getByRole("region", { name: match.metadata.workout!.title, exact: true });
+    const region = page.getByRole("region").filter({
+      has: page.locator(`h2 a[href="/app/swim/${first.id}?from=sessions"]`),
+    });
+    await expect(region).toHaveCount(1);
     await expect(region.getByRole("button", { name: "Confirm outcome", exact: true })).toBeDisabled();
     await region.getByRole("radio", { name: "Completed", exact: true }).check();
     const posted = page.waitForRequest((request) => request.method() === "POST" && !!request.headers()["next-action"]);

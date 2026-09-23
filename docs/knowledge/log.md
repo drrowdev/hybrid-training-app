@@ -4549,3 +4549,31 @@ result changes only after completion. All57 synthetic stages,43focused guards,
 web/account-flow types and exact seven-case collection passed. No application,
 SQL, updater, timeout, media or runtime-boundary change was made. The repaired
 head still needs exact-head public and native-seven qualification.
+
+## [2026-09-23] refine | Keep native outcome selection tied to the workout
+
+Exact95ba23ba passed core35810916224 and storage35810916219. The coordinator's
+once-consumed native35811504863 evidence passed normal158, twelve pre-browser
+stages,36authenticated RPC cases and the original six browser cases. M7 passed
+confirmation, exact replay, correction and their shared/history views, then
+failed to find the retained removal control through its old exact region name.
+
+Source and transport-backed reproduction identify a selector mismatch:
+0153 stores the source workout title in the immutable match snapshot, whereas
+the retained claim uses the canonical course-position display title. The real
+recording page, real read helpers and rendered client controls retain the same
+owned workout, original receipt, removal control and Sessions return context
+after unmatching; only the region's accessible name changes. A second regression
+uses the actual removal action with creation disabled, verifies scheduled-state
+and history restoration, and preserves all three immutable export receipts.
+These are synthetic transport proofs, not another native or real-SQL run.
+
+M7 now selects the outcome region through its owned workout link and return
+context, with an exact single-region assertion. The browser regression varies
+the two titles, proves the old name disappears while removal remains available,
+and exercises pending/removal behavior at375/1280. All57 synthetic stages,
+144focused checks, web types/lint and exact seven-case collection passed.
+AST comparison preserves all original six bodies and order from qualified5446db.
+No application, SQL, updater, assertion removal, timeout or runtime-boundary
+change was made. Exact-head public gates and full native-seven qualification
+remain pending; hosted DDL and outcome activation remain unauthorized.

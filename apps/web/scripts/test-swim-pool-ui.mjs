@@ -292,7 +292,7 @@ try {
         };
         window.showOutcome = (retained = false) => root.render(<main className={styles.page}>
           <RecordingOutcome key={++key} workoutId="00000000-0000-4000-8000-000000000002"
-            workoutTitle="Week 1 A: steady swimming" origin="sessions"
+            workoutTitle={retained ? "Week 1 A: steady swimming" : "steady swimming"} origin="sessions"
             matchId={retained ? null : "00000000-0000-4000-8000-000000000003"} workoutRevision={3}
             expectedOutcomeId={retained ? "00000000-0000-4000-8000-000000000004" : null}
             current={null} enabled={!retained} canRemove={retained} needsReview={retained} otherMatch={false} />
@@ -879,7 +879,10 @@ try {
 
     stage = `explicit-recording-outcome-${width}`;
     await page.evaluate(() => { window.outcomeCalls = []; window.outcomeMode = "delay"; window.showOutcome(); });
-    const outcomeRegion = page.getByRole("region", { name: "Week 1 A: steady swimming", exact: true });
+    const outcomeRegion = page.getByRole("region").filter({
+      has: page.locator('h2 a[href="/app/swim/00000000-0000-4000-8000-000000000002?from=sessions"]'),
+    });
+    await expect(outcomeRegion).toHaveAccessibleName("steady swimming");
     const confirmOutcome = outcomeRegion.getByRole("button", { name: "Confirm outcome", exact: true });
     await expect(confirmOutcome).toBeDisabled();
     await outcomeRegion.getByRole("radio", { name: "Completed", exact: true }).check();
@@ -925,6 +928,8 @@ try {
     stage = `retained-recording-confirmation-removal-${width}`;
     await page.evaluate(() => { window.outcomeCalls = []; window.outcomeMode = "delay"; window.showOutcome(true); });
     await outcomeRegion.waitFor();
+    await expect(outcomeRegion).toHaveAccessibleName("Week 1 A: steady swimming");
+    await expect(page.getByRole("region", { name: "steady swimming", exact: true })).toHaveCount(0);
     await expect(outcomeRegion.getByRole("link", { name: "Week 1 A: steady swimming", exact: true }))
       .toHaveAttribute("href", "/app/swim/00000000-0000-4000-8000-000000000002?from=sessions");
     assert.equal(await outcomeRegion.getByRole("radio").count(), 0);
