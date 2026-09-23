@@ -14,7 +14,7 @@ BEGIN
     ('validate_owned_rehab_items(jsonb,uuid,integer)','e8c6d5b14524af1db05f244678727fc5'),
     ('guard_program_prescription()','79a4796d81aa589658934d384431c75f'),
     ('independent_programs_ready()','f7754db18b4915afa6efd55215665840'),
-    ('independent_program_schedule_commit(text,jsonb,text,uuid,text,boolean)','2a6cb4f6557935c333f7e3c13391f694'),
+    ('independent_program_schedule_commit(text,jsonb,text,uuid,text,boolean)','4534153f8590cbee7ea847fdf20c686f'),
     ('complete_program_if_settled(uuid)','11cb37bbb20812a5103ff64ae80021ef'),
     ('commit_program_progression(uuid,uuid,uuid,jsonb,jsonb,jsonb)','0e64f7804b978648c385bfaddc5d783a'),
     ('set_swim_rehab_bindings(uuid,uuid[],text,uuid)','2329636561cb53b0160e3bd24bf5a737'),

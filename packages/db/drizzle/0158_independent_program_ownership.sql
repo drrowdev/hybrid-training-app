@@ -355,7 +355,7 @@ RETURNS jsonb LANGUAGE plpgsql VOLATILE SECURITY INVOKER SET search_path=pg_cata
 DECLARE
   u uuid:=auth.uid(); before_snapshot jsonb; after_snapshot jsonb; receipt jsonb; result jsonb;
   replacement uuid; block_id uuid; instance_id uuid; kind text; target public.training_blocks%ROWTYPE;
-  entry jsonb; overlaps jsonb; block_args jsonb; instance_args jsonb;
+  entry jsonb; overlap_pairs jsonb; block_args jsonb; instance_args jsonb;
 BEGIN
   IF u IS NULL THEN RAISE EXCEPTION 'Not signed in.' USING ERRCODE='42501'; END IF;
   IF p_request_id IS NULL OR p_input_hash IS NULL OR p_input_hash !~ '^[a-f0-9]{64}$' THEN
@@ -477,16 +477,16 @@ BEGIN
       FROM jsonb_array_elements(after_snapshot->'entries') a CROSS JOIN jsonb_array_elements(after_snapshot->'entries') b
       WHERE a->>'date'=b->>'date' AND a->>'state' NOT IN ('rest','paused') AND b->>'state' NOT IN ('rest','paused')
         AND a->>'occupancyKey'<b->>'occupancyKey'
-  ) SELECT COALESCE(jsonb_agg(to_jsonb(p)),'[]'::jsonb) INTO overlaps FROM
+  ) SELECT COALESCE(jsonb_agg(to_jsonb(p)),'[]'::jsonb) INTO overlap_pairs FROM
     (SELECT * FROM after_pairs EXCEPT SELECT * FROM before_pairs) p;
-  IF jsonb_array_length(overlaps)>0 AND p_accept_overlap IS DISTINCT FROM true THEN
+  IF jsonb_array_length(overlap_pairs)>0 AND p_accept_overlap IS DISTINCT FROM true THEN
     RAISE EXCEPTION 'Review and accept the overlapping workouts before saving.' USING ERRCODE='22023';
   END IF;
   result:=jsonb_build_object('block_id',block_id,'program_instance_id',instance_id,'skipped',COALESCE((p_args->>'p_skipped')::integer,0));
   INSERT INTO public.engine_override_events(id,user_id,event_type,context) VALUES(p_request_id,u,'custom',
     jsonb_build_object('kind','training-schedule-v1','programOwnershipVersion',1,'programKind',kind,
       'replacedBlockId',replacement,'operation',p_operation,'inputHash',p_input_hash,'revision',p_expected_revision,
-      'acceptedOverlap',p_accept_overlap,'overlaps',overlaps,'result',result));
+      'acceptedOverlap',p_accept_overlap,'overlaps',overlap_pairs,'result',result));
   RETURN result;
 END $$;
 REVOKE ALL ON FUNCTION public.independent_program_schedule_commit(text,jsonb,text,uuid,text,boolean) FROM PUBLIC,anon;

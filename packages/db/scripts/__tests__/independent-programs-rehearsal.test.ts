@@ -10,6 +10,10 @@ const down = readFileSync(new URL("../../rollbacks/0158_independent_program_owne
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("DC-R5 independent ownership storage boundary", () => {
+  it("does not use the SQL OVERLAPS operator as an unquoted PL/pgSQL variable", () => {
+    expect(up).not.toMatch(/\boverlaps\s+jsonb\b/);
+    expect(up).toContain("'overlaps',overlap_pairs");
+  });
   it("pins every new routine in the unused-down refusal rather than dropping changed code", () => {
     const functions = [...up.matchAll(/CREATE FUNCTION public\.(\w+)\(([\s\S]*?)\)\s*RETURNS[\s\S]*?AS \$\$([\s\S]*?)\$\$;/g)];
     expect(functions).toHaveLength(13);
