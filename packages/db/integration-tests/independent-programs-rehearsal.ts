@@ -14,6 +14,45 @@ type Swim = { plan: { id: string }; workouts: { id: string }[] };
 const permutations = <T>(values: readonly T[]): T[][] => values.length === 0 ? [[]] :
   values.flatMap((value, index) => permutations(values.filter((_, at) => at !== index)).map((rest) => [value, ...rest]));
 
+export const OWNERSHIP_SQLSTATES = [
+  "42501", "23503", "23505", "23514", "22023", "P0001", "42601", "42702", "42703", "42804",
+  "42883", "42P01", "42P07", "42704", "25P02", "55000", "57014", "55P03", "40P01", "40001",
+] as const;
+const catalogCategories = ["functions", "indexes", "triggers", "constraints", "policies"] as const;
+type OwnershipSqlstate = typeof OWNERSHIP_SQLSTATES[number];
+type CatalogCategory = typeof catalogCategories[number];
+export type OwnershipCatalog = Record<CatalogCategory | "value", string>;
+export type OwnershipAssertionDiagnostic =
+  | { kind: "catalog"; categories: (CatalogCategory | "aggregate")[] }
+  | { kind: "refusal"; expected: OwnershipSqlstate; actual: OwnershipSqlstate | "resolved" | null };
+
+export class IndependentProgramsAssertion extends assert.AssertionError {
+  constructor(readonly diagnostic: OwnershipAssertionDiagnostic) {
+    super({
+      message: diagnostic.kind === "catalog" ? "Ownership catalog was not restored." : "Ownership refusal did not match.",
+      stackStartFn: diagnostic.kind === "catalog" ? assertOwnershipCatalog : assertOwnershipRefusal,
+    });
+  }
+}
+
+export function assertOwnershipCatalog(actual: OwnershipCatalog, expected: OwnershipCatalog): void {
+  if (actual.value === expected.value) return;
+  const categories = catalogCategories.filter((category) => actual[category] !== expected[category]);
+  throw new IndependentProgramsAssertion({ kind: "catalog", categories: categories.length ? categories : ["aggregate"] });
+}
+
+export async function assertOwnershipRefusal(work: () => Promise<unknown>, expected: OwnershipSqlstate): Promise<void> {
+  try { await work(); }
+  catch (error) {
+    const value: unknown = typeof error === "object" && error !== null
+      ? Object.getOwnPropertyDescriptor(error, "code")?.value : null;
+    const actual = OWNERSHIP_SQLSTATES.find((code) => code === value) ?? null;
+    if (actual === expected) return;
+    throw new IndependentProgramsAssertion({ kind: "refusal", expected, actual });
+  }
+  throw new IndependentProgramsAssertion({ kind: "refusal", expected, actual: "resolved" });
+}
+
 /** Only the existing loopback GitHub fixture may execute this storage contract. */
 export async function rehearseIndependentPrograms(database: postgres.Sql, stage: (name: string) => void) {
   assert.equal(process.env.GITHUB_ACTIONS, "true");
@@ -27,7 +66,10 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
   const stages: string[] = [];
   const up = readFileSync(new URL("../drizzle/0158_independent_program_ownership.sql", import.meta.url), "utf8");
   const down = readFileSync(new URL("../rollbacks/0158_independent_program_ownership.down.sql", import.meta.url), "utf8");
-  const catalog = async () => (await database`SELECT md5(jsonb_build_array(
+  const catalog = async () => (await database<OwnershipCatalog[]>`SELECT md5(value::text) AS value,
+    md5((value->0)::text) AS functions,md5((value->1)::text) AS indexes,
+    md5((value->2)::text) AS triggers,md5((value->3)::text) AS constraints,md5((value->4)::text) AS policies
+    FROM (SELECT jsonb_build_array(
     (SELECT jsonb_agg(jsonb_build_array(p.oid::regprocedure::text,pg_get_functiondef(p.oid),p.proowner,p.proacl::text)
       ORDER BY p.oid::regprocedure::text) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prokind='f'),
     (SELECT jsonb_agg(jsonb_build_array(c.relname,pg_get_indexdef(i.indexrelid)) ORDER BY c.relname)
@@ -39,7 +81,7 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     (SELECT jsonb_agg(jsonb_build_array(c.relname,p.polname,p.polcmd,p.polroles::text,pg_get_expr(p.polqual,p.polrelid),
       pg_get_expr(p.polwithcheck,p.polrelid)) ORDER BY c.relname,p.polname)
       FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public')
-    )::text) AS value`)[0]!.value;
+    ) AS value) snapshot`)[0]!;
   const baseline = await catalog();
   const revert = async () => {
     const connection = await database.reserve();
@@ -47,8 +89,7 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
     catch (error) { await connection.unsafe("ROLLBACK"); throw error; }
     finally { connection.release(); }
   };
-  const denied = (work: () => Promise<unknown>, code: string) => assert.rejects(work, (error: unknown) =>
-    typeof error === "object" && error !== null && "code" in error && error.code === code);
+  const denied = assertOwnershipRefusal;
   const asUser = <T>(user: string | null, work: (tx: postgres.TransactionSql) => Promise<T>) => database.begin(async (tx) => {
     await tx.unsafe(user ? "SET LOCAL ROLE authenticated" : "SET LOCAL ROLE anon");
     await tx`SELECT set_config('request.jwt.claims',${json(user ? { sub: user } : {})},true)`;
@@ -63,6 +104,7 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
   };
   stage("ownership-unused-down-up-and-catalog-restoration");
   await database.begin((tx) => tx.unsafe(up));
+  stage("ownership-changed-routine-refuses-unused-down");
   const readyDefinition = String((await database`SELECT pg_get_functiondef('public.independent_programs_ready()'::regprocedure) AS body`)[0]!.body);
   const changedDefinition = readyDefinition.replace("SELECT true", "SELECT false");
   assert.notEqual(changedDefinition, readyDefinition);
@@ -71,8 +113,9 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
   assert.equal((await database`SELECT public.independent_programs_ready() AS value`)[0]!.value, false);
   await database.unsafe(readyDefinition);
   stages.push("ownership-changed-routine-refuses-unused-down");
+  stage("ownership-unused-down-up-and-catalog-restoration");
   await revert();
-  assert.equal(await catalog(), baseline);
+  assertOwnershipCatalog(await catalog(), baseline);
   stages.push("ownership-unused-down-up-and-catalog-restoration");
 
   const users: string[] = [];
@@ -323,7 +366,7 @@ export async function rehearseIndependentPrograms(database: postgres.Sql, stage:
   }
   assert.equal((await database`SELECT count(*)::int AS n FROM auth.users`)[0]!.n, 0);
   await revert();
-  assert.equal(await catalog(), baseline);
+  assertOwnershipCatalog(await catalog(), baseline);
   await database.begin((tx) => tx.unsafe(up));
   stages.push("ownership-account-cleanup-and-exact-unused-restoration");
   return stages;

@@ -3,13 +3,75 @@ import { readFileSync } from "node:fs";
 import { Socket } from "node:net";
 import postgres from "postgres";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { rehearseIndependentPrograms } from "../../integration-tests/independent-programs-rehearsal";
+import {
+  assertOwnershipCatalog, assertOwnershipRefusal, IndependentProgramsAssertion, rehearseIndependentPrograms,
+  type OwnershipCatalog,
+} from "../../integration-tests/independent-programs-rehearsal";
 
 const up = readFileSync(new URL("../../drizzle/0158_independent_program_ownership.sql", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 const down = readFileSync(new URL("../../rollbacks/0158_independent_program_ownership.down.sql", import.meta.url), "utf8").replaceAll("\r\n", "\n");
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
 describe("DC-R5 independent ownership storage boundary", () => {
+  const catalog: OwnershipCatalog = {
+    value: "whole-catalog", functions: "function-body", indexes: "index-body",
+    triggers: "trigger-body", constraints: "constraint-body", policies: "policy-body",
+  };
+  it("accepts exact catalog restoration and fails closed on an unclassified aggregate mismatch", () => {
+    expect(() => assertOwnershipCatalog(catalog, catalog)).not.toThrow();
+    expect(() => assertOwnershipCatalog({ ...catalog, value: "changed" }, catalog))
+      .toThrow(IndependentProgramsAssertion);
+    try { assertOwnershipCatalog({ ...catalog, value: "changed" }, catalog); }
+    catch (error) {
+      expect(error).toMatchObject({ code: "ERR_ASSERTION", diagnostic: { kind: "catalog", categories: ["aggregate"] } });
+    }
+  });
+  it.each(["functions", "indexes", "triggers", "constraints", "policies"] as const)(
+    "identifies a changed %s category without exposing catalog contents", (category) => {
+      expect.assertions(3);
+      try { assertOwnershipCatalog({ ...catalog, value: "changed", [category]: "private-body" }, catalog); }
+      catch (error) {
+        expect(error).toMatchObject({ code: "ERR_ASSERTION", diagnostic: { kind: "catalog", categories: [category] } });
+        expect(JSON.stringify(error)).not.toMatch(/body|whole-catalog|changed/);
+        expect(String(error)).not.toMatch(/body|whole-catalog|changed/);
+      }
+    },
+  );
+  it("reports every changed catalog category", () => {
+    expect.assertions(1);
+    try { assertOwnershipCatalog({ ...catalog, value: "changed", functions: "changed", policies: "changed" }, catalog); }
+    catch (error) {
+      expect(error).toMatchObject({ diagnostic: { kind: "catalog", categories: ["functions", "policies"] } });
+    }
+  });
+  it("accepts only the expected SQL refusal and distinguishes a resolved operation", async () => {
+    await expect(assertOwnershipRefusal(async () => { throw { code: "P0001" }; }, "P0001")).resolves.toBeUndefined();
+    await expect(assertOwnershipRefusal(async () => undefined, "P0001")).rejects.toMatchObject({
+      code: "ERR_ASSERTION", diagnostic: { kind: "refusal", expected: "P0001", actual: "resolved" },
+    });
+    await expect(assertOwnershipRefusal(async () => { throw { code: "42804", message: "private SQL" }; }, "P0001"))
+      .rejects.toMatchObject({ diagnostic: { kind: "refusal", expected: "P0001", actual: "42804" } });
+  });
+  it("does not project unknown codes, messages, getters or rejected values", async () => {
+    const getter = vi.fn(() => "P0001");
+    const failures: unknown[] = [
+      { code: "private-value", message: "private-error" }, "private-error",
+      Object.defineProperty({}, "code", { get: getter }),
+    ];
+    for (const failure of failures) {
+      const error = await assertOwnershipRefusal(async () => { throw failure; }, "P0001").catch((cause: unknown) => cause);
+      expect(error).toMatchObject({ diagnostic: { kind: "refusal", expected: "P0001", actual: null } });
+      expect(JSON.stringify(error)).not.toContain("private");
+      expect(String(error)).not.toContain("private");
+    }
+    expect(getter).not.toHaveBeenCalled();
+  });
+  it("keeps the failing caller in the assertion stack instead of the diagnostic helper", async () => {
+    const error = await assertOwnershipRefusal(async () => undefined, "P0001").catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(IndependentProgramsAssertion);
+    expect((error as IndependentProgramsAssertion).stack).toContain("independent-programs-rehearsal.test.ts:");
+    expect((error as IndependentProgramsAssertion).stack).not.toMatch(/independent-programs-rehearsal\.ts:\d+/);
+  });
   it("does not use the SQL OVERLAPS operator as an unquoted PL/pgSQL variable", () => {
     expect(up).not.toMatch(/\boverlaps\s+jsonb\b/);
     expect(up).toContain("'overlaps',overlap_pairs");

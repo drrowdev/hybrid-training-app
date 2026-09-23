@@ -18,7 +18,7 @@ import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations }
 import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehearsal.ts";
 import { rehearseModularSchedule } from "./modular-schedule-rehearsal.ts";
 import { rehearseModularProductionUpdate } from "./modular-production-update-rehearsal.ts";
-import { rehearseIndependentPrograms } from "./independent-programs-rehearsal.ts";
+import { IndependentProgramsAssertion, rehearseIndependentPrograms, type OwnershipAssertionDiagnostic } from "./independent-programs-rehearsal.ts";
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
 import { MigrationRunnerRehearsalError, rehearseMigrationRunner } from "./migration-runner-rehearsal.ts";
@@ -38,6 +38,7 @@ const knownFailures = new Map<string, { migration: number; line: number }>();
 let failureLocation: { migration: number; line: number } | undefined;
 let modularAssertionLine: number | undefined;
 let ownershipAssertionLine: number | undefined;
+let ownershipAssertionDiagnostic: OwnershipAssertionDiagnostic | undefined;
 let migrationRunnerDiagnostic: MigrationRunnerRehearsalError["diagnostic"] | undefined;
 let stage = "guard", status = "failed", code = "unexpected";
 let sql: ReturnType<typeof postgres> | undefined;
@@ -734,6 +735,7 @@ try {
   status = "passed";
 } catch (error) {
   if (error instanceof MigrationRunnerRehearsalError) migrationRunnerDiagnostic = error.diagnostic;
+  if (error instanceof IndependentProgramsAssertion) ownershipAssertionDiagnostic = error.diagnostic;
   if (error instanceof assert.AssertionError) {
     const location = error.stack?.match(/modular-schedule-rehearsal\.ts:(\d+):\d+/);
     if (location) modularAssertionLine = Number(location[1]);
@@ -759,6 +761,7 @@ console.log(JSON.stringify({
   status, stages, ...(status === "failed" ? { stage, code, ...(failureLocation ? { failureLocation } : {}),
     ...(modularAssertionLine ? { modularAssertionLine } : {}),
     ...(ownershipAssertionLine ? { ownershipAssertionLine } : {}),
+    ...(ownershipAssertionDiagnostic ? { ownershipAssertionDiagnostic } : {}),
     ...(migrationRunnerDiagnostic ? { migrationRunnerDiagnostic } : {}) } : {}),
 }));
 if (status !== "passed" && process.env.GITHUB_ACTIONS === "true") {
