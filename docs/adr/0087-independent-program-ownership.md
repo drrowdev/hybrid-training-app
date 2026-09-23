@@ -105,6 +105,11 @@ No additional occurrence-link table or column is approved by this decision.
 
 ## Rollout and rollback
 
+Before publishing any change to 0158, parse the complete up and unused-down
+files as SQL and PL/pgSQL, recording their source hashes. The isolated pglast
+grammar check uses `parse_sql` and `parser.parse_plpgsql_json`; it does not
+execute SQL or replace disposable runtime and catalog-restoration evidence.
+
 Application readiness is explicit. Missing new storage disables typed setup;
 history, existing logging and specifically supported legacy operations remain
 accessible. Permission or data errors are not missing-feature fallbacks.

@@ -528,7 +528,7 @@ BEGIN
     END IF;
     IF season_slot.program_id='hybrid' AND season_slot.emphasis IN ('strength_bias','endurance_bias')
       AND instance_args#>>'{setup_input,values,seasonBias}' IS DISTINCT FROM
-        CASE season_slot.emphasis WHEN 'strength_bias' THEN 'strength' ELSE 'endurance' END THEN
+        (CASE season_slot.emphasis WHEN 'strength_bias' THEN 'strength' ELSE 'endurance' END) THEN
       RAISE EXCEPTION 'The roadmap emphasis changed. Review your setup again.' USING ERRCODE='40001';
     END IF;
     SELECT * INTO predecessor_slot FROM public.season_blocks

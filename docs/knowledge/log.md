@@ -4928,3 +4928,27 @@ Running/Swimming preservation; unused-down rehearsal probes both changed
 triggers and full catalog equality. Actual SQL execution of this amendment
 awaits its next coordinator-owned automatic gate. Corrected-model native
 acceptance remains unfinished; production authority is unchanged.
+
+## [2026-09-23] refine | Season publication syntax and test-boundary repair
+
+The coordinator consumed both `8ba5ea91` gates once. Storage `35873470631`
+failed the normal 159 migration command with SQLSTATE 42601 at 0158; core
+`35873470918` failed the unavailable-edit route test during module loading.
+Neither is accepted qualification.
+
+The isolated grammar parser reproduced the new PL/pgSQL `IF` expression
+failure: the compared `CASE ... END` needs parentheses so its inner `THEN`
+does not terminate the enclosing condition. Only those parentheses and the
+unused-down fingerprint changed. The unavailable-edit test reproduced the
+new server-only import boundary and now stubs that build-time marker without
+changing its refusal or no-query assertions.
+
+Whole-file SQL and PL/pgSQL parsing passed for the up (70 statements) and down
+(47 statements). This source-hashed, database-free check is now an explicit
+pre-publication requirement for every subsequent 0158 change. It supplements,
+not replaces, actual disposable SQL execution. The full CI web command passed
+486 files/7,619 tests locally, including the repaired unavailable-edit test.
+Eight unchanged source/runner-guard families failed on Windows CRLF, POSIX
+permissions/identity and symlink assumptions, with dependent synthetic waits.
+Their sources match accepted `6b64370`, whose full Linux core passed. No guard
+or assertion was relaxed; the new exact Linux core must establish acceptance.

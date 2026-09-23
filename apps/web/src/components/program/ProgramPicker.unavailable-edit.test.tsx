@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import ProgramPickerPage from "@/app/app/program/page";
 
 const mock = vi.hoisted(() => ({ edit: vi.fn(), query: vi.fn() }));
+vi.mock("server-only", () => ({}));
 vi.mock("next/font/local", () => ({ default: () => ({ variable: "font" }) }));
 vi.mock("@/lib/platform/edit-context", () => ({ getBlockEditContext: mock.edit }));
 vi.mock("@/lib/supabase/server", () => ({
