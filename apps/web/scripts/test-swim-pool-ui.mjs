@@ -832,7 +832,8 @@ try {
     await page.getByRole("button", { name: "Back", exact: true }).click();
     await expect(page.getByLabel("Repeat sequence", { exact: true })).toHaveValue("3");
     assert.equal(await page.getByRole("combobox", { name: "Apply changes to", exact: true }).inputValue(), "future");
-    assert.equal(await page.getByRole("link", { name: "Cancel", exact: true }).getAttribute("href"), "/app/plan");
+    assert.equal(await page.getByRole("link", { name: "Cancel", exact: true }).getAttribute("href"),
+      "/app/plan?block=00000000-0000-4000-8000-000000000004");
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     stages.push(stage);
 
