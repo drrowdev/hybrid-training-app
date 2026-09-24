@@ -10,6 +10,7 @@ import { addDaysToYmd } from "../src/lib/dates";
 import { authoredProgramInput } from "../e2e/fixtures/modular-programs";
 import { acceptanceAssert as assert } from "./swim-acceptance-errors";
 import { requireManualContext } from "./swim-acceptance-guards";
+import { isModularSchemaAcceptance } from "./modular-browser-profile";
 
 type Target = { url: string; anonKey: string; serviceRoleKey: string; projectRef: string };
 export type LegacyUpgradeProof = {
@@ -49,7 +50,7 @@ export function createModularLegacyPreparation(options: {
   let fixture: ModularLegacyFixture | undefined;
   const guard = () => {
     const project = requireManualContext(process.env, process.env.GITHUB_SHA ?? "");
-    assert(process.platform === "linux" && process.env.SXC_ACCEPTANCE_PROFILE === "modular" &&
+    assert(process.platform === "linux" && isModularSchemaAcceptance(process.env) &&
       target.url === "http://127.0.0.1:54321" && target.projectRef === "local",
     "Disposable legacy preparation required");
     assert(runDirectory === join(realpathSync(process.env.RUNNER_TEMP!), `swim-acceptance-${project}`),

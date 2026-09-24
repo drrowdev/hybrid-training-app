@@ -22,6 +22,8 @@ function mockedPreparation(failure?: "deploy" | "upgrade" | "delete" | "remainin
   const directory = resolve(root, "swim-acceptance-pr802-123-1");
   vi.stubGlobal("process", { ...process, platform: "linux", getuid: () => 1000 });
   vi.stubEnv("RUNNER_TEMP", root); vi.stubEnv("SXC_ACCEPTANCE_PROFILE", "modular");
+  vi.stubEnv("GITHUB_REF", "refs/heads/drrowdev-modular-programs-implementation");
+  vi.stubEnv("GITHUB_RUN_ATTEMPT", "1");
   vi.spyOn(guards, "requireManualContext").mockReturnValue("pr802-123-1");
   vi.spyOn(fs, "realpathSync").mockImplementation((path) => String(path));
   const stat = fs.lstatSync(__dirname);
@@ -75,8 +77,14 @@ function mockedPreparation(failure?: "deploy" | "upgrade" | "delete" | "remainin
 }
 
 describe("DC-SW8 historical owner preparation stays within the disposable native boundary", () => {
-  it("prepares once, preserves the exact graph and verifies cleanup before removing the private handoff", async () => {
+  it.each([
+    ["refs/heads/drrowdev-modular-programs-implementation", "modular"],
+    ["refs/heads/drrowdev-modular-programs-implementation", "swimming"],
+    ["refs/heads/drrowdev-programs-page-redesign", "modular"],
+    ["refs/heads/drrowdev-programs-page-redesign", "swimming"],
+  ])("prepares once, preserves the exact graph and verifies cleanup on %s with %s cases", async (ref, profile) => {
     const { preparation, proof, write, unlink, calls, secrets } = mockedPreparation();
+    vi.stubEnv("GITHUB_REF", ref); vi.stubEnv("SXC_ACCEPTANCE_PROFILE", profile);
     await preparation.prepare();
     expect(proof).toMatchObject({ prepared: true, unchanged: false, cleanup: "pending" });
     expect(write).toHaveBeenCalledWith(expect.stringContaining("modular-legacy.json"),
@@ -91,6 +99,24 @@ describe("DC-SW8 historical owner preparation stays within the disposable native
     expect(calls.filter((call) => call.path === "/auth/v1/admin/users" && call.method === "POST")).toHaveLength(1);
     expect(calls.filter((call) => call.method === "DELETE")).toHaveLength(1);
     await expect(preparation.cleanup()).rejects.toThrow();
+  });
+
+  it.each([
+    ["refs/heads/unreviewed", "swimming", "1"],
+    ["refs/heads/unreviewed", "modular", "1"],
+    ["refs/heads/drrowdev-programs-page-redesign-extra", "swimming", "1"],
+    ["refs/heads/drrowdev-modular-programs-implementation", "swimming", "2"],
+    ["refs/heads/drrowdev-programs-page-redesign", "modular", "2"],
+    ["refs/heads/drrowdev-programs-page-redesign", "swimming", "2"],
+    ["refs/heads/drrowdev-programs-page-redesign", "unknown", "1"],
+  ])("rejects unqualified legacy preparation before allocation: %s / %s / attempt %s", async (ref, profile, attempt) => {
+    const { preparation, proof, calls, write } = mockedPreparation();
+    vi.stubEnv("GITHUB_REF", ref); vi.stubEnv("SXC_ACCEPTANCE_PROFILE", profile);
+    vi.stubEnv("GITHUB_RUN_ATTEMPT", attempt);
+    await expect(preparation.prepare()).rejects.toThrow();
+    expect(calls).toEqual([]);
+    expect(write).not.toHaveBeenCalled();
+    expect(proof).toEqual(createLegacyUpgradeProof());
   });
 
   it("cleans an allocated account after a failed historical deployment without publishing a handoff", async () => {

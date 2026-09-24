@@ -5574,3 +5574,20 @@ not speculative product changes or longer assertions. Successful history-delete
 observations are cleared so they cannot masquerade as a later calendar failure.
 No consumed native logs were fetched again; no database or native run occurred
 locally. Both manual profiles must be redispatched at the new head.
+
+## [2026-09-24] acceptance | Legacy proof follows schema qualification
+
+At `548fa924`, automatic CI/storage and all 18 modular browser cases passed;
+the modular run verified 159 migrations and cleanup. Swimming stopped before
+browser execution: the legacy-preparation guard still required the modular
+browser profile inside the newly shared 159-schema proof path. Synthetic tests
+reproduced that exact assertion on both approved refs with swimming selected.
+
+The legacy proof now uses the existing exact-ref schema-qualification selector,
+including its first-attempt requirement. Manual context/SHA, Linux, loopback,
+private-directory, graph-equality and verified-cleanup guards remain intact.
+The browser-only legacy fixture reader remains modular-only. Tests cover both
+profiles on both approved refs, reject unqualified contexts before allocation,
+and retain preparation, graph-preservation and cleanup failure checks.
+This shared helper is exercised by modular acceptance too; both profiles need
+redispatch at the next changed head. No database or native run occurred locally.
