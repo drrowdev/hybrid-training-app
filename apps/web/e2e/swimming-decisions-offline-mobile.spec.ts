@@ -73,13 +73,13 @@ function same(actual: unknown, expected: unknown) {
   expect(isDeepStrictEqual(actual, expected), "Private fixture comparison").toBe(true);
 }
 
-async function saved(client: SupabaseClient, planId: string) {
+async function saved(client: SupabaseClient, planId: string, workoutCount = 6) {
   const plans = await listSwimPlans(client);
   expect(plans).toHaveLength(1);
   const plan = plans.find((row) => row.id === planId);
   if (!plan) throw new Error("Missing synthetic plan.");
   const workouts = await listSwimWorkouts(client, planId);
-  expect(workouts).toHaveLength(6);
+  expect(workouts).toHaveLength(workoutCount);
   return { plan, workouts, history: await loadSwimHistory(client, workouts) };
 }
 
@@ -424,7 +424,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and retained results", 
         await tab.reload();
         await expect(result).toContainText(index === 0 ? "20:00" : "21:00");
       }
-      const beforeSkip = await saved(actor, plans[0].id);
+      const beforeSkip = await saved(actor, plans[0].id, 4);
       await page.goto(`/app/swim/${workouts[2].id}`);
       await page.locator("summary").filter({ hasText: /^Skip swim$/ }).click();
       await page.getByLabel("Reason", { exact: true }).fill("Synthetic explicit skip");
@@ -437,7 +437,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and retained results", 
       });
       expect(Number.isFinite(Date.parse(after[2].definition.skip!.recordedAt))).toBe(true);
       same(after[3], workouts[3]);
-      const afterSkip = await saved(actor, plans[0].id);
+      const afterSkip = await saved(actor, plans[0].id, 4);
       same(afterSkip.plan, {
         ...beforeSkip.plan, revision: beforeSkip.plan.revision + 1, updated_at: afterSkip.plan.updated_at,
       });
@@ -1024,7 +1024,9 @@ test.describe("ADR0079 later-cohort B swimming decisions and retained results", 
       const other = await second.newPage();
       const pages = [page, other];
       const stale = (view: Page) => view.getByRole("alert")
-        .and(view.locator(":not(#__next-route-announcer__)")).filter({ hasText: /changed.*reload/i });
+        .and(view.locator(":not(#__next-route-announcer__)")).filter({
+          hasText: /changed.*reload|^Your schedule changed\. Review the dates again\.$|^These dates changed\. Preview them again\.$/i,
+        });
       function submittedArguments(request: Request): unknown[] {
         try {
           const args: unknown = JSON.parse(request.postData()!);

@@ -5710,3 +5710,43 @@ also produced 15 secondary unhandled rejections after its private-cache gate.
 The full runner test now passes 399 tests with only its seven existing Windows
 permission failures. Focused regression, typecheck and lint pass. Temporary
 newline-only formatting was restored; Linux CI remains the acceptance gate.
+
+## [2026-09-24] acceptance | Correct four remaining swimming test assumptions
+
+Coordinator-reported native results at `4c0a5c13` reached 21 passed / 4
+unexpected / 0 skipped, with all stages and cleanup complete. A static pass
+over all four failures found test-side assumptions, not evidence requiring
+product or schema changes:
+
+- B2 passed its four-workout plan to a helper fixed at six. Its two snapshots
+  now explicitly require four; all other callers still require six.
+- A3 relied on schedule-dependent setup defaults for a four-workout
+  replacement. It now explicitly selects two weekdays for two weeks, and
+  accepts any displayed overlap through the existing reviewed UI. The four
+  new workouts and exact retained history/primary isolation remain asserted.
+- A5's completion/edit arrangement already uses the current revision and
+  existing result-edit RPC, retaining exact history and receipt assertions.
+  The failing post-purge hub query used the service-role client against the
+  authenticated-only outcome capability/view from 0157. It now uses the
+  existing authenticated owner. Neither permissions nor 0158 guards change.
+- B9 recognized only stale errors containing "reload". Reviewed resume can
+  reject at the shared schedule guard or fresh-preview comparison instead.
+  The matcher now also accepts those two exact stale responses, retaining
+  exactly one loser, request counts, entered previews and exact saved state.
+
+Before repinning, an exact LF-normalized prefix comparison against `4c0a5c13`
+proved that only the `saved` expected-count parameter/assertion and B2's two
+explicit count arguments changed. SHA-256 moves from
+`8dcc15a9ffdb57eada16500009d218c4d43648cbd3942691344b5c446f53438a`
+to `94a7e2abff4d0cd5d76a58cf10af152431cc661efa4e1df77ef244ab6794965e`.
+B9 is outside this prefix. No account/workflow repin, inventory change,
+deadline increase or retired-claim replacement.
+
+The full swimming unit directory ran against LF-normalized sources:
+2,453 passed / 69 existing Windows failures / 80 skipped, with the same
+15 secondary private-cache rejections. The three failing suites are the
+unchanged runner (7), browser-stage (52) and RPC-diagnostic (10) platform
+checks. The complete ledger passes 560 tests (43 existing skips), including
+six new regressions. Synthetic UI passes all 75 stages; typecheck and touched
+file lint pass. Temporary line-ending changes restored. No native or local
+database run; coordinator owns the next CI dispatch.

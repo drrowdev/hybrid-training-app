@@ -790,7 +790,15 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("50m");
     await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
     await page.getByLabel("Weeks", { exact: true }).fill("2");
+    const swimDays = page.getByRole("group", { name: "Swim days", exact: true }).getByRole("checkbox");
+    for (const day of await swimDays.all()) {
+      await day.setChecked(["1", "4"].includes((await day.getAttribute("value"))!));
+    }
+    await expect(swimDays.and(page.locator(":checked"))).toHaveCount(2);
     await page.getByRole("button", { name: "Preview plan", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Create swim plan", exact: true })).toBeVisible();
+    const overlap = page.getByRole("checkbox", { name: "Keep both workouts on these dates", exact: true });
+    if (await overlap.count()) await overlap.check();
     await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Swims", exact: true })).toBeVisible();
     const replacementId = new URL(page.url()).searchParams.get("plan");
@@ -1132,7 +1140,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(!countsTowardHistory(settled) && !countsTowardAdherence(settled) && !countsTowardProgression(settled)).toBe(true);
     const week = summarizeSwimWeek({ weekStartISO: mondayOfYmd(target.scheduled_date), results: [settled] });
     expect(week.sessionsPlanned === 0 && week.adherence === null).toBe(true);
-    const hub = await loadSwimHubView(admin, userId, purged.plans[0]);
+    const hub = await loadSwimHubView(actor, userId, purged.plans[0]);
     expect(hub.analytics.bests.length === 0 && hub.analytics.weeks.every((row) => row.frequency === 0 && row.actual === "—")).toBe(true);
     expect(isDeepStrictEqual(
       purged.workouts.filter((row) => row.id !== target.id), issued.workouts.filter((row) => row.id !== target.id),

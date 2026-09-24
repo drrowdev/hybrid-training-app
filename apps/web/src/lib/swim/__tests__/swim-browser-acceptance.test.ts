@@ -1151,7 +1151,7 @@ describe("browser environment and static config", () => {
     const boundary = source.indexOf('\n  test("B9 ');
     expect(boundary).toBeGreaterThan(0);
     const prefix = source.slice(source.indexOf("const test ="), boundary).trimEnd();
-    expect(createHash("sha256").update(prefix).digest("hex")).toBe("8dcc15a9ffdb57eada16500009d218c4d43648cbd3942691344b5c446f53438a");
+    expect(createHash("sha256").update(prefix).digest("hex")).toBe("94a7e2abff4d0cd5d76a58cf10af152431cc661efa4e1df77ef244ab6794965e");
     const b9 = source.slice(boundary);
     expect(b9.match(/\btest\("/g)).toHaveLength(1);
     expect(b9).not.toMatch(/annotations|testInfo|alertAnnotation|waitForTimeout|force:\s*true|\.rpc\(/);
@@ -1722,6 +1722,85 @@ describe("browser environment and static config", () => {
     expect(body).toContain("finally { clearTimeout(expiry); controller.abort(); }");
     expect(body).toContain("expect(await savedState(admin, foreignUserId)).toEqual(foreignBefore)");
     expect(body).toContain("expect(await savedState(admin, ownerUserId)).toEqual(skipped)");
+  });
+  it("B2 DC-SW8: checks four retained workouts without weakening the six-workout decision fixtures", async () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-decisions-offline-mobile.spec.ts"), "utf8");
+    const helper = source.slice(source.indexOf("async function saved("), source.indexOf("async function arrangePlan("));
+    const { plan, workouts } = swimFixture();
+    let rows = workouts;
+    const history = vi.fn(async () => rows.map((workout) => ({ workout })));
+    const saved = runInNewContext(transpileModule(`${helper}\nsaved`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      expect, listSwimPlans: async () => [plan], listSwimWorkouts: async () => rows, loadSwimHistory: history,
+    }) as (client: object, planId: string, count?: number) => Promise<unknown>;
+    await expect(saved({}, plan.id)).resolves.toMatchObject({ plan, workouts });
+    rows = workouts.slice(0, 4);
+    await expect(saved({}, plan.id, 4)).resolves.toMatchObject({ plan, workouts: rows });
+    await expect(saved({}, plan.id)).rejects.toThrow();
+    rows = workouts.slice(0, 3);
+    await expect(saved({}, plan.id, 4)).rejects.toThrow();
+    expect(history).toHaveBeenCalledTimes(2);
+    const b2 = source.slice(source.indexOf('  test("B2 '), source.indexOf('  test("B3 '));
+    expect(b2.match(/await saved\(actor, plans\[0\]\.id, 4\)/g)).toHaveLength(2);
+    expect(b2).not.toContain("await saved(actor, plans[0].id)");
+  });
+  it.each([{ initial: [] }, { initial: [2] }, { initial: [2, 5] }])("A3 DC-SW7: selects two replacement weekdays independently of shared-schedule defaults $initial", async ({ initial }) => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const start = source.indexOf("    const swimDays =");
+    const body = source.slice(start, source.indexOf('    await page.getByRole("button", { name: "Preview plan"', start));
+    const checked = new Set(initial);
+    const checkboxes = Array.from({ length: 7 }, (_, value) => ({
+      getAttribute: async () => String(value),
+      setChecked: async (selected: boolean) => { if (selected) checked.add(value); else checked.delete(value); },
+    }));
+    const days = { all: async () => checkboxes, and: () => checked };
+    const execute = runInNewContext(transpileModule(`(async () => { ${body} })`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      page: { getByRole: () => ({ getByRole: () => days }), locator: () => ({}) },
+      expect: (value: Set<number>) => ({ toHaveCount: async (count: number) => expect(value.size).toBe(count) }),
+    }) as () => Promise<void>;
+    await execute();
+    expect([...checked].sort()).toEqual([1, 4]);
+    const a3 = source.slice(source.indexOf('  test("A3,'), source.indexOf('  test("A4,'));
+    expect(a3).toContain("if (await overlap.count()) await overlap.check()");
+    expect(a3).toContain("expect(newWorkouts.length).toBe(4)");
+  });
+  it("A5 DC-SW7/DC-SW9: reads the purged hub as its authenticated owner without altering retained edits or guards", () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    const a5 = source.slice(source.indexOf('  test("A5,'), source.indexOf('  test("A7,'));
+    expect(a5).toContain("const actor = await retainedSwimActor(seedConfig, freshUser)");
+    expect(a5).toContain("await loadSwimHubView(actor, userId, purged.plans[0])");
+    expect(a5).not.toContain("loadSwimHubView(admin,");
+    expect(a5).toContain("workoutId: target.id, expectedRevision: first.workout.revision");
+    expect(a5).toContain("actual.workout.definition.resultHistory?.length === 1");
+    expect(a5).toContain("retained.definition.resultHistory === undefined");
+  });
+  it("B9 DC-SW5/DC-SW8: recognizes exact shared-schedule stale rejections, never generic validation errors", () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-decisions-offline-mobile.spec.ts"), "utf8");
+    const start = source.indexOf("      const stale =");
+    const body = source.slice(start, source.indexOf("      function submittedArguments(", start));
+    const stale = runInNewContext(transpileModule(`${body}\nstale`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText) as (page: object) => RegExp;
+    const matcher = stale({ locator: () => ({}), getByRole: () => ({
+      and: () => ({ filter: ({ hasText }: { hasText: RegExp }) => hasText }),
+    }) });
+    for (const message of [
+      "Your swim plan changed. Reload and try again.",
+      "Swimming: Swimming plan changed. Reload before continuing.",
+      "Your schedule changed. Review the dates again.",
+      "These dates changed. Preview them again.",
+    ]) expect(matcher.test(message)).toBe(true);
+    for (const message of [
+      "Could not save your swim. Try again.", "Check your swim entries and try again.",
+      "Accept the overlapping workouts before resuming.", "Review your active limitations before swimming",
+      "Your schedule changed. Review the attachments again.",
+    ]) expect(matcher.test(message)).toBe(false);
+    const b9 = source.slice(source.indexOf('  test("B9 '));
+    expect(b9).toContain("expect(rejected.filter(Boolean)).toHaveLength(1)");
+    expect(b9).toContain("expect(!overflow && requests.every((entries) => entries.length === 1)).toBe(true)");
   });
   it("DC-SW1/DC-SW7/DC-SW9: retained arrangement keeps measurements, load and deletion assertions without claiming logger UI", () => {
     const mobile = readFileSync(join(webRoot, "e2e/swimming-mobile.spec.ts"), "utf8");
