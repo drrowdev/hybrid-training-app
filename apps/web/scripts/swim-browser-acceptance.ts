@@ -19,41 +19,41 @@ import {
 export const SWIM_BROWSER_CASES = Object.freeze([
   Object.freeze({
     file: "e2e/swimming-mobile.spec.ts", describe: "ADR0079 standalone swimming",
-    title: "blockless setup, local progress, offline finish and native history",
+    title: "blockless setup, program navigation and retained native history",
   }),
   Object.freeze({
     file: "e2e/swimming-mobile.spec.ts", describe: "ADR0079 standalone swimming",
-    title: "custom pool entry survives validation and compact repeats retain progress",
+    title: "custom pool validation preserves inputs and exact issued repeats across reload",
   }),
   Object.freeze({
     file: "e2e/swimming-persistence-mobile.spec.ts",
     describe: "ADR0079 mobile swimming persistence and isolation",
-    title: "DC-SW1/DC-SW8: native course and planned workouts survive reload and a second same-user mobile context",
+    title: "DC-SW1/DC-SW8: read-only course and prescriptions survive reload and a second same-user context",
   }),
   Object.freeze({
     file: "e2e/swimming-persistence-mobile.spec.ts",
     describe: "ADR0079 mobile swimming persistence and isolation",
-    title: "DC-SW1/DC-SW8: two mobile users retain distinct usable plans and cannot start or change each other's workouts",
+    title: "DC-SW1/DC-SW8: two mobile users skip only their own workouts and retain foreign read isolation",
   }),
   Object.freeze({
     file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
     describe: "ADR0079 mobile swimming lifecycle and regional load",
-    title: "A1, DC-SW7: pause, preview, resume, finish and archive preserve primary training and issued swims",
+    title: "A1, DC-SW7: pause, review, resume, finish and archive preserve retained swims and primary training",
   }),
   Object.freeze({
     file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
     describe: "ADR0079 mobile swimming lifecycle and regional load",
-    title: "A2, DC-SW9: native UI completion, edit, trash and recovery replace regional load exactly once",
+    title: "A2, DC-SW9: trash and recovery of retained edited results remove and restore regional load exactly once",
   }),
   Object.freeze({
     file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    describe: "ADR0079 later-cohort B swimming decisions and retained results",
     title: "B1 DC-SW4/DC-SW5: settled history advances only the unstarted next-week target once",
   }),
   Object.freeze({
     file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
-    title: "B2 DC-SW8: native completion survives a committed lost response and replays before another session",
+    describe: "ADR0079 later-cohort B swimming decisions and retained results",
+    title: "B2 DC-SW8: retained completions survive tab reloads and skipping another workout",
   }),
   Object.freeze({
     file: "e2e/swimming-account-mobile.spec.ts",
@@ -77,32 +77,32 @@ export const SWIM_BROWSER_CASES = Object.freeze([
   }),
   Object.freeze({
     file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    describe: "ADR0079 later-cohort B swimming decisions and retained results",
     title: "B3 DC-SW4/DC-SW5: plateau rejection preserves issued work and decision history",
   }),
   Object.freeze({
     file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    describe: "ADR0079 later-cohort B swimming decisions and retained results",
     title: "B4 DC-SW4/DC-SW5/DC-K4: missed high-effort work supports a recorded warning override without catch-up",
   }),
   Object.freeze({
     file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    describe: "ADR0079 later-cohort B swimming decisions and retained results",
     title: "B5 DC-SW4/DC-SW5: missing effort holds the next week without advancing targets",
   }),
   Object.freeze({
     file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    describe: "ADR0079 later-cohort B swimming decisions and retained results",
     title: "B6 DC-SW1/DC-SW3: a short calibrated budget preserves whole-length workout purpose",
   }),
   Object.freeze({
     file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    describe: "ADR0079 later-cohort B swimming decisions and retained results",
     title: "B7 DC-SW2/DC-SW3: an impossible calibrated budget creates no plan and can be corrected",
   }),
   Object.freeze({
     file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    describe: "ADR0079 later-cohort B swimming decisions and retained results",
     title: "B8 DC-SW2/DC-SW3: beginner setup offers learning guidance instead of a workout",
   }),
   Object.freeze({
@@ -118,31 +118,26 @@ export const SWIM_BROWSER_CASES = Object.freeze([
   Object.freeze({
     file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
     describe: "ADR0079 mobile swimming lifecycle and regional load",
-    title: "A3, DC-SW7: replacing an archived swim plan preserves completed history and primary training",
+    title: "A3, DC-SW7: replacing an archived plan preserves retained native history and primary training",
   }),
   Object.freeze({
     file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
     describe: "ADR0079 mobile swimming lifecycle and regional load",
-    title: "A4, DC-SW7/DC-SW8/DC-SW9: an offline swim finishes after archival without duplicate history or load",
+    title: "A4, DC-SW7/DC-SW8/DC-SW9: archived late results remain visible across contexts without duplicate history or load",
   }),
   Object.freeze({
     file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
     describe: "ADR0079 mobile swimming lifecycle and regional load",
-    title: "A5, DC-SW7/DC-SW9: permanent deletion removes a swim result while retaining its planned target",
+    title: "A5, DC-SW7/DC-SW9: permanent deletion removes a retained edited result while preserving its planned target",
   }),
   Object.freeze({
     file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
     describe: "ADR0079 mobile swimming lifecycle and regional load",
-    title: "A6, DC-SW5/DC-SW8/DC-SW9: concurrent starts share one swim and a stale result edit cannot overwrite its saved result",
-  }),
-  Object.freeze({
-    file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
-    describe: "ADR0079 mobile swimming lifecycle and regional load",
-    title: "A7, DC-SW7/DC-SW9: a limitation added after start preserves the result and blocks future swimming",
+    title: "A7, DC-SW7/DC-SW9: a new limitation preserves retained results and blocks setup and resume",
   }),
   Object.freeze({
     file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-    describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+    describe: "ADR0079 later-cohort B swimming decisions and retained results",
     title: "B9 DC-SW5/DC-SW7/DC-SW8: concurrent reviewed recommendations and dates keep one accepted decision",
   }),
 ]);
@@ -508,7 +503,7 @@ export function projectStackAttribution(stacks: readonly unknown[], webRoot: str
       const source = ATTRIBUTED_SOURCES.find(([file]) => match[2] === join(webRoot, file))?.[1];
       if (!source) continue;
       const line = Number(match[3]), column = Number(match[4]);
-      if (source === "swimming-decisions-offline-mobile" && match[1] === "same" && line === 72) {
+      if (source === "swimming-decisions-offline-mobile" && match[1] === "same" && line === 73) {
         comparison = true;
         continue;
       }

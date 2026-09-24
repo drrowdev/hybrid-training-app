@@ -5649,3 +5649,38 @@ recomputed against `c4b931c4`: exact source comparison permits only the authoriz
 setup selectors and B4 skip step/assertions. The account source differs only by
 its Delete account selector. Native swimming and modular acceptance require
 coordinator dispatch at the published head; no local database/native run occurred.
+
+## [2026-09-24] acceptance | Align swimming browser claims with the review-only UI
+
+After the coordinator-reported 9/26 swimming run, the owner authorized replacing
+eleven retired-logger browser journeys with retained-record arrangement plus
+current setup, lifecycle, history, Trash, skip and limitation-gated actions.
+A6's concurrent starts/stale result edit has no current UI entry point and is
+retired, not replaced with a different race. The exact browser inventory is
+now 25 cases across the same six files; the modular inventory remains 18.
+Storage RPC smoke tests retain start/completion concurrency and stale-edit
+coverage. Draft/flusher tests retain legacy local-draft and queued-completion
+contracts. These are not equivalent claims of browser logger/offline execution.
+
+Retained fixtures use the existing authenticated storage functions and canonical
+region recomputation, never new endpoints or writes to completed prescriptions.
+Assertions still check native course/splits, issued targets, primary isolation,
+foreign 404/read isolation, exact persistence and current-UI-driven load effects.
+B4 uses the current repeat controls; B6/B7 use the workout's own course summary
+and current setup audit shape; B9 checks both resume arguments and the reviewed
+shared schedule; assessment checks the pool-qualified summary. Deadlines,
+security guards and the existing exact-ref authorization remain unchanged.
+
+The casebook, collection and profile counts now pin the revised inventory.
+Source-execution tests for removed logger instrumentation are retired; closed
+diagnostic parsing/privacy checks remain. The private-comparison location moves
+from line 72 to 73 with LF/CRLF coverage. The B-prefix pin now covers the exact
+reviewed source rather than preserving a misleading historical normalization;
+PR #823 records before/after hashes and every changed browser claim.
+
+Local evidence: all eight targeted suites, including the full browser ledger,
+pass (861 tests, 44 existing Windows-only skips); typecheck and touched-file
+lint pass. The synthetic UI harness passes all 75 stages without an app server
+or database. No product, RPC, schema, migration or workflow changes, and no
+local real database or native acceptance run. New swimming and modular profile
+acceptance remains for coordinator dispatch against the published head.

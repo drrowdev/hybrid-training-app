@@ -188,9 +188,9 @@ async function assertHistory(page: Page, today: string, accepted: boolean) {
   await expect(past.getByRole("listitem")).toHaveCount(accepted ? 2 : 1);
   await expect(past.getByText("Rejected", { exact: true })).toHaveCount(1);
   await expect(past.getByText("Accepted", { exact: true })).toHaveCount(accepted ? 1 : 0);
-  const summary = page.locator("main");
+  const summary = page.locator("main > section").filter({ has: page.getByRole("button", { name: "Review next week", exact: true }) });
   if (accepted) {
-    await expect(summary.getByText(`200 / 400 yard estimate · ${formatSwimTime(acceptedPace)} / 100 yd`, { exact: true })).toBeVisible();
+    await expect(summary.getByText(`${formatPoolCourse(course)} · 200 / 400 yard estimate · ${formatSwimTime(acceptedPace)} / 100 yd`, { exact: true })).toBeVisible();
   } else {
     await expect(summary.getByText(/\/ 100 yd/)).toHaveCount(0);
   }

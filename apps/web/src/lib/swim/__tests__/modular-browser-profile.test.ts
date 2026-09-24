@@ -35,8 +35,8 @@ describe("DC-SW8 modular browser profile retains the isolated runtime boundaries
     expect(job).toContain("github.ref == 'refs/heads/drrowdev-modular-programs-implementation' && 'modular' || 'swimming'");
   });
 
-  it("preserves the historical cohorts and declares each ownership journey exactly once", () => {
-    expect(SWIM_BROWSER_CASES).toHaveLength(26);
+  it("pins the revised swimming cohort and declares each modular ownership journey exactly once", () => {
+    expect(SWIM_BROWSER_CASES).toHaveLength(25);
     expect(MODULAR_BROWSER_CASES).toHaveLength(18);
     expect(new Set(MODULAR_BROWSER_CASES.map(({ title }) => title)).size).toBe(18);
     expect(MODULAR_BROWSER_CASES.map(({ title }) => title.split(" ")[0]))
@@ -83,7 +83,7 @@ describe("DC-SW8 modular browser profile retains the isolated runtime boundaries
         GITHUB_WORKFLOW_REF: `drrowdev/hybrid-training-app/.github/workflows/ci.yml@${ref}` };
       expect(isModularBrowserProfile(env)).toBe(profile === "modular");
       expect((isModularBrowserProfile(env) ? MODULAR_BROWSER_CASES : SWIM_BROWSER_CASES).length)
-        .toBe(profile === "modular" ? 18 : 26);
+        .toBe(profile === "modular" ? 18 : 25);
       if (!reviewed && profile === "modular") {
         expect(() => isModularSchemaAcceptance(env)).toThrow();
         expect(() => requireManualContext(env, sha)).toThrow();

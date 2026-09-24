@@ -1,7 +1,7 @@
 import { openSwimProgramActions, openSwimProgramHistory } from "./fixtures/swim-navigation";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { errors, type Page, type Request, type Response } from "@playwright/test";
+import { errors, type Page, type Request } from "@playwright/test";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Prescription } from "@hta/db";
 import { ALL_REGIONS, finalEwma, type Region, type SwimActualResult } from "@hta/domain";
@@ -18,11 +18,10 @@ import type { SwimPlanRow, SwimWorkoutRow } from "../src/lib/swim/storage";
 import { countsTowardAdherence, countsTowardHistory, countsTowardProgression } from "@hta/domain";
 import { deriveDailyRegionLoad } from "../src/lib/engine/region-daily-load";
 import { deriveSwimWeekCandidate, loadSwimHistory, settledSwimResult } from "../src/lib/swim/queries";
-import { isUuid, sortBySeq, type OutboxEntry } from "../src/lib/offline/outbox-core";
+import { isUuid } from "../src/lib/offline/outbox-core";
 import {
-  SWIM_ALERT_CODEBOOK, a4ReplayBackend, alertAnnotation, c2HttpClass, c2Transport,
-  classifyAlertNodes, classifyWorkoutViewNodes, pauseBackend,
-  unavailableAlert, validateAlertCategory, type AlertObservation, type C2HttpClass,
+  SWIM_ALERT_CODEBOOK, alertAnnotation, classifyAlertNodes, pauseBackend,
+  unavailableAlert, validateAlertCategory,
 } from "../scripts/swim-alert-membership";
 import { summarizeSwimWeek } from "@hta/domain";
 import { loadSwimHubView } from "../src/lib/swim/queries";
@@ -31,7 +30,9 @@ import { swimWorkoutExposure } from "@hta/domain";
 import { ALL_MUSCLE_GROUPS } from "../src/lib/muscle/muscle-groups";
 import { MUSCLE_TO_REGION, REGIONS } from "../src/lib/limitations/region";
 import { REGION_LABELS } from "../src/lib/settings/limitations-constants";
-import { readSwimDraft, swimDraftKey } from "../src/lib/swim/draft";
+import { retainedSwimActor, completeRetainedSwim } from "./fixtures/swim-retained";
+import { startSwimWorkout, editSwimResult } from "../src/lib/swim/storage";
+import { recomputeRegionState } from "../src/lib/engine/region-ledger";
 
 const test = seededTest.extend({
   // Match the persistence spec: reject unsafe targets before any fixture writes.
@@ -358,32 +359,11 @@ function lifecycleLedger(state: Awaited<ReturnType<typeof lifecycleState>>, time
   }
 }
 
-async function lifecycleQueue(page: Page): Promise<OutboxEntry[]> {
-  const rows = await page.evaluate(() => new Promise<OutboxEntry[]>((resolve, reject) => {
-    const open = indexedDB.open("hta-offline", 1);
-    // Read the real queue without creating or repairing it.
-    open.onupgradeneeded = () => open.transaction?.abort();
-    open.onerror = () => reject(new Error("Native outbox unavailable."));
-    open.onsuccess = () => {
-      const db = open.result;
-      const failed = () => { db.close(); reject(new Error("Native outbox read failed.")); };
-      try {
-        const tx = db.transaction("outbox", "readonly");
-        const request = tx.objectStore("outbox").getAll();
-        tx.oncomplete = () => { db.close(); resolve(request.result as OutboxEntry[]); };
-        tx.onerror = failed;
-        tx.onabort = failed;
-      } catch { failed(); }
-    };
-  }));
-  return sortBySeq(rows);
-}
-
 test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
   test.use({ viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true });
   test.skip(!swimE2EEnabled(process.env), "Blocked: swimming E2E was not explicitly requested.");
 
-  test("A1, DC-SW7: pause, preview, resume, finish and archive preserve primary training and issued swims", async ({
+  test("A1, DC-SW7: pause, review, resume, finish and archive preserve retained swims and primary training", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
   }, testInfo) => {
     await markOnboarded(admin, freshUser.userId);
@@ -401,9 +381,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     }
     expect(await primary.snapshot()).toEqual(primary.initial);
     const first = created.workouts[0];
-    await page.getByRole("link").and(page.locator(`[href="/app/swim/${first.id}"]`)).click();
-    await page.getByRole("button", { name: "Start swim", exact: true }).click();
-    await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+    const actor = await retainedSwimActor(seedConfig, freshUser);
+    await startSwimWorkout(actor, first.id, first.revision);
     const started = await savedPlan(admin, freshUser.userId, planId);
     const protectedSwim = started.workouts.find((row) => row.id === first.id)!;
     expect(protectedSwim.status).toBe("started");
@@ -628,53 +607,9 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(await primary.snapshot()).toEqual(primary.initial);
   });
 
-  test("A2, DC-SW9: native UI completion, edit, trash and recovery replace regional load exactly once", async ({
+  test("A2, DC-SW9: trash and recovery of retained edited results remove and restore regional load exactly once", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
-  }, testInfo) => {
-    async function captureFailureView(diagnostic: AlertObservation) {
-      diagnostic.category = "unavailable";
-      diagnostic.control = "unavailable";
-      diagnostic.result = "unavailable";
-      const interrupted = () => testInfo.status === "timedOut" || testInfo.status === "interrupted" || page.isClosed();
-      const budget = 1000;
-      if (interrupted()) return;
-      const deadline = performance.now() + budget;
-      let expiry: ReturnType<typeof setTimeout> | undefined;
-      let settled = false;
-      const reads: Promise<unknown>[] = [];
-      try {
-        // One immediate visible-branch read; none describes only these tracked matches.
-        const view = page.getByRole("button", { name: /^(Start swim|Starting…)$/ })
-          .or(page.getByRole("link", { name: /^(Log swim|Restore from Trash)$/ }))
-          .or(page.getByRole("status").filter({ hasText: /^(Plan paused|Plan finished|Plan archived|Result removed|Swimming is currently unavailable\.)$/ }))
-          .or(page.getByRole("heading", { name: /^(Edit your swim|Your swim)$/, level: 2 }))
-          .or(page.getByRole("heading", { name: "404", exact: true, level: 1 }))
-          .filter({ visible: true }).evaluateAll(classifyWorkoutViewNodes).then(
-            (value) => value, () => ({ control: "unavailable", result: "unavailable" } as const),
-          );
-        reads.push(view);
-        const alert = page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK).then(
-          ({ count, category }) => count < 0 || category === "unreadable" ? "unavailable" as const : validateAlertCategory(category),
-          () => "unavailable" as const,
-        );
-        reads.push(alert);
-        const sample = Promise.all([view, alert]).then((value) => { settled = true; return value; });
-        reads.push(sample);
-        const value = await Promise.race([
-          sample,
-          new Promise<undefined>((resolve) => { expiry = setTimeout(() => resolve(undefined), budget); }),
-        ]);
-        if (value && !interrupted() && performance.now() < deadline) {
-          Object.assign(diagnostic, value[0], { category: value[1] });
-        }
-      } finally {
-        clearTimeout(expiry);
-        // A race is not cancellation. Only this already-failed test's page may be closed.
-        // Collection is capped; closing/draining remains best-effort, not a forced-close guarantee.
-        if (!settled && reads.length > 0) await page.close().catch(() => undefined);
-        await Promise.allSettled(reads);
-      }
-    }
+  }) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
     const timezone = await userTimezone(admin, userId);
@@ -683,64 +618,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const { planId } = await createPlan(page);
     const scheduled = await savedPlan(admin, userId, planId);
     const workout = scheduled.workouts[0];
-    await page.getByRole("link").and(page.locator(`[href="/app/swim/${workout.id}"]`)).click();
-    const expected = new URL(`/app/swim/${workout.id}`, baseURL!).href;
-    await expect(page).toHaveURL(expected);
-    await expect(page.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();
-    const diagnostic = unavailableAlert("a2-post-start");
-    const { origin, pathname } = new URL(expected);
-    let actionRequest: Request | undefined;
-    const requestWaiter = page.waitForRequest((request) => {
-      if (actionRequest || request.method() !== "POST") return false;
-      const target = new URL(request.url());
-      if (target.origin !== origin || target.pathname !== pathname ||
-        !request.headers()["next-action"]) return false;
-      actionRequest = request;
-      return true;
-    }, { timeout: 5000 }).then(
-      () => "seen" as const,
-      (error: unknown) => error instanceof errors.TimeoutError ? "timeout" as const : "error" as const,
-    );
-    const responseWaiter = page.waitForResponse(
-      (response) => actionRequest !== undefined && response.request() === actionRequest,
-      { timeout: 5000 },
-    ).then(
-      (response) => ({ outcome: "seen", paired: response.request() === actionRequest, status: response.status() }),
-      (error: unknown) => ({
-        outcome: error instanceof errors.TimeoutError ? "timeout" : "error", paired: false, status: null,
-      }),
-    );
-    const transport = Promise.all([requestWaiter, responseWaiter]).then(([requestOutcome, responseOutcome]) => {
-      expect(requestOutcome).toBe("seen");
-      expect(responseOutcome.outcome).toBe("seen");
-      expect(responseOutcome.paired).toBe(true);
-      expect(responseOutcome.status).toBe(200);
-    }).then(() => ({ ok: true } as const), (error: unknown) => ({ ok: false, error } as const));
-    try {
-      await page.getByRole("button", { name: "Start swim", exact: true }).click();
-      await expect.poll(async () => {
-        const saved = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id);
-        return saved?.status === "started" && typeof saved.session_id === "string" && saved.session_id.length > 0;
-      }).toBe(true);
-      diagnostic.backend = "reached";
-      // Start the original separate UI window immediately; HTTP 200 is transport-only.
-      const [uiOutcome, transportOutcome] = await Promise.allSettled([(async () => {
-        try {
-          await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
-        } catch (error) {
-          await captureFailureView(diagnostic).catch(() => undefined);
-          throw error;
-        }
-      })(), transport]);
-      // Retain the original UI error even when transport also failed.
-      if (uiOutcome.status === "rejected") throw uiOutcome.reason;
-      if (transportOutcome.status === "rejected") throw transportOutcome.reason;
-      if (!transportOutcome.value.ok) throw transportOutcome.value.error;
-    } finally {
-      await Promise.allSettled([requestWaiter, responseWaiter, transport]);
-      const annotation = alertAnnotation(diagnostic);
-      if (annotation) testInfo.annotations.push(annotation);
-    }
+    const actor = await retainedSwimActor(seedConfig, freshUser);
+    await startSwimWorkout(actor, workout.id, workout.revision);
     const started = (await savedPlan(admin, userId, planId)).workouts.find((row) => row.id === workout.id)!;
     expect(started.status).toBe("started");
     const sessionId = started.session_id;
@@ -751,13 +630,9 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(before.logs).toHaveLength(0);
     expect(await regionRows(admin, userId)).toEqual([]);
 
-    await page.getByRole("link", { name: "Log swim", exact: true }).click();
-    await page.getByLabel("Whole lengths", { exact: true }).fill("16");
-    await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
-    await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
-    await page.getByText("Notes, changes and splits", { exact: true }).click();
-    await page.getByRole("combobox", { name: "Stroke", exact: true }).selectOption("breaststroke");
-    await page.getByRole("button", { name: "Finish swim", exact: true }).click();
+    await completeRetainedSwim(actor, started, { lengths: 16, strokes: ["breaststroke"] });
+    await recomputeRegionState(actor, userId, timezone);
+    await page.goto(`/app/swim/${workout.id}`);
     const result = page.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
     await expect(result).toContainText("16 lengths · 15:00 · RPE 6");
     const completed = await nativeRows(admin, userId, sessionId);
@@ -790,152 +665,16 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     assertLedger(completedRegions, userId, timezone, completed.session, originalLog);
     expect(Number(completedRegions.find((row) => row.region === "adductor_groin")!.atl)).toBeGreaterThan(0);
 
-    await result.getByRole("button", { name: "Edit result", exact: true }).click();
-    await page.getByLabel("Whole lengths", { exact: true }).fill("12");
-    await page.getByLabel("Time · min:sec", { exact: true }).fill("10:00");
-    await page.getByRole("radio", { name: "8 tough", exact: true }).click();
-    await page.getByText("Notes, changes and splits", { exact: true }).click();
-    await page.getByRole("combobox", { name: "Stroke", exact: true }).selectOption("freestyle");
-    await page.getByRole("checkbox", { name: "Pull buoy", exact: true }).check();
-    const editDiagnostic = unavailableAlert("a2-edit");
-    const controller = new AbortController();
-    const owned: Promise<unknown>[] = [];
-    let editExpiry: ReturnType<typeof setTimeout> | undefined;
-    try {
-      expect(await page.locator("#swim-result").evaluate(
-        (form) => form instanceof HTMLFormElement && form.checkValidity(),
-      )).toBe(true);
-      const { origin, pathname } = new URL(page.url());
-      let actionRequest: Request | undefined;
-      const requestWaiter = page.waitForRequest((request) => {
-        if (actionRequest || request.method() !== "POST") return false;
-        const target = new URL(request.url());
-        if (target.origin !== origin || target.pathname !== pathname ||
-          !request.headers()["next-action"]) return false;
-        actionRequest = request;
-        return true;
-      }, { timeout: 5000 }).then(
-        () => "seen" as const,
-        (error: unknown) => error instanceof errors.TimeoutError ? "timeout" as const : "error" as const,
-      );
-      const responseWaiter = page.waitForResponse(
-        (response) => actionRequest !== undefined && response.request() === actionRequest,
-        { timeout: 5000 },
-      ).then(
-        (response) => ({ outcome: "seen", paired: response.request() === actionRequest, status: response.status() }),
-        (error: unknown) => ({
-          outcome: error instanceof errors.TimeoutError ? "timeout" : "error", paired: false, status: null,
-        }),
-      );
-      owned.push(requestWaiter, responseWaiter);
-      await page.getByRole("button", { name: "Save changes", exact: true }).click();
-      const deadline = performance.now() + 5000;
-      const observationBudget = deadline - performance.now();
-      expect(observationBudget).toBeGreaterThan(0);
-      const expired = new Promise<"expired">((resolve) => {
-        editExpiry = setTimeout(() => {
-          controller.abort();
-          resolve("expired");
-        }, observationBudget);
-      });
-      const active = () => !controller.signal.aborted && performance.now() < deadline;
-      // Start both reads before transport assertions; an alert cannot suppress the owned goal sample.
-      const polling = (async () => {
-        const intervals = [100, 250, 500, 1000];
-        let attempt = 0;
-        while (active()) {
-          const backend = nativeRows(admin, userId, sessionId, controller.signal).then((sample) => {
-            if (!active()) return "expired" as const;
-            expect(Array.isArray(sample.logs)).toBe(true);
-            for (const log of sample.logs) {
-              expect(typeof log.id === "string" && typeof log.client_log_id === "string" &&
-                log.session_id === sessionId && typeof log.swim_result?.lengths === "number" &&
-                typeof log.swim_result?.timeMs === "number" && typeof log.swim_result?.rpe === "number" &&
-                Array.isArray(log.swim_result?.snapshot?.strokes) &&
-                Array.isArray(log.swim_result?.snapshot?.equipment)).toBe(true);
-            }
-            const log = sample.logs[0];
-            const reached = sample.logs.length === 1 && log.id === originalLog.id &&
-              log.client_log_id === originalLog.client_log_id &&
-              log.swim_result.lengths === 12 && log.swim_result.timeMs === 600000 &&
-              log.swim_result.rpe === 8 && log.swim_result.snapshot.strokes.length === 1 &&
-              log.swim_result.snapshot.strokes[0] === "freestyle" &&
-              log.swim_result.snapshot.equipment.length === 1 &&
-              log.swim_result.snapshot.equipment[0] === "pull_buoy";
-            editDiagnostic.backend = reached ? "reached" : "not-reached";
-            return reached ? "reached" as const : "not-reached" as const;
-          }).catch(() => {
-            if (!active()) return "expired" as const;
-            editDiagnostic.backend = "unavailable";
-            return "read-error" as const;
-          });
-          owned.push(backend);
-          const alert = page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)
-            .then(({ count, category }) => {
-              if (!active()) return "expired" as const;
-              editDiagnostic.category = validateAlertCategory(category);
-              return count < 0 ? "structural-error" as const : count > 0 ? "alert" as const : "absent" as const;
-            }, () => {
-              if (!active()) return "expired" as const;
-              editDiagnostic.category = "unavailable";
-              return "read-error" as const;
-            });
-          owned.push(alert);
-          const [backendOutcome, alertOutcome] = await Promise.all([backend, alert]);
-          if (!active()) return "expired" as const;
-          if (backendOutcome === "read-error") return "backend-read-error" as const;
-          if (alertOutcome === "read-error") return "alert-read-error" as const;
-          if (alertOutcome === "structural-error") return "alert-structural-error" as const;
-          if (alertOutcome === "alert") return "alert" as const;
-          if (backendOutcome === "reached") return "backend" as const;
-          const remaining = deadline - performance.now();
-          if (remaining <= 0) return "expired" as const;
-          await new Promise<void>((resolve) => {
-            const finish = () => {
-              clearTimeout(timer);
-              controller.signal.removeEventListener("abort", finish);
-              resolve();
-            };
-            const timer = setTimeout(finish, Math.min(intervals[Math.min(attempt++, intervals.length - 1)], remaining));
-            controller.signal.addEventListener("abort", finish, { once: true });
-          });
-        }
-        return "expired" as const;
-      })().then((outcome) => outcome, () => "observation-error" as const);
-      owned.push(polling);
-      expect(deadline - performance.now()).toBeGreaterThan(0);
-      const requestOutcome = await requestWaiter;
-      expect(requestOutcome).toBe("seen");
-      expect(deadline - performance.now()).toBeGreaterThan(0);
-      const responseOutcome = await responseWaiter;
-      expect(responseOutcome.outcome).toBe("seen");
-      expect(responseOutcome.paired).toBe(true);
-      expect(responseOutcome.status).toBe(200);
-      expect(deadline - performance.now()).toBeGreaterThan(0);
-      const observationOutcome = await Promise.race([polling, expired]);
-      expect(observationOutcome).not.toBe("backend-read-error");
-      expect(observationOutcome).not.toBe("alert-read-error");
-      expect(observationOutcome).not.toBe("alert-structural-error");
-      expect(observationOutcome).not.toBe("observation-error");
-      expect(observationOutcome).not.toBe("alert");
-      expect(observationOutcome).toBe("backend");
-      const remaining = deadline - performance.now();
-      expect(remaining).toBeGreaterThan(0);
-      try {
-        await expect(result).toContainText("12 lengths · 10:00 · RPE 8", { timeout: remaining });
-      } catch (error) {
-        // Stop old observation writes before the later failure-only sample.
-        controller.abort();
-        await captureFailureView(editDiagnostic).catch(() => undefined);
-        throw error;
-      }
-    } finally {
-      controller.abort();
-      clearTimeout(editExpiry);
-      await Promise.allSettled(owned);
-      const annotation = alertAnnotation(editDiagnostic);
-      if (annotation) testInfo.annotations.push(annotation);
-    }
+    await editSwimResult(actor, {
+      workoutId: workout.id, expectedRevision: completedWorkout.revision,
+      result: {
+        ...originalLog.swim_result, lengths: 12, timeMs: 600000, rpe: 8,
+        snapshot: { ...originalLog.swim_result.snapshot, strokes: ["freestyle"], equipment: ["pull_buoy"] },
+      },
+    });
+    await recomputeRegionState(actor, userId, timezone);
+    await page.reload();
+    await expect(result).toContainText("12 lengths · 10:00 · RPE 8");
     const edited = await nativeRows(admin, userId, sessionId);
     expect(edited.logs).toHaveLength(1);
     const editedLog = edited.logs[0];
@@ -998,35 +737,9 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(await regionRows(admin, userId)).toEqual(restoredRegions);
   });
 
-  async function submittedCompletionReceipt(request: Request, workoutId: string) {
-    try {
-      const fields = await new globalThis.Response(request.postData(), {
-        headers: { "content-type": request.headers()["content-type"] },
-      }).formData();
-      const roots = fields.getAll("0");
-      if (roots.length !== 1 || typeof roots[0] !== "string") return;
-      const args: unknown = JSON.parse(roots[0]);
-      if (!Array.isArray(args) || args.length !== 1 || typeof args[0] !== "string") return;
-      const reference = /^\$K([1-9a-f][0-9a-f]*)$/.exec(args[0]);
-      if (!reference) return;
-      const part = Number.parseInt(reference[1], 16);
-      if (!Number.isSafeInteger(part)) return;
-      const prefix = `_${part}_`;
-      if (![...fields].every(([key, value]) => key === "0" ||
-        (key.startsWith(prefix) && key.length > prefix.length && typeof value === "string" &&
-          fields.getAll(key).length === 1))) return;
-      const sessionId = fields.get(`${prefix}sessionId`);
-      const receiptId = fields.get(`${prefix}clientLogId`);
-      if (!isUuid(workoutId) || fields.get(`${prefix}workoutId`) !== workoutId ||
-        typeof sessionId !== "string" || !isUuid(sessionId) ||
-        typeof receiptId !== "string" || !isUuid(receiptId)) return;
-      return { sessionId, receiptId };
-    } catch { return; }
-  }
-
-  test("A3, DC-SW7: replacing an archived swim plan preserves completed history and primary training", async ({
+  test("A3, DC-SW7: replacing an archived plan preserves retained native history and primary training", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
-  }, testInfo) => {
+  }) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
     const primary = await primaryBaseline(admin, freshUser, seedConfig);
@@ -1036,142 +749,10 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const issued = await lifecycleState(admin, userId);
     expect(issued.plans.length === 1 && issued.workouts.length === 4).toBe(true);
     const completedLengths = issued.workouts[0].definition.issued.totalLengths;
-    await page.getByRole("link").filter({ hasText: "Scheduled" }).first().click();
-    await page.getByRole("button", { name: "Start swim", exact: true }).click();
-    await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
-    await page.getByLabel("Whole lengths", { exact: true }).fill(String(completedLengths));
-    await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
-    await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
-    {
-      const diagnostic = unavailableAlert("a3-finish");
-      const transport = unavailableAlert("a3-finish-transport");
-      const controller = new AbortController();
-      const owned: Promise<unknown>[] = [];
-      let completionRequest: Request | undefined;
-      let receipt: ReturnType<typeof submittedCompletionReceipt> | undefined;
-      let statusClass: C2HttpClass | "unavailable" | null = null;
-      let requestFailed = false;
-      let transportInvalid = false;
-      let deadline: number | undefined;
-      let expiry: ReturnType<typeof setTimeout> | undefined;
-      let pendingViews = 0;
-      let primaryFailed = false;
-      const current = new URL(page.url());
-      const active = () => !controller.signal.aborted && (deadline === undefined || performance.now() < deadline);
-      const sampleTransport = () => {
-        transport.result = c2Transport(completionRequest ? 1 : 0, statusClass, requestFailed, transportInvalid);
-      };
-      const sampleView = async () => {
-        if (!active() || deadline === undefined || pendingViews > 0) return;
-        pendingViews++;
-        const view = page.getByRole("button", { name: /^(Start swim|Starting…)$/ })
-          .or(page.getByRole("link", { name: /^(Log swim|Restore from Trash)$/ }))
-          .or(page.getByRole("status").filter({ hasText: /^(Plan paused|Plan finished|Plan archived|Result removed|Swimming is currently unavailable\.)$/ }))
-          .or(page.getByRole("heading", { name: /^(Edit your swim|Your swim)$/, level: 2 }))
-          .or(page.getByRole("heading", { name: "404", exact: true, level: 1 }))
-          .filter({ visible: true }).evaluateAll(classifyWorkoutViewNodes);
-        const alert = page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK);
-        try {
-          const values = await Promise.allSettled([view, alert]);
-          if (!active()) return;
-          if (values[0].status === "fulfilled") Object.assign(diagnostic, values[0].value);
-          if (values[1].status === "fulfilled") {
-            const value = values[1].value;
-            diagnostic.category = value.count < 0 || value.category === "unreadable"
-              ? "unavailable" : validateAlertCategory(value.category);
-          }
-        } finally { pendingViews--; }
-      };
-      const capture = (request: Request) => {
-        if (!active()) return;
-        try {
-          const base = new URL(baseURL!);
-          const target = new URL(request.url());
-          const workoutId = current.pathname.slice("/app/swim/".length);
-          if (base.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(base.hostname) ||
-            base.username || base.password || target.username || target.password ||
-            current.origin !== base.origin || target.origin !== base.origin ||
-            !current.pathname.startsWith("/app/swim/") || !isUuid(workoutId) ||
-            target.pathname !== current.pathname || target.search !== current.search ||
-            request.method() !== "POST" || !request.headers()["next-action"]) return;
-          if (completionRequest) {
-            transportInvalid = true;
-            diagnostic.backend = "unavailable";
-          } else {
-            completionRequest = request;
-            receipt = submittedCompletionReceipt(request, workoutId).then((value) => {
-              if (active() && !value) { transportInvalid = true; sampleTransport(); }
-              return value;
-            });
-            owned.push(receipt);
-          }
-        } catch { transportInvalid = true; }
-        sampleTransport();
-      };
-      const sampleReceipt = () => {
-        if (!active() || deadline === undefined) return;
-        const sample = (async () => {
-          const paired = await receipt;
-          if (!active() || transportInvalid || !paired || !isUuid(userId)) return;
-          const backend = (async () => {
-            const row = await admin.from("sessions").select("id,user_id,completion_outbox_entry_id,completed_at")
-              .eq("user_id", userId).eq("id", paired.sessionId).abortSignal(controller.signal).retry(false).single();
-            if (active() && !transportInvalid) diagnostic.backend =
-              a4ReplayBackend(row.data, row.error, userId, paired.sessionId, paired.receiptId);
-          })().catch(() => undefined);
-          await Promise.allSettled([backend, sampleView()]);
-        })().catch(() => undefined);
-        owned.push(sample);
-      };
-      const response = (value: Response) => {
-        if (!active() || !completionRequest || value.request() !== completionRequest) return;
-        try { statusClass = c2HttpClass(value.status()); } catch { transportInvalid = true; }
-        sampleTransport();
-        sampleReceipt();
-      };
-      const failed = (request: Request) => {
-        if (!active() || request !== completionRequest) return;
-        requestFailed = true;
-        sampleTransport();
-        owned.push(sampleView().catch(() => undefined));
-      };
-      try {
-        try {
-          page.on("request", capture);
-          page.on("response", response);
-          page.on("requestfailed", failed);
-        } catch { transportInvalid = true; }
-        await page.getByRole("button", { name: "Finish swim", exact: true }).click();
-        deadline = performance.now() + 5000;
-        expiry = setTimeout(() => controller.abort(), deadline - performance.now());
-        sampleTransport();
-        const primary = expect(page.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
-        owned.push(sampleView().catch(() => undefined));
-        if (statusClass !== null) sampleReceipt();
-        await primary;
-      } catch (error) {
-        primaryFailed = true;
-        throw error;
-      } finally {
-        controller.abort();
-        clearTimeout(expiry);
-        try { page.off("request", capture); } catch { transport.result = "unavailable"; }
-        try { page.off("response", response); } catch { transport.result = "unavailable"; }
-        try { page.off("requestfailed", failed); } catch { transport.result = "unavailable"; }
-        if (primaryFailed && pendingViews > 0) await page.close().catch(() => undefined);
-        await Promise.allSettled(owned);
-        for (const value of [diagnostic, transport]) {
-          try {
-            const annotation = alertAnnotation(value);
-            if (annotation) testInfo.annotations.push(annotation);
-          } catch { /* Diagnostics cannot replace the primary assertion error. */ }
-        }
-      }
-    }
-    await page.goto(original.url);
-    await page.getByRole("link").filter({ hasText: "Scheduled" }).first().click();
-    await page.getByRole("button", { name: "Start swim", exact: true }).click();
-    await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+    const actor = await retainedSwimActor(seedConfig, freshUser);
+    await completeRetainedSwim(actor, issued.workouts[0], { lengths: completedLengths });
+    await startSwimWorkout(actor, issued.workouts[1].id, issued.workouts[1].revision);
+    await recomputeRegionState(actor, userId, timezone);
     const before = await lifecycleState(admin, userId);
     expect(before.workouts.filter((row) => row.status === "completed").length).toBe(1);
     expect(before.workouts.filter((row) => row.status === "started").length).toBe(1);
@@ -1260,7 +841,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
         await expect(page.getByRole("heading", { name: "Your swim", exact: true })).toBeVisible();
         await page.goto(original.url);
         await page.getByRole("link").filter({ hasText: "In progress" }).click();
-        await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Workout", exact: true })).toBeVisible();
+        await expect(page.locator("main > section").first().getByText("In progress", { exact: true })).toBeVisible();
         await page.goto(original.url);
       } else {
         await expect(page.getByRole("link").filter({ hasText: "Scheduled" })).toHaveCount(4);
@@ -1271,18 +853,18 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(isDeepStrictEqual(await primary.snapshot(), primary.initial)).toBe(true);
   });
 
-  test("A4, DC-SW7/DC-SW8/DC-SW9: an offline swim finishes after archival without duplicate history or load", async ({
+  test("A4, DC-SW7/DC-SW8/DC-SW9: archived late results remain visible across contexts without duplicate history or load", async ({
     page, context, browser, freshUser, seedConfig, admin, baseURL,
-  }, testInfo) => {
+  }) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
     const primary = await primaryBaseline(admin, freshUser, seedConfig);
     const timezone = await userTimezone(admin, userId);
     await signInAs(context, freshUser, seedConfig, baseURL!);
     const original = await createPlan(page);
-    await page.getByRole("link").filter({ hasText: "Scheduled" }).first().click();
-    await page.getByRole("button", { name: "Start swim", exact: true }).click();
-    await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+    const actor = await retainedSwimActor(seedConfig, freshUser);
+    const issued = await savedPlan(admin, userId, original.planId);
+    await startSwimWorkout(actor, issued.workouts[0].id, issued.workouts[0].revision);
     const before = await lifecycleState(admin, userId);
     const started = before.workouts.find((row) => row.status === "started");
     expect(!!started?.session_id && before.workouts.filter((row) => row.status === "started").length === 1).toBe(true);
@@ -1293,28 +875,6 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(native.completed_at === null && native.completion_outbox_entry_id === null).toBe(true);
     expect(isDeepStrictEqual(await primary.snapshot(), primary.initial)).toBe(true);
     const completedLengths = started.definition.issued.totalLengths;
-    await page.getByLabel("Whole lengths", { exact: true }).fill(String(completedLengths));
-    await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
-    await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
-    await page.getByText("Notes, changes and splits", { exact: true }).click();
-    await page.getByRole("combobox", { name: "Stroke", exact: true }).selectOption("breaststroke");
-    await context.setOffline(true);
-    await page.getByRole("button", { name: "Finish swim", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Waiting to sync", exact: true })).toBeDisabled();
-    const queued = await lifecycleQueue(page);
-    expect(queued.length).toBe(1);
-    const entry = queued[0];
-    expect(entry.op === "swim_complete" && isUuid(entry.id) && entry.attempts === 0).toBe(true);
-    expect(isDeepStrictEqual(
-      [entry.sessionId, entry.payload.sessionId, entry.payload.workoutId],
-      [started.session_id, started.session_id, started.id],
-    )).toBe(true);
-    expect(isDeepStrictEqual(
-      [entry.payload.lengths, entry.payload.timeMs, entry.payload.rpe, entry.payload.stroke, entry.payload.expectedRevision],
-      [String(completedLengths), "900000", "6", "breaststroke", String(started.revision)],
-    )).toBe(true);
-    expect(isDeepStrictEqual(await lifecycleState(admin, userId), before)).toBe(true);
-
     const online = await browser.newContext({ baseURL, viewport: { width: 375, height: 812 }, hasTouch: true });
     let bodyFailed = false;
     try {
@@ -1339,139 +899,13 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
         [archived.workouts, archived.sessions, archived.logs, archived.regions],
         [before.workouts, before.sessions, before.logs, before.regions],
       )).toBe(true);
-      expect(await page.evaluate(() => navigator.onLine)).toBe(false);
-      expect(isDeepStrictEqual(await lifecycleQueue(page), queued)).toBe(true);
-
-      let completionRequest: Request | undefined;
-      const diagnostic = unavailableAlert("a4-replay");
-      const transport = unavailableAlert("a4-replay-transport");
-      const controller = new AbortController();
-      const owned: Promise<unknown>[] = [];
-      let expiry: ReturnType<typeof setTimeout> | undefined;
-      let deadline: number | undefined;
-      let statusClass: C2HttpClass | "unavailable" | null = null;
-      let requestFailed = false;
-      let transportInvalid = false;
-      let pendingViews = 0;
-      let primaryFailed = false;
-      const active = () => !controller.signal.aborted && (deadline === undefined || performance.now() < deadline);
-      const sampleTransport = () => {
-        transport.result = c2Transport(completionRequest ? 1 : 0, statusClass, requestFailed, transportInvalid);
-      };
-      const capture = (request: Request) => {
-        if (!active() || completionRequest) return;
-        try {
-          const target = new URL(request.url());
-          const base = new URL(baseURL!);
-          if (base.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(base.hostname) ||
-            base.username || base.password || target.username || target.password ||
-            target.origin !== base.origin || target.pathname !== `/app/swim/${started.id}` ||
-            request.method() !== "POST" || !request.headers()["next-action"]) return;
-          const body = request.postData() ?? "";
-          if ([entry.id, entry.sessionId, started.id].every((id) => body.includes(id))) completionRequest = request;
-        } catch { transportInvalid = true; }
-        sampleTransport();
-      };
-      const response = (value: Response) => {
-        if (!active()) return;
-        try {
-          if (!completionRequest || value.request() !== completionRequest) return;
-          statusClass = c2HttpClass(value.status());
-        } catch { transportInvalid = true; }
-        sampleTransport();
-      };
-      const failed = (request: Request) => {
-        if (!active() || !completionRequest || request !== completionRequest) return;
-        requestFailed = true;
-        sampleTransport();
-      };
-      try {
-        try {
-          page.on("request", capture);
-          page.on("response", response);
-          page.on("requestfailed", failed);
-        } catch { transportInvalid = true; }
-        await context.setOffline(false);
-        deadline = performance.now() + 5000;
-        expiry = setTimeout(() => controller.abort(), deadline - performance.now());
-        sampleTransport();
-        // The UI goal owns the original window; diagnostics never gate it.
-        const primary = expect(page.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
-        const polling = (async () => {
-          const intervals = [100, 250, 500, 1000];
-          let attempt = 0;
-          while (active()) {
-            const backend = (async () => {
-              diagnostic.backend = "unavailable";
-              try {
-                const sample = await admin.from("sessions").select("id,user_id,completion_outbox_entry_id,completed_at")
-                  .eq("user_id", userId).eq("id", entry.sessionId).abortSignal(controller.signal).retry(false).single();
-                if (active()) diagnostic.backend = a4ReplayBackend(sample.data, sample.error, userId, entry.sessionId, entry.id);
-              } catch { if (active()) diagnostic.backend = "unavailable"; }
-            })();
-            const view = (async () => {
-              pendingViews++;
-              diagnostic.control = diagnostic.result = "unavailable";
-              try {
-                const value = await page.getByRole("button", { name: /^(Start swim|Starting…)$/ })
-                  .or(page.getByRole("link", { name: /^(Log swim|Restore from Trash)$/ }))
-                  .or(page.getByRole("status").filter({ hasText: /^(Plan paused|Plan finished|Plan archived|Result removed|Swimming is currently unavailable\.)$/ }))
-                  .or(page.getByRole("heading", { name: /^(Edit your swim|Your swim)$/, level: 2 }))
-                  .or(page.getByRole("heading", { name: "404", exact: true, level: 1 }))
-                  .filter({ visible: true }).evaluateAll(classifyWorkoutViewNodes);
-                if (active()) Object.assign(diagnostic, value);
-              } catch { if (active()) diagnostic.control = diagnostic.result = "unavailable"; }
-              finally { pendingViews--; }
-            })();
-            const alert = (async () => {
-              pendingViews++;
-              diagnostic.category = "unavailable";
-              try {
-                const value = await page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK);
-                if (active()) diagnostic.category = value.count < 0 || value.category === "unreadable"
-                  ? "unavailable" : validateAlertCategory(value.category);
-              } catch { if (active()) diagnostic.category = "unavailable"; }
-              finally { pendingViews--; }
-            })();
-            owned.push(backend, view, alert);
-            await Promise.allSettled([backend, view, alert]);
-            if (!active()) return;
-            await new Promise<void>((resolve) => {
-              const finish = () => {
-                clearTimeout(timer);
-                controller.signal.removeEventListener("abort", finish);
-                resolve();
-              };
-              const timer = setTimeout(finish, Math.min(intervals[Math.min(attempt++, intervals.length - 1)], deadline! - performance.now()));
-              controller.signal.addEventListener("abort", finish, { once: true });
-            });
-          }
-        })().catch(() => {
-          if (active()) Object.assign(diagnostic, unavailableAlert("a4-replay"));
-        });
-        owned.push(polling);
-        await primary;
-      } catch (error) {
-        primaryFailed = true;
-        throw error;
-      } finally {
-        controller.abort();
-        clearTimeout(expiry);
-        try { page.off("request", capture); } catch { transport.result = "unavailable"; }
-        try { page.off("response", response); } catch { transport.result = "unavailable"; }
-        try { page.off("requestfailed", failed); } catch { transport.result = "unavailable"; }
-        // No post-failure sample. Close only an already-failed page to settle pending browser reads.
-        if (primaryFailed && pendingViews > 0) await page.close().catch(() => undefined);
-        await Promise.allSettled(owned);
-        for (const value of [diagnostic, transport]) {
-          try {
-            const annotation = alertAnnotation(value);
-            if (annotation) testInfo.annotations.push(annotation);
-          } catch { /* Diagnostics cannot replace the primary assertion error. */ }
-        }
-      }
-      expect(completionRequest !== undefined).toBe(true);
-      expect((await lifecycleQueue(page)).length).toBe(0);
+      // Arrange a retained completion recorded after archival; no browser queue is involved.
+      await completeRetainedSwim(actor, started, { lengths: completedLengths, strokes: ["breaststroke"] });
+      await recomputeRegionState(actor, userId, timezone);
+      const retained = await nativeRows(admin, userId, started.session_id);
+      const entry = { id: retained.logs[0].client_log_id, sessionId: started.session_id };
+      await page.goto(`/app/swim/${started.id}`);
+      await expect(page.getByRole("heading", { name: "Your swim", exact: true })).toBeVisible();
       const completed = await lifecycleState(admin, userId);
       expect(completed.logs.length).toBe(1);
       expect(completed.sessions.length).toBe(2);
@@ -1515,23 +949,10 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       lifecycleLedger(completed, timezone);
       expect(Number(completed.regions.find((row) => row.region === "adductor_groin")?.atl) > 0).toBe(true);
 
-      // Replay the captured queue request, not a fresh Finish action or receipt.
-      if (!completionRequest) throw new Error("Missing original queued completion request.");
-      const replay = await context.request.fetch(completionRequest).catch(() => {
-        throw new Error("Original completion replay transport failed.");
-      });
-      expect(replay.ok()).toBe(true);
-      const replayAccepted = (await replay.text()).split("\n").some((line) => {
-        try {
-          const value = JSON.parse(line.slice(line.indexOf(":") + 1));
-          return value?.ok === true || value?.a?.ok === true;
-        } catch { return false; }
-      });
-      expect(replayAccepted).toBe(true);
-      await replay.dispose();
       await page.reload();
       await expect(page.getByRole("heading", { name: "Your swim", exact: true })).toBeVisible();
-      expect((await lifecycleQueue(page)).length).toBe(0);
+      await archivePage.goto(`/app/swim/${started.id}`);
+      await expect(archivePage.getByRole("heading", { name: "Your swim", exact: true })).toBeVisible();
       const replayed = await lifecycleState(admin, userId);
       expect(isDeepStrictEqual(
         [replayed.plans, replayed.workouts, replayed.sessions, replayed.logs, replayed.history, replayed.sets],
@@ -1548,7 +969,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       await page.reload();
       await expect(page.getByRole("link", { name: "Set up swimming", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Archive", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("navigation", { name: "Programs", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("navigation", { name: "Programs", exact: true })).toHaveCount(1);
     } catch (error) {
       bodyFailed = true;
       throw error;
@@ -1591,37 +1012,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     return { workout, session, log };
   }
 
-  async function submittedEditRevision(request: Request, workoutId: string, sessionId: string, revision: number) {
-    let fields: FormData;
-    let argument: unknown;
-    try {
-      fields = await new globalThis.Response(request.postData(), {
-        headers: { "content-type": request.headers()["content-type"] },
-      }).formData();
-      const roots = fields.getAll("0");
-      if (roots.length !== 1 || typeof roots[0] !== "string") throw new Error();
-      const args: unknown = JSON.parse(roots[0]);
-      if (!Array.isArray(args) || args.length !== 1) throw new Error();
-      argument = args[0];
-    } catch { throw new Error("Could not read the synthetic edit submission."); }
-    // Next's pinned React encoder references the FormData argument from root 0.
-    const reference = typeof argument === "string" ? /^\$K([1-9a-f][0-9a-f]*)$/.exec(argument) : null;
-    expect(!!reference, "Synthetic edit FormData argument").toBe(true);
-    const part = Number.parseInt(reference![1], 16);
-    expect(Number.isSafeInteger(part), "Synthetic edit FormData reference").toBe(true);
-    const prefix = `_${part}_`;
-    expect([...fields].every(([key, value]) => key === "0" ||
-      (key.startsWith(prefix) && key.length > prefix.length && typeof value === "string" &&
-        fields.getAll(key).length === 1)), "Synthetic edit unambiguous fields").toBe(true);
-    expect(fields.getAll(`${prefix}workoutId`).length === 1 &&
-      fields.get(`${prefix}workoutId`) === workoutId, "Synthetic edit workout identity").toBe(true);
-    expect(fields.getAll(`${prefix}sessionId`).length === 1 &&
-      fields.get(`${prefix}sessionId`) === sessionId, "Synthetic edit session identity").toBe(true);
-    expect(fields.getAll(`${prefix}expectedRevision`).length === 1 &&
-      fields.get(`${prefix}expectedRevision`) === String(revision), "Synthetic edit original revision").toBe(true);
-  }
-
-  test("A5, DC-SW7/DC-SW9: permanent deletion removes a swim result while retaining its planned target", async ({
+  test("A5, DC-SW7/DC-SW9: permanent deletion removes a retained edited result while preserving its planned target", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
   }) => {
     const userId = freshUser.userId;
@@ -1634,20 +1025,16 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     const target = issued.workouts[0];
     const lengths = target.definition.issued.totalLengths;
     expect(lengths > 0 && target.status === "scheduled" && target.session_id === null).toBe(true);
-    await page.locator(`a[href="/app/swim/${target.id}"]`).click();
+    await page.getByRole("heading", { name: "Swims", exact: true }).locator("..").locator(`a[href="/app/swim/${target.id}"]`).click();
     const prescription = page.getByRole("heading", { name: "Workout", exact: true }).locator("..");
     const targetText = await prescription.innerText();
-    await page.getByRole("button", { name: "Start swim", exact: true }).click();
-    await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
-    const started = (await savedPlan(admin, userId, original.planId)).workouts.find((row) => row.id === target.id)!;
+    const actor = await retainedSwimActor(seedConfig, freshUser);
+    const started = await startSwimWorkout(actor, target.id, target.revision);
     expect(started.status === "started" && typeof started.session_id === "string" &&
       isUuid(started.session_id) && started.revision === target.revision + 1).toBe(true);
-    await page.getByLabel("Whole lengths", { exact: true }).fill(String(lengths));
-    await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
-    await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
-    await page.getByText("Notes, changes and splits", { exact: true }).click();
-    await page.getByRole("combobox", { name: "Stroke", exact: true }).selectOption("breaststroke");
-    await page.getByRole("button", { name: "Finish swim", exact: true }).click();
+    await completeRetainedSwim(actor, started, { lengths, strokes: ["breaststroke"] });
+    await recomputeRegionState(actor, userId, timezone);
+    await page.reload();
     const result = page.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
     await expect(result).toContainText(`${lengths} lengths · 15:00 · RPE 6`);
     const completed = await lifecycleState(admin, userId);
@@ -1662,11 +1049,13 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     lifecycleLedger(completed, timezone);
 
     // Create a real prior result revision so purge-history removal is non-vacuous.
-    await result.getByRole("button", { name: "Edit result", exact: true }).click();
-    await page.getByLabel("Time · min:sec", { exact: true }).fill("12:00");
-    await page.getByRole("button", { name: "Save changes", exact: true }).click();
+    await editSwimResult(actor, {
+      workoutId: target.id, expectedRevision: first.workout.revision,
+      result: { ...first.log.swim_result, timeMs: 720000 },
+    });
+    await recomputeRegionState(actor, userId, timezone);
+    await page.reload();
     await expect(result).toContainText(`${lengths} lengths · 12:00 · RPE 6`);
-    await expect(result.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
     const saved = await lifecycleState(admin, userId);
     const actual = lifecycleActual(saved, target.id);
     const native = await nativeRows(admin, userId, actual.session.id);
@@ -1752,7 +1141,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(isDeepStrictEqual(await primary.snapshot(), primary.initial)).toBe(true);
     await page.goto(original.url);
     const card = page.locator(`a[href="/app/swim/${target.id}"]`);
-    await expect(card).toContainText("Result removed");
+    await expect(card).toContainText("Unavailable");
     await expect(page.getByRole("heading", { name: "Best swims", exact: true })).toHaveCount(0);
     await card.click();
     await expect(page).toHaveURL(new RegExp(`/app/swim/${target.id}$`));
@@ -1766,180 +1155,9 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(isDeepStrictEqual(await lifecycleState(admin, userId), purged)).toBe(true);
   });
 
-  test("A6, DC-SW5/DC-SW8/DC-SW9: concurrent starts share one swim and a stale result edit cannot overwrite its saved result", async ({
-    page, context, browser, freshUser, seedConfig, admin, baseURL,
-  }) => {
-    const userId = freshUser.userId;
-    await markOnboarded(admin, userId);
-    const primary = await primaryRecoveryBaseline(admin, freshUser, seedConfig);
-    const timezone = await userTimezone(admin, userId);
-    await signInAs(context, freshUser, seedConfig, baseURL!);
-    const original = await createPlan(page);
-    const issued = await lifecycleState(admin, userId);
-    const target = issued.workouts[0];
-    const lengths = target.definition.issued.totalLengths;
-    expect(target.plan_id === original.planId && target.user_id === userId && lengths > 0).toBe(true);
-    const second = await browser.newContext({
-      baseURL, viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true,
-    });
-    const listeners = new Map<Page, (request: Request) => void>();
-    let bodyFailed = false;
-    try {
-      await signInAs(second, freshUser, seedConfig, baseURL!);
-      const other = await second.newPage();
-      const pages = [page, other];
-      const requests = pages.map(() => [] as Request[]);
-      for (const [index, view] of pages.entries()) {
-        const capture = (request: Request) => {
-          if (request.method() !== "POST" || !request.headers()["next-action"]) return;
-          const url = new URL(request.url());
-          if (url.origin === new URL(baseURL!).origin && url.pathname === `/app/swim/${target.id}`) {
-            requests[index].push(request);
-          }
-        };
-        listeners.set(view, capture);
-        view.on("request", capture);
-      }
-      await Promise.all(pages.map(async (view) => {
-        await view.goto(`/app/swim/${target.id}`);
-        await expect(view.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();
-        await expect(view.getByRole("link", { name: "Log swim", exact: true })).toHaveCount(0);
-      }));
-      expect(target.status === "scheduled" && target.session_id === null && target.revision > 0).toBe(true);
-      expect(isDeepStrictEqual(await lifecycleState(admin, userId), issued)).toBe(true);
-      await Promise.all(pages.map((view) =>
-        view.getByRole("button", { name: "Start swim", exact: true }).click({ timeout: 5000 })));
-      await Promise.all(pages.map(async (view) => {
-        const log = view.getByRole("link", { name: "Log swim", exact: true });
-        const stale = view.getByRole("alert").filter({ hasText: /changed.*reload/i });
-        await expect(log.or(stale)).toBeVisible();
-        if (await stale.isVisible()) {
-          await expect(stale).toBeVisible();
-          await view.reload();
-        }
-        await expect(log).toBeVisible();
-      }));
-      expect(requests.every((entries) => {
-        if (entries.length !== 1) return false;
-        try { return isDeepStrictEqual(JSON.parse(entries[0].postData()!), [target.id, target.revision]); }
-        catch { return false; }
-      })).toBe(true);
-      const started = await lifecycleState(admin, userId);
-      const swim = started.workouts.find((row) => row.id === target.id)!;
-      expect(started.sessions.length === 2 && started.logs.length === 0 &&
-        started.workouts.filter((row) => row.session_id !== null).length === 1).toBe(true);
-      expect(swim.status === "started" && swim.revision === target.revision + 1 &&
-        typeof swim.session_id === "string" && isUuid(swim.session_id)).toBe(true);
-      const native = await nativeRows(admin, userId, swim.session_id!);
-      expect(native.session.completed_at === null && native.session.completion_outbox_entry_id === null &&
-        native.session.deleted_at === null && native.logs.length === 0).toBe(true);
-      expect(isDeepStrictEqual(swim.definition, target.definition)).toBe(true);
-      expect(started.plans[0].revision === issued.plans[0].revision + 1).toBe(true);
-      await page.getByRole("link", { name: "Log swim", exact: true }).click();
-      await page.getByLabel("Whole lengths", { exact: true }).fill(String(lengths));
-      await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
-      await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
-      await page.getByRole("button", { name: "Finish swim", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
-      const completed = await lifecycleState(admin, userId);
-      const first = lifecycleActual(completed, target.id);
-      expect(first.workout.revision === swim.revision + 1 &&
-        completed.plans[0].revision === started.plans[0].revision + 1 &&
-        first.session.performed_at === native.session.performed_at &&
-        isDeepStrictEqual(first.workout.definition, target.definition)).toBe(true);
-      expect(isDeepStrictEqual(
-        [first.log.swim_result.lengths, first.log.swim_result.timeMs, first.log.swim_result.rpe,
-          first.log.swim_result.snapshot.course, first.log.swim_result.snapshot.strokes],
-        [lengths, 900000, 6, target.definition.issued.snapshot.course, ["freestyle"]],
-      )).toBe(true);
-      lifecycleLedger(completed, timezone);
-      await Promise.all(pages.map(async (view) => {
-        await view.reload();
-        await expect(view.getByRole("heading", { name: "Your swim", exact: true }).locator(".."))
-          .toContainText(`${lengths} lengths · 15:00 · RPE 6`);
-        await view.getByRole("button", { name: "Edit result", exact: true }).click();
-        await expect(view.getByLabel("Whole lengths", { exact: true })).toHaveValue(String(lengths));
-        await expect(view.getByLabel("Time · min:sec", { exact: true })).toHaveValue("15:00");
-        await expect(view.getByRole("button", { name: "Save changes", exact: true })).toBeEnabled();
-      }));
-      expect(isDeepStrictEqual(await lifecycleState(admin, userId), completed)).toBe(true);
-      const editOffsets = requests.map((entries) => entries.length);
-      await page.getByLabel("Time · min:sec", { exact: true }).fill("10:00");
-      await page.getByRole("radio", { name: "8 tough", exact: true }).click();
-      await page.getByText("Notes, changes and splits", { exact: true }).click();
-      await page.getByRole("combobox", { name: "Stroke", exact: true }).selectOption("breaststroke");
-      await page.getByRole("button", { name: "Save changes", exact: true }).click();
-      await expect(page.getByRole("heading", { name: "Your swim", exact: true }).locator(".."))
-        .toContainText(`${lengths} lengths · 10:00 · RPE 8`);
-      await expect(page.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
-      const accepted = await lifecycleState(admin, userId);
-      const edited = lifecycleActual(accepted, target.id);
-      expect(requests[0].length === editOffsets[0] + 1 && requests[1].length === editOffsets[1]).toBe(true);
-      await submittedEditRevision(requests[0][editOffsets[0]], target.id, first.session.id, first.workout.revision);
-      expect(edited.workout.revision === first.workout.revision + 1 &&
-        accepted.plans[0].revision === completed.plans[0].revision + 1).toBe(true);
-      expect(isDeepStrictEqual(edited.workout, {
-        ...first.workout, revision: first.workout.revision + 1, updated_at: edited.workout.updated_at,
-        definition: { ...first.workout.definition, resultHistory: edited.workout.definition.resultHistory },
-      })).toBe(true);
-      const history = edited.workout.definition.resultHistory;
-      expect(history?.length === 1 && history[0].revision === first.workout.revision &&
-        isDeepStrictEqual(history[0].result, first.log.swim_result)).toBe(true);
-      expect(isDeepStrictEqual(edited.log, {
-        ...first.log, duration_sec: 600, rpe: edited.log.rpe,
-        swim_result: {
-          ...first.log.swim_result, timeMs: 600000, rpe: 8,
-          snapshot: { ...first.log.swim_result.snapshot, strokes: ["breaststroke"] },
-        },
-      }) && Number(edited.log.rpe) === 8).toBe(true);
-      expect(isDeepStrictEqual(edited.session, {
-        ...first.session, duration_min: 10, session_rpe: edited.session.session_rpe, updated_at: edited.session.updated_at,
-      }) && Number(edited.session.session_rpe) === 8).toBe(true);
-      lifecycleLedger(accepted, timezone);
-      expect(Number(accepted.regions.find((row) => row.region === "adductor_groin")?.atl) > 0 &&
-        Number(completed.regions.find((row) => row.region === "adductor_groin")?.atl) === 0).toBe(true);
-
-      // The second editor stays open on the old completion; never reload it before submission.
-      await expect(other.getByLabel("Time · min:sec", { exact: true })).toHaveValue("15:00");
-      await other.getByLabel("Time · min:sec", { exact: true }).fill("20:00");
-      await other.getByRole("radio", { name: "6 moderate", exact: true }).click();
-      await other.getByRole("button", { name: "Save changes", exact: true }).click();
-      await expect(other.getByRole("alert").filter({ hasText: /changed.*reload/i })).toBeVisible();
-      await expect(other.getByLabel("Time · min:sec", { exact: true })).toHaveValue("20:00");
-      await expect(other.getByRole("button", { name: "Save changes", exact: true })).toBeEnabled();
-      expect(requests[1].length === editOffsets[1] + 1 && requests[0].length === editOffsets[0] + 1).toBe(true);
-      await submittedEditRevision(requests[1][editOffsets[1]], target.id, first.session.id, first.workout.revision);
-      const rejected = await lifecycleState(admin, userId);
-      lifecycleActual(rejected, target.id);
-      expect(isDeepStrictEqual(rejected, accepted)).toBe(true);
-      lifecycleLedger(rejected, timezone);
-      expect(isDeepStrictEqual(
-        rejected.workouts.filter((row) => row.id !== target.id), issued.workouts.filter((row) => row.id !== target.id),
-      )).toBe(true);
-      expect(isDeepStrictEqual([rejected.blocks, rejected.planned, rejected.sets], [issued.blocks, issued.planned, issued.sets])).toBe(true);
-      expect(isDeepStrictEqual(await primary.snapshot(), primary.initial)).toBe(true);
-      await Promise.all(pages.map(async (view) => {
-        await view.reload();
-        await expect(view.getByRole("heading", { name: "Your swim", exact: true }).locator(".."))
-          .toContainText(`${lengths} lengths · 10:00 · RPE 8`);
-        await expect(view.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
-        await expect(view.getByRole("button", { name: "Start swim", exact: true })).toHaveCount(0);
-        expect((await lifecycleQueue(view)).length).toBe(0);
-      }));
-      expect(isDeepStrictEqual(await lifecycleState(admin, userId), accepted)).toBe(true);
-    } catch (error) {
-      bodyFailed = true;
-      throw error;
-    } finally {
-      for (const [view, capture] of listeners) view.off("request", capture);
-      const closed = await Promise.allSettled([second.close(), context.close()]);
-      if (!bodyFailed) expect(closed.every((result) => result.status === "fulfilled")).toBe(true);
-    }
-  });
-
-  test("A7, DC-SW7/DC-SW9: a limitation added after start preserves the result and blocks future swimming", async ({
+  test("A7, DC-SW7/DC-SW9: a new limitation preserves retained results and blocks setup and resume", async ({
     page, context, freshUser, seedConfig, admin, baseURL,
-  }, testInfo) => {
+  }) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
     const primary = await primaryBaseline(admin, freshUser, seedConfig);
@@ -1959,27 +1177,15 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       [target, future].every((row) => row.status === "scheduled" && row.session_id === null)).toBe(true);
     const lengths = target.definition.issued.totalLengths;
     expect(lengths > 0).toBe(true);
-    await page.locator(`a[href="/app/swim/${target.id}"]`).click();
+    await page.getByRole("heading", { name: "Swims", exact: true }).locator("..").locator(`a[href="/app/swim/${target.id}"]`).click();
     const prescription = page.getByRole("heading", { name: "Workout", exact: true }).locator("..");
     const targetText = await prescription.innerText();
-    await page.getByRole("button", { name: "Start swim", exact: true }).click();
-    await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
+    const actor = await retainedSwimActor(seedConfig, freshUser);
+    const startedWorkout = await startSwimWorkout(actor, target.id, target.revision);
+    const notes = "Synthetic retained swim result";
+    await completeRetainedSwim(actor, startedWorkout, { lengths, notes });
+    await recomputeRegionState(actor, userId, timezone);
     const started = await lifecycleState(admin, userId);
-    const startedWorkout = started.workouts.find((row) => row.id === target.id)!;
-    expect(startedWorkout.status === "started" && typeof startedWorkout.session_id === "string" &&
-      isUuid(startedWorkout.session_id) &&
-      startedWorkout.revision === target.revision + 1 &&
-      isDeepStrictEqual(startedWorkout.definition, target.definition)).toBe(true);
-    const startedTargetText = await prescription.innerText();
-    await page.getByLabel("Whole lengths", { exact: true }).fill(String(lengths));
-    await page.getByLabel("Time · min:sec", { exact: true }).fill("15:00");
-    await page.getByRole("radio", { name: "6 moderate", exact: true }).click();
-    await page.getByText("Notes, changes and splits", { exact: true }).click();
-    await page.getByRole("textbox", { name: "Notes", exact: true }).fill("Synthetic retained swim draft");
-    const draftKey = swimDraftKey(userId, target.id);
-    const draft = readSwimDraft(await page.evaluate((key) => localStorage.getItem(key), draftKey));
-    expect(draft?.lengths === String(lengths) && draft.time === "15:00" &&
-      draft.rpe === "6" && draft.notes === "Synthetic retained swim draft").toBe(true);
     expect(isDeepStrictEqual(await primary.snapshot(), primary.initial)).toBe(true);
 
     async function limitations() {
@@ -2014,170 +1220,10 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     )).toBe(true);
 
     await page.goto(`/app/swim/${target.id}`);
-    await expect(page.getByLabel("Whole lengths", { exact: true })).toHaveValue(String(lengths));
-    await expect(page.getByLabel("Time · min:sec", { exact: true })).toHaveValue("15:00");
-    await expect(page.getByRole("radio", { name: "6 moderate", exact: true })).toBeChecked();
-    await page.getByText("Notes, changes and splits", { exact: true }).click();
-    await expect(page.getByRole("textbox", { name: "Notes", exact: true })).toHaveValue("Synthetic retained swim draft");
-    expect(isDeepStrictEqual(readSwimDraft(
-      await page.evaluate((key) => localStorage.getItem(key), draftKey),
-    ), draft) && (await prescription.innerText()) === startedTargetText).toBe(true);
     const result = page.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
-    {
-      const diagnostic = unavailableAlert("a7-finish");
-      const transport = unavailableAlert("a7-finish-transport");
-      const controller = new AbortController();
-      const owned: Promise<unknown>[] = [];
-      let completionRequest: Request | undefined;
-      let receipt: ReturnType<typeof submittedCompletionReceipt> | undefined;
-      let statusClass: C2HttpClass | "unavailable" | null = null;
-      let requestFailed = false;
-      let transportInvalid = false;
-      let sampledReceipt = false;
-      let receiptValidated = false;
-      let deadline: number | undefined;
-      let expiry: ReturnType<typeof setTimeout> | undefined;
-      let pendingViews = 0;
-      let primaryFailed = false;
-      const current = new URL(page.url());
-      const active = () => !controller.signal.aborted && (deadline === undefined || performance.now() < deadline);
-      const sampleTransport = () => {
-        transport.result = completionRequest && !receiptValidated ? "unavailable" :
-          c2Transport(completionRequest ? 1 : 0, statusClass, requestFailed, transportInvalid);
-      };
-      const invalidate = () => {
-        transportInvalid = true;
-        diagnostic.backend = "unavailable";
-        sampleTransport();
-      };
-      // Settle owned waits on abort, retaining rejection handlers for late browser/SDK reads.
-      const bounded = <T,>(promise: PromiseLike<T>): Promise<T | undefined> => new Promise((resolve) => {
-        const finish = (value?: T) => {
-          controller.signal.removeEventListener("abort", abort);
-          resolve(value);
-        };
-        const abort = () => finish();
-        controller.signal.addEventListener("abort", abort, { once: true });
-        Promise.resolve(promise).then(finish, abort);
-        if (controller.signal.aborted) abort();
-      });
-      const sampleView = async () => {
-        if (!active() || deadline === undefined) return;
-        const read = <T,>(operation: () => Promise<T>) => {
-          pendingViews++;
-          return Promise.resolve().then(operation).finally(() => { pendingViews--; });
-        };
-        const values = await Promise.all([
-          bounded(read(() => page.getByRole("button", { name: /^(Start swim|Starting…)$/ })
-            .or(page.getByRole("link", { name: /^(Log swim|Restore from Trash)$/ }))
-            .or(page.getByRole("status").filter({ hasText: /^(Plan paused|Plan finished|Plan archived|Result removed|Swimming is currently unavailable\.)$/ }))
-            .or(page.getByRole("heading", { name: /^(Edit your swim|Your swim)$/, level: 2 }))
-            .or(page.getByRole("heading", { name: "404", exact: true, level: 1 }))
-            .filter({ visible: true }).evaluateAll(classifyWorkoutViewNodes))),
-          bounded(read(() => page.getByRole("alert").evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK))),
-        ]);
-        if (!active()) return;
-        if (values[0]) Object.assign(diagnostic, values[0]);
-        if (values[1]) diagnostic.category = values[1].count < 0 || values[1].category === "unreadable"
-          ? "unavailable" : validateAlertCategory(values[1].category);
-      };
-      const capture = (request: Request) => {
-        if (!active()) return;
-        try {
-          const base = new URL(baseURL!);
-          const destination = new URL(request.url());
-          if (base.protocol !== "http:" || !["localhost", "127.0.0.1", "[::1]"].includes(base.hostname) ||
-            base.username || base.password || destination.username || destination.password ||
-            current.origin !== base.origin || destination.origin !== base.origin ||
-            !isUuid(target.id) || current.pathname !== `/app/swim/${target.id}` ||
-            destination.pathname !== current.pathname || destination.search !== current.search ||
-            request.method() !== "POST" || !request.headers()["next-action"]) return;
-          if (completionRequest) { invalidate(); return; }
-          completionRequest = request;
-          receipt = bounded(submittedCompletionReceipt(request, target.id)).then((value) => {
-            if (!active()) return;
-            if (!value || value.sessionId !== startedWorkout.session_id || !isUuid(userId)) {
-              invalidate();
-              return;
-            }
-            receiptValidated = true;
-            sampleTransport();
-            return value;
-          });
-          owned.push(receipt);
-        } catch { invalidate(); }
-        sampleTransport();
-      };
-      const sampleReceipt = () => {
-        if (!active() || deadline === undefined || statusClass === null || sampledReceipt || transportInvalid) return;
-        sampledReceipt = true;
-        const sample = (async () => {
-          const paired = await receipt;
-          if (!active() || transportInvalid || !paired) return;
-          const row = await bounded(admin.from("sessions").select("id,user_id,completion_outbox_entry_id,completed_at")
-            .eq("user_id", userId).eq("id", paired.sessionId).abortSignal(controller.signal).retry(false).single());
-          if (!active() || transportInvalid || !row) return;
-          // A different receipt is stale evidence, not this original Finish's outcome.
-          if (row.data?.completion_outbox_entry_id !== paired.receiptId) return;
-          diagnostic.backend = a4ReplayBackend(row.data, row.error, userId, paired.sessionId, paired.receiptId);
-        })().catch(() => undefined);
-        owned.push(sample);
-      };
-      const response = (value: Response) => {
-        if (!active()) return;
-        try {
-          if (!completionRequest || value.request() !== completionRequest) return;
-          if (statusClass !== null || requestFailed) { invalidate(); return; }
-          statusClass = c2HttpClass(value.status());
-          if (statusClass === "unavailable") invalidate();
-        } catch { invalidate(); }
-        sampleTransport();
-        sampleReceipt();
-      };
-      const failed = (request: Request) => {
-        if (!active() || request !== completionRequest) return;
-        if (requestFailed || statusClass !== null) { invalidate(); return; }
-        requestFailed = true;
-        sampleTransport();
-      };
-      try {
-        try {
-          page.on("request", capture);
-          page.on("response", response);
-          page.on("requestfailed", failed);
-        } catch { invalidate(); }
-        await page.getByRole("button", { name: "Finish swim", exact: true }).click();
-        const startedAt = performance.now();
-        const primary = expect(result).toContainText(`${lengths} lengths · 15:00 · RPE 6`);
-        // The original assertion owns its clock; observation reads start only after it.
-        deadline = startedAt + 5000;
-        expiry = setTimeout(() => controller.abort(), Math.max(0, deadline - performance.now()));
-        sampleTransport();
-        owned.push(sampleView().catch(() => undefined));
-        sampleReceipt();
-        await primary;
-      } catch (error) {
-        primaryFailed = true;
-        throw error;
-      } finally {
-        controller.abort();
-        clearTimeout(expiry);
-        try { page.off("request", capture); } catch { transport.result = "unavailable"; }
-        try { page.off("response", response); } catch { transport.result = "unavailable"; }
-        try { page.off("requestfailed", failed); } catch { transport.result = "unavailable"; }
-        if (primaryFailed && pendingViews > 0) {
-          try { await page.close(); } catch { /* Preserve the original assertion error. */ }
-        }
-        await Promise.allSettled(owned);
-        for (const value of [diagnostic, transport]) {
-          try {
-            const annotation = alertAnnotation(value);
-            if (annotation) testInfo.annotations.push(annotation);
-          } catch { /* Diagnostics cannot replace the primary assertion error. */ }
-        }
-      }
-    }
-    await expect(result.getByRole("button", { name: "Edit result", exact: true })).toBeVisible();
+    await expect(result).toContainText(`${lengths} lengths · 15:00 · RPE 6`);
+    await expect(result).toContainText(notes);
+    expect(await prescription.innerText()).toBe(targetText);
     const completed = await lifecycleState(admin, userId);
     const actual = lifecycleActual(completed, target.id);
     expect(actual.session.id === startedWorkout.session_id &&
@@ -2186,7 +1232,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       isDeepStrictEqual(
         [actual.log.swim_result.lengths, actual.log.swim_result.timeMs, actual.log.swim_result.rpe,
           actual.log.swim_result.snapshot, actual.session.notes],
-        [lengths, 900000, 6, target.definition.issued.snapshot, draft!.notes],
+        [lengths, 900000, 6, target.definition.issued.snapshot, notes],
       )).toBe(true);
     const history = completed.history.find((row) => row.workout.id === target.id)!;
     expect(isDeepStrictEqual(history.result, actual.log.swim_result) &&
@@ -2201,20 +1247,18 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       issued.workouts.filter((row) => row.id !== target.id),
     )).toBe(true);
 
-    await page.goto(`/app/swim/${future.id}`);
-    const futureText = await prescription.innerText();
-    // The unstarted UI exposes a skip reason, not result inputs. Do not submit a skip.
-    await page.locator("summary").filter({ hasText: /^Skip swim$/ }).click();
-    await page.getByLabel("Reason", { exact: true }).fill("Synthetic retained future input");
-    const beforeStart = await lifecycleState(admin, userId);
-    await page.getByRole("button", { name: "Start swim", exact: true }).click();
+    await page.goto("/app/swim/setup");
+    await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
+    await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
+    await page.getByLabel("Weeks", { exact: true }).fill("2");
+    const beforeSetup = await lifecycleState(admin, userId);
+    await page.getByRole("button", { name: "Preview plan", exact: true }).click();
     await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toContainText("Review your active limitations before swimming");
     await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toContainText(REGION_LABELS[region]);
-    await expect(page.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();
-    await expect(page.getByLabel("Reason", { exact: true })).toHaveValue("Synthetic retained future input");
-    expect((await prescription.innerText()) === futureText &&
-      isDeepStrictEqual(await lifecycleState(admin, userId), beforeStart) &&
-      isDeepStrictEqual(beforeStart, completed) &&
+    await expect(page.getByLabel("Recent comfortable non-stop lengths", { exact: true })).toHaveValue("4");
+    await expect(page.getByRole("button", { name: "Create swim plan", exact: true })).toHaveCount(0);
+    expect(isDeepStrictEqual(await lifecycleState(admin, userId), beforeSetup) &&
+      isDeepStrictEqual(beforeSetup, completed) &&
       isDeepStrictEqual(await limitations(), restriction) &&
       isDeepStrictEqual(await primary.snapshot(), postLimitationPrimary)).toBe(true);
 

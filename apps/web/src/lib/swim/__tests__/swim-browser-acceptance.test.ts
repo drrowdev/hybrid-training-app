@@ -34,8 +34,8 @@ import {
 import { acceptanceAssert, processFailure, safeFailureCause } from "../../../../scripts/swim-acceptance-errors";
 import * as reporting from "../../../../scripts/swim-acceptance-reporting";
 import {
-  ALERT_ANNOTATION_TYPE, a4ReplayBackend, alertAnnotation, authAbsenceBackend, c2HttpClass, c2Location, c2Transport,
-  classifyAlertNodes, classifyWorkoutViewNodes, projectAlertObservations, readAlertAnnotations, SWIM_ALERT_CODEBOOK, unavailableAlert, validateAlertCategory,
+  ALERT_ANNOTATION_TYPE, alertAnnotation, authAbsenceBackend, c2HttpClass, c2Location, c2Transport,
+  projectAlertObservations, readAlertAnnotations, unavailableAlert,
 } from "../../../../scripts/swim-alert-membership";
 import { parseActualForm, parseSetupForm } from "../forms";
 import { standaloneWeekRequests } from "../model";
@@ -683,7 +683,7 @@ function unavailableObservations(index: number) {
         index === 9 ? [unavailableAlert("c2-auth-absence")] :
           index === 20 ? [unavailableAlert("a3-finish"), unavailableAlert("a3-finish-transport")] :
             index === 21 ? [unavailableAlert("a4-replay"), unavailableAlert("a4-replay-transport")] :
-              index === 24 ? [unavailableAlert("a7-finish"), unavailableAlert("a7-finish-transport")] : [];
+              index === 23 ? [unavailableAlert("a7-finish"), unavailableAlert("a7-finish-transport")] : [];
 }
 
 describe("DC-SW8 failure-only C2 Auth absence", () => {
@@ -1145,257 +1145,13 @@ describe("DC-SW8 passive C2 location and response metadata", () => {
   });
 });
 
-describe("DC-SW7/DC-SW8/DC-SW9 A4 bounded reconnect observations", () => {
-  afterEach(() => vi.useRealTimers());
-  function deferred<T>() {
-    let resolve!: (value: T) => void;
-    let reject!: (error: unknown) => void;
-    const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
-    return { promise, resolve, reject };
-  }
-  async function observe(options: {
-    holdBackend?: boolean; holdViews?: boolean; readError?: boolean; viewError?: boolean;
-    annotationError?: boolean; registrationError?: boolean; detachError?: boolean; category?: string;
-  } = {}) {
-    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
-    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
-    const a4 = source.slice(source.indexOf('test("A4,'));
-    const block = a4.slice(a4.indexOf("let completionRequest:"), a4.indexOf("expect(completionRequest !== undefined)"));
-    const original = new Error("original-ui-error");
-    const privateError = new Error("synthetic-private-query-error");
-    const primary = deferred<void>();
-    const views = deferred<unknown>();
-    const events = new EventEmitter();
-    const unrelated = () => {};
-    for (const event of ["request", "response", "requestfailed"]) events.on(event, unrelated);
-    const entry = { id: receiptId, sessionId };
-    const started = { id: swimFixture().workouts[0]!.id };
-    const userId = "11111111-1111-4111-8111-111111111111";
-    const baseURL = "http://127.0.0.1:3210";
-    const request = (overrides: Partial<{ url: string; method: string; body: string; header: string }> = {}) => ({
-      url: () => overrides.url ?? `${baseURL}/app/swim/${started.id}`,
-      method: () => overrides.method ?? "POST",
-      headers: () => ({ "next-action": overrides.header ?? "synthetic-action" }),
-      postData: () => overrides.body ?? [entry.id, entry.sessionId, started.id].join(","),
-    });
-    const unused = vi.fn(() => { throw privateError; });
-    const response = (paired: unknown, status: unknown = 200) => ({
-      request: () => paired, status: () => status,
-      headers: unused, body: unused, text: unused, json: unused, finished: unused,
-    });
-    let row: unknown = { id: sessionId, user_id: userId, completion_outbox_entry_id: null, completed_at: null };
-    let pendingQueries = 0;
-    const signals: AbortSignal[] = [];
-    const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = new URL(String(input));
-      expect(url.pathname).toBe("/rest/v1/sessions");
-      expect(url.searchParams.get("select")).toBe("id,user_id,completion_outbox_entry_id,completed_at");
-      expect(url.searchParams.get("id")).toBe(`eq.${sessionId}`);
-      expect(url.searchParams.get("user_id")).toBe(`eq.${userId}`);
-      expect(init?.method).toBe("GET");
-      const signal = init?.signal as AbortSignal;
-      signals.push(signal);
-      pendingQueries++;
-      let abort: (() => void) | undefined;
-      try {
-        if (options.holdBackend) await new Promise<void>((_resolve, reject) => {
-          abort = () => reject(new DOMException("Synthetic cancellation", "AbortError"));
-          signal.addEventListener("abort", abort, { once: true });
-          if (signal.aborted) abort();
-        });
-        if (options.readError) throw privateError;
-        return Response.json(row);
-      } finally {
-        if (abort) signal.removeEventListener("abort", abort);
-        pendingQueries--;
-      }
-    });
-    const admin = createClient("http://127.0.0.1:54321", "synthetic-service", {
-      global: { fetch }, auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-    });
-    const evaluateAll = vi.fn(async (classifier: unknown) => {
-      if (options.holdViews) return await views.promise;
-      if (options.viewError) throw privateError;
-      return classifier === classifyWorkoutViewNodes ? { control: "log", result: "editing" } :
-        { count: options.category ? 1 : 0, category: options.category ?? "absent" };
-    });
-    const locator = { or: () => locator, filter: () => locator, evaluateAll };
-    const close = vi.fn(async () => { views.reject(privateError); });
-    const on = vi.fn((event: string, listener: (...args: unknown[]) => void) => {
-      events.on(event, listener);
-      if (options.registrationError && event === "response") throw privateError;
-    });
-    const off = vi.fn((event: string, listener: (...args: unknown[]) => void) => {
-      events.off(event, listener);
-      if (options.detachError) throw privateError;
-    });
-    const toBeVisible = vi.fn(() => primary.promise);
-    const setOffline = vi.fn(async () => {});
-    const testInfo = { annotations: [] as unknown[] };
-    const execute = runInNewContext(transpileModule(`(async () => { ${block} return completionRequest; })`, {
-      compilerOptions: { target: ScriptTarget.ES2022 },
-    }).outputText, {
-      page: { on, off, getByRole: () => locator, close }, context: { setOffline }, admin,
-      userId, entry, started, baseURL, testInfo, expect: () => ({ toBeVisible }),
-      a4ReplayBackend, c2HttpClass, c2Transport, unavailableAlert,
-      alertAnnotation: options.annotationError ? () => { throw privateError; } : alertAnnotation,
-      classifyAlertNodes, classifyWorkoutViewNodes, SWIM_ALERT_CODEBOOK, validateAlertCategory,
-      AbortController, URL, performance, setTimeout, clearTimeout,
-    }) as () => Promise<unknown>;
-    const execution = execute().then((captured) => ({ captured, error: undefined }), (error: unknown) => ({ captured: undefined, error }));
-    await vi.advanceTimersByTimeAsync(0);
-    async function finish(success = false) {
-      if (success) primary.resolve();
-      else primary.reject(original);
-      const outcome = await execution;
-      expect(outcome.error).toBe(success ? undefined : original);
-      expect(toBeVisible).toHaveBeenCalledTimes(1);
-      expect(toBeVisible).toHaveBeenCalledWith();
-      expect(setOffline).toHaveBeenCalledTimes(1);
-      expect(setOffline).toHaveBeenCalledWith(false);
-      expect(signals.length).toBeGreaterThan(0);
-      expect(signals.every((signal) => signal.aborted)).toBe(true);
-      expect(pendingQueries).toBe(0);
-      expect(vi.getTimerCount()).toBe(0);
-      expect(off.mock.calls.map(([event]) => event)).toEqual(["request", "response", "requestfailed"]);
-      for (const event of ["request", "response", "requestfailed"]) expect(events.listeners(event)).toEqual([unrelated]);
-      expect(unused).not.toHaveBeenCalled();
-      const reads = fetch.mock.calls.length + evaluateAll.mock.calls.length;
-      const saved = JSON.stringify(testInfo.annotations);
-      events.emit("request", request());
-      events.emit("response", response(request()));
-      await vi.advanceTimersByTimeAsync(5000);
-      expect(fetch.mock.calls.length + evaluateAll.mock.calls.length).toBe(reads);
-      expect(JSON.stringify(testInfo.annotations)).toBe(saved);
-      expect(saved).not.toMatch(/synthetic-|127\.0\.0\.1|completion_outbox_entry_id|completed_at/);
-      for (const id of [userId, entry.id, entry.sessionId, started.id]) expect(saved).not.toContain(id);
-      return { ...outcome, observations: readAlertAnnotations(testInfo.annotations) };
-    }
-    return {
-      events, request, response, finish, close, fetch, evaluateAll,
-      complete: () => { row = { id: sessionId, user_id: userId, completion_outbox_entry_id: receiptId, completed_at: "2026-09-10T00:00:00Z" }; },
-    };
-  }
-  it.each([
-    ["unseen", "request-unseen"], ["pending", "request-pending"], ["failed", "request-failed"],
-    ["200", "http-2xx"], ["303", "http-3xx"], ["403", "http-4xx"], ["503", "http-5xx"],
-    ["wrong-response", "request-pending"], ["wrong-failure", "request-pending"],
-    ["later-request", "http-4xx"], ["invalid-status", "unavailable"], ["getter-error", "unavailable"],
-  ])("pairs only the captured original request: %s", async (mode, expected) => {
-    const harness = await observe();
-    const original = harness.request();
-    if (mode !== "unseen" && mode !== "getter-error") harness.events.emit("request", original);
-    if (/^\d+$/.test(mode)) harness.events.emit("response", harness.response(original, Number(mode)));
-    if (mode === "failed") harness.events.emit("requestfailed", original);
-    if (mode === "wrong-response") harness.events.emit("response", harness.response(harness.request()));
-    if (mode === "wrong-failure") harness.events.emit("requestfailed", harness.request());
-    if (mode === "later-request") {
-      const later = harness.request();
-      harness.events.emit("request", later);
-      harness.events.emit("response", harness.response(later));
-      harness.events.emit("response", harness.response(original, 403));
-    }
-    if (mode === "invalid-status") harness.events.emit("response", harness.response(original, 0));
-    if (mode === "getter-error") harness.events.emit("request", { url() { throw new Error("synthetic-private-url"); } });
-    const result = await harness.finish(mode === "later-request");
-    expect(result.observations?.[1]).toEqual({ ...unavailableAlert("a4-replay-transport"), result: expected });
-    expect(result.observations?.[0]?.backend).toBe("not-reached");
-    if (mode === "later-request") expect(result.captured).toBe(original);
-  });
-  it.each(["origin", "port", "path", "credentials", "method", "action", "receipt", "session", "workout"])(
-    "does not capture a nonmatching %s", async (mode) => {
-    const harness = await observe();
-    const target = new URL(harness.request().url());
-    if (mode === "origin") target.hostname = "example.invalid";
-    if (mode === "port") target.port = "3211";
-    if (mode === "path") target.pathname = "/app/swim/other";
-    if (mode === "credentials") target.username = "synthetic";
-    const override = {
-      url: target.href, method: mode === "method" ? "GET" : "POST", header: mode === "action" ? "" : "synthetic-action",
-      body: mode === "receipt" ? harness.request().postData().replace(receiptId, "") :
-        mode === "session" ? harness.request().postData().replace(sessionId, "") :
-          mode === "workout" ? `${receiptId},${sessionId}` : harness.request().postData(),
-    };
-    const other = harness.request(override);
-    harness.events.emit("request", other);
-    harness.events.emit("response", harness.response(other));
-    harness.events.emit("requestfailed", other);
-    expect((await harness.finish()).observations?.[1]?.result).toBe("request-unseen");
-  });
-  it.each(["absent", "client-queue", "server-stale", "unclassified"])(
-    "samples independently of category %s for only the original five-second UI window", async (category) => {
-      const harness = await observe({ category });
-      harness.complete();
-      await vi.advanceTimersByTimeAsync(4999);
-      const queries = harness.fetch.mock.calls.length;
-      expect(queries).toBeGreaterThan(1);
-      expect(queries).toBeLessThanOrEqual(8);
-      await vi.advanceTimersByTimeAsync(1);
-      const original = harness.request();
-      harness.events.emit("request", original);
-      harness.events.emit("response", harness.response(original));
-      const result = await harness.finish();
-      expect(harness.fetch).toHaveBeenCalledTimes(queries);
-      expect(result.observations?.[0]).toMatchObject({ category, backend: "reached", control: "log", result: "editing" });
-      expect(result.observations?.[1]?.result).toBe("request-unseen");
-      expect(harness.close).not.toHaveBeenCalled();
-    },
-  );
-  it.each([true, false])("settles a pending SDK read on early UI success=%s without extra sampling", async (success) => {
-    const harness = await observe({ holdBackend: true });
-    const result = await harness.finish(success);
-    expect(result.observations?.[0]?.backend).toBe("unavailable");
-    expect(harness.fetch).toHaveBeenCalledOnce();
-    expect(harness.close).not.toHaveBeenCalled();
-  });
-  it("aborts a pending SDK read at the deadline and closes only failed pending browser reads", async () => {
-    const harness = await observe({ holdBackend: true, holdViews: true });
-    await vi.advanceTimersByTimeAsync(5000);
-    const result = await harness.finish();
-    expect(result.observations?.[0]).toEqual(unavailableAlert("a4-replay"));
-    expect(harness.fetch).toHaveBeenCalledOnce();
-    expect(harness.evaluateAll).toHaveBeenCalledTimes(2);
-    expect(harness.close).toHaveBeenCalledOnce();
-  });
-  it.each(["readError", "viewError", "annotationError", "registrationError", "detachError"] as const)(
-    "preserves the primary error through diagnostic %s", async (failure) => {
-      const harness = await observe({ [failure]: true });
-      const result = await harness.finish();
-      if (failure === "annotationError") expect(result.observations).toEqual([]);
-      if (failure === "readError") {
-        expect(result.observations?.[0]?.backend).toBe("unavailable");
-        expect(harness.fetch).toHaveBeenCalledOnce();
-      }
-      if (failure === "viewError") expect(result.observations?.[0]).toMatchObject({
-        category: "unavailable", control: "unavailable", result: "unavailable",
-      });
-      if (failure === "registrationError" || failure === "detachError") expect(result.observations?.[1]?.result).toBe("unavailable");
-    },
-  );
-});
-
 describe("browser environment and static config", () => {
-  it("B9 DC-SW5/DC-SW7/DC-SW8: preserves accepted B assertions through setup review and decodes actual pinned decision arguments without diagnostics", async () => {
+  it("B9 DC-SW5/DC-SW7/DC-SW8: pins the reviewed current-UI B cohort and decodes actual pinned decision arguments without diagnostics", async () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-decisions-offline-mobile.spec.ts"), "utf8").replaceAll("\r\n", "\n");
     const boundary = source.indexOf('\n  test("B9 ');
     expect(boundary).toBeGreaterThan(0);
-    const displayedPool = 'page.getByTestId("program-pool").getByText("50 m pool", { exact: true })';
-    const currentPrefix = source.slice(source.indexOf("const test ="), boundary).trimEnd();
-    expect(currentPrefix.split(displayedPool)).toHaveLength(3);
-    const prefix = currentPrefix.replaceAll(displayedPool,
-      'page.locator("main > section").first().getByText("50 m", { exact: true })');
-    expect(createHash("sha256").update(prefix).digest("hex"))
-      .toBe("ea601e8fc47c39a76d2e034c904e92643110482d6bf33243f048d4493a25800c");
-    // Only the three required previews and two preview-only refusal/guidance entries differ.
-    const reviewBeforeCreate = /^    await (page|form)\.getByRole\("button", \{ name: "Preview plan", exact: true \}\)\.click\(\);\n(?=    await \1\.getByRole\("button", \{ name: "Create swim plan", exact: true \}\)\.click\(\);)/gm;
-    expect([...prefix.matchAll(reviewBeforeCreate)]).toHaveLength(3);
-    const withoutAddedPreviews = prefix.replace(reviewBeforeCreate, "");
-    const previewOnly = '    await form.getByRole("button", { name: "Preview plan", exact: true }).click();';
-    expect(withoutAddedPreviews.split(previewOnly)).toHaveLength(3);
-    const acceptedPrefix = withoutAddedPreviews.replaceAll(previewOnly,
-      '    await form.getByRole("button", { name: "Create swim plan", exact: true }).click();');
-    expect(createHash("sha256").update(acceptedPrefix).digest("hex"))
-      .toBe("51c38ed42f0e6df46b1c6bab99e1afd8925da372f6994b3865437e56c75988b1");
+    const prefix = source.slice(source.indexOf("const test ="), boundary).trimEnd();
+    expect(createHash("sha256").update(prefix).digest("hex")).toBe("8dcc15a9ffdb57eada16500009d218c4d43648cbd3942691344b5c446f53438a");
     const b9 = source.slice(boundary);
     expect(b9.match(/\btest\("/g)).toHaveLength(1);
     expect(b9).not.toMatch(/annotations|testInfo|alertAnnotation|waitForTimeout|force:\s*true|\.rpc\(/);
@@ -1416,9 +1172,10 @@ describe("browser environment and static config", () => {
     const preview = {
       planId: plan.id, revision: plan.revision, startDate: "2026-09-17",
       dates: workouts.map((row) => ({ id: row.id, revision: row.revision, date: row.scheduled_date })),
+      scheduleRevision: 1, overlaps: [],
     };
     for (const args of [[plan.id, plan.revision, receiptId, "accepted"],
-      [plan.id, plan.revision, preview.startDate], [preview]]) {
+      [plan.id, plan.revision, preview.startDate], [preview, false]]) {
       const encoded = await encodeReply(args);
       expect(typeof encoded).toBe("string");
       expect(isDeepStrictEqual(decode({ postData: () => encoded as string }), args)).toBe(true);
@@ -1674,34 +1431,9 @@ describe("browser environment and static config", () => {
       }
     }
   });
-  it("A6 DC-SW8: the authored Start clicks overlap before either settles", async () => {
-    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
-    const a6 = source.slice(source.indexOf('test("A6,'));
-    const start = a6.indexOf("await Promise.all(pages.map((view) =>");
-    const block = a6.slice(start, a6.indexOf("await Promise.all(pages.map(async (view) =>", start));
-    const calls: number[] = [];
-    const releases: Array<() => void> = [];
-    const pages = [0, 1].map((index) => ({
-      getByRole: (role: string, options: { name: string; exact: boolean }) => {
-        expect([role, options.name, options.exact]).toEqual(["button", "Start swim", true]);
-        return { click: ({ timeout }: { timeout: number }) => {
-          expect(timeout).toBe(5000);
-          calls.push(index);
-          return new Promise<void>((resolve) => releases.push(resolve));
-        } };
-      },
-    }));
-    const execute = runInNewContext(transpileModule(`(async () => { ${block} })`, {
-      compilerOptions: { target: ScriptTarget.ES2022 },
-    }).outputText, { pages }) as () => Promise<void>;
-    const pending = execute();
-    try { expect(calls).toEqual([0, 1]); }
-    finally { for (const release of releases) release(); }
-    await pending;
-  });
   it("A5 DC-SW7: the authored purge navigation waits for destination and removed state before reload", async () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
-    const a5 = source.slice(source.indexOf('test("A5,'), source.indexOf('test("A6,'));
+    const a5 = source.slice(source.indexOf('test("A5,'), source.indexOf('test("A7,'));
     const block = a5.slice(a5.indexOf("await card.click();"), a5.indexOf("expect((await prescription.innerText())"));
     const calls: string[] = [];
     let arrive!: () => void;
@@ -1803,401 +1535,45 @@ describe("browser environment and static config", () => {
     expect(page.reload).toHaveBeenCalledTimes(1);
     expect(calls).toEqual(["click", "destination", "state", "reload", "state"]);
   });
-  it.each(["fast", "unseen", "pending", "failed", "unpaired", "wrong-origin", "wrong-path", "wrong-query",
-    "wrong-method", "missing-action", "wrong-workout", "wrong-session", "invalid-owner", "wrong-receipt",
-    "wrong-row-session", "wrong-row-owner", "null-time", "invalid-time", "held-read", "late-read", "read-error",
-    "duplicate", "duplicate-response", "late-duplicate", "ambiguous", "duplicate-field", "duplicate-root",
-    "held-view", "view-error", "cleanup-error", "click-error", "invalid-status", "response-error",
-    "held-decoder", "held-decoder-success", "fast-success", "held-read-success", "held-view-success"])(
-    "A7 DC-SW7/DC-SW8/DC-SW9: original Finish %s keeps the original assertion and bounded cleanup", async (mode) => {
-      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
-      try {
-        const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
-        const a7 = source.slice(source.indexOf('  test("A7,'));
-        const block = a7.slice(a7.indexOf('    {\n      const diagnostic'),
-          a7.indexOf('    await expect(result.getByRole("button", { name: "Edit result"'));
-        const helper = source.slice(source.indexOf("  async function submittedCompletionReceipt("), source.indexOf('  test("A3,'));
-        const { isUuid } = await import("../../offline/outbox-core");
-        const userId = mode === "invalid-owner" ? "invalid" : "11111111-1111-4111-8111-111111111111";
-        const workoutId = swimFixture().workouts[0]!.id;
-        const baseURL = "http://127.0.0.1:3210";
-        const url = `${baseURL}/app/swim/${workoutId}?synthetic=1`;
-        const installed = createRequire(join(webRoot, "package.json"));
-        vi.stubGlobal("__webpack_require__", { u: vi.fn(() => { throw new Error("Unexpected chunk load."); }) });
-        let encodeReply: (args: unknown[]) => Promise<FormData>;
-        try { ({ encodeReply } = installed("next/dist/compiled/react-server-dom-webpack/client.browser")); }
-        finally { vi.unstubAllGlobals(); }
-        const form = new FormData();
-        form.set("workoutId", mode === "wrong-workout" ? sessionId : workoutId);
-        form.set("sessionId", mode === "wrong-session" ? workoutId : sessionId);
-        form.set("clientLogId", receiptId);
-        if (mode === "duplicate-field") form.append("clientLogId", receiptId);
-        const wire = await encodeReply(mode === "ambiguous" ? [form, form] : [form]);
-        if (mode === "duplicate-root") wire.append("0", '["$K1"]');
-        const encoded = new Response(wire);
-        const body = await encoded.text();
-        const request = {
-          url: () => mode === "wrong-origin" ? url.replace("3210", "3211") :
-            mode === "wrong-path" ? url.replace(workoutId, sessionId) : mode === "wrong-query" ? url.replace("=1", "=2") : url,
-          method: () => mode === "wrong-method" ? "GET" : "POST",
-          headers: () => ({ "next-action": mode === "missing-action" ? "" : "synthetic-action",
-            "content-type": encoded.headers.get("content-type") }),
-          postData: () => body,
-        };
-        const events = new EventEmitter();
-        const unrelated = () => {};
-        for (const event of ["request", "response", "requestfailed"]) events.on(event, unrelated);
-        let rejectPrimary!: (error: Error) => void;
-        let resolvePrimary!: () => void;
-        const primary = new Promise<void>((resolve, reject) => { resolvePrimary = resolve; rejectPrimary = reject; });
-        const originalError = new Error("original-ui-error");
-        const order: string[] = [];
-        const toContainText = vi.fn(() => { order.push("assertion"); return primary; });
-        const signals: AbortSignal[] = [];
-        let releaseRead!: () => void;
-        const lateRead = new Promise<void>((resolve) => { releaseRead = resolve; });
-        const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-          expect(toContainText).toHaveBeenCalledTimes(1);
-          order.push("receipt");
-          const query = new URL(String(input));
-          expect(query.pathname).toBe("/rest/v1/sessions");
-          expect(query.searchParams.get("user_id")).toBe(`eq.${userId}`);
-          expect(query.searchParams.get("id")).toBe(`eq.${sessionId}`);
-          expect(query.searchParams.get("select")).toBe("id,user_id,completion_outbox_entry_id,completed_at");
-          const signal = init!.signal as AbortSignal;
-          signals.push(signal);
-          if (mode.startsWith("held-read")) await new Promise<void>((_, reject) => {
-            signal.addEventListener("abort", () => reject(new Error("synthetic-private-abort")), { once: true });
-          });
-          if (mode === "late-read") await lateRead;
-          if (mode === "read-error") throw new Error("synthetic-private-read");
-          return Response.json({ id: mode === "wrong-row-session" ? workoutId : sessionId,
-            user_id: mode === "wrong-row-owner" ? workoutId : userId,
-            completion_outbox_entry_id: mode === "wrong-receipt" ? workoutId : receiptId,
-            completed_at: mode === "null-time" ? null : mode === "invalid-time" ? "invalid" : "2026-09-10T00:00:00Z" });
-        });
-        const admin = createClient("http://127.0.0.1:54321", "synthetic-service", {
-          global: { fetch }, auth: { autoRefreshToken: false, persistSession: false },
-        });
-        let releaseView!: () => void;
-        const heldView = new Promise<void>((resolve) => { releaseView = resolve; });
-        const evaluateAll = vi.fn(async (classifier: unknown) => {
-          expect(toContainText).toHaveBeenCalledTimes(1);
-          order.push("view");
-          if (mode.startsWith("held-view") || mode === "cleanup-error") await heldView;
-          if (mode === "view-error") throw new Error("synthetic-private-view");
-          return classifier === classifyWorkoutViewNodes ? { control: "log", result: "editing" } :
-            { count: 0, category: "absent" };
-        });
-        const response = {
-          request: () => {
-            if (mode === "response-error") throw new Error("synthetic-private-response");
-            return mode === "unpaired" ? {} : request;
-          },
-          status: () => mode === "invalid-status" ? 0 : 200,
-        };
-        const click = vi.fn(async () => {
-          for (const event of ["request", "response", "requestfailed"]) expect(events.listenerCount(event)).toBe(2);
-          order.push("click");
-          if (mode === "click-error") throw originalError;
-          if (mode === "unseen") return;
-          events.emit("request", request);
-          if (mode === "duplicate") events.emit("request", { ...request });
-          if (mode === "failed") events.emit("requestfailed", request);
-          else if (mode !== "pending") events.emit("response", response);
-          if (mode === "duplicate-response") events.emit("response", response);
-          expect(toContainText).not.toHaveBeenCalled();
-          expect(fetch).not.toHaveBeenCalled();
-          expect(evaluateAll).not.toHaveBeenCalled();
-        });
-        const locator = { or: () => locator, filter: () => locator, evaluateAll, click };
-        const close = vi.fn(async () => {
-          releaseView();
-          if (mode === "cleanup-error") throw new Error("synthetic-private-close");
-        });
-        const testInfo = { annotations: [] as unknown[] };
-        let releaseDecoder!: () => void;
-        const heldDecoder = new Promise<void>((resolve) => { releaseDecoder = resolve; });
-        class DecoderResponse extends Response {
-          override async formData() {
-            if (mode.startsWith("held-decoder")) await heldDecoder;
-            return super.formData();
-          }
-        }
-        const execute = runInNewContext(transpileModule(`${helper}\n(async () => { ${block} })`, {
-          compilerOptions: { target: ScriptTarget.ES2022 },
-        }).outputText, {
-          page: { url: () => url, on: events.on.bind(events), off: events.off.bind(events), getByRole: () => locator, close },
-          admin, userId, baseURL, testInfo, expect: () => ({ toContainText }), result: {}, lengths: 20,
-          target: { id: workoutId }, startedWorkout: { session_id: sessionId },
-          isUuid, a4ReplayBackend, c2HttpClass, c2Transport, unavailableAlert, alertAnnotation,
-          classifyAlertNodes, classifyWorkoutViewNodes, SWIM_ALERT_CODEBOOK, validateAlertCategory,
-          AbortController, URL, Response: DecoderResponse, performance, setTimeout, clearTimeout,
-        }) as () => Promise<void>;
-        const outcome = execute().catch((error: unknown) => error);
-        await vi.advanceTimersByTimeAsync(0);
-        if (mode !== "click-error") {
-          expect(toContainText).toHaveBeenCalledTimes(1);
-          expect(toContainText).toHaveBeenCalledWith("20 lengths · 15:00 · RPE 6");
-          expect(order.slice(0, 2)).toEqual(["click", "assertion"]);
-          expect(evaluateAll).toHaveBeenCalledTimes(2);
-          if (mode === "late-duplicate") events.emit("request", { ...request });
-          if (mode.endsWith("-success")) resolvePrimary();
-          else {
-            await vi.advanceTimersByTimeAsync(5000);
-            rejectPrimary(originalError);
-          }
-        }
-        expect(await outcome).toBe(mode.endsWith("-success") ? undefined : originalError);
-        expect(click).toHaveBeenCalledTimes(1);
-        expect(click).toHaveBeenCalledWith();
-        expect(vi.getTimerCount()).toBe(0);
-        expect(signals.every((signal) => signal.aborted)).toBe(true);
-        expect(close).toHaveBeenCalledTimes(["held-view", "cleanup-error"].includes(mode) ? 1 : 0);
-        for (const event of ["request", "response", "requestfailed"]) expect(events.listeners(event)).toEqual([unrelated]);
-        const observations = readAlertAnnotations(testInfo.annotations)!;
-        expect(observations).toHaveLength(2);
-        expect(observations.map((value) => value.point)).toEqual(["a7-finish", "a7-finish-transport"]);
-        const reached = ["fast", "fast-success", "held-view", "held-view-success", "view-error", "cleanup-error"].includes(mode);
-        expect(observations[0]!.backend).toBe(reached ? "reached" : mode === "null-time" ? "not-reached" : "unavailable");
-        const unseen = ["unseen", "wrong-origin", "wrong-path", "wrong-query", "wrong-method", "missing-action", "click-error"].includes(mode);
-        const invalid = ["held-decoder", "held-decoder-success", "wrong-workout", "wrong-session", "invalid-owner", "duplicate", "duplicate-response", "invalid-status", "response-error",
-          "late-duplicate", "ambiguous", "duplicate-field", "duplicate-root"].includes(mode);
-        expect(observations[1]!.result).toBe(mode === "click-error" ? "unavailable" : unseen ? "request-unseen" : invalid ? "unavailable" :
-          mode === "failed" ? "request-failed" : ["pending", "unpaired"].includes(mode) ? "request-pending" : "http-2xx");
-        expect(fetch).toHaveBeenCalledTimes(unseen || invalid && mode !== "late-duplicate" ||
-          ["pending", "failed", "unpaired"].includes(mode) ? 0 : 1);
-        const saved = JSON.stringify(testInfo.annotations);
-        for (const value of [userId, workoutId, sessionId, receiptId, "synthetic-", "127.0.0.1"]) expect(saved).not.toContain(value);
-        releaseRead();
-        releaseView();
-        releaseDecoder();
-        events.emit("response", response);
-        await vi.advanceTimersByTimeAsync(5000);
-        expect(JSON.stringify(testInfo.annotations)).toBe(saved);
-        expect(evaluateAll).toHaveBeenCalledTimes(mode === "click-error" ? 0 : 2);
-        expect(vi.getTimerCount()).toBe(0);
-      } finally { vi.useRealTimers(); }
-    },
-  );
-  it.each(["fast", "unseen", "pending", "failed", "unpaired", "wrong-origin", "wrong-path",
-    "invalid-pair", "wrong-receipt", "null-time", "invalid-time", "held-read", "read-error", "duplicate"])(
-    "A3 DC-SW7/DC-SW8: original Finish %s observation never gates or replaces the five-second UI goal", async (mode) => {
-      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
-      try {
-        const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
-        const a3 = source.slice(source.indexOf('  test("A3,'));
-        const block = a3.slice(a3.indexOf('    {\n      const diagnostic'), a3.indexOf("    await page.goto(original.url);"));
-        const { isUuid } = await import("../../offline/outbox-core");
-        const userId = "11111111-1111-4111-8111-111111111111";
-        const workoutId = swimFixture().workouts[0]!.id;
-        const baseURL = "http://127.0.0.1:3210";
-        const url = `${baseURL}/app/swim/${workoutId}`;
-        const request = {
-          url: () => mode === "wrong-origin" ? url.replace("3210", "3211") :
-            mode === "wrong-path" ? `${baseURL}/app/swim/${sessionId}` : url,
-          method: () => "POST", headers: () => ({ "next-action": "synthetic-action" }),
-        };
-        const events = new EventEmitter();
-        const unrelated = () => {};
-        for (const event of ["request", "response", "requestfailed"]) events.on(event, unrelated);
-        let rejectPrimary!: (error: Error) => void;
-        const primary = new Promise<void>((_, reject) => { rejectPrimary = reject; });
-        const originalError = new Error("original-ui-error");
-        const toBeVisible = vi.fn(() => primary);
-        const signals: AbortSignal[] = [];
-        const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-          const query = new URL(String(input));
-          expect(query.pathname).toBe("/rest/v1/sessions");
-          expect(query.searchParams.get("user_id")).toBe(`eq.${userId}`);
-          expect(query.searchParams.get("id")).toBe(`eq.${sessionId}`);
-          expect(query.searchParams.get("select")).toBe("id,user_id,completion_outbox_entry_id,completed_at");
-          const signal = init!.signal as AbortSignal;
-          signals.push(signal);
-          if (mode === "held-read") await new Promise<void>((_, reject) => {
-            signal.addEventListener("abort", () => reject(new Error("synthetic-private-abort")), { once: true });
-          });
-          if (mode === "read-error") throw new Error("synthetic-private-read");
-          return Response.json({ id: sessionId, user_id: userId,
-            completion_outbox_entry_id: mode === "wrong-receipt" ? workoutId : receiptId,
-            completed_at: mode === "null-time" ? null : mode === "invalid-time" ? "invalid" : "2026-09-10T00:00:00Z" });
-        });
-        const admin = createClient("http://127.0.0.1:54321", "synthetic-service", {
-          global: { fetch }, auth: { autoRefreshToken: false, persistSession: false },
-        });
-        const evaluateAll = vi.fn(async (classifier: unknown) => classifier === classifyWorkoutViewNodes ?
-          { control: "log", result: "editing" } : { count: 0, category: "absent" });
-        const click = vi.fn(async () => {
-          expect(events.listenerCount("response")).toBe(2);
-          expect(events.listenerCount("requestfailed")).toBe(2);
-          if (mode === "unseen") return;
-          events.emit("request", request);
-          if (mode === "duplicate") events.emit("request", { ...request });
-          if (mode === "failed") events.emit("requestfailed", request);
-          else if (mode !== "pending") events.emit("response", {
-            request: () => mode === "unpaired" ? {} : request, status: () => 200,
-          });
-        });
-        const locator = { or: () => locator, filter: () => locator, evaluateAll, click };
-        const testInfo = { annotations: [] as unknown[] };
-        const execute = runInNewContext(transpileModule(`(async () => { ${block} })`, {
-          compilerOptions: { target: ScriptTarget.ES2022 },
-        }).outputText, {
-          page: { url: () => url, on: events.on.bind(events), off: events.off.bind(events), getByRole: () => locator },
-          admin, userId, baseURL, testInfo, expect: () => ({ toBeVisible }),
-          submittedCompletionReceipt: async () => mode === "invalid-pair" ? undefined : { sessionId, receiptId },
-          isUuid, a4ReplayBackend, c2HttpClass, c2Transport, unavailableAlert, alertAnnotation,
-          classifyAlertNodes, classifyWorkoutViewNodes, SWIM_ALERT_CODEBOOK, validateAlertCategory,
-          AbortController, URL, performance, setTimeout, clearTimeout,
-        }) as () => Promise<void>;
-        const outcome = execute().catch((error: unknown) => error);
-        await vi.advanceTimersByTimeAsync(0);
-        expect(toBeVisible).toHaveBeenCalledTimes(1);
-        expect(toBeVisible).toHaveBeenCalledWith();
-        await vi.advanceTimersByTimeAsync(5000);
-        rejectPrimary(originalError);
-        expect(await outcome).toBe(originalError);
-        expect(click).toHaveBeenCalledTimes(1);
-        expect(click).toHaveBeenCalledWith();
-        expect(vi.getTimerCount()).toBe(0);
-        expect(signals.every((signal) => signal.aborted)).toBe(true);
-        for (const event of ["request", "response", "requestfailed"]) expect(events.listeners(event)).toEqual([unrelated]);
-        const observations = readAlertAnnotations(testInfo.annotations)!;
-        expect(observations).toHaveLength(2);
-        expect(observations[0]!.backend).toBe(mode === "fast" ? "reached" :
-          ["wrong-receipt", "null-time"].includes(mode) ? "not-reached" : "unavailable");
-        expect(fetch).toHaveBeenCalledTimes(["fast", "wrong-receipt", "null-time", "invalid-time", "held-read", "read-error"].includes(mode) ? 1 : 0);
-        const saved = JSON.stringify(testInfo.annotations);
-        for (const value of [userId, workoutId, sessionId, receiptId, "synthetic-", "127.0.0.1"]) expect(saved).not.toContain(value);
-        const reads = evaluateAll.mock.calls.length;
-        events.emit("response", { request: () => request, status: () => 200 });
-        await vi.advanceTimersByTimeAsync(5000);
-        expect(evaluateAll).toHaveBeenCalledTimes(reads);
-        expect(JSON.stringify(testInfo.annotations)).toBe(saved);
-      } finally { vi.useRealTimers(); }
-    },
-  );
-  it("A3 DC-SW7/DC-SW8: original completion pairing decodes pinned FormData and rejects ambiguous or invalid IDs", async () => {
-    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
-    const helper = source.slice(source.indexOf("  async function submittedCompletionReceipt("), source.indexOf('  test("A3,'));
-    const { isUuid } = await import("../../offline/outbox-core");
-    const verify = runInNewContext(transpileModule(`${helper}\nsubmittedCompletionReceipt`, {
-      compilerOptions: { target: ScriptTarget.ES2022 },
-    }).outputText, { Response, isUuid }) as (request: unknown, workout: string) => Promise<unknown>;
-    const installed = createRequire(join(webRoot, "package.json"));
-    expect(installed("next/package.json").version).toBe("16.2.6");
-    expect(installed("react/package.json").version).toBe("19.2.4");
-    vi.stubGlobal("__webpack_require__", { u: vi.fn(() => { throw new Error("Unexpected chunk load."); }) });
-    let encodeReply: (args: unknown[]) => Promise<FormData>;
-    try {
-      ({ encodeReply } = installed("next/dist/compiled/react-server-dom-webpack/client.browser"));
-    } finally { vi.unstubAllGlobals(); }
-    const workoutId = swimFixture().workouts[0]!.id;
-    for (const mode of ["valid", "wrong-workout", "invalid-session", "invalid-receipt", "duplicate",
-      "missing-receipt", "ambiguous", "missing-root", "duplicate-root", "malformed-root", "wrong-reference", "suffix", "file"]) {
-      const form = new FormData();
-      form.set("workoutId", mode === "wrong-workout" ? sessionId : workoutId);
-      form.set("sessionId", mode === "invalid-session" ? "invalid" : sessionId);
-      form.set("clientLogId", mode === "invalid-receipt" ? "invalid" : receiptId);
-      if (mode === "duplicate") form.append("clientLogId", receiptId);
-      if (mode === "missing-receipt") form.delete("clientLogId");
-      if (mode === "file") form.set("clientLogId", new Blob([receiptId]));
-      const transport = await encodeReply(mode === "ambiguous" ? [form, form] : [form]);
-      if (mode === "missing-root") transport.delete("0");
-      if (mode === "duplicate-root") transport.append("0", '["$K1"]');
-      if (mode === "malformed-root") transport.set("0", "not-json");
-      if (mode === "wrong-reference") transport.set("0", '["$K2"]');
-      if (mode === "suffix") transport.append("_2_clientLogId", receiptId);
-      const encoded = new Response(transport);
-      const body = await encoded.text();
-      const result = await verify({
-        postData: () => body, headers: () => ({ "content-type": encoded.headers.get("content-type") }),
-      }, workoutId);
-      expect(result).toEqual(mode === "valid" ? { sessionId, receiptId } : undefined);
-    }
-  });
-  it("A6 DC-SW8: submitted edit proof decodes the pinned browser action encoder and fails closed", async () => {
-    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
-    const helper = source.slice(source.indexOf("  async function submittedEditRevision("), source.indexOf('  test("A5,'));
-    const verify = runInNewContext(transpileModule(`${helper}\nsubmittedEditRevision`, {
-      compilerOptions: { target: ScriptTarget.ES2022 },
-    }).outputText, { Response, expect }) as (request: unknown, workout: string, session: string, revision: number) => Promise<void>;
-    const installed = createRequire(join(webRoot, "package.json"));
-    expect(installed("next/package.json").version).toBe("16.2.6");
-    expect(installed("react/package.json").version).toBe("19.2.4");
-    const loadChunk = vi.fn(() => { throw new Error("Unexpected chunk load."); });
-    vi.stubGlobal("__webpack_require__", { u: loadChunk });
-    let encodeReply: (args: unknown[]) => Promise<FormData>;
-    try {
-      ({ encodeReply } = installed("next/dist/compiled/react-server-dom-webpack/client.browser"));
-    } finally { vi.unstubAllGlobals(); }
-    for (const mode of [
-      "stale", "refreshed", "wrong-workout", "wrong-session", "duplicate", "ambiguous",
-      "missing-root", "duplicate-root", "malformed-root", "wrong-reference", "suffix", "file",
-    ]) {
-      const form = new FormData();
-      form.set("workoutId", mode === "wrong-workout" ? "other-workout" : "synthetic-workout");
-      form.set("sessionId", mode === "wrong-session" ? "other-session" : "synthetic-session");
-      form.set("expectedRevision", mode === "refreshed" ? "4" : "3");
-      if (mode === "duplicate") form.append("expectedRevision", "3");
-      if (mode === "file") form.set("expectedRevision", new Blob(["3"]));
-      const transport = await encodeReply(mode === "ambiguous" ? [form, form] : [form]);
-      expect(transport.get("0")).toBe(mode === "ambiguous" ? '["$K1","$0:0"]' : '["$K1"]');
-      expect(transport.has("_1_workoutId")).toBe(true);
-      if (mode === "missing-root") transport.delete("0");
-      if (mode === "duplicate-root") transport.append("0", '["$K1"]');
-      if (mode === "malformed-root") transport.set("0", "not-json");
-      if (mode === "wrong-reference") transport.set("0", '["$K2"]');
-      if (mode === "suffix") transport.append("_2_expectedRevision", "3");
-      const encoded = new Response(transport);
-      const body = await encoded.text();
-      const result = verify({
-        postData: () => body, headers: () => ({ "content-type": encoded.headers.get("content-type") }),
-      }, "synthetic-workout", "synthetic-session", 3);
-      if (mode === "stale") await expect(result).resolves.toBeUndefined();
-      else await expect(result).rejects.toThrow();
-    }
-    expect(loadChunk).not.toHaveBeenCalled();
-  });
-  it("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4: preserves the accepted twenty-five identities and appends only B9", () => {
+  it("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4: pins the owner-approved twenty-five current-UI identities after retiring A6", () => {
     expect(SWIM_BROWSER_CASES).toEqual([
       {
         file: "e2e/swimming-mobile.spec.ts", describe: "ADR0079 standalone swimming",
-        title: "blockless setup, local progress, offline finish and native history",
+        title: "blockless setup, program navigation and retained native history",
       },
       {
         file: "e2e/swimming-mobile.spec.ts", describe: "ADR0079 standalone swimming",
-        title: "custom pool entry survives validation and compact repeats retain progress",
+        title: "custom pool validation preserves inputs and exact issued repeats across reload",
       },
       {
         file: "e2e/swimming-persistence-mobile.spec.ts",
         describe: "ADR0079 mobile swimming persistence and isolation",
-        title: "DC-SW1/DC-SW8: native course and planned workouts survive reload and a second same-user mobile context",
+        title: "DC-SW1/DC-SW8: read-only course and prescriptions survive reload and a second same-user context",
       },
       {
         file: "e2e/swimming-persistence-mobile.spec.ts",
         describe: "ADR0079 mobile swimming persistence and isolation",
-        title: "DC-SW1/DC-SW8: two mobile users retain distinct usable plans and cannot start or change each other's workouts",
+        title: "DC-SW1/DC-SW8: two mobile users skip only their own workouts and retain foreign read isolation",
       },
       {
         file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
         describe: "ADR0079 mobile swimming lifecycle and regional load",
-        title: "A1, DC-SW7: pause, preview, resume, finish and archive preserve primary training and issued swims",
+        title: "A1, DC-SW7: pause, review, resume, finish and archive preserve retained swims and primary training",
       },
       {
         file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
         describe: "ADR0079 mobile swimming lifecycle and regional load",
-        title: "A2, DC-SW9: native UI completion, edit, trash and recovery replace regional load exactly once",
+        title: "A2, DC-SW9: trash and recovery of retained edited results remove and restore regional load exactly once",
       },
       {
         file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-        describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+        describe: "ADR0079 later-cohort B swimming decisions and retained results",
         title: "B1 DC-SW4/DC-SW5: settled history advances only the unstarted next-week target once",
       },
       {
         file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-        describe: "ADR0079 later-cohort B swimming decisions and offline durability",
-        title: "B2 DC-SW8: native completion survives a committed lost response and replays before another session",
+        describe: "ADR0079 later-cohort B swimming decisions and retained results",
+        title: "B2 DC-SW8: retained completions survive tab reloads and skipping another workout",
       },
       {
         file: "e2e/swimming-account-mobile.spec.ts",
@@ -2221,32 +1597,32 @@ describe("browser environment and static config", () => {
       },
       {
         file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-        describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+        describe: "ADR0079 later-cohort B swimming decisions and retained results",
         title: "B3 DC-SW4/DC-SW5: plateau rejection preserves issued work and decision history",
       },
       {
         file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-        describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+        describe: "ADR0079 later-cohort B swimming decisions and retained results",
         title: "B4 DC-SW4/DC-SW5/DC-K4: missed high-effort work supports a recorded warning override without catch-up",
       },
       {
         file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-        describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+        describe: "ADR0079 later-cohort B swimming decisions and retained results",
         title: "B5 DC-SW4/DC-SW5: missing effort holds the next week without advancing targets",
       },
       {
         file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-        describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+        describe: "ADR0079 later-cohort B swimming decisions and retained results",
         title: "B6 DC-SW1/DC-SW3: a short calibrated budget preserves whole-length workout purpose",
       },
       {
         file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-        describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+        describe: "ADR0079 later-cohort B swimming decisions and retained results",
         title: "B7 DC-SW2/DC-SW3: an impossible calibrated budget creates no plan and can be corrected",
       },
       {
         file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-        describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+        describe: "ADR0079 later-cohort B swimming decisions and retained results",
         title: "B8 DC-SW2/DC-SW3: beginner setup offers learning guidance instead of a workout",
       },
       {
@@ -2262,38 +1638,33 @@ describe("browser environment and static config", () => {
       {
         file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
         describe: "ADR0079 mobile swimming lifecycle and regional load",
-        title: "A3, DC-SW7: replacing an archived swim plan preserves completed history and primary training",
+        title: "A3, DC-SW7: replacing an archived plan preserves retained native history and primary training",
       },
       {
         file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
         describe: "ADR0079 mobile swimming lifecycle and regional load",
-        title: "A4, DC-SW7/DC-SW8/DC-SW9: an offline swim finishes after archival without duplicate history or load",
+        title: "A4, DC-SW7/DC-SW8/DC-SW9: archived late results remain visible across contexts without duplicate history or load",
       },
       {
         file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
         describe: "ADR0079 mobile swimming lifecycle and regional load",
-        title: "A5, DC-SW7/DC-SW9: permanent deletion removes a swim result while retaining its planned target",
+        title: "A5, DC-SW7/DC-SW9: permanent deletion removes a retained edited result while preserving its planned target",
       },
       {
         file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
         describe: "ADR0079 mobile swimming lifecycle and regional load",
-        title: "A6, DC-SW5/DC-SW8/DC-SW9: concurrent starts share one swim and a stale result edit cannot overwrite its saved result",
-      },
-      {
-        file: "e2e/swimming-lifecycle-load-mobile.spec.ts",
-        describe: "ADR0079 mobile swimming lifecycle and regional load",
-        title: "A7, DC-SW7/DC-SW9: a limitation added after start preserves the result and blocks future swimming",
+        title: "A7, DC-SW7/DC-SW9: a new limitation preserves retained results and blocks setup and resume",
       },
       {
         file: "e2e/swimming-decisions-offline-mobile.spec.ts",
-        describe: "ADR0079 later-cohort B swimming decisions and offline durability",
+        describe: "ADR0079 later-cohort B swimming decisions and retained results",
         title: "B9 DC-SW5/DC-SW7/DC-SW8: concurrent reviewed recommendations and dates keep one accepted decision",
       },
     ]);
-    expect(SWIM_BROWSER_CASES).toHaveLength(26);
+    expect(SWIM_BROWSER_CASES).toHaveLength(25);
     const files = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))];
     expect(files).toHaveLength(6);
-    expect(files.map((file) => SWIM_BROWSER_CASES.filter((item) => item.file === file).length)).toEqual([2, 4, 7, 9, 3, 1]);
+    expect(files.map((file) => SWIM_BROWSER_CASES.filter((item) => item.file === file).length)).toEqual([2, 4, 6, 9, 3, 1]);
   });
   it("shares authored errors and the same WeakMap across the pure and reporting entry points", async () => {
     expect(reporting.acceptanceAssert).toBe(acceptanceAssert);
@@ -2323,6 +1694,53 @@ describe("browser environment and static config", () => {
     try { acceptanceAssert.deepEqual("private-actual", "private-expected"); } catch (error) { unlabelled = error; }
     expect(safeFailureCause(unlabelled).classification).toBe("assertion");
     expect(safeFailureCause(new SyntaxError("private-parser")).classification).toBe("parser");
+  });
+  it("DC-SW7/DC-SW8: the authored files declare exactly the approved current-UI inventory", () => {
+    for (const file of new Set(SWIM_BROWSER_CASES.map((item) => item.file))) {
+      const source = readFileSync(join(webRoot, file), "utf8").replaceAll("\r\n", "\n");
+      const expected = SWIM_BROWSER_CASES.filter((item) => item.file === file);
+      expect(source.match(/test\.describe\("([^"]+)"/)?.[1]).toBe(expected[0].describe);
+      expect([...source.matchAll(/\btest\("([^"]+)"/g)].map((match) => match[1]))
+        .toEqual(expected.map((item) => item.title));
+      expect(source).not.toContain('test("A6,');
+      expect(source).not.toContain(".setOffline(");
+    }
+  });
+  it("DC-SW1/DC-SW8: owned skips retain the original shared five-second deadline and foreign isolation", () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-persistence-mobile.spec.ts"), "utf8");
+    const body = source.slice(source.indexOf('test("DC-SW1/DC-SW8: two mobile users'),
+      source.indexOf('test("E1 '));
+    expect(body).toContain('name: "404", exact: true');
+    expect(body).toContain('`${foreignURL}?edit=1`');
+    expect(body).toContain('getByRole("button", { name: "Skip swim", exact: true }).click()');
+    expect(body).toContain("const deadline = performance.now() + 5000;");
+    expect(body).toContain("setTimeout(() => controller.abort(), budget)");
+    expect(body).toContain('.eq("user_id", ownerUserId).eq("id", workout.id).abortSignal(controller.signal)');
+    expect(body).toContain('throw new Error("Could not confirm the owned swim skip.")');
+    expect(body).toContain('}, { timeout: budget }).toBe("skipped")');
+    expect(body).toContain(".toBeVisible({ timeout: remaining })");
+    expect(body).toContain("finally { clearTimeout(expiry); controller.abort(); }");
+    expect(body).toContain("expect(await savedState(admin, foreignUserId)).toEqual(foreignBefore)");
+    expect(body).toContain("expect(await savedState(admin, ownerUserId)).toEqual(skipped)");
+  });
+  it("DC-SW1/DC-SW7/DC-SW9: retained arrangement keeps measurements, load and deletion assertions without claiming logger UI", () => {
+    const mobile = readFileSync(join(webRoot, "e2e/swimming-mobile.spec.ts"), "utf8");
+    expect(mobile).toContain('a[data-kind="swimming"][href="/app/swim?plan=${planId}"]');
+    expect(mobile).toContain("const splits = [{ lengths: 4, timeMs: 135125 }]");
+    expect(mobile).toContain('result.getByText("200 m", { exact: true })');
+    expect(mobile).toContain("expect(await getSwimResult(actor, completed.session_id)).toEqual(retained)");
+    const lifecycle = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
+    for (const [title, end] of [["A2,", "A3,"], ["A3,", "A4,"], ["A4,", "A5,"], ["A5,", "A7,"], ["A7,", null]]) {
+      const start = lifecycle.indexOf(`test("${title}`);
+      const body = lifecycle.slice(start, end ? lifecycle.indexOf(`test("${end}`) : undefined);
+      expect(start).toBeGreaterThan(0);
+      expect(body).toContain("completeRetainedSwim(actor,");
+      expect(body).toContain("await recomputeRegionState(actor, userId, timezone)");
+    }
+    expect(lifecycle).toContain('name: "Delete swim", exact: true');
+    expect(lifecycle).toContain('name: "Recover", exact: true');
+    expect(lifecycle).toContain("expect(await regionRows(admin, userId)).toEqual([])");
+    expect(lifecycle).toContain("isDeepStrictEqual(await primary.snapshot(), primary.initial)");
   });
 
   it("maps only explicit local values with coherent application keys", () => {
@@ -2381,66 +1799,6 @@ describe("browser environment and static config", () => {
       expect(spec).toContain(`test.describe("${item.describe}"`);
       expect(spec).toContain(`test("${item.title}"`);
     }
-  });
-  it("DC-SW7/DC-SW8/DC-SW9: retains hard poll gates and the original A2 UI wait without diagnostic settling", () => {
-    for (const file of ["swimming-lifecycle-load-mobile.spec.ts", "swimming-persistence-mobile.spec.ts"]) {
-      const source = readFileSync(join(webRoot, "e2e", file), "utf8");
-      for (const assertion of [
-        'expect(backendOutcome).not.toBe("error");',
-        'expect(backendOutcome).not.toBe("alert");',
-        'expect(backendOutcome).toBe("backend");',
-        "expect(lateAlertCount).toBe(0);",
-      ]) expect(source).toContain(assertion);
-      expect(source).not.toMatch(/expect\.soft|test\.fail|waitForTimeout/);
-      expect(source).toContain(".evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)");
-      expect(source).toContain(".then(validateAlertCategory");
-      expect(source).toContain("void expired.then(() => controller.abort())");
-    }
-    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
-    const start = source.slice(source.indexOf("const workout = scheduled.workouts[0];")).split('const started =')[0]!;
-    expect(start).toContain('saved?.status === "started" && typeof saved.session_id === "string" && saved.session_id.length > 0');
-    expect(start).toContain("}).toBe(true);");
-    expect(start).toContain('await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();');
-    expect(start).not.toMatch(/setTimeout|deadline|response\.finished|void page|observing|page\.url\(\)|reload\(|waitForTimeout/);
-    const ordered = [
-      'await page.getByRole("link").and(page.locator(`[href="/app/swim/${workout.id}"]`)).click();',
-      'const expected = new URL(`/app/swim/${workout.id}`, baseURL!).href;',
-      "await expect(page).toHaveURL(expected);",
-      'await expect(page.getByRole("button", { name: "Start swim", exact: true })).toBeEnabled();',
-      "const { origin, pathname } = new URL(expected);",
-      "page.waitForRequest(", "page.waitForResponse(",
-      "const transport = Promise.all([requestWaiter, responseWaiter])",
-      'await page.getByRole("button", { name: "Start swim", exact: true }).click();',
-      "await expect.poll(", "}).toBe(true);",
-      'diagnostic.backend = "reached";',
-      "await Promise.allSettled([(async () =>",
-      'await expect(page.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();',
-      "} catch (error) {", "await captureFailureView(diagnostic).catch(() => undefined);", "throw error;",
-      "})(), transport]);",
-      'if (uiOutcome.status === "rejected") throw uiOutcome.reason;',
-      "if (!transportOutcome.value.ok) throw transportOutcome.value.error;",
-      "} finally {", "await Promise.allSettled([requestWaiter, responseWaiter, transport]);",
-      "alertAnnotation(diagnostic)",
-    ];
-    let position = -1;
-    for (const part of ordered) {
-      const next = start.indexOf(part, position + 1);
-      expect(next, part).toBeGreaterThan(position);
-      position = next;
-    }
-    for (const part of [
-      'if (actionRequest || request.method() !== "POST") return false;',
-      "target.origin !== origin || target.pathname !== pathname",
-      '!request.headers()["next-action"]', "actionRequest = request;",
-      "response.request() === actionRequest", 'expect(requestOutcome).toBe("seen");',
-      'expect(responseOutcome.outcome).toBe("seen");', "expect(responseOutcome.paired).toBe(true);",
-      "expect(responseOutcome.status).toBe(200);",
-      '(error: unknown) => ({ ok: false, error } as const)',
-    ]) expect(start).toContain(part);
-    expect(start.match(/timeout: 5000/g)).toHaveLength(2);
-    expect(start.match(/name: "Start swim", exact: true \}\)\.click\(\)/g)).toHaveLength(1);
-    expect(start.slice(start.indexOf("await expect.poll("), start.indexOf('await expect(page.getByRole("link"')))
-      .not.toMatch(/await (transport|requestWaiter|responseWaiter)|timeout:/);
   });
   it("DC-SW7: distinguishes Finish and Archive with owned bounded status confirmation and unchanged preservation checks", () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
@@ -2516,105 +1874,6 @@ describe("browser environment and static config", () => {
     expect(poll.indexOf("if (!active())")).toBeLessThan(poll.indexOf('return "reached"'));
     expect(poll).not.toMatch(/performance\.now\(\) \+|\.update\(|\.insert\(|\.rpc\(|page\.|expect\(|annotations|alertAnnotation/);
   });
-  it("DC-SW9: bounds A2 edit transport, concurrent owned observations and the unchanged UI goal", () => {
-    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
-    const edit = source.slice(source.indexOf('const editDiagnostic = unavailableAlert("a2-edit")'),
-      source.indexOf("const edited = await nativeRows"));
-    const ordered = [
-      'page.locator("#swim-result").evaluate(',
-      "form instanceof HTMLFormElement && form.checkValidity()",
-      "const { origin, pathname } = new URL(page.url());",
-      "page.waitForRequest(",
-      "page.waitForResponse(",
-      'await page.getByRole("button", { name: "Save changes", exact: true }).click();',
-      "const deadline = performance.now() + 5000;",
-      "const polling = (async () =>",
-      "nativeRows(admin, userId, sessionId, controller.signal)",
-      "owned.push(backend);",
-      '.evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK)',
-      "owned.push(alert);",
-      "await Promise.all([backend, alert])",
-      "const requestOutcome = await requestWaiter;",
-      'expect(requestOutcome).toBe("seen");',
-      "const responseOutcome = await responseWaiter;",
-      'expect(responseOutcome.outcome).toBe("seen");',
-      "expect(responseOutcome.paired).toBe(true);",
-      "expect(responseOutcome.status).toBe(200);",
-      "await Promise.race([polling, expired])",
-      'expect(observationOutcome).toBe("backend");',
-      "const remaining = deadline - performance.now();",
-      "expect(remaining).toBeGreaterThan(0);",
-      'await expect(result).toContainText("12 lengths · 10:00 · RPE 8", { timeout: remaining });',
-      "} catch (error) {",
-      "controller.abort();",
-      "await captureFailureView(editDiagnostic).catch(() => undefined);",
-      "throw error;",
-      "} finally {",
-      "controller.abort();",
-      "clearTimeout(editExpiry);",
-      "await Promise.allSettled(owned);",
-      "alertAnnotation(editDiagnostic)",
-    ];
-    let position = -1;
-    for (const part of ordered) {
-      const next = edit.indexOf(part, position + 1);
-      expect(next, part).toBeGreaterThan(position);
-      position = next;
-    }
-    for (const part of [
-      'if (actionRequest || request.method() !== "POST") return false;',
-      "target.origin !== origin || target.pathname !== pathname",
-      '!request.headers()["next-action"]',
-      "actionRequest = request;",
-      "response.request() === actionRequest",
-      'error instanceof errors.TimeoutError ? "timeout"',
-      "const active = () => !controller.signal.aborted && performance.now() < deadline;",
-      "const intervals = [100, 250, 500, 1000];",
-      "if (!active()) return",
-      'sample.logs.length === 1 && log.id === originalLog.id',
-      "log.client_log_id === originalLog.client_log_id",
-      'expect(observationOutcome).not.toBe("backend-read-error");',
-      'expect(observationOutcome).not.toBe("alert-read-error");',
-      'expect(observationOutcome).not.toBe("alert-structural-error");',
-      'expect(observationOutcome).not.toBe("observation-error");',
-      'controller.signal.removeEventListener("abort", finish);',
-    ]) expect(edit).toContain(part);
-    expect(edit.match(/timeout: 5000/g)).toHaveLength(2);
-    expect(edit.match(/performance\.now\(\) \+ 5000/g)).toHaveLength(1);
-    expect(edit).not.toMatch(/\.first\(|reload\(|waitForTimeout|timeout: 0|\.revision\s*=|\.postData|\.text\(|\.json\(|\.allHeaders\(/);
-    const native = source.slice(source.indexOf("async function nativeRows("), source.indexOf("async function regionRows("));
-    expect(native).toContain('signal?: AbortSignal');
-    expect(native).toContain('.eq("user_id", userId).eq("id", sessionId)');
-    expect(native).toContain('expect(session.data.user_id).toBe(userId);');
-    expect(native).toContain("signal ? await Promise.allSettled(reads)");
-    expect(native).toContain(": await Promise.all(reads)");
-    expect(native.slice(native.indexOf('admin.from("cardio_logs")'), native.indexOf("const reads"))).not.toContain("user_id");
-  });
-  it("DC-SW9: captures only after the two failed UI assertions, bounds reads, drains ownership and retains the original errors", () => {
-    const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
-    const a2 = source.slice(source.indexOf('test("A2,'), source.indexOf('test("A3,'));
-    const capture = a2.slice(a2.indexOf("async function captureFailureView"), a2.indexOf("const userId ="));
-    expect(a2.match(/await captureFailureView\(/g)).toHaveLength(2);
-    expect(capture).toContain('diagnostic.category = "unavailable";');
-    expect(capture).toContain('diagnostic.control = "unavailable";');
-    expect(capture).toContain('diagnostic.result = "unavailable";');
-    for (const part of [
-      'testInfo.status === "timedOut"', 'testInfo.status === "interrupted"', "page.isClosed()",
-      "const budget = 1000;",
-      "if (interrupted()) return;",
-      ".filter({ visible: true }).evaluateAll(classifyWorkoutViewNodes).then(",
-      ".evaluateAll(classifyAlertNodes, SWIM_ALERT_CODEBOOK).then(",
-      "count < 0", 'category === "unreadable" ? "unavailable"',
-      "reads.push(view);", "reads.push(alert);", "reads.push(sample);",
-      "setTimeout(() => resolve(undefined), budget)",
-      "if (value && !interrupted() && performance.now() < deadline)",
-      "clearTimeout(expiry);", "if (!settled && reads.length > 0) await page.close().catch(() => undefined);",
-      "await Promise.allSettled(reads);",
-    ]) expect(capture).toContain(part);
-    expect(capture.match(/evaluateAll\(/g)).toHaveLength(2);
-    expect(capture).not.toMatch(/admin\.|nativeRows|savedPlan|\.backend\s*=|\.revision\s*=|annotations\.push|\.first\(|\.click\(|\.reload\(|waitForTimeout|\.textContent|\.allTextContents|\.url\(|screenshot/);
-    expect(a2).not.toMatch(/setTimeout.*5000|response\.finished|test\.setTimeout|test\.skip|\.first\(/);
-  });
   it("DC-SW9 A7 uses the already-proven genuine-positive alert at both safety rejections", () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
     const a7 = source.slice(source.indexOf('test("A7,'));
@@ -2654,26 +1913,12 @@ describe("browser environment and static config", () => {
   });
 });
 
-describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 strict twenty-six-case acceptance ledger", () => {
+describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 strict twenty-five-case acceptance ledger", () => {
   function originalReport(count = 18) {
     const fixture = report();
-    const b9 = fixture.suites[3]!.suites[0]!.specs.splice(8);
-    expect(b9.map((spec) => spec.title)).toEqual(SWIM_BROWSER_CASES.slice(25).map((item) => item.title));
-    if (count <= 24) {
-      const a7 = fixture.suites[2]!.suites[0]!.specs.splice(6);
-      expect(a7.map((spec) => spec.title)).toEqual(SWIM_BROWSER_CASES.slice(24, 25).map((item) => item.title));
-    }
-    if (count <= 22) {
-      const appended = fixture.suites[2]!.suites[0]!.specs.splice(4);
-      expect(appended.map((spec) => spec.title)).toEqual(SWIM_BROWSER_CASES.slice(22, 24).map((item) => item.title));
-    }
-    if (count <= 20) {
-      const lifecycle = fixture.suites[2]!.suites[0]!.specs.splice(2);
-      expect(lifecycle.map((spec) => spec.title)).toEqual(SWIM_BROWSER_CASES.slice(20, 22).map((item) => item.title));
-    }
-    if (count <= 18) {
-      const removed = fixture.suites[1]!.suites[0]!.specs.splice(2);
-      expect(removed.map((spec) => spec.title)).toEqual(SWIM_BROWSER_CASES.slice(18, 20).map((item) => item.title));
+    const titles = new Set<string>(SWIM_BROWSER_CASES.slice(0, count).map((item) => item.title));
+    for (const file of fixture.suites) for (const suite of file.suites) {
+      suite.specs = suite.specs.filter((spec) => titles.has(spec.title));
     }
     return fixture;
   }
@@ -2689,7 +1934,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
     fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!.stdout = [{ text: "private-payload" }];
     const ledger = validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot);
     expect(ledger).toEqual({
-      success: true, counts: { expected: 26, unexpected: 0, flaky: 0, skipped: 0 },
+      success: true, counts: { expected: 25, unexpected: 0, flaky: 0, skipped: 0 },
       cases: SWIM_BROWSER_CASES.map((item) => ({ ...item, status: "passed", attempts: 1, durationMs: 1 })),
     });
     expect(JSON.stringify(ledger)).not.toContain("private-payload");
@@ -2789,80 +2034,80 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
     expectOriginalCohort(fixture, 20);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
-  it("rejects the accepted original-twenty-two report by removing only A5/A6/A7", () => {
+  it("rejects the accepted original-twenty-two report by removing only A5/A7", () => {
     const fixture = originalReport(22);
     fixture.stats.expected = 22;
     expect(fixture.suites).toHaveLength(6);
     expectOriginalCohort(fixture, 22);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
-  it("rejects the accepted original-twenty-four report by removing only A7", () => {
+  it("rejects a truncated twenty-three-case report without A7 and B9", () => {
+    const fixture = originalReport(23);
+    fixture.stats.expected = 23;
+    expect(fixture.suites).toHaveLength(6);
+    expectOriginalCohort(fixture, 23);
+    expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
+  });
+  it("rejects a truncated twenty-four-case report without B9", () => {
     const fixture = originalReport(24);
     fixture.stats.expected = 24;
     expect(fixture.suites).toHaveLength(6);
     expectOriginalCohort(fixture, 24);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
-  it("rejects the accepted original-twenty-five report without B9", () => {
-    const fixture = originalReport(25);
-    fixture.stats.expected = 25;
-    expect(fixture.suites).toHaveLength(6);
-    expectOriginalCohort(fixture, 25);
-    expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
-  });
-  it("rejects a duplicate B8 in place of B9 even with twenty-six results", () => {
+  it("rejects a duplicate B8 in place of B9 even with twenty-five results", () => {
     const fixture = report();
     fixture.suites[3]!.suites[0]!.specs[8]!.title = SWIM_BROWSER_CASES[17]!.title;
     expect(rejectedReport(fixture).success).toBe(false);
   });
-  it.each([20, 21, 22, 23, 24].flatMap((missing) =>
-    [4, 5, 20, 21, 22, 23, 24].filter((replacement) => replacement !== missing).map((replacement) => [missing, replacement]),
-  ))("rejects missing A casebook index %d replaced by %d with twenty-six results", (missing, replacement) => {
+  it.each([20, 21, 22, 23].flatMap((missing) =>
+    [4, 5, 20, 21, 22, 23].filter((replacement) => replacement !== missing).map((replacement) => [missing, replacement]),
+  ))("rejects missing A casebook index %d replaced by %d with twenty-five results", (missing, replacement) => {
     const fixture = report();
     const suite = fixture.suites[2]!.suites[0]!;
     const spec = suite.specs.find((item) => item.title === SWIM_BROWSER_CASES[missing]!.title)!;
     spec.title = SWIM_BROWSER_CASES[replacement]!.title;
-    expect(suite.specs).toHaveLength(7);
+    expect(suite.specs).toHaveLength(6);
     expect(fixture.suites).toHaveLength(6);
-    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(26);
+    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(25);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
   it.each([18, 19].flatMap((missing) =>
     [2, 3, 18, 19].filter((replacement) => replacement !== missing).map((replacement) => [missing, replacement]),
-  ))("rejects missing E casebook index %d replaced by %d with twenty-six results", (missing, replacement) => {
+  ))("rejects missing E casebook index %d replaced by %d with twenty-five results", (missing, replacement) => {
     const fixture = report();
     const suite = fixture.suites[1]!.suites[0]!;
     const spec = suite.specs.find((item) => item.title === SWIM_BROWSER_CASES[missing]!.title)!;
     spec.title = SWIM_BROWSER_CASES[replacement]!.title;
     expect(suite.specs).toHaveLength(4);
     expect(fixture.suites).toHaveLength(6);
-    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(26);
+    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(25);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
-  it.each([0, 1])("does not substitute account case %d for missing C3 even with twenty-six results", (index) => {
+  it.each([0, 1])("does not substitute account case %d for missing C3 even with twenty-five results", (index) => {
     const fixture = report();
     const suite = fixture.suites[4]!.suites[0]!;
     suite.specs[2] = suite.specs[index]!;
-    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(26);
+    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(25);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
-  it("does not substitute another C case for missing D even with twenty-six results", () => {
+  it("does not substitute another C case for missing D even with twenty-five results", () => {
     const fixture = report();
     fixture.suites.pop();
     fixture.suites[4]!.suites[0]!.specs.push(fixture.suites[4]!.suites[0]!.specs[0]!);
-    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(26);
+    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(25);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
   it.each([12, 13, 14, 15, 16, 17].flatMap((missing) =>
     [6, 7, 12, 13, 14, 15, 16, 17].filter((replacement) => replacement !== missing).map((replacement) => [missing, replacement]),
-  ))("rejects missing casebook index %d replaced by %d with twenty-six results", (missing, replacement) => {
+  ))("rejects missing casebook index %d replaced by %d with twenty-five results", (missing, replacement) => {
     const fixture = report();
     const suite = fixture.suites[3]!.suites[0]!;
     const spec = suite.specs.find((item) => item.title === SWIM_BROWSER_CASES[missing]!.title)!;
     spec.title = SWIM_BROWSER_CASES[replacement]!.title;
     expect(suite.specs).toHaveLength(9);
     expect(fixture.suites).toHaveLength(6);
-    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(26);
+    expect(fixture.suites.flatMap((file) => file.suites[0]!.specs)).toHaveLength(25);
     expect(rejectedReport(fixture)).toEqual({ success: false, code: "browser-report-schema" });
   });
   it.each(SWIM_BROWSER_CASES)("requires $title exactly once with no retry, skip or error", (item) => {
@@ -3014,10 +2259,10 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
   it.each(["\n", "\r\n"])("projects bounded allowlisted callers and only the known private boolean comparison with %j endings", (ending) => {
     const file = "e2e/swimming-decisions-offline-mobile.spec.ts";
     const source = readFileSync(join(webRoot, file), "utf8").replaceAll("\r\n", "\n").split("\n").join(ending);
-    expect(source.split("\n")[71])
+    expect(source.split("\n")[72])
       .toContain('expect(isDeepStrictEqual(actual, expected), "Private fixture comparison").toBe(true)');
     const stack = "Error: Private fixture comparison\n\nexpect(received).toBe(expected) // Object.is equality\n\n" +
-      `Expected: true\nReceived: false\n\n    at same (${join(webRoot, file)}:72:3)\n` +
+      `Expected: true\nReceived: false\n\n    at same (${join(webRoot, file)}:73:3)\n` +
       `    at ${join(webRoot, file)}:240:7\n    at ${join(webRoot, file)}:241:8\n` +
       `    at ${join(webRoot, file)}:242:9\n`;
     expect(projectStackAttribution([stack], webRoot)).toEqual({
@@ -3029,9 +2274,9 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
     const fixture = report();
     const result = fixture.suites[0]!.suites[0]!.specs[0]!.tests[0]!.results[0]!;
     result.status = "failed";
-    Object.assign(result, { errors: [{ stack, location: { file: join(webRoot, file), line: 72, column: 3 } }] });
+    Object.assign(result, { errors: [{ stack, location: { file: join(webRoot, file), line: 73, column: 3 } }] });
     const projection = rejectedReport(fixture);
-    expect(projection.cases?.[0]?.attributedSources).toEqual([{ source: "swimming-decisions-offline-mobile", line: 72 }]);
+    expect(projection.cases?.[0]?.attributedSources).toEqual([{ source: "swimming-decisions-offline-mobile", line: 73 }]);
     expect(projection.cases?.[0]?.failureDetails).toEqual(projectStackAttribution([stack], webRoot));
     Object.assign(result, { error: { stack }, errors: [] });
     expect(rejectedReport(fixture).cases?.[0]?.failureDetails).toEqual(projectStackAttribution([stack], webRoot));
@@ -3043,7 +2288,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
       expect(JSON.stringify(details)).not.toContain("secret-token");
     }
     expect(projectStackAttribution([stack, stack], webRoot).actual).toBe("unavailable");
-    const oldLine = projectStackAttribution([stack.replace(":72:3", ":71:3")], webRoot);
+    const oldLine = projectStackAttribution([stack.replace(":73:3", ":72:3")], webRoot);
     expect(oldLine).toMatchObject({ assertion: "unavailable", expected: "unavailable", actual: "unavailable" });
   });
   it("drops unallowlisted, malformed, oversized and secret-like stack payloads", () => {
@@ -3255,7 +2500,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
         }
         it.each(["valid", "reversed", "missing", "duplicate", "conflicting", "extra", "unknown-point",
           "cross-field", "extra-key", "oversized", "over-cap"])(
-          "projects A7 %s only at index24 without changing its failed result or the frozen ledger", (mode) => {
+          "projects A7 %s only at index23 without changing its failed result or the frozen ledger", (mode) => {
             const values = [
               { ...unavailableAlert("a7-finish"), backend: "reached" as const, category: "client-queue" as const,
                 control: "log" as const, result: "editing" as const },
@@ -3275,12 +2520,12 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
             for (const index of SWIM_BROWSER_CASES.keys()) {
               caseTest(fixture, index).results[0]!.annotations = supplied;
             }
-            caseTest(fixture, 24).results[0]!.status = "failed";
+            caseTest(fixture, 23).results[0]!.status = "failed";
             const projection = rejectedReport(fixture);
             expect(projection.code).toBe("browser-failed");
-            expect(projection.cases?.[24]?.status).toBe("failed");
+            expect(projection.cases?.[23]?.status).toBe("failed");
             expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual(
-              SWIM_BROWSER_CASES.map((_, index) => index !== 24 ? unavailableObservations(index) :
+              SWIM_BROWSER_CASES.map((_, index) => index !== 23 ? unavailableObservations(index) :
                 ["valid", "reversed"].includes(mode) ? values :
                   mode === "missing" ? [unavailableAlert("a7-finish"), values[1]] : unavailableObservations(index)),
             );
@@ -3354,7 +2599,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
               Object.assign(result, { status: "failed", annotations });
               const projection = rejectedReport(fixture);
               expect(projection.code).toBe("browser-failed");
-              expect(projection.cases).toHaveLength(26);
+              expect(projection.cases).toHaveLength(25);
               expect(projection.cases?.[21]).toMatchObject({
                 status: "failed", alertObservations: unavailableObservations(21).map((item) =>
                   index === 0 && item.point === point ? value : item),
@@ -3374,7 +2619,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
             caseTest(fixture, 9).results[0]!.status = "failed";
             const projection = rejectedReport(fixture);
             expect(projection.code).toBe("browser-failed");
-            expect(projection.cases).toHaveLength(26);
+            expect(projection.cases).toHaveLength(25);
             expect(projection.cases?.[9]?.status).toBe("failed");
             expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual(
               SWIM_BROWSER_CASES.map((_, index) => index === 9 ? [value] : unavailableObservations(index)),
@@ -3421,10 +2666,10 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
           }
           const projection = rejectedReport(fixture);
           expect(projection.code).toBe("browser-failed");
-          expect(projection.cases).toHaveLength(26);
+          expect(projection.cases).toHaveLength(25);
           expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual([
             [], [], [], observations.slice(0, 2), [observations[2]], observations.slice(3), [], [], [],
-            [unavailableAlert("c2-auth-absence")], [], [], [], [], [], [], [], [], [], [],                         unavailableObservations(20), unavailableObservations(21), [], [], unavailableObservations(24), [],
+            [unavailableAlert("c2-auth-absence")], [], [], [], [], [], [], [], [], [], [],                         unavailableObservations(20), unavailableObservations(21), [], unavailableObservations(23), [],
           ]);
           expect(projection.cases?.map(({ file, describe, title }) => ({ file, describe, title }))).toEqual(SWIM_BROWSER_CASES);
         });
@@ -3464,7 +2709,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
             Object.assign(result, { annotations });
             const projection = rejectedReport(fixture);
             expect(projection).toMatchObject({ success: false, code: "browser-failed", counts: fixture.stats });
-            expect(projection.cases).toHaveLength(26);
+            expect(projection.cases).toHaveLength(25);
             expect(projection.cases?.[5]?.status).toBe("failed");
             expect(projection.cases?.[5]?.alertObservations).toEqual(unavailableObservations(5));
             expect(JSON.stringify(projection)).not.toContain("private-");
@@ -3499,7 +2744,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
           Object.assign(result, { annotations });
           const projection = rejectedReport(fixture);
           expect(projection).toMatchObject({ success: false, code: "browser-failed", counts: fixture.stats });
-          expect(projection.cases).toHaveLength(26);
+          expect(projection.cases).toHaveLength(25);
           expect(projection.cases?.[4]?.status).toBe("failed");
           expect(projection.cases?.[4]?.alertObservations).toEqual([unavailableAlert("a1-pause")]);
           expect(JSON.stringify(projection)).not.toContain("private-");
@@ -3530,7 +2775,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
             }
             const projection = rejectedReport(fixture);
             expect(projection.code).toBe("browser-failed");
-            expect(projection.cases).toHaveLength(26);
+            expect(projection.cases).toHaveLength(25);
             expect(projection.cases?.map(({ alertObservations }) => alertObservations)).toEqual(
               SWIM_BROWSER_CASES.map((_, index) => valid && index === 4 ? [observations[2]] : unavailableObservations(index)),
             );
@@ -3554,7 +2799,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
             if (mode === "error") result.errors = [{ message: "private" }];
             const projection = rejectedReport(fixture);
             expect(projection.code).toBe("browser-failed");
-            expect(projection.cases).toHaveLength(26);
+            expect(projection.cases).toHaveLength(25);
             expect(projection.cases?.[4]?.alertObservations).toEqual(
               mode === "retry" ? [unavailableAlert("a1-pause")] : [observations[2]],
             );

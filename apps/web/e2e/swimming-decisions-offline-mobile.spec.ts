@@ -21,8 +21,9 @@ import {
   type SwimWorkoutInput,
 } from "../src/lib/swim/storage";
 import { parseSetupForm } from "../src/lib/swim/forms";
-import { MAX_REPLAY_ATTEMPTS, sortBySeq, type OutboxEntry } from "../src/lib/offline/outbox-core";
+import { completeRetainedSwim } from "./fixtures/swim-retained";
 import { openSwimProgramActions } from "./fixtures/swim-navigation";
+import { loadTrainingSchedule } from "../src/lib/schedule/storage";
 const test = seededTest.extend<{ actor: SupabaseClient }>({
   seedConfig: async ({ baseURL }, use) => {
     if (!swimE2EEnabled(process.env) || process.env.E2E_SWIM_LOCAL !== "1" ||
@@ -112,31 +113,6 @@ async function arrangePlan(client: SupabaseClient, today: string) {
   });
 }
 
-async function queueRows(page: Page): Promise<OutboxEntry[]> {
-  const rows = await page.evaluate(() => new Promise<OutboxEntry[]>((resolve, reject) => {
-    const open = indexedDB.open("hta-offline", 1);
-    // Observation must never create or repair the application's outbox.
-    open.onupgradeneeded = () => open.transaction?.abort();
-    open.onerror = () => reject(new Error("Native outbox unavailable."));
-    open.onsuccess = () => {
-      const db = open.result;
-      const failed = () => { db.close(); reject(new Error("Native outbox read failed.")); };
-      try {
-        const tx = db.transaction("outbox", "readonly");
-        const request = tx.objectStore("outbox").getAll();
-        tx.oncomplete = () => { db.close(); resolve(request.result as OutboxEntry[]); };
-        tx.onerror = failed;
-        tx.onabort = failed;
-      } catch { failed(); }
-    };
-  }));
-  return sortBySeq(rows);
-}
-
-function durable(entries: OutboxEntry[]) {
-  return entries.map(({ id, op, sessionId, seq, createdAt, payload }) => ({ id, op, sessionId, seq, createdAt, payload }));
-}
-
 async function observeCompletionRows(client: SupabaseClient, userId: string, workoutId: string, sessionId: string) {
   const [workout, session, logs] = await Promise.all([
     client.from("swim_workouts").select("*").eq("user_id", userId).eq("id", workoutId).single(),
@@ -160,24 +136,6 @@ function assertCompletionRows(
 
 async function completionRows(client: SupabaseClient, userId: string, workoutId: string, sessionId: string) {
   return assertCompletionRows(await observeCompletionRows(client, userId, workoutId, sessionId), sessionId);
-}
-
-function committed(rows: Awaited<ReturnType<typeof completionRows>>, entry: OutboxEntry) {
-  expect(rows.workout.status).toBe("completed");
-  expect(typeof rows.session.completed_at === "string").toBe(true);
-  same(rows.session.completion_outbox_entry_id, entry.id);
-  expect(rows.logs).toHaveLength(1);
-  const log = rows.logs[0];
-  same(log.client_log_id, entry.id);
-  same(log.session_id, entry.sessionId);
-  same(log.swim_result.snapshot, rows.workout.definition.issued.snapshot);
-  expect(log.swim_result.lengths).toBe(Number(entry.payload.lengths));
-  expect(log.swim_result.timeMs).toBe(Number(entry.payload.timeMs));
-  expect(log.swim_result.rpe).toBe(Number(entry.payload.rpe));
-  expect(log.swim_result.completion).toBe("completed");
-  expect(log.duration_sec).toBe(Number(entry.payload.timeMs) / 1000);
-  expect(rows.session.duration_min).toBe(Number(entry.payload.timeMs) / 60000);
-  expect(Number(rows.session.session_rpe)).toBe(Number(entry.payload.rpe));
 }
 
 async function budgetSetup(page: Page, times?: readonly [string, string]) {
@@ -256,7 +214,7 @@ function assertSetupWorkouts(
   expect(audit.kind).toBe("setup");
   expect(audit.decision).toBe("accepted");
   expect(isDeepStrictEqual(audit.inputSnapshot, {
-    ...preview.input, strengthContext: { blockId: null, sessions: [] }, versions: preview.generated.versions,
+    ...preview.input, versions: preview.generated.versions,
   })).toBe(true);
   const generated = generateSwimPlan({
     setup: definition.setup, calibration: plan.state.acceptedCalibration,
@@ -317,7 +275,7 @@ function assertSetupWorkouts(
   }
 }
 
-test.describe("ADR0079 later-cohort B swimming decisions and offline durability", () => {
+test.describe("ADR0079 later-cohort B swimming decisions and retained results", () => {
   test.use({ viewport: { width: 375, height: 812 }, isMobile: false, hasTouch: true });
   test.skip(!swimE2EEnabled(process.env), "Blocked: swimming E2E was not explicitly requested.");
 
@@ -422,7 +380,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     same(await saved(actor, created.plan.id), after);
   });
 
-  test("B2 DC-SW8: native completion survives a committed lost response and replays before another session", async ({
+  test("B2 DC-SW8: retained completions survive tab reloads and skipping another workout", async ({
     page, context, freshUser, seedConfig, baseURL, actor,
   }) => {
     await signInAs(context, freshUser, seedConfig, baseURL!);
@@ -437,227 +395,57 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     expect(plans).toHaveLength(1);
     const workouts = await listSwimWorkouts(actor, plans[0].id);
     expect(workouts).toHaveLength(4);
-    const secondPage = await context.newPage();
-    const pages = [page, secondPage];
-    for (const [index, tab] of pages.entries()) {
-      await tab.goto(`/app/swim/${workouts[index].id}`);
-      await tab.getByRole("button", { name: "Start swim", exact: true }).click();
-      await expect(tab.getByRole("link", { name: "Log swim", exact: true })).toBeVisible();
-      await tab.getByLabel("Whole lengths", { exact: true }).fill(String(workouts[index].definition.issued.totalLengths));
-      await tab.getByLabel("Time · min:sec", { exact: true }).fill(index === 0 ? "20:00" : "21:00");
-      await tab.getByRole("radio", { name: "5 easy", exact: true }).click();
+    const completions = [];
+    for (const [index, workout] of workouts.slice(0, 2).entries()) {
+      const completed = await completeRetainedSwim(actor, workout, { timeMs: (20 + index) * 60000, rpe: 5 });
+      const rows = await completionRows(actor, freshUser.userId, workout.id, completed.session_id);
+      expect(rows.workout.status).toBe("completed");
+      expect(typeof rows.session.completed_at).toBe("string");
+      expect(rows.logs).toHaveLength(1);
+      const log = rows.logs[0];
+      same([log.client_log_id, log.session_id], [rows.session.completion_outbox_entry_id, completed.session_id]);
+      same(log.swim_result.snapshot, workout.definition.issued.snapshot);
+      same([log.swim_result.lengths, log.swim_result.timeMs, log.swim_result.rpe, log.swim_result.completion],
+        [workout.definition.issued.totalLengths, (20 + index) * 60000, 5, "completed"]);
+      same([log.duration_sec, rows.session.duration_min, Number(rows.session.session_rpe)],
+        [(20 + index) * 60, 20 + index, 5]);
+      completions.push(rows);
     }
-    const started = (await listSwimWorkouts(actor, plans[0].id)).slice(0, 2);
-    expect(started.every((row) => row.status === "started" && !!row.session_id)).toBe(true);
-    expect(new Set(started.map((row) => row.session_id)).size).toBe(2);
-    await context.setOffline(true);
-    for (const tab of pages) {
-      await tab.getByRole("button", { name: "Finish swim", exact: true }).click();
-      await expect(tab.getByRole("button", { name: "Waiting to sync", exact: true })).toBeDisabled();
-      await expect(tab.getByRole("button", { name: "Edit result", exact: true })).toHaveCount(0);
-    }
-    const original = await queueRows(secondPage);
-    expect(original).toHaveLength(2);
-    expect(new Set(original.map((row) => row.id)).size).toBe(2);
-    expect(original[0].seq).toBeLessThan(original[1].seq);
-    for (const [index, entry] of original.entries()) {
-      expect(entry.op).toBe("swim_complete");
-      same([entry.sessionId, entry.payload.sessionId, entry.payload.workoutId],
-        [started[index].session_id, started[index].session_id, started[index].id]);
-      expect(entry.attempts).toBe(0);
-      expect(entry.leaseToken).toBeUndefined();
-      const rows = await completionRows(actor, freshUser.userId, started[index].id, entry.sessionId);
-      expect(rows.workout.status).toBe("started");
-      expect(rows.session.completed_at).toBeNull();
-      expect(rows.session.completion_outbox_entry_id).toBeNull();
-      expect(rows.logs).toHaveLength(0);
-    }
-    same(durable(await queueRows(page)), durable(original));
-
-    type RequestObservation = { ordinal: number; identityMatches: boolean };
-    type CompletionObservation = RequestObservation & {
-      rows: Awaited<ReturnType<typeof observeCompletionRows>>;
-    };
-    function assertRequest(observation: RequestObservation) {
-      expect(observation.ordinal).toBeLessThanOrEqual(3);
-      expect(observation.identityMatches, "Owned native completion request identity").toBe(true);
-    }
-    const lost = Promise.withResolvers<CompletionObservation | Error>();
-    const replayArrived = Promise.withResolvers<CompletionObservation | Error>();
-    const allowReplay = Promise.withResolvers<void>();
-    const subsequentArrived = Promise.withResolvers<RequestObservation & {
-      queue: OutboxEntry[]; head: Awaited<ReturnType<typeof observeCompletionRows>>;
-    } | Error>();
-    const allowSubsequent = Promise.withResolvers<void>();
-    const drained = Promise.withResolvers<CompletionObservation | Error>();
-    const failed = Promise.withResolvers<Error>();
-    let handlerFailure: Error | undefined;
-    let stopping = false;
-    let cleanupFailed = false;
-    let primaryFailure: unknown;
-    let bodyFailed = false;
-    function failHandler() {
-      handlerFailure ??= new Error("B2 owned completion route failed.");
-      failed.resolve(handlerFailure);
-    }
-    async function checked<T>(pending: Promise<T | Error>): Promise<T> {
-      const result = await Promise.race([pending, failed.promise]);
-      if (handlerFailure) throw handlerFailure;
-      if (result instanceof Error) throw result;
-      return result;
-    }
-    let sends = 0;
-    const ownedPaths = new Set(started.map((row) => `/app/swim/${row.id}`));
-    await context.route((url) => url.origin === new URL(baseURL!).origin && ownedPaths.has(url.pathname), async (route) => {
-      let settled = false;
-      async function abort() {
-        if (!settled) {
-          await route.abort("failed");
-          settled = true;
-        }
-      }
-      try {
-        if (stopping || handlerFailure) { await abort(); return; }
-        const request = route.request();
-        if (request.method() !== "POST") {
-          await route.continue();
-          settled = true;
-          return;
-        }
-        const ordinal = ++sends;
-        const entry = original[ordinal === 3 ? 1 : 0];
-        // The caller URL can be the OTHER workout. Identify the queued action by its native IDs.
-        const body = request.postData() ?? "";
-        const identityMatches = !!request.headers()["next-action"] &&
-          [entry.id, entry.sessionId, entry.payload.workoutId].every((id) => body.includes(id));
-        if (ordinal > 3 || !identityMatches) {
-          failHandler();
-          await abort();
-          return;
-        }
-        if (ordinal === 3) {
-          const queue = await queueRows(secondPage);
-          const head = await observeCompletionRows(actor, freshUser.userId, started[0].id, original[0].sessionId);
-          subsequentArrived.resolve({ ordinal, identityMatches, queue, head });
-          await allowSubsequent.promise;
-        }
-        if (stopping || handlerFailure) { await abort(); return; }
-        const response = await route.fetch();
-        const rows = await observeCompletionRows(actor, freshUser.userId, entry.payload.workoutId, entry.sessionId);
-        if (stopping || handlerFailure) { await abort(); return; }
-        if (ordinal === 1) {
-          // Capture receipt, result and session BEFORE discarding the response.
-          await context.setOffline(true);
-          await abort();
-          lost.resolve({ ordinal, identityMatches, rows });
-        } else {
-          if (ordinal === 2) {
-            replayArrived.resolve({ ordinal, identityMatches, rows });
-            await allowReplay.promise;
-          }
-          if (stopping || handlerFailure) { await abort(); return; }
-          await route.fulfill({ response });
-          settled = true;
-          if (ordinal === 3) drained.resolve({ ordinal, identityMatches, rows });
-        }
-      } catch {
-        failHandler();
-        try { await abort(); } catch { cleanupFailed = true; }
-      }
-    });
+    expect(new Set(completions.map((row) => row.session.id)).size).toBe(2);
+    expect(new Set(completions.map((row) => row.logs[0].client_log_id)).size).toBe(2);
+    const second = await context.newPage();
     try {
-      await checked(context.setOffline(false));
-      const loss = await checked(lost.promise);
-      assertRequest(loss);
-      const firstCommit = assertCompletionRows(loss.rows, original[0].sessionId);
-      committed(firstCommit, original[0]);
-      await checked(expect.poll(async () => {
-        const rows = await queueRows(secondPage);
-        return rows.length === 2 && rows.every((row) => !row.leaseToken) &&
-          rows[0].attempts > 0 && rows[0].attempts < MAX_REPLAY_ATTEMPTS;
-      }).toBe(true));
-      same(durable(await checked(queueRows(secondPage))), durable(original));
-      expect(sends).toBe(1);
-      await checked(expect(page.getByRole("button", { name: "Waiting to sync", exact: true })).toBeDisabled());
-      await checked(expect(secondPage.getByRole("button", { name: "Waiting to sync", exact: true })).toBeDisabled());
-
-      // Relaunch only after the failed drain released its lease; IDB stays in this context.
-      await checked(page.close());
-      await checked(context.setOffline(false));
-      const reopened = await checked(context.newPage());
-      await checked(reopened.goto(`/app/swim/${started[0].id}`));
-      const replayed = await checked(replayArrived.promise);
-      assertRequest(replayed);
-      const replay = assertCompletionRows(replayed.rows, original[0].sessionId);
-      committed(replay, original[0]);
-      same(replay, firstCommit);
-      await checked(expect(reopened.getByRole("heading", { name: "Your swim", exact: true })).toBeVisible());
-      await checked(expect(reopened.getByRole("button", { name: "Edit result", exact: true })).toBeVisible());
-      same(durable(await checked(queueRows(reopened))), durable(original));
-      const waiting = await checked(queueRows(reopened));
-      expect(waiting[0].leaseToken !== undefined).toBe(true);
-      expect(waiting[0].attempts).toBeLessThan(MAX_REPLAY_ATTEMPTS);
-      expect(waiting[1].leaseToken).toBeUndefined();
-      expect(waiting[1].attempts).toBe(0);
-      expect(sends).toBe(2);
-      const untouched = await checked(completionRows(actor, freshUser.userId, started[1].id, original[1].sessionId));
-      expect(untouched.workout.status).toBe("started");
-      expect(untouched.session.completed_at).toBeNull();
-      expect(untouched.session.completion_outbox_entry_id).toBeNull();
-      expect(untouched.logs).toHaveLength(0);
-
-      allowReplay.resolve();
-      const subsequent = await checked(subsequentArrived.promise);
-      assertRequest(subsequent);
-      same(durable(subsequent.queue), durable([original[1]]));
-      same(assertCompletionRows(subsequent.head, original[0].sessionId), firstCommit);
-      same(durable(await checked(queueRows(reopened))), durable([original[1]]));
-      allowSubsequent.resolve();
-      const final = await checked(drained.promise);
-      assertRequest(final);
-      committed(assertCompletionRows(final.rows, original[1].sessionId), original[1]);
-      await checked(expect.poll(async () => (await queueRows(reopened)).length).toBe(0));
-      expect(sends).toBe(3);
-      same(await checked(completionRows(actor, freshUser.userId, started[0].id, original[0].sessionId)), firstCommit);
-      committed(await checked(completionRows(actor, freshUser.userId, started[1].id, original[1].sessionId)), original[1]);
-      await checked(secondPage.reload());
-      for (const [index, tab] of [reopened, secondPage].entries()) {
-        await checked(expect(tab.getByRole("heading", { name: "Your swim", exact: true })).toBeVisible());
+      for (const [index, tab] of [page, second].entries()) {
+        await tab.goto(`/app/swim/${workouts[index].id}`);
         const result = tab.getByRole("heading", { name: "Your swim", exact: true }).locator("..");
-        await checked(expect(result).toContainText(`${original[index].payload.lengths} lengths`));
-        await checked(expect(result).toContainText(index === 0 ? "20:00" : "21:00"));
-        await checked(expect(result).toContainText("RPE 5"));
-        await checked(expect(tab.getByRole("button", { name: "Finish swim", exact: true })).toHaveCount(0));
-        await checked(expect(tab.getByRole("button", { name: "Waiting to sync", exact: true })).toHaveCount(0));
-        await checked(expect(tab.getByRole("button", { name: "Edit result", exact: true })).toBeVisible());
+        await expect(result).toContainText(`${workouts[index].definition.issued.totalLengths} lengths`);
+        await expect(result).toContainText(index === 0 ? "20:00" : "21:00");
+        await expect(result).toContainText("RPE 5");
+        await tab.reload();
+        await expect(result).toContainText(index === 0 ? "20:00" : "21:00");
       }
-    } catch (error) {
-      bodyFailed = true;
-      primaryFailure = error;
-    } finally {
-      stopping = true;
-      try { await context.setOffline(true); } catch { cleanupFailed = true; }
-      allowReplay.resolve();
-      allowSubsequent.resolve();
-      const stopped = new Error("B2 route observation stopped.");
-      lost.resolve(stopped);
-      replayArrived.resolve(stopped);
-      subsequentArrived.resolve(stopped);
-      drained.resolve(stopped);
-      failed.resolve(stopped);
-      try {
-        await context.unrouteAll({ behavior: "wait" });
-        await expect.poll(async () => (await queueRows(secondPage)).every((row) => !row.leaseToken)).toBe(true);
-      } catch { cleanupFailed = true; }
-    }
-    if (cleanupFailed) {
-      const cleanupFailure = new Error("B2 owned route cleanup failed.");
-      if (bodyFailed) throw new AggregateError([primaryFailure, cleanupFailure], "B2 failed with incomplete cleanup.");
-      if (handlerFailure) throw new AggregateError([handlerFailure, cleanupFailure], "B2 failed with incomplete cleanup.");
-      throw cleanupFailure;
-    }
-    if (bodyFailed) throw primaryFailure;
-    if (handlerFailure) throw handlerFailure;
+      const beforeSkip = await saved(actor, plans[0].id);
+      await page.goto(`/app/swim/${workouts[2].id}`);
+      await page.locator("summary").filter({ hasText: /^Skip swim$/ }).click();
+      await page.getByLabel("Reason", { exact: true }).fill("Synthetic explicit skip");
+      await page.getByRole("button", { name: "Skip swim", exact: true }).click();
+      await expect(page.locator("main > section").first().getByText("Skipped", { exact: true })).toBeVisible();
+      const after = await listSwimWorkouts(actor, plans[0].id);
+      same(after[2], {
+        ...workouts[2], status: "skipped", revision: workouts[2].revision + 1, updated_at: after[2].updated_at,
+        definition: { ...workouts[2].definition, skip: { recordedAt: after[2].definition.skip?.recordedAt, reason: "Synthetic explicit skip" } },
+      });
+      expect(Number.isFinite(Date.parse(after[2].definition.skip!.recordedAt))).toBe(true);
+      same(after[3], workouts[3]);
+      const afterSkip = await saved(actor, plans[0].id);
+      same(afterSkip.plan, {
+        ...beforeSkip.plan, revision: beforeSkip.plan.revision + 1, updated_at: afterSkip.plan.updated_at,
+      });
+      same(afterSkip.workouts, after);
+      for (const [index, saved] of completions.entries()) {
+        same(await completionRows(actor, freshUser.userId, workouts[index].id, saved.session.id), saved);
+      }
+    } finally { await second.close(); }
   });
 
   test("B3 DC-SW4/DC-SW5: plateau rejection preserves issued work and decision history", async ({
@@ -847,10 +635,10 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await page.getByRole("button", { name: "Review next week", exact: true }).click();
     const proposal = page.getByRole("heading", { name: "Reduce · Week 2", exact: true }).locator("..");
     await expect(proposal).toBeVisible();
-    await proposal.getByText("Choose a different week", { exact: true }).click();
+    await proposal.getByText("Adjust repeats", { exact: true }).click();
     await proposal.getByLabel("Main repeats", { exact: true }).fill("8");
     await proposal.getByLabel("Reason", { exact: true }).fill(reason);
-    await proposal.getByRole("button", { name: "Apply my choice", exact: true }).click();
+    await proposal.getByRole("button", { name: "Save repeats", exact: true }).click();
     await expect(proposal).toHaveCount(0);
     await expect(page.locator('p[role="alert"]')).toHaveCount(0);
     await expect(page.locator('p[role="status"]').filter({ hasText: warning })).toBeVisible();
@@ -910,7 +698,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await expect(decisionRow.getByText(warning, { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Review next week", exact: true }).click();
     await expect(page.getByRole("button", { name: "Review next week", exact: true })).toBeEnabled();
-    await expect(page.getByRole("button", { name: "Apply my choice", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Save repeats", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
     expect(isDeepStrictEqual(await saved(actor, created.plan.id), after)).toBe(true);
   });
@@ -1063,7 +851,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await page.getByRole("heading", { name: "Swims", exact: true }).locator("..").getByRole("link")
       .and(page.locator(`[href="${workoutPath}"]`)).click();
     await expect(page).toHaveURL(new URL(workoutPath, baseURL!).href);
-    await expect(page.getByTestId("program-pool").getByText("50 m pool", { exact: true })).toBeVisible();
+    await expect(page.locator("main > section").first().getByText("50 m", { exact: true })).toBeVisible();
     await expect(page.getByText(/Up to 10 min/)).toBeVisible();
     const workoutView = page.locator("main.cp-main > main");
     await expect(workoutView).toHaveCount(1);
@@ -1116,7 +904,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await page.getByRole("heading", { name: "Swims", exact: true }).locator("..").getByRole("link")
       .and(page.locator(`[href="${workoutPath}"]`)).click();
     await expect(page).toHaveURL(new URL(workoutPath, baseURL!).href);
-    await expect(page.getByTestId("program-pool").getByText("50 m pool", { exact: true })).toBeVisible();
+    await expect(page.locator("main > section").first().getByText("50 m", { exact: true })).toBeVisible();
     await expect(page.getByText(/Up to 20 min/)).toBeVisible();
     const workoutView = page.locator("main.cp-main > main");
     await expect(workoutView).toHaveCount(1);
@@ -1377,15 +1165,20 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
       }
       same(reviewed[1], reviewed[0].map((date) => addDaysToYmd(date, 7)));
       same(await saved(actor, created.plan.id), paused);
+      const reviewedSchedule = await loadTrainingSchedule(actor);
+      expect(reviewedSchedule.entries.filter((entry) =>
+        !(entry.source === "swim" && entry.programId === created.plan.id) && reviewed.flat().includes(entry.date))).toHaveLength(0);
       await Promise.all(pages.map(openSwimProgramActions));
       const resumed = await race("Accept dates and resume", (view) => view.getByRole("button", { name: "Pause", exact: true }));
       const previews = resumed.args.map((args, index) => {
-        expect(args.length).toBe(1);
+        expect(args.length).toBe(2);
+        same(args[1], false);
         const preview = args[0] as SwimResumePreview;
         const remaining = paused.workouts.filter((row) => row.status === "scheduled" && !row.session_id);
         same(preview, {
           planId: paused.plan.id, revision: paused.plan.revision, startDate: starts[index],
           dates: remaining.map((row, position) => ({ id: row.id, revision: row.revision, date: reviewed[index][position] })),
+          scheduleRevision: reviewedSchedule.revision, overlaps: [],
         });
         return preview;
       });
