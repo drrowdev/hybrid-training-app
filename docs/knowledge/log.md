@@ -5502,3 +5502,50 @@ The harness uses bundled app fonts and checks menu dismissal/focus recovery.
 The full Windows web suite also exposed CRLF/POSIX-permission assumptions in
 untouched diagnostics; SQL and native acceptance remain GitHub CI gates.
 No database, migration, RLS, engine behavior or deployment changes are included.
+
+## [2026-09-24] refine | Programs list and type-first setup
+
+The approved Programs redesign replaces the overview cards, activity filters
+and weekly strip with four fixed type rows and Schedule / Program history
+links. New program uses a desktop dialog or viewport-anchored mobile sheet.
+Strength and Hybrid offer only existing template families; Running and
+Swimming open their existing setup. Reviewed primary replacement retains the
+existing atomic action and request identity behind an explicit confirmation
+(DC-K4). Untyped active programs retain their existing end action and block
+non-swim chooser options; no classification UI or data mutation is included.
+
+The coordinator approved the existing swimming lifecycle exception: occupied
+Swimming opens its detail with "End <name> first", not a non-atomic replacement.
+Paused Swimming remains reachable in its slot; paused, finished and archived
+swimming are linked from Program history using existing reads (DC-SW7).
+Atomic swim replacement is deferred. Classifying untyped programs is blocked
+by guard_program_block_identity; deferred.
+
+Next-workout selection is a pure domain helper, separated by program and
+source; swimming week labels retain their start-relative boundary instead
+of inheriting the primary program's Monday boundary. Scoped muted text and
+the selected bottom-navigation pill improve the touched surfaces without
+changing the global muted token.
+
+The review package covers 375px / 1280px overview, chooser, template setup,
+replacement and end confirmations, plus paused/history states. The synthetic
+harness retains all 75 stages and adds destination, cancellation, failure/retry,
+request-identity, contrast and mobile geometry assertions. Targeted checks
+passed: 98 web cases, 8 domain cases, web typecheck, frontend lint and production
+build. SQL and native acceptance remain GitHub-only gates; no local database,
+deployment or merge occurred. Screenshot/copy approval is required before push.
+
+The coordinator authorized an optional manual acceptance profile choice
+(auto / modular / swimming), preserving auto routing, and only the additional
+exact redesign branch in the modular guard. First-attempt, reviewed-SHA,
+non-production and all other acceptance guards, assertions and limits remain.
+
+Coordinator visual review requested and received a neutral legacy row with
+week/next summary, shared history name/date/status rows, disabled-option locks,
+and corrected realistic fixtures inside AppShell. The primary history keeps
+its expansion, session links, pagination and Delete menu. A same-type target
+regression confirms the screenshot's prior Running/Strength mismatch was
+fixture-only. Existing template-review ISO date rendering remains unchanged.
+Revision 2 was approved for draft publication after verifying the legacy
+summary wraps on phone while the program name remains single-line. No deploy
+or merge approval was granted.

@@ -9,6 +9,7 @@ import {
   type AuthoredWorkout, type AuthoredWorkoutPart, type ProgramActivity, type TrainingCommitment,
 } from "@hta/domain";
 import { previewAuthoredProgram, saveAuthoredProgram, type AuthoredPreview } from "@/lib/programs/authored/actions";
+import { ProgramConfirmation } from "./ProgramDialog";
 import { restSecondsForKind } from "@/lib/sessions/rest";
 import styles from "./ProgramBuilder.module.css";
 
@@ -132,28 +133,29 @@ function PartEditor({ part, catalog, rehabProtocols, onChange }: {
   </>;
 }
 
-export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitments, initial, editBlockId, initialStartDate, activity = "hybrid", swimHref, workoutId, plannedSessionId }: {
+export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitments, initial, editBlockId, initialStartDate, activity = "hybrid", swimHref, workoutId, plannedSessionId, activitySelected = false, replacesName }: {
   catalog: AuthoredCatalogMovement[]; today: string; commitments: TrainingCommitment[];
   rehabProtocols?: RehabChoice[];
   initial?: AuthoredProgramDefinition; editBlockId?: string; initialStartDate?: string; activity?: ProgramActivity; swimHref?: string | null;
   workoutId?: string; plannedSessionId?: string;
+  activitySelected?: boolean; replacesName?: string;
 }) {
   const router = useRouter();
   const [definition, setDefinition] = useState<AuthoredProgramDefinition>(initial ?? { version: 1, activity, name: "", weeks: 6, workouts: [] });
   const [startedOn, setStartedOn] = useState(initialStartDate ?? today);
-  const [step, setStep] = useState(workoutId ? 3 : initial ? 2 : 0);
+  const [step, setStep] = useState(workoutId ? 3 : initial ? 2 : activitySelected ? 1 : 0);
   const [selectedId, setSelectedId] = useState<string | null>(workoutId ?? null);
   const [scope, setScope] = useState<"program" | "workout" | "future">(workoutId ? "workout" : "program");
   const [preview, setPreview] = useState<AuthoredPreview | null>(null);
   const [requestId, setRequestId] = useState<string | null>(null);
   const [acceptOverlap, setAcceptOverlap] = useState(false);
-  const [acceptReplacement, setAcceptReplacement] = useState(false);
+  const [confirmReplacement, setConfirmReplacement] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const selected = definition.workouts.find((workout) => workout.id === selectedId);
   const input = { definition, startedOn, scope, ...(editBlockId ? { editBlockId } : {}), ...(workoutId ? { workoutId, plannedSessionId } : {}) };
   const update = (next: AuthoredProgramDefinition) => {
-    setDefinition(next); setPreview(null); setRequestId(null); setAcceptOverlap(false); setAcceptReplacement(false); setError(null);
+    setDefinition(next); setPreview(null); setRequestId(null); setAcceptOverlap(false); setConfirmReplacement(false); setError(null);
   };
   const setWorkout = (workout: AuthoredWorkout) => update({ ...definition, workouts: definition.workouts.map((entry) => entry.id === workout.id ? workout : entry) });
   const addWorkout = (weekday: number) => {
@@ -175,17 +177,19 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitment
       try {
         const result = await previewAuthoredProgram(input);
         if (!result.ok) { setError(result.error); return; }
-        setPreview(result.preview); setRequestId(newId()); setAcceptOverlap(false); setAcceptReplacement(false); setStep(4);
+        setPreview(result.preview); setRequestId(newId()); setAcceptOverlap(false); setConfirmReplacement(false); setStep(4);
       } catch { setError("Couldn't review your program. Your changes are still here."); }
     });
   };
-  const save = () => {
+  const save = (replace = false) => {
     if (!preview || !requestId) return;
+    if (preview.replaces && !replace) { setConfirmReplacement(true); return; }
+    setError(null);
     startTransition(async () => {
       try {
         const result = await saveAuthoredProgram(input, preview.id, {
           revision: preview.revision, requestId, acceptOverlap,
-          ...(acceptReplacement && preview.replacesBlockId ? { replaceBlockId: preview.replacesBlockId } : {}),
+          ...(replace && preview.replacesBlockId ? { replaceBlockId: preview.replacesBlockId } : {}),
         });
         if (!result.ok) { setError(result.error); return; }
         router.push(`/app/plan?block=${result.blockId}`); router.refresh();
@@ -197,12 +201,13 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitment
   const endDate = dates.at(-1)?.date ?? startedOn;
   const visibleCommitments = commitments.filter((entry) => entry.date >= startedOn && entry.date <= endDate &&
     !(entry.source === "primary" && entry.programId === editBlockId));
-  return <div className={styles.builder}>
-    <header className={styles.header}><div><div className={styles.eyebrow}>{workoutId ? "Edit workout" : editBlockId ? "Edit program" : "New program"}</div><h1>{workoutId ? selected?.name : definition.name || "Build your week"}</h1></div>
+  return <div className={`${styles.builder} ${styles.programSetup}`}>
+    <header className={styles.header}><div>{(workoutId || editBlockId) && <div className={styles.eyebrow}>{workoutId ? "Edit workout" : "Edit program"}</div>}<h1>{workoutId ? selected?.name : editBlockId ? definition.name : `New ${ACTIVITY_LABELS[definition.activity].toLowerCase()} program`}</h1></div>
       <Link className={styles.button} href={editBlockId ? `/app/plan?block=${editBlockId}` : "/app/programs"}>Cancel</Link></header>
-    <nav className={styles.steps} aria-label="Program setup">{STEPS.map((label, index) => workoutId && index < 3 ? null : <button type="button" key={label} className={styles.step}
+    {!editBlockId && replacesName && <p className={styles.replaces}>Replaces {replacesName}</p>}
+    <nav className={styles.steps} aria-label="Program setup">{STEPS.map((label, index) => (workoutId && index < 3) || (activitySelected && index === 0) ? null : <button type="button" key={label} className={styles.step}
       aria-current={step === index ? "step" : undefined} disabled={pending || index === 4 || (index === 3 && !selected) || (!!editBlockId && index === 0)}
-      onClick={() => setStep(index)}>{index + 1}. {label}</button>)}</nav>
+      onClick={() => setStep(index)}>{index + (activitySelected ? 0 : 1)}. {label}</button>)}</nav>
     {error && <p role="alert" className={styles.error}>{error}</p>}
     {step === 0 && <section className={styles.cards}>
       {(Object.keys(ACTIVITY_LABELS) as ProgramActivity[]).map((value) => <button key={value} type="button" className={styles.card} aria-pressed={definition.activity === value}
@@ -210,8 +215,6 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitment
           {value === "strength" ? "Lifts, accessories and rehab" : value === "running" ? "Runs, intervals and rehab" : "Strength, running, machines and rehab"}</span></button>)}
       {swimHref && <Link className={styles.card} href={swimHref}><strong>Swimming</strong><span className={styles.muted}>Import a prepared course</span></Link>}
     </section>}
-    {step <= 1 && !editBlockId && definition.activity !== "running" &&
-      <Link className={styles.textLink} href="/app/program">Program templates</Link>}
     {step === 1 && <section className={styles.panel}><h2>Program details</h2><div className={styles.fields}>
       <label className={styles.field}>Program name<input className={styles.input} value={definition.name} maxLength={100} onChange={(event) => update({ ...definition, name: event.target.value })} /></label>
       <label className={styles.field}>Start date<input className={styles.input} type="date" min={today} disabled={!!editBlockId} value={startedOn}
@@ -285,7 +288,6 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitment
             : part.kind === "rehab" ? rehabProtocols.find((protocol) => protocol.id === part.protocolId)?.name
             : `${catalog.find((entry) => entry.id === part.movement.movementId)?.displayName} · ${part.movement.sets} sets`}</p>)}
       </details>)}
-      {preview.replaces && <label className={styles.check}><input type="checkbox" checked={acceptReplacement} onChange={(event) => setAcceptReplacement(event.target.checked)} />End {preview.replaces} and start this program.</label>}
       {preview.overlaps.length > 0 && <div className={styles.notice}><strong>Workouts on the same day</strong>
         {preview.overlaps.map((entry) => <div key={`${entry.source}:${entry.id}`} className={styles.date}><time>{entry.date}</time><span>{entry.title}</span></div>)}
         <label className={styles.check}><input type="checkbox" checked={acceptOverlap} onChange={(event) => setAcceptOverlap(event.target.checked)} />Keep both workouts on these dates.</label>
@@ -294,10 +296,12 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitment
       <details><summary>All workout dates</summary><div className={styles.dates}>{preview.dates.map((entry) => <div key={`${entry.date}:${entry.title}`} className={styles.date}><time>{entry.date}</time><span>{entry.title}</span></div>)}</div></details>
     </section>}
     <footer className={styles.footer}>
-      <button type="button" className={styles.button} disabled={pending || step === 0 || (!!workoutId && step === 3)} onClick={() => setStep(workoutId ? 3 : step === 4 ? 2 : Math.max(0, step - 1))}>Back</button>
+      <button type="button" className={styles.button} disabled={pending || step === (activitySelected ? 1 : 0) || (!!workoutId && step === 3)} onClick={() => setStep(workoutId ? 3 : step === 4 ? 2 : Math.max(activitySelected ? 1 : 0, step - 1))}>Back</button>
       {step < 2 ? <button type="button" className={`${styles.button} ${styles.primary}`} disabled={step === 1 && (!definition.name.trim() || !startedOn)} onClick={() => setStep(step + 1)}>Continue</button>
-        : step === 4 ? <button type="button" className={`${styles.button} ${styles.primary}`} disabled={pending || (!!preview?.replaces && !acceptReplacement) || (!!preview?.overlaps.length && !acceptOverlap)} onClick={save}>{pending ? "Saving..." : editBlockId ? "Save changes" : "Start program"}</button>
+        : step === 4 ? <button type="button" className={`${styles.button} ${styles.primary}`} disabled={pending || (!!preview?.overlaps.length && !acceptOverlap)} onClick={() => save()}>{pending ? "Saving..." : editBlockId ? "Save changes" : "Start program"}</button>
           : <button type="button" className={`${styles.button} ${styles.primary}`} disabled={pending || definition.workouts.length === 0} onClick={review}>{pending ? "Reviewing..." : workoutId ? "Review changes" : "Review program"}</button>}
     </footer>
+    {confirmReplacement && preview?.replaces && <ProgramConfirmation name={preview.replaces} pending={pending} error={error}
+      onCancel={() => setConfirmReplacement(false)} onConfirm={() => save(true)} />}
   </div>;
 }

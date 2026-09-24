@@ -247,7 +247,6 @@ function movement(catalog: Movement[], slug: string) {
 }
 async function begin(page: Page, activity: string, name: string) {
   await page.goto(`/app/program/build?activity=${activity}`);
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByLabel("Program name", { exact: true }).fill(name);
   await page.getByLabel("Weeks", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -277,11 +276,16 @@ async function review(page: Page, timeout?: number) {
   await page.getByRole("button", { name: "Review program", exact: true }).click();
   await expect(page.getByRole("button", { name: "Start program", exact: true })).toBeVisible({ timeout });
 }
-async function save(page: Page, actor: SupabaseClient, kind: "strength" | "running" | "hybrid", timeout?: number) {
+async function save(page: Page, actor: SupabaseClient, kind: "strength" | "running" | "hybrid", timeout?: number, replacement?: string) {
   const submit = page.getByRole("button", { name: /^(Start program|Save changes)$/ });
   await expect(submit).toBeVisible({ timeout });
   expect(await submit.isEnabled(), "Program save is disabled; accept the required overlap or replacement consent before saving.").toBe(true);
   await submit.click();
+  if (replacement) {
+    const confirmation = page.getByRole("dialog", { name: `Replace ${replacement}?`, exact: true });
+    await expect(confirmation).toBeVisible({ timeout });
+    await confirmation.getByRole("button", { name: "Replace program", exact: true }).click();
+  }
   await expect(page).toHaveURL(/\/app\/plan\?block=[0-9a-f-]{36}$/, { timeout });
   const saved = await actor.from("training_blocks").select("id").eq("program_kind", kind)
     .eq("status", "active").is("deleted_at", null).single();
@@ -463,6 +467,7 @@ test.describe("Modular program builder", () => {
     stage("m3-08");
     for (const path of ["/app/programs", "/app/programs?activity=hybrid"]) {
       await page.goto(path);
+      await page.getByRole("link", { name: "Schedule", exact: true }).click();
       await expect(page.locator(`a[href="/app/sessions/start/${row.id}"]`)).toBeVisible();
     }
     for (const activity of ["strength", "running"]) {
@@ -881,10 +886,11 @@ test.describe("Modular program builder", () => {
       expect(todaySwim.scheduled_date).toBe(today());
       await page.goto("/app/programs");
       const programs = page.getByRole("region", { name: "Programs", exact: true });
-      await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(3);
+      await expect(programs.locator("a[data-kind]")).toHaveCount(3);
       for (const name of ["Strength week", "Running week", "Swimming"]) {
-        await expect(programs.getByRole("heading", { name, exact: true })).toBeVisible();
+        await expect(programs.getByText(name, { exact: true })).toBeVisible();
       }
+      await page.getByRole("link", { name: "Schedule", exact: true }).click();
       const week = page.getByRole("region", { name: "This week", exact: true });
       await expect(week.locator(`a[href="/app/sessions/start/${todayStrength.id}"]`)).toHaveCount(1);
       await expect(week.locator(`a[href^="/app/swim/${todaySwim.id}?"]`)).toHaveCount(1);
@@ -926,7 +932,7 @@ test.describe("Modular program builder", () => {
       await page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true }).check();
       const hybridId = await save(page, actor, "hybrid");
       await page.goto("/app/programs");
-      await expect(page.getByRole("region", { name: "Programs", exact: true }).getByRole("heading", { level: 2 })).toHaveCount(4);
+      await expect(page.getByRole("region", { name: "Programs", exact: true }).locator("a[data-kind]")).toHaveCount(4);
       const hybridRows = (await planned(actor)).filter((row) => row.block_id === hybridId);
       const runRow = original.find((row) => row.block_id === running.block_id)!;
       await page.goto(`/app/program/build?edit=${running.block_id}&workout=${runRow.id}`);
@@ -942,13 +948,14 @@ test.describe("Modular program builder", () => {
       await begin(page, "strength", "Replacement strength");
       await lift(page, movement(catalog, "bench-press-flat"));
       await review(page);
-      const replacement = page.getByRole("checkbox", { name: "End Native strength and start this program.", exact: true });
-      await expect(replacement).toBeVisible();
-      await expect(page.getByRole("checkbox", { name: /End (Native running|Fourth hybrid|Swimming)/ })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Start program", exact: true })).toBeDisabled();
-      await replacement.check();
       await page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true }).check();
-      const replacementId = await save(page, actor, "strength");
+      await page.getByRole("button", { name: "Start program", exact: true }).click();
+      const replacement = page.getByRole("dialog", { name: "Replace Native strength?", exact: true });
+      await expect(replacement).toBeVisible();
+      await expect(page.getByRole("dialog", { name: /Replace (Native running|Fourth hybrid|Swimming)/ })).toHaveCount(0);
+      await replacement.getByRole("button", { name: "Cancel", exact: true }).click();
+      const replacementId = await save(page, actor, "strength", undefined, "Native strength");
       expect(replacementId).not.toBe(strength.block_id);
       const replaced = await actor.from("training_blocks").select("status").eq("id", strength.block_id).single();
       expect(replaced.error).toBeNull(); expect(replaced.data?.status).toBe("archived");
@@ -1055,6 +1062,7 @@ test.describe("Modular program builder", () => {
       expect(afterEntries.filter((entry) => entry.programId === strength.block_id && entry.state !== "rest" && entry.date >= addDaysToYmd(today(), 14)))
         .toHaveLength(2);
       await page.goto("/app/programs");
+      await page.getByRole("link", { name: "Schedule", exact: true }).click();
       const week = page.getByRole("region", { name: "This week", exact: true });
       for (const row of original.filter((row) => row.block_id === running.block_id)) {
         await expect(week.locator(`a[href="/app/sessions/start/${row.id}"]`)).toHaveCount(0);
@@ -1384,9 +1392,8 @@ test.describe("Modular program builder", () => {
         await begin(writer, "strength", "Replacement while offline");
         await lift(writer, movement(catalog, "bench-press-flat"));
         await review(writer);
-        await writer.getByRole("checkbox", { name: "End Offline strength and start this program.", exact: true }).check();
         await writer.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true }).check();
-        const replacementId = await save(writer, actor, "strength");
+        const replacementId = await save(writer, actor, "strength", undefined, "Offline strength");
         expect(await readNativeOutbox(page)).toEqual(queued);
         expect(await loggedSets(actor, hybridSession)).toEqual(unfinishedSets);
         const beforeReplay = await actor.from("program_instances").select("id,block_id,status,instance")

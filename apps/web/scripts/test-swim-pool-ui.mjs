@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium, expect } from "@playwright/test";
 
@@ -35,6 +35,10 @@ try {
         import { ProgramBuilder } from "./src/components/program/ProgramBuilder";
         import { ProgramPicker } from "./src/components/program/ProgramPicker";
         import { ProgramsOverview } from "./src/components/program/ProgramsOverview";
+        import { SwimProgramHistory } from "./src/components/program/SwimProgramHistory";
+        import { ProgramHistory, ProgramHistorySummary } from "./src/components/program/ProgramHistory";
+        import programStyles from "./src/components/program/ProgramBuilder.module.css";
+        import { AppShell } from "./src/components/shell/AppShell";
         import { ProgramRecommendationsBanner } from "./src/components/today/ProgramRecommendationsBanner";
         import { ProgramProgress } from "./src/components/stats/ProgramProgress";
         import { TmSuggestionBanner } from "./src/components/today/TmSuggestionBanner";
@@ -244,14 +248,21 @@ try {
           </main>);
         };
         window.programCalls = []; window.programMode = "success";
-        window.showProgramsOverview = (activity, includeHybrid = false, empty = false) => {
+        window.endCalls = []; window.endMode = "success";
+        window.endProgram = async form => {
+          window.endCalls.push(form.get("id"));
+          if (window.endMode === "error") throw new Error("Couldn't end the program. Try again.");
+        };
+        window.showProgramsOverview = (activity, includeHybrid = false, empty = false, legacy = false, weekOnly = false, paused = false) => {
           const identity = value => "00000000-0000-4000-8000-" + String(value).padStart(12, "0");
           window.destinations = [];
-          const programs = (empty ? [] : [
-            { id: identity(101), kind: "strength", name: "Strength", startedOn: "2026-09-21", weeks: 4, editable: true },
-            { id: identity(102), kind: "running", name: "Running", startedOn: "2026-09-21", weeks: 6, editable: true },
-            { id: identity(104), kind: "swimming", name: "Swim endurance", startedOn: "2026-09-21", endsOn: "2026-11-01", weeks: 6, editable: false },
-            ...(includeHybrid ? [{ id: identity(103), kind: "hybrid", name: "Running-and-stations-with-strength-and-rehab", startedOn: "2026-09-21", weeks: 8, editable: true }] : []),
+          const programs = (empty ? [] : legacy ? [
+            { id: identity(101), kind: null, name: "TB Zulu rehab", startedOn: "2026-09-21", weeks: 6, editable: true },
+          ] : [
+            { id: identity(101), kind: "strength", name: "Upper / lower", startedOn: "2026-09-21", weeks: 4, editable: true },
+            { id: identity(102), kind: "running", name: "10K base", startedOn: "2026-09-21", weeks: 6, editable: true },
+            { id: identity(104), kind: "swimming", name: "Swim endurance", startedOn: "2026-09-21", endsOn: "2026-11-01", weeks: 6, editable: false, status: paused ? "paused" : "active" },
+            ...(includeHybrid ? [{ id: identity(103), kind: "hybrid", name: innerWidth === 375 ? "Green: strength, running and weekend endurance" : "Green", startedOn: "2026-09-21", weeks: 8, editable: true }] : []),
           ]).map(program => ({ ...program, href: program.kind === "swimming" ? "/app/swim?plan=" + program.id : "/app/plan?block=" + program.id }));
           const entries = [
             { id: identity(201), source: "primary", programId: identity(101), date: "2026-09-21", title: "Upper A" },
@@ -262,9 +273,29 @@ try {
             { id: identity(206), source: "swim", programId: identity(104), date: "2026-09-26", title: "Swim B" },
             ...(includeHybrid ? [{ id: identity(207), source: "primary", programId: identity(103), date: "2026-09-26", title: "Run and stations" }] : []),
           ].map(entry => ({ ...entry, state: "scheduled" }));
-          root.render(<main key={++key} style={{ padding: 12 }}><ProgramsOverview programs={programs}
-            activity={activity} today="2026-09-21" entries={empty ? [] : entries} swimHref="/app/swim/setup" /></main>);
+          if (weekOnly) {
+            const visibleIds = programs.filter(program => !activity || program.kind === activity).map(program => program.id);
+            root.render(<main key={++key} style={{ padding: 12 }}><TrainingWeek today="2026-09-21"
+              entries={entries.filter(entry => visibleIds.includes(entry.programId))} showWorkoutEditing={false} /></main>);
+          } else root.render(<AppShell key={++key} signOutAction={async () => { throw new Error("Unexpected sign out"); }} displayName="Review" hapticsEnabled={false}>
+            <ProgramsOverview programs={programs} today="2026-09-21" entries={empty ? [] : entries} swimHref="/app/swim/setup" /></AppShell>);
         };
+        window.showSwimHistory = (withPrimary = false) => root.render(<AppShell key={++key} signOutAction={async () => { throw new Error("Unexpected sign out"); }} displayName="Review" hapticsEnabled={false}>
+          <ProgramHistory>
+          {withPrimary && <section className={programStyles.swimHistory} data-testid="plan-history-month-group">
+            <h2>September 2026</h2><ul className={programStyles.historyList}>
+              {[["Upper / lower", "Completed"], ["10K base", "Ended"]].map(([name, status], index) => <li key={name}>
+                <details data-testid="block-history-row"><summary className={programStyles.historyRow}>
+                  <ProgramHistorySummary name={name} startedOn="2026-09-01" endedOn="2026-09-21" status={status}
+                    actions={<DeleteBlockMenu blockId={"history-primary-" + index} archetypeName={name} />} />
+                </summary><p>Workouts</p></details>
+              </li>)}
+            </ul>
+          </section>}
+          <SwimProgramHistory programs={["paused", "finished", "archived"].map((status, index) => ({
+            id: "history-" + index, kind: "swimming", name: ["Swim endurance", "Pool intervals", "Summer swims"][index],
+            status, startedOn: "2026-08-03", endsOn: "2026-09-13", editable: false, href: "/app/swim?plan=history-" + index,
+          }))} /></ProgramHistory></AppShell>);
         const reviewPrograms = [
           { id: "strength-review", kind: "strength", name: "Strength", href: "/app/plan?block=strength-review" },
           { id: "running-review", kind: "running", name: "Running", href: "/app/plan?block=running-review" },
@@ -304,26 +335,29 @@ try {
           window.programCalls.push({ action: "preview", input });
           return { ok: true, preview: { id: "synthetic-review", revision: "a".repeat(32),
             dates: [{ date: "2026-09-14", title: "Run", itemCount: 1 }], overlaps: [], plannedRest: [],
-            replaces: null, replacesBlockId: null, preserved: 0 } };
+            replaces: window.replaceProgram ? "10K base" : null, replacesBlockId: window.replaceProgram ? "replaced-running" : null, preserved: 0 } };
         };
         window.saveProgram = async (...args) => {
           window.programCalls.push({ action: "save", args });
           return window.programMode === "stale" ? { ok: false, error: "Your program or schedule changed. Review it again." }
             : { ok: true, blockId: "00000000-0000-4000-8000-000000000004" };
         };
-        window.showProgramEdit = () => {
+        window.showProgramEdit = (replacement = false) => {
+          window.replaceProgram = replacement;
           const workoutId = "00000000-0000-4000-8000-000000000001";
           const movementId = "00000000-0000-4000-8000-000000000002";
-          root.render(<main><ProgramBuilder key={++key} today="2026-09-14" commitments={[]}
-            editBlockId="00000000-0000-4000-8000-000000000004" workoutId={workoutId}
+          root.render(<AppShell key={++key} signOutAction={async () => { throw new Error("Unexpected sign out"); }} displayName="Review" hapticsEnabled={false}>
+            <ProgramBuilder today="2026-09-14" commitments={[]} activitySelected
+            replacesName={replacement ? "10K base" : undefined}
+            editBlockId={replacement ? undefined : "00000000-0000-4000-8000-000000000004"} workoutId={replacement ? undefined : workoutId}
             plannedSessionId="00000000-0000-4000-8000-000000000005" initialStartDate="2026-09-14"
             catalog={[{ id: movementId, slug: "run-easy-z2", displayName: "Easy run", pattern: "cardio", modality: "run" }]}
-            initial={{ version: 1, activity: "running", name: "Running fixture", weeks: 2, workouts: [{
+            initial={{ version: 1, activity: "running", name: "10K build", weeks: 2, workouts: [{
               id: workoutId, name: "Run", weekday: 0, parts: [{ id: "00000000-0000-4000-8000-000000000003",
                 kind: "cardio", movementId, modality: "run", intensity: "z2", repeats: 2, notes: "",
                 intervals: [{ id: "00000000-0000-4000-8000-000000000006", label: "Run", effort: "easy",
                   target: { kind: "time", seconds: 60 } }] }],
-            }] }} /></main>);
+            }] }} /></AppShell>);
         };
         window.showCourseHub = () => root.render(<main className={[styles.page, styles.hubPage].join(" ")} style={{ padding: 20 }}><SwimHub key={++key}
           setupEnabled={false} plans={[]} programs={reviewPrograms} plan={{
@@ -619,20 +653,23 @@ try {
             acceptAction={async () => { window.tmChoiceCalls++; return { ok: false, error: "Open the workout's program to review its loads." }; }}
             dismissAction={async () => { throw new Error("Unexpected dismissal"); }} /></main>);
         };
-        window.showHybridLoadSetup = () => {
+        window.showHybridLoadSetup = (replacement = false) => {
           window.hybridLoadPreviews = []; window.hybridLoadSaves = [];
           window.continuationPreview = async input => {
             window.hybridLoadPreviews.push(input);
             return { ok: true, preview: { id: "e".repeat(64), revision: "a".repeat(32),
-              dates: [{ date: input.startedOn, title: "Strength" }], overlaps: [], plannedRest: [], replaces: null } };
+              dates: [{ date: input.startedOn, title: "Strength" }], overlaps: [], plannedRest: [],
+              replaces: replacement ? { id: "replaced-hybrid", name: "Green" } : null } };
           };
           window.continuationSave = async input => {
             window.hybridLoadSaves.push(input);
+            if (window.templateSaveError) return { ok: false, error: "Couldn't save your program. Try again." };
             return { ok: true, blockId: "hybrid", programInstanceId: "hybrid-instance", skipped: 0 };
           };
-          root.render(<ProgramPicker key={++key} anchoredKeys={["bench"]} initialProgramId="green-protocol"
+          root.render(<AppShell key={++key} signOutAction={async () => { throw new Error("Unexpected sign out"); }} displayName="Review" hapticsEnabled={false}>
+            <ProgramPicker anchoredKeys={["bench"]} initialProgramId="green-protocol" replacesName={replacement ? "Green" : undefined}
             initialLoadoutValue="hybrid" programs={[{ ...greenProtocolEngine.meta, enabled: true, fixedSchedule: true,
-              fields: greenProtocolEngine.describeSetup().fields }]} />);
+              fields: greenProtocolEngine.describeSetup().fields }]} /></AppShell>);
         };
         function DeleteHistoryFixture() {
           const [deleted, setDeleted] = useState(false);
@@ -863,6 +900,7 @@ try {
     plugins: [{
       name: "synthetic-actions",
       setup(build) {
+        build.onResolve({ filter: /^@\/components\/cmd-k\/CommandPaletteProvider$/ }, args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^(?:\.\/PlanRedesign|@\/components\/plan\/PlanRedesign)$/ }, args =>
           args.importer.replaceAll("\\", "/").endsWith("/components/plan/ThisWeekRail.tsx")
             ? { path: "home-drawer", namespace: "test" } : undefined);
@@ -875,14 +913,16 @@ try {
         build.onResolve({ filter: /^@\/lib\/offline\/outbox$/ }, args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions|import-outcome-actions|rehab-actions)|@\/lib\/programs\/authored\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
-          contents: args.path === "@/lib/sessions/actions"
+          contents: args.path === "@/components/cmd-k/CommandPaletteProvider"
+            ? "export const useCommandPalette = () => ({ open() { throw new Error('Unexpected search'); } });"
+            : args.path === "@/lib/sessions/actions"
             ? "const unexpected = () => { throw new Error('Unexpected session mutation'); }; export const deleteSet = form => window.deleteFullSet(form); export const permanentlyDeleteSession = unexpected, restoreSession = unexpected, addCardioBlock = unexpected; export const completeSessionResult = (...args) => { if (!window.completeWorkout) return unexpected(); return window.completeWorkout(...args); }; export const addStrengthSet = form => window.logFullStrength(form), logCardioSession = form => window.logFullCardio(form);"
             : args.path === "@/lib/sessions/session-movement-actions"
               ? "export const removeSessionMovementAction = () => { throw new Error('Unexpected removal'); };"
             : args.path === "@/lib/sessions/reorder-actions"
               ? "export const reorderSessionAccessories = () => { throw new Error('Unexpected reorder'); };"
             : args.path === "@/lib/planner/actions"
-              ? "export const deleteBlock = form => window.deleteHistoryProgram(form); export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); }; export const previewPlannedMove = () => { throw new Error('Unexpected move'); };"
+              ? "export const endBlock = form => window.endProgram(form); export const deleteBlock = form => window.deleteHistoryProgram(form); export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); }; export const previewPlannedMove = () => { throw new Error('Unexpected move'); };"
             : args.path === "@/lib/sessions/planned-movement-actions"
               ? "const unexpected = () => { throw new Error('Unexpected planned mutation'); }; export const removePlannedMovement = unexpected, swapPlannedMovement = unexpected, addPlannedMovement = unexpected;"
             : args.path === "@/lib/hyrox/station-swap-actions"
@@ -981,6 +1021,29 @@ try {
       await page.evaluate(() => document.fonts.ready);
       await page.screenshot({ path: path.join(screenshotDirectory, `${name}.png`), fullPage: true });
     }
+  };
+  const contrastResults = [];
+  const checkTextContrast = async (scope, name) => {
+    const ratios = await scope.evaluate(root => {
+      const rgb = value => value.match(/[\d.]+/g).map(Number);
+      const composite = (foreground, background) => foreground.slice(0, 3).map((value, index) =>
+        value * (foreground[3] ?? 1) + background[index] * (1 - (foreground[3] ?? 1)));
+      const luminance = color => color.slice(0, 3).map(value => {
+        const channel = value / 255; return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+      }).reduce((sum, channel, index) => sum + channel * [.2126, .7152, .0722][index], 0);
+      return [root, ...root.querySelectorAll("*")].filter(node =>
+        node.getBoundingClientRect().height > 0 && [...node.childNodes].some(child => child.nodeType === Node.TEXT_NODE && child.textContent.trim())
+      ).map(node => {
+        const ancestors = []; for (let current = node; current; current = current.parentElement) ancestors.unshift(current);
+        const background = ancestors.reduce((color, ancestor) => composite(rgb(getComputedStyle(ancestor).backgroundColor), color), [0, 0, 0]);
+        const foreground = composite(rgb(getComputedStyle(node).color), background);
+        const values = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+        return { text: node.textContent.trim(), ratio: (values[0] + .05) / (values[1] + .05) };
+      });
+    });
+    assert.ok(ratios.length > 0);
+    assert.deepEqual(ratios.filter(item => item.ratio < 4.5), [], `${name}: text contrast below 4.5:1`);
+    contrastResults.push({ name, minimum: Math.min(...ratios.map(item => item.ratio)) });
   };
 
   stage = "new-programme-default";
@@ -1514,18 +1577,13 @@ try {
   for (const width of [375, 1280]) {
     stage = `independent-programs-overview-${width}`;
     await page.setViewportSize({ width, height: 900 });
-    await page.evaluate(() => window.showProgramsOverview());
-    const programs = page.getByRole("region", { name: "Programs", exact: true });
-    await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(4);
+    await page.evaluate(() => window.showProgramsOverview(undefined, false, false, false, true));
     const week = page.getByRole("region", { name: "This week", exact: true });
     await expect(week.locator('a[href^="/app/sessions/start/"],a[href^="/app/swim/"]')).toHaveCount(6);
     await expect(week.getByRole("link", { name: /^Edit / })).toHaveCount(0);
-    await expect(programs.getByRole("link", { name: "Open program", exact: true }).first())
-      .toHaveAttribute("href", "/app/plan?block=00000000-0000-4000-8000-000000000101");
     await expect(week.getByRole("link", { name: /^Easy run/ })).toHaveAttribute("href",
       "/app/sessions/start/00000000-0000-4000-8000-000000000203");
-    await page.evaluate(() => window.showProgramsOverview(undefined, true));
-    await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(4);
+    await page.evaluate(() => window.showProgramsOverview(undefined, true, false, false, true));
     await expect(week.locator('a[href^="/app/sessions/start/"],a[href^="/app/swim/"]')).toHaveCount(7);
     if (width === 375) {
       const positions = [];
@@ -1541,34 +1599,124 @@ try {
       assert.equal(positions[0].actionLeft, positions[1].actionLeft);
     }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-    await page.evaluate(() => window.showProgramsOverview("running", true));
-    await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(1);
-    await expect(programs.getByRole("link", { name: "Open program", exact: true }))
-      .toHaveAttribute("href", "/app/plan?block=00000000-0000-4000-8000-000000000102");
+    await page.evaluate(() => window.showProgramsOverview("running", true, false, false, true));
     await expect(week.locator('a[href^="/app/sessions/start/"]')).toHaveCount(2);
     await expect(week.getByRole("link", { name: /^Run and stations/ })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "New program", exact: true })).toHaveAttribute("href", "/app/program/build?activity=running");
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-    for (const empty of [false, true]) {
-      for (const activity of [undefined, "strength", "running", "swimming", "hybrid"]) {
-        await page.evaluate(({ activity, empty }) => window.showProgramsOverview(activity, true, empty), { activity, empty });
-        await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(activity ? 1 : 4);
-        const tabs = page.getByRole("navigation", { name: "Activities" });
-        await expect(tabs.locator('[aria-current="page"]')).toHaveCount(1);
-        await expect(tabs.getByRole("link", { name: "Swimming", exact: true })).toHaveAttribute("href", "/app/programs?activity=swimming");
-        if (activity === "swimming") {
-          await expect(programs.getByRole("link")).toHaveAttribute("href", empty ? "/app/swim/setup" : "/app/swim?plan=00000000-0000-4000-8000-000000000104");
-          await expect(week.locator('a[href^="/app/swim/"]')).toHaveCount(empty ? 0 : 2);
-          await expect(week.locator('a[href^="/app/sessions/"]')).toHaveCount(0);
+    const programs = page.getByRole("region", { name: "Programs", exact: true });
+    const dialog = page.getByRole("dialog");
+    for (const state of ["legacy", "three", "four", "empty"]) {
+      await page.evaluate(state => window.showProgramsOverview(undefined, state === "four", state === "empty", state === "legacy"), state);
+      await expect(programs.locator("[data-kind]")).toHaveCount(4);
+      assert.deepEqual(await programs.locator("[data-kind]").evaluateAll(rows => rows.map(row => row.dataset.kind)), ["strength", "running", "swimming", "hybrid"]);
+      await expect(week).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Schedule", exact: true })).toHaveAttribute("href", "/app/plan");
+      await expect(page.getByRole("link", { name: "Program history", exact: true })).toHaveAttribute("href", "/app/plan/history");
+      await expect(programs.locator("button:disabled")).toHaveCount(state === "legacy" ? 3 : 0);
+      await expect(programs.locator("a[data-kind]")).toHaveCount(state === "three" ? 3 : state === "four" ? 4 : 0);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await checkTextContrast(programs, `programs-${state}-${width}`);
+      if (width === 375) {
+        const nav = await page.getByTestId("bottom-tabbar").boundingBox();
+        assert.equal(nav.y + nav.height, 900);
+        await checkTextContrast(page.getByTestId("bottom-tabbar"), `navigation-${state}-${width}`);
+        if (state === "legacy") {
+          const summary = programs.getByRole("link").locator('[class*="programSummary"]');
+          assert.equal(await summary.evaluate(node => getComputedStyle(node).whiteSpace), "normal");
+          assert.ok(await summary.evaluate(node => node.scrollWidth <= node.clientWidth));
         }
-        if (width === 1280 && !activity) {
-          const tops = await programs.locator(":scope > section").evaluateAll(cards => cards.map(card => card.getBoundingClientRect().top));
-          assert.equal(new Set(tops).size, 1);
-        }
-        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
-        await screenshot(`programs-${activity ?? "all"}-${empty ? "empty" : "populated"}-${width}`);
+      }
+      await screenshot(`programs-${state}-${width}`);
+      await page.getByRole("button", { name: "New program", exact: true }).click();
+      await expect(dialog).toBeVisible();
+      await expect(dialog.locator("button[data-kind]")).toHaveCount(4);
+      await expect(dialog.locator("button[data-kind]:disabled")).toHaveCount(state === "legacy" ? 3 : 0);
+      await checkTextContrast(dialog, `chooser-${state}-${width}`);
+      await screenshot(`chooser-${state}-${width}`);
+      if (width === 375) {
+        const sheet = await dialog.boundingBox();
+        assert.equal(sheet.x, 0); assert.equal(sheet.width, 375); assert.equal(sheet.y + sheet.height, 900);
+      }
+      const touchSizes = await dialog.locator("button").evaluateAll(nodes => nodes.map(node => {
+        const box = node.getBoundingClientRect(); return [box.width, box.height];
+      }));
+      assert.ok(touchSizes.every(([w, h]) => w >= 44 && h >= 44));
+      if (state === "legacy") {
+        await dialog.getByRole("button", { name: "Swimming", exact: true }).click();
+        assert.equal(await page.evaluate(() => window.destinations.at(-1)), "/app/swim/setup");
+        await page.keyboard.press("Escape");
+        await page.getByRole("button", { name: "End program", exact: true }).click();
+        await expect(dialog).toBeVisible();
+        await checkTextContrast(dialog, `end-confirm-${width}`);
+        await screenshot(`end-confirm-${width}`);
+        await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+        assert.equal(await page.evaluate(() => window.endCalls.length), 0);
+        await page.getByRole("button", { name: "End program", exact: true }).click();
+        await page.evaluate(() => { window.endMode = "error"; });
+        await dialog.getByRole("button", { name: "End program", exact: true }).click();
+        await expect(dialog.getByRole("alert")).toBeVisible();
+        await page.evaluate(() => { window.endMode = "success"; });
+        await dialog.getByRole("button", { name: "End program", exact: true }).click();
+        await expect(dialog).toHaveCount(0);
+        assert.deepEqual(await page.evaluate(() => window.endCalls), ["00000000-0000-4000-8000-000000000101", "00000000-0000-4000-8000-000000000101"]);
+        await page.evaluate(() => { window.endCalls = []; });
+      } else {
+        await dialog.locator('[data-kind="strength"]').click();
+        await expect(dialog.locator('a[href^="/app/program?program="]')).toHaveCount(2);
+        await expect(dialog.getByRole("link", { name: "Build your own" })).toHaveAttribute("href", "/app/program/build?activity=strength");
+        await checkTextContrast(dialog, `setup-strength-${state}-${width}`);
+        await screenshot(`setup-strength-${state}-${width}`);
+        await dialog.getByRole("button", { name: "Back", exact: true }).click();
+        await dialog.locator('[data-kind="hybrid"]').click();
+        await expect(dialog.locator('a[href^="/app/program?program="]')).toHaveCount(2);
+        await checkTextContrast(dialog, `setup-hybrid-${state}-${width}`);
+        await screenshot(`setup-hybrid-${state}-${width}`);
+        await dialog.getByRole("button", { name: "Back", exact: true }).click();
+        await dialog.locator('[data-kind="swimming"]').click();
+        assert.equal(await page.evaluate(() => window.destinations.at(-1)), state === "empty" ? "/app/swim/setup" : "/app/swim?plan=00000000-0000-4000-8000-000000000104");
+        await dialog.locator('[data-kind="running"]').click();
+        assert.equal(await page.evaluate(() => window.destinations.at(-1)), "/app/program/build?activity=running");
+        await page.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "New program", exact: true })).toBeFocused();
       }
     }
+    await page.evaluate(() => window.showProgramsOverview(undefined, false, false, false, false, true));
+    await expect(programs.locator('a[data-kind="swimming"]')).toHaveAttribute("href", "/app/swim?plan=00000000-0000-4000-8000-000000000104");
+    await expect(programs.locator('a[data-kind="swimming"]')).toContainText("Paused");
+    await screenshot(`programs-paused-${width}`);
+    await page.getByRole("button", { name: "New program", exact: true }).click();
+    await dialog.locator('[data-kind="swimming"]').click();
+    assert.equal(await page.evaluate(() => window.destinations.at(-1)), "/app/swim?plan=00000000-0000-4000-8000-000000000104");
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => window.showSwimHistory());
+    const swimHistory = page.getByRole("region", { name: "Swimming", exact: true });
+    await expect(swimHistory.getByRole("link")).toHaveCount(3);
+    assert.deepEqual(await swimHistory.getByRole("link").evaluateAll(links => links.map(link => link.getAttribute("href"))),
+      ["/app/swim?plan=history-0", "/app/swim?plan=history-1", "/app/swim?plan=history-2"]);
+    await checkTextContrast(swimHistory, `swim-history-${width}`);
+    await screenshot(`swim-history-${width}`);
+    await page.evaluate(() => window.showSwimHistory(true));
+    await expect(page.getByTestId("block-history-row")).toHaveCount(2);
+    await expect(swimHistory.getByRole("link")).toHaveCount(3);
+    await screenshot(`combined-history-${width}`);
+    await page.evaluate(() => { window.programCalls = []; window.programMode = "success"; window.showProgramEdit(true); });
+    await page.getByRole("button", { name: "Review program", exact: true }).click();
+    await page.getByRole("button", { name: "Start program", exact: true }).click();
+    await expect(dialog).toBeVisible();
+    await checkTextContrast(dialog, `replace-confirm-${width}`);
+    await screenshot(`replace-confirm-${width}`);
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    assert.equal(await page.evaluate(() => window.programCalls.filter(call => call.action === "save").length), 0);
+    await page.getByRole("button", { name: "Start program", exact: true }).click();
+    await page.evaluate(() => { window.programMode = "stale"; });
+    await dialog.getByRole("button", { name: "Replace program", exact: true }).click();
+    await expect(dialog.getByRole("alert")).toBeVisible();
+    assert.equal(await page.evaluate(() => window.programCalls.at(-1).args[2].replaceBlockId), "replaced-running");
+    await page.evaluate(() => { window.programMode = "success"; });
+    await dialog.getByRole("button", { name: "Replace program", exact: true }).click();
+    assert.equal(await page.evaluate(() => window.programCalls.at(-1).args[2].requestId === window.programCalls.at(-2).args[2].requestId), true);
+    await page.evaluate(() => { window.replaceProgram = false; });
     await page.evaluate(() => window.showOwnedRecommendation());
     await expect(page.getByText("Weekend hybrid", { exact: false })).toBeVisible();
     const recommendation = page.getByRole("link", { name: /^Take a recovery week/ });
@@ -1933,6 +2081,25 @@ try {
     assert.equal(savedHybrid.setupValues.useTrainingMax, true);
     assert.equal(savedHybrid.setupValues.tmPercent, .85);
     assert.equal(savedHybrid.editBlockId, undefined);
+    await page.evaluate(() => window.showHybridLoadSetup(true));
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Review dates", exact: true }).click();
+    await page.getByRole("button", { name: "Save program", exact: true }).click();
+    const replacementDialog = page.getByRole("dialog");
+    await expect(replacementDialog).toBeVisible();
+    await screenshot(`template-replace-confirm-${width}`);
+    await replacementDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    assert.equal(await page.evaluate(() => window.hybridLoadSaves.length), 0);
+    await page.getByRole("button", { name: "Save program", exact: true }).click();
+    await page.evaluate(() => { window.templateSaveError = true; });
+    await replacementDialog.getByRole("button", { name: "Replace program", exact: true }).click();
+    await expect(replacementDialog.getByRole("alert")).toBeVisible();
+    assert.equal(await page.evaluate(() => window.hybridLoadSaves[0].review.replaceBlockId), "replaced-hybrid");
+    await page.evaluate(() => { window.templateSaveError = false; });
+    await replacementDialog.getByRole("button", { name: "Replace program", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.hybridLoadSaves.length)).toBe(2);
+    assert.deepEqual(await page.evaluate(() => window.hybridLoadSaves[0]), await page.evaluate(() => window.hybridLoadSaves[1]));
     await page.evaluate(() => window.showDeleteHistory());
     const historyRow = page.getByTestId("block-history-row");
     await historyRow.getByTestId("block-actions-trigger").click();
@@ -2177,6 +2344,7 @@ try {
     }
     assert.deepEqual(failures, []);
   }
+  if (screenshotDirectory) await writeFile(path.join(screenshotDirectory, "contrast.json"), JSON.stringify(contrastResults, null, 2));
   status = "passed";
 } catch (error) {
   code = error?.code === "ERR_ASSERTION" ? "assertion"

@@ -27,6 +27,12 @@ describe("DC-SW8 modular browser profile retains the isolated runtime boundaries
     expect(job).toContain("SXC_ACCEPTANCE_PROFILE:");
     expect(job).not.toContain("environment:");
     expect(job).not.toContain("secrets.");
+    const inputs = workflow.split("    inputs:\n")[1]!.split("\nconcurrency:")[0]!;
+    expect([...inputs.matchAll(/^      \w+:$/gm)]).toHaveLength(24);
+    expect(inputs).toContain("      acceptance_profile:");
+    expect(inputs).toContain("          - auto\n          - modular\n          - swimming");
+    expect(job).toContain("inputs.acceptance_profile != '' && inputs.acceptance_profile != 'auto' && inputs.acceptance_profile");
+    expect(job).toContain("github.ref == 'refs/heads/drrowdev-modular-programs-implementation' && 'modular' || 'swimming'");
   });
 
   it("preserves the historical cohorts and declares each ownership journey exactly once", () => {
@@ -40,9 +46,14 @@ describe("DC-SW8 modular browser profile retains the isolated runtime boundaries
     expect(MODULAR_MIGRATION_TOTAL).toBe(159);
   });
 
-  it("requires the exact modular branch and a fresh first attempt", () => {
+  it("requires one of the two explicitly reviewed branches and a fresh first attempt", () => {
     expect(isModularAcceptance(context)).toBe(true);
     expect(requireManualContext(context, sha)).toBe("pr802-35326000000-1");
+    const redesign = { ...context, GITHUB_REF: "refs/heads/drrowdev-programs-page-redesign",
+      GITHUB_WORKFLOW_REF: "drrowdev/hybrid-training-app/.github/workflows/ci.yml@refs/heads/drrowdev-programs-page-redesign" };
+    expect(requireManualContext(redesign, sha)).toBe("pr802-35326000000-1");
+    expect(() => requireManualContext({ ...redesign, GITHUB_RUN_ATTEMPT: "2" }, sha)).toThrow();
+    expect(() => requireManualContext({ ...redesign, EXPECTED_SHA: "d".repeat(40) }, sha)).toThrow();
     expect(isModularAcceptance({})).toBe(false);
     expect(isModularBrowserProfile({ SXC_ACCEPTANCE_PROFILE: "swimming" })).toBe(false);
     for (const changed of [

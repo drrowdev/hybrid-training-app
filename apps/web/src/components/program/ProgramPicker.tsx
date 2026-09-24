@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BackLink } from "@/components/ui/BackLink";
+import { ProgramConfirmation } from "./ProgramDialog";
 import {
   AB_TRIAD_MOVEMENTS,
   TB_TIMED_HOLD_DOSE,
@@ -1370,6 +1371,7 @@ export function ProgramPicker({
   prefillRaceDate,
   recommendation,
   swimHref = null,
+  replacesName,
 }: {
   programs: PickerProgram[];
   anchoredKeys: string[];
@@ -1403,6 +1405,7 @@ export function ProgramPicker({
   prefillRaceDate?: string;
   recommendation?: ProgramRecommendationSetup;
   swimHref?: string | null;
+  replacesName?: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -1411,7 +1414,7 @@ export function ProgramPicker({
     input: CreateProgramInstanceInput; preview: ProgramSchedulePreview; requestId: string;
   } | null>(null);
   const [acceptOverlap, setAcceptOverlap] = useState(false);
-  const [acceptReplacement, setAcceptReplacement] = useState(false);
+  const [confirmReplacement, setConfirmReplacement] = useState(false);
   const [modalInfo, setModalInfo] = useState<ProgInfo | null>(null);
 
   // Edit mode: re-enter the wizard for an active plan. Behaves like a locked
@@ -2759,10 +2762,11 @@ export function ProgramPicker({
     setEstimate(null);
   }
 
-  function deploy() {
+  function deploy(replace = false) {
     if (!selected) return;
     setResult(null);
     if (reviewed) {
+      if (reviewed.preview.replaces && !replace) { setConfirmReplacement(true); return; }
       startTransition(async () => {
         try {
           const saved = await createProgramInstance({
@@ -2770,7 +2774,7 @@ export function ProgramPicker({
             review: {
               previewId: reviewed.preview.id, revision: reviewed.preview.revision,
               requestId: reviewed.requestId, acceptOverlap,
-              ...(reviewed.preview.replaces && acceptReplacement ? { replaceBlockId: reviewed.preview.replaces.id } : {}),
+              ...(reviewed.preview.replaces && replace ? { replaceBlockId: reviewed.preview.replaces.id } : {}),
             },
           });
           setResult(saved);
@@ -3071,7 +3075,7 @@ export function ProgramPicker({
         else {
           setReviewed({ input, preview: res.preview, requestId: crypto.randomUUID() });
           setAcceptOverlap(false);
-          setAcceptReplacement(false);
+          setConfirmReplacement(false);
         }
       } catch {
         setResult({ ok: false, error: "Couldn't review your program. Try again." });
@@ -3094,7 +3098,7 @@ export function ProgramPicker({
   const canContinue = step !== 0 || !!selected;
 
   // In edit mode the program is locked, so the wizard floor is the Loadout step.
-  const minStep = isEditing ? 1 : 0;
+  const minStep = isEditing || preselectProgram ? 1 : 0;
 
   function goBack() {
     if (reviewed) { setReviewed(null); setResult(null); return; }
@@ -5686,7 +5690,8 @@ export function ProgramPicker({
           /app/plan redirects blockless users straight back here — so send
           them to Today instead of into a loop. */}
       <BackLink href={isEditing ? `/app/plan?block=${editContext.blockId}` : "/app/programs"} label={isEditing ? "Program" : "Programs"} />
-      <h1 className={styles.pageTitle}>{isEditing ? "Edit your plan" : "Start a program"}</h1>
+      <h1 className={styles.pageTitle}>{isEditing ? "Edit your plan" : `New ${selectedId === "wendler-531" || selectedId === "tactical-barbell" ? "strength" : "hybrid"} program`}</h1>
+      {!isEditing && replacesName && <p className={styles.replaces}>Replaces {replacesName}</p>}
       {isEditing && swimHref && <Link href={swimHref} className={styles.btn}>Swimming</Link>}
 
       {isEditing && (
@@ -5772,10 +5777,6 @@ export function ProgramPicker({
               <time dateTime={row.date}>{row.date}</time> · {row.title}
             </p>)}
           </div>
-          {reviewed.preview.replaces && <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-            <input type="checkbox" checked={acceptReplacement} onChange={(event) => setAcceptReplacement(event.target.checked)} />
-            Replace {reviewed.preview.replaces.name}
-          </label>}
           {reviewed.preview.overlaps.length > 0 && <>
             <ul>{reviewed.preview.overlaps.map((entry) => <li key={`${entry.source}:${entry.id}`}>
               {entry.date} · {entry.title}
@@ -5805,8 +5806,8 @@ export function ProgramPicker({
             <button
               type="button"
               className={`${styles.btn} ${styles.deploy}`}
-              onClick={deploy}
-              disabled={!canDeploy || !!(reviewed?.preview.replaces && !acceptReplacement) ||
+              onClick={() => deploy()}
+              disabled={!canDeploy ||
                 !!(reviewed?.preview.overlaps.length && !acceptOverlap)}
             >
               {pending ? reviewed ? "Saving…" : "Preparing…" : reviewed
@@ -5834,6 +5835,9 @@ export function ProgramPicker({
           onClose={() => setModalInfo(null)}
         />
       )}
+      {confirmReplacement && reviewed?.preview.replaces && <ProgramConfirmation
+        name={reviewed.preview.replaces.name} pending={pending} error={result && !result.ok ? result.error : null}
+        onCancel={() => setConfirmReplacement(false)} onConfirm={() => deploy(true)} />}
     </div>
   );
 }

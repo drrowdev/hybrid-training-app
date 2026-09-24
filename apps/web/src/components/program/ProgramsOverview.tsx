@@ -1,12 +1,15 @@
-import Link from "next/link";
-import { PROGRAM_KIND_LABELS, type BlockProgramKind, type TrainingCommitment } from "@hta/domain";
-import { formatProgramDate } from "@/lib/programs/presentation";
-import { TrainingWeek } from "./TrainingWeek";
-import { ProgramTabs } from "./ProgramTabs";
-import styles from "./ProgramBuilder.module.css";
+"use client";
 
-const ACTIVITIES = ["strength", "running", "swimming", "hybrid"] as const;
-const LABELS = { ...PROGRAM_KIND_LABELS, swimming: "Swimming" };
+import Link from "next/link";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { currentSwimWeekIndex, nextProgramCommitment, type BlockProgramKind, type TrainingCommitment } from "@hta/domain";
+import { currentBlockWeekIndex } from "@/lib/dates";
+import { programWorkoutTitle } from "@/lib/programs/presentation";
+import { endBlock } from "@/lib/planner/actions";
+import { NewProgramChooser, PROGRAM_TYPES, PROGRAM_LABELS, type ProgramType } from "./NewProgramChooser";
+import { ProgramConfirmation, ProgramIcon } from "./ProgramDialog";
+import styles from "./ProgramBuilder.module.css";
 
 export type ProgramOverviewItem = {
   id: string;
@@ -20,66 +23,88 @@ export type ProgramOverviewItem = {
   status?: "active" | "paused" | "finished" | "archived";
 };
 
-export function ProgramsOverview({ programs, activity, entries, today, swimHref, sessionLinks = {}, templateBlockIds = [] }: {
+export function ProgramsOverview({ programs, entries, today, swimHref, templateBlockIds = [], initiallyOpen = false }: {
   programs: readonly ProgramOverviewItem[];
-  activity?: string;
   entries: TrainingCommitment[] | null;
   today: string;
   swimHref: string | null;
-  sessionLinks?: Readonly<Record<string, string>>;
   templateBlockIds?: readonly string[];
+  initiallyOpen?: boolean;
 }) {
-  const focused = ACTIVITIES.find((candidate) => candidate === activity);
-  const visible = focused ? programs.filter((program) => program.kind === focused) : programs;
-  const visibleIds = new Set(visible.map((program) => program.id));
-  const schedule = focused ? entries?.filter((entry) => entry.programId !== null && visibleIds.has(entry.programId)) : entries;
-  const buildHref = (kind: typeof ACTIVITIES[number]) => kind === "swimming" ? swimHref : `/app/program/build?activity=${kind}`;
-  function programCard(program: ProgramOverviewItem) {
-    return <section key={program.id} className={`${styles.card} ${styles.programCard}`}>
-      {program.kind && <span className={styles.eyebrow}>{LABELS[program.kind]}</span>}
-      <h2>{program.name}</h2>
-      <span className={styles.muted}>{program.startedOn > today ? "Starts" : "Started"} {formatProgramDate(program.startedOn)}
-        {program.weeks != null ? ` · ${program.weeks} ${program.weeks === 1 ? "week" : "weeks"}` : program.endsOn ? ` · Ends ${formatProgramDate(program.endsOn)}` : ""}
-        {program.status && program.status !== "active" && ` · ${{ paused: "Paused", finished: "Finished", archived: "Archived" }[program.status]}`}
-      </span>
-      <div className={styles.cardActions}>
-        <Link className={styles.button} href={program.href}>Open program</Link>
-      </div>
-    </section>;
+  const router = useRouter();
+  const [chooser, setChooser] = useState(initiallyOpen);
+  const [type, setType] = useState<ProgramType | null>(null);
+  const [ending, setEnding] = useState<ProgramOverviewItem | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const active = programs.filter((program) => !program.status || program.status === "active");
+  if (!active.some((program) => program.kind === "swimming")) {
+    const paused = programs.find((program) => program.kind === "swimming" && program.status === "paused");
+    if (paused) active.push(paused);
   }
-  const primaryIds = new Set(ACTIVITIES.flatMap((kind) => {
-    const program = visible.find((candidate) => candidate.kind === kind && (!candidate.status || candidate.status === "active"));
-    return program ? [program.id] : [];
-  }));
-  return <div className={styles.builder}>
-    <header className={styles.header}><h1>Programs</h1>
-      <div className={styles.headerActions}>
-        <Link className={`${styles.textLink} ${styles.desktopHistory}`} href="/app/plan/history">Program history</Link>
-        <Link className={`${styles.button} ${styles.primary}`} href={focused ? buildHref(focused) ?? "/app/swim" : "/app/program/build"}>New program</Link>
-      </div>
+  const legacy = active.find((program) => program.kind === null);
+  function select(kind: ProgramType | null) {
+    if (kind === "swimming") {
+      const swimming = active.find((program) => program.kind === "swimming");
+      if (swimming || swimHref) router.push(swimming?.href ?? swimHref!);
+      return;
+    }
+    if (kind === "running") { router.push("/app/program/build?activity=running"); return; }
+    setType(kind); setChooser(true);
+  }
+  function summary(program: ProgramOverviewItem) {
+    if (program.status === "paused") return "Paused";
+    const next = nextProgramCommitment(entries ?? [], program.id, today, program.kind === "swimming" ? "swim" : "primary");
+    const weekIndex = program.kind === "swimming" ? currentSwimWeekIndex : currentBlockWeekIndex;
+    const week = program.weeks ? `Week ${weekIndex(program.startedOn, program.weeks, today) + 1} of ${program.weeks}` : "";
+    const day = next && new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" }).format(new Date(`${next.date}T00:00:00Z`));
+    return [week, next ? `Next: ${day}, ${programWorkoutTitle(next.title, templateBlockIds.includes(program.id))}` : ""].filter(Boolean).join(" · ");
+  }
+  return <div className={`${styles.builder} ${styles.overview}`}>
+    <header className={styles.overviewHeader}><h1>Programs</h1>
+      <button type="button" className={`${styles.button} ${styles.primary}`} onClick={() => { setType(null); setChooser(true); }}>
+        <ProgramIcon kind="plus" />New program
+      </button>
     </header>
-    <ProgramTabs label="Activities">
-      <Link className={styles.tab} href="/app/programs" aria-current={!focused ? "page" : undefined}>All programs</Link>
-      {ACTIVITIES.map((kind) => <Link key={kind} className={styles.tab} href={`/app/programs?activity=${kind}`}
-        aria-current={focused === kind ? "page" : undefined}>{LABELS[kind]}</Link>)}
-    </ProgramTabs>
-    <Link className={`${styles.textLink} ${styles.mobileHistory}`} href="/app/plan/history">Program history</Link>
-    <section className={`${styles.programGrid} ${focused ? styles.focusedGrid : ""}`} aria-label="Programs">
-      {ACTIVITIES.filter((kind) => !focused || kind === focused).map((kind) => {
-        const program = visible.find((candidate) => candidate.kind === kind && primaryIds.has(candidate.id));
-        if (program) return programCard(program);
-        const href = buildHref(kind);
-        return <section key={kind} className={`${styles.card} ${styles.programCard}`}>
-          <h2>{LABELS[kind]}</h2>
-          <div className={styles.cardActions}>
-            {href ? <Link className={styles.button} href={href}>Build a program</Link> : <span className={styles.muted}>Swimming isn&apos;t available right now.</span>}
-          </div>
-        </section>;
+    <section className={styles.programList} aria-label="Programs">
+      {legacy && <div className={styles.legacyRow}>
+        <Link href={legacy.href} className={styles.legacyLink}>
+          <span className={styles.typeIcon}><ProgramIcon kind="program" /></span>
+          <span className={styles.programMeta}><strong>{legacy.name}</strong><span className={styles.programSummary}>{summary(legacy)}</span></span>
+        </Link>
+        <button type="button" className={styles.endButton} onClick={() => { setError(null); setEnding(legacy); }}>End program</button>
+      </div>}
+      {PROGRAM_TYPES.map((kind) => {
+        const program = active.find((candidate) => candidate.kind === kind);
+        const locked = !!legacy && kind !== "swimming";
+        const content = <>
+          <span className={styles.typeIcon}><ProgramIcon kind={kind} /></span>
+          <span className={styles.programMeta}>{program
+            ? <><span className={styles.typeLabel}>{PROGRAM_LABELS[kind]}</span><strong>{program.name}</strong><span className={styles.programSummary}>{summary(program)}</span></>
+            : <strong>{PROGRAM_LABELS[kind]}</strong>}
+          </span>
+          <span className={program || locked ? styles.rowChevron : styles.startLabel}>
+            <>{program ? <ProgramIcon kind="chevron" /> : locked || (kind === "swimming" && !swimHref) ? <ProgramIcon kind="lock" /> : "Start"}</>
+          </span>
+        </>;
+        return program ? <Link key={kind} href={program.href} className={styles.programRow} data-kind={kind}>{content}</Link>
+          : <button key={kind} type="button" className={styles.programRow} data-kind={kind}
+            aria-label={`Start ${PROGRAM_LABELS[kind].toLowerCase()} program`} disabled={locked || (kind === "swimming" && !swimHref)}
+            onClick={() => select(kind)}>{content}</button>;
       })}
-      {visible.filter((program) => !primaryIds.has(program.id)).map(programCard)}
     </section>
-    {!!schedule?.length && <TrainingWeek entries={schedule} today={today} sessionLinks={sessionLinks} templateBlockIds={templateBlockIds}
-      showWorkoutEditing={false}
-      programLabels={Object.fromEntries(visible.map((program) => [program.id, program.name]))} />}
+    <nav className={styles.programList} aria-label="Program links">
+      <Link className={styles.setupRow} href="/app/plan">Schedule<ProgramIcon kind="chevron" /></Link>
+      <Link className={styles.setupRow} href="/app/plan/history">Program history<ProgramIcon kind="chevron" /></Link>
+    </nav>
+    {chooser && <NewProgramChooser programs={active} type={type} swimHref={swimHref} onSelect={select} onClose={() => setChooser(false)} />}
+    {ending && <ProgramConfirmation name={ending.name} ending pending={pending} error={error} onCancel={() => setEnding(null)}
+      onConfirm={() => startTransition(async () => {
+        setError(null);
+        try {
+          const form = new FormData(); form.set("id", ending.id);
+          await endBlock(form); setEnding(null); router.refresh();
+        } catch (failure) { setError(failure instanceof Error ? failure.message : "Couldn't end the program. Try again."); }
+      })} />}
   </div>;
 }

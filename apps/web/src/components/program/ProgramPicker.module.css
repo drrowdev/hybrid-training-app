@@ -17,7 +17,7 @@
   --muted2: #5d6753;
   --text: #e6ebe2;
   --dim: #afb8a8;
-  --muted: #79836f;
+  --muted: var(--cp-program-muted);
   --accent: #8fb39b;
   --accent-dim: #5c7a66;
   --sel: #bfd3c2;
@@ -45,6 +45,8 @@
      (the app is now dark-sage app-wide, so the wizard inherits the page bg). */
   background: transparent;
 }
+
+.replaces { margin: -8px 0 18px; font-size: 14px; color: var(--dim); }
 
 /* page heading (kept for a11y + e2e: "Start a program") */
 .pageTitle {

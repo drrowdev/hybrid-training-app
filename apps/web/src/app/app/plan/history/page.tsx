@@ -18,10 +18,13 @@ import {
   type BlockWithCompletionStats,
 } from "@/lib/planner/queries";
 import { DeleteBlockMenu } from "@/components/trash/DeleteBlockMenu";
-import { StatusBadge } from "@/components/blocks/StatusBadge";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { ProgramHistory, ProgramHistorySummary } from "@/components/program/ProgramHistory";
+import styles from "@/components/program/ProgramBuilder.module.css";
 import { groupBlocksByMonth } from "@/lib/plan/history-grouping";
 import { resolveLinkedSession } from "@/lib/sessions/linked-session-state";
+import { getSwimCapability } from "@/lib/swim/capability";
+import { swimOverviewItems } from "@/lib/programs/overview";
+import { SwimProgramHistory } from "@/components/program/SwimProgramHistory";
 import {
   hasTwoADaySlotPair,
   type PlannedSlot,
@@ -61,6 +64,9 @@ export default async function PlanHistoryPage({
   });
   const hasNext = blocks.length > PAGE_SIZE;
   const pageBlocks = blocks.slice(0, PAGE_SIZE);
+  const swimming = await getSwimCapability(supabase);
+  const swimHistory = swimming.storageAvailable
+    ? (await swimOverviewItems(supabase, user.id)).filter((program) => program.status !== "active") : [];
 
   // Pull all planned_sessions for the visible blocks in a single round
   // trip. Cheaper than N+1 expand-on-click + plays nicely with the
@@ -116,13 +122,9 @@ export default async function PlanHistoryPage({
   }
 
   return (
-    <div style={{ display: "grid", gap: 20 }}>
-      <PageHeader
-        back={{ href: "/app/programs", label: "Programs" }}
-        title="Program history"
-      />
+    <ProgramHistory>
 
-      {pageBlocks.length === 0 ? (
+      {pageBlocks.length === 0 && swimHistory.length === 0 ? (
         <section
           className="cp-card"
           style={{ padding: 24, display: "grid", gap: 10, justifyItems: "start" }}
@@ -158,7 +160,7 @@ export default async function PlanHistoryPage({
               >
                 {group.label}
               </h2>
-              <ul style={{ listStyle: "none", padding: 0, margin: "8px 0 0", display: "grid", gap: 10 }}>
+              <ul className={styles.historyList}>
                 {group.blocks.map((b) => (
                   <BlockHistoryRow
                     key={b.id}
@@ -173,8 +175,9 @@ export default async function PlanHistoryPage({
         </div>
       )}
 
+      <SwimProgramHistory programs={swimHistory} />
       <Pagination page={page} hasNext={hasNext} />
-    </div>
+    </ProgramHistory>
   );
 }
 
@@ -219,16 +222,15 @@ function BlockHistoryRow({
         data-testid="block-history-row"
         data-block-id={block.id}
         data-archetype={block.archetype}
-        style={{
-          background: "var(--cp-surface)",
-          border: "1px solid var(--cp-border)",
-          borderRadius: 12,
-          overflow: "hidden",
-        }}
       >
-        <summary style={summaryStyle}>
-          <div style={summaryHeadStyle}>
-            <span style={{ fontWeight: 600, fontSize: 14 }}>{block.archetypeName}</span>
+        <summary className={styles.historyRow}>
+          <ProgramHistorySummary name={block.archetypeName} startedOn={block.startedOn} endedOn={block.endedOn}
+            status={<span data-testid="block-status-badge" data-status={block.status}>
+              {block.status === "active" ? "Active" : block.status === "completed" ? "Completed" : "Ended"}
+            </span>}
+            actions={<DeleteBlockMenu blockId={block.id} archetypeName={block.archetypeName} />} />
+        </summary>
+        <div style={{ display: "grid", gap: 4, padding: "4px 20px 12px" }}>
             {customized ? (
               <span
                 data-testid="customized-program-badge"
@@ -246,25 +248,19 @@ function BlockHistoryRow({
                 Customized
               </span>
             ) : null}
-            <StatusBadge status={block.status} />
-            <span style={{ marginLeft: "auto" }}>
-              <DeleteBlockMenu blockId={block.id} archetypeName={block.archetypeName} />
-            </span>
-          </div>
           <div style={summaryMetaStyle}>
             <span>
               {block.daysPerWeek != null
                 ? `${block.daysPerWeek} d/wk`
                 : "Unknown frequency"}{" "}
-              · {block.weeks}w · started {block.startedOn}
-              {block.endedOn ? ` · ended ${block.endedOn.slice(0, 10)}` : ""}
+              · {block.weeks}w
             </span>
             <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
               {ratio}
               {skipBlurb}
             </span>
           </div>
-        </summary>
+        </div>
 
         {sessions.length === 0 ? (
           <div style={{ padding: "12px 18px", fontSize: 13, color: "var(--cp-text-muted)" }}>
@@ -499,21 +495,6 @@ function Pagination({
     </nav>
   );
 }
-
-const summaryStyle: React.CSSProperties = {
-  display: "grid",
-  gap: 4,
-  padding: "14px 18px",
-  cursor: "pointer",
-  listStyle: "none",
-};
-
-const summaryHeadStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  flexWrap: "wrap",
-};
 
 const summaryMetaStyle: React.CSSProperties = {
   display: "flex",
