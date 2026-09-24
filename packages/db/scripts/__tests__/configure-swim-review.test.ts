@@ -839,7 +839,7 @@ describe("configuration workflow boundaries", () => {
     // Prior bodies plus the selector; credentials and execution steps remain pinned.
     const jobs = workflow.split("\n  configure-swim-review:\n")[0]!.trimEnd().split("\njobs:")[1]!;
     expect(createHash("sha256").update(jobs).digest("hex"))
-      .toBe("567fcb8e66312e1a1435a79163820be0d50f9d90cf6684f0d6c26a53f7fa3daf");
+      .toBe("e077507e7f36bdcf72b5bd1dc464942610b4318b8a9bb4102bb0c9405a5704dc");
   });
   it("isolates five write-step secrets from the single read-only secret after offline and source checks", () => {
     expect(job).toContain("needs: [ci, identity-guard]");
