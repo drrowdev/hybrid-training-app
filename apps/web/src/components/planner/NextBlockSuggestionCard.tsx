@@ -70,7 +70,7 @@ export function NextBlockSuggestionCard({
           {suggestion && (
             <>
               <h2 style={{ fontSize: 18, margin: 0, letterSpacing: "-0.01em" }}>
-                {heading ?? `Consider a ${suggestedName} block next`}
+                {heading ?? `Consider a ${suggestedName} program next`}
               </h2>
               <p
                 style={{
@@ -108,7 +108,7 @@ export function NextBlockSuggestionCard({
                 textDecoration: "none",
               }}
             >
-              {cta.label} →
+              {cta.label}
             </Link>
           )}
         </div>

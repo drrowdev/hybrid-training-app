@@ -91,7 +91,7 @@ export async function loadPaletteIndices(
   const blocks: PaletteItem[] =
     blocksRes.status === "fulfilled" && blocksRes.value.data
       ? blocksRes.value.data.map((b) => {
-          const archetype = (b.archetype as string) ?? "Block";
+          const archetype = (b.archetype as string) ?? "Program";
           const status = (b.status as string) ?? "active";
           const started = (b.started_on as string) ?? "";
           const ended = b.ended_at as string | null;

@@ -43,7 +43,7 @@ test.describe("@desktop /plan/new wizard — power emphasis", () => {
 
     await page.goto("/app/plan/new");
     await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: /build a new block/i }).click();
+    await page.getByRole("button", { name: /build a new program/i }).click();
 
     // Step 1: days
     await page.getByRole("button", { name: /^4( days)?$/ }).click();
@@ -73,7 +73,7 @@ test.describe("@desktop /plan/new wizard — power emphasis", () => {
     await page.getByRole("button", { name: /continue to schedule/i }).click();
 
     // Step 5: start
-    const startBtn = page.getByRole("button", { name: /start this block/i });
+    const startBtn = page.getByRole("button", { name: /start this program/i });
     await expect(startBtn).toBeEnabled();
     await startBtn.click();
 
@@ -168,7 +168,7 @@ test.describe("@desktop /plan/new wizard — power emphasis", () => {
 
     await page.goto("/app/plan/new");
     await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: /build a new block/i }).click();
+    await page.getByRole("button", { name: /build a new program/i }).click();
 
     // Step 1 — days
     await page.getByRole("button", { name: /^4( days)?$/ }).click();

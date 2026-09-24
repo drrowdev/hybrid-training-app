@@ -22,7 +22,7 @@ export default async function SwimmingImportSettings({ searchParams }: { searchP
     <div className="space-y-6">
       <PageHeader back={{ href: "/app/settings", label: "Settings" }} title="Swimming imports" />
       {!view.available
-        ? <p>Swimming imports are not available yet.</p>
+        ? <p>Swimming imports aren&apos;t available right now.</p>
         : <>
           <SwimImportConnection enabled={view.enabled} connection={view.connections.find((item) => item.revoked_at === null) ?? null} />
           <section className="space-y-3">

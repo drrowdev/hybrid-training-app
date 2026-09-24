@@ -17,7 +17,7 @@ export function swimRecordingHref(id: string, origin?: SwimOrigin, workoutId?: s
 
 export function swimReturnDestination(origin: unknown) {
   if (origin === "today") return { href: "/app", label: "Today" };
-  if (origin === "plan") return { href: "/app/plan", label: "Plan" };
+  if (origin === "plan") return { href: "/app/plan", label: "Schedule" };
   if (origin === "history") return { href: "/app/plan/history", label: "Program history" };
   if (origin === "sessions") return { href: "/app/sessions", label: "Sessions" };
   return { href: "/app/swim", label: "Swimming" };

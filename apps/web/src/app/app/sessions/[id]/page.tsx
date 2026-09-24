@@ -1174,9 +1174,6 @@ export default async function SessionDetailPage({
                 )}
               </span>
             </div>
-            <div style={{ fontSize: 10, color: "var(--cp-text-muted)", fontStyle: "italic" }}>
-              Advisory only — research-v2 §3.4 GRM.
-            </div>
           </div>
         </section>
       )}

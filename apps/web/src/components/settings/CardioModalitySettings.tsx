@@ -82,7 +82,7 @@ export function CardioModalitySettings({
           lineHeight: 1.5,
         }}
       >
-        Preferred order for new blocks. Defaults to running when no choice
+        Preferred order for new programs. Defaults to running when no choice
         fits the session or equipment.
       </p>
 

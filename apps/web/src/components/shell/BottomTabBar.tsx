@@ -189,7 +189,7 @@ export function BottomTabBar({
               style={{
                 fontSize: 10,
                 fontWeight: 600,
-                textTransform: "uppercase",
+                textTransform: "none",
                 letterSpacing: "0.06em",
               }}
             >

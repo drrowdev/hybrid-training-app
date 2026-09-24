@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { mkdir, readFile } from "node:fs/promises";
+import path from "node:path";
 import { chromium, expect } from "@playwright/test";
 
 // Reuse Vitest's locked compiler; no app server, environment files or HTTP backend.
@@ -42,6 +44,9 @@ try {
         import { TrashItemRow } from "./src/components/trash/TrashItemRow";
         import { DeleteBlockMenu } from "./src/components/trash/DeleteBlockMenu";
         import { PlanProgramActions } from "./src/components/plan/PlanProgramActions";
+        import { PlanRedesign } from "./src/components/plan/PlanRedesign";
+        import { ProgramSwitcher } from "./src/components/program/ProgramSwitcher";
+        import { BackLink } from "./src/components/ui/BackLink";
         import { RehabProtocolsClient } from "./src/components/rehab-protocols/RehabProtocolsClient";
         import { DeloadWeekCard } from "./src/components/plan/DeloadWeekCard";
         import { FocusStripLogger } from "./src/components/session/FocusStripLogger";
@@ -239,14 +244,15 @@ try {
           </main>);
         };
         window.programCalls = []; window.programMode = "success";
-        window.showProgramsOverview = (activity, includeHybrid = false) => {
+        window.showProgramsOverview = (activity, includeHybrid = false, empty = false) => {
           const identity = value => "00000000-0000-4000-8000-" + String(value).padStart(12, "0");
           window.destinations = [];
-          const programs = [
+          const programs = (empty ? [] : [
             { id: identity(101), kind: "strength", name: "Strength", startedOn: "2026-09-21", weeks: 4, editable: true },
             { id: identity(102), kind: "running", name: "Running", startedOn: "2026-09-21", weeks: 6, editable: true },
+            { id: identity(104), kind: "swimming", name: "Swim endurance", startedOn: "2026-09-21", endsOn: "2026-11-01", weeks: 6, editable: false },
             ...(includeHybrid ? [{ id: identity(103), kind: "hybrid", name: "Running-and-stations-with-strength-and-rehab", startedOn: "2026-09-21", weeks: 8, editable: true }] : []),
-          ];
+          ]).map(program => ({ ...program, href: program.kind === "swimming" ? "/app/swim?plan=" + program.id : "/app/plan?block=" + program.id }));
           const entries = [
             { id: identity(201), source: "primary", programId: identity(101), date: "2026-09-21", title: "Upper A" },
             { id: identity(202), source: "primary", programId: identity(101), date: "2026-09-24", title: "Upper B" },
@@ -257,7 +263,34 @@ try {
             ...(includeHybrid ? [{ id: identity(207), source: "primary", programId: identity(103), date: "2026-09-26", title: "Run and stations" }] : []),
           ].map(entry => ({ ...entry, state: "scheduled" }));
           root.render(<main key={++key} style={{ padding: 12 }}><ProgramsOverview programs={programs}
-            activity={activity} today="2026-09-21" entries={entries} swimHref="/app/swim" hasSwimPlans /></main>);
+            activity={activity} today="2026-09-21" entries={empty ? [] : entries} swimHref="/app/swim/setup" /></main>);
+        };
+        const reviewPrograms = [
+          { id: "strength-review", kind: "strength", name: "Strength", href: "/app/plan?block=strength-review" },
+          { id: "running-review", kind: "running", name: "Running", href: "/app/plan?block=running-review" },
+          { id: "00000000-0000-4000-8000-000000000001", kind: "swimming", name: window.courseSource.title, href: "/app/swim?plan=00000000-0000-4000-8000-000000000001" },
+          { id: "hybrid-review", kind: "hybrid", name: "Hybrid", href: "/app/plan?block=hybrid-review" },
+        ];
+        window.showPlanDetail = () => {
+          const unexpected = async () => { throw new Error("Unexpected review mutation"); };
+          root.render(<main key={++key} style={{ padding: 20, maxWidth: 1040, margin: "auto", display: "grid", gap: 24 }}>
+            <BackLink href="/app/programs" label="Programs" />
+            <ProgramSwitcher programs={reviewPrograms} selectedId="strength-review" />
+            <PlanRedesign blockId="strength-review" archetypeName="Strength" programFamilyName="S×C"
+              startedOn="2026-09-21" weeks={6} today="2026-09-24" currentWeekIndex={0} view="timeline"
+              headerActions={<PlanProgramActions blockId="strength-review" canEdit editHref="/app/program/build?edit=strength-review"
+                startNewHref="/app/program/build?activity=strength" endAction={unexpected} />}
+              sessions={Array.from({ length: 6 }, (_, weekIndex) => [0, 2, 4].map((dayIndex, index) => ({
+                id: "review-" + weekIndex + "-" + dayIndex, weekIndex, dayIndex,
+                date: new Date(Date.UTC(2026, 8, 21 + weekIndex * 7 + dayIndex)).toISOString().slice(0, 10),
+                title: ["Squat and bench", "Deadlift and press", "Squat and rows"][index],
+                isStrength: true, isCardio: false, done: weekIndex === 0 && dayIndex < 3, skipped: false,
+                slot: "single", estDurationMin: 45, notes: null, items: [
+                  { kind: "main", movementId: "squat", movementName: "Squat", sets: 3, reps: 5, weightKg: 60 },
+                ],
+              }))).flat()}
+              moveAction={unexpected} skipAction={unexpected} unskipAction={unexpected} updateNotesAction={unexpected} />
+          </main>);
         };
         window.showOwnedRecommendation = () => {
           root.render(<main key={++key} style={{ padding: 12, maxWidth: 680 }}><ProgramRecommendationsBanner
@@ -292,8 +325,8 @@ try {
                   target: { kind: "time", seconds: 60 } }] }],
             }] }} /></main>);
         };
-        window.showCourseHub = () => root.render(<main className={styles.page}><SwimHub key={++key}
-          setupEnabled={false} plans={[]} plan={{
+        window.showCourseHub = () => root.render(<main className={[styles.page, styles.hubPage].join(" ")} style={{ padding: 20 }}><SwimHub key={++key}
+          setupEnabled={false} plans={[]} programs={reviewPrograms} plan={{
             id: "00000000-0000-4000-8000-000000000001", revision: 1, status: "active",
             imported: { title: window.courseSource.title }, goal: "Endurance", course: "50 m",
             dates: "2026-09-14 – 2026-09-27", today: "2026-09-14",
@@ -670,7 +703,7 @@ try {
           return <main onClick={event => {
             const href = event.target.closest("a")?.getAttribute("href");
             if (href?.startsWith("/app/program?")) { event.preventDefault(); setOpen(true); }
-            else if (href === "/app") { event.preventDefault(); setOpen(false); }
+            else if (href === "/app/programs") { event.preventDefault(); setOpen(false); }
           }}>
             {open ? <ProgramPicker anchoredKeys={["squat"]} initialProgramId="green-protocol"
               initialLoadoutValue={recommendation.phaseId} recommendation={recommendation}
@@ -837,6 +870,8 @@ try {
           args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/planner\/actions$/ }, args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/platform\/actions$/ }, args => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^@\/lib\/(?:sessions\/(?:planned-movement-actions|link-activity|completed-summary-action)|hyrox\/station-swap-actions)$/ },
+          args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/offline\/outbox$/ }, args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^(?:@\/lib\/swim\/(?:actions|import-actions|course-actions|import-match-actions|import-outcome-actions|rehab-actions)|@\/lib\/programs\/authored\/actions|@\/components\/trash\/DeleteSessionButton|next\/(?:navigation|link))$/ }, (args) => ({ path: args.path, namespace: "test" }));
         build.onLoad({ filter: /.*/, namespace: "test" }, (args) => ({
@@ -847,7 +882,15 @@ try {
             : args.path === "@/lib/sessions/reorder-actions"
               ? "export const reorderSessionAccessories = () => { throw new Error('Unexpected reorder'); };"
             : args.path === "@/lib/planner/actions"
-              ? "export const deleteBlock = form => window.deleteHistoryProgram(form); export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); };"
+              ? "export const deleteBlock = form => window.deleteHistoryProgram(form); export const previewTrainingRestore = input => window.previewRestore(input); export const restoreBlock = (...args) => window.restoreBlock(...args); export const permanentlyDeleteBlock = () => { throw new Error('Unexpected deletion'); }; export const previewPlannedMove = () => { throw new Error('Unexpected move'); };"
+            : args.path === "@/lib/sessions/planned-movement-actions"
+              ? "const unexpected = () => { throw new Error('Unexpected planned mutation'); }; export const removePlannedMovement = unexpected, swapPlannedMovement = unexpected, addPlannedMovement = unexpected;"
+            : args.path === "@/lib/hyrox/station-swap-actions"
+              ? "export const setHyroxStationOverride = () => { throw new Error('Unexpected station mutation'); };"
+            : args.path === "@/lib/sessions/link-activity"
+              ? "const unexpected = () => { throw new Error('Unexpected link mutation'); }; export const getLinkableActivities = unexpected, linkActivityToPlanned = unexpected;"
+            : args.path === "@/lib/sessions/completed-summary-action"
+              ? "export const getCompletedSessionSummary = () => { throw new Error('Unexpected summary read'); };"
             : args.path === "@/lib/platform/actions"
               ? "export const getProgramSegments = async () => ({ ok: true, segments: [] }); export const previewProgramInstance = input => window.continuationPreview(input); export const createProgramInstance = input => window.continuationSave(input);"
             : args.path === "@/lib/offline/outbox"
@@ -875,7 +918,7 @@ try {
                   h("button", { type: "button", onClick: onClose }, "Close"));
               }`
             : args.path === "next/navigation"
-            ? "const router = { push(path) { window.destinations.push(path); }, refresh() {} }; export const useRouter = () => router; export const usePathname = () => '/app/plan/history';"
+            ? "const router = { push(path) { window.destinations.push(path); }, refresh() { window.refreshCount = (window.refreshCount ?? 0) + 1; } }; export const useRouter = () => router; export const usePathname = () => '/app/plan/history';"
             : args.path === "next/link"
               ? `import { createElement } from "react"; export default function Link({ href, onClick, ...props }) {
                   return createElement("a", { ...props, href, onClick(event) {
@@ -921,7 +964,24 @@ try {
     : route.abort());
   await page.goto("https://swim-ui.test/");
   await page.addStyleTag({ content: css });
+  const fonts = [
+    ["Geist", "Geist", "sans", "100 900"], ["JetBrains Mono", "JetBrainsMono", "mono", "100 800"],
+    ["Oswald", "Oswald", "display", "400 700"], ["Saira Stencil One", "SairaStencilOne", "stencil", "400"],
+  ];
+  const fontCss = await Promise.all(fonts.map(async ([family, file, variable, weight]) => {
+    const data = await readFile(path.join(root, "src", "app", "fonts", `${file}.woff2`));
+    return `@font-face { font-family: "${family}"; src: url(data:font/woff2;base64,${data.toString("base64")}) format("woff2"); font-weight: ${weight}; font-style: normal; } :root { --font-${variable}: "${family}"; }`;
+  }));
+  await page.addStyleTag({ content: fontCss.join("\n") });
   await page.addScriptTag({ content: script });
+  const screenshotDirectory = process.env.UI_REVIEW_DIR;
+  if (screenshotDirectory) await mkdir(screenshotDirectory, { recursive: true });
+  const screenshot = async (name) => {
+    if (screenshotDirectory) {
+      await page.evaluate(() => document.fonts.ready);
+      await page.screenshot({ path: path.join(screenshotDirectory, `${name}.png`), fullPage: true });
+    }
+  };
 
   stage = "new-programme-default";
   await page.evaluate(() => window.showSetup());
@@ -1182,7 +1242,7 @@ try {
     await page.evaluate(() => { window.homeCalls = []; window.showHomeWeek(); });
     await expect(page.getByRole("heading", { name: "This week", exact: true })).toHaveCount(1);
     await expect(page.getByTestId("plan-this-week")).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Swim A Scheduled", exact: true }))
+    await expect(page.getByRole("link", { name: "Swim A Start workout", exact: true }))
       .toHaveAttribute("href", "/app/swim/swim-home?from=today");
     const preview = page.getByRole("link", { name: "Strength A Preview", exact: true });
     await preview.click();
@@ -1443,8 +1503,10 @@ try {
     await main.fill("4");
     assert.equal(await save.count(), 0);
     await page.getByRole("button", { name: "Review changes", exact: true }).click();
+    const refreshCount = await page.evaluate(() => window.refreshCount ?? 0);
     await save.click();
-    await page.getByRole("button", { name: "Refresh workout", exact: true }).waitFor();
+    await expect.poll(() => page.evaluate(() => window.refreshCount)).toBe(refreshCount + 1);
+    await expect(save).toHaveCount(0);
     assert.deepEqual(await page.evaluate(() => window.courseCalls), ["edit-preview", "edit-preview", "edit-save"]);
     stages.push(stage);
   }
@@ -1454,17 +1516,30 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => window.showProgramsOverview());
     const programs = page.getByRole("region", { name: "Programs", exact: true });
-    await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(3);
+    await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(4);
     const week = page.getByRole("region", { name: "This week", exact: true });
     await expect(week.locator('a[href^="/app/sessions/start/"],a[href^="/app/swim/"]')).toHaveCount(6);
-    await expect(week.getByRole("link", { name: /^Edit / })).toHaveCount(4);
+    await expect(week.getByRole("link", { name: /^Edit / })).toHaveCount(0);
     await expect(programs.getByRole("link", { name: "Open program", exact: true }).first())
       .toHaveAttribute("href", "/app/plan?block=00000000-0000-4000-8000-000000000101");
-    await expect(week.getByRole("link", { name: "Edit Easy run", exact: true })).toHaveAttribute("href",
-      "/app/program/build?edit=00000000-0000-4000-8000-000000000102&workout=00000000-0000-4000-8000-000000000203");
+    await expect(week.getByRole("link", { name: /^Easy run/ })).toHaveAttribute("href",
+      "/app/sessions/start/00000000-0000-4000-8000-000000000203");
     await page.evaluate(() => window.showProgramsOverview(undefined, true));
     await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(4);
     await expect(week.locator('a[href^="/app/sessions/start/"],a[href^="/app/swim/"]')).toHaveCount(7);
+    if (width === 375) {
+      const positions = [];
+      for (const title of [/^Swim B/, /^Run and stations/]) {
+        const link = week.getByRole("link", { name: title });
+        positions.push(await link.evaluate(node => {
+          const text = node.firstElementChild.getBoundingClientRect();
+          const action = node.lastElementChild.getBoundingClientRect();
+          return { textLeft: text.left, actionLeft: action.left, belowText: action.top >= text.bottom };
+        }));
+      }
+      assert.ok(positions.every(position => position.belowText && position.textLeft === position.actionLeft));
+      assert.equal(positions[0].actionLeft, positions[1].actionLeft);
+    }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await page.evaluate(() => window.showProgramsOverview("running", true));
     await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(1);
@@ -1474,6 +1549,26 @@ try {
     await expect(week.getByRole("link", { name: /^Run and stations/ })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "New program", exact: true })).toHaveAttribute("href", "/app/program/build?activity=running");
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    for (const empty of [false, true]) {
+      for (const activity of [undefined, "strength", "running", "swimming", "hybrid"]) {
+        await page.evaluate(({ activity, empty }) => window.showProgramsOverview(activity, true, empty), { activity, empty });
+        await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(activity ? 1 : 4);
+        const tabs = page.getByRole("navigation", { name: "Activities" });
+        await expect(tabs.locator('[aria-current="page"]')).toHaveCount(1);
+        await expect(tabs.getByRole("link", { name: "Swimming", exact: true })).toHaveAttribute("href", "/app/programs?activity=swimming");
+        if (activity === "swimming") {
+          await expect(programs.getByRole("link")).toHaveAttribute("href", empty ? "/app/swim/setup" : "/app/swim?plan=00000000-0000-4000-8000-000000000104");
+          await expect(week.locator('a[href^="/app/swim/"]')).toHaveCount(empty ? 0 : 2);
+          await expect(week.locator('a[href^="/app/sessions/"]')).toHaveCount(0);
+        }
+        if (width === 1280 && !activity) {
+          const tops = await programs.locator(":scope > section").evaluateAll(cards => cards.map(card => card.getBoundingClientRect().top));
+          assert.equal(new Set(tops).size, 1);
+        }
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+        await screenshot(`programs-${activity ?? "all"}-${empty ? "empty" : "populated"}-${width}`);
+      }
+    }
     await page.evaluate(() => window.showOwnedRecommendation());
     await expect(page.getByText("Weekend hybrid", { exact: false })).toBeVisible();
     const recommendation = page.getByRole("link", { name: /^Take a recovery week/ });
@@ -1936,7 +2031,7 @@ try {
     await page.getByRole("button", { name: "Review dates", exact: true }).click();
     await expect(page.getByRole("region", { name: "Review program dates" })).toBeVisible();
     assert.equal((await page.evaluate(() => window.continuationPreviews[0])).sourceRecommendationId, "00000000-0000-4000-8000-000000000094");
-    await page.locator('a[href="/app"]').click();
+    await page.locator('a[href="/app/programs"]').click();
     await expect(advance).toBeVisible();
     assert.deepEqual(await page.evaluate(() => window.continuationSaves), []);
     assert.deepEqual(await page.evaluate(() => window.continuationDismissals), []);
@@ -1947,7 +2042,7 @@ try {
     await page.getByRole("button", { name: "Review dates", exact: true }).click();
     await expect(page.getByRole("region", { name: "Review program dates" })).toBeVisible();
     assert.equal((await page.evaluate(() => window.continuationPreviews.at(-1))).sourceRecommendationId, undefined);
-    await page.locator('a[href="/app"]').click();
+    await page.locator('a[href="/app/programs"]').click();
     await advance.click();
     await page.getByRole("button", { name: "Continue", exact: true }).click();
     await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -1966,7 +2061,7 @@ try {
     assert.deepEqual(saves[0], saves[1]);
     assert.equal(saves[1].sourceRecommendationId, "00000000-0000-4000-8000-000000000094");
     assert.deepEqual(await page.evaluate(() => window.continuationDismissals), []);
-    await page.locator('a[href="/app"]').click();
+    await page.locator('a[href="/app/programs"]').click();
     await expect(advance).toHaveCount(0);
     await page.evaluate(() => window.showContinuation("deload"));
     await page.getByRole("link", { name: "Plan a recovery week" }).click();
@@ -2053,6 +2148,35 @@ try {
     stages.push(stage);
   }
   assert.deepEqual(failures, []);
+  if (screenshotDirectory) {
+    for (const width of [375, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(() => window.showCourseHub());
+      await expect(page.getByRole("navigation", { name: "Programs", exact: true })).toBeVisible();
+      await expect(page.getByTestId("back-link")).toHaveAttribute("href", "/app/programs");
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await screenshot(`swim-hub-${width}`);
+      const progress = page.getByTestId("page-header").getByRole("progressbar");
+      await expect(progress).toHaveAttribute("aria-valuenow", "0");
+      await expect(progress.locator("..")).toContainText("0 of 3 done");
+      const more = page.getByTestId("swim-program-actions").locator("summary");
+      await more.click();
+      for (const name of ["Pause", "Finish plan", "Archive"]) {
+        await expect(page.getByRole("button", { name, exact: true })).toBeVisible();
+      }
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await screenshot(`swim-hub-menu-${width}`);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeHidden();
+      await expect(more).toBeFocused();
+      await page.evaluate(() => window.showPlanDetail());
+      await expect(page.getByTestId("plan-redesign")).toBeVisible();
+      await expect(page.getByTestId("back-link")).toHaveAttribute("href", "/app/programs");
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+      await screenshot(`plan-detail-${width}`);
+    }
+    assert.deepEqual(failures, []);
+  }
   status = "passed";
 } catch (error) {
   code = error?.code === "ERR_ASSERTION" ? "assertion"

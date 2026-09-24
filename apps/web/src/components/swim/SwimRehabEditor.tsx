@@ -25,7 +25,7 @@ export function SwimRehabEditor({ context }: { context: SwimRehabAttachments }) 
     {context.editable ? <form className={styles.form} onSubmit={(event) => {
       event.preventDefault();
       if (inFlight.current) return;
-      if (!revision) { setError("Reload this page before making more changes."); return; }
+      if (!revision) { setError("Couldn't refresh this program. Try again."); router.refresh(); return; }
       inFlight.current = true;
       const requestId = request.current ??= crypto.randomUUID();
       setError(null); setWarning(null);
@@ -35,13 +35,13 @@ export function SwimRehabEditor({ context }: { context: SwimRehabAttachments }) 
             planId: context.planId, protocolIds: selected, revision, requestId,
           });
           if (result.error || !result.ok || !result.protocolIds) {
-            setError(result.error ?? "Could not save your rehab attachments. Try again.");
+            setError(result.error ?? "Couldn't save your rehab attachments. Try again.");
             return;
           }
           setSelected(result.protocolIds); setSaved(result.protocolIds); setRevision(null);
           setWarning(result.warning ?? null); request.current = null;
           router.refresh();
-        } catch { setError("Could not save your rehab attachments. Try again."); }
+        } catch { setError("Couldn't save your rehab attachments. Try again."); }
         finally { inFlight.current = false; }
       });
     }}>

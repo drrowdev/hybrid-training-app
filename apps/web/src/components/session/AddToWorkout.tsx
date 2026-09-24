@@ -152,7 +152,7 @@ export function AddToWorkout({
         setError(
           durable.result?.error ??
             durable.error?.message ??
-            "Couldn't save your cardio. Check your connection and retry.",
+            "Couldn't save your cardio. Try again.",
         );
         return;
       }
@@ -380,7 +380,7 @@ export function AddToWorkout({
             className="cp-btn primary"
             style={{ minHeight: 40 }}
           >
-            {pending ? "Adding…" : "Add cardio block"}
+            {pending ? "Adding…" : "Add cardio"}
           </button>
           {primaryModality && (
             <button

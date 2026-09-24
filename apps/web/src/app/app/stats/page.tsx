@@ -203,9 +203,9 @@ function DeepDiveLinks({ showEngine, showSwimming }: { showEngine: boolean; show
   const links: Array<{ label: string; href: string }> = [
     { label: "PRs & per-movement", href: "/app/stats/prs" },
     ...(showEngine
-      ? [{ label: "Adaptive engine", href: "/app/stats/engine" }]
+      ? [{ label: "Recovery", href: "/app/stats/engine" }]
       : []),
-    { label: "Block analytics", href: "/app/stats/blocks" },
+    { label: "Program analytics", href: "/app/stats/blocks" },
     { label: "Consistency details", href: "/app/stats/adherence" },
     ...(showSwimming ? [{ label: "Swimming", href: "/app/swim" }] : []),
   ];

@@ -49,14 +49,14 @@ export function CourseWorkoutEditor({ context, busy = false, onBusyChange }: {
               setSaved(true);
               setWarning(result.warning ?? null);
               router.refresh();
-            } else setError("The change was not confirmed. Refresh the workout before trying again.");
+            } else setError("Couldn't confirm this change. Try again.");
           } else {
             const result = await previewPrivateSwimEdit(input);
             if (result.error) setError(result.error);
             else if (result.preview) setPreview(result.preview);
-            else setError("Could not preview this change. Try again.");
+            else setError("Couldn't preview this change. Try again.");
           }
-        } catch { setError("The change was not confirmed. Refresh the workout before trying again."); }
+        } catch { setError("Couldn't confirm this change. Try again."); }
         finally { inFlight.current = false; onBusyChange?.(false); }
       });
     }}>
@@ -110,8 +110,7 @@ export function CourseWorkoutEditor({ context, busy = false, onBusyChange }: {
       </>}
       {error && <p className={styles.error} role="alert">{error}</p>}
       {warning && <p className={styles.warning} role="status">{warning}</p>}
-      {saved ? <button type="button" className={styles.secondary} onClick={() => router.refresh()}>Refresh workout</button>
-        : <button className={styles.button} disabled={pending || busy}>{pending ? "Please wait..." : preview ? "Save changes" : "Review changes"}</button>}
+      {!saved && <button className={styles.button} disabled={pending || busy}>{pending ? "Saving..." : preview ? "Save changes" : "Review changes"}</button>}
     </form>
   </details>;
 }

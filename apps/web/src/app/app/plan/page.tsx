@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { SwimCalendar } from "@/components/swim/SwimCalendar";
 import { getSwimNavigation } from "@/lib/swim/navigation";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { BackLink } from "@/components/ui/BackLink";
+import { ProgramSwitcher } from "@/components/program/ProgramSwitcher";
+import { blockOverviewItems, swimOverviewItems } from "@/lib/programs/overview";
+import { hasTemplateWorkoutTitles, programWorkoutTitle } from "@/lib/programs/presentation";
 import { notFound, redirect, unstable_rethrow } from "next/navigation";
 import { SharedTrainingWeek } from "@/components/program/SharedTrainingWeek";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
@@ -16,7 +19,6 @@ import { updatePlannedSessionNotes } from "@/lib/sessions/actions";
 import { estimateSessionDurationBreakdown } from "@/lib/sessions/estimate-duration";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import {
-  archetypeDisplayName,
   getActiveBlocks,
   getPlannedDays,
   todayYmd,
@@ -116,15 +118,10 @@ export default async function PlanPage({
         ])
       : Promise.resolve(null),
   ]);
-  const block = sp.block ? blocks.find((candidate) => candidate.id === sp.block) : blocks.length === 1 ? blocks[0] : null;
+  const block = sp.block ? blocks.find((candidate) => candidate.id === sp.block) : null;
   if (sp.block && !block) notFound();
-  const programNavigation = <nav aria-label="Programs" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-    <Link href="/app/programs">All programs</Link>
-    {blocks.map((candidate) => <Link key={candidate.id} href={`/app/plan?block=${candidate.id}`} aria-current={candidate.id === block?.id ? "page" : undefined}>
-      {archetypeDisplayName(candidate.archetype, candidate.notes)}
-    </Link>)}
-    {swimNavigation.hasPlans && <Link href="/app/swim">Swimming</Link>}
-  </nav>;
+  const swimPrograms = swimNavigation.storageAvailable ? await swimOverviewItems(supabase, user.id) : [];
+  const programNavigation = <ProgramSwitcher programs={[...blockOverviewItems(blocks), ...swimPrograms]} selectedId={block?.id} />;
   const seasonData = seasonReads
     ? (() => {
         const [season, upcomingEvents, floorContext] = seasonReads;
@@ -170,42 +167,16 @@ export default async function PlanPage({
     />
   ) : null;
 
-  if (!block && blocks.length > 1 && !forceNew) {
+  if (!block && !forceNew) {
     return <div style={{ display: "grid", gap: 24 }}>
-      <PageHeader title="Plan" actions={<Link href="/app/programs">Add a program</Link>} />
+      <PageHeader title="Schedule" back={{ href: "/app/programs", label: "Programs" }} />
       {programNavigation}
+      {seasonEnabled && <SeasonViewTabs season={sp.view === "season"} />}
       {sp.view === "season" ? seasonContent : <SharedTrainingWeek today={todayYmd(profileTz)} />}
     </div>;
   }
 
-  if (seasonEnabled && sp?.view === "season" && !block) {
-    return (
-      <div style={{ display: "grid", gap: 24 }}>
-        <SeasonViewTabs />
-        <SwimCalendar />
-        {seasonContent}
-      </div>
-    );
-  }
-
   if (!block || forceNew) {
-    if (!block && !forceNew && swimNavigation.hasPlans) {
-      return (
-        <div style={{ display: "grid", gap: 24 }}>
-          <PageHeader title="Plan" actions={<Link href="/app/program">Add a program</Link>} />
-          <SwimCalendar />
-          {seasonContent}
-        </div>
-      );
-    }
-    // Season-enabled users with an active Season but no live block would
-    // otherwise be bounced straight to the program wizard and never reach their
-    // roadmap (UX audit P2). Route them to the Season view instead — unless they
-    // explicitly asked for a fresh program (?new=1). Only when a Season actually
-    // exists, so users without one keep the normal "start a program" flow.
-    if (seasonEnabled && !forceNew && seasonData?.season) {
-      redirect("/app/plan?view=season");
-    }
     redirect("/app/program");
   }
 
@@ -332,7 +303,7 @@ export default async function PlanPage({
       weekIndex: p.weekIndex,
       dayIndex: p.dayIndex,
       date: p.date,
-      title: p.title,
+      title: programWorkoutTitle(p.title, hasTemplateWorkoutTitles(block)),
       isCardio,
       isStrength: hasStrengthItems && !isRehab,
       isRehab,
@@ -367,13 +338,13 @@ export default async function PlanPage({
   const recovery = loadRecoveryOffers(block.id, sp).catch((error: unknown) => {
     unstable_rethrow(error);
     console.error("Plan suggestions could not load", error);
-    return { banners: <p role="status">Could not load program suggestions.</p>, control: null };
+    return { banners: <p role="status">Couldn&apos;t load program suggestions.</p>, control: null };
   });
 
   return (
-    <div style={{ display: "grid", gap: 24 }}>
+    <div style={{ display: "grid", gap: 24, width: "100%", maxWidth: 1040, margin: "0 auto" }}>
+      <BackLink href="/app/programs" label="Programs" />
       {programNavigation}
-      <SwimCalendar />
       {sp?.kept === "today" && (
         <div
           data-testid="plan-today-kept-notice"
@@ -504,7 +475,7 @@ async function RecoverySection({ recovery, section }: {
   return (await recovery)[section];
 }
 
-function SeasonViewTabs() {
+function SeasonViewTabs({ season }: { season: boolean }) {
   const tabBase = {
     fontSize: 13,
     fontWeight: 600,
@@ -532,7 +503,7 @@ function SeasonViewTabs() {
       }}
     >
       <nav
-        aria-label="Plan views"
+        aria-label="Schedule views"
         className="cp-card"
         style={{
           display: "inline-flex",
@@ -542,23 +513,13 @@ function SeasonViewTabs() {
           background: "var(--cp-surface)",
         }}
       >
-        <Link href="/app/plan" style={tabBase} data-testid="season-nav-timeline">
-          Program
+        <Link href="/app/plan" style={season ? tabBase : activeTab} aria-current={!season ? "page" : undefined} data-testid="season-nav-timeline">
+          Schedule
         </Link>
-        <Link
-          href="/app/plan?view=month"
-          style={tabBase}
-          data-testid="season-nav-month"
-        >
-          Calendar
-        </Link>
-        <span style={activeTab} aria-current="page" data-testid="season-nav-season">
+        <Link href="/app/plan?view=season" style={season ? activeTab : tabBase} aria-current={season ? "page" : undefined} data-testid="season-nav-season">
           Season
-        </span>
+        </Link>
       </nav>
-      <span style={{ color: "var(--cp-text-muted)", fontSize: 12 }}>
-        Long-range training roadmap
-      </span>
     </div>
   );
 }
@@ -585,11 +546,10 @@ function TissueStackCard({ gaps }: { gaps: TissueStackGap[] }) {
           fontWeight: 600,
         }}
       >
-        Tissue-stack deficit
+        Tendon work
       </div>
       <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
-        This week is missing tendon / connective-tissue work the research
-        treats as a floor, not optional:
+        Add tendon work this week:
       </div>
       <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--cp-text-muted)" }}>
         {gaps.map((g) => (

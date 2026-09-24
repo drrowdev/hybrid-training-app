@@ -18,6 +18,6 @@ export default async function SwimImportPage() {
   return <main className={styles.page}>
     <PageHeader title="Import swimming plan" back={{ href: "/app/swim/setup", label: "Swimming setup" }} />
     {enabled && schedule ? <CourseImportForm today={(await swimToday(client, user.id)).today} schedule={schedule.entries} />
-      : <p role="status">Plan imports are currently unavailable.</p>}
+      : <p role="status">Plan imports aren&apos;t available right now.</p>}
   </main>;
 }

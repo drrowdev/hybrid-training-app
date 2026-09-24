@@ -64,7 +64,7 @@ const TABLE: Partial<Record<Goal, Partial<Record<SecKey, Row>>>> = {
       blocks: { min: 2, max: 3 },
       weeks: { min: 8, max: 12 },
       decayWeeks: 4,
-      note: "Neural gains land in block 1; hypertrophic CSA accrues over 2–3.",
+      note: "Neural gains land in program 1; hypertrophic CSA accrues over 2–3.",
     },
     cardio: {
       blocks: { min: 2, max: 3 },
@@ -124,7 +124,7 @@ const TABLE: Partial<Record<Goal, Partial<Record<SecKey, Row>>>> = {
 function summariseStandard(row: Row): string {
   const sameBlocks = row.blocks.min === row.blocks.max;
   const sameWeeks = row.weeks.min === row.weeks.max;
-  const blocksStr = sameBlocks ? `${row.blocks.min} block${row.blocks.min === 1 ? "" : "s"}` : `${row.blocks.min}–${row.blocks.max} blocks`;
+  const blocksStr = sameBlocks ? `${row.blocks.min} program${row.blocks.min === 1 ? "" : "s"}` : `${row.blocks.min}–${row.blocks.max} programs`;
   const weeksStr = sameWeeks ? `~${row.weeks.min} weeks` : `~${row.weeks.min}–${row.weeks.max} weeks`;
   const head = `Expect noticeable change in ${blocksStr} (${weeksStr}).`;
   const tail =
@@ -135,12 +135,12 @@ function summariseStandard(row: Row): string {
 }
 
 const CONCURRENT_SUMMARY =
-  "Concurrent / hybrid blocks build stable performance rather than a peak. " +
+  "Concurrent / hybrid programs build stable performance rather than a peak. " +
   "Expect gradual progress with no single milestone — rotate emphasis every 4–6 weeks.";
 
 const TENDON_SUMMARY =
   "Tendon and connective-tissue remodelling runs on a months-to-years clock. " +
-  "Plan 4+ blocks (16+ weeks) before judging the change.";
+  "Plan 4+ programs (16+ weeks) before judging the change.";
 
 function tendonGuidance(): AdaptationGuidance {
   return {

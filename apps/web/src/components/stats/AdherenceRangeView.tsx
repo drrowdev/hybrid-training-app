@@ -158,7 +158,7 @@ function WeeklyCard({ weeks, range }: { weeks: WeekBucket[]; range: AdherenceRan
           subtitle="Skipped sessions count as missed"
           helpTerm="adherence"
         />
-        <EmptyText>Build a block to see adherence trends</EmptyText>
+        <EmptyText>Build a program to see adherence trends</EmptyText>
       </Card>
     );
   }
@@ -414,14 +414,14 @@ function ArchetypeCard({ rows }: { rows: ArchetypeBucket[] }) {
   if (rows.length === 0) {
     return (
       <Card testId="stats-adherence-archetype" empty>
-        <CardTitle title="By block type" subtitle="Sorted by most used" />
-        <EmptyText>Need at least 1 completed block</EmptyText>
+        <CardTitle title="By program type" subtitle="Sorted by most used" />
+        <EmptyText>Need at least 1 completed program</EmptyText>
       </Card>
     );
   }
   return (
     <Card testId="stats-adherence-archetype">
-      <CardTitle title="By block type" subtitle="Sorted by most used" />
+      <CardTitle title="By program type" subtitle="Sorted by most used" />
       <ul style={{ display: "grid", gap: 10, margin: 0, padding: 0, listStyle: "none" }}>
         {rows.map((r) => {
           const total = r.logged + r.skipped + r.missed;
@@ -440,7 +440,7 @@ function ArchetypeCard({ rows }: { rows: ArchetypeBucket[] }) {
               <div style={{ display: "grid", gap: 2 }}>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>{r.displayName}</span>
                 <span style={{ fontSize: 11, color: "var(--cp-text-muted)" }}>
-                  {r.blockCount} block{r.blockCount === 1 ? "" : "s"} · {r.logged}/{total} logged
+                  {r.blockCount} program{r.blockCount === 1 ? "" : "s"} · {r.logged}/{total} logged
                 </span>
                 <InlineStack logged={r.logged} skipped={r.skipped} missed={r.missed} />
               </div>
@@ -555,7 +555,7 @@ function SkipNotesCard({ rows }: { rows: SkippedNote[] }) {
                 alignSelf: "center",
               }}
             >
-              View →
+              View
             </Link>
           </li>
         ))}
@@ -576,7 +576,7 @@ function StreaksCard({
   if (totalPlanned === 0 && streaks.currentDays === 0 && streaks.longestDays === 0) {
     return (
       <Card testId="stats-adherence-streaks" empty>
-        <CardTitle title="Streaks" subtitle="Logged + rest days count" />
+        <CardTitle title="Streaks" />
         <EmptyText>Start logging to build a streak</EmptyText>
       </Card>
     );
@@ -585,7 +585,6 @@ function StreaksCard({
     <Card testId="stats-adherence-streaks">
       <CardTitle
         title="Streaks"
-        subtitle="Logged sessions and rest days count. Skips break the streak."
         helpTerm="streak"
       />
       <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>

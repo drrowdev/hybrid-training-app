@@ -163,13 +163,13 @@ function buildReason(
     return `Builds toward your event — ${candidate.label} carries its own race-week sequence, so nothing extra is layered on top.`;
   }
   if (slot.biased === "strength") {
-    return `Leans strength while leaving room to hold your conditioning — ${candidate.label} fits a strength-focus block.`;
+    return `Leans strength while leaving room to hold your conditioning — ${candidate.label} fits a strength-focus program.`;
   }
   if (slot.biased === "endurance") {
-    return `Builds your engine while strength holds at maintenance — ${candidate.label} fits an endurance-focus block.`;
+    return `Builds your engine while strength holds at maintenance — ${candidate.label} fits an endurance-focus program.`;
   }
   if (slot.arcRole === "maintenance") {
-    return `A lighter, lower-volume block — ${candidate.label} keeps your qualities ticking over while you recover.`;
+    return `A lighter, lower-volume program — ${candidate.label} keeps your qualities ticking over while you recover.`;
   }
   if (signals.recent) {
     return `${candidate.label} matches this slot, but you just ran it — consider a change of stimulus.`;

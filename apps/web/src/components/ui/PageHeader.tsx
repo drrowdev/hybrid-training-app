@@ -6,7 +6,7 @@
  * subpages a bold centered H1, etc.). One shape everywhere:
  *
  *   [← Back]                     (optional, quiet)
- *   EYEBROW                      (optional, uppercase muted)
+ *   Eyebrow                      (optional, muted)
  *   Title                        (H1, 28/700)
  *   Subtitle copy                (optional, muted)   [actions →]
  *
@@ -17,7 +17,7 @@ import { BackLink } from "./BackLink";
 
 export type PageHeaderProps = {
   title: ReactNode;
-  /** Small uppercase context line above the title. */
+  /** Small context line above the title. */
   eyebrow?: ReactNode;
   /** Muted description below the title. */
   subtitle?: ReactNode;
@@ -57,7 +57,7 @@ export function PageHeader({
                 fontSize: 11,
                 fontWeight: 500,
                 letterSpacing: "0.12em",
-                textTransform: "uppercase",
+                textTransform: "none",
                 color: "var(--cp-text-muted)",
               }}
             >
@@ -72,7 +72,7 @@ export function PageHeader({
               fontSize: 30,
               fontWeight: 600,
               letterSpacing: "0.01em",
-              textTransform: "uppercase",
+              textTransform: "none",
               lineHeight: 1.05,
               color: "var(--cp-text)",
             }}

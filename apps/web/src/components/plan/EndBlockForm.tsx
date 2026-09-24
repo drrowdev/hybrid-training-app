@@ -64,10 +64,6 @@ export function EndBlockForm({
     >
       <div>
         <div style={{ fontSize: 14, fontWeight: 600 }}>End this program?</div>
-        <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 4 }}>
-          Archives the schedule. You keep all logged sessions and can
-          start a new program immediately.
-        </div>
       </div>
       <label style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
         What happened? (optional)

@@ -25,7 +25,7 @@ export function SwimImportConnection({ enabled, connection }: { enabled: boolean
         setCopied(false);
         router.refresh();
       } catch {
-        setError("Connection status unconfirmed. Reload.");
+        setError("Couldn't confirm this change. Try again.");
       }
     });
   }
@@ -42,7 +42,7 @@ export function SwimImportConnection({ enabled, connection }: { enabled: boolean
         setCopied(false);
         router.refresh();
       } catch {
-        setError("Connection status unconfirmed. Reload.");
+        setError("Couldn't confirm this change. Try again.");
       }
     });
   }

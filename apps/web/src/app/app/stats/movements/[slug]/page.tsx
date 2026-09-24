@@ -375,7 +375,7 @@ function tmReasonLabel(reason: string): string {
     case "manual": return "Manual edit";
     case "pr_detection": return "PR-driven";
     case "amrap_bump": return "AMRAP bump";
-    case "block_complete": return "Block complete";
+    case "block_complete": return "Program complete";
     case "deload": return "Deload";
     case "onboarding": return "Initial value";
     default: return reason;

@@ -41,7 +41,7 @@ export type PaletteIndices = {
 export const KIND_LABEL: Record<PaletteKind, string> = {
   page: "Pages",
   movement: "Movements",
-  block: "Blocks",
+  block: "Programs",
   session: "Sessions",
   event: "Events",
 };

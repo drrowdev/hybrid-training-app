@@ -187,7 +187,7 @@ export default async function TodayPage() {
         )
         .eq("user_id", userId).eq("status", "pending")
         .order("created_at", { ascending: false });
-      if (suggestionsError) throw new Error("Could not read strength suggestions. Try again.");
+      if (suggestionsError) throw new Error("Couldn't read strength suggestions. Try again.");
       if (!pendingSuggestionsRaw || pendingSuggestionsRaw.length === 0) return [];
       const movIds = Array.from(new Set(pendingSuggestionsRaw.map((s) => s.movement_id)));
       const setIds = Array.from(
@@ -213,7 +213,7 @@ export default async function TodayPage() {
           ? supabase.from("sessions").select("id, performed_at, block_id").eq("user_id", userId).in("id", sessIds)
           : Promise.resolve({ data: [] as { id: string; performed_at: string; block_id: string | null }[], error: null }),
       ]);
-      if (sessionsError) throw new Error("Could not read the source workouts. Try again.");
+      if (sessionsError) throw new Error("Couldn't read the source workouts. Try again.");
       const blockIds = (sessRows ?? []).flatMap((session) => session.block_id ? [session.block_id] : []);
       const kinds = await loadBlockProgramKinds(supabase, userId, blockIds);
       const typedSessions = new Set((sessRows ?? [])
@@ -277,7 +277,7 @@ export default async function TodayPage() {
         .from("movements")
         .select("id, display_name, slug, primary_region")
         .in("id", plannedMovementIds);
-      if (movementError) throw new Error("Could not check today's exercises. Try again.");
+      if (movementError) throw new Error("Couldn't check today's exercises. Try again.");
       for (const m of movs ?? []) {
         regionMap.set(m.id, {
           primaryRegion: m.primary_region as string,
@@ -703,16 +703,16 @@ export default async function TodayPage() {
                     programName: seasonNext.programName,
                     reason:
                       seasonNext.block.intentNote?.trim() ||
-                      `It\u2019s the next block in your season \u201C${seasonNext.seasonName}\u201D.`,
+                      `It\u2019s the next program in your season \u201C${seasonNext.seasonName}\u201D.`,
                   },
                   realization: null,
                 }}
                 eyebrow="Next in your season"
-                heading={`Next up: a ${seasonNext.programName} block`}
+                heading={`Next up: a ${seasonNext.programName} program`}
                 suggestionTail={""}
                 cta={{
                   href: `/app/program?program=${seasonNext.block.programId}&seasonBlockId=${seasonNext.block.id}`,
-                  label: "Start this block",
+                  label: "Start this program",
                 }}
                 testId="block-ending-nudge-season"
               />
@@ -725,7 +725,7 @@ export default async function TodayPage() {
                     href: endingNudge.suggestion
                       ? `/app/program?program=${endingNudge.suggestion.programId}`
                       : "/app/program",
-                    label: "Plan your next block",
+                    label: "Plan your next program",
                   }}
                   testId="block-ending-nudge"
                 />
@@ -822,7 +822,7 @@ function ActivitySection({
       <section className="cp-card" style={{ padding: 20 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
           <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
-          <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
+          <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all</Link>
         </div>
         <EmptyState
           variant="inline"
@@ -849,7 +849,7 @@ function ActivitySection({
     <section aria-label="Recent activity" style={{ display: "grid", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 4 }}>
         <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
-        <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
+        <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all</Link>
       </div>
       {groups
         .filter((g) => g.items.length > 0)
@@ -1022,7 +1022,7 @@ function TodaySessionCard({
           </p>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <Link href="/app/sessions/new" className="cp-btn">Add another session</Link>
-            <Link href="/app/plan" className="cp-btn">See tomorrow →</Link>
+            <Link href="/app/plan" className="cp-btn">See tomorrow</Link>
           </div>
         </section>
       </>
@@ -1173,7 +1173,7 @@ function TodaySessionCard({
                 whiteSpace: "nowrap",
               }}
             >
-              View plan →
+              View plan
             </Link>
           </div>
         </section>

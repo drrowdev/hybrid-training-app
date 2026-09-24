@@ -89,7 +89,7 @@ export function ActiveLimitationsCard({
             textDecoration: "none",
           }}
         >
-          Manage →
+          Manage
         </Link>
       </div>
       <ul
@@ -151,7 +151,7 @@ export function ActiveLimitationsCard({
           }}
         >
           ⚠ {pendingCount} suggested adjustment
-          {pendingCount === 1 ? "" : "s"} — review →
+          {pendingCount === 1 ? "" : "s"} — review
         </Link>
       )}
     </section>

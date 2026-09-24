@@ -406,7 +406,7 @@ const PROG_INFO: Record<string, ProgInfo> = {
   [TB_PROGRAM_ID]: {
     kick: "Tactical Barbell",
     title: "Tactical Barbell",
-    body: "Submaximal strength work alongside conditioning. Train a small cluster of main lifts using percentage-based loading. The template sets lifting frequency and block length; retest maxes between blocks.",
+    body: "Submaximal strength work alongside conditioning. Train a small cluster of main lifts using percentage-based loading. The template sets lifting frequency and program length; retest maxes between programs.",
     meta: ["Strength + conditioning", "Percentage-based loading"],
   },
   "green-protocol": {
@@ -464,13 +464,13 @@ const PROGRAM_LOADOUT: Record<string, ProgramLoadoutMeta> = {
     freqChoice: true,
   },
   [TB_PROGRAM_ID]: {
-    title: "Configure your Tactical Barbell block",
-    sub: "Each template sets training frequency and block length.",
+    title: "Configure your Tactical Barbell program",
+    sub: "Each template sets training frequency and program length.",
     structLabel: "Loading",
     struct: "Submaximal % of 1RM \u00B7 retest every 6\u201312 weeks",
   },
   "green-protocol": {
-    title: "Configure your Green Protocol block",
+    title: "Configure your Green Protocol program",
     sub: "Foundation builds the base; Continuation provides ongoing training.",
     structLabel: "Conditioning",
     struct: "Prescribed in-app \u00B7 runs & rucks logged by you",
@@ -500,67 +500,67 @@ const TEMPLATE_COPY: Record<string, Record<string, TemplateCopy>> = {
     "5spro-fsl": {
       badge: "Recommended",
       desc: "Fixed 5s leader with First-Set-Last supplemental. Low fatigue, steady gains.",
-      long: "5\u2019s PRO replaces the AMRAP top sets with straight sets of 5 across all three main-work weeks, keeping fatigue low so you can recover and add volume. First-Set-Last (FSL) takes the first work-set percentage and repeats it for 3\u20135 back-off sets \u2014 simple, scalable supplemental volume. Run as a Leader (build volume) \u2192 7th-week deload/test \u2192 Anchor (express strength). The most sustainable way to start 5/3/1.",
+      long: "Sets of 5 for main lifts, with 3\u20135 back-off sets at the first working weight.",
     },
     "bbb-leader": {
       desc: "5\u00D710 supplemental at 50\u201360%. High-volume hypertrophy on the main work.",
-      long: "After your main 5/3/1 work, do 5 sets of 10 reps of the same lift at 50\u201360% of your Training Max. It\u2019s brutally simple and one of the most effective mass-builders in the program \u2014 the high rep volume drives hypertrophy while the main work keeps strength progressing. Best run when recovery and calories are good.",
+      long: "Main lifts followed by 5 sets of 10 at 50\u201360% of your training max.",
     },
     "original-531-fsl": {
       desc: "Classic 5/3/1 main with AMRAP top sets plus a First-Set-Last back-off.",
-      long: "The original 5/3/1: each week the top set is taken for As-Many-Reps-As-Possible (stopping shy of failure), and those reps drive your estimated 1RM and Training-Max progression. FSL back-off sets add supplemental volume. More autoregulated and intense than 5\u2019s PRO \u2014 a good next step once you\u2019re comfortable with the system.",
+      long: "Weekly AMRAP top sets, stopping short of failure, followed by back-off sets.",
     },
   },
   [TB_PROGRAM_ID]: {
     operator: {
       badge: "Recommended",
-      desc: "3 lifts, trained 3\u00D7/week. The flagship low-frequency strength template.",
+      desc: "3 lifts, trained 3 times a week.",
       freq: "3 sessions / week",
-      len: "6-week block",
-      long: "Operator is Tactical Barbell\u2019s signature template: pick up to 3 main lifts (a \u2018cluster\u2019) and train all of them, 3 times a week, every other day. Loads are a submaximal percentage of your 1RM that waves up over a 6-week block. Because it\u2019s low-frequency and never taken to failure, it leaves plenty in the tank for heavy conditioning \u2014 which is the whole point of TB.",
+      len: "6-week program",
+      long: "3 strength sessions a week for 6 weeks, using up to 3 main lifts.",
     },
     fighter: {
       desc: "2\u00D7/week strength built to sit under heavy conditioning.",
       freq: "2 sessions / week",
-      len: "6-week block",
-      long: "Fighter is the 2-day-a-week minimum-effective-dose strength template. Same submaximal percentage waves as Operator, but only twice a week \u2014 freeing up the calendar for high volumes of running, rucking or sport practice. The go-to when conditioning is your priority and strength just needs to be maintained or slowly built.",
+      len: "6-week program",
+      long: "2 strength sessions a week for 6 weeks.",
     },
     zulu: {
       desc: "A/B split \u2014 4 sessions a week, each with main and supplemental lifts.",
       freq: "4 sessions / week",
-      len: "6-week block",
-      long: "Zulu runs two sessions, A and B, twice each across four days. A trains bench and squat, then overhead press and ab work. B trains deadlift and weighted pull-ups, then barbell rows and back extensions. The second pass through the week opens slightly heavier than the first. More barbell coverage than Operator, for when you can give strength 4 days.",
+      len: "6-week program",
+      long: "4 strength sessions a week for 6 weeks, alternating two workouts with main and supplemental lifts.",
     },
     "zulu-ia": {
       desc: "Zulu, autoregulated: 3\u20135 sets, heavier weeks 4\u20136.",
       freq: "4 sessions / week",
-      len: "6-week block",
-      long: "The Individualised/Advanced Zulu variant. Same A/B split, but you autoregulate 3\u20135 sets per lift and the back half of the block runs heavier, peaking at 1\u20132 reps. For intermediate-to-advanced lifters who want more intensity than standard Zulu.",
+      len: "6-week program",
+      long: "4 strength sessions a week for 6 weeks, with 3\u20135 sets per lift and heavier final weeks.",
     },
     gladiator: {
       desc: "Higher-volume 5\u00D75 for when conditioning load is low.",
       freq: "3 sessions / week",
-      len: "6-week block",
-      long: "Gladiator runs higher-volume 5\u00D75 main work, 3 days a week. More hypertrophy and work capacity than Operator, but it costs more recovery \u2014 best used in phases when your conditioning load is light.",
+      len: "6-week program",
+      long: "3 strength sessions a week for 6 weeks, with 5 sets of 5 for main lifts.",
     },
     mass: {
       desc: "Hypertrophy-leaning 4\u00D76\u21924\u00D73 wave.",
       freq: "3 sessions / week",
-      len: "6-week block",
-      long: "Mass biases the template toward size: higher-rep 4\u00D76 work that waves down to 4\u00D73 over the block, 3 days a week, with short rest. Use it for a dedicated muscle-building phase while keeping conditioning minimal.",
+      len: "6-week program",
+      long: "3 sessions a week for 6 weeks, with 4 sets per lift progressing from 6 to 3 reps.",
     },
     "grey-man": {
-      desc: "A generalist double-wave block.",
+      desc: "A generalist double-wave program.",
       freq: "3 sessions / week",
-      len: "12-week block",
-      long: "Grey Man is a 12-week generalist block that double-waves volume and then intensity \u2014 a longer, balanced run for steady all-round progress when you don\u2019t want to commit to a single specific goal.",
+      len: "12-week program",
+      long: "3 sessions a week for 12 weeks, alternating volume and intensity phases.",
     },
     activation: {
       badge: "25-week on-ramp",
       desc: "Base, Armor, Operator and Vertex in one guided progression.",
       freq: "2\u20134 strength sessions / week",
       len: "25-week program",
-      long: "Activation is the complete TB3 on-ramp in one program. It starts with four weeks of strength-endurance circuits, tests the lifts, moves through Armor and Operator Blue/Black, then finishes with the explosive Vertex/Breacher phase and a final retest. Each phase owns its exercise selection and schedule. Conditioning guidance stays outside this strength-only plan.",
+      long: "25 weeks of strength-endurance, strength and power across four phases, with lift tests.",
     },
   },
   "green-protocol": {
@@ -568,26 +568,26 @@ const TEMPLATE_COPY: Record<string, Record<string, TemplateCopy>> = {
       group: "foundation",
       seq: 1,
       badge: "Start here",
-      desc: "Strength + an easy aerobic base. The starting block \u2014 ends in a 6-mile / 60-min run.",
+      desc: "Strength and easy running, ending with a 6-mile run in 60 minutes.",
       freq: "6 sessions / week",
-      len: "12-week block",
-      long: "Capacity is where everyone starts. It\u2019s a concentrated block of building muscle, strength and a basic aerobic base, lifting paired with easy steady-state running over about 12 weeks. Clear its 6-mile / 60-minute benchmark and you\u2019re ready for Velocity.",
+      len: "12-week program",
+      long: "6 sessions a week for 12 weeks: strength and easy running.",
     },
     velocity: {
       group: "foundation",
       seq: 2,
-      desc: "Picks up where Capacity ends \u2014 builds your run engine to a 20-mile off-road benchmark.",
+      desc: "Running endurance, ending with a 20-mile off-road run.",
       freq: "6 sessions / week",
-      len: "17-week block",
-      long: "Velocity turns the aerobic base from Capacity into real endurance: easy mileage, speedwork, hills and an escalating long run, with lifting dialled back to support it. Benchmark: a 20-mile off-road run. Do this after Capacity.",
+      len: "17-week program",
+      long: "6 sessions a week for 17 weeks: easy runs, speedwork, hills and supporting strength.",
     },
     outcome: {
       group: "foundation",
       seq: 3,
       desc: "Ruck-focused peaking \u2014 channels it all into a 20-mile / 50 lb ruck.",
       freq: "6 sessions / week",
-      len: "17-week block",
-      long: "Outcome channels your strength and conditioning into rucking, work capacity and muscular endurance, finishing with a challenging peaking phase. Benchmark: a 20-mile / 50 lb ruck. Skippable if your role isn\u2019t ruck-heavy.",
+      len: "17-week program",
+      long: "6 sessions a week for 17 weeks: rucking, strength and muscular endurance.",
     },
     hybrid: {
       group: "continuation",
@@ -595,28 +595,28 @@ const TEMPLATE_COPY: Record<string, Record<string, TemplateCopy>> = {
       desc: "Lifting + running in two phases. The simple everyday baseline.",
       freq: "5\u20136 sessions / week",
       len: "14-week cycle",
-      long: "Hybrid is the everyday Continuation baseline: lifting and running in a simple two-phase approach \u2014 the first half emphasises strength, the second prioritises conditioning. Simple, flexible and sustainable \u2014 you can run it indefinitely.",
+      long: "5\u20136 sessions a week for 14 weeks: a strength phase followed by a conditioning phase.",
     },
     "hybrid-op": {
       group: "continuation",
       desc: "A 50/50 strength-and-conditioning variant of Hybrid.",
       freq: "6 sessions / week",
       len: "6-week cycle",
-      long: "Hybrid/Op is a 50/50 variant of standard Hybrid \u2014 strength and conditioning weighted evenly rather than split into two phases. A fit for roles with a lighter endurance demand that still want both qualities trained continuously.",
+      long: "6 sessions a week for 6 weeks: equal strength and conditioning.",
     },
     ccat: {
       group: "continuation",
       desc: "Concurrent \u2014 trains every domain every week.",
       freq: "6 sessions / week",
       len: "10-week cycle",
-      long: "C/CAT (Concurrent / Combat-Arms Template) trains all the major domains every week: a strength component, rucking, speedwork, elevation work and long runs. It keeps your fingers in every pie at a sustainable tempo.",
+      long: "6 sessions a week for 10 weeks: strength, rucking, speedwork, hills and long runs.",
     },
     icat: {
       group: "continuation",
       desc: "Intermittent concurrent \u2014 a lighter-touch C/CAT.",
       freq: "5 sessions / week",
       len: "10-week cycle",
-      long: "I/CAT is the intermittent variant of C/CAT: the same all-domain concurrent approach at a slightly reduced weekly volume, for when life or recovery calls for a lighter touch.",
+      long: "5 sessions a week for 10 weeks: strength, rucking and running.",
     },
   },
 };
@@ -625,12 +625,12 @@ const GP_GROUPS: Record<"foundation" | "continuation", { name: string; tag: stri
   foundation: {
     name: "Foundation",
     tag: "Build your base",
-    blurb: "The entry path \u2014 work through these in order. Each ends in a benchmark that unlocks the next. Start here if you\u2019re building your engine from the ground up.",
+    blurb: "Capacity, Velocity and Outcome, each ending with a benchmark.",
   },
   continuation: {
     name: "Continuation",
     tag: "Long-term baseline",
-    blurb: "For once your base is in place. Flexible, sustainable everyday programming you can run indefinitely and customise around life.",
+    blurb: "Repeatable strength and conditioning after Foundation.",
   },
 };
 
@@ -2776,7 +2776,7 @@ export function ProgramPicker({
           setResult(saved);
           if (saved.ok) router.push(isEditing ? saved.todayLeftAsIs ? "/app/plan?kept=today" : "/app/plan" : "/app");
         } catch {
-          setResult({ ok: false, error: "Could not save your program. Try again." });
+          setResult({ ok: false, error: "Couldn't save your program. Try again." });
         }
       });
       return;
@@ -3074,7 +3074,7 @@ export function ProgramPicker({
           setAcceptReplacement(false);
         }
       } catch {
-        setResult({ ok: false, error: "Could not review your program. Try again." });
+        setResult({ ok: false, error: "Couldn't review your program. Try again." });
       }
     });
   }
@@ -3334,7 +3334,7 @@ export function ProgramPicker({
       : (copy?.len ?? "\u2014").toUpperCase();
     return (
       <div className={styles.specwrap}>
-        <div className={styles.label}>{selected?.id === "wendler-531" ? "Your cycle" : "Your block"}</div>
+        <div className={styles.label}>{selected?.id === "wendler-531" ? "Your cycle" : "Your program"}</div>
         <div className={styles.spec}>
           <div className={styles.cell}>
             <div className={styles.cl}>Frequency</div>
@@ -3359,7 +3359,7 @@ export function ProgramPicker({
                       kick: "Wendler 5/3/1",
                       title: "How a 5/3/1 cycle is built",
                       body:
-                        "A 5/3/1 cycle is made of short blocks that each do a different job. You run a couple of Leaders, take a lighter 7th week, then finish with an Anchor.\n\nLEADER \u2014 the volume-building blocks. You train at submaximal weights with extra supplemental sets to bank work and drive size, without grinding. You typically run two Leaders back to back.\n\n7TH WEEK \u2014 a single lighter week between phases. It either deloads you (easy, to recover) or tests your training max so the app knows whether to nudge your numbers up. It\u2019s the built-in checkpoint that keeps your numbers on track.\n\nANCHOR \u2014 the block where you express the strength you built. Volume drops, intensity rises, and you push your top sets for new rep records. One Anchor caps the cycle before you start the next.",
+                        "Leader: a volume-building phase with supplemental sets.\n\n7th week: a deload or training-max test between phases.\n\nAnchor: a lower-volume phase with AMRAP top sets.",
                       meta: ["2\u00D7 Leader", "7th week", "1\u00D7 Anchor"],
                     })
                   }
@@ -4011,9 +4011,6 @@ export function ProgramPicker({
             Your Green Protocol
           </div>
         </div>
-        <p className={styles.plannote}>
-          {"Foundation blocks run back-to-back, each unlocked by hitting its benchmark. You\u2019ll fine-tune each block when you reach it."}
-        </p>
         <div className={styles.plan}>
           {plan.map((v, i) => {
             const c = copy[v];
@@ -4216,9 +4213,9 @@ export function ProgramPicker({
     }
     return (
       <div className={styles.step}>
-        <h2 className={styles.h1}>{loadoutMeta?.title ?? "Configure your block"}</h2>
+        <h2 className={styles.h1}>{loadoutMeta?.title ?? "Configure your program"}</h2>
         {loadoutMeta?.sub && <p className={styles.sub}>{loadoutMeta.sub}</p>}
-        <div className={styles.label}>{loadoutMeta?.grouped ? "Choose a block" : "Template"}</div>
+        <div className={styles.label}>{loadoutMeta?.grouped ? "Choose a program" : "Template"}</div>
         {renderLoadoutOptions()}
         {isTb ? (
           <div className={styles.customPanel}>
@@ -4233,7 +4230,7 @@ export function ProgramPicker({
                 <small>
                   {isActivation
                     ? "Customize each Activation phase while keeping its progression and milestone weeks."
-                    : "Move strength and conditioning, add rehab-only days, and name the block."}
+                    : "Move strength and conditioning, add rehab-only days, and name the program."}
                 </small>
               </span>
             </label>
@@ -4246,10 +4243,6 @@ export function ProgramPicker({
                   maxLength={120}
                   onChange={(event) => setCustomName(event.target.value)}
                 />
-                <small>
-                  This can be renamed at any time. The program stays marked
-                  Customized in your history.
-                </small>
               </label>
             ) : null}
           </div>
@@ -5672,8 +5665,8 @@ export function ProgramPicker({
             </label>
             <p className={styles.sub} style={{ marginTop: 6 }}>
               {isHyrox
-                ? "Adds an easy off-feet erg (ski/row/bike) as a PM session on some hard days \u2014 extra aerobic volume without the leg impact. Leave 6\u20138 hours after your main session so the two don\u2019t blunt each other."
-                : "Split eligible training days into an AM lift + PM cardio, ideally 6+ hours apart so the lifting and cardio don\u2019t blunt each other. Applies to this block only \u2014 leave off for a single session per day."}
+                ? "Adds an evening ski, row or bike session. Leave 6\u20138 hours after your main session."
+                : "Morning strength and evening cardio, ideally 6+ hours apart."}
             </p>
           </div>
         ) : null}
@@ -5692,9 +5685,9 @@ export function ProgramPicker({
           active block (Plan renders); a fresh run may have none, and
           /app/plan redirects blockless users straight back here — so send
           them to Today instead of into a loop. */}
-      <BackLink href={isEditing ? "/app/plan" : "/app"} label={isEditing ? "Plan" : "Today"} />
+      <BackLink href={isEditing ? `/app/plan?block=${editContext.blockId}` : "/app/programs"} label={isEditing ? "Program" : "Programs"} />
       <h1 className={styles.pageTitle}>{isEditing ? "Edit your plan" : "Start a program"}</h1>
-      {isEditing && swimHref && <Link href={swimHref} className={styles.btn}>Swimming →</Link>}
+      {isEditing && swimHref && <Link href={swimHref} className={styles.btn}>Swimming</Link>}
 
       {isEditing && (
         <div

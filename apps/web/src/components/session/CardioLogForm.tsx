@@ -203,7 +203,7 @@ export function CardioLogForm({
         setError(
           durable.result?.error ??
             durable.error?.message ??
-            "Couldn't save your cardio. Check your connection and retry.",
+            "Couldn't save your cardio. Try again.",
         );
         return;
       }
@@ -461,8 +461,8 @@ export function CardioLogForm({
         {pending
           ? "Saving…"
           : completed
-            ? prescriptionItemIndex === undefined ? "Finish workout →" : "Save cardio"
-            : "Save skip →"}
+            ? prescriptionItemIndex === undefined ? "Finish workout" : "Save cardio"
+            : "Save skip"}
       </button>
     </form>
   );

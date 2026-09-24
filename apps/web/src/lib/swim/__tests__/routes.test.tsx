@@ -32,6 +32,7 @@ vi.mock("../navigation", () => ({ findSwimWorkoutForSession: vi.fn() }));
 vi.mock("@/lib/sessions/actions", () => ({ editCardio: vi.fn() }));
 vi.mock("@/components/session/EditCardioForm", () => ({ EditCardioForm: () => null }));
 vi.mock("../storage", () => ({ listSwimPlans: vi.fn() }));
+vi.mock("@/lib/planner/queries", () => ({ getActiveBlocks: vi.fn(async () => []) }));
 vi.mock("../queries", () => ({ loadSwimHubView: vi.fn(), loadSwimWorkoutView: vi.fn() }));
 vi.mock("../rehab-attachments", () => ({ loadSwimRehabAttachments: vi.fn() }));
 vi.mock("../rehab-workouts", () => ({ loadSwimRehabWorkouts: vi.fn() }));
@@ -86,6 +87,7 @@ describe("ADR0079 reachable standalone routes", () => {
     expect(elements(page).find((element) => element.type === SwimHub)?.props).toEqual({
       plan: { id: "view" }, setupEnabled: false,
       plans: [{ id: swimFixture().plan.id, startedOn: "2026-09-07", status: "active" }],
+      programs: [expect.objectContaining({ id: swimFixture().plan.id, href: `/app/swim?plan=${swimFixture().plan.id}` })],
     });
   });
   it("does not query additive tables on an old schema", async () => {

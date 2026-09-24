@@ -404,7 +404,7 @@ export default async function BodyweightProgressionPage() {
               minHeight: 28,
             }}
           >
-            {seeded ? "Run assessment →" : "Run assessment"}
+            {seeded ? "Run assessment" : "Run assessment"}
           </Link>
         </div>
         {assessmentCompletedAt && (
@@ -484,7 +484,7 @@ export default async function BodyweightProgressionPage() {
           data-testid="bw-progression-rerun-assessment"
           style={{ color: "var(--cp-link, var(--cp-text))" }}
         >
-          Run assessment again →
+          Run assessment again
         </Link>
       </footer>
     </div>

@@ -46,9 +46,9 @@ export function PoolEditor({ context, busy, onApply }: {
               if (sequence !== request.current) return;
               if (result.error) setError(result.error);
               else if (result.preview) setPreview(result.preview);
-              else setError("Could not preview this pool change. Try again.");
+              else setError("Couldn't preview this pool change. Try again.");
             } catch (cause) {
-              if (sequence === request.current) setError(cause instanceof SwimInputError ? cause.message : "Could not preview this pool change. Try again.");
+              if (sequence === request.current) setError(cause instanceof SwimInputError ? cause.message : "Couldn't preview this pool change. Try again.");
             }
           });
         }}>

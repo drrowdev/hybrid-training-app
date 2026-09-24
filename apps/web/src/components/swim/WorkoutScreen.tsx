@@ -39,14 +39,14 @@ export function WorkoutScreen({ workout: incomingWorkout }: { workout: SwimWorko
             void requestGate(async () => {
               try {
                 const result = await applySwimPoolEdit(preview);
-                if (result.ok !== true || result.error) { setError(result.error ?? "Could not save this pool. Try again."); return; }
+                if (result.ok !== true || result.error) { setError(result.error ?? "Couldn't save this pool. Try again."); return; }
                 if (result.workoutView) {
                   const view = result.workoutView;
                   setWorkout((current) => nextConfirmedView(current, view, "confirmed"));
                 }
                 setWarning(result.warning ?? null);
                 try { router.refresh(); } catch { setWarning(SWIM_REFRESH_WARNING); }
-              } catch { setError("Could not save this pool. Try again."); }
+              } catch { setError("Couldn't save this pool. Try again."); }
             }, setPoolBusy);
           }} />}
         {warning && <p role="status" className={styles.warning}>{warning}</p>}
@@ -88,7 +88,7 @@ export function WorkoutScreen({ workout: incomingWorkout }: { workout: SwimWorko
           try {
             const result = await skipSwimWorkout(workout.id, workout.revision, String(form.get("reason") ?? ""));
             if (result.error) setError(result.error); else router.refresh();
-          } catch { setError("Could not skip this swim. Try again."); }
+          } catch { setError("Couldn't skip this swim. Try again."); }
         });
       }} className={styles.section}>
         <details className={styles.details}><summary>Skip swim</summary>

@@ -20,7 +20,7 @@ export default async function SwimWorkoutPage({ params, searchParams }: {
   const back = swimReturnDestination(origin);
   const capability = await getSwimCapability(client);
   if (!capability.storageAvailable) return (
-    <main className={styles.page}><PageHeader title="Swimming" back={back} /><p role="status">Swimming is currently unavailable.</p></main>
+    <main className={styles.page}><PageHeader title="Swimming" back={back} /><p role="status">Swimming isn&apos;t available right now.</p></main>
   );
   const { workoutId } = await params;
   const view = await loadSwimWorkoutView(client, user.id, workoutId);

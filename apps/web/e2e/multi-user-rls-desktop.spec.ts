@@ -43,7 +43,7 @@ async function walkWizardAndStart(page: Page): Promise<void> {
   // HMR websocket open and emits background RSC prefetches, so networkidle
   // is unreliable and adds multi-second overhead. The next assertion
   // auto-waits for the wizard's first interactive button.
-  await page.getByRole("button", { name: /build a new block/i }).click();
+  await page.getByRole("button", { name: /build a new program/i }).click();
 
   await expect(page.getByRole("heading", { name: /how many days/i })).toBeVisible();
   await page.getByRole("button", { name: /^4( days)?$/ }).click();
@@ -59,7 +59,7 @@ async function walkWizardAndStart(page: Page): Promise<void> {
 
   await page.getByRole("button", { name: /continue to schedule/i }).click();
 
-  const startBtn = page.getByRole("button", { name: /start this block/i });
+  const startBtn = page.getByRole("button", { name: /start this program/i });
   await expect(startBtn).toBeVisible();
   await expect(startBtn).toBeEnabled();
   await startBtn.click();
@@ -74,7 +74,7 @@ async function walkWizardAndStart(page: Page): Promise<void> {
 async function walkWizardToStep5(page: Page): Promise<void> {
   await page.goto("/app/plan/new");
   // See walkWizardAndStart re: dropping networkidle.
-  await page.getByRole("button", { name: /build a new block/i }).click();
+  await page.getByRole("button", { name: /build a new program/i }).click();
 
   await expect(page.getByRole("heading", { name: /how many days/i })).toBeVisible();
   await page.getByRole("button", { name: /^4( days)?$/ }).click();
@@ -90,7 +90,7 @@ async function walkWizardToStep5(page: Page): Promise<void> {
 
   await page.getByRole("button", { name: /continue to schedule/i }).click();
 
-  const startBtn = page.getByRole("button", { name: /start this block/i });
+  const startBtn = page.getByRole("button", { name: /start this program/i });
   await expect(startBtn).toBeVisible();
   await expect(startBtn).toBeEnabled();
 }
@@ -176,7 +176,7 @@ test.describe("@desktop multi-user RLS", () => {
       await pageB.goto("/app/plan");
       await expect(pageB.getByText(/no active block/i)).toBeVisible();
       await expect(
-        pageB.getByRole("link", { name: /start a block/i }),
+        pageB.getByRole("link", { name: /start a program/i }),
       ).toBeVisible();
 
       // 3) User B walks the wizard for themselves.
@@ -236,8 +236,8 @@ test.describe("@desktop multi-user RLS", () => {
 
       // Fire both Starts as close to simultaneously as Promise.all gets
       // — same event-loop tick, two independent server actions racing.
-      const startA = pageA.getByRole("button", { name: /start this block/i });
-      const startB = pageB.getByRole("button", { name: /start this block/i });
+      const startA = pageA.getByRole("button", { name: /start this program/i });
+      const startB = pageB.getByRole("button", { name: /start this program/i });
       await Promise.all([startA.click(), startB.click()]);
 
       // Both must navigate to /app/plan; neither blocked the other.

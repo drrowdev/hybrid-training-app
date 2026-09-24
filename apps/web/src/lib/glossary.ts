@@ -163,7 +163,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   run_plan_adherence: {
     title: "Run-plan adherence",
     body:
-      "Actual run minutes divided by planned run minutes per week. Outline = planned, fill = actual. Used to tell whether your cardio block is being executed as designed before chasing outcome metrics.",
+      "Actual run minutes divided by planned run minutes per week. Outline = planned, fill = actual. Used to tell whether your cardio program is being executed as designed before chasing outcome metrics.",
   },
   streak: {
     title: "Streak",
@@ -173,7 +173,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   completion_pct: {
     title: "Completion %",
     body:
-      "Sessions logged divided by sessions scheduled to date in a block. Counts only sessions whose date has passed. Used to track how on-rail a block is mid-flight.",
+      "Sessions logged divided by sessions scheduled to date in a program. Counts only sessions whose date has passed. Used to track how on-rail a program is mid-flight.",
   },
 
   // ─── Cardio / HR ─────────────────────────────────────────────────
@@ -248,9 +248,9 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
       "The short, ordered list of reasons the engine chose today's session shape (movements, sets, RPE caps). Surfaces the rules instead of hiding them. Used to debug the prescription when it doesn't feel right.",
   },
   override_event: {
-    title: "Override event",
+    title: "Training change",
     body:
-      "A row written every time you skip a planned session, swap a movement, or end a block early. Used to keep an honest audit log so you can see when the engine's calls and your judgment have diverged.",
+      "A skipped workout, exercise swap or early program finish.",
   },
   injury_aware_ceiling: {
     title: "Injury-aware ceiling",
@@ -260,7 +260,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   tendons_joints_integrated: {
     title: "Tendons & joints — integrated",
     body:
-      "Tendon work lives inside every block, not as a separate day. Heavy-slow-resistance tempo work surfaces on selected sessions, and short isometric holds (30–45 s) are prescribed for vulnerable areas. Tendons adapt to load + time-under-tension, not extra sessions.",
+      "Tendon work lives inside every program, not as a separate day. Heavy-slow-resistance tempo work surfaces on selected sessions, and short isometric holds (30–45 s) are prescribed for vulnerable areas. Tendons adapt to load + time-under-tension, not extra sessions.",
   },
   two_a_day: {
     title: "Two-a-day",
@@ -273,7 +273,7 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   deload: {
     title: "Why this week backs off (deload)",
     body:
-      "A planned lighter week — reduced volume, easier loads — that lets accumulated fatigue dissipate so the next hard block lands on a recovered body. It's the secondary valve; submaximal loading is the primary one. Train through it feeling fresh and the app may offer to skip it.",
+      "A planned lighter week — reduced volume, easier loads — that lets accumulated fatigue dissipate so the next hard program lands on a recovered body. It's the secondary valve; submaximal loading is the primary one. Train through it feeling fresh and the app may offer to skip it.",
     citation: "Bell 2022",
   },
   training_max: {

@@ -71,7 +71,7 @@ export default async function EnginePage() {
     <div style={{ display: "grid", gap: 18 }}>
       <PageHeader
         back={{ href: "/app/stats", label: "Stats" }}
-        title="How the planner sees you"
+        title="Recovery"
         titleTestId="stats-engine-header"
       />
 
@@ -166,25 +166,9 @@ function RegionFreshnessCard({ regions }: { regions: RegionFreshnessDetail[] }) 
     >
       <h2 style={{ margin: 0, fontSize: 16 }}>
         Region freshness
-        <span
-          className="cp-info"
-          tabIndex={0}
-          aria-label="How region freshness is computed"
-        >
-          i
-          <span className="pop" style={{ width: 280 }}>
-            How recovered each body region is, on a 0–100% scale, over
-            the last 14 days. The lines on each chart mark the load
-            bands — from just ticking over, through the productive
-            range, up to the most a region can recover from. Stay in the
-            productive band; riding the top line means you&apos;re
-            overreaching that area.
-          </span>
-        </span>
       </h2>
       <p style={{ margin: "4px 0 16px", color: "var(--cp-text-muted)", fontSize: 13 }}>
-        Per-region freshness over the last 14 days, with reference lines
-        from maintenance up to each region&apos;s recovery ceiling.
+        Last 14 days.
       </p>
       {empty ? (
         <EmptyState
@@ -314,15 +298,6 @@ function BucketPressureCard({ buckets }: { buckets: BucketPressureRow[] }) {
     >
       <h2 style={{ margin: 0, fontSize: 16 }}>
         Stress budget
-        <span className="cp-info" tabIndex={0} aria-label="How bucket pressure is computed">
-          i
-          <span className="pop" style={{ width: 280 }}>
-            Six stress types, tracked body-wide. Each one compares your
-            recent 7-day load against its longer 28-day baseline — the
-            closer to 100%, the less headroom you have before that type
-            of stress runs out of room.
-          </span>
-        </span>
       </h2>
       <p style={{ margin: "4px 0 16px", color: "var(--cp-text-muted)", fontSize: 13 }}>
         Training load by stress type, relative to each ceiling.
@@ -434,20 +409,6 @@ function CeilingExplainerCard({
     >
       <h2 style={{ margin: 0, fontSize: 16 }}>
         Your ceiling this week
-        <span className="cp-info" tabIndex={0} aria-label="How the ceiling is computed">
-          i
-          <span
-            className="pop"
-            data-testid="stats-engine-ceiling-why-pop"
-            style={{ width: 320 }}
-          >
-            Your ceiling starts from the typical weekly tonnage of your
-            recent recovered weeks, then adjusts for how recovered you
-            are right now and how much history we have to trust. With
-            fewer than 3 recovered weeks it stays deliberately
-            conservative until you&apos;ve built a track record.
-          </span>
-        </span>
       </h2>
 
       {/* "Why this many?" recovered-weeks badge */}
@@ -554,8 +515,8 @@ function CeilingExplainerCard({
           cite="ceiling-confidence"
           help={
             ceiling.formula === "median_of_recovered"
-              ? "Full data — 3+ recovered weeks."
-              : "Limited data — held conservative until 3 recovered weeks are in."
+              ? "3+ recovered weeks"
+              : "Fewer than 3 recovered weeks"
           }
           helpTerm="confidence_bias"
         />
@@ -652,23 +613,12 @@ function RecentOverridesCard({
       style={{ padding: 20 }}
     >
       <h2 style={{ margin: 0, fontSize: 16 }}>
-        Recent overrides
-        <span className="cp-info" tabIndex={0} aria-label="What counts as an override">
-          i
-          <span className="pop" style={{ width: 280 }}>
-            Every time you skip a planned session, swap a movement, or
-            end a block early, the engine writes a row to the override
-            audit log. Last 10 surfaced here, newest first.
-          </span>
-        </span>
+        Recent changes
       </h2>
-      <p style={{ margin: "4px 0 12px", color: "var(--cp-text-muted)", fontSize: 13 }}>
-        Last 10 changes to recommended training.
-      </p>
       {notTracked ? (
         <EmptyState
           variant="inline"
-          title="No overrides yet"
+          title="No changes yet"
         />
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>

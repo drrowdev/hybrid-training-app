@@ -173,13 +173,13 @@ export const WAVE_TEMPLATES: Record<
   threes: {
     id: "threes",
     name: "3s wave",
-    description: "Heavier weekly progression peaking near 95% TM with 3s. More CNS cost than 5s; classic strength block.",
+    description: "Heavier weekly progression peaking near 95% TM with 3s. More CNS cost than 5s; classic strength program.",
     weeks: THREES_WAVE,
   },
   peaking_wave: {
     id: "peaking_wave",
     name: "Peaking wave",
-    description: "Strength Focus's wave — 5s → 3s → heavy single peak. Short focused strength blocks with an open-rep top set each week.",
+    description: "Strength Focus's wave — 5s → 3s → heavy single peak. Short focused strength programs with an open-rep top set each week.",
     weeks: PEAKING_WAVE,
   },
   hypertrophy: {
@@ -427,8 +427,8 @@ export function compileCustomArchetype(input: CustomArchetypeInput): Archetype {
 
   return {
     id: "custom" as ArchetypeId,
-    name: input.name?.trim() || "Custom block",
-    oneLiner: "Custom block you built day-by-day.",
+    name: input.name?.trim() || "Custom program",
+    oneLiner: "Custom program you built day-by-day.",
     weeks: profiles.length,
     days,
     weekProfiles: profiles,

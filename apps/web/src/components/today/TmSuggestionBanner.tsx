@@ -73,7 +73,7 @@ export function TmSuggestionBanner({
         const result = await action(fd);
         if (!result.ok) setError(result.error);
       } catch {
-        setError("Could not save this choice. Try again.");
+        setError("Couldn't save this choice. Try again.");
       } finally {
         setPendingId(null);
       }

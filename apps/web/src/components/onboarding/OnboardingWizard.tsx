@@ -434,7 +434,7 @@ export function OnboardingWizard({
           className="cp-btn ghost"
           style={{ fontSize: 12, color: "var(--cp-text-muted)" }}
         >
-          Skip for now →
+          Skip for now
         </button>
       </header>
 
@@ -559,7 +559,7 @@ export function OnboardingWizard({
                 className="cp-btn primary"
                 disabled={pending}
               >
-                {pending ? "Saving…" : "Choose your program →"}
+                {pending ? "Saving…" : "Choose your program"}
               </button>
             ) : (
               <button
@@ -568,7 +568,7 @@ export function OnboardingWizard({
                 className="cp-btn primary"
                 disabled={pending || canAdvance() != null}
               >
-                {pending ? "Saving…" : swimming && currentLabel === "Profile" ? "Set up swimming →" : "Continue →"}
+                {pending ? "Saving…" : swimming && currentLabel === "Profile" ? "Set up swimming" : "Continue"}
               </button>
             )}
           </div>

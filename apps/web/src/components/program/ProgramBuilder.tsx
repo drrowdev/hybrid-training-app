@@ -176,7 +176,7 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitment
         const result = await previewAuthoredProgram(input);
         if (!result.ok) { setError(result.error); return; }
         setPreview(result.preview); setRequestId(newId()); setAcceptOverlap(false); setAcceptReplacement(false); setStep(4);
-      } catch { setError("Could not review your program. Your changes are still here."); }
+      } catch { setError("Couldn't review your program. Your changes are still here."); }
     });
   };
   const save = () => {
@@ -189,7 +189,7 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitment
         });
         if (!result.ok) { setError(result.error); return; }
         router.push(`/app/plan?block=${result.blockId}`); router.refresh();
-      } catch { setError("Could not confirm the save. Retry to check the same request."); }
+      } catch { setError("Couldn't confirm the save. Retry to check the same request."); }
     });
   };
   let dates: ReturnType<typeof authoredProgramDates> = [];
@@ -210,6 +210,8 @@ export function ProgramBuilder({ catalog, rehabProtocols = [], today, commitment
           {value === "strength" ? "Lifts, accessories and rehab" : value === "running" ? "Runs, intervals and rehab" : "Strength, running, machines and rehab"}</span></button>)}
       {swimHref && <Link className={styles.card} href={swimHref}><strong>Swimming</strong><span className={styles.muted}>Import a prepared course</span></Link>}
     </section>}
+    {step <= 1 && !editBlockId && definition.activity !== "running" &&
+      <Link className={styles.textLink} href="/app/program">Program templates</Link>}
     {step === 1 && <section className={styles.panel}><h2>Program details</h2><div className={styles.fields}>
       <label className={styles.field}>Program name<input className={styles.input} value={definition.name} maxLength={100} onChange={(event) => update({ ...definition, name: event.target.value })} /></label>
       <label className={styles.field}>Start date<input className={styles.input} type="date" min={today} disabled={!!editBlockId} value={startedOn}

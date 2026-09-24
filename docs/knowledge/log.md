@@ -5477,3 +5477,28 @@ reports cleanup. Existing SQL/catalog/assertion diagnostics are retained.
 The14 updater /75 SQL /75 UI stage inventory and all migration pins are
 unchanged. No live action or local database execution occurred; the next
 GitHub disposable run remains the SQL qualification gate.
+
+## [2026-09-24] refine | Programs navigation and concise UI copy
+
+Programs now filters Strength, Running, Swimming and Hybrid inline, with a
+shared card layout, human-readable dates and a common program switcher. The
+combined calendar is named Schedule; explicit program details return to
+Programs. Completed and started primary calendar entries resolve their linked
+session before rendering, without changing the schedule RPC or data model.
+Template percentage suffixes are hidden only for template-owned titles.
+
+The owner-approved P0/P1 copy pass uses program terminology, removes internal
+research/audit narration and redundant explanations, and refreshes confirmed
+course-workout edits. Safety warnings, consent and lifecycle confirmation
+gates are retained (DC-K4, DC-R5, DC-SW7/DC-SW8). P2 redesigns are deferred.
+
+Local acceptance: production build, 807 targeted regression cases (43
+platform-specific skips), and all 75 existing synthetic UI stages passed.
+The coordinator approved the revised 375px/1280px evidence and complete copy
+inventory for draft publication, with no deployment approval. The shared
+Plan/Swim header and mobile lifecycle menu preserve existing actions; native
+selector updates retain accepted assertion hashes, deadlines and case counts.
+The harness uses bundled app fonts and checks menu dismissal/focus recovery.
+The full Windows web suite also exposed CRLF/POSIX-permission assumptions in
+untouched diagnostics; SQL and native acceptance remain GitHub CI gates.
+No database, migration, RLS, engine behavior or deployment changes are included.

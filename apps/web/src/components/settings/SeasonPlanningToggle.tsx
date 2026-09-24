@@ -54,7 +54,7 @@ export function SeasonPlanningToggle({ initial }: { initial: boolean }) {
             </span>
           </div>
           <div style={{ fontSize: 12.5, color: "var(--cp-text-muted)", marginTop: 3 }}>
-            Plan several blocks toward a goal.
+            Plan several programs toward a goal.
           </div>
         </div>
         <button

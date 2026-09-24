@@ -151,13 +151,13 @@ export default async function ProgramPickerPage({
   let seasonOrigin: SeasonProgramOrigin | undefined;
   if (sp.seasonBlockId) {
     try {
-      if (editContext) throw new Error("A roadmap block must start a new program.");
+      if (editContext)       throw new Error("Start this roadmap step as a new program.");
       seasonOrigin = await loadSeasonProgramOrigin(supabase, user.id, sp.seasonBlockId);
       if (!ENABLED_PROGRAM_IDS.has(seasonOrigin.target.program_id)) {
         throw new Error("This roadmap program is unavailable.");
       }
     } catch (error) {
-      return <EmptyState title={error instanceof Error ? error.message : "Could not load this roadmap block."}
+      return <EmptyState title={error instanceof Error ? error.message : "Couldn't load this roadmap program."}
         action={{ label: "View programs", href: "/app/programs" }} />;
     }
   }
@@ -172,7 +172,7 @@ export default async function ProgramPickerPage({
         kind: origin.kind, phaseId: origin.phaseId, recoveryWarning: origin.recoveryWarning,
       };
     } catch (error) {
-      return <EmptyState title={error instanceof Error ? error.message : "Could not load this recommendation."}
+      return <EmptyState title={error instanceof Error ? error.message : "Couldn't load this recommendation."}
         action={{ label: "View programs", href: "/app/programs" }} />;
     }
   }

@@ -120,7 +120,7 @@ test.describe("@desktop /app/settings/training · warmup ladder", () => {
     // warmup_scheme and prepends two warmup items before each main lift.
     await page.goto("/app/plan/new");
     await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: /build a new block/i }).click();
+    await page.getByRole("button", { name: /build a new program/i }).click();
     await page.getByRole("button", { name: /^4( days)?$/ }).click();
     await page.getByRole("button", { name: /^continue$/i }).click();
     await page.getByRole("button", { name: /get stronger/i }).click();
@@ -128,7 +128,7 @@ test.describe("@desktop /app/settings/training · warmup ladder", () => {
     await page.getByRole("button", { name: /skip/i }).first().click();
     await page.getByRole("button", { name: /^continue$/i }).click();
     await page.getByRole("button", { name: /continue to schedule/i }).click();
-    await page.getByRole("button", { name: /start this block/i }).click();
+    await page.getByRole("button", { name: /start this program/i }).click();
     await page.waitForURL("**/app/plan", { timeout: 15_000 });
 
     // Inspect any one of the strength planned sessions for the new

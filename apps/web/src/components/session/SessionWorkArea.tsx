@@ -287,7 +287,7 @@ export function SessionWorkArea({
      const result: AddStrengthSetResult = durable.result ?? {
        error:
          (durable.status === "failed" ? durable.error?.message : undefined) ??
-         "Couldn't save this set. Check your connection and retry.",
+         "Couldn't save this set. Try again.",
        errorCode: "transient",
      };
      const pending = await outboxCountForSession(sid).catch(() => 0);

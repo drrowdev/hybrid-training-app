@@ -631,7 +631,7 @@ function StrengthTile({
                 whiteSpace: "nowrap",
               }}
             >
-              Details →
+              Details
             </button>
           )
         }
@@ -765,7 +765,7 @@ export function StrengthDrawer({
                       href={`/app/stats/movements/${l.slug}`}
                       style={{ marginLeft: "auto", color: "var(--cp-accent)", textDecoration: "none", fontWeight: 500 }}
                     >
-                      Full history →
+                      Full history
                     </Link>
                   )}
                 </div>
@@ -812,7 +812,7 @@ function EnduranceTile({
                 whiteSpace: "nowrap",
               }}
             >
-              Details →
+              Details
             </button>
           )
         }
@@ -1096,7 +1096,7 @@ function RecoveryLoadTile({
                 whiteSpace: "nowrap",
               }}
             >
-              Details →
+              Details
             </button>
           )
         }
@@ -1407,7 +1407,7 @@ function ConsistencyTile({
                   whiteSpace: "nowrap",
                 }}
               >
-                Details →
+                Details
               </button>
             )}
           </span>
@@ -1576,7 +1576,7 @@ export function ConsistencyDrawer({
             data-testid="stats-consistency-adherence-link"
             style={{ fontSize: 12.5, color: "var(--cp-accent)", textDecoration: "none", fontWeight: 500, whiteSpace: "nowrap" }}
           >
-            Consistency details →
+            Consistency details
           </Link>
         </div>
       </div>
@@ -1736,7 +1736,7 @@ function VolumeTile({
           </div>
           <div style={{ marginTop: 14, paddingTop: 13, borderTop: "1px solid var(--cp-border)", fontSize: 12.5 }}>
             <span style={{ fontWeight: 600 }}>This week · {fmtTonnage(thisWeekDisp)} {unit}</span>
-            <span style={{ color: "var(--cp-text-muted)" }}> · Σ weight × reps, working sets only</span>
+            <span style={{ color: "var(--cp-text-muted)" }}> · Working sets</span>
           </div>
         </>
       )}

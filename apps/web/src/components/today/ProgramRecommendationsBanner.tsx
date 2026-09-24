@@ -83,7 +83,7 @@ export function ProgramRecommendationsBanner({
         if (result.ok) return;
         setError(result.error);
       } catch {
-        setError("Could not dismiss this recommendation. Try again.");
+        setError("Couldn't dismiss this recommendation. Try again.");
       }
       setHidden((previous) => {
         const next = new Set(previous);

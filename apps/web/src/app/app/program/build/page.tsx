@@ -36,13 +36,13 @@ export default async function ProgramBuildPage({ searchParams }: {
     listRehabProtocols(),
   ]);
   if (!snapshot) return <section><h1>New program</h1><p role="status">Program setup is temporarily unavailable. Try again shortly.</p><Link href="/app/programs">Back to programs</Link></section>;
-  if (profileResult.error) throw new Error("Could not load your training settings.");
+  if (profileResult.error) throw new Error("Couldn't load your training settings.");
   let initialStartDate: string | undefined;
   let workoutId: string | undefined;
   const plannedSessionId = params.workout ? z.string().uuid().parse(params.workout) : undefined;
   if (editBlockId) {
     const result = await client.from("training_blocks").select("started_on").eq("id", editBlockId).eq("user_id", user.id).single();
-    if (result.error) throw new Error("Could not load the program start date.");
+    if (result.error) throw new Error("Couldn't load the program start date.");
     initialStartDate = result.data.started_on;
     if (plannedSessionId && initial) {
       const selected = await client.from("planned_sessions").select("prescription,completed_session_id,skipped_at")
@@ -58,7 +58,7 @@ export default async function ProgramBuildPage({ searchParams }: {
   const catalog: AuthoredCatalogMovement[] = [];
   for (let offset = 0; ; offset += 1000) {
     const result = await client.from("movements").select("id,slug,display_name,pattern,metadata").order("id").range(offset, offset + 999);
-    if (result.error) throw new Error("Could not load the exercise library.");
+    if (result.error) throw new Error("Couldn't load the exercise library.");
     const rows = z.array(movementSchema).parse(result.data);
     catalog.push(...rows.map((row) => ({
       id: row.id, slug: row.slug, displayName: row.display_name, pattern: row.pattern,

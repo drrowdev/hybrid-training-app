@@ -30,7 +30,7 @@ export function ScheduleRestoreButton({ kind, id, label, testId, onRestore }: {
         }
         await onRestore({ revision: review.revision, requestId: review.requestId, acceptOverlap });
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "Could not restore this item. Try again.");
+        setError(caught instanceof Error ? caught.message : "Couldn't restore this item. Try again.");
       } finally { busy.current = false; }
     });
   }

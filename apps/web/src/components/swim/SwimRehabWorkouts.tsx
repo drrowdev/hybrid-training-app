@@ -27,13 +27,13 @@ export function SwimRehabWorkouts({ context }: { context: SwimRehabWorkoutContex
           workoutId: context.workoutId, protocolId, revision: context.revision, requestId,
         });
         if (!result.ok || !result.sessionId) {
-          setError(result.error ?? "Could not start your rehab workout. Try again.");
+          setError(result.error ?? "Couldn't start your rehab workout. Try again.");
           return;
         }
         const sessionId = result.sessionId;
         setStarted((previous) => ({ ...previous, [protocolId]: sessionId }));
         router.push(`/app/sessions/${sessionId}`);
-      } catch { setError("Could not open your rehab workout. Try again."); }
+      } catch { setError("Couldn't open your rehab workout. Try again."); }
       finally { inFlight.current = false; }
     });
   };

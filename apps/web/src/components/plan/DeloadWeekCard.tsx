@@ -115,7 +115,7 @@ export function DeloadWeekCard({
         setLive(rebuilt);
         setReviewReady(true);
       } catch {
-        setError("Could not review the recovery week. Try again.");
+        setError("Couldn't review the recovery week. Try again.");
       } finally { busy.current = false; }
     });
   };
@@ -147,8 +147,8 @@ export function DeloadWeekCard({
           if (!resolved.ok) setError(resolved.error);
         }
       } catch {
-        setError(saved ? "The week was added. Refresh the plan to see it."
-          : "The recovery week was not confirmed. Review the plan before trying again.");
+        setError(saved ? "Couldn't refresh your program. Try again."
+          : "Couldn't confirm this change. Try again.");
       } finally { busy.current = false; }
     });
   };
@@ -347,7 +347,7 @@ export function DeloadWeekCard({
                 style={{ fontSize: 12, color: "var(--cp-text-muted)", lineHeight: 1.5 }}
               >
                 ⚠️ You have an upcoming A-priority event — adding a week pushes the
-                rest of your block (and any peak) back by a week. Check it still lines
+                rest of your program (and any peak) back by a week. Check it still lines
                 up with your event.
               </div>
             )}

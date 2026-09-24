@@ -30,35 +30,35 @@ export interface SeasonProgramOrigin {
 export async function loadSeasonProgramOrigin(
   client: SupabaseClient, userId: string, slotId: string,
 ): Promise<SeasonProgramOrigin> {
-  if (!z.string().uuid().safeParse(slotId).success) throw new Error("This roadmap block is unavailable.");
+  if (!z.string().uuid().safeParse(slotId).success) throw new Error("This roadmap program is unavailable.");
   const targetResult = await client.from("season_blocks").select("season_id")
     .eq("id", slotId).eq("user_id", userId).maybeSingle();
-  if (targetResult.error) throw new Error("Could not read the roadmap block. Try again.");
+  if (targetResult.error) throw new Error("Couldn't read the roadmap program. Try again.");
   const target = z.object({ season_id: z.string().uuid() }).nullable().parse(targetResult.data);
-  if (!target) throw new Error("This roadmap block is unavailable.");
+  if (!target) throw new Error("This roadmap program is unavailable.");
   const seasonResult = await client.from("training_seasons")
     .select("id,goal_type,target_date,target_event_id")
     .eq("id", target.season_id).eq("user_id", userId).eq("status", "active")
     .is("deleted_at", null).maybeSingle();
-  if (seasonResult.error) throw new Error("Could not read your season. Try again.");
+  if (seasonResult.error) throw new Error("Couldn't read your season. Try again.");
   const season = seasonSchema.nullable().parse(seasonResult.data);
   if (!season) throw new Error("This season is no longer active.");
   const slotsResult = await client.from("season_blocks").select(slotFields)
     .eq("season_id", season.id).eq("user_id", userId).order("position");
-  if (slotsResult.error) throw new Error("Could not read the roadmap. Try again.");
+  if (slotsResult.error) throw new Error("Couldn't read the roadmap. Try again.");
   const slots = z.array(slotSchema).safeParse(slotsResult.data);
   if (!slots.success) throw new Error("The roadmap changed. Refresh it or start without the roadmap.");
   const next = slots.data.find((slot) => slot.status === "planned");
   const active = slots.data.filter((slot) => slot.status === "active");
   if (!next || next.id !== slotId || next.block_id !== null || active.length > 1) {
-    throw new Error("Choose the next planned roadmap block or start without the roadmap.");
+    throw new Error("Choose the next planned roadmap program or start without the roadmap.");
   }
   let predecessor: SeasonProgramOrigin["predecessor"] = null;
   if (active.length) {
     if (!active[0]!.block_id) throw new Error("The roadmap changed. Refresh it or start without the roadmap.");
     const blockResult = await client.from("training_blocks").select("id,status,deleted_at,notes")
       .eq("id", active[0]!.block_id).eq("user_id", userId).maybeSingle();
-    if (blockResult.error) throw new Error("Could not read the current roadmap program. Try again.");
+    if (blockResult.error) throw new Error("Couldn't read the current roadmap program. Try again.");
     predecessor = z.object({
       id: z.string().uuid(), status: z.string(), deleted_at: z.string().nullable(), notes: z.string().nullable(),
     }).nullable().parse(blockResult.data);

@@ -255,7 +255,7 @@ export function LimitationResponseCard({
             onClick={() => setOpen(true)}
             style={{ fontSize: 13, padding: "7px 14px", justifySelf: "start" }}
           >
-            Review &amp; adjust →
+            Review &amp; adjust
           </button>
         </>
       )}

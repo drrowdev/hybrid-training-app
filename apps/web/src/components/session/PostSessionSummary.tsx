@@ -351,7 +351,7 @@ export function PostSessionSummary({
               alignSelf: "start",
             }}
           >
-            View all diagnostics →
+            View all diagnostics
           </Link>
         </div>
       )}

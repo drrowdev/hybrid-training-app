@@ -20,13 +20,13 @@ export async function SwimCalendar({ todayOnly = false }: { todayOnly?: boolean 
       .eq("user_id", user.id).order("scheduled_date"),
     client.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
   ]);
-  if (planError || workoutError || profileError) throw new Error("Could not load the swim schedule.", { cause: planError ?? workoutError ?? profileError });
+  if (planError || workoutError || profileError) throw new Error("Couldn't load the swim schedule.", { cause: planError ?? workoutError ?? profileError });
   const states = await loadStandaloneSwimStates(client, user.id, (workouts ?? []).map((row) => row.id));
   const sessionIds = (workouts ?? []).flatMap((row) => row.session_id ? [row.session_id] : []);
   const { data: sessions, error: sessionError } = sessionIds.length
     ? await client.from("sessions").select("id").in("id", sessionIds).is("deleted_at", null)
     : { data: [], error: null };
-  if (sessionError) throw new Error("Could not load the swim schedule.", { cause: sessionError });
+  if (sessionError) throw new Error("Couldn't load the swim schedule.", { cause: sessionError });
   const visibleSessions = new Set(sessions?.map((row) => row.id));
   const today = todayYmd(profile?.timezone ?? "UTC");
   const entries = standaloneSwimCalendar(plans ?? [], (workouts ?? []).map((row) => ({

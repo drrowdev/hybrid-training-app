@@ -349,7 +349,7 @@ export function SessionPreviewBody({
           data-testid="session-preview-start-cta"
           style={{ minHeight: 56, justifyContent: "center" }}
         >
-          Start workout →
+          Start workout
         </Link>
       )}
     </div>

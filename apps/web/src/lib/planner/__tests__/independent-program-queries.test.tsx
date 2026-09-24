@@ -10,6 +10,7 @@ import { getDeloadWeekPreview } from "../deload-week-preview";
 import { getCeilingUtilization } from "@/lib/stats/ceiling-queries";
 import { getPendingProgramRecommendations } from "@/lib/platform/recommendations-queries";
 import { ProgramRecommendationsBanner } from "@/components/today/ProgramRecommendationsBanner";
+import { swimFixture } from "@/lib/swim/__tests__/fixtures";
 
 const mocks = vi.hoisted(() => ({ client: vi.fn(), schedule: vi.fn() }));
 vi.mock("server-only", () => ({}));
@@ -22,7 +23,7 @@ vi.mock("@/lib/planner/modifications", async (original) => ({
   getActiveModificationRows: async () => [],
 }));
 vi.mock("@/lib/swim/navigation", () => ({
-  getSwimNavigation: async () => ({ hasPlans: true, setupEnabled: true }),
+  getSwimNavigation: async () => ({ hasPlans: true, setupEnabled: true, storageAvailable: true }),
   swimEntryHref: () => "/app/swim",
 }));
 vi.mock("@/components/swim/SwimCalendar", () => ({ SwimCalendar: () => null }));
@@ -67,6 +68,7 @@ beforeEach(() => {
     planned_sessions: [planned(11, 1, 1), planned(21, 2, 1), planned(31, 3, 1)],
     profiles: [{ id: "owner", timezone: "UTC" }],
     sessions: [],
+    swim_plans: [{ ...swimFixture().plan, user_id: "owner" }],
   };
   const client = createClient("https://synthetic.invalid", "synthetic-key", {
     auth: { persistSession: false, autoRefreshToken: false },
@@ -178,7 +180,10 @@ describe("DC-R5 authoritative independent program reads", () => {
   it("opens each program by its own ID and focused views use stored kind only", async () => {
     const all = renderToStaticMarkup(await ProgramsPage({ searchParams: Promise.resolve({}) }));
     for (const value of [1, 2, 3]) expect(all).toContain(`href="/app/plan?block=${id(value)}"`);
-    expect(all).toContain('href="/app/swim"');
+    expect(all).toContain(`href="/app/swim?plan=${swimFixture().plan.id}"`);
+    const swimming = renderToStaticMarkup(await ProgramsPage({ searchParams: Promise.resolve({ activity: "swimming" }) }));
+    expect(swimming).toContain(`href="/app/swim?plan=${swimFixture().plan.id}"`);
+    expect(swimming).not.toContain(`href="/app/plan?block=${id(1)}"`);
     tables.training_blocks![2] = { ...block(3, "hybrid"), notes: "Running plan" };
     const running = renderToStaticMarkup(await ProgramsPage({ searchParams: Promise.resolve({ activity: "running" }) }));
     expect(running).toContain(`href="/app/plan?block=${id(2)}"`);
@@ -198,6 +203,16 @@ describe("DC-R5 authoritative independent program reads", () => {
     await stream.allReady;
     const combined = await new Response(stream).text();
     for (const value of [1, 2, 3]) expect(combined).toContain(`href="/app/plan?block=${id(value)}"`);
+  });
+
+  it.each([0, 1])("keeps the combined calendar for %s primary programs", async (count) => {
+    tables.training_blocks = tables.training_blocks!.slice(0, count);
+    const stream = await renderToReadableStream(await PlanPage({ searchParams: Promise.resolve({}) }));
+    await stream.allReady;
+    const html = await new Response(stream).text();
+    expect(html).toContain('href="/app/programs"');
+    expect(html).toContain(`href="/app/swim?plan=${swimFixture().plan.id}"`);
+    expect(html).not.toContain('data-testid="plan-overview"');
   });
 
   it("keeps remaining-session and recovery previews attached to the explicitly selected program", async () => {

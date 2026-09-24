@@ -35,7 +35,7 @@ export default async function AdminPlanReviewPage({
       <PageHeader back={{ href: "/app", label: "Today" }} title="Plan review export" />
 
       <p style={{ margin: 0, color: "var(--cp-text-muted)", fontSize: 14, lineHeight: 1.55 }}>
-        Markdown export of the {blockId ? "selected" : "active"} block:
+        Markdown export of the {blockId ? "selected" : "active"} program:
         athlete context, program design, weekly prescriptions and review criteria.
       </p>
 
@@ -56,7 +56,7 @@ export default async function AdminPlanReviewPage({
             border: "1px solid var(--cp-border)",
           }}
         >
-          No block found. Generate a block first, or pass <code>?blockId=…</code>.
+          No program found. Generate a program first, or pass <code>?blockId=…</code>.
         </div>
       )}
     </div>

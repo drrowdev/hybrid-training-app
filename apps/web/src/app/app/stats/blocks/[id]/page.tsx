@@ -139,7 +139,7 @@ function Header({ summary }: { summary: BlockSummary }): ReactElement {
       : "Active";
   return (
     <PageHeader
-      back={{ href: "/app/stats/blocks", label: "Block analytics" }}
+      back={{ href: "/app/stats/blocks", label: "Program analytics" }}
       title={block.archetypeName}
       titleTestId="stats-block-header"
       actions={<StatusBadge status={block.status} />}
@@ -265,7 +265,7 @@ function MainLiftCard({
       <MiniLine
         values={lift.trend.map((t) => displayWeight(t.e1rm, units))}
         accent={accent}
-        ariaLabel={`${MAIN_LIFT_LABEL[lift.role]} e1RM trend across the block`}
+        ariaLabel={`${MAIN_LIFT_LABEL[lift.role]} e1RM trend across the program`}
       />
     </article>
   );
@@ -503,7 +503,7 @@ function PowerOutcomeSection({ outcome }: { outcome: BlockPowerOutcome }): React
             vs prior {outcome.comparisonBlock.archetypeName} (power off)
           </div>
           <div style={{ color: "var(--cp-text-muted)" }}>
-            That block: {outcome.comparisonBlock.prCount} PRs ·{" "}
+            That program: {outcome.comparisonBlock.prCount} PRs ·{" "}
             {outcome.comparisonBlock.avgE1RmDeltaPct == null
               ? "no e1RM data"
               : `${outcome.comparisonBlock.avgE1RmDeltaPct > 0 ? "+" : ""}${outcome.comparisonBlock.avgE1RmDeltaPct.toFixed(1)}% avg e1RM delta`}
@@ -636,7 +636,7 @@ function WellnessSection({
       data-testid="stats-block-wellness"
       style={{ padding: 16, display: "grid", gap: 10 }}
     >
-      <SectionTitle title="Wellness during the block" />
+      <SectionTitle title="Wellness during the program" />
       <div
         style={{
           display: "grid",
@@ -767,7 +767,7 @@ function ComparePicker({
         gap: 6,
       }}
     >
-      <div style={{ fontSize: 12, fontWeight: 600 }}>Compare this block to another →</div>
+      <div style={{ fontSize: 12, fontWeight: 600 }}>Compare this program to another →</div>
       <ul
         style={{
           listStyle: "none",
@@ -874,14 +874,14 @@ function ComparisonView({
               >
                 <div style={{ fontSize: 14, fontWeight: 600 }}>{MAIN_LIFT_LABEL[liftA.role]}</div>
                 <CompareRow
-                  label="this block"
+                  label="this program"
                   primary
                   valueDeltaPct={liftA.deltaPct}
                   valueDeltaKg={liftA.deltaKg}
                   units={units}
                 />
                 <CompareRow
-                  label="other block"
+                  label="other program"
                   primary={false}
                   valueDeltaPct={liftB?.deltaPct ?? null}
                   valueDeltaKg={liftB?.deltaKg ?? null}
