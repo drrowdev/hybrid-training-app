@@ -5613,3 +5613,13 @@ account deletion and B4's reduction-candidate assertion remain unexplained and
 out of scope; no speculative changes were made. Both profiles require a fresh
 run on the combined changed head. No product, RPC, migration, deadline or
 acceptance-inventory changes; no local database/native runs or consumed-log reads.
+
+## [2026-09-24] acceptance | Exact private-comparison source pin correction
+
+Core CI at `a5510500` caught an omitted source-line update: the new fixture
+import moved the private boolean comparison from line 71 to 72. Its unit pin
+and runtime stack classifier still required 71. This reproduced with both LF
+and CRLF; the prior targeted local selection had not run that ledger test.
+Both exact pins now require 72, with LF/CRLF source coverage and rejection of
+the old line. Boolean-only parsing, source/function allowlists, caller limits
+and payload rejection remain intact. No native assertions or deadlines changed.
