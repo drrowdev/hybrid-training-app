@@ -106,10 +106,30 @@ describe("PlanRedesign — header", () => {
     expect(html).not.toContain("plan-eyebrow-blocks");
   });
 
-  it("renders the block date range and progress meta", () => {
-    const html = render();
+  it.each([
+    { completed: 0, skipped: 0, percentage: 0 },
+    { completed: 1, skipped: 1, percentage: 33 },
+    { completed: 2, skipped: 1, percentage: 67 },
+    { completed: 3, skipped: 0, percentage: 100 },
+  ])("reports completion progress with $completed completed and $skipped skipped workouts",
+    ({ completed, skipped, percentage }) => {
+    const html = render({
+      sessions: Array.from({ length: 3 }, (_, index) => session({
+        id: `progress-${index}`,
+        done: index < completed,
+        skipped: index >= completed && index < completed + skipped,
+      })),
+    });
     expect(html).toContain("Week 1 of 4");
-    expect(html).toContain("of 3 sessions");
+    const progress = html.match(/<div[^>]*role="progressbar"[^>]*>/)?.[0];
+    expect(progress).toContain('aria-valuemin="0"');
+    expect(progress).toContain('aria-valuemax="100"');
+    expect(progress).toContain(`aria-valuenow="${percentage}"`);
+    expect(progress).toMatch(new RegExp(`aria-label="${completed}\\b[^"]*\\b3\\b[^"]*"`));
+  });
+
+  it("omits completion progress when there are no workouts to count", () => {
+    expect(render({ sessions: [] })).not.toContain('role="progressbar"');
   });
 
   it("renders an overdue segment in the meta line when there are overdue rows", () => {
