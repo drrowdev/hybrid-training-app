@@ -188,9 +188,9 @@ async function assertHistory(page: Page, today: string, accepted: boolean) {
   await expect(past.getByRole("listitem")).toHaveCount(accepted ? 2 : 1);
   await expect(past.getByText("Rejected", { exact: true })).toHaveCount(1);
   await expect(past.getByText("Accepted", { exact: true })).toHaveCount(accepted ? 1 : 0);
-  const summary = page.locator("main");
+  const summary = page.locator("main > section").filter({ has: page.getByRole("button", { name: "Review next week", exact: true }) });
   if (accepted) {
-    await expect(summary.getByText(`200 / 400 yard estimate · ${formatSwimTime(acceptedPace)} / 100 yd`, { exact: true })).toBeVisible();
+    await expect(summary.getByText(`${formatPoolCourse(course)} · 200 / 400 yard estimate · ${formatSwimTime(acceptedPace)} / 100 yd`, { exact: true })).toBeVisible();
   } else {
     await expect(summary.getByText(/\/ 100 yd/)).toHaveCount(0);
   }
@@ -215,8 +215,8 @@ test.describe("ADR0079 mobile swimming assessment decisions and native history",
     const serverToday = await page.getByLabel("Start date", { exact: true }).inputValue();
     expect(serverToday).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
-    await page.getByRole("combobox", { name: "Swimming experience", exact: true }).selectOption("regular");
-    await page.getByLabel("Recent comfortable continuous lengths", { exact: true }).fill("16");
+    await page.getByRole("combobox", { name: "Experience", exact: true }).selectOption("regular");
+    await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("16");
     await page.getByLabel("Minutes per swim", { exact: true }).fill("30");
     await page.getByLabel("Weeks", { exact: true }).fill("2");
     for (const day of ["Mon", "Thu"]) await expect(page.getByRole("checkbox", { name: day, exact: true })).toBeChecked();

@@ -82,6 +82,8 @@ describe("DC-SW8 historical owner preparation stays within the disposable native
     ["refs/heads/drrowdev-modular-programs-implementation", "swimming"],
     ["refs/heads/drrowdev-programs-page-redesign", "modular"],
     ["refs/heads/drrowdev-programs-page-redesign", "swimming"],
+    ["refs/heads/drrowdev-swimming-test-suite-repair", "modular"],
+    ["refs/heads/drrowdev-swimming-test-suite-repair", "swimming"],
   ])("prepares once, preserves the exact graph and verifies cleanup on %s with %s cases", async (ref, profile) => {
     const { preparation, proof, write, unlink, calls, secrets } = mockedPreparation();
     vi.stubEnv("GITHUB_REF", ref); vi.stubEnv("SXC_ACCEPTANCE_PROFILE", profile);
@@ -109,6 +111,11 @@ describe("DC-SW8 historical owner preparation stays within the disposable native
     ["refs/heads/drrowdev-programs-page-redesign", "modular", "2"],
     ["refs/heads/drrowdev-programs-page-redesign", "swimming", "2"],
     ["refs/heads/drrowdev-programs-page-redesign", "unknown", "1"],
+    ["refs/heads/drrowdev-swimming-test-suite-repair-extra", "swimming", "1"],
+    ["refs/heads/drrowdev-swimming-test-suite-repair-extra", "modular", "1"],
+    ["refs/heads/drrowdev-swimming-test-suite-repair", "modular", "2"],
+    ["refs/heads/drrowdev-swimming-test-suite-repair", "swimming", "2"],
+    ["refs/heads/drrowdev-swimming-test-suite-repair", "unknown", "1"],
   ])("rejects unqualified legacy preparation before allocation: %s / %s / attempt %s", async (ref, profile, attempt) => {
     const { preparation, proof, calls, write } = mockedPreparation();
     vi.stubEnv("GITHUB_REF", ref); vi.stubEnv("SXC_ACCEPTANCE_PROFILE", profile);

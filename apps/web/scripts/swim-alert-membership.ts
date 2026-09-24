@@ -251,13 +251,14 @@ export function readAlertAnnotations(value: unknown): AlertObservation[] | undef
 
 // Declared case order: original isolation C4, A1/A2, account C2 at 9, A3/A4 at 20/21, A7 at 24.
 export function projectAlertObservations(caseIndex: number, observations: AlertObservation[] | undefined) {
+  // Retain the closed legacy protocol; cases without a producer project unavailable.
   const points: readonly AlertPoint[] = caseIndex === 3 ? ["c4-owner-1-start", "c4-owner-2-start"] :
     caseIndex === 4 ? ["a1-pause"] : caseIndex === 5 ? ["a2-post-start", "a2-edit"] :
       caseIndex === 9 ? ["c2-auth-absence"] : caseIndex === 20 ? ["a3-finish", "a3-finish-transport"] :
         caseIndex === 21 ? ["a4-replay", "a4-replay-transport"] :
-          caseIndex === 24 ? ["a7-finish", "a7-finish-transport"] : [];
+          caseIndex === 23 ? ["a7-finish", "a7-finish-transport"] : [];
   const valid = observations?.every((item) => points.includes(item.point)) &&
-    (caseIndex !== 24 || observations.length <= 2 && new Set(observations.map((item) => item.point)).size === observations.length);
+    (caseIndex !== 23 || observations.length <= 2 && new Set(observations.map((item) => item.point)).size === observations.length);
   return points.map((point) => (valid && observations?.find((item) => item.point === point)) || unavailableAlert(point));
 }
 

@@ -474,7 +474,7 @@ test.describe("ADR0079 mobile swimming account acceptance", () => {
         try { page.on("request", onRequest); } catch { invalid = true; }
         try { page.on("response", onResponse); } catch { invalid = true; }
         try { page.on("requestfailed", onRequestFailed); } catch { invalid = true; }
-        await page.getByRole("button", { name: "Delete account (GDPR Art. 17)", exact: true }).click();
+        await page.getByRole("button", { name: "Delete account", exact: true }).click();
         try {
           await expect(page).toHaveURL(new URL("/?deleted=1", baseURL!).href);
         } catch (error) {

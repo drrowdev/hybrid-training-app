@@ -5623,3 +5623,195 @@ and CRLF; the prior targeted local selection had not run that ledger test.
 Both exact pins now require 72, with LF/CRLF source coverage and rejection of
 the old line. Boolean-only parsing, source/function allowlists, caller limits
 and payload rejection remain intact. No native assertions or deadlines changed.
+
+## [2026-09-24] acceptance | Repair swimming fixtures after modular release
+
+The swimming acceptance repair updates the removed setup/account labels without
+changing product copy. Its typed primary fixture now applies both retained
+prescriptions before starting and completing the first workout, preserving
+0158's completed-prescription guard. B4 explicitly records the first past swim
+through the existing Skip swim form; absent observations remain unknown, while
+the recorded miss plus high-effort partial result still requires the same
+reduction, warning override, no catch-up and retained-history assertions.
+
+Only `refs/heads/drrowdev-swimming-test-suite-repair` joins the shared exact-ref
+schema/browser acceptance selector. Tests cover both profiles and refuse
+lookalike refs and later attempts. No workflow, production authorization,
+product, RPC, schema, migration, native case inventory or deadline changed.
+
+Local evidence: fixture/ref/legacy/full browser-ledger suites pass (712 tests,
+43 existing platform skips), all 75 synthetic UI stages pass, and web typecheck
+passes. The broader unchanged runner suite passes 399 tests with seven
+Windows-only failures at Unix private-file permission checks; Linux CI remains
+the gate. CRLF-sensitive local source reads were validated using repository LF
+formatting, without semantic source changes. Before/after B-prefix hashes were
+recomputed against `c4b931c4`: exact source comparison permits only the authorized
+setup selectors and B4 skip step/assertions. The account source differs only by
+its Delete account selector. Native swimming and modular acceptance require
+coordinator dispatch at the published head; no local database/native run occurred.
+
+## [2026-09-24] acceptance | Align swimming browser claims with the review-only UI
+
+After the coordinator-reported 9/26 swimming run, the owner authorized replacing
+eleven retired-logger browser journeys with retained-record arrangement plus
+current setup, lifecycle, history, Trash, skip and limitation-gated actions.
+A6's concurrent starts/stale result edit has no current UI entry point and is
+retired, not replaced with a different race. The exact browser inventory is
+now 25 cases across the same six files; the modular inventory remains 18.
+Storage RPC smoke tests retain start/completion concurrency and stale-edit
+coverage. Draft/flusher tests retain legacy local-draft and queued-completion
+contracts. These are not equivalent claims of browser logger/offline execution.
+
+Retained fixtures use the existing authenticated storage functions and canonical
+region recomputation, never new endpoints or writes to completed prescriptions.
+Assertions still check native course/splits, issued targets, primary isolation,
+foreign 404/read isolation, exact persistence and current-UI-driven load effects.
+B4 uses the current repeat controls; B6/B7 use the workout's own course summary
+and current setup audit shape; B9 checks both resume arguments and the reviewed
+shared schedule; assessment checks the pool-qualified summary. Deadlines,
+security guards and the existing exact-ref authorization remain unchanged.
+
+The casebook, collection and profile counts now pin the revised inventory.
+Source-execution tests for removed logger instrumentation are retired; closed
+diagnostic parsing/privacy checks remain. The private-comparison location moves
+from line 72 to 73 with LF/CRLF coverage. The B-prefix pin now covers the exact
+reviewed source rather than preserving a misleading historical normalization;
+PR #823 records before/after hashes and every changed browser claim.
+
+Local evidence: all eight targeted suites, including the full browser ledger,
+pass (861 tests, 44 existing Windows-only skips); typecheck and touched-file
+lint pass. The synthetic UI harness passes all 75 stages without an app server
+or database. No product, RPC, schema, migration or workflow changes, and no
+local real database or native acceptance run. New swimming and modular profile
+acceptance remains for coordinator dispatch against the published head.
+
+## [2026-09-24] acceptance | Remove retired diagnostic pins from runner source coverage
+
+Core CI at `220baba3` failed before browser execution because the unchanged
+runner unit test still required A6's stale-edit alert, A7's Finish diagnostics
+and the persistence Start diagnostics removed by the approved rewrite. The
+line-223 failure reproduced with LF-normalized sources. Comparison against
+`25c6b533` confirms those retired sites were removed; the surviving A1 diagnostic
+block is byte-identical (SHA-256
+`35820c8de10442b6b2d17211bc2f54cfe1fd7a4c1fecda2e529fb1b232523074`).
+The corrected test retains the probe/A1 classifier contract, both A7 safety
+rejections, custom-pool input preservation and the bounded owner-skip alert
+check. No source hash, workflow, browser case, deadline or guard changes.
+
+Broader Windows validation was run, not inferred from the focused pass:
+the entire swimming unit directory recorded 2,431 passed / 85 failed / 80
+skipped; the full web suite recorded 7,734 passed / 86 failed / 80 skipped.
+The additional failures were in untouched platform-sensitive tests. After
+LF normalization of SQL and hook sources, all 17 CRLF failures passed on
+rerun (173 migration-source tests and 39 identity-guard tests passed).
+The remaining 69 failures concern Unix private-file/cache modes or Windows
+symlink support in runner, browser-stage and RPC-diagnostic tests; browser-stage
+also produced 15 secondary unhandled rejections after its private-cache gate.
+The full runner test now passes 399 tests with only its seven existing Windows
+permission failures. Focused regression, typecheck and lint pass. Temporary
+newline-only formatting was restored; Linux CI remains the acceptance gate.
+
+## [2026-09-24] acceptance | Correct four remaining swimming test assumptions
+
+Coordinator-reported native results at `4c0a5c13` reached 21 passed / 4
+unexpected / 0 skipped, with all stages and cleanup complete. A static pass
+over all four failures found test-side assumptions, not evidence requiring
+product or schema changes:
+
+- B2 passed its four-workout plan to a helper fixed at six. Its two snapshots
+  now explicitly require four; all other callers still require six.
+- A3 relied on schedule-dependent setup defaults for a four-workout
+  replacement. It now explicitly selects two weekdays for two weeks, and
+  accepts any displayed overlap through the existing reviewed UI. The four
+  new workouts and exact retained history/primary isolation remain asserted.
+- A5's completion/edit arrangement already uses the current revision and
+  existing result-edit RPC, retaining exact history and receipt assertions.
+  The failing post-purge hub query used the service-role client against the
+  authenticated-only outcome capability/view from 0157. It now uses the
+  existing authenticated owner. Neither permissions nor 0158 guards change.
+- B9 recognized only stale errors containing "reload". Reviewed resume can
+  reject at the shared schedule guard or fresh-preview comparison instead.
+  The matcher now also accepts those two exact stale responses, retaining
+  exactly one loser, request counts, entered previews and exact saved state.
+
+Before repinning, an exact LF-normalized prefix comparison against `4c0a5c13`
+proved that only the `saved` expected-count parameter/assertion and B2's two
+explicit count arguments changed. SHA-256 moves from
+`8dcc15a9ffdb57eada16500009d218c4d43648cbd3942691344b5c446f53438a`
+to `94a7e2abff4d0cd5d76a58cf10af152431cc661efa4e1df77ef244ab6794965e`.
+B9 is outside this prefix. No account/workflow repin, inventory change,
+deadline increase or retired-claim replacement.
+
+The full swimming unit directory ran against LF-normalized sources:
+2,453 passed / 69 existing Windows failures / 80 skipped, with the same
+15 secondary private-cache rejections. The three failing suites are the
+unchanged runner (7), browser-stage (52) and RPC-diagnostic (10) platform
+checks. The complete ledger passes 560 tests (43 existing skips), including
+six new regressions. Synthetic UI passes all 75 stages; typecheck and touched
+file lint pass. Temporary line-ending changes restored. No native or local
+database run; coordinator owns the next CI dispatch.
+
+## [2026-09-24] acceptance | Settle swimming history and completion navigation
+
+Coordinator-consumed results at `98212428`: core/storage passed; swimming
+`36039574632` reached 24/25 with verified cleanup; modular `36039592452`
+reached 17/18. No logs were refetched.
+
+A3's history helper tried to locate a navigation element inside a closed
+`details` using the default visible-only role query. The parent lookup
+therefore could not reach the summary to open it. It now includes hidden
+navigation only when locating that disclosure, then still asserts visible
+history. Synthetic Chromium exercised the actual helper against a closed
+chooser and an already-open chooser.
+
+A3 replacement now starts the day after the archived plan ends. It explicitly
+asserts every arranged shared-schedule commitment precedes that date, chooses
+Monday/Thursday, and expects no overlap checkbox after preview. No conditional
+overlap branch remains. Seven start-weekday regressions verify four distinct
+future dates inside the two-week window. Exact replacement/retained-history
+and primary-isolation assertions remain.
+
+M16 failed at `page.goto("/app/sessions")`, before its list/export assertions.
+Its actor uses UTC; there is no time-of-day filter on that navigation.
+The Finish control awaits completion work before assigning the completed
+session URL, but M16 only awaited the earlier database status. The test now
+waits for the exact completed-session URL before navigating to history, as
+it already did for its first completion. No deadline increase or weakened
+list/export assertion.
+
+Full swimming directory with LF sources: 2,463 passed / 69 established Windows
+failures / 80 skipped, with the same 15 secondary private-cache rejections.
+The full ledger passes 570 tests (43 existing skips); synthetic UI passes
+75/75; typecheck and touched-file lint pass. Temporary newline formatting
+restored. No source-hash repin, inventory change, product/RPC/schema change,
+local database or native acceptance run. Process-slimming remains deferred
+to the coordinator after this PR lands.
+
+## [2026-09-24] acceptance | Reopen swimming history after selected-plan remount
+
+Coordinator-reported `edc72efb` core/storage passed; swimming `36045130483`
+reached 24/25 with cleanup verified. A3 line 845 is the selected history
+link's `aria-current` assertion, after replacement and schedule checks pass.
+Changing the selected plan remounts `SwimHub` (`key={view.id}`), closing the
+new `ProgramSwitcher` disclosure. The existing visible-only locator therefore
+loses the link after navigation.
+
+A3 now waits for the destination link's selected state with a hidden-aware
+lookup, reopens that destination's chooser, and retains the original selected
+link assertion before reload. The destination-state gate prevents opening
+the old chooser before the new hub renders. The regression models the
+remount separately from the URL change. Synthetic Chromium reproduces the
+disappearing locator and verifies the actual helper restores visible,
+selected history. Counts, deadlines and replacement arrangement are unchanged.
+
+Modular `36045151210` failed in the browser stage, but the coordinator's
+one-time summary parser rejected an unrecognised observation case. No case
+identity can be established from that report; no log was refetched. Static
+checks confirm M16's exact completion-URL wait is local to its own test/page.
+The repository already accepts M9 at index 8, and its calendar observation
+matches the current schedule section/day/link markup; no clear observation
+defect was found. Modular code remains unchanged pending usable evidence.
+
+Full ledger plus modular contracts: 587 passed / 43 existing Windows skips.
+Synthetic UI: 75/75; actual-helper remount check, typecheck and touched-file
+lint pass. No hash repin, product change or native/local database run.
