@@ -5,6 +5,7 @@ import { listSwimWorkouts, type SwimPlanRow } from "../storage";
 import { swimFixture, userId, sessionId } from "./fixtures";
 
 vi.mock("../storage", () => ({ listSwimWorkouts: vi.fn() }));
+vi.mock("../standalone-state", () => ({ loadStandaloneSwimStates: async () => new Map() }));
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe("ADR0079 native analytics", () => {

@@ -467,6 +467,21 @@ describe("flushOutbox", () => {
     expect(remove).toHaveBeenCalledWith("complete-1700000000000");
   });
 
+  it("DC-R5 keeps a saved workout's pending progression queued and replays the same completion receipt", async () => {
+    queue = [{ ...entry, op: "complete" }];
+    vi.mocked(completeSessionResult).mockResolvedValueOnce({
+      error: "Workout saved. Program progress is waiting to sync.", errorCode: "transient", workoutSaved: true,
+    });
+    expect(await flushOutbox()).toMatchObject({ remaining: 1, completed: 0, dropped: 0 });
+    expect(remove).not.toHaveBeenCalled();
+    expect(deadLetter).not.toHaveBeenCalled();
+    vi.mocked(completeSessionResult).mockResolvedValueOnce({ ok: true });
+    expect(await flushOutbox()).toMatchObject({ remaining: 0, completed: 1, completedSessionIds: [entry.sessionId] });
+    expect(vi.mocked(completeSessionResult).mock.calls).toEqual([
+      [entry.sessionId, null, entry.id], [entry.sessionId, null, entry.id],
+    ]);
+  });
+
   it("ADR0079 replays native swimming actuals with the durable receipt and reports completion", async () => {
     queue = [{
       ...entry,

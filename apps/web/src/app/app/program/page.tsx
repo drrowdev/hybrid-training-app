@@ -12,7 +12,7 @@
  * today); the rest are shown as "coming soon".
  */
 import { redirect } from "next/navigation";
-import { Archivo, Oswald, Saira_Stencil_One, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import type { PlatformContext, ProgramEngine, PlannedSessionSpec } from "@hta/program-core";
 import {
   ACTIVATION_PHASE_KEYS,
@@ -27,7 +27,9 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { selectablePrograms, getProgramEngine, getNativeProgramEngine } from "@/lib/platform/registry";
 import { buildPlatformContext } from "@/lib/platform/context";
 import { getBlockEditContext } from "@/lib/platform/edit-context";
-import { getActiveSeason } from "@/lib/seasons/queries";
+import { loadProgramRecommendationOrigin, type ProgramRecommendationSetup } from "@/lib/platform/recommendation-origin";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { loadSeasonProgramOrigin, type SeasonProgramOrigin } from "@/lib/seasons/activation";
 import { getTrainingMaxContext } from "@/lib/training-maxes/queries";
 import { STRENGTH_ROLE_CANDIDATES, type StrengthRole } from "@/lib/planner/archetypes";
 import {
@@ -57,10 +59,35 @@ import { getSwimNavigation, swimEntryHref } from "@/lib/swim/navigation";
 
 // Sage program-wizard type scale — scoped to this route via CSS variables on
 // the wrapper below (see ProgramPicker.module.css). Not loaded app-wide.
-const archivo = Archivo({ subsets: ["latin"], display: "swap", weight: ["400", "500", "600", "700"], variable: "--font-archivo" });
-const oswald = Oswald({ subsets: ["latin"], display: "swap", weight: ["400", "500", "600", "700"], variable: "--font-oswald" });
-const saira = Saira_Stencil_One({ subsets: ["latin"], display: "swap", weight: "400", variable: "--font-saira" });
-const jetbrains = JetBrains_Mono({ subsets: ["latin"], display: "swap", weight: ["500", "700"], variable: "--font-mono-wizard" });
+const archivo = localFont({
+  src: [
+    { path: "../../fonts/Archivo.woff2", weight: "400", style: "normal" },
+    { path: "../../fonts/Archivo.woff2", weight: "500", style: "normal" },
+    { path: "../../fonts/Archivo.woff2", weight: "600", style: "normal" },
+    { path: "../../fonts/Archivo.woff2", weight: "700", style: "normal" },
+  ],
+  display: "swap", variable: "--font-archivo",
+});
+const oswald = localFont({
+  src: [
+    { path: "../../fonts/Oswald.woff2", weight: "400", style: "normal" },
+    { path: "../../fonts/Oswald.woff2", weight: "500", style: "normal" },
+    { path: "../../fonts/Oswald.woff2", weight: "600", style: "normal" },
+    { path: "../../fonts/Oswald.woff2", weight: "700", style: "normal" },
+  ],
+  display: "swap", variable: "--font-oswald",
+});
+const saira = localFont({
+  src: "../../fonts/SairaStencilOne.woff2", weight: "400", style: "normal",
+  display: "swap", variable: "--font-saira",
+});
+const jetbrains = localFont({
+  src: [
+    { path: "../../fonts/JetBrainsMono.woff2", weight: "500", style: "normal" },
+    { path: "../../fonts/JetBrainsMono.woff2", weight: "700", style: "normal" },
+  ],
+  display: "swap", variable: "--font-mono-wizard",
+});
 
 // Programs whose deploy path is validated end-to-end. Others render disabled.
 const ENABLED_PROGRAM_IDS = new Set<string>([
@@ -107,13 +134,48 @@ function defaultSessionsPerWeek(engine: ProgramEngine): number | undefined {
 export default async function ProgramPickerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ program?: string; phase?: string; edit?: string; seasonBlockId?: string }>;
+  searchParams: Promise<{ program?: string; phase?: string; edit?: string; seasonBlockId?: string; recommendation?: string }>;
 }) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await getAuthUser();
   if (!user) redirect("/login");
+
+  const sp = await searchParams;
+  const editContext = sp.edit ? await getBlockEditContext(sp.edit) : null;
+  if (sp.edit && !editContext) {
+    return <EmptyState title="This program isn't available to edit." action={{ label: "View programs", href: "/app/programs" }} />;
+  }
+  let recommendation: ProgramRecommendationSetup | undefined;
+  let seasonOrigin: SeasonProgramOrigin | undefined;
+  if (sp.seasonBlockId) {
+    try {
+      if (editContext) throw new Error("A roadmap block must start a new program.");
+      seasonOrigin = await loadSeasonProgramOrigin(supabase, user.id, sp.seasonBlockId);
+      if (!ENABLED_PROGRAM_IDS.has(seasonOrigin.target.program_id)) {
+        throw new Error("This roadmap program is unavailable.");
+      }
+    } catch (error) {
+      return <EmptyState title={error instanceof Error ? error.message : "Could not load this roadmap block."}
+        action={{ label: "View programs", href: "/app/programs" }} />;
+    }
+  }
+  if (sp.recommendation) {
+    try {
+      const origin = await loadProgramRecommendationOrigin(supabase, user.id, sp.recommendation);
+      if (editContext || !ENABLED_PROGRAM_IDS.has(origin.programId)) {
+        throw new Error("This recommendation can't start a new program.");
+      }
+      recommendation = {
+        recommendationId: origin.recommendationId, programId: origin.programId,
+        kind: origin.kind, phaseId: origin.phaseId, recoveryWarning: origin.recoveryWarning,
+      };
+    } catch (error) {
+      return <EmptyState title={error instanceof Error ? error.message : "Could not load this recommendation."}
+        action={{ label: "View programs", href: "/app/programs" }} />;
+    }
+  }
 
   const { anchoredKeys } = await buildPlatformContext(supabase, user.id);
 
@@ -270,37 +332,14 @@ export default async function ProgramPickerPage({
   // Optional deep-link preselect (e.g. the Today "Set up Velocity →" guided
   // advance). Only honour a program whose deploy path is enabled; the phase is
   // passed through as the program's loadout value (Green Protocol's phaseId).
-  const sp = await searchParams;
   const initialProgramId =
-    sp.program && ENABLED_PROGRAM_IDS.has(sp.program) ? sp.program : undefined;
-  const initialLoadoutValue = initialProgramId && sp.phase ? sp.phase : undefined;
+    seasonOrigin?.target.program_id ?? recommendation?.programId ??
+    (sp.program && ENABLED_PROGRAM_IDS.has(sp.program) ? sp.program : undefined);
+  const initialLoadoutValue = seasonOrigin
+    ? seasonOrigin.target.template_ref ?? undefined
+    : recommendation?.phaseId ?? (initialProgramId && sp.phase ? sp.phase : undefined);
 
-  // Edit mode (?edit=<blockId>): re-enter the wizard for the user's active
-  // strength-only plan (5/3/1 / TB), prefilled with its current loadout +
-  // schedule + cardio days. Null when the block isn't editable → fresh wizard.
-  const editContext = sp.edit ? await getBlockEditContext(sp.edit) : null;
-
-  // Season roadmap deep-link (ADR 0051): carries the planned season_block to
-  // activate on deploy. Threaded straight through — the deploy action
-  // re-validates ownership + planned status before touching the roadmap, so a
-  // stale/foreign id is a safe no-op. Ignored in edit mode (not an activation).
-  const seasonBlockId =
-    !editContext && sp.seasonBlockId ? sp.seasonBlockId : undefined;
-
-  // Post-peak recovery (TB3): the program advised a deload and the lifter came
-  // here instead of taking one, so offer to lead the new block with it.
-  let recoveryAdvised = false;
-  if (!editContext) {
-    const { data: advised } = await supabase
-      .from("program_recommendations")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("kind", "deload")
-      .eq("status", "pending")
-      .limit(1)
-      .maybeSingle();
-    recoveryAdvised = !!advised;
-  }
+  const seasonBlockId = seasonOrigin?.target.id;
 
   // ADR 0060 — a HYROX block deployed for a season's PEAK slot must still taper to
   // the event. With the new race/no-race split, a blank race date means "no taper",
@@ -308,12 +347,11 @@ export default async function ProgramPickerPage({
   // season's target event date. Non-peak season slots stay raceless (ongoing
   // maintenance — no spurious mid-season taper). The user can still clear it.
   let prefillRaceDate: string | undefined;
-  if (seasonBlockId && initialProgramId === "hyrox") {
-    const season = await getActiveSeason();
-    const block = season?.blocks.find((b) => b.id === seasonBlockId);
-    const isPeakSlot = block?.emphasis === "peak" || block?.emphasis === "realize";
-    if (isPeakSlot && season?.goal?.type === "event" && season.goal.targetDate) {
-      prefillRaceDate = season.goal.targetDate;
+  if (seasonOrigin && initialProgramId === "hyrox") {
+    const { target: block, snapshot: { season } } = seasonOrigin;
+    const isPeakSlot = block.emphasis === "peak" || block.emphasis === "realize";
+    if (isPeakSlot && season.goal_type === "event" && season.target_date) {
+      prefillRaceDate = season.target_date;
     }
   }
 
@@ -397,7 +435,7 @@ export default async function ProgramPickerPage({
         {...(initialLoadoutValue ? { initialLoadoutValue } : {})}
         {...(editContext ? { editContext } : {})}
         {...(seasonBlockId ? { seasonBlockId } : {})}
-        {...(recoveryAdvised ? { recoveryAdvised: true } : {})}
+        {...(recommendation ? { recommendation } : {})}
         {...(prefillRaceDate ? { prefillRaceDate } : {})}
       />
     </div>

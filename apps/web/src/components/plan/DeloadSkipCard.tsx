@@ -19,7 +19,7 @@ export function DeloadSkipCard({
   applyAction,
 }: {
   offer: DeloadSkipOffer;
-  applyAction: () => Promise<AcceptDeloadSkipResult>;
+  applyAction: (blockId?: string) => Promise<AcceptDeloadSkipResult>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -31,7 +31,7 @@ export function DeloadSkipCard({
   const apply = () => {
     setError(null);
     startTransition(async () => {
-      const res = await applyAction();
+      const res = await applyAction(offer.blockId);
       if (!res.ok) {
         setError(res.error);
         return;

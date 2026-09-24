@@ -42,7 +42,6 @@ import type { StrengthProgress } from "@/lib/stats/strength-progress";
 import type { EnduranceProgress } from "@/lib/stats/endurance-progress";
 import type { ProgressVerdict, ProgressVerdictKind } from "@/lib/stats/progress-verdict";
 import type { WeeklyRhythm } from "@/lib/stats/weekly-rhythm";
-import type { Streak } from "@/lib/stats/streak";
 import { displayWeight, weightUnitLabel, type WeightUnit } from "@/lib/stats/units";
 import { LOAD_BAND_THRESHOLDS } from "@/lib/stats/load-balance";
 import type { ProfileForFormat } from "@/lib/format/datetime";
@@ -51,6 +50,7 @@ import { Sparkline } from "@/components/stats/charts/Sparkline";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MetricHelp } from "@/components/ui/MetricHelp";
+import { ProgramProgress, ProgramWeekProgress } from "./ProgramProgress";
 
 export type StatsRangeBucket = {
   adherence: AdherenceResult;
@@ -64,9 +64,9 @@ export type StatsRangeBucket = {
 export type StatsCommandCenterProps = {
   initialRange: Range;
   byRange: Record<Range, StatsRangeBucket>;
-  block: ActiveBlockProgress | null;
+  blocks: ActiveBlockProgress[];
+  hasSwimming?: boolean;
   readiness: Readiness;
-  streak: Streak;
   rhythm: WeeklyRhythm;
   freshness: FreshnessMiniRow[];
   bodyweight: BodyweightTrend;
@@ -212,9 +212,9 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
   const {
     initialRange,
     byRange,
-    block,
+    blocks,
+    hasSwimming = false,
     readiness,
-    streak,
     rhythm,
     freshness,
     bodyweight,
@@ -249,12 +249,12 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
       </div>
 
       <Hero
-        block={block}
+        blocks={blocks}
+        hasSwimming={hasSwimming}
         verdict={bucket.verdict}
         adherence={bucket.adherence}
         prs={bucket.prs}
         readiness={readiness}
-        streak={streak}
         range={range}
         relevance={relevance}
       />
@@ -288,7 +288,6 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
         />
         <ConsistencyTile
           rhythm={rhythm}
-          streak={streak}
           onExpand={() => setOpenTile("consistency")}
         />
         <BodyweightTile data={bodyweight} units={units} />
@@ -318,7 +317,7 @@ export function StatsCommandCenter(props: StatsCommandCenterProps) {
         open={openTile === "consistency"}
         onClose={() => setOpenTile(null)}
         rhythm={rhythm}
-        streak={streak}
+        blocks={blocks}
       />
     </div>
   );
@@ -382,27 +381,27 @@ function RangeToggle({
 // ── HERO ─────────────────────────────────────────────────────────────
 
 function Hero({
-  block,
+  blocks,
+  hasSwimming,
   verdict,
   adherence,
   prs,
   readiness,
-  streak,
   range,
   relevance,
 }: {
-  block: ActiveBlockProgress | null;
+  blocks: ActiveBlockProgress[];
+  hasSwimming: boolean;
   verdict: ProgressVerdict;
   adherence: AdherenceResult;
   prs: PrsRangeResult;
   readiness: Readiness;
-  streak: Streak;
   range: Range;
   relevance: { strength: boolean; cardio: boolean };
 }) {
   return (
     <section className="cp-card" style={{ ...CARD, padding: 0, overflow: "hidden" }}>
-      <BlockContext block={block} adherence={adherence} />
+      <ProgramProgress blocks={blocks} hasSwimming={hasSwimming} />
       <div
         style={{
           display: "grid",
@@ -421,7 +420,7 @@ function Hero({
         </HeroCell>
         <HeroCell border>
           <CellLabel>Consistency · {RANGE_LABEL[range]}</CellLabel>
-          <ConsistencyCell adherence={adherence} streak={streak} />
+          <ConsistencyCell adherence={adherence} />
         </HeroCell>
       </div>
       <style>{`
@@ -434,110 +433,6 @@ function Hero({
         }
       `}</style>
     </section>
-  );
-}
-
-function BlockContext({
-  block,
-  adherence,
-}: {
-  block: ActiveBlockProgress | null;
-  adherence: AdherenceResult;
-}) {
-  if (!block) {
-    return (
-      <div
-        data-testid="stats-card-active-block"
-        data-empty="true"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "13px 20px",
-          borderBottom: "1px solid var(--cp-border)",
-          background: "var(--cp-surface-soft)",
-          fontSize: 13,
-          flexWrap: "wrap",
-        }}
-      >
-        <span style={{ color: "var(--cp-text-muted)" }}>No active block</span>
-        <Link
-          href="/app/plan/new"
-          data-testid="stats-active-block-cta"
-          style={{ marginLeft: "auto", color: "var(--cp-accent)", fontWeight: 600, textDecoration: "none" }}
-        >
-          Start one →
-        </Link>
-      </div>
-    );
-  }
-
-  // On-pace pill derived from real adherence in the current window — not
-  // a fabricated label. ≥0.8 = on track, 0.5–0.8 = catching up, else behind.
-  const r = adherence.ratio;
-  const pill =
-    adherence.scheduled === 0
-      ? null
-      : r >= 0.8
-        ? { text: "On track", tone: "success" as Tone }
-        : r >= 0.5
-          ? { text: "Catching up", tone: "warning" as Tone }
-          : { text: "Behind pace", tone: "danger" as Tone };
-
-  return (
-    <div
-      data-testid="stats-card-active-block"
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "13px 20px",
-        borderBottom: "1px solid var(--cp-border)",
-        background: "var(--cp-surface-soft)",
-        fontSize: 13,
-        flexWrap: "wrap",
-      }}
-    >
-      <span style={{ fontWeight: 600 }}>{block.archetypeName}</span>
-      <span style={{ color: "var(--cp-text-muted)" }}>
-        · Week {block.currentWeek} of {block.weeks}
-        {block.daysPerWeek != null && (
-          <> · Day {block.currentDayInWeek} of {block.daysPerWeek} days/week</>
-        )}
-      </span>
-      <span
-        data-testid="stats-active-block-completion"
-        style={{ color: "var(--cp-text-muted)" }}
-      >
-        · {block.logged} of {block.scheduledToDate} sessions logged
-        {block.skipped > 0 && (
-          <span style={{ color: "var(--cp-warning)" }}> · {block.skipped} skipped</span>
-        )}
-      </span>
-      {pill != null && (
-        <span
-          style={{
-            marginLeft: "auto",
-            fontSize: 11.5,
-            fontWeight: 600,
-            color: toneVar(pill.tone),
-            background: "var(--cp-surface)",
-            border: "1px solid var(--cp-border)",
-            padding: "3px 11px",
-            borderRadius: 999,
-          }}
-        >
-          {pill.text}
-        </span>
-      )}
-      <Link
-        href="/app/plan/history"
-        data-testid="stats-active-block-cta"
-        style={{ marginLeft: pill ? 10 : "auto", color: "var(--cp-text-muted)", fontSize: 12, textDecoration: "none" }}
-      >
-        Block details →
-      </Link>
-    </div>
   );
 }
 
@@ -653,14 +548,10 @@ function ReadinessCell({ readiness }: { readiness: Readiness }) {
   );
 }
 
-function ConsistencyCell({ adherence, streak }: { adherence: AdherenceResult; streak: Streak }) {
+function ConsistencyCell({ adherence }: { adherence: AdherenceResult }) {
   const noPlan = adherence.scheduled === 0;
   const pct = noPlan ? null : Math.round(adherence.ratio * 100);
-  const headline = noPlan
-    ? streak.currentStreakWeeks > 0
-      ? `${streak.currentStreakWeeks} wk`
-      : "—"
-    : `${pct}%`;
+  const headline = noPlan ? "—" : `${pct}%`;
   return (
     <div data-testid="stats-card-adherence">
       <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.02em" }}>
@@ -668,18 +559,9 @@ function ConsistencyCell({ adherence, streak }: { adherence: AdherenceResult; st
       </div>
       <div style={{ fontSize: 12.5, color: "var(--cp-text-muted)", marginTop: 7, lineHeight: 1.5 }}>
         {noPlan ? (
-          streak.currentStreakWeeks > 0 ? (
-            "Consistent weeks · no active plan to compare against"
-          ) : (
-            "No active plan yet — your logged cadence shows below."
-          )
+          "No planned workouts in this period"
         ) : (
           <>
-            {streak.currentStreakWeeks > 0 && (
-              <>
-                {streak.currentStreakWeeks}-week streak ·{" "}
-              </>
-            )}
             {adherence.completed} of {adherence.scheduled} sessions
             {adherence.skipped > 0 && <> · {adherence.skipped} skipped</>}
           </>
@@ -1488,11 +1370,9 @@ export function ReadinessDrawer({
 // D — Consistency & balance (weekly rhythm bars + this-week)
 function ConsistencyTile({
   rhythm,
-  streak,
   onExpand,
 }: {
   rhythm: WeeklyRhythm;
-  streak: Streak;
   onExpand?: () => void;
 }) {
   const weeks = rhythm.weeks.slice(-12);
@@ -1592,7 +1472,6 @@ function ConsistencyTile({
               );
             })}
           </div>
-          <ThisWeek streak={streak} />
         </>
       )}
     </Tile>
@@ -1604,12 +1483,12 @@ export function ConsistencyDrawer({
   open,
   onClose,
   rhythm,
-  streak,
+  blocks,
 }: {
   open: boolean;
   onClose: () => void;
   rhythm: WeeklyRhythm;
-  streak: Streak;
+  blocks: ActiveBlockProgress[];
 }) {
   const weeks = rhythm.weeks.slice(-16);
   const totalStrength = weeks.reduce((a, w) => a + w.strengthCount, 0);
@@ -1636,8 +1515,6 @@ export function ConsistencyDrawer({
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <section style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
-          <Stat label="Current streak" value={`${streak.currentStreakWeeks} wk`} />
-          <Stat label="Weekly target" value={streak.weeklyTarget > 0 ? `${streak.weeklyTarget}/wk` : "—"} />
           <Stat label="Active weeks" value={`${activeWeeks} of ${weeks.length}`} />
           <Stat
             label="Strength : cardio"
@@ -1645,13 +1522,14 @@ export function ConsistencyDrawer({
           />
         </section>
 
-        {streak.hasActiveBlock && streak.thisWeekTarget > 0 && (
-          <p style={{ margin: 0, fontSize: 12.5 }}>
-            <span style={{ fontWeight: 600 }}>
-              This week · {streak.thisWeekCompleted} of {streak.thisWeekTarget} done
-            </span>
-          </p>
-        )}
+        {blocks.map((block) => <section key={block.blockId} aria-label={block.archetypeName}>
+          <h3 style={{ margin: "0 0 8px", fontSize: 14 }}>{block.archetypeName}</h3>
+          <div style={{ display: "flex", gap: 18, flexWrap: "wrap" }}>
+            <Stat label="Current streak" value={`${block.streak.currentStreakWeeks} wk`} />
+            <Stat label="Weekly target" value={block.streak.weeklyTarget > 0 ? `${block.streak.weeklyTarget}/wk` : "—"} />
+          </div>
+          <ProgramWeekProgress streak={block.streak} />
+        </section>)}
 
         <section style={{ display: "flex", flexDirection: "column", gap: 5, paddingTop: 14, borderTop: "1px solid var(--cp-border)" }}>
           <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 2 }}>Week by week</div>
@@ -1732,49 +1610,6 @@ function Legend({ color, dashed, label }: { color?: string; dashed?: boolean; la
       />
       {label}
     </span>
-  );
-}
-
-function ThisWeek({ streak }: { streak: Streak }) {
-  if (!streak.hasActiveBlock || streak.thisWeekTarget === 0) return null;
-  const done = streak.thisWeekCompleted;
-  const target = streak.thisWeekTarget;
-  const remaining = Math.max(0, target - done);
-  const dots: Array<"done" | "todo"> = [];
-  for (let i = 0; i < target; i++) dots.push(i < done ? "done" : "todo");
-  return (
-    <div style={{ marginTop: 14, paddingTop: 13, borderTop: "1px solid var(--cp-border)", display: "flex", alignItems: "center", gap: 16 }}>
-      <div>
-        <div style={{ fontSize: 12.5, fontWeight: 600 }}>
-          This week · {done} of {target} done
-        </div>
-        <div style={{ fontSize: 11.5, color: "var(--cp-text-muted)", marginTop: 2 }}>
-          {remaining === 0
-            ? "Week target met"
-            : `${remaining} session${remaining === 1 ? "" : "s"} to go to keep the streak`}
-        </div>
-      </div>
-      <div style={{ display: "flex", gap: 9, marginLeft: "auto" }}>
-        {dots.map((d, i) => (
-          <span
-            key={i}
-            style={{
-              width: 22,
-              height: 22,
-              borderRadius: "50%",
-              display: "grid",
-              placeItems: "center",
-              fontSize: 11,
-              background: d === "done" ? "var(--cp-accent)" : "transparent",
-              color: d === "done" ? "var(--cp-accent-fg)" : "var(--cp-text-muted)",
-              border: d === "done" ? undefined : "1.5px dashed var(--cp-border)",
-            }}
-          >
-            {d === "done" ? "✓" : ""}
-          </span>
-        ))}
-      </div>
-    </div>
   );
 }
 

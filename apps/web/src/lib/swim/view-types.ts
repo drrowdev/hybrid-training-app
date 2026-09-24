@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PoolCourse, SwimCourse } from "@hta/domain";
+import type { PoolCourse, SwimCourse, TrainingCommitment, StandaloneSwimTrainingStatus } from "@hta/domain";
 import type { SwimCourseEditInput } from "./course-view";
 
 export type SwimPoolEditContext = {
@@ -21,6 +21,7 @@ export type SwimWorkoutView = {
   revision: number;
   sessionId: string | null;
   status: "scheduled" | "started" | "completed" | "skipped";
+  trainingStatus?: StandaloneSwimTrainingStatus;
   planStatus: "active" | "paused" | "finished" | "archived";
   date: string;
   title: string;
@@ -72,6 +73,12 @@ export type SwimPlanPreview = {
   }[];
 };
 
+export type SwimSetupPreview = SwimPlanPreview & {
+  id: string;
+  scheduleRevision: string;
+  overlaps: TrainingCommitment[];
+};
+
 export type SwimWeekEditInput = {
   planId: string;
   revision: number;
@@ -94,6 +101,8 @@ export type SwimDateEditInput = {
 };
 export type SwimDateEditPreview = SwimDateEditInput & {
   id: string; previousDate: string; warnings: string[];
+  scheduleRevision?: string;
+  overlaps?: TrainingCommitment[];
 };
 
 const completionPool = z.object({ numerator: z.number().int().positive(), denominator: z.number().int().positive(), unit: z.enum(["m", "yd"]) });
@@ -134,6 +143,7 @@ export type SwimHubView = {
     poolEditing?: SwimPoolEditContext;
     assessmentPool?: string;
     assessment?: { label: string; pace: string };
+    nextWorkoutId?: string;
     workouts: {
       id: string; date: string; title: string; total: string; status: string; week: number; provisional: boolean;
       reschedule?: { revision: number; min: string; max: string };
@@ -171,4 +181,6 @@ export function nextEditMode(current: number | null, edit: boolean, revision: nu
 export type SwimResumePreview = {
     planId: string; revision: number; startDate: string;
     dates: { id: string; revision: number; date: string }[];
+    scheduleRevision?: string;
+    overlaps?: TrainingCommitment[];
   };

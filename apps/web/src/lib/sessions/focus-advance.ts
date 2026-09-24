@@ -59,18 +59,22 @@ export function hasOpenWork(
  * `resumeActiveKey` is expected to already have passed `readResume`'s own
  * six-hour expiry and session-id checks (it reads from storage, so it isn't
  * pure and is tested separately in `session-resume.test.ts`); this function
- * only adds the guard a resume read cannot: that the key still names a
- * movement in the CURRENT `groups` (rejecting a stale/foreign key, e.g. a
- * movement a swap has since removed from this workout).
+ * also rejects a cursor covered by a newer server snapshot. A refresh can
+ * arrive after a write commits but before its response advances the strip.
  */
 export function resolveInitialActiveKey(
   groups: readonly MovementGroup[],
   firstOpenId: string,
   resumeActiveKey: string | null | undefined,
+  resumeCursor?: number,
+  covered?: ReadonlySet<number>,
 ): string {
+  const group = groups.find((candidate) => movementGroupKey(candidate) === resumeActiveKey);
+  const itemIndex = resumeCursor == null ? undefined : group?.itemIndices[resumeCursor];
   if (
     resumeActiveKey != null &&
-    groups.some((group) => movementGroupKey(group) === resumeActiveKey)
+    group != null &&
+    (itemIndex == null || !covered?.has(itemIndex))
   ) {
     return resumeActiveKey;
   }

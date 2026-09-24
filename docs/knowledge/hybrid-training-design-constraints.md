@@ -292,6 +292,13 @@ If a row is added here, the corresponding code constant must carry the `// heuri
 - **DC-K3 — Engineering defaults are tunable (v2 §0 + §9 + plan §7)** [EV] — Every coefficient labelled `[DEF→cal]` is read from a config/seed row, not a TS literal, so calibration is data-driven not code-driven. *Test:* swapping a coefficient via the config table changes engine output without code changes. **Confidence: HIGH-MODERATE.**
 
 - **DC-K4 — Override-and-warn with "why this rule fired" transparency (v1 §2 Rule 5 + plan §3 + new §8 "surface why this rule fired" + new §10 pre-mortem #1)** [EV] — When the user overrides a principle-derived default, the engine: (a) records the override, (b) shows the warning text including the cited source (e.g., "Robineau 2016 HIGH: 6h+ between concurrent sessions"), (c) does not silently follow the user. Every guardrail surfaces the trade-off being managed. *Test:* scheduling a high-conflict pairing with override returns the schedule AND a logged override record + warning surface with citation. **Confidence: HIGH.**
+  **Modular scheduling (ADR 0085):** review exact dates across independent
+  programs, including cardio, rehab and one-offs. Overlapping dates remain
+  selectable with explicit consent; saved two-a-day preferences are not consent.
+  Preview/save freshness and request replay are enforced under one shared
+  per-user transaction lock. Planned rest remains distinct from a free day.
+  Authored movement/interval identity survives ordered mixed logging and
+  scoped forward edits; draft cancellation and replacement preserve history.
 
 - **DC-K5 — Continuity bias in planning (v1 §2 Rule 5 + new §4.4 10% rule)** [EV] — Week-to-week change in total load (sum of bucket ATL deltas) is bounded by default. *Test:* a generated week never increases total bucket-ATL by more than +20% over the prior week without an explicit "push" flag; running mileage capped per DC-J2. **Confidence: HIGH-MODERATE.**
 
@@ -380,6 +387,10 @@ If a row is added here, the corresponding code constant must carry the `// heuri
 - **DC-R3 — Week & day templates (new §9)** [DEF] — **Week** = lead-quality 3–4 sessions + other qualities 1–2 maintenance sessions each + tissue work integrated into 2 sessions + aerobic base 2–4 Z2 + ≥1 fully off day (or active recovery only). **Day (1 session)** = warm-up (general + specific + tendon prep) → primary work (intensity, ordered by emphasis) → secondary work (hypertrophy / accessory / tissue) → conditioning (if same-session, observe DC-D2 ordering) → cool-down (Z1 + breathing + mobility). *Test:* a generated week conforms to these line items; a generated day conforms to the five-section template. **Confidence: HIGH-MODERATE.**
 
 - **DC-R4 — Block direction fixed; switching mid-block blocked (new §5.1 "switching mid-block is the most common self-sabotage")** [EV] — Once a block is started, its archetype and weekly volume targets are fixed for the block's duration. Mid-block archetype change is blocked at the API level; requires explicit override + consent + audit log entry. *Test:* attempting to change archetype on week 3 of a 6-week block returns an `override_required` response with the cited rationale. **Confidence: HIGH-MODERATE.**
+
+- **DC-R5 - Independent program ownership (owner decision, 2026-09-23; ADR 0087)** [DEF] - One active Strength, Running, Swimming and Hybrid program may coexist. Only Hybrid intentionally mixes ordinary modalities; an owned library rehab attachment is permitted in every type. Creation, explicit same-type replacement, editing, completion and restoration preserve other types and historical identities. Existing unclassified programs require explicit ending before new typed activation; no automatic classification or ending. *Test:* all creation orders preserve independent slots; duplicate or other-type replacements fail; merely starting the last workout does not complete a program.
+
+- **DC-R6 - Program-owned working load (owner decision, 2026-09-23; ADR 0087)** [DEF] - Measured strength and actual workload remain account-owned. Each program owns its working-max basis, progression and targets. Issued prescriptions and logged snapshots retain the appropriate basis; starting or editing another program cannot change it. *Test:* two programs using the same movement and measured 1RM retain different working percentages, and an engine-owned working max is not changed by another program's setup.
 
 ## S. Pre-mortem-derived guardrails (new in this revision)
 
@@ -663,6 +674,12 @@ correction retain history. No date/distance or provider-reference inference.
   for acceptance, never catch-up. Started swims can finish after archive, with
   actual workload credited but no progression of a replacement plan. Session
   trash/undo retains the link; hard purge may clear it while retaining targets.
+  **Independent-program extension (ADR 0087):** Strength, Running, Swimming and
+  Hybrid coexist without shared end dates or lifecycle cascades. All setup
+  directions review the shared date-aware calendar. Ending, moving, replacing
+  or restoring one program never silently moves or ends another. Swimming rehab
+  attachments use the shared account library and separate ordinary rehab logs;
+  they do not alter source swimming prescriptions or fabricate native outcomes.
 - **DC-SW8 - Owned, atomic single logging [DEF].** Composite ownership links and
   RLS protect plans, workouts and sessions. Concurrent starts obtain one ordinary
   session. One serialized completion atomically writes the native result, its

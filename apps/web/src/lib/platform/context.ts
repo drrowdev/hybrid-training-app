@@ -40,6 +40,11 @@ export interface CustomMovementBinding {
   displayName: string;
 }
 
+export interface TrainingMaxDraft {
+  movementId: string;
+  oneRmKg: number;
+}
+
 export function validateCustomMovementBindings(
   bindings: CustomMovementBinding[],
   catalog: Array<{ id: string; slug: string; displayName: string }>,
@@ -83,6 +88,7 @@ export async function buildPlatformContext(
     roundingKg?: number;
     gender?: "male" | "female";
     customMovements?: CustomMovementBinding[];
+    trainingMaxDrafts?: TrainingMaxDraft[];
   } = {},
 ): Promise<PlatformContextBundle> {
   const [
@@ -108,7 +114,18 @@ export async function buildPlatformContext(
   const oneRepMaxes: Record<string, number> = {};
   const resolved = new Map<string, ResolvedMovement>();
 
-  const tmRows = (data ?? []) as unknown as TmRow[];
+  let tmRows = (data ?? []) as unknown as TmRow[];
+  if (opts.trainingMaxDrafts?.length) {
+    const drafts = new Map(opts.trainingMaxDrafts.map((draft) => [draft.movementId, draft]));
+    const catalog = await supabase.from("movements").select("id,slug,display_name").in("id", [...drafts.keys()]);
+    if (catalog.error) throw new Error("Could not check the exercises for your training maxes.");
+    const movements = (catalog.data ?? []) as MovementRow[];
+    if (movements.length !== drafts.size) throw new Error("An exercise is no longer available in your library.");
+    tmRows = [
+      ...tmRows.filter((row) => !row.movement || !drafts.has(row.movement.id)),
+      ...movements.map((movement) => ({ movement, one_rm_kg: drafts.get(movement.id)!.oneRmKg })),
+    ];
+  }
   for (const row of tmRows) {
     const mv = row.movement;
     if (!mv) continue;

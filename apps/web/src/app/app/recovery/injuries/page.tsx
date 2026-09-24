@@ -25,7 +25,7 @@ import { ActiveLimitationsList } from "@/components/limitations/ActiveLimitation
 import { AddLimitationButton } from "@/components/limitations/AddLimitationButton";
 import { HistorySection } from "@/components/limitations/HistorySection";
 import { LimitationResponseCard } from "@/components/limitations/LimitationResponseCard";
-import { getLimitationResponseOffer } from "@/lib/limitations/offer";
+import { getLimitationResponseOffers } from "@/lib/limitations/offer";
 import { applyLimitationResponseSelection } from "@/lib/limitations/actions";
 import { getFormatProfile } from "@/lib/format/profile";
 import type {
@@ -78,7 +78,7 @@ export default async function InjuriesPage() {
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  const [activeRes, resolvedRes, formatProfile, limitationOffer] =
+  const [activeRes, resolvedRes, formatProfile, limitationOffers] =
     await Promise.all([
       supabase
         .from("limitations")
@@ -97,7 +97,7 @@ export default async function InjuriesPage() {
         .order("resolved_at", { ascending: false })
         .limit(100),
       getFormatProfile(supabase, user.id),
-      getLimitationResponseOffer(),
+      getLimitationResponseOffers(),
     ]);
 
   const active: LimitationRow[] = (activeRes.data ?? []).map((r) =>
@@ -145,12 +145,15 @@ export default async function InjuriesPage() {
         title="Limitations"
       />
 
-      {limitationOffer && (
-        <LimitationResponseCard
-          offer={limitationOffer}
+      {limitationOffers.map((offer) => (
+        <section key={offer.blockId} style={{ display: "grid", gap: 8 }}>
+          <h2>{offer.programName}</h2>
+          <LimitationResponseCard
+          offer={offer}
           applyAction={applyLimitationResponseSelection}
         />
-      )}
+        </section>
+      ))}
 
       {!hasAny ? (
         <>

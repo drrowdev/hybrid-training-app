@@ -208,7 +208,7 @@ describe("DC-SW3/SW5/SW8 history-preserving production updater", () => {
     // Full job body from 08f89f05, independent of CI's shallow checkout.
     expect(createHash("sha256").update(existing(current)!).digest("hex"))
       .toBe("4c3643cb734fcaeb1f70d97b5f12590f84684fb7625f7d6b3fe3eb15e6272a06");
-    const job = current.split("\n  update-swim-production:\n")[1]!.split("\n  inspect-swim-production:\n")[0]!;
+    const job = current.split("\n  update-swim-production:\n")[1]!.split(/\n  [a-z][a-z0-9-]+:\n/)[0]!;
     for (const guard of ["needs: [ci, identity-guard]", "github.ref == 'refs/heads/main'", "inputs.accept_legacy_swim_history == true",
       "group: production-database-migrations", "cancel-in-progress: false", "persist-credentials: false",
       ...PRODUCTION_UPDATE.otherOperations.map((key) => `inputs.${key.toLowerCase()} == false`)]) expect(job).toContain(guard);

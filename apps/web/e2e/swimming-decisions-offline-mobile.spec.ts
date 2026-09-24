@@ -429,6 +429,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
     await page.getByLabel("Recent comfortable continuous lengths", { exact: true }).fill("12");
     await page.getByLabel("Weeks", { exact: true }).fill("2");
+    await page.getByRole("button", { name: "Preview plan", exact: true }).click();
     await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
     await expect(page).toHaveURL(/\/app\/swim\?plan=[^&]+$/);
     const plans = await listSwimPlans(actor);
@@ -1025,6 +1026,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     const preview = await setupPreview(form);
     expect(preview.calibration !== null).toBe(true);
     expect(isDeepStrictEqual(await setupRows(actor, freshUser.userId), { plans: [], workouts: [] })).toBe(true);
+    await form.getByRole("button", { name: "Preview plan", exact: true }).click();
     await form.getByRole("button", { name: "Create swim plan", exact: true }).click();
     await expect(page).toHaveURL(/\/app\/swim\?plan=/);
     const stored = await setupRows(actor, freshUser.userId);
@@ -1077,7 +1079,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
       expect(slot.conflict.details?.accounts).toBe("whole_session");
       expect(Number(slot.conflict.details?.minimumMinutes)).toBeGreaterThan(10);
     }
-    await form.getByRole("button", { name: "Create swim plan", exact: true }).click();
+    await form.getByRole("button", { name: "Preview plan", exact: true }).click();
     const alert = form.getByRole("alert");
     await expect(alert).toBeVisible();
     await expect(alert.locator("p")).toContainText(/\S/);
@@ -1094,6 +1096,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     expect(isDeepStrictEqual(corrected.entries, preview.entries.map(([key, value]) =>
       [key, key === "timeBudgetMinutes" ? "20" : value]))).toBe(true);
     expect(corrected.generated.weeks.every((week) => week.slots.every((slot) => slot.kind === "workout"))).toBe(true);
+    await form.getByRole("button", { name: "Preview plan", exact: true }).click();
     await form.getByRole("button", { name: "Create swim plan", exact: true }).click();
     await expect(page).toHaveURL(/\/app\/swim\?plan=/);
     const stored = await setupRows(actor, freshUser.userId);
@@ -1133,7 +1136,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     expect(slots).toHaveLength(2);
     expect(slots.every((slot) => slot.kind === "guidance" && slot.guidance.steps.length > 0)).toBe(true);
     expect(isDeepStrictEqual(await setupRows(actor, freshUser.userId), { plans: [], workouts: [] })).toBe(true);
-    await form.getByRole("button", { name: "Create swim plan", exact: true }).click();
+    await form.getByRole("button", { name: "Preview plan", exact: true }).click();
     await expect(form.getByRole("status")).toBeVisible();
     await expect(form.getByRole("status")).toContainText(/\S/);
     const guidance = slots[0];

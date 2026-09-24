@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   MAX_SWIM_COURSE_BYTES, SWIM_WEEKDAYS, parsePoolLengthInput, swimCourseWorkoutKey, swimCourseWorkoutTitle,
-  type SwimCourse, type SwimCourseWorkoutChoice,
+  type SwimCourse, type SwimCourseWorkoutChoice, type TrainingCommitment,
 } from "@hta/domain";
 import { parseSwimCourseFile } from "@/lib/swim/course-file";
 import { previewPrivateSwimCourse, importPrivateSwimCourse } from "@/lib/swim/course-actions";
@@ -12,7 +12,7 @@ import type { SwimCourseImportPreview } from "@/lib/swim/course-view";
 import { PlanPreview } from "./PlanPreview";
 import styles from "./Swim.module.css";
 
-export function CourseImportForm({ today }: { today: string }) {
+export function CourseImportForm({ today, schedule = [] }: { today: string; schedule?: TrainingCommitment[] }) {
   const router = useRouter();
   const [source, setSource] = useState<SwimCourse | null>(null);
   const [pool, setPool] = useState("50m");
@@ -23,9 +23,16 @@ export function CourseImportForm({ today }: { today: string }) {
   const [pending, startTransition] = useTransition();
   const busy = useRef(false);
   const fileRevision = useRef(0);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [reading, setReading] = useState(false);
+  const [startDate, setStartDate] = useState(today);
+  const requestId = useRef<string | null>(null);
+  const horizon = new Date(`${startDate}T00:00:00Z`);
+  horizon.setUTCDate(horizon.getUTCDate() + (source?.weeks.length ?? 0) * 7);
+  const endDate = Number.isFinite(horizon.getTime()) ? horizon.toISOString().slice(0, 10) : startDate;
+  const commitments = schedule.filter((entry) => entry.date >= startDate && entry.date < endDate);
 
-  async function chooseFile(file?: File) {
+  const chooseFile = useCallback(async (file?: File) => {
     const revision = ++fileRevision.current;
     setSource(null);
     setPreview(null);
@@ -39,7 +46,13 @@ export function CourseImportForm({ today }: { today: string }) {
     } catch {
       if (revision === fileRevision.current) setError("Choose a prepared JSON plan file smaller than 256 KB.");
     } finally { if (revision === fileRevision.current) setReading(false); }
-  }
+  }, []);
+
+  useEffect(() => {
+    // Recover selections made before hydration attached the change handler.
+    const file = fileInput.current?.files?.[0];
+    if (file && fileRevision.current === 0) void chooseFile(file);
+  }, [chooseFile]);
 
   function submit(form: FormData) {
     if (!source || busy.current || reading || savedId) return;
@@ -62,6 +75,8 @@ export function CourseImportForm({ today }: { today: string }) {
       startTransition(async () => {
         try {
           if (preview) {
+            if (!requestId.current) throw new Error("Review the plan again before importing.");
+            form.set("requestId", requestId.current);
             const result = await importPrivateSwimCourse(form, preview.id);
             if (result.error) setError(result.error);
             else if (result.planId) {
@@ -75,7 +90,7 @@ export function CourseImportForm({ today }: { today: string }) {
           } else {
             const result = await previewPrivateSwimCourse(form);
             if (result.error) setError(result.error);
-            else if (result.preview) setPreview(result.preview);
+            else if (result.preview) { requestId.current = crypto.randomUUID(); setPreview(result.preview); }
             else setError("Could not preview the plan. Try again.");
           }
         } catch {
@@ -98,7 +113,7 @@ export function CourseImportForm({ today }: { today: string }) {
       onChange={() => { setPreview(null); setError(null); }}>
       <section className={styles.section}>
         <label className={styles.field}>Prepared plan file
-          <input name="file" type="file" accept=".json,application/json"
+          <input ref={fileInput} name="file" type="file" accept=".json,application/json"
             onChange={(event) => { void chooseFile(event.target.files?.[0]); }} />
         </label>
         {source && <div className={styles.previewHeading}>
@@ -109,12 +124,22 @@ export function CourseImportForm({ today }: { today: string }) {
       {source && <>
         <section className={styles.section}>
           <h2>Schedule</h2>
-          <label className={styles.field}>Start date<input name="startDate" type="date" min={today} defaultValue={today} required /></label>
+          <label className={styles.field}>Start date<input name="startDate" type="date" min={today} value={startDate} onChange={(event) => setStartDate(event.target.value)} required /></label>
           <fieldset className={styles.choices}><legend>Swim days</legend>
-            {SWIM_WEEKDAYS.map(({ value, label }) => <label key={value} className={styles.choice}>
-              <input name="weekdays" type="checkbox" value={value} />{label.slice(0, 3)}
-            </label>)}
+            {SWIM_WEEKDAYS.map(({ value, label }) => {
+              const days = commitments.filter((entry) => new Date(`${entry.date}T00:00:00Z`).getUTCDay() === value);
+              const work = days.filter((entry) => entry.state !== "rest" && entry.state !== "paused");
+              return <label key={value} className={styles.choice}>
+                <input name="weekdays" type="checkbox" value={value} /><span>{label.slice(0, 3)}
+                  {work.length > 0 ? <small className={styles.muted}> · {work.length} scheduled</small>
+                    : days.some((entry) => entry.state === "rest") ? <small className={styles.muted}> · Planned rest</small> : null}</span>
+              </label>;
+            })}
           </fieldset>
+          {commitments.some((entry) => entry.state !== "rest") && <details className={styles.details}><summary>Scheduled training</summary>
+            <ul className={styles.list}>{commitments.filter((entry) => entry.state !== "rest").map((entry) =>
+              <li key={`${entry.source}:${entry.id}`} className={styles.row}><span>{entry.date}</span><span>{entry.title}</span></li>)}</ul>
+          </details>}
         </section>
         <section className={styles.section}>
           <h2>Pool</h2>
@@ -168,10 +193,11 @@ export function CourseImportForm({ today }: { today: string }) {
         {preview.totals.length > 0 && <label className={styles.choice}>
           <input name="acceptSetTotals" type="checkbox" required disabled={pending || !!savedId} />Use the distances from the listed sets
         </label>}
-        {preview.strengthDays.length > 0 && <label className={styles.choice}>
+        {(preview.overlaps?.length ?? 0) > 0 && <><ul className={styles.list}>{preview.overlaps!.map((entry) =>
+          <li key={`${entry.source}:${entry.id}`} className={styles.row}><span>{entry.date}</span><span>{entry.title}</span></li>)}</ul><label className={styles.choice}>
           <input name="acceptOverlap" type="checkbox" required disabled={pending || !!savedId} />
-          Swim on strength days: {preview.strengthDays.join(", ")}
-        </label>}
+          Keep both workouts on these dates
+        </label></>}
         <label className={styles.choice}><input name="reviewed" type="checkbox" required disabled={pending || !!savedId} />
           I have reviewed the workouts, dates and pools
         </label>

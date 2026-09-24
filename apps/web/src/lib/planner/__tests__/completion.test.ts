@@ -26,7 +26,7 @@ type Planned = {
   block_id: string;
   completed_session_id: string | null;
   skipped_at: string | null;
-  sessions: { deleted_at: string | null } | null;
+  sessions: { deleted_at: string | null; completed_at: string | null } | null;
 };
 
 type Store = {
@@ -108,6 +108,7 @@ function makeClient(store: Store) {
   }
 
   return {
+    rpc: async () => ({ data: null, error: { code: "PGRST202", message: "complete_program_if_settled" } }),
     from: (table: string) => builder(table as keyof Store),
   } as unknown as SupabaseClient;
 }
@@ -125,7 +126,7 @@ function seedBlock(
       block_id: blockId,
       completed_session_id: i < completed ? `s-${i}` : null,
       skipped_at: null,
-      sessions: i < completed ? { deleted_at: null } : null,
+      sessions: i < completed ? { deleted_at: null, completed_at: "2026-09-22T10:00:00Z" } : null,
     });
   }
   return {
@@ -146,7 +147,7 @@ describe("maybeCompleteBlock", () => {
     expect(store.training_blocks[0]!.status).toBe("active");
   });
 
-  it("flips to 'completed' when every planned session is linked (28/28)", async () => {
+  it("flips to 'completed' when every planned session is finished (28/28)", async () => {
     store = seedBlock("active", 28, 28);
     const sb = makeClient(store);
     const before = Date.now();
@@ -168,12 +169,21 @@ describe("maybeCompleteBlock", () => {
     store = seedBlock("active", 1, 1);
     store.planned_sessions[0]!.sessions = {
       deleted_at: "2026-08-10T09:23:52.772Z",
+      completed_at: "2026-08-10T08:23:52.772Z",
     };
     const sb = makeClient(store);
 
     await maybeCompleteBlock(sb, "blk-1");
 
     expect(store.training_blocks[0]!.status).toBe("active");
+  });
+
+  it("DC-SW7 does not release a program slot when its last workout is only started", async () => {
+    store = seedBlock("active", 1, 1);
+    store.planned_sessions[0]!.sessions!.completed_at = null;
+    await maybeCompleteBlock(makeClient(store), "blk-1");
+    expect(store.training_blocks[0]!.status).toBe("active");
+    expect(store.training_blocks[0]!.completed_at).toBeNull();
   });
 
   it("flips to 'completed' when all sessions are either linked or skipped", async () => {

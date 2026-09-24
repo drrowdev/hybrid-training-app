@@ -7,6 +7,7 @@ import type { PlatformContext } from "@hta/program-core";
 import { wendler531Engine, type WendlerInstance } from "@hta/wendler";
 import { buildProgramInstanceWrite } from "../program-instance";
 import type { MovementResolver } from "../adapter";
+import { resolveTargetLoadKg } from "@hta/domain";
 
 const ctx: PlatformContext = {
   oneRepMaxes: { squat: 165, bench: 118, deadlift: 212, press: 71 },
@@ -83,5 +84,22 @@ describe("buildProgramInstanceWrite — 5/3/1", () => {
         startedOn: "2026-06-15",
       }),
     ).toThrow(/more sessions than/);
+  });
+
+  it("DC-R6 keeps issued working maxes with the program instead of the account TM setting", () => {
+    const typed = buildProgramInstanceWrite({
+      engine: wendler531Engine, instance, ctx, resolveMovement: resolve, weekdays,
+      startedOn: "2026-06-15", programOwnedLoads: true,
+    });
+    const working = typed.sessions.flatMap((session) => session.prescription.items)
+      .filter((item) => item.percentTm !== undefined);
+    expect(working.length).toBeGreaterThan(0);
+    for (const item of working) {
+      expect(item.meta?.programLoadBasis).toMatchObject({ version: 1, kind: "working-max" });
+      const original = resolveTargetLoadKg(item, { tmKg: 10, oneRmKg: 100 });
+      expect(original).not.toBeNull();
+      expect(resolveTargetLoadKg(item, { tmKg: 200, oneRmKg: 150 })).toBe(original);
+    }
+    expect(write.sessions.some((session) => session.prescription.items.some((item) => item.meta?.programLoadBasis))).toBe(false);
   });
 });

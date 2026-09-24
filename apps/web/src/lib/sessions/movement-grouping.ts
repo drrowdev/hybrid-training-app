@@ -62,6 +62,24 @@ export type MovementGroup = {
   slotBuckets: Record<MovementSlotBucket, number[]>;
 };
 
+export function withConfirmedMovementSwap(
+  group: MovementGroup,
+  swap: { id: string; slug: string; displayName: string; prescription?: Prescription },
+): MovementGroup {
+  const items = swap.prescription
+    ? group.itemIndices.map((index) => {
+        const item = swap.prescription!.items[index];
+        if (!item || item.movementId !== swap.id) throw new Error("The swapped workout changed. Reload it before logging.");
+        return item;
+      })
+    : group.items;
+  return {
+    ...group, movementId: swap.id, movementSlug: swap.slug, movementName: swap.displayName,
+    groupKey: swap.prescription && items[0] ? movementIdentityKey(items[0]) : group.groupKey,
+    items, acceptedMovementIds: movementIdsForItems(items),
+  };
+}
+
 /** Humanise an underscored slug ("hip_hinge" → "Hip hinge") when no display name is available. */
 function humanizeSlug(slug: string | null | undefined): string | null {
   if (!slug) return null;

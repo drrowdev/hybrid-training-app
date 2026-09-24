@@ -833,13 +833,13 @@ describe("read-only Auth reconciliation", () => {
 });
 describe("configuration workflow boundaries", () => {
   const root = resolve(import.meta.dirname, "../../../..");
-  const workflow = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8");
+  const workflow = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
   const job = workflow.split("\n  configure-swim-review:\n")[1]!.split("\n  deploy-swim-review:\n")[0]!;
-  it("preserves every previously published job byte-for-byte", () => {
-    // SHA-256 of prior.trimEnd().split("\njobs:")[1] at b6e09d2240081472ba91f168d94aba3915316218.
+  it("pins prior jobs with the explicit modular acceptance selector", () => {
+    // Prior bodies plus the selector; credentials and execution steps remain pinned.
     const jobs = workflow.split("\n  configure-swim-review:\n")[0]!.trimEnd().split("\njobs:")[1]!;
     expect(createHash("sha256").update(jobs).digest("hex"))
-      .toBe("c7199fb2c2a1ea40d72d5a0dc5d5aca2400d173f7f4f4158c45453be78408b79");
+      .toBe("567fcb8e66312e1a1435a79163820be0d50f9d90cf6684f0d6c26a53f7fa3daf");
   });
   it("isolates five write-step secrets from the single read-only secret after offline and source checks", () => {
     expect(job).toContain("needs: [ci, identity-guard]");

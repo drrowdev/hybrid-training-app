@@ -1,5 +1,5 @@
 import { createClient, getAuthUser } from "@/lib/supabase/server";
-import { getLimitationResponseOffer } from "./offer";
+import { getLimitationResponseOffers } from "./offer";
 
 export type LimitationTodaySummary = {
   /** Completed adjustments count, per limitation id. */
@@ -46,13 +46,11 @@ export async function getLimitationTodaySummary(): Promise<LimitationTodaySummar
     }
   }
 
-  const offer = await getLimitationResponseOffer();
-  const pendingCount = offer
-    ? new Set([
+  const offers = await getLimitationResponseOffers();
+  const pendingCount = new Set(offers.flatMap((offer) => [
         ...offer.swaps.map((s) => s.fromMovementId),
         ...offer.drops.map((d) => d.fromMovementId),
-      ]).size
-    : 0;
+      ])).size;
 
   return { adjustedById, totalAdjusted, pendingCount };
 }

@@ -197,7 +197,7 @@ export async function runAccountFlow(env: NodeJS.ProcessEnv, mode: "source" | "r
     });
     await step("build", async () => {
       await guard();
-      build = spawn(process.execPath, [next, "build"], { cwd: web, env: webEnvironment(env, false), stdio: "ignore" });
+      build = spawn(process.execPath, [next, "build", "--webpack"], { cwd: web, env: webEnvironment(env, false), stdio: "ignore" });
       let spawnFailed = false; build.on("error", () => { spawnFailed = true; });
       const buildDeadline = Math.min(deadline, Date.now() + 5 * 60_000);
       while (!spawnFailed && build.exitCode === null && build.signalCode === null && Date.now() < buildDeadline) await sleep(250);

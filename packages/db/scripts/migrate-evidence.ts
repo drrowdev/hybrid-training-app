@@ -10,6 +10,7 @@ import { z } from "zod";
 export const MIGRATION_EVIDENCE_ENV = "HTA_MIGRATION_EVIDENCE_PATH";
 export const MIGRATION_EVIDENCE_FILE = "migration-evidence.jsonl";
 export const MIGRATION_EVIDENCE_MAX_BYTES = 8192;
+export const MAX_MIGRATIONS = 159;
 
 // Version 1 codebook, in SQL vector order. t/f/u mean true/false/unknown.
 // Attribute and privilege bits are expected-condition matches, not raw values.
@@ -86,7 +87,7 @@ const positionSchema = z.union([
   z.object({ status: z.literal("unmatched") }).strict(),
   z.object({
     status: z.literal("matched"),
-    migrationIndex: z.number().int().min(0).max(147),
+    migrationIndex: z.number().int().min(0).max(MAX_MIGRATIONS - 1),
     statementIndex: z.number().int().min(0).max(9999),
   }).strict(),
 ]);
@@ -164,7 +165,7 @@ export function projectMigrationError(error: unknown, canonical?: () => Canonica
       try {
         const migrations = canonical();
         let matches = 0;
-        if (migrations.length <= 148) {
+        if (migrations.length <= MAX_MIGRATIONS) {
           migrations.forEach((migration, migrationIndex) => {
             if (migration.sql.length > 10000) throw new Error("Attribution bound");
             migration.sql.forEach((sql, statementIndex) => {

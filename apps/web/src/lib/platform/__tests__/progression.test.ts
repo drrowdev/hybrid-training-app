@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import { wendler531Engine } from "@hta/wendler";
 import { tacticalBarbellEngine } from "@hta/tacticalbarbell";
+import { greenProtocolEngine } from "@hta/green";
 import { applyProgramProgression } from "../progression";
 
 const ctx = { oneRepMaxes: { squat: 165, bench: 118, deadlift: 212, press: 71 }, roundingKg: 2.5 };
@@ -36,7 +37,7 @@ interface Recorded {
 }
 
 /** Minimal thenable query-builder fake covering the calls the hook makes. */
-function fakeSupabase(canned: Canned, rec: Recorded) {
+function fakeSupabase(canned: Canned, rec: Recorded, commit?: (name: string, args: Record<string, unknown>) => Promise<unknown>) {
   function builder(table: string) {
     let mode: "select" | "insert" | "update" = "select";
     const b: Record<string, unknown> = {};
@@ -62,16 +63,116 @@ function fakeSupabase(canned: Canned, rec: Recorded) {
       rec.updates.push({ table, values });
       return chain();
     };
-    b.maybeSingle = async () => ({ data: canned[table]?.single ?? null, error: null });
+    b.maybeSingle = async () => ({ data: canned[table]?.single ?? (table === "training_blocks" ? { status: "active", program_kind: null } : null), error: null });
     // Thenable: `await from().select().eq()...` resolves to a list (or write result).
     b.then = (resolve: (v: unknown) => void) => {
-      if (mode === "select") resolve({ data: canned[table]?.list ?? [], error: null });
+      if (mode === "select") resolve({
+        data: canned[table]?.list ?? (table === "training_blocks"
+          ? [Object.assign({ id: "b1", program_kind: null }, canned[table]?.single)] : []),
+        error: null,
+      });
       else resolve({ error: null });
     };
     return b;
   }
-  return { from: (t: string) => builder(t) } as never;
+  return { from: (t: string) => builder(t), rpc: commit ?? (async () => ({
+    data: null, error: { code: "PGRST202", message: "Could not find commit_program_progression" },
+  })) } as never;
 }
+
+describe("DC-R5 scoped atomic progression", () => {
+  const fixture = (): Canned => ({
+    program_instances: { single: { id: "pi1", program_id: "wendler-531", instance: wendlerInstance() } },
+    planned_sessions: { single: { prescription: { items: [{ kind: "main", isAmrap: true }], programRef: squatTestRef() } } },
+    set_logs: { list: [{ weight_kg: 140, reps: 2, rpe: 9, notes: null, prescription_item_index: 0, movement: { slug: "back-squat-high-bar" } }] },
+    training_maxes: { list: [{ one_rm_kg: 165, movement: { id: "mv-squat", slug: "back-squat-high-bar", display_name: "Squat" } }] },
+    training_blocks: { single: { status: "active", program_kind: "strength" } },
+  });
+  it.each(["applied", "replayed", "inactive"])("handles %s without any non-atomic instance write", async (status) => {
+    const rec: Recorded = { inserts: [], updates: [] };
+    const calls: Record<string, unknown>[] = [];
+    const supabase = fakeSupabase(fixture(), rec, async (name, args) => {
+      expect(name).toBe("commit_program_progression"); calls.push(args); return { data: status, error: null };
+    });
+    await applyProgramProgression({ supabase, userId: "u1", sessionId: "s1", blockId: "b1" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ p_block_id: "b1", p_instance_id: "pi1", p_session_id: "s1" });
+    expect(calls[0]?.p_recommendations).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "tm-reset" })]));
+    expect(rec).toEqual({ inserts: [], updates: [] });
+  });
+  it("recomputes after a stale instance and surfaces a persistent conflict", async () => {
+    let calls = 0;
+    const rec: Recorded = { inserts: [], updates: [] };
+    const supabase = fakeSupabase(fixture(), rec, async () => ({ data: ++calls === 1 ? "stale" : "applied", error: null }));
+    await applyProgramProgression({ supabase, userId: "u1", sessionId: "s1", blockId: "b1" });
+    expect(calls).toBe(2);
+    const blocked = fakeSupabase(fixture(), rec, async () => ({ data: "stale", error: null }));
+    await expect(applyProgramProgression({ supabase: blocked, userId: "u1", sessionId: "s1", blockId: "b1" })).rejects.toThrow();
+    expect(rec).toEqual({ inserts: [], updates: [] });
+  });
+  it("refuses missing atomic storage for a typed program", async () => {
+    const rec: Recorded = { inserts: [], updates: [] };
+    await expect(applyProgramProgression({ supabase: fakeSupabase(fixture(), rec), userId: "u1", sessionId: "s1", blockId: "b1" })).rejects.toThrow();
+    expect(rec).toEqual({ inserts: [], updates: [] });
+  });
+  it("DC-R6 persists a typed program's TM advice without an account measurement write", async () => {
+    const canned = fixture();
+    canned.set_logs = { list: [{ weight_kg: 140, reps: 5, rpe: 8, notes: null,
+      prescription_item_index: 0, movement: { slug: "back-squat-high-bar" } }] };
+    const rec: Recorded = { inserts: [], updates: [] };
+    const calls: Record<string, unknown>[] = [];
+    const supabase = fakeSupabase(canned, rec, async (name, args) => {
+      expect(name).toBe("commit_program_progression");
+      calls.push(args);
+      return { data: "applied", error: null };
+    });
+    await applyProgramProgression({ supabase, userId: "u1", sessionId: "s1", blockId: "b1" });
+    expect(calls[0]?.p_recommendations).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "tm-bump", occurrenceKey: "s1:squat",
+    })]));
+    expect(calls[0]).toMatchObject({ p_block_id: "b1", p_instance_id: "pi1" });
+    expect(rec).toEqual({ inserts: [], updates: [] });
+  });
+
+  it("keeps end-phase advice for a completed conditioning workout with no strength sets", async () => {
+    const instance = greenProtocolEngine.setup({ values: { phaseId: "capacity" } }, ctx);
+    const last = greenProtocolEngine.timeline(instance).at(-1)!;
+    const rec: Recorded = { inserts: [], updates: [] };
+    const calls: Record<string, unknown>[] = [];
+    const supabase = fakeSupabase({
+      program_instances: { single: { id: "pi1", program_id: "green-protocol", instance } },
+      planned_sessions: { single: { prescription: { items: [], programRef: last.ref } } },
+      set_logs: { list: [] },
+    }, rec, async (_name, args) => {
+      calls.push(args);
+      return { data: "applied", error: null };
+    });
+    await applyProgramProgression({ supabase, userId: "u1", sessionId: "s1", blockId: "b1" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.p_recommendations).toEqual(expect.arrayContaining([expect.objectContaining({
+      kind: "next-block", data: expect.objectContaining({ nextPhaseId: "velocity" }),
+    })]));
+    expect(rec).toEqual({ inserts: [], updates: [] });
+  });
+
+  it.each(["authored", "hybrid", "hyrox"])("records unchanged progression for a completed %s workout without an engine ref", async (programId) => {
+    const instance = { version: 1 };
+    const rec: Recorded = { inserts: [], updates: [] };
+    const calls: Record<string, unknown>[] = [];
+    await applyProgramProgression({
+      supabase: fakeSupabase({
+        program_instances: { single: { id: "pi1", program_id: programId, instance } },
+        planned_sessions: { single: { prescription: { items: [] } } },
+      }, rec, async (_name, args) => { calls.push(args); return { data: "applied", error: null }; }),
+      userId: "u1", sessionId: "s1", blockId: "b1",
+    });
+    expect(calls).toEqual([expect.objectContaining({
+      p_block_id: "b1", p_instance_id: "pi1", p_session_id: "s1",
+      p_expected_instance: instance, p_next_instance: instance, p_recommendations: [],
+    })]);
+    expect(rec).toEqual({ inserts: [], updates: [] });
+  });
+});
 
 describe("applyProgramProgression — 5/3/1 7th-week TM test", () => {
   it("surfaces a tm-reset recommendation when reps at TM are too low", async () => {

@@ -12,7 +12,7 @@ import { loadPickerCatalog } from "@/lib/planner/picker-catalog";
 import { readLimitationsContext } from "@/lib/planner/limitations-context";
 import { getActiveBlockRemainingSessions } from "@/lib/planner/remaining-sessions";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
-import { getUserTimezone } from "@/lib/planner/queries";
+import { archetypeDisplayName, getActiveBlocks, getUserTimezone } from "@/lib/planner/queries";
 import {
   buildLimitationResponse,
   type LimitationResponsePlan,
@@ -20,6 +20,7 @@ import {
 
 export type LimitationResponseOffer = LimitationResponsePlan & {
   blockId: string;
+  programName?: string;
 };
 
 /**
@@ -34,7 +35,16 @@ function hasOffending(plan: LimitationResponsePlan): boolean {
   return plan.swaps.length > 0 || plan.drops.length > 0;
 }
 
-export async function getLimitationResponseOffer(): Promise<LimitationResponseOffer | null> {
+export async function getLimitationResponseOffers(): Promise<LimitationResponseOffer[]> {
+  const blocks = await getActiveBlocks();
+  const offers = await Promise.all(blocks.map(async (block) => {
+    const offer = await getLimitationResponseOffer(block.id);
+    return offer ? { ...offer, programName: archetypeDisplayName(block.archetype, block.notes) } : null;
+  }));
+  return offers.filter((offer) => offer !== null);
+}
+
+export async function getLimitationResponseOffer(blockId?: string): Promise<LimitationResponseOffer | null> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -46,6 +56,8 @@ export async function getLimitationResponseOffer(): Promise<LimitationResponseOf
     supabase,
     user.id,
     timezone,
+    new Date(),
+    blockId,
   );
   if (!active || active.remaining.length === 0) return null;
 

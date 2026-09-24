@@ -51,6 +51,14 @@ covered table is dropped or an excluded (secret/derived) table leaks in.
   "tm_history": [],
   "training_blocks": [],
   "planned_sessions": [],
+  "independent_programs_available": true,
+  "program_instances": [],
+  "program_recommendations": [],
+  "training_seasons": [],
+  "season_blocks": [],
+  "rehab_protocols": [],
+  "program_rehab_bindings": [],
+  "swim_plan_rehab_bindings": [],
   "sessions": [],
   "session_movements": [],
   "set_logs": [],
@@ -61,6 +69,10 @@ covered table is dropped or an excluded (secret/derived) table leaks in.
   "swimming_import_schema_available": true,
   "swim_connections": [],
   "swim_imports": [],
+  "swimming_import_matching_available": true,
+  "swim_import_matches": [],
+  "swimming_import_outcomes_available": true,
+  "swim_import_outcomes": [],
   "wellness": [],
   "limitations": [],
   "limitation_events": [],
@@ -95,6 +107,13 @@ user's, never the global catalog.
 | `tm_history`                 | `tm_history`                 | Every training-max change over time. Joined to `movement`.                 |
 | `training_blocks`            | `training_blocks`            | Program blocks (archetype, weeks, focus, status). Includes soft-deleted.   |
 | `planned_sessions`           | `planned_sessions`           | The planned/prescribed sessions inside each block.                         |
+| `program_instances`          | `program_instances`          | Each program's setup, working loads, progression and lifecycle, including archived and soft-deleted instances. |
+| `program_recommendations`    | `program_recommendations`    | Program-scoped recommendations and their retained decisions. |
+| `training_seasons`           | `training_seasons`           | Optional season roadmaps, including historical and soft-deleted seasons. |
+| `season_blocks`              | `season_blocks`              | Ordered roadmap intentions and their materialized program links. |
+| `rehab_protocols`            | `rehab_protocols`            | Shared account-library protocols, revisions, doses and grouping. |
+| `program_rehab_bindings`     | `program_rehab_bindings`     | Library attachments to non-swimming program instances. |
+| `swim_plan_rehab_bindings`   | `swim_plan_rehab_bindings`    | Library attachments to Swimming programs. |
 | `sessions`                   | `sessions`                   | Logged training sessions (workouts).                                       |
 | `session_movements`          | `session_movements`          | Off-plan / freestyle movements attached to a session. Joined to `movement`. |
 | `set_logs`                   | `set_logs`                   | Individual logged sets (reps, weight, RPE, kind…). Joined to `movement`. Also carries the ADR 0070 prescribed snapshot — see below. |
@@ -103,6 +122,8 @@ user's, never the global catalog.
 | `swim_workouts`              | `swim_workouts`              | Dated pool workouts, original and issued targets, revisions and ordinary-session links. |
 | `swim_connections`           | `swim_connections`           | Connection ID, creation and revocation dates; never plaintext keys or hashes. |
 | `swim_imports`               | `swim_imports`               | Every retained observation revision: receipt/activity IDs, revision, evidence and arrival time. Not planned-workout completion. |
+| `swim_import_matches`        | `swim_import_matches`        | Every explicit recording-to-workout match revision, including removed matches. |
+| `swim_import_outcomes`       | `swim_import_outcomes`       | Every explicit completed/stopped-early claim, correction and removal, with its original match and workout revision. |
 | `wellness`                   | `wellness`                   | Daily log rows — body weight (live), plus retained legacy wellness check-in fields (fatigue/soreness/motivation/notes) kept for history (see ADR 0018). |
 | `limitations`                | `limitations`                | Active/historical injury or training limitations.                         |
 | `limitation_events`          | `limitation_events`          | Event log of limitation changes.                                          |
@@ -113,6 +134,25 @@ user's, never the global catalog.
 | `engine_override_events`     | `engine_override_events`     | Logged overrides of engine decisions.                                     |
 | `region_state`               | `region_state`               | Per-body-region load/recovery state.                                      |
 | `custom_movements`           | `movements` (user-owned)     | The user's own custom movements (`user_id = <you>`). The global catalog is excluded. |
+
+### Independent programs and shared rehab (ADR 0087)
+
+`training_blocks.program_kind` records the fixed Strength, Running or Hybrid
+identity; null remains unclassified legacy history. Swimming retains its own
+plan graph. Working load settings and progression remain in each program's
+instance and issued prescriptions, separately from account measurements.
+
+`independent_programs_available` is false before0158 is installed. Only the new
+`swim_plan_rehab_bindings` section is then empty; existing program, roadmap and
+library sections remain exported. An unreadable capability or installed program
+history fails the export instead of silently omitting it.
+
+An issued Swimming rehab workout remains an ordinary `sessions` row with its
+protocol revision and origin in `prescription.meta.swimRehab`. Its sets are in
+`set_logs`; its durable start receipts remain in `engine_override_events`,
+including after detachment or session purge. Attachment rows are current
+references, not a replacement for those issued snapshots. They do not fabricate
+native swimming measurements or merge swimming and rehab results.
 
 ### Native pool swimming (ADR 0079)
 
@@ -137,6 +177,22 @@ All revisions are included, not just the latest correction. Connection hashes
 and internal content hashes are excluded through explicit column projections.
 Observation timing retains its reported quality and unknown native course;
 it is not converted into a verified result, an assessment or shared workload.
+
+### Imported swimming outcomes
+
+`swimming_import_outcomes_available` is false before the additive outcome
+storage is installed, and `swim_import_outcomes` is then empty. Installed
+history remains exportable when new confirmations are disabled. An unreadable
+capability or ledger fails the export rather than returning partial history.
+
+All outcome revisions are included. Each row links to a workout and, for a
+claim, the original `swim_import_matches` row. That match identifies the
+recording revision; later corrections or rematches do not replace it.
+`metadata.outcome` is `completed`, `stopped_early`, or `null` for a removal.
+`metadata.previousOutcomeId` links the preceding receipt, and
+`metadata.workoutRevision` records the reviewed revision or is `null` on removal.
+These claims do not create native session measurements or change planned dates.
+The recomputable `swim_import_outcome_activity` view is not exported separately.
 
 ### Prescribed vs actual on `set_logs` (ADR 0070)
 

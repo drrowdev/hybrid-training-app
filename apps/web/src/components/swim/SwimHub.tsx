@@ -32,6 +32,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
   const [requestGate] = useState(createRequestGate);
   const [requestBusy, setRequestBusy] = useState(false);
   const [preview, setPreview] = useState<SwimResumePreview | null>(null);
+  const [acceptOverlap, setAcceptOverlap] = useState(false);
   const [benchmark, setBenchmark] = useState<SwimBenchmarkPreview | null>(null);
 
   function run(action: () => Promise<ActionResult & { warning?: string; refreshWarning?: string; view?: SwimHubView }>) {
@@ -70,6 +71,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
           busy={requestBusy} onApply={(change) => run(() => applySwimPoolEdit(change))} />}
         {plan.assessment && <p className={styles.muted}>{plan.assessment.label} · {plan.assessment.pace}</p>}
         <p className={styles.status}>{({ active: "Active", paused: "Paused", finished: "Finished", archived: "Archived" })[plan.status]}</p>
+        {plan.nextWorkoutId && <Link className={styles.button} href={`/app/swim/${plan.nextWorkoutId}`}>Next swim</Link>}
         {plan.status === "active" && !plan.imported && <button className={styles.secondary} disabled={requestBusy} onClick={() => run(() => proposeSwimWeek(plan.id, plan.revision))}>Review next week</button>}
       </section>
       {warnings.map((warning, index) => <p key={index} role="status" className={styles.warning}>{warning}</p>)}
@@ -106,14 +108,14 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
       ))}
       <section className={styles.section}>
         <h2>Swims</h2>
-        <ul className={styles.list}>
+        <ul className={styles.list} aria-label="Swims">
           {plan.workouts.map((workout) => <li key={workout.id} className={styles.scheduledRow}>
             <Link href={`/app/swim/${workout.id}`} className={styles.row}>
               <span><strong>{workout.title}</strong><small>{workout.date}{!plan.imported && ` · Week ${workout.week}`}{workout.provisional && workout.status === "Scheduled" ? " · Draft" : ""}</small></span>
               <span>{workout.total}<small>{workout.course && `${workout.course} · `}{workout.status}</small></span>
             </Link>
             {workout.reschedule && <DateEditor key={`${plan.revision}:${workout.reschedule.revision}`}
-              plan={plan} workout={workout} busy={requestBusy} onApply={(changes) => run(() => applySwimDateEdit(changes))} />}
+              plan={plan} workout={workout} busy={requestBusy} onApply={(changes, accepted) => run(() => applySwimDateEdit(changes, accepted))} />}
             {workout.poolEditing && <PoolEditor key={`pool:${plan.revision}:${workout.poolEditing.workout?.revision}`}
               context={workout.poolEditing} busy={requestBusy} onApply={(changes) => run(() => applySwimPoolEdit(changes))} />}
           </li>)}
@@ -184,7 +186,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
             try {
               const result = await previewSwimResume(plan.id, plan.revision, String(form.get("startDate")));
               if (result.error) setError(result.error);
-              else if (result.preview) setPreview(result.preview);
+              else if (result.preview) { setAcceptOverlap(false); setPreview(result.preview); }
             } catch { setError("Could not preview new dates. Try again."); }
           }, setRequestBusy);
         }}>
@@ -194,7 +196,12 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
         {preview && <div className={styles.form}>
           <h3>New swim dates</h3>
           <ul className={styles.list}>{preview.dates.map((item) => <li key={item.id} className={styles.row}>{item.date}</li>)}</ul>
-          <button className={styles.button} disabled={requestBusy} onClick={() => run(() => resumeSwimPlan(preview))}>Accept dates and resume</button>
+          {!!preview.overlaps?.length && <><ul className={styles.list}>{preview.overlaps.map((entry) =>
+            <li key={`${entry.source}:${entry.id}`} className={styles.row}><span>{entry.date}</span><span>{entry.title}</span></li>)}</ul>
+            <label className={styles.choice}><input type="checkbox" checked={acceptOverlap} disabled={requestBusy}
+              onChange={(event) => setAcceptOverlap(event.target.checked)} />Keep both workouts on these dates</label></>}
+          <button className={styles.button} disabled={requestBusy || (!!preview.overlaps?.length && !acceptOverlap)}
+            onClick={() => run(() => resumeSwimPlan(preview, acceptOverlap))}>Accept dates and resume</button>
         </div>}
         <div className={styles.actions}>
           {plan.status === "active" && <button className={styles.secondary} disabled={requestBusy} onClick={() => run(() => changeSwimPlanStatus(plan.id, plan.revision, "paused"))}>Pause</button>}

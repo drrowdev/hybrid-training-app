@@ -1,5 +1,8 @@
 "use client";
 
+import { ScheduleRestoreButton } from "@/components/program/ScheduleRestoreButton";
+import { previewPlannedMove, type PlannedMovePreview } from "@/lib/planner/actions";
+
 /**
  * /app/plan redesign — program review and schedule adjustment:
  *
@@ -113,6 +116,7 @@ export type PlanSessionInput = {
 };
 
 export type PlanRedesignProps = {
+  blockId?: string;
   archetypeName: string;
   /** Program family / methodology shown above the program name. */
   programFamilyName?: string;
@@ -348,6 +352,7 @@ function PlanFocusBadge({ muscles }: { muscles: readonly string[] }) {
 
 export function PlanRedesign(props: PlanRedesignProps) {
   const {
+    blockId,
     archetypeName,
     programFamilyName = "SxC",
     customized = false,
@@ -379,10 +384,11 @@ export function PlanRedesign(props: PlanRedesignProps) {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams();
     if (nextView !== "timeline") params.set("view", nextView);
+    if (blockId) params.set("block", blockId);
     const q = params.toString();
     const url = q ? `${window.location.pathname}?${q}` : window.location.pathname;
     window.history.replaceState(null, "", url + window.location.hash);
-  }, []);
+  }, [blockId]);
   const onViewChange = useCallback(
     (v: PlanViewMode) => {
       setView(v);
@@ -2315,6 +2321,8 @@ export function SessionDrawer({
   // open so the user can retry without losing context.
   const [swapError, setSwapError] = useState<string | null>(null);
   const [swapPending, setSwapPending] = useState(false);
+  const [swapReview, setSwapReview] = useState<PlannedMovePreview | null>(null);
+  const [acceptSwapOverlap, setAcceptSwapOverlap] = useState(false);
   // One-tap cardio completion (see `markCardioDoneAction`). Kept separate from
   // the swap error so a failed finish doesn't clear a swap message.
   const [cardioDoneError, setCardioDoneError] = useState<string | null>(null);
@@ -2593,6 +2601,19 @@ export function SessionDrawer({
     fd.set("dayIndex", String(newDay));
     setSwapPending(true);
     setSwapError(null);
+    let reviewed = swapReview;
+    if (!reviewed) {
+      try {
+        reviewed = await previewPlannedMove({ id: session.id, weekIndex: newWeek, dayIndex: newDay });
+        if (reviewed.overlaps.length) {
+          setSwapReview(reviewed); setAcceptSwapOverlap(false); setSwapPending(false); return;
+        }
+      } catch (error) {
+        setSwapError(error instanceof Error ? error.message : "Could not check these dates. Try again.");
+        setSwapPending(false); return;
+      }
+    }
+    fd.set("scheduleReview", JSON.stringify({ revision: reviewed.revision, requestId: reviewed.requestId, acceptOverlap: acceptSwapOverlap }));
     const result = await runSwapMove(moveAction, fd);
     setSwapPending(false);
     if (result.ok) {
@@ -2772,17 +2793,13 @@ export function SessionDrawer({
                   )
                 )}
                 {session.skipped ? (
-                  <form action={unskipAction}>
-                    <input type="hidden" name="id" value={session.id} />
-                    <button
-                      type="submit"
-                      className="cp-btn ghost"
-                      data-testid="plan-drawer-unskip"
-                      style={{ width: "100%" }}
-                    >
-                      Un-skip
-                    </button>
-                  </form>
+                  <ScheduleRestoreButton key={session.id} kind="workout" id={session.id} label="Un-skip" testId="plan-drawer-unskip"
+                    onRestore={async (review) => {
+                      const form = new FormData();
+                      form.set("id", session.id); form.set("scheduleReview", JSON.stringify(review));
+                      await unskipAction(form);
+                      (onMutated ?? router.refresh)();
+                    }} />
                 ) : (
                   <form action={skipAction}>
                     <input type="hidden" name="id" value={session.id} />
@@ -2854,17 +2871,22 @@ export function SessionDrawer({
                 type="date"
                 name="date"
                 defaultValue={session.date}
+                onChange={() => { setSwapReview(null); setAcceptSwapOverlap(false); }}
                 data-testid="plan-drawer-swap-date"
               />
               <button
                 type="submit"
                 className="cp-btn primary"
                 data-testid="plan-drawer-swap-submit"
-                disabled={swapPending}
+                disabled={swapPending || (!!swapReview?.overlaps.length && !acceptSwapOverlap)}
                 aria-busy={swapPending}
               >
                 {swapPending ? "Moving…" : "Move"}
               </button>
+              {swapReview && swapReview.overlaps.length > 0 && <div style={{ display: "grid", gap: 8, gridColumn: "1 / -1" }}>
+                {swapReview.overlaps.map((entry) => <p key={`${entry.source}:${entry.id}`}>{entry.date} · {entry.title}</p>)}
+                <label><input type="checkbox" checked={acceptSwapOverlap} onChange={(event) => setAcceptSwapOverlap(event.target.checked)} /> Keep both workouts on these dates</label>
+              </div>}
               {swapError && (
                 <p
                   className="swap-form-error"

@@ -4,7 +4,8 @@ import { parseSwimCourseFile } from "../course-file";
 import { planPrivateSwimCourse } from "../course-planning";
 import { syntheticCourse } from "./course-fixtures";
 import { swimFixture } from "./fixtures";
-import { isPrivateSwimPlan, requireGeneratedSwimPlan } from "../model";
+import { isPrivateSwimPlan, requireGeneratedSwimPlan, swimWorkoutDateRange } from "../model";
+import { addDaysToYmd } from "@/lib/dates";
 import { deriveSwimWeekCandidate, persistedSwimPlan } from "../queries";
 import { readFileSync } from "node:fs";
 
@@ -20,6 +21,11 @@ describe("DC-SW1/SW3/SW4/SW5 private course file", () => {
   it("parses a closed version without modifying the source", () => {
     const source = syntheticCourse();
     expect(parseSwimCourseFile(JSON.stringify(source))).toEqual(source);
+  });
+  it("rejects a one-week truncation and retains every swim in the complete fixture", () => {
+    const source = syntheticCourse();
+    expect(() => parseSwimCourseFile(JSON.stringify({ ...source, weeks: source.weeks.slice(0, 1) }))).toThrow();
+    expect(parseSwimCourseFile(JSON.stringify(source)).weeks.flatMap((week) => week.workouts)).toHaveLength(3);
   });
   it.each(["", "not-json", "{}"])("rejects invalid files without echoing their contents", (text) => {
     expect(() => parseSwimCourseFile(text)).toThrow();
@@ -40,6 +46,25 @@ describe("DC-SW1/SW3/SW4/SW5 private course file", () => {
     expect(result.preview.weeks.map((week) => week.total)).toEqual(["700 m", "350 m"]);
     expect(result.definition).not.toHaveProperty("initialDose");
     expect(result.workouts.every((row) => row.definition.provisional === false)).toBe(true);
+  });
+  it.each([0, 1, 2, 3, 4, 5, 6])("M4 DC-SW7 materializes a future week-two primary overlap without another swim (start offset %s)", (offset) => {
+    const startDate = addDaysToYmd("2026-09-14", offset);
+    const sundayIndex = new Date(`${startDate}T00:00:00Z`).getUTCDay();
+    const result = planPrivateSwimCourse({
+      source: syntheticCourse(), setup, startDate,
+      weekdays: [(sundayIndex + 1) % 7, (sundayIndex + 3) % 7], poolChoices: [],
+    });
+    const target = addDaysToYmd(startDate, 7);
+    const fixture = swimFixture();
+    const plan = { ...fixture.plan, definition: result.definition, started_on: startDate, ends_on: addDaysToYmd(startDate, 13) };
+    const workouts = result.workouts.map((row, index) => ({ ...fixture.workouts[index]!, ...row }));
+    const selected = workouts.at(-1)!;
+    const range = swimWorkoutDateRange(plan, workouts, selected, startDate);
+    expect(workouts).toHaveLength(3);
+    expect(selected.definition.weekIndex).toBe(1);
+    expect(selected.scheduled_date > startDate).toBe(true);
+    expect(workouts.some((row) => row.scheduled_date === target)).toBe(false);
+    expect(target >= range.min && target <= range.max).toBe(true);
   });
   it("requires a pool decision without combining short repeats", () => {
     const source = syntheticCourse();
@@ -74,8 +99,8 @@ describe("DC-SW1/SW3/SW4/SW5 private course file", () => {
   });
   it("restores the exact previous pool validator and refuses data-destroying rollback", () => {
     const root = new URL("../../../../../../packages/db/", import.meta.url);
-    const prior = readFileSync(new URL("drizzle/0151_swim_pool_changes.sql", root), "utf8");
-    const down = readFileSync(new URL("rollbacks/0152_swim_private_courses.down.sql", root), "utf8");
+    const prior = readFileSync(new URL("drizzle/0151_swim_pool_changes.sql", root), "utf8").replaceAll("\r\n", "\n");
+    const down = readFileSync(new URL("rollbacks/0152_swim_private_courses.down.sql", root), "utf8").replaceAll("\r\n", "\n");
     const pattern = /CREATE OR REPLACE FUNCTION public\.swim_validate_plan_binding\([\s\S]*?END \$\$;/;
     expect(down.match(pattern)?.[0]).toBe(prior.match(pattern)?.[0]);
     expect(down).toMatch(/BEGIN;[\s\S]*IF EXISTS[\s\S]*RAISE EXCEPTION[\s\S]*COMMIT;/);

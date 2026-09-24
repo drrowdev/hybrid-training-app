@@ -46,6 +46,7 @@ type FinishSlotProps = {
   disabled: boolean;
   subtitle?: string | null;
   hybrid?: boolean;
+  authored?: boolean;
   testId?: string;
 };
 
@@ -75,6 +76,7 @@ export function FinishSessionBar({
   disabled,
   subtitle,
   hybrid,
+  authored,
   testId = "finish-stickybar",
 }: {
   sessionId: string;
@@ -98,6 +100,7 @@ export function FinishSessionBar({
    * Finish button in that flow).
    */
   hybrid?: boolean;
+  authored?: boolean;
   testId?: string;
 }) {
   const loggingState = useSessionLoggingState();
@@ -105,8 +108,8 @@ export function FinishSessionBar({
   const remainingRehabSets = loggingState?.remainingRehabSets ?? 0;
   const rehabBlocked = remainingRehabSets > 0;
   const effectiveDisabled =
-    rehabBlocked || (disabled && !loggingState?.hasStrengthSets);
-  const disabledLabel = hybrid
+    rehabBlocked || (disabled && !loggingState?.hasStrengthSets && !(authored && loggingState?.hasCardioLogs));
+  const disabledLabel = authored ? "Log an exercise to finish" : hybrid
     ? "Log at least 1 strength set to finish"
     : "Log at least 1 set to finish";
   const label = rehabBlocked
@@ -119,6 +122,10 @@ export function FinishSessionBar({
       ? `${remainingRehabSets} rehab set${
           remainingRehabSets === 1 ? "" : "s"
         } remain. Log or explicitly skip them before finishing.`
+      : authored && !effectiveDisabled
+      ? (loggingState?.remainingRequiredSets ?? 0) > 0
+        ? `${loggingState!.remainingRequiredSets} planned items remain. Finish with logged work only.`
+        : null
       : disabled && loggingState?.hasStrengthSets
       ? loggingState.remainingPlannedSets > 0
         ? `${loggingState.remainingPlannedSets} planned sets aren't logged. Finish with logged sets only. · Finish anyway`
@@ -130,6 +137,7 @@ export function FinishSessionBar({
   // enqueue a durable `complete` op (after the queued sets) and confirm in place;
   // the outbox flusher on the session page replays it on reconnect.
   const [savedOffline, setSavedOffline] = useState(false);
+  const [progressMessage, setProgressMessage] = useState<string | null>(null);
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const completionStored = savedOffline || completionQueued;
@@ -211,6 +219,7 @@ export function FinishSessionBar({
           completeSessionResult(sessionId, null, completionEntryId),
       );
       if (durable.status === "queued") {
+        setProgressMessage(durable.result?.workoutSaved ? durable.result.error ?? null : null);
         setSavedOffline(true);
         registerCompletionQueued?.(true);
         setFinishing(false);
@@ -305,7 +314,7 @@ export function FinishSessionBar({
           data-testid="finish-saved-offline"
           style={{ display: "block", padding: "8px 10px", fontSize: 13 }}
         >
-          Saved offline — finishes when you reconnect
+          {progressMessage ?? "Saved offline — finishes when you reconnect"}
         </span>
       );
     }
@@ -332,6 +341,9 @@ export function FinishSessionBar({
         >
           {finishing ? "Finishing…" : "Finish session"}
         </button>
+        {authored && effectiveSubtitle && <div style={{ padding: "0 10px 6px", fontSize: 12, color: "var(--cp-text-muted)" }}>
+          {effectiveSubtitle}
+        </div>}
         {finishError && (
           <div
             role="alert"
@@ -368,9 +380,9 @@ export function FinishSessionBar({
         <span
           data-testid="finish-saved-offline"
           className="cp-btn"
-          style={{ padding: "8px 14px", fontSize: 12, opacity: 0.8 }}
+          style={{ padding: "8px 14px", fontSize: 12, opacity: 0.8, whiteSpace: "normal", maxWidth: "100%" }}
         >
-          Saved offline — finishes when you reconnect
+          {progressMessage ?? "Saved offline — finishes when you reconnect"}
         </span>
       );
     }
@@ -432,9 +444,9 @@ export function FinishSessionBar({
         <span
           data-testid="finish-saved-offline"
           className="cp-btn big"
-          style={{ flex: 1, textAlign: "center", opacity: 0.8 }}
+          style={{ flex: 1, textAlign: "center", opacity: 0.8, whiteSpace: "normal", minWidth: 0 }}
         >
-          Saved offline — finishes when you reconnect
+          {progressMessage ?? "Saved offline — finishes when you reconnect"}
         </span>
       ) : (
         <form

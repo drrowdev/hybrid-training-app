@@ -6,6 +6,8 @@ import { listSwimPlans } from "@/lib/swim/storage";
 import { loadSwimHubView } from "@/lib/swim/queries";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SwimHub } from "@/components/swim/SwimHub";
+import { SwimRehabEditor } from "@/components/swim/SwimRehabEditor";
+import { loadSwimRehabAttachments } from "@/lib/swim/rehab-attachments";
 import styles from "@/components/swim/Swim.module.css";
 
 export default async function SwimPage({ searchParams }: { searchParams: Promise<{ plan?: string }> }) {
@@ -18,6 +20,7 @@ export default async function SwimPage({ searchParams }: { searchParams: Promise
   const selected = (query.plan ? plans.find((plan) => plan.id === query.plan) : null) ??
     plans.find((plan) => plan.status === "active") ?? plans[0];
   const view = selected ? await loadSwimHubView(client, user.id, selected) : null;
+  const rehab = selected ? await loadSwimRehabAttachments(client, user.id, selected) : null;
   return (
     <main className={styles.page}>
       {!view && <PageHeader title="Swimming" back={{ href: "/app/plan", label: "Plan" }}
@@ -30,6 +33,7 @@ export default async function SwimPage({ searchParams }: { searchParams: Promise
       </section>}
       {view && <SwimHub key={view.id} plan={view} setupEnabled={capability.setupEnabled}
         plans={plans.map((plan) => ({ id: plan.id, startedOn: plan.started_on, status: plan.status }))} />}
+      {rehab && <SwimRehabEditor key={`${rehab.planId}:${rehab.revision}`} context={rehab} />}
     </main>
   );
 }

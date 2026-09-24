@@ -10,6 +10,7 @@
  */
 import { useState, useTransition } from "react";
 import type { TmFormula } from "@hta/db";
+import type { UpsertResult } from "@/lib/training-maxes/actions";
 import {
   type WeightUnit,
   displayWeight,
@@ -49,25 +50,30 @@ export function TmSuggestionBanner({
   units = "metric",
 }: {
   suggestions: TmSuggestionView[];
-  acceptAction: (fd: FormData) => Promise<unknown>;
-  dismissAction: (fd: FormData) => Promise<unknown>;
+  acceptAction: (fd: FormData) => Promise<UpsertResult>;
+  dismissAction: (fd: FormData) => Promise<UpsertResult>;
   units?: WeightUnit;
 }) {
   const fmtW = (n: number | null): string =>
     n == null ? "—" : `${roundDisplayWeight(displayWeight(n, units), units)}`;
   const unitLabel = weightUnitLabel(units);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   if (suggestions.length === 0) return null;
 
-  const submit = (id: string, action: (fd: FormData) => Promise<unknown>) => {
+  const submit = (id: string, action: (fd: FormData) => Promise<UpsertResult>) => {
     setPendingId(id);
+    setError(null);
     const fd = new FormData();
     fd.set("suggestionId", id);
     startTransition(async () => {
       try {
-        await action(fd);
+        const result = await action(fd);
+        if (!result.ok) setError(result.error);
+      } catch {
+        setError("Could not save this choice. Try again.");
       } finally {
         setPendingId(null);
       }
@@ -87,6 +93,7 @@ export function TmSuggestionBanner({
         background: "color-mix(in oklab, var(--cp-accent) 8%, transparent)",
       }}
     >
+      {error && <p role="alert" style={{ margin: 0 }}>{error}</p>}
       <div
         style={{
           fontSize: 11,

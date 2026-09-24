@@ -22,7 +22,7 @@ export type AcceptDeloadSkipResult =
  * `deloadSkipped: true` idempotency marker. Started / skipped sessions are
  * immutable. No generator re-run, no migration.
  */
-export async function acceptDeloadSkip(): Promise<AcceptDeloadSkipResult> {
+export async function acceptDeloadSkip(blockId?: string): Promise<AcceptDeloadSkipResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -30,7 +30,7 @@ export async function acceptDeloadSkip(): Promise<AcceptDeloadSkipResult> {
   if (!user) redirect("/login");
 
   // Re-derive the offer from live state.
-  const offer = await getDeloadSkipOffer();
+  const offer = await getDeloadSkipOffer(new Date(), blockId);
   if (!offer) return { ok: false, error: "Deload skip is no longer available" };
 
   // The wave opener (first loading week) is the template loading week. Its

@@ -11,6 +11,10 @@ export const SWIM_EQUIPMENT_LABEL: Record<SwimEquipment, string> = {
   kickboard: "Kickboard", pull_buoy: "Pull buoy", fins: "Fins", paddles: "Paddles", snorkel: "Snorkel",
 };
 
+export function swimFocusTitle(focus: SwimWorkout["focus"]) {
+  return ({ technique_base: "Technique & base", endurance: "Endurance swim", event_specific: "Event preparation" })[focus];
+}
+
 export function workoutPresentation(workout: SwimWorkout): Pick<SwimWorkoutView, "title" | "course" | "total" | "budgetMinutes" | "stroke" | "strokes" | "steps" | "equipment" | "pool" | "calibrationLabel"> {
   const effort = { easy: "Easy", steady: "Steady", brisk: "Brisk", threshold: "Threshold", sprint: "Sprint" };
   const steps: SwimWorkoutView["steps"] = swimRepeatGroups(workout).map((group) => {
@@ -36,7 +40,7 @@ export function workoutPresentation(workout: SwimWorkout): Pick<SwimWorkoutView,
     };
   });
   return {
-    title: ({ technique_base: "Technique & base", endurance: "Endurance swim", event_specific: "Event preparation" })[workout.focus],
+    title: swimFocusTitle(workout.focus),
     course: formatPoolCourse(workout.snapshot.course),
     total: formatSwimDistance(workout.totalLengths, workout.snapshot.course),
     budgetMinutes: workout.snapshot.versions.generator === SWIM_COURSE_VERSION ? null : workout.budget.minutes,

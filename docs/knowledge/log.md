@@ -4126,3 +4126,1354 @@ rehab badge also now uses the existing domain variant count, correcting the
 remaining two-versus-three discrepancy for dynamic/isometric Copenhagen work.
 No navigation offsets, zoom restrictions, prescriptions or user data changed.
 The owner approved publishing the responsive fix to production.
+
+## [2026-09-22] decision | Independent modular programs and shared schedule
+
+Owner approved Strength, Running and complete mixed Hybrid authoring alongside
+standalone prepared-course swimming, superseding the unmerged linked-swimming
+draft and its strength-only first-release restriction. ADR 0085 retains the
+main0144 primary indexes and independent swimming tables, adds no top-level
+state or user-data conversion, and specifies exact-date consent, shared
+transactions, immutable started/history snapshots and durable save receipts.
+Main155 is unchanged; the new156 has exact prior-function guards and an
+unused-only refusing down. Local domain/type/action evidence is source-only;
+real Postgres and six-case native browser qualification remain release gates.
+The first implementation publication is a draft; the coordinator exclusively
+owns environment qualification, merge and deployment.
+
+## [2026-09-22] refine | Modular qualification and guarded storage append
+
+Draft #820 adds six exact disposable browser acceptance cases for library-backed
+strength, typed running, executable mixed repeats, independent swimming, stale
+review/replay and two-user isolation. Source compilation is not browser evidence.
+The initial storage runs stopped at an incorrect Docker server-address assertion;
+the guard now checks the configured loopback client and exact fixture database.
+The coordinator's separate modular production updater requires qualified source,
+the exact app-first merge/deployment and unchanged 213-entry ledger before its
+single0156 append to214. Its rollback/commit-ambiguity rehearsal runs only after
+the disposable modular schedule fixture has been cleaned and unused0156 restored.
+Real SQL, native browser and live release decisions remain with the coordinator.
+
+## [2026-09-22] refine | Authored one-day schedules retain truthful metadata
+
+Disposable SQL qualification reached the original0011 two-day minimum and
+rejected the new one-day custom-program fixture. The coordinator approved a
+bounded0156 CHECK extension: exactly one day only for `program_id = authored`,
+with the existing NULL/two-to-seven rules unchanged. Up and unused down guard
+exact validated definitions; down refuses even hidden one-day history. No rows
+are converted. SQL cases cover accepted/rejected boundaries and down refusal;
+native and updater catalog evidence now includes CHECK definitions/validation.
+Native-only browser cases are explicitly excluded from ordinary CI, while the
+selected modular profile retains its strict disposable fixture guards.
+
+## [2026-09-22] refine | Template review shares the modular save boundary
+
+Existing template engines now prepare their complete graph for date review
+without saving wizard training-max drafts. Primary replacement and overlap need
+separate acceptance. The accepted shared transaction includes the entered maxes,
+rehab bindings and optional policy-derived leading recovery week; retries return
+the same saved program. Forward edits retain the existing started/history rules.
+Focused source checks cover preview/no writes, draft overlays, replay, stale
+dates, replacement, recovery dates and native-engine parity. Real SQL qualification
+also checks entered-max rollback on refused overlap; native acceptance remains
+pending. The preceding SQL run reached BW contention, exposing two double-encoded
+JSON fixture parameters; those now use the same text-to-JSONB boundary as the
+working shared-commit fixture.
+
+## [2026-09-22] refine | Modular SQL acceptance and existing safety parity
+
+Revision af7f832d passed the real disposable SQL rehearsal, including exact
+unused down/up, one-day boundaries, independent lifecycle, overlap/replay,
+opposite-order contention and the guarded updater's final catalog restoration.
+Its remaining CI failures were stale source-count and overlap-control fixtures;
+the corrected isolated swimming surface reference passes at375 and1280px.
+The next rehearsal adds assertions that template-shaped maxes, recovery rows,
+rehab bindings and recommendation acceptance persist together and remain
+unchanged after stale/overlap/cross-user-binding refusal.
+
+Authored selection now shares the existing high-strain power/tendinopathy gate
+with both planner power pickers. No new refractory policy was invented:
+DC-O2's48-hour prose and30-hour-allowed/24-hour-advisory examples require owner
+clarification. This work does not claim DC-O2 compliance. Production remains
+blocked by the coordinator's read-only Vercel403, before any database read.
+
+## [2026-09-22] fix | Consistent supported production bundler
+
+Core run35759722605 repeated Next16.2.6 Turbopack's generated Google-font query
+failure previously seen in run35751112854. Production builds now use Next's
+supported `--webpack` mode through the existing application package command
+and both native browser/account runners. Font declarations, framework version,
+timeouts, environment guards and acceptance requirements are unchanged.
+The complete local placeholder-only production build and25 account-flow guards
+passed; the existing Linux native build budget remains to be qualified.
+
+## [2026-09-22] diagnose | Nonqualifying native migration evidence
+
+First native reference35762742003 failed during normal migrations before RPC
+or browser execution; cleanup was verified. All12 guarded routine fingerprints
+match canonical source, with no demonstrated SQL defect. A temporary existing
+diagnostic-only path now collects bounded SQLSTATE and exact canonical statement
+position across157 migrations. It always stops as nonqualifying, even if the
+diagnostic migration succeeds. Restore the normal CLI switch before acceptance
+or merge; no applied SQL, runtime budgets or security boundaries were changed.
+
+## [2026-09-22] blocked | Fresh-install migration search path
+
+Nonqualifying diagnostic35766287253 identified SQLSTATE42704 at canonical
+migration155, statement0, before0156 or any RPC/browser case. Shutdown and
+cleanup were verified. Source confirms0149's top-level `SET LOCAL search_path =
+pg_catalog` survives across Drizzle0.44.7's single pending-migration transaction;
+0155 line16 then references unqualified `muscle[]`, defined as `public.muscle`
+by0002. The successful per-migration SQL rehearsal commits between files and
+therefore does not reproduce that leaked search path.
+
+The normal CLI switch and assertions are restored. No applied migration/hash,
+ledger, schema permission or migration transaction semantics were changed.
+Fresh-install migration isolation requires a separately reviewed correction
+that preserves ledger hashes and explicitly decides transaction atomicity;
+per-file commits are not implicitly approved. Qualification must cover normal
+fresh installation, incremental migration and rollback. Native RPC and all six browser cases remain
+unexecuted; this draft is not release-qualified.
+
+## [2026-09-22] fix | Atomic canonical migration-file boundaries
+
+Renewed owner authorization explicitly retains one outer transaction across all
+pending migrations. The normal command now shares the evidence entry's checked
+configuration, driver and cleanup lifecycle. Exported Drizzle dialect/session
+APIs retain the existing ledger algorithm; separate in-memory `SET LOCAL
+search_path = public` statements bracket each file without changing canonical
+SQL bytes, hashes, timestamps, existing ledger records or role/RLS grants.
+Implicit catalog lookup remains first while unqualified DDL targets `public`.
+Only search path is reset between files; other local settings keep their
+existing transaction semantics.
+
+The existing guarded PostgreSQL pool job gains sequential, fixed-name disposable
+database fixtures: reproduce42704 at155:0 with the stock runner, normal full157
+installation/replay, and prefix-ledger incremental/real precommit rollback with
+public DDL and settings/role restoration. Cleanup owns only resources absent
+from the captured initial inventory and must restore that inventory. Local
+unit/type checks are not SQL acceptance. Real CI, normal native RPC and the
+frozen six browser cases remain required before release qualification; the
+diagnostic-only switch stays false.
+
+Coordinator preflight35771915697 subsequently verified the renewed intended
+production credential, READY main d10 and the preserved213-entry ledger with
+only0156 pending. It made no writes and does not qualify this runner or authorize
+deployment. Separately, the coordinator defers new DC-O2 timing behavior and
+specification reconciliation for this UI scope: owner clarification was
+unavailable, not an explicit choice. Existing limitation/high-strain-power
+safety checks remain mandatory; no new threshold or DC-O2 compliance is claimed.
+
+## [2026-09-22] refine | First complete modular native execution
+
+Revision70d97db8 passed ordinary core/storage, including all five new atomic
+runner proofs. Normal native35774782880 then passed all157 migrations, unchanged
+Auth identity,36 historical RPC cases, modular catalog/CHECK down-up and FK
+proofs. All six browser cases executed once; strength creation/logging and
+two-user isolation passed. Both cleanup checks passed. Four browser cases
+stopped at selectors or an invalid synthetic course, not migration startup.
+
+The bounded repair targets the edit scope by its combobox role, counts only
+named workout-part navigation buttons, uses the complete valid two-week course
+instead of an unsupported one-week truncation, and scopes the stale-save alert
+to the application main region rather than Next's separate route announcer.
+The existing isolated browser harness reproduces the edit selector and verifies
+scope/repeat retention and stale-error behavior at375/1280px. Native assertions,
+six-case coverage, guards and timeouts remain intact. A touched course test
+normalizes read-only CRLF/LF text comparisons; no SQL file or hash changed.
+The corrected native run remains required; the first execution is not release
+qualification.
+
+## [2026-09-22] repair | Native circuit order and complete schedule review
+
+Native35779582076 at e67da4d2 passed normal157 installation,36 historical RPCs,
+Auth/FK and unused down/up checks. All six browser cases executed: M1/M2/M5/M6
+passed; M3/M4 failed without timeout. Both cleanup checks passed. The coordinator
+consumed runtime evidence once; these failures were not rerun unchanged.
+
+The actual mixed logger reproduced M3's optimistic-coverage race: the same
+station advanced before durable acceptance rotated the circuit. Circuit-only
+pending slots now preserve order, failed-save drafts and retries; solo logging
+remains optimistic. M4 now moves the last, second-week swim to the primary's
+second occurrence, not today. Actual course materialization verifies the valid
+range and absence of another swim on the target for all seven start weekdays.
+
+Home now renders one shared week while retaining its primary drawer/actions and
+missing-RPC fallback. Generated swimming setup, Trash recovery, unskip and
+recovery-week insertion/removal review the shared calendar, require explicit
+overlap consent and retain stable retry receipts. Recovery review includes
+all shifted dates, preserves actual history occupancy and surfaces failed
+prescription/calendar reads. The approved unshipped0156 extension delegates to
+existing recovery RPCs and locks direct removal before its history check; its
+matching down restores the exact0106 body. Main0000-0155 and their ledger remain
+unchanged.
+
+Added real-SQL recovery overlap/replay/ownership/rollback and concurrent
+remove-versus-start proofs to the existing disposable rehearsal. The
+coordinator's noncanonical imported-outcome fixtures additionally probe a
+proposed append/replay/down-up against normal157 with retained catalog
+boundaries. That proposal is not an activated feature, canonical migration,
+production-updater expansion, native outcome journey, or used-history down
+proof. Its actual SQL execution remains pending.
+
+Local recovery/restore units, strict web/pool-runner types and39 isolated
+375/1280 browser stages passed. Exact-source SQL/native acceptance, DC-O2's
+unresolved prose interpretation, imported outcomes and production qualification
+remain separate gates; no deployment or complete six-case pass is claimed.
+The wider Windows web run passed7207 tests and failed142 across eight unchanged
+Unix-permission/raw-LF fixture files (plus80 skips). Observed failures include
+CRLF hashes/text matching, private-mode refusal and symlink EPERM. No permissions,
+assertions or timeouts were relaxed; exact-source Linux CI remains required.
+
+## [2026-09-22] fix | Final recovery-lock inventory assertion
+
+Storage35788008223 at e8a40182 failed at the final restored-catalogue lock count:
+the existing four session-prefixed routines became five when direct recovery
+removal joined the guarded list. This assertion executes after the scenario
+try/finally, so reaching it cannot mask an earlier scenario or cleanup failure.
+The correction verifies the exact five routine names as well as their count;
+a source regression compares that expectation with both up/down guard lists.
+All earlier assertions and the eight swimming routines remain unchanged.
+Migration0156 bytes/hash and application source are unchanged. The coordinator
+confirmed all three proposal-only outcome compatibility stages passed; full
+storage/native qualification still requires the corrected exact head.
+The same head's Linux core also failed the accepted-B-source hash guard: an
+updated legacy swimming browser fixture is a guarded input despite the guard
+test itself being unchanged. The wider Windows result therefore cannot be
+classified wholly as a pre-existing platform limitation. That source repair
+now pins the exact updated prefix and reverses only three added preview clicks
+and two preview-only entries before checking the unchanged original accepted
+hash. All original assertions and actual pinned SDK decoding remain required;
+only the read's CRLF representation is normalized to canonical LF.
+
+## [2026-09-22] refine | Resume coverage after mixed-session refresh
+
+Exact e8225122 passed core35790374170 and storage35790374202, including
+the recovery scheduling and restoration proofs. Native35791399018 passed
+normal157 migrations,36 historical RPC cases and all prebrowser checks,
+then passed M1/M2/M5/M6 only. M3 failed its final logged-item order; M4
+timed out without an attributable awaited operation. Both native cleanup
+checks passed. This remains a failed qualification, not release acceptance.
+
+A deterministic isolated reproduction now exercises the actual
+SessionWorkArea, movement grouping, logging provider and IndexedDB durable
+path. A server snapshot arriving after a strength row commits but before
+its response remounts the provider and could restore a now-covered cursor;
+the next Log then updated the old row instead of advancing. Resume selection
+and draft restoration now reject covered slots while retaining unlogged
+drafts and rest deadlines. The full path and this refresh interleaving pass
+at375/1280, alongside the existing delayed/rejected circuit and solo cases.
+Local evidence totals43 browser stages and85 focused session tests. It does
+not establish that this was the unavailable native M3 actual-order mismatch.
+
+The unchanged six native cases now carry one current, closed checkpoint
+annotation for M3/M4. The final M3 order is projected only as exactly four
+integers0..4 or a fixed invalid marker. Parent-owned failure projection
+rejects malformed, duplicate, wrong-case and oversized annotations; no
+rows, identities, URLs or raw error text are exposed. Eleven focused
+membership/projection checks and web type-check passed. M4 has no speculative
+behavior change. Assertions, deadlines, migration bytes and qualification
+requirements remain unchanged; a fresh exact-head native execution is required.
+
+## [2026-09-22] refine | Preserve live logs across delayed cardio snapshots
+
+Native35794957319 on5a513da6 again passed all prebrowser gates and four of
+six cases. Its bounded evidence identified M3's exact order as `[1,1,3,2]`
+and localized M4 to the post-upload setup checkpoint. The earlier covered-
+cursor guard had not repaired this runtime failure.
+
+The complete isolated logger reproduced that exact duplicate sequence:
+a zero-strength-row cardio snapshot arrived after the first accepted write
+left IndexedDB but before the logger finished its count read. The provider's
+row-count key remounted the logger and discarded its live overlay. The
+provider now retains session identity and retires registrations only when
+the server acknowledges them. Snapshot reconciliation retains accepted rows
+absent from a delayed snapshot; successful Undo explicitly retires its row.
+Observed server rows subsequently hand edit/deletion ownership back to the
+server. Regressions cover the exact interleaving, a still-later snapshot,
+Undo before acknowledgment, and deletion after acknowledgment, including
+remaining-work counters.
+
+The coordinator's bounded M4 repair was integrated unchanged: a prepared
+file selected before hydration is recovered through the existing size- and
+revision-guarded reader. Its actual SSR/hydration fixture also covers later
+replacement and clearing. The native case waits for the parsed source
+heading before interacting with generated setup controls.
+
+All51 combined isolated browser stages pass at375/1280, including the
+formerly failing sequence now producing `[1,3,2,4]`;124 focused session
+tests and web type-check pass. No schema, timeout, frozen-case count,
+assertion or runtime guard was relaxed. Native qualification remains
+outstanding until the integrated exact head executes successfully.
+
+## [2026-09-23] refine | Remove build-time font-provider dependency
+
+Exact bf0ee648 passed ordinary core35797732499 and storage35797732909,
+but manual35798410365 failed its prerequisite Webpack build with a
+next/font error; native execution was skipped. The coordinator retained
+no narrower font failure subtype. This is not a new M3/M4 runtime result.
+
+Installed Next16 source confirms that Google font declarations fetch both
+provider CSS and font bytes during compilation. Both production declaration
+sites now use next/font/local: the root's four families and the program
+wizard's existing Archivo plus three reused families. All five match the
+previously cached font versions; normal styles, exact exposed weights,
+variation axes/defaults and all eight CSS variables remain intact.
+
+Pinned google/fonts revision
+e44c4b011a820c2cbe2fd2cfa8052037d7edb571 supplies the original fonts and
+SIL OFL1.1 notices. None of the five copyright headers declares a Reserved
+Font Name. Lossless WOFF2 conversion retained complete character maps and
+glyph ordering, with no subsetting; every previously cached Unicode code
+point remains covered. Sources, source/asset hashes and conversion versions
+are recorded in the font manifest. Complete copyright/license notices ship
+publicly under /fonts/. The missing compression dependency was installed
+only in this session's artifacts and removed after conversion.
+
+Eight focused checks verify fonts, glyph coverage, axes, licenses, all
+production declaration sites and an isolated controlled provider failure:
+the actual Google loader fails with HTTPS blocked, while every actual local
+declaration loads without network. The complete supported Webpack build
+passed with the exact public CI placeholder URL/key, including type-check
+and37 static pages. Final emitted CSS contains only the five complete local
+font assets and all original variables. No Next version, environment,
+workflow, timeout, font design or qualification requirement changed.
+
+## [2026-09-23] refine | Standalone swimming outcomes after frozen-six acceptance
+
+The coordinator qualified5446db2 through core35802177125, storage35802177118
+and native35802903845/job106998276915. Native passed13stages, the normal157
+migrations,36authenticated RPC cases and all6browser cases on their first
+attempt, without skips/flakes. This closes the previously observed M3/M4
+failures on that exact revision, not on later source.
+
+[ADR0086](../adr/0086-standalone-swim-import-outcomes.md) implements explicit
+Completed / Stopped early confirmation, correction and removal for standalone
+imported swims. The original receipt and recording date survive rematches;
+stale claims require review. Domain-derived status now reaches Swimming,
+workout detail, next selection, Home shared week/recent activity, Plan calendar
+and shared history. No native sessions, measurements or primary programs are
+fabricated. Export retains every receipt while creation is off.
+
+The approved standalone SQL is canonical0157 with an independent empty-only
+down and a Drizzle mirror. Existing0000-0156 SQL and journal prefix remain
+unchanged. The normal runner still wraps all pending files in one transaction.
+Storage CI now requires normal fresh158, incremental157-to158, precommit
+rollback and functional ownership/correction/rematch/removal/account-cascade
+proofs. The seventh native case is appended without changing the original six
+bodies, assertions or budgets. It also checks original recording dates in Home
+recent activity and history, exact replay, retained export and no native rows.
+
+The existing server-only disposable service-key binding is preserved; it is
+not added to build/browser environments. Only the disposable modular runtime
+enables outcome creation. The transferred read-only production preflight now
+projects outcome-binding metadata separately from its unchanged seven-flag
+contract, using already-fetched metadata lists and no value/decrypt reads.
+Earlier preflight results did not establish this binding's absence.
+
+Local evidence:533focused web checks,11closed-cohort checks,71read-only
+preflight checks, full web/schema/account-flow/SQL-harness type checks and
+57actual synthetic browser stages at375/1280 passed. The supported Webpack
+build passed with the exact nonfunctional public CI placeholders. Broad
+Windows-only POSIX permission/symlink and checkout line-ending assertions are
+not substituted for the full Linux CI gate. Actual0157 SQL and nativeM7 remain
+pending on the new published head. The0156-only hosted updater is unchanged
+and refuses158-entry source; hosted DDL/activation require separate approval.
+
+## [2026-09-23] refine | Retain the closed updater's historical rehearsal
+
+Exact bed35d63 passed core35806715893, including identity, full Linux
+lint/types/unit/build and ordinary Playwright. Storage35806715870 passed
+48preceding stages, including normal fresh158/replay, six functional-outcome
+stages, incremental157-to158 precommit rollback/append/replay/down-up,
+inventory restoration and modular/concurrency/template checks. It then
+failed only at the modular production-updater rehearsal guard: that fixture
+called the real updater's intentionally157-only source loader.
+
+The fixture now validates the entire exact158 journal/source before selecting
+the historical157 prefix, inside its existing GitHub/loopback boundary.
+Validation checks indices, tag prefixes, the exact0156/0157 endpoints,
+timestamps, breakpoints, distinct hashes and reconstructed SQL hashes.
+Unexpected future inventories fail. The real production loader must still
+reject the current158 journal; its source, inventory and append code are
+unchanged. All existing baseline refusal, precommit rollback, postcommit
+retention, replay refusal and catalog/ledger restoration operations remain.
+
+Thirty-three focused checks and strict SQL-harness type-check passed locally.
+Storage workflow path filters now include this fixture and its regression
+tests; no job, runtime guard or timeout changed. The repaired exact-head
+storage and native-seven qualifications remain pending.
+
+## [2026-09-23] refine | Await recovery-preview readiness in the synthetic journey
+
+Exact f3bfee21 passed core35807494375 and all49 real-SQL stages in
+storage35807494377, including the repaired historical updater rehearsal.
+The strict SQL-harness type-check also passed. The later isolated UI step
+failed at `recovery-shared-review-375` with `unexpected`, established by its
+public safe annotation rather than rereading its consumed runtime log.
+
+A bounded local reproduction held the first recovery preview pending.
+The existing test observed the request starting, then sent its second
+keyboard input while the real slider was still disabled. Chromium ignored
+the key, so the expected second-request error never appeared. This reproduces
+the same stage/code; it does not establish an application defect.
+
+The synthetic fixture now deliberately holds that first preview. The test
+asserts its disabled state, explicitly releases it, and waits for the slider
+and consent control to become enabled before the second input. Consent must
+remain unchecked and Add disabled after completion. All57 stages pass at
+375/1280. No application/native case/SQL, assertion, timeout or runtime guard
+changed. Exact-head public gates and native-seven execution remain pending;
+unavailable owner confirmation is not hosted migration/activation approval.
+
+## [2026-09-23] refine | Wait for persisted outcome UI in native M7
+
+Exact182c0703 passed core35808613524 and storage35808613556, including
+all49 SQL and57 Linux synthetic UI stages. Native35809272387 then passed
+the normal158 migrations, twelve pre-browser stages,36authenticated RPC
+cases and the original six browser cases. Only M7 failed, at the first
+one-receipt `accepted` length assertion after a text-based wait, without
+a timeout or retry.
+
+Both M7 confirmation waits selected text also present in the radio options.
+A controlled pending-save reproduction proved the old Completed predicate
+already succeeded while no saved-result paragraph existed. Explicitly
+releasing the save and waiting for the component's existing live receipt
+paragraph passed at375/1280. The same distinction applies to correction.
+
+M7 now waits for that unique saved outcome before its authoritative read;
+all receipt-count, exact-replay, history, export and original-six assertions
+remain. The existing synthetic outcome stage holds both initial and correction
+saves, proves radio labels are visible while pending, and verifies the saved
+result changes only after completion. All57 synthetic stages,43focused guards,
+web/account-flow types and exact seven-case collection passed. No application,
+SQL, updater, timeout, media or runtime-boundary change was made. The repaired
+head still needs exact-head public and native-seven qualification.
+
+## [2026-09-23] refine | Keep native outcome selection tied to the workout
+
+Exact95ba23ba passed core35810916224 and storage35810916219. The coordinator's
+once-consumed native35811504863 evidence passed normal158, twelve pre-browser
+stages,36authenticated RPC cases and the original six browser cases. M7 passed
+confirmation, exact replay, correction and their shared/history views, then
+failed to find the retained removal control through its old exact region name.
+
+Source and transport-backed reproduction identify a selector mismatch:
+0153 stores the source workout title in the immutable match snapshot, whereas
+the retained claim uses the canonical course-position display title. The real
+recording page, real read helpers and rendered client controls retain the same
+owned workout, original receipt, removal control and Sessions return context
+after unmatching; only the region's accessible name changes. A second regression
+uses the actual removal action with creation disabled, verifies scheduled-state
+and history restoration, and preserves all three immutable export receipts.
+These are synthetic transport proofs, not another native or real-SQL run.
+
+M7 now selects the outcome region through its owned workout link and return
+context, with an exact single-region assertion. The browser regression varies
+the two titles, proves the old name disappears while removal remains available,
+and exercises pending/removal behavior at375/1280. All57 synthetic stages,
+144focused checks, web types/lint and exact seven-case collection passed.
+AST comparison preserves all original six bodies and order from qualified5446db.
+No application, SQL, updater, assertion removal, timeout or runtime-boundary
+change was made. Exact-head public gates and full native-seven qualification
+remain pending; hosted DDL and outcome activation remain unauthorized.
+
+## [2026-09-23] refine | Validate M7 ownership and export against canonical columns
+
+Exactf91a75c4 passed core35813065307 and storage35813065300, including49 SQL
+and57 synthetic UI stages. Coordinator-consumed native35813753158 passed
+normal158, all twelve pre-browser stages,36authenticated RPC cases and the
+original six browser cases. M7 additionally passed retained removal, review
+and cleared-history views, scheduled-state restoration, three immutable
+receipts and unchanged workouts. Its final no-fabrication loop then queried
+`cardio_logs.user_id`, a nonexistent column; `set_logs` has the same mismatch.
+Both tables instead inherit ownership through their required session FK and
+RLS policy in0003. The API export assertions had not yet executed.
+
+The fixture now uses the established `sessions!inner(user_id)` join and
+`sessions.user_id` filter for both child tables, still through the authenticated
+actor. All five no-fabrication queries and their error/empty assertions remain.
+The exact native query builders and export parser are exercised by a synthetic
+transport contract against live Drizzle column definitions. It reproduces both
+invalid filters, validates the corrected ownership queries, and executes the
+real export route with all25 table queries checked for selected/filter/order
+columns. The parser preserves the three receipts and original recording date;
+all five native-work export arrays must also be empty.
+
+Thirty focused checks, full web/account-flow types, touched-file lint and
+seven-case collection passed. Original-six AST bodies/order remain identical
+to qualified5446db. No application, SQL, schema/RLS, privileged client,
+updater, timeout, media or runtime-boundary change was made. This is local
+schema/transport evidence; exact-head public and native-seven qualification
+remain outstanding, with no additional hosted DDL or activation authorization.
+
+## [2026-09-23] decision | Independent program storage and shared rehabilitation foundation
+
+The owner corrected the previous single-primary model: one active Strength,
+Running, Swimming and Hybrid program may coexist. Only Hybrid mixes ordinary
+modalities; shared account-library rehab may attach to each type. ADR0087 and
+DC-R5/DC-R6 record the approved forward-only ownership/load design and the
+separately approved Swimming attachment representation. Existing plans remain
+unclassified and unchanged; an active older non-swim program must be explicitly
+ended before typed activation.
+
+The first source increment adds0158/normal159, exact unused-down refusals,
+per-kind uniqueness, owned parent consistency, same-kind replacement and old
+archive-all RPC refusal. Parent foreign keys are replaced under their existing
+names rather than duplicated, preserving unambiguous PostgREST embeds. Typed
+percentage prescriptions carry their own basis while measured1RM stays shared.
+Completion waits for completed sessions; progression has an owned session,
+instance-CAS and replay boundary.
+
+Authored rehab uses real protocol IDs, library revisions, dose, side and grouping.
+Focused Running rejects ordinary strength/circuits even when labelled rehab.
+Swimming attachments and rehab starts use the approved narrow binding table,
+ordinary issued sessions and durable receipts, without changing swimming course
+definitions or native results. Detached or purged issued work still prevents
+unused rollback.
+
+Local focused domain, materializer, rehab, schedule and progression checks and
+web/account-flow/runner type checks cover source contracts. New CI-only disposable
+stages exercise creation orders, lifecycle, legacy and direct-writer refusals,
+owned loading, attachments, replay and erasure; their real SQL results are
+pending. Windows retains the existing POSIX-private-evidence test exclusions.
+This is an incremental storage qualification point, not new-model acceptance.
+Multi-program readers/navigation, Swimming rehab UI, complete export/history
+wiring and new native acceptance remain in progress. The earlier seven-case
+native evidence covers the superseded narrow model only. No hosted DDL, updater
+widening, activation, merge or deployment is authorized.
+
+## [2026-09-23] implementation | Shared-library Swimming rehab and owned-program export
+
+The ownership storage foundation is qualified at `72148360`: the release
+coordinator consumed the exact automatic core and storage runs, including all
+62 SQL stages and the original 57 synthetic UI stages. No migration, rollback,
+RLS or grant changes are included in this application increment.
+
+Swimming programs now attach protocols from the account library. A swimming
+workout opens a separate ordinary rehab session through the approved locked
+start RPC, retaining the issued dose, side, grouping, revision and swimming
+origin. Request replay and later reopening use the issued snapshot rather than
+recompiling an edited library protocol. Detachment, Trash and permanent removal
+do not offer a second start. Current exercise availability and account
+limitations are checked before a new start; unreadable safety inputs fail closed.
+
+The existing logger handles the rehab sets, links back to the swimming workout,
+and leaves native swimming measurements untouched. History distinguishes the
+rehab session from the swimming recording. Export includes program instances,
+recommendations, roadmaps, the shared protocol library and both attachment
+tables, while preserving issued sessions and start receipts.
+
+Visual review exposed the logger rounding a prescribed 2 kg rehab load to 2.5 kg.
+The shared load resolver now preserves explicit rehab weights, including 0 kg,
+for both the displayed load and saved prescribed target. Ordinary percentage
+and warm-up rounding remain unchanged.
+
+Local coverage includes the actual attachment and rehab logger controls at
+375 and 1280 pixels, error/retry identity, all four superset sets and retained
+result links, alongside route, ownership, safety and export checks. The complete
+four-program navigation, remaining scoped readers and new-model native
+acceptance are still pending. This is an integrated application increment, not
+release or production approval.
+
+## [2026-09-23] implementation | Independent program navigation and scoped recovery
+
+The release coordinator accepted `e6458e24` with exact core `35840944276` and
+storage `35840944499`: all 62 SQL and 61 synthetic UI stages passed. That
+qualification covers the Swimming rehab/export increment, not this later source.
+
+Home, Programs and Plan now read all active non-swimming programs by their
+stored kind. An explicit Plan link selects its exact block; an absent owner
+never falls back to another program. With several active programs, bare Plan
+shows a chooser and their combined week. Programs preserves native Swimming
+navigation and the owner's three-independent-program week, with optional Hybrid.
+Legacy rows remain unclassified, and inconsistent active-kind sets fail closed.
+
+Recovery-week previews, receipts, removal, deload choices, volume adaptation and
+limitation responses carry the selected program. Recovery replay cannot retarget
+another block. Actual workload remains account-wide while the existing weekly
+targets are summed across programs whose first scheduled week has begun; there
+is no invented shared program week. This does not add native imported-swimming measurements to legacy
+cardio-log totals. Settings consider all active programs, and recovery
+recommendations name and link to their owning Plan when several programs are
+active. Retired owners are excluded before applying the recommendation display
+limit. Failed dismissal restores the nudge and reports the error.
+
+Local coverage exercises the actual query transport and selected/combined Plan
+routes, all six non-swimming creation orders, stale owners, legacy refusal,
+shared-week identity and scoped recovery replay. All 76 focused tests and
+63 synthetic UI stages passed, including the preserved 61 stages and the two
+new 375/1280 independent-program overview stages.
+
+No schema, rollback, RLS or grant changes are part of this increment. Remaining
+load-basis consumers, analytics/season ownership and complete new-model native
+acceptance are still in progress. This is not release or production approval.
+
+## [2026-09-23] implementation | Owned loading through movement swaps
+
+The release coordinator accepted `516a931b` with core `35846850154` and storage
+`35846850137`: 62 SQL and 63 synthetic UI stages passed. That evidence covers
+the independent-reader increment, not these later loading changes.
+
+DC-R6 loading now has one domain reference resolver for numeric targets and
+TM/1RM labels. Logged prescribed snapshots, logger summaries, plate eligibility
+and warm-up floor warnings use the issued program basis. A fixed working max
+does not require or borrow an account measurement. A different replacement
+movement cannot inherit that fixed max: an already-issued replacement basis
+is reused, or its load becomes manual with an explicit warning.
+
+Whole-movement and item swaps preserve the issued basis on rebuilt warm-ups,
+stable started-workout indices and chained movement attribution. Accepted swaps
+return the saved prescription and replacement measurement/capability context.
+The logger adopts the returned canonical group identity before another set can
+inherit the prior movement's weight; later refresh preserves an entered load.
+An unstarted planned swap refuses a concurrent start with an actionable error,
+leaving the picker open instead of reindexing a workout that has begun.
+
+Local qualification: web/account-flow types, 49 domain tests, 180 related web
+tests and all 65 synthetic UI stages passed. The preserved 63 stages are followed
+by `program-owned-load-and-swap-375` and `program-owned-load-and-swap-1280`.
+Those stages exercise different bases for the same movement, saved targets,
+the real swap modal, stale-refresh rendering, manual loading and retained user
+input after acknowledgement. Real-font screenshots were inspected at both
+widths. No schema, RLS, native runner or updater changes are included.
+
+## [2026-09-23] backlog | Concurrent edits to the same prescription
+
+Two stale edits can still overwrite the same prescription row in
+`swapActiveMovement`, `swapPrescriptionItem`, `swapPlannedMovement`,
+`removePlannedMovement` and `addPlannedMovement`. The first action can update
+either `sessions` or `planned_sessions`; the others update `planned_sessions`.
+These direct writes have no expected-prescription comparison. This is separate
+from the guarded schedule writers and the concurrent-start guard above.
+
+The release coordinator deferred a new compare-and-save RPC/receipt migration:
+the observed limitation predates independent programs, and no cross-program
+overwrite was demonstrated. Keep the approved migration boundary at 0158
+(normal 159); do not add 0159 or widen rollback/updater authority for this item.
+Reconsider if a concrete cross-program write sequence is demonstrated.
+
+## [2026-09-23] implementation | Shared measurements and owned load advice
+
+The coordinator accepted `1b66276e`: core `35855072623` and storage `35855072621`
+passed, with 62 unchanged SQL stages and 65 synthetic UI stages. The next
+increment separates account measurement editing from program load advice.
+
+Editing a measured 1RM preserves its existing legacy percentage; a typed program
+cannot seed that account field. The old unclassified-program compatibility path
+uses its exact block's instance, never a singleton lookup across active programs.
+The variant selector edits each movement's own measurement. Its former
+move/overwrite/delete action is removed. Selecting another lift makes no write,
+and failed drafts remain available when switching back. Errors are visible.
+
+Typed-program sessions no longer generate or accept legacy account-level TM
+changes, and such pending rows are excluded from the legacy Home banner without
+deleting their history. Existing engine TM-bump advice is recorded under the
+owning program, with distinct workout/lift occurrences. Its named recommendation
+links to the existing supported edit flow, or to that exact program when editing
+is unavailable; it never invents an apply-bump action. Unclassified and standalone
+legacy sources retain their existing conversion. Unreadable owners fail closed.
+An unavailable explicit edit link no longer falls through to program creation.
+
+Local qualification passed web/account-flow types, 103 selected tests and all
+67 synthetic UI stages. The preserved 65 stages are followed by
+`shared-measurement-and-owned-advice-375` and
+`shared-measurement-and-owned-advice-1280`. These cover distinct variant values,
+non-destructive selection, rejected-save recovery, retained drafts, exact program
+links and visible recommendation errors. Existing accessible 1RM labels and the
+mobile input-geometry contract are preserved; real-font captures were inspected.
+
+There are no schema, RLS, native-runner or production-updater changes. Normal 159
+remains the boundary. Analytics/season/recommendation lifecycle and the corrected
+multi-program native acceptance path remain unfinished; no release is approved.
+
+## [2026-09-23] implementation | Preserve queued progression before program completion
+
+The coordinator accepted `f3478beb`: core `35859270611` and storage
+`35859270598` passed, with 62 SQL and 67 synthetic UI stages. The subsequent
+completion audit found that 0158's new PI archival could discard another
+completed workout's still-pending progression. Main did not archive that PI.
+The coordinator approved repairing the unshipped 0158 and its unused down,
+not introducing another migration; normal 159 remains the boundary.
+
+Typed automatic completion now requires each relevant workout's own validated
+progression receipt under the common lock. Unclassified, pre-0158 completed
+history bypasses this gate. The existing explicit End action remains available
+with pending progression. Both replay and settlement check receipt kind, block,
+instance and session. No tables, columns, policies or grants changed.
+
+All completion entrypoints now reconcile the original program before settling
+it. Authored/native/ref-less workouts record unchanged progression. A reproduced
+Green conditioning regression no longer drops end-phase advice merely because
+there are no strength sets. Structured HYROX completion can retain a started
+workout under its original archived program; it does not target a replacement.
+Saved-workout failures remain retryable through the existing completion/cardio
+outbox, with truthful saved-and-waiting copy. HYROX retains its existing manual
+retry control rather than implying an unsupported automatic queue.
+
+The existing ownership SQL stages add receipt-less pre-migration history,
+two already-completed workouts with independent receipts, replay, refusal of
+a mismatched receipt and explicit ending while progression is pending without
+changing the other Running program. These await disposable SQL execution.
+No SQL stage name changes. Local qualification passed 1,094 coupled web tests,
+web/account-flow and DB types, plus the existing offline rollback/source guard
+suite. All 69 synthetic UI stages passed: the previous 67 are preserved and
+`program-completion-retry-375` / `program-completion-retry-1280` exercise all
+three Finish placements and cardio with actual IndexedDB outbox replay.
+Real-font controls were inspected at both widths. The fixture uses the app's
+content gutter, and saved notices wrap on mobile.
+
+Historical migrations, native cases and production updater remain unchanged.
+Analytics/season/recommendation readers and corrected-model native acceptance
+remain unfinished. No production, merge or deployment authorization is implied.
+
+## [2026-09-23] implementation | Keep analytics progress with each program
+
+The coordinator accepted `ba55c887`: core `35862759905` and storage
+`35862759944` passed, including 62 unchanged SQL stages and all 69 synthetic
+UI stages. The subsequent reader audit confirmed that main's single-newest
+program selection and started-as-completed counters were pre-existing; both
+conflict with the accepted independent-program and completion contracts.
+
+Stats now shows every active non-swimming program, with its own completed
+workouts, weekly target, streak and exact analytics link. A program's streak
+uses its linked completed sessions, not another program's or standalone work.
+The native adaptive decision trace selects the actual adaptive program rather
+than the newest active program and refuses ambiguous ownership. Its empty day
+does not claim that the account has a recovery day.
+
+Overview/detail adherence, active progress, program analytics, program history
+and the weekly planned count exclude explicit rest. Only a visible session's
+completion timestamp earns completion credit; starting, deleting or losing a
+session link does not. Actual logged-set/PR and account workload calculations
+are unchanged, including in-progress logged work. Swimming links to its existing
+sport-specific progress rather than inventing ordinary sessions or streaks from
+recording matches.
+
+Local web/account-flow types, the coupled analytics/history tests and the
+domain rest contract passed. All 71 synthetic UI stages passed: the prior 69
+remain in order, followed by `owned-program-progress-375` and
+`owned-program-progress-1280`. These exercise the actual progress component,
+distinct program counts/links, Swimming navigation, minimum 44px link targets
+and no horizontal overflow. Real-font captures were inspected at both widths.
+
+There are no schema, RLS, migration, native or updater changes; normal 159 and
+the 62-stage SQL inventory remain unchanged. Recommendation/season lifecycle
+and corrected-model native acceptance remain in progress, not release-ready.
+
+## [2026-09-23] implementation | Preserve exact recommendation ownership through setup
+
+The coordinator accepted `53a0a8a1`: core `35866266100` and storage
+`35866266183` passed with the unchanged 62 SQL stages and all 71 synthetic UI
+stages. Pending final advice now remains visible after its source program
+completes. Completed load advice links to that program's analytics instead of
+an unavailable active Plan. Opening or abandoning the next phase does not
+dismiss its recommendation; an explicit Dismiss action remains available.
+
+Setup carries the owned recommendation, block, instance, kind and phase into
+the actual preview. Recovery advice is no longer borrowed from any pending
+account program. An explicit recovery continuation starts with the recommended
+week selected; declining it surfaces the original advice and records the choice.
+Changing the selected program or next phase stops treating the draft as that
+recommendation.
+
+The existing, unapplied 0158 schedule transaction validates the exact owned
+source under its shared lock, refuses stale or mismatched advice, and accepts
+only that recommendation when the new graph saves. Failure rolls back both;
+replay returns the original graph and cannot substitute another origin. The
+unused-down routine fingerprint was updated. No new migration entry, table,
+column, RLS policy, ACL or RPC was added; normal 159 remains.
+
+Local action, reader, picker and exact-origin regressions passed, along with
+web/account-flow types and changed-source lint. All 73 synthetic UI stages
+passed: the prior 71 retain their order, followed by
+`owned-recommendation-continuation-375` and
+`owned-recommendation-continuation-1280`. Real picker navigation, abandonment,
+changed phase, failed-save input retention, same-request retry and recovery
+override are exercised. Real-font layouts were inspected at both widths.
+The existing disposable lifecycle stage now also covers completed-source advice,
+failed-save rollback, exact once-only replay, foreign/stale/wrong-kind refusal,
+declined recovery and independent Running/Swimming preservation. Actual SQL
+execution of this amendment awaits the next coordinator-owned automatic gate.
+Season linkage and corrected-model native acceptance remain unfinished.
+
+## [2026-09-23] refine | Atomic, program-scoped season continuation
+
+The coordinator accepted recommendation head `6b64370`: core `35870072486`
+and storage `35870072470`, including all 62 disposable SQL and 73 synthetic UI
+stages. This is historical increment evidence, not corrected-model native or
+production approval.
+
+Season setup now reads the exact owned roadmap slot, validates its program and
+template/phase, and binds its emphasis and goal to preview/save freshness.
+The existing unapplied 0158 transaction links the new program and advances only
+its explicit predecessor atomically. An unrelated active predecessor is named
+in the refusal; the user can deselect roadmap linkage without losing the draft.
+Starting an independent program leaves the roadmap untouched. Home continuation
+remains visible after the linked program completes or ends, not merely when
+another active program reaches its final week.
+
+Two approved statement-lock triggers serialize season and slot writes with
+program saves. Unused-down checks include both trigger definitions and the new
+routine fingerprint. No historical migration, journal entry, table, column,
+RLS policy, grant or RPC was added or changed. Normal 159 remains.
+
+Local exact-origin, action, reader and input-retention regressions passed with
+web/account-flow and disposable-fixture typechecks. All 75 synthetic UI stages
+passed, retaining the previous 73 in order and appending
+`owned-season-continuation-375/1280`. The existing disposable lifecycle stage
+now covers foreign/stale/wrong-template refusal, active predecessor isolation,
+failed-save rollback, exact replay, same-type replacement and independent
+Running/Swimming preservation; unused-down rehearsal probes both changed
+triggers and full catalog equality. Actual SQL execution of this amendment
+awaits its next coordinator-owned automatic gate. Corrected-model native
+acceptance remains unfinished; production authority is unchanged.
+
+## [2026-09-23] refine | Season publication syntax and test-boundary repair
+
+The coordinator consumed both `8ba5ea91` gates once. Storage `35873470631`
+failed the normal 159 migration command with SQLSTATE 42601 at 0158; core
+`35873470918` failed the unavailable-edit route test during module loading.
+Neither is accepted qualification.
+
+The isolated grammar parser reproduced the new PL/pgSQL `IF` expression
+failure: the compared `CASE ... END` needs parentheses so its inner `THEN`
+does not terminate the enclosing condition. Only those parentheses and the
+unused-down fingerprint changed. The unavailable-edit test reproduced the
+new server-only import boundary and now stubs that build-time marker without
+changing its refusal or no-query assertions.
+
+Whole-file SQL and PL/pgSQL parsing passed for the up (70 statements) and down
+(47 statements). This source-hashed, database-free check is now an explicit
+pre-publication requirement for every subsequent 0158 change. It supplements,
+not replaces, actual disposable SQL execution. The full CI web command passed
+486 files/7,619 tests locally, including the repaired unavailable-edit test.
+Eight unchanged source/runner-guard families failed on Windows CRLF, POSIX
+permissions/identity and symlink assumptions, with dependent synthetic waits.
+Their sources match accepted `6b64370`, whose full Linux core passed. No guard
+or assertion was relaxed; the new exact Linux core must establish acceptance.
+
+## [2026-09-23] refine | Roadmap fixture retains template training-day constraints
+
+The coordinator consumed storage `35878155690` at `b188dc71` once. Normal
+159 migration execution and the 49 historical stages passed; ownership
+qualification stopped at the roadmap overlap-refusal assertion with SQLSTATE
+23514 instead of 22023. Exact core `35878155811` passed, including the full
+Linux web suite and ordinary Playwright.
+
+The synthetic roadmap fixture changed an authored program's ID to a template
+ID but retained its one-day schedule. The existing 0156 CHECK permits one day
+only for authored programs, so both the Hybrid start and later phase fixture
+were invalid before overlap validation. The shared fixture constructor now
+issues two distinct workout days, matching block day overrides and instance
+identity, for template fixtures. Authored fixtures retain their original
+one-day shape. All existing refusal, rollback, replay and lifecycle assertions
+remain unchanged; no application, migration, constraint or error code changed.
+
+Deterministic coverage exercises all seven weekdays for authored, Hybrid and
+phase-template payloads (47 ownership source/fixture tests total). DB types
+and whole up/down SQL/PLpgSQL grammar checks pass. Actual ownership SQL and
+synthetic UI acceptance still require the next exact automatic storage gate.
+
+## [2026-09-23] refine | Native independent-program qualification and Auth erasure repair
+
+Feature head `0a80e344` passed core `35880429070` and storage
+`35880429072`. The separate native-source increment `9b6567eb` passed core
+`35892769669` and storage `35892769552` with the unchanged 62 SQL and 75 UI
+stage inventories. Its 18 independently owned native journeys retain the
+30-second case and 300-second global limits. The owner-approved M3 adaptation
+keeps a mixed workout in Hybrid and shared views, never focused Strength or
+Running; the shared authored-save helper now asserts the exact
+`/app/plan?block=<saved id>` destination. Other original M1-M7 assertions remain.
+Explicit residual native gaps are non-Strength same-type replacement controls
+(covered by shared controls and all-type SQL contracts), and read-failure
+recovery (covered by synthetic UI error/recovery cases).
+
+The coordinator consumed native `35893913296` once: all 14 pre-browser stages
+passed, including normal159, 36 RPCs, exact down/up catalogs and unchanged
+legacy graph. Browser results were one pass and 17 failures, about 202 seconds
+total without global timeout. The dominant shared callers were Auth-admin
+account erasure assertions, not save-route assertions. The new deferred
+parent-consistency trigger read application tables as GoTrue's restricted
+caller. It now runs read-only as its migration owner with a pinned search path
+and no PUBLIC, anon or authenticated EXECUTE grant. No application-table
+grants, RLS policies or foreign-key guarantees were weakened. Unused-down
+checks pin the changed security/ACL contract. Existing storage stages now
+exercise restricted Auth-role deletion, old-invoker refusal, populated typed
+and legacy graphs, bindings, issued rehab, logs, receipts, advice and roadmap
+state, and unchanged peer data. Actual PostgreSQL and GoTrue acceptance still
+belong to the next exact remote gates; local grammar parsing is not that proof.
+
+M12 also exposed a real picker omission: Green already supports program-local
+`useTrainingMax`/`tmPercent`, but its phase picker hid the generic settings and
+its benchmark screen omitted the existing load-basis control. That same
+control and copy now appear for schemas advertising this capability; no
+defaults or coefficients change. Real-component browser coverage exercises
+Hybrid setup, edit and hydrated controls at 375/1280 pixels. M12 and M13 now
+assert no new overlap consent for unchanged dates rather than waiting for
+nonexistent checkboxes. Their persistence, identity and independent kilogram
+assertions remain. All 75 synthetic stage names/order remain unchanged.
+
+M8's timeout and M11's native history-deletion failure remain unproven.
+The real history menu submits under the native details/summary styling in
+synthetic browsers; this does not establish the live backend outcome.
+Failure-only evidence now distinguishes test/setup and teardown failures,
+adds bounded M8/M12/M13 checkpoints, and classifies M11 deletion errors into
+closed categories without exporting message text. Timed-out cases without
+callers retain the safe ledger; the secondary browser-report failure is the
+expected rejection of a non-passing cohort, not a reason to relax its gates.
+
+Local checks include 49 ownership contracts, 371 strict ledger/diagnostic
+cases, 36 modular fixture/profile cases, all 75 synthetic UI stages, native
+18-case collection, touched lint and web/account-flow/DB types. Complete
+0158 up/down SQL and PL/pgSQL parsing passed again (70/47 statements).
+An optional broader runner-lifecycle selection was stopped after reproducing
+the previously established Windows-only private-path waits; its test and
+runner sources are unchanged from Linux-green `9b6567eb`. No local pass is
+claimed for that selection; the next exact Linux core remains authoritative.
+
+## [2026-09-23] refine | Native setup scope and failure-state evidence
+
+Coordinator-consumed native run 35901416789 at `2d28e5ed` confirmed the
+restricted-role account-erasure repair: all owner teardowns and independent
+cleanup passed, including the historical owner. Fourteen pre-browser stages,
+36 RPCs and the unchanged legacy graph passed; browser results were 13 passed
+and five failed in about 180 seconds. No unchanged-head rerun was requested.
+
+M12's remaining timeout was an unsupported Green edit path, not a missing
+Training Max setup control. Its loader and save gate already refuse Green
+editing on main. The coordinator explicitly deferred **Green program editing**
+to backlog rather than adding a new forward-rewrite capability in this repair.
+M12 now selects Hybrid's own 85% Training Max through the real setup flow with
+Strength already present, accepts new-date overlaps, reloads both programs and
+retains the independent 75/65 kg logger and persisted-basis assertions. It also
+checks the existing unavailable-edit route and recovery link. Component
+coverage no longer injects a fictitious supported Green edit context.
+
+M16 observed `completed_at` before the finish flow's asynchronous follow-up
+issued its hard navigation. Starting another workout immediately could race
+that navigation. The native driver now waits for the completed-session
+destination before checking its receipt and opening Running.
+
+M8, M11 and M13 remain unresolved native failures, not accepted product
+behavior. Source tracing and actual-component probes do not reproduce a broken
+End control, delayed history-menu submission or library form submission at
+375/1280 pixels. M14 passed the same library helper that M13 failed. The approved
+`nativeUiFailure` evidence distinguishes bounded UI, server-action HTTP and
+owner-record states without exporting IDs, messages, DOM or response bodies.
+HTTP success is not application success. Snapshots retain the last observable
+state if timeout closes the page; failed diagnostic reads report unavailable.
+Original UI, deletion, persistence and cleanup assertions remain mandatory.
+The only case-title change is M12's setup wording; 18-case order, 30/300-second
+bounds, 15 schema/browser stages and 62 SQL + 75 synthetic UI inventories remain.
+
+The broad local browser-acceptance test selection also exposed 52 unchanged
+A3/A7 source-extraction failures on Windows: their literal LF marker is absent
+from the CRLF checkout, while the same unchanged HEAD blob contains it. The
+modular/strict-ledger selection passes independently. No source-normalization
+workaround or assertion weakening is included; exact Linux core remains the
+full-suite gate.
+
+## [2026-09-23] refine | Native movement identity and accessible controls
+
+Coordinator-consumed native run 35907013451 at `de670b0f` passed 14 of 18
+browser cases. All pre-browser stages, 36 RPCs, ownership restoration,
+historical graph preservation and owner cleanup passed. M8, M11, M12 and M13
+remain unaccepted; no unchanged-head rerun was requested.
+
+M12 failed inside its Bench lookup, after the unavailable-edit check had
+passed. Its old fixture put Bench first, but real Green setup uses the default
+Squat-first cluster. The native driver now finds the main Bench item by
+movement identity, selects its actual logger group and then its within-group
+set. The independent 75/65 kg assertions, persisted load bases, shared
+measurement isolation and unavailable Green edit route remain mandatory.
+A regression executes the actual driver lookup against default Green output.
+
+M13's Running edit timeout was reproduced against a local production
+`next build`/`next start`, with synthetic loopback HTTP storage and a 375 px
+viewport. The exact `getByLabel` selector matches zero because the nested
+select options enter Playwright's label text; the exact accessible combobox
+selector matches one. Using that selector, as the existing future-edit case
+already does, completes the real preview/save actions and reaches Plan.
+The earlier `pending` diagnostic came from the successful library creation,
+not the Running edit. Successful library observations are now removed rather
+than attributed to later failures.
+
+M8 and M11 remain unresolved, not presumed fixed or accepted. Local production
+probes render More for an active null-kind legacy program with a past window,
+and remove the exact deleted row while preserving two other history rows.
+Native M8 already addresses the legacy block explicitly in its URL; native
+M11 already selects its row by block ID, not a repeated display name.
+No speculative application changes are included. M8's existing `page:error`
+classification now also recognizes the streamed Next error boundary and
+default application-error heading. An injected synthetic read failure
+confirmed that the production error boundary has an empty title and
+`__next_error__`, which the former title-only check missed.
+
+The coordinator approved this driver/diagnostic-only increment. Existing
+diagnostic fields/enums, case titles/order, all assertions, 30/300-second
+bounds and the 62 SQL + 75 synthetic UI inventories are unchanged. The local
+production probe used no real database or provider and was stopped and moved
+out of the repository. Native acceptance still belongs to the coordinator;
+local synthetic results do not establish that M8 or M11 works with real data.
+
+## [2026-09-23] fix | Slow navigation and streamed program controls
+
+Coordinator-consumed native run 35912653286 at `bdbc71c6` passed 15 of 18
+browser cases, including M12. All pre-browser stages, 36 RPCs, ownership
+restoration, historical graph preservation and account cleanup passed.
+Remaining failures were M8, M11 and M13.
+
+A local production build with a controlling service worker and synthetic
+loopback storage reproduced a product defect identified by the coordinator's
+independent critique. Delaying navigation response headers by 4.5 seconds
+caused the worker's 3-second deadline to return the offline document at the
+exact legacy Plan URL, with no More/End control. The same graph renders those
+controls without the delay. Delaying the history RSC refresh after a successful
+delete caused the worker to fail the request, even though the server remained
+reachable. Next then attempted a full navigation; a separate held-read probe
+left the exact deleted row stale after fresh server reads had completed.
+
+Worker version `hta-v3` removes the navigation deadline, preserves cached and
+branded offline fallback on genuine network failure, and bypasses cache and
+fallback entirely for Next.js RSC requests. Activation removes the old cache
+generation, including old Flight responses. Workout outbox, queue, replay,
+auth/RLS and storage contracts are unchanged. The offline document's visible
+copy is unchanged; only a nonvisible diagnostic marker was added.
+
+Plan's six optional offers and recovery preview now share one promise and
+stream through Suspense instead of blocking the core Plan and More/End.
+Recovery availability suspends only its own menu item, not lifecycle actions
+or an already-open End dialog. Existing recommendation anchoring, precedence
+and mutation-time revalidation remain intact. Preview errors are logged and
+shown as a plain status; framework redirect/control-flow errors still propagate.
+
+M13's Swimming attachment failure was a driver race: the exact "Save changes"
+button disappears by name when relabelled "Saving...", before persistence.
+The driver now follows that same button through both labels until removal,
+then requires the selected checkbox to be enabled before the unchanged exact
+binding assertion. The existing delayed attachment UI stage covers both
+failure and confirmed success; the existing program-control stage also checks
+End while recovery is pending and after it resolves, at 375 and 1280 pixels.
+
+Failure-only diagnostic fields and enums remain unchanged. M8 `page:plan`
+now requires the visible Plan root, with no offline marker; loading, offline
+and other documents map to the existing `other` value. Native assertions,
+case titles/order, 30/300-second limits and the 62 SQL + 75 synthetic UI stage
+inventories are unchanged. No migration or speculative history-menu patch
+is included. Real-data native acceptance remains with the coordinator.
+
+The corrected local production build passed the same 4.5-second navigation
+and RSC-header delays at 375 pixels. Plan and End rendered while the snapshot
+was still pending; the End dialog remained open after it settled. Injected
+preview failure retained More and displayed the status. The exact history
+row disappeared after the delayed refresh. A real loopback connection failure
+still served the cached Plan and the offline document for an uncached route.
+All 75 synthetic UI stages and 52 focused worker, recovery, outbox-upgrade,
+queue and completion-replay tests passed. These probes used no real database
+or provider; the temporary server and in-repository probe were removed.
+
+## [2026-09-24] refine | Await authoritative post-action views
+
+Coordinator-consumed native run 35920356918 at `2c60dcaf` passed 15 of 18
+browser cases. M8 now passes the formerly blocked legacy End path and reaches
+typed-draft review/save. M11 and M13 fail their default five-second UI
+expectations after the owned rows have already been deleted/created.
+All pre-browser stages, 36 RPCs, ownership restoration and legacy cleanup
+remain accepted.
+
+Production probes against that exact application build measured mutation to
+rendered authoritative state using synthetic loopback storage. M11's exact
+deleted row disappeared in 1,186 ms without injected latency and 10,502 ms
+with six-second post-write reads; response headers arrived at 278/28 ms.
+M13's library appeared in 99/6,487 ms respectively, while response headers
+arrived at 15/13 ms. Both settled without reload. Library creation only uses
+server revalidation; history deletion also requests a client refresh. No
+lost refresh or stale overwrite was reproduced, so no application change is
+justified by this evidence.
+
+The retained legacy draft browser journey completed in 21,665 ms with
+400 ms per storage read: refusal 4,859; Plan controls 12,334; archived 13,548;
+retained session 16,552; typed review 18,110; saved Plan 21,665. This controlled
+measurement excludes native auth/fixture/graph checks and is not native
+acceptance. M8's previous dialog diagnostic belonged to the now-closed
+history tab, not the typed draft; it is cleared after that successful phase.
+
+The coordinator approved explicit post-action UI waits for M8/M11/M13 within
+the existing Playwright case deadline. Exact row disappearance, library
+control, saved program identity, URL and persisted-data assertions remain
+unchanged. No reload, extra retry, new case or split was added. The 30-second
+case and 300-second global limits still apply; other helper callers retain
+their existing assertion defaults. Diagnostic fields/enums and the
+62 SQL + 75 synthetic UI inventories are unchanged.
+
+UX backlog: apply confirmed mutation results to the history/library display
+while fresh server props arrive. The measured roughly 6-10 second stale-list
+window on slow reads is real user-visible latency, not a persistence failure.
+Any future improvement must preserve rejection handling, server-canonical
+reconciliation, undo/restore and multi-tab behavior rather than masking errors
+with unconfirmed optimistic state.
+
+## [2026-09-24] fix | Consent for retained completed legacy workouts
+
+Coordinator-consumed native run 35925938650 at `17c1d7bf` passed 17 of 18
+browser cases; M11 and M13 now pass. M8 reaches retained-draft review/save
+but times out at its unchanged 30-second deadline.
+
+The historical fixture starts its legacy session without `p_performed_at`,
+so its completed workout is dated today. Ending the legacy program retains
+that session as a completed schedule commitment. The new typed draft also
+starts today, correctly requiring explicit same-day overlap consent under
+DC-K4. M8 omitted that consent and waited on the disabled Start button;
+it had not submitted the typed save.
+
+The unchanged production build reproduced this with loopback storage
+modeling the retained completed-session commitment: consent visible and
+unchecked, Start disabled, no typed block. Checking consent enabled Start
+and saved the exact new Plan without reload. At 400 ms per read, the
+browser-only journey reached refusal at 7,288 ms, Plan controls at 15,735,
+archive at 17,819, retained history at 21,714, review at 23,555 and saved Plan
+at 27,345. These are controlled local timings, not native phase measurements,
+and exclude native auth and direct graph checks. The earlier timing probe
+returned an empty schedule snapshot and therefore missed this blocker.
+
+The coordinator approved a driver-only correction: assert the exact legacy
+session's completed commitment and today's matching overlap, explicitly
+accept it, and preserve the existing draft/history/save assertions. Shared
+save now checks the rendered button's enabled state before clicking, failing
+immediately with a fixed diagnostic when required consent is missing.
+No application behavior, fixture dates, case split, limit, diagnostic schema,
+or acceptance inventory changed.
+
+Executing the corrected M8 step and shared save helper directly against the
+same production build completed the delayed browser journey in 23,829 ms.
+The missing-consent guard failed in 22 ms without creating a typed block;
+the real step then verified the commitment, accepted consent, saved the
+owned two-workout program and retained the legacy session. Executable driver
+regressions also reject the wrong session, wrong date and non-completed
+commitment before consent or save.
+
+## [2026-09-24] refine | Prepare the exact independent-program release batch
+
+Coordinator-consumed native35930183440 accepted `cb2f9812`: 18/18 browser cases,
+M8 in 3.1 seconds, all 15 stages and cleanup verified. Core35929365692 and
+storage35929365806 also passed (62 SQL stages and 75 synthetic UI stages).
+The owner then authorized release preparation and read-only inspection, with
+another approval required before any live change. No migration, flag change,
+merge or deployment is authorized by this preparation.
+
+The modular preflight now requires exactly normal159 and the accepted hashes
+of0156-0158. Its safe summary keys are unchanged: sourceEntries is159,
+currentMainEntries remains156, and pending lists only the unapplied canonical
+tail with tag/hash/folderMillis. It remains metadata-only, GET-only, repeatable
+read/read-only, and closes its database connection.
+
+The existing manual updater supersedes its obsolete0156-only implementation.
+It appends all three pinned migrations atomically, only from213 to216, after
+checking the fresh203-row legacy prefix and the full213-row fingerprint
+`1174cd914fce682bc044342ed2d348dbc0c566defcfee47126e2a5d28165fb98`
+under the ledger lock. This pin came from coordinator-consumed preflight
+35816810297, not from rereading production in this worktree. No ledger reset,
+row rewrite, settings activation, automatic dispatch or alternative updater
+path was added. Existing app-first deployment and exact-source qualification
+guards remain mandatory.
+
+Catalog checks retain existing relation/column identities, function security,
+roles/memberships, Auth metadata, schema/default ACLs, policies and unaffected
+constraints/indexes/triggers. Only the explicit new0156-0158 objects, fifteen
+guarded function-body changes, three constraint replacements and two removed
+indexes are allowed. Both the original ledger prefix and committed catalog
+are checked again after commit. Failure after an attempted update still
+requires manual reconciliation, never an automatic retry.
+
+The existing disposable storage rehearsal now exercises a synthetic213-entry
+production-shaped ledger, full and legacy fingerprint refusals, partial-ledger
+refusal, mid-batch/precommit rollback, concurrent role-drift refusal, exact
+213-to216 commit, replay refusal, postcommit ambiguity and fixture restoration.
+All twelve successful rehearsal stages are included in the storage summary
+instead of only its former final marker. The production ledger summary shape
+is unchanged; successful counts become entries216/retainedEntries213/
+appendedEntries3. SQL0156-0158 and application behavior are unchanged.
+
+## [2026-09-24] fix | Derive the modular release catalog from pinned DDL
+
+Coordinator-consumed storage35957097482 at479286 failed before commit with
+catalog_additions_changed; core35957097419 passed. The handwritten list
+misnamed the cross-column outcomes CHECK and omitted both pg_constraint
+entries created by the deferred parent-consistency triggers. Source parsing
+now derives119 exact catalog keys, including all42 new columns, from the
+unchanged0156-0158 hashes. It also derives all19 new function owner, definer
+and configuration expectations; the parent-consistency trigger function is
+correctly SECURITY DEFINER, distinct from the swim-writer-owned outcome RPC.
+No arbitrary new columns or additional objects are accepted.
+
+`packages/db/scripts/generate-modular-catalog.py` uses pglast8.4 without a
+database. Run it with `--write` to regenerate the committed TypeScript
+manifest, or without arguments to check reproducibility. It refuses source
+hash changes and unsupported syntax rather than interpreting future DDL
+permissively. The production updater needs neither Python nor pglast.
+
+Existing function metadata still retains every non-body pg_proc attribute,
+but argument defaults are compared via pg_get_expr instead of raw parse
+trees containing source positions. The new disposable-only
+modular-production-update-function-metadata stage requires a deparse/reparse
+round trip to preserve the security fingerprint while changed defaults,
+SECURITY DEFINER and grants change it. This precedes the existing ledger
+rehearsal, bringing its stage inventory to13 and the expected SQL total to74.
+Each successful stage is reported immediately, including when a later stage
+fails; failing stages are never added to the passed list.
+
+Failure summaries may now contain catalogMismatch:1-27 unique objects with
+only category and direction, sorted by category:direction. Categories are
+catalog/global/relations/columns/functions/constraints/indexes/policies/triggers;
+directions are missing/unexpected/changed. No object names, values, SQL,
+hashes or exception text enter this diagnostic. It is absent on success and
+unrelated failures. The coordinator approved this exact consumer contract.
+
+Release qualification remains pending the existing GitHub disposable storage
+job. A synthetic local database probe was stopped and its installed runtime
+and data removed after the coordinator reiterated the no-local-database
+boundary; no further local SQL execution is authorized. These tooling repairs
+do not change application code, SQL0156-0158, the ledger pins, or any live
+migration, deployment, activation or approval guard.
+
+## [2026-09-24] fix | Qualify release guards against historical account graphs
+
+Coordinator-consumed storage35958542494 at9b1a7e passed57 stages, including
+all precommit rollback probes, then failed with22023 in the successful apply
+path. Core35958542471 passed. Source analysis identified double serialization
+of the new function manifest: a JSON string supplied to a JSONB parameter was
+JSON-encoded again by postgres.js. Explicit sql.json binding fixes that guard;
+a no-connection test exercises the installed driver's serializer. All56
+explicit22023 raises in0156-0158 belong to runtime functions; none is reached
+by this DDL-only migration batch. No migration data check was relaxed.
+
+The previous updater rehearsal had a production-shaped ledger but no retained
+account graph. It now prepares two synthetic accounts through pre-0156 paths:
+an active two-day authored program with completed/unfinished workouts and set
+logs; an archived template with its real engine instance and required sets;
+an active orphan instance; standalone swim plans, workouts, imports and
+matches; rehab protocols/bindings; and seasons. Hashes cover every existing
+public/auth table row across apply and refusal rollback. Only the additive
+program_kind field is excluded from cross-schema hashing, and every value is
+separately required to remain null. Authenticated reads and rejected cross-owner
+edits verify isolation, while the whole-graph hashes cover the second account.
+Cleanup deletes only the fixture accounts and bindings and verifies the
+original hashes. A fresh graph is used for postcommit reconciliation after
+cleanup, because the unchanged0156 down guard correctly refuses authored
+history. All SQL remains confined to the existing GitHub disposable job.
+
+The coordinator approved a count-only ownership preflight before the new
+composite foreign keys are installed. The read-only/repeatable-read preflight
+adds compositeFkViolations, null until complete, otherwise exactly six integer
+counts in0..2147483647: program_instances_block_id_fkey,
+planned_sessions_block_id_fkey, swim_import_outcomes_owned_workout_fk,
+swim_import_outcomes_owned_match_fk, swim_plan_rehab_bindings_owned_plan_fk,
+and swim_plan_rehab_bindings_owned_protocol_fk. Absent additive tables count
+zero; row_security_active must be false so filtering cannot conceal conflicts.
+No IDs or row values leave PostgreSQL. Inspection success is not release
+authorization. The updater requires all counts zero before its transaction
+and again under the ledger lock; owned_reference_conflict refuses before
+attempting a migration. The new owned-reference-preflight rehearsal stage
+proves both historical cross-owner edges are detected and rolls them back.
+The resulting inventory is14 updater stages, expected75 SQL and75 UI stages.
+
+Native SQL failures in the updater now expose only the approved failure-only
+modularUpdateDiagnostic: sqlstate and position. Position is unmatched or an
+exact canonical migrationIndex155-158/statementIndex0-9999 match, using the
+existing hardened exception projector. Guard statements stay unmatched;
+queries, parameters, exception text and row data are never reported.
+Application code, migrations, rollback guards and production approvals are
+unchanged. Disposable qualification is pending the coordinator's next run.
+
+## [2026-09-24] fix | Supply exact catalog prerequisites for historical rehearsal
+
+Coordinator-consumed storage35960701003 at2e16c6 passed50 SQL stages, then
+reported an assertion in the new213-baseline graph preparation. Core35960700962
+passed. Source tracing found the missing prerequisite before any historical
+RPC: the disposable job executes SQL migrations, not the full TypeScript
+catalog seed. Its two requested base lifts, bench-press-flat and
+back-squat-high-bar, appear only in an UPDATE tag list in those migrations.
+The helper's exact two-row lookup therefore cannot succeed on that baseline.
+
+Following the existing independent-programs fixture pattern, preparation now
+inserts only absent canonical SEED_MOVEMENTS entries for those two lifts, with
+captured fresh IDs. Existing rows are neither replaced nor updated. The
+original snapshot precedes these inserts, the prepared snapshot includes
+them, and cleanup deletes only captured global movement IDs after deleting
+dependent account rows, then requires the original whole-row hashes.
+No full reseed, arbitrary movement substitution or weaker count check is used.
+
+The remaining prerequisite trace covered the complete helper:
+
+- Auth users/profiles are created by the fixture and existing auth trigger;
+  each owner transaction supplies claims and resets its role on completion.
+- Both authored occurrences are domain-compiled; all seven start weekdays and
+  week-index bounds are covered without a database. The template is produced
+  by the actual engine registry, setup, timeline and prescriptions, not a
+  database template lookup. Its complete timeline and every set are retained.
+- Historical deploy returns both real parent IDs and archives the first
+  template when the authored program is deployed. The old block FK permits
+  the second owner's deliberate null-block active instance. Neither RPC reads
+  the migration ledger, so the213-row ledger does not change these paths.
+- Each strength session is inserted and linked to its own planned row before
+  logging and completion. The existing completion RPC returns transitioned=true
+  for the first unfinished session. Counts still require one completed session,
+  one unfinished session and exactly two set logs.
+- Rehab protocols and seasons are inserted with captured IDs. Their bindings
+  point to existing same-owner instances/protocols; no seeded rehab library is
+  assumed. Bindings are deleted before the protocol's restrictive FK matters.
+- The two swim workouts are generated and covered by a no-database test with
+  an exact25m course and no calibration. Plan creation needs no movement, pool,
+  stroke, template or course-library row. Connection creation supplies the
+  receiver's token lookup; its receipt and the saved workout/revision supply
+  matching. The evidence's workoutReference is not a database lookup. Activity
+  IDs are owner-scoped. Counts still require two saved workouts per account and
+  exactly two import matches.
+- Snapshots enumerate existing public/auth tables and hash sorted complete JSON
+  rows plus counts. Only the additive program_kind field is omitted; its null
+  values are separately asserted. All pre-existing rows, fixture records and
+  inserted seed metadata remain covered through rollback, apply and cleanup.
+
+The coordinator approved failure-only modularHistoricalAssertionLine, an
+integer1-9999 from this helper's assertion stack frame. The summary exports no
+message, stack, IDs, values or hashes; native Node accessor-backed stacks are
+covered by an actual helper assertion test. Storage workflow path filtering now
+also includes this helper. Stage inventory remains14 updater /75 SQL /75 UI.
+No application code or migration SQL changed; real SQL qualification remains
+the coordinator's next disposable storage run.
+
+## [2026-09-24] fix | Make release JSON binding independent of ORM configuration
+
+Coordinator-consumed storage35961724799 at e1a4b5 passed58 SQL stages, including
+the realistic graph, ownership preflight and every rollback probe, then failed
+with unexpected in213-to-216. Core35961724776 passed. The installed Drizzle
+adapter mutates a shared postgres.js client's JSON/JSONB serializers to
+identity functions. The newly seeded graph therefore changed the driver's
+handling of the later sql.json manifest: it produced an array instead of text.
+The installed postgres.js byte writer calls Buffer.byteLength on that value
+and throws ERR_INVALID_ARG_TYPE before sending SQL. A no-connection probe
+reproduced this exact transition and error code. Earlier rollback probes stop
+before the added-security query, explaining their success.
+
+The shared guard now binds JSON.stringify(manifest.functions) as TEXT and casts
+both uses with $2::text::jsonb. This avoids both the original raw-driver double
+JSON encoding and the Drizzle-configured identity serializer, without resetting
+shared driver state or weakening catalog checks. Tests exercise the actual
+installed adapters in raw/Drizzle and prepare=true/false combinations, plus both
+old failure mechanisms. The production entrypoint constructs a fresh raw
+postgres.js client with max1/prepare=false, does not configure Drizzle, and
+calls the identical append function and guard before and after commit.
+The fixture's ORM mutation is the sole difference relevant to this binding;
+both configurations now use the same TEXT serialization path.
+
+The coordinator approved storage-only, failure-only modularUpdateSubstep with
+exactly eight values: apply, added_security, post_apply_catalog,
+ledger_reconciliation, graph_hash, graph_state, isolation, cleanup. The shared
+updater and graph accept a typed observation callback; production supplies none.
+Completed rehearsal stages clear the observation, unrelated stages cannot emit
+it, successful cleanup preserves an original failing step, and failed cleanup
+reports cleanup. Existing SQL/catalog/assertion diagnostics are retained.
+The14 updater /75 SQL /75 UI stage inventory and all migration pins are
+unchanged. No live action or local database execution occurred; the next
+GitHub disposable run remains the SQL qualification gate.

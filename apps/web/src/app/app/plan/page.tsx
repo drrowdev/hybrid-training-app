@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { SwimCalendar } from "@/components/swim/SwimCalendar";
 import { getSwimNavigation } from "@/lib/swim/navigation";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { redirect } from "next/navigation";
+import { notFound, redirect, unstable_rethrow } from "next/navigation";
+import { SharedTrainingWeek } from "@/components/program/SharedTrainingWeek";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   endBlock,
@@ -14,7 +16,8 @@ import { updatePlannedSessionNotes } from "@/lib/sessions/actions";
 import { estimateSessionDurationBreakdown } from "@/lib/sessions/estimate-duration";
 import { ARCHETYPES } from "@/lib/planner/archetypes";
 import {
-  getActiveBlock,
+  archetypeDisplayName,
+  getActiveBlocks,
   getPlannedDays,
   todayYmd,
 } from "@/lib/planner/queries";
@@ -38,7 +41,7 @@ import { VolumeAutoregCard } from "@/components/plan/VolumeAutoregCard";
 import { getDeloadSkipOffer } from "@/lib/planner/deload-skip-offer";
 import { acceptDeloadSkip } from "@/lib/planner/deload-skip-actions";
 import { DeloadSkipCard } from "@/components/plan/DeloadSkipCard";
-import { getDeloadWeekPreview, getDeloadWeekFatigueSignal } from "@/lib/planner/deload-week-preview";
+import { getDeloadWeekFatigueSignal } from "@/lib/planner/deload-week-preview";
 import {
   insertDeloadWeekAction,
   previewDeloadWeekAction,
@@ -78,6 +81,7 @@ export default async function PlanPage({
     boundary?: string;
     rec?: string;
     kept?: string;
+    block?: string;
   }>;
 }) {
   const supabase = await createClient();
@@ -88,8 +92,6 @@ export default async function PlanPage({
 
   const sp = await searchParams;
   const swimNavigation = await getSwimNavigation(supabase, user.id);
-  // `?new=1` requests a fresh block mid-stream; like the empty state it routes
-  // to the program wizard, which archives any prior active block on deploy.
   const forceNew = sp?.new === "1";
 
   // Season tab (ADR 0051) — opt-in, off by default. Its data is loaded alongside
@@ -104,8 +106,8 @@ export default async function PlanPage({
   const seasonEnabled = seasonProfile?.season_planning_enabled === true;
   const profileTz = seasonProfile?.timezone ?? "UTC";
 
-  const [block, seasonReads] = await Promise.all([
-    getActiveBlock(),
+  const [blocks, seasonReads] = await Promise.all([
+    getActiveBlocks(),
     seasonEnabled
       ? Promise.all([
           getActiveSeason(),
@@ -114,6 +116,15 @@ export default async function PlanPage({
         ])
       : Promise.resolve(null),
   ]);
+  const block = sp.block ? blocks.find((candidate) => candidate.id === sp.block) : blocks.length === 1 ? blocks[0] : null;
+  if (sp.block && !block) notFound();
+  const programNavigation = <nav aria-label="Programs" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+    <Link href="/app/programs">All programs</Link>
+    {blocks.map((candidate) => <Link key={candidate.id} href={`/app/plan?block=${candidate.id}`} aria-current={candidate.id === block?.id ? "page" : undefined}>
+      {archetypeDisplayName(candidate.archetype, candidate.notes)}
+    </Link>)}
+    {swimNavigation.hasPlans && <Link href="/app/swim">Swimming</Link>}
+  </nav>;
   const seasonData = seasonReads
     ? (() => {
         const [season, upcomingEvents, floorContext] = seasonReads;
@@ -159,6 +170,14 @@ export default async function PlanPage({
     />
   ) : null;
 
+  if (!block && blocks.length > 1 && !forceNew) {
+    return <div style={{ display: "grid", gap: 24 }}>
+      <PageHeader title="Plan" actions={<Link href="/app/programs">Add a program</Link>} />
+      {programNavigation}
+      {sp.view === "season" ? seasonContent : <SharedTrainingWeek today={todayYmd(profileTz)} />}
+    </div>;
+  }
+
   if (seasonEnabled && sp?.view === "season" && !block) {
     return (
       <div style={{ display: "grid", gap: 24 }}>
@@ -187,9 +206,6 @@ export default async function PlanPage({
     if (seasonEnabled && !forceNew && seasonData?.season) {
       redirect("/app/plan?view=season");
     }
-    // Legacy archetype BlockWizard retired — block creation now flows through
-    // the program wizard (/app/program). createProgramInstance archives any
-    // prior active block on deploy, covering the mid-block "start new" (?new=1).
     redirect("/app/program");
   }
 
@@ -215,7 +231,7 @@ export default async function PlanPage({
   // foreign programs (5/3/1, Tactical Barbell) — the ones whose cardio days are
   // user-added in the wizard. Other programs own their own calendar/cardio.
   const canEditPlan =
-    block.programId === "wendler-531" || block.programId === "tactical-barbell";
+    block.programId === "wendler-531" || block.programId === "tactical-barbell" || block.programId === "authored";
 
   const [all, { data: profile }, { data: programInstance }] =
     await Promise.all([
@@ -337,6 +353,8 @@ export default async function PlanPage({
     supabase,
     user.id,
     timezone,
+    new Date(),
+    block.id,
   );
 
   // Reuse the `profile` row fetched above (audit F8 — was a duplicate
@@ -346,48 +364,15 @@ export default async function PlanPage({
     !hasLoadableMainLift(resolveEquipment(profile)) &&
     planTmCtx.rows.length === 0;
 
-  // ADR 0013 / 0014 — mid-block adaptive offers. Both read-only here;
-  // the accept actions re-derive server-side before writing. Null when
-  // nothing applies (no over-budget signal / no offending limitation).
-  const [autoregOffer, limitationOffer, deloadSkipOffer, earlyDeloadReco, deloadWeekPreview, deloadFatigued] = await Promise.all([
-    getVolumeAutoregOffer(),
-    getLimitationResponseOffer(),
-    getDeloadSkipOffer(),
-    getEarlyDeloadRecommendation(),
-    getDeloadWeekPreview(supabase, user.id, { timezone }),
-    getDeloadWeekFatigueSignal(),
-  ]);
-
-  const deloadRecId = typeof sp.rec === "string" ? sp.rec : undefined;
-
-  // A program-advised recovery week is placed by the program, not by today's
-  // date. Null when the advice belongs to a block the lifter has moved on from,
-  // or when the plan no longer contains the sessions it named.
-  const anchoredPreview =
-    typeof sp.boundary === "string" && deloadRecId
-      ? await getDeloadWeekPreview(supabase, user.id, {
-          timezone,
-          boundaryKey: sp.boundary,
-          recommendationId: deloadRecId,
-        })
-      : null;
-
-  // Recovery-week entry. The QUIET control is always available (program
-  // controls). The PROMINENT banner only surfaces on a real fatigue signal — or
-  // when deep-linked from the TB deload advisory (?deload=1) — and never when a
-  // programmed deload offer is already handling fatigue.
-  const deloadDeepLink = sp.deload === "1";
-  // A program-advised link that no longer resolves is not a deep link at all.
-  const bannerPreview = sp.boundary ? anchoredPreview : deloadWeekPreview;
-  const deloadDeepLinkActive = deloadDeepLink && (!sp.boundary || !!anchoredPreview);
-  const showDeloadBanner =
-    !!bannerPreview &&
-    !deloadSkipOffer &&
-    !earlyDeloadReco &&
-    (deloadFatigued || deloadDeepLinkActive);
+  const recovery = loadRecoveryOffers(block.id, sp).catch((error: unknown) => {
+    unstable_rethrow(error);
+    console.error("Plan suggestions could not load", error);
+    return { banners: <p role="status">Could not load program suggestions.</p>, control: null };
+  });
 
   return (
     <div style={{ display: "grid", gap: 24 }}>
+      {programNavigation}
       <SwimCalendar />
       {sp?.kept === "today" && (
         <div
@@ -408,36 +393,9 @@ export default async function PlanPage({
       )}
       {!seasonEnabled && <SeasonDiscoveryNudge />}
       {tissueGaps.length > 0 && <TissueStackCard gaps={tissueGaps} />}
-      {limitationOffer && (
-        <LimitationResponseCard
-          offer={limitationOffer}
-          applyAction={applyLimitationResponseSelection}
-        />
-      )}
-      {autoregOffer && (
-        <VolumeAutoregCard offer={autoregOffer} applyAction={acceptVolumeAutoregResult} />
-      )}
-      {earlyDeloadReco && (
-        <EarlyDeloadCard reco={earlyDeloadReco} applyAction={acceptEarlyDeload} />
-      )}
-      {deloadSkipOffer && (
-        <DeloadSkipCard offer={deloadSkipOffer} applyAction={acceptDeloadSkip} />
-      )}
-      {showDeloadBanner && bannerPreview && (
-        <DeloadWeekCard
-          preview={bannerPreview}
-          insertAction={insertDeloadWeekAction}
-          previewAction={previewDeloadWeekAction}
-          variant="banner"
-          autoOpen={deloadDeepLinkActive}
-          {...(deloadRecId
-            ? {
-                resolveRecommendationId: deloadRecId,
-                resolveAction: dismissProgramRecommendation,
-              }
-            : {})}
-        />
-      )}
+      <Suspense fallback={null}>
+        <RecoverySection recovery={recovery} section="banners" />
+      </Suspense>
       {showBodyweightBanner && (
         <BodyweightOnlyBanner
           dismissedAt={profile?.bw_banner_dismissed_at ?? null}
@@ -446,6 +404,8 @@ export default async function PlanPage({
       )}
 
       <PlanRedesign
+        key={block.id}
+        blockId={block.id}
         archetypeName={archetypeName}
         programFamilyName={programFamilyName}
         customized={customized}
@@ -454,19 +414,14 @@ export default async function PlanPage({
           <PlanProgramActions
             blockId={block.id}
             canEdit={canEditPlan}
-            editHref={`/app/program?edit=${block.id}`}
-            startNewHref="/app/plan?new=1"
+            editHref={block.programId === "authored" ? `/app/program/build?edit=${block.id}` : `/app/program?edit=${block.id}`}
+            startNewHref={block.programId === "authored" && block.programKind ? `/app/program/build?activity=${block.programKind}` : "/app/program"}
             endAction={endBlock}
+            recoveryAvailable={recovery.then((result) => result.control !== null)}
             recoveryControl={
-              deloadWeekPreview && !showDeloadBanner ? (
-                <DeloadWeekCard
-                  preview={deloadWeekPreview}
-                  insertAction={insertDeloadWeekAction}
-          previewAction={previewDeloadWeekAction}
-                  variant="quiet"
-                  autoOpen={deloadDeepLinkActive && !sp.boundary}
-                />
-              ) : undefined
+              <Suspense fallback={null}>
+                <RecoverySection recovery={recovery} section="control" />
+              </Suspense>
             }
           />
         }
@@ -490,6 +445,64 @@ export default async function PlanPage({
   );
 }
 
+async function loadRecoveryOffers(blockId: string, sp: {
+  deload?: string;
+  boundary?: string;
+  rec?: string;
+}) {
+  const [autoregOffer, limitationOffer, deloadSkipOffer, earlyDeloadReco, deloadWeekPreview, deloadFatigued] = await Promise.all([
+    getVolumeAutoregOffer(blockId),
+    getLimitationResponseOffer(blockId),
+    getDeloadSkipOffer(new Date(), blockId),
+    getEarlyDeloadRecommendation(blockId),
+    previewDeloadWeekAction(undefined, undefined, undefined, blockId),
+    getDeloadWeekFatigueSignal(blockId),
+  ]);
+  const deloadRecId = typeof sp.rec === "string" ? sp.rec : undefined;
+  // Program-advised recovery remains anchored to its own recommendation.
+  const anchoredPreview = typeof sp.boundary === "string" && deloadRecId
+    ? await previewDeloadWeekAction(undefined, sp.boundary, deloadRecId, blockId)
+    : null;
+  const bannerPreview = sp.boundary ? anchoredPreview : deloadWeekPreview;
+  const deloadDeepLinkActive = sp.deload === "1" && (!sp.boundary || !!anchoredPreview);
+  const showDeloadBanner = !!bannerPreview && !deloadSkipOffer && !earlyDeloadReco &&
+    (deloadFatigued || deloadDeepLinkActive);
+
+  return {
+    banners: <>
+      {limitationOffer && <LimitationResponseCard offer={limitationOffer} applyAction={applyLimitationResponseSelection} />}
+      {autoregOffer && <VolumeAutoregCard offer={autoregOffer} applyAction={acceptVolumeAutoregResult} />}
+      {earlyDeloadReco && <EarlyDeloadCard reco={earlyDeloadReco} applyAction={acceptEarlyDeload} />}
+      {deloadSkipOffer && <DeloadSkipCard offer={deloadSkipOffer} applyAction={acceptDeloadSkip} />}
+      {showDeloadBanner && bannerPreview && (
+        <DeloadWeekCard
+          preview={bannerPreview}
+          insertAction={insertDeloadWeekAction}
+          previewAction={previewDeloadWeekAction}
+          variant="banner"
+          autoOpen={deloadDeepLinkActive}
+          {...(deloadRecId ? { resolveRecommendationId: deloadRecId, resolveAction: dismissProgramRecommendation } : {})}
+        />
+      )}
+    </>,
+    control: deloadWeekPreview && !showDeloadBanner ? (
+      <DeloadWeekCard
+        preview={deloadWeekPreview}
+        insertAction={insertDeloadWeekAction}
+        previewAction={previewDeloadWeekAction}
+        variant="quiet"
+        autoOpen={deloadDeepLinkActive && !sp.boundary}
+      />
+    ) : null,
+  };
+}
+
+async function RecoverySection({ recovery, section }: {
+  recovery: ReturnType<typeof loadRecoveryOffers>;
+  section: "banners" | "control";
+}) {
+  return (await recovery)[section];
+}
 
 function SeasonViewTabs() {
   const tabBase = {

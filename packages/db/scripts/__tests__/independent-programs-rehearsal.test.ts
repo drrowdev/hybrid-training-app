@@ -1,0 +1,264 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { Socket } from "node:net";
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  assertOwnershipCatalog, assertOwnershipRefusal, IndependentProgramsAssertion, rehearseIndependentPrograms,
+  independentRunningSeed, independentRehabOwnershipProbes, independentProgramFixture, withIndependentRunningFixture,
+  eraseIndependentAccountAsAuthAdmin, type OwnershipCatalog,
+} from "../../integration-tests/independent-programs-rehearsal";
+import { SEED_MOVEMENTS } from "../../seeds/movements";
+
+vi.mock("drizzle-orm/postgres-js", () => ({ drizzle: vi.fn() }));
+const up = readFileSync(new URL("../../drizzle/0158_independent_program_ownership.sql", import.meta.url), "utf8").replaceAll("\r\n", "\n");
+const down = readFileSync(new URL("../../rollbacks/0158_independent_program_ownership.down.sql", import.meta.url), "utf8").replaceAll("\r\n", "\n");
+afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+
+describe("DC-R5 independent ownership storage boundary", () => {
+  it("DC-SW8: uses a pinned, read-only definer for deferred cascade checks without granting Auth application access", () => {
+    const routine = up.split("CREATE FUNCTION public.check_program_parent_consistency()")[1]!.split("CREATE CONSTRAINT TRIGGER")[0]!;
+    expect(routine).toContain("SECURITY DEFINER SET search_path=pg_catalog,public");
+    expect(routine).not.toMatch(/\b(?:INSERT|UPDATE|DELETE|EXECUTE)\b/);
+    expect(routine).toContain("IF NOT FOUND OR parent.program_kind IS NULL THEN RETURN NULL;");
+    expect(up.match(/SECURITY DEFINER/g)).toHaveLength(1);
+    expect(up).toContain("REVOKE ALL ON FUNCTION public.check_program_parent_consistency() FROM PUBLIC,anon,authenticated;");
+    expect(up).not.toContain("TO supabase_auth_admin");
+    expect(down).toContain("prosecdef=(entry.signature='check_program_parent_consistency()')");
+    expect(down).toContain("a.grantee=(SELECT oid FROM pg_roles WHERE rolname='authenticated')");
+  });
+  it("DC-SW8: erases through a restricted Auth owner and forces deferred checks before restoring fixture ownership", async () => {
+    const calls: string[] = [], userId = "00000000-0000-4000-8000-000000000001";
+    const tx = Object.assign(vi.fn(async (parts: TemplateStringsArray, ...values: unknown[]) => {
+      const sql = parts.join("?");
+      calls.push(sql);
+      if (sql.includes("public_access")) return [{ actor: "supabase_auth_admin", session_actor: "supabase_auth_admin", request_user: null, public_access: false }];
+      if (sql.includes("session_actor")) return [{ actor: "postgres", session_actor: "postgres" }];
+      if (sql.includes("AS owner")) return [{ owner: "postgres" }];
+      expect(sql).toContain("DELETE FROM auth.users WHERE id=?::uuid RETURNING id");
+      expect(values).toEqual([userId]);
+      return [{ id: userId }];
+    }), { unsafe: vi.fn(async (sql: string) => { calls.push(sql); }) });
+    const begin = vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx));
+    await eraseIndependentAccountAsAuthAdmin({ begin } as unknown as postgres.Sql, userId);
+    expect(begin).toHaveBeenCalledTimes(1);
+    expect(calls.join("\n")).not.toMatch(/GRANT.*public\.|DISABLE TRIGGER/);
+    const auth = calls.indexOf("SET LOCAL SESSION AUTHORIZATION supabase_auth_admin");
+    const deletion = calls.findIndex((sql) => sql.startsWith("DELETE FROM auth.users"));
+    const forced = calls.indexOf("SET CONSTRAINTS ALL IMMEDIATE");
+    const reset = calls.indexOf("RESET SESSION AUTHORIZATION");
+    expect(auth).toBeGreaterThan(0); expect(deletion).toBeGreaterThan(auth);
+    expect(forced).toBeGreaterThan(deletion); expect(reset).toBeGreaterThan(forced);
+    expect(calls.at(-1)).toBe("DROP ROLE supabase_auth_admin");
+  });
+  it.each(["authored", "hybrid", "green-protocol"].flatMap((programId) =>
+    Array.from({ length: 7 }, (_, weekday) => ({ programId, weekday })),
+  ))("builds an executable $programId season fixture on weekday $weekday", ({ programId, weekday }) => {
+    const items = [{ kind: "main", movementId: "00000000-0000-4000-8000-000000000001",
+      sets: 1, reps: 5, targetWeightKg: 10 }];
+    const fixture = independentProgramFixture("hybrid", { today: "2026-09-23", weekday }, items, programId);
+    const days = programId === "authored" ? [weekday] : [weekday, (weekday + 1) % 7];
+    expect(fixture.p_block).toMatchObject({ program_id: programId, days_per_week: days.length,
+      day_index_overrides: { days } });
+    expect(fixture.p_program_instance.program_id).toBe(programId);
+    expect(fixture.p_planned_sessions.map((session) => session.day_index)).toEqual(days);
+    expect(new Set(days).size).toBe(days.length);
+    expect(days.every((day) => day >= 0 && day <= 6)).toBe(true);
+    for (const session of fixture.p_planned_sessions) {
+      expect(session).toMatchObject({ week_index: 0, role: "strength", session_modality: "strength",
+        prescription: { items } });
+    }
+  });
+  it("restores both season lock triggers exactly and binds roadmap identity to save and replay", () => {
+    for (const table of ["training_seasons", "season_blocks"]) {
+      expect(up).toContain(`CREATE TRIGGER ${table}_schedule_lock BEFORE INSERT OR UPDATE OR DELETE ON public.${table}`);
+      expect(down).toContain(`('${table}','${table}_schedule_lock','training_schedule_lock()',30,false)`);
+      expect(down).toContain(`DROP TRIGGER ${table}_schedule_lock ON public.${table};`);
+    }
+    expect(up).toContain("season_snapshot IS DISTINCT FROM p_args->'p_season_origin'");
+    expect(up).toContain("COALESCE(receipt->'seasonOrigin','null'::jsonb) IS DISTINCT FROM COALESCE(p_args->'p_season_origin','null'::jsonb)");
+    expect(up).toContain("predecessor.id IS DISTINCT FROM replacement");
+    expect(up).toContain("block_id=program_save.block_id");
+  });
+  it("keeps authenticated swim-plan hard deletion forbidden while scoping synthetic purge to its owner", () => {
+    const historical = readFileSync(new URL("../../drizzle/0146_standalone_pool_swimming.sql", import.meta.url), "utf8");
+    expect(historical).toContain("GRANT SELECT ON public.swim_plans, public.swim_workouts TO authenticated;");
+    const fixture = readFileSync(new URL("../../integration-tests/independent-programs-rehearsal.ts", import.meta.url), "utf8");
+    expect(fixture).toContain('await denied(() => asUser(receiptOwner, (tx) => tx`DELETE FROM public.swim_plans WHERE id=${receiptSwim.plan.id}::uuid`), "42501")');
+    expect(fixture).toContain("WHERE id=${receiptSwim.plan.id}::uuid AND user_id=${receiptOwner}::uuid RETURNING id");
+    expect(fixture).toContain("assert.deepEqual(Array.from(purgedPlans), [{ id: receiptSwim.plan.id }])");
+  });
+  it("probes each rehab owned FK without colliding with the existing foreign attachment", () => {
+    const owned = { planId: "own-plan", protocolId: "own-protocol" };
+    const foreign = { planId: "foreign-plan", protocolId: "foreign-protocol" };
+    const probes = independentRehabOwnershipProbes(owned, foreign);
+    expect(probes).toEqual([
+      { planId: foreign.planId, protocolId: owned.protocolId },
+      { planId: owned.planId, protocolId: foreign.protocolId },
+    ]);
+    expect(new Set([foreign, ...probes].map((binding) => `${binding.planId}:${binding.protocolId}`)).size).toBe(3);
+    for (const probe of probes) {
+      expect(Number(probe.planId === owned.planId) + Number(probe.protocolId === owned.protocolId)).toBe(1);
+    }
+  });
+  it("uses the canonical running seed rather than assuming schema migrations populated the catalog", () => {
+    const seed = independentRunningSeed();
+    expect(seed).toBe(SEED_MOVEMENTS.find((movement) => movement.slug === "run-easy-z2"));
+    expect(seed).toMatchObject({ userId: null, pattern: "cardio", metadata: { modality: "running" } });
+  });
+  function runningFixture(present = false, failVerification = false) {
+    const seed = independentRunningSeed();
+    const original = { id: "00000000-0000-4000-8000-000000000001", pattern: seed.pattern,
+      metadata: { ...seed.metadata, retained: "existing metadata" } };
+    let rows = present ? [original] : [];
+    const calls: string[] = [];
+    const database = vi.fn(async (parts: TemplateStringsArray, ...params: unknown[]) => {
+      const sql = parts.join("?");
+      if (sql.startsWith("DELETE")) {
+        calls.push("delete");
+        expect(sql).toContain("WHERE id=?::uuid AND user_id IS NULL");
+        expect(params).toEqual([rows[0]?.id]);
+        rows = [];
+        return [];
+      }
+      calls.push("select");
+      if (sql.includes("WHERE id=") && failVerification) return [];
+      return rows;
+    });
+    const values = vi.fn(async (value: ReturnType<typeof independentRunningSeed> & { id: string }) => {
+      calls.push("insert");
+      expect(value).toEqual({ ...seed, id: expect.any(String) });
+      rows = [{ id: value.id, pattern: value.pattern, metadata: { ...value.metadata, retained: "" } }];
+    });
+    vi.mocked(drizzle).mockReturnValue({ insert: () => ({ values }) } as unknown as ReturnType<typeof drizzle>);
+    return { database: database as unknown as postgres.Sql, values, calls, original, rows: () => rows };
+  }
+  it("seeds a missing canonical run and removes only that inserted row after dependent fixtures", async () => {
+    const fixture = runningFixture();
+    await withIndependentRunningFixture(fixture.database, async (id) => {
+      expect(fixture.rows()[0]?.id).toBe(id);
+      fixture.calls.push("dependent-fixtures-cleaned");
+    });
+    expect(fixture.calls).toEqual(["select", "insert", "select", "dependent-fixtures-cleaned", "delete"]);
+    expect(fixture.rows()).toEqual([]);
+  });
+  it("reuses and preserves a present canonical run without inserting or deleting", async () => {
+    const fixture = runningFixture(true);
+    await withIndependentRunningFixture(fixture.database, async (id) => { expect(id).toBe(fixture.original.id); });
+    expect(fixture.values).not.toHaveBeenCalled();
+    expect(fixture.calls).toEqual(["select"]);
+    expect(fixture.rows()).toEqual([fixture.original]);
+  });
+  it("cleans an inserted row when setup verification fails before dependent fixtures start", async () => {
+    const fixture = runningFixture(false, true), work = vi.fn();
+    await expect(withIndependentRunningFixture(fixture.database, work)).rejects.toMatchObject({ code: "ERR_ASSERTION" });
+    expect(work).not.toHaveBeenCalled();
+    expect(fixture.calls).toEqual(["select", "insert", "select", "delete"]);
+    expect(fixture.rows()).toEqual([]);
+  });
+  it("cleans an inserted row after a dependent fixture fails", async () => {
+    const fixture = runningFixture(), failure = new Error("fixture failed");
+    await expect(withIndependentRunningFixture(fixture.database, async () => { throw failure; })).rejects.toBe(failure);
+    expect(fixture.calls).toEqual(["select", "insert", "select", "delete"]);
+  });
+  const catalog: OwnershipCatalog = {
+    value: "whole-catalog", functions: "function-body", indexes: "index-body",
+    triggers: "trigger-body", constraints: "constraint-body", policies: "policy-body",
+  };
+  it("accepts exact catalog restoration and fails closed on an unclassified aggregate mismatch", () => {
+    expect(() => assertOwnershipCatalog(catalog, catalog)).not.toThrow();
+    expect(() => assertOwnershipCatalog({ ...catalog, value: "changed" }, catalog))
+      .toThrow(IndependentProgramsAssertion);
+    try { assertOwnershipCatalog({ ...catalog, value: "changed" }, catalog); }
+    catch (error) {
+      expect(error).toMatchObject({ code: "ERR_ASSERTION", diagnostic: { kind: "catalog", categories: ["aggregate"] } });
+    }
+  });
+  it.each(["functions", "indexes", "triggers", "constraints", "policies"] as const)(
+    "identifies a changed %s category without exposing catalog contents", (category) => {
+      expect.assertions(3);
+      try { assertOwnershipCatalog({ ...catalog, value: "changed", [category]: "private-body" }, catalog); }
+      catch (error) {
+        expect(error).toMatchObject({ code: "ERR_ASSERTION", diagnostic: { kind: "catalog", categories: [category] } });
+        expect(JSON.stringify(error)).not.toMatch(/body|whole-catalog|changed/);
+        expect(String(error)).not.toMatch(/body|whole-catalog|changed/);
+      }
+    },
+  );
+  it("reports every changed catalog category", () => {
+    expect.assertions(1);
+    try { assertOwnershipCatalog({ ...catalog, value: "changed", functions: "changed", policies: "changed" }, catalog); }
+    catch (error) {
+      expect(error).toMatchObject({ diagnostic: { kind: "catalog", categories: ["functions", "policies"] } });
+    }
+  });
+  it("accepts only the expected SQL refusal and distinguishes a resolved operation", async () => {
+    await expect(assertOwnershipRefusal(async () => { throw { code: "P0001" }; }, "P0001")).resolves.toBeUndefined();
+    await expect(assertOwnershipRefusal(async () => undefined, "P0001")).rejects.toMatchObject({
+      code: "ERR_ASSERTION", diagnostic: { kind: "refusal", expected: "P0001", actual: "resolved" },
+    });
+    await expect(assertOwnershipRefusal(async () => { throw { code: "42804", message: "private SQL" }; }, "P0001"))
+      .rejects.toMatchObject({ diagnostic: { kind: "refusal", expected: "P0001", actual: "42804" } });
+  });
+  it("does not project unknown codes, messages, getters or rejected values", async () => {
+    const getter = vi.fn(() => "P0001");
+    const failures: unknown[] = [
+      { code: "private-value", message: "private-error" }, "private-error",
+      Object.defineProperty({}, "code", { get: getter }),
+    ];
+    for (const failure of failures) {
+      const error = await assertOwnershipRefusal(async () => { throw failure; }, "P0001").catch((cause: unknown) => cause);
+      expect(error).toMatchObject({ diagnostic: { kind: "refusal", expected: "P0001", actual: null } });
+      expect(JSON.stringify(error)).not.toContain("private");
+      expect(String(error)).not.toContain("private");
+    }
+    expect(getter).not.toHaveBeenCalled();
+  });
+  it("keeps the failing caller in the assertion stack instead of the diagnostic helper", async () => {
+    const error = await assertOwnershipRefusal(async () => undefined, "P0001").catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(IndependentProgramsAssertion);
+    expect((error as IndependentProgramsAssertion).stack).toContain("independent-programs-rehearsal.test.ts:");
+    expect((error as IndependentProgramsAssertion).stack).not.toMatch(/independent-programs-rehearsal\.ts:\d+/);
+  });
+  it("does not use the SQL OVERLAPS operator as an unquoted PL/pgSQL variable", () => {
+    expect(up).not.toMatch(/\boverlaps\s+jsonb\b/);
+    expect(up).toContain("'overlaps',overlap_pairs");
+  });
+  it("pins every new routine in the unused-down refusal rather than dropping changed code", () => {
+    const functions = [...up.matchAll(/CREATE FUNCTION public\.(\w+)\(([\s\S]*?)\)\s*RETURNS[\s\S]*?AS \$\$([\s\S]*?)\$\$;/g)];
+    expect(functions).toHaveLength(13);
+    for (const [, name, args, body] of functions) {
+      const types = args!.trim().split(",").filter(Boolean).map((arg) => arg.trim().split(/\s+/)[1]).join(",");
+      expect(down).toContain(`('${name}(${types})','${createHash("md5").update(body!).digest("hex")}')`);
+      expect(down).toContain(`DROP FUNCTION public.${name}(${types});`);
+    }
+  });
+  it("keeps the additional attachment specific and the existing policy boundary unchanged", () => {
+    expect(up.match(/CREATE TABLE public\./g)).toHaveLength(1);
+    expect(up).toContain("CREATE TABLE public.swim_plan_rehab_bindings");
+    expect(up.match(/CREATE POLICY /g)).toHaveLength(1);
+    expect(up).not.toMatch(/ALTER TABLE (?:public\.)?(?:swim_workouts|swim_plans) ADD COLUMN/i);
+    expect(up).not.toMatch(/UPDATE (?:public\.)?training_blocks SET program_kind/i);
+    expect(down).toContain("context ? 'programOwnershipVersion'");
+    expect(down).toContain("prescription->'meta' ? 'swimRehab'");
+  });
+  it("keeps one parent relationship for unambiguous PostgREST joins", () => {
+    for (const table of ["planned_sessions", "program_instances"]) {
+      expect(up).toContain(`ALTER TABLE public.${table} DROP CONSTRAINT ${table}_block_id_fkey`);
+      expect(up).toContain(`ALTER TABLE public.${table} ADD CONSTRAINT ${table}_block_id_fkey`);
+      expect(down).toContain(`ALTER TABLE public.${table} ADD CONSTRAINT ${table}_block_id_fkey`);
+    }
+  });
+  it.each(["local", "job", "host", "database"] as const)("refuses %s before any SQL connection", async (mode) => {
+    vi.stubEnv("GITHUB_ACTIONS", mode === "local" ? "false" : "true");
+    vi.stubEnv("GITHUB_JOB", mode === "job" ? "storage" : "pool-storage");
+    const connect = vi.spyOn(Socket.prototype, "connect").mockImplementation(() => { throw new Error("Unexpected database connection"); });
+    const sql = postgres({ host: mode === "host" ? "example.invalid" : "127.0.0.1", port: 5432,
+      database: mode === "database" ? "postgres" : "swim_pool_test", username: "postgres" });
+    try {
+      await expect(rehearseIndependentPrograms(sql, vi.fn())).rejects.toMatchObject({ code: "ERR_ASSERTION" });
+      expect(connect).not.toHaveBeenCalled();
+    } finally { await sql.end(); }
+  });
+});

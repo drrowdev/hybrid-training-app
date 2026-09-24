@@ -26,7 +26,7 @@
 
 import type { PrescriptionItem, PrescriptionItemKind } from "@hta/db";
 import { partitionRehabItems } from "@hta/domain";
-import { restSecondsForKind } from "./rest";
+import { restSecondsForSet } from "./rest";
 
 /**
  * Per-set working time (concentric + eccentric + bar setup), independent of
@@ -64,9 +64,9 @@ function workSecForItem(it: PrescriptionItem): number {
   return WORK_SEC_PER_SET;
 }
 
-function restSecForItem(kind: PrescriptionItemKind): number {
-  if (kind === "power_potentiation") return POWER_POTENTIATION_REST_SEC;
-  return restSecondsForKind(kind);
+function restSecForItem(item: PrescriptionItem): number {
+  if (item.kind === "power_potentiation") return POWER_POTENTIATION_REST_SEC;
+  return restSecondsForSet(item.kind, { restTimerEnabled: true, prescribedRestSeconds: item.meta?.restSeconds });
 }
 
 /**
@@ -144,7 +144,7 @@ function priceCircuitRounds(items: readonly PrescriptionItem[]): {
     const rounds = Math.min(...lanes.map((lane) => lane.length));
     for (let round = 0; round < rounds; round += 1) {
       const inRound = lanes.map((lane) => lane[round]!);
-      const rest = Math.max(...inRound.map((it) => restSecForItem(it.kind)));
+      const rest = Math.max(...inRound.map(restSecForItem));
       const work = inRound.reduce((sum, it) => sum + workSecForItem(it), 0);
       seconds += work + (size - 1) * SUPERSET_TRANSITION_SEC + rest;
       inRound.forEach((it) => consumed.add(it));
@@ -188,7 +188,7 @@ export function estimateSessionSeconds(
       continue;
     }
     const sets = Math.max(1, it.sets ?? 1);
-    sec += sets * (workSecForItem(it) + restSecForItem(it.kind));
+    sec += sets * (workSecForItem(it) + restSecForItem(it));
   }
   return sec;
 }

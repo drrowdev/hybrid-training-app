@@ -21,7 +21,7 @@ import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { isWellFormedScheme } from "@/lib/planner/warmups";
 import { programsWithOwnWarmupRamp, activeProgramWithOwnWarmupRamp } from "@/lib/planner/program-warmup-scheme";
-import { getActiveBlock } from "@/lib/planner/queries";
+import { getActiveBlocks } from "@/lib/planner/queries";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 
 const WARMUP_SCHEME_SCHEMA = z.object({
@@ -84,6 +84,12 @@ export async function updateWarmupScheme(formData: FormData): Promise<void> {
     throw new Error("Invalid warm-up settings. Check set count, percentages and reps.");
   }
 
+  const displaced = programsWithOwnWarmupRamp();
+  const activeBlocks = displaced.length > 0 ? await getActiveBlocks() : [];
+  const activeOwners = activeBlocks.flatMap((block) => {
+    const owner = activeProgramWithOwnWarmupRamp(block.programId);
+    return owner ? [{ blockId: block.id, programId: owner.id }] : [];
+  });
   const { error } = await supabase
     .from("profiles")
     .update({ warmup_scheme: scheme })
@@ -100,14 +106,11 @@ export async function updateWarmupScheme(formData: FormData): Promise<void> {
   // Best-effort by the same contract as every other recording path: a failed
   // audit never blocks the save, and the canonical record of the choice is the
   // `profiles.warmup_scheme` row itself.
-  const displaced = programsWithOwnWarmupRamp();
   if (displaced.length > 0) {
-    const activeBlock = await getActiveBlock().catch(() => null);
-    const activeOwner = activeProgramWithOwnWarmupRamp(activeBlock?.programId);
     await recordOverrideEvent(supabase, {
       userId: user.id,
       eventType: "custom",
-      ...(activeBlock?.id ? { blockId: activeBlock.id } : {}),
+      ...(activeOwners.length === 1 ? { blockId: activeOwners[0]!.blockId } : {}),
       context: {
         kind: "warmup_ladder_override",
         scheme,
@@ -115,7 +118,8 @@ export async function updateWarmupScheme(formData: FormData): Promise<void> {
         displacedPrograms: displaced.map((p) => p.id),
         // Null ⇒ nothing is being displaced yet; the ladder will apply to the
         // next program block that prescribes its own warm-up.
-        activeProgramDisplaced: activeOwner?.id ?? null,
+        activeProgramDisplaced: activeOwners.length === 1 ? activeOwners[0]!.programId : null,
+        activeProgramsDisplaced: activeOwners,
       },
     });
   }

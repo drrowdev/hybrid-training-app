@@ -78,6 +78,7 @@ async function createPlan(page: Page, pool: "25yd" | "50m") {
   await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption(pool);
   await page.getByLabel("Recent comfortable continuous lengths").fill("4");
   await page.getByLabel("Weeks", { exact: true }).fill("2");
+  await page.getByRole("button", { name: "Preview plan", exact: true }).click();
   await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
   await expect(page).toHaveURL(/\/app\/swim\?plan=[^&]+$/);
   await expect(page.getByRole("heading", { name: "Swims", exact: true })).toBeVisible();

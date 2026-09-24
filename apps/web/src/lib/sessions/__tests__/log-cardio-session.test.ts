@@ -28,6 +28,8 @@ const sessionUpdates: Array<{ id: string; patch: Record<string, unknown> }> = []
 let cardioBlockInsertError: { code: string; message: string } | null = null;
 let existingCardioClientId: string | null = null;
 let canonicalCardioRow = { duration_sec: 35 * 60, rpe: 8 };
+let linkedBlock: string | null = null;
+const program = vi.hoisted(() => ({ advance: vi.fn(), settle: vi.fn() }));
 // review-208 #2 — per-table count returned to the hybrid guard. Tests
 // override these to simulate unlogged strength work.
 const tableCounts: Record<string, number> = {
@@ -74,7 +76,7 @@ vi.mock("@/lib/supabase/server", () => ({
           return { data: row, error: null };
         }
         if (table === "planned_sessions") {
-          return { data: null, error: null };
+          return { data: linkedBlock ? { block_id: linkedBlock } : null, error: null };
         }
         if (table === "cardio_logs") {
           const clientLogId = state.eqs.find(([c]) => c === "client_log_id")?.[1];
@@ -182,8 +184,9 @@ vi.mock("../post-completion-recompute", () => ({
 }));
 
 vi.mock("@/lib/planner/completion", () => ({
-  maybeCompleteBlock: async () => undefined,
+  maybeCompleteBlock: program.settle,
 }));
+vi.mock("@/lib/platform/progression", () => ({ applyProgramProgression: program.advance }));
 
 vi.mock("@/lib/planner/queries", () => ({
   getUserTimezone: async () => "UTC",
@@ -201,6 +204,35 @@ describe("logCardioSession", () => {
     cardioBlockInsertError = null;
     existingCardioClientId = null;
     canonicalCardioRow = { duration_sec: 35 * 60, rpe: 8 };
+    linkedBlock = null;
+    program.advance.mockReset().mockResolvedValue(undefined);
+    program.settle.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("DC-R5 preserves a saved cardio result and retries its original program before settling", async () => {
+    const { logCardioSession } = await import("../actions");
+    linkedBlock = "original-program";
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      program.advance.mockRejectedValueOnce(new Error("Temporary failure"));
+      const fd = new FormData();
+      fd.set("sessionId", SESSION_ID);
+      fd.set("completed", "true");
+      fd.set("actualDurationMin", "35");
+      fd.set("modality", "running");
+      expect(await logCardioSession(fd)).toMatchObject({ errorCode: "transient", workoutSaved: true });
+      const completedAt = sessions[0]!.completed_at;
+      expect(completedAt).not.toBeNull();
+      expect(program.settle).not.toHaveBeenCalled();
+      expect(await logCardioSession(fd)).toEqual({ ok: true });
+      expect(sessions[0]!.completed_at).toBe(completedAt);
+      expect(program.advance).toHaveBeenCalledTimes(2);
+      expect(program.advance).toHaveBeenLastCalledWith(expect.objectContaining({
+        userId: USER_ID, sessionId: SESSION_ID, blockId: linkedBlock,
+      }));
+      expect(program.settle).toHaveBeenCalledTimes(1);
+      expect(program.advance.mock.invocationCallOrder[1]).toBeLessThan(program.settle.mock.invocationCallOrder[0]!);
+    } finally { errors.mockRestore(); }
   });
 
   it("writes a cardio_logs row and marks the session completed on the happy path", async () => {

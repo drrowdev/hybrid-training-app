@@ -3,34 +3,32 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadSwimStrengthContext } from "../strength-schedule";
 import { swimScheduleAdvice } from "@hta/domain";
 
-function client(block: object | null, rows: object[] = [], error: object | null = null) {
-  const query = {
-    select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), is: vi.fn().mockReturnThis(),
-    order: vi.fn().mockReturnThis(), limit: vi.fn().mockReturnThis(),
-    maybeSingle: vi.fn(async () => ({ data: block, error })),
-    range: vi.fn(async () => ({ data: rows, error })),
-  };
-  return { query, db: { from: vi.fn(() => query) } as unknown as SupabaseClient };
+function client(entries: object[], error: object | null = null) {
+  const rpc = vi.fn(async () => ({ data: { revision: "a".repeat(32), entries }, error }));
+  return { rpc, db: { rpc } as unknown as SupabaseClient };
 }
-describe("DC-K4/DC-SW7 active materialized strength calendar", () => {
-  it("converts Monday-based native and fixed/explicit foreign rows through dayDate", async () => {
-    const { db, query } = client({ id: "primary", started_on: "2026-09-09" }, [
-      { id: "native", week_index: 0, day_index: 0, role: "squat", prescription: { items: [{ kind: "main" }] } },
-      { id: "fixed", week_index: 1, day_index: 6, role: "strength", prescription: { items: [] } },
-      { id: "cardio", week_index: 0, day_index: 2, role: "cardio", prescription: { items: [{ kind: "cardio_z2" }] } },
+
+describe("DC-K4/DC-SW7 shared materialized training calendar", () => {
+  it("includes dated strength, cardio, rehab and one-off work, excludes swimming and keeps planned rest", async () => {
+    const { db, rpc } = client([
+      { id: "strength", source: "primary", programId: "p", date: "2026-09-07", title: "Strength", state: "scheduled" },
+      { id: "cardio", source: "primary", programId: "p", date: "2026-09-09", title: "Running", state: "scheduled" },
+      { id: "rehab", source: "primary", programId: "p", date: "2026-09-10", title: "Rehab", state: "scheduled" },
+      { id: "one-off", source: "session", programId: null, date: "2026-09-11", title: "Workout", state: "started" },
+      { id: "rest", source: "primary", programId: "p", date: "2026-09-12", title: "Planned rest", state: "rest" },
+      { id: "swim", source: "swim", programId: "s", date: "2026-09-13", title: "Swimming", state: "scheduled" },
     ]);
     const context = await loadSwimStrengthContext(db, "owner");
-    expect(context.sessions).toEqual([{ id: "native", date: "2026-09-07" }, { id: "fixed", date: "2026-09-20" }]);
-    expect(swimScheduleAdvice(context, "2026-09-07", 2, [0, 1]).conflicts.map((day) => day.label)).toEqual(["Monday", "Sunday"]);
-    expect(query.eq).toHaveBeenCalledWith("user_id", "owner");
-    expect(query.is).toHaveBeenCalledWith("deleted_at", null);
-    expect(query.is).toHaveBeenCalledWith("skipped_at", null);
+    expect(context.sessions.map(({ id }) => id)).toEqual(["strength", "cardio", "rehab", "one-off", "rest"]);
+    expect(context.revision).toBe("a".repeat(32));
+    expect(swimScheduleAdvice(context, "2026-09-07", 1, [1, 3, 4, 5, 6]).conflicts.map((day) => day.label))
+      .toEqual(["Monday", "Wednesday", "Thursday", "Friday"]);
+    expect(rpc).toHaveBeenCalledWith("training_schedule_snapshot");
   });
-  it("distinguishes blockless state from read failure", async () => {
-    expect(await loadSwimStrengthContext(client(null).db, "owner")).toEqual({ blockId: null, sessions: [] });
-    await expect(loadSwimStrengthContext(client(null, [], { code: "error" }).db, "owner")).rejects.toThrow("Could not check");
-    const { db, query } = client({ id: "p", started_on: "2026-09-07" });
-    query.range.mockResolvedValueOnce({ data: [], error: { code: "error" } });
-    await expect(loadSwimStrengthContext(db, "owner")).rejects.toThrow("Could not check");
+
+  it("distinguishes an empty calendar from a failed or malformed snapshot", async () => {
+    expect(await loadSwimStrengthContext(client([]).db, "owner")).toEqual({ blockId: null, revision: "a".repeat(32), sessions: [] });
+    await expect(loadSwimStrengthContext(client([], { code: "error" }).db, "owner")).rejects.toThrow("Could not load");
+    await expect(loadSwimStrengthContext(client([{ id: "invalid" }]).db, "owner")).rejects.toThrow("could not be read");
   });
 });

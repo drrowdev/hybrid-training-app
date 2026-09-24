@@ -2,7 +2,7 @@
  * Program progression — advance a platform program's instance after a session is
  * logged, and persist its program-owned recommendations.
  *
- * Called best-effort from `completeSessionResult`. For ARCHETYPE blocks (no
+ * Called before completion is acknowledged. For ARCHETYPE blocks (no
  * `program_instances` row) it is a no-op, so the legacy path is untouched. For a
  * platform block it:
  *   1. reads the engine instance + the completed session's engine `ref`
@@ -12,24 +12,24 @@
  *   3. calls `engine.onSessionLogged(instance, log, ctx)`,
  *   4. persists the (possibly advanced) instance back to `program_instances`, and
  *   5. inserts the returned recommendations into `program_recommendations`
- *      (dedup per block+kind) — EXCEPT plain `tm-bump`s, which the existing
- *      generic AMRAP→`tm_suggestions` banner already surfaces.
+ *      (dedup per block+kind). Legacy `tm-bump`s retain the generic
+ *      AMRAP→`tm_suggestions` banner; typed programs keep their own advice.
  *
- * User-scoped Supabase client only (RLS-enforced). Never throws — the caller
- * wraps it but this also self-guards so a progression hiccup never blocks a
- * session completion.
+ * User-scoped client only. The caller reports deferred failures; the atomic
+ * path refuses late completions and retries an instance changed by another log.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { LoggedSession, LoggedSet, ProgramRecommendation } from "@hta/program-core";
 import type { Prescription } from "@hta/db";
-import { getProgramEngine } from "./registry";
+import { getNativeProgramEngine, getProgramEngine } from "./registry";
 import { buildPlatformContext } from "./context";
 import { engineKeyForSlug } from "./movement-keys";
+import { isMissingScheduleFunction } from "@/lib/schedule/storage";
+import { loadBlockProgramKinds } from "@/lib/programs/ownership";
 
-type Db = Pick<SupabaseClient, "from">;
+type Db = Pick<SupabaseClient, "from" | "rpc">;
 
-// tm-bump duplicates the generic AMRAP→tm_suggestions banner; the rest are the
-// program-owned nudges that have no other home.
+// Legacy tm-bumps retain their existing account-level workflow.
 const SURFACED_KINDS = new Set<ProgramRecommendation["kind"]>([
   "tm-test",
   "tm-reset",
@@ -38,17 +38,26 @@ const SURFACED_KINDS = new Set<ProgramRecommendation["kind"]>([
   "info",
 ]);
 
-export async function applyProgramProgression(args: {
+type ProgressionArgs = {
   supabase: Db;
   userId: string;
   sessionId: string;
   blockId: string;
   performedAt?: string;
-}): Promise<void> {
+};
+
+export async function applyProgramProgression(args: ProgressionArgs): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (await applyProgressionAttempt(args) !== "stale") return;
+  }
+  throw new Error("Program progression changed during completion. Retry saving the workout.");
+}
+
+async function applyProgressionAttempt(args: ProgressionArgs): Promise<"stale" | void> {
   const { supabase, userId, sessionId, blockId, performedAt } = args;
 
   // Active program instance for this block? If not, it's an archetype block.
-  const { data: pi } = await supabase
+  const { data: pi, error: instanceError } = await supabase
     .from("program_instances")
     .select("id, program_id, instance")
     .eq("user_id", userId)
@@ -56,83 +65,110 @@ export async function applyProgramProgression(args: {
     .eq("status", "active")
     .is("deleted_at", null)
     .maybeSingle();
+  if (instanceError) throw new Error("Could not read program progression.", { cause: instanceError });
   if (!pi) return;
 
   const engine = getProgramEngine(pi.program_id as string);
-  if (!engine) return;
+  if (!engine && pi.program_id !== "authored" && !getNativeProgramEngine(pi.program_id)) {
+    if ((await loadBlockProgramKinds(supabase, userId, [blockId])).get(blockId) == null) return;
+    throw new Error("This program's progression is unavailable.");
+  }
 
   // The engine ref lives on the completed planned session's prescription.
-  const { data: planned } = await supabase
+  const { data: planned, error: plannedError } = await supabase
     .from("planned_sessions")
     .select("prescription")
     .eq("completed_session_id", sessionId)
+    .eq("user_id", userId)
+    .eq("block_id", blockId)
     .maybeSingle();
+  if (plannedError) throw new Error("Could not read the completed workout.", { cause: plannedError });
   const programRef = (planned?.prescription as Prescription | null)?.programRef;
-  if (!programRef) return;
+  if (!planned) throw new Error("The completed workout is no longer linked to this program.");
+  let nextInstance = pi.instance;
+  let recommendations: ProgramRecommendation[] = [];
 
-  // Rebuild the logged sets, mapping movement → engine key.
-  const { data: rawSets } = await supabase
-    .from("set_logs")
-    .select("weight_kg, reps, rpe, set_kind, notes, prescription_item_index, movement:movements(slug)")
-    .eq("session_id", sessionId)
-    .eq("skipped", false);
+  if (engine && programRef) {
+    const { data: rawSets, error: setsError } = await supabase
+      .from("set_logs")
+      .select("weight_kg, reps, rpe, set_kind, notes, prescription_item_index, movement:movements(slug)")
+      .eq("session_id", sessionId)
+      .eq("skipped", false);
+    if (setsError) throw new Error("Could not read the workout sets.", { cause: setsError });
 
-  const items = (planned?.prescription as Prescription | null)?.items ?? [];
-  const sets: LoggedSet[] = [];
-  for (const r of (rawSets ?? []) as unknown as RawSetRow[]) {
-    const slug = r.movement?.slug;
-    const key = slug ? engineKeyForSlug(slug) : undefined;
-    const weightKg = r.weight_kg == null ? 0 : Number(r.weight_kg);
-    const reps = r.reps == null ? 0 : Number(r.reps);
-    if (reps <= 0) continue;
-    const idx = r.prescription_item_index;
-    const isAmrap =
-      (typeof idx === "number" && items[idx]?.isAmrap === true) ||
-      /amrap/i.test(r.notes ?? "");
-    sets.push({
-      ...(key ? { movement: key } : {}),
-      weightKg,
-      reps,
-      ...(r.rpe == null ? {} : { rpe: Number(r.rpe) }),
-      ...(isAmrap ? { isAmrap: true } : {}),
-    });
+    const items = (planned.prescription as Prescription | null)?.items ?? [];
+    const sets: LoggedSet[] = [];
+    for (const r of (rawSets ?? []) as unknown as RawSetRow[]) {
+      const slug = r.movement?.slug;
+      const key = slug ? engineKeyForSlug(slug) : undefined;
+      const weightKg = r.weight_kg == null ? 0 : Number(r.weight_kg);
+      const reps = r.reps == null ? 0 : Number(r.reps);
+      if (reps <= 0) continue;
+      const idx = r.prescription_item_index;
+      const isAmrap =
+        (typeof idx === "number" && items[idx]?.isAmrap === true) ||
+        /amrap/i.test(r.notes ?? "");
+      sets.push({
+        ...(key ? { movement: key } : {}),
+        weightKg,
+        reps,
+        ...(r.rpe == null ? {} : { rpe: Number(r.rpe) }),
+        ...(isAmrap ? { isAmrap: true } : {}),
+      });
+    }
+
+    const { ctx } = await buildPlatformContext(supabase, userId);
+    const log: LoggedSession = {
+      ref: programRef,
+      performedAt: performedAt ?? new Date().toISOString(),
+      sets,
+    };
+    ({ instance: nextInstance, recommendations } = engine.onSessionLogged(pi.instance, log, ctx));
   }
-  if (sets.length === 0) return;
-
-  const { ctx } = await buildPlatformContext(supabase, userId);
-  const log: LoggedSession = {
-    ref: programRef,
-    performedAt: performedAt ?? new Date().toISOString(),
-    sets,
-  };
-
-  const { instance: nextInstance, recommendations } = engine.onSessionLogged(
-    pi.instance,
-    log,
-    ctx,
-  );
+  const typedBump = recommendations.some((r) => r.kind === "tm-bump") &&
+    (await loadBlockProgramKinds(supabase, userId, [blockId])).get(blockId) != null;
+  const toSurface = recommendations
+    .filter((r) => SURFACED_KINDS.has(r.kind) || (typedBump && r.kind === "tm-bump"))
+    .map((r, index) => typedBump && r.kind === "tm-bump" ? {
+      ...r, occurrenceKey: r.occurrenceKey ?? `${sessionId}:${r.data?.movement ?? index}`,
+    } : r);
+  const committed = await supabase.rpc("commit_program_progression", {
+    p_block_id: blockId, p_instance_id: pi.id, p_session_id: sessionId,
+    p_expected_instance: pi.instance, p_next_instance: nextInstance, p_recommendations: toSurface,
+  });
+  if (!isMissingScheduleFunction(committed.error, "commit_program_progression")) {
+    if (committed.error) throw new Error("Could not save program progression.", { cause: committed.error });
+    if (committed.data === "stale") return "stale";
+    if (!["applied", "replayed", "inactive"].includes(committed.data)) throw new Error("Program progression was not confirmed.");
+    return;
+  }
+  const block = await supabase.from("training_blocks").select("*").eq("id", blockId).eq("user_id", userId).maybeSingle();
+  if (block.error || !block.data || block.data.program_kind) throw new Error("Program progression is temporarily unavailable.");
+  if (block.data.status !== "active" || block.data.deleted_at) return;
 
   // Persist the advanced instance (no-op for stateless engines, but keeps the
   // contract honest for stateful ones).
-  await supabase
+  const updated = await supabase
     .from("program_instances")
     .update({ instance: nextInstance, updated_at: new Date().toISOString() })
     .eq("id", pi.id)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("status", "active").is("deleted_at", null);
+  if (updated.error) throw new Error("Could not save program progression.", { cause: updated.error });
 
-  const toSurface = recommendations.filter((r) => SURFACED_KINDS.has(r.kind));
   if (toSurface.length === 0) return;
 
   // Dedup by (kind, occurrence), not by kind: one `training_blocks` row holds
   // every engine block of an instance, so filtering on kind alone swallowed
   // block 2's "retest your maxes" behind block 1's. A pending row for the SAME
   // occurrence is still skipped, so re-completing a session doesn't stack nudges.
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("program_recommendations")
     .select("kind, occurrence_key")
     .eq("user_id", userId)
     .eq("block_id", blockId)
     .eq("status", "pending");
+  if (existingError) throw new Error("Could not read program recommendations.", { cause: existingError });
   const pending = new Set(
     (existing ?? []).map((e) => `${e.kind as string}\u0000${e.occurrence_key ?? ""}`),
   );

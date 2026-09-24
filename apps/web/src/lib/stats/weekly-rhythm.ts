@@ -21,6 +21,7 @@
  * `training-heatmap-data.ts`).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isPlannedRest } from "@hta/domain";
 import {
   addDaysToYmd,
   isoWeekdayYmd,
@@ -117,6 +118,8 @@ type SessionRow = { id: string; performed_at: string };
 type CardioFlagRow = { session_id: string };
 type SetFlagRow = { session_id: string };
 type PlannedRow = {
+  role: string | null;
+  prescription: unknown;
   week_index: number;
   day_index: number;
   training_blocks:
@@ -201,12 +204,13 @@ export async function getWeeklyRhythm(
   const { data: plannedRows, error: plannedErr } = await supabase
     .from("planned_sessions")
     .select(
-      "week_index, day_index, training_blocks!inner(started_on, deleted_at, user_id)",
+      "week_index, day_index, role, prescription, training_blocks!inner(started_on, deleted_at, user_id)",
     )
     .eq("training_blocks.user_id", userId)
     .is("training_blocks.deleted_at", null);
   if (plannedErr) throw new Error(plannedErr.message);
   const planned: RawPlannedSession[] = ((plannedRows ?? []) as PlannedRow[])
+    .filter((row) => !isPlannedRest(row))
     .map((r) => {
       const blk = Array.isArray(r.training_blocks)
         ? r.training_blocks[0]

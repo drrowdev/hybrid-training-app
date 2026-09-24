@@ -134,13 +134,12 @@ export function baseProps(overrides: Partial<StatsCommandCenterProps> = {}): Sta
   return {
     initialRange: "90d",
     byRange: { "30d": bucket(), "90d": bucket(), all: bucket() },
-    block: {
+    blocks: [{
       blockId: "blk-1",
       archetypeName: "Hybrid Base",
       weeks: 4,
       daysPerWeek: 4,
       currentWeek: 2,
-      currentDayInWeek: 3,
       totalScheduled: 16,
       scheduledToDate: 7,
       logged: 6,
@@ -148,15 +147,15 @@ export function baseProps(overrides: Partial<StatsCommandCenterProps> = {}): Sta
       planStrength: true,
       planCardio: true,
       usesAdaptiveEngine: true,
-    },
+      streak: {
+        currentStreakWeeks: 5,
+        weeklyTarget: 4,
+        thisWeekCompleted: 2,
+        thisWeekTarget: 4,
+        hasActiveBlock: true,
+      },
+    }],
     readiness: readiness(),
-    streak: {
-      currentStreakWeeks: 5,
-      weeklyTarget: 4,
-      thisWeekCompleted: 2,
-      thisWeekTarget: 4,
-      hasActiveBlock: true,
-    },
     rhythm: {
       weeks: [
         { weekStart: "2026-05-11", strengthCount: 2, cardioCount: 2, plannedCount: 4 },
@@ -238,6 +237,23 @@ describe("StatsCommandCenter - populated state", () => {
     expect(html).toContain("Hybrid Base");
   });
 
+  it("keeps all program progress and drill-down links distinct beside shared stats", () => {
+    const original = baseProps().blocks[0]!;
+    const programs = ["Strength", "Running", "Hybrid"].map((name, index) => ({
+      ...original, blockId: `program-${index}`, archetypeName: name, logged: index,
+      streak: { ...original.streak, thisWeekCompleted: index, weeklyTarget: index + 2, thisWeekTarget: index + 2 },
+    }));
+    const markup = renderToStaticMarkup(<StatsCommandCenter {...baseProps({ blocks: programs, hasSwimming: true })} />);
+    for (const program of programs) {
+      expect(markup).toContain(`data-block-id="${program.blockId}"`);
+      expect(markup).toContain(`href="/app/stats/blocks/${program.blockId}"`);
+      expect(markup).toContain(program.archetypeName);
+    }
+    expect(markup).toContain('href="/app/swim"');
+    expect(markup).toContain("124,000");
+    expect(markup.match(/data-testid="stats-tile-volume"/g)).toHaveLength(1);
+  });
+
   it("renders bodyweight from real data", () => {
     expect(html).toContain('data-testid="stats-card-bodyweight"');
     expect(html).toContain("82.5");
@@ -268,7 +284,7 @@ describe("StatsCommandCenter - cold-start state", () => {
       {...baseProps({
         initialRange: "30d",
         byRange: { "30d": coldBucket, "90d": coldBucket, all: coldBucket },
-        block: null,
+        blocks: [],
         readiness: readiness({
           verdict: "building",
           verdictLabel: "Building",
@@ -280,7 +296,6 @@ describe("StatsCommandCenter - cold-start state", () => {
             loadBalance: { bodyAcute: 0, bodyChronic: 0, ratio: null, band: "unknown", weeksOfData: 1 },
           },
         }),
-        streak: { currentStreakWeeks: 0, weeklyTarget: 3, thisWeekCompleted: 0, thisWeekTarget: 3, hasActiveBlock: false },
         bodyweight: { latest: null, delta30dKg: null, series: [] },
       })}
     />,
@@ -437,7 +452,7 @@ describe("EnduranceDrawer - pace trend + time-in-zone", () => {
 describe("ConsistencyDrawer - rhythm summary + adherence deep link", () => {
   const props = baseProps();
   const open = renderToStaticMarkup(
-    <ConsistencyDrawer open onClose={() => {}} rhythm={props.rhythm} streak={props.streak} />,
+    <ConsistencyDrawer open onClose={() => {}} rhythm={props.rhythm} blocks={props.blocks} />,
   );
 
   it("renders a week-by-week row per rhythm week", () => {
@@ -453,7 +468,7 @@ describe("ConsistencyDrawer - rhythm summary + adherence deep link", () => {
 
   it("renders nothing when closed", () => {
     const closed = renderToStaticMarkup(
-      <ConsistencyDrawer open={false} onClose={() => {}} rhythm={props.rhythm} streak={props.streak} />,
+      <ConsistencyDrawer open={false} onClose={() => {}} rhythm={props.rhythm} blocks={props.blocks} />,
     );
     expect(closed).toBe("");
   });

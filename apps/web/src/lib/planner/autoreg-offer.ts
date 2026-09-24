@@ -40,7 +40,7 @@ export type VolumeAutoregOffer = {
   preview: AutoregSessionPreview[];
 };
 
-export async function getVolumeAutoregOffer(): Promise<VolumeAutoregOffer | null> {
+export async function getVolumeAutoregOffer(blockId?: string): Promise<VolumeAutoregOffer | null> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -58,6 +58,8 @@ export async function getVolumeAutoregOffer(): Promise<VolumeAutoregOffer | null
     supabase,
     user.id,
     timezone,
+    new Date(),
+    blockId,
   );
   if (!active) return null;
 
@@ -65,20 +67,29 @@ export async function getVolumeAutoregOffer(): Promise<VolumeAutoregOffer | null
   // this offer fire by comparing the PRIOR block's last-7-days sets to the new
   // block's week-1 budget. Suppress until the active block owns some logged
   // work. Fetch its start date + count sessions performed on/after it.
-  const { data: blk } = await supabase
+  const { data: blk, error: blockError } = await supabase
     .from("training_blocks")
     .select("started_on")
+    .eq("user_id", user.id)
     .eq("id", active.blockId)
     .maybeSingle();
+  if (blockError) throw new Error("Could not read the selected program. Try again.");
   const startedOnYmd = (blk?.started_on as string | null) ?? null;
   let ownLoggedSessions = 0;
   if (startedOnYmd) {
-    const { count } = await supabase
+    const { data: links, error: linksError } = await supabase.from("planned_sessions")
+      .select("completed_session_id").eq("user_id", user.id).eq("block_id", active.blockId)
+      .not("completed_session_id", "is", null);
+    if (linksError) throw new Error("Could not read the program's workout history. Try again.");
+    const ids = (links ?? []).map((link) => link.completed_session_id as string);
+    const { count, error: sessionsError } = ids.length ? await supabase
       .from("sessions")
       .select("id", { count: "exact", head: true })
       .eq("user_id", user.id)
+      .in("id", ids)
       .is("deleted_at", null)
-      .gte("performed_at", `${startedOnYmd}T00:00:00`);
+      .gte("performed_at", `${startedOnYmd}T00:00:00`) : { count: 0, error: null };
+    if (sessionsError) throw new Error("Could not read the program's workout history. Try again.");
     ownLoggedSessions = count ?? 0;
   }
   if (

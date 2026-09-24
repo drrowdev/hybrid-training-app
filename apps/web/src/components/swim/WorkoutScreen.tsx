@@ -11,6 +11,7 @@ import { PoolEditor } from "./PoolEditor";
 import { CourseWorkoutEditor } from "./CourseWorkoutEditor";
 import { createRequestGate } from "@/lib/swim/hub-request";
 import { SWIM_REFRESH_WARNING } from "@/lib/swim/action-feedback";
+import { SWIM_TRAINING_LABEL } from "@/lib/swim/activity-presentation";
 import styles from "./Swim.module.css";
 
 export function WorkoutScreen({ workout: incomingWorkout }: { workout: SwimWorkoutView }) {
@@ -30,6 +31,7 @@ export function WorkoutScreen({ workout: incomingWorkout }: { workout: SwimWorko
       <section className={styles.section}>
         <div className={styles.actions}><p className={styles.distance}>{workout.total}</p><span className={styles.muted}>{workout.course}</span></div>
         <p className={styles.muted}>{workout.date}{workout.budgetMinutes !== null && ` · Up to ${workout.budgetMinutes} min`}{workout.provisional && !workout.sessionId ? " · Draft" : ""}</p>
+        {workout.trainingStatus && <p className={styles.status}>{SWIM_TRAINING_LABEL[workout.trainingStatus]}</p>}
         {workout.calibrationLabel && <p className={styles.muted}>{workout.calibrationLabel}</p>}
         {workout.poolEditing && <PoolEditor key={`${workout.id}:${workout.revision}:${workout.poolEditing.revision}`}
           context={workout.poolEditing} busy={pending || poolBusy || courseBusy} onApply={(preview) => {
@@ -48,7 +50,7 @@ export function WorkoutScreen({ workout: incomingWorkout }: { workout: SwimWorko
             }, setPoolBusy);
           }} />}
         {warning && <p role="status" className={styles.warning}>{warning}</p>}
-        {!workout.sessionId && workout.status === "scheduled" && workout.planStatus !== "active" && (
+        {!workout.trainingStatus && !workout.sessionId && workout.status === "scheduled" && workout.planStatus !== "active" && (
           <p role="status" className={styles.muted}>{({ paused: "Plan paused", finished: "Plan finished", archived: "Plan archived" })[workout.planStatus]}</p>
         )}
         {workout.deleted && <Link href="/app/settings/trash" className={styles.secondary}>Restore from Trash</Link>}
@@ -77,7 +79,8 @@ export function WorkoutScreen({ workout: incomingWorkout }: { workout: SwimWorko
         {workout.result.course && <p className={styles.muted}>{workout.result.course}</p>}
         {workout.result.notes && <p className={styles.muted}>{workout.result.notes}</p>}
       </section>}
-      {!workout.sessionId && workout.status === "scheduled" && workout.planStatus === "active" && <form method="post" onSubmit={(event) => {
+      {!workout.sessionId && workout.status === "scheduled" && workout.planStatus === "active" &&
+        (!workout.trainingStatus || workout.trainingStatus === "scheduled") && <form method="post" onSubmit={(event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
         setError(null);

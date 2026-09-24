@@ -3,7 +3,6 @@ import { isSystemLoadMovementSlug } from "@hta/domain";
 import {
   upsertTrainingMax,
   deleteTrainingMax,
-  moveTrainingMaxVariant,
   lockTrainingMaxAsEntered,
 } from "@/lib/training-maxes/actions";
 import { getTmSourceSet, getTrainingMaxContext, type TmSourceSet } from "@/lib/training-maxes/queries";
@@ -13,7 +12,7 @@ import {
   STRENGTH_ROLE_CANDIDATES,
   type StrengthRole,
 } from "@/lib/planner/archetypes";
-import { getActiveBlock } from "@/lib/planner/queries";
+import { getActiveBlocks } from "@/lib/planner/queries";
 import {
   hasLoadableMainLift,
   resolveEquipment,
@@ -46,12 +45,15 @@ export default async function TrainingMaxesPage() {
   const units: "metric" | "imperial" =
     profile?.units === "imperial" ? "imperial" : "metric";
 
-  const block = await getActiveBlock();
-  const archetype = block ? ARCHETYPES[block.archetype as keyof typeof ARCHETYPES] : undefined;
-  const requiredRoles: StrengthRole[] = archetype
+  const blocks = await getActiveBlocks();
+  const archetypes = blocks.flatMap((block) => {
+    const archetype = ARCHETYPES[block.archetype as keyof typeof ARCHETYPES];
+    return archetype ? [archetype] : [];
+  });
+  const requiredRoles: StrengthRole[] = archetypes.length
     ? Array.from(
         new Set(
-          archetype.days
+          archetypes.flatMap((archetype) => archetype.days)
             .filter((d) => d.kind === "strength")
             .map((d) => (d as { role: StrengthRole }).role),
         ),
@@ -68,23 +70,19 @@ export default async function TrainingMaxesPage() {
     .is("user_id", null);
   const candidateBySlug = new Map((candidateMovements ?? []).map((m) => [m.slug, m]));
 
-  const requiredGroups: RoleGroupInput[] = await Promise.all(
-    requiredRoles.map(async (role) => {
+  const requiredGroups: RoleGroupInput[] =
+    requiredRoles.map((role) => {
       const candidates = STRENGTH_ROLE_CANDIDATES[role]
         .map((slug) => candidateBySlug.get(slug))
         .filter((m): m is { id: string; slug: string; display_name: string; pattern: string } => !!m)
         .map((m) => ({ id: m.id, slug: m.slug, display_name: m.display_name }));
-      const setRow = ctx.rows.find((r) => STRENGTH_ROLE_CANDIDATES[role].includes(r.movementSlug));
-      const setRowSourceSet = setRow ? await getTmSourceSet(setRow) : null;
       return {
         role,
         label: STRENGTH_ROLE_LABELS[role],
         candidates,
-        setRow,
-        setRowSourceSet,
+        rows: ctx.rows.filter((r) => STRENGTH_ROLE_CANDIDATES[role].includes(r.movementSlug)),
       };
-    }),
-  );
+    });
 
   const requiredSlugSet = new Set(requiredGroups.flatMap((g) => g.candidates.map((c) => c.slug)));
   const otherRows = ctx.rows.filter((r) => !requiredSlugSet.has(r.movementSlug));
@@ -161,10 +159,8 @@ export default async function TrainingMaxesPage() {
         otherRows={otherRows}
         otherRowSourceSets={otherRowSourceSets}
         pickerGroups={pickerGroups}
-        hasActiveBlock={!!archetype}
         bodyweightKg={bodyweightKg}
         upsertAction={upsertTrainingMax}
-        moveAction={moveTrainingMaxVariant}
         deleteAction={deleteTrainingMax}
         lockAction={lockTrainingMaxAsEntered}
       />

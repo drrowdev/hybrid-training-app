@@ -328,21 +328,32 @@ describe("buildLoggedSetIdOverlay", () => {
 });
 
 describe("dropConfirmed", () => {
-  it("drops confirmed entries and keeps in-flight ones", () => {
+  it("drops observed confirmed entries and keeps in-flight ones", () => {
     const inFlight = { ...baseLog, clientKey: "a" };
     const confirmed = { ...baseLog, clientKey: "b", serverId: "real-b" };
-    const next = dropConfirmed([inFlight, confirmed]);
+    const next = dropConfirmed([inFlight, confirmed], [pendingLogToLoggedSet(confirmed, 0)]);
     expect(next).toEqual([inFlight]);
   });
 
-  it("models the delete-after-log edge: a confirmed-then-deleted set un-logs", () => {
-    // Log set at index 2 (confirmed). Server snapshot later EXCLUDES it (deleted
-    // via the edit page). dropConfirmed removes the overlay entry, so the merged
-    // view reflects the server (no longer logged) — not a stale "logged" slot.
+  it("DC-K4: retains an accepted write omitted by a stale server snapshot", () => {
     const confirmed = { ...baseLog, serverId: "real-x" };
-    const afterReconcile = dropConfirmed([confirmed]);
+    const afterReconcile = dropConfirmed([confirmed], []);
+    expect(afterReconcile).toEqual([confirmed]);
+    expect(mergeOptimisticSets([], afterReconcile)).toHaveLength(1);
+  });
+
+  it("models the delete-after-log edge before any server acknowledgment", () => {
+    const confirmed = { ...baseLog, serverId: "real-x" };
+    const afterReconcile = dropConfirmed([confirmed], [], new Set(["real-x"]));
     expect(afterReconcile).toHaveLength(0);
     const serverAfterDelete: LoggedSet[] = []; // server no longer has it
     expect(mergeOptimisticSets(serverAfterDelete, afterReconcile)).toHaveLength(0);
+  });
+
+  it("keeps a server-observed deletion authoritative after acknowledgment", () => {
+    const confirmed = { ...baseLog, serverId: "real-x" };
+    const afterAcknowledgment = dropConfirmed([confirmed], [pendingLogToLoggedSet(confirmed, 0)]);
+    expect(afterAcknowledgment).toEqual([]);
+    expect(mergeOptimisticSets([], dropConfirmed(afterAcknowledgment, []))).toEqual([]);
   });
 });

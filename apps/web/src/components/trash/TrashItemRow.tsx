@@ -25,6 +25,7 @@ import {
   permanentlyDeleteSession,
   restoreSession,
 } from "@/lib/sessions/actions";
+import { ScheduleRestoreButton } from "@/components/program/ScheduleRestoreButton";
 
 type Props = {
   kind: "block" | "session";
@@ -48,8 +49,7 @@ export function TrashItemRow({ kind, id, title, subtitle, confirmToken, deletedA
   const onRecover = () => {
     setError(null);
     startTransition(async () => {
-      const result =
-        kind === "block" ? await restoreBlock(id) : await restoreSession(id);
+      const result = await restoreSession(id);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -67,6 +67,7 @@ export function TrashItemRow({ kind, id, title, subtitle, confirmToken, deletedA
       data-id={id}
       style={{
         display: "flex",
+        flexWrap: "wrap",
         alignItems: "center",
         gap: 12,
         padding: "12px 14px",
@@ -84,8 +85,13 @@ export function TrashItemRow({ kind, id, title, subtitle, confirmToken, deletedA
           <div style={{ color: "var(--cp-danger, #d33)", fontSize: 12, marginTop: 4 }}>{error}</div>
         )}
       </div>
-      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-        <button
+      <div style={{ display: "flex", gap: 8, flexShrink: 0, flexWrap: "wrap", maxWidth: "100%" }}>
+        {kind === "block" ? <ScheduleRestoreButton key={id} kind="block" id={id} label="Recover" testId="recover-button"
+          onRestore={async (review) => {
+            const result = await restoreBlock(id, review);
+            if (!result.ok) throw new Error(result.error);
+            router.refresh();
+          }} /> : <button
           type="button"
           onClick={onRecover}
           disabled={pending}
@@ -102,7 +108,7 @@ export function TrashItemRow({ kind, id, title, subtitle, confirmToken, deletedA
           }}
         >
           {pending ? "…" : "Recover"}
-        </button>
+        </button>}
         <button
           type="button"
           onClick={() => setConfirming(true)}

@@ -10,6 +10,7 @@ import {
   boolean,
   check,
   date,
+  foreignKey,
   index,
   jsonb,
   numeric,
@@ -18,11 +19,12 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
-import type { EmbeddedRehabSection } from "@hta/domain";
+import type { AuthoredWorkout, BlockProgramKind, EmbeddedRehabSection } from "@hta/domain";
 import { sessions, sessionSlot } from "./sessions";
 
 export const trainingBlockStatus = pgEnum("training_block_status", [
@@ -44,6 +46,8 @@ export const trainingBlocks = pgTable("training_blocks", {
   programId: text("program_id"),
   /** Program family for platform blocks (e.g. "531"). NULL for archetype blocks. */
   programFamily: text("program_family"),
+  /** Fixed lifecycle slot. NULL preserves unclassified pre-0158 programs. */
+  programKind: text("program_kind").$type<BlockProgramKind>(),
   startedOn: date("started_on").notNull(),
   weeks: smallint("weeks").notNull(),
   status: trainingBlockStatus("status").default("active").notNull(),
@@ -162,6 +166,13 @@ export const trainingBlocks = pgTable("training_blocks", {
    */
   allowsTwoADays: boolean("allows_two_a_days"),
 }, (table) => [
+  unique("training_blocks_user_id_id_key").on(table.userId, table.id),
+  uniqueIndex("training_blocks_one_active_per_kind").on(table.userId, table.programKind)
+    .where(sql`${table.status} = 'active' AND ${table.deletedAt} IS NULL AND ${table.programKind} IS NOT NULL`),
+  uniqueIndex("training_blocks_one_active_legacy").on(table.userId)
+    .where(sql`${table.status} = 'active' AND ${table.deletedAt} IS NULL AND ${table.programKind} IS NULL`),
+  check("training_blocks_program_kind_check",
+    sql`${table.programKind} IS NULL OR ${table.programKind} IN ('strength', 'running', 'hybrid')`),
   check(
     "training_blocks_weeks_check",
     sql`${table.weeks} >= 1 AND ${table.weeks} <= 52`,
@@ -459,6 +470,16 @@ export type Prescription = {
    * every other session.
    */
   meta?: {
+    authoredWorkout?: AuthoredWorkout;
+    swimRehab?: {
+      version: 1;
+      planId: string;
+      workoutId: string;
+      scheduledDate: string;
+      protocolId: string;
+      protocolRevision: number;
+      protocolName?: string;
+    };
     /**
      * The user moved this workout to a different calendar slot. Forward plan
      * rewrites preserve it instead of restoring the program's original day.
@@ -561,6 +582,11 @@ export const plannedSessions = pgTable(
       t.slot,
     ),
     modalityIdx: index("planned_sessions_modality_idx").on(t.sessionModality),
+    ownedBlock: foreignKey({
+      name: "planned_sessions_block_id_fkey",
+      columns: [t.userId, t.blockId],
+      foreignColumns: [trainingBlocks.userId, trainingBlocks.id],
+    }).onDelete("cascade"),
     // Migration 0053 — backs `/app/sessions/[id]` (the page hits
     // `.eq('completed_session_id', id)` on every detail render) and
     // the deload flow which scans recent planned sessions joined back

@@ -229,12 +229,11 @@ describe("getUserTier — DC-G1..G6 inference", () => {
 });
 
 describe("getDecisionTrace — narration from live engine state", () => {
-  it("no active block → 'no block' headline + setup CTA", async () => {
+  it("has no decision trace without an active adaptive program", async () => {
     const supabase = makeStub({ training_blocks: [], region_state: [], planned_sessions: [] });
     const out = await getDecisionTrace(supabase, "u1", "UTC");
     expect(out.noBlock).toBe(true);
-    expect(out.headline).toMatch(/no active block/i);
-    expect(out.reasons[0]?.text).toMatch(/plan page/i);
+    expect(out.reasons).toEqual([]);
   });
 
   it("active block + planned session today → headline + cited reasons", async () => {
@@ -277,7 +276,11 @@ describe("getDecisionTrace — narration from live engine state", () => {
       },
     ];
     const supabase = makeStub({
-      training_blocks: [block],
+      training_blocks: [
+        { ...block, id: "newer-running", program_id: "authored", archetype: "custom", notes: "Running", started_on: "2099-01-01" },
+        block,
+        { ...block, id: "strength", program_id: "wendler-531", archetype: null, notes: "Strength" },
+      ],
       planned_sessions: [planned],
       region_state,
     });
@@ -298,7 +301,7 @@ describe("getDecisionTrace — narration from live engine state", () => {
     expect(intensityBullet?.text).toMatch(/TM/);
   });
 
-  it("active block + no planned session today → rest-day narration", async () => {
+  it("a program's empty day does not claim account-wide recovery", async () => {
     const today = new Date().toISOString().slice(0, 10);
     const block = {
       id: "b1",
@@ -317,7 +320,20 @@ describe("getDecisionTrace — narration from live engine state", () => {
     });
     const out = await getDecisionTrace(supabase, "u1", "UTC");
     expect(out.restDay).toBe(true);
-    expect(out.headline).toMatch(/rest day/i);
-    expect(out.reasons.some((r) => r.cite === "DC-E1")).toBe(true);
+    expect(out.headline).toContain("Strength Focus");
+    expect(out.reasons.some((r) => r.cite === "DC-E1")).toBe(false);
+  });
+
+  it("does not choose an arbitrary native program when ownership is inconsistent", async () => {
+    const block = { user_id: "u1", status: "active", deleted_at: null, program_id: "hybrid" };
+    await expect(getDecisionTrace(makeStub({ training_blocks: [{ ...block, id: "a" }, { ...block, id: "b" }] }), "u1", "UTC"))
+      .rejects.toThrow("reconciled");
+  });
+
+  it("does not attribute adaptive decisions to an authored program", async () => {
+    const out = await getDecisionTrace(makeStub({
+      training_blocks: [{ id: "authored", user_id: "u1", status: "active", deleted_at: null, program_id: "authored", archetype: "custom" }],
+    }), "u1", "UTC");
+    expect(out.noBlock).toBe(true);
   });
 });

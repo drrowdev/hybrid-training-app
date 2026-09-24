@@ -268,17 +268,18 @@ export function buildLoggedSetIdOverlay(
 }
 
 /**
- * Reconcile the overlay against a freshly-fetched server snapshot. Drops every
- * CONFIRMED entry: any server refresh re-queries set_logs, so its snapshot
- * already reflects every persisted write up to that point — the server becomes
- * authoritative for those rows (and a set deleted via the edit page is then
- * correctly absent, instead of lingering as a stale "logged" slot). In-flight
- * entries (no serverId yet) are kept until their own write resolves.
+ * A snapshot can have been captured before a confirmed write. Drop an overlay
+ * only when that snapshot contains its row, or a successful local deletion
+ * explicitly removes it. Once acknowledged, later snapshots own edits/deletion.
  */
 export function dropConfirmed(
   pending: ReadonlyArray<OptimisticLog>,
+  serverSets: ReadonlyArray<LoggedSet>,
+  deletedSetIds: ReadonlySet<string> = new Set(),
 ): OptimisticLog[] {
-  return pending.filter((log) => log.serverId == null);
+  return pending.filter((log) =>
+    !serverHasPendingLog(serverSets, log) &&
+    (log.serverId == null || !deletedSetIds.has(log.serverId)));
 }
 
 /**
@@ -292,6 +293,7 @@ export function serverHasPendingLog(
 ): boolean {
   return serverSets.some(
     (s) =>
+      (log.serverId != null && s.id === log.serverId) ||
       s.movement.id === log.movementId &&
       (s.client_log_id === log.clientKey ||
         (s.client_log_id == null && log.prescriptionItemIndex != null &&

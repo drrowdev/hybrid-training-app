@@ -32,6 +32,9 @@ import {
 } from "./swim-identity-roundtrip";
 import { runSwimBrowserStage } from "./swim-browser-stage";
 import { SWIM_BROWSER_CASES } from "./swim-browser-acceptance";
+import { isModularAcceptance, MODULAR_BROWSER_CASES, MODULAR_MIGRATION_TOTAL } from "./modular-browser-profile";
+import { createModularRoundTripProof, modularSchemaRoundTrip } from "./modular-schema-roundtrip";
+import { createLegacyUpgradeProof, createModularLegacyPreparation } from "./modular-legacy-fixture";
 import { runMovementReferenceRoundTrip } from "./swim-movement-reference-roundtrip";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -47,6 +50,7 @@ async function main(cleanupOnly: boolean) {
   // Fail before any filesystem/resource creation outside the reviewed manual job.
   const project = requireManualContext(process.env, process.env.GITHUB_SHA ?? "");
   requireManualContext(process.env, git("rev-parse", "HEAD"));
+  const modular = isModularAcceptance(process.env);
   const temp = realpathSync(process.env.RUNNER_TEMP!);
   assert(realpathSync(process.env.GITHUB_WORKSPACE!) === realpathSync(root));
   const directory = join(temp, `swim-acceptance-${project}`);
@@ -60,6 +64,7 @@ async function main(cleanupOnly: boolean) {
   const active = new Map<number, () => void>();
   const secrets = new Set<string>();
   const manifest: Record<string, unknown> = { testedSha: process.env.EXPECTED_SHA, project };
+  let legacyPreparation: ReturnType<typeof createModularLegacyPreparation> | undefined;
   let state: Resources = { project, sha: process.env.EXPECTED_SHA!, createdAt: started,
     containers: [], volumes: [], processes: [], cleanup: "unconfirmed" };
   const save = () => {
@@ -302,6 +307,7 @@ async function main(cleanupOnly: boolean) {
         "packages/tb-conditioning", "packages/ui", "packages/wendler",
         "apps/web/src", "apps/web/public", "apps/web/e2e-rpc/setup.ts", "apps/web/scripts",
         "apps/web/vitest.config.ts", ...SWIM_BROWSER_CASES.map(({ file }) => `apps/web/${file}`),
+        ...(modular ? MODULAR_BROWSER_CASES.map(({ file }) => `apps/web/${file}`) : []),
         "apps/web/e2e/fixtures",
         "apps/web/e2e/global-setup.ts", "apps/web/playwright.config.ts",
         "apps/web/playwright.swim-reference.config.ts", "apps/web/next.config.*",
@@ -310,11 +316,18 @@ async function main(cleanupOnly: boolean) {
         ".github/workflows/ci.yml").split("\0").filter(Boolean);
       sourceHashes = sources();
       const journal = JSON.parse(readFileSync(join(root, "packages/db/drizzle/meta/_journal.json"), "utf8"));
-      assert(journal.entries.length === ACTIVE_MIGRATION_TOTAL && sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === ACTIVE_MIGRATION_TOTAL);
+      if (modular) {
+        assert(journal.entries.length === MODULAR_MIGRATION_TOTAL &&
+          sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === MODULAR_MIGRATION_TOTAL);
+        manifest.migrationCount = MODULAR_MIGRATION_TOTAL;
+      } else {
+        assert(journal.entries.length === ACTIVE_MIGRATION_TOTAL && sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === ACTIVE_MIGRATION_TOTAL);
+        manifest.migrationCount = ACTIVE_MIGRATION_TOTAL;
+      }
       manifest.sourceSha256 = hash(JSON.stringify(sourceHashes));
       manifest.configSha256 = hash(readFileSync(RPC_CONFIG));
       manifest.rpcSourceSha256 = hash(readFileSync(RPC_SUITE));
-      manifest.migrationCount = ACTIVE_MIGRATION_TOTAL;
+      manifest.acceptanceProfile = modular ? "modular" : "swimming";
       writeFileSync(join(directory, "source-hashes.json"), JSON.stringify(sourceHashes), { mode: 0o600 });
       assert(process.version.startsWith("v22.") && process.platform === "linux" && process.arch === "x64");
       assert((await command("pnpm", ["--version"], { capture: true })).text === "10.33.2");
@@ -488,6 +501,25 @@ async function main(cleanupOnly: boolean) {
       manifest.catalog = { seedCount: SEED_MOVEMENTS.length, globalCount: slugs.length, slugsSha256: hash(text) };
       requireUnchanged();
     });
+    const modularProof = createModularRoundTripProof();
+    const ownershipProof = createModularRoundTripProof();
+    const modularDdl = (phase: "down" | "up", ownership = false) => modularSchemaRoundTrip({
+      phase, command, dbId: target.dbId, proof: ownership ? ownershipProof : modularProof, ownership,
+      verifiedSql: (file) => {
+        requireUnchanged();
+        const bytes = readFileSync(join(root, file));
+        assert(hash(bytes) === sourceHashes[file], "Tracked modular SQL changed");
+        const sql = bytes.toString("utf8");
+        assert(Buffer.from(sql, "utf8").equals(bytes), "Modular SQL is not exact UTF-8");
+        return sql;
+      },
+    });
+    if (modular) {
+      manifest.ownershipSchemaProof = ownershipProof;
+      await stage("unused ownership schema down before historical modular proof", () => modularDdl("down", true));
+      manifest.modularSchemaProof = modularProof;
+      await stage("unused modular schema down before historical identity proof", () => modularDdl("down"));
+    }
     const authPrivileges = await observeAuthPrivileges(command, target.dbId);
     manifest.authPrivileges = authPrivileges;
     const authBoundary = checkAuthBoundary(authPrivileges, 148);
@@ -544,6 +576,22 @@ async function main(cleanupOnly: boolean) {
       requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);
       requireIdentityHelperRpcCases(ledger);
     }), reporting);
+    if (modular) await stage("exact modular schema restoration", () => modularDdl("up"));
+    if (modular) {
+      const proof = createLegacyUpgradeProof();
+      manifest.legacyUpgradeProof = proof;
+      const legacy = createModularLegacyPreparation({
+        target: { url: target.rpcEnv.SMOKE_SUPABASE_URL, anonKey: target.rpcEnv.SMOKE_SUPABASE_ANON_KEY,
+          serviceRoleKey: target.rpcEnv.SMOKE_SUPABASE_SERVICE_ROLE_KEY, projectRef: target.rpcEnv.SWIM_TEST_PROJECT_REF },
+        runDirectory: directory, proof, secrets,
+      });
+      legacyPreparation = legacy;
+      await stage("exact ownership schema restoration and legacy preservation", async () => {
+        await legacy.prepare();
+        await modularDdl("up", true);
+        await legacy.verifyUpgrade();
+      });
+    }
     await stage("movement reference down-up and necessity proof", () => runMovementReferenceRoundTrip({
       command, dbId: target.dbId,
       verifiedSql: (file) => {
@@ -557,7 +605,7 @@ async function main(cleanupOnly: boolean) {
       publish: (record) => { manifest.movementReferences = record; },
     }));
     await stage("mobile browser acceptance", () => runSwimBrowserStage({
-      command, root, runDirectory: directory, deadline, cacheEnv: process.env,
+      command, root, runDirectory: directory, deadline, cacheEnv: process.env, modular,
       target: {
         url: target.rpcEnv.SMOKE_SUPABASE_URL,
         anonKey: target.rpcEnv.SMOKE_SUPABASE_ANON_KEY,
@@ -569,6 +617,13 @@ async function main(cleanupOnly: boolean) {
   } catch (error) {
     if (!reporting.failures.primary) reporting.recordFailure("acceptance", error);
   } finally {
+    if (legacyPreparation) {
+      try { await legacyPreparation.cleanup(); }
+      catch (error) {
+        reporting.recordFailure("legacy synthetic account cleanup", error, true);
+        if (!reporting.failures.primary) reporting.recordFailure("legacy synthetic account cleanup", error);
+      }
+    }
     if (!cleanupOnly && sourceFiles.length > 0) {
       try { requireUnchanged(); } catch (error) {
         reporting.recordFailure("source verification", error);

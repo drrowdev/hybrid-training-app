@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { findSwimWorkoutForSession } from "@/lib/swim/navigation";
+import { readSwimRehabOrigin } from "@/lib/swim/rehab-workouts";
 import { resolveEquipment } from "@/lib/settings/equipment-presets";
 import {
   addCardioBlock,
@@ -300,6 +301,7 @@ export default async function SessionDetailPage({
   const plannedPrescription =
     (planned?.prescription as Prescription | null) ??
     ((session as { prescription?: Prescription | null }).prescription ?? null);
+  const swimRehab = readSwimRehabOrigin(plannedPrescription);
 
   // ADR 0050 — HYROX structured sessions (run/erg/interval/circuit/compromised/
   // simulation) use a dedicated session-level completion form: confirm station
@@ -848,6 +850,13 @@ export default async function SessionDetailPage({
   const hasCardio = allCardioPrescriptionItems.length > 0 || hasQuickCardio;
   const hasStrengthPrescription = strengthItemCount > 0;
   const isPureCardio = hasCardio && !hasStrengthPrescription;
+  const isAuthoredSession = (plannedPrescription?.items ?? []).some((item) => typeof item.meta?.authoredPartId === "string");
+  const loggedCardioItemIndices = (cardio ?? []).filter((log) => log.block_index > 0).map((log) => log.block_index - 1);
+  if (isAuthoredSession) {
+    (plannedPrescription?.items ?? []).forEach((item, index) => {
+      if (item.kind.startsWith("cardio_") && !loggedCardioItemIndices.includes(index)) unloggedRequiredIndices.push(index);
+    });
+  }
   const isHybridSession = hasCardio && hasStrengthPrescription;
   const showCardioLogForm =
     (cardioPrescriptionItems.length > 0 || hasQuickCardio) &&
@@ -971,15 +980,17 @@ export default async function SessionDetailPage({
   return (
     <UnitsProvider units={userUnits}>
     <SessionLoggingStateProvider
-      key={sets.length}
+      key={id}
       initialHasStrengthSets={sets.length > 0}
+      initialLoggedStrengthClientIds={sets.flatMap((set) => set.client_log_id ? [set.client_log_id] : [])}
+      initialLoggedCardioItemIndices={isAuthoredSession ? loggedCardioItemIndices : []}
       initialUnloggedStrengthCount={unloggedStrengthCount}
       initialUnloggedRehabIndices={unloggedRehabIndices}
       initialUnloggedRequiredIndices={unloggedRequiredIndices}
     >
     <div style={{ display: "grid", gap: 18 }}>
       <header>
-        <BackLink href="/app" label="Today" />
+        <BackLink href={swimRehab ? `/app/swim/${swimRehab.workoutId}` : "/app"} label={swimRehab ? "Swimming workout" : "Today"} />
         {/* Single crumb row — e.g. "29 MAY · ENDURANCE · WK 1". Replaces
             the older 2-row header that duplicated the date as both a
             chip eyebrow and a stand-alone metadata strip. */}
@@ -1062,11 +1073,12 @@ export default async function SessionDetailPage({
                   padding: 4,
                 }}
               >
-                {!isComplete && !isPureCardio && !hyroxView && (
+                {!isComplete && (!isPureCardio || isAuthoredSession) && !hyroxView && (
                   <FinishSessionMenuSlot
                     sessionId={id}
-                    disabled={sets.length === 0}
+                    disabled={sets.length === 0 && !(isAuthoredSession && hasLoggedCardioRow)}
                     hybrid={hasCardio && hasStrengthPrescription}
+                    authored={isAuthoredSession}
                     testId="finish-stickybar"
                   />
                 )}
@@ -1438,6 +1450,8 @@ export default async function SessionDetailPage({
 
       {!hyroxView && !hyroxSummary && (
         <SessionWorkArea
+        authoredCardio={isAuthoredSession ? { units: userUnits, action: logCardioSession,
+          logs: (cardio ?? []).map((log) => ({ id: log.id, blockIndex: log.block_index, durationSec: log.duration_sec })) } : undefined}
         sessionId={id}
         isComplete={isComplete}
         performedAt={session.performed_at as string}
@@ -1490,6 +1504,7 @@ export default async function SessionDetailPage({
           plannedPrescription?.items
             ?.map((it, itemIndex) => ({ it, itemIndex }))
             .filter(({ it }) => it.kind.startsWith("cardio_")) ?? [];
+        if (isAuthoredSession && !isComplete) return null;
         const loggedMovementIds = new Set(
           (cardio ?? [])
             .map((c) => {
@@ -1717,7 +1732,7 @@ export default async function SessionDetailPage({
           prescription and no logged row until finish. Hybrid sessions
           still render it (you can add strength); quick/planned strength
           still render it (that IS the right empty state). */}
-      {!isComplete && !isPureCardio && (
+      {!isComplete && !isPureCardio && !swimRehab && (
         <AddToWorkout
           sessionId={id}
           cardioAction={addCardioBlock}
@@ -1732,7 +1747,7 @@ export default async function SessionDetailPage({
         />
       )}
 
-      {!isComplete && !isPureCardio && !hyroxView && (() => {
+      {!isComplete && (!isPureCardio || isAuthoredSession) && !hyroxView && (() => {
         // feat/logging-works — relaxed finish gate. The user can finish
         // the session as soon as ≥1 set has been logged; partial
         // sessions are explicitly allowed (call-outs flagged the strict
@@ -1743,7 +1758,7 @@ export default async function SessionDetailPage({
         // For pure-cardio sessions the cardio log form above owns the
         // "Finish workout →" CTA, so we skip the strength-flavoured
         // bottom bar entirely.
-        const canFinish = sets.length > 0;
+        const canFinish = sets.length > 0 || (isAuthoredSession && hasLoggedCardioRow);
         const partial = canFinish && unloggedStrengthCount > 0;
         // Hybrid = both cardio and strength prescribed. In that case
         // the disabled-state copy needs to clarify it's a strength
@@ -1762,6 +1777,7 @@ export default async function SessionDetailPage({
             disabled={!canFinish}
             subtitle={subtitle}
             hybrid={isHybrid}
+            authored={isAuthoredSession}
             testId="finish-stickybar"
           />
         );

@@ -104,6 +104,11 @@ on:
         required: false
         default: false
         type: boolean
+      update_modular_production:
+        description: Append only qualified 0156-0158 after the exact production app deploy (manual approval required)
+        required: false
+        default: false
+        type: boolean
       production_readonly_scope:
         description: Approved read-only production inspection scope
         required: false
@@ -113,6 +118,7 @@ on:
           - preflight
           - reconciliation
           - post_update
+          - modular_preflight
       update_swim_production:
         description: Append only the nine approved swimming migrations after the production app deploy
         required: false
@@ -125,8 +131,8 @@ on:
         type: boolean
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && inputs.update_swim_production && 'ci-swim-production-update' || (github.event_name == 'workflow_dispatch' && ((inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review || inputs.inspect_swim_review_deployment || inputs.provision_swim_review_owner) || inputs.refresh_swim_review || inputs.refresh_swim_plan_review || inputs.refresh_swim_readonly_review || inputs.upgrade_swim_review || inputs.update_untimed_swim_review || inputs.test_swim_account_flow || inputs.inspect_swim_production) && 'ci-swim-review-configuration' || (github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review) && 'ci-swim-review-bootstrap' || (github.event_name == 'workflow_dispatch' && inputs.swim_acceptance && format('ci-swim-{0}', github.ref) || format('ci-{0}', github.ref)))) }}
-  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.update_swim_production) && !(github.event_name == 'workflow_dispatch' && ((inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review || inputs.inspect_swim_review_deployment || inputs.provision_swim_review_owner) || inputs.refresh_swim_review || inputs.refresh_swim_plan_review || inputs.refresh_swim_readonly_review || inputs.upgrade_swim_review || inputs.update_untimed_swim_review || inputs.test_swim_account_flow || inputs.inspect_swim_production)) && !(github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review || inputs.swim_acceptance)) }}
+  group: ${{ github.event_name == 'workflow_dispatch' && inputs.update_modular_production && 'ci-modular-production-update' || github.event_name == 'workflow_dispatch' && inputs.update_swim_production && 'ci-swim-production-update' || (github.event_name == 'workflow_dispatch' && ((inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review || inputs.inspect_swim_review_deployment || inputs.provision_swim_review_owner) || inputs.refresh_swim_review || inputs.refresh_swim_plan_review || inputs.refresh_swim_readonly_review || inputs.upgrade_swim_review || inputs.update_untimed_swim_review || inputs.test_swim_account_flow || inputs.inspect_swim_production) && 'ci-swim-review-configuration' || (github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review) && 'ci-swim-review-bootstrap' || (github.event_name == 'workflow_dispatch' && inputs.swim_acceptance && format('ci-swim-{0}', github.ref) || format('ci-{0}', github.ref)))) }}
+  cancel-in-progress: ${{ !(github.event_name == 'workflow_dispatch' && inputs.update_modular_production) && !(github.event_name == 'workflow_dispatch' && inputs.update_swim_production) && !(github.event_name == 'workflow_dispatch' && ((inputs.configure_swim_review || inputs.inspect_swim_review_auth || inputs.deploy_swim_review || inputs.inspect_swim_review_deployment || inputs.provision_swim_review_owner) || inputs.refresh_swim_review || inputs.refresh_swim_plan_review || inputs.refresh_swim_readonly_review || inputs.upgrade_swim_review || inputs.update_untimed_swim_review || inputs.test_swim_account_flow || inputs.inspect_swim_production)) && !(github.event_name == 'workflow_dispatch' && (inputs.prepare_swim_review || inputs.inspect_swim_review || inputs.swim_acceptance)) }}
 
 jobs:
   identity-guard:
@@ -443,6 +449,7 @@ jobs:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
       ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
+      SXC_ACCEPTANCE_PROFILE: ${{ github.ref == 'refs/heads/drrowdev-modular-programs-implementation' && 'modular' || 'swimming' }}
     steps:
       - name: Validate reviewed manual context
         run: |
@@ -1349,6 +1356,121 @@ jobs:
           VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}
           SUPABASE_PROD_DB_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
         run: pnpm --filter @hta/db exec tsx scripts/update-swim-production.ts
+
+  update-modular-production:
+    name: apply qualified modular production migrations 0156-0158
+    needs: [ci, identity-guard]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'drrowdev/hybrid-training-app' &&
+      github.ref_type == 'branch' && github.ref == 'refs/heads/main' &&
+      inputs.update_modular_production == true &&
+      inputs.inspect_swim_production == false && inputs.review_upgrade_read_only == false &&
+      inputs.production_readonly_scope == 'preflight' &&
+      inputs.update_swim_production == false && inputs.accept_legacy_swim_history == false &&
+      inputs.test_swim_account_flow == false && inputs.update_untimed_swim_review == false &&
+      inputs.upgrade_swim_review == false && inputs.refresh_swim_readonly_review == false &&
+      inputs.refresh_swim_plan_review == false && inputs.refresh_swim_review == false &&
+      inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == false &&
+      inputs.provision_swim_review_owner == false && inputs.configure_swim_review == false &&
+      inputs.inspect_swim_review_auth == false && inputs.prepare_swim_review == false &&
+      inputs.inspect_swim_review == false && inputs.swim_acceptance == false &&
+      inputs.migrate_production == false && inputs.allow_undeployed == false &&
+      inputs.expected_sha != '' && inputs.expected_sha == github.sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: Production
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: production-database-migrations
+      cancel-in-progress: false
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install without production credentials
+        run: pnpm install --frozen-lockfile
+      - name: Check modular update guards
+        run: pnpm --filter @hta/db exec vitest run scripts/__tests__/modular-production-update.test.ts scripts/__tests__/modular-production-preflight.test.ts
+      - name: Typecheck modular update runner
+        run: pnpm --filter @hta/web exec tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --strict ../../packages/db/scripts/update-modular-production.ts
+      - name: Check exact merged source before credentials
+        run: pnpm --filter @hta/db exec tsx scripts/update-modular-production.ts --check-source
+      - name: Append only qualified migrations 0156 through 0158
+        timeout-minutes: 4
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}
+          SUPABASE_PROD_DB_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
+        run: pnpm --filter @hta/db exec tsx scripts/update-modular-production.ts
+
+  inspect-modular-production:
+    name: read-only modular release preflight
+    needs: [ci, identity-guard]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'drrowdev/hybrid-training-app' &&
+      github.ref_type == 'branch' &&
+      github.ref == 'refs/heads/drrowdev-modular-programs-implementation' &&
+      inputs.inspect_swim_production == true && inputs.review_upgrade_read_only == true &&
+      inputs.update_modular_production == false &&
+      inputs.production_readonly_scope == 'modular_preflight' &&
+      inputs.update_swim_production == false && inputs.accept_legacy_swim_history == false &&
+      inputs.test_swim_account_flow == false && inputs.update_untimed_swim_review == false &&
+      inputs.upgrade_swim_review == false && inputs.refresh_swim_readonly_review == false &&
+      inputs.refresh_swim_plan_review == false && inputs.refresh_swim_review == false &&
+      inputs.deploy_swim_review == false && inputs.inspect_swim_review_deployment == false &&
+      inputs.provision_swim_review_owner == false && inputs.configure_swim_review == false &&
+      inputs.inspect_swim_review_auth == false && inputs.prepare_swim_review == false &&
+      inputs.inspect_swim_review == false && inputs.swim_acceptance == false &&
+      inputs.migrate_production == false && inputs.allow_undeployed == false &&
+      inputs.expected_sha != '' && inputs.expected_sha == github.sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: Production
+    permissions:
+      contents: read
+    concurrency:
+      group: production-database-migrations
+      cancel-in-progress: false
+    env:
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.expected_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install without production credentials
+        run: pnpm install --frozen-lockfile
+      - name: Check preflight guards
+        run: pnpm --filter @hta/db exec vitest run scripts/__tests__/modular-production-preflight.test.ts scripts/__tests__/swim-production-readonly.test.ts
+      - name: Typecheck preflight runner
+        run: pnpm --filter @hta/web exec tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --strict ../../packages/db/scripts/modular-production-preflight.ts
+      - name: Check source before production credentials
+        run: pnpm --filter @hta/db exec tsx scripts/modular-production-preflight.ts --check-source
+      - name: Inspect modular production metadata and ownership counts without writes
+        timeout-minutes: 4
+        env:
+          VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}
+          SUPABASE_PROD_DB_URL: ${{ secrets.SUPABASE_PROD_DB_URL }}
+        run: pnpm --filter @hta/db exec tsx scripts/modular-production-preflight.ts
 
   inspect-swim-production:
     name: read-only swimming production check

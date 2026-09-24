@@ -14,11 +14,12 @@
  * real engines with no Supabase. The action is then a thin guarded DB wrapper.
  */
 import type { ProgramEngine, PlatformContext } from "@hta/program-core";
+import { applyProgramLoadBases, type ProgramLoadBasis } from "@hta/domain";
 import { materializeProgram, type MaterializedSession } from "./materialize";
 import type { MovementResolver, SkippedItem } from "./adapter";
 import type { AssistancePlanner } from "./assistance-resolver";
 import type { TbAccessoryInjector } from "./tb-accessories";
-import { computeTmAlignment } from "./tm-alignment";
+import { computeProgramLoadBases, computeTmAlignment } from "./tm-alignment";
 import type { TbCustomization } from "./tb-customization";
 import type { SessionLink } from "./session-links";
 import type { RehabSchedule } from "./rehab-schedule";
@@ -49,12 +50,14 @@ export interface BuildProgramInstanceArgs<I> {
   sessionLinks?: Readonly<Record<string, readonly SessionLink[]>>;
   /** Where a weekly Tactical Barbell block runs its rehab protocol. */
   rehabSchedule?: RehabSchedule;
+  programOwnedLoads?: boolean;
 }
 
 /** A `training_maxes.tm_percent` seed for one anchored movement. */
 export interface TmPercentSeed {
   movementId: string;
   tmPercent: number;
+  programLoadBasis?: ProgramLoadBasis;
 }
 
 export interface ProgramInstanceWrite {
@@ -93,6 +96,8 @@ export function buildProgramInstanceWrite<I>(
     ctx.oneRepMaxes,
     ctx.roundingKg,
   );
+  const ownedBases = args.programOwnedLoads
+    ? computeProgramLoadBases(engine.meta.family, instance, ctx.oneRepMaxes, ctx.roundingKg) : undefined;
   const alignmentValues = Object.values(alignment).filter((v): v is number => v != null);
   const loadsOffOneRm =
     alignmentValues.length === 0 || alignmentValues.every((v) => v === 100);
@@ -122,14 +127,19 @@ export function buildProgramInstanceWrite<I>(
     if (tmPercent == null) continue;
     const resolved = resolveMovement(engineKey);
     if (!resolved) continue; // user hasn't anchored this lift — nothing to seed
-    tmPercents.push({ movementId: resolved.movementId, tmPercent });
+    tmPercents.push({ movementId: resolved.movementId, tmPercent,
+      ...(ownedBases?.[engineKey] ? { programLoadBasis: ownedBases[engineKey] } : {}) });
   }
 
   return {
     weeks,
     daysPerWeek: weekdays.length,
     dayIndexOverrides: { days: [...weekdays], twoADay: false },
-    sessions,
+    sessions: args.programOwnedLoads ? sessions.map((session) => ({
+      ...session, prescription: { ...session.prescription,
+        items: applyProgramLoadBases(session.prescription.items, new Map(tmPercents.map((seed) => [seed.movementId, seed.programLoadBasis]))),
+      },
+    })) : sessions,
     tmPercents,
     skipped,
   };

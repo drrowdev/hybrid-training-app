@@ -7,6 +7,7 @@ import type {
 } from "@hta/program-core";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { PlannedSessionInsertRow } from "@/lib/planner/assemble-block-sessions";
+import type { TrainingMaxDraft } from "./context";
 
 export type NativeMaterializeResult =
   | {
@@ -36,5 +37,6 @@ export interface NativeProgramEngine<Instance = unknown> {
     userId: string,
     blockId: string,
     allowsTwoADays?: boolean,
+    trainingMaxDrafts?: TrainingMaxDraft[],
   ): Promise<NativeMaterializeResult>;
 }

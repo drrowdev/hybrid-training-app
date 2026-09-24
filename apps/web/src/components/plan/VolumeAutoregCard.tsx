@@ -20,7 +20,7 @@ export function VolumeAutoregCard({
   applyAction,
 }: {
   offer: VolumeAutoregOffer;
-  applyAction: () => Promise<AcceptAutoregResult>;
+  applyAction: (blockId?: string) => Promise<AcceptAutoregResult>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -34,7 +34,7 @@ export function VolumeAutoregCard({
   const apply = () => {
     setError(null);
     startTransition(async () => {
-      const res = await applyAction();
+      const res = await applyAction(offer.blockId);
       if (!res.ok) {
         setError(res.error);
         return;

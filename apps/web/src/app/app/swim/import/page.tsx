@@ -6,6 +6,7 @@ import { swimToday } from "@/lib/swim/queries";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { CourseImportForm } from "@/components/swim/CourseImportForm";
 import styles from "@/components/swim/Swim.module.css";
+import { loadAvailableTrainingSchedule } from "@/lib/schedule/storage";
 
 export default async function SwimImportPage() {
   const { data: { user } } = await getAuthUser();
@@ -13,9 +14,10 @@ export default async function SwimImportPage() {
   const client = await createClient();
   const capability = await getSwimCapability(client);
   const enabled = capability.storageAvailable && capability.setupEnabled && await privateSwimCourseAvailable(client);
+  const schedule = enabled ? await loadAvailableTrainingSchedule(client) : null;
   return <main className={styles.page}>
     <PageHeader title="Import swimming plan" back={{ href: "/app/swim/setup", label: "Swimming setup" }} />
-    {enabled ? <CourseImportForm today={(await swimToday(client, user.id)).today} />
+    {enabled && schedule ? <CourseImportForm today={(await swimToday(client, user.id)).today} schedule={schedule.entries} />
       : <p role="status">Plan imports are currently unavailable.</p>}
   </main>;
 }

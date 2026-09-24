@@ -6,7 +6,7 @@
  * orchestrates auth + DB I/O; this helper owns the in-memory shape.
  */
 import type { Prescription, PrescriptionItem } from "@hta/db";
-import { countDistinctRehabMovements, isRehabItem } from "@hta/domain";
+import { countDistinctRehabMovements, isRehabItem, readProgramLoadBasis, resolveLoadReference, type ProgramLoadBasis } from "@hta/domain";
 import {
   generateWarmupItems,
   resolveWarmupScheme,
@@ -62,7 +62,9 @@ function nextSwapLineage(
 function applySwapToItem(
   orig: PrescriptionItem,
   input: ApplySwapInput,
+  prescription: Prescription,
 ): PrescriptionItem {
+  const adjusted = swappedProgramLoad(orig, prescription, input.newMovement.id);
   const prevMeta = (orig.meta ?? {}) as Record<string, unknown>;
   const prevSwappedFrom = prevMeta.swappedFrom as SwappedFromMeta | undefined;
   const leaving: SwappedFromMeta = {
@@ -73,12 +75,12 @@ function applySwapToItem(
   // recorded — chaining swaps shouldn't lose that lineage.
   const swappedFrom: SwappedFromMeta = prevSwappedFrom ?? leaving;
   const next: PrescriptionItem = {
-    ...orig,
+    ...adjusted,
     movementId: input.newMovement.id,
     movementSlug: input.newMovement.slug,
     movementName: input.newMovement.displayName,
     meta: {
-      ...prevMeta,
+      ...adjusted.meta,
       swappedFrom,
       swapLineage: nextSwapLineage(prevMeta, leaving),
       swappedAt: input.swappedAt ?? new Date().toISOString(),
@@ -132,6 +134,8 @@ export const SWAP_NO_TRAINING_MAX_WARNING =
 export const SWAP_NO_WARMUP_ANCHOR_WARNING =
   "The replacement has no usable working-set %TM anchor. " +
   "Warm-up slots were retained with loads left blank; confirm the replacement load before lifting.";
+export const SWAP_PROGRAM_LOAD_REQUIRED_WARNING =
+  "Enter a load for the replacement movement before lifting.";
 /**
  * DC-K4 warning for a mid-workout swap into a movement that had no warm-up
  * slots to reuse. Adding slots would move every later prescription item, and
@@ -160,6 +164,56 @@ function matchesMovement(
     item.movementId === movementId &&
     (scope?.rehab == null || isRehabItem(item) === scope.rehab)
   );
+}
+
+function programBasisAfterSwap(
+  item: PrescriptionItem, prescription: Prescription, replacementId: string,
+): ProgramLoadBasis | null {
+  const original = readProgramLoadBasis(item.meta?.programLoadBasis);
+  if (!original || item.movementId === replacementId) return original;
+  const candidates = prescription.items
+    .filter((candidate) => candidate.movementId === replacementId && candidate.percentTm != null)
+    .map((candidate) => readProgramLoadBasis(candidate.meta?.programLoadBasis))
+    .filter((basis) => basis !== null);
+  if (candidates.length > 0 && new Set(candidates.map((basis) => JSON.stringify(basis))).size === 1) {
+    return candidates[0]!;
+  }
+  // A fixed max belongs to its lift; a program's percentage can use the replacement's measured max.
+  return original.kind === "one-rm" ? original : null;
+}
+
+function swappedProgramLoad(
+  item: PrescriptionItem, prescription: Prescription, replacementId: string,
+): PrescriptionItem {
+  if (!readProgramLoadBasis(item.meta?.programLoadBasis) || item.movementId === replacementId) return item;
+  const basis = programBasisAfterSwap(item, prescription, replacementId);
+  const next = { ...item, meta: { ...item.meta } };
+  if (basis) {
+    next.meta.programLoadBasis = basis;
+    if (next.percentTm != null && next.intensityLabel != null) {
+      next.intensityLabel = `${next.percentTm}% ${resolveLoadReference(next).basis}`;
+    }
+  }
+  else {
+    delete next.meta.programLoadBasis;
+    delete next.percentTm;
+    delete next.intensityLabel;
+  }
+  if (!keepsAbsoluteLoadAcrossSwap(item)) delete next.targetWeightKg;
+  return next;
+}
+
+export function getMovementSwapLoadContext(
+  prescription: Prescription, movementId: string, replacementId: string,
+  replacementHasTrainingMax: boolean, scope?: MovementMutationScope,
+): { requiresManualLoad: boolean; replacementHasTrainingMax: boolean } {
+  const items = prescription.items.filter((item) => matchesMovement(item, movementId, scope));
+  const requiresManualLoad = items.some((item) => item.percentTm != null &&
+    readProgramLoadBasis(item.meta?.programLoadBasis) != null && programBasisAfterSwap(item, prescription, replacementId) === null);
+  const anchor = getSwapWarmupAnchor(prescription, movementId, scope);
+  const anchored = items.find((item) => item.kind === "main" && item.percentTm === anchor.topWorkingPercent);
+  const basis = anchored ? programBasisAfterSwap(anchored, prescription, replacementId) : null;
+  return { requiresManualLoad, replacementHasTrainingMax: basis?.kind === "working-max" || replacementHasTrainingMax };
 }
 
 export type SwapWarmupAnchor = {
@@ -365,7 +419,7 @@ export function applyPrescriptionSwap(
     );
   }
   const orig = items[input.itemIndex]!;
-  items[input.itemIndex] = applySwapToItem(orig, input);
+  items[input.itemIndex] = applySwapToItem(orig, input, prescription);
   return { ...prescription, items, userEdited: true };
 }
 
@@ -477,7 +531,13 @@ function buildWarmupSlots(
   // anchor. Keep the configured slots and reps, but never invent a percentage
   // or load; the caller's DC-K4 warning makes the blank load explicit.
   return generated.map((item) => {
-    if (topWorkingPercent != null) return { ...item, meta: { ...meta } };
+    if (topWorkingPercent != null) {
+      const slot = { ...item, meta: { ...meta } };
+      if (readProgramLoadBasis(meta.programLoadBasis)) {
+        slot.intensityLabel = `${slot.percentTm}% ${resolveLoadReference(slot).basis}`;
+      }
+      return slot;
+    }
     const slot = { ...item };
     delete slot.percentTm;
     delete slot.intensityLabel;
@@ -501,8 +561,11 @@ function rewriteWarmupSlot(
     movementSlug: generated.movementSlug,
     movementName: generated.movementName,
     reps: generated.reps,
-    meta: { ...((slot.meta ?? {}) as Record<string, unknown>), ...meta },
+    meta: { ...slot.meta, ...generated.meta, ...meta },
   };
+  delete next.meta!.programLoadBasis;
+  const basis = readProgramLoadBasis(generated.meta?.programLoadBasis);
+  if (basis) next.meta!.programLoadBasis = basis;
   delete next.targetWeightKg;
   // "This percentage counts bodyweight" is a property of the old movement.
   delete next.systemLoad;
@@ -556,7 +619,9 @@ export function swapMovementInPrescription(
   const stamp = swappedAt ?? new Date().toISOString();
   const preserveItemIndices = rebuild.preserveItemIndices === true;
 
-  const replacementHasTrainingMax = rebuild.replacementHasTrainingMax === true;
+  const { replacementHasTrainingMax } = getMovementSwapLoadContext(
+    prescription, fromMovementId, newMovement.id, rebuild.replacementHasTrainingMax === true, scope,
+  );
   const matched = priorItems
     .map((item, index) => ({ item, index }))
     .filter(({ item }) => matchesMovement(item, fromMovementId, scope));
@@ -612,13 +677,14 @@ export function swapMovementInPrescription(
   // barbell row. The replacement's own status is read from the catalog.
   const retarget = (item: PrescriptionItem): PrescriptionItem => {
     const prevMeta = (item.meta ?? {}) as Record<string, unknown>;
+    const adjusted = swappedProgramLoad(item, prescription, newMovement.id);
     const nextItem: PrescriptionItem = {
-      ...item,
+      ...adjusted,
       movementId: newMovement.id,
       movementSlug: newMovement.slug,
       movementName: newMovement.displayName,
       meta: {
-        ...prevMeta,
+        ...adjusted.meta,
         ...lineage,
         swapLineage: nextSwapLineage(prevMeta, leavingMovement),
       },
@@ -643,16 +709,20 @@ export function swapMovementInPrescription(
       ? warmupScheme.setCount
       : oldWarmupSlots.length;
   // Blank slots unless the replacement has BOTH a TM and a working-set anchor.
+  const mainAnchor = coreMatched.find(({ item }) => item.kind === "main" && item.percentTm === topWorkingPercent);
+  const adjustedAnchor = mainAnchor ? retarget(mainAnchor.item) : null;
   const warmupAnchorPercent =
-    replacementHasTrainingMax && topWorkingPercent != null
-      ? topWorkingPercent
+    replacementHasTrainingMax && adjustedAnchor?.percentTm != null
+      ? adjustedAnchor.percentTm
       : undefined;
+  const warmupBasis = readProgramLoadBasis(adjustedAnchor?.meta?.programLoadBasis);
   const generatedWarmups = buildWarmupSlots(
     newMovement,
     warmupScheme,
     warmupSlotCount,
     warmupAnchorPercent,
-    lineage,
+    { ...lineage, ...(adjustedAnchor?.meta?.swapLineage ? { swapLineage: adjustedAnchor.meta.swapLineage } : {}),
+      ...(warmupBasis ? { programLoadBasis: warmupBasis } : {}) },
   );
 
   if (preserveItemIndices) {
@@ -665,7 +735,9 @@ export function swapMovementInPrescription(
       oldWarmupSlots.forEach(({ item, index }, position) => {
         rewrittenByIndex.set(
           index,
-          rewriteWarmupSlot(item, generatedWarmups[position]!, lineage),
+          rewriteWarmupSlot(item, generatedWarmups[position]!, {
+            ...lineage, swapLineage: nextSwapLineage(item.meta ?? {}, leavingMovement),
+          }),
         );
       });
     }

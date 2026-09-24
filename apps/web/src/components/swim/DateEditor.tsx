@@ -9,19 +9,20 @@ export function DateEditor({ plan, workout, busy, onApply }: {
   plan: SwimHubView;
   workout: SwimHubView["workouts"][number];
   busy: boolean;
-  onApply: (preview: SwimDateEditPreview) => void;
+  onApply: (preview: SwimDateEditPreview, acceptOverlap: boolean) => void;
 }) {
   const [preview, setPreview] = useState<SwimDateEditPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const request = useRef(0);
+  const [acceptOverlap, setAcceptOverlap] = useState(false);
   const range = workout.reschedule;
   if (!range || plan.status !== "active") return null;
   return (
     <details className={styles.dateEditor}>
       <summary>Move swim</summary>
       <form className={styles.form} method="post"
-        onChange={() => { request.current++; setPreview(null); setError(null); }}
+        onChange={() => { request.current++; setPreview(null); setAcceptOverlap(false); setError(null); }}
         onSubmit={(event) => {
           event.preventDefault();
           const form = new FormData(event.currentTarget);
@@ -53,7 +54,10 @@ export function DateEditor({ plan, workout, busy, onApply }: {
       {preview && <div className={styles.form}>
         <p>{preview.previousDate} → {preview.date}</p>
         {preview.warnings.map((warning) => <p key={warning} role="status" className={styles.warning}>{warning}</p>)}
-        <button type="button" className={styles.button} disabled={busy || pending} onClick={() => onApply(preview)}>Save date</button>
+        {!!preview.overlaps?.length && <label className={styles.choice}><input type="checkbox" checked={acceptOverlap}
+          onChange={(event) => setAcceptOverlap(event.target.checked)} disabled={busy || pending} />Keep both workouts on this date</label>}
+        <button type="button" className={styles.button} disabled={busy || pending || (!!preview.overlaps?.length && !acceptOverlap)}
+          onClick={() => onApply(preview, acceptOverlap)}>Save date</button>
       </div>}
     </details>
   );

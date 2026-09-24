@@ -49,7 +49,7 @@ const requiredGroups: RoleGroupInput[] = [
         display_name: "Seated Barbell Overhead Press",
       },
     ],
-    setRow,
+    rows: [setRow],
   },
 ];
 
@@ -64,9 +64,7 @@ describe("1-rep maxes — mobile layout", () => {
         requiredGroups={requiredGroups}
         otherRows={[]}
         pickerGroups={[]}
-        hasActiveBlock={false}
         upsertAction={noop}
-        moveAction={noop}
         deleteAction={async () => {}}
         lockAction={noop}
       />,

@@ -8,7 +8,7 @@ import { z } from "zod";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { type WeightUnit, toKg } from "@/lib/stats/units";
 import { recomputeRegionState } from "@/lib/engine/region-ledger";
-import { maybeCompleteBlock } from "@/lib/planner/completion";
+import { reconcileCompletedProgram, PROGRAM_PROGRESS_RETRY_MESSAGE } from "@/lib/platform/completion";
 import { expandPrescriptionSetItems } from "@/lib/planner/expand-prescription-sets";
 import { getUserTimezone, dayDate } from "@/lib/planner/queries";
 import { roundToPlate } from "@/lib/planner/archetypes";
@@ -45,7 +45,7 @@ import { DEFAULT_ROUNDING_KG } from "@/lib/platform/rounding";
 import { loggedSetKindForItemKind } from "./set-kind";
 import { recomputeAfterCompletedSessionMutation } from "./post-completion-recompute";
 import { resolveBarWeightKg } from "./bar-kind";
-import { applyPrescriptionSwap } from "./prescription-mutations";
+import { applyPrescriptionSwap, SWAP_PROGRAM_LOAD_REQUIRED_WARNING } from "./prescription-mutations";
 import { recordOverrideEvent } from "@/lib/engine/overrides";
 import { isMissingRpc } from "@/lib/supabase/rpc-errors";
 import {
@@ -187,6 +187,7 @@ export type AddStrengthSetResult = {
 async function resolveSetSnapshot(
   supabase: Awaited<ReturnType<typeof createClient>>,
   args: {
+    userId: string;
     sessionId: string;
     movementId: string;
     prescriptionItemIndex: number | null;
@@ -210,12 +211,20 @@ async function resolveSetSnapshot(
   if (idx == null) return empty;
 
   try {
-    const { data: planned } = await supabase
+    const { data: planned, error: plannedError } = await supabase
       .from("planned_sessions")
       .select("prescription")
       .eq("completed_session_id", args.sessionId)
+      .eq("user_id", args.userId)
       .maybeSingle();
-    const items = (planned?.prescription as Prescription | null)?.items ?? [];
+    if (plannedError) throw new Error("Could not read the planned prescription.");
+    let prescription = planned?.prescription as Prescription | null;
+    if (!prescription) {
+      const session = await supabase.from("sessions").select("prescription").eq("id", args.sessionId).eq("user_id", args.userId).maybeSingle();
+      if (session.error) throw new Error("Could not read the issued workout.");
+      prescription = session.data?.prescription as Prescription | null;
+    }
+    const items = prescription?.items ?? [];
     let item = items[idx];
     if (!item) return empty;
 
@@ -229,6 +238,7 @@ async function resolveSetSnapshot(
     // to be reinterpreted — without the bodyweight the server would expect the
     // uncorrected number and reject the corrected one the logger showed.
     let tmKg: number | null = null;
+    let oneRmKg: number | null = null;
     let bodyweightKg: number | null = null;
     let isSystemLoad = item.systemLoad === true;
     // A warm-up's kg is rounded against the lifter's bar and plates, not to a
@@ -264,6 +274,7 @@ async function resolveSetSnapshot(
       } | null;
       const oneRm = Number(tmRow?.one_rm_kg);
       if (Number.isFinite(oneRm) && oneRm > 0) {
+        oneRmKg = oneRm;
         const pct = Number(
           tmRow?.tm_percent ?? profileRes.data?.tm_percent_default ?? 90,
         );
@@ -309,6 +320,7 @@ async function resolveSetSnapshot(
 
     const expected = resolvePrescribedSnapshot(item, {
       tmKg,
+      oneRmKg,
       basis: item.intensityLabel?.includes("1RM") ? "1RM" : "TM",
       ...(isSystemLoad ? { isSystemLoad: true } : {}),
       bodyweightKg,
@@ -325,8 +337,9 @@ async function resolveSetSnapshot(
       prescribed: expected.prescribed,
       isBodyweight: item.bw != null,
     };
-  } catch {
+  } catch (error) {
     // Snapshot resolution is best-effort — never block the log.
+    console.error("Prescribed snapshot resolution failed", error);
     return empty;
   }
 }
@@ -392,6 +405,7 @@ export async function addStrengthSet(
   //
   // Wrapped so any failure here can NEVER block logging the actual set.
   const snapshot = await resolveSetSnapshot(supabase, {
+    userId: user.id,
     sessionId: parsed.data.sessionId,
     movementId: parsed.data.movementId,
     prescriptionItemIndex: parsed.data.prescriptionItemIndex ?? null,
@@ -915,6 +929,7 @@ export async function markExternalCardioComplete(
  * `packages/db/src/schema/cardio-logs.ts`. No migration needed.
  */
 const logCardioSessionSchema = z.object({
+  prescriptionItemIndex: z.coerce.number().int().min(0).max(500).optional(),
   sessionId: z.string().uuid(),
   // FormData string → boolean. `z.coerce.boolean()` would treat the
   // string "false" as truthy (`Boolean("false") === true`), so we
@@ -927,7 +942,7 @@ const logCardioSessionSchema = z.object({
       const s = v.trim().toLowerCase();
       return !(s === "false" || s === "0" || s === "no" || s === "");
     }),
-  actualDurationMin: z.coerce.number().int().min(1).max(600),
+  actualDurationMin: z.coerce.number().min(1 / 60).max(600),
   avgRpe: z.coerce.number().min(0).max(10).optional().nullable(),
   notes: z.string().trim().max(400).optional().nullable(),
   avgHrBpm: z.coerce.number().int().min(30).max(240).optional().nullable(),
@@ -941,12 +956,17 @@ const logCardioSessionSchema = z.object({
   movementId: z.string().uuid().optional().nullable(),
   modality: z.string().trim().min(1).max(40).default("other"),
   clientLogId: z.string().uuid().optional().nullable(),
-}).strict();
+}).strict().superRefine((input, ctx) => {
+  if (input.prescriptionItemIndex === undefined && !Number.isInteger(input.actualDurationMin)) {
+    ctx.addIssue({ code: "custom", path: ["actualDurationMin"], message: "Enter a whole number of minutes." });
+  }
+});
 
 export async function logCardioSession(
   formData: FormData,
-): Promise<{ ok?: true; error?: string; errorCode?: ActionErrorCode }> {
+): Promise<{ ok?: true; error?: string; errorCode?: ActionErrorCode; workoutSaved?: true }> {
   const parsed = logCardioSessionSchema.safeParse({
+    prescriptionItemIndex: formData.get("prescriptionItemIndex") ?? undefined,
     sessionId: formData.get("sessionId"),
     completed: formData.get("completed") ?? "true",
     actualDurationMin: formData.get("actualDurationMin"),
@@ -975,7 +995,7 @@ export async function logCardioSession(
   // surfacing a clean error message is friendlier than a generic 401.
   const { data: session, error: sErr } = await supabase
     .from("sessions")
-    .select("id, user_id, completed_at")
+    .select("id, user_id, completed_at, prescription")
     .eq("id", parsed.data.sessionId)
     .is("deleted_at", null)
     .maybeSingle();
@@ -983,6 +1003,22 @@ export async function logCardioSession(
   if (!session) return { error: "Session not found.", errorCode: "not_found" };
   if (session.user_id !== user.id) {
     return { error: "Not your session.", errorCode: "forbidden" };
+  }
+  const partIndex = parsed.data.prescriptionItemIndex;
+  if (partIndex !== undefined) {
+    let prescription = session.prescription as Prescription | null;
+    if (!prescription) {
+      const linked = await supabase.from("planned_sessions").select("prescription")
+        .eq("completed_session_id", parsed.data.sessionId).eq("user_id", user.id).maybeSingle();
+      if (linked.error) return { error: "Could not read this workout. Try again.", errorCode: "transient" };
+      prescription = linked.data?.prescription as Prescription | null;
+    }
+    const item = prescription?.items?.[partIndex];
+    if (!item?.kind.startsWith("cardio_") || typeof item.meta?.authoredPartId !== "string" ||
+        item.movementId !== parsed.data.movementId || item.meta.modality !== parsed.data.modality) {
+      return { error: "This cardio part changed. Reload the workout.", errorCode: "validation" };
+    }
+    if (session.completed_at) return { error: "Edit the saved result to correct a completed workout.", errorCode: "validation" };
   }
 
   // review-208 #2 + review-211 #2 — for hybrid sessions, logging the
@@ -1018,9 +1054,9 @@ export async function logCardioSession(
       {
         session_id: parsed.data.sessionId,
         movement_id: parsed.data.movementId ?? null,
-        block_index: 0,
+        block_index: partIndex === undefined ? 0 : partIndex + 1,
         modality: parsed.data.modality,
-        duration_sec: parsed.data.actualDurationMin * 60,
+        duration_sec: Math.round(parsed.data.actualDurationMin * 60),
         distance_km: parsed.data.distanceKm ?? null,
         avg_hr_bpm: parsed.data.avgHrBpm ?? null,
         rpe: parsed.data.avgRpe ?? null,
@@ -1042,7 +1078,7 @@ export async function logCardioSession(
   // cardio completed AND (b) there's no unlogged strength work that
   // would otherwise be silently dropped. Hybrid sessions with strength
   // pending stay in_progress — the strength finish bar takes over.
-  if (parsed.data.completed && !hasUnloggedStrength) {
+  if (partIndex === undefined && parsed.data.completed && !hasUnloggedStrength) {
     const wasAlreadyCompleted = session.completed_at != null;
     const canonicalDurationMin = Math.max(
       1,
@@ -1074,18 +1110,12 @@ export async function logCardioSession(
       } catch (e) {
         console.error("post-completion recompute (cardio) failed:", e);
       }
-      try {
-        const { data: linked } = await supabase
-          .from("planned_sessions")
-          .select("block_id")
-          .eq("completed_session_id", parsed.data.sessionId)
-          .maybeSingle();
-        if (linked?.block_id) {
-          await maybeCompleteBlock(supabase, linked.block_id as string);
-        }
-      } catch (e) {
-        console.error("maybeCompleteBlock (cardio) failed:", e);
-      }
+    }
+    try {
+      await reconcileCompletedProgram(supabase, user.id, parsed.data.sessionId);
+    } catch (e) {
+      console.error("program completion (cardio) failed:", e);
+      return { error: PROGRAM_PROGRESS_RETRY_MESSAGE, errorCode: "transient", workoutSaved: true };
     }
   }
 
@@ -1577,15 +1607,15 @@ export async function completeSession(formData: FormData): Promise<void> {
  * Redirect-free core of session completion, shared by the form action
  * (`completeSession`, which redirects to the summary) and the offline outbox
  * flusher (which replays it in the background on reconnect and must NOT
- * navigate). Returns a plain result; all the heavy recompute / side-effects are
- * best-effort and never block the completed_at stamp. Replays return success
- * without changing completion state or replaying once-only side effects.
+ * navigate). Completion is saved first. Required program reconciliation can
+ * return a retryable result; heavy account recompute remains deferred. Replays
+ * preserve completion state and do not repeat once-only side effects.
  */
 export async function completeSessionResult(
   sessionId: string,
   notes: string | null,
   completionEntryId: string | null = null,
-): Promise<{ ok?: true; error?: string; errorCode?: ActionErrorCode }> {
+): Promise<{ ok?: true; error?: string; errorCode?: ActionErrorCode; workoutSaved?: true }> {
   const idCheck = z.string().uuid().safeParse(sessionId);
   if (!idCheck.success) {
     return { error: "Invalid session id", errorCode: "validation" };
@@ -1669,26 +1699,6 @@ export async function completeSessionResult(
         console.error("post-completion recompute (completion) failed:", e);
       }),
       (async () => {
-        const { data: linked } = await supabase
-          .from("planned_sessions")
-          .select("block_id")
-          .eq("completed_session_id", sessionId)
-          .maybeSingle();
-        if (!linked?.block_id) return;
-        await maybeCompleteBlock(supabase, linked.block_id as string);
-        const { applyProgramProgression } = await import(
-          "@/lib/platform/progression"
-        );
-        await applyProgramProgression({
-          supabase,
-          userId,
-          sessionId,
-          blockId: linked.block_id as string,
-        });
-      })().catch((e) => {
-        console.error("block completion/progression failed:", e);
-      }),
-      (async () => {
         const { generateTmSuggestionsForSession } = await import(
           "@/lib/training-maxes/actions"
         );
@@ -1724,6 +1734,13 @@ export async function completeSessionResult(
     revalidatePath("/app");
     revalidatePath("/app/stats");
   });
+
+  try {
+    await reconcileCompletedProgram(supabase, userId, sessionId);
+  } catch (e) {
+    console.error("program completion failed:", e);
+    return { error: PROGRAM_PROGRESS_RETRY_MESSAGE, errorCode: "transient", workoutSaved: true };
+  }
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
@@ -1968,6 +1985,7 @@ export async function fillSessionFromPlan(
   const defaultPct = Number(profileRes.data?.tm_percent_default ?? 90);
   const equipment = resolveEquipment(profileRes.data);
   const tmByMovementId = new Map<string, number>();
+  const oneRmByMovementId = new Map<string, number>();
   for (const row of (tmsRes.data ?? []) as Array<{
     movement_id: string;
     one_rm_kg: number | string | null;
@@ -1975,6 +1993,7 @@ export async function fillSessionFromPlan(
   }>) {
     const oneRm = Number(row.one_rm_kg);
     if (!Number.isFinite(oneRm) || oneRm <= 0) continue;
+    oneRmByMovementId.set(row.movement_id, oneRm);
     const pct = row.tm_percent == null ? defaultPct : Number(row.tm_percent);
     const tm = roundToPlate((oneRm * pct) / 100);
     if (Number.isFinite(tm) && tm > 0) tmByMovementId.set(row.movement_id, tm);
@@ -2053,6 +2072,7 @@ export async function fillSessionFromPlan(
       item.kind === "warmup" ? roundWarmupLoadKg(kg, warmupLoadOptions) : roundToPlate(kg);
     const weight = resolveTargetLoadKg(item, {
       tmKg: tm ?? null,
+      oneRmKg: oneRmByMovementId.get(item.movementId) ?? null,
       ...(systemLoad ? { isSystemLoad: true } : {}),
       bodyweightKg,
       roundKg,
@@ -2065,6 +2085,7 @@ export async function fillSessionFromPlan(
     // through the shared resolver (plan §6.9) so it matches the live logger.
     const snapshot = resolvePrescribedSnapshot(item, {
       tmKg: tm ?? null,
+      oneRmKg: oneRmByMovementId.get(item.movementId) ?? null,
       basis: item.intensityLabel?.includes("1RM") ? "1RM" : "TM",
       ...(systemLoad ? { isSystemLoad: true } : {}),
       bodyweightKg,
@@ -2317,7 +2338,7 @@ const swapItemSchema = z.object({
  */
 export async function swapPrescriptionItem(
   formData: FormData,
-): Promise<{ ok?: true; error?: string; prescription?: Prescription }> {
+): Promise<{ ok?: true; error?: string; prescription?: Prescription; warning?: string }> {
   const parsed = swapItemSchema.safeParse({
     plannedSessionId: formData.get("plannedSessionId"),
     itemIndex: formData.get("itemIndex"),
@@ -2373,6 +2394,8 @@ export async function swapPrescriptionItem(
   } catch (e) {
     return { error: (e as Error).message };
   }
+  const warning = originalItem?.percentTm != null && originalItem.meta?.programLoadBasis != null &&
+    nextPrescription.items[parsed.data.itemIndex]?.percentTm == null ? SWAP_PROGRAM_LOAD_REQUIRED_WARNING : undefined;
 
   const { error: uErr } = await supabase
     .from("planned_sessions")
@@ -2412,6 +2435,7 @@ export async function swapPrescriptionItem(
       weekIndex,
       dayIndex,
       weekday,
+      ...(warning ? { loadWarning: warning } : {}),
     },
   });
 
@@ -2426,7 +2450,7 @@ export async function swapPrescriptionItem(
     revalidatePath(`/app/sessions/${linked.completed_session_id}`);
   }
 
-  return { ok: true, prescription: nextPrescription };
+  return { ok: true, prescription: nextPrescription, ...(warning ? { warning } : {}) };
 }
 
 /* ─────────────────────────────────────────────────────────────────────

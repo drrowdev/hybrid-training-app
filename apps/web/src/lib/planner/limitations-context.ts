@@ -45,6 +45,9 @@
  * activates existing accessory-picker / power-emphasis logic.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { highStrainPowerBlocked } from "@hta/domain";
+import { loadsBlockedMuscle, loadsBlockedRegion, type CatalogMovement } from "./accessory-picker";
+import { POWER_FUNCTIONAL_ROLES } from "./accessory-roles";
 
 export type LimitationsContext = {
   blockedRegions: Set<string>;
@@ -108,6 +111,17 @@ export function deriveLimitationsContext(
     allowedMovementIds,
     tendinopathyActive,
   };
+}
+
+export function assertCatalogMovementAllowed(movement: CatalogMovement, limits: LimitationsContext): void {
+  if (loadsBlockedRegion(movement, limits.blockedRegions) ||
+      loadsBlockedMuscle(movement, limits.blockedMuscles, limits.allowedMovementIds) ||
+      highStrainPowerBlocked({ highStrainTendon: movement.highStrainTendon,
+        power: movement.functionalRoles.some((role) => POWER_FUNCTIONAL_ROLES.some((powerRole) => powerRole === role)),
+        tendinopathyActive: limits.tendinopathyActive }) ||
+      (limits.blockedMovementIds.has(movement.id) && !limits.allowedMovementIds.has(movement.id))) {
+    throw new Error(`${movement.displayName} is blocked by an active limitation. Choose another exercise.`);
+  }
 }
 
 export async function readLimitationsContext(

@@ -12,7 +12,7 @@
  */
 import { describe, it, expect } from "vitest";
 import type { PrescriptionItem } from "@hta/db";
-import { applyPrescriptionSwap } from "../prescription-mutations";
+import { applyPrescriptionSwap, swapMovementInPrescription } from "../prescription-mutations";
 import {
   itemAcceptsMovementId,
   movementIdsForItem,
@@ -49,6 +49,20 @@ function swapOnce(
 }
 
 describe("[DC-K4] chained swap keeps the intermediate movement attributable", () => {
+  it("retains the intermediate movement at a logged warm-up index during whole-movement swaps", () => {
+    const main = { ...mainItem(), meta: { programLoadBasis: { version: 1, kind: "one-rm", percent: 90, roundingKg: 2.5 } } };
+    const prescription = { items: [{ ...main, kind: "warmup" as const, percentTm: 40 }, main] };
+    const options = { warmupScheme: { setCount: 3, percentLadder: [40, 60, 80], repLadder: [5, 5, 3] },
+      replacementHasTrainingMax: true, preserveItemIndices: true };
+    const first = swapMovementInPrescription(prescription, DEADLIFT.id, HIP_THRUST, undefined, undefined, options);
+    const second = swapMovementInPrescription(first, HIP_THRUST.id, RDL, undefined, undefined, options);
+    expect(second.items).toHaveLength(2);
+    expect(second.items[0]?.kind).toBe("warmup");
+    expect(itemAcceptsMovementId(second.items[0]!, HIP_THRUST.id)).toBe(true);
+    expect(itemAcceptsMovementId(second.items[0]!, DEADLIFT.id)).toBe(true);
+    expect(itemAcceptsMovementId(second.items[0]!, RDL.id)).toBe(true);
+  });
+
   it("accepts sets logged against A, B and C after A -> B -> C", () => {
     const afterFirst = swapOnce([mainItem()], HIP_THRUST);
     const afterSecond = swapOnce(afterFirst, RDL);

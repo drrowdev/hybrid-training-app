@@ -25,6 +25,12 @@ import {
   requireNoEnvFiles, requirePrivateBrowserPaths, sealSwimBrowserReport, SWIM_BROWSER_CASES, validateSwimBrowserReport, waitForBrowserReady,
   type BrowserPaths,
 } from "../../../../scripts/swim-browser-acceptance";
+import { MODULAR_BROWSER_CASES, type BrowserCase } from "../../../../scripts/modular-browser-profile";
+import {
+  MODULAR_STAGE_CODES, projectModularObservation, readModularAnnotations, readModularFailurePhase,
+  classifyHistoryDeleteFailure, readHistoryDeleteFailure,
+  nativeUiFailureSchema, readNativeUiFailure, unavailableNativeUi,
+} from "../../../../scripts/modular-browser-observations";
 import { acceptanceAssert, processFailure, safeFailureCause } from "../../../../scripts/swim-acceptance-errors";
 import * as reporting from "../../../../scripts/swim-acceptance-reporting";
 import {
@@ -77,14 +83,14 @@ function prepareReport(location: BrowserPaths) {
 }
 
 // Matches the pinned JSONReport types and JSONReporter file-suite serialization.
-function report(location = paths) {
+function report(location = paths, cases: readonly BrowserCase[] = SWIM_BROWSER_CASES) {
   const posix = (path: string) => path.split(sep).join("/");
-  const suites = [...new Set(SWIM_BROWSER_CASES.map(({ file }) => file))].map((file) => ({
+  const suites = [...new Set(cases.map(({ file }) => file))].map((file) => ({
     title: basename(file), file: basename(file), line: 0, column: 0, specs: [],
     suites: [{
-      title: String(SWIM_BROWSER_CASES.find((item) => item.file === file)!.describe),
+      title: String(cases.find((item) => item.file === file)!.describe),
       file: basename(file), line: 1, column: 1,
-      specs: SWIM_BROWSER_CASES.filter((item) => item.file === file).map((item, index): JSONReportSpec => ({
+      specs: cases.filter((item) => item.file === file).map((item, index): JSONReportSpec => ({
         title: item.title, file: basename(file), line: index + 2, column: 1, id: `${file}-${index}`,
         ok: true, tags: [], tests: [{
           timeout: 30_000, annotations: [], expectedStatus: "passed",
@@ -105,12 +111,507 @@ function report(location = paths) {
       projects: [{
         id: "mobile-chromium", name: "mobile-chromium", testDir: posix(join(webRoot, "e2e")),
         outputDir: posix(location.outputDir), repeatEach: 1, retries: 0, timeout: 30_000, metadata: {},
-        testMatch: [...new Set(SWIM_BROWSER_CASES.map(({ file }) => posix(join(webRoot, file))))], testIgnore: [],
+        testMatch: [...new Set(cases.map(({ file }) => posix(join(webRoot, file))))], testIgnore: [],
       }] satisfies JSONReport["config"]["projects"],
     },
-    suites, errors: [], stats: { expected: SWIM_BROWSER_CASES.length, unexpected: 0, flaky: 0, skipped: 0 },
+    suites, errors: [], stats: { expected: cases.length, unexpected: 0, flaky: 0, skipped: 0 },
   };
 }
+
+describe("DC-SW8 modular acceptance report membership", () => {
+  it("projects only current-case failure checkpoints and bounded synthetic indices", () => {
+    const fixture = report(paths, MODULAR_BROWSER_CASES);
+    for (const index of [2, 3]) {
+      const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
+      test.results[0]!.status = "timedOut";
+      test.results[0]!.annotations = [
+        { type: "modular-stage", description: index === 2 ? "m3-08" : "m4-12" },
+        { type: "modular-set-indices", description: "[1,3,2,4]" },
+        { type: "private-type", description: "private-value" },
+      ];
+    }
+    let caught: unknown;
+    try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
+    catch (error) { caught = error; }
+    const result = projectBrowserFailure(caught);
+    expect(result.success).toBe(false);
+    expect(result.cases?.[2]?.modularObservation).toEqual({ stage: "m3-08", loggedIndices: [1, 3, 2, 4] });
+    expect(result.cases?.[3]?.modularObservation).toEqual({ stage: "m4-12", loggedIndices: "unavailable" });
+    expect(result.cases?.[0]).not.toHaveProperty("modularObservation");
+    expect(JSON.stringify(result)).not.toContain("private-");
+    fixture.suites[0]!.suites[0]!.specs.forEach((spec) => { spec.tests[0]!.results[0]!.status = "passed"; });
+    expect(JSON.stringify(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES)))
+      .not.toContain("modularObservation");
+  });
+
+  it("accepts the closed checkpoint codebook only for its own case", () => {
+    const indices: Record<string, number> = { m3: 2, m4: 3, m8: 7, m12: 11, m13: 12 };
+    for (const [kind, codes] of Object.entries(MODULAR_STAGE_CODES)) {
+      for (const code of codes) {
+        const observation = readModularAnnotations([{ type: "modular-stage", description: code }]);
+        expect(projectModularObservation(indices[kind]!, observation).stage).toBe(code);
+        for (const index of Array.from({ length: 18 }, (_, index) => index).filter((index) => index !== indices[kind])) {
+          expect(projectModularObservation(index, observation)).toEqual({
+            stage: "unavailable", loggedIndices: "unavailable",
+          });
+        }
+      }
+    }
+  });
+
+  it("retains timeout checkpoints without callers and distinguishes test from teardown without exposing errors", () => {
+    const fixture = report(paths, MODULAR_BROWSER_CASES);
+    for (const [index, stage, phase] of [[7, "m8-04", "test"], [11, "m12-05", "test-and-teardown"], [12, "m13-03", "teardown"]] as const) {
+      const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
+      test.status = "unexpected";
+      test.results[0]!.status = "timedOut";
+      test.results[0]!.annotations = [
+        { type: "modular-stage", description: stage }, { type: "modular-failure-phase", description: phase },
+      ];
+    }
+    fixture.stats = { expected: 15, unexpected: 3, flaky: 0, skipped: 0 };
+    let caught: unknown;
+    try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
+    catch (error) { caught = error; }
+    const projected = projectBrowserFailure(caught);
+    expect(projected.code).toBe("browser-failed");
+    for (const [index, stage, phase] of [[7, "m8-04", "test"], [11, "m12-05", "test-and-teardown"], [12, "m13-03", "teardown"]] as const) {
+      expect(projected.cases?.[index]).toMatchObject({
+        failurePhase: phase, failureDetails: { callers: "unavailable" },
+        modularObservation: { stage, loggedIndices: "unavailable" },
+      });
+    }
+    expect(projected.cases?.[0]).not.toHaveProperty("failurePhase");
+    const valid = { type: "modular-failure-phase", description: "test" };
+    for (const input of [null, [valid, valid], Array(129).fill(valid),
+      [{ ...valid, description: "private-value" }], [{ ...valid, description: ["test"] }]]) {
+      expect(readModularFailurePhase(input)).toBe("unavailable");
+    }
+  });
+
+  it("projects only M11's failed deletion category and never the underlying error", () => {
+    const samples = [
+      ["Your schedule changed. Review the dates again.", "stale"],
+      ["Review and accept the overlapping workouts before saving.", "overlap"],
+      ["Program lifecycle must match its plan.", "lifecycle"],
+      ["A typed program needs exactly one matching active instance.", "lifecycle"],
+      ["permission denied for table private-name", "permission"],
+      ['new row violates row-level security policy for table "private-name"', "permission"],
+      ["Not signed in.", "permission"], ["private-value", "unknown"], ["", "unavailable"],
+    ] as const;
+    for (const [text, classification] of samples) {
+      expect(classifyHistoryDeleteFailure(text)).toBe(classification);
+      const fixture = report(paths, MODULAR_BROWSER_CASES);
+      for (const index of [0, 10]) {
+        const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
+        test.status = "unexpected"; test.results[0]!.status = "failed";
+        test.results[0]!.annotations = [{ type: "history-delete-failure", description: classification }];
+      }
+      fixture.stats = { expected: 16, unexpected: 2, flaky: 0, skipped: 0 };
+      let caught: unknown;
+      try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
+      catch (error) { caught = error; }
+      const projected = projectBrowserFailure(caught);
+      expect(projected.cases?.[10]?.historyDeleteFailure).toBe(classification);
+      expect(projected.cases?.[0]).not.toHaveProperty("historyDeleteFailure");
+      expect(JSON.stringify(projected)).not.toContain("private-");
+      fixture.suites[0]!.suites[0]!.specs.forEach((spec) => {
+        spec.tests[0]!.status = "expected"; spec.tests[0]!.results[0]!.status = "passed";
+      });
+      fixture.stats = { expected: 18, unexpected: 0, flaky: 0, skipped: 0 };
+      expect(JSON.stringify(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES)))
+        .not.toMatch(/historyDeleteFailure|failurePhase/);
+    }
+    const valid = { type: "history-delete-failure", description: "stale" };
+    for (const value of [null, {}, [valid, valid], Array(129).fill(valid), [{ ...valid, description: "private-value" }]]) {
+      expect(readHistoryDeleteFailure(value)).toBe("unavailable");
+    }
+  });
+
+  it("projects exact failure-only native UI snapshots onto their own cases", () => {
+    const samples = [
+      { case: "m8", page: "plan", control: "more", request: "not-observed", record: "active" },
+      { case: "m11", control: "menu-closed", request: "http-success", record: "deleted" },
+      { case: "m13", control: "pending", request: "pending", record: "present" },
+    ] as const;
+    const indices = [7, 10, 12];
+    const fixture = report(paths, MODULAR_BROWSER_CASES);
+    for (const [position, sample] of samples.entries()) {
+      const index = indices[position]!;
+      const annotation = { type: "native-ui-failure", description: JSON.stringify(sample) };
+      expect(readNativeUiFailure([annotation], index)).toEqual(sample);
+      expect(readNativeUiFailure([annotation], 0)).toBeUndefined();
+      const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
+      test.status = "unexpected"; test.results[0]!.status = "failed";
+      test.results[0]!.annotations = [annotation];
+      for (const value of [null, {}, [annotation, annotation], Array(129).fill(annotation),
+        [{ ...annotation, description: "private-value" }],
+        [{ ...annotation, description: "x".repeat(513) }],
+        [{ ...annotation, description: JSON.stringify({ ...sample, control: "private-value" }) }],
+        [{ ...annotation, description: JSON.stringify({ ...sample, extra: "private-value" }) }],
+        [{ ...annotation, description: JSON.stringify(samples[(position + 1) % samples.length]) }]]) {
+        const projected = readNativeUiFailure(value, index);
+        expect(projected).toEqual(unavailableNativeUi(sample.case));
+        expect(nativeUiFailureSchema.safeParse(projected).success).toBe(true);
+        expect(JSON.stringify(projected)).not.toContain("private-value");
+      }
+    }
+    fixture.stats = { expected: 15, unexpected: 3, flaky: 0, skipped: 0 };
+    let caught: unknown;
+    try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
+    catch (error) { caught = error; }
+    const projected = projectBrowserFailure(caught);
+    for (const [position, sample] of samples.entries()) {
+      expect(projected.cases?.[indices[position]!]?.nativeUiFailure).toEqual(sample);
+    }
+    expect(projected.cases?.[0]).not.toHaveProperty("nativeUiFailure");
+    for (const index of indices) {
+      const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
+      test.status = "expected"; test.results[0]!.status = "passed";
+    }
+    fixture.stats = { expected: 18, unexpected: 0, flaky: 0, skipped: 0 };
+    expect(JSON.stringify(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES)))
+      .not.toContain("nativeUiFailure");
+    for (const index of indices) {
+      const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
+      test.status = "skipped"; test.results = [];
+    }
+    fixture.stats = { expected: 15, unexpected: 0, flaky: 0, skipped: 3 };
+    try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
+    catch (error) { caught = error; }
+    for (const index of indices) {
+      expect(projectBrowserFailure(caught).cases?.[index]).toMatchObject({ status: "not-run" });
+      expect(projectBrowserFailure(caught).cases?.[index]).not.toHaveProperty("nativeUiFailure");
+    }
+  });
+
+  it.each(["m8", "m11", "m13"] as const)("observes %s metadata without consuming response bodies or masking the original failure", async (caseId) => {
+    const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8").replace(/\r\n/g, "\n");
+    const helper = source.slice(source.indexOf("function observeNativeUi("), source.indexOf("function movement("));
+    expect(helper).not.toMatch(/\.text\(|\.json\(|postData|waitForTimeout|response\.finished/);
+    const events = new EventEmitter(), annotations: string[] = [];
+    const path = caseId === "m8" ? "/app/plan" : caseId === "m11" ? "/app/plan/history" : "/app/settings/rehab-protocols";
+    const frame = {};
+    let closed = false;
+    const snapshot = unavailableNativeUi(caseId);
+    const page = {
+      url: () => `http://127.0.0.1:3210${path}`, mainFrame: () => frame,
+      on: events.on.bind(events), off: events.off.bind(events),
+      evaluate: async () => { if (closed) throw new Error("private-page-closed"); return snapshot; },
+    };
+    const createObserver = runInNewContext(transpileModule(`${helper}\nobserveNativeUi;`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      unavailableNativeUi, nativeUiFailureSchema, URL,
+      diagnosticAnnotation: (type: string, description: string) => {
+        expect(type).toBe("native-ui-failure"); annotations.push(description);
+      },
+    }) as (page: unknown, caseId: string, target: string, read: () => Promise<string>) => {
+      capture(): Promise<void>; recordFailure(): Promise<void>; dispose(): void;
+    };
+    const read = vi.fn(async () => { throw new Error("private-read-error"); });
+    const observer = createObserver(page, caseId, "private-id", read);
+    const request = {
+      url: () => page.url(), method: () => "POST", headers: () => ({ "next-action": "private-action" }),
+      isNavigationRequest: () => false, frame: () => frame,
+    };
+    const last = () => nativeUiFailureSchema.parse(JSON.parse(annotations.at(-1)!));
+    expect(last().request).toBe("not-observed");
+    for (const unrelated of [
+      { ...request, url: () => `http://127.0.0.1:3211${path}` },
+      { ...request, url: () => "http://127.0.0.1:3210/unrelated" },
+      { ...request, method: () => "GET" }, { ...request, headers: () => ({}) },
+    ]) events.emit("request", unrelated);
+    expect(last().request).toBe("not-observed");
+    events.emit("request", request); expect(last().request).toBe("pending");
+    await observer.capture(); expect(last().request).toBe("pending");
+    events.emit("response", { request: () => request, ok: () => true });
+    expect(last().request).toBe("http-success");
+    events.emit("request", request);
+    events.emit("response", { request: () => request, ok: () => false });
+    expect(last().request).toBe("http-failure");
+    events.emit("request", request); events.emit("requestfailed", request);
+    expect(last().request).toBe("transport-failure");
+    closed = true;
+    await observer.recordFailure();
+    expect(last().request).toBe("transport-failure");
+    expect(last().record).toBe("unavailable");
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(annotations.join("")).not.toContain("private");
+    observer.dispose();
+    for (const event of ["request", "response", "requestfailed"]) expect(events.listenerCount(event)).toBe(0);
+  });
+
+  it.each(["boundary", "heading", "hidden-heading", "normal", "offline", "loading", "hidden-plan"] as const)(
+    "classifies M8's streamed %s without exporting page text", async (mode) => {
+      const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
+      const helper = source.slice(source.indexOf("function observeNativeUi("), source.indexOf("function movement("));
+      const events = new EventEmitter(), annotations: string[] = [];
+      const heading = { textContent: "Application error: private server detail", getClientRects: () => mode === "hidden-heading" ? [] : [{}] };
+      const plan = { getClientRects: () => mode === "hidden-plan" ? [] : [{}] };
+      const createObserver = runInNewContext(transpileModule(`${helper}\nobserveNativeUi;`, {
+        compilerOptions: { target: ScriptTarget.ES2022 },
+      }).outputText, {
+        unavailableNativeUi, nativeUiFailureSchema, URL,
+        document: {
+          title: "SxC",
+          querySelector: (selector: string) =>
+            selector === "#__next_error__" && mode === "boundary" ? {} :
+              selector === '[data-testid="offline-document"]' && mode === "offline" ? plan :
+                selector === '[data-testid="plan-redesign"]' && mode !== "loading" ? plan : null,
+          querySelectorAll: () => ["heading", "hidden-heading"].includes(mode) ? [heading] : [],
+        },
+        location: { pathname: "/app/plan" },
+        diagnosticAnnotation: (_type: string, description: string) => annotations.push(description),
+      }) as (page: unknown, caseId: string, target: string, read: () => Promise<string>) => {
+        capture(): Promise<void>; dispose(): void;
+      };
+      const observer = createObserver({
+        on: events.on.bind(events), off: events.off.bind(events),
+        evaluate: async (callback: (args: unknown) => unknown, args: unknown) => callback(args),
+      }, "m8", "", async () => "active");
+      await observer.capture();
+      expect(JSON.parse(annotations.at(-1)!)).toMatchObject({
+        case: "m8", page: ["boundary", "heading"].includes(mode) ? "error" :
+          ["offline", "loading", "hidden-plan"].includes(mode) ? "other" : "plan", control: "absent",
+      });
+      expect(annotations.join("")).not.toContain("private");
+      observer.dispose();
+    },
+  );
+
+  it.each([false, true])("retains only failed library observations, not stale M13 success (failure=%s)", async (failed) => {
+    const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
+    const helper = source.slice(source.indexOf("async function createRehabInLibrary("), source.indexOf("async function draftPair("));
+    const annotations = [{ type: "modular-stage", description: "m13-01" }, { type: "native-ui-failure", description: "pending" }];
+    const observation = { capture: vi.fn(), recordFailure: vi.fn(), dispose: vi.fn() };
+    const failure = new Error("synthetic failure");
+    const createLibrary = runInNewContext(transpileModule(`${helper}\ncreateRehabInLibrary;`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      observeNativeUi: () => observation, test: { info: () => ({ annotations }) },
+      expect: () => ({ toBeVisible: async (options: { timeout: number }) => {
+        expect(options).toEqual({ timeout: 30_000 });
+        if (failed) throw failure;
+      } }),
+    }) as (page: unknown, movement: unknown, name: string, actor: unknown, timeout: number) => Promise<void>;
+    const locator = { click: async () => {}, fill: async () => {},
+      getByRole: () => locator, filter: () => locator };
+    const result = createLibrary({
+      goto: async () => {}, getByRole: () => locator, getByTestId: () => locator,
+      getByLabel: () => locator, getByText: () => locator,
+    }, { display_name: "Exercise" }, "Protocol", {}, 30_000);
+    if (failed) {
+      await expect(result).rejects.toBe(failure);
+      expect(annotations).toHaveLength(2);
+      expect(observation.recordFailure).toHaveBeenCalledOnce();
+    } else {
+      await result;
+      expect(annotations).toEqual([{ type: "modular-stage", description: "m13-01" }]);
+      expect(observation.recordFailure).not.toHaveBeenCalled();
+    }
+    expect(observation.dispose).toHaveBeenCalledOnce();
+  });
+
+  it.each([undefined, 30_000])("waits for the same authoritative save URL with the selected assertion budget (%s)", async (timeout) => {
+    const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
+    const helper = source.slice(source.indexOf("async function review("), source.indexOf("async function planned("));
+    const visible = vi.fn(async () => {});
+    const url = vi.fn<(expected: RegExp, options: { timeout?: number }) => Promise<void>>(async () => {});
+    const savedId = "00000000-0000-4000-8000-000000000001";
+    const query = { select: vi.fn(() => query), eq: vi.fn(() => query), is: vi.fn(() => query),
+      single: vi.fn(async () => ({ error: null, data: { id: savedId } })) };
+    const submit = { click: vi.fn(async () => {}), isEnabled: vi.fn(async () => true) };
+    const page = { getByRole: vi.fn(() => submit) };
+    const helpers = runInNewContext(transpileModule(`${helper}\n({review, save});`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      expect: (value: unknown, message?: string) => value === null || typeof value === "boolean"
+        ? expect(value, message) : { toBeVisible: visible, toHaveURL: url },
+      z: { string: () => ({ uuid: () => ({ parse: (value: string) => value }) }) },
+    }) as {
+      review(page: unknown, timeout?: number): Promise<void>;
+      save(page: unknown, actor: unknown, kind: string, timeout?: number): Promise<string>;
+    };
+    await helpers.review(page, timeout);
+    expect(visible).toHaveBeenCalledWith({ timeout });
+    expect(await helpers.save(page, { from: () => query }, "strength", timeout)).toBe(savedId);
+    expect(url).toHaveBeenCalledTimes(2);
+    for (const [, options] of url.mock.calls) expect(options).toEqual({ timeout });
+    expect(String(url.mock.calls[0]![0])).toBe(String(/\/app\/plan\?block=[0-9a-f-]{36}$/));
+    expect(String(url.mock.calls[1]![0])).toBe(String(new RegExp(`/app/plan\\?block=${savedId}$`)));
+    expect(query.eq).toHaveBeenCalledWith("program_kind", "strength");
+    expect(query.eq).toHaveBeenCalledWith("status", "active");
+    expect(query.is).toHaveBeenCalledWith("deleted_at", null);
+    const failure = new Error("save navigation did not settle");
+    url.mockRejectedValueOnce(failure);
+    await expect(helpers.save(page, { from: () => query }, "strength", timeout)).rejects.toBe(failure);
+    expect(query.single).toHaveBeenCalledTimes(1);
+    submit.isEnabled.mockResolvedValueOnce(false);
+    await expect(helpers.save(page, { from: () => query }, "strength", timeout)).rejects.toThrow(
+      "Program save is disabled; accept the required overlap or replacement consent before saving.",
+    );
+    expect(submit.click).toHaveBeenCalledTimes(3);
+    expect(url).toHaveBeenCalledTimes(3);
+    expect(query.single).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["completed", "scheduled", "wrong-date", "wrong-session"] as const)(
+    "M8 DC-K4: verifies today's completed legacy commitment before explicit overlap consent (%s)", async (state) => {
+      const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
+      const step = source.slice(source.indexOf('stage("m8-07")'), source.indexOf('stage("m8-08")'));
+      const day = "2026-09-24", sessionId = "00000000-0000-4000-8000-000000000002";
+      let checked = false;
+      const events: string[] = [];
+      const time = {}, title = {}, submit = {};
+      const notice = { locator: (selector: string) => selector === "time" ? time : title };
+      const overlap = { locator: () => notice, check: async () => { checked = true; events.push("consent"); } };
+      const page = { getByRole: (role: string, options: { name: string; exact: boolean }) => {
+        expect(options).toEqual({ name: role === "checkbox" ? "Keep both workouts on these dates." : "Start program", exact: true });
+        return role === "checkbox" ? overlap : submit;
+      } };
+      const save = vi.fn(async (_page: unknown, _actor: unknown, kind: string, timeout: number) => {
+        expect(checked).toBe(true);
+        expect([kind, timeout]).toEqual(["strength", 30_000]);
+        events.push("save");
+        return "saved-program";
+      });
+      const result = runInNewContext(transpileModule(`(async () => { ${step}\nreturn strengthId; })();`, {
+        compilerOptions: { target: ScriptTarget.ES2022 },
+      }).outputText, {
+        stage: () => {}, today: () => day, test: { info: () => ({ timeout: 30_000 }) },
+        page, actor: {}, legacy: { sessionId }, save,
+        review: async () => { events.push("review"); },
+        scheduleEntries: async () => [{
+          id: state === "wrong-session" ? "another-session" : sessionId,
+          source: "session", programId: null, date: state === "wrong-date" ? "2026-09-23" : day,
+          state: state === "scheduled" ? "scheduled" : "completed", title: "Older strength workout",
+        }],
+        expect: (value: unknown) => {
+          if (value === overlap) return {
+            toBeVisible: async () => { events.push("overlap"); },
+            not: { toBeChecked: async () => { expect(checked).toBe(false); events.push("unchecked"); } },
+          };
+          if (value === time || value === title) return {
+            toHaveText: async (text: string[]) => {
+              expect(text).toEqual(value === time ? [day] : ["Older strength workout"]);
+              events.push(value === time ? "date" : "title");
+            },
+          };
+          if (value === submit) return { toBeDisabled: async () => { expect(checked).toBe(false); events.push("disabled"); } };
+          return expect(value);
+        },
+      }) as Promise<string>;
+      if (state === "completed") {
+        await expect(result).resolves.toBe("saved-program");
+        expect(events).toEqual(["review", "overlap", "date", "title", "unchecked", "disabled", "consent", "save"]);
+      } else {
+        await expect(result).rejects.toThrow();
+        expect(checked).toBe(false);
+        expect(save).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it("keeps extended UI waits inside the existing case deadline and clears only completed M8 observations", () => {
+    const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
+    const m8 = source.slice(source.indexOf('legacyTest("M8 '), source.indexOf('ownedTest("M9 '));
+    expect(m8).toContain('stage("m8-07"); await review(page, test.info().timeout);');
+    expect(m8).toContain('await save(page, actor, "strength", test.info().timeout)');
+    expect(m8.indexOf("clearNativeUiObservation();")).toBeGreaterThan(m8.indexOf("await history.close();"));
+    expect(m8.indexOf("clearNativeUiObservation();")).toBeLessThan(m8.indexOf('stage("m8-07")'));
+    expect(source).toContain("await expect(hybridHistory).toHaveCount(0, { timeout: test.info().timeout });");
+    expect(source).toContain('await createRehabInLibrary(page, selected, "Shared rehab", actor, test.info().timeout)');
+    expect(source).not.toMatch(/test\.setTimeout|test\.slow|waitForTimeout/);
+    const helper = source.slice(source.indexOf("function clearNativeUiObservation("), source.indexOf("async function draftPair("));
+    const annotations = [{ type: "modular-stage", description: "m8-07" }, { type: "native-ui-failure", description: "old-tab" }];
+    runInNewContext(transpileModule(`${helper}\nclearNativeUiObservation();`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, { test: { info: () => ({ annotations }) } });
+    expect(annotations).toEqual([{ type: "modular-stage", description: "m8-07" }]);
+  });
+
+  it("rejects malformed, duplicate, oversized and unbounded diagnostic annotations", () => {
+    const stage = { type: "modular-stage", description: "m3-01" };
+    for (const value of [null, {}, "private-value", [stage, stage], Array(129).fill(stage),
+      [{ ...stage, description: "m3-17" }], [{ ...stage, description: "private-value" }],
+      [{ ...stage, description: 3 }], [{ ...stage, description: "m4-25" }]]) {
+      expect(readModularAnnotations(value)).toEqual({ stage: "unavailable", loggedIndices: "unavailable" });
+    }
+    for (const value of ["[1,2,3]", "[1,2,3,4,0]", "[1,2,3,5]", "[-1,2,3,4]", "[1, 2,3,4]",
+      "[1,2,3,4]\n", "[1,2,3,4]private-value", "[1,2,3,null]", "[1,2,3,4.0]", [1, 2, 3, 4], null]) {
+      expect(readModularAnnotations([stage, { type: "modular-set-indices", description: value }]))
+        .toEqual({ stage: "m3-01", loggedIndices: "unavailable" });
+    }
+    const indices = { type: "modular-set-indices", description: "[0,1,2,4]" };
+    expect(readModularAnnotations([stage, indices, indices]).loggedIndices).toBe("unavailable");
+    expect(readModularAnnotations([stage, indices]).loggedIndices).toEqual([0, 1, 2, 4]);
+    expect(readModularAnnotations([stage, { ...indices, description: "invalid" }]).loggedIndices).toBe("invalid");
+  });
+
+  it("accepts only the complete declared modular cohort without changing the historical cohort", () => {
+    const fixture = report(paths, MODULAR_BROWSER_CASES);
+    expect(validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES))
+      .toMatchObject({ success: true, counts: { expected: 18, unexpected: 0, flaky: 0, skipped: 0 },
+        cases: MODULAR_BROWSER_CASES.map((item) => ({ ...item, status: "passed", attempts: 1 })) });
+    expect(() => validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot)).toThrow();
+    expect(() => validateSwimBrowserReport(JSON.stringify(report()), paths, webRoot, MODULAR_BROWSER_CASES)).toThrow();
+    expect(() => validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, [])).toThrow();
+  });
+
+  it.each([{ cases: MODULAR_BROWSER_CASES }, { cases: SWIM_BROWSER_CASES }])("retains completed, interrupted and not-run cases as failure-only global-timeout evidence %#", ({ cases }) => {
+    const fixture = report(paths, cases);
+    const specs = fixture.suites.flatMap((suite) => suite.suites[0]!.specs);
+    specs.forEach((spec, index) => {
+      const test = spec.tests[0]!;
+      if (index < 2) test.results[0]!.duration = 12_000 + index;
+      else if (index === 2) {
+        spec.ok = false; test.status = "unexpected";
+        test.results[0]!.status = "interrupted"; test.results[0]!.duration = 29_100;
+      } else {
+        spec.ok = false; test.status = "skipped"; test.results = [];
+      }
+    });
+    fixture.stats = { expected: 2, unexpected: 1, flaky: 0, skipped: cases.length - 3 };
+    Object.assign(fixture, { errors: [{ message: "private-global-timeout", stack: "private-stack" }] });
+    let caught: unknown;
+    try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, cases); }
+    catch (error) { caught = error; }
+    expect(caught).toBeInstanceOf(Error);
+    const ledger = projectBrowserFailure(caught);
+    expect(ledger).toMatchObject({ success: false, code: "browser-failed", counts: fixture.stats });
+    expect(ledger.cases).toHaveLength(cases.length);
+    expect(ledger.cases?.map((entry) => entry.title)).toEqual(cases.map((entry) => entry.title));
+    expect(ledger.cases?.slice(0, 3)).toMatchObject([
+      { status: "passed", attempts: 1, durationMs: 12_000 },
+      { status: "passed", attempts: 1, durationMs: 12_001 },
+      { status: "interrupted", attempts: 1, durationMs: 29_100 },
+    ]);
+    for (const entry of ledger.cases!.slice(3)) {
+      expect(entry).toMatchObject({ status: "not-run", testStatus: "skipped", attempts: 0, durationMs: null });
+      expect(entry).not.toHaveProperty("failureDetails");
+    }
+    expect(JSON.stringify(ledger)).not.toContain("private-");
+    fixture.stats = { expected: cases.length, unexpected: 0, flaky: 0, skipped: 0 };
+    fixture.errors = [];
+    expect(() => validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, cases)).toThrow();
+  });
+
+  it.each(["missing", "duplicate", "extra", "skipped", "retry", "failure", "wrong-title"])
+  ("refuses a modular %s instead of accepting a partial journey", (mode) => {
+    const fixture = report(paths, MODULAR_BROWSER_CASES);
+    const specs = fixture.suites[0]!.suites[0]!.specs;
+    const first = specs[0]!, test = first.tests[0]!, result = test.results[0]!;
+    if (mode === "missing") specs.pop();
+    if (mode === "duplicate") specs[1] = structuredClone(first);
+    if (mode === "extra") specs.push(structuredClone(first));
+    if (mode === "skipped") { test.status = "skipped"; result.status = "skipped"; }
+    if (mode === "retry") test.results.push({ ...result, retry: 1 });
+    if (mode === "failure") { first.ok = false; test.status = "unexpected"; result.status = "failed"; }
+    if (mode === "wrong-title") first.title = "An unrelated case";
+    expect(() => validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES)).toThrow();
+  });
+});
 
 function rejectedReport(fixture: unknown) {
   let caught: unknown;
@@ -820,11 +1321,22 @@ describe("DC-SW7/DC-SW8/DC-SW9 A4 bounded reconnect observations", () => {
 });
 
 describe("browser environment and static config", () => {
-  it("B9 DC-SW5/DC-SW7/DC-SW8: preserves the accepted B source and decodes actual pinned decision arguments without diagnostics", async () => {
-    const source = readFileSync(join(webRoot, "e2e/swimming-decisions-offline-mobile.spec.ts"), "utf8");
+  it("B9 DC-SW5/DC-SW7/DC-SW8: preserves accepted B assertions through setup review and decodes actual pinned decision arguments without diagnostics", async () => {
+    const source = readFileSync(join(webRoot, "e2e/swimming-decisions-offline-mobile.spec.ts"), "utf8").replaceAll("\r\n", "\n");
     const boundary = source.indexOf('\n  test("B9 ');
     expect(boundary).toBeGreaterThan(0);
-    expect(createHash("sha256").update(source.slice(source.indexOf("const test ="), boundary).trimEnd()).digest("hex"))
+    const prefix = source.slice(source.indexOf("const test ="), boundary).trimEnd();
+    expect(createHash("sha256").update(prefix).digest("hex"))
+      .toBe("dcfc34c28518dc746ce0d0c45dd2d0c095f5f3529059cfec6f7dff4bbd9b9c9f");
+    // Only the three required previews and two preview-only refusal/guidance entries differ.
+    const reviewBeforeCreate = /^    await (page|form)\.getByRole\("button", \{ name: "Preview plan", exact: true \}\)\.click\(\);\n(?=    await \1\.getByRole\("button", \{ name: "Create swim plan", exact: true \}\)\.click\(\);)/gm;
+    expect([...prefix.matchAll(reviewBeforeCreate)]).toHaveLength(3);
+    const withoutAddedPreviews = prefix.replace(reviewBeforeCreate, "");
+    const previewOnly = '    await form.getByRole("button", { name: "Preview plan", exact: true }).click();';
+    expect(withoutAddedPreviews.split(previewOnly)).toHaveLength(3);
+    const acceptedPrefix = withoutAddedPreviews.replaceAll(previewOnly,
+      '    await form.getByRole("button", { name: "Create swim plan", exact: true }).click();');
+    expect(createHash("sha256").update(acceptedPrefix).digest("hex"))
       .toBe("f819e41cc16c6cccc29a2e96068dc31589fd92e14166d3f445a9e615b9c57da1");
     const b9 = source.slice(boundary);
     expect(b9.match(/\btest\("/g)).toHaveLength(1);
@@ -2315,7 +2827,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
         case "error": test.results[0]!.errors = [{ message: "private-error" }]; break;
       }
       const projection = rejectedReport(fixture);
-      expect(projection.code).toBe(["missing", "extra", "unexecuted", "duplicate", "identity"].includes(mode)
+      expect(projection.code).toBe(["missing", "extra", "duplicate", "identity"].includes(mode)
         ? "browser-report-schema" : "browser-failed");
       expect(JSON.stringify(projection)).not.toContain("private-");
     }
@@ -2425,7 +2937,7 @@ describe("DC-SW1/DC-SW2/DC-SW3/DC-SW4/DC-SW5/DC-SW6/DC-SW7/DC-SW8/DC-SW9/DC-K4 s
     } catch (error) {
       const outcomeFailure = [
         "skipped", "flaky", "unexpected", "retry", "result", "ok", "error", "stats",
-        "global-error", "failed-result", "timed-out", "interrupted", "expected-failure",
+        "global-error", "failed-result", "timed-out", "interrupted", "expected-failure", "no-result",
         "stats-flaky", "stats-skipped", "stats-unexpected",
       ].includes(mode);
       const projection = projectBrowserFailure(error);

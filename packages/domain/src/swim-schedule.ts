@@ -7,7 +7,8 @@ export const SWIM_WEEKDAYS = [
 
 export interface SwimStrengthContext {
   blockId: string | null;
-  sessions: readonly { id: string; date: string }[];
+  revision?: string;
+  sessions: readonly { id: string; date: string; title?: string; state?: "scheduled" | "started" | "completed" | "rest" | "paused" }[];
 }
 
 /** Calendar dates, not program weekday ordinals, are the shared boundary. */
@@ -20,8 +21,10 @@ export function swimScheduleAdvice(
     const date = Date.parse(`${session.date}T00:00:00Z`);
     return date >= start && date < end;
   }).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
-  const occupied = new Set(sessions.map((session) => new Date(`${session.date}T00:00:00Z`).getUTCDay()));
-  const available = SWIM_WEEKDAYS.map((day) => day.value).filter((day) => !occupied.has(day));
+  const occupied = new Set(sessions.filter((session) => session.state !== "rest" && session.state !== "paused")
+    .map((session) => new Date(`${session.date}T00:00:00Z`).getUTCDay()));
+  const rest = new Set(sessions.filter((session) => session.state === "rest").map((session) => new Date(`${session.date}T00:00:00Z`).getUTCDay()));
+  const available = SWIM_WEEKDAYS.map((day) => day.value).filter((day) => !occupied.has(day) && !rest.has(day));
   let defaults: number[] = available.slice(0, 1);
   let bestGap = -1;
   for (let a = 0; a < available.length; a++) {
@@ -36,7 +39,7 @@ export function swimScheduleAdvice(
   }
   const conflicts = SWIM_WEEKDAYS.filter((day) => occupied.has(day.value) && selected.includes(day.value));
   const confirmationKey = JSON.stringify({
-    version: 1, blockId: context.blockId, sessions, startDate, weeks,
+    version: 1, blockId: context.blockId, revision: context.revision, sessions, startDate, weeks,
     selected: [...selected].sort((a, b) => a - b),
   });
   return {

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { Sql } from "postgres";
+import { migrateCanonical } from "./migration-runner";
 import {
   appendMigrationShutdown, MIGRATION_EVIDENCE_ENV, openMigrationEvidence, projectMigrationError,
   type CanonicalMigrations, type MigrationPhase, type MigrationShutdown, type MigrationTerminal,
@@ -31,6 +32,7 @@ export type MigrationEntryResult = {
   exitCode: 0 | 1;
   failed: boolean;
   failure?: unknown;
+  diagnostic?: ReturnType<typeof projectMigrationError>;
   terminalRecorded: boolean;
   secondary: ("collector-failed" | "shutdown-failed" | "shutdown-timed-out")[];
 };
@@ -77,15 +79,14 @@ export function verifyMigrationDependencyParity() {
 
 export async function loadMigrationDependencies(): Promise<Dependencies> {
   verifyMigrationDependencyParity();
-  const [{ default: postgres }, { drizzle }, { migrate }, { readMigrationFiles }] = await Promise.all([
-    import("postgres"), import("drizzle-orm/postgres-js"),
-    import("drizzle-orm/postgres-js/migrator"), import("drizzle-orm/migrator"),
+  const [{ default: postgres }, { readMigrationFiles }] = await Promise.all([
+    import("postgres"), import("drizzle-orm/migrator"),
   ]);
   return {
     createClient(config) {
       const client = postgres(config.dbCredentials.url, { max: 1 });
       const passthrough = (value: string) => value;
-      for (const type of [1184, 1082, 1083, 1114]) {
+      for (const type of [1184, 1082, 1083, 1114, 1182, 1185, 1115, 1231]) {
         client.options.parsers[type] = passthrough;
         client.options.serializers[type] = passthrough;
       }
@@ -93,7 +94,7 @@ export async function loadMigrationDependencies(): Promise<Dependencies> {
       client.options.serializers[3802] = passthrough;
       return client;
     },
-    migrate: (client, config) => migrate(drizzle(client as Sql), config),
+    migrate: (client, config) => migrateCanonical(client as Sql, readMigrationFiles(config), config),
     readMigrations: readMigrationFiles,
   };
 }
@@ -114,16 +115,25 @@ async function shutdown(client: Client | undefined): Promise<MigrationShutdown> 
   } finally { clearTimeout(timer); }
 }
 
-export async function runMigrationWithEvidence(
-  path: string,
-  runtime: MigrationEntryRuntime = {
-    // Never import the CWD-writing normalizer here. Its separate pre-step is outside this envelope.
-    loadConfig: async () => (await import("../drizzle.config")).default,
-    loadDependencies: loadMigrationDependencies,
-  },
-): Promise<MigrationEntryResult> {
+const defaultRuntime: MigrationEntryRuntime = {
+  // Never import the CWD-writing normalizer here. Its separate pre-step is outside this envelope.
+  loadConfig: async () => (await import("../drizzle.config")).default,
+  loadDependencies: loadMigrationDependencies,
+};
+
+export async function runMigrationWithEvidence(path: string, runtime: MigrationEntryRuntime = defaultRuntime) {
   // Invalid/missing paths abort before config, dependencies, client creation or migration.
-  const writer = openMigrationEvidence(path);
+  return executeMigration(runtime, { path, writer: openMigrationEvidence(path) });
+}
+
+export function runNormalMigration(runtime: MigrationEntryRuntime = defaultRuntime) {
+  return executeMigration(runtime);
+}
+
+async function executeMigration(
+  runtime: MigrationEntryRuntime,
+  evidence?: { path: string; writer: ReturnType<typeof openMigrationEvidence> },
+): Promise<MigrationEntryResult> {
   const result: MigrationEntryResult = { exitCode: 0, failed: false, terminalRecorded: false, secondary: [] };
   let phase: MigrationPhase = "config";
   let client: Client | undefined;
@@ -146,26 +156,41 @@ export async function runMigrationWithEvidence(
     result.exitCode = 1;
     const projection = projectMigrationError(error, config && dependencies ?
       () => dependencies!.readMigrations(config!) : undefined);
+    result.diagnostic = projection;
     terminal = { event: "terminal", status: "failure", phase, ...projection };
   }
   // The primary outcome is durable and CLOSED before even invoking client.end.
-  try { writer.terminal(terminal); result.terminalRecorded = true; }
-  catch { result.exitCode = 1; result.secondary.push("collector-failed"); }
+  if (evidence) {
+    try { evidence.writer.terminal(terminal); result.terminalRecorded = true; }
+    catch { result.exitCode = 1; result.secondary.push("collector-failed"); }
+  }
   const closed = await shutdown(client);
   if (closed.status === "failed" || closed.status === "timed-out") {
     result.exitCode = 1;
     result.secondary.push(closed.status === "failed" ? "shutdown-failed" : "shutdown-timed-out");
   }
-  try { appendMigrationShutdown(path, writer.identity, closed); }
-  catch { result.exitCode = 1; if (!result.secondary.includes("collector-failed")) result.secondary.push("collector-failed"); }
+  if (evidence) {
+    try { appendMigrationShutdown(evidence.path, evidence.writer.identity, closed); }
+    catch { result.exitCode = 1; if (!result.secondary.includes("collector-failed")) result.secondary.push("collector-failed"); }
+  }
   return result;
+}
+
+export function publishMigrationResult(result: MigrationEntryResult) {
+  const record = JSON.stringify({ scope: "db-migrate", status: result.exitCode === 0 ? "passed" : "failed",
+    ...(result.diagnostic ? { diagnostic: result.diagnostic } : {}), secondary: result.secondary });
+  if (result.exitCode === 0) console.log(record);
+  else {
+    const scid = result.diagnostic?.error.scid;
+    const prefix = scid ? `PostgresError: SCID/1/${scid.guard}/${scid.phase}/${scid.object}/${scid.bits}\n` : "";
+    console.error(prefix + record);
+  }
 }
 
 // Importing this module performs no environment reads, file writes or migration.
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   runMigrationWithEvidence(process.env[MIGRATION_EVIDENCE_ENV] ?? "").then((result) => {
-    if (result.failed) console.error(result.failure);
-    for (const secondary of result.secondary) console.error(`Migration secondary outcome: ${secondary}`);
+    publishMigrationResult(result);
     process.exit(result.exitCode);
   }, () => {
     console.error("Migration evidence entry aborted");

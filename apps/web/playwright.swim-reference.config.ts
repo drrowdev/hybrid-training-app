@@ -3,13 +3,15 @@ import { resolve } from "node:path";
 import {
   BROWSER_LIMITS, requireBrowserEnvironment, requirePrivateBrowserPaths, SWIM_BROWSER_CASES,
 } from "./scripts/swim-browser-acceptance";
+import { isModularBrowserProfile, MODULAR_BROWSER_CASES } from "./scripts/modular-browser-profile";
 
 const paths = requireBrowserEnvironment(process.env);
 requirePrivateBrowserPaths(paths, __dirname);
+const cases = isModularBrowserProfile(process.env) ? MODULAR_BROWSER_CASES : SWIM_BROWSER_CASES;
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: [...new Set(SWIM_BROWSER_CASES.map(({ file }) => resolve(__dirname, file)))],
+  testMatch: [...new Set(cases.map(({ file }) => resolve(__dirname, file)))],
   fullyParallel: false,
   forbidOnly: true,
   retries: 0,

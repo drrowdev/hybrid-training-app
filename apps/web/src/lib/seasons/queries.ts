@@ -4,6 +4,9 @@
  * active Season (the common case — the feature is opt-in).
  */
 import { createClient, getAuthUser } from "@/lib/supabase/server";
+import { currentBlockWeekIndexAt } from "@/lib/dates";
+import { nextPlannedBlock } from "./season-logic";
+import { z } from "zod";
 
 export type SeasonBlock = {
   id: string;
@@ -44,23 +47,23 @@ export async function getActiveSeason(): Promise<ActiveSeason | null> {
   if (!user) return null;
 
   const supabase = await createClient();
-  const { data: season } = await supabase
+  const { data: season, error: seasonError } = await supabase
     .from("training_seasons")
     .select("id, name, goal_type, target_event_id, target_date")
     .eq("user_id", user.id)
     .eq("status", "active")
     .is("deleted_at", null)
-    .order("created_at", { ascending: false })
-    .limit(1)
     .maybeSingle();
+  if (seasonError) throw new Error("Could not read your season. Try again.");
   if (!season) return null;
 
-  const { data: rows } = await supabase
+  const { data: rows, error: blocksError } = await supabase
     .from("season_blocks")
     .select("id, position, program_id, template_ref, emphasis, intent_note, planned_weeks, status, block_id")
     .eq("season_id", season.id as string)
     .eq("user_id", user.id)
     .order("position", { ascending: true });
+  if (blocksError) throw new Error("Could not read your roadmap. Try again.");
 
   const blocks: SeasonBlock[] = (rows ?? []).map((r) => ({
     id: r.id as string,
@@ -82,12 +85,13 @@ export async function getActiveSeason(): Promise<ActiveSeason | null> {
     let eventName: string | null = null;
     const eventId = (season.target_event_id as string | null) ?? null;
     if (eventId) {
-      const { data: evt } = await supabase
+      const { data: evt, error: eventError } = await supabase
         .from("events")
         .select("name")
         .eq("id", eventId)
         .eq("user_id", user.id)
         .maybeSingle();
+      if (eventError) throw new Error("Could not read your season event. Try again.");
       eventName = (evt?.name as string | null) ?? null;
     }
     goal = {
@@ -99,6 +103,26 @@ export async function getActiveSeason(): Promise<ActiveSeason | null> {
   }
 
   return { id: season.id as string, name: season.name as string, goal, blocks };
+}
+
+export async function getSeasonContinuation(timezone: string, now = new Date()) {
+  const season = await getActiveSeason();
+  if (!season) return null;
+  const active = season.blocks.filter((slot) => slot.status === "active");
+  if (active.length > 1) throw new Error("The roadmap has more than one current block. Refresh it before continuing.");
+  const sourceId = active[0]?.blockId, next = nextPlannedBlock(season.blocks);
+  if (!sourceId || !next) return null;
+  const { data: { user } } = await getAuthUser();
+  if (!user) return null;
+  const client = await createClient();
+  const result = await client.from("training_blocks").select("status,started_on,weeks")
+    .eq("id", sourceId).eq("user_id", user.id).is("deleted_at", null).maybeSingle();
+  if (result.error) throw new Error("Could not read the current roadmap program. Try again.");
+  const source = z.object({ status: z.enum(["active", "completed", "archived"]),
+    started_on: z.string(), weeks: z.number().positive() }).nullable().parse(result.data);
+  if (!source || (source.status === "active" &&
+    currentBlockWeekIndexAt(source.started_on, source.weeks, timezone, now) < source.weeks - 1)) return null;
+  return { seasonName: season.name, block: next };
 }
 
 /**

@@ -34,6 +34,7 @@ import {
   resolvePrescriptionSetWork,
   resolvePrescribedSnapshot,
   resolveTargetLoadKg,
+  resolveLoadReference,
   isRehabItem,
 } from "@hta/domain";
 import { SET_KIND_TO_LOG as SHARED_SET_KIND_TO_LOG } from "@/lib/sessions/set-kind";
@@ -80,6 +81,7 @@ export type FocusLoggedSet = {
 };
 
 export type FocusViewProps = {
+  onSetDeleted?: (setId: string) => void;
   sessionId: string;
   group: MovementGroup;
   tmKg: number | undefined;
@@ -284,6 +286,7 @@ export function MovementFocusView({
   equipmentTag,
   initialCursor = null,
   onSaved,
+  onSetDeleted,
   bwGateStateByFamily,
   bodyweightCapable = false,
   focusStrip = false,
@@ -302,6 +305,9 @@ export function MovementFocusView({
   void priorBest;
   const totalSlots = group.itemIndices.length;
   const groupKey = movementGroupKey(group);
+  const [pendingCircuitSlots, setPendingCircuitSlots] = useState<ReadonlyMap<string, number>>(new Map());
+  const pendingCircuitSlot = pendingCircuitSlots.get(groupKey);
+  const submitting = pendingCircuitSlot != null;
   const autoCursor = useMemo(
     () => autoCursorForGroup(group, loggedItemIndices),
     [group, loggedItemIndices],
@@ -355,7 +361,7 @@ export function MovementFocusView({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- isSlotLogged is derived from props read here
   }, [groupKey, initialCursor]);
   const manualCursor = pinnedCursorForGroup(manualPin, groupKey);
-  const cursor = effectiveCursor(autoCursor, manualCursor, totalSlots);
+  const cursor = pendingCircuitSlot ?? effectiveCursor(autoCursor, manualCursor, totalSlots);
 
   const activeItem = group.items[cursor];
   const activeItemIndex = group.itemIndices[cursor]!;
@@ -431,13 +437,14 @@ export function MovementFocusView({
         item.kind === "warmup" ? roundWarmupLoadKg(kg, warmupLoadOptions) : roundToPlate(kg);
       return resolveTargetLoadKg(item, {
         tmKg: tmKg ?? null,
+        oneRmKg: oneRmKg ?? null,
         ...(systemLoad ? { isSystemLoad: true } : {}),
         bodyweightKg: bodyweightKg ?? null,
         roundKg,
         roundAbsoluteKg: roundKg,
       });
     },
-    [bodyweightKg, isSystemLoad, tmKg, warmupLoadOptions],
+    [bodyweightKg, isSystemLoad, oneRmKg, tmKg, warmupLoadOptions],
   );
 
   // Target weight / reps derived from the prescription + TM.
@@ -481,21 +488,20 @@ export function MovementFocusView({
     activeItem != null &&
     targetWeightForItem(activeItem) == null &&
     targetWeight > 0;
+  const loadReference = resolveLoadReference(activeItem, { tmKg, oneRmKg });
   const warmupFloorWarning = useMemo(() => {
     if (activeItem?.kind !== "warmup") return null;
-    const rawKg =
-      activeItem.percentTm != null && tmKg
-        ? (tmKg * activeItem.percentTm) / 100
-        : activeItem.targetWeightKg != null && activeItem.targetWeightKg > 0
-          ? activeItem.targetWeightKg
-          : null;
+    const rawKg = resolveTargetLoadKg(activeItem, {
+      tmKg, oneRmKg, bodyweightKg,
+      isSystemLoad: isSystemLoad ?? activeItem.systemLoad === true,
+    });
     if (rawKg == null || barWeightKg == null || rawKg >= barWeightKg) {
       return null;
     }
     // `formatWeight` already appends the unit label — appending
     // `unitLabel` again rendered "Raised to the 20 kg kg bar minimum".
     return `Raised to the ${formatWeight(barWeightKg, units)} bar minimum`;
-  }, [activeItem, barWeightKg, tmKg, units]);
+  }, [activeItem, barWeightKg, bodyweightKg, isSystemLoad, oneRmKg, tmKg, units]);
   const targetWork = useMemo(
     () => resolvePrescriptionSetWork(activeItem),
     [activeItem],
@@ -507,7 +513,7 @@ export function MovementFocusView({
   // hides the weight column because no TM anchors a load).
   // Legacy items that don't carry these fields stay on the default
   // weight + reps grid.
-  const isBwItem = !!activeItem?.bw && tmKg == null;
+  const isBwItem = !!activeItem?.bw && loadReference.kg == null;
   const isBwHold =
     isBwItem && activeItem?.bw?.prescriptionType === "isometric_hold";
   const itemKind: "carry" | "isometric" | "bw_reps" | "default" = activeItem?.distanceM
@@ -552,10 +558,6 @@ export function MovementFocusView({
     initialLoggedSet?.rpe ?? null,
   );
   const [error, setError] = useState<string | null>(null);
-  // Logging is now optimistic (the parent overlays the set instantly), so there
-  // is no blocking "submitting" window — the CTA never shows a "Logging…" spin.
-  // Kept as a const-false so the existing label / disabled reads still compile.
-  const submitting = false;
   // Re-entrancy guard: a fast double-tap could fire two writes for the same
   // slot before the optimistic overlay re-renders and advances the cursor.
   // Track which prescription indices we've already fired this session so a
@@ -614,6 +616,7 @@ export function MovementFocusView({
       fd.set("id", undo.setId);
       fd.set("sessionId", sessionId);
       await deleteSet(fd);
+      onSetDeleted?.(undo.setId);
       // Let the slot be logged again — the re-entrancy guard would otherwise
       // treat the retry as a duplicate and silently drop it.
       firedIndicesRef.current.delete(undo.itemIndex);
@@ -671,7 +674,9 @@ export function MovementFocusView({
       setRestSeconds(restLeft);
       setRestToken((t) => t + 1);
     }
-    if (saved.cursor != null && saved.activeKey === groupKey) {
+    const savedItemIndex = saved.cursor == null ? undefined : group.itemIndices[saved.cursor];
+    if (saved.cursor != null && saved.activeKey === groupKey &&
+      savedItemIndex != null && !loggedItemIndices.has(savedItemIndex)) {
       setManualPin({ key: groupKey, slot: saved.cursor });
       if (draftAppliesTo(saved, groupKey, saved.cursor) && saved.draft) {
         const d = saved.draft;
@@ -744,8 +749,9 @@ export function MovementFocusView({
 
   // Snap weight/reps to the target whenever the active slot changes.
   // Also reset RPE + close the skip menu so each set starts clean.
+  // Pending circuit coverage must not reset the draft or clear a rejected save.
   const cursorKey = `${group.groupKey ?? group.movementId}:${cursor}:${
-    isActiveLogged ? "done" : "open"
+    isActiveLogged && !submitting ? "done" : "open"
   }`;
   const lastCursorKey = useRef(cursorKey);
   useEffect(() => {
@@ -794,7 +800,7 @@ export function MovementFocusView({
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!activeItem) return;
+    if (!activeItem || submitting) return;
     const updatingExisting =
       isActiveLogged && loggedSetId != null && updateStrengthSet != null;
     if (!updatingExisting && firedIndicesRef.current.has(activeItemIndex)) return;
@@ -965,7 +971,7 @@ export function MovementFocusView({
       // would keep ticking and get persisted into the resume snapshot.
       const secs = restSecondsForSet(
         SET_KIND_TO_LOG[activeItem.kind] ?? "main",
-        { restTimerEnabled },
+        { restTimerEnabled, prescribedRestSeconds: activeItem.meta?.restSeconds },
       );
       setRestSeconds(secs);
       restDeadlineRef.current = secs > 0 ? Date.now() + secs * 1000 : null;
@@ -994,6 +1000,12 @@ export function MovementFocusView({
     // unaffected), it just doesn't yank the lifter back to wherever this
     // stale write thinks they should go next.
     const submittedGroupKey = groupKey;
+    // Circuit rotation waits for durable acceptance; don't expose the next
+    // round of this station while its optimistic overlay is already visible.
+    const awaitsCircuitRotation = activeItem.circuit != null && onSaved != null;
+    if (awaitsCircuitRotation) {
+      setPendingCircuitSlots((previous) => new Map(previous).set(groupKey, cursor));
+    }
     void addStrengthSet(fd)
       .then((result) => {
         if (result?.error) {
@@ -1020,6 +1032,15 @@ export function MovementFocusView({
         firedIndicesRef.current.delete(activeItemIndex);
         setError("Couldn't save that set — check your connection and retry.");
         setUndo(null);
+      })
+      .finally(() => {
+        if (awaitsCircuitRotation) {
+          setPendingCircuitSlots((previous) => {
+            const next = new Map(previous);
+            next.delete(submittedGroupKey);
+            return next;
+          });
+        }
       });
   };
 
@@ -1414,7 +1435,7 @@ export function MovementFocusView({
                 fontSize: 10,
               }}
             >
-              {activeItem.percentTm}% {tmKg != null && oneRmKg != null && Math.abs(tmKg - oneRmKg) < 0.001 ? "1RM" : "TM"}
+              {activeItem.percentTm}% {loadReference.basis}
             </span>
           )}
           {activeItem.percentTm != null && activeItem.targetRir && (
@@ -1641,7 +1662,7 @@ export function MovementFocusView({
         if (barWeightKg == null) return null;
         // Additional safety: if the movement has no training max set,
         // it isn't a tracked main lift and shouldn't claim a bar.
-        if (tmKg == null) return null;
+        if (loadReference.kg == null) return null;
         const inv = plateInventory ?? [];
         if (inv.length === 0) {
           return (

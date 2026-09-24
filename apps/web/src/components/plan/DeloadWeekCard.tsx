@@ -10,12 +10,11 @@
  * week — no programmed training week is lost. Mirrors the DeloadSkipCard /
  * VolumeAutoregCard confirm-modal pattern.
  */
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { DeloadWeekPreview } from "@/lib/planner/deload-week-preview";
 import type { DeloadSessionSpec } from "@/lib/planner/deload-week";
 import type { PrescriptionItem } from "@hta/db";
-import type { InsertDeloadResult } from "@/lib/planner/deload-week-actions";
+import type { DeloadScheduleReview, InsertDeloadResult, ReviewedDeloadWeekPreview } from "@/lib/planner/deload-week-actions";
 import {
   RECOVERY_PERCENT_MAX,
   RECOVERY_PERCENT_MIN,
@@ -60,18 +59,21 @@ export function DeloadWeekCard({
   resolveRecommendationId,
   resolveAction,
 }: {
-  preview: DeloadWeekPreview;
+  preview: ReviewedDeloadWeekPreview;
   insertAction: (
     percent?: number,
     boundaryKey?: string,
     recommendationId?: string,
+    review?: DeloadScheduleReview,
+    blockId?: string,
   ) => Promise<InsertDeloadResult>;
   /** Rebuilds the preview when the lifter changes the working percentage. */
-  previewAction?: (
+  previewAction: (
     percent?: number,
     boundaryKey?: string,
     recommendationId?: string,
-  ) => Promise<DeloadWeekPreview | null>;
+    blockId?: string,
+  ) => Promise<ReviewedDeloadWeekPreview | null>;
   /** Open the preview modal on mount (e.g. deep-linked from the TB deload banner). */
   autoOpen?: boolean;
   /**
@@ -92,37 +94,62 @@ export function DeloadWeekCard({
   const [dismissed, setDismissed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const [live, setLive] = useState<DeloadWeekPreview>(preview);
+  const [live, setLive] = useState<ReviewedDeloadWeekPreview>(preview);
   const [percent, setPercent] = useState<number>(preview.percent);
+  const [acceptOverlap, setAcceptOverlap] = useState(false);
+  const [reviewReady, setReviewReady] = useState(true);
+  const busy = useRef(false);
   const boundaryKey = preview.boundaryKey;
 
   const changePercent = (next: number) => {
+    if (busy.current) return;
+    busy.current = true;
     setPercent(next);
-    if (!previewAction) return;
+    setReviewReady(false);
+    setAcceptOverlap(false);
+    setError(null);
     startTransition(async () => {
-      const rebuilt = await previewAction(next, boundaryKey, resolveRecommendationId);
-      if (rebuilt) setLive(rebuilt);
+      try {
+        const rebuilt = await previewAction(next, boundaryKey, resolveRecommendationId, preview.blockId);
+        if (!rebuilt) { setError("This recovery week is no longer available."); return; }
+        setLive(rebuilt);
+        setReviewReady(true);
+      } catch {
+        setError("Could not review the recovery week. Try again.");
+      } finally { busy.current = false; }
     });
   };
 
   const apply = () => {
+    if (busy.current || !reviewReady || (live.review.overlaps.length > 0 && !acceptOverlap)) return;
+    busy.current = true;
     setError(null);
     startTransition(async () => {
-      const res = await insertAction(
-        live.restOnly ? undefined : percent,
-        boundaryKey,
-        resolveRecommendationId,
-      );
-      if (!res.ok) {
-        setError(res.error);
-        return;
-      }
-      if (resolveRecommendationId && resolveAction) {
-        await resolveAction(resolveRecommendationId);
-      }
-      setDone(true);
-      setOpen(false);
-      router.refresh();
+      let saved = false;
+      try {
+        const res = await insertAction(
+          live.restOnly ? undefined : percent,
+          boundaryKey,
+          resolveRecommendationId,
+          { previewId: live.review.id, revision: live.review.revision, requestId: live.review.requestId, acceptOverlap },
+          preview.blockId,
+        );
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
+        saved = true;
+        setDone(true);
+        setOpen(false);
+        router.refresh();
+        if (resolveRecommendationId && resolveAction) {
+          const resolved = await resolveAction(resolveRecommendationId);
+          if (!resolved.ok) setError(resolved.error);
+        }
+      } catch {
+        setError(saved ? "The week was added. Refresh the plan to see it."
+          : "The recovery week was not confirmed. Review the plan before trying again.");
+      } finally { busy.current = false; }
     });
   };
 
@@ -164,9 +191,6 @@ export function DeloadWeekCard({
               <div style={{ fontSize: 13, fontWeight: 600, color: "var(--cp-text)" }}>
                 Take a recovery week
               </div>
-              <div style={{ fontSize: 12, color: "var(--cp-text-muted)", marginTop: 2 }}>
-                Insert a lighter week whenever you need to back off — nothing is skipped.
-              </div>
             </div>
             <button
               type="button"
@@ -181,17 +205,6 @@ export function DeloadWeekCard({
         )
       ) : (
         <>
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--cp-accent)",
-              textTransform: "uppercase",
-              letterSpacing: "0.08em",
-              fontWeight: 600,
-            }}
-          >
-            Recovery — your call
-          </div>
 
       {done ? (
         <div style={{ fontSize: 13, color: "var(--cp-text)" }} data-testid="deload-week-done">
@@ -251,7 +264,7 @@ export function DeloadWeekCard({
           <div
             onClick={(e) => e.stopPropagation()}
             className="cp-card"
-            style={{ maxWidth: 480, width: "100%", padding: 20, display: "grid", gap: 14 }}
+            style={{ maxWidth: 480, width: "100%", maxHeight: "calc(100dvh - 32px)", overflowY: "auto", padding: 20, display: "grid", gap: 14 }}
           >
             <div style={{ display: "grid", gap: 4 }}>
               <h2 style={{ margin: 0, fontSize: 18, letterSpacing: "-0.01em" }}>
@@ -300,7 +313,7 @@ export function DeloadWeekCard({
                     max={RECOVERY_PERCENT_MAX}
                     step={1}
                     value={percent}
-                    disabled={pending || !previewAction}
+                    disabled={pending}
                     onChange={(e) => changePercent(Number(e.target.value))}
                     style={{ flex: 1 }}
                   />
@@ -344,6 +357,17 @@ export function DeloadWeekCard({
                 {error}
               </div>
             )}
+            {!!live.review.overlaps.length && <div style={{ display: "grid", gap: 8 }}>
+              <ul style={{ margin: 0, paddingLeft: 20 }}>{live.review.overlaps.map((entry) =>
+                <li key={`${entry.source}:${entry.id}`}>{entry.date} · {entry.title}</li>)}</ul>
+              <label style={{ display: "flex", gap: 8, alignItems: "start" }}>
+                <input type="checkbox" checked={acceptOverlap} disabled={pending || !reviewReady}
+                  onChange={(event) => setAcceptOverlap(event.target.checked)} />
+                Keep both workouts on these dates
+              </label>
+            </div>}
+            {error && <button type="button" className="cp-btn ghost" disabled={pending}
+              onClick={() => changePercent(percent)}>Review again</button>}
 
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button
@@ -360,14 +384,15 @@ export function DeloadWeekCard({
                 className="cp-btn primary"
                 data-testid="deload-week-accept"
                 onClick={apply}
-                disabled={pending}
+                disabled={pending || !reviewReady || (live.review.overlaps.length > 0 && !acceptOverlap)}
               >
-                {pending ? "Adding…" : "Add recovery week"}
+                {pending ? (reviewReady ? "Adding…" : "Reviewing…") : "Add recovery week"}
               </button>
             </div>
           </div>
         </div>
       )}
+      {done && error && <p role="alert" style={{ margin: 0, color: "var(--cp-danger)" }}>{error}</p>}
     </section>
   );
 }

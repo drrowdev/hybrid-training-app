@@ -30,7 +30,7 @@ const configHash = "b".repeat(64);
 const networkId = "c".repeat(64);
 const project = "pr802-123-1";
 describe("DC-SW8 ordinary candidate runner route", () => {
-  const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8").replaceAll("\r\n", "\n");
   it("removes the obsolete bypass and leaves normal Drizzle enabled", () => {
     expect(source).not.toMatch(/ROLLBACK_PROBE_ONLY|swim-fk-rollback-probes|finishRollbackOnly|requireBrowserRoute/);
     expect(source).toContain("const MIGRATION_DIAGNOSTIC_ONLY = false;");
@@ -536,7 +536,7 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
   const invalid = { status: "unavailable", reason: "invalid-output" };
   const missing = { status: "unavailable", reason: "missing-or-ambiguous-catalog" };
   const unsafe = '<private> https://private.invalid/?key=synthetic-only\nprivate-role';
-  const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../../../../scripts/swim-acceptance.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
   it("uses only the fixed, exact-signature, null-safe catalog query in a bounded read-only transaction", () => {
     const migration = readFileSync(new URL(
@@ -673,9 +673,23 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       "exec", networkId, "psql", "-XqAt", "-U", "postgres", "-d", "postgres",
       "-v", "ON_ERROR_STOP=1", "-c", AUTH_PRIVILEGES_SQL,
     ], { capture: true, allowFailure: true, timeout: 10_000 }]]);
-    expect(source).toMatch(/manifest\.catalog = [^\n]+;\s+requireUnchanged\(\);\s+}\);\s+const authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+manifest\.authPrivileges = authPrivileges;\s+const authBoundary = checkAuthBoundary\(authPrivileges, 148\);\s+manifest\.authBoundary = authBoundary;/);
+    expect(source).toMatch(/manifest\.catalog = [^\n]+;\s+requireUnchanged\(\);\s+}\);\s+const modularProof = createModularRoundTripProof\(\);/);
+    expect(source).toMatch(/if \(modular\) \{\s+manifest\.ownershipSchemaProof = ownershipProof;\s+await stage\("unused ownership schema down before historical modular proof", \(\) => modularDdl\("down", true\)\);\s+manifest\.modularSchemaProof = modularProof;\s+await stage\("unused modular schema down before historical identity proof", \(\) => modularDdl\("down"\)\);\s+}\s+const authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+manifest\.authPrivileges = authPrivileges;\s+const authBoundary = checkAuthBoundary\(authPrivileges, 148\);\s+manifest\.authBoundary = authBoundary;/);
     expect(source).toContain('await enforceIdentityProofAfterRpc(authBoundary, identityProof, () => stage("complete authenticated RPC file and positive ledger"');
     expect(source).toContain("requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);\n      requireIdentityHelperRpcCases(ledger);\n    }), reporting);");
+    const restored = source.indexOf('if (modular) await stage("exact modular schema restoration"');
+    const legacy = source.indexOf('await legacy.prepare();', restored);
+    const owned = source.indexOf('await modularDdl("up", true);', legacy);
+    const unchanged = source.indexOf('await legacy.verifyUpgrade();', owned);
+    const movement = source.indexOf('await stage("movement reference down-up and necessity proof"', unchanged);
+    expect(restored).toBeGreaterThan(source.indexOf("}), reporting);"));
+    expect(legacy).toBeGreaterThan(restored);
+    expect(owned).toBeGreaterThan(legacy);
+    expect(unchanged).toBeGreaterThan(owned);
+    expect(movement).toBeGreaterThan(unchanged);
+    expect(source).toContain('try { await legacyPreparation.cleanup(); }');
+    expect(source).toContain('reporting.recordFailure("legacy synthetic account cleanup", error, true)');
+    expect(source).toContain('if (!reporting.failures.primary) reporting.recordFailure("legacy synthetic account cleanup", error)');
     expect(source.match(/await observeAuthPrivileges\(/g)).toHaveLength(1);
     expect(source).toContain("Math.min(options.timeout ?? 60_000, deadline - Date.now())");
     expect(source).toContain('stdio: ["ignore", stdout.stdio, fd]');

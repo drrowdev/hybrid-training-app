@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { countDistinctRehabMovements } from "@hta/domain";
 import { SwimCalendar } from "@/components/swim/SwimCalendar";
+import { loadSwimActivity } from "@/lib/swim/activity-history";
+import { formatActivityDate, mergeTrainingActivity, trainingActivityHref, SWIM_TRAINING_LABEL, type TrainingActivity } from "@/lib/swim/activity-presentation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import {
   archetypeDisplayName,
-  getActiveBlock,
-  getPlannedDays,
+  getActiveBlocks,
+  getActivePlannedDays,
   getRecentBlocks,
   getTodayPlannedSessions,
   getUpcomingPlannedSessions,
@@ -38,8 +40,7 @@ import { getNextBlockNudge } from "@/lib/planner/next-block-suggestion-server";
 import { NextBlockSuggestionCard } from "@/components/planner/NextBlockSuggestionCard";
 import type { SuggestProgramId } from "@/lib/planner/next-block-suggestion";
 import { KNOWN_SUGGEST_PROGRAMS } from "@/lib/planner/next-block-suggestion";
-import { getActiveSeason } from "@/lib/seasons/queries";
-import { nextPlannedBlock } from "@/lib/seasons/season-logic";
+import { getSeasonContinuation } from "@/lib/seasons/queries";
 import { selectablePrograms } from "@/lib/platform/registry";
 import {
   ActiveLimitationsCard,
@@ -63,6 +64,7 @@ import {
 } from "@/lib/training-maxes/actions";
 import type { TmFormula } from "@hta/db";
 import { listTrainingMaxes } from "@/lib/training-maxes/queries";
+import { loadBlockProgramKinds } from "@/lib/programs/ownership";
 import { addDaysToYmd } from "@/lib/dates";
 import {
   formatDate,
@@ -78,7 +80,7 @@ import {
 import {
   estimateSessionDurationBreakdown,
 } from "@/lib/sessions/estimate-duration";
-import { ThisWeekRail } from "@/components/plan/ThisWeekRail";
+import { SharedTrainingWeek } from "@/components/program/SharedTrainingWeek";
 import { plannedSessionCta } from "@/lib/today/planned-session-cta";
 import type { PlanSessionInput } from "@/components/plan/PlanRedesign";
 import {
@@ -107,8 +109,9 @@ export default async function TodayPage() {
     .maybeSingle();
 
   const todayIso = todayYmd(profile?.timezone ?? "UTC");
+  const activePrograms = getActiveBlocks();
 
-  const [{ data: todaySessions }, { data: recent }, plannedToday, upcoming, freshness, activeBlock, tmRows, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs] = await Promise.all([
+  const [{ data: todaySessions }, { data: recent, error: recentError }, plannedToday, upcoming, freshness, activeBlocks, tmRows, { data: activeLimitationsRaw }, quickRepeatRecent, limitationSummary, programRecs, swimActivity] = await Promise.all([
     supabase
       .from("sessions")
       .select("id, title, slot, completed_at, performed_at")
@@ -126,7 +129,7 @@ export default async function TodayPage() {
     getTodayPlannedSessions(),
     getUpcomingPlannedSessions(5),
     getRegionFreshness(supabase, userId),
-    getActiveBlock(),
+    activePrograms,
     listTrainingMaxes(),
     supabase
       .from("limitations")
@@ -138,7 +141,10 @@ export default async function TodayPage() {
     getQuickRepeatCandidates(supabase, userId, { limit: 3 }),
     getLimitationTodaySummary(),
     getPendingProgramRecommendations(supabase, userId),
+    loadSwimActivity(supabase, userId, 8),
   ]);
+  if (recentError || !recent) throw new Error("Your training history could not be loaded.");
+  const recentActivity = mergeTrainingActivity(recent, swimActivity, profile?.timezone ?? "UTC", 8);
 
   const activeLimitations: ActiveLimitationSummary[] = (
     activeLimitationsRaw ?? []
@@ -149,6 +155,7 @@ export default async function TodayPage() {
     startedAt: r.started_at as string,
   }));
 
+  const activeBlock = activeBlocks.length === 1 ? activeBlocks[0] : null;
   const archetypeName = activeBlock
     ? archetypeDisplayName(activeBlock.archetype, activeBlock.notes)
     : null;
@@ -173,13 +180,14 @@ export default async function TodayPage() {
     // session / movement rows. The inner Promise.all stays inside
     // the IIFE because it depends on the suggestion list.
     (async (): Promise<TmSuggestionView[]> => {
-      const { data: pendingSuggestionsRaw } = await supabase
+      const { data: pendingSuggestionsRaw, error: suggestionsError } = await supabase
         .from("tm_suggestions")
         .select(
           "id, movement_id, current_tm_kg, suggested_tm_kg, derived_formula, derived_from_set_log_id, derived_from_session_id, created_at",
         )
-        .eq("status", "pending")
+        .eq("user_id", userId).eq("status", "pending")
         .order("created_at", { ascending: false });
+      if (suggestionsError) throw new Error("Could not read strength suggestions. Try again.");
       if (!pendingSuggestionsRaw || pendingSuggestionsRaw.length === 0) return [];
       const movIds = Array.from(new Set(pendingSuggestionsRaw.map((s) => s.movement_id)));
       const setIds = Array.from(
@@ -196,15 +204,20 @@ export default async function TodayPage() {
             .filter((id): id is string => !!id),
         ),
       );
-      const [{ data: movRows }, { data: setRows }, { data: sessRows }] = await Promise.all([
+      const [{ data: movRows }, { data: setRows }, { data: sessRows, error: sessionsError }] = await Promise.all([
         supabase.from("movements").select("id, display_name").in("id", movIds),
         setIds.length > 0
           ? supabase.from("set_logs").select("id, weight_kg, reps").in("id", setIds)
           : Promise.resolve({ data: [] as { id: string; weight_kg: unknown; reps: unknown }[] }),
         sessIds.length > 0
-          ? supabase.from("sessions").select("id, performed_at").in("id", sessIds)
-          : Promise.resolve({ data: [] as { id: string; performed_at: string }[] }),
+          ? supabase.from("sessions").select("id, performed_at, block_id").eq("user_id", userId).in("id", sessIds)
+          : Promise.resolve({ data: [] as { id: string; performed_at: string; block_id: string | null }[], error: null }),
       ]);
+      if (sessionsError) throw new Error("Could not read the source workouts. Try again.");
+      const blockIds = (sessRows ?? []).flatMap((session) => session.block_id ? [session.block_id] : []);
+      const kinds = await loadBlockProgramKinds(supabase, userId, blockIds);
+      const typedSessions = new Set((sessRows ?? [])
+        .filter((session) => session.block_id && kinds.get(session.block_id) != null).map((session) => session.id));
       const movName = new Map((movRows ?? []).map((m) => [m.id, m.display_name as string]));
       const setMap = new Map(
         (setRows ?? []).map((s) => [
@@ -216,7 +229,7 @@ export default async function TodayPage() {
         ]),
       );
       const sessMap = new Map((sessRows ?? []).map((s) => [s.id as string, s.performed_at as string]));
-      return pendingSuggestionsRaw.map((s) => {
+      return pendingSuggestionsRaw.filter((s) => !typedSessions.has(s.derived_from_session_id)).map((s) => {
         const set = s.derived_from_set_log_id ? setMap.get(s.derived_from_set_log_id) : undefined;
         const formulaRaw = s.derived_formula as string | null;
         const formula: TmFormula | null =
@@ -260,14 +273,15 @@ export default async function TodayPage() {
       if (plannedMovementIds.length === 0) {
         return { movementRegionById: regionMap, movementSlugById: slugMap };
       }
-      const { data: movs } = await supabase
+      const { data: movs, error: movementError } = await supabase
         .from("movements")
-        .select("id, name, slug, primary_region")
+        .select("id, display_name, slug, primary_region")
         .in("id", plannedMovementIds);
+      if (movementError) throw new Error("Could not check today's exercises. Try again.");
       for (const m of movs ?? []) {
         regionMap.set(m.id, {
           primaryRegion: m.primary_region as string,
-          name: m.name as string,
+          name: m.display_name as string,
         });
         slugMap.set(m.id, (m.slug as string | null) ?? null);
       }
@@ -509,21 +523,17 @@ export default async function TodayPage() {
       })()
     : null;
 
-  // Season-aware override (ADR 0051 D2): when Season planning is on and the user
-  // has an active Season with a next planned block, the final-week nudge advances
-  // the roadmap (activate the next block) instead of the recomputed ADR-0010
-  // guess. Only computed in the final week, gated on the opt-in flag.
+  // Continue the roadmap's own program, including after it completes or ends.
   const seasonNext =
-    inFinalWeek && profile?.season_planning_enabled === true
+    profile?.season_planning_enabled === true
       ? await (async () => {
-          const season = await getActiveSeason();
-          if (!season) return null;
-          const next = nextPlannedBlock(season.blocks);
-          if (!next) return null;
+          const continuation = await getSeasonContinuation(timezone);
+          if (!continuation) return null;
+          const next = continuation.block;
           const programName =
             selectablePrograms().find((p) => p.id === next.programId)?.name ??
-            next.programId;
-          return { seasonName: season.name, block: next, programName };
+            "Program";
+          return { ...continuation, programName };
         })()
       : null;
 
@@ -538,9 +548,7 @@ export default async function TodayPage() {
   // "you have N overdue" link above the day's primary card so the user
   // can review them on /app/plan — we never auto-open a past planned
   // session in the today flow.
-  const plannedDaysAll = activeBlock
-    ? await getPlannedDays(activeBlock.id, activeBlock.startedOn)
-    : [];
+  const plannedDaysAll = await getActivePlannedDays();
   // "This week" rail sessions — built in the same PlanSessionInput shape
   // the /app/plan page uses so the Today rail reuses the shared rail +
   // drawer (single source of truth; see components/plan/ThisWeekRail).
@@ -643,6 +651,12 @@ export default async function TodayPage() {
           >
             Today
           </h1>
+          {activeBlocks.length > 1 && <nav aria-label="Programs" style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 12 }}>
+            {activeBlocks.map((block) => <Link key={block.id} href={`/app/plan?block=${block.id}`}>
+              {archetypeDisplayName(block.archetype, block.notes)}
+            </Link>)}
+            <Link href="/app/programs">All programs</Link>
+          </nav>}
         </header>
 
         {/* Two-column on wide screens: primary actions in the main
@@ -691,9 +705,9 @@ export default async function TodayPage() {
                       seasonNext.block.intentNote?.trim() ||
                       `It\u2019s the next block in your season \u201C${seasonNext.seasonName}\u201D.`,
                   },
-                  realization: endingNudge?.realization ?? null,
+                  realization: null,
                 }}
-                eyebrow={"Final week \u00b7 next in your season"}
+                eyebrow="Next in your season"
                 heading={`Next up: a ${seasonNext.programName} block`}
                 suggestionTail={""}
                 cta={{
@@ -732,6 +746,7 @@ export default async function TodayPage() {
               nextUpcoming={upcoming[0] ?? null}
               formatProfile={formatProfile}
               programRecs={programRecs}
+              programNames={Object.fromEntries(activeBlocks.map((block) => [block.id, archetypeDisplayName(block.archetype, block.notes)]))}
             />
 
             <QuickWorkoutCard
@@ -750,23 +765,21 @@ export default async function TodayPage() {
             aria-label="At a glance"
             style={{ display: "grid", gap: 14, minWidth: 0 }}
           >
-            <div data-testid="today-week-strip">
-              <ThisWeekRail
-                sessions={weekRailSessions}
-                today={todayIso}
-                currentWeekIndex={computedWeekIndex ?? -1}
-                weeks={activeBlock?.weeks ?? 1}
-                logHrefBase="/app/sessions/start"
-                moveAction={movePlannedSession}
-                skipAction={skipPlannedSession}
-                unskipAction={unskipPlannedSession}
-                updateNotesAction={updatePlannedSessionNotes}
-                startSessionAction={startSessionFromPlan}
-                markCardioDoneAction={markExternalCardioComplete}
-              />
-            </div>
+            <SharedTrainingWeek today={todayIso} primaryWeek={{
+              sessions: weekRailSessions,
+              today: todayIso,
+              currentWeekIndex: computedWeekIndex ?? -1,
+              weeks: Math.max(1, ...activeBlocks.map((block) => block.weeks)),
+              logHrefBase: "/app/sessions/start",
+              moveAction: movePlannedSession,
+              skipAction: skipPlannedSession,
+              unskipAction: unskipPlannedSession,
+              updateNotesAction: updatePlannedSessionNotes,
+              startSessionAction: startSessionFromPlan,
+              markCardioDoneAction: markExternalCardioComplete,
+            }} />
 
-            <ActivitySection sessions={recent ?? []} todayIso={todayIso} />
+            <ActivitySection activities={recentActivity} todayIso={todayIso} profile={formatProfile} />
           </aside>
         </div>
     </div>
@@ -796,20 +809,15 @@ function ActivityPill({ label, mono }: { label: string; mono?: boolean }) {
 }
 
 function ActivitySection({
-  sessions,
+  activities,
   todayIso,
+  profile,
 }: {
-  sessions: Array<{
-    id: string;
-    title: string | null;
-    performed_at: string;
-    completed_at: string | null;
-    session_rpe: number | null;
-    duration_min: number | null;
-  }>;
+  activities: TrainingActivity[];
   todayIso: string;
+  profile: ProfileForFormat;
 }) {
-  if (sessions.length === 0) {
+  if (activities.length === 0) {
     return (
       <section className="cp-card" style={{ padding: 20 }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
@@ -825,20 +833,20 @@ function ActivitySection({
   }
 
   const yesterdayIso = addDaysToYmd(todayIso, -1);
-  const groups: Array<{ key: "today" | "yesterday" | "earlier"; label: string; items: typeof sessions }> = [
+  const groups: Array<{ key: "today" | "yesterday" | "earlier"; label: string; items: typeof activities }> = [
     { key: "today", label: "Today", items: [] },
     { key: "yesterday", label: "Yesterday", items: [] },
     { key: "earlier", label: "Earlier", items: [] },
   ];
-  for (const s of sessions) {
-    const ymd = s.performed_at.slice(0, 10);
+  for (const s of activities) {
+    const ymd = s.date;
     if (ymd === todayIso) groups[0]!.items.push(s);
     else if (ymd === yesterdayIso) groups[1]!.items.push(s);
     else groups[2]!.items.push(s);
   }
 
   return (
-    <section style={{ display: "grid", gap: 8 }}>
+    <section aria-label="Recent activity" style={{ display: "grid", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 4 }}>
         <h2 style={{ fontSize: 16, margin: 0 }}>Recent activity</h2>
         <Link href="/app/sessions" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>View all →</Link>
@@ -860,11 +868,11 @@ function ActivitySection({
               {g.label}
             </div>
             {g.items.map((s) => {
-              const complete = !!s.completed_at;
+              const complete = s.status === "completed";
               return (
                 <Link
-                  key={s.id}
-                  href={`/app/sessions/${s.id}`}
+                  key={`${s.kind}:${s.id}`}
+                  href={trainingActivityHref(s, "today")}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -915,13 +923,14 @@ function ActivitySection({
                         flexWrap: "wrap",
                       }}
                     >
-                      {!complete && <ActivityPill label="in progress" />}
-                      {s.session_rpe != null && (
-                        <ActivityPill label={`Effort ${s.session_rpe}`} mono />
-                      )}
-                      {s.duration_min != null && (
-                        <ActivityPill label={`${s.duration_min} min`} mono />
-                      )}
+                      {s.kind === "swim" ? <>
+                        <ActivityPill label={SWIM_TRAINING_LABEL[s.status]} />
+                        <ActivityPill label={formatActivityDate(s, profile)} mono />
+                      </> : <>
+                        {!complete && <ActivityPill label="in progress" />}
+                        {s.session.session_rpe != null && <ActivityPill label={`Effort ${s.session.session_rpe}`} mono />}
+                        {s.session.duration_min != null && <ActivityPill label={`${s.session.duration_min} min`} mono />}
+                      </>}
                     </div>
                   </div>
                   <span style={{ color: "var(--cp-text-muted)", fontSize: 16 }} aria-hidden>›</span>
@@ -947,6 +956,7 @@ function TodaySessionCard({
   nextUpcoming,
   formatProfile,
   programRecs,
+  programNames,
 }: {
   openSession: { id: string; title: string | null } | null;
   completedToday: { id: string; title: string | null }[];
@@ -960,11 +970,12 @@ function TodaySessionCard({
   nextUpcoming: PlannedDay | null;
   formatProfile: ProfileForFormat;
   programRecs: PendingProgramRecommendation[];
+  programNames: Readonly<Record<string, string>>;
 }) {
   // Platform programs: program-owned nudges (retest maxes, next block, 7th-week
   // verdict). Informational; dismiss-only. No-op for archetype blocks.
   const programRecsBanner = (
-    <ProgramRecommendationsBanner recommendations={programRecs} dismissAction={dismissProgramRecommendation} />
+    <ProgramRecommendationsBanner recommendations={programRecs} programNames={programNames} dismissAction={dismissProgramRecommendation} />
   );
   const actionableToday = actionablePlannedSessions(plannedToday);
   if (openSession) {

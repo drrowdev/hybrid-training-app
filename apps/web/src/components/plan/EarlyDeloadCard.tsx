@@ -28,7 +28,7 @@ export function EarlyDeloadCard({
   applyAction,
 }: {
   reco: EarlyDeloadRecommendation;
-  applyAction: () => Promise<AcceptEarlyDeloadResult>;
+  applyAction: (blockId?: string) => Promise<AcceptEarlyDeloadResult>;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -40,7 +40,7 @@ export function EarlyDeloadCard({
   const apply = () => {
     setError(null);
     startTransition(async () => {
-      const res = await applyAction();
+      const res = await applyAction(reco.blockId);
       if (!res.ok) {
         setError(res.error);
         return;

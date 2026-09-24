@@ -33,7 +33,6 @@ import {
   mergeOptimisticSets,
   optimisticLogFromFormData,
   planLogSetOutcome,
-  serverHasPendingLog,
   type OptimisticLog,
 } from "@/lib/sessions/optimistic-log";
 import {
@@ -52,6 +51,11 @@ import { OfflineSyncBadge } from "./OfflineSyncBadge";
 import { useSessionLoggingState } from "./SessionLoggingState";
 import type { PlateInventoryItem } from "./plate-math";
 import type { ResolvedFreestyleMovement } from "@/lib/sessions/freestyle-resolver";
+import { authoredExecutionParts, authoredPartComplete } from "@hta/domain";
+import { CardioLogForm } from "./CardioLogForm";
+import { CardioPlanView } from "./CardioPlanView";
+import type { logCardioSession } from "@/lib/sessions/actions";
+import Link from "next/link";
 
 type AddStrengthSetAction = typeof addStrengthSetAction;
 type FillSessionFromPlanAction = typeof fillSessionFromPlanAction;
@@ -96,7 +100,13 @@ export function SessionWorkArea({
   bodyweightKg,
   accessoryMetaById,
   customAccessoryOrder,
+  authoredCardio,
 }: {
+  authoredCardio?: {
+    units: "metric" | "imperial";
+    action: typeof logCardioSession;
+    logs: { id: string; blockIndex: number; durationSec: number }[];
+  };
   sessionId: string;
   isComplete: boolean;
   performedAt: string;
@@ -195,24 +205,27 @@ export function SessionWorkArea({
   const registerStrengthLog = loggingState?.registerStrengthLog;
   const rollbackStrengthLog = loggingState?.rollbackStrengthLog;
   const registerCompletionQueued = loggingState?.registerCompletionQueued;
+  const registerCardioLog = loggingState?.registerCardioLog;
+  const rollbackCardioLog = loggingState?.rollbackCardioLog;
 
-  // Reconcile: whenever a fresh server snapshot lands (any revalidating action —
-  // finish / delete / edit / fill / swap — or a reload changes the `sets` prop),
-  // drop every CONFIRMED overlay entry. That snapshot already reflects all
-  // persisted writes, so the server becomes authoritative for them (and a set
-  // deleted via the edit page is then correctly absent). In-flight entries (write
-  // not yet resolved) are kept until their own write settles.
+  // A delayed refresh may predate an accepted write. Keep its overlay until the
+  // server actually includes it; explicit undo handles deletion before that.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reconcile the optimistic overlay against a fresh server snapshot; functional updater no-ops when nothing changed
     setPendingLogs((prev) => {
       if (prev.length === 0) return prev;
-      const next = dropConfirmed(
-        prev.filter((log) => !serverHasPendingLog(sets, log)),
-      );
+      const next = dropConfirmed(prev, sets);
       return next.length === prev.length ? prev : next;
     });
     setBwTutOverrides((prev) => (Object.keys(prev).length === 0 ? prev : {}));
   }, [sets]);
+
+  const discardDeletedSet = useCallback((setId: string) => {
+    for (const log of pendingLogs) {
+      if (log.serverId === setId) rollbackStrengthLog?.(log.clientKey);
+    }
+    setPendingLogs((current) => dropConfirmed(current, [], new Set([setId])));
+  }, [pendingLogs, rollbackStrengthLog]);
 
   const logSet = useCallback(
     async (fd: FormData): Promise<AddStrengthSetResult> => {
@@ -335,6 +348,12 @@ export function SessionWorkArea({
       setOutboxFailed(entries.filter((e) => e.attempts > 0 && e.lastError).length);
       setOutboxDropped(deadLettered.length);
       registerCompletionQueued?.(entries.some((entry) => entry.op === "complete"));
+      for (const entry of entries) {
+        if (entry.op === "cardio_session" && /^\d+$/.test(String(entry.payload.prescriptionItemIndex ?? ""))) {
+          registerCardioLog?.(entry.id, Number(entry.payload.prescriptionItemIndex));
+        }
+      }
+      for (const entry of deadLettered) rollbackCardioLog?.(entry.id);
       const seeded = hydrateQueuedSetLogs(entries);
       for (const log of seeded) {
         registerStrengthLog?.(log.clientKey, log.prescriptionItemIndex);
@@ -362,6 +381,7 @@ export function SessionWorkArea({
             entries.filter((e) => e.attempts > 0 && e.lastError).length,
           );
           setOutboxDropped(deadLettered.length);
+          for (const entry of deadLettered) rollbackCardioLog?.(entry.id);
           registerCompletionQueued?.(
             entries.some((entry) => entry.op === "complete"),
           );
@@ -373,7 +393,7 @@ export function SessionWorkArea({
       cancelled = true;
       stop();
     };
-  }, [registerCompletionQueued, registerStrengthLog, router, sessionId]);
+  }, [registerCompletionQueued, registerStrengthLog, registerCardioLog, rollbackCardioLog, router, sessionId]);
 
   const mergedSets = useMemo(
     () => mergeOptimisticSets(sets, pendingLogs),
@@ -423,6 +443,16 @@ export function SessionWorkArea({
     return out;
   }, [bwGateStateByFamily, bwTutOverrides]);
 
+  const parts = authoredExecutionParts(prescription?.items ?? []);
+  const [selectedPartId, selectPart] = useState<string | null>(null);
+  const cardioIndices = new Set(authoredCardio?.logs.map((log) => log.blockIndex));
+  for (const index of loggingState?.loggedCardioItemIndices ?? []) cardioIndices.add(index + 1);
+  const activePart = parts.find((part) => part.id === selectedPartId)
+    ?? parts.find((part) => !authoredPartComplete(part, loggedSet, cardioIndices)) ?? parts[0];
+  const cardioIndex = activePart?.kind === "cardio" ? activePart.itemIndices[0] : undefined;
+  const cardioItem = cardioIndex === undefined ? undefined : prescription?.items[cardioIndex];
+  const cardioLog = cardioIndex === undefined ? undefined : authoredCardio?.logs.find((log) => log.blockIndex === cardioIndex + 1);
+
   return (
     <>
       <OfflineSyncBadge
@@ -430,7 +460,26 @@ export function SessionWorkArea({
         failedCount={outboxFailed}
         droppedCount={outboxDropped}
       />
-      <MovementCardList
+      {!isComplete && parts.length > 0 && <section className="cp-card" style={{ padding: 16, display: "grid", gap: 12 }} data-testid="authored-workout-parts">
+        <nav aria-label="Workout parts" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+          {parts.map((part, index) => <button key={part.id} className="cp-btn" type="button"
+            style={{ flexShrink: 0, borderColor: activePart?.id === part.id ? "var(--cp-accent)" : undefined }}
+            aria-pressed={activePart?.id === part.id} onClick={() => selectPart(part.id)}>
+            {index + 1}. {part.title}{authoredPartComplete(part, loggedSet, cardioIndices) ? " · Done" : ""}
+          </button>)}
+        </nav>
+        {cardioItem && authoredCardio && <div style={{ display: "grid", gap: 12 }}>
+          {cardioItem.cardioPlan && <CardioPlanView plan={cardioItem.cardioPlan} />}
+          {cardioLog ? <div style={{ display: "flex", gap: 12, justifyContent: "space-between" }}><span>{cardioLog.durationSec / 60} min logged</span>
+            <Link href={`/app/sessions/${sessionId}/cardio/${cardioLog.id}/edit`}>Edit</Link></div>
+            : <CardioLogForm key={activePart?.id} sessionId={sessionId} prescriptionItemIndex={cardioIndex}
+              prescribedDurationMin={cardioItem.durationMin ?? null} movementId={cardioItem.movementId}
+              modality={typeof cardioItem.meta?.modality === "string" ? cardioItem.meta.modality : "other"}
+              units={authoredCardio.units} action={authoredCardio.action} />}
+        </div>}
+      </section>}
+      {(isComplete || activePart?.kind !== "cardio") && <MovementCardList
+        visiblePartId={isComplete ? undefined : activePart?.id}
         sessionId={sessionId}
         isComplete={isComplete}
         prescription={prescription}
@@ -444,6 +493,7 @@ export function SessionWorkArea({
         lastSetHints={lastSetHints}
         addStrengthSet={logSet}
         updateStrengthSet={updateStrengthSet}
+        onSetDeleted={discardDeletedSet}
         fillFromPlan={fillFromPlan}
         hapticsEnabled={hapticsEnabled}
         timerSoundEnabled={timerSoundEnabled}
@@ -460,7 +510,7 @@ export function SessionWorkArea({
         bodyweightKg={bodyweightKg}
         accessoryMetaById={accessoryMetaById}
         customAccessoryOrder={customAccessoryOrder}
-      />
+      />}
     </>
   );
 }

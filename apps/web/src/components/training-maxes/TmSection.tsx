@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import type { TmRow, TmSourceSet } from "@/lib/training-maxes/queries";
+import type { UpsertResult } from "@/lib/training-maxes/actions";
 import {
   type WeightUnit,
   displayWeight,
@@ -20,8 +21,7 @@ export type RoleGroupInput = {
   role: string;
   label: string;
   candidates: Candidate[];
-  setRow?: TmRow;
-  setRowSourceSet?: TmSourceSet | null;
+  rows: TmRow[];
 };
 export type PickerGroup = {
   label: string;
@@ -37,8 +37,7 @@ type SaveStatus = "idle" | "saving" | "saved" | "error";
  *
  * Weights are shown and entered in the user's chosen unit (`profiles.units`),
  * converting to kg at the storage boundary. The page only collects the 1RM — the
- * working weights a program trains at are a PROGRAM concern (seeded onto
- * `training_maxes.tm_percent` at deploy), so there's no training-max % here.
+ * programs own their working-load settings, so this page only edits measurements.
  */
 export function TmSection({
   units,
@@ -46,10 +45,8 @@ export function TmSection({
   otherRows,
   otherRowSourceSets,
   pickerGroups,
-  hasActiveBlock,
   bodyweightKg = null,
   upsertAction,
-  moveAction,
   deleteAction,
   lockAction,
 }: {
@@ -58,15 +55,13 @@ export function TmSection({
   otherRows: TmRow[];
   otherRowSourceSets?: Record<string, TmSourceSet | null>;
   pickerGroups: PickerGroup[];
-  hasActiveBlock: boolean;
   /** The lifter's bodyweight (kg) — lets the estimator work on a system load. */
   bodyweightKg?: number | null;
-  upsertAction: (fd: FormData) => Promise<unknown>;
-  moveAction: (fd: FormData) => Promise<unknown>;
+  upsertAction: (fd: FormData) => Promise<UpsertResult>;
   deleteAction: (fd: FormData) => Promise<void>;
   lockAction: (fd: FormData) => Promise<unknown>;
 }) {
-  const setCount = requiredGroups.filter((g) => g.setRow).length;
+  const setCount = requiredGroups.filter((g) => g.rows.length > 0).length;
   const total = requiredGroups.length;
   const allSet = setCount === total;
 
@@ -91,26 +86,16 @@ export function TmSection({
               units={units}
               roleLabel={group.label}
               candidates={group.candidates}
-              setRow={group.setRow}
+              rows={group.rows}
               upsertAction={upsertAction}
-              moveAction={moveAction}
             />
           ))}
         </div>
-        {hasActiveBlock && (
-          <p className={styles.note}>
-            🔒 Your active program uses these 1-rep maxes to set your working
-            weights.
-          </p>
-        )}
       </section>
 
       {otherRows.length > 0 && (
         <section className="cp-card" style={{ padding: 20 }}>
           <h2 style={{ margin: "0 0 4px", fontSize: 16 }}>Other lifts</h2>
-          <p style={{ margin: "0 0 14px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-            1-rep maxes you&apos;ve set that aren&apos;t required by the active program.
-          </p>
           <div className={styles.lifts}>
             {otherRows.map((r) => (
               <OtherLiftRow
@@ -144,6 +129,7 @@ export function TmSection({
  * to save) with an "Estimate" affordance that derives the 1RM from a recent set.
  */
 function OneRmInput({
+  active = true,
   movementId,
   ariaLabel,
   initialKg,
@@ -152,6 +138,7 @@ function OneRmInput({
   bodyweightKg = null,
   action,
 }: {
+  active?: boolean;
   movementId: string;
   ariaLabel: string;
   initialKg: number | null;
@@ -160,38 +147,43 @@ function OneRmInput({
   isSystemLoad?: boolean;
   /** The lifter's bodyweight in kg, for the system-load estimator. */
   bodyweightKg?: number | null;
-  action: (fd: FormData) => Promise<unknown>;
+  action: (fd: FormData) => Promise<UpsertResult>;
 }) {
   const unitLabel = weightUnitLabel(units);
   const toDisplay = (kg: number) => roundDisplayWeight(displayWeight(kg, units), units);
 
-  const [val, setVal] = useState<string>(initialKg != null ? String(toDisplay(initialKg)) : "");
+  const [draft, setDraft] = useState<string | null>(null);
+  const val = draft ?? (initialKg != null ? String(toDisplay(initialKg)) : "");
   const [status, setStatus] = useState<SaveStatus>("idle");
+  const [error, setError] = useState<string | null>(null);
   const [estimateOpen, setEstimateOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedKg = useRef<number | null>(initialKg);
   const [, startTransition] = useTransition();
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   // `raw` is in the display unit; convert to kg to store.
   const save = (raw: string) => {
     if (!movementId) return;
     const display = Number(raw);
-    if (!Number.isFinite(display) || display <= 0) return;
     const kg = toKg(display, units);
-    if (kg <= 0 || kg > 1000 || kg === lastSavedKg.current) return;
+    if (!Number.isFinite(kg) || kg <= 0 || kg > 1000) {
+      setStatus("error");
+      setError(`Enter a positive 1RM up to ${toDisplay(1000)} ${unitLabel}.`);
+      return;
+    }
+    if (kg === (draft === null ? initialKg : lastSavedKg.current)) return;
     const fd = new FormData();
     fd.set("movementId", movementId);
     fd.set("oneRmKg", String(kg));
     setStatus("saving");
+    setError(null);
     startTransition(async () => {
       try {
-        const result = (await action(fd)) as
-          | undefined
-          | void
-          | { ok: true }
-          | { ok: false; error: string };
-        if (result && typeof result === "object" && "ok" in result && result.ok === false) {
+        const result = await action(fd);
+        if (!result.ok) {
           setStatus("error");
+          setError("Could not save this max. Try again.");
           return;
         }
         lastSavedKg.current = kg;
@@ -199,25 +191,29 @@ function OneRmInput({
         window.setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 1600);
       } catch {
         setStatus("error");
+        setError("Could not save this max. Try again.");
       }
     });
   };
 
   const onChange = (v: string) => {
-    setVal(v);
+    setDraft(v);
+    setError(null);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => save(v), 600);
   };
 
   const applyEstimate = (displayValue: number) => {
     const rounded = roundDisplayWeight(displayValue, units);
-    setVal(String(rounded));
+    setDraft(String(rounded));
     setEstimateOpen(false);
     if (timer.current) clearTimeout(timer.current);
     save(String(rounded));
   };
 
+  if (!active) return null;
   return (
+    <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
     <div className={styles.right}>
       <button
         type="button"
@@ -262,6 +258,8 @@ function OneRmInput({
         />
       )}
     </div>
+    {error && <p role="alert" style={{ margin: 0, fontSize: 12, color: "var(--cp-danger)" }}>{error}</p>}
+    </div>
   );
 }
 
@@ -285,6 +283,7 @@ function EstimatePopover({
   onCancel: () => void;
   onApply: (displayValue: number) => void;
 }) {
+  const inputId = useId();
   const unitLabel = weightUnitLabel(units);
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("5");
@@ -310,12 +309,12 @@ function EstimatePopover({
       <p className={styles.popP}>Use a recent hard set.</p>
       <div className={styles.popFields}>
         <div className={styles.popField}>
-          <label htmlFor="est-weight">
+          <label htmlFor={`${inputId}-weight`}>
             {isSystemLoad ? `Added weight (${unitLabel})` : `Weight (${unitLabel})`}
           </label>
           <span className={styles.inp}>
             <input
-              id="est-weight"
+              id={`${inputId}-weight`}
               type="number"
               step={units === "imperial" ? "1" : "0.5"}
               min={isSystemLoad ? "0" : "1"}
@@ -330,10 +329,10 @@ function EstimatePopover({
         </div>
         <span className={styles.popX}>×</span>
         <div className={styles.popField}>
-          <label htmlFor="est-reps">Reps</label>
+          <label htmlFor={`${inputId}-reps`}>Reps</label>
           <span className={styles.inp}>
             <input
-              id="est-reps"
+              id={`${inputId}-reps`}
               type="number"
               step="1"
               min="1"
@@ -370,41 +369,23 @@ function EstimatePopover({
 }
 
 /**
- * A required main-lift row: uppercase role heading + a variant dropdown
- * (switching it moves the 1RM onto the chosen variant) + the boxed 1RM input.
+ * A main-lift row selects which movement's measurement to edit.
  */
 function MainLiftRow({
   units,
   roleLabel,
   candidates,
-  setRow,
+  rows,
   upsertAction,
-  moveAction,
 }: {
   units: WeightUnit;
   roleLabel: string;
   candidates: Candidate[];
-  setRow?: TmRow;
-  upsertAction: (fd: FormData) => Promise<unknown>;
-  moveAction: (fd: FormData) => Promise<unknown>;
+  rows: TmRow[];
+  upsertAction: (fd: FormData) => Promise<UpsertResult>;
 }) {
-  const initialVariant = setRow?.movementId ?? candidates[0]?.id ?? "";
+  const initialVariant = rows[0]?.movementId ?? candidates[0]?.id ?? "";
   const [variantId, setVariantId] = useState<string>(initialVariant);
-  const [, startTransition] = useTransition();
-
-  const onVariant = (newId: string) => {
-    setVariantId(newId);
-    // If a 1RM already exists for this role, move it onto the chosen variant so
-    // the role keeps exactly one number. With no row yet, just retarget entry.
-    if (setRow && newId !== setRow.movementId) {
-      const fd = new FormData();
-      fd.set("fromMovementId", setRow.movementId);
-      fd.set("toMovementId", newId);
-      startTransition(async () => {
-        await moveAction(fd);
-      });
-    }
-  };
 
   return (
     <div className={styles.lift}>
@@ -414,7 +395,7 @@ function MainLiftRow({
           <select
             className={styles.variantSel}
             value={variantId}
-            onChange={(e) => onVariant(e.target.value)}
+            onChange={(e) => setVariantId(e.target.value)}
             aria-label={`${roleLabel} variant`}
           >
             {candidates.map((c) => (
@@ -425,20 +406,21 @@ function MainLiftRow({
           </select>
         ) : (
           <span className={styles.variantStatic}>
-            {candidates[0]?.display_name ?? setRow?.movementName}
+            {candidates[0]?.display_name ?? rows[0]?.movementName}
           </span>
         )}
       </div>
-      <OneRmInput
-        // Remount the input when the targeted variant changes so it re-seeds
-        // from the (possibly moved) row's value.
-        key={variantId}
-        units={units}
-        movementId={variantId}
-        ariaLabel={`${roleLabel} 1RM`}
-        initialKg={variantId === setRow?.movementId ? setRow?.oneRmKg ?? null : null}
-        action={upsertAction}
-      />
+      {candidates.map((candidate) => (
+          <OneRmInput
+            key={candidate.id}
+            active={candidate.id === variantId}
+            units={units}
+            movementId={candidate.id}
+            ariaLabel={`${roleLabel} 1RM`}
+            initialKg={rows.find((row) => row.movementId === candidate.id)?.oneRmKg ?? null}
+            action={upsertAction}
+          />
+      ))}
     </div>
   );
 }
@@ -461,7 +443,7 @@ function OtherLiftRow({
   row: TmRow;
   sourceSet: TmSourceSet | null;
   bodyweightKg: number | null;
-  upsertAction: (fd: FormData) => Promise<unknown>;
+  upsertAction: (fd: FormData) => Promise<UpsertResult>;
   deleteAction: (fd: FormData) => Promise<void>;
   lockAction: (fd: FormData) => Promise<unknown>;
 }) {

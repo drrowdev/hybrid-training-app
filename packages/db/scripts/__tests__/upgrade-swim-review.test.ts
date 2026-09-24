@@ -331,7 +331,7 @@ describe("approved existing-data review upgrade", () => {
       migrations: { attempted: false }, flags: { attempted: false }, deployment: null });
   });
   it("puts the new job behind exact context, both prerequisites, shared lock and credential-free checks", () => {
-    const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8");
+    const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
     const job = workflow.split("\n  upgrade-swim-review:\n")[1]!.split("\n  refresh-swim-readonly-review:\n")[0]!;
     for (const value of [
       "needs: [ci, identity-guard]", "environment: swim-review", "group: swim-review-bootstrap",

@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   formatPoolCourse, formatSwimDistance, poolCourseKey, summarizeSwimWeek,
   swimBenchmarkTrend, parseSwimActualResult, settledFromStoredActual, swimCourseWorkoutTitle, type SwimSettledResult,
+  standaloneSwimTrainingState, nextStandaloneSwimWorkout,
 } from "@hta/domain";
 import {
   applySwimProposal, proposeSwimAdjustment, editableSwimCourseWorkout, type SwimDose, type SwimPlan,
@@ -16,6 +17,19 @@ import { formatSwimTime } from "./time";
 import type { SwimHubView, SwimWorkoutView } from "./view-types";
 import { swimPoolEditingAvailable, swimPoolEditContext, swimProgrammePool } from "./pool-editing";
 import { privateSwimCourseAvailable } from "./course-capability";
+import { loadStandaloneSwimStates, type StandaloneSwimState } from "./standalone-state";
+import { SWIM_TRAINING_LABEL } from "./activity-presentation";
+
+function workoutTrainingState(plan: SwimPlanRow, row: SwimHistoryRow, states: ReadonlyMap<string, StandaloneSwimState>) {
+  const current = states.get(row.workout.id);
+  if (current && (current.workoutRevision !== row.workout.revision || current.scheduledDate !== row.workout.scheduled_date)) {
+    throw new Error("The swimming workouts changed. Reload the page.");
+  }
+  return current ?? standaloneSwimTrainingState({
+    planStatus: plan.status, workoutStatus: row.workout.status, nativeSessionId: row.workout.session_id,
+    nativeCompletedAt: row.completedAt, nativeVisible: !row.deleted && !row.sourceGone, evidence: null,
+  });
+}
 
 export function swimInputId(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
@@ -177,6 +191,7 @@ export async function swimWorkoutViewFromRow(client: SupabaseClient, userId: str
   const plan = (await listSwimPlans(client)).find((row) => row.id === workout.plan_id && row.user_id === userId);
   if (!plan) return null;
   const row = (await loadSwimHistory(client, [workout]))[0]!;
+  const state = workoutTrainingState(plan, row, await loadStandaloneSwimStates(client, userId, [workout.id]));
   const poolEditing = await swimPoolEditingAvailable(client)
     ? swimPoolEditContext(plan, (await swimToday(client, userId)).today, workout) : undefined;
   const courseEditing = isPrivateSwimPlan(plan) && workout.definition.courseSource &&
@@ -190,7 +205,7 @@ export async function swimWorkoutViewFromRow(client: SupabaseClient, userId: str
     ...workoutPresentation(workout.definition.issued),
     ...(workout.definition.courseSource ? { title: swimCourseWorkoutTitle(workout.definition.courseSource.title, swimWorkoutDefinition(workout).slotId) } : {}),
     id: workout.id, revision: workout.revision, sessionId: workout.session_id,
-    status: workout.status, planStatus: plan.status, date: workout.scheduled_date,
+    status: workout.status, trainingStatus: state.status, planStatus: plan.status, date: workout.scheduled_date,
     provisional: swimWorkoutDefinition(workout).provisional, deleted: row.deleted, sourceGone: row.sourceGone,
     ...(poolEditing ? { poolEditing } : {}),
     ...(courseEditing ? { courseEditing } : {}),
@@ -220,7 +235,14 @@ const reasonLabels: Record<string, string> = {
 
 export async function loadSwimHubView(client: SupabaseClient, userId: string, plan: SwimPlanRow): Promise<SwimHubView> {
   const workouts = (await listSwimWorkouts(client, plan.id)).filter((row) => row.user_id === userId);
-  const [history, { today, timezone }] = await Promise.all([loadSwimHistory(client, workouts), swimToday(client, userId)]);
+  const [history, { today, timezone }, states] = await Promise.all([
+    loadSwimHistory(client, workouts), swimToday(client, userId),
+    loadStandaloneSwimStates(client, userId, workouts.map((row) => row.id)),
+  ]);
+  const training = history.map((row) => ({
+    id: row.workout.id, date: row.workout.scheduled_date, state: workoutTrainingState(plan, row, states),
+  }));
+  const next = nextStandaloneSwimWorkout(training, today);
   const poolEditing = await swimPoolEditingAvailable(client) ? swimPoolEditContext(plan, today) : undefined;
   const candidate = deriveSwimWeekCandidate(plan, history, today);
   const proposals: SwimHubView["proposals"] = plan.state.decisions.filter((entry) => entry.kind === "progression" || entry.kind === "assessment" ||
@@ -293,6 +315,7 @@ export async function loadSwimHubView(client: SupabaseClient, userId: string, pl
   }
   return {
     id: plan.id, revision: plan.revision, status: plan.status, today,
+    ...(next ? { nextWorkoutId: next.id } : {}),
     ...(plan.definition.privateCourse ? { imported: plan.definition.privateCourse } : {}),
     ...(poolEditing ? { poolEditing } : {}),
     editableWeeks: !isPrivateSwimPlan(plan) && (plan.status === "active" || plan.status === "paused")
@@ -314,7 +337,7 @@ export async function loadSwimHubView(client: SupabaseClient, userId: string, pl
         ? swimCourseWorkoutTitle(row.definition.courseSource.title, swimWorkoutDefinition(row).slotId)
         : workoutPresentation(row.definition.issued).title,
       total: formatSwimDistance(row.definition.issued.totalLengths, row.definition.issued.snapshot.course),
-      status: history.find((entry) => entry.workout.id === row.id)?.sourceGone ? "Result removed" : history.find((entry) => entry.workout.id === row.id)?.deleted ? "In Trash" : ({ scheduled: plan.status === "active" ? "Scheduled" : "Unscheduled", started: "In progress", completed: "Completed", skipped: "Skipped" })[row.status],
+      status: SWIM_TRAINING_LABEL[training.find((entry) => entry.id === row.id)!.state.status],
       week: swimWorkoutDefinition(row).weekIndex + 1, provisional: swimWorkoutDefinition(row).provisional,
       course: formatPoolCourse(row.definition.issued.snapshot.course),
       ...(poolEditing ? { poolEditing: swimPoolEditContext(plan, today, row) } : {}),

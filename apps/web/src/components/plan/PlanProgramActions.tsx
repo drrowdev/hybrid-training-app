@@ -1,9 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Suspense, use, useEffect, useRef, useState, type ReactNode } from "react";
 import type { endBlock } from "@/lib/planner/actions";
 import { EndBlockForm } from "./EndBlockForm";
+
+function RecoveryOption({ available, onSelect }: {
+  available?: Promise<boolean>;
+  onSelect: () => void;
+}) {
+  const enabled = available ? use(available) : true;
+  return enabled ? <button type="button" role="menuitem" onClick={onSelect}>
+    Add recovery week
+  </button> : null;
+}
 
 export function PlanProgramActions({
   blockId,
@@ -12,6 +22,7 @@ export function PlanProgramActions({
   startNewHref,
   endAction,
   recoveryControl,
+  recoveryAvailable,
 }: {
   blockId: string;
   canEdit: boolean;
@@ -19,6 +30,7 @@ export function PlanProgramActions({
   startNewHref: string;
   endAction: typeof endBlock;
   recoveryControl?: ReactNode;
+  recoveryAvailable?: Promise<boolean>;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [panel, setPanel] = useState<"recovery" | "end" | null>(null);
@@ -117,16 +129,12 @@ export function PlanProgramActions({
           data-testid="program-actions-menu"
         >
           {recoveryControl && (
-            <button
-              type="button"
-              role="menuitem"
-              onClick={() => {
+            <Suspense fallback={null}>
+              <RecoveryOption available={recoveryAvailable} onSelect={() => {
                 setPanel("recovery");
                 setMenuOpen(false);
-              }}
-            >
-              Add recovery week
-            </button>
+              }} />
+            </Suspense>
           )}
           <Link
             href="/app/plan/history"

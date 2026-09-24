@@ -39,6 +39,7 @@ import {
   effectiveDurabilityFloor,
 } from "./accessory-roles";
 import type { DeclaredExperience } from "@hta/engine";
+import { highStrainPowerBlocked } from "@hta/domain";
 import type { Equipment } from "@/lib/settings/equipment-schema";
 import {
   isEquipmentAvailable,
@@ -1134,7 +1135,8 @@ function findPowerCandidate(query: {
       (POWER_FUNCTIONAL_ROLES as readonly FunctionalRole[]).includes(r),
     );
     if (!hasPowerRole) continue;
-    if (query.filters.tendinopathyActive && m.highStrainTendon) continue;
+    if (highStrainPowerBlocked({ highStrainTendon: m.highStrainTendon, power: hasPowerRole,
+      tendinopathyActive: query.filters.tendinopathyActive })) continue;
     candidates.push(m);
   }
   if (candidates.length === 0) return null;

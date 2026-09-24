@@ -15,6 +15,9 @@ const { after, getAuthUser, state } = vi.hoisted(() => ({
     transitionRpcArgs: null as Record<string, unknown> | null,
     afterTasks: [] as Promise<void>[],
     bwSideEffects: vi.fn(),
+    hasProgram: false,
+    progressionError: null as Error | null,
+    programSteps: [] as string[],
   },
 }));
 
@@ -48,15 +51,18 @@ vi.mock("@/lib/supabase/server", () => ({
         error: null,
       };
     },
-    from: (table: string) => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({
-            data: table === "profiles" ? { timezone: "UTC" } : null,
-          }),
+    from: (table: string) => {
+      const query = {
+        select: () => query,
+        eq: () => query,
+        maybeSingle: async () => ({
+          data: table === "profiles" ? { timezone: "UTC" }
+            : table === "planned_sessions" && state.hasProgram ? { block_id: "original-program" } : null,
+          error: null,
         }),
-      }),
-    }),
+      };
+      return query;
+    },
   })),
   getAuthUser,
 }));
@@ -75,6 +81,19 @@ vi.mock("@/lib/planner/bw-diagnostics-snapshot", () => ({
 vi.mock("@/lib/training-maxes/actions", () => ({
   generateTmSuggestionsForSession: async () => undefined,
 }));
+vi.mock("@/lib/platform/progression", () => ({
+  applyProgramProgression: async (args: { blockId: string }) => {
+    expect(args.blockId).toBe("original-program");
+    state.programSteps.push("progression");
+    if (state.progressionError) throw state.progressionError;
+  },
+}));
+vi.mock("@/lib/planner/completion", () => ({
+  maybeCompleteBlock: async (_client: unknown, blockId: string) => {
+    expect(blockId).toBe("original-program");
+    state.programSteps.push("settlement");
+  },
+}));
 
 import { completeSessionResult } from "../actions";
 
@@ -89,6 +108,9 @@ describe("completeSessionResult replay", () => {
     after.mockReset();
     state.afterTasks.length = 0;
     state.bwSideEffects.mockReset();
+    state.hasProgram = false;
+    state.progressionError = null;
+    state.programSteps.length = 0;
     vi.mocked(createClient).mockClear();
     vi.mocked(revalidatePath).mockClear();
     getAuthUser.mockReset();
@@ -250,5 +272,28 @@ describe("completeSessionResult replay", () => {
     await Promise.all(state.afterTasks);
 
     expect(state.bwSideEffects).toHaveBeenCalledTimes(1);
+  });
+
+  it("DC-R5 retries saved completion against its original program before allowing settlement", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      state.hasProgram = true;
+      state.transitioned = true;
+      state.progressionError = new Error("Temporary progression failure");
+      const sessionId = "00000000-0000-4000-8000-000000000010";
+      const receiptId = "00000000-0000-4000-8000-000000000011";
+      const result = await completeSessionResult(sessionId, null, receiptId);
+      expect(result).toMatchObject({ errorCode: "transient", workoutSaved: true });
+      expect(result.error).toMatch(/workout saved/i);
+      expect(state.programSteps).toEqual(["progression"]);
+      await Promise.all(state.afterTasks);
+      state.transitioned = false;
+      state.progressionError = null;
+      expect(await completeSessionResult(sessionId, null, receiptId)).toEqual({ ok: true });
+      await Promise.all(state.afterTasks);
+      expect(state.programSteps).toEqual(["progression", "progression", "settlement"]);
+      expect(state.bwSideEffects).toHaveBeenCalledTimes(1);
+      expect(state.transitionRpcArgs?.p_completion_entry_id).toBe(receiptId);
+    } finally { errors.mockRestore(); }
   });
 });

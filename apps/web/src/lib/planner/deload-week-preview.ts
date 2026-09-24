@@ -49,6 +49,7 @@ export type DeloadWeekPreview = {
 };
 
 export type DeloadPreviewOptions = {
+  blockId?: string;
   percent?: number;
   timezone?: string;
   now?: Date;
@@ -90,11 +91,12 @@ async function boundaryWeek(
     .find((candidate) => candidate.key === boundaryKey);
   if (!boundary) return null;
 
-  const { data: rows } = await supabase
+  const { data: rows, error } = await supabase
     .from("planned_sessions")
     .select("week_index, prescription")
     .eq("user_id", userId)
     .eq("block_id", blockId);
+  if (error) throw new Error("Could not read the recovery-week placement. Try again.");
   const anchor = resolveBoundaryAnchor(
     boundary.refs,
     (rows ?? []).flatMap((r) => {
@@ -118,25 +120,28 @@ export async function getDeloadWeekPreview(
     now = new Date(),
   } = options;
   const timezone = options.timezone ?? (await getUserTimezone(userId));
-  const { data: block } = await supabase
+  let blockQuery = supabase
     .from("training_blocks")
     .select("id, started_on, weeks, program_id")
     .eq("user_id", userId)
     .eq("status", "active")
-    .is("deleted_at", null)
-    .maybeSingle();
+    .is("deleted_at", null);
+  if (options.blockId) blockQuery = blockQuery.eq("id", options.blockId);
+  const { data: block, error: blockError } = await blockQuery.maybeSingle();
+  if (blockError) throw new Error("Could not read the active program. Try again.");
   if (!block) return null;
 
   // Program advice belongs to the block that raised it. A block the lifter has
   // moved on from cannot place a week in the one that replaced it.
   if (boundaryKey && recommendationId) {
-    const { data: rec } = await supabase
+    const { data: rec, error: recommendationError } = await supabase
       .from("program_recommendations")
       .select("block_id, occurrence_key")
       .eq("id", recommendationId)
       .eq("user_id", userId)
       .eq("status", "pending")
       .maybeSingle();
+    if (recommendationError) throw new Error("Could not read the recovery-week recommendation. Try again.");
     if (!rec || rec.block_id !== block.id || rec.occurrence_key !== boundaryKey) {
       return null;
     }
@@ -145,7 +150,7 @@ export async function getDeloadWeekPreview(
   }
 
   // The recovery week's CONTENT belongs to the program, not to this file.
-  const { data: pi } = await supabase
+  const { data: pi, error: instanceError } = await supabase
     .from("program_instances")
     .select("instance")
     .eq("block_id", block.id)
@@ -153,6 +158,7 @@ export async function getDeloadWeekPreview(
     .eq("status", "active")
     .is("deleted_at", null)
     .maybeSingle();
+  if (instanceError) throw new Error("Could not read the program settings. Try again.");
   const basePolicy = recoveryWeekPolicyFor(block.program_id as string | null);
   const percent = basePolicy.restOnly
     ? basePolicy.topPercent
@@ -187,12 +193,13 @@ export async function getDeloadWeekPreview(
       ));
   const mirrorWeek = Math.min(afterWeek + 1, weeks - 1);
 
-  const { data: rows } = await supabase
+  const { data: rows, error: sessionsError } = await supabase
     .from("planned_sessions")
     .select("day_index, slot, title, session_modality, prescription")
     .eq("user_id", userId)
     .eq("block_id", block.id)
     .eq("week_index", mirrorWeek);
+  if (sessionsError) throw new Error("Could not read the recovery-week workouts. Try again.");
   if (!rows || rows.length === 0) return null;
 
   const sessions = buildDeloadWeek(
@@ -210,7 +217,7 @@ export async function getDeloadWeekPreview(
 
   // Warn (don't block) when a future A-event would be pushed by the extra week.
   const todayIso = ymdInTimezone(now, timezone);
-  const { data: evt } = await supabase
+  const { data: evt, error: eventsError } = await supabase
     .from("events")
     .select("id")
     .eq("user_id", userId)
@@ -218,6 +225,7 @@ export async function getDeloadWeekPreview(
     .gte("event_date", todayIso)
     .limit(1)
     .maybeSingle();
+  if (eventsError) throw new Error("Could not check upcoming events. Try again.");
 
   return {
     blockId: block.id as string,
@@ -245,20 +253,22 @@ export async function getDeloadWeekPreview(
  *
  * Self-contained server read; returns false when there's no active block.
  */
-export async function getDeloadWeekFatigueSignal(): Promise<boolean> {
+export async function getDeloadWeekFatigueSignal(blockId?: string): Promise<boolean> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await getAuthUser();
   if (!user) return false;
 
-  const { data: block } = await supabase
+  let blockQuery = supabase
     .from("training_blocks")
     .select("id, archetype, started_on, weeks")
     .eq("user_id", user.id)
     .eq("status", "active")
-    .is("deleted_at", null)
-    .maybeSingle();
+    .is("deleted_at", null);
+  if (blockId) blockQuery = blockQuery.eq("id", blockId);
+  const { data: block, error } = await blockQuery.maybeSingle();
+  if (error) throw new Error("Could not read the selected program. Try again.");
   if (!block) return false;
 
   const tz = await getUserTimezone();

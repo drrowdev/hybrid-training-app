@@ -1,0 +1,64 @@
+{
+  "repository": "https://github.com/google/fonts",
+  "revision": "e44c4b011a820c2cbe2fd2cfa8052037d7edb571",
+  "license": "SIL Open Font License 1.1",
+  "conversion": {
+    "fontTools": "4.63.0",
+    "brotli": "1.2.0",
+    "format": "WOFF2",
+    "subset": false,
+    "recalcTimestamp": false
+  },
+  "fonts": [
+    {
+      "family": "Archivo SemiBold",
+      "file": "Archivo.woff2",
+      "source": "ofl/archivo/Archivo[wdth,wght].ttf",
+      "sourceSha256": "0e094a7d3c7c4c25cf1310c4b30014f1dae9332220b1c2c88f4fa996f0b05053",
+      "sha256": "6ff769840a6c0eb37d13afe7e9f603fa5cdb5f391ff87cc7aab75a3a4d44fdf4",
+      "licenseFile": "Archivo.OFL.txt",
+      "version": "Version 2.001",
+      "characters": 654
+    },
+    {
+      "family": "Geist",
+      "file": "Geist.woff2",
+      "source": "ofl/geist/Geist[wght].ttf",
+      "sourceSha256": "73894e0448cae90a92b6c2f8732b7bb9acb7b94c418bff559dad4a18e1de9659",
+      "sha256": "2ffebe993e969069a9789d15164b7715d42491b5835516c5e3b935d5f81b05f1",
+      "licenseFile": "Geist.OFL.txt",
+      "version": "Version 1.800",
+      "characters": 729
+    },
+    {
+      "family": "JetBrains Mono",
+      "file": "JetBrainsMono.woff2",
+      "source": "ofl/jetbrainsmono/JetBrainsMono[wght].ttf",
+      "sourceSha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+      "sha256": "7b7f3419196f675a973d30cb70078749120caddea86c8547ebf54a8db2ca13af",
+      "licenseFile": "JetBrainsMono.OFL.txt",
+      "version": "Version 2.211",
+      "characters": 977
+    },
+    {
+      "family": "Oswald",
+      "file": "Oswald.woff2",
+      "source": "ofl/oswald/Oswald[wght].ttf",
+      "sourceSha256": "5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817",
+      "sha256": "6bbc262410618b85e3d3154309cad8346a9e3c3085a61d04b3710a4cf2831f4d",
+      "licenseFile": "Oswald.OFL.txt",
+      "version": "Version 4.103;gftools[0.9.33.dev8+g029e19f]",
+      "characters": 851
+    },
+    {
+      "family": "Saira Stencil One",
+      "file": "SairaStencilOne.woff2",
+      "source": "ofl/sairastencilone/SairaStencilOne-Regular.ttf",
+      "sourceSha256": "781496fdaf8e04cf6741b31025f6b4ba84f66021b097a8e0d85cbea2180cf223",
+      "sha256": "dc9d3c7bc0cd37ad1eab446255d12c6a8b719691f09ab32a79a9cecda20339b7",
+      "licenseFile": "SairaStencilOne.OFL.txt",
+      "version": "Version 1.004",
+      "characters": 637
+    }
+  ]
+}

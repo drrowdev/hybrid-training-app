@@ -9,6 +9,8 @@
  * §6.9) so they cannot disagree again.
  */
 import { addedLoadFromSystemLoad } from "./system-load";
+import { readProgramLoadBasis, resolveProgramWorkingMax } from "./program-load-basis";
+import { isRehabItem } from "./rehab-section";
 
 export type TargetLoadInput = {
   /** Percentage of the working max (40 = 40%), when the item is %-anchored. */
@@ -35,11 +37,14 @@ export type TargetLoadInput = {
    * Reading one as a bodyweight-inclusive total would silently zero it.
    */
   kind?: string | null;
+  meta?: Record<string, unknown>;
 };
 
 export type TargetLoadContext = {
   /** Resolved working max in kg for this movement, or null when unanchored. */
   tmKg?: number | null | undefined;
+  /** Account-owned measurement; a typed program supplies its own working basis. */
+  oneRmKg?: number | null | undefined;
   /**
    * True when this movement's max is a SYSTEM load — bodyweight plus belt
    * (weighted pull-ups / dips). A percentage of it is a total, so the load to
@@ -62,6 +67,20 @@ function num(v: number | null | undefined): number | undefined {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
 
+export function resolveLoadReference(
+  item: Pick<TargetLoadInput, "meta"> | null | undefined,
+  ctx: Pick<TargetLoadContext, "tmKg" | "oneRmKg"> & { basis?: "TM" | "1RM" } = {},
+): { kg: number | null; basis: "TM" | "1RM" } {
+  const program = readProgramLoadBasis(item?.meta?.programLoadBasis);
+  const value = program ? resolveProgramWorkingMax(program, ctx.oneRmKg) : num(ctx.tmKg);
+  const kg = value != null && value > 0 ? value : null;
+  const oneRmKg = num(ctx.oneRmKg);
+  const basis = program
+    ? program.kind === "one-rm" && program.percent === 100 ? "1RM" : "TM"
+    : ctx.basis ?? (kg != null && oneRmKg != null && Math.abs(kg - oneRmKg) < 0.001 ? "1RM" : "TM");
+  return { kg, basis };
+}
+
 /**
  * Resolve the prescribed load, or null when the prescription doesn't determine
  * one.
@@ -79,7 +98,7 @@ export function resolveTargetLoadKg(
   const round = ctx.roundKg ?? ((kg: number) => kg);
 
   const percentTm = num(item.percentTm);
-  const tmKg = num(ctx.tmKg);
+  const tmKg = resolveLoadReference(item, ctx).kg;
   if (percentTm != null && tmKg != null && tmKg > 0) {
     const rawKg = (tmKg * percentTm) / 100;
     if (!ctx.isSystemLoad) return round(rawKg);
@@ -89,6 +108,8 @@ export function resolveTargetLoadKg(
   }
 
   const absolute = num(item.targetWeightKg);
+  // Library rehab doses are explicit, including an unloaded 0 kg set.
+  if (isRehabItem(item) && absolute != null && absolute >= 0) return absolute;
   // A system-load engine already resolved its ramp to an ADDED load, so an
   // explicit 0 means "bodyweight" and is a prescription, not a missing value.
   if (absolute != null && (absolute > 0 || (ctx.isSystemLoad && absolute === 0))) {

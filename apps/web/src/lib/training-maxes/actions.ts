@@ -7,6 +7,8 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { roundToPlate } from "./queries";
 import { activeProgramTmPercent } from "./active-program-basis";
 import { syncTmSuggestionsForSession } from "./tm-suggestion-sync";
+import { getActiveBlocks } from "@/lib/planner/queries";
+import { loadBlockProgramKinds } from "@/lib/programs/ownership";
 
 const upsertSchema = z.object({
   movementId: z.string().uuid(),
@@ -30,31 +32,35 @@ export async function upsertTrainingMax(formData: FormData): Promise<UpsertResul
   } = await getAuthUser();
   if (!user) redirect("/login");
 
-  // The loading basis (tm_percent) is owned by the active PROGRAM — it's seeded
-  // on deploy (5/3/1 / TB / Hybrid), not edited here. So preserve whatever the
-  // program already set rather than clobbering it when the user edits a 1RM.
-  const { data: existing } = await supabase
+  const { data: existing, error: existingError } = await supabase
     .from("training_maxes")
     .select("tm_percent")
     .eq("user_id", user.id)
     .eq("movement_id", parsed.data.movementId)
     .maybeSingle();
+  if (existingError) return { ok: false, error: existingError.message };
   let tmPercent = existing?.tm_percent ?? null;
   if (tmPercent == null) {
-    const { data: activeProgram, error: activeProgramError } = await supabase
-      .from("program_instances")
-      .select("program_family, instance")
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .is("deleted_at", null)
-      .maybeSingle();
-    if (activeProgramError) {
-      return { ok: false, error: activeProgramError.message };
+    let blocks: Awaited<ReturnType<typeof getActiveBlocks>>;
+    try {
+      blocks = await getActiveBlocks();
+    } catch {
+      return { ok: false, error: "Could not read your programs. Try saving again." };
     }
-    tmPercent = activeProgramTmPercent(
-      activeProgram?.program_family,
-      activeProgram?.instance,
-    );
+    // Only unclassified programs still use the old account-level loading basis.
+    const legacy = blocks.find((block) => block.programKind === null);
+    if (legacy) {
+      const { data: activeProgram, error: activeProgramError } = await supabase
+        .from("program_instances")
+        .select("program_family, instance")
+        .eq("user_id", user.id)
+        .eq("block_id", legacy.id)
+        .eq("status", "active")
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (activeProgramError) return { ok: false, error: activeProgramError.message };
+      tmPercent = activeProgramTmPercent(activeProgram?.program_family, activeProgram?.instance);
+    }
   }
 
   // Manual upsert is always 'entered' — typing a value into the form is an
@@ -90,74 +96,6 @@ export async function deleteTrainingMax(formData: FormData): Promise<void> {
   const supabase = await createClient();
   await supabase.from("training_maxes").delete().eq("id", id);
   revalidatePath("/app/settings/training-maxes");
-}
-
-const moveSchema = z.object({
-  fromMovementId: z.string().uuid(),
-  toMovementId: z.string().uuid(),
-});
-
-/**
- * Switch which VARIANT a role's 1RM is attached to (e.g. Back Squat → Front
- * Squat) when the user changes the variant dropdown on the 1-rep-maxes page.
- *
- * Moves the stored 1RM (and the program-seeded tm_percent, for continuity) onto
- * the new movement and removes the old row, so a role keeps exactly one 1RM. If
- * the target variant already had a 1RM, it's overwritten — switching the
- * dropdown is an explicit "this is my squat now" action.
- */
-export async function moveTrainingMaxVariant(formData: FormData): Promise<UpsertResult> {
-  const parsed = moveSchema.safeParse({
-    fromMovementId: formData.get("fromMovementId"),
-    toMovementId: formData.get("toMovementId"),
-  });
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
-  if (parsed.data.fromMovementId === parsed.data.toMovementId) return { ok: true };
-
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await getAuthUser();
-  if (!user) redirect("/login");
-
-  const { data: source, error: readErr } = await supabase
-    .from("training_maxes")
-    .select("one_rm_kg, tm_percent")
-    .eq("user_id", user.id)
-    .eq("movement_id", parsed.data.fromMovementId)
-    .maybeSingle();
-  if (readErr) return { ok: false, error: readErr.message };
-  if (!source) return { ok: false, error: "No 1RM to move." };
-
-  const { error: upsertErr } = await supabase.from("training_maxes").upsert(
-    {
-      user_id: user.id,
-      movement_id: parsed.data.toMovementId,
-      one_rm_kg: source.one_rm_kg,
-      tm_percent: source.tm_percent ?? null,
-      source: "entered",
-      derived_from_session_id: null,
-      derived_from_set_log_id: null,
-      derived_formula: null,
-      derived_at: null,
-    },
-    { onConflict: "user_id,movement_id" },
-  );
-  if (upsertErr) return { ok: false, error: upsertErr.message };
-
-  const { error: delErr } = await supabase
-    .from("training_maxes")
-    .delete()
-    .eq("user_id", user.id)
-    .eq("movement_id", parsed.data.fromMovementId);
-  if (delErr) return { ok: false, error: delErr.message };
-
-  revalidatePath("/app/settings/training-maxes");
-  revalidatePath("/app");
-  revalidatePath("/app/plan");
-  return { ok: true };
 }
 
 /**
@@ -217,6 +155,18 @@ export async function acceptTmSuggestion(formData: FormData): Promise<UpsertResu
     .maybeSingle();
   if (readErr) return { ok: false, error: readErr.message };
   if (!suggestion) return { ok: false, error: "Suggestion not found" };
+  if (!suggestion.derived_from_session_id) return { ok: false, error: "The source workout is unavailable." };
+  const source = await supabase.from("sessions").select("block_id")
+    .eq("id", suggestion.derived_from_session_id).eq("user_id", user.id).maybeSingle();
+  if (source.error || !source.data) return { ok: false, error: "Could not read the source workout. Try again." };
+  try {
+    const blockId = source.data.block_id as string | null;
+    if (blockId && (await loadBlockProgramKinds(supabase, user.id, [blockId])).get(blockId) != null) {
+      return { ok: false, error: "Review the load settings in this workout's program." };
+    }
+  } catch {
+    return { ok: false, error: "Could not read the workout's program. Try again." };
+  }
 
   // Derive a 1RM from the suggested TM: the user's effective TM% governs the
   // mapping. Read the override first; fall back to profile default.
@@ -319,4 +269,3 @@ export async function generateTmSuggestionsForSession(
   if (created.length > 0) revalidatePath("/app");
   return created;
 }
-

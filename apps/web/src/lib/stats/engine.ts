@@ -32,7 +32,7 @@ import {
   type CeilingBaseFormula,
   type CeilingBasisWeek,
 } from "@hta/engine";
-import { ALL_REGIONS, type Region } from "@hta/domain";
+import { ALL_REGIONS, isPlannedRest, type Region } from "@hta/domain";
 import { computeRegionFreshness, ewmaStep } from "@hta/domain";
 import { ARCHETYPES, type ArchetypeId } from "@/lib/planner/archetypes";
 import { archetypeDisplayName } from "@/lib/planner/queries";
@@ -109,24 +109,22 @@ export async function getDecisionTrace(
   tz: string,
 ): Promise<DecisionTrace> {
   // Active block + today's planned sessions.
-  const { data: block } = await supabase
+  const { data: blocks, error: blocksError } = await supabase
     .from("training_blocks")
-    .select("id, archetype, started_on, weeks, notes")
+    .select("id, program_id, archetype, started_on, weeks, notes")
     .eq("user_id", userId)
     .eq("status", "active")
-    .is("deleted_at", null)
-    .order("started_on", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .is("deleted_at", null);
+  if (blocksError) throw new Error("Could not load your program.", { cause: blocksError });
+  const adaptive = (blocks ?? []).filter((block) =>
+    block.program_id === "hybrid" || (block.program_id == null && block.archetype != null));
+  if (adaptive.length > 1) throw new Error("The active programs need to be reconciled before viewing their progress.");
+  const block = adaptive[0];
 
   if (!block) {
     return {
-      headline: "No active block",
-      reasons: [
-        {
-          text: "Start or resume a block on the Plan page and the engine will explain its picks here.",
-        },
-      ],
+      headline: "No active adaptive program",
+      reasons: [],
       noBlock: true,
       restDay: false,
     };
@@ -141,12 +139,13 @@ export async function getDecisionTrace(
   const archetype = ARCHETYPES[block.archetype as Exclude<ArchetypeId, "custom">];
   const weekProfile = archetype?.weekProfiles[weekIndex];
 
-  const { data: todayPlanned } = await supabase
+  const { data: todayPlanned, error: plannedError } = await supabase
     .from("planned_sessions")
     .select("title, role, prescription, week_index, day_index, slot")
     .eq("block_id", block.id)
     .eq("week_index", weekIndex)
     .eq("day_index", daysSinceMonday - weekIndex * 7);
+  if (plannedError) throw new Error("Could not load today's workouts.", { cause: plannedError });
 
   const reasons: DecisionTraceReason[] = [];
   reasons.push({
@@ -173,20 +172,17 @@ export async function getDecisionTrace(
   }
 
   // Rest-day case: no planned session for today.
-  if (!todayPlanned || todayPlanned.length === 0) {
-    reasons.push({
-      text: "No session scheduled for today — treated as a recovery day.",
-      cite: "DC-E1",
-    });
+  const workoutsToday = (todayPlanned ?? []).filter((row) => !isPlannedRest(row));
+  if (workoutsToday.length === 0) {
     return {
-      headline: "Today: rest day",
+      headline: `${archetypeName}: no workout scheduled today`,
       reasons,
       noBlock: false,
       restDay: true,
     };
   }
 
-  const planned = todayPlanned[0]!;
+  const planned = workoutsToday[0]!;
   const sessionTitle = planned.title ?? "Today's session";
   const role = (planned.role as string | null) ?? "primary";
   const mainItem = pickMainItem(planned.prescription);

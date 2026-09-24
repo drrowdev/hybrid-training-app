@@ -10,8 +10,11 @@ import {
   hasUserEditedPrescription,
   markPrescriptionRescheduled,
   prescriptionCarriesUserState,
+  getMovementSwapLoadContext,
 } from "../prescription-mutations";
 import type { Prescription } from "@hta/db";
+import { resolveTargetLoadKg } from "@hta/domain";
+import { groupPrescriptionByMovement, withConfirmedMovementSwap } from "../movement-grouping";
 import type { WarmupScheme } from "@/lib/planner/warmups";
 
 const base: Prescription = {
@@ -201,6 +204,78 @@ describe("swapMovementInPrescription", () => {
     percentLadder: [40, 60, 80],
     repLadder: [5, 5, 3],
   };
+
+  it("DC-R6 retains the program's percentage basis on rebuilt warm-up slots", () => {
+    const basis = { version: 1, kind: "one-rm", percent: 90, roundingKg: 2.5 } as const;
+    const prescription: Prescription = { items: [
+      { movementId: "mov-bench", kind: "warmup", sets: 1, reps: 5, percentTm: 40, meta: { programLoadBasis: basis } },
+      { movementId: "mov-bench", kind: "main", sets: 1, reps: 5, percentTm: 80, meta: { programLoadBasis: basis } },
+    ] };
+    const next = swapMovementInPrescription(prescription, "mov-bench",
+      { id: "mov-floor", slug: "floor-press", displayName: "Floor Press" },
+      undefined, undefined, { warmupScheme: scheme3, replacementHasTrainingMax: true });
+    expect(next.items.filter((item) => item.kind === "warmup")).toHaveLength(3);
+    for (const item of next.items) expect(item.meta?.programLoadBasis).toEqual(basis);
+    expect(prescription.items).toHaveLength(2);
+    expect(prescription.items[0]?.movementId).toBe("mov-bench");
+  });
+
+  it.each([false, true])("DC-R6 clears a different lift's fixed max without borrowing account defaults (started=%s)", (preserveItemIndices) => {
+    const basis = { version: 1, kind: "working-max", kg: 100 } as const;
+    const prescription: Prescription = { items: [
+      { movementId: "mov-bench", kind: "warmup", sets: 1, reps: 5, percentTm: 40, meta: { programLoadBasis: basis } },
+      { movementId: "mov-bench", kind: "main", sets: 1, reps: 5, percentTm: 80, targetWeightKg: 80, meta: { programLoadBasis: basis } },
+    ] };
+    const movement = { id: "mov-floor", slug: "floor-press", displayName: "Floor Press" };
+    expect(getMovementSwapLoadContext(prescription, "mov-bench", movement.id, true).requiresManualLoad).toBe(true);
+    const next = swapMovementInPrescription(prescription, "mov-bench", movement, undefined, undefined,
+      { warmupScheme: scheme3, replacementHasTrainingMax: true, preserveItemIndices });
+    for (const item of next.items) {
+      expect(item.movementId).toBe(movement.id);
+      expect(item.percentTm).toBeUndefined();
+      expect(item.targetWeightKg).toBeUndefined();
+      expect(item.meta?.programLoadBasis).toBeUndefined();
+      expect(resolveTargetLoadKg(item, { tmKg: 200, oneRmKg: 250 })).toBeNull();
+    }
+    expect(next.items.filter((item) => item.kind === "main")).toHaveLength(1);
+    if (preserveItemIndices) {
+      const before = groupPrescriptionByMovement(prescription)[0]!;
+      const confirmed = withConfirmedMovementSwap(before, { ...movement, prescription: next });
+      expect(confirmed.itemIndices).toEqual(before.itemIndices);
+      expect(confirmed.items).toEqual(next.items);
+      expect(confirmed.acceptedMovementIds).toEqual(expect.arrayContaining(["mov-bench", movement.id]));
+      expect(() => withConfirmedMovementSwap(before, { ...movement, prescription })).toThrow();
+    }
+    expect(prescription.items[1]?.percentTm).toBe(80);
+    expect(prescription.items[1]?.meta?.programLoadBasis).toEqual(basis);
+  });
+
+  it("DC-R6 can use a replacement's fixed max already issued in the same workout without an account max", () => {
+    const prescription: Prescription = { items: [
+      { movementId: "mov-bench", kind: "main", sets: 1, reps: 5, percentTm: 80,
+        meta: { programLoadBasis: { version: 1, kind: "working-max", kg: 100 } } },
+      { movementId: "mov-floor", kind: "main", sets: 1, reps: 5, percentTm: 70,
+        meta: { programLoadBasis: { version: 1, kind: "working-max", kg: 60 } } },
+    ] };
+    expect(getMovementSwapLoadContext(prescription, "mov-bench", "mov-floor", false))
+      .toEqual({ requiresManualLoad: false, replacementHasTrainingMax: true });
+    const next = swapMovementInPrescription(prescription, "mov-bench",
+      { id: "mov-floor", slug: "floor-press", displayName: "Floor Press" }, undefined, undefined,
+      { warmupScheme: scheme3, replacementHasTrainingMax: false });
+    const swapped = next.items.find((item) => item.kind === "main" && item.percentTm === 80)!;
+    expect(resolveTargetLoadKg(swapped, { tmKg: 200, oneRmKg: 250 })).toBe(48);
+    expect(next.items.at(-1)).toEqual(prescription.items[1]);
+    expect(next.items.filter((item) => item.kind === "warmup").every((item) => item.percentTm != null)).toBe(true);
+  });
+
+  it("DC-R6 applies the same fixed-max safety to an item-level swap", () => {
+    const prescription: Prescription = { items: [{ movementId: "mov-bench", kind: "main", sets: 1, reps: 5,
+      percentTm: 80, targetWeightKg: 80, meta: { programLoadBasis: { version: 1, kind: "working-max", kg: 100 } } }] };
+    const next = applyPrescriptionSwap(prescription, { itemIndex: 0,
+      newMovement: { id: "mov-floor", slug: "floor-press", displayName: "Floor Press" } });
+    expect(next.items[0]?.percentTm).toBeUndefined();
+    expect(resolveTargetLoadKg(next.items[0], { tmKg: 200, oneRmKg: 250 })).toBeNull();
+  });
 
   it("requires the caller's warm-up scheme (no silent retarget-only path)", () => {
     expect(() =>

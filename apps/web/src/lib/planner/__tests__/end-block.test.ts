@@ -1,161 +1,56 @@
-/**
- * Unit tests for `endBlock` server action.
- *
- * The action's two contracts:
- *   1. Status flips to 'archived'.
- *   2. Both `archived_at` AND `ended_at` are set to NOW() — the lifecycle
- *      timestamps introduced in migration 0025. We assert both columns
- *      receive the same instant so historical stats can rely on them.
- */
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
-type BlockRow = {
-  id: string;
-  status: "active" | "completed" | "archived";
-  archetype: string;
-  weeks: number;
-  started_on: string;
-  archived_at: string | null;
-  ended_at: string | null;
-};
-
-const store: { blocks: BlockRow[] } = { blocks: [] };
-const overrideInserts: Array<Record<string, unknown>> = [];
-
-vi.mock("next/cache", () => ({
-  revalidatePath: vi.fn(),
-}));
-
+import { beforeEach, describe, expect, it, vi } from "vitest";
+const { rpc, revalidatePath } = vi.hoisted(() => ({ rpc: vi.fn(), revalidatePath: vi.fn() }));
+vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("@/lib/supabase/server", () => ({
-  createClient: async () => ({
-    auth: {
-      getUser: async () => ({
-        data: { user: { id: "11111111-2222-2222-2222-222222222222" } },
-      }),
-    },
-    from: (table: string) => {
-      const state: {
-        update?: Partial<BlockRow>;
-        inserts: Array<Record<string, unknown>>;
-        eqs: Array<[string, unknown]>;
-      } = { eqs: [], inserts: [] };
-      const q: Record<string, (...a: never[]) => unknown> = {
-        select: (() => q) as (...a: never[]) => unknown,
-        update: ((patch: Partial<BlockRow>) => {
-          state.update = patch;
-          return q as unknown;
-        }) as (...a: never[]) => unknown,
-        insert: ((row: Record<string, unknown>) => {
-          state.inserts.push(row);
-          if (table === "engine_override_events") {
-            overrideInserts.push(row);
-          }
-          return q as unknown;
-        }) as (...a: never[]) => unknown,
-        eq: ((col: string, val: unknown) => {
-          state.eqs.push([col, val]);
-          return q as unknown;
-        }) as (...a: never[]) => unknown,
-        maybeSingle: (() =>
-          Promise.resolve({
-            data:
-              table === "training_blocks"
-                ? store.blocks.find((b) =>
-                    state.eqs.every(
-                      ([c, v]) =>
-                        (b as unknown as Record<string, unknown>)[c] === v,
-                    ),
-                  ) ?? null
-                : state.inserts[0] ?? null,
-            error: null,
-          })) as (...a: never[]) => unknown,
-        then: ((resolve: (v: { data: unknown; error: null }) => unknown) => {
-          if (state.update) {
-            for (const row of store.blocks) {
-              if (
-                state.eqs.every(
-                  ([c, v]) =>
-                    (row as unknown as Record<string, unknown>)[c] === v,
-                )
-              ) {
-                Object.assign(row, state.update);
-              }
-            }
-          }
-          const data =
-            table === "planned_sessions"
-              ? []
-              : state.inserts.length > 0
-                ? state.inserts
-                : [];
-          return Promise.resolve(resolve({ data, error: null }));
-        }) as (...a: never[]) => unknown,
-      };
-      return q;
-    },
-  }),
-  getAuthUser: async () => ({ data: { user: { id: "11111111-2222-2222-2222-222222222222" } }, error: null }),
+  createClient: async () => ({ rpc }),
+  getAuthUser: async () => ({ data: { user: { id: "11111111-2222-4222-8222-222222222222" } } }),
 }));
+import { endBlock } from "../actions";
+const id = "11111111-1111-4111-8111-111111111111";
 
-describe("endBlock", () => {
+describe("DC-K4/DC-SW7 ending only the selected primary program", () => {
   beforeEach(() => {
-    store.blocks = [
-      {
-        id: "11111111-1111-1111-1111-111111111111",
-        status: "active",
-        archetype: "strength_anchor",
-        weeks: 4,
-        started_on: "2026-01-01",
-        archived_at: null,
-        ended_at: null,
-      },
-    ];
-    overrideInserts.length = 0;
+    rpc.mockReset().mockImplementation(async (name: string) => name === "training_schedule_snapshot"
+      ? { data: { revision: "a".repeat(32), entries: [] }, error: null }
+      : { data: { id }, error: null });
+    revalidatePath.mockClear();
   });
-
-  it("flips status to 'archived' and sets both archived_at AND ended_at", async () => {
-    const { endBlock } = await import("../actions");
-    const fd = new FormData();
-    fd.set("id", "11111111-1111-1111-1111-111111111111");
-    const before = Date.now();
-    await endBlock(fd);
-    const after = Date.now();
-    const blk = store.blocks[0]!;
-    expect(blk.status).toBe("archived");
-    expect(blk.archived_at).toBeTruthy();
-    expect(blk.ended_at).toBeTruthy();
-    // Both timestamps captured in the same UPDATE → identical instant.
-    expect(blk.archived_at).toBe(blk.ended_at);
-    const ts = new Date(blk.archived_at!).getTime();
-    expect(ts).toBeGreaterThanOrEqual(before);
-    expect(ts).toBeLessThanOrEqual(after);
+  it("sends the identity and audit reason to the shared atomic boundary", async () => {
+    const form = new FormData(); form.set("id", id); form.set("reason", "Switching to a deload block");
+    await endBlock(form);
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(rpc).toHaveBeenLastCalledWith("independent_program_schedule_commit", expect.objectContaining({
+      p_operation: "primary-end", p_args: { id, reason: "Switching to a deload block" },
+      p_expected_revision: "a".repeat(32), p_accept_overlap: false,
+    }));
+    expect(revalidatePath).toHaveBeenCalledWith("/app");
   });
-
-  it("inserts an override-audit row with event_type='manual_end'", async () => {
-    const { endBlock } = await import("../actions");
-    const fd = new FormData();
-    fd.set("id", "11111111-1111-1111-1111-111111111111");
-    fd.set("reason", "Switching to a deload block");
-    await endBlock(fd);
-    expect(overrideInserts.length).toBeGreaterThanOrEqual(1);
-    const row = overrideInserts[0]!;
-    expect(row.event_type).toBe("manual_end");
-    expect(row.block_id).toBe("11111111-1111-1111-1111-111111111111");
-    expect(row.reason).toBe("Switching to a deload block");
-    const ctx = row.context as Record<string, unknown>;
-    expect(ctx.archetype).toBe("strength_anchor");
-    expect(ctx.weeks).toBe(4);
+  it("retains explicit legacy ending only when both independent-program routines are absent", async () => {
+    rpc.mockImplementation(async (name: string) => {
+      if (name === "training_schedule_snapshot") return { data: { revision: "a".repeat(32), entries: [] }, error: null };
+      if (name === "training_schedule_commit") return { data: { id }, error: null };
+      return { data: null, error: { code: "PGRST202", message: `Could not find ${name}` } };
+    });
+    const form = new FormData(); form.set("id", id);
+    await endBlock(form);
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual([
+      "training_schedule_snapshot", "independent_program_schedule_commit", "independent_programs_ready", "training_schedule_commit",
+    ]);
+    expect(rpc).toHaveBeenLastCalledWith("training_schedule_commit", expect.objectContaining({
+      p_operation: "primary-end", p_args: { id },
+    }));
+    expect(revalidatePath).toHaveBeenCalledWith("/app");
   });
-
-  it("rejects malformed ids without touching state", async () => {
-    const { endBlock } = await import("../actions");
-    const fd = new FormData();
-    fd.set("id", "not-a-uuid");
-    await expect(endBlock(fd)).rejects.toThrow();
-    const blk = store.blocks[0]!;
-    expect(blk.status).toBe("active");
-    expect(blk.archived_at).toBeNull();
-    expect(blk.ended_at).toBeNull();
-    expect(overrideInserts).toHaveLength(0);
+  it("surfaces stale transactions without claiming success", async () => {
+    rpc.mockResolvedValueOnce({ data: { revision: "a".repeat(32), entries: [] }, error: null })
+      .mockResolvedValueOnce({ data: null, error: { message: "Your schedule changed." } });
+    const form = new FormData(); form.set("id", id);
+    await expect(endBlock(form)).rejects.toThrow("Your schedule changed.");
+    expect(revalidatePath).not.toHaveBeenCalled();
+  });
+  it("rejects malformed ids before any database call", async () => {
+    const form = new FormData(); form.set("id", "not-a-uuid");
+    await expect(endBlock(form)).rejects.toThrow();
+    expect(rpc).not.toHaveBeenCalled();
   });
 });

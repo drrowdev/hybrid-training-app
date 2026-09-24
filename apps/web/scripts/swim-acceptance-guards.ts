@@ -3,6 +3,7 @@ import { isAbsolute, relative, sep } from "node:path";
 import { z } from "zod";
 import { getSwimRpcTestEnv } from "../src/lib/swim/__tests__/storage-rpc-config";
 import { RPC_CONFIG, RPC_SUITE, type readSwimRpcReport } from "../src/lib/swim/__tests__/storage-rpc-report";
+import { isModularAcceptance } from "./modular-browser-profile";
 
 export const ACTIVE_MIGRATION_TOTAL = 150;
 export const CLI_VERSION = "2.116.0";
@@ -60,6 +61,7 @@ export function requirePinnedDefaultConfig(config: string) {
 
 type Env = Record<string, string | undefined>;
 export function requireManualContext(env: Env, head: string) {
+  isModularAcceptance(env);
   assert(env.GITHUB_ACTIONS === "true" && env.GITHUB_EVENT_NAME === "workflow_dispatch" &&
     env.GITHUB_JOB === "swim-acceptance" && env.SWIM_ACCEPTANCE === "true", "Manual swim job required");
   assert(env.GITHUB_REPOSITORY === "drrowdev/hybrid-training-app", "Unexpected repository");

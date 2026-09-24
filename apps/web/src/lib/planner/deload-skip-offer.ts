@@ -33,6 +33,7 @@ import type { DeloadSkipOffer } from "@/lib/planner/deload-skip";
 
 export async function getDeloadSkipOffer(
   now = new Date(),
+  blockId?: string,
 ): Promise<DeloadSkipOffer | null> {
   const supabase = await createClient();
   const {
@@ -40,13 +41,15 @@ export async function getDeloadSkipOffer(
   } = await getAuthUser();
   if (!user) return null;
 
-  const { data: block } = await supabase
+  let query = supabase
     .from("training_blocks")
     .select("id, archetype, started_on, weeks")
     .eq("user_id", user.id)
     .eq("status", "active")
-    .is("deleted_at", null)
-    .maybeSingle();
+    .is("deleted_at", null);
+  if (blockId) query = query.eq("id", blockId);
+  const { data: block, error } = await query.maybeSingle();
+  if (error) throw new Error("Could not read the selected program. Try again.");
   if (!block) return null;
 
   const archetype = block.archetype as string;

@@ -6,6 +6,11 @@ import EditCardioPage from "@/app/app/sessions/[id]/cardio/[cardioId]/edit/page"
 import { SwimHub } from "@/components/swim/SwimHub";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { WorkoutScreen } from "@/components/swim/WorkoutScreen";
+import { MatchedRecordings } from "@/components/swim/MatchedRecordings";
+import { SwimRehabEditor } from "@/components/swim/SwimRehabEditor";
+import { SwimRehabWorkouts } from "@/components/swim/SwimRehabWorkouts";
+import { loadSwimRehabAttachments } from "../rehab-attachments";
+import { loadSwimRehabWorkouts } from "../rehab-workouts";
 import { getSwimCapability } from "../capability";
 import { findSwimWorkoutForSession } from "../navigation";
 import { listSwimPlans } from "../storage";
@@ -28,6 +33,8 @@ vi.mock("@/lib/sessions/actions", () => ({ editCardio: vi.fn() }));
 vi.mock("@/components/session/EditCardioForm", () => ({ EditCardioForm: () => null }));
 vi.mock("../storage", () => ({ listSwimPlans: vi.fn() }));
 vi.mock("../queries", () => ({ loadSwimHubView: vi.fn(), loadSwimWorkoutView: vi.fn() }));
+vi.mock("../rehab-attachments", () => ({ loadSwimRehabAttachments: vi.fn() }));
+vi.mock("../rehab-workouts", () => ({ loadSwimRehabWorkouts: vi.fn() }));
 vi.mock("@/components/swim/SwimHub", () => ({ SwimHub: () => null }));
 vi.mock("@/components/swim/WorkoutScreen", () => ({ WorkoutScreen: () => null }));
 
@@ -44,9 +51,32 @@ beforeEach(() => {
   vi.mocked(listSwimPlans).mockResolvedValue([swimFixture().plan]);
   vi.mocked(loadSwimHubView).mockResolvedValue({ id: "view" } as Awaited<ReturnType<typeof loadSwimHubView>>);
   vi.mocked(loadSwimWorkoutView).mockResolvedValue({ id: "workout", revision: 2, title: "Pool swim" } as Awaited<ReturnType<typeof loadSwimWorkoutView>>);
+  vi.mocked(loadSwimRehabAttachments).mockResolvedValue(null);
+  vi.mocked(loadSwimRehabWorkouts).mockResolvedValue(null);
 });
 
 describe("ADR0079 reachable standalone routes", () => {
+  it("DC-R5 wires the shared rehab editor to the selected swimming program and freshness revision", async () => {
+    const plan = swimFixture().plan;
+    const context = { planId: plan.id, revision: "a".repeat(32), editable: true, protocols: [], attachedIds: [] };
+    vi.mocked(loadSwimRehabAttachments).mockResolvedValue(context);
+    const page = await SwimPage({ searchParams: Promise.resolve({ plan: plan.id }) });
+    expect(loadSwimRehabAttachments).toHaveBeenCalledWith({}, userId, plan);
+    const editor = elements(page).find((element) => element.type === SwimRehabEditor);
+    expect(editor?.props.context).toBe(context);
+    expect(editor?.key).toBe(`${plan.id}:${context.revision}`);
+  });
+  it("DC-R5 opens attached rehab beside the real swim workout without a primary program instance", async () => {
+    const context = { workoutId: "workout", revision: "b".repeat(32), canStart: true, entries: [] };
+    vi.mocked(loadSwimRehabWorkouts).mockResolvedValue(context);
+    const page = await SwimWorkoutPage({ params: Promise.resolve({ workoutId: "workout" }), searchParams: Promise.resolve({}) });
+    expect(loadSwimRehabWorkouts).toHaveBeenCalledWith({}, userId, "workout");
+    const rehab = elements(page).find((element) => element.type === SwimRehabWorkouts);
+    expect(rehab?.props.context).toBe(context);
+    expect(rehab?.key).toBe(`workout:${context.revision}`);
+    expect(elements(page).filter((element) => element.type === WorkoutScreen)).toHaveLength(1);
+    expect(elements(page).filter((element) => element.type === MatchedRecordings)).toHaveLength(1);
+  });
   it("loads the hub without a primary block or enabled setup", async () => {
     const page = await SwimPage({ searchParams: Promise.resolve({}) });
     expect(loadSwimHubView).toHaveBeenCalledWith({}, userId, swimFixture().plan);
@@ -113,6 +143,25 @@ describe("ADR0079 reachable standalone routes", () => {
     }
     expect(loadSwimWorkoutView).toHaveBeenCalledTimes(3);
     expect(loadSwimWorkoutView).toHaveBeenCalledWith({}, userId, workout.id);
+  });
+  it.each([
+    ["today", "/app"], ["plan", "/app/plan"], ["history", "/app/plan/history"],
+    ["sessions", "/app/sessions"], [undefined, "/app/swim"], ["https://elsewhere.invalid", "/app/swim"],
+  ])("preserves only known return contexts on workout and recording links (%s)", async (from, href) => {
+    const page = await SwimWorkoutPage({
+      params: Promise.resolve({ workoutId: "workout" }), searchParams: Promise.resolve({ from }),
+    });
+    expect(elements(page).find((element) => element.type === PageHeader)?.props.back).toMatchObject({ href });
+    expect(elements(page).find((element) => element.type === MatchedRecordings)?.props.origin)
+      .toBe(href === "/app/swim" ? undefined : from);
+  });
+  it("keeps the return destination available when swimming storage is unavailable", async () => {
+    vi.mocked(getSwimCapability).mockResolvedValue({ storageAvailable: false, setupEnabled: false });
+    const page = await SwimWorkoutPage({
+      params: Promise.resolve({ workoutId: "workout" }), searchParams: Promise.resolve({ from: "sessions" }),
+    });
+    expect(elements(page).find((element) => element.type === PageHeader)?.props.back).toMatchObject({ href: "/app/sessions" });
+    expect(loadSwimWorkoutView).not.toHaveBeenCalled();
   });
   it("does not fall back to a generic editor for missing structured work", async () => {
     vi.mocked(loadSwimWorkoutView).mockResolvedValue(null);

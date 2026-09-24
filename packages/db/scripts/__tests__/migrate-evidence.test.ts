@@ -14,7 +14,7 @@ import {
 } from "../migrate-evidence";
 import {
   loadMigrationDependencies, MIGRATION_SHUTDOWN_MS, runMigrationWithEvidence,
-  verifyMigrationDependencyParity, type MigrationEntryRuntime,
+  runNormalMigration, publishMigrationResult, verifyMigrationDependencyParity, type MigrationEntryRuntime,
 } from "../migrate-with-evidence";
 
 vi.mock("node:fs", async (original) => {
@@ -68,7 +68,7 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
   describe("migration entry (DC-SW8; fixture clients only)", () => {
     it("pins normal migration and separate-normalizer evidence scripts", () => {
       const { scripts } = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
-      expect(scripts["db:migrate"]).toBe("tsx scripts/normalize-migrations-lf.ts && drizzle-kit migrate");
+      expect(scripts["db:migrate"]).toBe("tsx scripts/normalize-migrations-lf.ts && tsx scripts/migrate.ts");
       expect(scripts["db:migrate:evidence"]).toBe("tsx scripts/normalize-migrations-lf.ts && tsx scripts/migrate-with-evidence.ts");
     });
 
@@ -80,12 +80,53 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
       const client = dependencies.createClient(config as Parameters<typeof dependencies.createClient>[0]) as postgres.Sql;
       try {
         expect(client.options.max).toBe(1);
-        for (const type of [1184, 1082, 1083, 1114]) {
+        for (const type of [1184, 1082, 1083, 1114, 1182, 1185, 1115, 1231]) {
           expect(client.options.parsers[type]!("unchanged")).toBe("unchanged");
           expect(client.options.serializers[type]!("unchanged")).toBe("unchanged");
         }
         for (const type of [114, 3802]) expect(client.options.serializers[type]!("unchanged")).toBe("unchanged");
       } finally { await client.end({ timeout: 0 }); }
+    });
+
+    it("runs normal migrations through the same checked lifecycle without evidence files", async () => {
+      const fake = runtime();
+      const result = await runNormalMigration(fake);
+      expect(result).toEqual({ exitCode: 0, failed: false, terminalRecorded: false, secondary: [] });
+      expect(fake.loadConfig).toHaveBeenCalledOnce();
+      expect(fake.loadDependencies).toHaveBeenCalledOnce();
+      expect(fake.migrate).toHaveBeenCalledWith({ end: fake.end }, { migrationsFolder: "./drizzle" });
+      expect(fake.end).toHaveBeenCalledWith({ timeout: 5 });
+    });
+
+    it("normal failure keeps canonical attribution, closes the client and publishes no raw query", async () => {
+      const fake = runtime();
+      const failure = new DrizzleQueryError("canonical", ["private-param"], native());
+      fake.migrate.mockRejectedValue(failure);
+      const result = await runNormalMigration(fake);
+      expect(result.exitCode).toBe(1);
+      expect(result.failure).toBe(failure);
+      expect(result.diagnostic).toMatchObject({
+        error: { sqlstate: "P0001", projection: "complete" },
+        position: { status: "matched", migrationIndex: 0, statementIndex: 0 },
+      });
+      expect(fake.end).toHaveBeenCalledOnce();
+      const output = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        publishMigrationResult(result);
+        expect(output).toHaveBeenCalledOnce();
+        expect(output.mock.calls[0]![0]).not.toMatch(/canonical|private-param|query|stack/);
+        const [scidLine, record] = output.mock.calls[0]![0].split("\n");
+        expect(scidLine).toBe(`PostgresError: ${scid}`);
+        expect(JSON.parse(record)).toMatchObject({ status: "failed", diagnostic: result.diagnostic });
+      } finally { output.mockRestore(); }
+    });
+
+    it("normal shutdown failure is explicit even after successful migration", async () => {
+      const fake = runtime();
+      fake.end.mockRejectedValue(new Error("private-end"));
+      expect(await runNormalMigration(fake)).toMatchObject({
+        exitCode: 1, failed: false, secondary: ["shutdown-failed"],
+      });
     });
 
     posixIt("invokes one migration with default ledger config and durably closes before shutdown", () => fixture(async (path) => {
@@ -274,6 +315,29 @@ describe("structured migration evidence (DC-SW8; no database)", () => {
       expect(projectMigrationError(error, canonical)).toMatchObject({ error: { projection: "complete" }, position: { status: "unmatched" } });
     }
   });
+
+  it.each([148, 157, 158, 159])("attributes the final statement within a bounded %i-migration source", (count) => {
+    const migrations = Array.from({ length: count }, (_, index) => ({ sql: [`canonical-${index}`] }));
+    const error = new DrizzleQueryError(`canonical-${count - 1}`, [], native());
+    expect(projectMigrationError(error, () => migrations).position).toEqual({
+      status: "matched", migrationIndex: count - 1, statementIndex: 0,
+    });
+    expect(projectMigrationError(error, () => [
+      ...migrations, ...Array.from({ length: 160 - count }, () => ({ sql: ["outside-bound"] })),
+    ]).position).toEqual({ status: "unmatched" });
+  });
+
+  posixIt("accepts index158 evidence and rejects index159 without emitting SQL", () => fixture((path) => {
+    const writer = openMigrationEvidence(path);
+    writer.terminal({ event: "terminal", status: "failure", phase: "migrate",
+      error: projectMigrationError(native()).error,
+      position: { status: "matched", migrationIndex: 158, statementIndex: 0 } });
+    expect(readMigrationEvidence(path)).toMatchObject({
+      status: "complete", terminal: { position: { migrationIndex: 158, statementIndex: 0 } },
+    });
+    writeFileSync(path, readFileSync(path, "utf8").replace('"migrationIndex":158', '"migrationIndex":159'));
+    expect(readMigrationEvidence(path)).toEqual({ status: "incomplete" });
+  }));
 
   posixIt("writes one exclusive private bounded file and requires a durable terminal", () => fixture((path) => {
     const writer = openMigrationEvidence(path);

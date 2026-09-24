@@ -23,7 +23,16 @@ import {
   useState,
   useTransition,
 } from "react";
-import { swapActiveMovement } from "@/lib/sessions/swap-actions";
+import { swapActiveMovement, type SwapActiveResult } from "@/lib/sessions/swap-actions";
+import type { Prescription } from "@hta/db";
+
+export type ConfirmedMovementSwap = {
+  id: string;
+  slug: string;
+  displayName: string;
+  prescription?: Prescription;
+  loadContext?: SwapActiveResult["loadContext"];
+};
 
 export type SwapMovementCatalogRow = {
   id: string;
@@ -47,7 +56,7 @@ export type SwapMovementModalProps = {
   original: { id: string; displayName: string; rehab?: boolean };
   /** Called with the picked movement once the swap is recorded. */
   onSwapped: (
-    next: { id: string; slug: string; displayName: string },
+    next: ConfirmedMovementSwap,
     warning?: string,
   ) => void;
 };
@@ -71,7 +80,7 @@ export function SwapMovementModal({
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
   const [pendingSwap, setPendingSwap] = useState<{
-    next: { id: string; slug: string; displayName: string };
+    next: ConfirmedMovementSwap;
     warning: string;
   } | null>(null);
   const [candidates, setCandidates] = useState<SwapMovementCatalogRow[]>([]);
@@ -243,14 +252,16 @@ export function SwapMovementModal({
         setError(res.error ?? "Swap failed.");
         return;
       }
+      const next = { ...res.newMovement, ...(res.prescription ? { prescription: res.prescription } : {}),
+        ...(res.loadContext ? { loadContext: res.loadContext } : {}) };
       if (res.warning) {
         // Keep the modal open so the DC-K4 warning is visible. Notify the
         // parent when the user closes it, after acknowledging the warning.
         setWarning(res.warning);
-        setPendingSwap({ next: res.newMovement, warning: res.warning });
+        setPendingSwap({ next, warning: res.warning });
         return;
       }
-      onSwapped(res.newMovement);
+      onSwapped(next);
       onClose();
     });
   };

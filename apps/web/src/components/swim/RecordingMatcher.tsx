@@ -7,13 +7,15 @@ import { findSwimMatchWorkouts, saveSwimImportMatch } from "@/lib/swim/import-ma
 import type { MatchWorkoutChoice } from "@/lib/swim/import-matching";
 import { createRequestGate } from "@/lib/swim/hub-request";
 import styles from "./Swim.module.css";
+import type { SwimOrigin } from "@/lib/swim/return-context";
 
 export type RecordingMatcherProps = {
+  origin?: SwimOrigin;
   importId: string; enabled: boolean; expectedMatchId: string | null;
   current: { importId: string; workoutId: string; title: string; date: string } | null;
 };
 
-export function RecordingMatcher({ importId, enabled, expectedMatchId, current }: RecordingMatcherProps) {
+export function RecordingMatcher({ importId, enabled, expectedMatchId, current, origin }: RecordingMatcherProps) {
   const router = useRouter();
   const [date, setDate] = useState("");
   const [choices, setChoices] = useState<MatchWorkoutChoice[] | null>(null);
@@ -62,9 +64,9 @@ export function RecordingMatcher({ importId, enabled, expectedMatchId, current }
   return <section className={styles.section}>
     <h2>Planned workout</h2>
     {current && <div>
-      <Link href={`/app/swim/${current.workoutId}`}>{current.title}</Link>
+      <Link href={`/app/swim/${current.workoutId}${origin ? `?from=${origin}` : ""}`}>{current.title}</Link>
       <p className={styles.muted}>{current.date}</p>
-      {current.importId !== importId && <Link href={`/app/swim/recordings/${current.importId}`}>View matched recording</Link>}
+      {current.importId !== importId && <Link href={`/app/swim/recordings/${current.importId}?workout=${current.workoutId}${origin ? `&from=${origin}` : ""}`}>View matched recording</Link>}
     </div>}
     {enabled && <form className={styles.form} onSubmit={(event) => { event.preventDefault(); search(); }}>
       <fieldset className={styles.formFields} disabled={pending}>
@@ -84,7 +86,7 @@ export function RecordingMatcher({ importId, enabled, expectedMatchId, current }
           : <p className={styles.muted}>No planned swims on this date.</p>)}
         {target && <div className={styles.actions}>
           <button className={styles.button} type="button" onClick={() => save(false)}>{current ? "Change match" : "Match workout"}</button>
-          <Link className={styles.secondary} href={`/app/swim/${target.id}`}>View workout</Link>
+          <Link className={styles.secondary} href={`/app/swim/${target.id}${origin ? `?from=${origin}` : ""}`}>View workout</Link>
         </div>}
       </fieldset>
     </form>}

@@ -23,6 +23,9 @@
  *   6. Refuses to act on someone else's planned session.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
+const rpc = vi.hoisted(() => vi.fn());
+const NEW_SESSION = "22222222-2222-4222-8222-222222222222";
+const WINNER_SESSION = "33333333-3333-4333-8333-333333333333";
 
 type SessionInsert = Record<string, unknown>;
 type PlannedRow = {
@@ -64,7 +67,7 @@ type State = {
 const state: State = {
   planned: null,
   sessionInsertCalls: [],
-  sessionInsertResult: { id: "new-session-uuid" },
+  sessionInsertResult: { id: NEW_SESSION },
   plannedUpdateCalls: [],
   linkRaceWinner: null,
   plannedSelectCalls: 0,
@@ -99,6 +102,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/supabase/server", () => ({
   createClient: async () => ({
+    rpc,
     auth: {
       getUser: async () => ({ data: { user: { id: "user-1" } } }),
     },
@@ -233,7 +237,7 @@ vi.mock("@/lib/supabase/server", () => ({
           delete: () => ({
             eq: (_col: string, val: string) => {
               state.sessionDeleteCalls.push(val);
-              return Promise.resolve({ error: null });
+              return { eq: () => Promise.resolve({ error: null }) };
             },
           }),
         };
@@ -250,14 +254,16 @@ import { startSessionDirect } from "../actions";
 const VALID_UUID = "11111111-1111-1111-1111-111111111111";
 
 beforeEach(() => {
+  rpc.mockReset().mockResolvedValue({ data: null, error: { code: "PGRST202", message: "Could not find start_planned_session_atomically" } });
   state.planned = null;
   state.sessionInsertCalls = [];
-  state.sessionInsertResult = { id: "new-session-uuid" };
+  state.sessionInsertResult = { id: NEW_SESSION };
   state.plannedUpdateCalls = [];
   state.linkRaceWinner = null;
   state.plannedSelectCalls = 0;
   state.sessionDeleteCalls = [];
   state.linkedSessionDeleted = false;
+  state.linkedSessionCompleted = false;
   state.sessionRestoreCalls = [];
   state.redirected = null;
   state.revalidated = [];
@@ -270,6 +276,22 @@ beforeEach(() => {
 });
 
 describe("startSessionDirect — no pre-workout check-in", () => {
+  it("DC-K4 starts through one RPC when available, without a client-side insert/link window", async () => {
+    state.planned = { id: VALID_UUID, title: "Mixed", slot: "single", planned_at: null, prescription: { items: [] }, completed_session_id: null, user_id: "user-1" };
+    rpc.mockResolvedValue({ data: NEW_SESSION, error: null });
+    await expect(startSessionDirect(VALID_UUID)).rejects.toBeInstanceOf(RedirectError);
+    expect(rpc).toHaveBeenCalledWith("start_planned_session_atomically", { p_planned_id: VALID_UUID, p_performed_at: null });
+    expect(state.sessionInsertCalls).toHaveLength(0);
+    expect(state.plannedUpdateCalls).toHaveLength(0);
+    expect(state.redirected).toBe(`/app/sessions/${NEW_SESSION}`);
+  });
+  it("DC-K4 does not bypass a permission or storage failure with a legacy insert", async () => {
+    state.planned = { id: VALID_UUID, title: "Mixed", slot: "single", planned_at: null, prescription: { items: [] }, completed_session_id: null, user_id: "user-1" };
+    rpc.mockResolvedValue({ data: null, error: { code: "42501", message: "Not permitted" } });
+    await expect(startSessionDirect(VALID_UUID)).rejects.toThrow("Not permitted");
+    expect(state.sessionInsertCalls).toHaveLength(0);
+    expect(state.plannedUpdateCalls).toHaveLength(0);
+  });
   it("inserts a sessions row WITHOUT fatigue/soreness and redirects to the log", async () => {
     state.planned = {
       id: VALID_UUID,
@@ -301,11 +323,11 @@ describe("startSessionDirect — no pre-workout check-in", () => {
 
     // The planned_session is linked to the new session id.
     expect(state.plannedUpdateCalls).toEqual([
-      { payload: { completed_session_id: "new-session-uuid" }, id: VALID_UUID },
+      { payload: { completed_session_id: NEW_SESSION }, id: VALID_UUID },
     ]);
 
     // Redirect target is the session log.
-    expect(state.redirected).toBe("/app/sessions/new-session-uuid");
+    expect(state.redirected).toBe(`/app/sessions/${NEW_SESSION}`);
 
     // Both Today and Plan are revalidated so the CTAs flip.
     expect(state.revalidated).toEqual(
@@ -337,9 +359,9 @@ describe("startSessionDirect — no pre-workout check-in", () => {
     // Side effects still happen: row inserted, planned linked, redirect fired.
     expect(state.sessionInsertCalls).toHaveLength(1);
     expect(state.plannedUpdateCalls).toEqual([
-      { payload: { completed_session_id: "new-session-uuid" }, id: VALID_UUID },
+      { payload: { completed_session_id: NEW_SESSION }, id: VALID_UUID },
     ]);
-    expect(state.redirected).toBe("/app/sessions/new-session-uuid");
+    expect(state.redirected).toBe(`/app/sessions/${NEW_SESSION}`);
 
     // But NO revalidatePath calls — that is what would crash during render.
     expect(state.revalidated).toEqual([]);
@@ -386,10 +408,9 @@ describe("startSessionDirect — no pre-workout check-in", () => {
     expect(state.sessionRestoreCalls).toHaveLength(0);
     expect(state.sessionInsertCalls).toHaveLength(1);
     expect(state.plannedUpdateCalls).toEqual([
-      { payload: { completed_session_id: null }, id: VALID_UUID },
-      { payload: { completed_session_id: "new-session-uuid" }, id: VALID_UUID },
+      { payload: { completed_session_id: NEW_SESSION }, id: VALID_UUID },
     ]);
-    expect(state.redirected).toBe("/app/sessions/new-session-uuid");
+    expect(state.redirected).toBe(`/app/sessions/${NEW_SESSION}`);
   });
 
   it("routes a deleted completed session to explicit Trash restoration", async () => {
@@ -455,7 +476,7 @@ describe("startSessionDirect — no pre-workout check-in", () => {
       completed_session_id: null,
       user_id: "user-1",
     };
-    state.linkRaceWinner = "winner-session-id";
+    state.linkRaceWinner = WINNER_SESSION;
 
     await expect(startSessionDirect(VALID_UUID)).rejects.toBeInstanceOf(
       RedirectError,
@@ -463,13 +484,13 @@ describe("startSessionDirect — no pre-workout check-in", () => {
 
     // The orphaned session was created then deleted.
     expect(state.sessionInsertCalls).toHaveLength(1);
-    expect(state.sessionDeleteCalls).toEqual(["new-session-uuid"]);
+    expect(state.sessionDeleteCalls).toEqual([NEW_SESSION]);
 
     // We tried to link but the conditional UPDATE was a no-op.
     expect(state.plannedUpdateCalls).toHaveLength(1);
 
     // Redirect target is the winner's session, not ours.
-    expect(state.redirected).toBe("/app/sessions/winner-session-id");
+    expect(state.redirected).toBe(`/app/sessions/${WINNER_SESSION}`);
   });
 });
 
@@ -619,14 +640,14 @@ describe("startSessionDirect — retroactive performedAt", () => {
       completed_session_id: null,
       user_id: "user-1",
     };
-    state.linkRaceWinner = "winner-session-id";
+    state.linkRaceWinner = WINNER_SESSION;
 
     await expect(
       startSessionDirect(VALID_UUID, { performedAt: "2026-05-22" }),
     ).rejects.toBeInstanceOf(RedirectError);
 
     expect(state.sessionInsertCalls).toHaveLength(1);
-    expect(state.sessionDeleteCalls).toEqual(["new-session-uuid"]);
-    expect(state.redirected).toBe("/app/sessions/winner-session-id");
+    expect(state.sessionDeleteCalls).toEqual([NEW_SESSION]);
+    expect(state.redirected).toBe(`/app/sessions/${WINNER_SESSION}`);
   });
 });

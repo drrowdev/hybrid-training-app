@@ -13,6 +13,7 @@ import { createClient, getAuthUser } from "@/lib/supabase/server";
 import type { SessionLink } from "@/lib/platform/session-links";
 import type { LibraryProtocol } from "@/lib/platform/rehab-library";
 import type { RehabProtocolItem } from "./item-schema";
+import { loadSwimRehabUsage } from "@/lib/swim/rehab-attachments";
 
 export type { RehabProtocolItem } from "./item-schema";
 
@@ -120,6 +121,12 @@ export const listRehabProtocols = cache(async function listRehabProtocols(): Pro
     const names = usedBy.get(binding.rehab_protocol_id) ?? [];
     if (!names.includes(label)) names.push(label);
     usedBy.set(binding.rehab_protocol_id, names);
+  }
+  for (const usage of await loadSwimRehabUsage(supabase, user.id)) {
+    if (!usage.active) continue;
+    const names = usedBy.get(usage.protocolId) ?? [];
+    if (!names.includes(usage.name)) names.push(usage.name);
+    usedBy.set(usage.protocolId, names);
   }
 
   return (data ?? []).map((raw) =>

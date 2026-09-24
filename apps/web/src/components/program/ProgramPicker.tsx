@@ -22,7 +22,9 @@ import {
 } from "@hta/tacticalbarbell";
 import {
   createProgramInstance,
+  previewProgramInstance,
   getProgramSegments,
+  type CreateProgramInstanceInput,
   type CreateProgramInstanceResult,
   type ProgramSegmentOption,
 } from "@/lib/platform/actions";
@@ -30,7 +32,9 @@ import {
   TB_DEFAULT_ACCESSORY_MUSCLES,
   tbAccessoryPlanForTemplate,
 } from "@/lib/platform/tb-accessories-config";
-import { upsertTrainingMax } from "@/lib/training-maxes/actions";
+import type { ProgramSchedulePreview } from "@/lib/platform/program-review";
+import { matchesRecommendationSetup, type ProgramRecommendationSetup } from "@/lib/platform/recommendation-origin";
+import { programTemplateField as loadoutFieldKey } from "@/lib/platform/setup-audit";
 import {
   DEFAULT_CUSTOM_TB_NAME,
   LEGACY_REHAB_PROTOCOL_ID,
@@ -637,13 +641,6 @@ const PROGRAM_LABEL: Record<string, string> = {
   "green-protocol": "Green Protocol",
   hybrid: "Hybrid",
 };
-
-/** The setup field the loadout step writes into (templateId or GP phaseId). */
-function loadoutFieldKey(programId: string): "templateId" | "phaseId" | null {
-  if (programId === "green-protocol") return "phaseId";
-  if (programId === "wendler-531" || programId === TB_PROGRAM_ID) return "templateId";
-  return null;
-}
 
 const MOVEMENT_LABEL: Record<string, string> = {
   squat: "Squat",
@@ -1371,7 +1368,7 @@ export function ProgramPicker({
   editContext,
   seasonBlockId,
   prefillRaceDate,
-  recoveryAdvised = false,
+  recommendation,
   swimHref = null,
 }: {
   programs: PickerProgram[];
@@ -1404,16 +1401,17 @@ export function ProgramPicker({
    * user can still clear it.
    */
   prefillRaceDate?: string;
-  /**
-   * The lifter's program has advised a recovery week they haven't taken. Offers
-   * to run it as week 1 of this block.
-   */
-  recoveryAdvised?: boolean;
+  recommendation?: ProgramRecommendationSetup;
   swimHref?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<CreateProgramInstanceResult | null>(null);
+  const [reviewed, setReviewed] = useState<{
+    input: CreateProgramInstanceInput; preview: ProgramSchedulePreview; requestId: string;
+  } | null>(null);
+  const [acceptOverlap, setAcceptOverlap] = useState(false);
+  const [acceptReplacement, setAcceptReplacement] = useState(false);
   const [modalInfo, setModalInfo] = useState<ProgInfo | null>(null);
 
   // Edit mode: re-enter the wizard for an active plan. Behaves like a locked
@@ -1453,11 +1451,15 @@ export function ProgramPicker({
   const selected = programs.find((p) => p.id === selectedId) ?? null;
 
   const [values, setValues] = useState<Record<string, unknown>>(preselectValues);
+  const setupRecommendation = !isEditing && recommendation && matchesRecommendationSetup(recommendation, selectedId, values)
+    ? recommendation : undefined;
+  const recoveryAdvised = setupRecommendation?.kind === "deload";
   const [startedOn, setStartedOn] = useState<string>(
     isEditing && editContext ? editContext.startedOn : upcomingMondayYmd(todayYmd()),
   );
   const [raceDate, setRaceDate] = useState<string>(prefillRaceDate ?? "");
-  const [startWithRecovery, setStartWithRecovery] = useState<boolean>(false);
+  const [startWithRecovery, setStartWithRecovery] = useState(recommendation?.kind === "deload");
+  const [linkSeason, setLinkSeason] = useState(!!seasonBlockId);
   /** The exercise picked from the library, waiting for its work type. */
   const [pendingAdd, setPendingAdd] = useState<{
     seriesKey: string;
@@ -2760,6 +2762,25 @@ export function ProgramPicker({
   function deploy() {
     if (!selected) return;
     setResult(null);
+    if (reviewed) {
+      startTransition(async () => {
+        try {
+          const saved = await createProgramInstance({
+            ...reviewed.input,
+            review: {
+              previewId: reviewed.preview.id, revision: reviewed.preview.revision,
+              requestId: reviewed.requestId, acceptOverlap,
+              ...(reviewed.preview.replaces && acceptReplacement ? { replaceBlockId: reviewed.preview.replaces.id } : {}),
+            },
+          });
+          setResult(saved);
+          if (saved.ok) router.push(isEditing ? saved.todayLeftAsIs ? "/app/plan?kept=today" : "/app/plan" : "/app");
+        } catch {
+          setResult({ ok: false, error: "Could not save your program. Try again." });
+        }
+      });
+      return;
+    }
     const setupValues: Record<string, unknown> = { ...values };
     if (isActivation) {
       setupValues.armorSupplementalA = armorSupplementalA;
@@ -2957,9 +2978,7 @@ export function ProgramPicker({
             }
         : undefined;
 
-    // Lifts the user set or changed → persist as entered 1RMs before deploy. We
-    // only write touched rows so an untouched, pre-filled value is never re-saved
-    // (this keeps programs that render off real TMs from gaining a tm_percent).
+    // Only explicit drafts are saved in the final program transaction.
     const saves: { movementId: string; oneRmKg: number; label: string }[] = [];
     for (const key of relevantBenchKeys) {
       if (!benchTouched.has(key)) continue;
@@ -2986,16 +3005,6 @@ export function ProgramPicker({
     }
 
     startTransition(async () => {
-      for (const s of saves) {
-        const fd = new FormData();
-        fd.set("movementId", s.movementId);
-        fd.set("oneRmKg", String(s.oneRmKg));
-        const tmRes = await upsertTrainingMax(fd);
-        if (!tmRes.ok) {
-          setResult({ ok: false, error: `Couldn\u2019t save your ${s.label} 1-rep max: ${tmRes.error}` });
-          return;
-        }
-      }
       // Rehab supersets belong to the PROTOCOL now, so they come from the
       // library rather than wizard state. Any leftover `rehab.*` entry for a
       // protocol that is no longer attached is dropped — deploy rejects a link
@@ -3021,7 +3030,8 @@ export function ProgramPicker({
         ...pruneRehabLinks(sessionLinks, deployedProtocols),
         ...Object.fromEntries(rehabLinkEntries),
       };
-      const res = await createProgramInstance({
+      const input: CreateProgramInstanceInput = {
+        trainingMaxDrafts: saves.map(({ movementId, oneRmKg }) => ({ movementId, oneRmKg })),
         programId: selected.id,
         setupValues,
         weekdays,
@@ -3043,8 +3053,9 @@ export function ProgramPicker({
         ...(customization ? { customization } : {}),
         ...(rehabSchedule ? { rehabSchedule } : {}),
         ...(isEditing && editContext ? { editBlockId: editContext.blockId } : {}),
-        ...(!isEditing && seasonBlockId ? { seasonBlockId } : {}),
-        ...(!isEditing && startWithRecovery ? { startWithRecoveryWeek: true } : {}),
+        ...(!isEditing && linkSeason && seasonBlockId ? { seasonBlockId } : {}),
+        ...(setupRecommendation ? { sourceRecommendationId: setupRecommendation.recommendationId } : {}),
+        ...(recoveryAdvised && startWithRecovery ? { startWithRecoveryWeek: true } : {}),
         ...(isTb && deployedProtocols.length > 0
           ? {
               rehabBindings: deployedProtocols.map((protocol) => ({
@@ -3053,16 +3064,17 @@ export function ProgramPicker({
               })),
             }
           : {}),
-      });
-      setResult(res);
-      if (res.ok) {
-        router.push(
-          isEditing
-            ? res.todayLeftAsIs
-              ? "/app/plan?kept=today"
-              : "/app/plan"
-            : "/app",
-        );
+      };
+      try {
+        const res = await previewProgramInstance(input);
+        if (!res.ok) setResult(res);
+        else {
+          setReviewed({ input, preview: res.preview, requestId: crypto.randomUUID() });
+          setAcceptOverlap(false);
+          setAcceptReplacement(false);
+        }
+      } catch {
+        setResult({ ok: false, error: "Could not review your program. Try again." });
       }
     });
   }
@@ -3085,6 +3097,7 @@ export function ProgramPicker({
   const minStep = isEditing ? 1 : 0;
 
   function goBack() {
+    if (reviewed) { setReviewed(null); setResult(null); return; }
     setStep((s) => Math.max(minStep, s - 1));
   }
   function goNext() {
@@ -3097,7 +3110,7 @@ export function ProgramPicker({
   /** Jump straight to an already-visited step via the progress rail. */
   function goToStep(i: number) {
     if (i < minStep) return;
-    if (i <= maxStep && i !== step) setStep(i);
+    if (i <= maxStep && i !== step) { setReviewed(null); setResult(null); setStep(i); }
   }
 
   // ── Step renderers ─────────────────────────────────────────────────────────
@@ -4507,7 +4520,7 @@ export function ProgramPicker({
               ))}
             </div>
           </div>
-        ) : isCluster ? (
+        ) : isCluster || selected.fields.some((field) => field.key === "useTrainingMax") ? (
           <div className={styles.basisRow}>
             <span className={styles.basisLabel}>Load off</span>
             <div className={styles.toggle}>
@@ -5381,22 +5394,32 @@ export function ProgramPicker({
           ) : null}
         </div>
 
+        {!isEditing && seasonBlockId ? (
+          <label style={{ display: "flex", gap: 10, alignItems: "center", minHeight: 44, marginBottom: 18, cursor: "pointer" }}>
+            <input type="checkbox" checked={linkSeason}
+              onChange={(event) => { setLinkSeason(event.target.checked); setReviewed(null); setResult(null); }}
+              style={{ margin: 0, width: 18, height: 18, minHeight: 18, flexShrink: 0 }} />
+            <span className={styles.label}>Link to season roadmap</span>
+          </label>
+        ) : null}
+
         {!isEditing && recoveryAdvised ? (
           <div style={{ marginBottom: 18 }}>
-            <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+            <label style={{ display: "flex", gap: 10, alignItems: "center", minHeight: 44, cursor: "pointer" }}>
               <input
                 type="checkbox"
                 checked={startWithRecovery}
                 onChange={(e) => setStartWithRecovery(e.target.checked)}
-                style={{ marginTop: 3 }}
+                style={{ margin: 0, width: 18, height: 18, minHeight: 18, flexShrink: 0 }}
               />
               <span>
                 <span className={styles.label} style={{ marginBottom: 2, display: "block" }}>
                   Start with a recovery week
                 </span>
-                <span className={styles.note}>Week 1 runs light, then the program starts.</span>
               </span>
             </label>
+            {!startWithRecovery && setupRecommendation?.recoveryWarning
+              ? <p role="status" className={styles.note}>{setupRecommendation.recoveryWarning}</p> : null}
           </div>
         ) : null}
 
@@ -5697,7 +5720,7 @@ export function ProgramPicker({
 
       <div className={styles.rail}>
         {STEP_LABELS.map((label, i) => {
-          const navigable = i >= minStep && i <= maxStep && i !== step;
+          const navigable = !pending && i >= minStep && i <= maxStep && i !== step;
           return (
             <div
               key={label}
@@ -5724,7 +5747,7 @@ export function ProgramPicker({
       </div>
       <div className={styles.raillabels}>
         {STEP_LABELS.map((label, i) => {
-          const navigable = i >= minStep && i <= maxStep && i !== step;
+          const navigable = !pending && i >= minStep && i <= maxStep && i !== step;
           return navigable ? (
             <button
               key={label}
@@ -5742,14 +5765,40 @@ export function ProgramPicker({
         })}
       </div>
 
-      {step === 0 && renderProgramStep()}
-      {step === 1 && renderLoadoutStep()}
-      {step === 2 && renderBenchmarksStep()}
-      {step === 3 && renderScheduleStep()}
+      <fieldset disabled={pending} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        {!reviewed && <>
+          {step === 0 && renderProgramStep()}
+          {step === 1 && renderLoadoutStep()}
+          {step === 2 && renderBenchmarksStep()}
+          {step === 3 && renderScheduleStep()}
+        </>}
+        {reviewed && <section className={styles.step} aria-label="Review program dates">
+          <h2 className={styles.h1}>Review dates</h2>
+          <div className="cp-card" style={{ maxHeight: 320, overflowY: "auto", padding: 16 }}>
+            {reviewed.preview.dates.map((row, index) => <p key={`${row.date}:${index}`} style={{ margin: "8px 0" }}>
+              <time dateTime={row.date}>{row.date}</time> · {row.title}
+            </p>)}
+          </div>
+          {reviewed.preview.replaces && <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input type="checkbox" checked={acceptReplacement} onChange={(event) => setAcceptReplacement(event.target.checked)} />
+            Replace {reviewed.preview.replaces.name}
+          </label>}
+          {reviewed.preview.overlaps.length > 0 && <>
+            <ul>{reviewed.preview.overlaps.map((entry) => <li key={`${entry.source}:${entry.id}`}>
+              {entry.date} · {entry.title}
+            </li>)}</ul>
+            <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <input type="checkbox" checked={acceptOverlap} onChange={(event) => setAcceptOverlap(event.target.checked)} />
+              Train on these occupied days
+            </label>
+          </>}
+          {reviewed.preview.plannedRest.length > 0 && <p>Planned rest: {[...new Set(reviewed.preview.plannedRest.map((entry) => entry.date))].join(", ")}</p>}
+        </section>}
+      </fieldset>
 
       <div className={styles.nav}>
         {step > minStep ? (
-          <button type="button" className={`${styles.btn} ${styles.ghost}`} onClick={goBack}>
+          <button type="button" className={`${styles.btn} ${styles.ghost}`} onClick={goBack} disabled={pending}>
             Back
           </button>
         ) : (
@@ -5758,21 +5807,17 @@ export function ProgramPicker({
         {isFinalStep ? (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 14 }}>
             {result && !result.ok && (
-              <span style={{ fontSize: 13, color: "var(--warn)" }}>{result.error}</span>
+              <span role="alert" style={{ fontSize: 13, color: "var(--warn)" }}>{result.error}</span>
             )}
             <button
               type="button"
               className={`${styles.btn} ${styles.deploy}`}
               onClick={deploy}
-              disabled={!canDeploy}
+              disabled={!canDeploy || !!(reviewed?.preview.replaces && !acceptReplacement) ||
+                !!(reviewed?.preview.overlaps.length && !acceptOverlap)}
             >
-              {isEditing
-                ? pending
-                  ? "Saving…"
-                  : "Save changes"
-                : pending
-                  ? "Deploying…"
-                  : "Deploy program"}
+              {pending ? reviewed ? "Saving…" : "Preparing…" : reviewed
+                ? isEditing ? "Save changes" : "Save program" : "Review dates"}
             </button>
           </span>
         ) : (

@@ -12,6 +12,7 @@
  *    sections; they are instead declared under `excluded`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { importOutcomeColumns, type SwimImportOutcome } from "@/lib/swim/import-outcomes";
 
 const fromCalls: string[] = [];
 let currentUser: { id: string; email: string; created_at: string } | null = null;
@@ -21,6 +22,15 @@ let importsAvailable = true;
 let importReadFails = false;
 let matchingAvailable = true;
 let matchReadFails = false;
+let outcomesAvailable = true;
+let outcomeCapabilityFails = false;
+let outcomeReadFails = false;
+let outcomeRows: unknown[] = [];
+let programsAvailable = true;
+let programCapabilityFails = false;
+let programReadFailure = "";
+let programRows: Record<string, unknown[]> = {};
+const filters: Array<{ table: string; column: string; value: unknown }> = [];
 const selectedColumns: Record<string, string> = {};
 
 function makeBuilder(table: string) {
@@ -38,8 +48,10 @@ function makeBuilder(table: string) {
           error: null,
         }
       : {
-          data: [],
-          error: (swimReadFails && table === "swim_workouts") || (importReadFails && table === "swim_imports") || (matchReadFails && table === "swim_import_matches")
+          data: table === "swim_import_outcomes" ? outcomeRows : programRows[table] ?? [],
+          error: (swimReadFails && table === "swim_workouts") || (importReadFails && table === "swim_imports") ||
+            (matchReadFails && table === "swim_import_matches") || (outcomeReadFails && table === "swim_import_outcomes") ||
+            table === programReadFailure
             ? { message: "read unavailable" }
             : null,
         };
@@ -49,7 +61,8 @@ function makeBuilder(table: string) {
       selectedColumns[table] = columns;
       return builder;
     },
-    eq() {
+    eq(column: string, value: unknown) {
+      filters.push({ table, column, value });
       return builder;
     },
     order() {
@@ -81,6 +94,12 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/swim/capability", () => ({
   swimSchemaAvailable: vi.fn(async () => swimmingAvailable),
 }));
+vi.mock("@/lib/programs/ownership", () => ({
+  independentProgramsAvailable: async () => {
+    if (programCapabilityFails) throw new Error("SYNTHETIC_PRIVATE");
+    return programsAvailable;
+  },
+}));
 vi.mock("@/lib/swim/import-storage", () => ({
   swimImportStorageAvailable: vi.fn(async () => importsAvailable),
   connectionColumns: "id,created_at,revoked_at",
@@ -89,6 +108,13 @@ vi.mock("@/lib/swim/import-storage", () => ({
 vi.mock("@/lib/swim/import-matching", async (original) => ({
   ...await original<typeof import("@/lib/swim/import-matching")>(),
   swimImportMatchingAvailable: vi.fn(async () => matchingAvailable),
+}));
+vi.mock("@/lib/swim/import-outcomes", async (original) => ({
+  ...await original<typeof import("@/lib/swim/import-outcomes")>(),
+  swimImportOutcomesAvailable: vi.fn(async () => {
+    if (outcomeCapabilityFails) throw new Error("SYNTHETIC_PRIVATE");
+    return outcomesAvailable;
+  }),
 }));
 
 import { GET } from "../route";
@@ -120,6 +146,12 @@ beforeEach(() => {
   importReadFails = false;
   matchingAvailable = true;
   matchReadFails = false;
+  outcomesAvailable = true;
+  outcomeCapabilityFails = false;
+  outcomeReadFails = false;
+  outcomeRows = [];
+  programsAvailable = true; programCapabilityFails = false; programReadFailure = ""; programRows = {};
+  filters.length = 0;
   currentUser = { id: "u1", email: "u1@example.test", created_at: "2026-01-01T00:00:00Z" };
 });
 
@@ -131,6 +163,13 @@ const REQUIRED_TABLES = [
   "tm_history",
   "training_blocks",
   "planned_sessions",
+  "program_instances",
+  "program_recommendations",
+  "training_seasons",
+  "season_blocks",
+  "rehab_protocols",
+  "program_rehab_bindings",
+  "swim_plan_rehab_bindings",
   "sessions",
   "session_movements",
   "set_logs",
@@ -140,6 +179,7 @@ const REQUIRED_TABLES = [
   "swim_connections",
   "swim_imports",
   "swim_import_matches",
+  "swim_import_outcomes",
   "wellness",
   "limitations",
   "limitation_events",
@@ -159,6 +199,13 @@ const REQUIRED_SECTIONS = [
   "tm_history",
   "training_blocks",
   "planned_sessions",
+  "program_instances",
+  "program_recommendations",
+  "training_seasons",
+  "season_blocks",
+  "rehab_protocols",
+  "program_rehab_bindings",
+  "swim_plan_rehab_bindings",
   "sessions",
   "session_movements",
   "set_logs",
@@ -168,6 +215,7 @@ const REQUIRED_SECTIONS = [
   "swim_connections",
   "swim_imports",
   "swim_import_matches",
+  "swim_import_outcomes",
   "wellness",
   "limitations",
   "limitation_events",
@@ -196,9 +244,93 @@ const FORBIDDEN_TABLES = [
   "region_state_history",
   "muscle_state_history",
   "bw_diagnostics_snapshots",
+  "swim_import_outcome_activity",
 ];
 
 describe("GET /api/me/export", () => {
+  it("DC-R5/R6 retains each program, issued rehab and removed-attachment receipts without native swimming fabrication", async () => {
+    programRows = {
+      program_instances: [{ id: "strength", block_id: "block-strength", instance: { trainingMaxes: { squat: 90 } }, deleted_at: "2026-09-21" },
+        { id: "hybrid", block_id: "block-hybrid", instance: { trainingMaxes: { squat: 100 } }, deleted_at: null }],
+      rehab_protocols: [{ id: "shared", revision: 3, definition: { items: [{ movementId: "lift", sets: 2, reps: 8 }] } }],
+      program_rehab_bindings: [{ program_instance_id: "strength", rehab_protocol_id: "shared" }],
+      sessions: [{ id: "rehab", prescription: { meta: { swimRehab: { planId: "swimming", protocolId: "shared", protocolRevision: 2 } } } }],
+      engine_override_events: [{ context: { kind: "swim-rehab-start-v1", sessionId: "rehab" } }],
+    };
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    for (const [table, rows] of Object.entries(programRows)) expect(body[table]).toEqual(rows);
+    for (const table of ["program_instances", "program_recommendations", "training_seasons", "season_blocks",
+      "rehab_protocols", "program_rehab_bindings", "swim_plan_rehab_bindings"]) {
+      expect(filters).toContainEqual({ table, column: "user_id", value: currentUser!.id });
+      expect(filters.some((filter) => filter.table === table && ["status", "deleted_at"].includes(filter.column))).toBe(false);
+    }
+    expect(body.independent_programs_available).toBe(true);
+    expect(body.swim_plan_rehab_bindings).toEqual([]);
+    expect(body.cardio_logs).toEqual([]);
+  });
+  it("retains the existing program library export before independent storage is installed", async () => {
+    programsAvailable = false;
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.independent_programs_available).toBe(false);
+    expect(body.swim_plan_rehab_bindings).toEqual([]);
+    expect(fromCalls).not.toContain("swim_plan_rehab_bindings");
+    expect(fromCalls).toContain("rehab_protocols");
+    expect(fromCalls).toContain("program_instances");
+  });
+  it.each(["capability", "program_instances", "program_recommendations", "training_seasons", "season_blocks",
+    "rehab_protocols", "program_rehab_bindings", "swim_plan_rehab_bindings", "sessions", "engine_override_events"])(
+    "fails rather than exporting partial program history after a %s failure", async (failure) => {
+      programCapabilityFails = failure === "capability"; programReadFailure = failure;
+      const response = await GET();
+      expect(response.status).toBe(503);
+      const body = await response.json();
+      expect(body).not.toHaveProperty("program_instances");
+      expect(JSON.stringify(body)).not.toContain("SYNTHETIC_PRIVATE");
+    });
+  it("DC-SW5/SW8 exports explicit outcome history and removals while new confirmations are disabled", async () => {
+    vi.stubEnv("SWIM_IMPORT_OUTCOMES_ENABLED", "false");
+    const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+    outcomeRows = [
+      { id: id(1), workout_id: id(5), match_id: id(6), revision: 1, created_at: "2026-09-21T01:00:00Z",
+        metadata: { outcome: "completed", previousOutcomeId: null, workoutRevision: 2 } },
+      { id: id(2), workout_id: id(5), match_id: id(6), revision: 2, created_at: "2026-09-21T02:00:00Z",
+        metadata: { outcome: "stopped_early", previousOutcomeId: id(1), workoutRevision: 2 } },
+      { id: id(3), workout_id: id(5), match_id: null, revision: 3, created_at: "2026-09-21T03:00:00Z",
+        metadata: { outcome: null, previousOutcomeId: id(2), workoutRevision: null } },
+    ] satisfies SwimImportOutcome[];
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.swimming_import_outcomes_available).toBe(true);
+    expect(body.swim_import_outcomes).toEqual(outcomeRows);
+    expect(filters).toContainEqual({ table: "swim_import_outcomes", column: "user_id", value: currentUser!.id });
+    expect(selectedColumns.swim_import_outcomes).toBe(importOutcomeColumns);
+    expect(body.sessions).toEqual([]);
+    expect(body.cardio_logs).toEqual([]);
+  });
+  it("does not read an uninstalled outcome ledger", async () => {
+    outcomesAvailable = false;
+    const response = await GET();
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.swimming_import_outcomes_available).toBe(false);
+    expect(body.swim_import_outcomes).toEqual([]);
+    expect(fromCalls).not.toContain("swim_import_outcomes");
+  });
+  it.each(["capability", "read", "malformed"] as const)("fails the export on an installed outcome %s failure", async (failure) => {
+    outcomeCapabilityFails = failure === "capability";
+    outcomeReadFails = failure === "read";
+    if (failure === "malformed") outcomeRows = [{ private: "SYNTHETIC_PRIVATE" }];
+    const response = await GET();
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body).not.toHaveProperty("swim_import_outcomes");
+    expect(JSON.stringify(body)).not.toContain("SYNTHETIC_PRIVATE");
+  });
   it("DC-SW8 includes imported revisions but never requests connection keys or hashes", async () => {
     const body = await (await GET()).json();
     expect(body.swimming_import_schema_available).toBe(true);
