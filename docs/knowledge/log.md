@@ -5549,3 +5549,28 @@ fixture-only. Existing template-review ISO date rendering remains unchanged.
 Revision 2 was approved for draft publication after verifying the legacy
 summary wraps on phone while the program name remains single-line. No deploy
 or merge approval was granted.
+
+## [2026-09-24] acceptance | Programs redesign manual-run follow-up
+
+Manual modular acceptance at `440ae4f9` exposed stale typed-builder step labels
+in M8/M9 and a moved Schedule region in M7. Corrected those selectors, retaining
+the state checks and using Schedule's existing "Start workout" action for the
+scheduled state. The 375px/1280px synthetic harness verifies the typed-step
+round trip, dated shared-row links and imported swimming status presentations.
+
+Swimming preflight asserted the historical 150 migration count against the
+159-entry source tree. The coordinator authorized separating schema qualification
+from browser selection on only the exact modular-implementation and
+Programs-redesign refs: both profiles use the existing full 159-entry source and
+down/up proofs there. All other swimming refs retain the 150 path. The 18/26
+browser inventories, pins, first-attempt and SHA checks, deadlines and cleanup
+remain; ref/profile unit cases cover the boundary.
+
+M11's dated-row selectors pass synthetically; its native failure remains
+unexplained. M14 failed during the unchanged direct Rehab protocols save, before
+swimming pause, with no removed Programs navigation involved. Per coordinator
+approval, these cases receive only bounded enum diagnostics for the next run,
+not speculative product changes or longer assertions. Successful history-delete
+observations are cleared so they cannot masquerade as a later calendar failure.
+No consumed native logs were fetched again; no database or native run occurred
+locally. Both manual profiles must be redispatched at the new head.

@@ -11,12 +11,23 @@ export const nativeUiFailureSchema = z.discriminatedUnion("case", [
   }).strict(),
   z.object({
     case: z.literal("m11"),
-    control: z.enum(["pending", "error", "menu-open", "menu-closed", "row-absent", "unavailable"]),
+    control: z.enum(["pending", "error", "menu-open", "menu-closed", "row-absent", "schedule", "schedule-absent", "unavailable"]),
     request: nativeRequest,
     record: z.enum(["deleted", "retained", "absent", "unavailable"]),
+    calendar: z.object({
+      day: z.enum(["none", "one", "multiple"]),
+      weekLink: z.enum(["none", "one", "multiple"]),
+      dayLink: z.enum(["none", "one", "multiple"]),
+    }).strict().optional(),
   }).strict(),
   z.object({
     case: z.literal("m13"),
+    control: z.enum(["pending", "error", "invalid", "editor", "library", "empty", "unavailable"]),
+    request: nativeRequest,
+    record: z.enum(["present", "absent", "unavailable"]),
+  }).strict(),
+  z.object({
+    case: z.literal("m14"),
     control: z.enum(["pending", "error", "invalid", "editor", "library", "empty", "unavailable"]),
     request: nativeRequest,
     record: z.enum(["present", "absent", "unavailable"]),
@@ -30,7 +41,7 @@ export function unavailableNativeUi(caseId: NativeUiFailure["case"]): NativeUiFa
 }
 
 export function readNativeUiFailure(value: unknown, caseIndex: number): NativeUiFailure | undefined {
-  const caseId = caseIndex === 7 ? "m8" : caseIndex === 10 ? "m11" : caseIndex === 12 ? "m13" : null;
+  const caseId = caseIndex === 7 ? "m8" : caseIndex === 10 ? "m11" : caseIndex === 12 ? "m13" : caseIndex === 13 ? "m14" : null;
   if (!caseId) return undefined;
   const fallback = unavailableNativeUi(caseId);
   if (!Array.isArray(value) || value.length > 128) return fallback;

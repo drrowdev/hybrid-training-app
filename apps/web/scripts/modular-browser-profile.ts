@@ -38,3 +38,12 @@ export function isModularAcceptance(env: Readonly<Record<string, string | undefi
     env.GITHUB_RUN_ATTEMPT === "1", "Modular acceptance requires its reviewed branch and first attempt");
   return true;
 }
+
+export function isModularSchemaAcceptance(env: Readonly<Record<string, string | undefined>>) {
+  isModularAcceptance(env);
+  const reviewed = env.GITHUB_REF === "refs/heads/drrowdev-modular-programs-implementation" ||
+    env.GITHUB_REF === "refs/heads/drrowdev-programs-page-redesign";
+  if (reviewed) assert(env.GITHUB_RUN_ATTEMPT === "1",
+    "Modular schema qualification requires its reviewed branch and first attempt");
+  return reviewed;
+}

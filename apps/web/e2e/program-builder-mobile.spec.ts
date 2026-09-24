@@ -157,6 +157,7 @@ async function nativeTeardown(work: () => Promise<void>) {
 function observeNativeUi(
   page: Page, caseId: NativeUiFailure["case"], target: string,
   readRecord: () => Promise<NativeUiFailure["record"]>,
+  date?: string,
 ) {
   let state = unavailableNativeUi(caseId);
   state.request = "not-observed";
@@ -187,7 +188,7 @@ function observeNativeUi(
   publish();
   const capture = async () => {
     try {
-      const ui = await page.evaluate(({ caseId, target, navigationStatus }): NativeUiFailure => {
+      const ui = await page.evaluate(({ caseId, target, navigationStatus, date }): NativeUiFailure => {
         const visible = (element: Element | null) => !!element?.getClientRects().length;
         if (caseId === "m8") {
           const control = visible(document.querySelector('[data-testid="end-block-confirm"]')) ? "dialog" :
@@ -205,6 +206,18 @@ function observeNativeUi(
           return { case: "m8", page: pageState, control, request: "unavailable", record: "unavailable" };
         }
         if (caseId === "m11") {
+          if (date) {
+            const week = document.querySelector('section[aria-label="This week"]');
+            const days = week?.querySelectorAll(`time[datetime="${date}"]`);
+            const day = days?.[0]?.parentElement?.parentElement;
+            const link = `a[href="/app/sessions/start/${target}"]`;
+            const count = (value: number | undefined) => !value ? "none" : value === 1 ? "one" : "multiple";
+            return { case: "m11", control: week ? "schedule" : "schedule-absent",
+              request: "unavailable", record: "unavailable", calendar: {
+                day: count(days?.length), weekLink: count(week?.querySelectorAll(link).length),
+                dayLink: count(day?.querySelectorAll(link).length),
+              } };
+          }
           const row = document.querySelector(`[data-testid="block-history-row"][data-block-id="${target}"]`);
           const menu = row?.querySelector('[data-testid="block-actions-menu"]');
           const submit = menu?.querySelector<HTMLButtonElement>('[data-testid="delete-block-menu-item"]');
@@ -217,8 +230,8 @@ function observeNativeUi(
           visible(document.querySelector('[data-testid="rehab-protocol-error"],[aria-invalid="true"]')) ? "error" :
             submit?.form?.querySelector(":invalid") ? "invalid" : submit ? "editor" :
               visible(document.querySelector('[data-testid="rehab-protocol-new"]')) ? "library" : "empty";
-        return { case: "m13", control, request: "unavailable", record: "unavailable" };
-      }, { caseId, target, navigationStatus });
+        return { case: caseId, control, request: "unavailable", record: "unavailable" };
+      }, { caseId, target, navigationStatus, date });
       state = nativeUiFailureSchema.parse({ ...ui, request: state.request, record: state.record });
       publish();
     } catch {
@@ -321,8 +334,8 @@ async function loggedSets(actor: SupabaseClient, sessionId: string) {
   return result.data ?? [];
 }
 
-async function createRehabInLibrary(page: Page, selected: Movement, name: string, actor?: SupabaseClient, timeout?: number) {
-  const observation = actor ? observeNativeUi(page, "m13", "", async () => {
+async function createRehabInLibrary(page: Page, selected: Movement, name: string, actor?: SupabaseClient, timeout?: number, caseId: "m13" | "m14" = "m13") {
+  const observation = actor ? observeNativeUi(page, caseId, "", async () => {
     const read = await actor.from("rehab_protocols").select("id").eq("name", name)
       .limit(1).abortSignal(AbortSignal.timeout(1000));
     return read.error || !read.data ? "unavailable" : read.data.length ? "present" : "absent";
@@ -354,9 +367,9 @@ function clearNativeUiObservation() {
 
 async function draftPair(page: Page, catalog: Movement[], kind: "strength" | "running", name: string, offsets: [number, number]) {
   await begin(page, kind, name);
-  await page.getByRole("button", { name: "2. Setup", exact: true }).click();
+  await page.getByRole("button", { name: "1. Setup", exact: true }).click();
   await page.getByLabel("Weeks", { exact: true }).fill("1");
-  await page.getByRole("button", { name: "4. Workout", exact: true }).click();
+  await page.getByRole("button", { name: "3. Workout", exact: true }).click();
   await page.getByLabel("Workout name", { exact: true }).fill(`${name} A`);
   await page.getByRole("combobox", { name: "Day", exact: true }).selectOption(String((weekday() + offsets[0]) % 7));
   if (kind === "strength") await lift(page, movement(catalog, "bench-press-flat"));
@@ -726,10 +739,10 @@ test.describe("Modular program builder", () => {
         await page.goto(path);
         const hub = path.startsWith("/app/swim");
         const scope = hub ? page.getByRole("list", { name: "Swims", exact: true })
-          : page.getByRole("region", { name: "Swimming schedule", exact: true });
+          : page.getByRole("region", { name: path === "/app/plan" ? "This week" : "Swimming schedule", exact: true });
         const link = scope.locator(`a[href^="/app/swim/${first.id}"]`);
         await expect(link).toBeVisible();
-        await expect(link).toContainText(label);
+        await expect(link).toContainText(path === "/app/plan" && label === "Scheduled" ? "Start workout" : label);
         if (path === "/app" && label !== "Scheduled") {
           const recent = page.getByRole("region", { name: "Recent activity", exact: true })
             .locator(`a[href="/app/swim/recordings/${receipt.id}?workout=${first.id}&from=today"]`);
@@ -1019,6 +1032,7 @@ test.describe("Modular program builder", () => {
         throw error;
       }
       finally { observation.dispose(); }
+      clearNativeUiObservation();
       const deleted = await actor.from("program_instances").select("status,deleted_at").eq("block_id", hybridId).single();
       expect(deleted.error).toBeNull();
       expect(deleted.data).toEqual({ status: "archived", deleted_at: expect.any(String) });
@@ -1070,7 +1084,16 @@ test.describe("Modular program builder", () => {
       const sharedDay = week.locator(`time[datetime="${today()}"]`).locator("../..");
       for (const id of [strength.block_id, hybridId]) {
         const row = original.find((entry) => entry.block_id === id)!;
-        await expect(sharedDay.locator(`a[href="/app/sessions/start/${row.id}"]`)).toHaveCount(1);
+        const calendar = observeNativeUi(page, "m11", row.id, async () => {
+          const read = await actor.from("planned_sessions").select("id").eq("id", row.id)
+            .abortSignal(AbortSignal.timeout(1000)).maybeSingle();
+          return read.error ? "unavailable" : read.data ? "retained" : "absent";
+        }, today());
+        try {
+          await expect(sharedDay.locator(`a[href="/app/sessions/start/${row.id}"]`)).toHaveCount(1);
+          clearNativeUiObservation();
+        } catch (error) { await calendar.recordFailure(); throw error; }
+        finally { calendar.dispose(); }
       }
     });
 
@@ -1295,7 +1318,7 @@ test.describe("Modular program builder", () => {
   ownedTest("M14 DC-R5/DC-SW7: Swimming pause moves only its dates and retains issued rehab",
     async ({ page, actor, catalog, freshUser }) => {
       const selected = movement(catalog, "bench-press-flat"), running = movement(catalog, "run-easy-z2");
-      await createRehabInLibrary(page, selected, "Retained rehab");
+      await createRehabInLibrary(page, selected, "Retained rehab", actor, undefined, "m14");
       const graphs: Awaited<ReturnType<typeof prepareNativeProgram>>[] = [];
       for (const kind of ["strength", "running", "hybrid"] as const) {
         graphs.push(await prepareNativeProgram(actor, { ...nativeProgramDefinition(kind, `${kind} peer`, weekday(),

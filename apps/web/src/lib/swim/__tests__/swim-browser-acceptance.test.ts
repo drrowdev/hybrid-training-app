@@ -233,8 +233,9 @@ describe("DC-SW8 modular acceptance report membership", () => {
       { case: "m8", page: "plan", control: "more", request: "not-observed", record: "active" },
       { case: "m11", control: "menu-closed", request: "http-success", record: "deleted" },
       { case: "m13", control: "pending", request: "pending", record: "present" },
+      { case: "m14", control: "error", request: "http-success", record: "absent" },
     ] as const;
-    const indices = [7, 10, 12];
+    const indices = [7, 10, 12, 13];
     const fixture = report(paths, MODULAR_BROWSER_CASES);
     for (const [position, sample] of samples.entries()) {
       const index = indices[position]!;
@@ -256,7 +257,7 @@ describe("DC-SW8 modular acceptance report membership", () => {
         expect(JSON.stringify(projected)).not.toContain("private-value");
       }
     }
-    fixture.stats = { expected: 15, unexpected: 3, flaky: 0, skipped: 0 };
+    fixture.stats = { expected: 14, unexpected: 4, flaky: 0, skipped: 0 };
     let caught: unknown;
     try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
     catch (error) { caught = error; }
@@ -276,7 +277,7 @@ describe("DC-SW8 modular acceptance report membership", () => {
       const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
       test.status = "skipped"; test.results = [];
     }
-    fixture.stats = { expected: 15, unexpected: 0, flaky: 0, skipped: 3 };
+    fixture.stats = { expected: 14, unexpected: 0, flaky: 0, skipped: 4 };
     try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
     catch (error) { caught = error; }
     for (const index of indices) {
@@ -285,7 +286,7 @@ describe("DC-SW8 modular acceptance report membership", () => {
     }
   });
 
-  it.each(["m8", "m11", "m13"] as const)("observes %s metadata without consuming response bodies or masking the original failure", async (caseId) => {
+  it.each(["m8", "m11", "m13", "m14"] as const)("observes %s metadata without consuming response bodies or masking the original failure", async (caseId) => {
     const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8").replace(/\r\n/g, "\n");
     const helper = source.slice(source.indexOf("function observeNativeUi("), source.indexOf("function movement("));
     expect(helper).not.toMatch(/\.text\(|\.json\(|postData|waitForTimeout|response\.finished/);
@@ -380,7 +381,12 @@ describe("DC-SW8 modular acceptance report membership", () => {
     },
   );
 
-  it.each([false, true])("retains only failed library observations, not stale M13 success (failure=%s)", async (failed) => {
+  it.each([
+    { failed: false, caseId: "m13", timeout: 30_000 },
+    { failed: true, caseId: "m13", timeout: 30_000 },
+    { failed: false, caseId: "m14", timeout: undefined },
+    { failed: true, caseId: "m14", timeout: undefined },
+  ])("retains only failed $caseId library observations with the original budget (failure=$failed)", async ({ failed, caseId, timeout }) => {
     const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
     const helper = source.slice(source.indexOf("async function createRehabInLibrary("), source.indexOf("async function draftPair("));
     const annotations = [{ type: "modular-stage", description: "m13-01" }, { type: "native-ui-failure", description: "pending" }];
@@ -389,18 +395,20 @@ describe("DC-SW8 modular acceptance report membership", () => {
     const createLibrary = runInNewContext(transpileModule(`${helper}\ncreateRehabInLibrary;`, {
       compilerOptions: { target: ScriptTarget.ES2022 },
     }).outputText, {
-      observeNativeUi: () => observation, test: { info: () => ({ annotations }) },
-      expect: () => ({ toBeVisible: async (options: { timeout: number }) => {
-        expect(options).toEqual({ timeout: 30_000 });
+      observeNativeUi: (_page: unknown, selectedCase: string) => {
+        expect(selectedCase).toBe(caseId); return observation;
+      }, test: { info: () => ({ annotations }) },
+      expect: () => ({ toBeVisible: async (options: { timeout?: number }) => {
+        expect(options).toEqual({ timeout });
         if (failed) throw failure;
       } }),
-    }) as (page: unknown, movement: unknown, name: string, actor: unknown, timeout: number) => Promise<void>;
+    }) as (page: unknown, movement: unknown, name: string, actor: unknown, timeout: number | undefined, caseId: string) => Promise<void>;
     const locator = { click: async () => {}, fill: async () => {},
       getByRole: () => locator, filter: () => locator };
     const result = createLibrary({
       goto: async () => {}, getByRole: () => locator, getByTestId: () => locator,
       getByLabel: () => locator, getByText: () => locator,
-    }, { display_name: "Exercise" }, "Protocol", {}, 30_000);
+    }, { display_name: "Exercise" }, "Protocol", {}, timeout, caseId);
     if (failed) {
       await expect(result).rejects.toBe(failure);
       expect(annotations).toHaveLength(2);
@@ -411,6 +419,48 @@ describe("DC-SW8 modular acceptance report membership", () => {
       expect(observation.recordFailure).not.toHaveBeenCalled();
     }
     expect(observation.dispose).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { week: false, days: 0, weekLinks: 0, dayLinks: 0 },
+    { week: true, days: 0, weekLinks: 1, dayLinks: 0 },
+    { week: true, days: 1, weekLinks: 1, dayLinks: 1 },
+    { week: true, days: 1, weekLinks: 1, dayLinks: 0 },
+    { week: true, days: 2, weekLinks: 2, dayLinks: 2 },
+  ])("projects M11 calendar evidence without exporting dates or IDs: %j", async (counts) => {
+    const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
+    const helper = source.slice(source.indexOf("function observeNativeUi("), source.indexOf("function movement("));
+    const annotations: string[] = [], events = new EventEmitter();
+    const day = { querySelectorAll: () => Array(counts.dayLinks).fill({}) };
+    const createObserver = runInNewContext(transpileModule(`${helper}\nobserveNativeUi;`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      unavailableNativeUi, nativeUiFailureSchema, URL,
+      document: { querySelector: () => counts.week ? { querySelectorAll: (selector: string) =>
+        selector.startsWith("time") ? Array(counts.days).fill({ parentElement: { parentElement: day } })
+          : Array(counts.weekLinks).fill({}) } : null },
+      diagnosticAnnotation: (_type: string, description: string) => annotations.push(description),
+    }) as (page: unknown, caseId: string, target: string, read: () => Promise<string>, date: string) => {
+      recordFailure(): Promise<void>; dispose(): void;
+    };
+    const observer = createObserver({
+      on: events.on.bind(events), off: events.off.bind(events),
+      evaluate: async (callback: (args: unknown) => unknown, args: unknown) => callback(args),
+    }, "m11", "private-id", async () => "retained", "2026-09-24");
+    await observer.recordFailure();
+    const count = (value: number) => !value ? "none" : value === 1 ? "one" : "multiple";
+    const expected = { case: "m11", control: counts.week ? "schedule" : "schedule-absent",
+      request: "not-observed", record: "retained", calendar: {
+        day: count(counts.days), weekLink: count(counts.weekLinks), dayLink: count(counts.dayLinks),
+      } };
+    const annotation = { type: "native-ui-failure", description: annotations.at(-1)! };
+    expect(readNativeUiFailure([annotation], 10)).toEqual(expected);
+    for (const calendar of [{ ...expected.calendar, day: "private-id" }, { ...expected.calendar, date: "2026-09-24" }]) {
+      expect(readNativeUiFailure([{ ...annotation, description: JSON.stringify({ ...expected, calendar }) }], 10))
+        .toEqual(unavailableNativeUi("m11"));
+    }
+    expect(annotations.join("")).not.toMatch(/private-id|2026-09-24/);
+    observer.dispose();
   });
 
   it.each([undefined, 30_000])("waits for the same authoritative save URL with the selected assertion budget (%s)", async (timeout) => {

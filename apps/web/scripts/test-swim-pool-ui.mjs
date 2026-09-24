@@ -253,7 +253,7 @@ try {
           window.endCalls.push(form.get("id"));
           if (window.endMode === "error") throw new Error("Couldn't end the program. Try again.");
         };
-        window.showProgramsOverview = (activity, includeHybrid = false, empty = false, legacy = false, weekOnly = false, paused = false) => {
+        window.showProgramsOverview = (activity, includeHybrid = false, empty = false, legacy = false, weekOnly = false, paused = false, swimStatus = "scheduled") => {
           const identity = value => "00000000-0000-4000-8000-" + String(value).padStart(12, "0");
           window.destinations = [];
           const programs = (empty ? [] : legacy ? [
@@ -276,7 +276,8 @@ try {
           if (weekOnly) {
             const visibleIds = programs.filter(program => !activity || program.kind === activity).map(program => program.id);
             root.render(<main key={++key} style={{ padding: 12 }}><TrainingWeek today="2026-09-21"
-              entries={entries.filter(entry => visibleIds.includes(entry.programId))} showWorkoutEditing={false} /></main>);
+              entries={entries.filter(entry => visibleIds.includes(entry.programId))} showWorkoutEditing={false}
+              swimStatuses={Object.fromEntries(entries.filter(entry => entry.source === "swim").map(entry => [entry.id, swimStatus]))} /></main>);
           } else root.render(<AppShell key={++key} signOutAction={async () => { throw new Error("Unexpected sign out"); }} displayName="Review" hapticsEnabled={false}>
             <ProgramsOverview programs={programs} today="2026-09-21" entries={empty ? [] : entries} swimHref="/app/swim/setup" /></AppShell>);
         };
@@ -1585,6 +1586,16 @@ try {
       "/app/sessions/start/00000000-0000-4000-8000-000000000203");
     await page.evaluate(() => window.showProgramsOverview(undefined, true, false, false, true));
     await expect(week.locator('a[href^="/app/sessions/start/"],a[href^="/app/swim/"]')).toHaveCount(7);
+    const sharedDay = week.locator('time[datetime="2026-09-26"]').locator("../..");
+    await expect(sharedDay.locator('a[href="/app/sessions/start/00000000-0000-4000-8000-000000000207"]')).toHaveCount(1);
+    await expect(sharedDay.locator('a[href^="/app/swim/00000000-0000-4000-8000-000000000206?"]')).toHaveCount(1);
+    await expect(sharedDay.locator('a[href^="/app/sessions/start/"],a[href^="/app/swim/"]')).toHaveCount(2);
+    for (const status of ["completed", "stopped_early", "scheduled"]) {
+      await page.evaluate(status => window.showProgramsOverview(undefined, true, false, false, true, false, status), status);
+      const swim = week.locator('a[href^="/app/swim/00000000-0000-4000-8000-000000000205"]');
+      await expect(swim).toBeVisible();
+      await expect(swim).toContainText(status === "completed" ? "Completed" : status === "stopped_early" ? "Stopped early" : "Start workout");
+    }
     if (width === 375) {
       const positions = [];
       for (const title of [/^Swim B/, /^Run and stations/]) {
@@ -1701,6 +1712,11 @@ try {
     await expect(swimHistory.getByRole("link")).toHaveCount(3);
     await screenshot(`combined-history-${width}`);
     await page.evaluate(() => { window.programCalls = []; window.programMode = "success"; window.showProgramEdit(true); });
+    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.getByRole("button", { name: "1. Setup", exact: true }).click();
+    await expect(page.getByLabel("Weeks", { exact: true })).toHaveValue("2");
+    await page.getByRole("button", { name: "3. Workout", exact: true }).click();
+    await expect(page.getByLabel("Workout name", { exact: true })).toHaveValue("Run");
     await page.getByRole("button", { name: "Review program", exact: true }).click();
     await page.getByRole("button", { name: "Start program", exact: true }).click();
     await expect(dialog).toBeVisible();
