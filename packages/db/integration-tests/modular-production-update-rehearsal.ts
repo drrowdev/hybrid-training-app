@@ -14,6 +14,7 @@ import { modularCatalog } from "../scripts/modular-production-catalog";
 export const modularRehearsalMigrations = validateModularUpdateMigrations;
 export const MODULAR_UPDATE_REHEARSAL_STAGES = [
   "modular-production-update-159-guard",
+  "modular-production-update-function-metadata",
   "modular-production-update-213-baseline",
   "modular-production-update-legacy-fingerprint-refusal",
   "modular-production-update-full-fingerprint-refusal",
@@ -27,10 +28,27 @@ export const MODULAR_UPDATE_REHEARSAL_STAGES = [
   "modular-production-update-fixture-restored",
 ] as const;
 
-export async function rehearseModularProductionUpdate(database: postgres.Sql, stage: (name: string) => void) {
-  const stages: string[] = [];
-  const mark = (index: number) => { const name = MODULAR_UPDATE_REHEARSAL_STAGES[index]!; stage(name); };
-  const pass = (index: number) => { stages.push(MODULAR_UPDATE_REHEARSAL_STAGES[index]!); };
+export function modularUpdateStageReporter(stage: (name: string) => void, passed: (name: string) => void) {
+  let active: string | undefined;
+  return {
+    mark(index: number) {
+      assert.equal(active, undefined);
+      active = MODULAR_UPDATE_REHEARSAL_STAGES[index];
+      assert.ok(active);
+      stage(active);
+    },
+    pass(index: number) {
+      assert.ok(active);
+      assert.equal(active, MODULAR_UPDATE_REHEARSAL_STAGES[index]);
+      passed(active);
+      active = undefined;
+    },
+  };
+}
+
+export async function rehearseModularProductionUpdate(database: postgres.Sql, stage: (name: string) => void,
+  passed: (name: string) => void) {
+  const { mark, pass } = modularUpdateStageReporter(stage, passed);
   mark(0);
   assert.equal(process.env.GITHUB_ACTIONS, "true");
   assert.equal(process.env.GITHUB_JOB, "pool-storage");
@@ -52,6 +70,37 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
   );
   assert.deepEqual(migrations, modularUpdateMigrations());
   pass(0);
+  mark(1);
+  await database.begin(async (tx) => {
+    const name = "public.modular_catalog_default_probe(integer)";
+    assert.equal((await tx`SELECT to_regprocedure(${name}) AS existing`)[0]!.existing, null);
+    await tx.unsafe(`CREATE FUNCTION public.modular_catalog_default_probe(p_count integer DEFAULT 42)
+      RETURNS integer LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path=pg_catalog AS $$ SELECT p_count $$`);
+    const metadata = async () => {
+      const [raw] = await tx`SELECT proargdefaults::text AS defaults,pg_get_functiondef(oid) AS definition
+        FROM pg_proc WHERE oid=${name}::regprocedure`;
+      const row = (await modularCatalog(tx)).find((item) => item.key === "function:public.modular_catalog_default_probe");
+      assert.ok(row?.security);
+      assert.ok(typeof raw?.definition === "string" && typeof raw.defaults === "string");
+      return { definition: raw.definition, defaults: raw.defaults, security: row.security };
+    };
+    const original = await metadata();
+    await tx.unsafe(original.definition);
+    const rebuilt = await metadata();
+    assert.notEqual(rebuilt.defaults, original.defaults);
+    assert.equal(rebuilt.security, original.security);
+    assert.ok(original.definition.includes("DEFAULT 42"));
+    await tx.unsafe(original.definition.replace("DEFAULT 42", "DEFAULT 43"));
+    assert.notEqual((await metadata()).security, original.security);
+    await tx.unsafe(original.definition);
+    await tx.unsafe("ALTER FUNCTION public.modular_catalog_default_probe(integer) SECURITY DEFINER");
+    assert.notEqual((await metadata()).security, original.security);
+    await tx.unsafe(original.definition);
+    await tx.unsafe("REVOKE EXECUTE ON FUNCTION public.modular_catalog_default_probe(integer) FROM anon");
+    assert.notEqual((await metadata()).security, original.security);
+    await tx.unsafe("DROP FUNCTION public.modular_catalog_default_probe(integer)");
+  });
+  pass(1);
   const original = productionHistoryRows(Array.from(await database.unsafe(MODULAR_LEDGER_SQL)));
   const authAndRoles = async () => (await modularCatalog(database)).filter((row) => row.key === "global" || row.key.includes(":auth."));
   const originalAuthAndRoles = await authAndRoles();
@@ -81,7 +130,7 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
   });
   let installed = false;
   try {
-    mark(1);
+    mark(2);
     // Only this loopback disposable fixture replaces its ledger; its sequence is never reset.
     await database.unsafe("DELETE FROM drizzle.__drizzle_migrations");
     for (let index = 0; index < 203; index += 1) {
@@ -98,28 +147,28 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     assert.equal(initial.length, 213);
     baseline.fullFingerprint = productionHistoryFingerprint(initial);
     assert.equal(modularUpdateInventory(initial, migrations, baseline).pending.length, 3);
-    pass(1);
+    pass(2);
     const unchanged = async () => {
       assert.deepEqual(productionHistoryRows(Array.from(await database.unsafe(MODULAR_LEDGER_SQL))), initial);
       assert.equal(await catalog(), beforeCatalog);
     };
-    mark(2);
+    mark(3);
     const refused = progress();
     await assert.rejects(appendModularProduction(database, migrations, async () => {}, refused,
       { ...baseline, fingerprint: "f".repeat(64) }), /legacy_history_changed/);
     assert.equal(refused.attemptedMigrations, 0);
     await unchanged();
-    pass(2);
+    pass(3);
 
-    mark(3);
+    mark(4);
     const fullRefused = progress();
     await assert.rejects(appendModularProduction(database, migrations, async () => {}, fullRefused,
       { ...baseline, fullFingerprint: "f".repeat(64) }), /modular_baseline/);
     assert.equal(fullRefused.attemptedMigrations, 0);
     await unchanged();
-    pass(3);
+    pass(4);
 
-    mark(4);
+    mark(5);
     const next = migrations[156]!;
     const inserted = await database`INSERT INTO drizzle.__drizzle_migrations(hash,created_at)
       VALUES (${next.hash},${next.folderMillis}) RETURNING id`;
@@ -129,9 +178,9 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
       assert.equal(partial.attemptedMigrations, 0);
     } finally { await database`DELETE FROM drizzle.__drizzle_migrations WHERE id=${inserted[0]!.id}`; }
     await unchanged();
-    pass(4);
+    pass(5);
 
-    mark(5);
+    mark(6);
     const midBatch = progress();
     let attempts = 0;
     await assert.rejects(appendModularProduction(database, migrations, async (phase) => {
@@ -140,9 +189,9 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     assert.equal(midBatch.stagedMigrations, 1);
     assert.equal(midBatch.commitAttempted, false);
     await unchanged();
-    pass(5);
+    pass(6);
 
-    mark(6);
+    mark(7);
     const rollback = progress();
     await assert.rejects(appendModularProduction(database, migrations, async (phase) => {
       if (phase === "before_commit") throw new Error("synthetic_modular_precommit");
@@ -150,9 +199,9 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     assert.equal(rollback.stagedMigrations, 3);
     assert.equal(rollback.commitAttempted, false);
     await unchanged();
-    pass(6);
+    pass(7);
 
-    mark(7);
+    mark(8);
     const [role] = await database`SELECT rolinherit FROM pg_roles WHERE rolname='authenticated'`;
     assert.equal(typeof role?.rolinherit, "boolean");
     const drift = progress();
@@ -168,9 +217,9 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     }
     assert.equal((await database`SELECT rolinherit FROM pg_roles WHERE rolname='authenticated'`)[0]!.rolinherit, role!.rolinherit);
     await unchanged();
-    pass(7);
+    pass(8);
 
-    mark(8);
+    mark(9);
     const committed = progress();
     try {
       const result = await appendModularProduction(database, migrations, async () => {}, committed, baseline);
@@ -182,14 +231,14 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     assert.deepEqual(after.slice(0, 213), initial);
     assert.equal(after.length, 216);
     assert.equal(modularUpdateInventory(after, migrations, baseline).pending.length, 0);
-    pass(8);
-    mark(9);
+    pass(9);
+    mark(10);
     const replay = progress();
     await assert.rejects(appendModularProduction(database, migrations, async () => {}, replay, baseline), /modular_baseline/);
     assert.equal(replay.attemptedMigrations, 0);
-    pass(9);
+    pass(10);
 
-    mark(10);
+    mark(11);
     await down(158); await down(157); await down(156); installed = false;
     await database`DELETE FROM drizzle.__drizzle_migrations WHERE id>${initial.at(-1)!.id}`;
     await unchanged();
@@ -204,7 +253,7 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     const retained = productionHistoryRows(Array.from(await database.unsafe(MODULAR_LEDGER_SQL)));
     assert.deepEqual(retained.slice(0, 213), initial);
     assert.equal(modularUpdateInventory(retained, migrations, baseline).pending.length, 0);
-    pass(10);
+    pass(11);
   } finally {
     if (installed) { await down(158); await down(157); }
     else await database.unsafe(migrations[156]!.sql[0]!);
@@ -212,10 +261,9 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     for (const row of original) await database.unsafe(
       "INSERT INTO drizzle.__drizzle_migrations(id,hash,created_at) VALUES ($1,$2,$3)", [row.id, row.hash, row.created_at]);
   }
-  mark(11);
+  mark(12);
   assert.deepEqual(productionHistoryRows(Array.from(await database.unsafe(MODULAR_LEDGER_SQL))), original);
   assert.equal(await catalog(), originalCatalog);
   assert.deepEqual(await authAndRoles(), originalAuthAndRoles);
-  pass(11);
-  return stages;
+  pass(12);
 }

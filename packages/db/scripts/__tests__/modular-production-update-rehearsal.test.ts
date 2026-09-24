@@ -3,7 +3,8 @@ import { Socket } from "node:net";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import postgres from "postgres";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { modularRehearsalMigrations, rehearseModularProductionUpdate, MODULAR_UPDATE_REHEARSAL_STAGES } from "../../integration-tests/modular-production-update-rehearsal";
+import { modularRehearsalMigrations, rehearseModularProductionUpdate, modularUpdateStageReporter,
+  MODULAR_UPDATE_REHEARSAL_STAGES } from "../../integration-tests/modular-production-update-rehearsal";
 import { modularUpdateMigrations } from "../modular-production-update-storage";
 
 function source() {
@@ -33,12 +34,26 @@ describe("DC-SW8 exact modular updater rehearsal stays separate from production"
   });
 
   it("exposes every successful rehearsal stage to the existing storage summary", () => {
-    expect(MODULAR_UPDATE_REHEARSAL_STAGES).toHaveLength(12);
-    expect(new Set(MODULAR_UPDATE_REHEARSAL_STAGES).size).toBe(12);
+    expect(MODULAR_UPDATE_REHEARSAL_STAGES).toHaveLength(13);
+    expect(new Set(MODULAR_UPDATE_REHEARSAL_STAGES).size).toBe(13);
     expect(MODULAR_UPDATE_REHEARSAL_STAGES[0]).toBe("modular-production-update-159-guard");
+    expect(MODULAR_UPDATE_REHEARSAL_STAGES[1]).toBe("modular-production-update-function-metadata");
     expect(MODULAR_UPDATE_REHEARSAL_STAGES.at(-1)).toBe("modular-production-update-fixture-restored");
     const runner = readFileSync(new URL("../../integration-tests/swim-pool-storage.mts", import.meta.url), "utf8");
-    expect(runner).toContain("stages.push(...await rehearseModularProductionUpdate(database,");
+    expect(runner).toContain("await rehearseModularProductionUpdate(database, (name) => { stage = name; }, (name) => { stages.push(name); })");
+    expect(runner).not.toContain("stages.push(...await rehearseModularProductionUpdate(");
+  });
+
+  it("publishes completed stages before later failure, without publishing the failing stage or duplicates", () => {
+    const started: string[] = [], passed: string[] = [];
+    const reporter = modularUpdateStageReporter((name) => started.push(name), (name) => passed.push(name));
+    reporter.mark(0);
+    reporter.pass(0);
+    expect(() => reporter.pass(0)).toThrow();
+    reporter.mark(1);
+    expect(() => reporter.pass(2)).toThrow();
+    expect(passed).toEqual([MODULAR_UPDATE_REHEARSAL_STAGES[0]]);
+    expect(started).toEqual(MODULAR_UPDATE_REHEARSAL_STAGES.slice(0, 2));
   });
 
   it.each(["missing-entry", "future-entry", "missing-source", "future-source", "index", "tag-prefix",
@@ -80,7 +95,7 @@ describe("DC-SW8 exact modular updater rehearsal stays separate from production"
         port: 5432, database: mode === "client-database" ? "postgres" : "swim_pool_test", username: "postgres",
       });
       try {
-        await expect(rehearseModularProductionUpdate(sql, vi.fn())).rejects.toMatchObject({ code: "ERR_ASSERTION" });
+        await expect(rehearseModularProductionUpdate(sql, vi.fn(), vi.fn())).rejects.toMatchObject({ code: "ERR_ASSERTION" });
         expect(connect).not.toHaveBeenCalled();
       } finally { await sql.end(); }
     },

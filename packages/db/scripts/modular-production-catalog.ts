@@ -1,15 +1,12 @@
 import type postgres from "postgres";
 import { z } from "zod";
-import { requireInspection } from "./swim-production-readonly-guards";
+import { ProductionInspectionRefusal, requireInspection } from "./swim-production-readonly-guards";
+import { MODULAR_CATALOG_MANIFEST } from "./modular-production-catalog-manifest";
+import { MODULAR_RELEASE_MIGRATIONS } from "./modular-production-preflight-guards";
 
-const relations = ["swim_import_outcomes", "swim_current_import_outcomes", "swim_import_outcome_activity", "swim_plan_rehab_bindings"];
-const functions = [
-  "training_schedule_lock", "training_schedule_snapshot", "training_schedule_commit", "start_planned_session_atomically",
-  "swim_import_outcomes_ready", "swim_confirm_import_outcome", "guard_program_block_identity", "guard_program_instance_identity",
-  "sync_program_instance_lifecycle", "check_program_parent_consistency", "validate_owned_rehab_items", "guard_program_prescription",
-  "independent_programs_ready", "independent_program_schedule_commit", "complete_program_if_settled", "commit_program_progression",
-  "set_swim_rehab_bindings", "guard_swim_rehab_session", "start_swim_rehab_session",
-];
+requireInspection(JSON.stringify(MODULAR_CATALOG_MANIFEST.migrations) === JSON.stringify(MODULAR_RELEASE_MIGRATIONS), "catalog_source");
+export const MODULAR_ADDED_CATALOG_KEYS: readonly string[] = MODULAR_CATALOG_MANIFEST.keys;
+const relations = MODULAR_ADDED_CATALOG_KEYS.filter((key) => key.startsWith("relation:public.")).map((key) => key.slice(16));
 export const MODULAR_CHANGED_FUNCTIONS = [
   "swim_create_plan", "swim_start_workout", "swim_set_plan_status", "swim_skip_workout", "swim_update_plan",
   "swim_resume_plan", "swim_complete_workout", "swim_edit_result", "complete_training_session_with_transition",
@@ -27,44 +24,36 @@ export const MODULAR_CHANGED_CONSTRAINTS: Record<string, string> = {
   "constraint:public.planned_sessions.planned_sessions_block_id_fkey":
     "FOREIGN KEY (user_id, block_id) REFERENCES training_blocks(user_id, id) ON DELETE CASCADE",
 };
-const addedIndexes = [
-  "swim_import_matches_owned_workout_id_key", "swim_import_outcomes_pkey", "swim_import_outcomes_owner_revision_key",
-  "training_blocks_user_id_id_key", "training_blocks_one_active_per_kind", "training_blocks_one_active_legacy",
-  "program_instances_one_active_per_block", "program_instances_one_active_orphan", "rehab_protocols_user_id_id_key",
-  "swim_plan_rehab_bindings_pkey", "swim_plan_rehab_bindings_plan_id_rehab_protocol_id_key",
-  "swim_plan_rehab_bindings_owner_idx", "swim_plan_rehab_bindings_protocol_idx",
-];
-const addedConstraints = [
-  "swim_import_matches.swim_import_matches_owned_workout_id_key",
-  "swim_import_outcomes.swim_import_outcomes_pkey", "swim_import_outcomes.swim_import_outcomes_user_id_fkey",
-  "swim_import_outcomes.swim_import_outcomes_revision_check", "swim_import_outcomes.swim_import_outcomes_metadata_check",
-  "swim_import_outcomes.swim_import_outcomes_owner_revision_key", "swim_import_outcomes.swim_import_outcomes_owned_workout_fk",
-  "swim_import_outcomes.swim_import_outcomes_owned_match_fk", "training_blocks.training_blocks_program_kind_check",
-  "training_blocks.training_blocks_user_id_id_key", "rehab_protocols.rehab_protocols_user_id_id_key",
-  "swim_plan_rehab_bindings.swim_plan_rehab_bindings_local_protocol_id_check",
-  "swim_plan_rehab_bindings.swim_plan_rehab_bindings_user_id_fkey", "swim_plan_rehab_bindings.swim_plan_rehab_bindings_pkey",
-  "swim_plan_rehab_bindings.swim_plan_rehab_bindings_plan_id_rehab_protocol_id_key",
-  "swim_plan_rehab_bindings.swim_plan_rehab_bindings_owned_plan_fk",
-  "swim_plan_rehab_bindings.swim_plan_rehab_bindings_owned_protocol_fk",
-];
-const addedTriggers = [
-  ...["training_blocks", "planned_sessions", "program_instances", "swim_plans", "swim_workouts", "sessions", "set_logs", "cardio_logs"]
-    .map((name) => `${name}.${name}_schedule_lock`),
-  "training_blocks.training_blocks_program_identity", "program_instances.program_instances_program_identity",
-  "training_blocks.training_blocks_instance_lifecycle", "training_blocks.training_blocks_parent_consistency",
-  "program_instances.program_instances_parent_consistency", "swim_plan_rehab_bindings.swim_plan_rehab_bindings_schedule_lock",
-  "rehab_protocols.rehab_protocols_schedule_lock", "program_rehab_bindings.program_rehab_bindings_schedule_lock",
-  "training_seasons.training_seasons_schedule_lock", "season_blocks.season_blocks_schedule_lock",
-  "planned_sessions.planned_sessions_program_prescription", "sessions.sessions_swim_rehab_origin",
-];
-export const MODULAR_ADDED_CATALOG_KEYS = [
-  ...relations.map((name) => `relation:public.${name}`), ...functions.map((name) => `function:public.${name}`),
-  ...addedIndexes.map((name) => `index:public.${name}`), ...addedConstraints.map((name) => `constraint:public.${name}`),
-  ...addedTriggers.map((name) => `trigger:public.${name}`),
-  "policy:public.swim_import_outcomes.swim_import_outcomes_owner",
-  "policy:public.swim_plan_rehab_bindings.swim_plan_rehab_bindings_owner",
-  "column:public.training_blocks.program_kind",
-];
+const difference = z.object({
+  category: z.enum(["catalog", "global", "relations", "columns", "functions", "constraints", "indexes", "policies", "triggers"]),
+  direction: z.enum(["missing", "unexpected", "changed"]),
+}).strict();
+export type ModularCatalogDiagnostic = z.infer<typeof difference>[];
+export class ModularCatalogRefusal extends ProductionInspectionRefusal {
+  readonly diagnostic: ModularCatalogDiagnostic;
+  constructor(code: string, differences: ModularCatalogDiagnostic) {
+    super(code);
+    const unique = [...new Map(differences.map((item) => [`${item.category}:${item.direction}`, item])).values()];
+    this.diagnostic = z.array(difference).min(1).max(27).parse(unique)
+      .sort((a, b) => `${a.category}:${a.direction}`.localeCompare(`${b.category}:${b.direction}`));
+  }
+}
+function category(key: string): ModularCatalogDiagnostic[number]["category"] {
+  switch (key.split(":")[0]) {
+    case "global": return "global";
+    case "relation": return "relations";
+    case "column": return "columns";
+    case "function": return "functions";
+    case "constraint": return "constraints";
+    case "index": return "indexes";
+    case "policy": return "policies";
+    case "trigger": return "triggers";
+    default: return "catalog";
+  }
+}
+function requireCatalog(value: boolean, code: string, key: string, direction: ModularCatalogDiagnostic[number]["direction"] = "changed") {
+  if (!value) throw new ModularCatalogRefusal(code, [{ category: category(key), direction }]);
+}
 
 // Catalog metadata only. Passwords, account rows, settings values and function bodies never leave Postgres.
 export const MODULAR_CATALOG_SQL = `
@@ -93,9 +82,11 @@ WITH objects AS (
     LEFT JOIN pg_attrdef d ON d.adrelid=a.attrelid AND d.adnum=a.attnum
   WHERE n.nspname IN ('public','auth') AND c.relkind IN ('r','p','v','m','S','f') AND a.attnum>0 AND NOT a.attisdropped
   UNION ALL
+  -- Raw argument-default trees contain parser positions, not just semantics.
   SELECT 'function:'||n.nspname||'.'||p.proname,
     jsonb_build_array(p.oid,pg_get_functiondef(p.oid)),
-    to_jsonb(p)-ARRAY['prosrc','probin','prosqlbody'],NULL::text
+    (to_jsonb(p)-ARRAY['prosrc','probin','prosqlbody','proargdefaults']) ||
+      jsonb_build_object('proargdefaults',pg_get_expr(p.proargdefaults,0)),NULL::text
   FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
   WHERE n.nspname IN ('public','auth') AND p.prokind='f'
   UNION ALL
@@ -134,10 +125,9 @@ export async function modularCatalog(sql: postgres.Sql | postgres.TransactionSql
   // Unrelated overloads are retained as a group; all release-touched names must be unique.
   return parsed.data;
 }
-const addedColumn = (key: string) => relations.some((name) => key.startsWith(`column:public.${name}.`));
 const rowsFor = (rows: ModularCatalog, key: string) => rows.filter((row) => row.key === key);
 export function requireModularCatalogBaseline(before: ModularCatalog) {
-  requireInspection(before.every((row) => !MODULAR_ADDED_CATALOG_KEYS.includes(row.key) && !addedColumn(row.key)), "catalog_baseline");
+  requireInspection(before.every((row) => !MODULAR_ADDED_CATALOG_KEYS.includes(row.key)), "catalog_baseline");
   requireInspection([...MODULAR_CHANGED_FUNCTIONS, ...MODULAR_REMOVED_INDEXES, ...Object.keys(MODULAR_CHANGED_CONSTRAINTS)]
     .every((key) => rowsFor(before, key).length === 1), "catalog_baseline");
 }
@@ -146,19 +136,25 @@ export function verifyModularCatalog(before: ModularCatalog, after: ModularCatal
   for (const key of new Set(before.map((row) => row.key))) {
     const previous = rowsFor(before, key), current = rowsFor(after, key);
     if (MODULAR_REMOVED_INDEXES.includes(key)) {
-      requireInspection(current.length === 0, "catalog_index_changed");
+      requireCatalog(current.length === 0, "catalog_index_changed", key, "unexpected");
     } else if (MODULAR_CHANGED_FUNCTIONS.includes(key)) {
-      requireInspection(current.length === 1 && previous[0]!.security === current[0]!.security, "catalog_function_security_changed");
+      requireCatalog(current.length === 1 && previous[0]!.security === current[0]!.security, "catalog_function_security_changed", key);
     } else if (Object.hasOwn(MODULAR_CHANGED_CONSTRAINTS, key)) {
-      requireInspection(current.length === 1 && current[0]!.definition === MODULAR_CHANGED_CONSTRAINTS[key], "catalog_constraint_changed");
+      requireCatalog(current.length === 1 && current[0]!.definition === MODULAR_CHANGED_CONSTRAINTS[key], "catalog_constraint_changed", key);
     } else {
-      requireInspection(JSON.stringify(previous) === JSON.stringify(current), "catalog_existing_changed");
+      requireCatalog(JSON.stringify(previous) === JSON.stringify(current), "catalog_existing_changed", key,
+        current.length < previous.length ? "missing" : current.length > previous.length ? "unexpected" : "changed");
     }
   }
   const existing = new Set(before.map((row) => row.key));
   const additions = after.filter((row) => !existing.has(row.key));
-  requireInspection(MODULAR_ADDED_CATALOG_KEYS.every((key) => rowsFor(additions, key).length === 1) &&
-    additions.every((row) => MODULAR_ADDED_CATALOG_KEYS.includes(row.key) || addedColumn(row.key)), "catalog_additions_changed");
+  const differences: ModularCatalogDiagnostic = [];
+  for (const key of new Set([...MODULAR_ADDED_CATALOG_KEYS, ...additions.map((row) => row.key)])) {
+    const expected = MODULAR_ADDED_CATALOG_KEYS.includes(key) ? 1 : 0;
+    const actual = rowsFor(additions, key).length;
+    if (actual !== expected) differences.push({ category: category(key), direction: actual < expected ? "missing" : "unexpected" });
+  }
+  if (differences.length) throw new ModularCatalogRefusal("catalog_additions_changed", differences);
 }
 
 export const MODULAR_ADDED_SECURITY_SQL = `
@@ -179,22 +175,21 @@ SELECT
     pg_get_expr(p.polqual,p.polrelid)=pg_get_expr(p.polwithcheck,p.polrelid))
     FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname='public' AND c.relname IN ('swim_import_outcomes','swim_plan_rehab_bindings')) AS policies,
-  (SELECT count(*)=19 AND bool_and(
-    p.proowner=CASE WHEN p.proname='swim_confirm_import_outcome' THEN 'swim_writer'::regrole ELSE current_user::regrole END
-    AND p.prosecdef=(p.proname='swim_confirm_import_outcome')
-    AND p.proconfig=CASE WHEN p.proname='swim_import_outcomes_ready' THEN ARRAY['search_path=pg_catalog']
-      WHEN p.proname='swim_confirm_import_outcome' THEN ARRAY['search_path=pg_catalog, public','row_security=on']
-      ELSE ARRAY['search_path=pg_catalog, public'] END
+  (SELECT count(*)=jsonb_array_length($2::jsonb) AND bool_and(
+    p.proowner=CASE WHEN expected.owner='current_user' THEN current_user::regrole ELSE expected.owner::regrole END
+    AND p.prosecdef=expected.definer AND p.proconfig=expected.config
     AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
     AND NOT EXISTS(SELECT 1 FROM aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a WHERE a.grantee=0)
     AND CASE WHEN p.proname=ANY($3::text[]) THEN has_function_privilege('authenticated',p.oid,'EXECUTE')
       WHEN p.proname='check_program_parent_consistency' THEN NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
       ELSE true END)
-    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname=ANY($2::text[]))
+    FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+    JOIN jsonb_to_recordset($2::jsonb) AS expected(name text,owner text,definer boolean,config text[]) ON expected.name=p.proname
+    WHERE n.nspname='public')
     AS functions`;
 
 export async function verifyAddedModularSecurity(sql: postgres.Sql | postgres.TransactionSql) {
-  const rows = await sql.unsafe(MODULAR_ADDED_SECURITY_SQL, [relations, functions, [
+  const rows = await sql.unsafe(MODULAR_ADDED_SECURITY_SQL, [relations, JSON.stringify(MODULAR_CATALOG_MANIFEST.functions), [
     "training_schedule_snapshot", "training_schedule_commit", "start_planned_session_atomically",
     "swim_import_outcomes_ready", "swim_confirm_import_outcome", "validate_owned_rehab_items", "independent_programs_ready",
     "independent_program_schedule_commit", "complete_program_if_settled", "commit_program_progression",
@@ -202,6 +197,6 @@ export async function verifyAddedModularSecurity(sql: postgres.Sql | postgres.Tr
   ]]);
   requireInspection(rows.length === 1, "catalog_added_security_shape");
   for (const key of ["relations", "policies", "functions"] as const) {
-    requireInspection(rows[0]![key] === true, `catalog_added_${key}_changed`);
+    if (rows[0]![key] !== true) throw new ModularCatalogRefusal(`catalog_added_${key}_changed`, [{ category: key, direction: "changed" }]);
   }
 }

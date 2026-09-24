@@ -10,6 +10,7 @@ import {
   productionAlias, productionDeployment, productionDeploymentRoute, productionSettings,
 } from "./swim-production-readonly-guards";
 import { appendModularProduction, modularUpdateMigrations } from "./modular-production-update-storage";
+import { ModularCatalogRefusal, type ModularCatalogDiagnostic } from "./modular-production-catalog";
 
 export const MODULAR_UPDATE_INPUT = "update_modular_production";
 export function modularUpdateDispatch(inputs: Record<string, unknown> | undefined, env: NodeJS.ProcessEnv) {
@@ -101,6 +102,7 @@ export async function updateModularProduction(env: NodeJS.ProcessEnv, sourceOnly
     deployment: null as ReturnType<typeof productionDeployment> | null,
     ledger: null as Awaited<ReturnType<typeof appendModularProduction>> | null,
   };
+  const diagnostic: { catalogMismatch?: ModularCatalogDiagnostic } = {};
   let stage = "source", sql: postgres.Sql | undefined, deploymentId: string | undefined;
   const deadline = Date.now() + 180_000;
   const time = () => requireInspection(Date.now() < deadline, "deadline");
@@ -214,6 +216,7 @@ export async function updateModularProduction(env: NodeJS.ProcessEnv, sourceOnly
     });
     await step("completion", () => { source(); }); result.status = "update_pass";
   } catch (error) {
+    if (error instanceof ModularCatalogRefusal) diagnostic.catalogMismatch = error.diagnostic;
     if (error instanceof ProductionInspectionRefusal && error.httpStatus !== undefined) result.httpStatus = error.httpStatus;
     if (stage === "append" && error instanceof Error) {
       const code: unknown = Object.getOwnPropertyDescriptor(error, "code")?.value;
@@ -227,7 +230,7 @@ export async function updateModularProduction(env: NodeJS.ProcessEnv, sourceOnly
     }
     result.manualReconciliation = result.status === "failed" && result.progress.attemptedMigrations > 0;
   }
-  return result;
+  return { ...result, ...diagnostic };
 }
 
 async function main() {

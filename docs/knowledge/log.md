@@ -5294,3 +5294,45 @@ All twelve successful rehearsal stages are included in the storage summary
 instead of only its former final marker. The production ledger summary shape
 is unchanged; successful counts become entries216/retainedEntries213/
 appendedEntries3. SQL0156-0158 and application behavior are unchanged.
+
+## [2026-09-24] fix | Derive the modular release catalog from pinned DDL
+
+Coordinator-consumed storage35957097482 at479286 failed before commit with
+catalog_additions_changed; core35957097419 passed. The handwritten list
+misnamed the cross-column outcomes CHECK and omitted both pg_constraint
+entries created by the deferred parent-consistency triggers. Source parsing
+now derives119 exact catalog keys, including all42 new columns, from the
+unchanged0156-0158 hashes. It also derives all19 new function owner, definer
+and configuration expectations; the parent-consistency trigger function is
+correctly SECURITY DEFINER, distinct from the swim-writer-owned outcome RPC.
+No arbitrary new columns or additional objects are accepted.
+
+`packages/db/scripts/generate-modular-catalog.py` uses pglast8.4 without a
+database. Run it with `--write` to regenerate the committed TypeScript
+manifest, or without arguments to check reproducibility. It refuses source
+hash changes and unsupported syntax rather than interpreting future DDL
+permissively. The production updater needs neither Python nor pglast.
+
+Existing function metadata still retains every non-body pg_proc attribute,
+but argument defaults are compared via pg_get_expr instead of raw parse
+trees containing source positions. The new disposable-only
+modular-production-update-function-metadata stage requires a deparse/reparse
+round trip to preserve the security fingerprint while changed defaults,
+SECURITY DEFINER and grants change it. This precedes the existing ledger
+rehearsal, bringing its stage inventory to13 and the expected SQL total to74.
+Each successful stage is reported immediately, including when a later stage
+fails; failing stages are never added to the passed list.
+
+Failure summaries may now contain catalogMismatch:1-27 unique objects with
+only category and direction, sorted by category:direction. Categories are
+catalog/global/relations/columns/functions/constraints/indexes/policies/triggers;
+directions are missing/unexpected/changed. No object names, values, SQL,
+hashes or exception text enter this diagnostic. It is absent on success and
+unrelated failures. The coordinator approved this exact consumer contract.
+
+Release qualification remains pending the existing GitHub disposable storage
+job. A synthetic local database probe was stopped and its installed runtime
+and data removed after the coordinator reiterated the no-local-database
+boundary; no further local SQL execution is authorized. These tooling repairs
+do not change application code, SQL0156-0158, the ledger pins, or any live
+migration, deployment, activation or approval guard.

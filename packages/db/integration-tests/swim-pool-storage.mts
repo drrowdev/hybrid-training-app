@@ -18,6 +18,7 @@ import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations }
 import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehearsal.ts";
 import { rehearseModularSchedule } from "./modular-schedule-rehearsal.ts";
 import { rehearseModularProductionUpdate } from "./modular-production-update-rehearsal.ts";
+import { ModularCatalogRefusal, type ModularCatalogDiagnostic } from "../scripts/modular-production-catalog.ts";
 import { IndependentProgramsAssertion, rehearseIndependentPrograms, type OwnershipAssertionDiagnostic } from "./independent-programs-rehearsal.ts";
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
@@ -37,6 +38,7 @@ const stages: string[] = [];
 const knownFailures = new Map<string, { migration: number; line: number }>();
 let failureLocation: { migration: number; line: number } | undefined;
 let modularAssertionLine: number | undefined;
+let catalogMismatch: ModularCatalogDiagnostic | undefined;
 let ownershipAssertionLine: number | undefined;
 let ownershipAssertionDiagnostic: OwnershipAssertionDiagnostic | undefined;
 let migrationRunnerDiagnostic: MigrationRunnerRehearsalError["diagnostic"] | undefined;
@@ -722,7 +724,7 @@ try {
   stages.push(stage);
   stage = "modular-schedule-rehearsal";
   stages.push(...await rehearseModularSchedule(database, true, (name) => { stage = name; }));
-  stages.push(...await rehearseModularProductionUpdate(database, (name) => { stage = name; }));
+  await rehearseModularProductionUpdate(database, (name) => { stage = name; }, (name) => { stages.push(name); });
   stage = "independent-programs-rehearsal";
   const ownershipSource = readFileSync(new URL("../drizzle/0158_independent_program_ownership.sql", import.meta.url), "utf8");
   for (const match of ownershipSource.matchAll(/\bRAISE EXCEPTION '((?:''|[^'])*)'/g)) {
@@ -733,6 +735,7 @@ try {
   stages.push(...await rehearseIndependentPrograms(database, (name) => { stage = name; }));
   status = "passed";
 } catch (error) {
+  if (error instanceof ModularCatalogRefusal) catalogMismatch = error.diagnostic;
   if (error instanceof MigrationRunnerRehearsalError) migrationRunnerDiagnostic = error.diagnostic;
   if (error instanceof IndependentProgramsAssertion) ownershipAssertionDiagnostic = error.diagnostic;
   if (error instanceof assert.AssertionError) {
@@ -758,6 +761,7 @@ try {
 console.log(JSON.stringify({
   scope: "swim-pool-storage", sha: /^[0-9a-f]{40}$/.test(process.env.TESTED_SHA ?? "") ? process.env.TESTED_SHA : null,
   status, stages, ...(status === "failed" ? { stage, code, ...(failureLocation ? { failureLocation } : {}),
+    ...(catalogMismatch ? { catalogMismatch } : {}),
     ...(modularAssertionLine ? { modularAssertionLine } : {}),
     ...(ownershipAssertionLine ? { ownershipAssertionLine } : {}),
     ...(ownershipAssertionDiagnostic ? { ownershipAssertionDiagnostic } : {}),
