@@ -5684,3 +5684,29 @@ lint pass. The synthetic UI harness passes all 75 stages without an app server
 or database. No product, RPC, schema, migration or workflow changes, and no
 local real database or native acceptance run. New swimming and modular profile
 acceptance remains for coordinator dispatch against the published head.
+
+## [2026-09-24] acceptance | Remove retired diagnostic pins from runner source coverage
+
+Core CI at `220baba3` failed before browser execution because the unchanged
+runner unit test still required A6's stale-edit alert, A7's Finish diagnostics
+and the persistence Start diagnostics removed by the approved rewrite. The
+line-223 failure reproduced with LF-normalized sources. Comparison against
+`25c6b533` confirms those retired sites were removed; the surviving A1 diagnostic
+block is byte-identical (SHA-256
+`35820c8de10442b6b2d17211bc2f54cfe1fd7a4c1fecda2e529fb1b232523074`).
+The corrected test retains the probe/A1 classifier contract, both A7 safety
+rejections, custom-pool input preservation and the bounded owner-skip alert
+check. No source hash, workflow, browser case, deadline or guard changes.
+
+Broader Windows validation was run, not inferred from the focused pass:
+the entire swimming unit directory recorded 2,431 passed / 85 failed / 80
+skipped; the full web suite recorded 7,734 passed / 86 failed / 80 skipped.
+The additional failures were in untouched platform-sensitive tests. After
+LF normalization of SQL and hook sources, all 17 CRLF failures passed on
+rerun (173 migration-source tests and 39 identity-guard tests passed).
+The remaining 69 failures concern Unix private-file/cache modes or Windows
+symlink support in runner, browser-stage and RPC-diagnostic tests; browser-stage
+also produced 15 secondary unhandled rejections after its private-cache gate.
+The full runner test now passes 399 tests with only its seven existing Windows
+permission failures. Focused regression, typecheck and lint pass. Temporary
+newline-only formatting was restored; Linux CI remains the acceptance gate.
