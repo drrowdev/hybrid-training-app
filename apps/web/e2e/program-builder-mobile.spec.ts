@@ -166,7 +166,7 @@ function observeNativeUi(
   const publish = () => diagnosticAnnotation("native-ui-failure", JSON.stringify(state));
   const action = (request: Request) => request.method() === "POST" &&
     new URL(request.url()).origin === new URL(page.url()).origin &&
-    new URL(request.url()).pathname === (caseId === "m8" ? "/app/plan" :
+    new URL(request.url()).pathname === (caseId === "m8" || caseId === "m9" ? "/app/plan" :
       caseId === "m11" ? "/app/plan/history" : "/app/settings/rehab-protocols") &&
     !!request.headers()["next-action"];
   const requested = (request: Request) => {
@@ -205,19 +205,19 @@ function observeNativeUi(
                   visible(document.querySelector('[data-testid="plan-redesign"]')) ? "plan" : "other";
           return { case: "m8", page: pageState, control, request: "unavailable", record: "unavailable" };
         }
+        if (caseId === "m9" || (caseId === "m11" && date)) {
+          const week = document.querySelector('section[aria-label="This week"]');
+          const days = week?.querySelectorAll(`time[datetime="${date}"]`);
+          const day = days?.[0]?.parentElement?.parentElement;
+          const link = `a[href="/app/sessions/start/${target}"]`;
+          const count = (value: number | undefined) => !value ? "none" : value === 1 ? "one" : "multiple";
+          return { case: caseId, control: week ? "schedule" : "schedule-absent",
+            request: "unavailable", record: "unavailable", calendar: {
+              day: count(days?.length), weekLink: count(week?.querySelectorAll(link).length),
+              dayLink: count(day?.querySelectorAll(link).length),
+            } };
+        }
         if (caseId === "m11") {
-          if (date) {
-            const week = document.querySelector('section[aria-label="This week"]');
-            const days = week?.querySelectorAll(`time[datetime="${date}"]`);
-            const day = days?.[0]?.parentElement?.parentElement;
-            const link = `a[href="/app/sessions/start/${target}"]`;
-            const count = (value: number | undefined) => !value ? "none" : value === 1 ? "one" : "multiple";
-            return { case: "m11", control: week ? "schedule" : "schedule-absent",
-              request: "unavailable", record: "unavailable", calendar: {
-                day: count(days?.length), weekLink: count(week?.querySelectorAll(link).length),
-                dayLink: count(day?.querySelectorAll(link).length),
-              } };
-          }
           const row = document.querySelector(`[data-testid="block-history-row"][data-block-id="${target}"]`);
           const menu = row?.querySelector('[data-testid="block-actions-menu"]');
           const submit = menu?.querySelector<HTMLButtonElement>('[data-testid="delete-block-menu-item"]');
@@ -905,7 +905,16 @@ test.describe("Modular program builder", () => {
       }
       await page.getByRole("link", { name: "Schedule", exact: true }).click();
       const week = page.getByRole("region", { name: "This week", exact: true });
-      await expect(week.locator(`a[href="/app/sessions/start/${todayStrength.id}"]`)).toHaveCount(1);
+      const calendar = observeNativeUi(page, "m9", todayStrength.id, async () => {
+        const read = await actor.from("planned_sessions").select("id").eq("id", todayStrength.id)
+          .abortSignal(AbortSignal.timeout(1000)).maybeSingle();
+        return read.error ? "unavailable" : read.data ? "retained" : "absent";
+      }, today());
+      try {
+        await expect(week.locator(`a[href="/app/sessions/start/${todayStrength.id}"]`)).toHaveCount(1);
+        clearNativeUiObservation();
+      } catch (error) { await calendar.recordFailure(); throw error; }
+      finally { calendar.dispose(); }
       await expect(week.locator(`a[href^="/app/swim/${todaySwim.id}?"]`)).toHaveCount(1);
       const sharedDay = week.locator(`time[datetime="${today()}"]`).locator("../..");
       await expect(sharedDay.locator(`a[href="/app/sessions/start/${todayStrength.id}"]`)).toHaveCount(1);

@@ -5591,3 +5591,25 @@ profiles on both approved refs, reject unqualified contexts before allocation,
 and retain preparation, graph-preservation and cleanup failure checks.
 This shared helper is exercised by modular acceptance too; both profiles need
 redispatch at the next changed head. No database or native run occurred locally.
+
+## [2026-09-24] acceptance | Typed swimming baseline and M9 observation
+
+At `fccb71bd`, automatic CI/storage passed; modular acceptance passed 17/18
+cases, with M9 failing the primary-workout link count after Schedule navigation.
+The same assertion passed at the previous head. No date or race cause was
+proven, so the assertion and deadline remain unchanged with bounded enum-only
+calendar/record evidence added for its next failure.
+
+Swimming reached the browser, where the primary seed hit 0158's prohibition on
+new untyped blocks. The owner authorized a test-only replacement: authenticated
+authored Strength creation through the existing independent-program commit,
+two planned workouts, and one started/completed primary session. Existing
+primary set-log setup and before/after preservation assertions remain. Synthetic
+tests cover all seven start weekdays and failure/owner boundaries.
+
+The blockless swimming test now chooses the Swimming button in the Programs
+dialog after the legacy new-program redirect. Other direct-setup timeouts, C2
+account deletion and B4's reduction-candidate assertion remain unexplained and
+out of scope; no speculative changes were made. Both profiles require a fresh
+run on the combined changed head. No product, RPC, migration, deadline or
+acceptance-inventory changes; no local database/native runs or consumed-log reads.

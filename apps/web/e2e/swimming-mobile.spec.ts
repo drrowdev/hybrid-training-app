@@ -22,7 +22,7 @@ test.describe("ADR0079 standalone swimming", () => {
     await page.reload();
     await expect(page).toHaveURL(/\/app\/swim\/setup$/);
     await page.goto("/app/plan/new");
-    await page.getByRole("link", { name: "Swimming", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Swimming", exact: true }).click();
     const [{ count: tms }, { count: blocks }] = await Promise.all([
       admin.from("training_maxes").select("id", { count: "exact", head: true }).eq("user_id", freshUser.userId),
       admin.from("training_blocks").select("id", { count: "exact", head: true }).eq("user_id", freshUser.userId),

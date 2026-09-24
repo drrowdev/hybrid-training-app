@@ -231,11 +231,13 @@ describe("DC-SW8 modular acceptance report membership", () => {
   it("projects exact failure-only native UI snapshots onto their own cases", () => {
     const samples = [
       { case: "m8", page: "plan", control: "more", request: "not-observed", record: "active" },
+      { case: "m9", control: "schedule", request: "not-observed", record: "retained",
+        calendar: { day: "one", weekLink: "none", dayLink: "none" } },
       { case: "m11", control: "menu-closed", request: "http-success", record: "deleted" },
       { case: "m13", control: "pending", request: "pending", record: "present" },
       { case: "m14", control: "error", request: "http-success", record: "absent" },
     ] as const;
-    const indices = [7, 10, 12, 13];
+    const indices = [7, 8, 10, 12, 13];
     const fixture = report(paths, MODULAR_BROWSER_CASES);
     for (const [position, sample] of samples.entries()) {
       const index = indices[position]!;
@@ -257,7 +259,7 @@ describe("DC-SW8 modular acceptance report membership", () => {
         expect(JSON.stringify(projected)).not.toContain("private-value");
       }
     }
-    fixture.stats = { expected: 14, unexpected: 4, flaky: 0, skipped: 0 };
+    fixture.stats = { expected: 13, unexpected: 5, flaky: 0, skipped: 0 };
     let caught: unknown;
     try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
     catch (error) { caught = error; }
@@ -277,7 +279,7 @@ describe("DC-SW8 modular acceptance report membership", () => {
       const test = fixture.suites[0]!.suites[0]!.specs[index]!.tests[0]!;
       test.status = "skipped"; test.results = [];
     }
-    fixture.stats = { expected: 14, unexpected: 0, flaky: 0, skipped: 4 };
+    fixture.stats = { expected: 13, unexpected: 0, flaky: 0, skipped: 5 };
     try { validateSwimBrowserReport(JSON.stringify(fixture), paths, webRoot, MODULAR_BROWSER_CASES); }
     catch (error) { caught = error; }
     for (const index of indices) {
@@ -286,12 +288,12 @@ describe("DC-SW8 modular acceptance report membership", () => {
     }
   });
 
-  it.each(["m8", "m11", "m13", "m14"] as const)("observes %s metadata without consuming response bodies or masking the original failure", async (caseId) => {
+  it.each(["m8", "m9", "m11", "m13", "m14"] as const)("observes %s metadata without consuming response bodies or masking the original failure", async (caseId) => {
     const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8").replace(/\r\n/g, "\n");
     const helper = source.slice(source.indexOf("function observeNativeUi("), source.indexOf("function movement("));
     expect(helper).not.toMatch(/\.text\(|\.json\(|postData|waitForTimeout|response\.finished/);
     const events = new EventEmitter(), annotations: string[] = [];
-    const path = caseId === "m8" ? "/app/plan" : caseId === "m11" ? "/app/plan/history" : "/app/settings/rehab-protocols";
+    const path = caseId === "m8" || caseId === "m9" ? "/app/plan" : caseId === "m11" ? "/app/plan/history" : "/app/settings/rehab-protocols";
     const frame = {};
     let closed = false;
     const snapshot = unavailableNativeUi(caseId);
@@ -427,7 +429,7 @@ describe("DC-SW8 modular acceptance report membership", () => {
     { week: true, days: 1, weekLinks: 1, dayLinks: 1 },
     { week: true, days: 1, weekLinks: 1, dayLinks: 0 },
     { week: true, days: 2, weekLinks: 2, dayLinks: 2 },
-  ])("projects M11 calendar evidence without exporting dates or IDs: %j", async (counts) => {
+  ].flatMap((counts) => ["m9", "m11"].map((caseId) => ({ ...counts, caseId }))))("projects $caseId calendar evidence without exporting dates or IDs: %j", async (counts) => {
     const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
     const helper = source.slice(source.indexOf("function observeNativeUi("), source.indexOf("function movement("));
     const annotations: string[] = [], events = new EventEmitter();
@@ -446,18 +448,20 @@ describe("DC-SW8 modular acceptance report membership", () => {
     const observer = createObserver({
       on: events.on.bind(events), off: events.off.bind(events),
       evaluate: async (callback: (args: unknown) => unknown, args: unknown) => callback(args),
-    }, "m11", "private-id", async () => "retained", "2026-09-24");
+    }, counts.caseId, "private-id", async () => "retained", "2026-09-24");
     await observer.recordFailure();
     const count = (value: number) => !value ? "none" : value === 1 ? "one" : "multiple";
-    const expected = { case: "m11", control: counts.week ? "schedule" : "schedule-absent",
+    const caseId = counts.caseId === "m9" ? "m9" : "m11";
+    const caseIndex = caseId === "m9" ? 8 : 10;
+    const expected = { case: caseId, control: counts.week ? "schedule" : "schedule-absent",
       request: "not-observed", record: "retained", calendar: {
         day: count(counts.days), weekLink: count(counts.weekLinks), dayLink: count(counts.dayLinks),
       } };
     const annotation = { type: "native-ui-failure", description: annotations.at(-1)! };
-    expect(readNativeUiFailure([annotation], 10)).toEqual(expected);
+    expect(readNativeUiFailure([annotation], caseIndex)).toEqual(expected);
     for (const calendar of [{ ...expected.calendar, day: "private-id" }, { ...expected.calendar, date: "2026-09-24" }]) {
-      expect(readNativeUiFailure([{ ...annotation, description: JSON.stringify({ ...expected, calendar }) }], 10))
-        .toEqual(unavailableNativeUi("m11"));
+      expect(readNativeUiFailure([{ ...annotation, description: JSON.stringify({ ...expected, calendar }) }], caseIndex))
+        .toEqual(unavailableNativeUi(caseId));
     }
     expect(annotations.join("")).not.toMatch(/private-id|2026-09-24/);
     observer.dispose();

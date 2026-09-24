@@ -1,6 +1,11 @@
 import { z } from "zod";
 
 const nativeRequest = z.enum(["not-observed", "pending", "http-success", "http-failure", "transport-failure", "unavailable"]);
+const nativeCalendar = z.object({
+  day: z.enum(["none", "one", "multiple"]),
+  weekLink: z.enum(["none", "one", "multiple"]),
+  dayLink: z.enum(["none", "one", "multiple"]),
+}).strict();
 export const nativeUiFailureSchema = z.discriminatedUnion("case", [
   z.object({
     case: z.literal("m8"),
@@ -10,15 +15,18 @@ export const nativeUiFailureSchema = z.discriminatedUnion("case", [
     record: z.enum(["active", "archived", "completed", "deleted", "absent", "unavailable"]),
   }).strict(),
   z.object({
+    case: z.literal("m9"),
+    control: z.enum(["schedule", "schedule-absent", "unavailable"]),
+    request: nativeRequest,
+    record: z.enum(["retained", "absent", "unavailable"]),
+    calendar: nativeCalendar.optional(),
+  }).strict(),
+  z.object({
     case: z.literal("m11"),
     control: z.enum(["pending", "error", "menu-open", "menu-closed", "row-absent", "schedule", "schedule-absent", "unavailable"]),
     request: nativeRequest,
     record: z.enum(["deleted", "retained", "absent", "unavailable"]),
-    calendar: z.object({
-      day: z.enum(["none", "one", "multiple"]),
-      weekLink: z.enum(["none", "one", "multiple"]),
-      dayLink: z.enum(["none", "one", "multiple"]),
-    }).strict().optional(),
+    calendar: nativeCalendar.optional(),
   }).strict(),
   z.object({
     case: z.literal("m13"),
@@ -41,7 +49,7 @@ export function unavailableNativeUi(caseId: NativeUiFailure["case"]): NativeUiFa
 }
 
 export function readNativeUiFailure(value: unknown, caseIndex: number): NativeUiFailure | undefined {
-  const caseId = caseIndex === 7 ? "m8" : caseIndex === 10 ? "m11" : caseIndex === 12 ? "m13" : caseIndex === 13 ? "m14" : null;
+  const caseId = caseIndex === 7 ? "m8" : caseIndex === 8 ? "m9" : caseIndex === 10 ? "m11" : caseIndex === 12 ? "m13" : caseIndex === 13 ? "m14" : null;
   if (!caseId) return undefined;
   const fallback = unavailableNativeUi(caseId);
   if (!Array.isArray(value) || value.length > 128) return fallback;
