@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import type postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { movements } from "../src/schema/movements.ts";
+import { SEED_MOVEMENTS } from "../seeds/movements.ts";
 import {
   authoredProgramDates, compileAuthoredWorkout, poolCourse, resolvePrescribedSnapshot,
   type AuthoredCatalogMovement, type AuthoredProgramDefinition,
@@ -13,6 +16,45 @@ type Created = { block_id: string; program_instance_id: string };
 type Table = { schema: string; name: string };
 type Digest = { table: string; rows: number; sha256: string };
 const json = (value: unknown) => JSON.stringify(value);
+
+export function modularHistoricalAssertionLine(error: unknown): number | undefined {
+  if (!(error instanceof assert.AssertionError)) return;
+  let stack: unknown;
+  try { stack = error.stack; } catch { return; }
+  if (typeof stack !== "string") return;
+  const match = stack.match(/(?:^|\n)\s+at [^\n]*[/\\]modular-production-legacy-graph\.ts:(\d+):\d+\)?(?:\n|$)/);
+  const line = Number(match?.[1]);
+  if (Number.isInteger(line) && line >= 1 && line <= 9999) return line;
+}
+
+export function modularHistoricalMovementSeeds() {
+  return ["bench-press-flat", "back-squat-high-bar"].map((slug) => {
+    const matches = SEED_MOVEMENTS.filter((seed) => seed.slug === slug);
+    assert.equal(matches.length, 1);
+    assert.equal(matches[0]!.userId, null);
+    return matches[0]!;
+  });
+}
+
+export function createModularHistoricalCatalog(database: postgres.Sql) {
+  const inserted: string[] = [];
+  return {
+    async prepare() {
+      for (const seed of modularHistoricalMovementSeeds()) {
+        const existing = await database`SELECT id FROM public.movements WHERE user_id IS NULL AND slug=${seed.slug}`;
+        assert.ok(existing.length <= 1);
+        if (existing.length === 0) {
+          const id = randomUUID();
+          inserted.push(id);
+          await drizzle(database).insert(movements).values({ ...seed, id });
+        }
+      }
+    },
+    async cleanup() {
+      for (const id of inserted) await database`DELETE FROM public.movements WHERE id=${id}::uuid AND user_id IS NULL`;
+    },
+  };
+}
 
 export function modularHistoricalInputs(bench: AuthoredCatalogMovement, squat: AuthoredCatalogMovement, today: string) {
   const weekday = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
@@ -67,6 +109,23 @@ export function modularHistoricalInputs(bench: AuthoredCatalogMovement, squat: A
   return { authored, template };
 }
 
+export function modularHistoricalSwimInputs(today: string, tomorrow: string) {
+  const setup = { goal: "endurance" as const, experience: "recreational" as const, course: poolCourse(25, 1, "m"),
+    knownStrokes: ["freestyle" as const], equipment: [], recentComfortableLengths: 8, sessionBudgetMinutes: 60 };
+  const generated = generateSwimPlan({ setup, calibration: null, weeks: [{ weekIndex: 0, startDateISO: today,
+    slots: [today, tomorrow].map((dateISO, index) => ({
+      slotId: `historical-${index}`, dateISO, intent: "moderate" as const, source: "swim_date" as const,
+    })) }] });
+  assert.ok(generated.ok);
+  const workouts = generated.value.weeks[0]!.slots.map((slot, index) => {
+    assert.equal(slot.kind, "workout");
+    if (slot.kind !== "workout") throw new Error("Expected a historical swim workout");
+    return { scheduled_date: index === 0 ? today : tomorrow, slot: "single",
+      definition: { version: 1, original: slot.original, issued: slot.issued, modifications: [], slotId: slot.slotId } };
+  });
+  return { setup, workouts };
+}
+
 /** Historical paths only; no production connections or post-0155 writer is used. */
 export function createModularHistoricalGraph(database: postgres.Sql) {
   assert.equal(process.env.GITHUB_ACTIONS, "true");
@@ -76,6 +135,7 @@ export function createModularHistoricalGraph(database: postgres.Sql) {
   assert.deepEqual(database.options.port, [5432]);
   assert.equal(database.options.database, "swim_pool_test");
   const owners = [randomUUID(), randomUUID()];
+  const movementFixture = createModularHistoricalCatalog(database);
   let tables: Table[] = [], original: Digest[] | undefined, prepared: Digest[] | undefined;
   let legacy: Created | undefined, orphan: Created | undefined, template: Created | undefined;
   const asOwner = <T>(owner: string, work: (tx: postgres.TransactionSql) => Promise<T>) => database.begin(async (tx) => {
@@ -108,6 +168,7 @@ export function createModularHistoricalGraph(database: postgres.Sql) {
         ORDER BY n.nspname,c.relname LIMIT 257`);
       assert.ok(tables.length > 0 && tables.length <= 256);
       original = await snapshot();
+      await movementFixture.prepare();
       await database`INSERT INTO auth.users(id) VALUES (${owners[0]!}),(${owners[1]!})`;
       const catalog = await database<{ id: string; slug: string; display_name: string; pattern: string }[]>`
         SELECT id,slug,display_name,pattern FROM public.movements WHERE user_id IS NULL
@@ -171,19 +232,7 @@ export function createModularHistoricalGraph(database: postgres.Sql) {
             VALUES (${randomUUID()}::uuid,${season}::uuid,${owner}::uuid,0,'authored','base',
               ${owner === owners[0] ? "active" : "planned"},${owner === owners[0] ? legacy!.block_id : null}::uuid)`;
         });
-        const setup = { goal: "endurance" as const, experience: "recreational" as const, course: poolCourse(25, 1, "m"),
-          knownStrokes: ["freestyle" as const], equipment: [], recentComfortableLengths: 8, sessionBudgetMinutes: 60 };
-        const generated = generateSwimPlan({ setup, calibration: null, weeks: [{ weekIndex: 0, startDateISO: calendar.today,
-          slots: [calendar.today, calendar.tomorrow].map((dateISO, index) => ({
-            slotId: `historical-${index}`, dateISO, intent: "moderate" as const, source: "swim_date" as const,
-          })) }] });
-        assert.ok(generated.ok);
-        const workouts = generated.value.weeks[0]!.slots.map((slot, index) => {
-          assert.equal(slot.kind, "workout");
-          if (slot.kind !== "workout") throw new Error("Expected a historical swim workout");
-          return { scheduled_date: index === 0 ? calendar.today : calendar.tomorrow, slot: "single",
-            definition: { version: 1, original: slot.original, issued: slot.issued, modifications: [], slotId: slot.slotId } };
-        });
+        const { setup, workouts } = modularHistoricalSwimInputs(calendar.today, calendar.tomorrow);
         const swim = await asOwner(owner, async (tx) => (await tx<{ value: { workouts: { id: string; revision: number }[] } }[]>`
           SELECT public.swim_create_plan(${calendar.today}::date,${calendar.tomorrow}::date,
             ${json({ version: 1, setup, generatorVersion: "swim-gen-1" })}::text::jsonb,
@@ -267,6 +316,7 @@ export function createModularHistoricalGraph(database: postgres.Sql) {
       if (!original) return;
       await database`DELETE FROM public.program_rehab_bindings WHERE user_id=ANY(${owners}::uuid[])`;
       await database`DELETE FROM auth.users WHERE id=ANY(${owners}::uuid[])`;
+      await movementFixture.cleanup();
       assert.deepEqual(await snapshot(), original);
     },
   };

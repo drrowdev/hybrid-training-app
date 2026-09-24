@@ -18,6 +18,7 @@ import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations }
 import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehearsal.ts";
 import { rehearseModularSchedule } from "./modular-schedule-rehearsal.ts";
 import { rehearseModularProductionUpdate } from "./modular-production-update-rehearsal.ts";
+import { modularHistoricalAssertionLine as projectHistoricalAssertionLine } from "./modular-production-legacy-graph.ts";
 import { ModularCatalogRefusal, type ModularCatalogDiagnostic } from "../scripts/modular-production-catalog.ts";
 import { ModularUpdateSqlFailure, type ModularUpdateDiagnostic } from "../scripts/modular-production-update-storage.ts";
 import { IndependentProgramsAssertion, rehearseIndependentPrograms, type OwnershipAssertionDiagnostic } from "./independent-programs-rehearsal.ts";
@@ -39,6 +40,7 @@ const stages: string[] = [];
 const knownFailures = new Map<string, { migration: number; line: number }>();
 let failureLocation: { migration: number; line: number } | undefined;
 let modularAssertionLine: number | undefined;
+let modularHistoricalAssertionLine: number | undefined;
 let catalogMismatch: ModularCatalogDiagnostic | undefined;
 let modularUpdateDiagnostic: ModularUpdateDiagnostic | undefined;
 let ownershipAssertionLine: number | undefined;
@@ -737,6 +739,7 @@ try {
   stages.push(...await rehearseIndependentPrograms(database, (name) => { stage = name; }));
   status = "passed";
 } catch (error) {
+  modularHistoricalAssertionLine = projectHistoricalAssertionLine(error);
   if (error instanceof ModularCatalogRefusal) catalogMismatch = error.diagnostic;
   if (error instanceof ModularUpdateSqlFailure) modularUpdateDiagnostic = error.diagnostic;
   if (error instanceof MigrationRunnerRehearsalError) migrationRunnerDiagnostic = error.diagnostic;
@@ -767,6 +770,7 @@ console.log(JSON.stringify({
     ...(catalogMismatch ? { catalogMismatch } : {}),
     ...(modularUpdateDiagnostic ? { modularUpdateDiagnostic } : {}),
     ...(modularAssertionLine ? { modularAssertionLine } : {}),
+    ...(modularHistoricalAssertionLine ? { modularHistoricalAssertionLine } : {}),
     ...(ownershipAssertionLine ? { ownershipAssertionLine } : {}),
     ...(ownershipAssertionDiagnostic ? { ownershipAssertionDiagnostic } : {}),
     ...(migrationRunnerDiagnostic ? { migrationRunnerDiagnostic } : {}) } : {}),

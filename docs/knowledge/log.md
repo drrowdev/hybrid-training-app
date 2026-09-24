@@ -5385,3 +5385,60 @@ existing hardened exception projector. Guard statements stay unmatched;
 queries, parameters, exception text and row data are never reported.
 Application code, migrations, rollback guards and production approvals are
 unchanged. Disposable qualification is pending the coordinator's next run.
+
+## [2026-09-24] fix | Supply exact catalog prerequisites for historical rehearsal
+
+Coordinator-consumed storage35960701003 at2e16c6 passed50 SQL stages, then
+reported an assertion in the new213-baseline graph preparation. Core35960700962
+passed. Source tracing found the missing prerequisite before any historical
+RPC: the disposable job executes SQL migrations, not the full TypeScript
+catalog seed. Its two requested base lifts, bench-press-flat and
+back-squat-high-bar, appear only in an UPDATE tag list in those migrations.
+The helper's exact two-row lookup therefore cannot succeed on that baseline.
+
+Following the existing independent-programs fixture pattern, preparation now
+inserts only absent canonical SEED_MOVEMENTS entries for those two lifts, with
+captured fresh IDs. Existing rows are neither replaced nor updated. The
+original snapshot precedes these inserts, the prepared snapshot includes
+them, and cleanup deletes only captured global movement IDs after deleting
+dependent account rows, then requires the original whole-row hashes.
+No full reseed, arbitrary movement substitution or weaker count check is used.
+
+The remaining prerequisite trace covered the complete helper:
+
+- Auth users/profiles are created by the fixture and existing auth trigger;
+  each owner transaction supplies claims and resets its role on completion.
+- Both authored occurrences are domain-compiled; all seven start weekdays and
+  week-index bounds are covered without a database. The template is produced
+  by the actual engine registry, setup, timeline and prescriptions, not a
+  database template lookup. Its complete timeline and every set are retained.
+- Historical deploy returns both real parent IDs and archives the first
+  template when the authored program is deployed. The old block FK permits
+  the second owner's deliberate null-block active instance. Neither RPC reads
+  the migration ledger, so the213-row ledger does not change these paths.
+- Each strength session is inserted and linked to its own planned row before
+  logging and completion. The existing completion RPC returns transitioned=true
+  for the first unfinished session. Counts still require one completed session,
+  one unfinished session and exactly two set logs.
+- Rehab protocols and seasons are inserted with captured IDs. Their bindings
+  point to existing same-owner instances/protocols; no seeded rehab library is
+  assumed. Bindings are deleted before the protocol's restrictive FK matters.
+- The two swim workouts are generated and covered by a no-database test with
+  an exact25m course and no calibration. Plan creation needs no movement, pool,
+  stroke, template or course-library row. Connection creation supplies the
+  receiver's token lookup; its receipt and the saved workout/revision supply
+  matching. The evidence's workoutReference is not a database lookup. Activity
+  IDs are owner-scoped. Counts still require two saved workouts per account and
+  exactly two import matches.
+- Snapshots enumerate existing public/auth tables and hash sorted complete JSON
+  rows plus counts. Only the additive program_kind field is omitted; its null
+  values are separately asserted. All pre-existing rows, fixture records and
+  inserted seed metadata remain covered through rollback, apply and cleanup.
+
+The coordinator approved failure-only modularHistoricalAssertionLine, an
+integer1-9999 from this helper's assertion stack frame. The summary exports no
+message, stack, IDs, values or hashes; native Node accessor-backed stacks are
+covered by an actual helper assertion test. Storage workflow path filtering now
+also includes this helper. Stage inventory remains14 updater /75 SQL /75 UI.
+No application code or migration SQL changed; real SQL qualification remains
+the coordinator's next disposable storage run.
