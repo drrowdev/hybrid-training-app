@@ -13,7 +13,7 @@ import {
   MIGRATION_EVIDENCE_ENV, MIGRATION_EVIDENCE_FILE, readMigrationEvidence,
 } from "../../../packages/db/scripts/migrate-evidence";
 import {
-  ACTIVE_MIGRATION_TOTAL, CLI_ASSET, CLI_SHA256, CLI_VERSION, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
+  CLI_ASSET, CLI_SHA256, CLI_VERSION, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
   containerSchema, networkSchema, outcome, processIdentity, readyServiceNames, requireAcceptance, requireArchive,
   requireCleanupState, requireFreshReport, requireLocalStatus,
   requireManualContext, requireNetwork, requireNoInheritedTargets, requirePinnedDefaultConfig, requirePrivateLocation,
@@ -32,7 +32,8 @@ import {
 } from "./swim-identity-roundtrip";
 import { runSwimBrowserStage } from "./swim-browser-stage";
 import { SWIM_BROWSER_CASES } from "./swim-browser-acceptance";
-import { isModularAcceptance, isModularSchemaAcceptance, MODULAR_BROWSER_CASES, MODULAR_MIGRATION_TOTAL } from "./modular-browser-profile";
+import { isModularBrowserProfile, MODULAR_BROWSER_CASES } from "./modular-browser-profile";
+import { hasModularSchema, hasOwnershipSchema, requireAcceptanceMigrationFiles } from "./acceptance-migrations";
 import { createModularRoundTripProof, modularSchemaRoundTrip } from "./modular-schema-roundtrip";
 import { createLegacyUpgradeProof, createModularLegacyPreparation } from "./modular-legacy-fixture";
 import { runMovementReferenceRoundTrip } from "./swim-movement-reference-roundtrip";
@@ -47,11 +48,10 @@ const git = (...args: string[]) => execFileSync("git", ["-C", root, ...args],
   { encoding: "utf8", timeout: 10_000, stdio: ["ignore", "pipe", "pipe"] }).trim();
 
 async function main(cleanupOnly: boolean) {
-  // Fail before any filesystem/resource creation outside the reviewed manual job.
+  // Fail before any filesystem/resource creation outside the isolated CI job.
   const project = requireManualContext(process.env, process.env.GITHUB_SHA ?? "");
   requireManualContext(process.env, git("rev-parse", "HEAD"));
-  const modular = isModularAcceptance(process.env);
-  const modularSchema = isModularSchemaAcceptance(process.env);
+  const modular = isModularBrowserProfile(process.env);
   const temp = realpathSync(process.env.RUNNER_TEMP!);
   assert(realpathSync(process.env.GITHUB_WORKSPACE!) === realpathSync(root));
   const directory = join(temp, `swim-acceptance-${project}`);
@@ -308,7 +308,7 @@ async function main(cleanupOnly: boolean) {
         "packages/tb-conditioning", "packages/ui", "packages/wendler",
         "apps/web/src", "apps/web/public", "apps/web/e2e-rpc/setup.ts", "apps/web/scripts",
         "apps/web/vitest.config.ts", ...SWIM_BROWSER_CASES.map(({ file }) => `apps/web/${file}`),
-        ...(modularSchema ? MODULAR_BROWSER_CASES.map(({ file }) => `apps/web/${file}`) : []),
+        ...MODULAR_BROWSER_CASES.map(({ file }) => `apps/web/${file}`),
         "apps/web/e2e/fixtures",
         "apps/web/e2e/global-setup.ts", "apps/web/playwright.config.ts",
         "apps/web/playwright.swim-reference.config.ts", "apps/web/next.config.*",
@@ -316,15 +316,7 @@ async function main(cleanupOnly: boolean) {
         "package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "tsconfig.base.json",
         ".github/workflows/ci.yml").split("\0").filter(Boolean);
       sourceHashes = sources();
-      const journal = JSON.parse(readFileSync(join(root, "packages/db/drizzle/meta/_journal.json"), "utf8"));
-      if (modularSchema) {
-        assert(journal.entries.length === MODULAR_MIGRATION_TOTAL &&
-          sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === MODULAR_MIGRATION_TOTAL);
-        manifest.migrationCount = MODULAR_MIGRATION_TOTAL;
-      } else {
-        assert(journal.entries.length === ACTIVE_MIGRATION_TOTAL && sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === ACTIVE_MIGRATION_TOTAL);
-        manifest.migrationCount = ACTIVE_MIGRATION_TOTAL;
-      }
+      manifest.migrationCount = requireAcceptanceMigrationFiles(sourceFiles);
       manifest.sourceSha256 = hash(JSON.stringify(sourceHashes));
       manifest.configSha256 = hash(readFileSync(RPC_CONFIG));
       manifest.rpcSourceSha256 = hash(readFileSync(RPC_SUITE));
@@ -515,9 +507,11 @@ async function main(cleanupOnly: boolean) {
         return sql;
       },
     });
-    if (modularSchema) {
+    if (hasOwnershipSchema) {
       manifest.ownershipSchemaProof = ownershipProof;
       await stage("unused ownership schema down before historical modular proof", () => modularDdl("down", true));
+    }
+    if (hasModularSchema) {
       manifest.modularSchemaProof = modularProof;
       await stage("unused modular schema down before historical identity proof", () => modularDdl("down"));
     }
@@ -577,8 +571,8 @@ async function main(cleanupOnly: boolean) {
       requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);
       requireIdentityHelperRpcCases(ledger);
     }), reporting);
-    if (modularSchema) await stage("exact modular schema restoration", () => modularDdl("up"));
-    if (modularSchema) {
+    if (hasModularSchema) await stage("exact modular schema restoration", () => modularDdl("up"));
+    if (hasOwnershipSchema) {
       const proof = createLegacyUpgradeProof();
       manifest.legacyUpgradeProof = proof;
       const legacy = createModularLegacyPreparation({

@@ -17,7 +17,7 @@ import SwimRpcDiagnosticsReporter, {
 } from "../../../../scripts/swim-rpc-diagnostics";
 import { requireAcceptance } from "../../../../scripts/swim-acceptance-guards";
 import { AcceptanceReporting, formatAcceptanceSummary } from "../../../../scripts/swim-acceptance-reporting";
-import { MIN_RPC_CASES, RPC_CONFIG, RPC_SUITE, validateSwimRpcReport } from "./storage-rpc-report";
+import { RPC_CONFIG, RPC_SUITE, validateSwimRpcReport } from "./storage-rpc-report";
 
 vi.mock("node:fs", async (original) => ({ ...await original<typeof import("node:fs")>() }));
 
@@ -39,12 +39,12 @@ afterEach(() => {
   for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 const ledger = (passed = false) => validateSwimRpcReport(JSON.stringify({
-  success: passed, numTotalTests: MIN_RPC_CASES, numPassedTests: passed ? MIN_RPC_CASES : 0,
-  numFailedTests: passed ? 0 : MIN_RPC_CASES, numPendingTests: 0, numTodoTests: 0,
+  success: passed, numTotalTests: 8, numPassedTests: passed ? 8 : 0,
+  numFailedTests: passed ? 0 : 8, numPendingTests: 0, numTodoTests: 0,
   numTotalTestSuites: 1, numPassedTestSuites: passed ? 1 : 0, numFailedTestSuites: passed ? 0 : 1,
   numPendingTestSuites: 0,
   testResults: [{ name: RPC_SUITE, status: passed ? "passed" : "failed",
-    assertionResults: Array.from({ length: MIN_RPC_CASES }, (_, index) => ({
+    assertionResults: Array.from({ length: 8 }, (_, index) => ({
       fullName: index ? `${caseName} ${index}` : caseName,
       status: passed ? "passed" : "failed", failureMessages: passed ? [] : ["synthetic private failure"],
     })) }],

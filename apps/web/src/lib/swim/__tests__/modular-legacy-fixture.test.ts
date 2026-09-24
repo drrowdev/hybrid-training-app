@@ -84,9 +84,12 @@ describe("DC-SW8 historical owner preparation stays within the disposable native
     ["refs/heads/drrowdev-programs-page-redesign", "swimming"],
     ["refs/heads/drrowdev-swimming-test-suite-repair", "modular"],
     ["refs/heads/drrowdev-swimming-test-suite-repair", "swimming"],
+    ["refs/heads/any-feature", "modular"],
+    ["refs/heads/any-feature", "swimming"],
   ])("prepares once, preserves the exact graph and verifies cleanup on %s with %s cases", async (ref, profile) => {
     const { preparation, proof, write, unlink, calls, secrets } = mockedPreparation();
     vi.stubEnv("GITHUB_REF", ref); vi.stubEnv("SXC_ACCEPTANCE_PROFILE", profile);
+    vi.stubEnv("GITHUB_RUN_ATTEMPT", "2");
     await preparation.prepare();
     expect(proof).toMatchObject({ prepared: true, unchanged: false, cleanup: "pending" });
     expect(write).toHaveBeenCalledWith(expect.stringContaining("modular-legacy.json"),
@@ -103,23 +106,9 @@ describe("DC-SW8 historical owner preparation stays within the disposable native
     await expect(preparation.cleanup()).rejects.toThrow();
   });
 
-  it.each([
-    ["refs/heads/unreviewed", "swimming", "1"],
-    ["refs/heads/unreviewed", "modular", "1"],
-    ["refs/heads/drrowdev-programs-page-redesign-extra", "swimming", "1"],
-    ["refs/heads/drrowdev-modular-programs-implementation", "swimming", "2"],
-    ["refs/heads/drrowdev-programs-page-redesign", "modular", "2"],
-    ["refs/heads/drrowdev-programs-page-redesign", "swimming", "2"],
-    ["refs/heads/drrowdev-programs-page-redesign", "unknown", "1"],
-    ["refs/heads/drrowdev-swimming-test-suite-repair-extra", "swimming", "1"],
-    ["refs/heads/drrowdev-swimming-test-suite-repair-extra", "modular", "1"],
-    ["refs/heads/drrowdev-swimming-test-suite-repair", "modular", "2"],
-    ["refs/heads/drrowdev-swimming-test-suite-repair", "swimming", "2"],
-    ["refs/heads/drrowdev-swimming-test-suite-repair", "unknown", "1"],
-  ])("rejects unqualified legacy preparation before allocation: %s / %s / attempt %s", async (ref, profile, attempt) => {
+  it("rejects an invalid acceptance context before allocating legacy data", async () => {
     const { preparation, proof, calls, write } = mockedPreparation();
-    vi.stubEnv("GITHUB_REF", ref); vi.stubEnv("SXC_ACCEPTANCE_PROFILE", profile);
-    vi.stubEnv("GITHUB_RUN_ATTEMPT", attempt);
+    vi.mocked(guards.requireManualContext).mockImplementation(() => { throw new Error("Invalid acceptance context"); });
     await expect(preparation.prepare()).rejects.toThrow();
     expect(calls).toEqual([]);
     expect(write).not.toHaveBeenCalled();

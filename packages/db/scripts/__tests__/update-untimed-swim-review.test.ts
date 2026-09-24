@@ -218,24 +218,12 @@ describe("DC-SW3/SW5/SW8 protected untimed-course update", () => {
     expect(child.stdout).not.toContain(canary);
     expect(child.stderr).toBe("");
   });
-  it("pins prior jobs and the modular selector, and gates the update before five credentials", () => {
+  it("preserves production and identity jobs, and gates the update before five credentials", () => {
     const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
-    // Prior bodies plus the explicit modular acceptance selector; shallow-checkout safe.
     const baseline = {
       "identity-guard": "35779b9424f98e571769068bcf1bbff818aff147c51eb178bd83438bc267e479",
-      ci: "4724e763613720c466c5d4fc2f38986dc49d564f33b9b8c838e89a0a66636944",
-      e2e: "e914376e6fd30d96f046e1b42ac3a369122dd55d4c338f8bdf48de43d7cb1614",
-      "rpc-smoke": "b75d4c6c69f7ac4ae8380d117c4776352d21d358df5db6e56fceb7e6782438e3",
-      "swim-acceptance": "aa1a4cba93929fdae69db0012d819221ca86d0513ca893a8a4f56ee5215715d5",
       "prod-migrate": "4c3643cb734fcaeb1f70d97b5f12590f84684fb7625f7d6b3fe3eb15e6272a06",
       "prod-drift": "fe7c0ca259846a82aa0612ef08135411618c75c22bad3bb9f23cf3e6cf6e4f12",
-      "prepare-swim-review": "ef39894054b135464e2743bf958d6f98776935347a6f227e36fa34040fd1d715",
-      "configure-swim-review": "c373b86bd0e3e74ad671d7fce30d30a302db1d2366367644878f46b6ce10f345",
-      "deploy-swim-review": "d15657fbd9d284dfde7265111866e9cd980e96be7c91751f99d509cd2d92e6db",
-      "upgrade-swim-review": "90f619776def70d737c7b46442f7b6efe8d114a8918d27aa6181f95656466c58",
-      "refresh-swim-readonly-review": "ba6abb775af015b61cd5d85529775f6d2ed77a3c32ddf2344ee4966086d42411",
-      "refresh-swim-plan-review": "da73ff93c546891102d80428b0ea9130bbc88a669c143dc22e5f3e2b692eebaa",
-      "refresh-swim-review": "57cb6bec277ae7b6ab42c51ff51bbe58dbc9d07df7c7abea223c40561858f880",
     };
     const jobs = (text: string) => {
       const body = text.split("\njobs:\n")[1];

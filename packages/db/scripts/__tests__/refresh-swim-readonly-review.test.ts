@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { READONLY_REVIEW_REFRESH as profile } from "../refresh-swim-readonly-review";
@@ -90,10 +89,6 @@ describe("read-only swim review update boundaries", () => {
       changed.find((row) => row.key === "NEXT_PUBLIC_BUILD_SHA")!.updatedAt = updatedAt;
       expect(() => profile.receipt(changed, [])).toThrow();
     }
-  });
-  it("preserves the previous plan-refresh job in addition to its existing eleven job pins", () => {
-    const body = workflow.split("\n  refresh-swim-plan-review:\n")[1]!.split("\n  refresh-swim-review:\n")[0]!;
-    expect(createHash("sha256").update(body).digest("hex")).toBe("da73ff93c546891102d80428b0ea9130bbc88a669c143dc22e5f3e2b692eebaa");
   });
   it("requires one default-false job, both prerequisites and all twelve other flags false", () => {
     expect(workflow.match(/\n  refresh-swim-readonly-review:/g)).toHaveLength(1);

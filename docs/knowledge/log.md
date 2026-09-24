@@ -5815,3 +5815,18 @@ defect was found. Modular code remains unchanged pending usable evidence.
 Full ledger plus modular contracts: 587 passed / 43 existing Windows skips.
 Synthetic UI: 75/75; actual-helper remount check, typecheck and touched-file
 lint pass. No hash repin, product change or native/local database run.
+
+## [2026-09-25] decision | Two-tier validation and automatic disposable acceptance
+
+Owner-approved process simplification replaces test-source hashes, exact line
+numbers, duplicated case counts and acceptance branch allowlists with behavioral
+coverage. Disposable acceptance derives its migration inventory from the Drizzle
+journal and selects historical down/up proofs from the migrations present.
+Same-repository, non-draft PRs to main run both browser profiles in parallel on
+Linux, each with its own disposable stack because the profiles use different
+feature flags. Manual acceptance binds to the workflow SHA without a typed SHA.
+Production jobs, production and identity pins, deploy-order/drift guards, RLS
+and multi-user behavior, private diagnostics and verified cleanup remain.
+AGENTS now distinguishes UI/copy/test-only review from full data/security
+safeguards; changed copy gets one review round. No product, schema or migration
+changes; acceptance evidence will be recorded in the PR.

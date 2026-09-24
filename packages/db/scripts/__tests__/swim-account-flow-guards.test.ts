@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -169,10 +168,8 @@ describe("DC-SW3/SW5/SW8 bounded synthetic account flow", () => {
     expect(child.stdout).not.toContain(canary);
     expect(child.stdout).toContain('"accountsAttempted":0');
   });
-  it("keeps the prior untimed job intact and puts credentials after source checks", () => {
+  it("puts credentials after source checks", () => {
     const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
-    const old = workflow.split("\n  update-untimed-swim-review:\n")[1]!;
-    expect(createHash("sha256").update(old).digest("hex")).toBe("c6ea6485b4a5038d30803067f730e4a367f0d95ce23abc69b36c0b5c31eb00cf");
     const job = workflow.split("\n  test-swim-account-flow:\n")[1]!.split("\n  update-untimed-swim-review:\n")[0]!;
     for (const gate of ["needs: [ci, identity-guard]", "environment: swim-review", "group: swim-review-bootstrap",
       "persist-credentials: false", "inputs.review_upgrade_read_only == true",

@@ -2,11 +2,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { MIN_RPC_CASES, RPC_CONFIG, RPC_SUITE, readSwimRpcReport, validateSwimRpcReport } from "./storage-rpc-report";
+import { RPC_CONFIG, RPC_SUITE, readSwimRpcReport, validateSwimRpcReport } from "./storage-rpc-report";
 
 const sha = "a".repeat(40);
 const configHash = "b".repeat(64);
-function fixture(count = MIN_RPC_CASES) {
+function fixture(count = 8) {
   return {
     success: true,
     numTotalTests: count, numPassedTests: count, numFailedTests: 0, numPendingTests: 0, numTodoTests: 0,
@@ -49,12 +49,12 @@ describe("fail-closed swim RPC JSON ledger", () => {
     expect(() => validateSwimRpcReport(text, sha, configHash)).toThrow();
   });
 
-  it.each([0, 1, 29])("rejects only %i collected cases", (count) => {
-    expect(validate(fixture(count)).success).toBe(false);
+  it("rejects an empty collection", () => {
+    expect(validate(fixture(0)).success).toBe(false);
   });
 
-  it("accepts additional passing cases without inventing a skipped counter", () => {
-    expect(validate(fixture(31)).success).toBe(true);
+  it.each([1, 8, 31, 50])("accepts all %i collected cases without a pinned inventory", (count) => {
+    expect(validate(fixture(count)).success).toBe(true);
     expect(validate(fixture()).totals).not.toHaveProperty("numSkippedTests");
   });
 

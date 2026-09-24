@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
     inputs:
       migrate_production:
@@ -34,7 +35,7 @@ on:
           - modular
           - swimming
       expected_sha:
-        description: Reviewed full commit SHA required for swim acceptance
+        description: Reviewed full commit SHA for guarded review and production operations
         required: false
         default: ""
         type: string
@@ -447,26 +448,44 @@ jobs:
 
   swim-acceptance:
     needs: [ci, identity-guard]
-    name: disposable swim RPC and browser acceptance
-    if: github.event_name == 'workflow_dispatch' && inputs.swim_acceptance
+    name: disposable ${{ matrix.profile }} RPC and browser acceptance
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       !github.event.pull_request.draft) ||
+      (github.event_name == 'workflow_dispatch' && inputs.swim_acceptance)
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ fromJSON((github.event_name == 'pull_request' || inputs.acceptance_profile == 'auto' || inputs.acceptance_profile == '') && '["modular","swimming"]' || format('["{0}"]', inputs.acceptance_profile)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
     env:
-      SWIM_ACCEPTANCE: ${{ inputs.swim_acceptance }}
-      EXPECTED_SHA: ${{ inputs.expected_sha }}
-      MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
-      ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
-      SXC_ACCEPTANCE_PROFILE: ${{ inputs.acceptance_profile != '' && inputs.acceptance_profile != 'auto' && inputs.acceptance_profile || (github.ref == 'refs/heads/drrowdev-modular-programs-implementation' && 'modular' || 'swimming') }}
+      SWIM_ACCEPTANCE: "true"
+      EXPECTED_SHA: ${{ github.sha }}
+      MIGRATE_PRODUCTION: "false"
+      ALLOW_UNDEPLOYED: "false"
+      SXC_ACCEPTANCE_PROFILE: ${{ matrix.profile }}
+      PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+      PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+      PR_DRAFT: ${{ github.event.pull_request.draft }}
+      PR_ACTION: ${{ github.event.action }}
     steps:
-      - name: Validate reviewed manual context
+      - name: Validate acceptance context
         run: |
           set -euo pipefail
           [[ "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$EXPECTED_SHA" == "$GITHUB_SHA" ]]
           [[ "$GITHUB_REF_TYPE" == "branch" ]]
-          [[ "$GITHUB_REF" == refs/heads/* && "$GITHUB_REF" != "refs/heads/main" ]]
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
+            [[ "$GITHUB_REF" =~ ^refs/pull/[1-9][0-9]*/merge$ ]]
+            [[ "$PR_HEAD_REPOSITORY" == "$GITHUB_REPOSITORY" && "$PR_BASE_REF" == "main" && "$PR_DRAFT" == "false" ]]
+          else
+            [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]
+            [[ "$GITHUB_REF" == refs/heads/* && "$GITHUB_REF" != "refs/heads/main" ]]
+          fi
           [[ "$MIGRATE_PRODUCTION" == "false" && "$ALLOW_UNDEPLOYED" == "false" ]]
 
       - uses: actions/checkout@v5

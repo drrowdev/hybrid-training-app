@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { inspect } from "node:util";
 import { describe, expect, it, vi } from "vitest";
 import {
-  ACTIVE_MIGRATION_TOTAL, CLI_ASSET, CLI_SHA256, DEFAULT_SERVICES, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
+  CLI_ASSET, CLI_SHA256, DEFAULT_SERVICES, INSPECT_FORMAT, LIMITS, PROJECT_LABEL, RUN_LABEL,
   containerSchema, outcome, processIdentity, readyServiceNames, requireAcceptance, requireArchive, requireCleanupState,
   requireContainer, requireFreshReport, requireLocalStatus, requireManualContext,
   requireNetwork, requireNoInheritedTargets, requirePinnedDefaultConfig, requirePrivateLocation, requireProcess, requireReadyStack,
@@ -18,7 +18,7 @@ import {
   decodeMigrationDiagnostic, MIGRATION_DIAGNOSTIC_FIELDS, MIGRATION_DIAGNOSTIC_MAX_BYTES,
   openPrivateCommandLog, publishAcceptanceSummary, readMigrationDiagnostic, safeFailureCause,
 } from "../../../../scripts/swim-acceptance-reporting";
-import { MIN_RPC_CASES, RPC_SUITE, validateSwimRpcReport } from "./storage-rpc-report";
+import { RPC_SUITE, validateSwimRpcReport } from "./storage-rpc-report";
 import { SWIM_BROWSER_CASES } from "../../../../scripts/swim-browser-acceptance";
 import {
   AUTH_PRIVILEGES_SQL, SWIM_FUNCTION_CONTRACTS, checkAuthBoundary,
@@ -93,11 +93,11 @@ const localStatus = () => ({
 });
 const passed = { code: 0, signal: null, timedOut: false };
 const report = () => ({
-  success: true, numTotalTests: MIN_RPC_CASES, numPassedTests: MIN_RPC_CASES,
+  success: true, numTotalTests: 8, numPassedTests: 8,
   numFailedTests: 0, numPendingTests: 0, numTodoTests: 0,
   numTotalTestSuites: 2, numPassedTestSuites: 2, numFailedTestSuites: 0, numPendingTestSuites: 0,
   testResults: [{ name: RPC_SUITE, status: "passed",
-    assertionResults: Array.from({ length: MIN_RPC_CASES }, (_, i) => ({
+    assertionResults: Array.from({ length: 8 }, (_, i) => ({
       fullName: `synthetic runner guard case ${i}`, status: "passed", failureMessages: [] as string[],
     })) }],
 });
@@ -106,12 +106,12 @@ const ledger = () => validateSwimRpcReport(JSON.stringify(report()), sha, config
 describe("DC-SW1/DC-SW8 browser acceptance source coverage", () => {
   it("gates the unchanged normal reference on one required synthetic probe after the owned install", () => {
     const root = resolve(__dirname, "../../../../../..");
-    const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+    const workflow = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");
     const job = workflow.split("\n  swim-acceptance:\n")[1]!.split("\n  prod-migrate:")[0]!;
     expect(job).toContain("needs: [ci, identity-guard]");
     const jobHeader = job.split("    steps:")[0]!;
     expect(jobHeader).not.toMatch(/always\(|failure\(|cancelled\(|continue-on-error/);
-    expect(job).toContain("if: github.event_name == 'workflow_dispatch' && inputs.swim_acceptance");
+    expect(job).toContain("github.event_name == 'workflow_dispatch' && inputs.swim_acceptance");
     expect(job).toContain("timeout-minutes: 45");
     const steps = job.split("      - name: ");
     const install = steps.findIndex((step) => step.startsWith("Install owned Chromium\n"));
@@ -672,10 +672,10 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
       "-v", "ON_ERROR_STOP=1", "-c", AUTH_PRIVILEGES_SQL,
     ], { capture: true, allowFailure: true, timeout: 10_000 }]]);
     expect(source).toMatch(/manifest\.catalog = [^\n]+;\s+requireUnchanged\(\);\s+}\);\s+const modularProof = createModularRoundTripProof\(\);/);
-    expect(source).toMatch(/if \(modularSchema\) \{\s+manifest\.ownershipSchemaProof = ownershipProof;\s+await stage\("unused ownership schema down before historical modular proof", \(\) => modularDdl\("down", true\)\);\s+manifest\.modularSchemaProof = modularProof;\s+await stage\("unused modular schema down before historical identity proof", \(\) => modularDdl\("down"\)\);\s+}\s+const authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+manifest\.authPrivileges = authPrivileges;\s+const authBoundary = checkAuthBoundary\(authPrivileges, 148\);\s+manifest\.authBoundary = authBoundary;/);
+    expect(source).toMatch(/if \(hasOwnershipSchema\) \{\s+manifest\.ownershipSchemaProof = ownershipProof;\s+await stage\("unused ownership schema down before historical modular proof", \(\) => modularDdl\("down", true\)\);\s+}\s+if \(hasModularSchema\) \{\s+manifest\.modularSchemaProof = modularProof;\s+await stage\("unused modular schema down before historical identity proof", \(\) => modularDdl\("down"\)\);\s+}\s+const authPrivileges = await observeAuthPrivileges\(command, target\.dbId\);\s+manifest\.authPrivileges = authPrivileges;\s+const authBoundary = checkAuthBoundary\(authPrivileges, 148\);\s+manifest\.authBoundary = authBoundary;/);
     expect(source).toContain('await enforceIdentityProofAfterRpc(authBoundary, identityProof, () => stage("complete authenticated RPC file and positive ledger"');
     expect(source).toContain("requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);\n      requireIdentityHelperRpcCases(ledger);\n    }), reporting);");
-    const restored = source.indexOf('if (modularSchema) await stage("exact modular schema restoration"');
+    const restored = source.indexOf('if (hasModularSchema) await stage("exact modular schema restoration"');
     const legacy = source.indexOf('await legacy.prepare();', restored);
     const owned = source.indexOf('await modularDdl("up", true);', legacy);
     const unchanged = source.indexOf('await legacy.verifyUpgrade();', owned);
@@ -723,7 +723,7 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     }
   });
   it.each(["available", "missing", "invalid", "failed"] as const)(
-    "keeps the original 30-case RPC and cleanup outcome with %s observation (DC-SW8)", async (evidence) => {
+    "keeps the collected RPC and cleanup outcome with %s observation (DC-SW8)", async (evidence) => {
       for (const rpcOutcome of ["passed", "process-failed", "ledger-failed"] as const) {
         for (const cleaned of [true, false]) {
           const command = vi.fn().mockResolvedValue({
@@ -747,7 +747,7 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
           finally { await cleanup(); }
           expect(rpc).toHaveBeenCalledTimes(1);
           expect(cleanup).toHaveBeenCalledTimes(1);
-          expect(canonical.suites[0]?.cases).toHaveLength(MIN_RPC_CASES);
+          expect(canonical.suites[0]?.cases).toHaveLength(report().numTotalTests);
           const boundaryFailed = evidence !== "available";
           expect(reporting.failures.primary?.stage).toBe(rpcOutcome !== "passed" ? "RPC"
             : boundaryFailed ? "swimming identity boundary" : undefined);
@@ -788,20 +788,8 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
     }
   });
 
-  it("keeps the historical 150-only runtime refusing appended storage, with identity level 148 unchanged", () => {
-    expect(ACTIVE_MIGRATION_TOTAL).toBe(150);
-    expect(source).toContain("journal.entries.length === ACTIVE_MIGRATION_TOTAL");
-    expect(source).toContain('sourceFiles.filter((f) => /^packages\\/db\\/drizzle\\/[^/]+\\.sql$/.test(f)).length === ACTIVE_MIGRATION_TOTAL');
-    expect(source).toContain("manifest.migrationCount = ACTIVE_MIGRATION_TOTAL;");
-    const journal = JSON.parse(readFileSync(new URL(
-      "../../../../../../packages/db/drizzle/meta/_journal.json", import.meta.url,
-    ), "utf8")) as { entries: { tag: string }[] };
-    expect(journal.entries.slice(0, 155)).toHaveLength(155);
-    expect(journal.entries.length).not.toBe(ACTIVE_MIGRATION_TOTAL);
-    expect(journal.entries[148]?.tag).toBe("0148_shared_completion_identity");
-    expect(journal.entries[149]?.tag).toBe("0149_defer_custom_movement_references");
-    expect(journal.entries[150]?.tag).toBe("0150_swim_import_storage");
-    expect(journal.entries[154]?.tag).toBe("0154_swim_untimed_courses");
+  it("keeps historical identity proofs independent of the current migration count", () => {
+    expect(source).toContain("manifest.migrationCount = requireAcceptanceMigrationFiles(sourceFiles);");
     expect(source).toContain("checkAuthBoundary(authPrivileges, 148)");
   });
 
@@ -1037,7 +1025,7 @@ describe("auth privilege observation (synthetic reporting evidence, no database 
           try { await enforceAuthBoundaryAfterRpc(boundary, rpc, reporting); } catch (error) { thrown = error; }
           const rpcPassed = processPassed && ledgerPassed;
           expect(rpc).toHaveBeenCalledTimes(1);
-          expect(canonical.suites[0]?.cases).toHaveLength(30);
+          expect(canonical.suites[0]?.cases).toHaveLength(report().numTotalTests);
           expect(reporting.failures.primary?.stage).toBe(!rpcPassed ? "RPC"
             : boundary !== "matched" ? "swimming identity boundary" : undefined);
           expect(reporting.failures.secondary.map(({ stage }) => stage))

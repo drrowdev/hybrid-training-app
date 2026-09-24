@@ -503,7 +503,7 @@ export function projectStackAttribution(stacks: readonly unknown[], webRoot: str
       const source = ATTRIBUTED_SOURCES.find(([file]) => match[2] === join(webRoot, file))?.[1];
       if (!source) continue;
       const line = Number(match[3]), column = Number(match[4]);
-      if (source === "swimming-decisions-offline-mobile" && match[1] === "same" && line === 73) {
+      if (source === "swimming-decisions-offline-mobile" && match[1] === "same") {
         comparison = true;
         continue;
       }

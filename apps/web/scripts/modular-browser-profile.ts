@@ -1,7 +1,6 @@
 import { acceptanceAssert as assert } from "./swim-acceptance-errors";
 
 export type BrowserCase = Readonly<{ file: string; describe: string; title: string }>;
-export const MODULAR_MIGRATION_TOTAL = 159;
 export const MODULAR_BROWSER_CASES: readonly BrowserCase[] = Object.freeze([
   "M1 DC-K4: strength creation retains library identities through reload and logging",
   "M2 DC-K4: running setup and future edits retain typed prescriptions",
@@ -29,23 +28,4 @@ export function isModularBrowserProfile(env: Readonly<Record<string, string | un
   assert(env.SXC_ACCEPTANCE_PROFILE === undefined || ["swimming", "modular"].includes(env.SXC_ACCEPTANCE_PROFILE),
     "Unexpected acceptance profile");
   return env.SXC_ACCEPTANCE_PROFILE === "modular";
-}
-
-export function isModularAcceptance(env: Readonly<Record<string, string | undefined>>) {
-  if (!isModularBrowserProfile(env)) return false;
-  assert((env.GITHUB_REF === "refs/heads/drrowdev-modular-programs-implementation" ||
-    env.GITHUB_REF === "refs/heads/drrowdev-programs-page-redesign" ||
-    env.GITHUB_REF === "refs/heads/drrowdev-swimming-test-suite-repair") &&
-    env.GITHUB_RUN_ATTEMPT === "1", "Modular acceptance requires its reviewed branch and first attempt");
-  return true;
-}
-
-export function isModularSchemaAcceptance(env: Readonly<Record<string, string | undefined>>) {
-  isModularAcceptance(env);
-  const reviewed = env.GITHUB_REF === "refs/heads/drrowdev-modular-programs-implementation" ||
-    env.GITHUB_REF === "refs/heads/drrowdev-programs-page-redesign" ||
-    env.GITHUB_REF === "refs/heads/drrowdev-swimming-test-suite-repair";
-  if (reviewed) assert(env.GITHUB_RUN_ATTEMPT === "1",
-    "Modular schema qualification requires its reviewed branch and first attempt");
-  return reviewed;
 }
