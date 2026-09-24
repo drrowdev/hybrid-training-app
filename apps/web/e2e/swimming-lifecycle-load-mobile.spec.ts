@@ -33,6 +33,7 @@ import { REGION_LABELS } from "../src/lib/settings/limitations-constants";
 import { retainedSwimActor, completeRetainedSwim } from "./fixtures/swim-retained";
 import { startSwimWorkout, editSwimResult } from "../src/lib/swim/storage";
 import { recomputeRegionState } from "../src/lib/engine/region-ledger";
+import { loadTrainingSchedule } from "../src/lib/schedule/storage";
 
 const test = seededTest.extend({
   // Match the persistence spec: reject unsafe targets before any fixture writes.
@@ -786,10 +787,15 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       state: { ...before.plans[0].state, lifecycle: [...(before.plans[0].state.lifecycle ?? []), archiveEvent] },
     })).toBe(true);
     expect(isDeepStrictEqual(archived.workouts, before.workouts)).toBe(true);
+    const replacementStart = addDaysToYmd(archived.plans[0].ends_on, 1);
+    const schedule = await loadTrainingSchedule(actor);
+    expect(schedule.entries.length).toBeGreaterThan(0);
+    expect(schedule.entries.every((entry) => entry.date < replacementStart)).toBe(true);
     await page.getByRole("link", { name: "Set up swimming", exact: true }).click();
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("50m");
     await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
     await page.getByLabel("Weeks", { exact: true }).fill("2");
+    await page.getByLabel("Start date", { exact: true }).fill(replacementStart);
     const swimDays = page.getByRole("group", { name: "Swim days", exact: true }).getByRole("checkbox");
     for (const day of await swimDays.all()) {
       await day.setChecked(["1", "4"].includes((await day.getAttribute("value"))!));
@@ -798,7 +804,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await page.getByRole("button", { name: "Preview plan", exact: true }).click();
     await expect(page.getByRole("button", { name: "Create swim plan", exact: true })).toBeVisible();
     const overlap = page.getByRole("checkbox", { name: "Keep both workouts on these dates", exact: true });
-    if (await overlap.count()) await overlap.check();
+    await expect(overlap).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Create swim plan", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Swims", exact: true })).toBeVisible();
     const replacementId = new URL(page.url()).searchParams.get("plan");
@@ -812,6 +819,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(isDeepStrictEqual(replacement.definition.setup.course, { numerator: 50, denominator: 1, unit: "m" })).toBe(true);
     const newWorkouts = replaced.workouts.filter((row) => row.plan_id === replacementId);
     expect(newWorkouts.length).toBe(4);
+    expect(replacement.started_on).toBe(replacementStart);
+    expect(newWorkouts.every((row) => row.scheduled_date >= replacementStart)).toBe(true);
     expect(newWorkouts.every((row) => row.status === "scheduled" && row.session_id === null &&
       !before.workouts.some((old) => old.id === row.id))).toBe(true);
     expect(isDeepStrictEqual(replaced.workouts.filter((row) => row.plan_id === original.planId), before.workouts)).toBe(true);

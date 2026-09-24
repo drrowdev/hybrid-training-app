@@ -9,7 +9,7 @@ export async function openSwimProgramActions(page: Page) {
 
 export async function openSwimProgramHistory(page: Page) {
   const choices = page.getByRole("navigation", { name: "Program history", exact: true });
-  const disclosure = choices.locator("..");
+  const disclosure = page.getByRole("navigation", { name: "Program history", exact: true, includeHidden: true }).locator("..");
   if (await disclosure.getAttribute("open") === null) await disclosure.locator("summary").click();
   await expect(choices).toBeVisible();
 }

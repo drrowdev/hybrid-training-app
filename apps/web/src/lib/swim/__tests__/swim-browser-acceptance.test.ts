@@ -1764,8 +1764,78 @@ describe("browser environment and static config", () => {
     await execute();
     expect([...checked].sort()).toEqual([1, 4]);
     const a3 = source.slice(source.indexOf('  test("A3,'), source.indexOf('  test("A4,'));
-    expect(a3).toContain("if (await overlap.count()) await overlap.check()");
+    expect(a3).toContain("const replacementStart = addDaysToYmd(archived.plans[0].ends_on, 1)");
+    expect(a3).toContain("expect(schedule.entries.every((entry) => entry.date < replacementStart)).toBe(true)");
+    expect(a3).toContain('getByLabel("Start date", { exact: true }).fill(replacementStart)');
+    expect(a3).toContain("await expect(overlap).toHaveCount(0)");
+    expect(a3).not.toContain("if (await overlap.count())");
     expect(a3).toContain("expect(newWorkouts.length).toBe(4)");
+  });
+  it.each([0, 1, 2, 3, 4, 5, 6])("A3 DC-SW7: retains four future replacement swims at weekday offset %i", (offset) => {
+    const oldEnd = addDaysToYmd("2026-09-20", offset);
+    const start = addDaysToYmd(oldEnd, 1);
+    const dates = standaloneWeekRequests(start, 2, [1, 4]).flatMap((week) => week.slots.map((slot) => slot.dateISO));
+    expect(dates).toHaveLength(4);
+    expect(new Set(dates).size).toBe(4);
+    expect(dates.every((date) => date >= start && date <= addDaysToYmd(start, 13))).toBe(true);
+    expect(dates.every((date) => [1, 4].includes(new Date(`${date}T00:00:00Z`).getUTCDay()))).toBe(true);
+  });
+  it.each([false, true])("A3 DC-SW7: opens program history when its initial open state is %s", async (initiallyOpen) => {
+    const source = readFileSync(join(webRoot, "e2e/fixtures/swim-navigation.ts"), "utf8");
+    const helper = source.slice(source.indexOf("export async function openSwimProgramHistory(")).replace("export ", "");
+    let open = initiallyOpen;
+    const click = vi.fn(async () => { open = !open; });
+    const disclosure = {
+      getAttribute: async () => open ? "" : null,
+      locator: () => ({ click }),
+    };
+    const page = { getByRole: (_role: string, options: { includeHidden?: boolean }) => ({
+      locator: () => {
+        if (!open && !options.includeHidden) throw new Error("Hidden navigation cannot locate its disclosure.");
+        return disclosure;
+      },
+    }) };
+    const execute = runInNewContext(transpileModule(`${helper}\nopenSwimProgramHistory`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, { expect: () => ({ toBeVisible: async () => expect(open).toBe(true) }) }) as (page: object) => Promise<void>;
+    await execute(page);
+    expect(click).toHaveBeenCalledTimes(initiallyOpen ? 0 : 1);
+    await execute(page);
+    expect(click).toHaveBeenCalledTimes(initiallyOpen ? 0 : 1);
+  });
+  it("M16 DC-SW8: settles the completion redirect before navigating to retained history", async () => {
+    const source = readFileSync(join(webRoot, "e2e/program-builder-mobile.spec.ts"), "utf8");
+    const m16 = source.slice(source.indexOf('ownedTest("M16 '));
+    const start = m16.indexOf("        await expect(page).toHaveURL(");
+    expect(start).toBeGreaterThan(0);
+    const body = m16.slice(start, m16.indexOf("        const exported =", start));
+    let redirectPending = true;
+    const page = {
+      goto: vi.fn(async (destination: string) => {
+        expect(redirectPending).toBe(false);
+        expect(destination).toBe("/app/sessions");
+      }),
+      locator: (selector: string) => selector,
+    };
+    const execute = runInNewContext(transpileModule(`(async () => { ${body} })`, {
+      compilerOptions: { target: ScriptTarget.ES2022 },
+    }).outputText, {
+      page, runSession: "running", oldSession: "retained",
+      expect: (value: unknown) => ({
+        toHaveURL: async (pattern: RegExp) => {
+          expect(value).toBe(page);
+          expect(pattern.test("http://localhost/app/sessions/running?completed=1")).toBe(true);
+          expect(pattern.test("http://localhost/app/sessions/running")).toBe(false);
+          redirectPending = false;
+        },
+        toHaveCount: async (count: number) => {
+          expect(page.goto).toHaveBeenCalledOnce();
+          expect(count).toBe(1);
+          expect(['a[href="/app/sessions/retained"]', 'a[href="/app/sessions/running"]']).toContain(value);
+        },
+      }),
+    }) as () => Promise<void>;
+    await execute();
   });
   it("A5 DC-SW7/DC-SW9: reads the purged hub as its authenticated owner without altering retained edits or guards", () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");

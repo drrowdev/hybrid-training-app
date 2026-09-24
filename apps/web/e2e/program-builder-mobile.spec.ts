@@ -1528,6 +1528,7 @@ test.describe("Modular program builder", () => {
         }).toBe("completed");
         const finished = await actor.from("program_instances").select("status").eq("id", running.program_instance_id).single();
         expect(finished.error).toBeNull(); expect(finished.data?.status).toBe("archived");
+        await expect(page).toHaveURL(new RegExp(`/app/sessions/${runSession}\\?completed=1$`));
         await page.goto("/app/sessions");
         for (const id of [oldSession, runSession]) await expect(page.locator(`a[href="/app/sessions/${id}"]`)).toHaveCount(1);
         const exported = await page.request.get("/api/me/export");

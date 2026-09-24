@@ -5750,3 +5750,39 @@ checks. The complete ledger passes 560 tests (43 existing skips), including
 six new regressions. Synthetic UI passes all 75 stages; typecheck and touched
 file lint pass. Temporary line-ending changes restored. No native or local
 database run; coordinator owns the next CI dispatch.
+
+## [2026-09-24] acceptance | Settle swimming history and completion navigation
+
+Coordinator-consumed results at `98212428`: core/storage passed; swimming
+`36039574632` reached 24/25 with verified cleanup; modular `36039592452`
+reached 17/18. No logs were refetched.
+
+A3's history helper tried to locate a navigation element inside a closed
+`details` using the default visible-only role query. The parent lookup
+therefore could not reach the summary to open it. It now includes hidden
+navigation only when locating that disclosure, then still asserts visible
+history. Synthetic Chromium exercised the actual helper against a closed
+chooser and an already-open chooser.
+
+A3 replacement now starts the day after the archived plan ends. It explicitly
+asserts every arranged shared-schedule commitment precedes that date, chooses
+Monday/Thursday, and expects no overlap checkbox after preview. No conditional
+overlap branch remains. Seven start-weekday regressions verify four distinct
+future dates inside the two-week window. Exact replacement/retained-history
+and primary-isolation assertions remain.
+
+M16 failed at `page.goto("/app/sessions")`, before its list/export assertions.
+Its actor uses UTC; there is no time-of-day filter on that navigation.
+The Finish control awaits completion work before assigning the completed
+session URL, but M16 only awaited the earlier database status. The test now
+waits for the exact completed-session URL before navigating to history, as
+it already did for its first completion. No deadline increase or weakened
+list/export assertion.
+
+Full swimming directory with LF sources: 2,463 passed / 69 established Windows
+failures / 80 skipped, with the same 15 secondary private-cache rejections.
+The full ledger passes 570 tests (43 existing skips); synthetic UI passes
+75/75; typecheck and touched-file lint pass. Temporary newline formatting
+restored. No source-hash repin, inventory change, product/RPC/schema change,
+local database or native acceptance run. Process-slimming remains deferred
+to the coordinator after this PR lands.
