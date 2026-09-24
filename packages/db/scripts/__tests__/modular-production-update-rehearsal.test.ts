@@ -4,8 +4,8 @@ import { readMigrationFiles } from "drizzle-orm/migrator";
 import postgres from "postgres";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { modularRehearsalMigrations, rehearseModularProductionUpdate, modularUpdateStageReporter,
-  MODULAR_UPDATE_REHEARSAL_STAGES } from "../../integration-tests/modular-production-update-rehearsal";
-import { modularUpdateMigrations } from "../modular-production-update-storage";
+  MODULAR_UPDATE_REHEARSAL_STAGES, projectModularUpdateSubstep } from "../../integration-tests/modular-production-update-rehearsal";
+import { modularUpdateMigrations, MODULAR_UPDATE_SUBSTEPS, type ModularUpdateSubstep } from "../modular-production-update-storage";
 
 function source() {
   const journal: {
@@ -41,20 +41,42 @@ describe("DC-SW8 exact modular updater rehearsal stays separate from production"
     expect(MODULAR_UPDATE_REHEARSAL_STAGES[3]).toBe("modular-production-update-owned-reference-preflight");
     expect(MODULAR_UPDATE_REHEARSAL_STAGES.at(-1)).toBe("modular-production-update-fixture-restored");
     const runner = readFileSync(new URL("../../integration-tests/swim-pool-storage.mts", import.meta.url), "utf8");
-    expect(runner).toContain("await rehearseModularProductionUpdate(database, (name) => { stage = name; }, (name) => { stages.push(name); })");
+    expect(runner).toContain("await rehearseModularProductionUpdate(database, (name) => { stage = name; }, (name) => { stages.push(name); },");
+    expect(runner).toContain("(name) => { currentModularUpdateSubstep = name; });");
     expect(runner).not.toContain("stages.push(...await rehearseModularProductionUpdate(");
   });
 
   it("publishes completed stages before later failure, without publishing the failing stage or duplicates", () => {
     const started: string[] = [], passed: string[] = [];
-    const reporter = modularUpdateStageReporter((name) => started.push(name), (name) => passed.push(name));
+    let substep: ModularUpdateSubstep | undefined = "added_security";
+    const reporter = modularUpdateStageReporter((name) => started.push(name), (name) => passed.push(name), (name) => { substep = name; });
     reporter.mark(0);
     reporter.pass(0);
+    expect(substep).toBeUndefined();
     expect(() => reporter.pass(0)).toThrow();
     reporter.mark(1);
+    substep = "isolation";
     expect(() => reporter.pass(2)).toThrow();
+    expect(substep).toBe("isolation");
     expect(passed).toEqual([MODULAR_UPDATE_REHEARSAL_STAGES[0]]);
     expect(started).toEqual(MODULAR_UPDATE_REHEARSAL_STAGES.slice(0, 2));
+  });
+
+  it("exposes exactly the approved eight substeps", () => {
+    expect(MODULAR_UPDATE_SUBSTEPS).toEqual([
+      "apply", "added_security", "post_apply_catalog", "ledger_reconciliation",
+      "graph_hash", "graph_state", "isolation", "cleanup",
+    ]);
+  });
+
+  it.each(MODULAR_UPDATE_SUBSTEPS)("projects %s only within an updater rehearsal stage", (substep) => {
+    expect(projectModularUpdateSubstep("modular-production-update-213-to-216", substep)).toBe(substep);
+    expect(projectModularUpdateSubstep("independent-programs-rehearsal", substep)).toBeUndefined();
+    expect(projectModularUpdateSubstep("modular-production-update-unapproved", substep)).toBeUndefined();
+  });
+
+  it.each([undefined, null, "", "PrivateSyntheticCanary", { value: "apply" }])("omits unclassified substeps", (value) => {
+    expect(projectModularUpdateSubstep("modular-production-update-213-to-216", value)).toBeUndefined();
   });
 
   it.each(["missing-entry", "future-entry", "missing-source", "future-source", "index", "tag-prefix",

@@ -17,10 +17,10 @@ import { verifyMigrationDependencyParity } from "../scripts/migrate-with-evidenc
 import { appendUntimedMigration, inspectUntimedLedger, untimedReviewMigrations } from "../scripts/untimed-swim-review-storage.ts";
 import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehearsal.ts";
 import { rehearseModularSchedule } from "./modular-schedule-rehearsal.ts";
-import { rehearseModularProductionUpdate } from "./modular-production-update-rehearsal.ts";
+import { rehearseModularProductionUpdate, projectModularUpdateSubstep } from "./modular-production-update-rehearsal.ts";
 import { modularHistoricalAssertionLine as projectHistoricalAssertionLine } from "./modular-production-legacy-graph.ts";
 import { ModularCatalogRefusal, type ModularCatalogDiagnostic } from "../scripts/modular-production-catalog.ts";
-import { ModularUpdateSqlFailure, type ModularUpdateDiagnostic } from "../scripts/modular-production-update-storage.ts";
+import { ModularUpdateSqlFailure, type ModularUpdateDiagnostic, type ModularUpdateSubstep } from "../scripts/modular-production-update-storage.ts";
 import { IndependentProgramsAssertion, rehearseIndependentPrograms, type OwnershipAssertionDiagnostic } from "./independent-programs-rehearsal.ts";
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
@@ -43,6 +43,8 @@ let modularAssertionLine: number | undefined;
 let modularHistoricalAssertionLine: number | undefined;
 let catalogMismatch: ModularCatalogDiagnostic | undefined;
 let modularUpdateDiagnostic: ModularUpdateDiagnostic | undefined;
+let currentModularUpdateSubstep: ModularUpdateSubstep | undefined;
+let modularUpdateSubstep: ModularUpdateSubstep | undefined;
 let ownershipAssertionLine: number | undefined;
 let ownershipAssertionDiagnostic: OwnershipAssertionDiagnostic | undefined;
 let migrationRunnerDiagnostic: MigrationRunnerRehearsalError["diagnostic"] | undefined;
@@ -728,7 +730,8 @@ try {
   stages.push(stage);
   stage = "modular-schedule-rehearsal";
   stages.push(...await rehearseModularSchedule(database, true, (name) => { stage = name; }));
-  await rehearseModularProductionUpdate(database, (name) => { stage = name; }, (name) => { stages.push(name); });
+  await rehearseModularProductionUpdate(database, (name) => { stage = name; }, (name) => { stages.push(name); },
+    (name) => { currentModularUpdateSubstep = name; });
   stage = "independent-programs-rehearsal";
   const ownershipSource = readFileSync(new URL("../drizzle/0158_independent_program_ownership.sql", import.meta.url), "utf8");
   for (const match of ownershipSource.matchAll(/\bRAISE EXCEPTION '((?:''|[^'])*)'/g)) {
@@ -739,6 +742,7 @@ try {
   stages.push(...await rehearseIndependentPrograms(database, (name) => { stage = name; }));
   status = "passed";
 } catch (error) {
+  modularUpdateSubstep = projectModularUpdateSubstep(stage, currentModularUpdateSubstep);
   modularHistoricalAssertionLine = projectHistoricalAssertionLine(error);
   if (error instanceof ModularCatalogRefusal) catalogMismatch = error.diagnostic;
   if (error instanceof ModularUpdateSqlFailure) modularUpdateDiagnostic = error.diagnostic;
@@ -769,6 +773,7 @@ console.log(JSON.stringify({
   status, stages, ...(status === "failed" ? { stage, code, ...(failureLocation ? { failureLocation } : {}),
     ...(catalogMismatch ? { catalogMismatch } : {}),
     ...(modularUpdateDiagnostic ? { modularUpdateDiagnostic } : {}),
+    ...(modularUpdateSubstep ? { modularUpdateSubstep } : {}),
     ...(modularAssertionLine ? { modularAssertionLine } : {}),
     ...(modularHistoricalAssertionLine ? { modularHistoricalAssertionLine } : {}),
     ...(ownershipAssertionLine ? { ownershipAssertionLine } : {}),

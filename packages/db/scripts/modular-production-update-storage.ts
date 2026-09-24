@@ -18,6 +18,12 @@ export const MODULAR_PRODUCTION_BASELINE = {
   fullFingerprint: "1174cd914fce682bc044342ed2d348dbc0c566defcfee47126e2a5d28165fb98",
 } as const;
 export type ModularProductionBaseline = { entries: number; fingerprint: string; fullFingerprint: string };
+export const MODULAR_UPDATE_SUBSTEPS = [
+  "apply", "added_security", "post_apply_catalog", "ledger_reconciliation",
+  "graph_hash", "graph_state", "isolation", "cleanup",
+] as const;
+export type ModularUpdateSubstep = typeof MODULAR_UPDATE_SUBSTEPS[number];
+export type ModularUpdateObserver = (substep: ModularUpdateSubstep | undefined) => void;
 
 const diagnosticSchema = z.object({
   sqlstate: z.string().regex(/^[0-9A-Z]{5}$/),
@@ -83,7 +89,8 @@ export function modularUpdateInventory(raw: unknown, migrations: readonly Modula
 
 export async function appendModularProduction(sql: postgres.Sql, migrations: readonly ModularUpdateMigration[],
   guard: ProductionUpdateGuard, progress: ProductionUpdateProgress,
-  baseline: ModularProductionBaseline = MODULAR_PRODUCTION_BASELINE) {
+  baseline: ModularProductionBaseline = MODULAR_PRODUCTION_BASELINE,
+  substep: ModularUpdateObserver = () => {}) {
   requireInspection(progress.attemptedMigrations === 0 && progress.stagedMigrations === 0 &&
     !progress.commitAttempted && !progress.commitConfirmed, "progress_state");
   const deadline = Date.now() + 120_000;
@@ -95,6 +102,7 @@ export async function appendModularProduction(sql: postgres.Sql, migrations: rea
   let retainedFingerprint = "";
   let committedCatalog: Awaited<ReturnType<typeof modularCatalog>> = [];
   try {
+    substep("apply");
     requireCompatibleModularReferences(await inspectModularReferences(sql));
     await sql.begin(async (tx) => {
       await tx.unsafe("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='60s'; SET LOCAL idle_in_transaction_session_timeout='90s'; SET LOCAL row_security=on");
@@ -115,22 +123,28 @@ export async function appendModularProduction(sql: postgres.Sql, migrations: rea
         await tx.unsafe("INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES ($1,$2)", [migration.hash, migration.folderMillis]);
         progress.stagedMigrations++;
       }
+      substep("ledger_reconciliation");
       const after = productionHistoryRows(Array.from(await tx.unsafe(MODULAR_LEDGER_SQL)));
       requireInspection(after.length === 216 && modularUpdateInventory(after, migrations, baseline).pending.length === 0 &&
         productionHistoryFingerprint(after.slice(0, 213)) === retainedFingerprint, "modular_retention");
       await tx.unsafe("SET CONSTRAINTS ALL IMMEDIATE");
       await check("before_commit");
+      substep("post_apply_catalog");
       committedCatalog = await modularCatalog(tx);
       verifyModularCatalog(catalog, committedCatalog);
+      substep("added_security");
       await verifyAddedModularSecurity(tx);
       requireInspection(Date.now() < deadline, "deadline");
       progress.commitAttempted = true;
+      substep("apply");
     });
     progress.commitConfirmed = true;
+    substep("ledger_reconciliation");
     await check("after_commit");
     const after = productionHistoryRows(Array.from(await sql.unsafe(MODULAR_LEDGER_SQL)));
     requireInspection(after.length === 216 && modularUpdateInventory(after, migrations, baseline).pending.length === 0 &&
       productionHistoryFingerprint(after.slice(0, 213)) === retainedFingerprint, "modular_retention");
+    substep("post_apply_catalog");
     requireInspection(JSON.stringify(await modularCatalog(sql)) === JSON.stringify(committedCatalog), "catalog_after_commit_changed");
     await verifyAddedModularSecurity(sql);
     return { entries: 216, retainedEntries: 213, appendedEntries: 3, fingerprint: productionHistoryFingerprint(after) };

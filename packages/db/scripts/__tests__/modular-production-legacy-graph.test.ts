@@ -120,7 +120,7 @@ describe("DC-K4/DC-SW8 historical updater graph uses pre-modular paths", () => {
     expect(fixture).toContain('assert.equal(process.env.GITHUB_JOB, "pool-storage")');
     const runner = readFileSync(new URL("../../integration-tests/modular-production-update-rehearsal.ts", import.meta.url), "utf8").replaceAll("\r\n", "\n");
     expect(runner).toContain("await fixture.cleanup();\n    await down(158); await down(157); await down(156);");
-    expect(runner).toContain("await fixture.verifyUpgrade()");
+    expect(runner).toContain("await fixture.verifyUpgrade(substep)");
     expect(fixture.indexOf("original = await snapshot();")).toBeLessThan(fixture.indexOf("await movementFixture.prepare();"));
     expect(fixture.indexOf("await movementFixture.prepare();")).toBeLessThan(fixture.indexOf("prepared = await snapshot();"));
     const cleanup = fixture.slice(fixture.lastIndexOf("async cleanup()"));

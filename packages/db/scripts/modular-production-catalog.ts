@@ -175,7 +175,7 @@ SELECT
     pg_get_expr(p.polqual,p.polrelid)=pg_get_expr(p.polwithcheck,p.polrelid))
     FROM pg_policy p JOIN pg_class c ON c.oid=p.polrelid JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname='public' AND c.relname IN ('swim_import_outcomes','swim_plan_rehab_bindings')) AS policies,
-  (SELECT count(*)=jsonb_array_length($2::jsonb) AND bool_and(
+  (SELECT count(*)=jsonb_array_length($2::text::jsonb) AND bool_and(
     p.proowner=CASE WHEN expected.owner='current_user' THEN current_user::regrole ELSE expected.owner::regrole END
     AND p.prosecdef=expected.definer AND p.proconfig=expected.config
     AND NOT has_function_privilege('anon',p.oid,'EXECUTE')
@@ -184,13 +184,12 @@ SELECT
       WHEN p.proname='check_program_parent_consistency' THEN NOT has_function_privilege('authenticated',p.oid,'EXECUTE')
       ELSE true END)
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-    JOIN jsonb_to_recordset($2::jsonb) AS expected(name text,owner text,definer boolean,config text[]) ON expected.name=p.proname
+    JOIN jsonb_to_recordset($2::text::jsonb) AS expected(name text,owner text,definer boolean,config text[]) ON expected.name=p.proname
     WHERE n.nspname='public')
     AS functions`;
 
 export async function verifyAddedModularSecurity(sql: postgres.Sql | postgres.TransactionSql) {
-  const functions = MODULAR_CATALOG_MANIFEST.functions.map((entry) => ({ ...entry, config: [...entry.config] }));
-  const rows = await sql.unsafe(MODULAR_ADDED_SECURITY_SQL, [relations, sql.json(functions), [
+  const rows = await sql.unsafe(MODULAR_ADDED_SECURITY_SQL, [relations, JSON.stringify(MODULAR_CATALOG_MANIFEST.functions), [
     "training_schedule_snapshot", "training_schedule_commit", "start_planned_session_atomically",
     "swim_import_outcomes_ready", "swim_confirm_import_outcome", "validate_owned_rehab_items", "independent_programs_ready",
     "independent_program_schedule_commit", "complete_program_if_settled", "commit_program_progression",

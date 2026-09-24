@@ -11,6 +11,7 @@ import {
 import { tacticalBarbellEngine } from "../../tacticalbarbell/src/program.ts";
 import { generateSwimPlan } from "../../engine/src/swimming.ts";
 import { inspectModularReferences, requireCompatibleModularReferences } from "../scripts/modular-production-references";
+import type { ModularUpdateObserver } from "../scripts/modular-production-update-storage";
 
 type Created = { block_id: string; program_instance_id: string };
 type Table = { schema: string; name: string };
@@ -282,8 +283,10 @@ export function createModularHistoricalGraph(database: postgres.Sql) {
       }), (error: unknown) => error === rollback);
       await unchanged();
     },
-    async verifyUpgrade() {
+    async verifyUpgrade(substep: ModularUpdateObserver = () => {}) {
+      substep("graph_hash");
       await unchanged();
+      substep("graph_state");
       requireCompatibleModularReferences(await inspectModularReferences(database));
       assert.ok(legacy && orphan && template);
       assert.deepEqual(Array.from(await database`SELECT program_kind,status::text FROM public.training_blocks WHERE id=${legacy.block_id}::uuid`),
@@ -293,6 +296,7 @@ export function createModularHistoricalGraph(database: postgres.Sql) {
       assert.equal((await database`SELECT count(*)::int AS n FROM public.training_blocks WHERE program_kind IS NOT NULL`)[0]!.n, 0);
       assert.equal((await database`SELECT count(*)::int AS n FROM public.swim_import_outcomes`)[0]!.n, 0);
       assert.equal((await database`SELECT count(*)::int AS n FROM public.swim_plan_rehab_bindings`)[0]!.n, 0);
+      substep("isolation");
       for (const owner of owners) {
         const peer = owners.find((id) => id !== owner)!;
         for (const table of ["training_blocks", "program_instances", "sessions", "swim_plans", "swim_workouts",
@@ -310,6 +314,7 @@ export function createModularHistoricalGraph(database: postgres.Sql) {
           WHERE user_id=${peer}::uuid RETURNING id`);
         assert.equal(changed.length, 0);
       }
+      substep("graph_hash");
       await unchanged();
     },
     async cleanup() {

@@ -6,6 +6,7 @@ import { readMigrationFiles } from "drizzle-orm/migrator";
 import type postgres from "postgres";
 import {
   appendModularProduction, modularUpdateMigrations, modularUpdateInventory, MODULAR_LEDGER_SQL, validateModularUpdateMigrations,
+  MODULAR_UPDATE_SUBSTEPS, type ModularUpdateObserver,
 } from "../scripts/modular-production-update-storage";
 import { productionHistoryFingerprint, productionHistoryRows } from "../scripts/swim-production-reconciliation";
 import type { ProductionUpdateProgress } from "../scripts/swim-production-update-storage";
@@ -30,7 +31,13 @@ export const MODULAR_UPDATE_REHEARSAL_STAGES = [
   "modular-production-update-fixture-restored",
 ] as const;
 
-export function modularUpdateStageReporter(stage: (name: string) => void, passed: (name: string) => void) {
+export function projectModularUpdateSubstep(stage: string, value: unknown) {
+  if (!MODULAR_UPDATE_REHEARSAL_STAGES.some((name) => name === stage)) return;
+  return MODULAR_UPDATE_SUBSTEPS.find((name) => name === value);
+}
+
+export function modularUpdateStageReporter(stage: (name: string) => void, passed: (name: string) => void,
+  substep: ModularUpdateObserver = () => {}) {
   let active: string | undefined;
   return {
     mark(index: number) {
@@ -43,14 +50,15 @@ export function modularUpdateStageReporter(stage: (name: string) => void, passed
       assert.ok(active);
       assert.equal(active, MODULAR_UPDATE_REHEARSAL_STAGES[index]);
       passed(active);
+      substep(undefined);
       active = undefined;
     },
   };
 }
 
 export async function rehearseModularProductionUpdate(database: postgres.Sql, stage: (name: string) => void,
-  passed: (name: string) => void) {
-  const { mark, pass } = modularUpdateStageReporter(stage, passed);
+  passed: (name: string) => void, substep: ModularUpdateObserver = () => {}) {
+  const { mark, pass } = modularUpdateStageReporter(stage, passed, substep);
   mark(0);
   assert.equal(process.env.GITHUB_ACTIONS, "true");
   assert.equal(process.env.GITHUB_JOB, "pool-storage");
@@ -230,7 +238,8 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     mark(10);
     const committed = progress();
     try {
-      const result = await appendModularProduction(database, migrations, async () => {}, committed, baseline);
+      const result = await appendModularProduction(database, migrations, async () => {}, committed, baseline, substep);
+      substep("ledger_reconciliation");
       assert.deepEqual({ entries: result.entries, retainedEntries: result.retainedEntries, appendedEntries: result.appendedEntries },
         { entries: 216, retainedEntries: 213, appendedEntries: 3 });
     } finally { installed = committed.commitConfirmed; }
@@ -239,7 +248,7 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     assert.deepEqual(after.slice(0, 213), initial);
     assert.equal(after.length, 216);
     assert.equal(modularUpdateInventory(after, migrations, baseline).pending.length, 0);
-    await fixture.verifyUpgrade();
+    await fixture.verifyUpgrade(substep);
     pass(10);
     mark(11);
     const replay = progress();
@@ -249,35 +258,43 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
 
     mark(12);
     // The unchanged 0156 down guard refuses any authored history, even legacy.
+    substep("cleanup");
     await fixture.cleanup();
     await down(158); await down(157); await down(156); installed = false;
+    substep("ledger_reconciliation");
     await database`DELETE FROM drizzle.__drizzle_migrations WHERE id>${initial.at(-1)!.id}`;
     fixture = createModularHistoricalGraph(database);
+    substep("graph_state");
     await fixture.prepare();
+    substep("graph_hash");
     await unchanged();
     const ambiguous = progress();
     try {
       await assert.rejects(appendModularProduction(database, migrations, async (phase) => {
         if (phase === "after_commit") throw new Error("synthetic_modular_postcommit");
-      }, ambiguous, baseline), /synthetic_modular_postcommit/);
+      }, ambiguous, baseline, substep), /synthetic_modular_postcommit/);
     } finally { installed = ambiguous.commitConfirmed; }
+    substep("ledger_reconciliation");
     assert.equal(ambiguous.commitConfirmed, true);
     assert.equal(ambiguous.stagedMigrations, 3);
     const retained = productionHistoryRows(Array.from(await database.unsafe(MODULAR_LEDGER_SQL)));
     assert.deepEqual(retained.slice(0, 213), initial);
     assert.equal(modularUpdateInventory(retained, migrations, baseline).pending.length, 0);
-    await fixture.verifyUpgrade();
+    await fixture.verifyUpgrade(substep);
     pass(12);
   } finally {
     try {
-      if (installed) { await down(158); await down(157); }
-      else await database.unsafe(migrations[156]!.sql[0]!);
-      await database.unsafe("DELETE FROM drizzle.__drizzle_migrations");
-      for (const row of original) await database.unsafe(
-        "INSERT INTO drizzle.__drizzle_migrations(id,hash,created_at) VALUES ($1,$2,$3)", [row.id, row.hash, row.created_at]);
-    } finally { await fixture.cleanup(); }
+      try {
+        if (installed) { await down(158); await down(157); }
+        else await database.unsafe(migrations[156]!.sql[0]!);
+        await database.unsafe("DELETE FROM drizzle.__drizzle_migrations");
+        for (const row of original) await database.unsafe(
+          "INSERT INTO drizzle.__drizzle_migrations(id,hash,created_at) VALUES ($1,$2,$3)", [row.id, row.hash, row.created_at]);
+      } finally { await fixture.cleanup(); }
+    } catch (error) { substep("cleanup"); throw error; }
   }
   mark(13);
+  substep("cleanup");
   assert.deepEqual(productionHistoryRows(Array.from(await database.unsafe(MODULAR_LEDGER_SQL))), original);
   assert.equal(await catalog(), originalCatalog);
   assert.deepEqual(await authAndRoles(), originalAuthAndRoles);

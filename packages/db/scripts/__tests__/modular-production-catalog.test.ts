@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
 import {
   MODULAR_ADDED_CATALOG_KEYS, MODULAR_CHANGED_CONSTRAINTS, MODULAR_CHANGED_FUNCTIONS, MODULAR_REMOVED_INDEXES,
   MODULAR_CATALOG_SQL, MODULAR_ADDED_SECURITY_SQL, ModularCatalogRefusal,
@@ -30,23 +31,50 @@ function fixture() {
 }
 
 describe("DC-SW8 exact modular catalog preserves existing Auth, roles and ACLs", () => {
-  it("binds the manifest as JSONB exactly once without a database connection", async () => {
-    const sql = postgres();
+  it.each([
+    { adapter: "raw", prepare: true }, { adapter: "raw", prepare: false },
+    { adapter: "drizzle", prepare: true }, { adapter: "drizzle", prepare: false },
+  ])("binds JSON text exactly once with $adapter / prepare=$prepare without connecting", async ({ adapter, prepare }) => {
+    const sql = postgres("postgres://postgres@127.0.0.1:1/not_connected", { prepare });
+    if (adapter === "drizzle") drizzle(sql);
     const stopped = new Error("No query execution");
     const query = vi.spyOn(sql, "unsafe").mockImplementation(() => { throw stopped; });
     try {
       await expect(verifyAddedModularSecurity(sql)).rejects.toBe(stopped);
       const parameter = query.mock.calls[0]![1]![1];
-      expect(parameter).toMatchObject({ type: 3802, value: MODULAR_CATALOG_MANIFEST.functions });
-      expect(typeof parameter).toBe("object");
-      if (typeof parameter !== "object" || parameter === null) throw new Error("Explicit JSONB parameter missing");
-      const value: unknown = Object.getOwnPropertyDescriptor(parameter, "value")?.value;
-      const serialize = sql.options.serializers[3802]!;
-      const encoded = serialize(value), broken = serialize(JSON.stringify(MODULAR_CATALOG_MANIFEST.functions));
-      if (typeof encoded !== "string" || typeof broken !== "string") throw new Error("JSONB serializer returned non-text");
+      expect(query.mock.calls[0]![0].match(/\$2::text::jsonb/g)).toHaveLength(2);
+      expect(query.mock.calls[0]![0]).not.toContain("$2::jsonb");
+      expect(parameter).toBe(JSON.stringify(MODULAR_CATALOG_MANIFEST.functions));
+      const encoded = sql.options.serializers[25]!(parameter);
+      if (typeof encoded !== "string") throw new Error("Text serializer returned non-text");
       expect(JSON.parse(encoded)).toEqual(MODULAR_CATALOG_MANIFEST.functions);
-      expect(typeof JSON.parse(broken)).toBe("string");
+      expect(() => Buffer.byteLength(encoded)).not.toThrow();
     } finally { query.mockRestore(); await sql.end(); }
+  });
+
+  it("reproduces both old JSONB failures with the installed drivers and no database", async () => {
+    const sql = postgres("postgres://postgres@127.0.0.1:1/not_connected");
+    try {
+      const doubleEncoded = sql.options.serializers[3802]!(JSON.stringify(MODULAR_CATALOG_MANIFEST.functions));
+      if (typeof doubleEncoded !== "string") throw new Error("JSONB serializer returned non-text");
+      expect(typeof JSON.parse(doubleEncoded)).toBe("string");
+      drizzle(sql);
+      const unencoded = sql.options.serializers[3802]!(MODULAR_CATALOG_MANIFEST.functions);
+      expect(unencoded).toBe(MODULAR_CATALOG_MANIFEST.functions);
+      expect(() => Reflect.apply(Buffer.byteLength, Buffer, [unencoded])).toThrow(
+        expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }));
+    } finally { await sql.end(); }
+  });
+
+  it("uses this same guard in the raw, unconfigured production updater", () => {
+    const entrypoint = readFileSync(new URL("../update-modular-production.ts", import.meta.url), "utf8");
+    const updater = readFileSync(new URL("../modular-production-update-storage.ts", import.meta.url), "utf8");
+    expect(entrypoint).toContain("sql = postgres(databaseUrl, { max: 1, prepare: false");
+    expect(entrypoint).toContain("await appendModularProduction(sql, modularUpdateMigrations()");
+    expect(entrypoint).not.toMatch(/drizzle\(|drizzle-orm\/postgres-js/);
+    expect(updater).toContain("await verifyAddedModularSecurity(tx)");
+    expect(updater).toContain("await verifyAddedModularSecurity(sql)");
+    expect(updater).not.toMatch(/drizzle\(|drizzle-orm\/postgres-js/);
   });
 
   it("binds the source-derived manifest to all three immutable DDL hashes", () => {

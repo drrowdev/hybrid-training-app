@@ -5442,3 +5442,38 @@ covered by an actual helper assertion test. Storage workflow path filtering now
 also includes this helper. Stage inventory remains14 updater /75 SQL /75 UI.
 No application code or migration SQL changed; real SQL qualification remains
 the coordinator's next disposable storage run.
+
+## [2026-09-24] fix | Make release JSON binding independent of ORM configuration
+
+Coordinator-consumed storage35961724799 at e1a4b5 passed58 SQL stages, including
+the realistic graph, ownership preflight and every rollback probe, then failed
+with unexpected in213-to-216. Core35961724776 passed. The installed Drizzle
+adapter mutates a shared postgres.js client's JSON/JSONB serializers to
+identity functions. The newly seeded graph therefore changed the driver's
+handling of the later sql.json manifest: it produced an array instead of text.
+The installed postgres.js byte writer calls Buffer.byteLength on that value
+and throws ERR_INVALID_ARG_TYPE before sending SQL. A no-connection probe
+reproduced this exact transition and error code. Earlier rollback probes stop
+before the added-security query, explaining their success.
+
+The shared guard now binds JSON.stringify(manifest.functions) as TEXT and casts
+both uses with $2::text::jsonb. This avoids both the original raw-driver double
+JSON encoding and the Drizzle-configured identity serializer, without resetting
+shared driver state or weakening catalog checks. Tests exercise the actual
+installed adapters in raw/Drizzle and prepare=true/false combinations, plus both
+old failure mechanisms. The production entrypoint constructs a fresh raw
+postgres.js client with max1/prepare=false, does not configure Drizzle, and
+calls the identical append function and guard before and after commit.
+The fixture's ORM mutation is the sole difference relevant to this binding;
+both configurations now use the same TEXT serialization path.
+
+The coordinator approved storage-only, failure-only modularUpdateSubstep with
+exactly eight values: apply, added_security, post_apply_catalog,
+ledger_reconciliation, graph_hash, graph_state, isolation, cleanup. The shared
+updater and graph accept a typed observation callback; production supplies none.
+Completed rehearsal stages clear the observation, unrelated stages cannot emit
+it, successful cleanup preserves an original failing step, and failed cleanup
+reports cleanup. Existing SQL/catalog/assertion diagnostics are retained.
+The14 updater /75 SQL /75 UI stage inventory and all migration pins are
+unchanged. No live action or local database execution occurred; the next
+GitHub disposable run remains the SQL qualification gate.
