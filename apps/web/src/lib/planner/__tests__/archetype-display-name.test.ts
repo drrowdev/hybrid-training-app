@@ -14,18 +14,18 @@ describe("archetypeDisplayName", () => {
 
   it("uses notes for a custom block", () => {
     expect(archetypeDisplayName("custom", "My block")).toBe("My block");
-    expect(archetypeDisplayName("custom", "  ")).toBe("Custom block");
+    expect(archetypeDisplayName("custom", "  ")).toBe("Custom program");
   });
 
   it("falls back to a brand-neutral label for a platform block (null archetype)", () => {
-    expect(archetypeDisplayName(null)).toBe("Training block");
-    expect(archetypeDisplayName(null, "  ")).toBe("Training block");
+    expect(archetypeDisplayName(null)).toBe("Training program");
+    expect(archetypeDisplayName(null, "  ")).toBe("Training program");
     // a platform block stores its program name in notes, surfaced as the label
     expect(archetypeDisplayName(null, "5/3/1")).toBe("5/3/1");
   });
 
   it("treats a legacy 'program:' placeholder like a platform block", () => {
-    expect(archetypeDisplayName("program:531")).toBe("Training block");
+    expect(archetypeDisplayName("program:531")).toBe("Training program");
   });
 
   it("returns an unknown slug verbatim (defensive)", () => {

@@ -50,7 +50,7 @@ export default async function AccountSettingsPage() {
           >
             <span className="text-sm">Trash</span>
             <span className="text-xs text-foreground/60">
-              {trashCount} item{trashCount === 1 ? "" : "s"} →
+              {trashCount} item{trashCount === 1 ? "" : "s"}
             </span>
           </Link>
         </div>
@@ -58,7 +58,7 @@ export default async function AccountSettingsPage() {
         {/* Export */}
         <div className="space-y-2">
           <p className="text-xs text-foreground/60">
-            Download your account data (GDPR Articles 15 + 20).
+            Download your account data.
           </p>
           <a
             href="/api/me/export"
@@ -82,7 +82,7 @@ export default async function AccountSettingsPage() {
               type="submit"
               className="rounded-md border border-red-600/40 text-red-700 dark:text-red-400 px-3 py-1.5 text-sm hover:bg-red-50 dark:hover:bg-red-950/30"
             >
-              Delete account (GDPR Art. 17)
+              Delete account
             </button>
             <p className="text-xs text-foreground/50 mt-2">
               Permanently deletes your account, sessions, sets, cardio entries,

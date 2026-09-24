@@ -40,7 +40,7 @@ export function WeekEditor({ plan, busy, onApply }: {
               if (result.error) setError(result.error);
               else if (result.preview) setPreview(result.preview);
             } catch {
-              if (sequence === request.current) setError("Could not preview this week. Try again.");
+              if (sequence === request.current) setError("Couldn't preview this week. Try again.");
             }
           });
         }}>

@@ -183,13 +183,12 @@ async function assertHistory(page: Page, today: string, accepted: boolean) {
       await expect(trial.locator("small")).toHaveText(today);
     }
   }
-  const manage = page.getByRole("heading", { name: "Manage plan", exact: true }).locator("..");
-  const past = manage.locator("details").filter({ has: page.getByText("Past decisions", { exact: true }) });
+  const past = page.locator("details").filter({ has: page.getByText("Past decisions", { exact: true }) });
   await openDisclosure(past);
   await expect(past.getByRole("listitem")).toHaveCount(accepted ? 2 : 1);
   await expect(past.getByText("Rejected", { exact: true })).toHaveCount(1);
   await expect(past.getByText("Accepted", { exact: true })).toHaveCount(accepted ? 1 : 0);
-  const summary = page.getByRole("heading", { name: "Technique & base", exact: true }).locator("..");
+  const summary = page.locator("main");
   if (accepted) {
     await expect(summary.getByText(`200 / 400 yard estimate · ${formatSwimTime(acceptedPace)} / 100 yd`, { exact: true })).toBeVisible();
   } else {

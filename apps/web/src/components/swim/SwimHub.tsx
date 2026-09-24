@@ -11,17 +11,22 @@ import { nextSwimHubView, type SwimHubView, type SwimResumePreview } from "@/lib
 import type { SwimBenchmarkPreview } from "@/lib/swim/model";
 import type { ActionResult } from "@/lib/offline/outbox-core";
 import { createRequestGate } from "@/lib/swim/hub-request";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { BackLink } from "@/components/ui/BackLink";
+import { ProgramDetailHeader } from "@/components/program/ProgramDetailHeader";
+import detailStyles from "@/components/program/ProgramDetailHeader.module.css";
+import { ProgramSwitcher, type ProgramChoice } from "@/components/program/ProgramSwitcher";
+import { formatProgramDate } from "@/lib/programs/presentation";
 import { BenchmarkFields } from "./SetupForm";
 import { WeekEditor } from "./WeekEditor";
 import { DateEditor } from "./DateEditor";
 import { PoolEditor } from "./PoolEditor";
 import styles from "./Swim.module.css";
 
-export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
+export function SwimHub({ plan: incomingPlan, plans, setupEnabled, programs }: {
   plan: SwimHubView;
   plans: { id: string; startedOn: string; status: SwimHubView["status"] }[];
   setupEnabled: boolean;
+  programs: readonly ProgramChoice[];
 }) {
   const [heldPlan, setPlan] = useState(incomingPlan);
   const plan = nextSwimHubView(heldPlan, incomingPlan, "props");
@@ -42,7 +47,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
       try {
         const result = await action();
         if (!result || result.ok !== true || result.error || result.errorCode) {
-          setError(result?.error || "Could not save this change. Try again.");
+          setError(result?.error || "Couldn't save this change. Try again.");
           return;
         }
         const view = result.view;
@@ -50,30 +55,46 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
         setWarnings([result.warning, result.refreshWarning].filter((warning): warning is string => !!warning));
         setPreview(null);
         setBenchmark(null);
-      } catch { setError("Could not save this change. Try again."); return; }
+      } catch { setError("Couldn't save this change. Try again."); return; }
     }, setRequestBusy);
   }
   const editable = plan.status === "active" || plan.status === "paused";
   return (
     <>
-      <PageHeader title="Swimming" back={{ href: "/app/plan", label: "Plan" }}
-        actions={setupEnabled && !choices.some((choice) => choice.status === "active")
-          ? <Link href="/app/swim/setup" className={styles.button}>Set up swimming</Link> : undefined} />
-      {choices.length > 1 && <nav className={styles.actions} aria-label="Swim plans">
-        {choices.map((choice) => <Link key={choice.id} href={`/app/swim?plan=${choice.id}`} className={styles.secondary} aria-current={choice.id === plan.id ? "page" : undefined}>
-          {choice.startedOn} · {({ active: "Active", paused: "Paused", finished: "Finished", archived: "Archived" })[choice.status]}
-        </Link>)}
-      </nav>}
-      <section className={styles.section}>
-        <h2>{plan.imported?.title ?? plan.goal}</h2>
-        <p className={styles.muted}>{plan.course} · {plan.dates}</p>
+      <BackLink href="/app/programs" label="Programs" />
+      <ProgramSwitcher programs={programs.map((program) => program.id === plan.id ? { ...program, status: plan.status } : program)} selectedId={plan.id} />
+      <ProgramDetailHeader
+        title={programs.find((program) => program.id === plan.id)?.name ?? plan.imported?.title ?? plan.goal}
+        eyebrow={`${({ active: "Active", paused: "Paused", finished: "Finished", archived: "Archived" })[plan.status]} program · Swimming`}
+        subtitle={<><span data-testid="program-pool">{plan.course} pool</span> · {plan.dates.replace(/\d{4}-\d{2}-\d{2}/g, formatProgramDate)}</>}
+        completed={plan.workouts.filter((workout) => workout.status === "Completed").length}
+        total={plan.workouts.length}
+        actions={<div className={detailStyles.actions}>
+          {plan.nextWorkoutId && <Link className="cp-btn primary" href={`/app/swim/${plan.nextWorkoutId}`}>Next swim</Link>}
+          {setupEnabled && !choices.some((choice) => choice.status === "active") &&
+            <Link href="/app/swim/setup" className="cp-btn">Set up swimming</Link>}
+          {plan.status !== "archived" && <details className={detailStyles.menu} data-testid="swim-program-actions"
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.currentTarget.open = false;
+                event.currentTarget.querySelector("summary")?.focus();
+              }
+            }}>
+            <summary aria-label="More program actions">⋯</summary>
+            <div role="group" aria-label="Program actions">
+              {plan.status === "active" && <button disabled={requestBusy} onClick={() => run(() => changeSwimPlanStatus(plan.id, plan.revision, "paused"))}>Pause</button>}
+              {editable && <button disabled={requestBusy} onClick={() => run(() => changeSwimPlanStatus(plan.id, plan.revision, "finished"))}>Finish plan</button>}
+              <button disabled={requestBusy} onClick={() => run(() => changeSwimPlanStatus(plan.id, plan.revision, "archived"))}>Archive</button>
+            </div>
+          </details>}
+        </div>} />
+      {error && <p role="alert" className={styles.error}>{error}</p>}
+      {(plan.poolEditing || plan.assessment || (plan.status === "active" && !plan.imported)) && <section className={styles.section}>
         {plan.poolEditing && <PoolEditor key={`pool:${plan.id}:${plan.revision}`} context={plan.poolEditing}
           busy={requestBusy} onApply={(change) => run(() => applySwimPoolEdit(change))} />}
         {plan.assessment && <p className={styles.muted}>{plan.assessment.label} · {plan.assessment.pace}</p>}
-        <p className={styles.status}>{({ active: "Active", paused: "Paused", finished: "Finished", archived: "Archived" })[plan.status]}</p>
-        {plan.nextWorkoutId && <Link className={styles.button} href={`/app/swim/${plan.nextWorkoutId}`}>Next swim</Link>}
         {plan.status === "active" && !plan.imported && <button className={styles.secondary} disabled={requestBusy} onClick={() => run(() => proposeSwimWeek(plan.id, plan.revision))}>Review next week</button>}
-      </section>
+      </section>}
       {warnings.map((warning, index) => <p key={index} role="status" className={styles.warning}>{warning}</p>)}
       {plan.proposals.filter((proposal) => proposal.status === "pending").map((proposal) => (
         <section key={proposal.id} className={styles.section}>
@@ -111,7 +132,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
         <ul className={styles.list} aria-label="Swims">
           {plan.workouts.map((workout) => <li key={workout.id} className={styles.scheduledRow}>
             <Link href={`/app/swim/${workout.id}`} className={styles.row}>
-              <span><strong>{workout.title}</strong><small>{workout.date}{!plan.imported && ` · Week ${workout.week}`}{workout.provisional && workout.status === "Scheduled" ? " · Draft" : ""}</small></span>
+              <span><strong>{workout.title}</strong><small><time dateTime={workout.date}>{formatProgramDate(workout.date)}</time>{!plan.imported && ` · Week ${workout.week}`}{workout.provisional && workout.status === "Scheduled" ? " · Draft" : ""}</small></span>
               <span>{workout.total}<small>{workout.course && `${workout.course} · `}{workout.status}</small></span>
             </Link>
             {workout.reschedule && <DateEditor key={`${plan.revision}:${workout.reschedule.revision}`}
@@ -160,7 +181,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
               const result = await proposeSwimBenchmark(plan.id, plan.revision, form);
               if (result.error) setError(result.error);
               else if (result.preview) setBenchmark(result.preview);
-            } catch { setError("Could not review this assessment. Try again."); }
+            } catch { setError("Couldn't review this assessment. Try again."); }
           }, setRequestBusy);
         }}>
           <BenchmarkFields />
@@ -176,8 +197,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
           </div>
         </>}
       </section>}
-      <section className={styles.section}>
-        <h2>Manage plan</h2>
+      {(plan.status === "paused" || preview) && <section className={styles.section} aria-label="Resume program">
         {plan.status === "paused" && <form className={styles.form} method="post" onSubmit={(event) => {
           event.preventDefault();
           const form = new FormData(event.currentTarget);
@@ -187,7 +207,7 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
               const result = await previewSwimResume(plan.id, plan.revision, String(form.get("startDate")));
               if (result.error) setError(result.error);
               else if (result.preview) { setAcceptOverlap(false); setPreview(result.preview); }
-            } catch { setError("Could not preview new dates. Try again."); }
+            } catch { setError("Couldn't preview new dates. Try again."); }
           }, setRequestBusy);
         }}>
           <label className={styles.field}>Resume from<input type="date" name="startDate" min={plan.today} defaultValue={plan.today} required /></label>
@@ -203,19 +223,13 @@ export function SwimHub({ plan: incomingPlan, plans, setupEnabled }: {
           <button className={styles.button} disabled={requestBusy || (!!preview.overlaps?.length && !acceptOverlap)}
             onClick={() => run(() => resumeSwimPlan(preview, acceptOverlap))}>Accept dates and resume</button>
         </div>}
-        <div className={styles.actions}>
-          {plan.status === "active" && <button className={styles.secondary} disabled={requestBusy} onClick={() => run(() => changeSwimPlanStatus(plan.id, plan.revision, "paused"))}>Pause</button>}
-          {editable && <button className={styles.secondary} disabled={requestBusy} onClick={() => run(() => changeSwimPlanStatus(plan.id, plan.revision, "finished"))}>Finish plan</button>}
-          {plan.status !== "archived" && <button className={styles.secondary} disabled={requestBusy} onClick={() => run(() => changeSwimPlanStatus(plan.id, plan.revision, "archived"))}>Archive</button>}
-        </div>
+      </section>}
         {plan.proposals.some((proposal) => proposal.status !== "pending") && <details className={styles.details}>
           <summary>Past decisions</summary>
           <ul className={styles.list}>{plan.proposals.filter((proposal) => proposal.status !== "pending").map((proposal) => <li key={proposal.id} className={styles.row}>
             <span>{proposal.title}<small>{proposal.detail}</small>{proposal.warning && <small className={styles.warning}>{proposal.warning}</small>}</span><span>{({ accepted: "Accepted", rejected: "Rejected", overridden: "Overridden" } as Record<string, string>)[proposal.status]}</span>
           </li>)}</ul>
         </details>}
-      </section>
-      {error && <p role="alert" className={styles.error}>{error}</p>}
     </>
   );
 }

@@ -471,7 +471,6 @@ describe("MovementFocusView inline history", () => {
       />,
     );
     expect(html).toContain("Logged before swap");
-    expect(html).toContain("original movement attribution is preserved");
     expect(html).toMatch(/disabled="" data-testid="movement-focus-log-button"/);
   });
 
@@ -755,4 +754,3 @@ describe("FocusStripLogger — SSR-safe initial markup regardless of resume (def
 async function importWriteResume() {
   return import("@/lib/sessions/session-resume");
 }
-

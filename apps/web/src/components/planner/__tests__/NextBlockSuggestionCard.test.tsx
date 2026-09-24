@@ -31,7 +31,7 @@ describe("NextBlockSuggestionCard", () => {
         }}
       />,
     );
-    expect(html).toContain("Consider a 5/3/1 block next");
+    expect(html).toMatch(/<h\d[^>]*>[^<]*5\/3\/1[^<]*<\/h\d>/);
     expect(html).toContain("You stacked balanced blocks.");
     expect(html).toContain("only a suggestion");
     // Default eyebrow.

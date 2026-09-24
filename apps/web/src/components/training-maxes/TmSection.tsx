@@ -183,7 +183,7 @@ function OneRmInput({
         const result = await action(fd);
         if (!result.ok) {
           setStatus("error");
-          setError("Could not save this max. Try again.");
+          setError("Couldn't save this max. Try again.");
           return;
         }
         lastSavedKg.current = kg;
@@ -191,7 +191,7 @@ function OneRmInput({
         window.setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 1600);
       } catch {
         setStatus("error");
-        setError("Could not save this max. Try again.");
+        setError("Couldn't save this max. Try again.");
       }
     });
   };

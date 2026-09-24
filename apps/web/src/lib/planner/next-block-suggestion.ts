@@ -107,12 +107,12 @@ function programForEventModality(m: TaperModality): NextBlockSuggestion {
     case "endurance":
       return suggest(
         "green-protocol",
-        "You have an endurance event coming up — an endurance-led block builds toward it.",
+        "You have an endurance event coming up — an endurance-led program builds toward it.",
       );
     case "mixed":
       return suggest(
         "hybrid",
-        "You have a hybrid event coming up — a balanced block keeps both engines sharp.",
+        "You have a hybrid event coming up — a balanced program keeps both engines sharp.",
       );
   }
 }
@@ -153,7 +153,7 @@ export function suggestNextProgram(
   if (recentReactiveDeloads >= REACTIVE_DELOAD_BACKOFF) {
     return suggest(
       "hybrid",
-      "Your last few blocks needed reactive deloads — a balanced block you can dial back (fewer days, lower intensity) restores capacity before pushing again.",
+      "Your last few programs needed reactive deloads — a balanced program you can dial back (fewer days, lower intensity) restores capacity before pushing again.",
     );
   }
 
@@ -184,22 +184,22 @@ function complementaryProgram(id: SuggestProgramId): NextBlockSuggestion | null 
     case "wendler-531":
       return suggest(
         "hybrid",
-        "You've stacked several strength cycles — a balanced block adds the conditioning that pure strength work neglects.",
+        "You've stacked several strength cycles — a balanced program adds the conditioning that pure strength work neglects.",
       );
     case "hybrid":
       return suggest(
         "wendler-531",
-        "You've run several balanced blocks — a focused strength cycle lets one quality lead instead of splitting the dose.",
+        "You've run several balanced programs — a focused strength cycle lets one quality lead instead of splitting the dose.",
       );
     case "tactical-barbell":
       return suggest(
         "hybrid",
-        "You've run the same block for a while — a balanced build-your-own block changes the stimulus.",
+        "You've run the same program for a while — a balanced build-your-own program changes the stimulus.",
       );
     case "green-protocol":
       return suggest(
         "wendler-531",
-        "You've run several endurance-led blocks — a focused strength cycle rebuilds the strength that high aerobic volume erodes.",
+        "You've run several endurance-led programs — a focused strength cycle rebuilds the strength that high aerobic volume erodes.",
       );
     default:
       return null;
@@ -229,7 +229,7 @@ export function suggestRealizationWeek(input: {
   if (run.id === "wendler-531" && run.length >= REALIZATION_MIN_STRENGTH_RUN) {
     return {
       reason:
-        "You've built strength for a couple of cycles without testing it. Before your next block, consider a lighter week of heavy singles to peak and re-test your maxes.",
+        "You've built strength for a couple of cycles without testing it. Before your next program, consider a lighter week of heavy singles to peak and re-test your maxes.",
     };
   }
   return null;

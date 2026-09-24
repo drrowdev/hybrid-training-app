@@ -1678,7 +1678,7 @@ export function MovementFocusView({
                 href="/app/settings/equipment"
                 className="cp-link"
               >
-                Set up plate inventory →
+                Set up plate inventory
               </a>
             </div>
           );
@@ -1812,8 +1812,7 @@ export function MovementFocusView({
         )}
         {loggedBeforeSwap && (
           <div role="status" style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>
-            This set was logged before the movement was swapped, so its original
-            movement attribution is preserved.
+            Logged before the swap.
           </div>
         )}
 

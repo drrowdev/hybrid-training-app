@@ -150,7 +150,7 @@ export function TopNav({
                 fontFamily: "var(--cp-font-mono)",
                 fontSize: 12.5,
                 fontWeight: active ? 600 : 500,
-                textTransform: "uppercase",
+                textTransform: "none",
                 letterSpacing: "0.06em",
                 color: active ? "var(--cp-accent)" : "var(--cp-text-muted)",
                 background: active ? "var(--cp-accent-soft)" : "transparent",

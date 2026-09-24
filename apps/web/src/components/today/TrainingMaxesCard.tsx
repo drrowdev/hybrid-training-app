@@ -62,7 +62,7 @@ export function TrainingMaxesCard({ rows, units = "metric" }: { rows: TmRow[]; u
             href="/app/settings"
             className="cp-link"
           >
-            Set them →
+            Set them
           </Link>
         </p>
       ) : (

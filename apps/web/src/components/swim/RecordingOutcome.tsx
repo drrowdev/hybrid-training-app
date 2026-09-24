@@ -52,10 +52,8 @@ export function RecordingOutcome({ workoutId, matchId, workoutRevision, expected
         setEditing(outcome === null);
         setWarning(result.warning ?? null);
         try { router.refresh(); }
-        catch { setWarning(outcome === null
-          ? "Confirmation removed. Reload the page to see the update."
-          : "Outcome saved. Reload the page to see the update."); }
-      } catch { setError("The outcome is unconfirmed. Reload before trying again."); }
+        catch { setWarning("Couldn't refresh this workout. Try again."); }
+      } catch { setError("Couldn't confirm this change. Try again."); }
     }, setPending);
   }
 

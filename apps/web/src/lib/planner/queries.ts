@@ -42,9 +42,9 @@ export function archetypeDisplayName(
   // Platform-program blocks leave archetype NULL (migration 0103) and carry a
   // brand-neutral label in notes; archetype blocks keep their slug.
   if (archetype == null || archetype.startsWith("program:")) {
-    return notes?.trim() || "Training block";
+    return notes?.trim() || "Training program";
   }
-  if (archetype === "custom") return notes?.trim() || "Custom block";
+  if (archetype === "custom") return notes?.trim() || "Custom program";
   const a = ARCHETYPES[archetype as Exclude<ArchetypeId, "custom">];
   return a?.name ?? archetype;
 }
@@ -166,7 +166,7 @@ export const getActiveBlocks = cache(async function getActiveBlocks(): Promise<A
     .is("deleted_at", null)
     .order("started_on", { ascending: true })
     .order("id", { ascending: true });
-  if (error) throw new Error("Could not read your programs. Try again.");
+  if (error) throw new Error("Couldn't read your programs. Try again.");
   const rows = z.array(activeBlockSchema).parse(data);
   assertActiveProgramKinds(rows.map((row) => ({ program_kind: row.program_kind ?? null })));
   return rows.map((row) => ({
@@ -198,7 +198,7 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
     .order("week_index", { ascending: true })
     .order("day_index", { ascending: true })
     .order("slot", { ascending: true });
-  if (error || !data) throw new Error("Could not read your workouts. Try again.");
+  if (error || !data) throw new Error("Couldn't read your workouts. Try again.");
 
   // `completed_session_id` is set when a planned session is STARTED (see
   // startSessionDirect), so its presence only means "linked / in-progress".
@@ -218,7 +218,7 @@ export async function getPlannedDays(blockId: string, startedOn: string): Promis
       .select("id, completed_at, deleted_at")
       .eq("user_id", user.id)
       .in("id", linkedIds);
-    if (linkedError || !linkedSessions) throw new Error("Could not read your workout history. Try again.");
+    if (linkedError || !linkedSessions) throw new Error("Couldn't read your workout history. Try again.");
     for (const s of linkedSessions ?? []) {
       linkedSessionById.set(s.id as string, {
         id: s.id as string,

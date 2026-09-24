@@ -34,13 +34,10 @@ export function EngineResponseSection({
     >
       <header style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
-          Recent adjustments
+          Automatic adjustments
         </h2>
         <MetricHelp term="injury_aware_ceiling" />
       </header>
-      <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>
-        Automatic adjustments in the last 14 days.
-      </p>
       {events.length === 0 ? (
         <EmptyState
           variant="inline"

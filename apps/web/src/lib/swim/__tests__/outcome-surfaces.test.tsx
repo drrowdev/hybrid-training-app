@@ -93,7 +93,7 @@ describe("DC-SW5/SW6/SW7 canonical outcome surfaces", () => {
     expect(hub.workouts[0]!.status).toBe(label);
     expect(hub.nextWorkoutId).toBe(fixture.workouts[value ? 1 : 0]!.id);
     expect(hub.analytics.weeks).toEqual([expect.objectContaining({ actual: "—", frequency: 0, adherence: "—" })]);
-    const html = renderToStaticMarkup(<SwimHub plan={hub} plans={[]} setupEnabled={false} />);
+    const html = renderToStaticMarkup(<SwimHub plan={hub} plans={[]} programs={[]} setupEnabled={false} />);
     expect(html).toContain('aria-label="Swims"');
     expect(html).toContain(`href="/app/swim/${hub.nextWorkoutId}">Next swim</a>`);
     const workout = await loadSwimWorkoutView(client, userId, first.id);

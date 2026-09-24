@@ -276,8 +276,8 @@ function ExternalCardioRow({
               {isLowConfidence && (
                 <span
                   data-testid={`cardio-external-low-confidence-${itemIndex}`}
-                  title="Uncertain classification: heart-rate data may be incomplete."
-                  aria-label="Uncertain classification"
+                  title="Heart rate may be incomplete."
+                  aria-label="Heart rate may be incomplete"
                   style={{
                     marginLeft: 4,
                     fontSize: 11,

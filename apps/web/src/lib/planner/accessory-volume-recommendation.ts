@@ -105,7 +105,7 @@ export function recommendedAccessoryVolume(args: {
       return {
         level: "high",
         reason:
-          "Muscle growth is the whole point of this block, so more accessory volume is the productive choice.",
+          "Muscle growth is the whole point of this program, so more accessory volume is the productive choice.",
       };
 
     case "strength_anchor":

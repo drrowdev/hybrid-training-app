@@ -188,7 +188,7 @@ function detailFor(
     case "down":
       return "At least one modality is regressing — review intensity vs recovery before the next week.";
     case "mixed":
-      return "Strength and endurance disagree — pick the one that matters most this block and protect it.";
+      return "Strength and endurance disagree — pick the one that matters most this program and protect it.";
     case "holding":
       return "Both signals are flat — neither growing nor slipping.";
     case "building":

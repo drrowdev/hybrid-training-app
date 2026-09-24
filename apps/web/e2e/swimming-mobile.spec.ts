@@ -16,8 +16,8 @@ test.describe("ADR0079 standalone swimming", () => {
     await page.goto("/app/plan/new");
     await expect(page).toHaveURL(/\/onboarding$/);
     await page.getByRole("button", { name: "Swimming", exact: true }).click();
-    await page.getByRole("button", { name: "Continue →", exact: true }).click();
-    await page.getByRole("button", { name: "Set up swimming →", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await page.getByRole("button", { name: "Set up swimming", exact: true }).click();
     await expect(page).toHaveURL(/\/app\/swim\/setup$/);
     await page.reload();
     await expect(page).toHaveURL(/\/app\/swim\/setup$/);

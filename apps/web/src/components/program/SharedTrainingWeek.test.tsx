@@ -101,8 +101,11 @@ describe("SharedTrainingWeek", () => {
       { ...snapshot.entries[0]!, id: "outside-active-block" },
     ];
     const html = renderToStaticMarkup(<TrainingWeek entries={entries} today={primaryWeek.today}
+      sessionLinks={{ started: "live-session", completed: "finished-session" }}
       primaryPreviewIds={["started", "completed"]} />);
-    for (const entry of entries) expect(html).toContain(`href="/app/sessions/start/${entry.id}"`);
+    expect(html).toContain('href="/app/sessions/live-session"');
+    expect(html).toContain('href="/app/sessions/finished-session"');
+    expect(html).toContain('href="/app/sessions/start/outside-active-block"');
     expect(html).not.toContain('href="#session=');
   });
 
@@ -119,7 +122,7 @@ describe("SharedTrainingWeek", () => {
     "DC-SW5 shares the %s label without changing schedule occupancy or primary actions", (status) => {
       const html = renderToStaticMarkup(<TrainingWeek entries={snapshot.entries} today={primaryWeek.today}
         swimStatuses={{ "swim-a": status }} />);
-      expect(html).toContain(`>${({ completed: "Completed", stopped_early: "Stopped early", needs_review: "Review recording", scheduled: "Scheduled" })[status]}</span>`);
+      expect(html).toContain(`>${({ completed: "Completed", stopped_early: "Stopped early", needs_review: "Review recording", scheduled: "Start workout" })[status]}</span>`);
       expect(html).toContain('href="/app/swim/swim-a?from=today"');
       expect(html).toContain('href="/app/sessions/start/primary-a"');
       expect(snapshot.entries[1]!.state).toBe("scheduled");

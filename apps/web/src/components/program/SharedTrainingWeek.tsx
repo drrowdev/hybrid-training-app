@@ -4,6 +4,8 @@ import { archetypeDisplayName, getActiveBlocks } from "@/lib/planner/queries";
 import { ThisWeekRail, type ThisWeekRailProps } from "@/components/plan/ThisWeekRail";
 import { TrainingWeek } from "./TrainingWeek";
 import { loadStandaloneSwimStates } from "@/lib/swim/standalone-state";
+import { loadScheduleSessionLinks } from "@/lib/schedule/session-links";
+import { hasTemplateWorkoutTitles } from "@/lib/programs/presentation";
 
 export async function SharedTrainingWeek({ today, primaryWeek }: {
   today: string;
@@ -12,6 +14,7 @@ export async function SharedTrainingWeek({ today, primaryWeek }: {
   const client = await createClient();
   const [snapshot, active] = await Promise.all([loadAvailableTrainingSchedule(client), getActiveBlocks()]);
   if (!snapshot && !primaryWeek) return null;
+  const sessionLinks = await loadScheduleSessionLinks(client, snapshot?.entries ?? []);
   const swimIds = snapshot?.entries.filter((entry) => entry.source === "swim").map((entry) => entry.id) ?? [];
   const { data: { user } } = swimIds.length ? await getAuthUser() : { data: { user: null } };
   if (swimIds.length && !user) throw new Error("Sign in to view the swim schedule.");
@@ -19,6 +22,7 @@ export async function SharedTrainingWeek({ today, primaryWeek }: {
     .map(([id, state]) => [id, state.status])) : {};
   const week = <>
     {snapshot && <TrainingWeek entries={snapshot.entries} today={today}
+      sessionLinks={sessionLinks} templateBlockIds={active.filter(hasTemplateWorkoutTitles).map((block) => block.id)}
       authoredBlockIds={active.filter((block) => block.programId === "authored").map((block) => block.id)}
       programLabels={Object.fromEntries(active.map((block) => [block.id, archetypeDisplayName(block.archetype, block.notes)]))}
       swimStatuses={swimStatuses}

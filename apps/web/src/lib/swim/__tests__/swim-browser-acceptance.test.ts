@@ -1325,7 +1325,11 @@ describe("browser environment and static config", () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-decisions-offline-mobile.spec.ts"), "utf8").replaceAll("\r\n", "\n");
     const boundary = source.indexOf('\n  test("B9 ');
     expect(boundary).toBeGreaterThan(0);
-    const prefix = source.slice(source.indexOf("const test ="), boundary).trimEnd();
+    const displayedPool = 'page.getByTestId("program-pool").getByText("50 m pool", { exact: true })';
+    const currentPrefix = source.slice(source.indexOf("const test ="), boundary).trimEnd();
+    expect(currentPrefix.split(displayedPool)).toHaveLength(3);
+    const prefix = currentPrefix.replaceAll(displayedPool,
+      'page.locator("main > section").first().getByText("50 m", { exact: true })');
     expect(createHash("sha256").update(prefix).digest("hex"))
       .toBe("dcfc34c28518dc746ce0d0c45dd2d0c095f5f3529059cfec6f7dff4bbd9b9c9f");
     // Only the three required previews and two preview-only refusal/guidance entries differ.
@@ -1387,7 +1391,8 @@ describe("browser environment and static config", () => {
         reloads.push(current);
         selectedChecked = false;
       },
-      getByRole: (_role: string, options: { name: string }) => options.name === "Swim plans" ? {
+      getByRole: (_role: string, options: { name: string }) => options.name === "Program history" ? {
+        locator: () => ({}),
         getByRole: (_role: string, options?: { name: RegExp }) => {
           const id = options?.name.test("Archived") ? "old" : "new";
           return { id, click: async () => { pending = `http://127.0.0.1:3000/app/swim?plan=${id}`; } };
@@ -1397,7 +1402,7 @@ describe("browser environment and static config", () => {
     const execute = runInNewContext(transpileModule(`(async () => { ${block} } })`, {
       compilerOptions: { target: ScriptTarget.ES2022 },
     }).outputText, {
-      page, original: { planId: "old" }, replacementId: "new", URL,
+      page, original: { planId: "old" }, replacementId: "new", URL, openSwimProgramHistory: async () => {},
       expect: (value: unknown) => ({
         toBe: (expected: unknown) => expect(value).toBe(expected),
         toHaveCount: async () => {},
@@ -2398,7 +2403,7 @@ describe("browser environment and static config", () => {
         'expect(outcome).toBe("reached");',
         "const remaining = deadline - performance.now();",
         "expect(remaining).toBeGreaterThan(0);",
-        `await expect(page.locator("main > section").first().getByText("${label}", { exact: true })).toBeVisible({ timeout: remaining });`,
+        `await expect(page.getByTestId("page-header").getByText("${label} program · Swimming", { exact: true })).toBeVisible({ timeout: remaining });`,
         "const saved = await savedPlan(admin, freshUser.userId, planId);",
         `lifecycleTransition(previous.plan, saved.plan, "${status}");`,
         "expect(saved.workouts).toEqual(resumed.workouts);",
@@ -2409,7 +2414,7 @@ describe("browser environment and static config", () => {
     }
     ordered.push(
       "await page.reload();",
-      'await expect(page.locator("main > section").first().getByText("Archived", { exact: true })).toBeVisible();',
+      'await expect(page.getByTestId("page-header").getByText("Archived program · Swimming", { exact: true })).toBeVisible();',
       "expect(await savedPlan(admin, freshUser.userId, planId)).toEqual(previous);",
       "expect(await primary.snapshot()).toEqual(primary.initial);",
     );
@@ -2421,8 +2426,8 @@ describe("browser environment and static config", () => {
     }
     const assertionLines = transitions.split("\n").filter((line) => line.includes(".toBeVisible({ timeout: remaining });"));
     expect(assertionLines).toHaveLength(2);
-    expect(assertionLines[0]).toContain('getByText("Finished",');
-    expect(assertionLines[1]).toContain('getByText("Archived",');
+    expect(assertionLines[0]).toContain('getByText("Finished program · Swimming",');
+    expect(assertionLines[1]).toContain('getByText("Archived program · Swimming",');
     expect(transitions.match(/performance\.now\(\) \+ 5000/g)).toHaveLength(2);
     expect(transitions.match(/\.click\(\)/g)).toHaveLength(2);
     expect(transitions).not.toMatch(/for\s*\(|while\s*\(|catch\s*\(|timeout: 5000|waitForTimeout|annotations\.push/);

@@ -103,12 +103,10 @@ export function BodyweightOnlyBanner({
           fontWeight: 700,
         }}
       >
-        Bodyweight programming is in early support
+        Bodyweight training
       </div>
       <p style={{ margin: 0, fontSize: 13, lineHeight: 1.5 }}>
-        You&apos;ll get a starter block focused on accessories with RPE-based
-        progression. Proper push-up / pull-up / squat progression ladders are next
-        on our roadmap.
+        Accessory exercises with RPE-based progression.
       </p>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
         <Link
@@ -116,7 +114,7 @@ export function BodyweightOnlyBanner({
           className="cp-btn ghost"
           style={{ fontSize: 12 }}
         >
-          Settings →
+          Settings
         </Link>
         <button
           type="button"

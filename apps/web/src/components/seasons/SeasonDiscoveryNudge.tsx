@@ -62,11 +62,7 @@ export function SeasonDiscoveryNudge() {
         ✦
       </div>
       <div className={styles.body}>
-        <div className={styles.title}>Thinking longer-term?</div>
-        <div className={styles.lead}>
-          Map a training season — base → focus blocks → peak for a goal. You stay
-          in control; only your current block is ever scheduled.
-        </div>
+        <div className={styles.title}>Season planning</div>
       </div>
       <div className={styles.actions}>
         <button
@@ -76,7 +72,7 @@ export function SeasonDiscoveryNudge() {
           disabled={pending}
           data-testid="season-discovery-plan"
         >
-          {pending ? "Opening…" : "Plan a season →"}
+          {pending ? "Opening…" : "Plan a season"}
         </button>
         <button
           type="button"

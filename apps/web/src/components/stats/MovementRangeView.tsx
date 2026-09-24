@@ -407,8 +407,7 @@ function RpeTrendCard({
     >
       <h2 style={{ margin: 0, fontSize: 16 }}>Effort over time</h2>
       <p style={{ margin: "2px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-        Mean RPE per session for this movement. Climbing RPE on flat weight is a
-        deload signal.
+        Average RPE per session.
       </p>
       {creep.flagged && (
         <div
@@ -468,8 +467,7 @@ function RecentSessionsCard({
     >
       <h2 style={{ margin: 0, fontSize: 16 }}>Recent sessions</h2>
       <p style={{ margin: "2px 0 12px", fontSize: 12, color: "var(--cp-text-muted)" }}>
-        Last 5, newest first. Delta is relative to the average top-set weight in
-        this range.
+        Last 5 sessions.
       </p>
       {rows.length === 0 ? (
         <p style={{ margin: 0, fontSize: 12, color: "var(--cp-text-muted)" }}>

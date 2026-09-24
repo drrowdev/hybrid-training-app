@@ -39,7 +39,7 @@ export function TrainingProgressionCards({
             className="inline-flex items-center justify-between gap-3 rounded-lg border border-foreground/10 p-4 w-full hover:bg-foreground/5"
           >
             <span className="text-sm">Manage 1-rep maxes</span>
-            <span className="text-xs text-foreground/60">→</span>
+            <span className="text-xs text-foreground/60"></span>
           </Link>
         </section>
       )}
@@ -56,7 +56,7 @@ export function TrainingProgressionCards({
             className="inline-flex items-center justify-between gap-3 rounded-lg border border-foreground/10 p-4 w-full hover:bg-foreground/5"
           >
             <span className="text-sm">Bodyweight progression</span>
-            <span className="text-xs text-foreground/60">View →</span>
+            <span className="text-xs text-foreground/60">View</span>
           </Link>
         </section>
       )}

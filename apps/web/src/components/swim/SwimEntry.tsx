@@ -14,7 +14,7 @@ export async function SwimEntry() {
     <section className={styles.section} aria-label="Swimming">
       <Link href={href} className={styles.row}>
         <strong>Pool swimming</strong>
-        <span>{navigation.hasPlans ? "View swims →" : "Set up →"}</span>
+        <span>{navigation.hasPlans ? "View swims" : "Set up"}</span>
       </Link>
     </section>
   );

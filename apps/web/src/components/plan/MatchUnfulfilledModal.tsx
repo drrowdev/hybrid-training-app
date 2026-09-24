@@ -242,7 +242,7 @@ export function MatchUnfulfilledModal({
             data-testid="match-modal-quicklog"
             style={{ fontSize: 12, textDecoration: "none" }}
           >
-            Quick log →
+            Quick log
           </a>
         </div>
       </div>

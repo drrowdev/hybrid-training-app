@@ -263,7 +263,7 @@ export function FreestyleMovementCard({
       }
       onRemove?.(movement.id);
     } catch (err) {
-      setRemoveError(err instanceof Error ? err.message : "Could not remove movement.");
+      setRemoveError(err instanceof Error ? err.message : "Couldn't remove movement.");
     } finally {
       setRemoving(false);
     }

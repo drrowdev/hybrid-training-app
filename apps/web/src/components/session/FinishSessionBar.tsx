@@ -167,7 +167,7 @@ export function FinishSessionBar({
       setFinishError(
         enqueueResult.status === "failed"
           ? enqueueResult.error.message
-          : "Couldn't save the completion on this device. Check your connection and retry.",
+          : "Couldn't save the completion on this device. Try again.",
       );
     }
   };
@@ -229,7 +229,7 @@ export function FinishSessionBar({
         setFinishError(
           durable.result?.error ??
             durable.error?.message ??
-            "Couldn't finish the session. Check your connection and retry.",
+            "Couldn't finish the session. Try again.",
         );
         setFinishing(false);
         return;
@@ -240,7 +240,7 @@ export function FinishSessionBar({
       setFinishError(
         error instanceof Error
           ? error.message
-          : "Couldn't finish the session. Check your connection and retry.",
+          : "Couldn't finish the session. Try again.",
       );
       setFinishing(false);
     }
@@ -400,7 +400,7 @@ export function FinishSessionBar({
           className="cp-btn primary"
           style={{ padding: "8px 14px", fontSize: 12 }}
         >
-          {finishing ? "Finishing…" : "Finish session →"}
+          {finishing ? "Finishing…" : "Finish session"}
         </button>
       </form>
     );
@@ -460,7 +460,7 @@ export function FinishSessionBar({
             className="cp-btn primary big"
             style={{ flex: 1, textAlign: "center" }}
           >
-            {finishing ? "Finishing…" : "Finish session →"}
+            {finishing ? "Finishing…" : "Finish session"}
           </button>
         </form>
       )}

@@ -64,7 +64,7 @@ export function CardioSourceSettings({ initial }: CardioSourceSettingsProps) {
           lineHeight: 1.5,
         }}
       >
-        Use a separate cardio plan for new blocks.
+        Use a separate cardio plan for new programs.
       </p>
 
       <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>

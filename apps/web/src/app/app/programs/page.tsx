@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 import { createClient, getAuthUser } from "@/lib/supabase/server";
 import { todayYmd } from "@/lib/dates";
-import { archetypeDisplayName, getActiveBlocks } from "@/lib/planner/queries";
+import { getActiveBlocks } from "@/lib/planner/queries";
 import { loadAvailableTrainingSchedule } from "@/lib/schedule/storage";
-import { getSwimNavigation, swimEntryHref } from "@/lib/swim/navigation";
+import { getSwimNavigation } from "@/lib/swim/navigation";
+import { blockOverviewItems, swimOverviewItems } from "@/lib/programs/overview";
+import { loadScheduleSessionLinks } from "@/lib/schedule/session-links";
+import { hasTemplateWorkoutTitles } from "@/lib/programs/presentation";
 import { ProgramsOverview } from "@/components/program/ProgramsOverview";
 
 export default async function ProgramsPage({ searchParams }: { searchParams: Promise<{ activity?: string }> }) {
@@ -15,10 +18,13 @@ export default async function ProgramsPage({ searchParams }: { searchParams: Pro
     getActiveBlocks(), loadAvailableTrainingSchedule(client), getSwimNavigation(client, user.id),
     client.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
   ]);
-  if (profile.error) throw new Error("Could not load your training settings.");
-  return <ProgramsOverview programs={active.map((block) => ({
-    id: block.id, kind: block.programKind, name: archetypeDisplayName(block.archetype, block.notes),
-    startedOn: block.startedOn, weeks: block.weeks, editable: block.programId === "authored",
-  }))} activity={params.activity} entries={snapshot?.entries ?? null}
-    today={todayYmd(profile.data?.timezone ?? "UTC")} swimHref={swimEntryHref(swimming)} hasSwimPlans={swimming.hasPlans} />;
+  if (profile.error) throw new Error("Couldn't load your training settings.");
+  const [swimPrograms, sessionLinks] = await Promise.all([
+    swimming.storageAvailable ? swimOverviewItems(client, user.id) : [],
+    loadScheduleSessionLinks(client, snapshot?.entries ?? []),
+  ]);
+  return <ProgramsOverview programs={[...blockOverviewItems(active), ...swimPrograms]}
+    activity={params.activity} entries={snapshot?.entries ?? null} sessionLinks={sessionLinks}
+    templateBlockIds={active.filter(hasTemplateWorkoutTitles).map((block) => block.id)}
+    today={todayYmd(profile.data?.timezone ?? "UTC")} swimHref={swimming.setupEnabled ? "/app/swim/setup" : null} />;
 }

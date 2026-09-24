@@ -246,7 +246,7 @@ export function ActiveLimitationCard({
               data-testid="active-card-delete"
               disabled={pending}
               onClick={() => {
-                if (!confirm("Delete this limitation? It will be removed without an audit trail.")) {
+                if (!confirm("Delete this limitation?")) {
                   return;
                 }
                 setError(null);

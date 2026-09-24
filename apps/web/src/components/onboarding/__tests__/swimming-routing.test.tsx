@@ -63,9 +63,9 @@ describe("DC-SW7 fresh swimming onboarding", () => {
   it("completes common profile without strength equipment, training maxes or assessment", async () => {
     const flow = wizard("/app/swim/setup");
     await flow.click("Swimming");
-    await flow.click("Continue →");
+    await flow.click("Continue");
     expect(flow.html()).not.toContain("onboarding-experience-");
-    await flow.click("Set up swimming →");
+    await flow.click("Set up swimming");
     expect(flow.props.saveProfileAction).toHaveBeenCalledOnce();
     expect(flow.props.finishAction).toHaveBeenCalledOnce();
     expect(flow.props.saveEquipmentAction).not.toHaveBeenCalled();
@@ -78,7 +78,7 @@ describe("DC-SW7 fresh swimming onboarding", () => {
   it("retains the strength steps and experience gate when swimming is unavailable", async () => {
     const flow = wizard(null);
     expect(flow.html()).not.toContain(">Swimming</button>");
-    await flow.click("Continue →");
+    await flow.click("Continue");
     expect(flow.html()).toContain("onboarding-experience-");
     expect(flow.html()).toContain("Training maxes");
     expect(flow.props.finishAction).not.toHaveBeenCalled();

@@ -802,7 +802,7 @@ export const REBUILD: Archetype = withExpandedCadence({
   id: "rebuild",
   name: "Rebuild",
   oneLiner:
-    "Return-to-training block for after an injury, layoff, or extended deload. Capped intensity (top set ≤80% TM), heavy slow resistance tendon work twice a week, easy Z2 for aerobic floor. Designed to load tissue safely, not to progress.",
+    "Return-to-training program for after an injury, layoff, or extended deload. Capped intensity (top set ≤80% TM), heavy slow resistance tendon work twice a week, easy Z2 for aerobic floor. Designed to load tissue safely, not to progress.",
   weeks: 4,
   // ADR 0005 — Rebuild's whole point is a sub-strength-driving load with
   // tendon-day anchors carrying the recovery budget; an extra folded main
@@ -930,7 +930,7 @@ export const HYPERTROPHY_ANCHOR: Archetype = withExpandedCadence({
   id: "hypertrophy_anchor",
   name: "Hypertrophy Focus",
   oneLiner:
-    "Muscle-building block. Same four main patterns as Strength Focus but at hypertrophy intensity (60–75% TM, 6–12 reps, final set taken close to failure, 4 working sets per pattern). One optional easy Z2 day preserves the aerobic floor. Curated accessory pool added per main lift — flies, lateral raises, biceps, calves — covering per-muscle volume gaps.",
+    "Muscle-building program. Same four main patterns as Strength Focus but at hypertrophy intensity (60–75% TM, 6–12 reps, final set taken close to failure, 4 working sets per pattern). One optional easy Z2 day preserves the aerobic floor. Curated accessory pool added per main lift — flies, lateral raises, biceps, calves — covering per-muscle volume gaps.",
   weeks: 4,
   accessoriesByDefault: true,
   // ADR 0006 — bench + OHP demoted to optional so dual-main-lift folding
@@ -1260,7 +1260,7 @@ export const MAINTENANCE: Archetype = {
   id: "maintenance",
   name: "Maintenance",
   oneLiner:
-    "Two-week keep-the-lights-on block for travel, illness, or busy stretches. Two short strength days (60–65% TM, 2 working sets per lift — deliberately sub-maintenance) and two short Z2 sessions hold the line on strength and aerobic base without spending recovery on adaptation.",
+    "Two-week keep-the-lights-on program for travel, illness, or busy stretches. Two short strength days (60–65% TM, 2 working sets per lift — deliberately sub-maintenance) and two short Z2 sessions hold the line on strength and aerobic base without spending recovery on adaptation.",
   weeks: 2,
   // ADR 0005 — Maintenance explicitly runs at sub-maintenance volume; a
   // folded secondary main lift would convert it into a normal training

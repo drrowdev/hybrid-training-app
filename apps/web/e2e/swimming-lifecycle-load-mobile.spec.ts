@@ -1,3 +1,4 @@
+import { openSwimProgramActions, openSwimProgramHistory } from "./fixtures/swim-navigation";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { errors, type Page, type Request, type Response } from "@playwright/test";
@@ -436,6 +437,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
         outcome: error instanceof errors.TimeoutError ? "timeout" : "error", paired: false, status: null,
       }),
     );
+    await openSwimProgramActions(page);
+
     await page.getByRole("button", { name: "Pause", exact: true }).click();
     const deadline = performance.now() + 5000;
     expect(deadline - performance.now()).toBeGreaterThan(0);
@@ -509,7 +512,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       expect(backendOutcome).toBe("backend");
       const visibilityBudget = deadline - performance.now();
       expect(visibilityBudget).toBeGreaterThan(0);
-      await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible({ timeout: visibilityBudget });
+      await expect(page.getByTestId("page-header").getByText("Paused program · Swimming", { exact: true })).toBeVisible({ timeout: visibilityBudget });
       expect(deadline - performance.now()).toBeGreaterThan(0);
       // One late sample, not continuous alert coverage during rendering.
       const lateAlertCount = await Promise.race([
@@ -567,7 +570,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(await savedPlan(admin, freshUser.userId, planId)).toEqual(paused);
     expect(await primary.snapshot()).toEqual(primary.initial);
     await page.getByRole("button", { name: "Accept dates and resume", exact: true }).click();
-    await expect(page.locator("main > section").first().getByText("Active", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("page-header").getByText("Active program · Swimming", { exact: true })).toBeVisible();
     const resumed = await savedPlan(admin, freshUser.userId, planId);
     lifecycleTransition(paused.plan, resumed.plan, "active");
     expect(resumed.workouts.find((row) => row.id === first.id)).toEqual(protectedSwim);
@@ -584,6 +587,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(await primary.snapshot()).toEqual(primary.initial);
     let previous = resumed;
     {
+      await openSwimProgramActions(page);
+
       await page.getByRole("button", { name: "Finish plan", exact: true }).click();
       const deadline = performance.now() + 5000;
       const outcome = await confirmPlanStatus(admin, freshUser.userId, planId, "finished", deadline);
@@ -591,7 +596,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       expect(outcome).toBe("reached");
       const remaining = deadline - performance.now();
       expect(remaining).toBeGreaterThan(0);
-      await expect(page.locator("main > section").first().getByText("Finished", { exact: true })).toBeVisible({ timeout: remaining });
+      await expect(page.getByTestId("page-header").getByText("Finished program · Swimming", { exact: true })).toBeVisible({ timeout: remaining });
       const saved = await savedPlan(admin, freshUser.userId, planId);
       lifecycleTransition(previous.plan, saved.plan, "finished");
       expect(saved.workouts).toEqual(resumed.workouts);
@@ -600,6 +605,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       previous = saved;
     }
     {
+      await openSwimProgramActions(page);
+
       await page.getByRole("button", { name: "Archive", exact: true }).click();
       const deadline = performance.now() + 5000;
       const outcome = await confirmPlanStatus(admin, freshUser.userId, planId, "archived", deadline);
@@ -607,7 +614,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       expect(outcome).toBe("reached");
       const remaining = deadline - performance.now();
       expect(remaining).toBeGreaterThan(0);
-      await expect(page.locator("main > section").first().getByText("Archived", { exact: true })).toBeVisible({ timeout: remaining });
+      await expect(page.getByTestId("page-header").getByText("Archived program · Swimming", { exact: true })).toBeVisible({ timeout: remaining });
       const saved = await savedPlan(admin, freshUser.userId, planId);
       lifecycleTransition(previous.plan, saved.plan, "archived");
       expect(saved.workouts).toEqual(resumed.workouts);
@@ -616,7 +623,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       previous = saved;
     }
     await page.reload();
-    await expect(page.locator("main > section").first().getByText("Archived", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("page-header").getByText("Archived program · Swimming", { exact: true })).toBeVisible();
     expect(await savedPlan(admin, freshUser.userId, planId)).toEqual(previous);
     expect(await primary.snapshot()).toEqual(primary.initial);
   });
@@ -1182,6 +1189,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     lifecycleLedger(before, timezone);
 
     await page.goto(original.url);
+    await openSwimProgramActions(page);
+
     await page.getByRole("button", { name: "Archive", exact: true }).click();
     await expect(page.getByRole("link", { name: "Set up swimming", exact: true })).toBeVisible();
     const archived = await lifecycleState(admin, userId);
@@ -1229,7 +1238,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
 
     for (const status of ["Archived", "Active"] as const) {
       const destination = new URL(`/app/swim?plan=${status === "Archived" ? original.planId : replacementId}`, page.url()).href;
-      const choice = page.getByRole("navigation", { name: "Swim plans", exact: true })
+      await openSwimProgramHistory(page);
+      const choice = page.getByRole("navigation", { name: "Program history", exact: true })
         .getByRole("link", { name: new RegExp(`${status}$`) });
       await expect(choice).toHaveAttribute("href", new URL(destination).pathname + new URL(destination).search);
       await choice.click();
@@ -1237,8 +1247,9 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       await expect(choice).toHaveAttribute("aria-current", "page");
       await page.reload();
       await expect(page).toHaveURL(destination);
-      const choices = page.getByRole("navigation", { name: "Swim plans", exact: true });
-      await expect(choices.getByRole("link")).toHaveCount(2);
+      await openSwimProgramHistory(page);
+      const choices = page.getByRole("navigation", { name: "Program history", exact: true });
+      await expect(choices.locator('a[href^="/app/swim?plan="]')).toHaveCount(2);
       await expect(choices.getByRole("link", { name: new RegExp(`${status}$`) })).toHaveAttribute("aria-current", "page");
       expect(new URL(page.url()).searchParams.get("plan") === (status === "Archived" ? original.planId : replacementId)).toBe(true);
       await expect(page.getByRole("link", { name: "Set up swimming", exact: true })).toHaveCount(0);
@@ -1310,6 +1321,8 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       await signInAs(online, freshUser, seedConfig, baseURL!);
       const archivePage = await online.newPage();
       await archivePage.goto(original.url);
+      await openSwimProgramActions(archivePage);
+
       await archivePage.getByRole("button", { name: "Archive", exact: true }).click();
       await expect(archivePage.getByRole("link", { name: "Set up swimming", exact: true })).toBeVisible();
       const archived = await lifecycleState(admin, userId);
@@ -1535,7 +1548,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       await page.reload();
       await expect(page.getByRole("link", { name: "Set up swimming", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Archive", exact: true })).toHaveCount(0);
-      await expect(page.getByRole("navigation", { name: "Swim plans", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("navigation", { name: "Programs", exact: true })).toHaveCount(0);
     } catch (error) {
       bodyFailed = true;
       throw error;
@@ -2205,8 +2218,10 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       isDeepStrictEqual(await primary.snapshot(), postLimitationPrimary)).toBe(true);
 
     await page.goto(original.url);
+    await openSwimProgramActions(page);
+
     await page.getByRole("button", { name: "Pause", exact: true }).click();
-    await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("page-header").getByText("Paused program · Swimming", { exact: true })).toBeVisible();
     const paused = await lifecycleState(admin, userId);
     expect(paused.plans[0].status === "paused" && paused.plans[0].revision === completed.plans[0].revision + 1 &&
       isDeepStrictEqual(paused.workouts, completed.workouts)).toBe(true);
@@ -2229,13 +2244,13 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toContainText("Review your active limitations before swimming");
     await expect(page.getByRole("alert").and(page.locator(":not(#__next-route-announcer__)"))).toContainText(REGION_LABELS[region]);
     await expect(page.getByLabel("Resume from", { exact: true })).toHaveValue(resumeFrom);
-    await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("page-header").getByText("Paused program · Swimming", { exact: true })).toBeVisible();
     expect(isDeepStrictEqual(await lifecycleState(admin, userId), beforeResume) &&
       isDeepStrictEqual(beforeResume, paused) &&
       isDeepStrictEqual(await limitations(), restriction) &&
       isDeepStrictEqual(await primary.snapshot(), postLimitationPrimary)).toBe(true);
     await page.reload();
-    await expect(page.locator("main > section").first().getByText("Paused", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("page-header").getByText("Paused program · Swimming", { exact: true })).toBeVisible();
     await page.locator(`a[href="/app/swim/${target.id}"]`).click();
     await expect(page).toHaveURL(new RegExp(`/app/swim/${target.id}$`));
     await expect(result).toContainText(`${lengths} lengths · 15:00 · RPE 6`);

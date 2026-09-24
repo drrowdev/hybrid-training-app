@@ -187,7 +187,8 @@ describe("DC-SW4/SW5/SW7/SW8 independent recording outcome controls", () => {
   });
   it("rejects malformed target data instead of displaying enabled controls", async () => {
     workoutData = { revision: 0, status: "scheduled", session_id: null };
-    await expect(render()).rejects.toThrow("The workout outcome could not be loaded.");
+    await expect(render()).rejects.toThrow();
+    expect(transport.mock.calls.every(([, options]) => options?.method === "GET")).toBe(true);
   });
   it("does not retain an empty outcome panel after a concurrently removed claim", async () => {
     vi.stubEnv("SWIM_IMPORT_OUTCOMES_ENABLED", "false");

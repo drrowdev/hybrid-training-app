@@ -757,12 +757,6 @@ function SameAsPlannedCard({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ fontSize: 13, color: "var(--cp-text)" }}>
-          <strong>Logging the planned session?</strong>{" "}
-          <span style={{ color: "var(--cp-text-muted)" }}>
-            Pre-fill every set from the prescription — adjust later if anything changes.
-          </span>
-        </div>
         <SameAsPlannedButton />
       </div>
       {error && (

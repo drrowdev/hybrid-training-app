@@ -54,7 +54,7 @@ export async function getActiveSeason(): Promise<ActiveSeason | null> {
     .eq("status", "active")
     .is("deleted_at", null)
     .maybeSingle();
-  if (seasonError) throw new Error("Could not read your season. Try again.");
+  if (seasonError) throw new Error("Couldn't read your season. Try again.");
   if (!season) return null;
 
   const { data: rows, error: blocksError } = await supabase
@@ -63,7 +63,7 @@ export async function getActiveSeason(): Promise<ActiveSeason | null> {
     .eq("season_id", season.id as string)
     .eq("user_id", user.id)
     .order("position", { ascending: true });
-  if (blocksError) throw new Error("Could not read your roadmap. Try again.");
+  if (blocksError) throw new Error("Couldn't read your roadmap. Try again.");
 
   const blocks: SeasonBlock[] = (rows ?? []).map((r) => ({
     id: r.id as string,
@@ -91,7 +91,7 @@ export async function getActiveSeason(): Promise<ActiveSeason | null> {
         .eq("id", eventId)
         .eq("user_id", user.id)
         .maybeSingle();
-      if (eventError) throw new Error("Could not read your season event. Try again.");
+      if (eventError) throw new Error("Couldn't read your season event. Try again.");
       eventName = (evt?.name as string | null) ?? null;
     }
     goal = {
@@ -109,7 +109,7 @@ export async function getSeasonContinuation(timezone: string, now = new Date()) 
   const season = await getActiveSeason();
   if (!season) return null;
   const active = season.blocks.filter((slot) => slot.status === "active");
-  if (active.length > 1) throw new Error("The roadmap has more than one current block. Refresh it before continuing.");
+  if (active.length > 1) throw new Error("The roadmap has more than one current program. Refresh it before continuing.");
   const sourceId = active[0]?.blockId, next = nextPlannedBlock(season.blocks);
   if (!sourceId || !next) return null;
   const { data: { user } } = await getAuthUser();
@@ -117,7 +117,7 @@ export async function getSeasonContinuation(timezone: string, now = new Date()) 
   const client = await createClient();
   const result = await client.from("training_blocks").select("status,started_on,weeks")
     .eq("id", sourceId).eq("user_id", user.id).is("deleted_at", null).maybeSingle();
-  if (result.error) throw new Error("Could not read the current roadmap program. Try again.");
+  if (result.error) throw new Error("Couldn't read the current roadmap program. Try again.");
   const source = z.object({ status: z.enum(["active", "completed", "archived"]),
     started_on: z.string(), weeks: z.number().positive() }).nullable().parse(result.data);
   if (!source || (source.status === "active" &&

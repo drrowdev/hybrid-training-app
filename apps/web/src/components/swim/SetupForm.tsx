@@ -87,7 +87,7 @@ export function SetupForm({ today, schedule = [] }: { today: string; schedule?: 
         }
       } catch {
         if (mode !== "preview" || revision === request.current) {
-          setError(mode === "preview" ? "Could not preview your swim plan. Try again." : "Could not save your swim plan. Try again.");
+          setError(mode === "preview" ? "Couldn't preview your swim plan. Try again." : "Couldn't save your swim plan. Try again.");
         }
       } finally {
         busy.current = false;

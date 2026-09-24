@@ -37,7 +37,7 @@ export function RecordingMatcher({ importId, enabled, expectedMatchId, current, 
         if (!result.ok) { setError(result.error); return; }
         setChoices(result.value);
         setSelected("");
-      } catch { setError("Workouts could not be loaded. Try again."); }
+      } catch { setError("Couldn't load workouts. Try again."); }
     }, setPending);
   }
 
@@ -56,7 +56,7 @@ export function RecordingMatcher({ importId, enabled, expectedMatchId, current, 
         });
         if (!result.ok) { setError(result.error); return; }
         router.refresh();
-      } catch { setError("The match is unconfirmed. Reload before trying again."); }
+      } catch { setError("Couldn't confirm this change. Try again."); }
     }, setPending);
   }
 

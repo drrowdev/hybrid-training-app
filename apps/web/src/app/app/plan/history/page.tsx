@@ -118,7 +118,7 @@ export default async function PlanHistoryPage({
   return (
     <div style={{ display: "grid", gap: 20 }}>
       <PageHeader
-        back={{ href: "/app/plan", label: "Plan" }}
+        back={{ href: "/app/programs", label: "Programs" }}
         title="Program history"
       />
 
@@ -129,7 +129,7 @@ export default async function PlanHistoryPage({
         >
           <h2 style={{ margin: 0, fontSize: 16 }}>No programs yet</h2>
           <Link href="/app/plan/new" className="cp-btn primary">
-            Start your first program →
+            Start your first program
           </Link>
         </section>
       ) : (
@@ -491,7 +491,7 @@ function Pagination({
       <span style={{ fontSize: 12, color: "var(--cp-text-muted)" }}>Page {page}</span>
       {hasNext ? (
         <Link href={`/app/plan/history?page=${page + 1}`} className="cp-btn">
-          Older →
+          Older
         </Link>
       ) : (
         <span />

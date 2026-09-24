@@ -23,7 +23,7 @@ export default async function SwimSetupPage() {
         <div className={styles.actions}><Link className={styles.secondary} href="/app/swim/import">Import a swimming plan</Link></div>}
       {schedule
         ? <SetupForm today={todayYmd(profile?.timezone ?? "UTC")} schedule={schedule.entries} />
-        : <p role="status">Swimming setup is currently unavailable.</p>}
+        : <p role="status">Swimming setup isn&apos;t available right now.</p>}
     </main>
   );
 }

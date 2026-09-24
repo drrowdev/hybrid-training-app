@@ -91,12 +91,12 @@ export function CourseImportForm({ today, schedule = [] }: { today: string; sche
             const result = await previewPrivateSwimCourse(form);
             if (result.error) setError(result.error);
             else if (result.preview) { requestId.current = crypto.randomUUID(); setPreview(result.preview); }
-            else setError("Could not preview the plan. Try again.");
+            else setError("Couldn't preview the plan. Try again.");
           }
         } catch {
           setError(preview
             ? "The import was not confirmed. Check your swimming plans before trying again."
-            : "Could not preview the plan. Try again.");
+            : "Couldn't preview the plan. Try again.");
         } finally { busy.current = false; }
       });
     } catch (caught) {

@@ -1,3 +1,4 @@
+import { openSwimProgramActions } from "./fixtures/swim-navigation";
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -562,6 +563,8 @@ test.describe("Modular program builder", () => {
     expect(afterMove.filter((entry) => entry.id !== moved.id)).toEqual(beforeMove.filter((entry) => entry.id !== moved.id));
     expect(afterMove.filter((entry) => entry.date === sharedDate && entry.state !== "rest")).toHaveLength(2);
     stage("m4-22");
+    await openSwimProgramActions(page);
+
     await page.getByRole("button", { name: "Finish plan", exact: true }).click();
     stage("m4-23");
     await expect.poll(async () => (await actor.from("swim_plans").select("status").single()).data?.status).toBe("finished");
@@ -1312,6 +1315,8 @@ test.describe("Modular program builder", () => {
       const session = await actor.from("sessions").select("id,prescription").eq("user_id", freshUser.userId).single();
       expect(session.error).toBeNull();
       await page.goto(`/app/swim?plan=${swimming.plan.id}`);
+      await openSwimProgramActions(page);
+
       await page.getByRole("button", { name: "Pause", exact: true }).click();
       await expect(page.getByRole("button", { name: "Preview dates", exact: true })).toBeVisible();
       expect(await planned(actor)).toEqual(original);
@@ -1321,6 +1326,8 @@ test.describe("Modular program builder", () => {
       await expect(resume).toBeDisabled();
       await page.getByRole("checkbox", { name: "Keep both workouts on these dates", exact: true }).check();
       await resume.click();
+      await openSwimProgramActions(page);
+
       await expect(page.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
       const resumed = await courseRows();
       expect(resumed.map((row) => row.scheduled_date)).toEqual(swims.map((row) => addDaysToYmd(row.scheduled_date, 7)));

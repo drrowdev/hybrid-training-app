@@ -37,7 +37,7 @@ test.describe("@desktop /plan/new wizard", () => {
 
     await page.goto("/app/plan/new");
     await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: /build a new block/i }).click();
+    await page.getByRole("button", { name: /build a new program/i }).click();
 
     // Step 1: days
     await expect(page.getByRole("heading", { name: /how many days/i })).toBeVisible();
@@ -59,7 +59,7 @@ test.describe("@desktop /plan/new wizard", () => {
 
     // Step 5: click Start. The wizard fires createBlock and on success
     // navigates to /app/plan via router.push.
-    const startBtn = page.getByRole("button", { name: /start this block/i });
+    const startBtn = page.getByRole("button", { name: /start this program/i });
     await expect(startBtn).toBeVisible();
     await expect(startBtn).toBeEnabled();
     await startBtn.click();

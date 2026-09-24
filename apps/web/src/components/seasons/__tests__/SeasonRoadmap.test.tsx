@@ -375,7 +375,7 @@ describe("SeasonRoadmap — goal anchor + advisories", () => {
       />,
     );
     expect(html).toContain('data-testid="season-floor-note"');
-    expect(html.toLowerCase()).toContain("maintenance floor");
+    expect(html).toContain("Cardio");
   });
 
   it("renders a quantitative floor advisory + balance bar when context is present", () => {

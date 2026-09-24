@@ -38,7 +38,7 @@ export function DateEditor({ plan, workout, busy, onApply }: {
               if (result.error) setError(result.error);
               else if (result.preview) setPreview(result.preview);
             } catch {
-              if (sequence === request.current) setError("Could not preview this date. Try again.");
+              if (sequence === request.current) setError("Couldn't preview this date. Try again.");
             }
           });
         }}>

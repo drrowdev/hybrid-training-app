@@ -53,7 +53,7 @@ test.describe("@desktop /plan/new wizard saved-pref banner", () => {
     // ── Walk Hybrid 4d: banner must NOT appear (different archetype). ────
     await page.goto("/app/plan/new");
     await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: /build a new block/i }).click();
+    await page.getByRole("button", { name: /build a new program/i }).click();
 
     await expect(page.getByRole("heading", { name: /how many days/i })).toBeVisible();
     await page.getByRole("button", { name: /^4( days)?$/ }).click();
@@ -78,7 +78,7 @@ test.describe("@desktop /plan/new wizard saved-pref banner", () => {
     // ── Now walk Strength 4d: banner MUST appear with the saved pattern. ──
     await page.goto("/app/plan/new");
     await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: /build a new block/i }).click();
+    await page.getByRole("button", { name: /build a new program/i }).click();
 
     await page.getByRole("button", { name: /^4( days)?$/ }).click();
     await page.getByRole("button", { name: /^continue$/i }).click();

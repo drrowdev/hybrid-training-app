@@ -85,7 +85,7 @@ export function WarmupSettings({
       // Surface the malformed state as a save error so the user sees
       // the inline status chip — keeps parity with the previous
       // submit-time validation message.
-      throw new Error("Warmup ladder is malformed — check the percent + rep counts.");
+      throw new Error("Check the warm-up percentages and reps.");
     }
     const fd = new FormData();
     fd.set("warmupSchemeJson", JSON.stringify(next));

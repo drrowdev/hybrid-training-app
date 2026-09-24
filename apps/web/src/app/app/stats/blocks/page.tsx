@@ -51,7 +51,7 @@ export default async function StatsBlocksIndexPage() {
     <div style={{ display: "grid", gap: 18 }}>
       <PageHeader
         back={{ href: "/app/stats", label: "Stats" }}
-        title="Block analytics"
+        title="Program analytics"
       />
 
       {blocks.length === 0 ? (
@@ -79,8 +79,8 @@ function BlocksEmpty(): ReactElement {
       style={{ display: "grid", gap: 10 }}
     >
       <EmptyState
-        title="No blocks finished yet"
-        action={{ label: "Start a block →", href: "/app/plan/new" }}
+        title="No programs finished yet"
+        action={{ label: "Start a program →", href: "/app/plan/new" }}
       />
     </section>
   );

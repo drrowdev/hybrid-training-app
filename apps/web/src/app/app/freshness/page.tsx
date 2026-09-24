@@ -63,7 +63,7 @@ export default async function FreshnessPage() {
           data-testid="freshness-engine-link"
           style={{ color: "var(--cp-accent)", fontSize: 13, textDecoration: "none" }}
         >
-          Regional training load →
+          Regional training load
         </Link>
       </footer>
     </div>

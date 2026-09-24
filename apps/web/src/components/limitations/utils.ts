@@ -124,7 +124,7 @@ export function filterAffectedMovements<
 const EVENT_VERB: Record<string, string> = {
   skip: "Skipped",
   swap: "Substituted",
-  manual_end: "Ended block early on",
+  manual_end: "Ended program early on",
   custom: "Adjusted",
 };
 

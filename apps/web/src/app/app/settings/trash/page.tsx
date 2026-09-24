@@ -56,7 +56,6 @@ export default async function TrashPage() {
         }}
       >
         Items in trash are automatically permanently deleted after 30 days.
-        Recover an item to put it back where it was.
       </section>
 
       <section style={{ display: "grid", gap: 8 }}>

@@ -235,7 +235,7 @@ function SeasonEmptyState({
       return;
     }
     if (drafts.length === 0) {
-      setError("Add at least one block.");
+      setError("Add at least one program.");
       return;
     }
     const goal = buildGoal();
@@ -269,7 +269,7 @@ function SeasonEmptyState({
         Plan your training season
       </h2>
       <p className={styles.emptyLead}>
-        Plan future blocks. Only the current block has a daily schedule.
+        Plan future programs. Only the current program has a daily schedule.
       </p>
 
       <div className={styles.field}>
@@ -354,7 +354,7 @@ function SeasonEmptyState({
               className={`cp-btn ghost ${styles.rowRemove}`}
               onClick={() => removeRow(i)}
               disabled={pending || drafts.length === 1}
-              aria-label={`Remove block ${i + 1}`}
+              aria-label={`Remove program ${i + 1}`}
               data-testid="season-draft-remove"
             >
               ✕
@@ -371,7 +371,7 @@ function SeasonEmptyState({
           disabled={pending || drafts.length >= MAX_SEASON_BLOCKS}
           data-testid="season-add-row"
         >
-          + Add block
+          + Add program
         </button>
         <button
           type="button"
@@ -558,7 +558,7 @@ function SeasonPopulated({
                 </span>
                 {runway === "over" && (
                   <span className={styles.goalWarn} data-testid="season-runway-warn">
-                    ⚠ {remainingWeeks} wks of blocks vs {weeksToGoal} to your goal — tighten the plan.
+                    ⚠ {remainingWeeks} wks of programs vs {weeksToGoal} to your goal — tighten the plan.
                   </span>
                 )}
                 {runway === "tight" && (
@@ -650,7 +650,7 @@ function SeasonPopulated({
               <div className={cardClass} data-status={b.status}>
                 <div className={styles.bcardTop}>
                   <span className={styles.wk}>
-                    Block {i + 1}
+                    Program {i + 1}
                     {b.plannedWeeks ? ` · ${b.plannedWeeks} wk${b.plannedWeeks === 1 ? "" : "s"}` : ""}
                   </span>
                   <StatusBadge status={b.status} />
@@ -712,7 +712,7 @@ function SeasonPopulated({
                     {b.intentNote && <div className={styles.why}>{b.intentNote}</div>}
                     {isArcProgram(b.programId) && (
                       <div className={styles.floorNote} data-testid="season-arc-note">
-                        ↻ Self-paced — runs its own internal phases.
+                        Self-paced
                       </div>
                     )}
                     <BiasFloor emphasis={b.emphasis} floorContext={floorContext} />
@@ -730,7 +730,7 @@ function SeasonPopulated({
                             }`}
                             data-testid="season-block-start"
                           >
-                            Start block →
+                            Start program
                           </a>
                         )}
                         <button
@@ -738,7 +738,7 @@ function SeasonPopulated({
                           className={`cp-btn ghost ${styles.mini}`}
                           onClick={() => onMove(i, -1)}
                           disabled={pending || blocks[i - 1]?.status !== "planned"}
-                          aria-label="Move block earlier"
+                          aria-label="Move program earlier"
                           title="Move earlier"
                           data-testid="season-block-up"
                         >
@@ -749,7 +749,7 @@ function SeasonPopulated({
                           className={`cp-btn ghost ${styles.mini}`}
                           onClick={() => onMove(i, 1)}
                           disabled={pending || blocks[i + 1]?.status !== "planned"}
-                          aria-label="Move block later"
+                          aria-label="Move program later"
                           title="Move later"
                           data-testid="season-block-down"
                         >
@@ -760,7 +760,7 @@ function SeasonPopulated({
                           className={`cp-btn ghost ${styles.mini}`}
                           onClick={() => onEditStart(b)}
                           disabled={pending}
-                          aria-label="Edit block"
+                          aria-label="Edit program"
                           data-testid="season-block-edit"
                         >
                           ✎ Edit
@@ -770,7 +770,7 @@ function SeasonPopulated({
                           className={`cp-btn ghost ${styles.mini}`}
                           onClick={() => onRemove(b.id)}
                           disabled={pending}
-                          aria-label="Remove block"
+                          aria-label="Remove program"
                           data-testid="season-block-remove"
                         >
                           ✕
@@ -803,10 +803,6 @@ function SeasonPopulated({
         </div>
       )}
 
-      <div className={styles.foot}>
-        This is a flexible plan. Only your current block is scheduled day-by-day;
-        future blocks are intentions that adjust as your training does.
-      </div>
     </section>
   );
 }
@@ -886,7 +882,7 @@ function AddBlockCard({
       <div className={styles.add}>
         <div className={styles.addcard}>
           <div className={styles.addFull}>
-            Season is full ({MAX_SEASON_BLOCKS} blocks).
+            Season is full ({MAX_SEASON_BLOCKS} programs).
           </div>
         </div>
       </div>
@@ -953,7 +949,7 @@ function AddBlockCard({
             onClick={() => setOpen(true)}
             data-testid="season-add-block"
           >
-            + Add block
+            + Add program
           </button>
         )}
       </div>
@@ -976,8 +972,8 @@ function BiasFloor({
   const text = adv
     ? floorAdvisoryText(adv)
     : emphasis === "strength_bias"
-      ? "Cardio held at a maintenance floor so your engine doesn’t fade."
-      : "Strength held at a maintenance floor so you don’t detrain it.";
+      ? "Cardio maintenance"
+      : "Strength maintenance";
   return (
     <div className={styles.bias} data-testid="season-bias">
       <div

@@ -63,7 +63,7 @@ describe("getAdaptationGuidance", () => {
 
   it("summary contains both the block count and the week range", () => {
     const g = getAdaptationGuidance("muscle", "strength")!;
-    expect(g.summary).toContain("2–4 blocks");
+    expect(g.summary).toContain("2–4 programs");
     expect(g.summary).toContain("~8–16 weeks");
   });
 

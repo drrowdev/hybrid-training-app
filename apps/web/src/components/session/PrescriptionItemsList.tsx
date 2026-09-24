@@ -103,7 +103,7 @@ export function PrescriptionItemsList({
       optimistic = applyPrescriptionSwap(prev, { itemIndex: index,
         newMovement: { id: cand.id, slug: cand.slug, displayName: cand.display_name } });
     } catch (error) {
-      setErrorByIndex((errors) => ({ ...errors, [index]: error instanceof Error ? error.message : "Could not swap this movement." }));
+      setErrorByIndex((errors) => ({ ...errors, [index]: error instanceof Error ? error.message : "Couldn't swap this movement." }));
       return;
     }
     setWarning(null);
@@ -133,7 +133,7 @@ export function PrescriptionItemsList({
         });
       } catch (error) {
         setPrescription(prev);
-        setErrorByIndex((errors) => ({ ...errors, [index]: error instanceof Error ? error.message : "Could not swap this movement." }));
+        setErrorByIndex((errors) => ({ ...errors, [index]: error instanceof Error ? error.message : "Couldn't swap this movement." }));
         setOpenIndex(index);
       }
     });

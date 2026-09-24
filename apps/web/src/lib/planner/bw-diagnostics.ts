@@ -375,9 +375,9 @@ function detectAestheticsUpperStrong(
       },
       intervention: {
         signalKind: "aesthetics_drift_upper_strong",
-        copy: `Your upper-body work has progressed ${ratioLabel}× faster than lower-body. Consider prioritising squat/hinge work for the next block.`,
+        copy: `Your upper-body work has progressed ${ratioLabel}× faster than lower-body. Consider prioritising squat/hinge work for the next program.`,
         actionable: {
-          label: "Bias next block toward lower body",
+          label: "Bias next program toward lower body",
           href: "/app/plan/new?bias=lower",
         },
       },

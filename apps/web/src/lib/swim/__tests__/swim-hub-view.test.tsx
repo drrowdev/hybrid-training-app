@@ -72,10 +72,13 @@ describe("DC-SW7 monotonic swim hub view", () => {
 describe("DC-SW7 lifecycle controls and parent navigation SSR", () => {
   const selectedChoice = { id: "selected", startedOn: "2026-09-07", status: "active" as const };
   const otherChoice = { id: "other", startedOn: "2026-08-01", status: "archived" as const };
+  const programs = [selectedChoice, otherChoice].map((choice) => ({
+    ...choice, kind: "swimming" as const, name: `Swimming ${choice.id}`, href: `/app/swim?plan=${choice.id}`,
+  }));
 
   it("omits empty logging history but preserves saved history and planning controls", () => {
     const plan = view(2);
-    const render = () => renderToStaticMarkup(<SwimHub plan={plan} plans={[selectedChoice]} setupEnabled />);
+    const render = () => renderToStaticMarkup(<SwimHub plan={plan} programs={programs} plans={[selectedChoice]} setupEnabled />);
     expect(render()).not.toContain("<h2>Swimming history</h2>");
     expect(render()).toContain('href="/app/swim/workout"');
     plan.analytics.weeks.push({
@@ -92,10 +95,10 @@ describe("DC-SW7 lifecycle controls and parent navigation SSR", () => {
     ["archived", false, false, false, false, false, true],
   ] as const)("%s renders one coherent set of controls", (status, review, pause, resume, finish, archive, setup) => {
     const plan = nextSwimHubView(view(1), view(2, status), "confirmed");
-    const html = renderToStaticMarkup(<SwimHub plan={plan} plans={[selectedChoice, otherChoice]} setupEnabled />);
+    const html = renderToStaticMarkup(<SwimHub plan={plan} programs={programs} plans={[selectedChoice, otherChoice]} setupEnabled />);
     expect(html.match(/data-testid="page-header"/g)).toHaveLength(1);
     expect(html.match(/<h1\b/g)).toHaveLength(1);
-    expect(html).toContain('href="/app/plan"');
+    expect(html).toContain('href="/app/programs"');
     expect(html.includes(">Review next week</button>")).toBe(review);
     expect(html.includes(">Pause</button>")).toBe(pause);
     expect(html.includes('name="startDate"')).toBe(resume);
@@ -107,14 +110,15 @@ describe("DC-SW7 lifecycle controls and parent navigation SSR", () => {
     expect(html).toContain('href="/app/swim/workout"');
     expect(html).toContain("2026-10-15");
     expect(html).toContain(status === "active" ? "Scheduled" : "Unscheduled");
-    const navigation = html.match(/<nav\b[^>]*aria-label="Swim plans"[^>]*>.*?<\/nav>/)?.[0];
-    expect(navigation).toContain(`2026-09-07 · ${{ active: "Active", paused: "Paused", finished: "Finished", archived: "Archived" }[status]}`);
-    expect(navigation).toContain("2026-08-01 · Archived");
+    const navigation = html.match(/<nav\b[^>]*aria-label="Programs"[^>]*>.*?<\/nav>/)?.[0];
+    expect(navigation).toContain(">Swimming</a>");
     expect(navigation?.match(/aria-current="page"/g)).toHaveLength(1);
     const selectedLink = navigation?.match(/<a\b[^>]*href="\/app\/swim\?plan=selected"[^>]*>/)?.[0];
     expect(selectedLink).toContain('aria-current="page"');
-    expect(navigation!.indexOf("?plan=selected")).toBeLessThan(navigation!.indexOf("?plan=other"));
-    expect(html.indexOf("</header>")).toBeLessThan(html.indexOf("<nav"));
+    const history = html.match(/<nav\b[^>]*aria-label="Program history"[^>]*>.*?<\/nav>/)?.[0];
+    expect(history).toContain('href="/app/swim?plan=other"');
+    expect(history!.indexOf("?plan=selected")).toBeLessThan(history!.indexOf("?plan=other"));
+    expect(html.indexOf("</nav>")).toBeLessThan(html.indexOf("<header"));
     expect(html.indexOf("</nav>")).toBeLessThan(html.indexOf("<section"));
   });
 
@@ -144,25 +148,25 @@ describe("DC-SW7 lifecycle controls and parent navigation SSR", () => {
   });
 
   it.each(["paused", "finished", "archived"] as const)("does not offer setup for %s while another own plan is active", (status) => {
-    const html = renderToStaticMarkup(<SwimHub plan={view(2, status)}
+    const html = renderToStaticMarkup(<SwimHub plan={view(2, status)} programs={programs}
       plans={[selectedChoice, { ...otherChoice, status: "active" }]} setupEnabled />);
     expect(html).not.toContain('href="/app/swim/setup"');
-    expect(html).toContain("2026-08-01 · Active");
+    expect(html).toContain('href="/app/swim?plan=other"');
   });
 
-  it("keeps setup disabled and single-plan navigation hidden", () => {
-    const html = renderToStaticMarkup(<SwimHub plan={view(2, "paused")} plans={[selectedChoice]} setupEnabled={false} />);
+  it("keeps setup disabled and retains the shared program switcher", () => {
+    const html = renderToStaticMarkup(<SwimHub plan={view(2, "paused")} programs={programs.slice(0, 1)} plans={[selectedChoice]} setupEnabled={false} />);
     expect(html).not.toContain('href="/app/swim/setup"');
-    expect(html).not.toContain('aria-label="Swim plans"');
+    expect(html).toContain('aria-label="Programs"');
     expect(html).toContain('name="startDate"');
   });
 
   it("restores active controls and hides setup on confirmed resume despite paused choices", () => {
     const plan = nextSwimHubView(view(3, "paused"), view(4), "confirmed");
-    const html = renderToStaticMarkup(<SwimHub plan={plan}
+    const html = renderToStaticMarkup(<SwimHub plan={plan} programs={programs}
       plans={[{ ...selectedChoice, status: "paused" }, otherChoice]} setupEnabled />);
     expect(html).toContain(">Pause</button>");
-    expect(html).toContain("2026-09-07 · Active");
+    expect(html).toContain('aria-current="page"');
     expect(html).not.toContain('name="startDate"');
     expect(html).not.toContain('href="/app/swim/setup"');
   });

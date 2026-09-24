@@ -20,7 +20,7 @@ export default async function SwimRecordingPage({ params, searchParams }: {
   const { data: { user } } = await getAuthUser();
   if (!user) redirect("/login");
   const client = await createClient();
-  if (!await swimImportMatchingAvailable(client)) return <p>Recorded swims are not available yet.</p>;
+  if (!await swimImportMatchingAvailable(client)) return <p>Recorded swims aren&apos;t available right now.</p>;
   const view = await loadRecordingMatch(client, user.id, (await params).importId);
   if (!view) notFound();
   const { recording, current, latestId } = view;
@@ -50,7 +50,7 @@ export default async function SwimRecordingPage({ params, searchParams }: {
       revision: z.number().int().positive().max(2147483647),
       status: z.enum(["scheduled", "started", "completed", "skipped"]), session_id: z.string().uuid().nullable(),
     }).strict().safeParse(workout.data);
-    if (workout.error || !parsed.success) throw new Error("The workout outcome could not be loaded.");
+    if (workout.error || !parsed.success) throw new Error("Couldn't load the workout outcome. Try again.");
     const state = swimOutcomeForRecording({
       confirmation: confirmation ? {
         outcome: confirmation.metadata.outcome, matchId: confirmation.match_id,

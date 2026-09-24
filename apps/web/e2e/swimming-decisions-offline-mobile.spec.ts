@@ -21,7 +21,7 @@ import {
 } from "../src/lib/swim/storage";
 import { parseSetupForm } from "../src/lib/swim/forms";
 import { MAX_REPLAY_ATTEMPTS, sortBySeq, type OutboxEntry } from "../src/lib/offline/outbox-core";
-
+import { openSwimProgramActions } from "./fixtures/swim-navigation";
 const test = seededTest.extend<{ actor: SupabaseClient }>({
   seedConfig: async ({ baseURL }, use) => {
     if (!swimE2EEnabled(process.env) || process.env.E2E_SWIM_LOCAL !== "1" ||
@@ -1052,7 +1052,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await page.getByRole("heading", { name: "Swims", exact: true }).locator("..").getByRole("link")
       .and(page.locator(`[href="${workoutPath}"]`)).click();
     await expect(page).toHaveURL(new URL(workoutPath, baseURL!).href);
-    await expect(page.locator("main > section").first().getByText("50 m", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("program-pool").getByText("50 m pool", { exact: true })).toBeVisible();
     await expect(page.getByText(/Up to 10 min/)).toBeVisible();
     const workoutView = page.locator("main.cp-main > main");
     await expect(workoutView).toHaveCount(1);
@@ -1105,7 +1105,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await page.getByRole("heading", { name: "Swims", exact: true }).locator("..").getByRole("link")
       .and(page.locator(`[href="${workoutPath}"]`)).click();
     await expect(page).toHaveURL(new URL(workoutPath, baseURL!).href);
-    await expect(page.locator("main > section").first().getByText("50 m", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("program-pool").getByText("50 m pool", { exact: true })).toBeVisible();
     await expect(page.getByText(/Up to 20 min/)).toBeVisible();
     const workoutView = page.locator("main.cp-main > main");
     await expect(workoutView).toHaveCount(1);
@@ -1326,11 +1326,15 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
       expect(deriveSwimWeekCandidate(after.plan, after.history, today)).toBeNull();
       await Promise.all(pages.map(async (view) => {
         await view.reload();
+        await openSwimProgramActions(view);
+
         await expect(view.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
         await expect(view.getByRole("button", { name: "Accept", exact: true })).toHaveCount(0);
       }));
       same(await saved(actor, created.plan.id), after);
       same(await page.locator("main.cp-main").innerText(), await other.locator("main.cp-main").innerText());
+      await openSwimProgramActions(page);
+
       await page.getByRole("button", { name: "Pause", exact: true }).click();
       await expect(page.getByLabel("Resume from", { exact: true })).toBeVisible();
       const paused = await saved(actor, created.plan.id);
@@ -1370,6 +1374,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
       }
       same(reviewed[1], reviewed[0].map((date) => addDaysToYmd(date, 7)));
       same(await saved(actor, created.plan.id), paused);
+      await Promise.all(pages.map(openSwimProgramActions));
       const resumed = await race("Accept dates and resume", (view) => view.getByRole("button", { name: "Pause", exact: true }));
       const previews = resumed.args.map((args, index) => {
         expect(args.length).toBe(1);
@@ -1423,6 +1428,8 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
       const canonicalDisplay = await pages[resumed.winner].locator("main.cp-main").innerText();
       await Promise.all(pages.map(async (view) => {
         await view.reload();
+        await openSwimProgramActions(view);
+
         await expect(view.getByRole("button", { name: "Pause", exact: true })).toBeVisible();
         await expect(stale(view)).toHaveCount(0);
         await expect(view.getByRole("button", { name: "Accept dates and resume", exact: true })).toHaveCount(0);

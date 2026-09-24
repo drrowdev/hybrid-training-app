@@ -1,8 +1,26 @@
 .builder { display: grid; gap: 24px; max-width: 1040px; margin: auto; color: var(--cp-text); }
 .header, .row, .actions, .partHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.header h1 { margin: 4px 0 0; font-size: clamp(28px, 4vw, 40px); letter-spacing: -.04em; }
+.header h1 { margin: 4px 0 0; font-family: var(--cp-font-display); font-size: clamp(28px, 4vw, 40px); letter-spacing: -.02em; }
 .eyebrow, .muted { color: var(--cp-text-muted); font-size: 13px; }
-.eyebrow { font-family: var(--cp-font-mono); letter-spacing: .1em; text-transform: uppercase; }
+.eyebrow { font-weight: 600; color: var(--cp-accent); }
+.headerActions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.mobileHistory { display: none !important; }
+.switcher { display: grid; gap: 10px; min-width: 0; }
+.programHistory summary { cursor: pointer; min-height: 44px; padding: 12px 0; color: var(--cp-text-muted); font-size: 13px; }
+.programHistory nav { display: grid; gap: 4px; }
+.programHistory a { padding: 12px; border-radius: 8px; min-height: 44px; }
+.programHistory a[aria-current] { background: var(--cp-accent-soft); color: var(--cp-accent); }
+.tabs { display: flex; gap: 4px; overflow-x: auto; min-width: 0; max-width: 100%; padding: 4px; border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface); width: fit-content; box-sizing: border-box; }
+.tab { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; min-height: 44px; padding: 0 16px; border-radius: 8px; text-decoration: none; white-space: nowrap; color: var(--cp-text-muted); font-size: 14px; }
+.tab[aria-current] { color: var(--cp-accent); background: var(--cp-accent-soft); font-weight: 600; }
+.tab:hover, .textLink:hover { color: var(--cp-accent); }
+.tab:focus-visible, .textLink:focus-visible, .button:focus-visible { outline: 2px solid var(--cp-accent); outline-offset: 2px; }
+.programGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.focusedGrid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); }
+.programCard { min-height: 180px; }
+.cardActions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: auto; padding-top: 16px; }
+.programCard.card { display: flex; flex-direction: column; }
+.textLink { color: var(--cp-text-muted); font-size: 13px; text-underline-offset: 4px; display: inline-flex; align-items: center; min-height: 44px; }
 .steps { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
 .step { border: 0; border-bottom: 2px solid var(--cp-border); padding: 12px 16px; color: var(--cp-text-muted); background: transparent; white-space: nowrap; }
 .step[aria-current] { color: var(--cp-accent); border-color: var(--cp-accent); }
@@ -24,6 +42,7 @@ section.card { cursor: default; }
 .primary { background: var(--cp-accent); color: var(--cp-accent-fg); border-color: var(--cp-accent); font-weight: 600; }
 .iconButton { padding: 8px 12px; }
 .week { display: grid; gap: 8px; }
+.weekWorkout { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; overflow-wrap: anywhere; }
 .day { display: grid; grid-template-columns: 100px minmax(0, 1fr) auto; align-items: center; gap: 16px; border: 1px solid var(--cp-border); border-radius: 12px; padding: 16px; background: var(--cp-surface); }
 .day strong { display: block; overflow-wrap: anywhere; }
 .day p { margin: 4px 0 0; }
@@ -42,10 +61,18 @@ section.card { cursor: default; }
 .dates { display: grid; gap: 6px; max-height: 380px; overflow: auto; }
 .date { display: flex; gap: 16px; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--cp-border); font-size: 14px; }
 .date time { color: var(--cp-text-muted); white-space: nowrap; }
+@media (max-width: 900px) {
+  .programGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 600px) {
+  .desktopHistory { display: none; }
+  .mobileHistory { display: inline-flex !important; margin-top: -12px; }
+  .programGrid { grid-template-columns: minmax(0, 1fr); }
+  .programCard { min-height: 150px; }
   .builder { gap: 18px; }
   .day { grid-template-columns: 64px minmax(0, 1fr); gap: 10px; padding: 12px; }
   .dayActions { grid-column: 2; }
+  .weekWorkout { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .panel, .part { padding: 16px; }
   .step { padding: 10px 12px; }
   .header { align-items: flex-start; }

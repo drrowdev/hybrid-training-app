@@ -122,16 +122,6 @@ export function TmSourceDetail({
             >
               {pending ? "Locking…" : "Lock as entered 1RM"}
             </button>
-            <span
-              style={{
-                marginLeft: 10,
-                fontSize: 11,
-                color: "var(--cp-text-muted)",
-              }}
-            >
-              Treats this number as your deliberate entry. The link to the
-              source set is cleared.
-            </span>
           </div>
         </div>
       )}

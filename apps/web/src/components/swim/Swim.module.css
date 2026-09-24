@@ -1,4 +1,6 @@
 .page { width: min(100%, 760px); margin: 0 auto; display: grid; gap: 24px; padding-bottom: 24px; }
+.hubPage { width: min(100%, 1040px); }
+.hubPage .section h2, .hubPage .section h3 { font-family: var(--cp-font-sans); font-size: 19px; font-weight: 700; }
 .section { padding: 20px; border: 1px solid var(--cp-border); border-radius: 12px; background: var(--cp-surface); display: grid; gap: 16px; min-width: 0; }
 .section h2, .section h3 { margin: 0; font-family: var(--cp-font-display); font-weight: 600; font-size: 22px; }
 .form { display: grid; gap: 24px; }

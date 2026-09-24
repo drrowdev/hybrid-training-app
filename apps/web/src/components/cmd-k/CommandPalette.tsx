@@ -320,7 +320,7 @@ export function CommandPalette({
               setQuery(e.target.value);
               setSelected(0);
             }}
-            placeholder="Search pages, movements, blocks, sessions…"
+            placeholder="Search pages, movements, programs, sessions…"
             aria-label="Search"
             data-testid="cmdk-input"
             style={{
@@ -366,7 +366,7 @@ export function CommandPalette({
                 fontSize: 13,
               }}
             >
-              No matches. Try a page, movement, block, or session.
+              No matches. Try a page, movement, program, or session.
             </div>
           ) : (
             groups.map((g) => (

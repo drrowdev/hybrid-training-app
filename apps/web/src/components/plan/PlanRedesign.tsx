@@ -1,6 +1,7 @@
 "use client";
 
 import { ScheduleRestoreButton } from "@/components/program/ScheduleRestoreButton";
+import { ProgramDetailHeader } from "@/components/program/ProgramDetailHeader";
 import { previewPlannedMove, type PlannedMovePreview } from "@/lib/planner/actions";
 
 /**
@@ -280,7 +281,7 @@ function weekLoadSummary(sessions: readonly PlanSessionInput[]): string {
   const supplementalRange = percentRange(supplemental);
   if (mainRange) parts.push(`Main lifts ${mainRange}`);
   if (supplementalRange) parts.push(`Supplemental ${supplementalRange}`);
-  return parts.join(" · ") || "Open session for prescription details";
+  return parts.join(" · ");
 }
 
 function sessionDoseSummary(session: PlanSessionInput): string {
@@ -302,7 +303,9 @@ function sessionDoseSummary(session: PlanSessionInput): string {
         .filter((item) => item.kind === "back_off")
         .map((item) => item.movementId),
     ).size;
-    return `${formatPrescriptionItem(main)}${
+    const dose = formatPrescriptionItem(main);
+    if (dose.trim().startsWith("×")) return "";
+    return `${dose}${
       supplementalCount > 0
         ? ` · ${supplementalCount} supplemental`
         : ""
@@ -354,7 +357,6 @@ export function PlanRedesign(props: PlanRedesignProps) {
   const {
     blockId,
     archetypeName,
-    programFamilyName = "SxC",
     customized = false,
     segments = [{ startWeekIndex: 0, label: archetypeName }],
     headerActions,
@@ -539,16 +541,6 @@ export function PlanRedesign(props: PlanRedesignProps) {
     () => buildPlanPhaseGroups(segments, weeks),
     [segments, weeks],
   );
-  const currentPhase =
-    phaseGroups.find(
-      (phase) =>
-        currentWeekIndex >= phase.startWeekIndex &&
-        currentWeekIndex <= phase.endWeekIndex,
-    ) ??
-    (currentWeekIndex >= weeks
-      ? phaseGroups[phaseGroups.length - 1]!
-      : phaseGroups[0]!);
-
   const totalSessions = sessions.length;
   const totalDone = sessions.filter((s) => s.done).length;
   const totalSkipped = sessions.filter((s) => s.skipped).length;
@@ -559,55 +551,26 @@ export function PlanRedesign(props: PlanRedesignProps) {
   const totalOverdue = sessions.filter((s) =>
     isOverdue(sessionToOverdueCandidate(s), today),
   ).length;
-  const progressPct =
-    totalSessions === 0
-      ? 0
-      : Math.max(0, Math.min(100, Math.round((totalDone / totalSessions) * 100)));
+  const currentWorkouts = sessions.filter((session) =>
+    session.weekIndex === Math.max(0, Math.min(weeks - 1, currentWeekIndex)),
+  ).length;
 
   return (
     <div data-testid="plan-redesign" style={{ display: "grid", gap: 24 }}>
-      <header className="plan-program-head">
-        <div className="plan-program-head-row">
-          <div>
-            <div className="plan-eyebrow">
-              Active program · {programFamilyName}
+      <ProgramDetailHeader title={archetypeName} completed={totalDone} total={totalSessions}
+        actions={headerActions}
+        eyebrow={<>
+              Active program
               {customized ? (
                 <span className="plan-customized-badge">Customized</span>
               ) : null}
               <PlanFocusBadge muscles={focusMuscles} />
-            </div>
-            <h1 className="plan-h1">{archetypeName}</h1>
-            <div className="plan-program-subtitle">
-              {currentWeekIndex < 0
-                ? `Starts ${longDate(startedOn)} · ${currentPhase.label}`
+        </>}
+        subtitle={currentWeekIndex < 0
+                ? `Starts ${longDate(startedOn)}`
                 : currentWeekIndex >= weeks
-                  ? `Program window complete · ${currentPhase.label}`
-                  : `Week ${currentWeekIndex + 1} of ${weeks} · ${
-                      currentPhase.label
-                    } · ${weekComposition(
-                  sessions.filter(
-                    (session) => session.weekIndex === currentWeekIndex,
-                  ),
-                    )}`}
-            </div>
-          </div>
-          {headerActions}
-        </div>
-        <div className="plan-progress-row">
-          <div
-            className="plan-progress"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progressPct}
-            aria-label={`${totalDone} of ${totalSessions} sessions done`}
-          >
-            <span style={{ width: `${progressPct}%` }} />
-          </div>
-          <span>
-            <b>{totalDone}</b> of {totalSessions} sessions complete
-          </span>
-        </div>
+                  ? "Program window complete"
+                  : `Week ${currentWeekIndex + 1} of ${weeks} · ${currentWorkouts} ${currentWorkouts === 1 ? "workout" : "workouts"} a week`}>
         {(totalSkipped > 0 || totalOverdue > 0) && (
           <div className="plan-meta">
             {totalSkipped > 0 && <span>{totalSkipped} skipped</span>}
@@ -619,7 +582,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
             )}
           </div>
         )}
-      </header>
+      </ProgramDetailHeader>
 
       <div className="plan-controls">
         <div className="plan-view-toggle" role="tablist" aria-label="View mode">
@@ -659,20 +622,13 @@ export function PlanRedesign(props: PlanRedesignProps) {
             </button>
           )}
         </div>
-        <span className="plan-overview-hint">
-          {view === "season"
-            ? "Long-range training roadmap"
-            : view === "month"
-              ? "Date-oriented program calendar"
-              : "Full program overview · current week expanded"}
-        </span>
       </div>
 
       {view === "timeline" ? (
         <section
           className="plan-timeline plan-phase-stack"
           data-testid="plan-timeline"
-          aria-label={`${cycleNoun === "cycle" ? "Cycle" : "Block"} overview`}
+          aria-label={`${cycleNoun === "cycle" ? "Cycle" : "Program"} overview`}
         >
           {phaseGroups.map((phase, phaseIndex) => {
             const phaseWeeks = Array.from(
@@ -686,8 +642,8 @@ export function PlanRedesign(props: PlanRedesignProps) {
                 session.weekIndex >= phase.startWeekIndex &&
                 session.weekIndex <= phase.endWeekIndex,
             );
-            const phaseSettled = phaseSessions.filter(
-              (session) => session.done || session.skipped,
+            const phaseDone = phaseSessions.filter(
+              (session) => session.done,
             ).length;
             const isCurrentPhase =
               currentWeekIndex >= phase.startWeekIndex &&
@@ -698,14 +654,15 @@ export function PlanRedesign(props: PlanRedesignProps) {
                 : `Weeks ${phase.startWeekIndex + 1}–${
                     phase.endWeekIndex + 1
                   }`;
+            const PhaseContainer = phaseGroups.length > 1 ? "details" : "div";
             return (
-              <details
+              <PhaseContainer
                 key={`${phase.startWeekIndex}-${phase.label}`}
                 className={`plan-phase${isCurrentPhase ? " current" : ""}`}
-                open={isCurrentPhase}
+                {...(phaseGroups.length > 1 ? { open: isCurrentPhase } : {})}
                 data-testid={`plan-phase-${phaseIndex}`}
               >
-                <summary className="plan-phase-head">
+                {phaseGroups.length > 1 && <summary className="plan-phase-head">
                   <span>
                     <span className="plan-phase-name">
                       {phase.label}
@@ -720,12 +677,12 @@ export function PlanRedesign(props: PlanRedesignProps) {
                     </span>
                   </span>
                   <span className="plan-phase-progress">
-                    {phaseSettled} / {phaseSessions.length} settled
+                    {phaseDone} of {phaseSessions.length} done
                     <span className="plan-phase-chevron" aria-hidden="true">
                       ⌄
                     </span>
                   </span>
-                </summary>
+                </summary>}
                 <div className="plan-phase-weeks">
                   {phaseWeeks.map((weekIndex) => {
                     const progress = weekProgress[weekIndex]!;
@@ -802,9 +759,6 @@ export function PlanRedesign(props: PlanRedesignProps) {
                         <div className="plan-week-body">
                           <div className="plan-agenda-head">
                             <b>Week schedule</b>
-                            <span>
-                              Select a session to review or adjust it
-                            </span>
                           </div>
                           <div className="plan-agenda-grid">
                             {Array.from({ length: 7 }, (_, dayIndex) => {
@@ -970,7 +924,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
                     );
                   })}
                 </div>
-              </details>
+              </PhaseContainer>
             );
           })}
         </section>
@@ -1004,7 +958,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
         .plan-eyebrow {
           font-size: 12px;
           letter-spacing: 0.06em;
-          text-transform: uppercase;
+          text-transform: none;
           font-weight: 600;
           color: var(--cp-text-muted);
         }
@@ -1087,7 +1041,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           font-size: 9px;
           font-weight: 700;
           letter-spacing: 0.08em;
-          text-transform: uppercase;
+          text-transform: none;
         }
         .plan-program-head .plan-h1 {
           margin-top: 4px;
@@ -1166,7 +1120,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           color: var(--cp-accent);
           font-size: 10px;
           font-weight: 800;
-          text-transform: uppercase;
+          text-transform: none;
         }
         .plan-phase-meta,
         .plan-phase-progress {
@@ -1247,7 +1201,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           font-size: 10px;
           font-weight: 800;
           letter-spacing: 0.03em;
-          text-transform: uppercase;
+          text-transform: none;
         }
         .plan-week-tag.completed {
           color: var(--cp-success);
@@ -1310,7 +1264,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
         .plan-agenda-head b { color: var(--cp-text); font-size: 13px; }
         .plan-agenda-grid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          grid-template-columns: minmax(0, 1fr);
           gap: 1px;
           overflow: hidden;
           border: 1px solid var(--cp-border);
@@ -1366,7 +1320,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           font-size: 11px;
           font-weight: 800;
           letter-spacing: 0.08em;
-          text-transform: uppercase;
+          text-transform: none;
         }
         .plan-agenda-date b {
           color: var(--cp-text);
@@ -1605,7 +1559,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           font-size: 11px;
           color: var(--cp-text-muted);
           letter-spacing: 0.08em;
-          text-transform: uppercase;
+          text-transform: none;
         }
         .plan-week-label .wk-prog {
           font-size: 12px;
@@ -1733,7 +1687,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           border: 1px solid var(--cp-warning);
           background: color-mix(in srgb, var(--cp-warning) 12%, transparent);
           border-radius: 4px;
-          text-transform: uppercase;
+          text-transform: none;
           vertical-align: middle;
           white-space: nowrap;
         }
@@ -1776,7 +1730,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
           margin: 0 0 12px;
           font-size: 11px;
           letter-spacing: 0.12em;
-          text-transform: uppercase;
+          text-transform: none;
           color: var(--cp-text-muted);
           font-weight: 600;
           font-family: var(--cp-font-mono);
@@ -1801,7 +1755,7 @@ export function PlanRedesign(props: PlanRedesignProps) {
         .rail-day { font-size: 11px; color: var(--cp-text-muted); }
         .rail-name { font-size: 14px; font-weight: 500; }
         .rail-name .today-chip { margin-left: 6px; }
-        .rail-kind { font-size: 10px; color: var(--cp-text-muted); letter-spacing: 0.05em; text-transform: uppercase; }
+        .rail-kind { font-size: 10px; color: var(--cp-text-muted); letter-spacing: 0.05em; text-transform: none; }
         .rail-item.past { opacity: 0.55; }
         .rail-item.past .rail-name { text-decoration: line-through; }
         .rail-item.today-item,
@@ -2377,7 +2331,7 @@ export function SessionDrawer({
         if (onMutated) onMutated();
         else router.refresh();
       } catch {
-        setCardioDoneError("Could not finish this session. Try again.");
+        setCardioDoneError("Couldn't finish this session. Try again.");
       } finally {
         setCardioDonePending(false);
       }
@@ -2592,7 +2546,7 @@ export function SessionDrawer({
     const newWeek = session.weekIndex + Math.floor(newDayIndex / 7);
     const newDay = ((newDayIndex % 7) + 7) % 7;
     if (newWeek < 0 || newWeek >= weeks) {
-      setSwapError("That date is outside the current block.");
+      setSwapError("That date is outside the current program.");
       return;
     }
     const fd = new FormData();
@@ -2609,7 +2563,7 @@ export function SessionDrawer({
           setSwapReview(reviewed); setAcceptSwapOverlap(false); setSwapPending(false); return;
         }
       } catch (error) {
-        setSwapError(error instanceof Error ? error.message : "Could not check these dates. Try again.");
+        setSwapError(error instanceof Error ? error.message : "Couldn't check these dates. Try again.");
         setSwapPending(false); return;
       }
     }
@@ -3173,7 +3127,7 @@ export function SessionDrawer({
             margin: 20px 0 8px;
             font-family: var(--cp-font-mono);
             font-size: 11px;
-            text-transform: uppercase;
+            text-transform: none;
             letter-spacing: 0.08em;
             color: var(--cp-text-muted);
             font-weight: 600;
@@ -3184,7 +3138,7 @@ export function SessionDrawer({
             border-top: 1px solid var(--cp-border);
             font-family: var(--cp-font-mono);
             font-size: 11px;
-            text-transform: uppercase;
+            text-transform: none;
             letter-spacing: 0.08em;
             color: var(--cp-text);
             font-weight: 700;
@@ -3295,7 +3249,7 @@ export function SessionDrawer({
             color: var(--cp-text-muted);
             font-family: var(--cp-font-mono);
             font-size: 11px;
-            text-transform: uppercase;
+            text-transform: none;
             letter-spacing: 0.06em;
           }
           .plan-drawer .cardio-line .val { color: var(--cp-text); }

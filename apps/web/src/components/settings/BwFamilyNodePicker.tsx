@@ -224,7 +224,7 @@ export function BwFamilyNodePicker({
           data-testid={`bw-family-picker-saved-${family}`}
           style={{ fontSize: 11, color: "var(--cp-text-muted)" }}
         >
-          Saved. Accumulators reset for this family.
+          Saved.
         </span>
       )}
       {feedback.kind === "error" && (

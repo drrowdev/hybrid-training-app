@@ -148,8 +148,8 @@ export async function createSeason(input: unknown): Promise<SeasonActionResult> 
       return {
         ok: false,
         error: cleanupError
-          ? `Couldn't add the blocks: ${blocksError.message} (${cleanupError.message})`
-          : `Couldn't add the blocks: ${blocksError.message}`,
+          ? `Couldn't add the programs: ${blocksError.message} (${cleanupError.message})`
+          : `Couldn't add the programs: ${blocksError.message}`,
       };
     }
     revalidateSeason();
@@ -189,7 +189,7 @@ export async function addSeasonBlock(input: unknown): Promise<SeasonActionResult
   if (exErr) return { ok: false, error: exErr.message };
   const count = existing?.length ? (existing[0]!.position as number) + 1 : 0;
   if (count >= MAX_SEASON_BLOCKS) {
-    return { ok: false, error: `A season can hold at most ${MAX_SEASON_BLOCKS} blocks.` };
+    return { ok: false, error: `A season can hold at most ${MAX_SEASON_BLOCKS} programs.` };
   }
 
   const { error } = await supabase.from("season_blocks").insert({
@@ -248,7 +248,7 @@ export async function updateSeasonBlock(input: unknown): Promise<SeasonActionRes
     .select("id")
     .maybeSingle();
   if (error) return { ok: false, error: error.message };
-  if (!updated) return { ok: false, error: "This block is no longer available to edit. Refresh the roadmap." };
+  if (!updated) return { ok: false, error: "This program is no longer available to edit. Refresh the roadmap." };
   revalidateSeason();
   return { ok: true };
 }
@@ -273,8 +273,8 @@ export async function removeSeasonBlock(input: unknown): Promise<SeasonActionRes
     .eq("user_id", user.id)
     .maybeSingle();
   if (rErr) return { ok: false, error: rErr.message };
-  if (!row) return { ok: false, error: "Block not found." };
-  if (row.status !== "planned") return { ok: false, error: "Only upcoming blocks can be removed." };
+  if (!row) return { ok: false, error: "Program not found." };
+  if (row.status !== "planned") return { ok: false, error: "Only upcoming programs can be removed." };
   const seasonId = row.season_id as string;
 
   const { data: removed, error: dErr } = await supabase
@@ -286,7 +286,7 @@ export async function removeSeasonBlock(input: unknown): Promise<SeasonActionRes
     .select("id")
     .maybeSingle();
   if (dErr) return { ok: false, error: dErr.message };
-  if (!removed) return { ok: false, error: "This block is no longer available to remove. Refresh the roadmap." };
+  if (!removed) return { ok: false, error: "This program is no longer available to remove. Refresh the roadmap." };
 
   await renumberSeason(supabase, user.id, seasonId);
   revalidateSeason();
