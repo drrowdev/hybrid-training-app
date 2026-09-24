@@ -842,6 +842,9 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
       await expect(choice).toHaveAttribute("href", new URL(destination).pathname + new URL(destination).search);
       await choice.click();
       await expect(page).toHaveURL(destination);
+      await expect(page.getByRole("navigation", { name: "Program history", exact: true, includeHidden: true })
+        .getByRole("link", { name: new RegExp(`${status}$`), includeHidden: true })).toHaveAttribute("aria-current", "page");
+      await openSwimProgramHistory(page);
       await expect(choice).toHaveAttribute("aria-current", "page");
       await page.reload();
       await expect(page).toHaveURL(destination);

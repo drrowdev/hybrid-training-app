@@ -5786,3 +5786,32 @@ The full ledger passes 570 tests (43 existing skips); synthetic UI passes
 restored. No source-hash repin, inventory change, product/RPC/schema change,
 local database or native acceptance run. Process-slimming remains deferred
 to the coordinator after this PR lands.
+
+## [2026-09-24] acceptance | Reopen swimming history after selected-plan remount
+
+Coordinator-reported `edc72efb` core/storage passed; swimming `36045130483`
+reached 24/25 with cleanup verified. A3 line 845 is the selected history
+link's `aria-current` assertion, after replacement and schedule checks pass.
+Changing the selected plan remounts `SwimHub` (`key={view.id}`), closing the
+new `ProgramSwitcher` disclosure. The existing visible-only locator therefore
+loses the link after navigation.
+
+A3 now waits for the destination link's selected state with a hidden-aware
+lookup, reopens that destination's chooser, and retains the original selected
+link assertion before reload. The destination-state gate prevents opening
+the old chooser before the new hub renders. The regression models the
+remount separately from the URL change. Synthetic Chromium reproduces the
+disappearing locator and verifies the actual helper restores visible,
+selected history. Counts, deadlines and replacement arrangement are unchanged.
+
+Modular `36045151210` failed in the browser stage, but the coordinator's
+one-time summary parser rejected an unrecognised observation case. No case
+identity can be established from that report; no log was refetched. Static
+checks confirm M16's exact completion-URL wait is local to its own test/page.
+The repository already accepts M9 at index 8, and its calendar observation
+matches the current schedule section/day/link markup; no clear observation
+defect was found. Modular code remains unchanged pending usable evidence.
+
+Full ledger plus modular contracts: 587 passed / 43 existing Windows skips.
+Synthetic UI: 75/75; actual-helper remount check, typecheck and touched-file
+lint pass. No hash repin, product change or native/local database run.

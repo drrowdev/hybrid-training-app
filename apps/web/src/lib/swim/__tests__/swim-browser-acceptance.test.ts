@@ -1186,12 +1186,14 @@ describe("browser environment and static config", () => {
       .toThrow("Could not read the synthetic decision submission.");
   });
 
-  it("A3 DC-SW7: waits for each selected destination before reloading and verifies it afterward", async () => {
+  it("A3 DC-SW7: waits for the selected destination, reopens its remounted chooser, then verifies it across reload", async () => {
     const source = readFileSync(join(webRoot, "e2e/swimming-lifecycle-load-mobile.spec.ts"), "utf8");
     const start = source.indexOf('for (const status of ["Archived", "Active"] as const)');
     const block = source.slice(start, source.indexOf('if (status === "Archived")', start));
     let current = "http://127.0.0.1:3000/app/swim?plan=new";
     let pending: string | undefined;
+    let open = false;
+    let rendered = "new";
     let selectedChecked = false;
     const reloads: string[] = [];
     const page = {
@@ -1201,19 +1203,24 @@ describe("browser environment and static config", () => {
         expect(selectedChecked).toBe(true);
         reloads.push(current);
         selectedChecked = false;
+        open = false;
       },
-      getByRole: (_role: string, options: { name: string }) => options.name === "Program history" ? {
+      getByRole: (_role: string, options: { name: string; includeHidden?: boolean }) => options.name === "Program history" ? {
         locator: () => ({}),
-        getByRole: (_role: string, options?: { name: RegExp }) => {
-          const id = options?.name.test("Archived") ? "old" : "new";
-          return { id, click: async () => { pending = `http://127.0.0.1:3000/app/swim?plan=${id}`; } };
+        getByRole: (_role: string, linkOptions?: { name: RegExp; includeHidden?: boolean }) => {
+          const id = linkOptions?.name.test("Archived") ? "old" : "new";
+          return { id, hidden: options.includeHidden && linkOptions?.includeHidden,
+            click: async () => {
+              expect(open).toBe(true);
+              pending = `http://127.0.0.1:3000/app/swim?plan=${id}`;
+            } };
         },
       } : {},
     };
     const execute = runInNewContext(transpileModule(`(async () => { ${block} } })`, {
       compilerOptions: { target: ScriptTarget.ES2022 },
     }).outputText, {
-      page, original: { planId: "old" }, replacementId: "new", URL, openSwimProgramHistory: async () => {},
+      page, original: { planId: "old" }, replacementId: "new", URL, openSwimProgramHistory: async () => { open = true; },
       expect: (value: unknown) => ({
         toBe: (expected: unknown) => expect(value).toBe(expected),
         toHaveCount: async () => {},
@@ -1222,10 +1229,17 @@ describe("browser environment and static config", () => {
           expect(current).toBe(destination);
         },
         toHaveAttribute: async (name: string, expected: string) => {
-          const id = (value as { id: string }).id;
+          const { id, hidden } = value as { id: string; hidden?: boolean };
           if (name === "href") expect(expected).toBe(`/app/swim?plan=${id}`);
           else {
             expect(new URL(current).searchParams.get("plan")).toBe(id);
+            if (hidden) {
+              rendered = id;
+              open = false;
+            } else {
+              expect(rendered).toBe(id);
+              expect(open).toBe(true);
+            }
             expect(expected).toBe("page");
             selectedChecked = true;
           }
