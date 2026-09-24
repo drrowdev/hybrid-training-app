@@ -56,6 +56,7 @@ import {
 } from "@/lib/rehab-protocols/attachment";
 import { rehabFingerprint } from "@/lib/platform/rehab-library";
 import { getSwimNavigation, swimEntryHref } from "@/lib/swim/navigation";
+import { archetypeDisplayName, getActiveBlocks } from "@/lib/planner/queries";
 
 // Sage program-wizard type scale — scoped to this route via CSS variables on
 // the wrapper below (see ProgramPicker.module.css). Not loaded app-wide.
@@ -143,6 +144,7 @@ export default async function ProgramPickerPage({
   if (!user) redirect("/login");
 
   const sp = await searchParams;
+  if (!sp.program && !sp.edit && !sp.seasonBlockId && !sp.recommendation) redirect("/app/programs?new=1");
   const editContext = sp.edit ? await getBlockEditContext(sp.edit) : null;
   if (sp.edit && !editContext) {
     return <EmptyState title="This program isn't available to edit." action={{ label: "View programs", href: "/app/programs" }} />;
@@ -335,6 +337,10 @@ export default async function ProgramPickerPage({
   const initialProgramId =
     seasonOrigin?.target.program_id ?? recommendation?.programId ??
     (sp.program && ENABLED_PROGRAM_IDS.has(sp.program) ? sp.program : undefined);
+  if (!editContext && !initialProgramId) redirect("/app/programs?new=1");
+  const active = await getActiveBlocks();
+  const kind = initialProgramId === "wendler-531" || initialProgramId === "tactical-barbell" ? "strength" : "hybrid";
+  const replacing = active.find((block) => block.programKind === kind);
   const initialLoadoutValue = seasonOrigin
     ? seasonOrigin.target.template_ref ?? undefined
     : recommendation?.phaseId ?? (initialProgramId && sp.phase ? sp.phase : undefined);
@@ -422,6 +428,7 @@ export default async function ProgramPickerPage({
   return (
     <div className={`${archivo.variable} ${oswald.variable} ${saira.variable} ${jetbrains.variable}`}>
       <ProgramPicker
+        replacesName={!editContext && replacing ? archetypeDisplayName(replacing.archetype, replacing.notes) : undefined}
         swimHref={swimEntryHref(await getSwimNavigation(supabase, user.id))}
         programs={programs}
         anchoredKeys={anchoredKeys}

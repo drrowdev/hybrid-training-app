@@ -32,6 +32,8 @@ export async function endBlock(formData: FormData): Promise<void> {
 
   revalidatePath("/app");
   revalidatePath("/app/plan");
+  revalidatePath("/app/programs");
+  revalidatePath("/app/plan/history");
 }
 
 /**

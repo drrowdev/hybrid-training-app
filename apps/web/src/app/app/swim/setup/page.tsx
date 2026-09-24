@@ -18,7 +18,7 @@ export default async function SwimSetupPage() {
   const { data: profile } = await client.from("profiles").select("timezone").eq("id", user.id).maybeSingle();
   return (
     <main className={styles.page}>
-      <PageHeader title="Set up swimming" back={{ href: "/app/swim", label: "Swimming" }} />
+      <PageHeader title="New swimming program" back={{ href: "/app/programs", label: "Programs" }} />
       {capability.storageAvailable && capability.setupEnabled && await privateSwimCourseAvailable(client) &&
         <div className={styles.actions}><Link className={styles.secondary} href="/app/swim/import">Import a swimming plan</Link></div>}
       {schedule

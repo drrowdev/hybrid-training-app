@@ -6,7 +6,8 @@ import { applySwimProposal, generateSwimPlan, recordSwimDecision, SWIM_GENERATOR
 import { estimateCriticalSwimSpeed, swimWorkoutLengths, validateSwimWorkout, type SwimSetup } from "@hta/domain";
 import { test as seededTest, expect } from "./fixtures/seed";
 import { signInAs } from "./fixtures/auth";
-import { markOnboarded, seedRecentBlock, seedPlannedSessionsForBlock } from "./fixtures/seed-blocks";
+import { markOnboarded } from "./fixtures/seed-blocks";
+import { seedSwimPrimaryBaseline } from "./fixtures/swim-primary";
 import type { SwimResumePreview } from "../src/lib/swim/view-types";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { addDaysToYmd, isoWeekdayYmd } from "../src/lib/dates";
@@ -1156,12 +1157,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     const today = await page.getByLabel("Start date", { exact: true }).inputValue();
     expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     const userId = freshUser.userId;
-    const blockId = await seedRecentBlock(admin, userId, {
-      status: "active", weeks: 2, startedOn: addDaysToYmd(today, -7),
-    });
-    const plannedIds = await seedPlannedSessionsForBlock(admin, userId, blockId, {
-      totalSessions: 2, loggedCount: 1,
-    });
+    const { blockId, plannedIds } = await seedSwimPrimaryBaseline(actor, userId, addDaysToYmd(today, -7));
     const movement = await admin.from("movements").select("id,display_name")
       .is("user_id", null).eq("slug", "bench-press-flat").single();
     expect(!movement.error && typeof movement.data?.id === "string" &&

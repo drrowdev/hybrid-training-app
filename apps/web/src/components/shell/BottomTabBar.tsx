@@ -113,6 +113,7 @@ const TABS: Tab[] = [
     match: (p) =>
       p.startsWith("/app/plan") ||
       p.startsWith("/app/program") ||
+      p.startsWith("/app/swim") ||
       p.startsWith("/app/sessions/start") ||
       p.startsWith("/app/log"),
   },
@@ -177,12 +178,14 @@ export function BottomTabBar({
               justifyContent: "center",
               gap: 3,
               height: 56,
-              color: active ? "var(--cp-accent)" : "var(--cp-text-muted)",
+              color: active ? "var(--cp-text)" : "var(--cp-program-muted)",
               textDecoration: "none",
               WebkitTapHighlightColor: "transparent",
             }}
           >
-            <span style={{ display: "inline-flex", lineHeight: 0, position: "relative" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 56, height: 30,
+              borderRadius: 15, background: active ? "var(--cp-accent-soft)" : "transparent",
+              color: active ? "var(--cp-accent)" : undefined, lineHeight: 0, position: "relative" }}>
               {t.icon}
             </span>
             <span

@@ -32,7 +32,7 @@ import {
 } from "./swim-identity-roundtrip";
 import { runSwimBrowserStage } from "./swim-browser-stage";
 import { SWIM_BROWSER_CASES } from "./swim-browser-acceptance";
-import { isModularAcceptance, MODULAR_BROWSER_CASES, MODULAR_MIGRATION_TOTAL } from "./modular-browser-profile";
+import { isModularAcceptance, isModularSchemaAcceptance, MODULAR_BROWSER_CASES, MODULAR_MIGRATION_TOTAL } from "./modular-browser-profile";
 import { createModularRoundTripProof, modularSchemaRoundTrip } from "./modular-schema-roundtrip";
 import { createLegacyUpgradeProof, createModularLegacyPreparation } from "./modular-legacy-fixture";
 import { runMovementReferenceRoundTrip } from "./swim-movement-reference-roundtrip";
@@ -51,6 +51,7 @@ async function main(cleanupOnly: boolean) {
   const project = requireManualContext(process.env, process.env.GITHUB_SHA ?? "");
   requireManualContext(process.env, git("rev-parse", "HEAD"));
   const modular = isModularAcceptance(process.env);
+  const modularSchema = isModularSchemaAcceptance(process.env);
   const temp = realpathSync(process.env.RUNNER_TEMP!);
   assert(realpathSync(process.env.GITHUB_WORKSPACE!) === realpathSync(root));
   const directory = join(temp, `swim-acceptance-${project}`);
@@ -307,7 +308,7 @@ async function main(cleanupOnly: boolean) {
         "packages/tb-conditioning", "packages/ui", "packages/wendler",
         "apps/web/src", "apps/web/public", "apps/web/e2e-rpc/setup.ts", "apps/web/scripts",
         "apps/web/vitest.config.ts", ...SWIM_BROWSER_CASES.map(({ file }) => `apps/web/${file}`),
-        ...(modular ? MODULAR_BROWSER_CASES.map(({ file }) => `apps/web/${file}`) : []),
+        ...(modularSchema ? MODULAR_BROWSER_CASES.map(({ file }) => `apps/web/${file}`) : []),
         "apps/web/e2e/fixtures",
         "apps/web/e2e/global-setup.ts", "apps/web/playwright.config.ts",
         "apps/web/playwright.swim-reference.config.ts", "apps/web/next.config.*",
@@ -316,7 +317,7 @@ async function main(cleanupOnly: boolean) {
         ".github/workflows/ci.yml").split("\0").filter(Boolean);
       sourceHashes = sources();
       const journal = JSON.parse(readFileSync(join(root, "packages/db/drizzle/meta/_journal.json"), "utf8"));
-      if (modular) {
+      if (modularSchema) {
         assert(journal.entries.length === MODULAR_MIGRATION_TOTAL &&
           sourceFiles.filter((f) => /^packages\/db\/drizzle\/[^/]+\.sql$/.test(f)).length === MODULAR_MIGRATION_TOTAL);
         manifest.migrationCount = MODULAR_MIGRATION_TOTAL;
@@ -514,7 +515,7 @@ async function main(cleanupOnly: boolean) {
         return sql;
       },
     });
-    if (modular) {
+    if (modularSchema) {
       manifest.ownershipSchemaProof = ownershipProof;
       await stage("unused ownership schema down before historical modular proof", () => modularDdl("down", true));
       manifest.modularSchemaProof = modularProof;
@@ -576,8 +577,8 @@ async function main(cleanupOnly: boolean) {
       requireAcceptance(result, ledger, state.sha, manifest.configSha256 as string);
       requireIdentityHelperRpcCases(ledger);
     }), reporting);
-    if (modular) await stage("exact modular schema restoration", () => modularDdl("up"));
-    if (modular) {
+    if (modularSchema) await stage("exact modular schema restoration", () => modularDdl("up"));
+    if (modularSchema) {
       const proof = createLegacyUpgradeProof();
       manifest.legacyUpgradeProof = proof;
       const legacy = createModularLegacyPreparation({

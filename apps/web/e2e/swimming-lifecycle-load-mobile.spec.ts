@@ -2,12 +2,13 @@ import { openSwimProgramActions, openSwimProgramHistory } from "./fixtures/swim-
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { errors, type Page, type Request, type Response } from "@playwright/test";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { Prescription } from "@hta/db";
 import { ALL_REGIONS, finalEwma, type Region, type SwimActualResult } from "@hta/domain";
-import { test as seededTest, expect } from "./fixtures/seed";
+import { test as seededTest, expect, type SeedConfig } from "./fixtures/seed";
 import { signInAs } from "./fixtures/auth";
-import { markOnboarded, seedRecentBlock, seedPlannedSessionsForBlock } from "./fixtures/seed-blocks";
+import { markOnboarded } from "./fixtures/seed-blocks";
+import { seedSwimPrimaryBaseline } from "./fixtures/swim-primary";
 import { swimE2EEnabled } from "./fixtures/swim-environment";
 import { addDaysToYmd, todayYmd, ymdInTimezone } from "../src/lib/dates";
 import { structuredSwimRegions } from "../src/lib/swim/load";
@@ -151,14 +152,16 @@ async function confirmPlanStatus(
   }
 }
 
-async function primaryBaseline(admin: SupabaseClient, userId: string) {
+async function primaryBaseline(admin: SupabaseClient, user: { userId: string; email: string; password: string }, config: SeedConfig) {
+  const userId = user.userId;
+  const actor = createClient(config.supabaseUrl, config.anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const signed = await actor.auth.signInWithPassword(user);
+  expect(signed.error).toBeNull();
+  expect(signed.data.user?.id).toBe(userId);
   const timezone = await userTimezone(admin, userId);
-  const blockId = await seedRecentBlock(admin, userId, {
-    status: "active", weeks: 2, startedOn: addDaysToYmd(todayYmd(timezone), -7),
-  });
-  const plannedIds = await seedPlannedSessionsForBlock(admin, userId, blockId, {
-    totalSessions: 2, loggedCount: 1,
-  });
+  const { blockId, plannedIds } = await seedSwimPrimaryBaseline(actor, userId, addDaysToYmd(todayYmd(timezone), -7));
   const movement = await admin.from("movements").select("id,display_name")
     .is("user_id", null).eq("slug", "bench-press-flat").single();
   expect(movement.error).toBeNull();
@@ -387,7 +390,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     page, context, freshUser, seedConfig, admin, baseURL,
   }, testInfo) => {
     await markOnboarded(admin, freshUser.userId);
-    const primary = await primaryBaseline(admin, freshUser.userId);
+    const primary = await primaryBaseline(admin, freshUser, seedConfig);
     await signInAs(context, freshUser, seedConfig, baseURL!);
     const { url, planId } = await createPlan(page);
     const created = await savedPlan(admin, freshUser.userId, planId);
@@ -1029,7 +1032,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
   }, testInfo) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
-    const primary = await primaryBaseline(admin, userId);
+    const primary = await primaryBaseline(admin, freshUser, seedConfig);
     const timezone = await userTimezone(admin, userId);
     await signInAs(context, freshUser, seedConfig, baseURL!);
     const original = await createPlan(page);
@@ -1276,7 +1279,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
   }, testInfo) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
-    const primary = await primaryBaseline(admin, userId);
+    const primary = await primaryBaseline(admin, freshUser, seedConfig);
     const timezone = await userTimezone(admin, userId);
     await signInAs(context, freshUser, seedConfig, baseURL!);
     const original = await createPlan(page);
@@ -1558,8 +1561,9 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     }
   });
 
-  async function primaryRecoveryBaseline(admin: SupabaseClient, userId: string) {
-    const primary = await primaryBaseline(admin, userId);
+  async function primaryRecoveryBaseline(admin: SupabaseClient, user: Parameters<typeof primaryBaseline>[1], config: SeedConfig) {
+    const userId = user.userId;
+    const primary = await primaryBaseline(admin, user, config);
     const planned = primary.initial[1]!;
     const recovery = planned.find((row) => row.completed_session_id === null)!;
     const prescription: Prescription = {
@@ -1625,7 +1629,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
   }) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
-    const primary = await primaryRecoveryBaseline(admin, userId);
+    const primary = await primaryRecoveryBaseline(admin, freshUser, seedConfig);
     const timezone = await userTimezone(admin, userId);
     await signInAs(context, freshUser, seedConfig, baseURL!);
     const original = await createPlan(page);
@@ -1770,7 +1774,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
   }) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
-    const primary = await primaryRecoveryBaseline(admin, userId);
+    const primary = await primaryRecoveryBaseline(admin, freshUser, seedConfig);
     const timezone = await userTimezone(admin, userId);
     await signInAs(context, freshUser, seedConfig, baseURL!);
     const original = await createPlan(page);
@@ -1941,7 +1945,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
   }, testInfo) => {
     const userId = freshUser.userId;
     await markOnboarded(admin, userId);
-    const primary = await primaryBaseline(admin, userId);
+    const primary = await primaryBaseline(admin, freshUser, seedConfig);
     const timezone = await userTimezone(admin, userId);
     await signInAs(context, freshUser, seedConfig, baseURL!);
     const original = await createPlan(page);

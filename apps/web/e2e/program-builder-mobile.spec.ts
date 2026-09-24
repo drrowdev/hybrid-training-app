@@ -157,6 +157,7 @@ async function nativeTeardown(work: () => Promise<void>) {
 function observeNativeUi(
   page: Page, caseId: NativeUiFailure["case"], target: string,
   readRecord: () => Promise<NativeUiFailure["record"]>,
+  date?: string,
 ) {
   let state = unavailableNativeUi(caseId);
   state.request = "not-observed";
@@ -165,7 +166,7 @@ function observeNativeUi(
   const publish = () => diagnosticAnnotation("native-ui-failure", JSON.stringify(state));
   const action = (request: Request) => request.method() === "POST" &&
     new URL(request.url()).origin === new URL(page.url()).origin &&
-    new URL(request.url()).pathname === (caseId === "m8" ? "/app/plan" :
+    new URL(request.url()).pathname === (caseId === "m8" || caseId === "m9" ? "/app/plan" :
       caseId === "m11" ? "/app/plan/history" : "/app/settings/rehab-protocols") &&
     !!request.headers()["next-action"];
   const requested = (request: Request) => {
@@ -187,7 +188,7 @@ function observeNativeUi(
   publish();
   const capture = async () => {
     try {
-      const ui = await page.evaluate(({ caseId, target, navigationStatus }): NativeUiFailure => {
+      const ui = await page.evaluate(({ caseId, target, navigationStatus, date }): NativeUiFailure => {
         const visible = (element: Element | null) => !!element?.getClientRects().length;
         if (caseId === "m8") {
           const control = visible(document.querySelector('[data-testid="end-block-confirm"]')) ? "dialog" :
@@ -204,6 +205,18 @@ function observeNativeUi(
                   visible(document.querySelector('[data-testid="plan-redesign"]')) ? "plan" : "other";
           return { case: "m8", page: pageState, control, request: "unavailable", record: "unavailable" };
         }
+        if (caseId === "m9" || (caseId === "m11" && date)) {
+          const week = document.querySelector('section[aria-label="This week"]');
+          const days = week?.querySelectorAll(`time[datetime="${date}"]`);
+          const day = days?.[0]?.parentElement?.parentElement;
+          const link = `a[href="/app/sessions/start/${target}"]`;
+          const count = (value: number | undefined) => !value ? "none" : value === 1 ? "one" : "multiple";
+          return { case: caseId, control: week ? "schedule" : "schedule-absent",
+            request: "unavailable", record: "unavailable", calendar: {
+              day: count(days?.length), weekLink: count(week?.querySelectorAll(link).length),
+              dayLink: count(day?.querySelectorAll(link).length),
+            } };
+        }
         if (caseId === "m11") {
           const row = document.querySelector(`[data-testid="block-history-row"][data-block-id="${target}"]`);
           const menu = row?.querySelector('[data-testid="block-actions-menu"]');
@@ -217,8 +230,8 @@ function observeNativeUi(
           visible(document.querySelector('[data-testid="rehab-protocol-error"],[aria-invalid="true"]')) ? "error" :
             submit?.form?.querySelector(":invalid") ? "invalid" : submit ? "editor" :
               visible(document.querySelector('[data-testid="rehab-protocol-new"]')) ? "library" : "empty";
-        return { case: "m13", control, request: "unavailable", record: "unavailable" };
-      }, { caseId, target, navigationStatus });
+        return { case: caseId, control, request: "unavailable", record: "unavailable" };
+      }, { caseId, target, navigationStatus, date });
       state = nativeUiFailureSchema.parse({ ...ui, request: state.request, record: state.record });
       publish();
     } catch {
@@ -247,7 +260,6 @@ function movement(catalog: Movement[], slug: string) {
 }
 async function begin(page: Page, activity: string, name: string) {
   await page.goto(`/app/program/build?activity=${activity}`);
-  await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByLabel("Program name", { exact: true }).fill(name);
   await page.getByLabel("Weeks", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Continue", exact: true }).click();
@@ -277,11 +289,16 @@ async function review(page: Page, timeout?: number) {
   await page.getByRole("button", { name: "Review program", exact: true }).click();
   await expect(page.getByRole("button", { name: "Start program", exact: true })).toBeVisible({ timeout });
 }
-async function save(page: Page, actor: SupabaseClient, kind: "strength" | "running" | "hybrid", timeout?: number) {
+async function save(page: Page, actor: SupabaseClient, kind: "strength" | "running" | "hybrid", timeout?: number, replacement?: string) {
   const submit = page.getByRole("button", { name: /^(Start program|Save changes)$/ });
   await expect(submit).toBeVisible({ timeout });
   expect(await submit.isEnabled(), "Program save is disabled; accept the required overlap or replacement consent before saving.").toBe(true);
   await submit.click();
+  if (replacement) {
+    const confirmation = page.getByRole("dialog", { name: `Replace ${replacement}?`, exact: true });
+    await expect(confirmation).toBeVisible({ timeout });
+    await confirmation.getByRole("button", { name: "Replace program", exact: true }).click();
+  }
   await expect(page).toHaveURL(/\/app\/plan\?block=[0-9a-f-]{36}$/, { timeout });
   const saved = await actor.from("training_blocks").select("id").eq("program_kind", kind)
     .eq("status", "active").is("deleted_at", null).single();
@@ -317,8 +334,8 @@ async function loggedSets(actor: SupabaseClient, sessionId: string) {
   return result.data ?? [];
 }
 
-async function createRehabInLibrary(page: Page, selected: Movement, name: string, actor?: SupabaseClient, timeout?: number) {
-  const observation = actor ? observeNativeUi(page, "m13", "", async () => {
+async function createRehabInLibrary(page: Page, selected: Movement, name: string, actor?: SupabaseClient, timeout?: number, caseId: "m13" | "m14" = "m13") {
+  const observation = actor ? observeNativeUi(page, caseId, "", async () => {
     const read = await actor.from("rehab_protocols").select("id").eq("name", name)
       .limit(1).abortSignal(AbortSignal.timeout(1000));
     return read.error || !read.data ? "unavailable" : read.data.length ? "present" : "absent";
@@ -350,9 +367,9 @@ function clearNativeUiObservation() {
 
 async function draftPair(page: Page, catalog: Movement[], kind: "strength" | "running", name: string, offsets: [number, number]) {
   await begin(page, kind, name);
-  await page.getByRole("button", { name: "2. Setup", exact: true }).click();
+  await page.getByRole("button", { name: "1. Setup", exact: true }).click();
   await page.getByLabel("Weeks", { exact: true }).fill("1");
-  await page.getByRole("button", { name: "4. Workout", exact: true }).click();
+  await page.getByRole("button", { name: "3. Workout", exact: true }).click();
   await page.getByLabel("Workout name", { exact: true }).fill(`${name} A`);
   await page.getByRole("combobox", { name: "Day", exact: true }).selectOption(String((weekday() + offsets[0]) % 7));
   if (kind === "strength") await lift(page, movement(catalog, "bench-press-flat"));
@@ -463,6 +480,7 @@ test.describe("Modular program builder", () => {
     stage("m3-08");
     for (const path of ["/app/programs", "/app/programs?activity=hybrid"]) {
       await page.goto(path);
+      await page.getByRole("link", { name: "Schedule", exact: true }).click();
       await expect(page.locator(`a[href="/app/sessions/start/${row.id}"]`)).toBeVisible();
     }
     for (const activity of ["strength", "running"]) {
@@ -721,10 +739,10 @@ test.describe("Modular program builder", () => {
         await page.goto(path);
         const hub = path.startsWith("/app/swim");
         const scope = hub ? page.getByRole("list", { name: "Swims", exact: true })
-          : page.getByRole("region", { name: "Swimming schedule", exact: true });
+          : page.getByRole("region", { name: path === "/app/plan" ? "This week" : "Swimming schedule", exact: true });
         const link = scope.locator(`a[href^="/app/swim/${first.id}"]`);
         await expect(link).toBeVisible();
-        await expect(link).toContainText(label);
+        await expect(link).toContainText(path === "/app/plan" && label === "Scheduled" ? "Start workout" : label);
         if (path === "/app" && label !== "Scheduled") {
           const recent = page.getByRole("region", { name: "Recent activity", exact: true })
             .locator(`a[href="/app/swim/recordings/${receipt.id}?workout=${first.id}&from=today"]`);
@@ -881,12 +899,22 @@ test.describe("Modular program builder", () => {
       expect(todaySwim.scheduled_date).toBe(today());
       await page.goto("/app/programs");
       const programs = page.getByRole("region", { name: "Programs", exact: true });
-      await expect(programs.getByRole("heading", { level: 2 })).toHaveCount(3);
+      await expect(programs.locator("a[data-kind]")).toHaveCount(3);
       for (const name of ["Strength week", "Running week", "Swimming"]) {
-        await expect(programs.getByRole("heading", { name, exact: true })).toBeVisible();
+        await expect(programs.getByText(name, { exact: true })).toBeVisible();
       }
+      await page.getByRole("link", { name: "Schedule", exact: true }).click();
       const week = page.getByRole("region", { name: "This week", exact: true });
-      await expect(week.locator(`a[href="/app/sessions/start/${todayStrength.id}"]`)).toHaveCount(1);
+      const calendar = observeNativeUi(page, "m9", todayStrength.id, async () => {
+        const read = await actor.from("planned_sessions").select("id").eq("id", todayStrength.id)
+          .abortSignal(AbortSignal.timeout(1000)).maybeSingle();
+        return read.error ? "unavailable" : read.data ? "retained" : "absent";
+      }, today());
+      try {
+        await expect(week.locator(`a[href="/app/sessions/start/${todayStrength.id}"]`)).toHaveCount(1);
+        clearNativeUiObservation();
+      } catch (error) { await calendar.recordFailure(); throw error; }
+      finally { calendar.dispose(); }
       await expect(week.locator(`a[href^="/app/swim/${todaySwim.id}?"]`)).toHaveCount(1);
       const sharedDay = week.locator(`time[datetime="${today()}"]`).locator("../..");
       await expect(sharedDay.locator(`a[href="/app/sessions/start/${todayStrength.id}"]`)).toHaveCount(1);
@@ -926,7 +954,7 @@ test.describe("Modular program builder", () => {
       await page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true }).check();
       const hybridId = await save(page, actor, "hybrid");
       await page.goto("/app/programs");
-      await expect(page.getByRole("region", { name: "Programs", exact: true }).getByRole("heading", { level: 2 })).toHaveCount(4);
+      await expect(page.getByRole("region", { name: "Programs", exact: true }).locator("a[data-kind]")).toHaveCount(4);
       const hybridRows = (await planned(actor)).filter((row) => row.block_id === hybridId);
       const runRow = original.find((row) => row.block_id === running.block_id)!;
       await page.goto(`/app/program/build?edit=${running.block_id}&workout=${runRow.id}`);
@@ -942,13 +970,14 @@ test.describe("Modular program builder", () => {
       await begin(page, "strength", "Replacement strength");
       await lift(page, movement(catalog, "bench-press-flat"));
       await review(page);
-      const replacement = page.getByRole("checkbox", { name: "End Native strength and start this program.", exact: true });
-      await expect(replacement).toBeVisible();
-      await expect(page.getByRole("checkbox", { name: /End (Native running|Fourth hybrid|Swimming)/ })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Start program", exact: true })).toBeDisabled();
-      await replacement.check();
       await page.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true }).check();
-      const replacementId = await save(page, actor, "strength");
+      await page.getByRole("button", { name: "Start program", exact: true }).click();
+      const replacement = page.getByRole("dialog", { name: "Replace Native strength?", exact: true });
+      await expect(replacement).toBeVisible();
+      await expect(page.getByRole("dialog", { name: /Replace (Native running|Fourth hybrid|Swimming)/ })).toHaveCount(0);
+      await replacement.getByRole("button", { name: "Cancel", exact: true }).click();
+      const replacementId = await save(page, actor, "strength", undefined, "Native strength");
       expect(replacementId).not.toBe(strength.block_id);
       const replaced = await actor.from("training_blocks").select("status").eq("id", strength.block_id).single();
       expect(replaced.error).toBeNull(); expect(replaced.data?.status).toBe("archived");
@@ -1012,6 +1041,7 @@ test.describe("Modular program builder", () => {
         throw error;
       }
       finally { observation.dispose(); }
+      clearNativeUiObservation();
       const deleted = await actor.from("program_instances").select("status,deleted_at").eq("block_id", hybridId).single();
       expect(deleted.error).toBeNull();
       expect(deleted.data).toEqual({ status: "archived", deleted_at: expect.any(String) });
@@ -1055,6 +1085,7 @@ test.describe("Modular program builder", () => {
       expect(afterEntries.filter((entry) => entry.programId === strength.block_id && entry.state !== "rest" && entry.date >= addDaysToYmd(today(), 14)))
         .toHaveLength(2);
       await page.goto("/app/programs");
+      await page.getByRole("link", { name: "Schedule", exact: true }).click();
       const week = page.getByRole("region", { name: "This week", exact: true });
       for (const row of original.filter((row) => row.block_id === running.block_id)) {
         await expect(week.locator(`a[href="/app/sessions/start/${row.id}"]`)).toHaveCount(0);
@@ -1062,7 +1093,16 @@ test.describe("Modular program builder", () => {
       const sharedDay = week.locator(`time[datetime="${today()}"]`).locator("../..");
       for (const id of [strength.block_id, hybridId]) {
         const row = original.find((entry) => entry.block_id === id)!;
-        await expect(sharedDay.locator(`a[href="/app/sessions/start/${row.id}"]`)).toHaveCount(1);
+        const calendar = observeNativeUi(page, "m11", row.id, async () => {
+          const read = await actor.from("planned_sessions").select("id").eq("id", row.id)
+            .abortSignal(AbortSignal.timeout(1000)).maybeSingle();
+          return read.error ? "unavailable" : read.data ? "retained" : "absent";
+        }, today());
+        try {
+          await expect(sharedDay.locator(`a[href="/app/sessions/start/${row.id}"]`)).toHaveCount(1);
+          clearNativeUiObservation();
+        } catch (error) { await calendar.recordFailure(); throw error; }
+        finally { calendar.dispose(); }
       }
     });
 
@@ -1287,7 +1327,7 @@ test.describe("Modular program builder", () => {
   ownedTest("M14 DC-R5/DC-SW7: Swimming pause moves only its dates and retains issued rehab",
     async ({ page, actor, catalog, freshUser }) => {
       const selected = movement(catalog, "bench-press-flat"), running = movement(catalog, "run-easy-z2");
-      await createRehabInLibrary(page, selected, "Retained rehab");
+      await createRehabInLibrary(page, selected, "Retained rehab", actor, undefined, "m14");
       const graphs: Awaited<ReturnType<typeof prepareNativeProgram>>[] = [];
       for (const kind of ["strength", "running", "hybrid"] as const) {
         graphs.push(await prepareNativeProgram(actor, { ...nativeProgramDefinition(kind, `${kind} peer`, weekday(),
@@ -1384,9 +1424,8 @@ test.describe("Modular program builder", () => {
         await begin(writer, "strength", "Replacement while offline");
         await lift(writer, movement(catalog, "bench-press-flat"));
         await review(writer);
-        await writer.getByRole("checkbox", { name: "End Offline strength and start this program.", exact: true }).check();
         await writer.getByRole("checkbox", { name: "Keep both workouts on these dates.", exact: true }).check();
-        const replacementId = await save(writer, actor, "strength");
+        const replacementId = await save(writer, actor, "strength", undefined, "Offline strength");
         expect(await readNativeOutbox(page)).toEqual(queued);
         expect(await loggedSets(actor, hybridSession)).toEqual(unfinishedSets);
         const beforeReplay = await actor.from("program_instances").select("id,block_id,status,instance")

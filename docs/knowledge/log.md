@@ -5502,3 +5502,124 @@ The harness uses bundled app fonts and checks menu dismissal/focus recovery.
 The full Windows web suite also exposed CRLF/POSIX-permission assumptions in
 untouched diagnostics; SQL and native acceptance remain GitHub CI gates.
 No database, migration, RLS, engine behavior or deployment changes are included.
+
+## [2026-09-24] refine | Programs list and type-first setup
+
+The approved Programs redesign replaces the overview cards, activity filters
+and weekly strip with four fixed type rows and Schedule / Program history
+links. New program uses a desktop dialog or viewport-anchored mobile sheet.
+Strength and Hybrid offer only existing template families; Running and
+Swimming open their existing setup. Reviewed primary replacement retains the
+existing atomic action and request identity behind an explicit confirmation
+(DC-K4). Untyped active programs retain their existing end action and block
+non-swim chooser options; no classification UI or data mutation is included.
+
+The coordinator approved the existing swimming lifecycle exception: occupied
+Swimming opens its detail with "End <name> first", not a non-atomic replacement.
+Paused Swimming remains reachable in its slot; paused, finished and archived
+swimming are linked from Program history using existing reads (DC-SW7).
+Atomic swim replacement is deferred. Classifying untyped programs is blocked
+by guard_program_block_identity; deferred.
+
+Next-workout selection is a pure domain helper, separated by program and
+source; swimming week labels retain their start-relative boundary instead
+of inheriting the primary program's Monday boundary. Scoped muted text and
+the selected bottom-navigation pill improve the touched surfaces without
+changing the global muted token.
+
+The review package covers 375px / 1280px overview, chooser, template setup,
+replacement and end confirmations, plus paused/history states. The synthetic
+harness retains all 75 stages and adds destination, cancellation, failure/retry,
+request-identity, contrast and mobile geometry assertions. Targeted checks
+passed: 98 web cases, 8 domain cases, web typecheck, frontend lint and production
+build. SQL and native acceptance remain GitHub-only gates; no local database,
+deployment or merge occurred. Screenshot/copy approval is required before push.
+
+The coordinator authorized an optional manual acceptance profile choice
+(auto / modular / swimming), preserving auto routing, and only the additional
+exact redesign branch in the modular guard. First-attempt, reviewed-SHA,
+non-production and all other acceptance guards, assertions and limits remain.
+
+Coordinator visual review requested and received a neutral legacy row with
+week/next summary, shared history name/date/status rows, disabled-option locks,
+and corrected realistic fixtures inside AppShell. The primary history keeps
+its expansion, session links, pagination and Delete menu. A same-type target
+regression confirms the screenshot's prior Running/Strength mismatch was
+fixture-only. Existing template-review ISO date rendering remains unchanged.
+Revision 2 was approved for draft publication after verifying the legacy
+summary wraps on phone while the program name remains single-line. No deploy
+or merge approval was granted.
+
+## [2026-09-24] acceptance | Programs redesign manual-run follow-up
+
+Manual modular acceptance at `440ae4f9` exposed stale typed-builder step labels
+in M8/M9 and a moved Schedule region in M7. Corrected those selectors, retaining
+the state checks and using Schedule's existing "Start workout" action for the
+scheduled state. The 375px/1280px synthetic harness verifies the typed-step
+round trip, dated shared-row links and imported swimming status presentations.
+
+Swimming preflight asserted the historical 150 migration count against the
+159-entry source tree. The coordinator authorized separating schema qualification
+from browser selection on only the exact modular-implementation and
+Programs-redesign refs: both profiles use the existing full 159-entry source and
+down/up proofs there. All other swimming refs retain the 150 path. The 18/26
+browser inventories, pins, first-attempt and SHA checks, deadlines and cleanup
+remain; ref/profile unit cases cover the boundary.
+
+M11's dated-row selectors pass synthetically; its native failure remains
+unexplained. M14 failed during the unchanged direct Rehab protocols save, before
+swimming pause, with no removed Programs navigation involved. Per coordinator
+approval, these cases receive only bounded enum diagnostics for the next run,
+not speculative product changes or longer assertions. Successful history-delete
+observations are cleared so they cannot masquerade as a later calendar failure.
+No consumed native logs were fetched again; no database or native run occurred
+locally. Both manual profiles must be redispatched at the new head.
+
+## [2026-09-24] acceptance | Legacy proof follows schema qualification
+
+At `548fa924`, automatic CI/storage and all 18 modular browser cases passed;
+the modular run verified 159 migrations and cleanup. Swimming stopped before
+browser execution: the legacy-preparation guard still required the modular
+browser profile inside the newly shared 159-schema proof path. Synthetic tests
+reproduced that exact assertion on both approved refs with swimming selected.
+
+The legacy proof now uses the existing exact-ref schema-qualification selector,
+including its first-attempt requirement. Manual context/SHA, Linux, loopback,
+private-directory, graph-equality and verified-cleanup guards remain intact.
+The browser-only legacy fixture reader remains modular-only. Tests cover both
+profiles on both approved refs, reject unqualified contexts before allocation,
+and retain preparation, graph-preservation and cleanup failure checks.
+This shared helper is exercised by modular acceptance too; both profiles need
+redispatch at the next changed head. No database or native run occurred locally.
+
+## [2026-09-24] acceptance | Typed swimming baseline and M9 observation
+
+At `fccb71bd`, automatic CI/storage passed; modular acceptance passed 17/18
+cases, with M9 failing the primary-workout link count after Schedule navigation.
+The same assertion passed at the previous head. No date or race cause was
+proven, so the assertion and deadline remain unchanged with bounded enum-only
+calendar/record evidence added for its next failure.
+
+Swimming reached the browser, where the primary seed hit 0158's prohibition on
+new untyped blocks. The owner authorized a test-only replacement: authenticated
+authored Strength creation through the existing independent-program commit,
+two planned workouts, and one started/completed primary session. Existing
+primary set-log setup and before/after preservation assertions remain. Synthetic
+tests cover all seven start weekdays and failure/owner boundaries.
+
+The blockless swimming test now chooses the Swimming button in the Programs
+dialog after the legacy new-program redirect. Other direct-setup timeouts, C2
+account deletion and B4's reduction-candidate assertion remain unexplained and
+out of scope; no speculative changes were made. Both profiles require a fresh
+run on the combined changed head. No product, RPC, migration, deadline or
+acceptance-inventory changes; no local database/native runs or consumed-log reads.
+
+## [2026-09-24] acceptance | Exact private-comparison source pin correction
+
+Core CI at `a5510500` caught an omitted source-line update: the new fixture
+import moved the private boolean comparison from line 71 to 72. Its unit pin
+and runtime stack classifier still required 71. This reproduced with both LF
+and CRLF; the prior targeted local selection had not run that ledger test.
+Both exact pins now require 72, with LF/CRLF source coverage and rejection of
+the old line. Boolean-only parsing, source/function allowlists, caller limits
+and payload rejection remain intact. No native assertions or deadlines changed.

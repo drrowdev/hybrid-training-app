@@ -483,7 +483,7 @@ const resultSchema = z.object({
   annotations: z.unknown().transform((value) => ({
     alerts: readAlertAnnotations(value), modular: readModularAnnotations(value), phase: readModularFailurePhase(value),
     historyDelete: readHistoryDeleteFailure(value),
-    nativeUi: [7, 10, 12].map((index) => readNativeUiFailure(value, index)),
+    nativeUi: [7, 8, 10, 12, 13].map((index) => readNativeUiFailure(value, index)),
   })),
 }).transform(({ errors, error, annotations, ...result }) => ({
   ...result, annotations: annotations.alerts, modularAnnotations: annotations.modular, failurePhase: annotations.phase,
@@ -508,7 +508,7 @@ export function projectStackAttribution(stacks: readonly unknown[], webRoot: str
       const source = ATTRIBUTED_SOURCES.find(([file]) => match[2] === join(webRoot, file))?.[1];
       if (!source) continue;
       const line = Number(match[3]), column = Number(match[4]);
-      if (source === "swimming-decisions-offline-mobile" && match[1] === "same" && line === 71) {
+      if (source === "swimming-decisions-offline-mobile" && match[1] === "same" && line === 72) {
         comparison = true;
         continue;
       }
@@ -650,8 +650,8 @@ export function validateSwimBrowserReport(text: string, paths: BrowserPaths, web
               failureDetails: projectStackAttribution(last.stacks, webRoot),
               ...(cases === MODULAR_BROWSER_CASES ? { failurePhase: last.failurePhase } : {}),
               ...(cases === MODULAR_BROWSER_CASES && index === 10 ? { historyDeleteFailure: last.historyDeleteFailure } : {}),
-              ...(cases === MODULAR_BROWSER_CASES && [7, 10, 12].includes(index) ? {
-                nativeUiFailure: last.nativeUiFailures[[7, 10, 12].indexOf(index)],
+              ...(cases === MODULAR_BROWSER_CASES && [7, 8, 10, 12, 13].includes(index) ? {
+                nativeUiFailure: last.nativeUiFailures[[7, 8, 10, 12, 13].indexOf(index)],
               } : {}),
               ...(cases === MODULAR_BROWSER_CASES && [2, 3, 7, 11, 12].includes(index) ? {
                 modularObservation: projectModularObservation(index, last.modularAnnotations),

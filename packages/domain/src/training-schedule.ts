@@ -35,3 +35,10 @@ export function trainingScheduleAdvice(
 export function commitmentWeekday(date: string): number {
   return (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;
 }
+
+export function nextProgramCommitment(
+  commitments: readonly TrainingCommitment[], programId: string, today: string, source: "primary" | "swim" = "primary",
+): TrainingCommitment | undefined {
+  return commitments.filter((entry) => entry.source === source && entry.programId === programId && entry.date >= today && entry.state === "scheduled")
+    .sort((left, right) => left.date.localeCompare(right.date) || left.id.localeCompare(right.id))[0];
+}

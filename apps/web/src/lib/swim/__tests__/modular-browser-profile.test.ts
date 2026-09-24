@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
-  isModularAcceptance, isModularBrowserProfile, MODULAR_BROWSER_CASES, MODULAR_MIGRATION_TOTAL,
+  isModularAcceptance, isModularBrowserProfile, isModularSchemaAcceptance, MODULAR_BROWSER_CASES, MODULAR_MIGRATION_TOTAL,
 } from "../../../../scripts/modular-browser-profile";
 import { buildBrowserEnv, buildBrowserServerEnv, requireBrowserEnvironment, SWIM_BROWSER_CASES } from "../../../../scripts/swim-browser-acceptance";
-import { requireManualContext } from "../../../../scripts/swim-acceptance-guards";
+import { ACTIVE_MIGRATION_TOTAL, requireManualContext } from "../../../../scripts/swim-acceptance-guards";
 
 const sha = "c".repeat(40);
 const context = {
@@ -27,6 +27,12 @@ describe("DC-SW8 modular browser profile retains the isolated runtime boundaries
     expect(job).toContain("SXC_ACCEPTANCE_PROFILE:");
     expect(job).not.toContain("environment:");
     expect(job).not.toContain("secrets.");
+    const inputs = workflow.split("    inputs:\n")[1]!.split("\nconcurrency:")[0]!;
+    expect([...inputs.matchAll(/^      \w+:$/gm)]).toHaveLength(24);
+    expect(inputs).toContain("      acceptance_profile:");
+    expect(inputs).toContain("          - auto\n          - modular\n          - swimming");
+    expect(job).toContain("inputs.acceptance_profile != '' && inputs.acceptance_profile != 'auto' && inputs.acceptance_profile");
+    expect(job).toContain("github.ref == 'refs/heads/drrowdev-modular-programs-implementation' && 'modular' || 'swimming'");
   });
 
   it("preserves the historical cohorts and declares each ownership journey exactly once", () => {
@@ -40,9 +46,14 @@ describe("DC-SW8 modular browser profile retains the isolated runtime boundaries
     expect(MODULAR_MIGRATION_TOTAL).toBe(159);
   });
 
-  it("requires the exact modular branch and a fresh first attempt", () => {
+  it("requires one of the two explicitly reviewed branches and a fresh first attempt", () => {
     expect(isModularAcceptance(context)).toBe(true);
     expect(requireManualContext(context, sha)).toBe("pr802-35326000000-1");
+    const redesign = { ...context, GITHUB_REF: "refs/heads/drrowdev-programs-page-redesign",
+      GITHUB_WORKFLOW_REF: "drrowdev/hybrid-training-app/.github/workflows/ci.yml@refs/heads/drrowdev-programs-page-redesign" };
+    expect(requireManualContext(redesign, sha)).toBe("pr802-35326000000-1");
+    expect(() => requireManualContext({ ...redesign, GITHUB_RUN_ATTEMPT: "2" }, sha)).toThrow();
+    expect(() => requireManualContext({ ...redesign, EXPECTED_SHA: "d".repeat(40) }, sha)).toThrow();
     expect(isModularAcceptance({})).toBe(false);
     expect(isModularBrowserProfile({ SXC_ACCEPTANCE_PROFILE: "swimming" })).toBe(false);
     for (const changed of [
@@ -54,6 +65,45 @@ describe("DC-SW8 modular browser profile retains the isolated runtime boundaries
       { ...context, MIGRATE_PRODUCTION: "true" },
       { ...context, ALLOW_UNDEPLOYED: "true" },
     ]) expect(() => requireManualContext(changed, sha)).toThrow();
+  });
+
+  it.each([
+    "refs/heads/drrowdev-modular-programs-implementation",
+    "refs/heads/drrowdev-programs-page-redesign",
+    "refs/heads/copilot/new-acceptance-cases",
+    "refs/heads/drrowdev-programs-page-redesign-extra",
+  ])("qualifies the exact schema independently of browser cases on %s", (ref) => {
+    const reviewed = ref === "refs/heads/drrowdev-modular-programs-implementation" ||
+      ref === "refs/heads/drrowdev-programs-page-redesign";
+    for (const profile of [undefined, "swimming", "modular"]) {
+      const env = { ...context, GITHUB_REF: ref, SXC_ACCEPTANCE_PROFILE: profile,
+        GITHUB_WORKFLOW_REF: `drrowdev/hybrid-training-app/.github/workflows/ci.yml@${ref}` };
+      expect(isModularBrowserProfile(env)).toBe(profile === "modular");
+      expect((isModularBrowserProfile(env) ? MODULAR_BROWSER_CASES : SWIM_BROWSER_CASES).length)
+        .toBe(profile === "modular" ? 18 : 26);
+      if (!reviewed && profile === "modular") {
+        expect(() => isModularSchemaAcceptance(env)).toThrow();
+        expect(() => requireManualContext(env, sha)).toThrow();
+        continue;
+      }
+      expect(isModularSchemaAcceptance(env)).toBe(reviewed);
+      expect(isModularSchemaAcceptance(env) ? MODULAR_MIGRATION_TOTAL : ACTIVE_MIGRATION_TOTAL)
+        .toBe(reviewed ? 159 : 150);
+      expect(requireManualContext(env, sha)).toBe("pr802-35326000000-1");
+      expect(() => requireManualContext({ ...env, EXPECTED_SHA: "d".repeat(40) }, sha)).toThrow();
+      if (reviewed) expect(() => requireManualContext({ ...env, GITHUB_RUN_ATTEMPT: "2" }, sha)).toThrow();
+      else expect(requireManualContext({ ...env, GITHUB_RUN_ATTEMPT: "2" }, sha)).toBe("pr802-35326000000-2");
+    }
+  });
+
+  it("uses the schema selector for every existing proof and the browser selector only for case execution", () => {
+    const source = readFileSync(resolve(__dirname, "../../../../scripts/swim-acceptance.ts"), "utf8");
+    expect(source).toContain("const modularSchema = isModularSchemaAcceptance(process.env);");
+    expect(source.match(/if \(modularSchema\)/g)).toHaveLength(4);
+    expect(source).toContain("...(modularSchema ? MODULAR_BROWSER_CASES.map");
+    expect(source).toContain('manifest.acceptanceProfile = modular ? "modular" : "swimming";');
+    expect(source).toContain("command, root, runDirectory: directory, deadline, cacheEnv: process.env, modular,");
+    expect(source).not.toContain("if (modular)");
   });
 
   it("enables supported course controls only for the selected disposable browser app", () => {

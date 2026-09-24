@@ -11,6 +11,7 @@ import { getCeilingUtilization } from "@/lib/stats/ceiling-queries";
 import { getPendingProgramRecommendations } from "@/lib/platform/recommendations-queries";
 import { ProgramRecommendationsBanner } from "@/components/today/ProgramRecommendationsBanner";
 import { swimFixture } from "@/lib/swim/__tests__/fixtures";
+import { selectProgramTarget } from "@/lib/programs/ownership";
 
 const mocks = vi.hoisted(() => ({ client: vi.fn(), schedule: vi.fn() }));
 vi.mock("server-only", () => ({}));
@@ -120,6 +121,16 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("DC-R5 authoritative independent program reads", () => {
+  it("DC-K4: replacement selects the same type, not the first active program", () => {
+    const active = [block(1, "strength"), block(2, "running"), block(3, "hybrid")];
+    for (const kind of ["strength", "running", "hybrid"] as const) {
+      const target = selectProgramTarget(active, kind);
+      expect(target?.program_kind).toBe(kind);
+      expect(target?.notes).toBe(`${kind} plan`);
+    }
+    expect(selectProgramTarget([active[0], active[2]], "running")).toBeNull();
+    expect(() => selectProgramTarget(active, "running", id(1))).toThrow("Keep the original program type");
+  });
   it.each([[1, 2, 3], [1, 3, 2], [2, 1, 3], [2, 3, 1], [3, 1, 2], [3, 2, 1]])(
     "retains every type in creation order %j", async (first, second, third) => {
       const original = tables.training_blocks!;
@@ -177,17 +188,14 @@ describe("DC-R5 authoritative independent program reads", () => {
     await expect(getUpcomingPlannedSessions()).rejects.toThrow();
   });
 
-  it("opens each program by its own ID and focused views use stored kind only", async () => {
+  it("opens each program by its own ID and rows use stored kind only", async () => {
     const all = renderToStaticMarkup(await ProgramsPage({ searchParams: Promise.resolve({}) }));
     for (const value of [1, 2, 3]) expect(all).toContain(`href="/app/plan?block=${id(value)}"`);
     expect(all).toContain(`href="/app/swim?plan=${swimFixture().plan.id}"`);
-    const swimming = renderToStaticMarkup(await ProgramsPage({ searchParams: Promise.resolve({ activity: "swimming" }) }));
-    expect(swimming).toContain(`href="/app/swim?plan=${swimFixture().plan.id}"`);
-    expect(swimming).not.toContain(`href="/app/plan?block=${id(1)}"`);
     tables.training_blocks![2] = { ...block(3, "hybrid"), notes: "Running plan" };
-    const running = renderToStaticMarkup(await ProgramsPage({ searchParams: Promise.resolve({ activity: "running" }) }));
+    const running = renderToStaticMarkup(await ProgramsPage({ searchParams: Promise.resolve({}) }));
     expect(running).toContain(`href="/app/plan?block=${id(2)}"`);
-    expect(running).not.toContain(`href="/app/plan?block=${id(3)}"`);
+    expect(running).toMatch(new RegExp(`data-kind="hybrid"[^>]*href="/app/plan\\?block=${id(3)}"`));
     expect(running).not.toContain(`href="/app/sessions/start/${id(31)}"`);
     expect(requests.some((url) => url.pathname.endsWith("/planned_sessions"))).toBe(false);
   });

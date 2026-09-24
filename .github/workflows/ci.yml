@@ -24,6 +24,15 @@ on:
         required: false
         default: false
         type: boolean
+      acceptance_profile:
+        description: Disposable acceptance test profile
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - modular
+          - swimming
       expected_sha:
         description: Reviewed full commit SHA required for swim acceptance
         required: false
@@ -449,7 +458,7 @@ jobs:
       EXPECTED_SHA: ${{ inputs.expected_sha }}
       MIGRATE_PRODUCTION: ${{ inputs.migrate_production }}
       ALLOW_UNDEPLOYED: ${{ inputs.allow_undeployed }}
-      SXC_ACCEPTANCE_PROFILE: ${{ github.ref == 'refs/heads/drrowdev-modular-programs-implementation' && 'modular' || 'swimming' }}
+      SXC_ACCEPTANCE_PROFILE: ${{ inputs.acceptance_profile != '' && inputs.acceptance_profile != 'auto' && inputs.acceptance_profile || (github.ref == 'refs/heads/drrowdev-modular-programs-implementation' && 'modular' || 'swimming') }}
     steps:
       - name: Validate reviewed manual context
         run: |

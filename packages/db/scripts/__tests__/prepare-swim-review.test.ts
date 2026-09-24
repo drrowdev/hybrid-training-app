@@ -700,7 +700,7 @@ describe("saved workflow and raw-stream boundaries", () => {
     const existing = workflow.slice(workflow.indexOf("\njobs:")).replace(
       "\n  prepare-swim-review:\n" + job, "");
     expect(createHash("sha256").update(existing).digest("hex")).toBe(
-      "7bc1d91c4d4bcc9d24876af42c1e450b520629f324c037fec2bf5eaa83b6a1d4");
+      "226e5d890fcf90703e385b81ac074386695088fa0af5767a7141bb9fd1485869");
   });
   it("requires explicit manual exact-head context and independent noncancelling serialization", () => {
     for (const gate of ["needs: [ci, identity-guard]", "github.event_name == 'workflow_dispatch'",

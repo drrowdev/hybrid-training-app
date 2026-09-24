@@ -11,6 +11,11 @@ export interface SwimStrengthContext {
   sessions: readonly { id: string; date: string; title?: string; state?: "scheduled" | "started" | "completed" | "rest" | "paused" }[];
 }
 
+export function currentSwimWeekIndex(startedOn: string, weeks: number, today: string): number {
+  const elapsedDays = (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${startedOn}T00:00:00Z`)) / 86_400_000;
+  return Math.max(0, Math.min(Math.max(0, weeks - 1), Math.floor(elapsedDays / 7)));
+}
+
 /** Calendar dates, not program weekday ordinals, are the shared boundary. */
 export function swimScheduleAdvice(
   context: SwimStrengthContext, startDate: string, weeks: number, selected: readonly number[] = [],

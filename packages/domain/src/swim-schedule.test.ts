@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { swimScheduleAdvice } from "./swim-schedule";
+import { currentSwimWeekIndex, swimScheduleAdvice } from "./swim-schedule";
 
 const context = { blockId: "primary", sessions: [
   { id: "mon", date: "2026-09-07" }, { id: "wed", date: "2026-09-09" }, { id: "fri", date: "2026-09-11" },
 ] };
 describe("DC-K4/DC-SW7 standalone swim scheduling", () => {
+  it("counts swim weeks from the plan start rather than the primary program's Monday boundary", () => {
+    expect(currentSwimWeekIndex("2026-09-23", 6, "2026-09-21")).toBe(0);
+    expect(currentSwimWeekIndex("2026-09-23", 6, "2026-09-28")).toBe(0);
+    expect(currentSwimWeekIndex("2026-09-23", 6, "2026-09-30")).toBe(1);
+    expect(currentSwimWeekIndex("2026-09-23", 6, "2026-12-01")).toBe(5);
+    expect(currentSwimWeekIndex("2026-09-23", 1, "2026-09-30")).toBe(0);
+  });
   it("defaults to two spaced days for a blockless swimmer", () => {
     expect(swimScheduleAdvice({ blockId: null, sessions: [] }, "2026-09-07", 6).defaults).toEqual([1, 4]);
   });
