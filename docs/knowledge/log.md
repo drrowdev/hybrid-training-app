@@ -5252,3 +5252,45 @@ the real step then verified the commitment, accepted consent, saved the
 owned two-workout program and retained the legacy session. Executable driver
 regressions also reject the wrong session, wrong date and non-completed
 commitment before consent or save.
+
+## [2026-09-24] refine | Prepare the exact independent-program release batch
+
+Coordinator-consumed native35930183440 accepted `cb2f9812`: 18/18 browser cases,
+M8 in 3.1 seconds, all 15 stages and cleanup verified. Core35929365692 and
+storage35929365806 also passed (62 SQL stages and 75 synthetic UI stages).
+The owner then authorized release preparation and read-only inspection, with
+another approval required before any live change. No migration, flag change,
+merge or deployment is authorized by this preparation.
+
+The modular preflight now requires exactly normal159 and the accepted hashes
+of0156-0158. Its safe summary keys are unchanged: sourceEntries is159,
+currentMainEntries remains156, and pending lists only the unapplied canonical
+tail with tag/hash/folderMillis. It remains metadata-only, GET-only, repeatable
+read/read-only, and closes its database connection.
+
+The existing manual updater supersedes its obsolete0156-only implementation.
+It appends all three pinned migrations atomically, only from213 to216, after
+checking the fresh203-row legacy prefix and the full213-row fingerprint
+`1174cd914fce682bc044342ed2d348dbc0c566defcfee47126e2a5d28165fb98`
+under the ledger lock. This pin came from coordinator-consumed preflight
+35816810297, not from rereading production in this worktree. No ledger reset,
+row rewrite, settings activation, automatic dispatch or alternative updater
+path was added. Existing app-first deployment and exact-source qualification
+guards remain mandatory.
+
+Catalog checks retain existing relation/column identities, function security,
+roles/memberships, Auth metadata, schema/default ACLs, policies and unaffected
+constraints/indexes/triggers. Only the explicit new0156-0158 objects, fifteen
+guarded function-body changes, three constraint replacements and two removed
+indexes are allowed. Both the original ledger prefix and committed catalog
+are checked again after commit. Failure after an attempted update still
+requires manual reconciliation, never an automatic retry.
+
+The existing disposable storage rehearsal now exercises a synthetic213-entry
+production-shaped ledger, full and legacy fingerprint refusals, partial-ledger
+refusal, mid-batch/precommit rollback, concurrent role-drift refusal, exact
+213-to216 commit, replay refusal, postcommit ambiguity and fixture restoration.
+All twelve successful rehearsal stages are included in the storage summary
+instead of only its former final marker. The production ledger summary shape
+is unchanged; successful counts become entries216/retainedEntries213/
+appendedEntries3. SQL0156-0158 and application behavior are unchanged.

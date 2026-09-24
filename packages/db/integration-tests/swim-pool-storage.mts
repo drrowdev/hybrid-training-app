@@ -722,8 +722,7 @@ try {
   stages.push(stage);
   stage = "modular-schedule-rehearsal";
   stages.push(...await rehearseModularSchedule(database, true, (name) => { stage = name; }));
-  await rehearseModularProductionUpdate(database, (name) => { stage = name; });
-  stages.push(stage);
+  stages.push(...await rehearseModularProductionUpdate(database, (name) => { stage = name; }));
   stage = "independent-programs-rehearsal";
   const ownershipSource = readFileSync(new URL("../drizzle/0158_independent_program_ownership.sql", import.meta.url), "utf8");
   for (const match of ownershipSource.matchAll(/\bRAISE EXCEPTION '((?:''|[^'])*)'/g)) {

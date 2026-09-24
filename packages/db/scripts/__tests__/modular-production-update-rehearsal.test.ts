@@ -2,9 +2,8 @@ import { readFileSync } from "node:fs";
 import { Socket } from "node:net";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import postgres from "postgres";
-import { z } from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { modularRehearsalMigrations, rehearseModularProductionUpdate } from "../../integration-tests/modular-production-update-rehearsal";
+import { modularRehearsalMigrations, rehearseModularProductionUpdate, MODULAR_UPDATE_REHEARSAL_STAGES } from "../../integration-tests/modular-production-update-rehearsal";
 import { modularUpdateMigrations } from "../modular-production-update-storage";
 
 function source() {
@@ -16,25 +15,30 @@ function source() {
 }
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 
-describe("DC-SW8 historical modular updater rehearsal stays separate from production", () => {
-  it("validates the complete159 source before returning the unchanged157 prefix", () => {
+describe("DC-SW8 exact modular updater rehearsal stays separate from production", () => {
+  it("validates the complete159 source without truncating to the obsolete157 prefix", () => {
     const { journal, migrations } = source(), before = structuredClone(migrations);
     const prefix = modularRehearsalMigrations(journal, migrations);
-    expect(prefix).toHaveLength(157);
-    expect(prefix.map(({ tag: _tag, ...entry }) => entry)).toEqual(before.slice(0, 157));
-    expect(prefix.map(({ tag }) => tag)).toEqual(journal.entries.slice(0, 157).map(({ tag }) => tag));
+    expect(prefix).toHaveLength(159);
+    expect(prefix.map(({ tag: _tag, ...entry }) => entry)).toEqual(before);
+    expect(prefix.map(({ tag }) => tag)).toEqual(journal.entries.map(({ tag }) => tag));
     expect(migrations).toEqual(before);
   });
 
-  it("keeps the actual production loader closed on the current159 journal", () => {
-    expect.assertions(2);
-    try { modularUpdateMigrations(); }
-    catch (error) {
-      expect(error).toBeInstanceOf(z.ZodError);
-      expect((error as z.ZodError).issues).toContainEqual(expect.objectContaining({
-        code: "too_big", maximum: 157, path: ["entries"],
-      }));
-    }
+  it("shares the exact159 loader with production and rejects the obsolete0156-only batch", () => {
+    const { journal, migrations } = source();
+    expect(modularUpdateMigrations()).toEqual(modularRehearsalMigrations(journal, migrations));
+    expect(() => modularRehearsalMigrations({ ...journal, entries: journal.entries.slice(0, 157) }, migrations.slice(0, 157)))
+      .toThrow("migration_source");
+  });
+
+  it("exposes every successful rehearsal stage to the existing storage summary", () => {
+    expect(MODULAR_UPDATE_REHEARSAL_STAGES).toHaveLength(12);
+    expect(new Set(MODULAR_UPDATE_REHEARSAL_STAGES).size).toBe(12);
+    expect(MODULAR_UPDATE_REHEARSAL_STAGES[0]).toBe("modular-production-update-159-guard");
+    expect(MODULAR_UPDATE_REHEARSAL_STAGES.at(-1)).toBe("modular-production-update-fixture-restored");
+    const runner = readFileSync(new URL("../../integration-tests/swim-pool-storage.mts", import.meta.url), "utf8");
+    expect(runner).toContain("stages.push(...await rehearseModularProductionUpdate(database,");
   });
 
   it.each(["missing-entry", "future-entry", "missing-source", "future-source", "index", "tag-prefix",
@@ -62,7 +66,7 @@ describe("DC-SW8 historical modular updater rehearsal stays separate from produc
   );
 
   it.each(["local", "job", "url-host", "url-database", "client-host", "client-database"] as const)(
-    "refuses %s before database access or historical source use",
+    "refuses %s before database access or source use",
     async (mode) => {
       vi.stubEnv("GITHUB_ACTIONS", mode === "local" ? "false" : "true");
       vi.stubEnv("GITHUB_JOB", mode === "job" ? "storage" : "pool-storage");

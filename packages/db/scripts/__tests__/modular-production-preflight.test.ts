@@ -21,7 +21,7 @@ const inputs = () => ({
   production_readonly_scope: MODULAR_PREFLIGHT.scope, expected_sha: sha,
   ...Object.fromEntries(MODULAR_DISABLED_OPERATIONS.map((key) => [key, "false"])),
 });
-const migrations = Array.from({ length: 157 }, (_, index) => ({
+const migrations = Array.from({ length: 159 }, (_, index) => ({
   tag: `${String(index).padStart(4, "0")}_synthetic`,
   hash: index.toString(16).padStart(64, "0"), folderMillis: 1000 + index,
 }));
@@ -77,10 +77,16 @@ describe("DC-SW8 modular release preflight preserves production history without 
   it("retains the exact legacy prefix and identifies only unapplied source migrations", () => {
     expect(modularMigrationInventory(rows(), migrations, baseline)).toMatchObject({
       entries: 212, retainedEntries: 203, legacyHistoryUnchanged: true, canonicalAppendedEntries: 9,
-      sourceEntries: 157, currentMainEntries: 156, pending: migrations.slice(155), migrationAuthorized: false,
+      sourceEntries: 159, currentMainEntries: 156, pending: migrations.slice(155), migrationAuthorized: false,
     });
     expect(modularMigrationInventory(rows(10), migrations, baseline).pending).toEqual(migrations.slice(156));
-    expect(modularMigrationInventory(rows(11), migrations, baseline).pending).toEqual([]);
+    expect(modularMigrationInventory(rows(11), migrations, baseline).pending).toEqual(migrations.slice(157));
+    expect(modularMigrationInventory(rows(12), migrations, baseline).pending).toEqual(migrations.slice(158));
+    expect(modularMigrationInventory(rows(13), migrations, baseline).pending).toEqual([]);
+    for (const count of [156, 157, 158, 160]) {
+      const source = Array.from({ length: count }, (_, index) => migrations[index] ?? { ...migrations[158]!, tag: "0159_future" });
+      expect(() => modularMigrationInventory(rows(10), source, baseline)).toThrow();
+    }
   });
 
   it("never treats a historical receipt as a fresh ledger match", () => {

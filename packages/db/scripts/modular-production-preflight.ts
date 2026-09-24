@@ -15,7 +15,7 @@ import {
   SWIM_SCHEMA_TABLES, SWIM_SCHEMA_FUNCTIONS,
 } from "./swim-production-reconciliation";
 import {
-  MODULAR_PREFLIGHT, modularPreflightContext, modularMigrationInventory, modularProductionSettings, type ModularMigration,
+  MODULAR_PREFLIGHT, MODULAR_RELEASE_MIGRATIONS, modularPreflightContext, modularMigrationInventory, modularProductionSettings, type ModularMigration,
 } from "./modular-production-preflight-guards";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -23,7 +23,7 @@ const record = z.record(z.unknown());
 const journalSchema = z.object({ entries: z.array(z.object({
   idx: z.number().int().nonnegative(), tag: z.string(), when: z.number().int().positive(),
   version: z.string(), breakpoints: z.boolean(),
-})).min(MODULAR_PREFLIGHT.sourceCount).max(164) });
+})).length(MODULAR_PREFLIGHT.normalCount) });
 type Stage = { stage: string; status: "passed" | "failed"; code: string };
 
 export async function inspectModularProduction(env: NodeJS.ProcessEnv, sourceOnly = false) {
@@ -75,7 +75,8 @@ export async function inspectModularProduction(env: NodeJS.ProcessEnv, sourceOnl
       }), "source_path");
     }
     const journal = journalSchema.parse(JSON.parse(readFileSync(resolve(root, "packages/db/drizzle/meta/_journal.json"), "utf8")));
-    const baseline = journalSchema.parse(JSON.parse(git("show", `${MODULAR_PREFLIGHT.main}:packages/db/drizzle/meta/_journal.json`)));
+    const baseline = journalSchema.extend({ entries: journalSchema.shape.entries.length(MODULAR_PREFLIGHT.sourceCount) })
+      .parse(JSON.parse(git("show", `${MODULAR_PREFLIGHT.main}:packages/db/drizzle/meta/_journal.json`)));
     requireInspection(baseline.entries.length === MODULAR_PREFLIGHT.sourceCount &&
       JSON.stringify(journal.entries.slice(0, MODULAR_PREFLIGHT.sourceCount)) === JSON.stringify(baseline.entries) &&
       journal.entries.every((entry, index) => entry.idx === index), "source_journal");
@@ -85,9 +86,11 @@ export async function inspectModularProduction(env: NodeJS.ProcessEnv, sourceOnl
     "applied_migration_changed");
     const migrations = readMigrationFiles({ migrationsFolder: resolve(root, "packages/db/drizzle") });
     requireInspection(migrations.length === journal.entries.length, "source_journal");
-    return migrations.map((entry, index) => ({
+    const inventory = migrations.map((entry, index) => ({
       tag: journal.entries[index]!.tag, hash: entry.hash, folderMillis: entry.folderMillis,
     }));
+    requireInspection(JSON.stringify(inventory.slice(156)) === JSON.stringify(MODULAR_RELEASE_MIGRATIONS), "migration_source");
+    return inventory;
   };
   const request = async (url: string) => {
     time();

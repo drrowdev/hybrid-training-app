@@ -105,7 +105,7 @@ on:
         default: false
         type: boolean
       update_modular_production:
-        description: Apply the qualified modular schedule migration after its exact production app deploy
+        description: Append only qualified 0156-0158 after the exact production app deploy (manual approval required)
         required: false
         default: false
         type: boolean
@@ -1358,7 +1358,7 @@ jobs:
         run: pnpm --filter @hta/db exec tsx scripts/update-swim-production.ts
 
   update-modular-production:
-    name: apply qualified modular production migration
+    name: apply qualified modular production migrations 0156-0158
     needs: [ci, identity-guard]
     if: >-
       github.event_name == 'workflow_dispatch' &&
@@ -1407,7 +1407,7 @@ jobs:
         run: pnpm --filter @hta/web exec tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --strict ../../packages/db/scripts/update-modular-production.ts
       - name: Check exact merged source before credentials
         run: pnpm --filter @hta/db exec tsx scripts/update-modular-production.ts --check-source
-      - name: Append the qualified modular migration
+      - name: Append only qualified migrations 0156 through 0158
         timeout-minutes: 4
         env:
           GH_TOKEN: ${{ github.token }}

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -6,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { modularUpdateDispatch, modularMergeCandidate, modularQualifiedRun, modularQualifiedJobs, modularQualifiedNativeRun, requireModularProductionBindings } from "../update-modular-production";
 import { productionSettings } from "../swim-production-readonly-guards";
 import { MODULAR_PREFLIGHT, MODULAR_DISABLED_OPERATIONS } from "../modular-production-preflight-guards";
-import { modularUpdateInventory } from "../modular-production-update-storage";
+import { modularUpdateInventory, modularUpdateMigrations, MODULAR_PRODUCTION_BASELINE } from "../modular-production-update-storage";
 import { productionHistoryFingerprint } from "../swim-production-reconciliation";
 
 const sha = "c".repeat(40), candidate = "d".repeat(40), tree = "e".repeat(40);
@@ -95,12 +94,8 @@ describe("DC-K4/DC-SW8 modular production update preserves qualified source and 
       })).rejects.toThrow("qualification_run");
     expect(requested).toEqual([failed.id]);
   });
-  it("recognizes only unchanged legacy history and an exact source156 append", () => {
-    const migrations = Array.from({ length: 157 }, (_, index) => ({
-      tag: index === 156 ? "0156_modular_training_schedule" : `${String(index).padStart(4, "0")}_synthetic`,
-      sql: [`SELECT ${index};`], bps: false, folderMillis: 1000 + index,
-      hash: createHash("sha256").update(`SELECT ${index};`).digest("hex"),
-    }));
+  it("recognizes only unchanged legacy history and exact source156-158 appends", () => {
+    const migrations = modularUpdateMigrations();
     const retained = Array.from({ length: 203 }, (_, index) => ({
       id: index + 1, hash: migrations[index % 146]!.hash, created_at: String(migrations[index % 146]!.folderMillis),
     }));
@@ -108,7 +103,10 @@ describe("DC-K4/DC-SW8 modular production update preserves qualified source and 
     const rows = [...retained, ...migrations.slice(146, 156).map((migration, index) => ({
       id: index + 204, hash: migration.hash, created_at: String(migration.folderMillis),
     }))];
-    expect(modularUpdateInventory(rows, migrations, baseline).pending).toHaveLength(1);
+    expect(modularUpdateInventory(rows, migrations, baseline).pending.map(({ tag }) => tag))
+      .toEqual(migrations.slice(156).map(({ tag }) => tag));
+    expect(MODULAR_PRODUCTION_BASELINE.fullFingerprint)
+      .toBe("1174cd914fce682bc044342ed2d348dbc0c566defcfee47126e2a5d28165fb98");
     expect(() => modularUpdateInventory(rows, migrations)).toThrow();
     const changed = structuredClone(migrations); changed[156]!.sql[0] = "SELECT 1;";
     expect(() => modularUpdateInventory(rows, changed, baseline)).toThrow("migration_source");
@@ -131,7 +129,7 @@ describe("DC-K4/DC-SW8 modular production update preserves qualified source and 
       ...MODULAR_DISABLED_OPERATIONS.filter((key) => key !== "update_modular_production").map((key) => `inputs.${key} == false`)]) {
       expect(job).toContain(guard);
     }
-    const [before, operation] = job.split("      - name: Append the qualified modular migration\n");
+    const [before, operation] = job.split("      - name: Append only qualified migrations 0156 through 0158\n");
     expect(before).toContain("--check-source"); expect(before).not.toContain("secrets.");
     expect(operation!.match(/secrets\.\w+/g)).toHaveLength(2);
     const concurrency = workflow.split("\nconcurrency:\n")[1]!.split("\njobs:\n")[0]!;

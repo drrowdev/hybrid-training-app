@@ -8,9 +8,16 @@ export const MODULAR_PREFLIGHT = {
   main: "d10e413727af4fd14481500298416bc7dd8310e3",
   branch: "drrowdev-modular-programs-implementation",
   sourceCount: 156,
+  normalCount: 159,
   scope: "modular_preflight",
   job: "inspect-modular-production",
 } as const;
+
+export const MODULAR_RELEASE_MIGRATIONS = [
+  { tag: "0156_modular_training_schedule", hash: "3abc85a3b89a385daa3025ed44aeabb63da0b505b2b4019f0ace79efc9f03ea0", folderMillis: 1790085600000 },
+  { tag: "0157_standalone_swim_import_outcomes", hash: "87cca48269603d79a8205b0ca41ff6c56006da1dcdf1997ef6bdb904c68e5ba4", folderMillis: 1790125200000 },
+  { tag: "0158_independent_program_ownership", hash: "ac8b735ba7f9b587fc841ba5a6f60808641b9511eafbc714b58e40d92eadde09", folderMillis: 1790142000000 },
+] as const;
 
 export const MODULAR_DISABLED_OPERATIONS = [
   "migrate_production", "allow_undeployed", "swim_acceptance", "prepare_swim_review",
@@ -67,7 +74,7 @@ export type ModularMigration = z.infer<typeof migration>;
 
 export function modularMigrationInventory(raw: unknown, source: readonly ModularMigration[],
   baseline: { entries: number; fingerprint: string } = PRODUCTION_SWIM_BASELINE) {
-  const migrations = z.array(migration).min(MODULAR_PREFLIGHT.sourceCount).max(164).parse(source);
+  const migrations = z.array(migration).length(MODULAR_PREFLIGHT.normalCount).parse(source);
   requireInspection(migrations.every((entry, index) => Number(entry.tag.slice(0, 4)) === index &&
     (index === 0 || entry.folderMillis > migrations[index - 1]!.folderMillis)) &&
     new Set(migrations.map((entry) => entry.hash)).size === migrations.length &&

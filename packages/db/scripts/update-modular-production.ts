@@ -129,7 +129,7 @@ export async function updateModularProduction(env: NodeJS.ProcessEnv, sourceOnly
     for (const [ref, expected] of [["refs/heads/main", sha], [`refs/heads/${MODULAR_PREFLIGHT.branch}`, candidate]]) {
       requireInspection(git("ls-remote", "--exit-code", "https://github.com/drrowdev/hybrid-training-app.git", ref!) === `${expected}\t${ref}`, "live_ref");
     }
-    const journal = z.object({ entries: z.array(z.unknown()).length(157) }).parse(
+    const journal = z.object({ entries: z.array(z.unknown()).length(159) }).parse(
       JSON.parse(readFileSync(resolve(root, "packages/db/drizzle/meta/_journal.json"), "utf8")));
     const before = z.object({ entries: z.array(z.unknown()).length(156) }).parse(
       JSON.parse(git("show", `${MODULAR_PREFLIGHT.main}:packages/db/drizzle/meta/_journal.json`)));
