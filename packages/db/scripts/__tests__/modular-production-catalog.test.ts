@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import postgres from "postgres";
 import {
   MODULAR_ADDED_CATALOG_KEYS, MODULAR_CHANGED_CONSTRAINTS, MODULAR_CHANGED_FUNCTIONS, MODULAR_REMOVED_INDEXES,
   MODULAR_CATALOG_SQL, MODULAR_ADDED_SECURITY_SQL, ModularCatalogRefusal,
-  requireModularCatalogBaseline, verifyModularCatalog, type ModularCatalog, type ModularCatalogDiagnostic,
+  requireModularCatalogBaseline, verifyModularCatalog, verifyAddedModularSecurity, type ModularCatalog, type ModularCatalogDiagnostic,
 } from "../modular-production-catalog";
 import { MODULAR_CATALOG_MANIFEST } from "../modular-production-catalog-manifest";
 import { MODULAR_RELEASE_MIGRATIONS } from "../modular-production-preflight-guards";
@@ -29,6 +30,25 @@ function fixture() {
 }
 
 describe("DC-SW8 exact modular catalog preserves existing Auth, roles and ACLs", () => {
+  it("binds the manifest as JSONB exactly once without a database connection", async () => {
+    const sql = postgres();
+    const stopped = new Error("No query execution");
+    const query = vi.spyOn(sql, "unsafe").mockImplementation(() => { throw stopped; });
+    try {
+      await expect(verifyAddedModularSecurity(sql)).rejects.toBe(stopped);
+      const parameter = query.mock.calls[0]![1]![1];
+      expect(parameter).toMatchObject({ type: 3802, value: MODULAR_CATALOG_MANIFEST.functions });
+      expect(typeof parameter).toBe("object");
+      if (typeof parameter !== "object" || parameter === null) throw new Error("Explicit JSONB parameter missing");
+      const value: unknown = Object.getOwnPropertyDescriptor(parameter, "value")?.value;
+      const serialize = sql.options.serializers[3802]!;
+      const encoded = serialize(value), broken = serialize(JSON.stringify(MODULAR_CATALOG_MANIFEST.functions));
+      if (typeof encoded !== "string" || typeof broken !== "string") throw new Error("JSONB serializer returned non-text");
+      expect(JSON.parse(encoded)).toEqual(MODULAR_CATALOG_MANIFEST.functions);
+      expect(typeof JSON.parse(broken)).toBe("string");
+    } finally { query.mockRestore(); await sql.end(); }
+  });
+
   it("binds the source-derived manifest to all three immutable DDL hashes", () => {
     expect(MODULAR_CATALOG_MANIFEST.migrations).toEqual(MODULAR_RELEASE_MIGRATIONS);
     for (const migration of MODULAR_CATALOG_MANIFEST.migrations) {

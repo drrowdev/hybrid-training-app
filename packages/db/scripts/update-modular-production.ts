@@ -9,7 +9,8 @@ import {
   PRODUCTION, PRODUCTION_ROUTES, ProductionInspectionRefusal, requireInspection, productionDatabaseUrl,
   productionAlias, productionDeployment, productionDeploymentRoute, productionSettings,
 } from "./swim-production-readonly-guards";
-import { appendModularProduction, modularUpdateMigrations } from "./modular-production-update-storage";
+import { appendModularProduction, modularUpdateMigrations, ModularUpdateSqlFailure,
+  type ModularUpdateDiagnostic } from "./modular-production-update-storage";
 import { ModularCatalogRefusal, type ModularCatalogDiagnostic } from "./modular-production-catalog";
 
 export const MODULAR_UPDATE_INPUT = "update_modular_production";
@@ -102,7 +103,7 @@ export async function updateModularProduction(env: NodeJS.ProcessEnv, sourceOnly
     deployment: null as ReturnType<typeof productionDeployment> | null,
     ledger: null as Awaited<ReturnType<typeof appendModularProduction>> | null,
   };
-  const diagnostic: { catalogMismatch?: ModularCatalogDiagnostic } = {};
+  const diagnostic: { catalogMismatch?: ModularCatalogDiagnostic; modularUpdateDiagnostic?: ModularUpdateDiagnostic } = {};
   let stage = "source", sql: postgres.Sql | undefined, deploymentId: string | undefined;
   const deadline = Date.now() + 180_000;
   const time = () => requireInspection(Date.now() < deadline, "deadline");
@@ -217,6 +218,7 @@ export async function updateModularProduction(env: NodeJS.ProcessEnv, sourceOnly
     await step("completion", () => { source(); }); result.status = "update_pass";
   } catch (error) {
     if (error instanceof ModularCatalogRefusal) diagnostic.catalogMismatch = error.diagnostic;
+    if (error instanceof ModularUpdateSqlFailure) diagnostic.modularUpdateDiagnostic = error.diagnostic;
     if (error instanceof ProductionInspectionRefusal && error.httpStatus !== undefined) result.httpStatus = error.httpStatus;
     if (stage === "append" && error instanceof Error) {
       const code: unknown = Object.getOwnPropertyDescriptor(error, "code")?.value;

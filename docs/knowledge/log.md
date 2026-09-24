@@ -5336,3 +5336,52 @@ and data removed after the coordinator reiterated the no-local-database
 boundary; no further local SQL execution is authorized. These tooling repairs
 do not change application code, SQL0156-0158, the ledger pins, or any live
 migration, deployment, activation or approval guard.
+
+## [2026-09-24] fix | Qualify release guards against historical account graphs
+
+Coordinator-consumed storage35958542494 at9b1a7e passed57 stages, including
+all precommit rollback probes, then failed with22023 in the successful apply
+path. Core35958542471 passed. Source analysis identified double serialization
+of the new function manifest: a JSON string supplied to a JSONB parameter was
+JSON-encoded again by postgres.js. Explicit sql.json binding fixes that guard;
+a no-connection test exercises the installed driver's serializer. All56
+explicit22023 raises in0156-0158 belong to runtime functions; none is reached
+by this DDL-only migration batch. No migration data check was relaxed.
+
+The previous updater rehearsal had a production-shaped ledger but no retained
+account graph. It now prepares two synthetic accounts through pre-0156 paths:
+an active two-day authored program with completed/unfinished workouts and set
+logs; an archived template with its real engine instance and required sets;
+an active orphan instance; standalone swim plans, workouts, imports and
+matches; rehab protocols/bindings; and seasons. Hashes cover every existing
+public/auth table row across apply and refusal rollback. Only the additive
+program_kind field is excluded from cross-schema hashing, and every value is
+separately required to remain null. Authenticated reads and rejected cross-owner
+edits verify isolation, while the whole-graph hashes cover the second account.
+Cleanup deletes only the fixture accounts and bindings and verifies the
+original hashes. A fresh graph is used for postcommit reconciliation after
+cleanup, because the unchanged0156 down guard correctly refuses authored
+history. All SQL remains confined to the existing GitHub disposable job.
+
+The coordinator approved a count-only ownership preflight before the new
+composite foreign keys are installed. The read-only/repeatable-read preflight
+adds compositeFkViolations, null until complete, otherwise exactly six integer
+counts in0..2147483647: program_instances_block_id_fkey,
+planned_sessions_block_id_fkey, swim_import_outcomes_owned_workout_fk,
+swim_import_outcomes_owned_match_fk, swim_plan_rehab_bindings_owned_plan_fk,
+and swim_plan_rehab_bindings_owned_protocol_fk. Absent additive tables count
+zero; row_security_active must be false so filtering cannot conceal conflicts.
+No IDs or row values leave PostgreSQL. Inspection success is not release
+authorization. The updater requires all counts zero before its transaction
+and again under the ledger lock; owned_reference_conflict refuses before
+attempting a migration. The new owned-reference-preflight rehearsal stage
+proves both historical cross-owner edges are detected and rolls them back.
+The resulting inventory is14 updater stages, expected75 SQL and75 UI stages.
+
+Native SQL failures in the updater now expose only the approved failure-only
+modularUpdateDiagnostic: sqlstate and position. Position is unmatched or an
+exact canonical migrationIndex155-158/statementIndex0-9999 match, using the
+existing hardened exception projector. Guard statements stay unmatched;
+queries, parameters, exception text and row data are never reported.
+Application code, migrations, rollback guards and production approvals are
+unchanged. Disposable qualification is pending the coordinator's next run.

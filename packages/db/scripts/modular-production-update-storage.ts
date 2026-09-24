@@ -6,9 +6,11 @@ import type postgres from "postgres";
 import { z } from "zod";
 import { MODULAR_RELEASE_MIGRATIONS, modularMigrationInventory, type ModularMigration } from "./modular-production-preflight-guards";
 import { PRODUCTION_SWIM_BASELINE, productionHistoryFingerprint, productionHistoryRows } from "./swim-production-reconciliation";
-import { requireInspection } from "./swim-production-readonly-guards";
+import { ProductionInspectionRefusal, requireInspection } from "./swim-production-readonly-guards";
+import { projectMigrationError, type CanonicalMigrations } from "./migrate-evidence";
 import type { ProductionUpdateGuard, ProductionUpdateProgress } from "./swim-production-update-storage";
 import { modularCatalog, requireModularCatalogBaseline, verifyModularCatalog, verifyAddedModularSecurity } from "./modular-production-catalog";
+import { inspectModularReferences, requireCompatibleModularReferences } from "./modular-production-references";
 
 export const MODULAR_LEDGER_SQL = "SELECT id, hash, created_at FROM drizzle.__drizzle_migrations ORDER BY id LIMIT 512";
 export const MODULAR_PRODUCTION_BASELINE = {
@@ -16,6 +18,31 @@ export const MODULAR_PRODUCTION_BASELINE = {
   fullFingerprint: "1174cd914fce682bc044342ed2d348dbc0c566defcfee47126e2a5d28165fb98",
 } as const;
 export type ModularProductionBaseline = { entries: number; fingerprint: string; fullFingerprint: string };
+
+const diagnosticSchema = z.object({
+  sqlstate: z.string().regex(/^[0-9A-Z]{5}$/),
+  position: z.union([
+    z.object({ status: z.literal("unmatched") }).strict(),
+    z.object({ status: z.literal("matched"), migrationIndex: z.number().int().min(155).max(158),
+      statementIndex: z.number().int().min(0).max(9999) }).strict(),
+  ]),
+}).strict();
+export type ModularUpdateDiagnostic = z.infer<typeof diagnosticSchema>;
+export function projectModularUpdateError(error: unknown, migrations: CanonicalMigrations): ModularUpdateDiagnostic | undefined {
+  const projected = projectMigrationError(error, () => migrations);
+  if (projected.error.sqlstate === null) return;
+  const position = projected.position.status === "matched" && projected.position.migrationIndex < 155
+    ? { status: "unmatched" as const } : projected.position;
+  return diagnosticSchema.parse({ sqlstate: projected.error.sqlstate, position });
+}
+export class ModularUpdateSqlFailure extends ProductionInspectionRefusal {
+  readonly diagnostic: ModularUpdateDiagnostic;
+  constructor(diagnostic: ModularUpdateDiagnostic) {
+    const parsed = diagnosticSchema.parse(diagnostic);
+    super(parsed.sqlstate);
+    this.diagnostic = parsed;
+  }
+}
 
 export type ModularUpdateMigration = ModularMigration & { sql: string[]; bps: boolean };
 export function validateModularUpdateMigrations(rawJournal: unknown, migrations: readonly MigrationMeta[]): ModularUpdateMigration[] {
@@ -67,41 +94,49 @@ export async function appendModularProduction(sql: postgres.Sql, migrations: rea
   };
   let retainedFingerprint = "";
   let committedCatalog: Awaited<ReturnType<typeof modularCatalog>> = [];
-  await sql.begin(async (tx) => {
-    await tx.unsafe("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='60s'; SET LOCAL idle_in_transaction_session_timeout='90s'; SET LOCAL row_security=on");
-    await tx.unsafe("LOCK TABLE drizzle.__drizzle_migrations IN ACCESS EXCLUSIVE MODE");
-    const before = productionHistoryRows(Array.from(await tx.unsafe(MODULAR_LEDGER_SQL)));
-    const inventory = modularUpdateInventory(before, migrations, baseline);
-    requireInspection(before.length === 213 && inventory.pending.length === 3 &&
-      inventory.fingerprint === baseline.fullFingerprint, "modular_baseline");
-    retainedFingerprint = productionHistoryFingerprint(before);
-    const catalog = await modularCatalog(tx);
-    requireModularCatalogBaseline(catalog);
-    await check("before");
-    for (const migration of migrations.slice(156)) {
-      await check("migration");
-      progress.attemptedMigrations++;
-      await tx.unsafe(migration.sql[0]!);
-      await tx.unsafe("INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES ($1,$2)", [migration.hash, migration.folderMillis]);
-      progress.stagedMigrations++;
-    }
-    const after = productionHistoryRows(Array.from(await tx.unsafe(MODULAR_LEDGER_SQL)));
+  try {
+    requireCompatibleModularReferences(await inspectModularReferences(sql));
+    await sql.begin(async (tx) => {
+      await tx.unsafe("SET LOCAL lock_timeout='5s'; SET LOCAL statement_timeout='60s'; SET LOCAL idle_in_transaction_session_timeout='90s'; SET LOCAL row_security=on");
+      await tx.unsafe("LOCK TABLE drizzle.__drizzle_migrations IN ACCESS EXCLUSIVE MODE");
+      const before = productionHistoryRows(Array.from(await tx.unsafe(MODULAR_LEDGER_SQL)));
+      const inventory = modularUpdateInventory(before, migrations, baseline);
+      requireInspection(before.length === 213 && inventory.pending.length === 3 &&
+        inventory.fingerprint === baseline.fullFingerprint, "modular_baseline");
+      retainedFingerprint = productionHistoryFingerprint(before);
+      requireCompatibleModularReferences(await inspectModularReferences(tx));
+      const catalog = await modularCatalog(tx);
+      requireModularCatalogBaseline(catalog);
+      await check("before");
+      for (const migration of migrations.slice(156)) {
+        await check("migration");
+        progress.attemptedMigrations++;
+        await tx.unsafe(migration.sql[0]!);
+        await tx.unsafe("INSERT INTO drizzle.__drizzle_migrations(hash,created_at) VALUES ($1,$2)", [migration.hash, migration.folderMillis]);
+        progress.stagedMigrations++;
+      }
+      const after = productionHistoryRows(Array.from(await tx.unsafe(MODULAR_LEDGER_SQL)));
+      requireInspection(after.length === 216 && modularUpdateInventory(after, migrations, baseline).pending.length === 0 &&
+        productionHistoryFingerprint(after.slice(0, 213)) === retainedFingerprint, "modular_retention");
+      await tx.unsafe("SET CONSTRAINTS ALL IMMEDIATE");
+      await check("before_commit");
+      committedCatalog = await modularCatalog(tx);
+      verifyModularCatalog(catalog, committedCatalog);
+      await verifyAddedModularSecurity(tx);
+      requireInspection(Date.now() < deadline, "deadline");
+      progress.commitAttempted = true;
+    });
+    progress.commitConfirmed = true;
+    await check("after_commit");
+    const after = productionHistoryRows(Array.from(await sql.unsafe(MODULAR_LEDGER_SQL)));
     requireInspection(after.length === 216 && modularUpdateInventory(after, migrations, baseline).pending.length === 0 &&
       productionHistoryFingerprint(after.slice(0, 213)) === retainedFingerprint, "modular_retention");
-    await tx.unsafe("SET CONSTRAINTS ALL IMMEDIATE");
-    await check("before_commit");
-    committedCatalog = await modularCatalog(tx);
-    verifyModularCatalog(catalog, committedCatalog);
-    await verifyAddedModularSecurity(tx);
-    requireInspection(Date.now() < deadline, "deadline");
-    progress.commitAttempted = true;
-  });
-  progress.commitConfirmed = true;
-  await check("after_commit");
-  const after = productionHistoryRows(Array.from(await sql.unsafe(MODULAR_LEDGER_SQL)));
-  requireInspection(after.length === 216 && modularUpdateInventory(after, migrations, baseline).pending.length === 0 &&
-    productionHistoryFingerprint(after.slice(0, 213)) === retainedFingerprint, "modular_retention");
-  requireInspection(JSON.stringify(await modularCatalog(sql)) === JSON.stringify(committedCatalog), "catalog_after_commit_changed");
-  await verifyAddedModularSecurity(sql);
-  return { entries: 216, retainedEntries: 213, appendedEntries: 3, fingerprint: productionHistoryFingerprint(after) };
+    requireInspection(JSON.stringify(await modularCatalog(sql)) === JSON.stringify(committedCatalog), "catalog_after_commit_changed");
+    await verifyAddedModularSecurity(sql);
+    return { entries: 216, retainedEntries: 213, appendedEntries: 3, fingerprint: productionHistoryFingerprint(after) };
+  } catch (error) {
+    const diagnostic = projectModularUpdateError(error, migrations);
+    if (diagnostic) throw new ModularUpdateSqlFailure(diagnostic);
+    throw error;
+  }
 }

@@ -17,6 +17,7 @@ import {
 import {
   MODULAR_PREFLIGHT, MODULAR_RELEASE_MIGRATIONS, modularPreflightContext, modularMigrationInventory, modularProductionSettings, type ModularMigration,
 } from "./modular-production-preflight-guards";
+import { inspectModularReferences, type CompositeFkViolations } from "./modular-production-references";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const record = z.record(z.unknown());
@@ -38,6 +39,7 @@ export async function inspectModularProduction(env: NodeJS.ProcessEnv, sourceOnl
     settings: null as ReturnType<typeof modularProductionSettings> | null,
     inventory: null as ReturnType<typeof modularMigrationInventory> | null,
     schema: null as ReturnType<typeof productionSchemaInventory> | null,
+    compositeFkViolations: null as CompositeFkViolations | null,
   };
   const deadline = Date.now() + 180_000;
   let stage = "source", deploymentId: string | undefined, sql: postgres.Sql | undefined;
@@ -157,6 +159,7 @@ export async function inspectModularProduction(env: NodeJS.ProcessEnv, sourceOnl
             Array.from(await tx.unsafe(SCHEMA_TABLE_SQL, [[...SWIM_SCHEMA_TABLES]])),
             Array.from(await tx.unsafe(SCHEMA_FUNCTION_SQL, [[...SWIM_SCHEMA_FUNCTIONS]])),
             Array.from(await tx.unsafe(SCHEMA_SHARED_SQL)));
+          result.compositeFkViolations = await inspectModularReferences(tx);
         });
         stage = "ledger";
       });

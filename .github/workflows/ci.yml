@@ -1465,7 +1465,7 @@ jobs:
         run: pnpm --filter @hta/web exec tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --esModuleInterop --skipLibCheck --strict ../../packages/db/scripts/modular-production-preflight.ts
       - name: Check source before production credentials
         run: pnpm --filter @hta/db exec tsx scripts/modular-production-preflight.ts --check-source
-      - name: Inspect modular production metadata without writes
+      - name: Inspect modular production metadata and ownership counts without writes
         timeout-minutes: 4
         env:
           VERCEL_REVIEW_TOKEN: ${{ secrets.VERCEL_REVIEW_TOKEN }}

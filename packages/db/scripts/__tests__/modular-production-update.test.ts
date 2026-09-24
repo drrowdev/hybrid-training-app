@@ -120,6 +120,7 @@ describe("DC-K4/DC-SW8 modular production update preserves qualified source and 
     expect(child.stdout).toContain('"attemptedMigrations":0');
     expect(child.stdout).not.toContain("PrivateSyntheticCanary");
     expect(child.stdout).not.toContain("catalogMismatch");
+    expect(child.stdout).not.toContain("modularUpdateDiagnostic");
   });
   it("keeps production credentials last and serializes the workflow without cancellation", () => {
     const workflow = readFileSync(resolve(__dirname, "../../../../.github/workflows/ci.yml"), "utf8").replaceAll("\r\n", "\n");

@@ -10,12 +10,14 @@ import {
 import { productionHistoryFingerprint, productionHistoryRows } from "../scripts/swim-production-reconciliation";
 import type { ProductionUpdateProgress } from "../scripts/swim-production-update-storage";
 import { modularCatalog } from "../scripts/modular-production-catalog";
+import { createModularHistoricalGraph } from "./modular-production-legacy-graph";
 
 export const modularRehearsalMigrations = validateModularUpdateMigrations;
 export const MODULAR_UPDATE_REHEARSAL_STAGES = [
   "modular-production-update-159-guard",
   "modular-production-update-function-metadata",
   "modular-production-update-213-baseline",
+  "modular-production-update-owned-reference-preflight",
   "modular-production-update-legacy-fingerprint-refusal",
   "modular-production-update-full-fingerprint-refusal",
   "modular-production-update-partial-ledger-refusal",
@@ -129,6 +131,7 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     attemptedMigrations: 0, stagedMigrations: 0, commitAttempted: false, commitConfirmed: false,
   });
   let installed = false;
+  let fixture = createModularHistoricalGraph(database);
   try {
     mark(2);
     // Only this loopback disposable fixture replaces its ledger; its sequence is never reset.
@@ -147,28 +150,33 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     assert.equal(initial.length, 213);
     baseline.fullFingerprint = productionHistoryFingerprint(initial);
     assert.equal(modularUpdateInventory(initial, migrations, baseline).pending.length, 3);
+    await fixture.prepare();
     pass(2);
     const unchanged = async () => {
       assert.deepEqual(productionHistoryRows(Array.from(await database.unsafe(MODULAR_LEDGER_SQL))), initial);
       assert.equal(await catalog(), beforeCatalog);
+      await fixture.unchanged();
     };
     mark(3);
+    await fixture.verifyReferencePreflight();
+    pass(3);
+    mark(4);
     const refused = progress();
     await assert.rejects(appendModularProduction(database, migrations, async () => {}, refused,
       { ...baseline, fingerprint: "f".repeat(64) }), /legacy_history_changed/);
     assert.equal(refused.attemptedMigrations, 0);
     await unchanged();
-    pass(3);
+    pass(4);
 
-    mark(4);
+    mark(5);
     const fullRefused = progress();
     await assert.rejects(appendModularProduction(database, migrations, async () => {}, fullRefused,
       { ...baseline, fullFingerprint: "f".repeat(64) }), /modular_baseline/);
     assert.equal(fullRefused.attemptedMigrations, 0);
     await unchanged();
-    pass(4);
+    pass(5);
 
-    mark(5);
+    mark(6);
     const next = migrations[156]!;
     const inserted = await database`INSERT INTO drizzle.__drizzle_migrations(hash,created_at)
       VALUES (${next.hash},${next.folderMillis}) RETURNING id`;
@@ -178,9 +186,9 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
       assert.equal(partial.attemptedMigrations, 0);
     } finally { await database`DELETE FROM drizzle.__drizzle_migrations WHERE id=${inserted[0]!.id}`; }
     await unchanged();
-    pass(5);
+    pass(6);
 
-    mark(6);
+    mark(7);
     const midBatch = progress();
     let attempts = 0;
     await assert.rejects(appendModularProduction(database, migrations, async (phase) => {
@@ -189,9 +197,9 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     assert.equal(midBatch.stagedMigrations, 1);
     assert.equal(midBatch.commitAttempted, false);
     await unchanged();
-    pass(6);
+    pass(7);
 
-    mark(7);
+    mark(8);
     const rollback = progress();
     await assert.rejects(appendModularProduction(database, migrations, async (phase) => {
       if (phase === "before_commit") throw new Error("synthetic_modular_precommit");
@@ -199,9 +207,9 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     assert.equal(rollback.stagedMigrations, 3);
     assert.equal(rollback.commitAttempted, false);
     await unchanged();
-    pass(7);
+    pass(8);
 
-    mark(8);
+    mark(9);
     const [role] = await database`SELECT rolinherit FROM pg_roles WHERE rolname='authenticated'`;
     assert.equal(typeof role?.rolinherit, "boolean");
     const drift = progress();
@@ -217,9 +225,9 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     }
     assert.equal((await database`SELECT rolinherit FROM pg_roles WHERE rolname='authenticated'`)[0]!.rolinherit, role!.rolinherit);
     await unchanged();
-    pass(8);
+    pass(9);
 
-    mark(9);
+    mark(10);
     const committed = progress();
     try {
       const result = await appendModularProduction(database, migrations, async () => {}, committed, baseline);
@@ -231,16 +239,21 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     assert.deepEqual(after.slice(0, 213), initial);
     assert.equal(after.length, 216);
     assert.equal(modularUpdateInventory(after, migrations, baseline).pending.length, 0);
-    pass(9);
-    mark(10);
+    await fixture.verifyUpgrade();
+    pass(10);
+    mark(11);
     const replay = progress();
     await assert.rejects(appendModularProduction(database, migrations, async () => {}, replay, baseline), /modular_baseline/);
     assert.equal(replay.attemptedMigrations, 0);
-    pass(10);
+    pass(11);
 
-    mark(11);
+    mark(12);
+    // The unchanged 0156 down guard refuses any authored history, even legacy.
+    await fixture.cleanup();
     await down(158); await down(157); await down(156); installed = false;
     await database`DELETE FROM drizzle.__drizzle_migrations WHERE id>${initial.at(-1)!.id}`;
+    fixture = createModularHistoricalGraph(database);
+    await fixture.prepare();
     await unchanged();
     const ambiguous = progress();
     try {
@@ -253,17 +266,20 @@ export async function rehearseModularProductionUpdate(database: postgres.Sql, st
     const retained = productionHistoryRows(Array.from(await database.unsafe(MODULAR_LEDGER_SQL)));
     assert.deepEqual(retained.slice(0, 213), initial);
     assert.equal(modularUpdateInventory(retained, migrations, baseline).pending.length, 0);
-    pass(11);
+    await fixture.verifyUpgrade();
+    pass(12);
   } finally {
-    if (installed) { await down(158); await down(157); }
-    else await database.unsafe(migrations[156]!.sql[0]!);
-    await database.unsafe("DELETE FROM drizzle.__drizzle_migrations");
-    for (const row of original) await database.unsafe(
-      "INSERT INTO drizzle.__drizzle_migrations(id,hash,created_at) VALUES ($1,$2,$3)", [row.id, row.hash, row.created_at]);
+    try {
+      if (installed) { await down(158); await down(157); }
+      else await database.unsafe(migrations[156]!.sql[0]!);
+      await database.unsafe("DELETE FROM drizzle.__drizzle_migrations");
+      for (const row of original) await database.unsafe(
+        "INSERT INTO drizzle.__drizzle_migrations(id,hash,created_at) VALUES ($1,$2,$3)", [row.id, row.hash, row.created_at]);
+    } finally { await fixture.cleanup(); }
   }
-  mark(12);
+  mark(13);
   assert.deepEqual(productionHistoryRows(Array.from(await database.unsafe(MODULAR_LEDGER_SQL))), original);
   assert.equal(await catalog(), originalCatalog);
   assert.deepEqual(await authAndRoles(), originalAuthAndRoles);
-  pass(12);
+  pass(13);
 }

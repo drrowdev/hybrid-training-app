@@ -34,10 +34,11 @@ describe("DC-SW8 exact modular updater rehearsal stays separate from production"
   });
 
   it("exposes every successful rehearsal stage to the existing storage summary", () => {
-    expect(MODULAR_UPDATE_REHEARSAL_STAGES).toHaveLength(13);
-    expect(new Set(MODULAR_UPDATE_REHEARSAL_STAGES).size).toBe(13);
+    expect(MODULAR_UPDATE_REHEARSAL_STAGES).toHaveLength(14);
+    expect(new Set(MODULAR_UPDATE_REHEARSAL_STAGES).size).toBe(14);
     expect(MODULAR_UPDATE_REHEARSAL_STAGES[0]).toBe("modular-production-update-159-guard");
     expect(MODULAR_UPDATE_REHEARSAL_STAGES[1]).toBe("modular-production-update-function-metadata");
+    expect(MODULAR_UPDATE_REHEARSAL_STAGES[3]).toBe("modular-production-update-owned-reference-preflight");
     expect(MODULAR_UPDATE_REHEARSAL_STAGES.at(-1)).toBe("modular-production-update-fixture-restored");
     const runner = readFileSync(new URL("../../integration-tests/swim-pool-storage.mts", import.meta.url), "utf8");
     expect(runner).toContain("await rehearseModularProductionUpdate(database, (name) => { stage = name; }, (name) => { stages.push(name); })");

@@ -189,7 +189,8 @@ SELECT
     AS functions`;
 
 export async function verifyAddedModularSecurity(sql: postgres.Sql | postgres.TransactionSql) {
-  const rows = await sql.unsafe(MODULAR_ADDED_SECURITY_SQL, [relations, JSON.stringify(MODULAR_CATALOG_MANIFEST.functions), [
+  const functions = MODULAR_CATALOG_MANIFEST.functions.map((entry) => ({ ...entry, config: [...entry.config] }));
+  const rows = await sql.unsafe(MODULAR_ADDED_SECURITY_SQL, [relations, sql.json(functions), [
     "training_schedule_snapshot", "training_schedule_commit", "start_planned_session_atomically",
     "swim_import_outcomes_ready", "swim_confirm_import_outcome", "validate_owned_rehab_items", "independent_programs_ready",
     "independent_program_schedule_commit", "complete_program_if_settled", "commit_program_progression",

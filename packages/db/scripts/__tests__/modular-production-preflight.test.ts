@@ -137,6 +137,7 @@ describe("DC-SW8 modular release preflight preserves production history without 
     expect(child.status).toBe(1); expect(child.stderr).toBe("");
     expect(child.stdout).toContain('"databaseReadAttempted":false');
     expect(child.stdout).toContain('"writesAttempted":false');
+    expect(child.stdout).toContain('"compositeFkViolations":null');
     expect(child.stdout).toContain('"status":"failed"');
     expect(child.stdout).not.toContain(canary);
   });
@@ -147,7 +148,7 @@ describe("DC-SW8 modular release preflight preserves production history without 
     for (const guard of ["needs: [ci, identity-guard]", "persist-credentials: false", "environment: Production",
       "group: production-database-migrations", "cancel-in-progress: false",
       ...MODULAR_DISABLED_OPERATIONS.map((key) => `inputs.${key} == false`)]) expect(job).toContain(guard);
-    const [before, operation] = job.split("      - name: Inspect modular production metadata without writes\n");
+    const [before, operation] = job.split("      - name: Inspect modular production metadata and ownership counts without writes\n");
     expect(before).toContain("--check-source"); expect(before).not.toContain("secrets.");
     expect(operation!.match(/secrets\.\w+/g)).toHaveLength(2);
     expect(job).not.toContain("db:migrate"); expect(job).not.toContain("upload-artifact");

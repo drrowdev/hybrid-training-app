@@ -19,6 +19,7 @@ import { rehearseProductionSwimmingUpdate } from "./swim-production-update-rehea
 import { rehearseModularSchedule } from "./modular-schedule-rehearsal.ts";
 import { rehearseModularProductionUpdate } from "./modular-production-update-rehearsal.ts";
 import { ModularCatalogRefusal, type ModularCatalogDiagnostic } from "../scripts/modular-production-catalog.ts";
+import { ModularUpdateSqlFailure, type ModularUpdateDiagnostic } from "../scripts/modular-production-update-storage.ts";
 import { IndependentProgramsAssertion, rehearseIndependentPrograms, type OwnershipAssertionDiagnostic } from "./independent-programs-rehearsal.ts";
 import { POST_UPDATE_CATALOG_SQL, productionPostUpdateInventory } from "../scripts/swim-production-post-update.ts";
 import { ProductionInspectionRefusal } from "../scripts/swim-production-readonly-guards.ts";
@@ -39,6 +40,7 @@ const knownFailures = new Map<string, { migration: number; line: number }>();
 let failureLocation: { migration: number; line: number } | undefined;
 let modularAssertionLine: number | undefined;
 let catalogMismatch: ModularCatalogDiagnostic | undefined;
+let modularUpdateDiagnostic: ModularUpdateDiagnostic | undefined;
 let ownershipAssertionLine: number | undefined;
 let ownershipAssertionDiagnostic: OwnershipAssertionDiagnostic | undefined;
 let migrationRunnerDiagnostic: MigrationRunnerRehearsalError["diagnostic"] | undefined;
@@ -736,6 +738,7 @@ try {
   status = "passed";
 } catch (error) {
   if (error instanceof ModularCatalogRefusal) catalogMismatch = error.diagnostic;
+  if (error instanceof ModularUpdateSqlFailure) modularUpdateDiagnostic = error.diagnostic;
   if (error instanceof MigrationRunnerRehearsalError) migrationRunnerDiagnostic = error.diagnostic;
   if (error instanceof IndependentProgramsAssertion) ownershipAssertionDiagnostic = error.diagnostic;
   if (error instanceof assert.AssertionError) {
@@ -762,6 +765,7 @@ console.log(JSON.stringify({
   scope: "swim-pool-storage", sha: /^[0-9a-f]{40}$/.test(process.env.TESTED_SHA ?? "") ? process.env.TESTED_SHA : null,
   status, stages, ...(status === "failed" ? { stage, code, ...(failureLocation ? { failureLocation } : {}),
     ...(catalogMismatch ? { catalogMismatch } : {}),
+    ...(modularUpdateDiagnostic ? { modularUpdateDiagnostic } : {}),
     ...(modularAssertionLine ? { modularAssertionLine } : {}),
     ...(ownershipAssertionLine ? { ownershipAssertionLine } : {}),
     ...(ownershipAssertionDiagnostic ? { ownershipAssertionDiagnostic } : {}),
