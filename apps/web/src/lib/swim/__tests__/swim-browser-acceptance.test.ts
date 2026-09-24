@@ -794,7 +794,7 @@ describe("DC-SW8 failure-only C2 Auth absence", () => {
     const c2 = source.slice(source.indexOf('test("C2 DC-SW8:'));
     const observation = c2.slice(c2.indexOf("await accountPage(page, primary);"), c2.indexOf("expect((await context.cookies())"));
     const ordered = [
-      'await page.getByRole("button", { name: "Delete account (GDPR Art. 17)", exact: true }).click();',
+      'await page.getByRole("button", { name: "Delete account", exact: true }).click();',
       "try {", 'await expect(page).toHaveURL(new URL("/?deleted=1", baseURL!).href);',
       "} catch (error) {", "try {", 'const diagnostic = unavailableAlert("c2-auth-absence");',
       "const controller = new AbortController();", "const deadline = performance.now() + 1000;",
@@ -1385,7 +1385,7 @@ describe("browser environment and static config", () => {
     const prefix = currentPrefix.replaceAll(displayedPool,
       'page.locator("main > section").first().getByText("50 m", { exact: true })');
     expect(createHash("sha256").update(prefix).digest("hex"))
-      .toBe("dcfc34c28518dc746ce0d0c45dd2d0c095f5f3529059cfec6f7dff4bbd9b9c9f");
+      .toBe("ea601e8fc47c39a76d2e034c904e92643110482d6bf33243f048d4493a25800c");
     // Only the three required previews and two preview-only refusal/guidance entries differ.
     const reviewBeforeCreate = /^    await (page|form)\.getByRole\("button", \{ name: "Preview plan", exact: true \}\)\.click\(\);\n(?=    await \1\.getByRole\("button", \{ name: "Create swim plan", exact: true \}\)\.click\(\);)/gm;
     expect([...prefix.matchAll(reviewBeforeCreate)]).toHaveLength(3);
@@ -1395,7 +1395,7 @@ describe("browser environment and static config", () => {
     const acceptedPrefix = withoutAddedPreviews.replaceAll(previewOnly,
       '    await form.getByRole("button", { name: "Create swim plan", exact: true }).click();');
     expect(createHash("sha256").update(acceptedPrefix).digest("hex"))
-      .toBe("f819e41cc16c6cccc29a2e96068dc31589fd92e14166d3f445a9e615b9c57da1");
+      .toBe("51c38ed42f0e6df46b1c6bab99e1afd8925da372f6994b3865437e56c75988b1");
     const b9 = source.slice(boundary);
     expect(b9.match(/\btest\("/g)).toHaveLength(1);
     expect(b9).not.toMatch(/annotations|testInfo|alertAnnotation|waitForTimeout|force:\s*true|\.rpc\(/);

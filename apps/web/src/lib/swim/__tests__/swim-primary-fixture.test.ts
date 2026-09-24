@@ -5,10 +5,12 @@ import { authoredProgramSchema } from "../../programs/authored/schema";
 import { authoredProgramDates } from "@hta/domain";
 
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
-type Failure = "owner" | "create" | "count" | "start" | "complete" | "receipt";
+const prescription = { items: [{ movementId: id(2), movementName: "Bench press", kind: "main" as const, sets: 3, reps: 5 }] };
+type Failure = "owner" | "create" | "count" | "prescription" | "targets" | "start" | "complete" | "receipt";
 
 function fixture(failure?: Failure) {
   const writes: Array<{ rpc: string; args: Record<string, unknown> }> = [];
+  let completed = false;
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(input instanceof Request ? input.url : input.toString());
     const name = url.pathname.split("/").at(-1)!;
@@ -18,7 +20,18 @@ function fixture(failure?: Failure) {
     if (name === "movements") return respond(url.searchParams.get("select") === "id" ? { id: id(2) } : [{
       id: id(2), slug: "bench-press-flat", display_name: "Bench press", pattern: "horizontal_push", metadata: {},
     }]);
-    if (name === "planned_sessions") return respond(failure === "count" ? [{ id: id(4) }] : [{ id: id(4) }, { id: id(5) }]);
+    if (name === "planned_sessions") {
+      if (init?.method === "PATCH") {
+        writes.push({ rpc: "prescription", args: JSON.parse(String(init.body)) });
+        expect(completed).toBe(false);
+        expect(url.searchParams.get("user_id")).toBe(`eq.${id(1)}`);
+        expect(url.searchParams.get("block_id")).toBe(`eq.${id(3)}`);
+        expect(url.searchParams.get("id")).toBe(`in.(${id(4)},${id(5)})`);
+        if (failure === "prescription") return respond({ message: "Synthetic prescription refusal" }, 400);
+        if (failure === "targets") return respond([{ id: id(4) }, { id: id(9) }]);
+      }
+      return respond(failure === "count" ? [{ id: id(4) }] : [{ id: id(4) }, { id: id(5) }]);
+    }
     const args = JSON.parse(String(init?.body)) as Record<string, unknown>;
     writes.push({ rpc: name, args });
     if (name === "training_schedule_snapshot") return respond({ revision: "a".repeat(32) });
@@ -26,9 +39,11 @@ function fixture(failure?: Failure) {
       ? respond({ message: "Synthetic creation refusal" }, 400) : respond({ block_id: id(3), program_instance_id: id(7) });
     if (name === "start_planned_session_atomically") return failure === "start"
       ? respond({ message: "Synthetic start refusal" }, 400) : respond(id(6));
-    if (name === "complete_training_session_with_transition") return failure === "complete"
-      ? respond({ message: "Synthetic completion refusal" }, 400)
-      : respond([{ user_id: failure === "receipt" ? id(9) : id(1), transitioned: true }]);
+    if (name === "complete_training_session_with_transition") {
+      completed = true;
+      return failure === "complete" ? respond({ message: "Synthetic completion refusal" }, 400)
+        : respond([{ user_id: failure === "receipt" ? id(9) : id(1), transitioned: true }]);
+    }
     throw new Error(`Unexpected synthetic request: ${name}`);
   });
   const actor = createClient("http://127.0.0.1:54321", "synthetic-anon", {
@@ -48,7 +63,7 @@ describe("DC-K4/DC-SW7 typed primary fixture preserves the swimming baseline", (
     ["2026-09-27", "2026-10-04"],
   ])("creates two planned workouts and completes only one from %s", async (startedOn, nextWeek) => {
     const { actor, writes } = fixture();
-    expect(await seedSwimPrimaryBaseline(actor, id(1), startedOn)).toEqual({
+    expect(await seedSwimPrimaryBaseline(actor, id(1), startedOn, prescription)).toEqual({
       blockId: id(3), plannedIds: [id(4), id(5)],
     });
     const commit = writes.find(({ rpc }) => rpc === "independent_program_schedule_commit")!;
@@ -61,6 +76,11 @@ describe("DC-K4/DC-SW7 typed primary fixture preserves the swimming baseline", (
     expect(authoredProgramDates(definition, startedOn).map(({ date }) => date))
       .toEqual([startedOn, nextWeek]);
     expect(payload.p_planned_sessions).toHaveLength(2);
+    expect(writes.map(({ rpc }) => rpc)).toEqual([
+      "training_schedule_snapshot", "independent_program_schedule_commit", "prescription",
+      "start_planned_session_atomically", "complete_training_session_with_transition",
+    ]);
+    expect(writes.find(({ rpc }) => rpc === "prescription")!.args).toEqual({ prescription });
     expect(writes.filter(({ rpc }) => rpc === "start_planned_session_atomically"))
       .toEqual([{ rpc: "start_planned_session_atomically", args: { p_planned_id: id(4) } }]);
     expect(writes.filter(({ rpc }) => rpc === "complete_training_session_with_transition"))
@@ -69,12 +89,15 @@ describe("DC-K4/DC-SW7 typed primary fixture preserves the swimming baseline", (
       } }]);
   });
 
-  it.each(["owner", "create", "count", "start", "complete", "receipt"] as const)("surfaces %s failure without a success-shaped baseline", async (failure) => {
+  it.each(["owner", "create", "count", "prescription", "targets", "start", "complete", "receipt"] as const)("surfaces %s failure without a success-shaped baseline", async (failure) => {
     const { actor, writes, fetch } = fixture(failure);
-    await expect(seedSwimPrimaryBaseline(actor, id(1), "2026-09-24")).rejects.toThrow();
+    await expect(seedSwimPrimaryBaseline(actor, id(1), "2026-09-24", prescription)).rejects.toThrow();
     if (failure === "owner") expect(fetch).not.toHaveBeenCalled();
-    if (["owner", "create", "count", "start"].includes(failure)) {
+    if (["owner", "create", "count", "prescription", "targets", "start"].includes(failure)) {
       expect(writes.filter(({ rpc }) => rpc === "complete_training_session_with_transition")).toEqual([]);
+    }
+    if (["prescription", "targets"].includes(failure)) {
+      expect(writes.filter(({ rpc }) => rpc === "start_planned_session_atomically")).toEqual([]);
     }
   });
 });

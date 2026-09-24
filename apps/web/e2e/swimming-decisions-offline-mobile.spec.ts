@@ -186,8 +186,8 @@ async function budgetSetup(page: Page, times?: readonly [string, string]) {
   await expect(form).toHaveCount(1);
   await form.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("50m");
   await form.getByRole("combobox", { name: "Goal", exact: true }).selectOption("endurance");
-  await form.getByRole("combobox", { name: "Swimming experience", exact: true }).selectOption(times ? "regular" : "beginner");
-  await form.getByLabel("Recent comfortable continuous lengths", { exact: true }).fill(times ? "12" : "0");
+  await form.getByRole("combobox", { name: "Experience", exact: true }).selectOption(times ? "regular" : "beginner");
+  await form.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill(times ? "12" : "0");
   for (const group of ["Known strokes", "Equipment", "Swim days"]) {
     for (const control of await form.getByRole("group", { name: group, exact: true }).getByRole("checkbox").all()) {
       await control.uncheck();
@@ -428,7 +428,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     await signInAs(context, freshUser, seedConfig, baseURL!);
     await page.goto("/app/swim/setup");
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
-    await page.getByLabel("Recent comfortable continuous lengths", { exact: true }).fill("12");
+    await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("12");
     await page.getByLabel("Weeks", { exact: true }).fill("2");
     await page.getByRole("button", { name: "Preview plan", exact: true }).click();
     await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
@@ -762,6 +762,13 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     const created = await arrangePlan(actor, today);
     const initial = await saved(actor, created.plan.id);
     expect(initial.workouts.slice(0, 2).every((row) => row.scheduled_date < today)).toBe(true);
+    const missed = initial.workouts[0];
+    const skipReason = "No pool access.";
+    await page.goto(`/app/swim/${missed.id}`);
+    await page.locator("summary").filter({ hasText: /^Skip swim$/ }).click();
+    await page.getByLabel("Reason", { exact: true }).fill(skipReason);
+    await page.getByRole("button", { name: "Skip swim", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Skip swim", exact: true })).toHaveCount(0);
     const source = initial.workouts[1];
     const started = await startSwimWorkout(actor, source.id, source.revision);
     expect(started.definition.issued.totalLengths).toBe(35);
@@ -779,9 +786,12 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     const before = await saved(actor, created.plan.id);
     expect(before.workouts[2].status).toBe("started");
     expect(!!before.workouts[2].session_id).toBe(true);
-    expect(isDeepStrictEqual(before.workouts.map((row) => row.definition), initial.workouts.map((row) => row.definition))).toBe(true);
-    expect(isDeepStrictEqual(before.workouts[0], initial.workouts[0])).toBe(true);
-    expect(before.history[0].workout.status).toBe("scheduled");
+    expect(isDeepStrictEqual(before.workouts.slice(1).map((row) => row.definition), initial.workouts.slice(1).map((row) => row.definition))).toBe(true);
+    const skipped = before.workouts[0];
+    expect(isDeepStrictEqual(skipped, { ...missed, status: "skipped", revision: missed.revision + 1,
+      updated_at: skipped.updated_at, definition: { ...missed.definition, skip: skipped.definition.skip } })).toBe(true);
+    expect(skipped.definition.skip?.reason).toBe(skipReason);
+    expect(before.history[0].workout.status).toBe("skipped");
     expect(before.history[0].workout.session_id).toBeNull();
     expect(before.history[0].result).toBeNull();
     expect(before.history[0].completedAt).toBeNull();
@@ -1123,7 +1133,7 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
   }) => {
     await signInAs(context, freshUser, seedConfig, baseURL!);
     const form = await budgetSetup(page);
-    await expect(form.getByLabel("Recent comfortable continuous lengths", { exact: true })).toHaveAttribute("min", "0");
+    await expect(form.getByLabel("Recent comfortable non-stop lengths", { exact: true })).toHaveAttribute("min", "0");
     const preview = await setupPreview(form);
     expect(preview.input.setup.recentComfortableLengths).toBe(0);
     expect(preview.input.setup.knownStrokes).toHaveLength(0);
@@ -1157,17 +1167,14 @@ test.describe("ADR0079 later-cohort B swimming decisions and offline durability"
     const today = await page.getByLabel("Start date", { exact: true }).inputValue();
     expect(today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     const userId = freshUser.userId;
-    const { blockId, plannedIds } = await seedSwimPrimaryBaseline(actor, userId, addDaysToYmd(today, -7));
     const movement = await admin.from("movements").select("id,display_name")
       .is("user_id", null).eq("slug", "bench-press-flat").single();
     expect(!movement.error && typeof movement.data?.id === "string" &&
       typeof movement.data?.display_name === "string").toBe(true);
     const prescription = { items: [{
-      movementId: movement.data!.id, movementName: movement.data!.display_name, kind: "main", sets: 3, reps: 5,
+      movementId: movement.data!.id, movementName: movement.data!.display_name, kind: "main" as const, sets: 3, reps: 5,
     }] };
-    const updated = await admin.from("planned_sessions").update({ prescription })
-      .eq("user_id", userId).eq("block_id", blockId).in("id", plannedIds);
-    expect(updated.error === null).toBe(true);
+    const { plannedIds } = await seedSwimPrimaryBaseline(actor, userId, addDaysToYmd(today, -7), prescription);
     const linked = await admin.from("planned_sessions").select("completed_session_id")
       .eq("user_id", userId).eq("id", plannedIds[0]).single();
     expect(!linked.error && typeof linked.data?.completed_session_id === "string").toBe(true);

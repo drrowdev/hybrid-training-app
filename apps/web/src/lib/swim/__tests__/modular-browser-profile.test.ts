@@ -46,7 +46,7 @@ describe("DC-SW8 modular browser profile retains the isolated runtime boundaries
     expect(MODULAR_MIGRATION_TOTAL).toBe(159);
   });
 
-  it("requires one of the two explicitly reviewed branches and a fresh first attempt", () => {
+  it("requires an explicitly reviewed branch and a fresh first attempt", () => {
     expect(isModularAcceptance(context)).toBe(true);
     expect(requireManualContext(context, sha)).toBe("pr802-35326000000-1");
     const redesign = { ...context, GITHUB_REF: "refs/heads/drrowdev-programs-page-redesign",
@@ -70,11 +70,14 @@ describe("DC-SW8 modular browser profile retains the isolated runtime boundaries
   it.each([
     "refs/heads/drrowdev-modular-programs-implementation",
     "refs/heads/drrowdev-programs-page-redesign",
+    "refs/heads/drrowdev-swimming-test-suite-repair",
     "refs/heads/copilot/new-acceptance-cases",
     "refs/heads/drrowdev-programs-page-redesign-extra",
+    "refs/heads/drrowdev-swimming-test-suite-repair-extra",
   ])("qualifies the exact schema independently of browser cases on %s", (ref) => {
     const reviewed = ref === "refs/heads/drrowdev-modular-programs-implementation" ||
-      ref === "refs/heads/drrowdev-programs-page-redesign";
+      ref === "refs/heads/drrowdev-programs-page-redesign" ||
+      ref === "refs/heads/drrowdev-swimming-test-suite-repair";
     for (const profile of [undefined, "swimming", "modular"]) {
       const env = { ...context, GITHUB_REF: ref, SXC_ACCEPTANCE_PROFILE: profile,
         GITHUB_WORKFLOW_REF: `drrowdev/hybrid-training-app/.github/workflows/ci.yml@${ref}` };

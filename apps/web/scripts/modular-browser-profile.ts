@@ -34,7 +34,8 @@ export function isModularBrowserProfile(env: Readonly<Record<string, string | un
 export function isModularAcceptance(env: Readonly<Record<string, string | undefined>>) {
   if (!isModularBrowserProfile(env)) return false;
   assert((env.GITHUB_REF === "refs/heads/drrowdev-modular-programs-implementation" ||
-    env.GITHUB_REF === "refs/heads/drrowdev-programs-page-redesign") &&
+    env.GITHUB_REF === "refs/heads/drrowdev-programs-page-redesign" ||
+    env.GITHUB_REF === "refs/heads/drrowdev-swimming-test-suite-repair") &&
     env.GITHUB_RUN_ATTEMPT === "1", "Modular acceptance requires its reviewed branch and first attempt");
   return true;
 }
@@ -42,7 +43,8 @@ export function isModularAcceptance(env: Readonly<Record<string, string | undefi
 export function isModularSchemaAcceptance(env: Readonly<Record<string, string | undefined>>) {
   isModularAcceptance(env);
   const reviewed = env.GITHUB_REF === "refs/heads/drrowdev-modular-programs-implementation" ||
-    env.GITHUB_REF === "refs/heads/drrowdev-programs-page-redesign";
+    env.GITHUB_REF === "refs/heads/drrowdev-programs-page-redesign" ||
+    env.GITHUB_REF === "refs/heads/drrowdev-swimming-test-suite-repair";
   if (reviewed) assert(env.GITHUB_RUN_ATTEMPT === "1",
     "Modular schema qualification requires its reviewed branch and first attempt");
   return reviewed;

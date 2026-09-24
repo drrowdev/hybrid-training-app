@@ -83,7 +83,7 @@ const test = seededTest.extend({
 async function createPlan(page: Page) {
   await page.goto("/app/swim/setup");
   await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("25yd");
-  await page.getByLabel("Recent comfortable continuous lengths", { exact: true }).fill("4");
+  await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
   await page.getByLabel("Weeks", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Preview plan", exact: true }).click();
   await page.getByRole("button", { name: "Create swim plan", exact: true }).click();
@@ -161,7 +161,6 @@ async function primaryBaseline(admin: SupabaseClient, user: { userId: string; em
   expect(signed.error).toBeNull();
   expect(signed.data.user?.id).toBe(userId);
   const timezone = await userTimezone(admin, userId);
-  const { blockId, plannedIds } = await seedSwimPrimaryBaseline(actor, userId, addDaysToYmd(todayYmd(timezone), -7));
   const movement = await admin.from("movements").select("id,display_name")
     .is("user_id", null).eq("slug", "bench-press-flat").single();
   expect(movement.error).toBeNull();
@@ -173,9 +172,7 @@ async function primaryBaseline(admin: SupabaseClient, user: { userId: string; em
   const prescription: Prescription = {
     items: [{ movementId, movementName: movement.data.display_name, kind: "main", sets: 3, reps: 5 }],
   };
-  const updated = await admin.from("planned_sessions").update({ prescription })
-    .eq("user_id", userId).eq("block_id", blockId).in("id", plannedIds);
-  expect(updated.error).toBeNull();
+  const { blockId, plannedIds } = await seedSwimPrimaryBaseline(actor, userId, addDaysToYmd(todayYmd(timezone), -7), prescription);
   const linked = await admin.from("planned_sessions").select("completed_session_id")
     .eq("user_id", userId).eq("id", plannedIds[0]).single();
   expect(linked.error).toBeNull();
@@ -1210,7 +1207,7 @@ test.describe("ADR0079 mobile swimming lifecycle and regional load", () => {
     expect(isDeepStrictEqual(archived.workouts, before.workouts)).toBe(true);
     await page.getByRole("link", { name: "Set up swimming", exact: true }).click();
     await page.getByRole("combobox", { name: "Pool length", exact: true }).selectOption("50m");
-    await page.getByLabel("Recent comfortable continuous lengths", { exact: true }).fill("4");
+    await page.getByLabel("Recent comfortable non-stop lengths", { exact: true }).fill("4");
     await page.getByLabel("Weeks", { exact: true }).fill("2");
     await page.getByRole("button", { name: "Preview plan", exact: true }).click();
     await page.getByRole("button", { name: "Create swim plan", exact: true }).click();

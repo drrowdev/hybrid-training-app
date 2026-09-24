@@ -5623,3 +5623,29 @@ and CRLF; the prior targeted local selection had not run that ledger test.
 Both exact pins now require 72, with LF/CRLF source coverage and rejection of
 the old line. Boolean-only parsing, source/function allowlists, caller limits
 and payload rejection remain intact. No native assertions or deadlines changed.
+
+## [2026-09-24] acceptance | Repair swimming fixtures after modular release
+
+The swimming acceptance repair updates the removed setup/account labels without
+changing product copy. Its typed primary fixture now applies both retained
+prescriptions before starting and completing the first workout, preserving
+0158's completed-prescription guard. B4 explicitly records the first past swim
+through the existing Skip swim form; absent observations remain unknown, while
+the recorded miss plus high-effort partial result still requires the same
+reduction, warning override, no catch-up and retained-history assertions.
+
+Only `refs/heads/drrowdev-swimming-test-suite-repair` joins the shared exact-ref
+schema/browser acceptance selector. Tests cover both profiles and refuse
+lookalike refs and later attempts. No workflow, production authorization,
+product, RPC, schema, migration, native case inventory or deadline changed.
+
+Local evidence: fixture/ref/legacy/full browser-ledger suites pass (712 tests,
+43 existing platform skips), all 75 synthetic UI stages pass, and web typecheck
+passes. The broader unchanged runner suite passes 399 tests with seven
+Windows-only failures at Unix private-file permission checks; Linux CI remains
+the gate. CRLF-sensitive local source reads were validated using repository LF
+formatting, without semantic source changes. Before/after B-prefix hashes were
+recomputed against `c4b931c4`: exact source comparison permits only the authorized
+setup selectors and B4 skip step/assertions. The account source differs only by
+its Delete account selector. Native swimming and modular acceptance require
+coordinator dispatch at the published head; no local database/native run occurred.
