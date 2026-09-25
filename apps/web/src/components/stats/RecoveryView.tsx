@@ -32,7 +32,7 @@ export function RecoveryView({ regions, buckets, ceiling, overrides, formatProfi
                 <span>Last trained {row.lastLoadDate
                   ? <time dateTime={row.lastLoadDate}>{formatDate(row.lastLoadDate, { ...formatProfile, timezone: "UTC" }, "short_date")}</time>
                   : "—"}</span>
-                <span>Loaded days: {row.setCounts.d7} / 7 · {row.setCounts.d14} / 14 · {row.setCounts.d28} / 28</span>
+                <span>Trained {row.setCounts.d7} of the last 7 days · {row.setCounts.d28} of 28</span>
               </div>
             </div>;
           })}</div>}
