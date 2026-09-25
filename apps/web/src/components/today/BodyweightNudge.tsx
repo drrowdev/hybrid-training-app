@@ -3,11 +3,8 @@
 /**
  * Phase 3 A2 — weekly bodyweight nudge.
  *
- * Renders a small dismissable card in the Today page's quieter zone
- * (below the hero, alongside the "Up next" / "Recent" strips) when
- * the user hasn't logged a bodyweight in the past 7 days. The card
- * is intentionally low-stakes: a single number input, a Save button,
- * and a small "×" dismiss that hides the card for another 7 days.
+ * Weekly reminder, selected by the Today prompt policy. Today supplies
+ * the next local midnight for snoozing; older callers retain seven days.
  *
  * Cross-device sync (PR Z1): the dismiss timestamp lives on
  * `profiles.bw_nudge_hidden_until` (migration 0055). The server
@@ -34,6 +31,7 @@ export function BodyweightNudge({
   recordDailyCheckIn,
   dismissedUntilIso = null,
   dismissBwNudgeAction,
+  snoozeUntil,
 }: {
   todayYmd: string;
   recordDailyCheckIn: RecordCheckInAction;
@@ -41,6 +39,7 @@ export function BodyweightNudge({
   dismissedUntilIso?: string | null;
   /** Server action that persists the snooze across devices. */
   dismissBwNudgeAction?: DismissBwNudgeAction;
+  snoozeUntil?: string;
 }) {
   // Server is the source of truth — if it says hidden (snooze still
   // in the future), start hidden. Otherwise we still consult
@@ -75,41 +74,23 @@ export function BodyweightNudge({
   }, [dismissedUntilIso]);
 
   if (hidden) return null;
-  if (saved) {
-    return (
-      <div
-        data-testid="bw-nudge-saved"
-        className="cp-card"
-        style={{
-          padding: 12,
-          fontSize: 13,
-          color: "var(--cp-text-muted)",
-          display: "flex",
-          gap: 8,
-          alignItems: "center",
-        }}
-      >
-        <span style={{ color: "var(--cp-success)", fontWeight: 700 }}>✓</span>
-        Bodyweight logged for today. We&apos;ll ask again next week.
-      </div>
-    );
-  }
+  if (saved) return null;
 
   const dismiss = () => {
-    const untilMs = Date.now() + DISMISS_DAYS * 86_400_000;
+    const untilMs = snoozeUntil ? Date.parse(snoozeUntil) : Date.now() + DISMISS_DAYS * 86_400_000;
     const untilIso = new Date(untilMs).toISOString();
-    try {
-      window.localStorage.setItem(DISMISS_KEY, String(untilMs));
-    } catch {
-      // No-op: best effort.
-    }
-    setHidden(true);
-    if (dismissBwNudgeAction) {
-      // Fire-and-forget — UI already hidden. We don't surface errors
-      // here because the localStorage fallback covers the device the
-      // user just clicked on; cross-device sync is a soft guarantee.
-      void dismissBwNudgeAction(untilIso);
-    }
+    setError(null);
+    startTransition(async () => {
+      try {
+        if (dismissBwNudgeAction) {
+          const result = await dismissBwNudgeAction(untilIso);
+          if (!result.ok) { setError(result.error); return; }
+        }
+        try { window.localStorage.setItem(DISMISS_KEY, String(untilMs)); }
+        catch { /* The saved server preference remains authoritative. */ }
+        setHidden(true);
+      } catch { setError("Couldn't dismiss this reminder. Try again."); }
+    });
   };
 
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -124,7 +105,9 @@ export function BodyweightNudge({
     fd.set("date", todayYmd);
     fd.set("bodyweightKg", String(value));
     startTransition(async () => {
-      const result = await recordDailyCheckIn(fd);
+      let result;
+      try { result = await recordDailyCheckIn(fd); }
+      catch { setError("Couldn't save bodyweight. Try again."); return; }
       if (result?.error) {
         setError(result.error);
         return;
@@ -153,17 +136,6 @@ export function BodyweightNudge({
       }}
     >
       <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--cp-text-muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            fontWeight: 600,
-          }}
-        >
-          Quick check-in
-        </div>
         <div style={{ fontSize: 14, marginTop: 2 }}>
           <strong>Bodyweight today</strong>
         </div>
@@ -181,6 +153,7 @@ export function BodyweightNudge({
         data-testid="bw-nudge-input"
         style={{
           width: 96,
+          minHeight: 44,
           padding: "10px 12px",
           fontSize: 16,
           textAlign: "right",
@@ -201,7 +174,8 @@ export function BodyweightNudge({
       <button
         type="button"
         onClick={dismiss}
-        aria-label="Hide bodyweight nudge for 7 days"
+        aria-label={snoozeUntil ? "Not now" : "Hide bodyweight nudge for 7 days"}
+        disabled={isPending}
         data-testid="bw-nudge-dismiss"
         style={{
           border: "none",
@@ -210,10 +184,12 @@ export function BodyweightNudge({
           fontSize: 18,
           cursor: "pointer",
           padding: "4px 8px",
+          minHeight: 44,
+          minWidth: 44,
           lineHeight: 1,
         }}
       >
-        ×
+        {snoozeUntil ? "Not now" : "×"}
       </button>
       {error && (
         <div

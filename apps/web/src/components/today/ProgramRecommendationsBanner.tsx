@@ -94,7 +94,7 @@ export function ProgramRecommendationsBanner({
   }
 
   return (
-    <div style={{ display: "grid", gap: 8, marginBottom: 16 }}>
+    <div style={{ display: "grid", gap: 8 }}>
       {error && <p role="alert">{error}</p>}
       {visible.map((r) => {
         const advance = advanceTarget(r);
@@ -108,13 +108,13 @@ export function ProgramRecommendationsBanner({
             alignItems: "flex-start",
             gap: 12,
             padding: "12px 14px",
-            borderRadius: 10,
+            borderRadius: 12,
             border: "1px solid var(--cp-border)",
-            background: "var(--cp-accent-soft)",
+            background: "var(--cp-surface)",
           }}
         >
           <div style={{ flex: "1 1 200px", minWidth: 0, overflowWrap: "anywhere" }}>
-            <div style={{ fontWeight: 600, fontSize: 14 }}>{programName ? `${programName} · ${r.title}` : r.title}</div>
+            <h2 style={{ fontWeight: 600, fontSize: 14, margin: 0 }}>{programName ? `${programName} · ${r.title}` : r.title}</h2>
             <div style={{ fontSize: 12.5, color: "var(--cp-text-muted)", marginTop: 3, lineHeight: 1.45 }}>
               {r.detail}
             </div>

@@ -43,13 +43,11 @@ test.describe("@desktop today page · two-a-day (Phase 2 B)", () => {
     await expect(amCard).toBeVisible();
     await expect(pmCard).toBeVisible();
 
-    // Slot labels lead each eyebrow.
-    await expect(page.getByTestId("slot-label-am").first()).toHaveText(/morning/i);
-    await expect(page.getByTestId("slot-label-pm").first()).toHaveText(/evening/i);
-
-    // The two-a-day advisory banner ("AM lift + PM cardio... ≥ 6h gap")
-    // is present too.
-    await expect(page.getByText(/two-a-day/i).first()).toBeVisible();
+    await expect(amCard).toHaveAttribute("data-state", "not_started");
+    await expect(pmCard).toHaveAttribute("data-state", "not_started");
+    await expect(amCard.getByTestId("today-hero-preview")).toBeVisible();
+    await expect(pmCard.getByTestId("today-hero-preview")).toHaveCount(0);
+    await expect(pmCard.getByRole("link")).toHaveAttribute("href", `/app/sessions/start/${seed.pmPlannedId}`);
   });
 
   test("B2 — after AM is logged, PM card moves to front with hint", async ({
@@ -93,18 +91,16 @@ test.describe("@desktop today page · two-a-day (Phase 2 B)", () => {
     await page.goto("/app");
     await page.waitForLoadState("networkidle");
 
-    // PM hint strip is visible above the PM card.
-    const pmHint = page.getByTestId("pm-next-hint");
-    await expect(pmHint).toBeVisible();
-    await expect(pmHint).toContainText(/pm session/i);
-
-    // The AM card carries the "logged" badge.
+    // The AM card opens the logged session; PM becomes the expanded first row.
     const amCard = page.getByTestId(`today-card-${seed.amPlannedId}`);
-    await expect(amCard.getByTestId("slot-complete-badge")).toBeVisible();
+    await expect(amCard).toHaveAttribute("data-state", "done");
+    await expect(amCard).toHaveAttribute("href", `/app/sessions/${amSession!.id}`);
 
     // PM card is still visible and clickable.
     const pmCard = page.getByTestId(`today-card-${seed.pmPlannedId}`);
     await expect(pmCard).toBeVisible();
     await expect(pmCard.getByTestId("today-cta")).toBeVisible();
+    const order = await page.locator('[data-testid^="today-card-"]').evaluateAll((cards) => cards.map((card) => card.getAttribute("data-testid")));
+    expect(order).toEqual([`today-card-${seed.pmPlannedId}`, `today-card-${seed.amPlannedId}`]);
   });
 });

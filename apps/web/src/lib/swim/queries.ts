@@ -20,7 +20,7 @@ import { privateSwimCourseAvailable } from "./course-capability";
 import { loadStandaloneSwimStates, type StandaloneSwimState } from "./standalone-state";
 import { SWIM_TRAINING_LABEL } from "./activity-presentation";
 
-function workoutTrainingState(plan: SwimPlanRow, row: SwimHistoryRow, states: ReadonlyMap<string, StandaloneSwimState>) {
+export function workoutTrainingState(plan: SwimPlanRow, row: SwimHistoryRow, states: ReadonlyMap<string, StandaloneSwimState>) {
   const current = states.get(row.workout.id);
   if (current && (current.workoutRevision !== row.workout.revision || current.scheduledDate !== row.workout.scheduled_date)) {
     throw new Error("The swimming workouts changed. Reload the page.");

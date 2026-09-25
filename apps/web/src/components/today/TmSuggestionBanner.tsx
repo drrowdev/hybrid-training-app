@@ -89,28 +89,17 @@ export function TmSuggestionBanner({
         gap: 10,
         padding: 14,
         borderRadius: 12,
-        border: "1px solid var(--cp-accent)",
-        background: "color-mix(in oklab, var(--cp-accent) 8%, transparent)",
+        border: "1px solid var(--cp-border)",
+        background: "var(--cp-surface)",
       }}
     >
       {error && <p role="alert" style={{ margin: 0 }}>{error}</p>}
-      <div
-        style={{
-          fontSize: 11,
-          color: "var(--cp-accent)",
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          fontWeight: 700,
-        }}
-      >
-        New TM suggested
-      </div>
       {suggestions.map((s) => {
         const isBusy = pendingId === s.id;
         const setText =
           s.setWeightKg != null && s.setReps != null
             ? `${fmtW(s.setWeightKg)} ${unitLabel} × ${s.setReps}`
-            : "your AMRAP";
+            : null;
         const when = relativeFromNow(s.sessionPerformedAt);
         return (
           <div
@@ -124,22 +113,13 @@ export function TmSuggestionBanner({
               gap: 10,
             }}
           >
-            <div style={{ fontSize: 13, color: "var(--cp-text)", lineHeight: 1.4 }}>
-              <strong>{s.movementName}</strong>{" "}
-              <span className="mono" style={{ fontWeight: 600 }}>
-                {fmtW(s.suggestedTmKg)} {unitLabel}
-              </span>
-              {s.currentTmKg != null && (
-                <span style={{ color: "var(--cp-text-muted)" }}>
-                  {" "}
-                  (from{" "}
-                  <span className="mono">{fmtW(s.currentTmKg)} {unitLabel}</span>)
-                </span>
-              )}
-              <span style={{ color: "var(--cp-text-muted)" }}>
-                {" "}
-                · from your AMRAP <span className="mono">{setText}</span> · {when}
-              </span>
+            <div style={{ fontSize: 14, color: "var(--cp-text)", lineHeight: 1.5 }}>
+              <h2 style={{ font: "inherit", fontWeight: 600, margin: 0 }}>
+                {s.movementName} training max: {s.currentTmKg != null ? `${fmtW(s.currentTmKg)} → ` : ""}{fmtW(s.suggestedTmKg)} {unitLabel}
+              </h2>
+              {setText && <div style={{ color: "var(--cp-text-muted)", fontSize: 13, marginTop: 3 }}>
+                From {setText} {when}
+              </div>}
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <button

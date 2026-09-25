@@ -24,6 +24,7 @@ export function NextBlockSuggestionCard({
   heading,
   cta,
   testId,
+  compact = false,
 }: {
   nudge: NextBlockNudgeView;
   /** Small uppercase label above the heading. */
@@ -37,10 +38,26 @@ export function NextBlockSuggestionCard({
   /** Optional link rendered at the foot of the card. */
   cta?: { href: string; label: string };
   testId?: string;
+  compact?: boolean;
 }) {
   const { suggestion, realization } = nudge;
   if (!suggestion && !realization) return null;
   const suggestedName = suggestion ? suggestion.programName : null;
+  if (compact) return <section data-testid={testId} style={{
+    display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, padding: 14,
+    border: "1px solid var(--cp-border)", borderRadius: 12, background: "var(--cp-surface)",
+  }}>
+    <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+      {suggestion && <h2 style={{ fontSize: 14, fontWeight: 600, margin: 0 }}>
+        {heading ?? `Consider a ${suggestedName} program next`}
+      </h2>}
+      <p style={{ fontSize: 13, color: "var(--cp-text-muted)", margin: "3px 0 0", lineHeight: 1.5 }}>
+        {[suggestion?.reason, realization?.reason].filter(Boolean).join(" ")}
+      </p>
+    </div>
+    {cta && <Link href={cta.href} className="cp-btn primary" style={{ fontSize: 12 }}
+      data-testid={testId ? `${testId}-cta` : undefined}>{cta.label}</Link>}
+  </section>;
   return (
     <section
       className="cp-card"
