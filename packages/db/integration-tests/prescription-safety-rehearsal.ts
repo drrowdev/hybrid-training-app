@@ -127,6 +127,9 @@ export async function rehearsePrescriptionSafety(database: postgres.Sql, stage: 
     stages.push("DC-SW7-DC-SW8-atomic-owner-only-replacement-replay-and-history");
 
     stage("DC-SW5-DC-SW7-paused-replacement-preserves-completion-and-rehab");
+    await asUser(owner, (tx) => tx`INSERT INTO public.movements(user_id,slug,display_name,pattern,primary_region)
+      VALUES(${owner}::uuid,'swim-easy','Synthetic easy swimming','cardio','shoulder_scapular'),
+        (${owner}::uuid,'swim-intervals','Synthetic swimming intervals','cardio','shoulder_scapular')`);
     const protocol = randomUUID();
     await asUser(owner, (tx) => tx`INSERT INTO public.rehab_protocols(id,user_id,name,definition)
       VALUES(${protocol}::uuid,${owner}::uuid,'Replacement history protocol',
@@ -172,6 +175,7 @@ export async function rehearsePrescriptionSafety(database: postgres.Sql, stage: 
     await database`DELETE FROM public.program_rehab_bindings WHERE user_id IN (${owner}::uuid,${foreign}::uuid)`;
     await database`DELETE FROM public.swim_plan_rehab_bindings WHERE user_id IN (${owner}::uuid,${foreign}::uuid)`;
     await database`DELETE FROM auth.users WHERE id IN (${owner}::uuid,${foreign}::uuid)`;
+    await database`DELETE FROM public.movements WHERE user_id IN (${owner}::uuid,${foreign}::uuid)`;
   }
   return stages;
 }
