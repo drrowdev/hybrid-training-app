@@ -527,6 +527,7 @@ try {
             return { ok: true, set: { id } };
           };
           window.logFullStrength = save;
+          window.loadOwnedPrescription = async () => ({ ok: true, prescription });
           return <main className={styles.page}><SessionLoggingStateProvider
             initialHasStrengthSets={sets.length > 0} initialLoggedStrengthClientIds={sets.map(set => set.client_log_id)}
             initialUnloggedStrengthCount={4 - sets.length}
@@ -908,7 +909,7 @@ try {
         build.onResolve({ filter: /^@\/lib\/(?:sessions\/(?:actions|swap-actions|session-movement-actions|reorder-actions)|movements\/instructions)$/ },
           args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/planner\/actions$/ }, args => ({ path: args.path, namespace: "test" }));
-        build.onResolve({ filter: /^@\/lib\/platform\/actions$/ }, args => ({ path: args.path, namespace: "test" }));
+        build.onResolve({ filter: /^@\/lib\/platform\/(?:actions|edit-context)$/ }, args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/(?:sessions\/(?:planned-movement-actions|link-activity|completed-summary-action)|hyrox\/station-swap-actions)$/ },
           args => ({ path: args.path, namespace: "test" }));
         build.onResolve({ filter: /^@\/lib\/offline\/outbox$/ }, args => ({ path: args.path, namespace: "test" }));
@@ -934,6 +935,8 @@ try {
               ? "export const getCompletedSessionSummary = () => { throw new Error('Unexpected summary read'); };"
             : args.path === "@/lib/platform/actions"
               ? "export const getProgramSegments = async () => ({ ok: true, segments: [] }); export const previewProgramInstance = input => window.continuationPreview(input); export const createProgramInstance = input => window.continuationSave(input);"
+            : args.path === "@/lib/platform/edit-context"
+              ? "export const getBlockEditContext = id => window.reloadProgramContext(id);"
             : args.path === "@/lib/offline/outbox"
               ? `import { countForSession as count } from "./src/lib/offline/outbox";
                 export * from "./src/lib/offline/outbox";
@@ -943,7 +946,7 @@ try {
                   return result;
                 }`
             : args.path === "@/lib/sessions/swap-actions"
-              ? "export const swapActiveMovement = form => { if (!window.swapOwnedMovement) throw new Error('Unexpected swap'); return window.swapOwnedMovement(form); };"
+              ? "export const loadSwapPrescription = id => window.loadOwnedPrescription(id); export const swapActiveMovement = form => { if (!window.swapOwnedMovement) throw new Error('Unexpected swap'); return window.swapOwnedMovement(form); };"
             : args.path === "@/lib/movements/instructions"
               ? "export const getMovementInstructions = async () => null;"
             : args.path === "home-drawer"
@@ -970,7 +973,7 @@ try {
                   } });
                 }`
             : args.path === "@/lib/swim/course-actions"
-              ? "export const previewPrivateSwimCourse = form => window.previewCourse(form); export const importPrivateSwimCourse = (form, id) => window.saveCourse(form, id); export const previewPrivateSwimEdit = input => window.previewCourseEdit(input); export const savePrivateSwimEdit = input => window.saveCourseEdit(input);"
+              ? "export const reloadPrivateSwimEdit = id => window.reloadCourseEdit(id); export const previewPrivateSwimCourse = form => window.previewCourse(form); export const importPrivateSwimCourse = (form, id) => window.saveCourse(form, id); export const previewPrivateSwimEdit = input => window.previewCourseEdit(input); export const savePrivateSwimEdit = input => window.saveCourseEdit(input);"
             : args.path === "@/lib/swim/import-actions"
               ? "export const connectSwimDashboard = () => window.connectDashboard(); export const disconnectSwimDashboard = id => window.disconnectDashboard(id);"
             : args.path === "@/lib/swim/import-match-actions"
@@ -980,7 +983,7 @@ try {
             : args.path === "@/lib/swim/rehab-actions"
               ? "export const saveSwimRehabAttachments = input => window.saveRehabAttachments(input); export const startSwimRehab = input => window.startRehab(input);"
             : args.path === "@/lib/programs/authored/actions"
-              ? "export const previewAuthoredProgram = input => window.previewProgram(input); export const saveAuthoredProgram = (...args) => window.saveProgram(...args);"
+              ? "export const reloadAuthoredProgram = id => window.reloadProgram(id); export const previewAuthoredProgram = input => window.previewProgram(input); export const saveAuthoredProgram = (...args) => window.saveProgram(...args);"
             : args.path === "@/components/trash/DeleteSessionButton"
               ? "export const DeleteSessionButton = () => { throw new Error('Unexpected delete control'); };"
             : "export const previewSwimPoolEdit = input => window.previewPool(input); export const createSwimPlan = form => window.saveSetup(form); export const previewSwimPlan = form => window.previewSetup(form); const unexpected = () => { throw new Error('Unexpected action'); }; export const proposeSwimWeek = unexpected, proposeSwimBenchmark = unexpected, decideSwimProposal = unexpected, changeSwimPlanStatus = unexpected, previewSwimResume = unexpected, resumeSwimPlan = unexpected, decideSwimBenchmark = unexpected, applySwimWeekEdit = unexpected, applySwimDateEdit = unexpected, applySwimPoolEdit = unexpected, previewSwimWeekEdit = unexpected, previewSwimDateEdit = unexpected, skipSwimWorkout = unexpected, completeSwimWorkoutResult = unexpected;",
@@ -2023,7 +2026,7 @@ try {
     }
     stages.push(stage);
   }
-  await page.evaluate(() => { delete window.swapOwnedMovement; });
+  await page.evaluate(() => { delete window.swapOwnedMovement; delete window.loadOwnedPrescription; });
   await page.unroute("**/api/movements/swap-candidates**");
   assert.deepEqual(failures, []);
   for (const width of [375, 1280]) {

@@ -154,61 +154,8 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
     expect(reapplied.data.prescription.meta.note).toBe("reapplied");
   });
 
-  it("DC-SW5/DC-SW7/DC-SW8 replaces paused swimming atomically, retaining completed history and rehab on exact retries", async () => {
-    const created = await createPlan(alice, [0, 1]);
-    const started = await start(created.workouts[0]!);
-    await rpc(alice, "swim_complete_workout", completionArgs(started));
-    const liftId = await getMovementIdBySlug(admin, "bench-press-flat");
-    const protocol = await alice.from("rehab_protocols").insert({
-      user_id: aliceId, name: "Replacement history protocol",
-      definition: { items: [{ movementId: liftId, movementName: "Bench press", sets: 1, reps: 8, targetWeightKg: 2 }], links: [] },
-    }).select("id").single();
-    expect(protocol.error).toBeNull();
-    await rpc(alice, "set_swim_rehab_bindings", { p_plan_id: created.plan.id, p_protocol_ids: [protocol.data!.id],
-      p_expected_revision: (await rpc<{ revision: string }>(alice, "training_schedule_snapshot")).revision,
-      p_request_id: randomUUID() });
-    const plan = await alice.from("swim_plans").select("revision").eq("id", created.plan.id).single();
-    expect(plan.error).toBeNull();
-    const paused = await rpc<{ revision: number }>(alice, "swim_set_plan_status", {
-      p_plan_id: created.plan.id, p_expected_revision: plan.data!.revision, p_status: "paused",
-    });
-    const retained = async () => {
-      const workouts = await alice.from("swim_workouts").select("*").eq("plan_id", created.plan.id).order("id");
-      const links = await alice.from("swim_plan_rehab_bindings").select("*").eq("plan_id", created.plan.id).order("local_protocol_id");
-      const session = await alice.from("sessions").select("*").eq("id", started.session_id!).single();
-      expect(workouts.error).toBeNull(); expect(links.error).toBeNull(); expect(session.error).toBeNull();
-      return { workouts: workouts.data, links: links.data, session: session.data };
-    };
-    const history = await retained();
-    expect(history.workouts?.some((workout) => workout.status === "completed")).toBe(true);
-    expect(history.links).toHaveLength(1);
-    const revision = (await rpc<{ revision: string }>(alice, "training_schedule_snapshot")).revision;
-    const args = {
-      p_plan_id: created.plan.id, p_plan_revision: paused.revision, p_expected_revision: revision,
-      p_request_id: randomUUID(), p_input_hash: "a".repeat(64), p_accept_overlap: true,
-      p_args: { p_started_on: day(1), p_ends_on: day(30), p_definition: planDefinition(), p_state: state(),
-        p_workouts: [1, 2].map((offset) => ({ scheduled_date: day(offset), slot: "single", definition: definition() })) },
-    };
-    const invalid = await alice.rpc("replace_swim_plan_atomically", { ...args,
-      p_args: { ...args.p_args, p_workouts: [] } });
-    expect(invalid.error).not.toBeNull();
-    expect((await rpc<{ revision: string }>(alice, "training_schedule_snapshot")).revision).toBe(revision);
-    const [first, retry] = await Promise.all([
-      alice.rpc("replace_swim_plan_atomically", args), alice.rpc("replace_swim_plan_atomically", args),
-    ]);
-    expect(first.error).toBeNull(); expect(retry.error).toBeNull(); expect(retry.data).toEqual(first.data);
-    expect(first.data.plan.id).not.toBe(created.plan.id);
-    expect((await alice.from("swim_plans").select("status").eq("id", created.plan.id).single()).data?.status).toBe("finished");
-    expect(await retained()).toEqual(history);
-    const active = await alice.from("swim_plans").select("id").eq("status", "active");
-    expect(active.error).toBeNull(); expect(active.data).toEqual([{ id: first.data.plan.id }]);
-    expect((await bob.rpc("replace_swim_plan_atomically", args)).error).not.toBeNull();
-  });
-
   afterAll(async () => {
     for (const id of users) {
-      const bindings = await admin.from("swim_plan_rehab_bindings").delete().eq("user_id", id);
-      if (bindings.error) throw new Error(`Swim test binding cleanup: ${bindings.error.message}`);
       const { error } = await admin.auth.admin.deleteUser(id);
       if (error) throw new Error(`Swim test cleanup: ${error.message}`);
     }

@@ -125,6 +125,49 @@ export async function rehearsePrescriptionSafety(database: postgres.Sql, stage: 
     assert.deepEqual(await database`SELECT * FROM public.swim_workouts WHERE plan_id=${swim.plan.id}::uuid ORDER BY id`, oldWorkouts);
     assert.deepEqual(await database`SELECT to_jsonb(b) AS row FROM public.training_blocks b WHERE id=${primary.block_id}::uuid`, primaryBefore);
     stages.push("DC-SW7-DC-SW8-atomic-owner-only-replacement-replay-and-history");
+
+    stage("DC-SW5-DC-SW7-paused-replacement-preserves-completion-and-rehab");
+    const protocol = randomUUID();
+    await asUser(owner, (tx) => tx`INSERT INTO public.rehab_protocols(id,user_id,name,definition)
+      VALUES(${protocol}::uuid,${owner}::uuid,'Replacement history protocol',
+      ${json({ items: [{ movementId: movement.id, movementName: "Fixture exercise", sets: 1, reps: 8, targetWeightKg: 2 }], links: [] })}::jsonb)`);
+    const attachRevision = await snapshot();
+    await asUser(owner, (tx) => tx`SELECT public.set_swim_rehab_bindings(${replaced.plan.id}::uuid,
+      ARRAY[${protocol}::uuid],${attachRevision},${randomUUID()}::uuid)`);
+    const started = await asUser(owner, async (tx) =>
+      (await tx<{ value: { id: string; revision: number; session_id: string } }[]>`SELECT public.swim_start_workout(
+        ${replaced.workouts[0]!.id}::uuid,1) AS value`)[0]!.value);
+    const actual = { version: 1, snapshot: slot.issued.snapshot, lengths: slot.issued.totalLengths, timeMs: 600000,
+      rpe: 5, completion: "completed", provenance: { source: "manual", recordedAt: new Date().toISOString() } };
+    await asUser(owner, (tx) => tx`SELECT public.swim_complete_workout(${started.id}::uuid,${started.revision},
+      ${json(actual)}::jsonb,${randomUUID()}::uuid,${randomUUID()}::uuid,NULL,false)`);
+    const [latest] = await database`SELECT revision FROM public.swim_plans WHERE id=${replaced.plan.id}::uuid`;
+    const paused = await asUser(owner, async (tx) =>
+      (await tx<{ value: { revision: number } }[]>`SELECT public.swim_set_plan_status(
+        ${replaced.plan.id}::uuid,${latest!.revision},'paused') AS value`)[0]!.value);
+    const retained = async () => ({
+      workouts: await database`SELECT * FROM public.swim_workouts WHERE plan_id=${replaced.plan.id}::uuid ORDER BY id`,
+      links: await database`SELECT * FROM public.swim_plan_rehab_bindings WHERE plan_id=${replaced.plan.id}::uuid ORDER BY local_protocol_id`,
+      session: await database`SELECT * FROM public.sessions WHERE id=${started.session_id}::uuid`,
+      cardio: await database`SELECT * FROM public.cardio_logs WHERE session_id=${started.session_id}::uuid ORDER BY id`,
+    });
+    const history = await retained();
+    assert.equal(history.workouts[0]!.status, "completed");
+    assert.equal(history.links.length, 1);
+    assert.equal(history.cardio.length, 1);
+    const pausedRevision = await snapshot(), pausedRequest = randomUUID();
+    const replacePaused = () => asUser(owner, async (tx) =>
+      (await tx<{ value: Swim }[]>`SELECT public.replace_swim_plan_atomically(
+        ${replaced.plan.id}::uuid,${paused.revision},${json(args)}::jsonb,${pausedRevision},
+        ${pausedRequest}::uuid,${hash(args)},true) AS value`)[0]!.value);
+    const retries = await Promise.all([replacePaused(), replacePaused()]);
+    assert.deepEqual(retries[0], retries[1]);
+    assert.notEqual(retries[0]!.plan.id, replaced.plan.id);
+    assert.deepEqual(await retained(), history);
+    assert.equal((await database`SELECT status FROM public.swim_plans WHERE id=${replaced.plan.id}::uuid`)[0]!.status, "finished");
+    assert.equal((await database`SELECT count(*)::int AS n FROM public.swim_plans WHERE user_id=${owner}::uuid AND status='active'`)[0]!.n, 1);
+    assert.deepEqual(await database`SELECT to_jsonb(b) AS row FROM public.training_blocks b WHERE id=${primary.block_id}::uuid`, primaryBefore);
+    stages.push("DC-SW5-DC-SW7-paused-replacement-preserves-completion-and-rehab");
   } finally {
     await database`DELETE FROM public.program_rehab_bindings WHERE user_id IN (${owner}::uuid,${foreign}::uuid)`;
     await database`DELETE FROM public.swim_plan_rehab_bindings WHERE user_id IN (${owner}::uuid,${foreign}::uuid)`;
