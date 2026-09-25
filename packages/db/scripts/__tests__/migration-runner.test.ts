@@ -21,7 +21,7 @@ describe("normal command failure projection", () => {
       command: { exitCode: 1, signal: null, record: "parsed" },
     });
   });
-  it.each([record(159), `${record(158)}\n${record(158)}`])("refuses invalid or ambiguous attribution", (stderr) => {
+  it.each([record(161), `${record(158)}\n${record(158)}`])("refuses invalid or ambiguous attribution", (stderr) => {
     expect(projectNormalCommandFailure({ code: 1, stderr })).toEqual({
       sqlstate: null, position: { status: "unmatched" },
       command: { exitCode: 1, signal: null, record: "invalid" },
@@ -44,11 +44,11 @@ describe("normal command failure projection", () => {
 });
 
 describe("canonical migration file boundaries", () => {
-  it("preserves all159 canonical metadata and statement bytes without changing source", () => {
+  it("preserves every canonical migration's metadata and statement bytes without changing source", () => {
     const migrations = readMigrationFiles({ migrationsFolder: "./drizzle" });
     const original = structuredClone(migrations);
     const bounded = migrationFileBoundaries(migrations);
-    expect(bounded).toHaveLength(159);
+    expect(bounded).toHaveLength(migrations.length);
     bounded.forEach((migration, index) => {
       const source = original[index]!;
       expect(migration).toEqual({ ...source,

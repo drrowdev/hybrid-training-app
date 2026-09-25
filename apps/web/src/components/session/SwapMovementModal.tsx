@@ -98,9 +98,6 @@ export function SwapMovementModal({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setExpectedRevision(null);
-    setConflict(undefined);
-    setConflictChoice(null);
     loadSwapPrescription(sessionId).then((result) => {
       if (cancelled) return;
       if (!result.ok) setError(result.error ?? "Couldn't load the workout.");
@@ -111,6 +108,9 @@ export function SwapMovementModal({
 
   const handleClose = useCallback(() => {
     setWarning(null);
+    setExpectedRevision(null);
+    setConflict(undefined);
+    setConflictChoice(null);
     if (pendingSwap) {
       const completed = pendingSwap;
       setPendingSwap(null);
@@ -285,7 +285,7 @@ export function SwapMovementModal({
         return;
       }
       onSwapped(next);
-      onClose();
+      handleClose();
     });
   };
 

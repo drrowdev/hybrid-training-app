@@ -10,7 +10,7 @@ import { z } from "zod";
 export const MIGRATION_EVIDENCE_ENV = "HTA_MIGRATION_EVIDENCE_PATH";
 export const MIGRATION_EVIDENCE_FILE = "migration-evidence.jsonl";
 export const MIGRATION_EVIDENCE_MAX_BYTES = 8192;
-export const MAX_MIGRATIONS = 159;
+export const MAX_MIGRATIONS = 161;
 
 // Version 1 codebook, in SQL vector order. t/f/u mean true/false/unknown.
 // Attribute and privilege bits are expected-condition matches, not raw values.
