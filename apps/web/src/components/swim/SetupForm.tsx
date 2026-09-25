@@ -87,6 +87,7 @@ export function SetupForm({ today, schedule = [], replacePlanId }: { today: stri
         else if (result.preview) { requestId.current = crypto.randomUUID(); setPreview(result.preview); }
         else if (result.planId) {
           setSavedId(result.planId);
+          setReplacementForm(null);
           if (result.warning) setWarning(result.warning);
           else { router.push(`/app/swim?plan=${result.planId}`); router.refresh(); }
         }

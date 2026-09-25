@@ -122,4 +122,15 @@ jobs:
       - name: Install test browser
         run: pnpm --filter @hta/web exec playwright install --with-deps chromium
       - name: Verify pool and import controls without external services
+        env:
+          UI_REVIEW_DIR: ${{ runner.temp }}/swim-ui-review
         run: pnpm --filter @hta/web exec node scripts/test-swim-pool-ui.mjs
+      - name: Retain synthetic replacement screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: swimming-replacement-ui
+          path: |
+            ${{ runner.temp }}/swim-ui-review/generated-swim-replacement-*.png
+            ${{ runner.temp }}/swim-ui-review/chooser-four-*.png
+          if-no-files-found: error
+          retention-days: 7

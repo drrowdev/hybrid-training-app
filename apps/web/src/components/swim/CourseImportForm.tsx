@@ -86,6 +86,7 @@ export function CourseImportForm({ today, schedule = [], replacePlanId }: { toda
             if (result.error) setError(result.error);
             else if (result.planId) {
               setSavedId(result.planId);
+              setReplacementForm(null);
               if (result.warning) setWarning(result.warning);
               else {
                 router.push(`/app/swim?plan=${result.planId}`);

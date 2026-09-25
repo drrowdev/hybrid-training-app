@@ -790,17 +790,19 @@ try {
           { id: "one-off-run", source: "session", programId: null, date: "2026-09-14", title: "Run", state: "scheduled" },
           { id: "planned-rest", source: "primary", programId: "primary", date: "2026-09-17", title: "Rest", state: "rest" },
         ];
-        window.previewSetup = async () => ({ ok: true, preview: {
+        window.previewSetup = async form => ({ ok: true, preview: {
           ...prepared.preview, id: "generated-preview", scheduleRevision: "a".repeat(32), overlaps: [setupSchedule[0]],
+          ...(form.get("replacePlanId") ? { replaces: { id: form.get("replacePlanId"), name: "Earlier swimming", revision: 1 } } : {}),
         } });
         window.saveSetup = async form => {
           window.setupCalls.push(Object.fromEntries(form.entries()));
           return window.setupMode === "error" ? { error: "Could not save." }
             : { ok: true, planId: "generated-plan", warning: "Refresh the plan." };
         };
-        window.showSetup = () => {
+        window.showSetup = (replacement = false) => {
           window.setupCalls = []; window.setupMode = "error";
-          root.render(<main className={styles.page}><SetupForm key={++key} today="2026-09-14" schedule={setupSchedule} /></main>);
+          root.render(<main className={styles.page}><SetupForm key={++key} today="2026-09-14" schedule={setupSchedule}
+            replacePlanId={replacement ? "00000000-0000-4000-8000-000000000104" : undefined} /></main>);
         };
         window.previewRestore = async input => {
           window.restorePreviews.push(input);
@@ -1260,6 +1262,30 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     stages.push(stage);
 
+    stage = `generated-swim-replacement-${width}`;
+    await page.evaluate(() => window.showSetup(true));
+    await page.getByRole("button", { name: "Preview plan", exact: true }).click();
+    await page.getByLabel("Keep both workouts on these dates", { exact: true }).check();
+    await createSetup.click();
+    const replaceSetup = page.getByRole("dialog", { name: "Replace Earlier swimming?" });
+    await expect(replaceSetup).toBeVisible();
+    await screenshot(`generated-swim-replacement-${width}`);
+    await replaceSetup.getByRole("button", { name: "Cancel", exact: true }).click();
+    assert.equal(await page.evaluate(() => window.setupCalls.length), 0);
+    await createSetup.click();
+    await replaceSetup.getByRole("button", { name: "Replace program", exact: true }).click();
+    await expect(replaceSetup.getByRole("alert")).toBeVisible();
+    await page.evaluate(() => { window.setupMode = "success"; });
+    await replaceSetup.getByRole("button", { name: "Replace program", exact: true }).click();
+    await expect(replaceSetup).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Open swimming plan", exact: true })).toBeVisible();
+    const replacementCalls = await page.evaluate(() => window.setupCalls);
+    assert.equal(replacementCalls.length, 2);
+    assert.deepEqual(replacementCalls[0], replacementCalls[1]);
+    assert.equal(replacementCalls[0].replacePlanId, "00000000-0000-4000-8000-000000000104");
+    assert.equal(replacementCalls[0].acceptReplacement, "on");
+    stages.push(stage);
+
     stage = `authored-circuit-delayed-save-${width}`;
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => window.showCircuit());
@@ -1687,7 +1713,7 @@ try {
         await screenshot(`setup-hybrid-${state}-${width}`);
         await dialog.getByRole("button", { name: "Back", exact: true }).click();
         await dialog.locator('[data-kind="swimming"]').click();
-        assert.equal(await page.evaluate(() => window.destinations.at(-1)), state === "empty" ? "/app/swim/setup" : "/app/swim?plan=00000000-0000-4000-8000-000000000104");
+        assert.equal(await page.evaluate(() => window.destinations.at(-1)), state === "empty" ? "/app/swim/setup" : "/app/swim/setup?replace=00000000-0000-4000-8000-000000000104");
         await dialog.locator('[data-kind="running"]').click();
         assert.equal(await page.evaluate(() => window.destinations.at(-1)), "/app/program/build?activity=running");
         await page.keyboard.press("Escape");
@@ -1701,7 +1727,7 @@ try {
     await screenshot(`programs-paused-${width}`);
     await page.getByRole("button", { name: "New program", exact: true }).click();
     await dialog.locator('[data-kind="swimming"]').click();
-    assert.equal(await page.evaluate(() => window.destinations.at(-1)), "/app/swim?plan=00000000-0000-4000-8000-000000000104");
+    assert.equal(await page.evaluate(() => window.destinations.at(-1)), "/app/swim/setup?replace=00000000-0000-4000-8000-000000000104");
     await page.keyboard.press("Escape");
     await page.evaluate(() => window.showSwimHistory());
     const swimHistory = page.getByRole("region", { name: "Swimming", exact: true });
