@@ -7,6 +7,7 @@ import { createSmokeClient, createSmokeSession, getMovementIdBySlug, RUN_ID } fr
 import type { SwimCompletion, SwimPlanWithWorkouts, SwimWorkoutRow } from "../storage";
 import { getSwimRpcTestEnv } from "./storage-rpc-config";
 import { applyPrescriptionUpdates, getActiveBlockRemainingSessions } from "@/lib/planner/remaining-sessions";
+import { nativeProgramDefinition, prepareNativeProgram } from "../../../../e2e/fixtures/modular-programs";
 
 // Run with apps/web/vitest.config.ts; see the pool-swimming wiki's JSON ledger command.
 // Never consume the app's production credentials or apply migrations here.
@@ -160,20 +161,18 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
     const otherTab = createClient(smokeEnv!.url, anonKey!, { auth: { autoRefreshToken: false, persistSession: false } });
     const session = (await client.auth.getSession()).data.session!;
     expect((await otherTab.auth.setSession(session)).error).toBeNull();
-    const block = await client.from("training_blocks").insert({
-      user_id: userId, archetype: "strength_anchor", started_on: day(0), weeks: 1,
-    }).select("id").single();
-    expect(block.error).toBeNull();
-    const blockId = block.data!.id;
+    const movementId = await getMovementIdBySlug(admin, "bench-press-flat");
+    const today = day(0);
+    const weekday = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
+    const { block_id: blockId } = await prepareNativeProgram(client,
+      nativeProgramDefinition("strength", "Concurrent derived adjustment", weekday, movementId, movementId), today);
     const initial = {
-      items: [{ movementId: easyMovementId, kind: "accessory", sets: 4, reps: 8 }],
+      items: [{ movementId, kind: "accessory", sets: 4, reps: 8 }],
       ...(revision === "null" ? { meta: { editRevision: null } } : {}),
     };
-    const inserted = await client.from("planned_sessions").insert({
-      user_id: userId, block_id: blockId, week_index: 0, day_index: 0,
-      title: "Concurrent derived adjustment", role: "strength", prescription: initial,
-    }).select("id").single();
-    expect(inserted.error).toBeNull();
+    const prepared = await client.from("planned_sessions").update({ prescription: initial })
+      .eq("user_id", userId).eq("block_id", blockId).select("id").single();
+    if (prepared.error) throw new Error("Legacy prescription fixture failed.", { cause: prepared.error });
     const [firstRead, secondRead] = await Promise.all([client, otherTab].map((db) =>
       getActiveBlockRemainingSessions(db, userId, "UTC", new Date(), blockId)));
     expect(firstRead?.remaining).toHaveLength(1);
@@ -193,13 +192,13 @@ describe.skipIf(!smokeEnv || !anonKey)("ADR0079 dedicated authenticated swim RPC
     const winner = results.findIndex((result) => result.updated === 1);
     expect(results[winner]!.error).toBeUndefined();
     expect(results[1 - winner]!.error).toBeTruthy();
-    const stored = await client.from("planned_sessions").select("prescription").eq("id", inserted.data!.id).single();
+    const stored = await client.from("planned_sessions").select("prescription").eq("id", prepared.data.id).single();
     expect(stored.error).toBeNull();
     expect(stored.data?.prescription).toEqual(updates[winner]!.prescription);
     const retry = await applyPrescriptionUpdates(otherTab, userId, blockId, [updates[1 - winner]!]);
     expect(retry.updated).toBe(0);
     expect(retry.error).toBeTruthy();
-    const unchanged = await client.from("planned_sessions").select("prescription").eq("id", inserted.data!.id).single();
+    const unchanged = await client.from("planned_sessions").select("prescription").eq("id", prepared.data.id).single();
     expect(unchanged.error).toBeNull();
     expect(unchanged.data).toEqual(stored.data);
   });
